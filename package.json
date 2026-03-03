@@ -1,13 +1,76 @@
 {
-    "name": "vextjs",
-    "version": "0.1.0",
-    "main": "index.js",
-    "description": "About\nVextJS is a modern full-stack framework designed to enhance development efficiency. It offers out-of-the-box features and default configurations, allowing developers to quickly start projects, making it ideal for building high-performance RESTful APIs.",
-    "private": false,
-    "publishConfig": {
-        "registry": "https://registry.npmjs.org/"
+  "name": "vextjs",
+  "version": "0.1.0",
+  "description": "VextJS is a modern Node.js web framework with adapter architecture, plugin system, and out-of-the-box features for building high-performance RESTful APIs.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
     },
-    "dependencies": {
-        "@vext.js/core": "^0.1.0"
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.js"
     }
+  },
+  "bin": {
+    "vext": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "framework",
+    "web",
+    "rest",
+    "api",
+    "adapter",
+    "plugin",
+    "hono",
+    "typescript",
+    "node"
+  ],
+  "author": "rocky <rockyshi1993@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vextjs/vext.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vextjs/vext/issues"
+  },
+  "homepage": "https://github.com/vextjs/vext#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "esbuild": "^0.27.3",
+    "fast-glob": "^3.3.3",
+    "flex-rate-limit": "^1.0.3",
+    "hono": "^4.7.6",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "schema-dsl": "^1.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
 }

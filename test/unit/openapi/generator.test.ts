@@ -1,0 +1,1917 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { OpenAPIGenerator } from "../../../src/lib/openapi/generator.js";
+import { RouteMetadataCollector } from "../../../src/lib/openapi/collector.js";
+import type {
+  RouteMetadata,
+  OpenAPIDocument,
+  OpenAPIConfig,
+} from "../../../src/lib/openapi/types.js";
+import type { RouteOptions } from "../../../src/types/app.js";
+
+// ── 测试辅助 ────────────────────────────────────────────────
+
+/**
+ * 创建测试用的 RouteMetadata
+ */
+function createRoute(
+  method: string,
+  path: string,
+  options: RouteOptions = {},
+  sourceFile = "routes/test.ts",
+): RouteMetadata {
+  return { method, path, options, sourceFile };
+}
+
+/**
+ * 创建带默认配置的 OpenAPIGenerator
+ */
+function createGenerator(config: OpenAPIConfig = {}): OpenAPIGenerator {
+  return new OpenAPIGenerator(config);
+}
+
+/**
+ * 生成文档的快捷方法
+ */
+function generate(
+  routes: RouteMetadata[],
+  config: OpenAPIConfig = {},
+): OpenAPIDocument {
+  return createGenerator(config).generate(routes);
+}
+
+// ═════════════════════════════════════════════════════════════
+// RouteMetadataCollector 单元测试
+// ═════════════════════════════════════════════════════════════
+
+describe("RouteMetadataCollector", () => {
+  let collector: RouteMetadataCollector;
+
+  beforeEach(() => {
+    collector = new RouteMetadataCollector();
+  });
+
+  // ── 基础收集 ──────────────────────────────────────────────
+
+  describe("基础收集", () => {
+    it("初始状态为空", () => {
+      expect(collector.getRoutes()).toEqual([]);
+      expect(collector.getCount()).toBe(0);
+    });
+
+    it("收集单条路由", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      expect(collector.getCount()).toBe(1);
+
+      const routes = collector.getRoutes();
+      expect(routes).toHaveLength(1);
+      expect(routes[0].method).toBe("GET");
+      expect(routes[0].path).toBe("/users");
+      expect(routes[0].sourceFile).toBe("routes/users.ts");
+    });
+
+    it("收集多条路由", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      collector.addRoute("POST", "/users", {}, "routes/users.ts");
+      collector.addRoute("GET", "/posts", {}, "routes/posts.ts");
+
+      expect(collector.getCount()).toBe(3);
+      expect(collector.getRoutes()).toHaveLength(3);
+    });
+
+    it("保留路由 options 原始对象", () => {
+      const options: RouteOptions = {
+        validate: { body: { name: "string!" } },
+        middlewares: ["auth"],
+        docs: { summary: "获取用户列表" },
+      };
+
+      collector.addRoute("GET", "/users", options, "routes/users.ts");
+      const route = collector.getRoutes()[0];
+      expect(route.options).toBe(options);
+    });
+
+    it("保留路由的 HTTP 方法大写", () => {
+      collector.addRoute("POST", "/users", {}, "routes/users.ts");
+      expect(collector.getRoutes()[0].method).toBe("POST");
+    });
+  });
+
+  // ── 隐藏路由过滤 ──────────────────────────────────────────
+
+  describe("隐藏路由过滤", () => {
+    it("docs.hidden = true 的路由不被收集", () => {
+      collector.addRoute(
+        "GET",
+        "/internal/health",
+        { docs: { hidden: true } },
+        "routes/internal.ts",
+      );
+      expect(collector.getCount()).toBe(0);
+      expect(collector.getRoutes()).toEqual([]);
+    });
+
+    it("docs.hidden = false 的路由正常收集", () => {
+      collector.addRoute(
+        "GET",
+        "/users",
+        { docs: { hidden: false } },
+        "routes/users.ts",
+      );
+      expect(collector.getCount()).toBe(1);
+    });
+
+    it("无 docs 的路由正常收集", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      expect(collector.getCount()).toBe(1);
+    });
+
+    it("docs 存在但无 hidden 字段的路由正常收集", () => {
+      collector.addRoute(
+        "GET",
+        "/users",
+        { docs: { summary: "test" } },
+        "routes/users.ts",
+      );
+      expect(collector.getCount()).toBe(1);
+    });
+
+    it("混合隐藏和可见路由", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      collector.addRoute(
+        "GET",
+        "/health",
+        { docs: { hidden: true } },
+        "routes/health.ts",
+      );
+      collector.addRoute("POST", "/users", {}, "routes/users.ts");
+      collector.addRoute(
+        "GET",
+        "/metrics",
+        { docs: { hidden: true } },
+        "routes/metrics.ts",
+      );
+
+      expect(collector.getCount()).toBe(2);
+      expect(collector.getRoutes().map((r) => r.path)).toEqual([
+        "/users",
+        "/users",
+      ]);
+    });
+  });
+
+  // ── getRoutes 返回副本 ────────────────────────────────────
+
+  describe("getRoutes 返回副本", () => {
+    it("修改返回数组不影响内部状态", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+
+      const routes = collector.getRoutes();
+      routes.push(createRoute("DELETE", "/test"));
+
+      expect(collector.getCount()).toBe(1);
+      expect(collector.getRoutes()).toHaveLength(1);
+    });
+
+    it("多次调用 getRoutes 返回不同的数组引用", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+
+      const r1 = collector.getRoutes();
+      const r2 = collector.getRoutes();
+      expect(r1).not.toBe(r2);
+      expect(r1).toEqual(r2);
+    });
+  });
+
+  // ── clear 重置 ────────────────────────────────────────────
+
+  describe("clear 重置", () => {
+    it("清空后路由数为 0", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      collector.addRoute("POST", "/users", {}, "routes/users.ts");
+      expect(collector.getCount()).toBe(2);
+
+      collector.clear();
+      expect(collector.getCount()).toBe(0);
+      expect(collector.getRoutes()).toEqual([]);
+    });
+
+    it("清空后可以重新收集", () => {
+      collector.addRoute("GET", "/users", {}, "routes/users.ts");
+      collector.clear();
+
+      collector.addRoute("POST", "/posts", {}, "routes/posts.ts");
+      expect(collector.getCount()).toBe(1);
+      expect(collector.getRoutes()[0].path).toBe("/posts");
+    });
+
+    it("多次 clear 不报错", () => {
+      collector.clear();
+      collector.clear();
+      expect(collector.getCount()).toBe(0);
+    });
+  });
+});
+
+// ═════════════════════════════════════════════════════════════
+// OpenAPIGenerator 单元测试
+// ═════════════════════════════════════════════════════════════
+
+describe("OpenAPIGenerator", () => {
+  // ── 文档基本结构 ──────────────────────────────────────────
+
+  describe("文档基本结构", () => {
+    it("生成空路由的文档", () => {
+      const doc = generate([]);
+      expect(doc.openapi).toBe("3.0.3");
+      expect(doc.info.title).toBe("VextJS API");
+      expect(doc.info.version).toBe("1.0.0");
+      expect(doc.info.description).toBe("Auto-generated API documentation");
+      expect(doc.paths).toEqual({});
+    });
+
+    it("使用自定义配置", () => {
+      const doc = generate([], {
+        title: "My API",
+        description: "Custom API docs",
+        version: "2.0.0",
+      });
+      expect(doc.info.title).toBe("My API");
+      expect(doc.info.description).toBe("Custom API docs");
+      expect(doc.info.version).toBe("2.0.0");
+    });
+
+    it("包含 contact 信息", () => {
+      const doc = generate([], {
+        contact: {
+          name: "API Support",
+          email: "support@example.com",
+          url: "https://example.com",
+        },
+      });
+      expect(doc.info.contact).toEqual({
+        name: "API Support",
+        email: "support@example.com",
+        url: "https://example.com",
+      });
+    });
+
+    it("包含 license 信息", () => {
+      const doc = generate([], {
+        license: { name: "MIT", url: "https://opensource.org/licenses/MIT" },
+      });
+      expect(doc.info.license).toEqual({
+        name: "MIT",
+        url: "https://opensource.org/licenses/MIT",
+      });
+    });
+
+    it("包含 servers 信息", () => {
+      const doc = generate([], {
+        servers: [
+          { url: "http://localhost:3000", description: "Development" },
+          { url: "https://api.example.com", description: "Production" },
+        ],
+      });
+      expect(doc.servers).toHaveLength(2);
+      expect(doc.servers![0].url).toBe("http://localhost:3000");
+      expect(doc.servers![1].description).toBe("Production");
+    });
+
+    it("默认 servers 为 [{ url: '/', description: 'Current server' }]", () => {
+      const doc = generate([]);
+      expect(doc.servers).toEqual([
+        { url: "/", description: "Current server" },
+      ]);
+    });
+
+    it("始终包含 ErrorResponse 和 SuccessResponse schema", () => {
+      const doc = generate([]);
+      expect(doc.components!.schemas!["ErrorResponse"]).toBeDefined();
+      expect(doc.components!.schemas!["SuccessResponse"]).toBeDefined();
+
+      // ErrorResponse 结构
+      const err = doc.components!.schemas!["ErrorResponse"];
+      expect(err.type).toBe("object");
+      expect(err.properties!.code.type).toBe("integer");
+      expect(err.properties!.message.type).toBe("string");
+      expect(err.properties!.requestId.type).toBe("string");
+      expect(err.required).toEqual(["code", "message", "requestId"]);
+
+      // SuccessResponse 结构
+      const success = doc.components!.schemas!["SuccessResponse"];
+      expect(success.type).toBe("object");
+      expect(success.properties!.code.example).toBe(0);
+      expect(success.required).toEqual(["code", "data", "requestId"]);
+    });
+  });
+
+  // ── securitySchemes ───────────────────────────────────────
+
+  describe("securitySchemes", () => {
+    it("默认提供 bearerAuth 方案", () => {
+      const doc = generate([]);
+      const schemes = doc.components!.securitySchemes!;
+      expect(schemes.bearerAuth).toBeDefined();
+      expect(schemes.bearerAuth.type).toBe("http");
+      expect(schemes.bearerAuth.scheme).toBe("bearer");
+      expect(schemes.bearerAuth.bearerFormat).toBe("JWT");
+    });
+
+    it("使用自定义 securitySchemes 覆盖默认", () => {
+      const doc = generate([], {
+        securitySchemes: {
+          apiKey: {
+            type: "apiKey",
+            name: "X-API-Key",
+            in: "header",
+          },
+        },
+      });
+      const schemes = doc.components!.securitySchemes!;
+      expect(schemes.bearerAuth).toBeUndefined();
+      expect(schemes.apiKey).toBeDefined();
+      expect(schemes.apiKey.type).toBe("apiKey");
+    });
+  });
+
+  // ── tags 推断 ─────────────────────────────────────────────
+
+  describe("tags 推断", () => {
+    it("从文件路径推断 tags", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {}, "routes/users.ts"),
+        createRoute("GET", "/posts", {}, "routes/posts.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "posts" }, { name: "users" }]);
+    });
+
+    it("从 docs.tags 获取显式声明的 tags", () => {
+      const doc = generate([
+        createRoute(
+          "GET",
+          "/users",
+          { docs: { tags: ["用户管理"] } },
+          "routes/users.ts",
+        ),
+      ]);
+      expect(doc.tags).toEqual([{ name: "用户管理" }]);
+    });
+
+    it("混合显式和推断的 tags（去重排序）", () => {
+      const doc = generate([
+        createRoute(
+          "GET",
+          "/users",
+          { docs: { tags: ["Users"] } },
+          "routes/users.ts",
+        ),
+        createRoute("GET", "/posts", {}, "routes/posts.ts"),
+        createRoute(
+          "POST",
+          "/users",
+          { docs: { tags: ["Users"] } },
+          "routes/users.ts",
+        ),
+      ]);
+      // 去重后：Users, posts
+      const tagNames = doc.tags!.map((t) => t.name);
+      expect(tagNames).toContain("Users");
+      expect(tagNames).toContain("posts");
+      // 已排序
+      expect(tagNames).toEqual([...tagNames].sort());
+    });
+
+    it("使用自定义 tags 覆盖推断", () => {
+      const doc = generate(
+        [createRoute("GET", "/users", {}, "routes/users.ts")],
+        {
+          tags: [
+            { name: "Users", description: "User management" },
+            { name: "Posts", description: "Post management" },
+          ],
+        },
+      );
+      expect(doc.tags).toHaveLength(2);
+      expect(doc.tags![0]).toEqual({
+        name: "Users",
+        description: "User management",
+      });
+    });
+
+    it("routes/index.ts → tag 'default'", () => {
+      const doc = generate([
+        createRoute("GET", "/health", {}, "routes/index.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "default" }]);
+    });
+
+    it("routes/admin/roles.ts → tag 'admin-roles'", () => {
+      const doc = generate([
+        createRoute("GET", "/admin/roles", {}, "routes/admin/roles.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "admin-roles" }]);
+    });
+
+    it("Windows 路径分隔符正确处理", () => {
+      const doc = generate([
+        createRoute("GET", "/admin/roles", {}, "routes\\admin\\roles.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "admin-roles" }]);
+    });
+
+    it("深层嵌套路径 routes/api/v2/users.ts → 'api-v2-users'", () => {
+      const doc = generate([
+        createRoute("GET", "/api/v2/users", {}, "routes/api/v2/users.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "api-v2-users" }]);
+    });
+
+    it("routes/users/index.ts → tag 'users'（去掉 /index）", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {}, "routes/users/index.ts"),
+      ]);
+      expect(doc.tags).toEqual([{ name: "users" }]);
+    });
+  });
+
+  // ── paths 生成 ────────────────────────────────────────────
+
+  describe("paths 生成", () => {
+    it("简单路由生成 path 条目", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"]).toBeDefined();
+      expect(doc.paths["/users"].get).toBeDefined();
+    });
+
+    it("同路径不同方法合并到同一 path 对象", () => {
+      const doc = generate([
+        createRoute("GET", "/users"),
+        createRoute("POST", "/users"),
+      ]);
+      expect(doc.paths["/users"].get).toBeDefined();
+      expect(doc.paths["/users"].post).toBeDefined();
+    });
+
+    it("不同路径分开", () => {
+      const doc = generate([
+        createRoute("GET", "/users"),
+        createRoute("GET", "/posts"),
+      ]);
+      expect(Object.keys(doc.paths)).toHaveLength(2);
+      expect(doc.paths["/users"]).toBeDefined();
+      expect(doc.paths["/posts"]).toBeDefined();
+    });
+
+    it("HTTP 方法转为小写", () => {
+      const doc = generate([createRoute("DELETE", "/users/:id")]);
+      expect(doc.paths["/users/{id}"].delete).toBeDefined();
+    });
+  });
+
+  // ── 路径转换（:param → {param}）───────────────────────────
+
+  describe("路径转换", () => {
+    it(":id → {id}", () => {
+      const doc = generate([createRoute("GET", "/users/:id")]);
+      expect(doc.paths["/users/{id}"]).toBeDefined();
+    });
+
+    it("多个动态参数", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:userId/posts/:postId"),
+      ]);
+      expect(doc.paths["/users/{userId}/posts/{postId}"]).toBeDefined();
+    });
+
+    it("通配符 *path → {path}", () => {
+      const doc = generate([createRoute("GET", "/files/*path")]);
+      expect(doc.paths["/files/{path}"]).toBeDefined();
+    });
+
+    it("混合动态参数和通配符", () => {
+      const doc = generate([createRoute("GET", "/api/:version/files/*path")]);
+      expect(doc.paths["/api/{version}/files/{path}"]).toBeDefined();
+    });
+
+    it("无动态参数保持不变", () => {
+      const doc = generate([createRoute("GET", "/users/list")]);
+      expect(doc.paths["/users/list"]).toBeDefined();
+    });
+  });
+
+  // ── Operation 基本字段 ────────────────────────────────────
+
+  describe("Operation 基本字段", () => {
+    it("默认 summary = 'METHOD /path'", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.summary).toBe("GET /users");
+    });
+
+    it("使用 docs.summary 覆盖", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: { summary: "获取用户列表" },
+        }),
+      ]);
+      expect(doc.paths["/users"].get!.summary).toBe("获取用户列表");
+    });
+
+    it("自动推断 operationId", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.operationId).toBe("getUsers");
+    });
+
+    it("使用 docs.operationId 覆盖", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: { operationId: "listAllUsers" },
+        }),
+      ]);
+      expect(doc.paths["/users"].get!.operationId).toBe("listAllUsers");
+    });
+
+    it("默认 deprecated = false", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.deprecated).toBe(false);
+    });
+
+    it("docs.deprecated = true", () => {
+      const doc = generate([
+        createRoute("GET", "/users", { docs: { deprecated: true } }),
+      ]);
+      expect(doc.paths["/users"].get!.deprecated).toBe(true);
+    });
+
+    it("docs.description 映射到 operation.description", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: { description: "返回所有用户的分页列表" },
+        }),
+      ]);
+      expect(doc.paths["/users"].get!.description).toBe(
+        "返回所有用户的分页列表",
+      );
+    });
+
+    it("无 docs.description 时 operation.description 不存在", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.description).toBeUndefined();
+    });
+
+    it("从文件路径推断 tags", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {}, "routes/users.ts"),
+      ]);
+      expect(doc.paths["/users"].get!.tags).toEqual(["users"]);
+    });
+
+    it("使用 docs.tags 覆盖推断的 tags", () => {
+      const doc = generate([
+        createRoute(
+          "GET",
+          "/users",
+          { docs: { tags: ["用户管理", "Admin"] } },
+          "routes/users.ts",
+        ),
+      ]);
+      expect(doc.paths["/users"].get!.tags).toEqual(["用户管理", "Admin"]);
+    });
+  });
+
+  // ── parameters（路径参数 + 查询参数）──────────────────────
+
+  describe("parameters — 路径参数", () => {
+    it("validate.param 中的字段映射为 path 参数（in: 'path', required: true）", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          validate: { param: { id: "objectId!" } },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.parameters).toBeDefined();
+      expect(op.parameters).toHaveLength(1);
+      expect(op.parameters![0]).toEqual({
+        name: "id",
+        in: "path",
+        required: true,
+        schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+      });
+    });
+
+    it("多个路径参数", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:userId/posts/:postId", {
+          validate: {
+            param: { userId: "objectId!", postId: "objectId!" },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{userId}/posts/{postId}"].get!;
+      expect(op.parameters).toHaveLength(2);
+      expect(op.parameters![0].name).toBe("userId");
+      expect(op.parameters![1].name).toBe("postId");
+      expect(op.parameters![0].in).toBe("path");
+      expect(op.parameters![1].in).toBe("path");
+    });
+
+    it("路径参数始终 required: true（忽略 DSL ! 标记）", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          validate: { param: { id: "string" } }, // 无 ! 标记
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.parameters![0].required).toBe(true);
+    });
+
+    it("非字符串类型的路径参数降级为 string", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          validate: {
+            param: { id: 42 as unknown as string },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.parameters![0].schema.type).toBe("string");
+    });
+  });
+
+  describe("parameters — 查询参数", () => {
+    it("validate.query 中的字段映射为 query 参数", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          validate: {
+            query: {
+              page: "number:1-",
+              limit: "number:1-100",
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get!;
+      expect(op.parameters).toHaveLength(2);
+
+      const page = op.parameters!.find((p) => p.name === "page")!;
+      expect(page.in).toBe("query");
+      expect(page.required).toBe(false);
+      expect(page.schema).toEqual({ type: "number", minimum: 1 });
+
+      const limit = op.parameters!.find((p) => p.name === "limit")!;
+      expect(limit.in).toBe("query");
+      expect(limit.schema).toEqual({
+        type: "number",
+        minimum: 1,
+        maximum: 100,
+      });
+    });
+
+    it("查询参数 ! 标记映射为 required: true", () => {
+      const doc = generate([
+        createRoute("GET", "/search", {
+          validate: { query: { q: "string:1-100!" } },
+        }),
+      ]);
+
+      const op = doc.paths["/search"].get!;
+      expect(op.parameters![0].required).toBe(true);
+    });
+
+    it("查询参数无 ! 标记 → required: false", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          validate: { query: { search: "string?" } },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get!;
+      expect(op.parameters![0].required).toBe(false);
+    });
+
+    it("非字符串 query 值被跳过", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          validate: {
+            query: {
+              page: "number:1-",
+              complex: { nested: true } as unknown as string,
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get!;
+      expect(op.parameters).toHaveLength(1);
+      expect(op.parameters![0].name).toBe("page");
+    });
+
+    it("路径参数和查询参数合并", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id/posts", {
+          validate: {
+            param: { id: "objectId!" },
+            query: { page: "number:1-" },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}/posts"].get!;
+      expect(op.parameters).toHaveLength(2);
+
+      const pathParam = op.parameters!.find((p) => p.in === "path")!;
+      expect(pathParam.name).toBe("id");
+
+      const queryParam = op.parameters!.find((p) => p.in === "query")!;
+      expect(queryParam.name).toBe("page");
+    });
+  });
+
+  describe("parameters — 空参数清理", () => {
+    it("无 validate 时不包含 parameters 字段", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.parameters).toBeUndefined();
+    });
+
+    it("validate 存在但无 params/query 时不包含 parameters 字段", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          validate: { body: { name: "string!" } },
+        }),
+      ]);
+      // GET 请求不生成 requestBody，也无 params/query → parameters 被清理
+      expect(doc.paths["/users"].get!.parameters).toBeUndefined();
+    });
+  });
+
+  // ── requestBody ───────────────────────────────────────────
+
+  describe("requestBody", () => {
+    it("POST 请求 validate.body → requestBody", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          validate: {
+            body: {
+              name: "string:1-50!",
+              email: "email!",
+              password: "string:8-128!",
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post!;
+      expect(op.requestBody).toBeDefined();
+      expect(op.requestBody!.required).toBe(true);
+
+      const schema = op.requestBody!.content["application/json"].schema;
+      expect(schema.type).toBe("object");
+      expect(schema.properties!.name.type).toBe("string");
+      expect(schema.properties!.name.minLength).toBe(1);
+      expect(schema.properties!.name.maxLength).toBe(50);
+      expect(schema.properties!.email.format).toBe("email");
+      expect(schema.properties!.password.minLength).toBe(8);
+      expect(schema.required).toEqual(["name", "email", "password"]);
+    });
+
+    it("PUT 请求 validate.body → requestBody", () => {
+      const doc = generate([
+        createRoute("PUT", "/users/:id", {
+          validate: {
+            body: { name: "string:1-50!" },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].put!;
+      expect(op.requestBody).toBeDefined();
+    });
+
+    it("PATCH 请求 validate.body → requestBody", () => {
+      const doc = generate([
+        createRoute("PATCH", "/users/:id", {
+          validate: {
+            body: { name: "string:1-50" },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].patch!;
+      expect(op.requestBody).toBeDefined();
+    });
+
+    it("GET 请求不生成 requestBody（即使有 validate.body）", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          validate: { body: { name: "string!" } },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.requestBody).toBeUndefined();
+    });
+
+    it("DELETE 请求不生成 requestBody", () => {
+      const doc = generate([
+        createRoute("DELETE", "/users/:id", {
+          validate: { body: { reason: "string" } },
+        }),
+      ]);
+
+      expect(doc.paths["/users/{id}"].delete!.requestBody).toBeUndefined();
+    });
+
+    it("HEAD 请求不生成 requestBody", () => {
+      const doc = generate([
+        createRoute("HEAD", "/users", {
+          validate: { body: { name: "string!" } },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].head!.requestBody).toBeUndefined();
+    });
+
+    it("无 validate.body 时不生成 requestBody", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          validate: { query: { page: "number:1-" } },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].post!.requestBody).toBeUndefined();
+    });
+
+    it("嵌套对象的 requestBody", () => {
+      const doc = generate([
+        createRoute("POST", "/orders", {
+          validate: {
+            body: {
+              customer: {
+                name: "string:1-50!",
+                email: "email!",
+              },
+              items: [{ sku: "string!", qty: "integer:1-!" }],
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/orders"].post!.requestBody!.content["application/json"]
+          .schema;
+      expect(schema.properties!.customer.type).toBe("object");
+      expect(schema.properties!.items.type).toBe("array");
+      expect(schema.properties!.items.items!.properties!.sku.type).toBe(
+        "string",
+      );
+    });
+  });
+
+  // ── responses ─────────────────────────────────────────────
+
+  describe("responses", () => {
+    it("默认 200 响应（无 docs.responses 时）", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      const op = doc.paths["/users"].get!;
+
+      expect(op.responses["200"]).toBeDefined();
+      expect(op.responses["200"].description).toBe("OK");
+      expect(
+        op.responses["200"].content!["application/json"].schema!.$ref,
+      ).toBe("#/components/schemas/SuccessResponse");
+    });
+
+    it("声明 docs.responses 时不添加默认 200", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: { description: "用户列表" },
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get!;
+      expect(op.responses["200"].description).toBe("用户列表");
+      // 不应有默认的 SuccessResponse 引用
+    });
+
+    it("成功响应 schema 自动包装为 { code, data, requestId }", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: {
+                description: "用户列表",
+                schema: {
+                  id: "objectId!",
+                  name: "string!",
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users"].get!.responses["200"].content!["application/json"]
+          .schema!;
+
+      // 包装结构
+      expect(schema.type).toBe("object");
+      expect(schema.properties!.code).toEqual({
+        type: "integer",
+        example: 0,
+      });
+      expect(schema.properties!.data.type).toBe("object");
+      expect(schema.properties!.data.properties!.id.pattern).toBe(
+        "^[0-9a-fA-F]{24}$",
+      );
+      expect(schema.properties!.requestId.type).toBe("string");
+      expect(schema.required).toEqual(["code", "data", "requestId"]);
+    });
+
+    it("201 响应也自动包装", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          docs: {
+            responses: {
+              201: {
+                description: "创建成功",
+                schema: { id: "objectId!", name: "string!" },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users"].post!.responses["201"].content!["application/json"]
+          .schema!;
+      expect(schema.properties!.code).toBeDefined();
+      expect(schema.properties!.data).toBeDefined();
+      expect(schema.properties!.requestId).toBeDefined();
+    });
+
+    it("204 No Content → 空 schema（无响应体）", () => {
+      const doc = generate([
+        createRoute("DELETE", "/users/:id", {
+          docs: {
+            responses: {
+              204: {
+                description: "删除成功",
+                schema: {},
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users/{id}"].delete!.responses["204"].content![
+          "application/json"
+        ].schema!;
+      expect(schema).toEqual({});
+    });
+
+    it("4xx 错误响应不包装（直接使用原始 schema）", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          docs: {
+            responses: {
+              404: {
+                description: "用户不存在",
+                schema: {
+                  code: "integer",
+                  message: "string",
+                  requestId: "string",
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users/{id}"].get!.responses["404"].content![
+          "application/json"
+        ].schema!;
+
+      // 不包装 — 直接是原始 schema
+      expect(schema.type).toBe("object");
+      expect(schema.properties!.code.type).toBe("integer");
+      expect(schema.properties!.message.type).toBe("string");
+      // 不应有 data 字段
+      expect(schema.properties!.data).toBeUndefined();
+    });
+
+    it("5xx 错误响应也不包装", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              500: {
+                description: "服务器错误",
+                schema: {
+                  code: "integer",
+                  message: "string",
+                  requestId: "string",
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users"].get!.responses["500"].content!["application/json"]
+          .schema!;
+      // 不包装
+      expect(schema.properties!.data).toBeUndefined();
+    });
+
+    it("无 schema 的响应（纯描述）", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          docs: {
+            responses: {
+              401: { description: "未认证" },
+              403: { description: "无权限" },
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.responses["401"].description).toBe("未认证");
+      expect(op.responses["401"].content).toBeUndefined();
+      expect(op.responses["403"].description).toBe("无权限");
+      expect(op.responses["403"].content).toBeUndefined();
+    });
+
+    it("响应 schema 为字符串引用 → $ref", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: {
+                description: "用户列表",
+                schema: "#/components/schemas/UserList",
+              },
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/users"].get!.responses["200"].content!["application/json"]
+          .schema!;
+
+      // 200 是成功响应，但 $ref 也应该被包装
+      expect(schema.properties!.data.$ref).toBe(
+        "#/components/schemas/UserList",
+      );
+    });
+
+    it("多个状态码的响应", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          docs: {
+            responses: {
+              201: {
+                description: "创建成功",
+                schema: { id: "objectId!", name: "string!" },
+              },
+              409: {
+                description: "邮箱已存在",
+                schema: {
+                  code: "integer",
+                  message: "string",
+                  requestId: "string",
+                },
+              },
+              422: {
+                description: "校验失败",
+                schema: {
+                  code: "integer",
+                  message: "string",
+                  errors: "array",
+                  requestId: "string",
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post!;
+      expect(Object.keys(op.responses)).toEqual(["201", "409", "422"]);
+    });
+
+    it("响应示例自动包装（2xx）", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: {
+                description: "用户列表",
+                schema: { id: "objectId!", name: "string!" },
+                example: { id: "abc123", name: "Test" },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const example =
+        doc.paths["/users"].get!.responses["200"].content!["application/json"]
+          .example;
+
+      expect(example).toEqual({
+        code: 0,
+        data: { id: "abc123", name: "Test" },
+        requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      });
+    });
+
+    it("错误响应示例不包装", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          docs: {
+            responses: {
+              404: {
+                description: "未找到",
+                schema: {
+                  code: "integer",
+                  message: "string",
+                  requestId: "string",
+                },
+                example: {
+                  code: 404,
+                  message: "User not found",
+                  requestId: "xxx",
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const example =
+        doc.paths["/users/{id}"].get!.responses["404"].content![
+          "application/json"
+        ].example;
+
+      // 不包装
+      expect(example).toEqual({
+        code: 404,
+        message: "User not found",
+        requestId: "xxx",
+      });
+    });
+
+    it("多个响应示例 (examples)", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: {
+                description: "用户列表",
+                schema: { id: "objectId!", name: "string!" },
+                examples: {
+                  singleUser: {
+                    summary: "单个用户",
+                    value: { id: "abc", name: "Alice" },
+                  },
+                  multipleUsers: {
+                    summary: "多个用户",
+                    description: "包含多个用户的列表",
+                    value: [
+                      { id: "abc", name: "Alice" },
+                      { id: "def", name: "Bob" },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const examples =
+        doc.paths["/users"].get!.responses["200"].content!["application/json"]
+          .examples!;
+
+      expect(examples.singleUser).toBeDefined();
+      expect(examples.singleUser.summary).toBe("单个用户");
+      // 200 响应的示例值被包装
+      expect(examples.singleUser.value).toEqual({
+        code: 0,
+        data: { id: "abc", name: "Alice" },
+        requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      });
+
+      expect(examples.multipleUsers.description).toBe("包含多个用户的列表");
+    });
+
+    it("响应头 (headers)", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            responses: {
+              200: {
+                description: "用户列表",
+                headers: {
+                  "X-Total-Count": {
+                    description: "总数",
+                    schema: { type: "integer" },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const response = doc.paths["/users"].get!.responses["200"];
+      expect(response.headers).toBeDefined();
+      expect(response.headers!["X-Total-Count"].description).toBe("总数");
+    });
+
+    it("自定义 contentType", () => {
+      const doc = generate([
+        createRoute("GET", "/report", {
+          docs: {
+            responses: {
+              200: {
+                description: "报告",
+                schema: { data: "string" },
+                contentType: "text/csv",
+              },
+            },
+          },
+        }),
+      ]);
+
+      const response = doc.paths["/report"].get!.responses["200"];
+      expect(response.content!["text/csv"]).toBeDefined();
+      expect(response.content!["application/json"]).toBeUndefined();
+    });
+  });
+
+  // ── security 推断 ─────────────────────────────────────────
+
+  describe("security 推断", () => {
+    it("middlewares 中含 'auth' → security: [{ bearerAuth: [] }]", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["auth"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
+    });
+
+    it("middlewares 中含 'api-key' → security: [{ apiKeyAuth: [] }]", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["api-key"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ apiKeyAuth: [] }]);
+    });
+
+    it("middlewares 中同时含 auth 和 api-key", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["auth", "api-key"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([
+        { bearerAuth: [] },
+        { apiKeyAuth: [] },
+      ]);
+    });
+
+    it("middlewares 中含非安全中间件 → 不推断 security", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["cache", "rate-limit"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toBeUndefined();
+    });
+
+    it("无 middlewares → 无 security", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      expect(doc.paths["/users"].get!.security).toBeUndefined();
+    });
+
+    it("空 middlewares 数组 → 无 security", () => {
+      const doc = generate([createRoute("GET", "/users", { middlewares: [] })]);
+      expect(doc.paths["/users"].get!.security).toBeUndefined();
+    });
+
+    it("docs.security 覆盖自动推断", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["auth"],
+          docs: {
+            security: [{ customAuth: [] }],
+          },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ customAuth: [] }]);
+    });
+
+    it("docs.security = [] → 显式无需认证", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: ["auth"],
+          docs: { security: [] },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([]);
+    });
+
+    it("对象格式 middlewares（{ name, options }）推断 security", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          middlewares: [
+            { name: "auth", options: { role: "admin" } },
+          ] as unknown as string[],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
+    });
+
+    it("自定义 guardSecurityMap", () => {
+      const doc = generate(
+        [
+          createRoute("GET", "/users", {
+            middlewares: ["jwt-auth"],
+          }),
+        ],
+        {
+          guardSecurityMap: {
+            "jwt-auth": "jwtBearer",
+          },
+        },
+      );
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ jwtBearer: [] }]);
+    });
+  });
+
+  // ── 自定义扩展字段 (x-*) ──────────────────────────────────
+
+  describe("自定义扩展字段 (x-*)", () => {
+    it("docs.extensions 映射为 x-* 字段", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            extensions: {
+              "x-custom": "value",
+              internal: true,
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get! as Record<string, unknown>;
+      expect(op["x-custom"]).toBe("value");
+      expect(op["x-internal"]).toBe(true); // 自动添加 x- 前缀
+    });
+
+    it("已有 x- 前缀不重复添加", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: {
+            extensions: { "x-rate-limit-special": 100 },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].get! as Record<string, unknown>;
+      expect(op["x-rate-limit-special"]).toBe(100);
+      expect(op["x-x-rate-limit-special"]).toBeUndefined();
+    });
+
+    it("无 docs.extensions 时不添加扩展字段", () => {
+      const doc = generate([createRoute("GET", "/users")]);
+      const op = doc.paths["/users"].get! as Record<string, unknown>;
+      // 不应有任何 x- 字段
+      const xKeys = Object.keys(op).filter((k) => k.startsWith("x-"));
+      expect(xKeys).toHaveLength(0);
+    });
+  });
+
+  // ── x-rate-limit 推断 ─────────────────────────────────────
+
+  describe("x-rate-limit 推断", () => {
+    it("rate-limit 对象中间件 → x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          middlewares: [
+            {
+              name: "rate-limit",
+              options: { max: 10, window: 60000 },
+            },
+          ] as unknown as string[],
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toEqual({
+        max: 10,
+        window: 60000,
+      });
+    });
+
+    it("rate-limit 字符串中间件（无 options）→ 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          middlewares: ["rate-limit"],
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toBeUndefined();
+    });
+
+    it("无 rate-limit 中间件 → 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          middlewares: ["auth"],
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toBeUndefined();
+    });
+
+    it("无 middlewares → 不添加 x-rate-limit", () => {
+      const doc = generate([createRoute("POST", "/users")]);
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toBeUndefined();
+    });
+  });
+
+  // ── generateJSON ──────────────────────────────────────────
+
+  describe("generateJSON", () => {
+    it("返回格式化的 JSON 字符串", () => {
+      const generator = createGenerator();
+      const json = generator.generateJSON([]);
+      expect(typeof json).toBe("string");
+
+      const parsed = JSON.parse(json);
+      expect(parsed.openapi).toBe("3.0.3");
+    });
+
+    it("JSON 字符串可反序列化为等价的文档对象", () => {
+      const routes = [
+        createRoute("GET", "/users", {
+          validate: { query: { page: "number:1-" } },
+          docs: { summary: "获取用户列表" },
+        }),
+      ];
+
+      const generator = createGenerator();
+      const doc = generator.generate(routes);
+      const json = generator.generateJSON(routes);
+      const parsed = JSON.parse(json);
+
+      expect(parsed).toEqual(doc);
+    });
+
+    it("生成的 JSON 缩进为 2 空格", () => {
+      const generator = createGenerator();
+      const json = generator.generateJSON([]);
+
+      // 检查缩进
+      const lines = json.split("\n");
+      // 第二行应以 2 空格开头
+      expect(lines[1]).toMatch(/^\s{2}/);
+      // 不应以 4 空格开头（排除 tab 或 4 空格缩进）
+      expect(lines[1]).not.toMatch(/^\s{4}/);
+    });
+  });
+
+  // ── 完整场景 ──────────────────────────────────────────────
+
+  describe("完整场景", () => {
+    it("用户 CRUD API 完整文档", () => {
+      const routes: RouteMetadata[] = [
+        // GET /users — 用户列表
+        createRoute(
+          "GET",
+          "/users",
+          {
+            validate: {
+              query: {
+                page: "number:1-",
+                limit: "number:1-100",
+                search: "string:1-100?",
+                role: "enum:admin,user,guest?",
+              },
+            },
+            middlewares: ["auth"],
+            docs: {
+              summary: "获取用户列表",
+              description: "返回分页的用户列表",
+              tags: ["用户管理"],
+              responses: {
+                200: {
+                  description: "成功",
+                  schema: {
+                    list: [
+                      {
+                        id: "objectId!",
+                        name: "string!",
+                        email: "email!",
+                        role: "enum:admin,user",
+                      },
+                    ],
+                    total: "integer",
+                    page: "integer",
+                    limit: "integer",
+                  },
+                },
+                401: { description: "未认证" },
+                403: { description: "无权限" },
+              },
+            },
+          },
+          "routes/users.ts",
+        ),
+
+        // POST /users — 创建用户
+        createRoute(
+          "POST",
+          "/users",
+          {
+            validate: {
+              body: {
+                name: "string:1-50!",
+                email: "email!",
+                password: "string:8-128!",
+                role: "enum:admin,user?",
+              },
+            },
+            middlewares: [
+              "auth",
+              {
+                name: "rate-limit",
+                options: { max: 10, window: 60000 },
+              },
+            ] as unknown as string[],
+            docs: {
+              summary: "创建用户",
+              tags: ["用户管理"],
+              responses: {
+                201: {
+                  description: "创建成功",
+                  schema: {
+                    id: "objectId!",
+                    name: "string!",
+                    email: "email!",
+                    role: "enum:admin,user",
+                    createdAt: "date",
+                  },
+                },
+                409: {
+                  description: "邮箱已存在",
+                  schema: {
+                    code: "integer",
+                    message: "string",
+                    requestId: "string",
+                  },
+                },
+              },
+            },
+          },
+          "routes/users.ts",
+        ),
+
+        // DELETE /users/:id — 删除用户
+        createRoute(
+          "DELETE",
+          "/users/:id",
+          {
+            validate: { param: { id: "objectId!" } },
+            middlewares: ["auth"],
+            docs: {
+              summary: "删除用户",
+              tags: ["用户管理"],
+              responses: {
+                204: { description: "删除成功" },
+                404: { description: "用户不存在" },
+              },
+            },
+          },
+          "routes/users.ts",
+        ),
+      ];
+
+      const doc = generate(routes, {
+        title: "User Service API",
+        version: "2.0.0",
+        servers: [{ url: "http://localhost:3000", description: "Development" }],
+      });
+
+      // ── 文档级别 ──────────────────────────────────────────
+      expect(doc.openapi).toBe("3.0.3");
+      expect(doc.info.title).toBe("User Service API");
+      expect(doc.info.version).toBe("2.0.0");
+
+      // ── paths 存在 ────────────────────────────────────────
+      expect(doc.paths["/users"]).toBeDefined();
+      expect(doc.paths["/users/{id}"]).toBeDefined();
+
+      // ── GET /users ────────────────────────────────────────
+      const getUsers = doc.paths["/users"].get!;
+      expect(getUsers.summary).toBe("获取用户列表");
+      expect(getUsers.operationId).toBe("getUsers");
+      expect(getUsers.tags).toEqual(["用户管理"]);
+      expect(getUsers.parameters).toHaveLength(4);
+      expect(getUsers.security).toEqual([{ bearerAuth: [] }]);
+      expect(getUsers.responses["200"]).toBeDefined();
+      expect(getUsers.responses["401"]).toBeDefined();
+      expect(getUsers.responses["403"]).toBeDefined();
+
+      // ── POST /users ───────────────────────────────────────
+      const postUsers = doc.paths["/users"].post!;
+      expect(postUsers.summary).toBe("创建用户");
+      expect(postUsers.requestBody).toBeDefined();
+      expect(postUsers.requestBody!.content["application/json"]).toBeDefined();
+      expect(postUsers.security).toEqual([{ bearerAuth: [] }]);
+      expect((postUsers as Record<string, unknown>)["x-rate-limit"]).toEqual({
+        max: 10,
+        window: 60000,
+      });
+
+      // ── DELETE /users/{id} ────────────────────────────────
+      const deleteUser = doc.paths["/users/{id}"].delete!;
+      expect(deleteUser.summary).toBe("删除用户");
+      expect(deleteUser.parameters).toHaveLength(1);
+      expect(deleteUser.parameters![0].name).toBe("id");
+      expect(deleteUser.parameters![0].in).toBe("path");
+      expect(deleteUser.security).toEqual([{ bearerAuth: [] }]);
+
+      // ── components ────────────────────────────────────────
+      expect(doc.components!.schemas!["ErrorResponse"]).toBeDefined();
+      expect(doc.components!.schemas!["SuccessResponse"]).toBeDefined();
+      expect(doc.components!.securitySchemes!.bearerAuth).toBeDefined();
+    });
+
+    it("隐藏路由不出现在文档中", () => {
+      // 使用 collector + generator 端到端
+      const collector = new RouteMetadataCollector();
+
+      collector.addRoute(
+        "GET",
+        "/users",
+        { docs: { summary: "用户列表" } },
+        "routes/users.ts",
+      );
+      collector.addRoute(
+        "GET",
+        "/health",
+        { docs: { hidden: true } },
+        "routes/health.ts",
+      );
+      collector.addRoute(
+        "GET",
+        "/metrics",
+        { docs: { hidden: true } },
+        "routes/metrics.ts",
+      );
+
+      const doc = generate(collector.getRoutes());
+
+      expect(Object.keys(doc.paths)).toEqual(["/users"]);
+    });
+
+    it("dev 模式热重载模拟（clear → 重新收集 → 重新生成）", () => {
+      const collector = new RouteMetadataCollector();
+      const generator = createGenerator();
+
+      // 第一次收集
+      collector.addRoute(
+        "GET",
+        "/users",
+        { docs: { summary: "V1" } },
+        "routes/users.ts",
+      );
+      const doc1 = generator.generate(collector.getRoutes());
+      expect(doc1.paths["/users"].get!.summary).toBe("V1");
+
+      // 热重载：clear → 重新收集
+      collector.clear();
+      collector.addRoute(
+        "GET",
+        "/users",
+        { docs: { summary: "V2 — 更新后" } },
+        "routes/users.ts",
+      );
+      collector.addRoute(
+        "POST",
+        "/users",
+        { docs: { summary: "创建用户" } },
+        "routes/users.ts",
+      );
+
+      const doc2 = generator.generate(collector.getRoutes());
+      expect(doc2.paths["/users"].get!.summary).toBe("V2 — 更新后");
+      expect(doc2.paths["/users"].post!.summary).toBe("创建用户");
+    });
+
+    it("无 validate 和 docs 的极简路由", () => {
+      const doc = generate([
+        createRoute("GET", "/health", {}, "routes/health.ts"),
+      ]);
+
+      const op = doc.paths["/health"].get!;
+      expect(op.summary).toBe("GET /health");
+      expect(op.operationId).toBe("getHealth");
+      expect(op.tags).toEqual(["health"]);
+      expect(op.deprecated).toBe(false);
+      expect(op.parameters).toBeUndefined();
+      expect(op.requestBody).toBeUndefined();
+      expect(op.responses["200"]).toBeDefined();
+      expect(op.security).toBeUndefined();
+    });
+
+    it("同一路径、不同方法生成不同的 operation", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          docs: { summary: "获取列表" },
+        }),
+        createRoute("POST", "/users", {
+          validate: { body: { name: "string!" } },
+          docs: { summary: "创建用户" },
+        }),
+        createRoute("DELETE", "/users/:id", {
+          validate: { param: { id: "objectId!" } },
+          docs: { summary: "删除用户" },
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.summary).toBe("获取列表");
+      expect(doc.paths["/users"].post!.summary).toBe("创建用户");
+      expect(doc.paths["/users/{id}"].delete!.summary).toBe("删除用户");
+
+      // operationId 各不相同
+      const ids = [
+        doc.paths["/users"].get!.operationId,
+        doc.paths["/users"].post!.operationId,
+        doc.paths["/users/{id}"].delete!.operationId,
+      ];
+      expect(new Set(ids).size).toBe(3);
+    });
+
+    it("大量路由不报错", () => {
+      const routes: RouteMetadata[] = [];
+      for (let i = 0; i < 100; i++) {
+        routes.push(
+          createRoute("GET", `/resource${i}`, {}, `routes/resource${i}.ts`),
+        );
+      }
+
+      const doc = generate(routes);
+      expect(Object.keys(doc.paths)).toHaveLength(100);
+    });
+  });
+
+  // ── 多次生成一致性 ────────────────────────────────────────
+
+  describe("多次生成一致性", () => {
+    it("相同输入 → 相同输出", () => {
+      const routes = [
+        createRoute("GET", "/users", {
+          validate: { query: { page: "number:1-" } },
+          middlewares: ["auth"],
+          docs: { summary: "获取用户" },
+        }),
+      ];
+
+      const generator = createGenerator();
+      const doc1 = generator.generate(routes);
+      const doc2 = generator.generate(routes);
+
+      expect(doc1).toEqual(doc2);
+    });
+
+    it("不同 generator 实例、相同配置 → 相同输出", () => {
+      const config: OpenAPIConfig = {
+        title: "Test",
+        version: "1.0.0",
+      };
+
+      const routes = [createRoute("GET", "/users")];
+
+      const doc1 = createGenerator(config).generate(routes);
+      const doc2 = createGenerator(config).generate(routes);
+
+      expect(doc1).toEqual(doc2);
+    });
+  });
+
+  // ── Collector + Generator 集成 ────────────────────────────
+
+  describe("Collector + Generator 集成", () => {
+    it("从 collector 收集到 generator 生成的完整流程", () => {
+      const collector = new RouteMetadataCollector();
+
+      collector.addRoute(
+        "GET",
+        "/users",
+        {
+          validate: { query: { page: "number:1-" } },
+          middlewares: ["auth"],
+          docs: {
+            summary: "获取用户列表",
+            tags: ["Users"],
+          },
+        },
+        "routes/users.ts",
+      );
+
+      collector.addRoute(
+        "POST",
+        "/users",
+        {
+          validate: {
+            body: { name: "string:1-50!", email: "email!" },
+          },
+          middlewares: ["auth"],
+          docs: { summary: "创建用户", tags: ["Users"] },
+        },
+        "routes/users.ts",
+      );
+
+      collector.addRoute(
+        "GET",
+        "/health",
+        { docs: { hidden: true } },
+        "routes/health.ts",
+      );
+
+      const generator = createGenerator({
+        title: "My API",
+        version: "1.0.0",
+      });
+
+      const doc = generator.generate(collector.getRoutes());
+
+      // 基本信息
+      expect(doc.info.title).toBe("My API");
+
+      // 路由（health 被隐藏）
+      expect(Object.keys(doc.paths)).toEqual(["/users"]);
+      expect(doc.paths["/users"].get).toBeDefined();
+      expect(doc.paths["/users"].post).toBeDefined();
+
+      // GET /users 有查询参数
+      expect(doc.paths["/users"].get!.parameters).toHaveLength(1);
+      expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
+
+      // POST /users 有 requestBody
+      expect(doc.paths["/users"].post!.requestBody).toBeDefined();
+      expect(doc.paths["/users"].post!.security).toEqual([{ bearerAuth: [] }]);
+    });
+
+    it("collector.getCount 与生成的 paths 条目一致", () => {
+      const collector = new RouteMetadataCollector();
+
+      collector.addRoute("GET", "/a", {}, "routes/a.ts");
+      collector.addRoute("GET", "/b", {}, "routes/b.ts");
+      collector.addRoute("POST", "/a", {}, "routes/a.ts");
+
+      expect(collector.getCount()).toBe(3);
+
+      const doc = generate(collector.getRoutes());
+
+      // 3 个路由，但 /a 有 GET + POST，所以只有 2 个 path 条目
+      expect(Object.keys(doc.paths)).toHaveLength(2);
+
+      // 总 operation 数 = 3
+      let operationCount = 0;
+      for (const methods of Object.values(doc.paths)) {
+        operationCount += Object.keys(methods).length;
+      }
+      expect(operationCount).toBe(3);
+    });
+  });
+});

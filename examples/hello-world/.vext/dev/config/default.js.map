@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "sources": ["../../../src/config/default.js"],
+  "sourceRoot": "E:\\MySelf\\vext\\examples\\hello-world\\src",
+  "sourcesContent": ["/**\n * hello-world 示例配置\n *\n * BUG-1 修复后，config-loader 会自动以框架内置 DEFAULT_CONFIG 为基底，\n * 深度合并用户配置。因此用户只需覆盖关心的字段，\n * 未声明的字段（如 requestId / rateLimit / cors 等）自动使用框架默认值。\n *\n * 框架默认值参见 src/lib/app.ts 中的 DEFAULT_CONFIG。\n */\nexport default {\n  port: 3000,\n  host: \"0.0.0.0\",\n  logger: {\n    level: \"info\",\n  },\n  response: {\n    hideInternalErrors: false,\n  },\n  openapi: {\n    enabled: true,\n  },\n};\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AASA,IAAO,kBAAQ;AAAA,EACb,MAAM;AAAA,EACN,MAAM;AAAA,EACN,QAAQ;AAAA,IACN,OAAO;AAAA,EACT;AAAA,EACA,UAAU;AAAA,IACR,oBAAoB;AAAA,EACtB;AAAA,EACA,SAAS;AAAA,IACP,SAAS;AAAA,EACX;AACF;",
+  "names": []
+}

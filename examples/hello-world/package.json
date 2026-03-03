@@ -1,0 +1,11 @@
+{
+  "name": "hello-world",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VextJS hello-world example",
+  "scripts": {
+    "start": "vext start",
+    "dev": "vext dev"
+  }
+}
