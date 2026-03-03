@@ -1,3 +1,4 @@
+"use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -29,3 +30,4 @@ var routes_default = (0, import_vextjs.defineRoutes)((app) => {
     res.json({ status: "ok", uptime: process.uptime() });
   });
 });
+//# sourceMappingURL=index.js.map

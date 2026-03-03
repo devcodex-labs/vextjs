@@ -1,0 +1,200 @@
+import type { FastifyRequest } from "fastify";
+import type { VextRequest } from "../../types/request.js";
+import type { VextApp } from "../../types/app.js";
+
+/**
+ * Fastify Request → VextRequest 转换
+ *
+ * 将 Fastify 的 Request 对象转换为 vext 框架的统一请求接口。
+ * 所有底层框架特有的 API 在此处适配，后续代码只与 VextRequest 交互。
+ *
+ * 转换要点：
+ *   - query: Fastify 已解析好 query 对象，直接使用
+ *   - body: 由 body-parser 中间件后续填充（初始 undefined）
+ *   - params: Fastify 已解析好 params 对象，直接使用
+ *   - headers: Fastify 的 request.headers 是 Node.js 原生 headers 对象（key 全小写）
+ *   - requestId: 由 requestId 中间件后续填充（初始空字符串）
+ *   - ip: 根据 trustProxy 配置决定从 X-Forwarded-For 或 socket 读取
+ *   - protocol: 根据 trustProxy 配置决定从 X-Forwarded-Proto 或默认值读取
+ *   - onClose: 注册请求关闭钩子，连接断开时触发（通过 request.raw.on('close')）
+ *   - valid: 获取 validate 中间件校验后的数据
+ *   - _getRawBody: 从 Fastify request.body（Buffer，由通用 content-type parser 提供）
+ *     转为字符串，供 vext body-parser 中间件使用
+ *
+ * 与 Hono Adapter 的差异：
+ *   - Hono 通过 c.req.text() 读取 Web Request body（ReadableStream）
+ *   - Fastify 通过 removeAllContentTypeParsers + addContentTypeParser('*', parseAs: 'buffer')
+ *     将原始 body 作为 Buffer 传入 request.body
+ *   - 两者最终都通过 req._getRawBody() 返回 string 供 body-parser 使用
+ *
+ * @param request Fastify Request 对象
+ * @param app     VextApp 实例
+ * @returns VextRequest 实例（含 _getRawBody 内部方法供 body-parser 使用）
+ *
+ * @see 08a-fastify-adapter.md §4（请求转换）
+ * @see adapters/hono/request.ts（Hono Adapter 对应实现）
+ */
+export function createVextRequest(
+  request: FastifyRequest,
+  app: VextApp,
+): VextRequest {
+  const trustProxy = app.config.trustProxy ?? false;
+  const closeHandlers: Array<() => void> = [];
+
+  // ── 解析 path（Fastify 无直接 .path 属性）──────────────
+  //
+  // Fastify 的 request.url 包含 query string（如 /users?page=1），
+  // 需要手动提取路径部分。
+  //
+  // request.routeOptions?.url 是路由模板（如 /users/:id），不是实际路径，
+  // 因此使用 request.url 手动分割。
+  //
+  const urlPath = request.url.split("?")[0] ?? "/";
+
+  // ── 缓存原始请求体（body-parser 用）───────────────────────
+  //
+  // Fastify 通过 removeAllContentTypeParsers + addContentTypeParser('*', parseAs: 'buffer')
+  // 将所有 Content-Type 的请求体以 Buffer 形式放入 request.body。
+  //
+  // _getRawBody 将 Buffer 转为 string 供 vext body-parser 中间件解析。
+  // 使用缓存确保多次调用返回相同结果（虽然 Fastify 的 request.body
+  // 本身是稳定引用，但 Buffer.toString 每次都会创建新字符串，缓存更高效）。
+  //
+  let _rawBodyCache: string | undefined;
+
+  function getRawBody(): Promise<string> {
+    if (_rawBodyCache !== undefined) return Promise.resolve(_rawBodyCache);
+
+    // Fastify content-type parser 已将 body 解析为 Buffer
+    // 对于 GET/HEAD 等无 body 方法，request.body 为 undefined
+    const body = request.body;
+
+    if (body === undefined || body === null) {
+      _rawBodyCache = "";
+      return Promise.resolve(_rawBodyCache);
+    }
+
+    if (Buffer.isBuffer(body)) {
+      _rawBodyCache = body.toString("utf-8");
+      return Promise.resolve(_rawBodyCache);
+    }
+
+    // 兜底：如果 body 已经是 string（理论上不会发生，但防御性编码）
+    if (typeof body === "string") {
+      _rawBodyCache = body;
+      return Promise.resolve(_rawBodyCache);
+    }
+
+    // 其他类型（不应发生）
+    _rawBodyCache = "";
+    return Promise.resolve(_rawBodyCache);
+  }
+
+  // ── 解析 IP 和 Protocol ──────────────────────────────────
+  //
+  // 从 utils.ts 中导入的 resolveIp / resolveProtocol 已在 adapter.ts 中
+  // 通过参数传递，但为了 request.ts 的独立性，这里内联解析逻辑。
+  //
+  // 实际上为了代码复用，IP 和 Protocol 的解析在 adapter.ts 创建 VextRequest
+  // 时直接调用 utils.ts 的函数。但 createVextRequest 也需要能独立工作
+  // （如在 registerNotFound / registerErrorHandler 中直接调用），
+  // 所以这里也做内联解析。
+  //
+  let ip: string;
+  if (trustProxy) {
+    const xff = request.headers["x-forwarded-for"];
+    if (typeof xff === "string") {
+      const firstIp = xff.split(",")[0];
+      ip = firstIp
+        ? firstIp.trim()
+        : (request.raw.socket.remoteAddress ?? "127.0.0.1");
+    } else if (Array.isArray(xff) && xff.length > 0) {
+      const firstEntry = xff[0];
+      const firstIp = firstEntry ? firstEntry.split(",")[0] : undefined;
+      ip = firstIp
+        ? firstIp.trim()
+        : (request.raw.socket.remoteAddress ?? "127.0.0.1");
+    } else {
+      ip = request.raw.socket.remoteAddress ?? "127.0.0.1";
+    }
+  } else {
+    ip = request.raw.socket.remoteAddress ?? "127.0.0.1";
+  }
+
+  let protocol: "http" | "https";
+  if (trustProxy) {
+    const proto = request.headers["x-forwarded-proto"];
+    protocol = proto === "https" ? "https" : "http";
+  } else {
+    const encrypted = (request.raw.socket as unknown as Record<string, unknown>)
+      ?.encrypted;
+    protocol = encrypted ? "https" : "http";
+  }
+
+  // ── 构造 VextRequest 对象 ────────────────────────────────
+
+  const req: VextRequest = {
+    // ── 原始数据 ────────────────────────────────────────
+    query: (request.query as Record<string, string>) ?? {},
+    body: undefined, // body-parser 中间件负责填充
+    params: (request.params as Record<string, string>) ?? {},
+    headers: request.headers as Record<string, string | undefined>,
+    method: request.method.toUpperCase(),
+    url: request.url,
+    path: urlPath,
+
+    // ── 元信息 ──────────────────────────────────────────
+    app,
+    requestId: "", // requestId 中间件负责填充
+    ip,
+    protocol,
+
+    // ── 生命周期 ────────────────────────────────────────
+    onClose(handler: () => void): void {
+      closeHandlers.push(handler);
+    },
+
+    // ── 校验数据 ────────────────────────────────────────
+    //
+    // validate 中间件将校验后的数据存储在 req._validated_<location> 上。
+    // valid() 方法从对应的 key 中读取数据返回。
+    //
+    valid<T = Record<string, any>>(
+      location: "query" | "body" | "param" | "header",
+    ): T {
+      return (req as Record<string, any>)[`_validated_${location}`] as T;
+    },
+
+    // ── 内部方法（body-parser 中间件使用）───────────────────
+    //
+    // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
+    // 从 Fastify request.body（Buffer，由通用 content-type parser 提供）
+    // 转为 string，供 body-parser 中间件解析。
+    //
+    _getRawBody: getRawBody,
+  };
+
+  // ── 请求结束时执行 onClose hooks ─────────────────────────
+  //
+  // Fastify 提供 request.raw.on('close') 事件（Node.js IncomingMessage 的标准事件），
+  // 当客户端断开连接或请求正常结束时触发。
+  //
+  // 与 Hono Adapter 的差异：
+  //   - Hono 使用 Web Request 的 AbortSignal（c.req.raw.signal.addEventListener('abort')）
+  //   - Fastify 使用 Node.js 原生的 request.raw.on('close')
+  //
+  // 内存安全：执行后清空 handlers 数组，防止闭包泄漏。
+  //
+  request.raw.on("close", () => {
+    for (const h of closeHandlers) {
+      try {
+        h();
+      } catch {
+        // onClose handler 异常不应影响其他 handler
+      }
+    }
+    closeHandlers.length = 0;
+  });
+
+  return req;
+}

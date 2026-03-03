@@ -272,10 +272,11 @@ export interface VextConfig {
   /**
    * 底层适配器
    *
-   * 字符串：内置 adapter 标识（如 'hono'）
+   * 字符串：内置 adapter 标识（如 'hono'、'fastify'）
+   * 函数：adapter 工厂函数（如 fastifyAdapter({ bodyLimit: 5MB })）
    * 对象：第三方 adapter 实例（必须实现 VextAdapter 接口）
    */
-  adapter: string | VextAdapter;
+  adapter: string | ((app: VextApp) => VextAdapter) | VextAdapter;
 
   /** 是否信任代理（影响 req.ip / req.protocol 从 X-Forwarded-* 读取） */
   trustProxy: boolean;

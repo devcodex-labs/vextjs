@@ -34,17 +34,17 @@ describe("deepMerge", () => {
   });
 
   it("overwrites scalar values", () => {
-    const result = _deepMerge(
-      { port: 3000, host: "0.0.0.0" },
-      { port: 8080 },
-    );
+    const result = _deepMerge({ port: 3000, host: "0.0.0.0" }, { port: 8080 });
     expect(result.port).toBe(8080);
     expect(result.host).toBe("0.0.0.0"); // 未覆盖的保留
   });
 
   it("deeply merges nested objects", () => {
     const result = _deepMerge(
-      { cors: { enabled: true, origins: ["*"], methods: ["GET"] } } as Record<string, unknown>,
+      { cors: { enabled: true, origins: ["*"], methods: ["GET"] } } as Record<
+        string,
+        unknown
+      >,
       { cors: { origins: ["http://example.com"] } } as Record<string, unknown>,
     );
 
@@ -63,8 +63,14 @@ describe("deepMerge", () => {
 
   it("skips middlewares key (handled by patchMiddlewares)", () => {
     const result = _deepMerge(
-      { middlewares: [{ name: "auth" }], port: 3000 } as Record<string, unknown>,
-      { middlewares: [{ name: "cors" }], port: 8080 } as Record<string, unknown>,
+      { middlewares: [{ name: "auth" }], port: 3000 } as Record<
+        string,
+        unknown
+      >,
+      { middlewares: [{ name: "cors" }], port: 8080 } as Record<
+        string,
+        unknown
+      >,
     );
     // middlewares 应该保留 target 的值（被跳过）
     expect(result["middlewares"]).toEqual([{ name: "auth" }]);
@@ -113,10 +119,7 @@ describe("patchMiddlewares", () => {
   });
 
   it("appends new middleware not found in base", () => {
-    const result = _patchMiddlewares(
-      [{ name: "auth" }],
-      [{ name: "cors" }],
-    );
+    const result = _patchMiddlewares([{ name: "auth" }], [{ name: "cors" }]);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ name: "auth" });
     expect(result[1]).toEqual({ name: "cors" });
@@ -164,8 +167,9 @@ describe("patchMiddlewares", () => {
       [{ name: "rate-limit", enabled: false }, { name: "logger" }],
     );
     expect(result).toHaveLength(4);
-    expect(result.map((d: any) => typeof d === "string" ? d : d.name))
-      .toEqual(["auth", "rate-limit", "cors", "logger"]);
+    expect(
+      result.map((d: any) => (typeof d === "string" ? d : d.name)),
+    ).toEqual(["auth", "rate-limit", "cors", "logger"]);
   });
 
   it("does not mutate base array", () => {
@@ -300,10 +304,12 @@ describe("validateConfig", () => {
     it("accepts known adapter string", () => {
       expect(() => _validateConfig({ adapter: "hono" })).not.toThrow();
       expect(() => _validateConfig({ adapter: "fastify" })).not.toThrow();
+      expect(() => _validateConfig({ adapter: "express" })).not.toThrow();
+      expect(() => _validateConfig({ adapter: "koa" })).not.toThrow();
     });
 
     it("rejects unknown adapter string", () => {
-      expect(() => _validateConfig({ adapter: "express" })).toThrow(
+      expect(() => _validateConfig({ adapter: "unknown-adapter" })).toThrow(
         "not a built-in adapter",
       );
     });
@@ -315,9 +321,7 @@ describe("validateConfig", () => {
     });
 
     it("rejects non-string non-function adapter", () => {
-      expect(() => _validateConfig({ adapter: 123 })).toThrow(
-        "config.adapter",
-      );
+      expect(() => _validateConfig({ adapter: 123 })).toThrow("config.adapter");
     });
   });
 
@@ -351,9 +355,9 @@ describe("validateConfig", () => {
     });
 
     it("rejects object without name", () => {
-      expect(() =>
-        _validateConfig({ middlewares: [{ options: {} }] }),
-      ).toThrow("config.middlewares[0]");
+      expect(() => _validateConfig({ middlewares: [{ options: {} }] })).toThrow(
+        "config.middlewares[0]",
+      );
     });
   });
 
@@ -395,9 +399,9 @@ describe("validateConfig", () => {
     });
 
     it("rejects invalid log level", () => {
-      expect(() =>
-        _validateConfig({ logger: { level: "verbose" } }),
-      ).toThrow("config.logger.level");
+      expect(() => _validateConfig({ logger: { level: "verbose" } })).toThrow(
+        "config.logger.level",
+      );
     });
 
     it("accepts all valid log levels", () => {
@@ -415,9 +419,9 @@ describe("validateConfig", () => {
     });
 
     it("rejects non-boolean pretty", () => {
-      expect(() =>
-        _validateConfig({ logger: { pretty: "yes" } }),
-      ).toThrow("config.logger.pretty must be a boolean");
+      expect(() => _validateConfig({ logger: { pretty: "yes" } })).toThrow(
+        "config.logger.pretty must be a boolean",
+      );
     });
   });
 
@@ -431,15 +435,13 @@ describe("validateConfig", () => {
     });
 
     it("accepts timeout = 0", () => {
-      expect(() =>
-        _validateConfig({ shutdown: { timeout: 0 } }),
-      ).not.toThrow();
+      expect(() => _validateConfig({ shutdown: { timeout: 0 } })).not.toThrow();
     });
 
     it("rejects negative timeout", () => {
-      expect(() =>
-        _validateConfig({ shutdown: { timeout: -5 } }),
-      ).toThrow("config.shutdown.timeout");
+      expect(() => _validateConfig({ shutdown: { timeout: -5 } })).toThrow(
+        "config.shutdown.timeout",
+      );
     });
   });
 
@@ -465,21 +467,21 @@ describe("validateConfig", () => {
     });
 
     it("rejects workers = 0", () => {
-      expect(() =>
-        _validateConfig({ cluster: { workers: 0 } }),
-      ).toThrow("config.cluster.workers");
+      expect(() => _validateConfig({ cluster: { workers: 0 } })).toThrow(
+        "config.cluster.workers",
+      );
     });
 
     it("rejects invalid worker string", () => {
-      expect(() =>
-        _validateConfig({ cluster: { workers: "half" } }),
-      ).toThrow("config.cluster.workers");
+      expect(() => _validateConfig({ cluster: { workers: "half" } })).toThrow(
+        "config.cluster.workers",
+      );
     });
 
     it("rejects non-boolean enabled", () => {
-      expect(() =>
-        _validateConfig({ cluster: { enabled: "yes" } }),
-      ).toThrow("config.cluster.enabled must be a boolean");
+      expect(() => _validateConfig({ cluster: { enabled: "yes" } })).toThrow(
+        "config.cluster.enabled must be a boolean",
+      );
     });
   });
 
@@ -493,9 +495,9 @@ describe("validateConfig", () => {
     });
 
     it("rejects non-boolean enabled", () => {
-      expect(() =>
-        _validateConfig({ openapi: { enabled: "true" } }),
-      ).toThrow("config.openapi.enabled must be a boolean");
+      expect(() => _validateConfig({ openapi: { enabled: "true" } })).toThrow(
+        "config.openapi.enabled must be a boolean",
+      );
     });
   });
 
@@ -511,21 +513,21 @@ describe("validateConfig", () => {
     });
 
     it("rejects non-string default", () => {
-      expect(() =>
-        _validateConfig({ locale: { default: 123 } }),
-      ).toThrow("config.locale.default must be a string");
+      expect(() => _validateConfig({ locale: { default: 123 } })).toThrow(
+        "config.locale.default must be a string",
+      );
     });
 
     it("rejects non-array supported", () => {
-      expect(() =>
-        _validateConfig({ locale: { supported: "zh-CN" } }),
-      ).toThrow("config.locale.supported must be an array");
+      expect(() => _validateConfig({ locale: { supported: "zh-CN" } })).toThrow(
+        "config.locale.supported must be an array",
+      );
     });
 
     it("rejects non-string items in supported", () => {
-      expect(() =>
-        _validateConfig({ locale: { supported: [123] } }),
-      ).toThrow("config.locale.supported[] items must be strings");
+      expect(() => _validateConfig({ locale: { supported: [123] } })).toThrow(
+        "config.locale.supported[] items must be strings",
+      );
     });
   });
 });

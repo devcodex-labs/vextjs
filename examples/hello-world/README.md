@@ -1,6 +1,6 @@
 # Hello World 示例
 
-> VextJS 框架最小化示例项目，演示基本的路由、配置和两种启动模式。
+> VextJS 框架最小化示例项目，演示基本的路由、配置、Adapter 切换和两种启动模式。
 
 ---
 
@@ -10,7 +10,7 @@
 hello-world/
 ├── src/
 │   ├── config/
-│   │   └── default.js      # 应用配置（端口、日志、OpenAPI 等）
+│   │   └── default.js      # 应用配置（端口、Adapter、日志、OpenAPI 等）
 │   └── routes/
 │       └── index.js         # 路由定义（GET / + GET /health）
 ├── node_modules/
@@ -145,22 +145,81 @@ curl http://localhost:3000/openapi.json
 
 ```js
 export default {
-  port: 3000,           // 监听端口
-  host: '0.0.0.0',      // 监听地址
+  port: 3000,              // 监听端口（1-65535）
+  host: '0.0.0.0',         // 监听地址（"0.0.0.0" 允许外部访问，"127.0.0.1" 仅本地）
+
+  // adapter: "hono",      // 内置 adapter: "hono"(默认) | "fastify" | "express" | "koa"
+
   logger: {
-    level: 'info',      // 日志级别
+    level: 'info',         // 日志级别: fatal | error | warn | info | debug | trace | silent
   },
   response: {
-    hideInternalErrors: false,  // 开发时显示完整错误信息
+    hideInternalErrors: false,  // 生产环境建议设为 true，隐藏 500 错误的 stack 信息
   },
   openapi: {
-    enabled: true,       // 启用 OpenAPI 文档
+    enabled: true,         // 启用后自动注册 GET /openapi.json + GET /docs（Swagger UI）
   },
 }
 ```
 
 框架自动补全的默认值包括：`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等，
 无需手动声明即可使用内置中间件的默认行为。
+
+---
+
+## 🔄 Adapter 切换
+
+VextJS 支持 4 种内置 HTTP Adapter，切换 Adapter **不影响业务代码**（路由、中间件、服务、插件完全通用）。
+
+### 方式 1 — 字符串标识（推荐，零 import）
+
+在 `src/config/default.js` 中设置 `adapter` 字段即可：
+
+```js
+export default {
+  adapter: "hono",      // 默认值，可省略
+  // adapter: "fastify",
+  // adapter: "express",
+  // adapter: "koa",
+}
+```
+
+### 方式 2 — 工厂函数（需要自定义底层框架选项）
+
+```js
+// Fastify — 传递 Fastify 实例选项
+import { fastifyAdapter } from 'vextjs/adapters/fastify'
+export default {
+  adapter: fastifyAdapter({ logger: true, bodyLimit: 1048576 }),
+}
+
+// Express — 传递 Express 选项
+import { expressAdapter } from 'vextjs/adapters/express'
+export default {
+  adapter: expressAdapter({ strict: true }),
+}
+
+// Koa — 传递 Koa 选项
+import { koaAdapter } from 'vextjs/adapters/koa'
+export default {
+  adapter: koaAdapter({ proxy: true }),
+}
+```
+
+### 各 Adapter 特点
+
+| Adapter | 底层框架 | 特点 | 适用场景 |
+|---------|---------|------|---------|
+| `hono` | [Hono](https://hono.dev/) | 轻量高性能，零额外依赖 | 默认推荐，追求极致性能 |
+| `fastify` | [Fastify](https://fastify.dev/) | 企业级，丰富插件生态 | 需要 Fastify 插件生态 |
+| `express` | [Express](https://expressjs.com/) | 最广泛社区生态 | 复用已有 Express 中间件 |
+| `koa` | [Koa](https://koajs.com/) | 洋葱模型中间件 | 偏好 Koa 风格 |
+
+> 💡 **一致性保证**：无论选择哪个 Adapter，以下行为完全一致：
+> - 统一响应格式 `{ code, data, requestId }`
+> - 统一错误处理（422 / 404 / 500）
+> - 统一 Body 解析（由 vext body-parser 中间件控制）
+> - 统一 JSON 序列化（手动 `JSON.stringify`，跨 Adapter 行为一致）
 
 ---
 
@@ -197,3 +256,4 @@ export default defineRoutes((app) => {
 
 - [VextJS README](../../README.md) — 框架完整文档
 - [VextJS CLI 帮助](../../README.md#-cli-命令) — 所有 CLI 命令说明
+- [Adapter 设计文档](../../src/adapters/) — 各 Adapter 实现源码

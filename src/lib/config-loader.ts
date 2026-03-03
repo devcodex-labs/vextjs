@@ -238,7 +238,7 @@ function validateConfig(config: Record<string, unknown>): void {
   // ── adapter（字符串标识 | 工厂函数）──────────────────
   const adapter = config["adapter"];
   if (adapter !== undefined) {
-    const knownAdapters = ["hono", "fastify"];
+    const knownAdapters = ["hono", "fastify", "express", "koa"];
     if (typeof adapter === "string") {
       if (!knownAdapters.includes(adapter)) {
         throw new Error(

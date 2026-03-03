@@ -1,6 +1,9 @@
-import { createHonoAdapter } from '../adapters/hono/index.js'
-import type { VextAdapter } from '../types/adapter.js'
-import type { VextApp, VextConfig } from '../types/app.js'
+import { createHonoAdapter } from "../adapters/hono/index.js";
+import { createFastifyAdapter } from "../adapters/fastify/adapter.js";
+import { createExpressAdapter } from "../adapters/express/adapter.js";
+import { createKoaAdapter } from "../adapters/koa/adapter.js";
+import type { VextAdapter } from "../types/adapter.js";
+import type { VextApp, VextConfig } from "../types/app.js";
 
 /**
  * 内置 adapter 工厂映射表
@@ -12,7 +15,10 @@ import type { VextApp, VextConfig } from '../types/app.js'
  */
 const BUILT_IN_ADAPTERS: Record<string, (app: VextApp) => VextAdapter> = {
   hono: createHonoAdapter,
-}
+  fastify: (app) => createFastifyAdapter({}, app),
+  express: (app) => createExpressAdapter({}, app),
+  koa: (app) => createKoaAdapter({}, app),
+};
 
 /**
  * 解析 config.adapter 配置为 VextAdapter 实例
@@ -39,32 +45,40 @@ const BUILT_IN_ADAPTERS: Record<string, (app: VextApp) => VextAdapter> = {
  * const adapter = resolveAdapter(config, app)
  */
 export function resolveAdapter(config: VextConfig, app: VextApp): VextAdapter {
-  const adapterConfig = config.adapter ?? 'hono'
+  const adapterConfig = config.adapter ?? "hono";
 
   // 字符串 → 内置 adapter
-  if (typeof adapterConfig === 'string') {
-    const factory = BUILT_IN_ADAPTERS[adapterConfig]
+  if (typeof adapterConfig === "string") {
+    const factory = BUILT_IN_ADAPTERS[adapterConfig];
     if (!factory) {
       throw new Error(
         `[vextjs] config.adapter "${adapterConfig}" is not a built-in adapter. ` +
-        `Did you mean 'hono'?\n` +
-        `         Built-in adapters: ${Object.keys(BUILT_IN_ADAPTERS).join(', ')}\n` +
-        `         For third-party adapters, pass an adapter object instead of a string.`,
-      )
+          `Did you mean one of: ${Object.keys(BUILT_IN_ADAPTERS).join(", ")}?\n` +
+          `         Built-in adapters: ${Object.keys(BUILT_IN_ADAPTERS).join(", ")}\n` +
+          `         For third-party adapters, pass an adapter object or factory function instead of a string.`,
+      );
     }
-    return factory(app)
+    return factory(app);
+  }
+
+  // 函数 → adapter 工厂函数（如 fastifyAdapter({ bodyLimit: 5MB }) 返回的 (app) => VextAdapter）
+  // 用户通过 import { fastifyAdapter } from 'vextjs/adapters/fastify' 使用
+  if (typeof adapterConfig === "function") {
+    const adapter = (adapterConfig as (app: VextApp) => VextAdapter)(app);
+    validateAdapterInterface(adapter);
+    return adapter;
   }
 
   // 对象 → 第三方 adapter（必须满足 VextAdapter 接口）
-  if (typeof adapterConfig === 'object' && adapterConfig !== null) {
-    validateAdapterInterface(adapterConfig as VextAdapter)
-    return adapterConfig as VextAdapter
+  if (typeof adapterConfig === "object" && adapterConfig !== null) {
+    validateAdapterInterface(adapterConfig as VextAdapter);
+    return adapterConfig as VextAdapter;
   }
 
   throw new Error(
-    `[vextjs] config.adapter must be a string (built-in) or an adapter object (third-party). ` +
-    `Received: ${typeof adapterConfig}`,
-  )
+    `[vextjs] config.adapter must be a string (built-in), a factory function, or an adapter object (third-party). ` +
+      `Received: ${typeof adapterConfig}`,
+  );
 }
 
 /**
@@ -75,34 +89,36 @@ export function resolveAdapter(config: VextConfig, app: VextApp): VextAdapter {
  * @param adapter 待验证的 adapter 对象
  * @throws 缺少必要方法或属性时抛出描述性错误
  */
-function validateAdapterInterface(adapter: unknown): asserts adapter is VextAdapter {
+function validateAdapterInterface(
+  adapter: unknown,
+): asserts adapter is VextAdapter {
   const requiredMethods = [
-    'registerRoute',
-    'registerMiddleware',
-    'registerErrorHandler',
-    'registerNotFound',
-    'listen',
-    'buildHandler',
-  ] as const
+    "registerRoute",
+    "registerMiddleware",
+    "registerErrorHandler",
+    "registerNotFound",
+    "listen",
+    "buildHandler",
+  ] as const;
 
-  const obj = adapter as Record<string, unknown>
+  const obj = adapter as Record<string, unknown>;
 
   // 验证 name 属性（string 类型）
-  if (typeof obj['name'] !== 'string' || obj['name'].length === 0) {
+  if (typeof obj["name"] !== "string" || obj["name"].length === 0) {
     throw new Error(
       `[vextjs] Custom adapter is missing required property: "name" (must be a non-empty string).\n` +
-      `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
-    )
+        `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
+    );
   }
 
   // 验证所有必要方法
   for (const method of requiredMethods) {
-    if (typeof obj[method] !== 'function') {
+    if (typeof obj[method] !== "function") {
       throw new Error(
-        `[vextjs] Custom adapter "${obj['name'] ?? 'unknown'}" is missing required method: "${method}".\n` +
-        `         Expected: function, received: ${typeof obj[method]}.\n` +
-        `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
-      )
+        `[vextjs] Custom adapter "${obj["name"] ?? "unknown"}" is missing required method: "${method}".\n` +
+          `         Expected: function, received: ${typeof obj[method]}.\n` +
+          `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
+      );
     }
   }
 }

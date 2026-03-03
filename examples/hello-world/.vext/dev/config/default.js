@@ -22,10 +22,16 @@ __export(default_exports, {
 });
 module.exports = __toCommonJS(default_exports);
 var default_default = {
-  port: 3e3,
-  host: "0.0.0.0",
+  port: 19953,
+  host: "127.0.0.1",
+  // ── Adapter 配置 ──────────────────────────────────────
+  // 内置 adapter: "hono"（默认） | "fastify" | "express" | "koa"
+  // 也可传入工厂函数（第三方 adapter）:
+  //   import { fastifyAdapter } from 'vextjs/adapters/fastify'
+  //   adapter: fastifyAdapter({ logger: true })
+  adapter: "koa",
   logger: {
-    level: "info"
+    level: "warn"
   },
   response: {
     hideInternalErrors: false
