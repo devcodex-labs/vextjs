@@ -176,15 +176,15 @@ async function executeChain(
   req: VextRequest,
   res: VextResponse,
 ): Promise<void> {
-  let index = 0;
+  const len = chain.length;
 
-  const next = async (): Promise<void> => {
-    if (index >= chain.length) return;
-    const middleware = chain[index++]!;
-    await middleware(req, res, next);
-  };
+  async function dispatch(i: number): Promise<void> {
+    if (i >= len) return;
+    const middleware = chain[i]!;
+    await middleware(req, res, () => dispatch(i + 1));
+  }
 
-  await next();
+  await dispatch(0);
 }
 
 /**
@@ -280,6 +280,9 @@ export function createKoaAdapter(
   // 禁用 Koa 的 proxy 模式（vext 有独立的 trustProxy 逻辑）
   koaApp.proxy = false;
 
+  // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
+  const alsEnabled = vextApp.config.requestContext?.enabled !== false;
+
   // ── 全局状态 ──────────────────────────────────────────────
 
   /** 全局中间件列表（通过 registerMiddleware 收集，在每个路由执行时拼接到链头） */
@@ -293,6 +296,8 @@ export function createKoaAdapter(
 
   /** 路由表（通过 registerRoute 注册） */
   const routes: RouteEntry[] = [];
+  /** 每条路由的预组装中间件链缓存（key = routes 数组 index） */
+  const prebuiltChains: Map<number, VextMiddleware[]> = new Map();
 
   /** 是否已挂载 Koa 主中间件（只挂载一次） */
   let _middlewareRegistered = false;
@@ -327,7 +332,10 @@ export function createKoaAdapter(
 
       for (const entry of routes) {
         // 方法匹配（HEAD 请求也匹配 GET 路由——HTTP 规范）
-        if (entry.method !== method && !(method === "HEAD" && entry.method === "GET")) {
+        if (
+          entry.method !== method &&
+          !(method === "HEAD" && entry.method === "GET")
+        ) {
           continue;
         }
 
@@ -347,37 +355,50 @@ export function createKoaAdapter(
           const res = createVextResponse(ctx, () => req.requestId);
 
           // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
-          await requestContext.run(
-            { requestId: "", locale: undefined },
-            async () => {
-              try {
-                // 全局中间件 + 路由级链
-                const fullChain = [
-                  ...globalMiddlewares,
-                  ...matched!.entry.chain,
-                ];
-                await executeChain(fullChain, req, res);
-              } catch (err) {
-                if (errorHandler) {
-                  try {
-                    errorHandler(err, req, res);
-                  } catch (handlerError) {
-                    try {
-                      res.rawJson(
-                        { code: 500, message: "Internal Server Error" },
-                        500,
-                      );
-                    } catch {
-                      // 完全放弃，Koa 的 onerror 兜底
-                      throw handlerError;
-                    }
-                  }
-                } else {
-                  throw err;
-                }
+          //
+          // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
+          // 直接执行中间件链，预估 +3-8% RPS。
+          //
+          const runChain = async () => {
+            try {
+              // 全局中间件 + 路由级链
+              // 🆕 预组装中间件链（首次请求时组装，后续复用）
+              const routeIdx = routes.indexOf(matched!.entry);
+              let fullChain = prebuiltChains.get(routeIdx);
+              if (!fullChain) {
+                fullChain = globalMiddlewares.concat(matched!.entry.chain);
+                prebuiltChains.set(routeIdx, fullChain);
               }
-            },
-          );
+              await executeChain(fullChain, req, res);
+            } catch (err) {
+              if (errorHandler) {
+                try {
+                  errorHandler(err, req, res);
+                } catch (handlerError) {
+                  try {
+                    res.rawJson(
+                      { code: 500, message: "Internal Server Error" },
+                      500,
+                    );
+                  } catch {
+                    // 完全放弃，Koa 的 onerror 兜底
+                    throw handlerError;
+                  }
+                }
+              } else {
+                throw err;
+              }
+            }
+          };
+
+          if (alsEnabled) {
+            await requestContext.run(
+              { requestId: "", locale: undefined },
+              runChain,
+            );
+          } else {
+            await runChain();
+          }
 
           // 标记 Koa 的 respond 为 false，阻止 Koa 再次写入响应
           // 因为 VextResponse 已通过 ctx.res（Node.js 原生 ServerResponse）
@@ -451,13 +472,20 @@ export function createKoaAdapter(
 
           const res = createVextResponse(ctx, () => req.requestId);
 
-          await requestContext.run(
-            { requestId: req.requestId, locale: undefined },
-            async () => {
-              const noop = async (): Promise<void> => {};
-              await notFoundHandler!(req, res, noop);
-            },
-          );
+          // 🆕 5.7: ALS 可配置跳过
+          const runNotFound = async () => {
+            const noop = async (): Promise<void> => {};
+            await notFoundHandler!(req, res, noop);
+          };
+
+          if (alsEnabled) {
+            await requestContext.run(
+              { requestId: req.requestId, locale: undefined },
+              runNotFound,
+            );
+          } else {
+            await runNotFound();
+          }
 
           ctx.respond = false;
         } else {
@@ -508,11 +536,7 @@ export function createKoaAdapter(
     //
     // 路由路径参数格式：vext 使用 :param，内置路由匹配器也使用 :param，无需转换。
     //
-    registerRoute(
-      method: string,
-      path: string,
-      chain: VextMiddleware[],
-    ): void {
+    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
       const upperMethod = method.toUpperCase();
       const segments = parsePattern(path);
 

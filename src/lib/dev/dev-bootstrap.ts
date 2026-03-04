@@ -231,6 +231,11 @@ export async function devBootstrap(
     const app = result.app;
     internals = result.internals;
 
+    // ── 步骤 2a: resolveAdapter（异步按需加载）────────────
+    // 动态 import() 按需加载用户选择的 adapter 框架包。
+    // 默认 native adapter（零外部依赖），其他 adapter 需用户额外安装对应框架。
+    app.adapter = await resolveAdapter(config, app);
+
     app.logger.info("[vext dev] initializing (soft reload mode)...");
     app.logger.info(
       `[vext dev] compiled ${compileStats.fileCount} files in ${compileStats.elapsed}ms`,

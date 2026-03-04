@@ -1,0 +1,227 @@
+# ─────────────────────────────────────────────────────────────
+# vextjs CI — Lint → Typecheck → Unit → Integration → E2E → Coverage
+#
+# 触发条件：push / pull_request（所有分支）
+# Node.js 版本矩阵：18 / 20 / 22
+#
+# 流水线结构：
+#   1. lint + typecheck（快速门禁，所有版本）
+#   2. unit tests（无外部依赖，所有版本）
+#   3. integration tests（无外部依赖，使用 mock，所有版本）
+#   4. e2e tests（真实 HTTP 服务器，仅 Node 22）
+#   5. coverage report（仅 Node 22，上传 codecov）
+#
+# @see plans/v1/10-testing.md §9（CI 集成指南）
+# @see IMPLEMENTATION-PLAN.md 任务 4.5
+# ─────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: [main]
+
+# 取消同一 PR / branch 的旧运行
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── 全局环境变量 ──────────────────────────────────────────────
+
+env:
+  NODE_ENV: test
+
+# ── Jobs ─────────────────────────────────────────────────────
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # 1. Lint + Typecheck（快速门禁）
+  # ────────────────────────────────────────────────────────────
+  lint-typecheck:
+    name: Lint & Typecheck (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Build (verify compilation)
+        run: npm run build
+
+  # ────────────────────────────────────────────────────────────
+  # 2. Unit Tests（无外部依赖）
+  # ────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npx vitest run test/unit --reporter=verbose
+
+  # ────────────────────────────────────────────────────────────
+  # 3. Integration Tests（使用 mock，无外部服务依赖）
+  # ────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: npx vitest run test/integration --reporter=verbose
+
+  # ────────────────────────────────────────────────────────────
+  # 4. E2E Tests（真实 HTTP 服务器，仅 Node 22）
+  # ────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests (Node 22)
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (required for CLI E2E tests)
+        run: npm run build
+
+      - name: Run E2E tests
+        run: npx vitest run test/e2e --reporter=verbose
+        timeout-minutes: 10
+
+  # ────────────────────────────────────────────────────────────
+  # 5. Coverage Report（仅 Node 22，上传 Codecov）
+  # ────────────────────────────────────────────────────────────
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npx vitest run --coverage --coverage.provider=v8 --coverage.reporter=lcov --coverage.reporter=text
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ────────────────────────────────────────────────────────────
+  # 6. CI 总结（所有检查通过后的统一 status check）
+  # ────────────────────────────────────────────────────────────
+  ci-ok:
+    name: CI ✅
+    runs-on: ubuntu-latest
+    needs: [lint-typecheck, unit-tests, integration-tests, e2e-tests]
+    if: always()
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          echo "lint-typecheck: ${{ needs.lint-typecheck.result }}"
+          echo "unit-tests: ${{ needs.unit-tests.result }}"
+          echo "integration-tests: ${{ needs.integration-tests.result }}"
+          echo "e2e-tests: ${{ needs.e2e-tests.result }}"
+
+          if [[ "${{ needs.lint-typecheck.result }}" != "success" ]]; then
+            echo "❌ lint-typecheck failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
+            echo "❌ unit-tests failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.integration-tests.result }}" != "success" ]]; then
+            echo "❌ integration-tests failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.e2e-tests.result }}" != "success" ]]; then
+            echo "❌ e2e-tests failed"
+            exit 1
+          fi
+
+          echo "✅ All CI checks passed!"

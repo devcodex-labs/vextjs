@@ -9,15 +9,21 @@ import type { VextApp } from "../../types/app.js";
  * 所有底层框架特有的 API 在此处适配，后续代码只与 VextRequest 交互。
  *
  * 转换要点：
- *   - query: 从 URL searchParams 解析
+ *   - query: 从 URL searchParams 解析（🆕 懒解析，首次访问时才解析）
  *   - body: 由 body-parser 中间件后续填充（初始 undefined）
- *   - params: 从 Hono 路由参数提取
- *   - headers: 从原始请求头提取（key 全小写）
+ *   - params: 从 Hono 路由参数提取（🆕 懒解析，首次访问时才提取）
+ *   - headers: 从原始请求头提取（key 全小写）（🆕 懒解析，首次访问时才遍历）
  *   - requestId: 由 requestId 中间件后续填充（初始空字符串）
  *   - ip: 根据 trustProxy 配置决定从 X-Forwarded-For 或 socket 读取
  *   - protocol: 根据 trustProxy 配置决定从 X-Forwarded-Proto 或默认值读取
  *   - onClose: 注册请求关闭钩子，连接断开时触发
  *   - valid: 获取 validate 中间件校验后的数据
+ *
+ * 🆕 性能优化（懒解析）：
+ *   query / headers / params 使用 getter + 缓存模式。
+ *   大部分中间件和 handler 只访问其中 1-2 个字段，
+ *   懒解析避免了每请求都遍历所有 headers 和构造 URL 对象的开销。
+ *   首次访问时解析并缓存，后续访问直接返回缓存值。
  *
  * @param c           Hono Context 对象
  * @param app         VextApp 实例
@@ -27,33 +33,10 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
   const closeHandlers: Array<() => void> = [];
 
-  // ── 解析 query 参数 ──────────────────────────────────────
-  // Hono 的 c.req.url 是完整 URL，从中提取 searchParams
-  let queryRecord: Record<string, string>;
-  try {
-    const url = new URL(c.req.url);
-    queryRecord = Object.fromEntries(url.searchParams);
-  } catch {
-    // URL 解析失败时降级为空对象（防御性处理）
-    queryRecord = {};
-  }
-
-  // ── 解析 headers ─────────────────────────────────────────
-  // Hono 的 c.req.raw.headers 是 Headers 对象，转为 Record
-  const headersRecord: Record<string, string | undefined> = {};
-  c.req.raw.headers.forEach((value, key) => {
-    headersRecord[key] = value;
-  });
-
-  // ── 解析路由参数 ─────────────────────────────────────────
-  // c.req.param() 在某些 Hono 版本中，当路由无动态段时可能抛出异常
-  // 使用 try-catch 防御，降级为空对象
-  let paramsRecord: Record<string, string>;
-  try {
-    paramsRecord = (c.req.param() ?? {}) as Record<string, string>;
-  } catch {
-    paramsRecord = {};
-  }
+  // ── 懒解析缓存 ──────────────────────────────────────────
+  let _queryCache: Record<string, string> | undefined;
+  let _headersCache: Record<string, string | undefined> | undefined;
+  let _paramsCache: Record<string, string> | undefined;
 
   // ── 缓存原始请求体（body-parser 用）───────────────────────
   // _getRawBody 从 Hono Context 读取原始请求体文本（c.req.text()）。
@@ -66,28 +49,98 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     return _rawBodyCache;
   }
 
+  // ── 懒解析函数 ──────────────────────────────────────────
+
+  /**
+   * 懒解析 query 参数
+   *
+   * 仅在首次访问 req.query 时执行 new URL() + Object.fromEntries()。
+   * GET /json 等不需要 query 的场景完全跳过此开销。
+   */
+  function parseQuery(): Record<string, string> {
+    if (_queryCache !== undefined) return _queryCache;
+    try {
+      const url = new URL(c.req.url);
+      _queryCache = Object.fromEntries(url.searchParams);
+    } catch {
+      // URL 解析失败时降级为空对象（防御性处理）
+      _queryCache = {};
+    }
+    return _queryCache;
+  }
+
+  /**
+   * 懒解析 headers
+   *
+   * 仅在首次访问 req.headers 时遍历原始 Headers 对象。
+   * 大部分中间件通过 c.req.header() 直接读取单个 header，
+   * 但某些场景（如 validate header / 用户代码遍历）需要完整对象。
+   *
+   * 🆕 优化：中间件内部直接读取单个 header 时（如 requestId / cors / bodyParser），
+   * 通过 req.headers['key'] 触发此懒解析，首次调用后缓存。
+   */
+  function parseHeaders(): Record<string, string | undefined> {
+    if (_headersCache !== undefined) return _headersCache;
+    const record: Record<string, string | undefined> = {};
+    c.req.raw.headers.forEach((value, key) => {
+      record[key] = value;
+    });
+    _headersCache = record;
+    return _headersCache;
+  }
+
+  /**
+   * 懒解析路由参数
+   *
+   * c.req.param() 在某些 Hono 版本中，当路由无动态段时可能抛出异常。
+   * 使用 try-catch 防御，降级为空对象。
+   * 仅在首次访问 req.params 时执行。
+   */
+  function parseParams(): Record<string, string> {
+    if (_paramsCache !== undefined) return _paramsCache;
+    try {
+      _paramsCache = (c.req.param() ?? {}) as Record<string, string>;
+    } catch {
+      _paramsCache = {};
+    }
+    return _paramsCache;
+  }
+
+  // ── 构造 VextRequest 对象 ────────────────────────────────
+  //
+  // 🆕 性能优化：query / headers / params 使用 Object.defineProperty
+  // 定义为 getter + 缓存（lazy evaluation）。首次访问时解析，后续直接返回缓存值。
+  // 这样 GET /json 这类简单场景不会触发 new URL() / headers 遍历等重操作。
+  //
+  // 实现方式：先在对象字面量中放占位符值（满足 TypeScript 类型检查），
+  // 然后立即用 Object.defineProperty 覆盖为 getter。
+  // 首次访问 getter 时执行解析并用 value descriptor 替换 getter（后续零开销）。
+  //
+
   const req: VextRequest = {
-    // ── 原始数据
-    query: queryRecord,
+    // ── 占位符（立即被 defineProperty 覆盖）─────────────
+    query: null as unknown as Record<string, string>,
+    headers: null as unknown as Record<string, string | undefined>,
+    params: null as unknown as Record<string, string>,
+
+    // ── 立即可用字段 ────────────────────────────────────
     body: undefined, // body-parser 中间件负责填充
-    params: paramsRecord,
-    headers: headersRecord,
     method: c.req.method.toUpperCase(),
     url: c.req.url,
     path: c.req.path,
 
-    // ── 元信息
+    // ── 元信息 ──────────────────────────────────────────
     app,
     requestId: "", // requestId 中间件负责填充
     ip: resolveIp(c, trustProxy),
     protocol: resolveProtocol(c, trustProxy),
 
-    // ── 生命周期
+    // ── 生命周期 ────────────────────────────────────────
     onClose(handler: () => void) {
       closeHandlers.push(handler);
     },
 
-    // ── 校验数据
+    // ── 校验数据 ────────────────────────────────────────
     valid<T = Record<string, any>>(
       location: "query" | "body" | "param" | "header",
     ): T {
@@ -100,6 +153,90 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     // 从 Hono Context 读取原始请求体文本，带缓存（流只能消费一次）。
     _getRawBody: getRawBody,
   };
+
+  // ── 定义懒解析 getter（query / headers / params）────────
+  //
+  // 使用 defineProperty 覆盖占位符值，实现：
+  //   1. 首次访问时调用解析函数
+  //   2. 解析后用 value descriptor 覆盖 getter（后续访问零开销）
+  //   3. 仍然支持写入（如测试场景下直接赋值）
+  //
+  // 注意：configurable: true 是必须的，否则首次访问后无法覆盖为 value descriptor。
+  //
+
+  Object.defineProperty(req, "query", {
+    get() {
+      const value = parseQuery();
+      // 用 value descriptor 覆盖 getter，后续访问直接返回值（零开销）
+      Object.defineProperty(req, "query", {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      return value;
+    },
+    set(v: Record<string, string>) {
+      // 支持直接赋值（如测试场景）
+      _queryCache = v;
+      Object.defineProperty(req, "query", {
+        value: v,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(req, "headers", {
+    get() {
+      const value = parseHeaders();
+      Object.defineProperty(req, "headers", {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      return value;
+    },
+    set(v: Record<string, string | undefined>) {
+      _headersCache = v;
+      Object.defineProperty(req, "headers", {
+        value: v,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(req, "params", {
+    get() {
+      const value = parseParams();
+      Object.defineProperty(req, "params", {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      return value;
+    },
+    set(v: Record<string, string>) {
+      _paramsCache = v;
+      Object.defineProperty(req, "params", {
+        value: v,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    },
+    configurable: true,
+    enumerable: true,
+  });
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────
   // 通过 AbortSignal 监听请求中断（客户端断开连接）

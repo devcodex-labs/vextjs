@@ -157,6 +157,19 @@ export interface VextResponseConfig {
    * 生产环境建议开启，500 错误不暴露 stack trace
    */
   hideInternalErrors?: boolean;
+
+  /**
+   * 是否启用出口包装（默认 true）
+   *
+   * 启用时，res.json(data) 自动包装为 { code: 0, data, requestId }。
+   * 禁用时，res.json(data) 直接发送原始 data，不做任何包装。
+   *
+   * 典型禁用场景：
+   *   - 性能基准测试（减少 JSON 序列化开销）
+   *   - 微服务间通信（不需要统一包装格式）
+   *   - 与第三方 API 规范对齐（如 RESTful 纯净响应）
+   */
+  wrap?: boolean;
 }
 
 /**
@@ -217,6 +230,14 @@ export interface VextOpenAPIConfig {
  * Body 解析配置
  */
 export interface VextBodyParserConfig {
+  /**
+   * 是否启用 body 解析（默认 true）
+   *
+   * 禁用时，body-parser 中间件不会注册到中间件链中，
+   * req.body 始终为 undefined。适用于纯 GET 服务或自定义 body 解析场景。
+   */
+  enabled?: boolean;
+
   /** 最大请求体大小（默认 '1mb'） */
   maxBodySize?: string | number;
 }
@@ -249,6 +270,113 @@ export interface VextAccessLogConfig {
    * @example ['/health', '/ready', '/metrics']
    */
   skipPaths?: string[];
+}
+
+/**
+ * Cluster 配置
+ *
+ * 控制多进程模式的行为。
+ * 也可通过 VEXT_CLUSTER=1 环境变量开启。
+ *
+ * 配置位置：src/config/default.ts → config.cluster
+ *
+ * @see 12-cluster.md（多进程 Cluster 设计方案）
+ * @see 12a-master.md §3.1（完整配置项）
+ */
+/**
+ * AsyncLocalStorage 请求上下文配置
+ *
+ * 控制是否启用 AsyncLocalStorage（requestContext.run()）包裹请求处理。
+ *
+ * 启用时（默认）：
+ *   - app.throw 的 I18nError 可通过 requestContext 获取请求级 locale
+ *   - app.logger 的 mixin 自动注入 requestId 到每条日志
+ *   - app.fetch 自动传播 requestId 到出站请求
+ *   - 中间件/handler 可通过 requestContext.getStore() 访问请求级数据
+ *
+ * 禁用时（enabled: false）：
+ *   - 跳过 requestContext.run() 调用，预估全 adapter +3-8% RPS
+ *   - ⚠️ app.throw 的 I18nError locale 解析失效（回退到默认 locale）
+ *   - ⚠️ app.logger 不自动注入 requestId（日志中无 requestId 字段）
+ *   - ⚠️ app.fetch 不自动传播 requestId（需手动设置 x-request-id header）
+ *   - ⚠️ requestContext.getStore() 始终返回 undefined
+ *
+ * 适用场景：
+ *   - 纯 API 网关 / 代理层，不需要 I18n / requestId 日志关联
+ *   - 极致性能要求的微服务（可接受上述功能降级）
+ *
+ * 配置位置：src/config/default.ts → config.requestContext
+ *
+ * @see request-context.ts（AsyncLocalStorage 实例）
+ * @see IMPLEMENTATION-PLAN.md 任务 5.7
+ */
+export interface VextRequestContextConfig {
+  /**
+   * 是否启用 AsyncLocalStorage 请求上下文
+   *
+   * @default true
+   */
+  enabled: boolean;
+}
+
+export interface VextClusterConfig {
+  /** 是否启用 cluster 模式。也可通过 VEXT_CLUSTER=1 开启 @default false */
+  enabled: boolean;
+
+  /**
+   * Worker 数量
+   *
+   * - 'auto':   等于 CPU 核心数（感知 Docker cgroups）
+   * - 'auto-1': 等于 CPU 核心数 - 1（为 Master 预留一个核心）
+   * - number:   显式指定（clamp 到 [1, 64]）
+   *
+   * @default 'auto'
+   */
+  workers: "auto" | "auto-1" | number;
+
+  /** Worker 崩溃后自动重启 @default true */
+  autoRestart: boolean;
+
+  /** 允许在窗口内重启的最大次数（第 N+1 次触发限流）@default 5 */
+  maxRestarts: number;
+
+  /** 快速重启检测窗口（毫秒）@default 60000 */
+  restartWindow: number;
+
+  /** 重启间隔退避基数（毫秒）@default 1000 */
+  restartBaseDelay: number;
+
+  /** 重启间隔上限（毫秒）@default 30000 */
+  restartMaxDelay: number;
+
+  /** 健康检查配置 */
+  healthCheck: {
+    /** 是否启用健康检查 @default true */
+    enabled: boolean;
+    /** Master 检查间隔（毫秒）@default 15000 */
+    interval: number;
+    /** 心跳超时（毫秒）@default 30000 */
+    timeout: number;
+  };
+
+  /** 零停机重启配置 */
+  reload: {
+    /** 替换下一个 Worker 前的等待时间（毫秒）@default 2000 */
+    workerDelay: number;
+    /** Worker 就绪超时（毫秒）@default 30000 */
+    readyTimeout: number;
+    /** Worker 关闭超时（毫秒）@default 10000 */
+    shutdownTimeout: number;
+  };
+
+  /** PID 文件路径 @default '.vext.pid' */
+  pidFile: string;
+
+  /** 进程标题前缀 @default 'vext' */
+  titlePrefix: string;
+
+  /** 粘性会话模式 @default 'none' */
+  sticky: "none" | "ip";
 }
 
 /**
@@ -310,6 +438,29 @@ export interface VextConfig {
 
   /** OpenAPI 文档配置 */
   openapi: VextOpenAPIConfig;
+
+  /**
+   * AsyncLocalStorage 请求上下文配置
+   *
+   * 控制是否启用 requestContext.run() 包裹请求处理。
+   * 禁用后可提升 +3-8% RPS，但 logger requestId 自动注入、
+   * app.throw locale 解析、app.fetch requestId 传播均失效。
+   *
+   * @see VextRequestContextConfig
+   */
+  requestContext: VextRequestContextConfig;
+
+  /**
+   * Cluster 多进程配置
+   *
+   * 启用后 Master 进程管理多个 Worker 进程，
+   * 利用多核 CPU 并支持零停机重启。
+   *
+   * 也可通过 VEXT_CLUSTER=1 环境变量开启。
+   *
+   * @see 12-cluster.md（设计方案）
+   */
+  cluster?: Partial<VextClusterConfig>;
 
   /**
    * 测试模式标志（内部使用）

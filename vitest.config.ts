@@ -15,5 +15,39 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
     },
+
+    // 覆盖率配置
+    coverage: {
+      // 使用 V8 原生覆盖率（无需额外依赖，Node.js 内置）
+      provider: "v8",
+
+      // 输出格式
+      reporter: ["text", "lcov", "json-summary"],
+
+      // 输出目录
+      reportsDirectory: "coverage",
+
+      // 只统计 src/ 下的源码覆盖率
+      include: ["src/**/*.ts"],
+
+      // 排除项
+      exclude: [
+        // 测试文件本身
+        "**/*.test.ts",
+        "**/*.spec.ts",
+
+        // 类型定义文件（纯类型无运行时代码）
+        "src/types/**",
+
+        // CLI 入口（包含 process.exit 等副作用，不适合覆盖率统计）
+        "src/cli/index.ts",
+
+        // 测试工具（属于测试基础设施，非生产代码）
+        "src/testing/**",
+      ],
+
+      // 不在未覆盖的文件上标红（避免干扰）
+      all: false,
+    },
   },
 });

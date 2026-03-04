@@ -1,4 +1,3 @@
-import { resolveAdapter } from "./adapter-resolver.js";
 import { requestContext } from "./request-context.js";
 import { createLogger } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
@@ -132,7 +131,9 @@ export function createApp(config: VextConfig): {
   //   - mixin hook 自动注入 requestId（从 AsyncLocalStorage 读取）
   //   - child logger（携带 service 名称等额外字段）
   //
-  const logger = createLogger(config.logger);
+  const logger = createLogger(config.logger, {
+    requestContextEnabled: config.requestContext?.enabled !== false,
+  });
 
   // ── 创建 defaultThrow（I18nError 联动，Phase 1 升级）────────
   //
@@ -211,8 +212,10 @@ export function createApp(config: VextConfig): {
     },
   };
 
-  // ── 解析 adapter 并挂载到 app ──────────────────────────────
-  app.adapter = resolveAdapter(config, app);
+  // ── adapter 延迟赋值 ──────────────────────────────────────
+  // adapter 不再在 createApp 中同步解析，而是由 bootstrap / devBootstrap / createTestApp
+  // 在 createApp 之后异步调用 resolveAdapter 并赋值到 app.adapter。
+  // 这样 adapter-resolver.ts 可以使用动态 import() 按需加载框架依赖。
 
   // ── 框架内部方法（通过 internals 返回，不暴露在 VextApp 接口类型里）──
 
@@ -362,7 +365,7 @@ function createSchemaAdapterValidator(): VextValidator {
 export const DEFAULT_CONFIG: VextConfig = {
   port: 3000,
   host: "0.0.0.0",
-  adapter: "hono",
+  adapter: "native",
   trustProxy: false,
   middlewares: [],
   cors: {
@@ -392,8 +395,10 @@ export const DEFAULT_CONFIG: VextConfig = {
   },
   response: {
     hideInternalErrors: true,
+    wrap: true,
   },
   bodyParser: {
+    enabled: true,
     maxBodySize: "1mb",
   },
   accessLog: {
@@ -403,5 +408,8 @@ export const DEFAULT_CONFIG: VextConfig = {
   },
   openapi: {
     enabled: false,
+  },
+  requestContext: {
+    enabled: true,
   },
 };

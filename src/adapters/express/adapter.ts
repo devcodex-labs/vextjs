@@ -44,8 +44,12 @@ export interface ExpressAdapterOptions {
  * 每个中间件通过 await next() 调用下一个中间件。
  * next() 返回后可执行 after-middleware 逻辑（洋葱模型回溯）。
  *
- * 逻辑与 Hono / Fastify Adapter 的 executeChain 完全一致，
+ * 逻辑与 Hono / Fastify / Koa Adapter 的 executeChain 完全一致，
  * 确保所有 Adapter 的中间件执行语义相同。
+ *
+ * 🆕 性能优化：使用递归调度函数替代每请求创建闭包。
+ * dispatch 函数通过参数传递 index，避免在闭包中捕获可变变量，
+ * V8 对固定参数签名的函数有更好的内联优化。
  *
  * @param chain 中间件执行链（已组装完毕，含全局 + 路由级 + validate + handler）
  * @param req   VextRequest 实例
@@ -56,15 +60,15 @@ async function executeChain(
   req: VextRequest,
   res: VextResponse,
 ): Promise<void> {
-  let index = 0;
+  const len = chain.length;
 
-  const next = async (): Promise<void> => {
-    if (index >= chain.length) return;
-    const middleware = chain[index++]!;
-    await middleware(req, res, next);
-  };
+  async function dispatch(i: number): Promise<void> {
+    if (i >= len) return;
+    const middleware = chain[i]!;
+    await middleware(req, res, () => dispatch(i + 1));
+  }
 
-  await next();
+  await dispatch(0);
 }
 
 /**
@@ -160,6 +164,9 @@ export function createExpressAdapter(
   // 禁用 ETag 自动生成（vext 不使用 Express ETag 机制）
   expressApp.disable("etag");
 
+  // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
+  const alsEnabled = app.config.requestContext?.enabled !== false;
+
   // ── 全局状态 ──────────────────────────────────────────────
 
   /** 全局中间件列表（通过 registerMiddleware 收集，在每个路由执行时拼接到链头） */
@@ -202,10 +209,11 @@ export function createExpressAdapter(
         if (!notFoundHandler) {
           // 默认 404 响应
           expressRes.statusCode = 404;
-          expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-          expressRes.end(
-            JSON.stringify({ code: 404, message: "Not Found" }),
+          expressRes.setHeader(
+            "Content-Type",
+            "application/json; charset=utf-8",
           );
+          expressRes.end(JSON.stringify({ code: 404, message: "Not Found" }));
           return;
         }
 
@@ -222,13 +230,20 @@ export function createExpressAdapter(
 
         const res = createVextResponse(expressRes, () => req.requestId);
 
-        await requestContext.run(
-          { requestId: req.requestId, locale: undefined },
-          async () => {
-            const noop = async (): Promise<void> => {};
-            await notFoundHandler!(req, res, noop);
-          },
-        );
+        // 🆕 5.7: ALS 可配置跳过
+        const runNotFound = async () => {
+          const noop = async (): Promise<void> => {};
+          await notFoundHandler!(req, res, noop);
+        };
+
+        if (alsEnabled) {
+          await requestContext.run(
+            { requestId: req.requestId, locale: undefined },
+            runNotFound,
+          );
+        } else {
+          await runNotFound();
+        }
       },
     );
 
@@ -253,8 +268,7 @@ export function createExpressAdapter(
             const req = createVextRequest(expressReq, app);
 
             if (!req.requestId) {
-              const headerName =
-                app.config.requestId?.header ?? "x-request-id";
+              const headerName = app.config.requestId?.header ?? "x-request-id";
               req.requestId =
                 (req.headers[headerName] as string) || crypto.randomUUID();
             }
@@ -324,6 +338,11 @@ export function createExpressAdapter(
     //     此时发送最低限度的 500 JSON 响应
     //
     registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+      // 🆕 性能优化：延迟预组装中间件链
+      // 注册路由时 globalMiddlewares 尚未完成收集（bootstrap 步骤⑥在步骤⑤之后），
+      // 因此在首次请求时组装并缓存，后续请求直接复用。
+      let prebuiltChain: VextMiddleware[] | null = null;
+
       // Express 使用小写方法名（get / post / put / patch / delete / head / options）
       const expressMethod = method.toLowerCase() as
         | "get"
@@ -355,37 +374,49 @@ export function createExpressAdapter(
 
             // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
             // 确保 app.throw 等内部方法能通过 requestContext.getStore() 访问请求级数据
-            await requestContext.run(
-              { requestId: "", locale: undefined },
-              async () => {
-                try {
-                  // 全局中间件 + 路由级链
-                  const fullChain = [...globalMiddlewares, ...chain];
-                  await executeChain(fullChain, req, res);
-                } catch (err) {
-                  if (errorHandler) {
-                    // errorHandler 自身抛异常的边界保护
-                    // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）
-                    // 导致异常传播到 Express 的错误处理，产生非 JSON 的响应
-                    try {
-                      errorHandler(err, req, res);
-                    } catch (handlerError) {
-                      try {
-                        res.rawJson(
-                          { code: 500, message: "Internal Server Error" },
-                          500,
-                        );
-                      } catch {
-                        // 完全放弃，让 Express 的兜底处理
-                        next(handlerError);
-                      }
-                    }
-                  } else {
-                    next(err);
-                  }
+            //
+            // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
+            // 直接执行中间件链，预估 +3-8% RPS。
+            //
+            const runChain = async () => {
+              try {
+                // 🆕 预组装中间件链（首次请求时组装，后续复用）
+                if (prebuiltChain === null) {
+                  prebuiltChain = globalMiddlewares.concat(chain);
                 }
-              },
-            );
+                await executeChain(prebuiltChain, req, res);
+              } catch (err) {
+                if (errorHandler) {
+                  // errorHandler 自身抛异常的边界保护
+                  // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）
+                  // 导致异常传播到 Express 的错误处理，产生非 JSON 的响应
+                  try {
+                    errorHandler(err, req, res);
+                  } catch (handlerError) {
+                    try {
+                      res.rawJson(
+                        { code: 500, message: "Internal Server Error" },
+                        500,
+                      );
+                    } catch {
+                      // 完全放弃，让 Express 的兜底处理
+                      next(handlerError);
+                    }
+                  }
+                } else {
+                  next(err);
+                }
+              }
+            };
+
+            if (alsEnabled) {
+              await requestContext.run(
+                { requestId: "", locale: undefined },
+                runChain,
+              );
+            } else {
+              await runChain();
+            }
           } catch (err) {
             // rawBody 收集或其他初始化错误
             next(err);

@@ -1,0 +1,441 @@
+{
+  "config": {
+    "security": {
+      "domainWhiteList": [
+        "*"
+      ],
+      "protocolWhiteList": [],
+      "defaultMiddleware": "csrf,hsts,methodnoallow,noopen,nosniff,csp,xssProtection,xframe,dta",
+      "csrf": {
+        "enable": false,
+        "type": "ctoken",
+        "ignoreJSON": false,
+        "useSession": false,
+        "cookieName": "csrfToken",
+        "sessionName": "csrfToken",
+        "headerName": "x-csrf-token",
+        "bodyName": "_csrf",
+        "queryName": "_csrf",
+        "rotateWhenInvalid": false,
+        "supportedRequests": [
+          {
+            "path": {},
+            "methods": [
+              "POST",
+              "PATCH",
+              "DELETE",
+              "PUT",
+              "CONNECT"
+            ]
+          }
+        ],
+        "refererWhiteList": [],
+        "cookieOptions": {
+          "signed": false
+        }
+      },
+      "xframe": {
+        "enable": true,
+        "value": "SAMEORIGIN"
+      },
+      "hsts": {
+        "enable": false,
+        "maxAge": 31536000,
+        "includeSubdomains": false
+      },
+      "dta": {
+        "enable": true
+      },
+      "methodnoallow": {
+        "enable": true
+      },
+      "noopen": {
+        "enable": true
+      },
+      "nosniff": {
+        "enable": true
+      },
+      "referrerPolicy": {
+        "enable": false,
+        "value": "no-referrer-when-downgrade"
+      },
+      "xssProtection": {
+        "enable": true,
+        "value": "1; mode=block"
+      },
+      "csp": {
+        "enable": false,
+        "policy": {}
+      },
+      "ssrf": {
+        "ipBlackList": null,
+        "ipExceptionList": null,
+        "hostnameExceptionList": null,
+        "checkAddress": null
+      },
+      "_protocolWhiteListSet": "<Set>"
+    },
+    "helper": {
+      "shtml": {}
+    },
+    "jsonp": {
+      "limit": 50,
+      "callback": [
+        "_callback",
+        "callback"
+      ],
+      "csrf": false
+    },
+    "onerror": {
+      "errorPageUrl": "",
+      "appErrorFilter": null,
+      "templatePath": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror\\lib\\onerror_page.mustache"
+    },
+    "env": "local",
+    "name": "vext-bench-raw-egg",
+    "keys": "<String len: 44>",
+    "cookies": {},
+    "proxy": false,
+    "maxIpsCount": 0,
+    "maxProxyCount": 0,
+    "protocolHeaders": "x-forwarded-proto",
+    "ipHeaders": "x-forwarded-for",
+    "hostHeaders": "",
+    "pkg": {
+      "name": "vext-bench-raw-egg",
+      "version": "1.0.0",
+      "private": true,
+      "description": "egg.js bare benchmark server for vext performance comparison",
+      "scripts": {
+        "start": "egg-scripts start --daemon --title=bench-egg",
+        "stop": "egg-scripts stop --title=bench-egg",
+        "dev": "egg-bin dev"
+      },
+      "egg": {
+        "framework": "egg"
+      },
+      "dependencies": {
+        "egg": "^3.29.0",
+        "egg-scripts": "^2.17.0",
+        "through": "2.3.8"
+      },
+      "devDependencies": {
+        "egg-bin": "^6.10.0"
+      }
+    },
+    "baseDir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg",
+    "HOME": "C:\\Users\\shihu",
+    "rundir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\run",
+    "dump": {
+      "ignore": "<Set>",
+      "timing": {
+        "slowBootActionMinDuration": 5000
+      }
+    },
+    "confusedConfigurations": {
+      "bodyparser": "bodyParser",
+      "notFound": "notfound",
+      "sitefile": "siteFile",
+      "middlewares": "middleware",
+      "httpClient": "httpclient"
+    },
+    "notfound": {
+      "pageUrl": ""
+    },
+    "siteFile": {
+      "/favicon.ico": "<Buffer len: 6463>",
+      "cacheControl": "public, max-age=2592000",
+      "enable": false
+    },
+    "bodyParser": {
+      "enable": false,
+      "encoding": "utf8",
+      "formLimit": "1mb",
+      "jsonLimit": "1mb",
+      "textLimit": "1mb",
+      "strict": true,
+      "queryString": {
+        "arrayLimit": 100,
+        "depth": 5,
+        "parameterLimit": 1000
+      },
+      "onerror": "<Function onerror>"
+    },
+    "logger": {
+      "dir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\logs\\vext-bench-raw-egg",
+      "encoding": "utf8",
+      "env": "local",
+      "level": "NONE",
+      "consoleLevel": "NONE",
+      "disableConsoleAfterReady": true,
+      "outputJSON": false,
+      "buffer": true,
+      "appLogName": "vext-bench-raw-egg-web.log",
+      "coreLogName": "egg-web.log",
+      "agentLogName": "egg-agent.log",
+      "errorLogName": "common-error.log",
+      "coreLogger": {
+        "consoleLevel": "WARN"
+      },
+      "allowDebugAtProd": false,
+      "enablePerformanceTimer": false,
+      "enableFastContextLogger": false,
+      "type": "agent",
+      "localStorage": "<AsyncLocalStorage>"
+    },
+    "httpclient": {
+      "enableDNSCache": false,
+      "dnsCacheLookupInterval": 10000,
+      "dnsCacheMaxLength": 1000,
+      "request": {
+        "timeout": 5000
+      },
+      "httpAgent": {
+        "keepAlive": true,
+        "freeSocketTimeout": 4000,
+        "maxSockets": 9007199254740991,
+        "maxFreeSockets": 256
+      },
+      "httpsAgent": {
+        "keepAlive": true,
+        "freeSocketTimeout": 4000,
+        "maxSockets": 9007199254740991,
+        "maxFreeSockets": 256
+      },
+      "useHttpClientNext": false
+    },
+    "meta": {
+      "enable": true,
+      "logging": false
+    },
+    "coreMiddleware": [
+      "meta",
+      "siteFile",
+      "notfound",
+      "bodyParser",
+      "overrideMethod"
+    ],
+    "workerStartTimeout": 600000,
+    "serverTimeout": null,
+    "cluster": {
+      "listen": {
+        "path": "",
+        "port": 19326,
+        "hostname": "127.0.0.1"
+      }
+    },
+    "clusterClient": {
+      "maxWaitTime": 60000,
+      "responseTimeout": 60000
+    },
+    "onClientError": null,
+    "i18n": {
+      "enable": false
+    },
+    "static": {
+      "enable": false
+    },
+    "middleware": [
+      "timing",
+      "requestId",
+      "auth"
+    ],
+    "timing": {
+      "match": "/chain"
+    },
+    "requestId": {
+      "match": "/chain"
+    },
+    "auth": {
+      "match": "/chain"
+    },
+    "watcher": {
+      "type": "default"
+    },
+    "logrotator": {
+      "filesRotateBySize": [],
+      "filesRotateByHour": []
+    },
+    "coreMiddlewares": "~config~coreMiddleware",
+    "appMiddlewares": "~config~middleware",
+    "appMiddleware": "~config~middleware"
+  },
+  "plugins": {
+    "onerror": {
+      "enable": true,
+      "package": "egg-onerror",
+      "name": "onerror",
+      "dependencies": [],
+      "optionalDependencies": [
+        "jsonp"
+      ],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror",
+      "version": "2.4.0"
+    },
+    "session": {
+      "enable": false,
+      "package": "egg-session",
+      "name": "session",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-session",
+      "version": "3.3.0"
+    },
+    "i18n": {
+      "enable": false,
+      "package": "egg-i18n",
+      "name": "i18n",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-i18n",
+      "version": "2.1.1"
+    },
+    "watcher": {
+      "enable": false,
+      "package": "egg-watcher",
+      "name": "watcher",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-watcher",
+      "version": "3.1.1"
+    },
+    "multipart": {
+      "enable": false,
+      "package": "egg-multipart",
+      "name": "multipart",
+      "dependencies": [],
+      "optionalDependencies": [
+        "schedule"
+      ],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-multipart",
+      "version": "3.5.0"
+    },
+    "security": {
+      "enable": true,
+      "package": "egg-security",
+      "name": "security",
+      "dependencies": [],
+      "optionalDependencies": [
+        "session"
+      ],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security",
+      "version": "3.7.0"
+    },
+    "development": {
+      "enable": false,
+      "package": "egg-development",
+      "name": "development",
+      "dependencies": [
+        "watcher"
+      ],
+      "optionalDependencies": [],
+      "env": [
+        "local"
+      ],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-development",
+      "version": "3.0.2"
+    },
+    "logrotator": {
+      "enable": false,
+      "package": "egg-logrotator",
+      "name": "logrotator",
+      "dependencies": [
+        "schedule"
+      ],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-logrotator",
+      "version": "3.2.0"
+    },
+    "schedule": {
+      "enable": false,
+      "package": "egg-schedule",
+      "name": "schedule",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-schedule",
+      "version": "4.0.1"
+    },
+    "static": {
+      "enable": false,
+      "package": "egg-static",
+      "name": "static",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-static",
+      "version": "2.3.1"
+    },
+    "jsonp": {
+      "enable": true,
+      "package": "egg-jsonp",
+      "name": "jsonp",
+      "dependencies": [],
+      "optionalDependencies": [
+        "security"
+      ],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-jsonp",
+      "version": "2.0.0"
+    },
+    "view": {
+      "enable": false,
+      "package": "egg-view",
+      "name": "view",
+      "dependencies": [],
+      "optionalDependencies": [],
+      "env": [],
+      "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-view",
+      "version": "2.1.4"
+    }
+  },
+  "appInfo": {
+    "name": "vext-bench-raw-egg",
+    "baseDir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg",
+    "env": "local",
+    "scope": "",
+    "HOME": "C:\\Users\\shihu",
+    "pkg": {
+      "name": "vext-bench-raw-egg",
+      "version": "1.0.0",
+      "private": true,
+      "description": "egg.js bare benchmark server for vext performance comparison",
+      "scripts": {
+        "start": "egg-scripts start --daemon --title=bench-egg",
+        "stop": "egg-scripts stop --title=bench-egg",
+        "dev": "egg-bin dev"
+      },
+      "egg": {
+        "framework": "egg"
+      },
+      "dependencies": {
+        "egg": "^3.29.0",
+        "egg-scripts": "^2.17.0",
+        "through": "2.3.8"
+      },
+      "devDependencies": {
+        "egg-bin": "^6.10.0"
+      }
+    },
+    "root": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg"
+  }
+}

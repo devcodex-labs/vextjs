@@ -40,6 +40,7 @@ export type {
   VextOpenAPIConfig,
   VextBodyParserConfig,
   VextAccessLogConfig,
+  VextClusterConfig,
   RouteOptions,
   RouteRecord,
   RouteDocsConfig,

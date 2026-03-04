@@ -134,3 +134,7 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Windows reserved device names (prevent accidental creation from blocking git)
+nul
+NUL

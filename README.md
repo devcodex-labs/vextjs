@@ -12,7 +12,7 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 
 ## ✨ 特性
 
-- **🔌 Adapter 架构** — 底层 HTTP 框架可替换（当前基于 [Hono](https://hono.dev/)），业务代码无需改动
+- **🔌 Adapter 架构** — 底层 HTTP 框架可替换（默认 Native Adapter，零外部依赖），业务代码无需改动
 - **📁 约定式路由** — `src/routes/` 下的文件自动扫描加载，文件路径即路由前缀
 - **🧩 插件系统** — 拓扑排序、依赖声明、生命周期钩子，轻松扩展框架能力
 - **💉 服务自动注入** — `src/services/` 下的 class 自动实例化并挂载到 `app.services`
@@ -32,6 +32,61 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 ```bash
 npm install vextjs
 ```
+
+> 默认使用 **Native Adapter**（基于 Node.js `http.createServer` + [`find-my-way`](https://github.com/delvedor/find-my-way) radix trie），零外部 HTTP 框架依赖，性能最优。
+
+如需使用其他 adapter，请额外安装对应框架包：
+
+```bash
+# Fastify adapter
+npm install fastify
+
+# Hono adapter
+npm install hono @hono/node-server
+
+# Express adapter
+npm install express
+
+# Koa adapter
+npm install koa
+```
+
+然后在配置中指定 adapter：
+
+```js
+// src/config/default.js
+export default {
+  adapter: 'fastify', // 'native' (默认) | 'fastify' | 'hono' | 'express' | 'koa'
+}
+```
+
+---
+
+## ⚡ 性能
+
+VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为 JSON 响应场景（`GET /json`）基准测试数据：
+
+| Adapter | Raw RPS | Vext RPS | Overhead | 额外依赖 | 推荐场景 |
+|---------|--------:|--------:|---------:|----------|----------|
+| Fastify | 88,003 | 52,743 | 40.1% | `fastify` | 需要 Fastify 生态插件 |
+| **Native** ⭐ | 52,431 | 50,144 | 4.4% | ✅ 零依赖 | **默认推荐**，最低 overhead |
+| Koa | 61,401 | 42,010 | 31.6% | `koa` | 已有 Koa 中间件需复用 |
+| Hono | 42,768 | 26,630 | 37.7% | `hono` `@hono/node-server` | Web Standard API 兼容 |
+| Express | 15,815 | 14,098 | 10.9% | `express` | 已有 Express 生态需复用 |
+
+> **测试环境**: Node.js 22 + autocannon（50 connections, 10 pipelining, 10s duration, Windows x64, i5-14400）
+>
+> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie 路由，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Native adapter 在 JSON 场景下 overhead 仅 **4.4%**（所有 adapter 中最低），Vext-Native 比 Vext-Hono 快 **88%**，比 Vext-Express 快 **256%**。Vext-Fastify 在绝对 RPS 上略高（52.7K vs 50.1K），但 Native 的 overhead 远低于 Fastify（4.4% vs 40.1%）。
+
+### Adapter 选择指南
+
+| 你的场景 | 推荐 Adapter | 理由 |
+|---------|-------------|------|
+| 新项目，无历史包袱 | **native**（默认） | 零外部依赖 + 性能最优 |
+| 已有 Fastify 插件生态 | fastify | 可复用 Fastify 插件（如 fastify-multipart） |
+| 已有 Express 中间件 | express | 兼容庞大的 Express 中间件生态 |
+| 已有 Koa 中间件 | koa | 兼容 Koa 中间件 |
+| 需要 Web Standard API | hono | Hono 支持 Request/Response Web API 标准 |
 
 ---
 
@@ -630,9 +685,10 @@ describe('User API', () => {
 │  └───────────────────┘  └──────────────┘    │
 │                    │                         │
 │                    ▼                         │
-│  ┌─── Adapter Layer ─┐                       │
-│  │  Hono (可替换)     │                       │
-│  └───────────────────┘                       │
+│  ┌─── Adapter Layer ─────────────────────┐   │
+│  │  Native (默认) / Fastify / Hono /     │   │
+│  │  Express / Koa  — 可替换              │   │
+│  └───────────────────────────────────────┘   │
 └──────────────────────────────────────────────┘
   │
   ▼
@@ -669,20 +725,24 @@ HTTP 响应 → { code: 0, data: {...} }
 
 ## 🗺️ 路线图
 
-- [x] Adapter 架构（Hono 适配器）
+- [x] Adapter 架构（Native 默认 + Hono / Fastify / Express / Koa 可选）
+- [x] Native Adapter（零外部依赖，`http.createServer` + `find-my-way` radix trie）
 - [x] 约定式路由 + 三段式语法
 - [x] 插件系统（拓扑排序 + 生命周期）
 - [x] 服务自动注入
 - [x] 内置中间件（requestId / CORS / bodyParser / rateLimit / accessLog）
 - [x] 参数校验（schema-dsl 集成）
 - [x] OpenAPI 3.1 文档生成
-- [x] CLI（start / dev / build）
+- [x] CLI（start / dev / build / stop / reload / status）
 - [x] 开发模式热重载（Soft Reload + Cold Restart）
 - [x] 测试工具（createTestApp）
+- [x] Cluster 多进程（Master/Worker + Rolling Restart）
+- [x] 性能基准测试（autocannon 自动化）
+- [x] AsyncLocalStorage 可配置跳过
 - [ ] `vext create` 项目脚手架
-- [ ] 数据库集成（Model 层）
-- [ ] 静态资源服务
-- [ ] 视图模板引擎
+- [ ] 文档站（rspress）
+- [ ] SSE 支持
+- [ ] WebSocket 支持
 
 ---
 

@@ -1,0 +1,198 @@
+/**
+ * MonSQLize 内置插件核心实现
+ *
+ * 负责整个 MonSQLize 生命周期编排：
+ *   1. 读取并校验 database 配置
+ *   2. 构建 MonSQLize 构造函数配置（buildMonSQLizeConfig）
+ *   3. 动态 import monsqlize 包，创建实例
+ *   4. 注册 onClose 钩子（安全模式：先注册再执行 I/O）
+ *   5. 连接数据库（Fail Fast）
+ *   6. 加载 Model 定义（本地 + shared 包）
+ *   7. 挂载 app.db（MonSQLizeConnection）+ app.monsqlize（原始实例）
+ *
+ * 设计原则：
+ *   - 先注册 onClose 再执行 I/O（确保连接异常时也能清理）
+ *   - Fail Fast：配置缺失或连接失败直接抛出，终止启动
+ *   - 动态 import monsqlize（避免未安装时框架启动失败）
+ *   - 日志桥接：将 MonSQLize 日志桥接到 app.logger
+ *
+ * @module lib/plugins/monsqlize/plugin
+ * @see 13-monsqlize-plugin.md §2.3（插件核心实现）
+ */
+
+import { join } from "node:path";
+import type { VextApp } from "../../../types/app.js";
+import type { MonSQLizeDatabaseConfig } from "./types.js";
+import { createConnection } from "./connection.js";
+import { loadModels } from "./model-loader.js";
+
+/**
+ * setupMonSQLize — 插件 setup 入口
+ *
+ * 由内置插件的 setup() 调用，完成 MonSQLize 的完整初始化流程。
+ *
+ * @param app     VextApp 实例（config.database 已可用）
+ * @param srcDir  src/ 目录的绝对路径（用于定位 models/ 目录）
+ * @throws 配置缺失或连接失败时抛出错误（Fail Fast）
+ */
+export async function setupMonSQLize(
+  app: VextApp,
+  srcDir: string,
+): Promise<void> {
+  const config = (app.config as { database?: MonSQLizeDatabaseConfig })
+    .database;
+
+  // ── 配置校验 ──────────────────────────────────────────────
+  if (!config) {
+    throw new Error(
+      '[monsqlize] Missing "database" configuration.\n' +
+        "  Add database config to src/config/default.ts:\n" +
+        "  export default {\n" +
+        "    database: {\n" +
+        '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
+        "    }\n" +
+        "  }",
+    );
+  }
+
+  if (!config.config) {
+    throw new Error(
+      '[monsqlize] Missing "database.config" — at minimum provide { url: "..." }.',
+    );
+  }
+
+  // ── 1. 构建 MonSQLize 配置 ────────────────────────────────
+  const monsqlizeConfig = buildMonSQLizeConfig(config, app);
+
+  // ── 2. 动态 import + 创建 MonSQLize 实例 ──────────────────
+  let MonSQLizeClass: any;
+  try {
+    const mod: any = await import("monsqlize");
+    // 兼容 CJS default export 和 ESM named export
+    MonSQLizeClass = mod.default ?? mod.MonSQLize ?? mod;
+  } catch (err) {
+    throw new Error(
+      "[monsqlize] Failed to import 'monsqlize' package.\n" +
+        `  ${(err as Error).message}\n` +
+        "  Make sure monsqlize is installed: npm install monsqlize",
+    );
+  }
+
+  const monsqlize = new MonSQLizeClass(monsqlizeConfig);
+
+  // ── 3. 先注册 onClose，再执行 I/O（安全模式）──────────────
+  //
+  // 即使 connect() 失败，onClose 也能正确清理半初始化的资源。
+  // monsqlize.close() 内部会检查连接状态，未连接时是 no-op。
+  //
+  app.onClose(async () => {
+    try {
+      await monsqlize.close();
+      app.logger.info("[monsqlize] connection closed");
+    } catch (err) {
+      app.logger.error("[monsqlize] error closing connection", {
+        error: (err as Error).message,
+      });
+    }
+  });
+
+  // ── 4. 连接数据库（Fail Fast）─────────────────────────────
+  const connection = await createConnection(monsqlize, app);
+  app.logger.info("[monsqlize] connected successfully");
+
+  // ── 5. 加载 Model 定义 ────────────────────────────────────
+  await loadModels(monsqlize, config.models, app, srcDir);
+
+  // ── 6. 挂载到 app ─────────────────────────────────────────
+  app.extend("db", connection);
+  app.extend("monsqlize", monsqlize);
+
+  app.logger.info("[monsqlize] plugin ready");
+}
+
+/**
+ * 将 vext database 配置转换为 MonSQLize 构造函数配置
+ *
+ * 映射关系：
+ *   - VextConfig.database.config        → MonSQLize({ config })
+ *   - VextConfig.database.cache         → MonSQLize({ cache })
+ *   - VextConfig.database.pools         → MonSQLize({ pools })
+ *   - VextConfig.database.slowQueryLog  → MonSQLize({ slowQueryLog })
+ *   - VextConfig.database.logger='app'  → 桥接到 app.logger
+ *
+ * @param config  用户的 database 配置
+ * @param app     VextApp 实例（提供 logger 桥接）
+ * @returns MonSQLize 构造函数配置对象
+ */
+function buildMonSQLizeConfig(
+  config: MonSQLizeDatabaseConfig,
+  app: VextApp,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {
+    type: config.type ?? "url",
+    config: config.config,
+    maxTimeMS: config.maxTimeMS ?? 2000,
+    findLimit: config.findLimit ?? 10,
+    findPageMaxLimit: config.findPageMaxLimit ?? 500,
+    slowQueryMs: config.slowQueryMs ?? 500,
+    autoConvertObjectId: config.autoConvertObjectId,
+    namespace: config.namespace ?? { scope: "database" },
+    cursorSecret: config.cursorSecret,
+  };
+
+  // ── 缓存配置 ──────────────────────────────────────────────
+  if (config.cache) {
+    const cacheConfig: Record<string, unknown> = {};
+
+    if (config.cache.memory?.enabled !== false) {
+      cacheConfig.memory = {
+        maxSize: config.cache.memory?.maxSize ?? 1000,
+        ttl: config.cache.memory?.ttl ?? 300,
+      };
+    }
+
+    if (config.cache.redis?.enabled) {
+      cacheConfig.redis = {
+        url: config.cache.redis.url,
+        prefix: config.cache.redis.prefix,
+        ttl: config.cache.redis.ttl,
+      };
+    }
+
+    result.cache = cacheConfig;
+  }
+
+  // ── 多连接池 ──────────────────────────────────────────────
+  if (config.pools && config.pools.length > 0) {
+    result.pools = config.pools;
+    result.poolStrategy = config.poolStrategy ?? "auto";
+  }
+
+  // ── 慢查询日志 ────────────────────────────────────────────
+  if (config.slowQueryLog?.enabled) {
+    result.slowQueryLog = {
+      collection: config.slowQueryLog.collection ?? "_slow_queries",
+    };
+  }
+
+  // ── 日志器（桥接 app.logger）──────────────────────────────
+  if (config.logger !== false) {
+    result.logger = {
+      info: (msg: string, meta?: unknown) =>
+        app.logger.info(`[monsqlize] ${msg}`, meta as Record<string, unknown>),
+      warn: (msg: string, meta?: unknown) =>
+        app.logger.warn(`[monsqlize] ${msg}`, meta as Record<string, unknown>),
+      error: (msg: string, meta?: unknown) =>
+        app.logger.error(`[monsqlize] ${msg}`, meta as Record<string, unknown>),
+      debug: (msg: string, meta?: unknown) =>
+        app.logger.debug(`[monsqlize] ${msg}`, meta as Record<string, unknown>),
+    };
+  }
+
+  // ── 内存数据库（测试用）───────────────────────────────────
+  if (config.useMemoryServer) {
+    result.useMemoryServer = true;
+  }
+
+  return result;
+}

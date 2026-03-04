@@ -24,6 +24,10 @@ import { requestContext } from "../../lib/request-context.js";
  * next: () => Promise<void> 对齐。用户中间件应 await next()
  * 以支持洋葱模型的 after-middleware 逻辑。
  *
+ * 🆕 性能优化：使用递归调度函数替代每请求创建闭包。
+ * dispatch 函数通过参数传递 index，避免在闭包中捕获可变变量，
+ * V8 对固定参数签名的函数有更好的内联优化。
+ *
  * @param chain 中间件执行链（已组装完毕，含全局 + 路由级 + validate + handler）
  * @param req   VextRequest 实例
  * @param res   VextResponse 实例
@@ -33,15 +37,15 @@ async function executeChain(
   req: VextRequest,
   res: VextResponse,
 ): Promise<void> {
-  let index = 0;
+  const len = chain.length;
 
-  const next = async (): Promise<void> => {
-    if (index >= chain.length) return;
-    const middleware = chain[index++]!;
-    await middleware(req, res, next);
-  };
+  async function dispatch(i: number): Promise<void> {
+    if (i >= len) return;
+    const middleware = chain[i]!;
+    await middleware(req, res, () => dispatch(i + 1));
+  }
 
-  await next();
+  await dispatch(0);
 }
 
 /**
@@ -75,6 +79,11 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
   const hono = new Hono();
   const globalMiddlewares: VextMiddleware[] = [];
   let errorHandler: VextErrorMiddleware | null = null;
+  /** 全局中间件是否已冻结（listen/buildHandler 后不再变更） */
+  let _globalFrozen = false;
+
+  // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
+  const alsEnabled = app.config.requestContext?.enabled !== false;
 
   return {
     name: "hono",
@@ -88,6 +97,14 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       // hono.on() 接受方法字符串数组和路径
       const upperMethod = method.toUpperCase();
 
+      // 🆕 性能优化：延迟预组装中间件链
+      //
+      // 注册路由时 globalMiddlewares 尚未完成收集（bootstrap 步骤⑥在步骤⑤之后），
+      // 因此无法在 registerRoute 时预组装。改为在首次请求时组装并缓存。
+      // 后续请求直接复用已组装的链，避免每请求 [...spread] 开销。
+      //
+      let prebuiltChain: VextMiddleware[] | null = null;
+
       hono.on(upperMethod, path, async (c) => {
         const req = createVextRequest(c, app);
         // 创建 ResponseBox 用于捕获 VextResponse 发送方法产生的 Response
@@ -98,41 +115,53 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
         // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
         // 确保 app.throw 等内部方法能通过 requestContext.getStore() 访问请求级数据
-        return requestContext.run(
-          { requestId: "", locale: undefined },
-          async () => {
-            try {
-              // 全局中间件 + 路由级链
-              const fullChain = [...globalMiddlewares, ...chain];
-              await executeChain(fullChain, req, res);
-            } catch (err) {
-              if (errorHandler) {
-                // P2-6 修复：errorHandler 自身抛异常的边界保护
-                // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）
-                // 导致异常传播到 Hono 的 catch，产生非 JSON 的纯文本 500
-                try {
-                  errorHandler(err, req, res);
-                } catch (handlerError) {
-                  try {
-                    res.rawJson(
-                      { code: 500, message: "Internal Server Error" },
-                      500,
-                    );
-                  } catch {
-                    // 完全放弃，让底层框架的 catch 处理
-                    throw handlerError;
-                  }
-                }
-              } else {
-                throw err;
-              }
+        //
+        // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
+        // 直接执行中间件链，预估 +3-8% RPS。
+        //
+        const runChain = async () => {
+          try {
+            // 🆕 预组装中间件链（首次请求时组装，后续复用）
+            if (prebuiltChain === null) {
+              prebuiltChain = globalMiddlewares.concat(chain);
             }
+            await executeChain(prebuiltChain, req, res);
+          } catch (err) {
+            if (errorHandler) {
+              // P2-6 修复：errorHandler 自身抛异常的边界保护
+              // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）
+              // 导致异常传播到 Hono 的 catch，产生非 JSON 的纯文本 500
+              try {
+                errorHandler(err, req, res);
+              } catch (handlerError) {
+                try {
+                  res.rawJson(
+                    { code: 500, message: "Internal Server Error" },
+                    500,
+                  );
+                } catch {
+                  // 完全放弃，让底层框架的 catch 处理
+                  throw handlerError;
+                }
+              }
+            } else {
+              throw err;
+            }
+          }
 
-            // 从 ResponseBox 中获取 VextResponse 发送方法捕获的 Response
-            // 如果 handler 没有调用任何发送方法，返回空的 200 Response 作为兜底
-            return box.value ?? c.body(null);
-          },
-        );
+          // 从 ResponseBox 中获取 VextResponse 发送方法捕获的 Response
+          // 如果 handler 没有调用任何发送方法，返回空的 200 Response 作为兜底
+          return box.value ?? c.body(null);
+        };
+
+        if (alsEnabled) {
+          return requestContext.run(
+            { requestId: "", locale: undefined },
+            runChain,
+          );
+        } else {
+          return runChain();
+        }
       });
     },
 
@@ -155,13 +184,20 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
         const res = createVextResponse(c, () => req.requestId, box);
 
-        await requestContext.run(
-          { requestId: req.requestId, locale: undefined },
-          async () => {
-            const noop = async (): Promise<void> => {};
-            await handler(req, res, noop);
-          },
-        );
+        // 🆕 5.7: ALS 可配置跳过
+        const runNotFound = async () => {
+          const noop = async (): Promise<void> => {};
+          await handler(req, res, noop);
+        };
+
+        if (alsEnabled) {
+          await requestContext.run(
+            { requestId: req.requestId, locale: undefined },
+            runNotFound,
+          );
+        } else {
+          await runNotFound();
+        }
 
         // 从 ResponseBox 获取 notFound handler 生成的 Response
         // 如果 handler 没有发送任何响应，返回默认的 404 JSON

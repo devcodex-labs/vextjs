@@ -89,12 +89,9 @@ export function createBodyParserMiddleware(
 
   return async (req, res, next) => {
     // ── 无 body 方法直接跳过 ────────────────────────────
-    const method = req.method.toUpperCase();
-    if (
-      method === "GET" ||
-      method === "HEAD" ||
-      method === "OPTIONS"
-    ) {
+    // req.method 已由 createVextRequest 保证大写，无需 toUpperCase()
+    const method = req.method;
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
       await next();
       return;
     }

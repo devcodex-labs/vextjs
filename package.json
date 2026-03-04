@@ -30,6 +30,11 @@
       "types": "./dist/adapters/koa/index.d.ts",
       "import": "./dist/adapters/koa/index.js",
       "require": "./dist/adapters/koa/index.js"
+    },
+    "./adapters/native": {
+      "types": "./dist/adapters/native/index.d.ts",
+      "import": "./dist/adapters/native/index.js",
+      "require": "./dist/adapters/native/index.js"
     }
   },
   "bin": {
@@ -46,6 +51,11 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run test/unit",
+    "test:int": "vitest run test/integration",
+    "test:e2e": "vitest run test/e2e",
+    "test:cov": "vitest run --coverage",
+    "test:bench": "node test/benchmark/run-benchmark.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -74,22 +84,49 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@hono/node-server": "^1.14.1",
     "esbuild": "^0.27.3",
-    "express": "^5.2.1",
     "fast-glob": "^3.3.3",
-    "fastify": "^5.7.4",
+    "find-my-way": "^9.5.0",
     "flex-rate-limit": "^1.0.3",
-    "hono": "^4.7.6",
-    "koa": "^3.1.2",
+    "monsqlize": "^1.1.6",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "schema-dsl": "^1.2.2"
   },
+  "peerDependencies": {
+    "@hono/node-server": "^1.14.1",
+    "express": "^5.0.0",
+    "fastify": "^5.0.0",
+    "hono": "^4.0.0",
+    "koa": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hono/node-server": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    },
+    "koa": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@hono/node-server": "^1.14.1",
     "@types/express": "^5.0.6",
     "@types/koa": "^3.0.1",
     "@types/node": "^22.15.17",
+    "autocannon": "^8.0.0",
+    "express": "^5.2.1",
+    "fastify": "^5.7.4",
+    "hono": "^4.7.6",
+    "koa": "^3.1.2",
     "typescript": "^5.8.3",
     "vitest": "^3.1.3"
   }

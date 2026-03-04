@@ -1,0 +1,188 @@
+# ─────────────────────────────────────────────────────────────
+# vextjs Release — Tag Push → Full CI → npm Publish
+#
+# 触发条件：推送 v* 格式的 tag（如 v1.0.0, v0.3.0-beta.1）
+#
+# 流水线结构：
+#   1. CI 验证（typecheck + build + 全量测试）
+#   2. npm publish（仅 CI 通过后执行）
+#   3. GitHub Release 创建（附带 CHANGELOG 摘要）
+#
+# 前置条件：
+#   - npm token 配置为 GitHub Secret: NPM_TOKEN
+#   - package.json 版本号已更新（与 tag 一致）
+#
+# 用法：
+#   git tag v1.0.0
+#   git push origin v1.0.0
+#
+# @see IMPLEMENTATION-PLAN.md 任务 4.7（正式发布）
+# ─────────────────────────────────────────────────────────────
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# 同一 tag 只运行一次
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_ENV: test
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # 1. CI 验证（完整测试套件）
+  # ────────────────────────────────────────────────────────────
+  ci:
+    name: CI Verification
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npx vitest run test/unit --reporter=verbose
+
+      - name: Integration tests
+        run: npx vitest run test/integration --reporter=verbose
+
+      - name: E2E tests (Node 22 only)
+        if: matrix.node-version == 22
+        run: npx vitest run test/e2e --reporter=verbose
+        timeout-minutes: 10
+
+  # ────────────────────────────────────────────────────────────
+  # 2. 版本一致性检查
+  # ────────────────────────────────────────────────────────────
+  version-check:
+    name: Version Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Tag version:     ${TAG_VERSION}"
+          echo "Package version: ${PKG_VERSION}"
+
+          if [[ "${TAG_VERSION}" != "${PKG_VERSION}" ]]; then
+            echo "❌ Version mismatch! Tag v${TAG_VERSION} does not match package.json v${PKG_VERSION}"
+            exit 1
+          fi
+
+          echo "✅ Versions match: v${PKG_VERSION}"
+
+  # ────────────────────────────────────────────────────────────
+  # 3. npm Publish
+  # ────────────────────────────────────────────────────────────
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [ci, version-check]
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify package contents
+        run: |
+          echo "── npm pack (dry run) ──"
+          npm pack --dry-run 2>&1
+
+          echo ""
+          echo "── Package files ──"
+          npm pack --json 2>/dev/null | node -e "
+            const data = require('fs').readFileSync('/dev/stdin', 'utf8');
+            const pkg = JSON.parse(data);
+            if (Array.isArray(pkg)) {
+              const p = pkg[0];
+              console.log('Name:       ', p.name);
+              console.log('Version:    ', p.version);
+              console.log('Size:       ', (p.size / 1024).toFixed(1) + ' kB');
+              console.log('File count: ', p.entryCount);
+            }
+          " || true
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # 判断是否为预发布版本
+          if [[ "${VERSION}" == *"-"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: v${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ## 📦 vextjs v${{ steps.version.outputs.version }}
+
+            ```bash
+            npm install vextjs@${{ steps.version.outputs.version }}
+            ```
+
+            See the full changelog below.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

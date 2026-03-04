@@ -1,10 +1,16 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import cluster from "node:cluster";
 import { loadConfig } from "./config-loader.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
+import { resolveAdapter } from "./adapter-resolver.js";
 import { loadI18n } from "./i18n-loader.js";
 import { loadPlugins } from "./plugin-loader.js";
+import {
+  createMonSQLizePlugin,
+  shouldLoadMonSQLize,
+} from "./plugins/monsqlize/index.js";
 import { loadMiddlewares } from "./middleware-loader.js";
 import { loadServices } from "./service-loader.js";
 import { loadRoutes } from "./router-loader.js";
@@ -87,10 +93,15 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     const config = await loadConfig(join(srcDir, "config"));
 
     // ── 步骤 ①: createApp ─────────────────────────────────
-    // 创建 app + internals（logger / throw / validator / adapter 已初始化）
+    // 创建 app + internals（logger / throw / validator 已初始化，adapter 延迟解析）
     const result = createApp(config);
     const app = result.app;
     internals = result.internals;
+
+    // ── 步骤 ①a: resolveAdapter（异步按需加载）─────────────
+    // 动态 import() 按需加载用户选择的 adapter 框架包。
+    // 默认 native adapter（零外部依赖），其他 adapter 需用户额外安装对应框架。
+    app.adapter = await resolveAdapter(config, app);
 
     app.logger.info("[vextjs] initializing...");
 
@@ -105,6 +116,21 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
           `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
         );
       }
+    }
+
+    // ── 步骤 ①++: 内置插件（MonSQLize）条件加载 ──────────
+    //
+    // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
+    // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
+    // 无 database 配置则完全跳过，零开销。
+    //
+    if (shouldLoadMonSQLize(config as unknown as Record<string, unknown>)) {
+      const monsqlizePlugin = createMonSQLizePlugin(srcDir);
+      app.logger.debug(
+        "[vextjs] built-in plugin: monsqlize (database config detected)",
+      );
+      await monsqlizePlugin.setup(app);
+      app.logger.info("[vextjs] built-in plugin: monsqlize loaded");
     }
 
     // ── 步骤 ②: plugin-loader ─────────────────────────────
@@ -202,7 +228,7 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     // 路由注册后立即锁定，后续调用 app.use() 将抛出错误
     internals.lockUse();
 
-    // ── 步骤 ⑥: 注册内置中间件 ───────────────────────────
+    // ── 步骤 ⑥: 注册内置中间件（条件注册 — 零开销禁用）────
     //
     // 注册顺序决定执行顺序：
     //   1. requestId — 生成/透传请求唯一标识
@@ -212,40 +238,63 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     //   5. response-wrapper — 开启出口包装标志
     //   6. access-log — 洋葱模型 after-middleware（记录耗时/状态码/路径）
     //
+    // 🆕 性能优化：每个中间件仅在 enabled !== false 时注册。
+    // 禁用的中间件完全不进入中间件链，实现真正的零开销（之前是
+    // 函数仍被调用但 fast-return，每请求仍有函数调用 + await next() 开销）。
+    //
     // 这些中间件通过 adapter.registerMiddleware() 注册，
     // 在所有路由（含路由级中间件）之前执行。
 
-    // 1. requestId
-    const requestIdMiddleware = createRequestIdMiddleware(
-      config.requestId,
-      () => internals!.getRequestIdGenerator(),
-    );
-    app.adapter.registerMiddleware(requestIdMiddleware);
+    // 1. requestId（config.requestId.enabled，默认 true）
+    if (config.requestId?.enabled !== false) {
+      const requestIdMiddleware = createRequestIdMiddleware(
+        config.requestId,
+        () => internals!.getRequestIdGenerator(),
+      );
+      app.adapter.registerMiddleware(requestIdMiddleware);
+    }
 
-    // 2. cors
-    const corsMiddleware = createCorsMiddleware(config.cors);
-    app.adapter.registerMiddleware(corsMiddleware);
+    // 2. cors（config.cors.enabled，默认 true）
+    if (config.cors?.enabled !== false) {
+      const corsMiddleware = createCorsMiddleware(config.cors);
+      app.adapter.registerMiddleware(corsMiddleware);
+    }
 
-    // 3. body-parser
-    const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser);
-    app.adapter.registerMiddleware(bodyParserMiddleware);
+    // 3. body-parser（config.bodyParser.enabled，默认 true）
+    if (config.bodyParser?.enabled !== false) {
+      const bodyParserMiddleware = createBodyParserMiddleware(
+        config.bodyParser,
+      );
+      app.adapter.registerMiddleware(bodyParserMiddleware);
+    }
 
-    // 4. rate-limit
-    const rateLimitMiddleware = createRateLimitMiddleware(
-      config.rateLimit,
-      () => internals!.getRateLimiter(),
-    );
-    app.adapter.registerMiddleware(rateLimitMiddleware);
+    // 4. rate-limit（config.rateLimit.enabled，默认 true）
+    if (config.rateLimit?.enabled !== false) {
+      const rateLimitMiddleware = createRateLimitMiddleware(
+        config.rateLimit,
+        () => internals!.getRateLimiter(),
+      );
+      app.adapter.registerMiddleware(rateLimitMiddleware);
+    }
 
-    // 5. response-wrapper（开启出口包装标志）
-    app.adapter.registerMiddleware(responseWrapper);
+    // 5. response-wrapper（config.response.wrap，默认 true）
+    //
+    // 🔴 修复：之前 responseWrapper 始终注册，用户配置 response.wrap: false 无效。
+    // 现在通过 config.response.wrap 控制是否注册，禁用时 res.json() 直接发送
+    // 原始数据，不做 { code: 0, data, requestId } 包装。
+    //
+    if (config.response?.wrap !== false) {
+      app.adapter.registerMiddleware(responseWrapper);
+    }
 
-    // 6. access-log（洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码）
-    const accessLogMiddleware = createAccessLogMiddleware(
-      config.accessLog ?? {},
-      app.logger,
-    );
-    app.adapter.registerMiddleware(accessLogMiddleware);
+    // 6. access-log（config.accessLog.enabled，默认 true）
+    if (config.accessLog?.enabled !== false) {
+      const accessLogMiddleware = createAccessLogMiddleware(
+        config.accessLog ?? {},
+        app.logger,
+      );
+      app.adapter.registerMiddleware(accessLogMiddleware);
+    }
 
     // ── 注册插件全局中间件（app.use() 收集的）─────────────
     // 插件在步骤②中通过 app.use() 注册的全局中间件
@@ -394,6 +443,12 @@ function createNotFoundHandler(): VextMiddleware {
 // 如果是被其他模块 import（如测试、cluster Worker），
 // 则只导出 bootstrap 函数，不自动执行。
 //
+// Cluster 分支：
+//   当 VEXT_MODE='start' 且检测到 cluster 配置启用时：
+//     - cluster.isPrimary → 启动 ClusterMaster（fork Worker 进程）
+//     - cluster.isWorker  → 执行 workerMain（调用 bootstrap 完成启动）
+//   非 cluster 模式时行为不变（直接调用 bootstrap）。
+//
 
 const isDirectRun =
   process.env.VEXT_MODE === "start" || process.env.VEXT_MODE === "dev";
@@ -404,9 +459,178 @@ if (isDirectRun) {
   // 降级使用 process.cwd()
   const rootDir = process.env.VEXT_ROOT || process.cwd();
 
-  bootstrap(rootDir).catch((err) => {
-    console.error("[vextjs] startup failed:");
-    console.error(err);
-    process.exit(1);
+  // ── Cluster 模式检测 ──────────────────────────────────
+  //
+  // Cluster 启用条件（满足其一）：
+  //   1. VEXT_CLUSTER=1 环境变量
+  //   2. config.cluster.enabled = true（需预加载配置检测）
+  //
+  // 对于 isWorker 进程，由 Master fork 时已确定是 cluster 模式，
+  // 直接进入 workerMain（无需再检测配置）。
+  //
+  const isClusterEnv = process.env.VEXT_CLUSTER === "1";
+
+  if (cluster.isWorker) {
+    // ── Worker 进程 ────────────────────────────────────
+    //
+    // Worker 是由 ClusterMaster.forkWorker() 通过 cluster.fork() 创建的。
+    // 执行 workerMain：内部调用 bootstrap() 完成完整启动流程，
+    // 然后注册 IPC 处理器、心跳、指标上报等。
+    //
+    import("./cluster/worker.js")
+      .then(({ workerMain }) => workerMain(rootDir, bootstrap))
+      .catch((err) => {
+        console.error("[vextjs] worker startup failed:");
+        console.error(err);
+        process.exit(1);
+      });
+  } else if (isClusterEnv && cluster.isPrimary) {
+    // ── Master 进程（环境变量触发）─────────────────────
+    //
+    // 通过 VEXT_CLUSTER=1 环境变量触发 cluster 模式。
+    // 启动 ClusterMaster，由 Master 负责 fork Worker 进程。
+    //
+    // Master 不执行 bootstrap（不处理 HTTP 请求），
+    // 仅管理 Worker 生命周期。
+    //
+    startClusterMaster(rootDir).catch((err) => {
+      console.error("[vextjs] cluster master startup failed:");
+      console.error(err);
+      process.exit(1);
+    });
+  } else if (cluster.isPrimary) {
+    // ── 可能需要检测配置中的 cluster.enabled ─────────────
+    //
+    // 没有 VEXT_CLUSTER 环境变量时，尝试预加载配置检测 cluster.enabled。
+    // 这是一个轻量级检测（仅加载配置，不执行完整 bootstrap）。
+    //
+    detectAndStart(rootDir).catch((err) => {
+      console.error("[vextjs] startup failed:");
+      console.error(err);
+      process.exit(1);
+    });
+  } else {
+    // 非 primary 也非 worker（理论上不会到达）
+    bootstrap(rootDir).catch((err) => {
+      console.error("[vextjs] startup failed:");
+      console.error(err);
+      process.exit(1);
+    });
+  }
+}
+
+/**
+ * detectAndStart — 检测配置中的 cluster.enabled 并决定启动方式
+ *
+ * 预加载 config-loader 获取 cluster 配置：
+ *   - cluster.enabled = true → 启动 ClusterMaster
+ *   - 否则 → 直接执行 bootstrap（单进程模式）
+ *
+ * @param rootDir 用户项目根目录
+ */
+async function detectAndStart(rootDir: string): Promise<void> {
+  const isBuilt = process.env.VEXT_BUILT === "1";
+  const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
+
+  try {
+    // 预加载配置（仅用于检测 cluster.enabled）
+    const config = await loadConfig(join(srcDir, "config"));
+
+    const clusterConfig = config.cluster as { enabled?: boolean } | undefined;
+
+    if (clusterConfig?.enabled === true) {
+      // 配置中启用了 cluster → 启动 Master
+      await startClusterMaster(rootDir);
+    } else {
+      // 非 cluster 模式 → 直接 bootstrap
+      await bootstrap(rootDir);
+    }
+  } catch (err) {
+    // 配置加载失败 → 降级为直接 bootstrap（让 bootstrap 内部报错）
+    console.warn(
+      `[vextjs] config pre-load failed, falling back to single process: ${(err as Error).message}`,
+    );
+    await bootstrap(rootDir);
+  }
+}
+
+/**
+ * startClusterMaster — 启动 Cluster Master 进程
+ *
+ * 创建 ClusterMaster 实例并调用 start()。
+ * Master 不执行 bootstrap，只负责 fork 和管理 Worker 进程。
+ *
+ * 配置读取：
+ *   从 config-loader 加载配置，提取 cluster 部分传给 ClusterMaster。
+ *   同时将 rootDir 和构建标志通过 cluster.setupPrimary() 传递给 Worker。
+ *
+ * @param rootDir 用户项目根目录
+ */
+async function startClusterMaster(rootDir: string): Promise<void> {
+  const isBuilt = process.env.VEXT_BUILT === "1";
+  const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
+
+  // 加载配置
+  const config = await loadConfig(join(srcDir, "config"));
+  const clusterConfig = (config.cluster ?? {}) as Record<string, unknown>;
+
+  // 动态导入 ClusterMaster（避免非 cluster 场景加载 node:cluster 相关模块）
+  const { ClusterMaster, resolveWorkerCount } =
+    await import("./cluster/index.js");
+
+  // 计算 Worker 数量（传给 Worker 进程用于 cluster-checks）
+  const workers = (clusterConfig.workers ?? "auto") as
+    | "auto"
+    | "auto-1"
+    | number;
+  const workerCount = resolveWorkerCount(workers);
+
+  // 解析实际入口文件（与 cli/start.ts 中 resolveEntryFile 逻辑一致）
+  // Worker 进程直接运行 bootstrap.ts/bootstrap.js
+  const entryFile = isBuilt
+    ? join(rootDir, "node_modules", "vextjs", "dist", "lib", "bootstrap.js")
+    : join(rootDir, "node_modules", "vextjs", "dist", "lib", "bootstrap.js");
+
+  // 配置 cluster.setupPrimary — 设置 Worker 进程的执行参数
+  const execArgv: string[] = [];
+  if (!isBuilt && existsSync(join(rootDir, "tsconfig.json"))) {
+    execArgv.push("--import", "tsx/esm");
+  }
+
+  cluster.setupPrimary({
+    exec: entryFile,
+    execArgv,
   });
+
+  // 设置 Worker 继承的环境变量
+  // cluster.fork(env) 会在 forkWorker 中设置，
+  // 这里通过 process.env 设置 Worker 继承的全局变量
+  process.env.VEXT_ROOT = rootDir;
+  process.env.VEXT_WORKER_COUNT = String(workerCount);
+  if (isBuilt) {
+    process.env.VEXT_BUILT = "1";
+  }
+
+  // 传递 CLI 覆盖参数（--port / --host）
+  // 这些已经在 process.env 中（由 cli/start.ts 设置）
+
+  // 创建并启动 Master
+  const master = new ClusterMaster({
+    workers,
+    autoRestart: (clusterConfig.autoRestart as boolean | undefined) ?? true,
+    maxRestarts: (clusterConfig.maxRestarts as number | undefined) ?? 5,
+    restartWindow:
+      (clusterConfig.restartWindow as number | undefined) ?? 60_000,
+    restartBaseDelay:
+      (clusterConfig.restartBaseDelay as number | undefined) ?? 1_000,
+    restartMaxDelay:
+      (clusterConfig.restartMaxDelay as number | undefined) ?? 30_000,
+    healthCheck: (clusterConfig.healthCheck ?? {}) as Record<string, unknown>,
+    reload: (clusterConfig.reload ?? {}) as Record<string, unknown>,
+    pidFile: (clusterConfig.pidFile as string) ?? ".vext.pid",
+    titlePrefix: (clusterConfig.titlePrefix as string) ?? "vext",
+    sticky: (clusterConfig.sticky as "none" | "ip") ?? "none",
+  });
+
+  await master.start();
 }

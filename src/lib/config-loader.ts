@@ -238,7 +238,7 @@ function validateConfig(config: Record<string, unknown>): void {
   // ── adapter（字符串标识 | 工厂函数）──────────────────
   const adapter = config["adapter"];
   if (adapter !== undefined) {
-    const knownAdapters = ["hono", "fastify", "express", "koa"];
+    const knownAdapters = ["hono", "fastify", "express", "koa", "native"];
     if (typeof adapter === "string") {
       if (!knownAdapters.includes(adapter)) {
         throw new Error(
@@ -455,6 +455,24 @@ function validateConfig(config: Record<string, unknown>): void {
       typeof openapi["enabled"] !== "boolean"
     ) {
       throw new Error("[vextjs] config.openapi.enabled must be a boolean.");
+    }
+  }
+
+  // ── requestContext ────────────────────────────────────
+  const requestContext = config["requestContext"] as
+    | Record<string, unknown>
+    | undefined;
+  if (requestContext !== undefined) {
+    if (typeof requestContext !== "object" || requestContext === null) {
+      throw new Error("[vextjs] config.requestContext must be an object.");
+    }
+    if (
+      requestContext["enabled"] !== undefined &&
+      typeof requestContext["enabled"] !== "boolean"
+    ) {
+      throw new Error(
+        "[vextjs] config.requestContext.enabled must be a boolean.",
+      );
     }
   }
 }

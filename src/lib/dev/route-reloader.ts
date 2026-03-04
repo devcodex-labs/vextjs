@@ -134,11 +134,12 @@ export type MiddlewareRegistry = Record<string, MiddlewareRegistryEntry>;
  * Adapter 解析函数类型
  *
  * 与 adapter-resolver.ts 的 resolveAdapter 签名兼容。
+ * v2.4 变更：返回 Promise（resolveAdapter 改为异步动态 import）。
  */
 export type AdapterResolver = (
   config: Record<string, unknown>,
   app: RouteReloaderApp,
-) => RouteReloaderAdapter;
+) => Promise<RouteReloaderAdapter>;
 
 /**
  * 路由加载函数类型
@@ -331,10 +332,10 @@ export async function reloadRoutes(
   // ── 1. 创建全新的 adapter 实例 ────────────────────────
   //
   // 这样路由注册表是干净的，且与生产环境走同一条代码路径。
-  // resolveAdapter 根据 config.adapter 配置（默认 'hono'）
-  // 创建对应的 adapter 实例。
+  // resolveAdapter 根据 config.adapter 配置（默认 'native'）
+  // 创建对应的 adapter 实例（异步动态 import 按需加载）。
   //
-  const freshAdapter = resolveAdapterFn(
+  const freshAdapter = await resolveAdapterFn(
     app.config as Record<string, unknown>,
     app,
   );

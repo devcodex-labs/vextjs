@@ -3,6 +3,9 @@
 import { startCommand } from "./start.js";
 import { devCommand } from "./dev.js";
 import { buildCommand } from "./build.js";
+import { stopCommand } from "./stop.js";
+import { reloadCommand } from "./reload.js";
+import { statusCommand } from "./status.js";
 
 /**
  * vext CLI — 框架命令行入口（Phase 1）
@@ -41,6 +44,9 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   start: startCommand,
   dev: devCommand,
   build: buildCommand,
+  stop: stopCommand,
+  reload: reloadCommand,
+  status: statusCommand,
 };
 
 // ── 未实现命令占位 ──────────────────────────────────────────
@@ -126,6 +132,9 @@ function printHelp(): void {
     start                 Start the application in production mode
     dev                   Start with hot reload (development mode)
     build                 Build the application for production
+    stop                  Stop the running server (cluster mode)
+    reload                Trigger zero-downtime rolling restart (cluster mode)
+    status                Show server status (cluster mode)
 
   Coming soon:
     create <name>         Create a new vext project
@@ -136,6 +145,9 @@ function printHelp(): void {
 
   Command options:
     vext start --help     Show start command options
+    vext stop --help      Show stop command options
+    vext reload --help    Show reload command options
+    vext status --help    Show status command options
 
   Examples:
     $ vext start

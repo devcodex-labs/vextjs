@@ -17,6 +17,7 @@
 
 import { createApp, DEFAULT_CONFIG } from "../lib/app.js";
 import type { AppInternals } from "../lib/app.js";
+import { resolveAdapter } from "../lib/adapter-resolver.js";
 import { loadPlugins } from "../lib/plugin-loader.js";
 import { loadMiddlewares } from "../lib/middleware-loader.js";
 import type { MiddlewareRegistry } from "../lib/middleware-loader.js";
@@ -28,11 +29,7 @@ import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
 import { _deepMerge } from "../lib/config-loader.js";
-import type {
-  VextApp,
-  VextConfig,
-  VextServices,
-} from "../types/app.js";
+import type { VextApp, VextConfig, VextServices } from "../types/app.js";
 import type { VextMiddleware } from "../types/middleware.js";
 
 import { Readable } from "node:stream";
@@ -278,6 +275,9 @@ export async function createTestApp(
 
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
+
+  // ── 2a. resolveAdapter（异步按需加载）─────────────────
+  app.adapter = await resolveAdapter(finalConfig, app);
 
   // ── 3. 插件 ──────────────────────────────────────────
   if (setupPluginsFn) {
@@ -631,10 +631,7 @@ function executeRequest(
 
       // 拦截 write
       const originalWrite = mockRes.write.bind(mockRes);
-      (mockRes as any).write = function (
-        chunk: any,
-        ...args: any[]
-      ): boolean {
+      (mockRes as any).write = function (chunk: any, ...args: any[]): boolean {
         if (chunk) {
           if (Buffer.isBuffer(chunk)) {
             responseChunks.push(chunk);

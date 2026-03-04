@@ -43,6 +43,7 @@ export type {
   VextOpenAPIConfig,
   VextBodyParserConfig,
   VextAccessLogConfig,
+  VextClusterConfig,
   RouteOptions,
   RouteRecord,
   RouteDocsConfig,
@@ -151,6 +152,16 @@ export {
 // 插件定义辅助函数
 export { definePlugin } from "./types/plugin.js";
 
+// 内置 MonSQLize 插件（开箱即用）
+export {
+  createMonSQLizePlugin,
+  shouldLoadMonSQLize,
+} from "./lib/plugins/monsqlize/index.js";
+export type {
+  MonSQLizeConnection,
+  MonSQLizeDatabaseConfig,
+} from "./lib/plugins/monsqlize/index.js";
+
 // 路由定义辅助函数
 export { defineRoutes } from "./lib/define-routes.js";
 
@@ -174,6 +185,40 @@ export type { ProjectInfo } from "./cli/utils/detect-project.js";
 // createApp（高级用法，通常用户不直接调用）
 export { createApp, DEFAULT_CONFIG } from "./lib/app.js";
 export type { AppInternals } from "./lib/app.js";
+
+// Cluster 多进程管理
+export {
+  ClusterMaster,
+  DEFAULT_CLUSTER_CONFIG,
+  workerMain,
+  resolveWorkerCount,
+  writePidFile,
+  readPidFile,
+  removePidFile,
+  isProcessAlive,
+  DEFAULT_PID_FILE,
+  checkClusterCompatibility,
+} from "./lib/cluster/index.js";
+export type {
+  ClusterMasterConfig,
+  ClusterMasterEvents,
+  WorkerConfig,
+  PidFileResult,
+  ClusterCheckResult,
+  WorkerToMasterMessage,
+  WorkerReadyMessage,
+  WorkerHeartbeatMessage,
+  WorkerMetricsMessage,
+  WorkerRequestRestartMessage,
+  MasterToWorkerMessage,
+  MasterSetTitleMessage,
+  MasterShutdownMessage,
+  MasterHealthCheckMessage,
+  MasterBroadcastMessage,
+  WorkerMeta,
+  WorkerMetrics,
+  WorkerState,
+} from "./lib/cluster/index.js";
 
 // 请求上下文（高级用法，插件可能需要访问）
 export { requestContext } from "./lib/request-context.js";

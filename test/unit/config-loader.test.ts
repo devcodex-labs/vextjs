@@ -530,4 +530,42 @@ describe("validateConfig", () => {
       );
     });
   });
+
+  // ── requestContext ──────────────────────────────────────
+
+  describe("requestContext validation", () => {
+    it("accepts valid requestContext config (enabled: true)", () => {
+      expect(() =>
+        _validateConfig({ requestContext: { enabled: true } }),
+      ).not.toThrow();
+    });
+
+    it("accepts valid requestContext config (enabled: false)", () => {
+      expect(() =>
+        _validateConfig({ requestContext: { enabled: false } }),
+      ).not.toThrow();
+    });
+
+    it("accepts requestContext without enabled field", () => {
+      expect(() => _validateConfig({ requestContext: {} })).not.toThrow();
+    });
+
+    it("rejects non-object requestContext", () => {
+      expect(() => _validateConfig({ requestContext: "true" })).toThrow(
+        "config.requestContext must be an object",
+      );
+    });
+
+    it("rejects non-boolean enabled", () => {
+      expect(() =>
+        _validateConfig({ requestContext: { enabled: "true" } }),
+      ).toThrow("config.requestContext.enabled must be a boolean");
+    });
+
+    it("rejects null requestContext", () => {
+      expect(() => _validateConfig({ requestContext: null })).toThrow(
+        "config.requestContext must be an object",
+      );
+    });
+  });
 });

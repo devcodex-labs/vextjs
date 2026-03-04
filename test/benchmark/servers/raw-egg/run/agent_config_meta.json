@@ -1,0 +1,229 @@
+{
+  "keys": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+  "cluster": {
+    "listen": {
+      "port": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+      "hostname": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+      "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    }
+  },
+  "logger": {
+    "level": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "consoleLevel": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "disableConsoleAfterReady": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "dir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "encoding": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "env": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "outputJSON": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "buffer": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "appLogName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "coreLogName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "agentLogName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "errorLogName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "coreLogger": {
+      "consoleLevel": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.local.js"
+    },
+    "allowDebugAtProd": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "enablePerformanceTimer": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "enableFastContextLogger": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "security": {
+    "csrf": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+      "type": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "ignoreJSON": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "useSession": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "cookieName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "sessionName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "headerName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "bodyName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "queryName": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "rotateWhenInvalid": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "supportedRequests": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "refererWhiteList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "cookieOptions": {
+        "signed": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+      }
+    },
+    "domainWhiteList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "protocolWhiteList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+    "defaultMiddleware": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+    "xframe": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "value": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "hsts": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.local.js",
+      "maxAge": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "includeSubdomains": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "dta": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "methodnoallow": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "noopen": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "nosniff": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "referrerPolicy": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "value": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "xssProtection": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "value": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "csp": {
+      "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "policy": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    },
+    "ssrf": {
+      "ipBlackList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "ipExceptionList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "hostnameExceptionList": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js",
+      "checkAddress": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+    }
+  },
+  "bodyParser": {
+    "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "encoding": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "formLimit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "jsonLimit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "textLimit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "strict": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "queryString": {
+      "arrayLimit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "depth": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "parameterLimit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "onerror": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "i18n": {
+    "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "static": {
+    "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "siteFile": {
+    "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "/favicon.ico": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "cacheControl": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "middleware": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+  "timing": {
+    "match": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "requestId": {
+    "match": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "auth": {
+    "match": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "watcher": {
+    "type": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "logrotator": {
+    "filesRotateBySize": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js",
+    "filesRotateByHour": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\config.default.js"
+  },
+  "helper": {
+    "shtml": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security\\config\\config.default.js"
+  },
+  "jsonp": {
+    "limit": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-jsonp\\config\\config.default.js",
+    "callback": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-jsonp\\config\\config.default.js",
+    "csrf": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-jsonp\\config\\config.default.js"
+  },
+  "onerror": {
+    "errorPageUrl": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror\\config\\config.default.js",
+    "appErrorFilter": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror\\config\\config.default.js",
+    "templatePath": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror\\config\\config.default.js"
+  },
+  "env": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "name": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "cookies": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "proxy": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "maxIpsCount": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "maxProxyCount": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "protocolHeaders": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "ipHeaders": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "hostHeaders": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "pkg": {
+    "name": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "version": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "private": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "description": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "scripts": {
+      "start": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "stop": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "dev": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "egg": {
+      "framework": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "dependencies": {
+      "egg": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "egg-scripts": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "through": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "devDependencies": {
+      "egg-bin": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    }
+  },
+  "baseDir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "HOME": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "rundir": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "dump": {
+    "ignore": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "timing": {
+      "slowBootActionMinDuration": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    }
+  },
+  "confusedConfigurations": {
+    "bodyparser": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "notFound": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "sitefile": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "middlewares": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "httpClient": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "notfound": {
+    "pageUrl": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "httpclient": {
+    "enableDNSCache": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "dnsCacheLookupInterval": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "dnsCacheMaxLength": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "request": {
+      "timeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "httpAgent": {
+      "keepAlive": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "freeSocketTimeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "maxSockets": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "maxFreeSockets": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "httpsAgent": {
+      "keepAlive": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "freeSocketTimeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "maxSockets": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+      "maxFreeSockets": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+    },
+    "useHttpClientNext": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "meta": {
+    "enable": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "logging": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "coreMiddleware": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "workerStartTimeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "serverTimeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+  "clusterClient": {
+    "maxWaitTime": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js",
+    "responseTimeout": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+  },
+  "onClientError": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\config.default.js"
+}

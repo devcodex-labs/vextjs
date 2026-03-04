@@ -1,0 +1,259 @@
+import type { IncomingMessage } from "node:http";
+import type { VextRequest } from "../../types/request.js";
+import type { VextApp } from "../../types/app.js";
+
+/**
+ * 预解析的 URL 信息（由 adapter.ts handleRequest 传入，避免重复解析）
+ *
+ * handleRequest 在路由匹配前已执行 indexOf('?') 分割 URL，
+ * 将结果传入 createVextRequest，消除 request.ts 中的冗余解析。
+ */
+export interface ParsedUrl {
+  /** 原始 URL（含 query string），如 /users?page=1 */
+  rawUrl: string;
+  /** 路径部分（不含 query string），如 /users */
+  path: string;
+  /** 原始 query string（不含 ?），如 page=1；无 query 时为空字符串 */
+  queryString: string;
+}
+
+/**
+ * Native Request → VextRequest 转换
+ *
+ * 直接从 Node.js IncomingMessage 构造 VextRequest，零第三方框架开销。
+ * 这是 Native Adapter 的核心性能优势之一：跳过 Fastify/Koa/Express 等
+ * 框架的请求对象包装层，直接操作原生对象。
+ *
+ * 转换要点：
+ *   - query: 懒解析（首次访问时从 URL 解析，结果缓存）
+ *   - body: 由 body-parser 中间件后续填充（初始 undefined）
+ *   - params: 由 find-my-way 路由匹配后外部注入
+ *   - headers: 直接使用 IncomingMessage.headers（key 全小写，Node.js 保证）
+ *   - requestId: 由 requestId 中间件后续填充（初始空字符串）
+ *   - ip: 根据 trustProxy 配置决定从 X-Forwarded-For 或 socket 读取
+ *   - protocol: 根据 trustProxy 配置决定从 X-Forwarded-Proto 或默认值读取
+ *   - onClose: 注册请求关闭钩子，连接断开时触发（通过 req.on('close')）
+ *   - valid: 获取 validate 中间件校验后的数据
+ *   - _getRawBody: 从 IncomingMessage 读取原始 body（Buffer）转为字符串，
+ *     供 vext body-parser 中间件使用
+ *
+ * 性能优化：
+ *   - query 使用 getter + 缓存，GET /json 等无 query 场景零开销
+ *   - path 仅做一次 indexOf('?') 分割，避免 new URL() 的完整解析开销
+ *   - headers 直接引用 IncomingMessage.headers，无拷贝
+ *   - _getRawBody 使用 Buffer 拼接 + 缓存，多次调用返回同一字符串
+ *
+ * 与 Fastify Adapter 的差异：
+ *   - Fastify: 通过 Fastify 的 request 对象间接访问（已预解析 query/params）
+ *   - Native: 直接操作 IncomingMessage，手动解析（但可懒解析跳过不需要的字段）
+ *   - Native 省去了 Fastify 框架本身的对象包装开销
+ *
+ * @param incoming   Node.js IncomingMessage 原始请求对象
+ * @param app        VextApp 实例
+ * @param params     路由参数（由 find-my-way 匹配结果提供）
+ * @param parsedUrl  预解析的 URL 信息（由 handleRequest 传入，避免重复 indexOf('?')）
+ * @returns VextRequest 实例（含 _getRawBody 内部方法供 body-parser 使用）
+ *
+ * @see adapters/fastify/request.ts（Fastify Adapter 对应实现）
+ * @see adapters/hono/request.ts（Hono Adapter 对应实现）
+ */
+export function createVextRequest(
+  incoming: IncomingMessage,
+  app: VextApp,
+  params: Record<string, string>,
+  parsedUrl: ParsedUrl,
+): VextRequest {
+  const trustProxy = app.config.trustProxy ?? false;
+  let closeHandlers: Array<() => void> | null = null;
+
+  // ── 使用预解析的 URL 信息（P2 优化：消除重复 URL 解析）──
+  //
+  // handleRequest 在路由匹配前已执行 indexOf('?') 分割 URL，
+  // 直接使用传入的结果，避免 request.ts 中的冗余解析。
+  //
+  const { rawUrl, path: urlPath, queryString: rawQueryString } = parsedUrl;
+
+  // ── query 懒解析（对象字面量 getter + 缓存）─────────────
+  //
+  // P1 优化：使用对象字面量的 get query() 替代 Object.defineProperty。
+  // Object.defineProperty 会破坏 V8 Hidden Class 优化（对象进入慢属性模式），
+  // 对象字面量 getter 在对象创建时即确定形状，V8 可保持快速属性模式。
+  //
+  // 大量场景（如 GET /json）不需要 query 参数。
+  // 使用 getter + 缓存实现懒解析，首次访问时从 URL 解析，结果缓存。
+  //
+  let _queryCache: Record<string, string> | undefined;
+
+  // ── 缓存原始请求体（body-parser 用）───────────────────────
+  //
+  // 直接从 IncomingMessage 读取 body 数据流。
+  // 使用 Buffer 拼接所有 chunk，最终转为 UTF-8 字符串。
+  // 缓存结果确保多次调用返回相同字符串。
+  //
+  // 对于 GET/HEAD 等无 body 方法，IncomingMessage 不会产生 data 事件，
+  // 直接返回空字符串。
+  //
+  let _rawBodyPromise: Promise<string> | undefined;
+
+  function getRawBody(): Promise<string> {
+    if (_rawBodyPromise !== undefined) return _rawBodyPromise;
+
+    _rawBodyPromise = new Promise<string>((resolve, reject) => {
+      // 对于无 body 方法，快速返回空字符串
+      const method = incoming.method?.toUpperCase();
+      if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+        resolve("");
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+
+      incoming.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      incoming.on("end", () => {
+        if (chunks.length === 0) {
+          resolve("");
+          return;
+        }
+
+        resolve(Buffer.concat(chunks).toString("utf-8"));
+      });
+
+      incoming.on("error", (err) => {
+        reject(err);
+      });
+    });
+
+    return _rawBodyPromise;
+  }
+
+  // ── 解析 IP ──────────────────────────────────────────────
+  //
+  // trustProxy = true 时，从 X-Forwarded-For 请求头读取第一个 IP。
+  // trustProxy = false 时，从底层 socket 的 remoteAddress 读取。
+  //
+  let ip: string;
+  if (trustProxy) {
+    const xff = incoming.headers["x-forwarded-for"];
+    if (typeof xff === "string") {
+      const firstIp = xff.split(",")[0];
+      ip = firstIp
+        ? firstIp.trim()
+        : (incoming.socket.remoteAddress ?? "127.0.0.1");
+    } else if (Array.isArray(xff) && xff.length > 0) {
+      const firstEntry = xff[0];
+      const firstIp = firstEntry ? firstEntry.split(",")[0] : undefined;
+      ip = firstIp
+        ? firstIp.trim()
+        : (incoming.socket.remoteAddress ?? "127.0.0.1");
+    } else {
+      ip = incoming.socket.remoteAddress ?? "127.0.0.1";
+    }
+  } else {
+    ip = incoming.socket.remoteAddress ?? "127.0.0.1";
+  }
+
+  // ── 解析 Protocol ────────────────────────────────────────
+  //
+  // trustProxy = true 时，从 X-Forwarded-Proto 请求头读取。
+  // trustProxy = false 时，检查 socket 是否为 TLS 加密连接。
+  //
+  let protocol: "http" | "https";
+  if (trustProxy) {
+    const proto = incoming.headers["x-forwarded-proto"];
+    protocol = proto === "https" ? "https" : "http";
+  } else {
+    const encrypted = (incoming.socket as unknown as Record<string, unknown>)
+      ?.encrypted;
+    protocol = encrypted ? "https" : "http";
+  }
+
+  // ── 构造 VextRequest 对象 ────────────────────────────────
+  //
+  // P1 优化：使用对象字面量 getter 替代 Object.defineProperty。
+  // 对象形状在创建时即确定，V8 可保持快速属性模式（Hidden Class 优化）。
+  //
+
+  const req: VextRequest = {
+    // ── 原始数据 ────────────────────────────────────────
+    // P1 优化：query 使用对象字面量 getter（替代 Object.defineProperty）
+    get query(): Record<string, string> {
+      if (_queryCache !== undefined) return _queryCache;
+
+      if (!rawQueryString) {
+        _queryCache = {};
+        return _queryCache;
+      }
+
+      // 使用 URLSearchParams 解析（比手动 split 更健壮，处理编码等边界情况）
+      const searchParams = new URLSearchParams(rawQueryString);
+      const result: Record<string, string> = {};
+      for (const [key, value] of searchParams) {
+        result[key] = value;
+      }
+      _queryCache = result;
+      return _queryCache;
+    },
+    body: undefined, // body-parser 中间件负责填充
+    params,
+    headers: incoming.headers as Record<string, string | undefined>,
+    method: (incoming.method ?? "GET").toUpperCase(),
+    url: rawUrl,
+    path: urlPath,
+
+    // ── 元信息 ──────────────────────────────────────────
+    app,
+    requestId: "", // requestId 中间件负责填充
+    ip,
+    protocol,
+
+    // ── 生命周期 ────────────────────────────────────────
+    // P4 优化：懒初始化 closeHandlers + 懒注册 'close' 事件监听
+    onClose(handler: () => void): void {
+      if (closeHandlers === null) {
+        closeHandlers = [];
+        // 仅在首次调用 onClose 时注册 'close' 事件监听器
+        // 大多数请求不调用 onClose，避免每请求都注册 listener 的开销
+        incoming.on("close", () => {
+          if (closeHandlers) {
+            for (const h of closeHandlers) {
+              try {
+                h();
+              } catch {
+                // onClose handler 异常不应影响其他 handler
+              }
+            }
+            closeHandlers = null;
+          }
+        });
+      }
+      closeHandlers.push(handler);
+    },
+
+    // ── 校验数据 ────────────────────────────────────────
+    //
+    // validate 中间件将校验后的数据存储在 req._validated_<location> 上。
+    // valid() 方法从对应的 key 中读取数据返回。
+    //
+    valid<T = Record<string, any>>(
+      location: "query" | "body" | "param" | "header",
+    ): T {
+      return (req as Record<string, any>)[`_validated_${location}`] as T;
+    },
+
+    // ── 内部方法（body-parser 中间件使用）───────────────────
+    //
+    // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
+    // 从 IncomingMessage 数据流读取原始 body 并转为 string，
+    // 供 body-parser 中间件解析。
+    //
+    _getRawBody: getRawBody,
+  };
+
+  // P1 优化：已在对象字面量中使用 get query() 替代 Object.defineProperty
+  // P4 优化：onClose 'close' 事件监听已改为懒注册（仅调用 onClose 时才注册）
+
+  return req;
+}

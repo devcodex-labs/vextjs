@@ -20,10 +20,10 @@
  * @see IMPLEMENTATION-PLAN.md 任务 1.7
  */
 
-import pino from 'pino'
-import type { Logger as PinoLogger } from 'pino'
-import { requestContext } from './request-context.js'
-import type { VextLogger, VextLoggerConfig } from '../types/app.js'
+import pino from "pino";
+import type { Logger as PinoLogger } from "pino";
+import { requestContext } from "./request-context.js";
+import type { VextLogger, VextLoggerConfig } from "../types/app.js";
 
 // ── pino → VextLogger 适配 ──────────────────────────────────
 
@@ -39,31 +39,31 @@ import type { VextLogger, VextLoggerConfig } from '../types/app.js'
 function wrapPinoAsVextLogger(pinoInstance: PinoLogger): VextLogger {
   const logger: VextLogger = {
     info(...args: unknown[]) {
-      ;(pinoInstance.info as (...a: unknown[]) => void)(...args)
+      (pinoInstance.info as (...a: unknown[]) => void)(...args);
     },
 
     warn(...args: unknown[]) {
-      ;(pinoInstance.warn as (...a: unknown[]) => void)(...args)
+      (pinoInstance.warn as (...a: unknown[]) => void)(...args);
     },
 
     error(...args: unknown[]) {
-      ;(pinoInstance.error as (...a: unknown[]) => void)(...args)
+      (pinoInstance.error as (...a: unknown[]) => void)(...args);
     },
 
     debug(...args: unknown[]) {
-      ;(pinoInstance.debug as (...a: unknown[]) => void)(...args)
+      (pinoInstance.debug as (...a: unknown[]) => void)(...args);
     },
 
     fatal(...args: unknown[]) {
-      ;(pinoInstance.fatal as (...a: unknown[]) => void)(...args)
+      (pinoInstance.fatal as (...a: unknown[]) => void)(...args);
     },
 
     child(bindings: Record<string, unknown>): VextLogger {
-      return wrapPinoAsVextLogger(pinoInstance.child(bindings))
+      return wrapPinoAsVextLogger(pinoInstance.child(bindings));
     },
-  }
+  };
 
-  return logger
+  return logger;
 }
 
 // ── 工厂函数 ────────────────────────────────────────────────
@@ -92,11 +92,20 @@ function wrapPinoAsVextLogger(pinoInstance: PinoLogger): VextLogger {
  * logger.child({ service: 'UserService' }).info('创建用户')
  * ```
  */
-export function createLogger(config: VextLoggerConfig = {}): VextLogger {
-  const level = config.level ?? 'info'
-  const pretty = config.pretty ?? (process.env['NODE_ENV'] !== 'production')
+export function createLogger(
+  config: VextLoggerConfig = {},
+  options?: { requestContextEnabled?: boolean },
+): VextLogger {
+  const level = config.level ?? "info";
+  const pretty = config.pretty ?? process.env["NODE_ENV"] !== "production";
+  const alsEnabled = options?.requestContextEnabled !== false;
 
   // ── pino 配置 ──────────────────────────────────────────
+
+  // 🆕 性能优化：预分配空对象常量，避免每条日志都创建新的 {} 对象。
+  // pino mixin 在每条日志写入前调用，非请求上下文的日志（如启动日志）
+  // 会频繁走到 "无 requestId" 分支，复用常量减少 GC 压力。
+  const EMPTY_MIXIN: Record<string, unknown> = {};
 
   const pinoOptions: pino.LoggerOptions = {
     level,
@@ -111,22 +120,29 @@ export function createLogger(config: VextLoggerConfig = {}): VextLogger {
      *   - 并发安全（每个请求有独立的 AsyncLocalStorage store）
      *
      * 当 store 不存在时（非请求上下文，如启动日志），不注入 requestId。
+     *
+     * 🆕 性能优化：无 requestId 时返回预分配的空对象常量（EMPTY_MIXIN），
+     * 避免每条日志创建新对象。pino 内部不会修改 mixin 返回值，复用安全。
      */
     mixin() {
-      const store = requestContext.getStore()
+      // 🆕 5.7: ALS 禁用时跳过 requestContext.getStore() 调用，
+      // 直接返回空对象（避免无意义的 ALS 查找开销）
+      if (!alsEnabled) return EMPTY_MIXIN;
+
+      const store = requestContext.getStore();
       if (store?.requestId) {
-        return { requestId: store.requestId }
+        return { requestId: store.requestId };
       }
-      return {}
+      return EMPTY_MIXIN;
     },
 
     // 时间戳格式：ISO 8601（pino 默认是 epoch ms，改为人类可读格式）
     timestamp: pino.stdTimeFunctions.isoTime,
-  }
+  };
 
   // ── transport 配置（pretty 模式）──────────────────────
 
-  let pinoInstance: PinoLogger
+  let pinoInstance: PinoLogger;
 
   if (pretty) {
     // pino-pretty 作为 pino 内置 transport（pino v7+ 支持）
@@ -134,18 +150,18 @@ export function createLogger(config: VextLoggerConfig = {}): VextLogger {
     pinoInstance = pino({
       ...pinoOptions,
       transport: {
-        target: 'pino-pretty',
+        target: "pino-pretty",
         options: {
           colorize: true,
-          translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-          ignore: 'pid,hostname',
+          translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+          ignore: "pid,hostname",
         },
       },
-    })
+    });
   } else {
     // 生产环境：纯 JSON 输出，适合日志收集系统（ELK、Datadog 等）
-    pinoInstance = pino(pinoOptions)
+    pinoInstance = pino(pinoOptions);
   }
 
-  return wrapPinoAsVextLogger(pinoInstance)
+  return wrapPinoAsVextLogger(pinoInstance);
 }
