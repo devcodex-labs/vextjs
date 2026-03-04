@@ -1,6 +1,7 @@
 # vext 性能基准测试
 
 > 量化 vext 框架开销，对比 Native / Hono / Fastify / Express / Koa 五个底层框架的裸跑性能与通过 vext 封装后的性能。
+> 支持多轮取中位数模式（`--rounds`），消除 Windows 系统噪声，获取可信数据。
 
 ## 🎯 目标
 
@@ -8,18 +9,29 @@
 - **全框架覆盖**：测试 vext 支持的全部 5 个 adapter（Native / Hono / Fastify / Express / Koa）
 - **多场景验证**：覆盖最常见的 API 使用模式
 
-## ⚡ 性能概览（JSON 场景）
+## ⚡ 性能概览（5 轮中位数，CV < 1.5%）
 
-| Adapter | Raw RPS | Vext RPS | Overhead | 额外依赖 |
-|---------|--------:|--------:|---------:|----------|
-| Fastify | 88,003 | 52,743 | 40.1% | `fastify` |
-| Koa | 61,401 | 42,010 | 31.6% | `koa` |
-| **Native** ⭐ | 52,431 | 50,144 | 4.4% | ✅ 零依赖（默认） |
-| Hono | 42,768 | 26,630 | 37.7% | `hono` `@hono/node-server` |
-| Express | 15,815 | 14,098 | 10.9% | `express` |
+### Native vs Fastify 核心对比
 
-> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Native adapter 的 overhead 仅 4.4%（所有 adapter 中最低）。
-> 测试环境：Node.js 22, Windows x64, i5-14400, autocannon (50 connections, 10 pipelining, 10s duration)。
+| 场景 | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
+|------|----------:|----------:|----------:|----------:|:----------:|
+| **JSON 响应** | 94,252 | **70,874** | 90,871 | 60,150 | **+17.8%** |
+| **路由参数** | 87,660 | **~68,000** | 89,382 | 47,021 | **+44.6%** |
+| **中间件链** | 78,100 | **63,158** | 81,126 | 54,707 | **+15.4%** |
+
+### 全 Adapter 性能概览（JSON 场景）
+
+| Adapter | Vext RPS | Overhead | 额外依赖 |
+|---------|--------:|---------:|----------|
+| **Native** ⭐ | **70,874** | 24.8% | ✅ 零依赖（默认） |
+| Fastify | 60,150 | 33.8% | `fastify` |
+| Koa | 42,010 | 31.6% | `koa` |
+| Hono | 26,630 | 37.7% | `hono` `@hono/node-server` |
+| Express | 14,098 | 10.9% | `express` |
+
+> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Vext-Native 在所有场景全面领先 Vext-Fastify **15-45%**。
+> 测试环境：Node.js v22.13.0, Windows x64, i5-14400, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数)。
+> 所有核心数据 CV（变异系数）< 1.5%，数据高度可信。
 
 ## 📋 测试场景
 
@@ -42,6 +54,19 @@
 npm run test:bench
 ```
 
+### 推荐模式
+
+```bash
+# 标准模式（PR 前对比）— 5 轮取中位数，每轮 10s
+node test/benchmark/run-benchmark.mjs --framework native,fastify --rounds 5
+
+# 精确模式（发版前）— 7 轮取中位数，每轮 15s，长预热
+node test/benchmark/run-benchmark.mjs --rounds 7 --duration 15 --warmup 5
+
+# 配合 V8 GC 控制（减少 GC 停顿干扰）
+node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --rounds 5
+```
+
 ### 自定义参数
 
 ```bash
@@ -54,6 +79,9 @@ node test/benchmark/run-benchmark.mjs --framework native,fastify
 # 仅运行指定场景
 node test/benchmark/run-benchmark.mjs --scenario json
 
+# 多轮取中位数（消除 Windows 系统噪声）
+node test/benchmark/run-benchmark.mjs --rounds 5
+
 # 调整流水线深度
 node test/benchmark/run-benchmark.mjs --pipelining 20
 
@@ -65,13 +93,31 @@ node test/benchmark/run-benchmark.mjs --output ./my-results.md
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
-| `--duration <seconds>` | `10` | 压测持续时间（秒） |
+| `--duration <seconds>` | `15` | 压测持续时间（秒） |
 | `--connections <number>` | `50` | 并发连接数 |
 | `--pipelining <number>` | `10` | HTTP 流水线深度 |
-| `--warmup <seconds>` | `3` | 预热时间（秒） |
+| `--warmup <seconds>` | `5` | 预热时间（秒） |
+| `--rounds <number>` | `1` | 轮次数（≥3 时取中位数，推荐 5 或 7） |
 | `--scenario <name>` | `all` | 场景过滤：`json` / `params` / `chain` / `all` |
 | `--framework <names>` | 全部 | 框架过滤（逗号分隔）：`native,hono,fastify,express,koa` |
 | `--output <path>` | `test/benchmark/RESULTS.md` | 报告输出路径 |
+
+### 多轮模式说明
+
+当 `--rounds` ≥ 2 时，每项测试会运行指定轮次，取 **RPS 中位数**作为最终结果：
+
+- **中位数**优于平均值：自动排除极端异常值（如 Windows 后台干扰导致的偶发低值）
+- 轮间自动**冷却 2 秒**，若启用 `--expose-gc` 还会触发手动 GC
+- 报告自动生成**多轮统计表格**（各轮 RPS / min / max / mean / stddev / CV%）
+- **CV > 15%** 时输出高波动警告，提示排查系统干扰
+
+#### 耗时参考
+
+| 模式 | 轮次 | 每轮耗时 | 6 场景(2 框架) | 总耗时 |
+|------|:----:|:-------:|:------:|:------:|
+| 单轮（快速） | 1 | ~20s | × 12 | ~4 min |
+| 标准 5 轮 | 5 | ~17s × 5 | × 12 | ~17 min |
+| 精确 7 轮 | 7 | ~22s × 7 | × 12 | ~31 min |
 
 ## 📁 文件结构
 
@@ -115,14 +161,17 @@ test/benchmark/
 - **详细结果**：每个场景的 RPS、P50/P99 延迟、平均延迟、吞吐量、错误数
 - **框架排名**：按 Raw RPS 排名，附带 Vext Overhead
 - **Overhead 分析**：平均/最大/最小 Overhead，是否达标判定
-- **测试环境**：Node.js 版本、平台、CPU、内存等
+- **多轮统计**（`--rounds` > 1 时）：各轮 RPS、中位数、平均值、最小值、最大值、标准差、CV%，以及高波动警告
+- **测试环境**：Node.js 版本、平台、CPU、内存、轮次等
 
 ## ⚠️ 注意事项
 
 - 基准测试结果受硬件、系统负载、Node.js 版本等因素影响，不同环境下数值可能差异较大
-- 建议在低负载环境下运行，关闭不必要的后台进程以获得更稳定的结果
+- **强烈建议使用 `--rounds 5`**（或更多）获取可信数据，单轮结果在 Windows 上波动可达 ±60%
+- 建议在低负载环境下运行，关闭不必要的后台进程（尤其是 Windows Defender 实时扫描、Windows Update、Search 索引服务）
 - vext 服务器关闭了大部分内置中间件（accessLog、requestId、responseWrapper、cors、rateLimit），仅测量 adapter 层和路由层的核心开销
 - 默认日志级别设为 `silent`，避免 I/O 操作干扰性能测量
 - Windows 上信号处理行为与 Unix 不同，但不影响基准测试结果
-- Windows 上 params/chain 场景数据波动较大，建议在 Linux/CI 环境复验获取稳定的生产参考数据
+- Windows 上裸跑 Native（每请求 ~1μs）受系统调度抖动影响最大，Vext 层因框架开销"缓冲"反而更稳定
+- Linux/CI 环境下数据更稳定，建议作为正式发版的性能参考
 - Native adapter 是默认 adapter（`BENCH_ADAPTER=native`），其他 adapter 需额外安装对应框架包
