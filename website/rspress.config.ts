@@ -3,6 +3,7 @@ import { defineConfig } from "rspress/config";
 
 export default defineConfig({
   root: path.join(__dirname, "docs"),
+  base: "/vext/",
   title: "VextJS",
   description:
     "一个现代化的 Node.js Web 框架，开箱即用，专为构建高性能 RESTful API 而设计。",

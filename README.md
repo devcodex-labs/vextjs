@@ -513,19 +513,19 @@ export default {
     level: 'info',        // 'debug' | 'info' | 'warn' | 'error' | 'silent'
   },
   cors: {
-    origin: '*',
+    origins: ['*'],       // 允许的来源列表（数组格式）
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   },
   bodyParser: {
-    jsonLimit: '1mb',
+    maxBodySize: '1mb',
   },
   rateLimit: {
     max: 100,             // 每个窗口期最大请求数
-    window: '1m',         // 窗口期时长
+    window: 60,           // 窗口期时长（秒，数字）
   },
   requestId: {
     enabled: true,
-    headerName: 'X-Request-Id',
+    header: 'X-Request-Id',
   },
   response: {
     hideInternalErrors: true,   // 生产环境隐藏内部错误详情
@@ -538,7 +538,7 @@ export default {
     },
   },
   shutdown: {
-    timeout: 10000,       // 优雅关闭超时（毫秒）
+    timeout: 10,          // 优雅关闭超时（秒）
   },
 }
 ```
@@ -752,8 +752,8 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] 性能基准测试（autocannon 自动化 + 多轮取中位数）
 - [x] AsyncLocalStorage 可配置跳过
 - [x] Native Adapter 性能优化（Overhead 降至 ~20%，领先 Fastify 15-45%）
-- [ ] `vext create` 项目脚手架
-- [ ] 文档站（rspress）
+- [x] `vext create` 项目脚手架
+- [x] 文档站（rspress）
 - [ ] SSE 支持
 - [ ] WebSocket 支持
 
