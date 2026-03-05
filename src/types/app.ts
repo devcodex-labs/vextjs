@@ -18,7 +18,8 @@ import type { VextMiddleware } from "./middleware.js";
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface VextServices {
-  [key: string]: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 /**
@@ -548,19 +549,21 @@ export interface VextApp {
    *
    * @param status       HTTP 状态码（400/401/403/404/409/500…）
    * @param message      错误描述（同时作为 i18n key 查找）
-   * @param paramsOrCode i18n 插值参数对象 或 业务错误码（number）
+   * @param paramsOrCode i18n 插值参数对象 或 业务错误码（number | string）
    * @param code         业务错误码（当第三参数为 params 对象时使用）
    *
    * @example app.throw(404, 'user.not_found')
    * @example app.throw(400, '邮箱已注册', 10001)
+   * @example app.throw(401, '缺少认证令牌', 'UNAUTHORIZED')
    * @example app.throw(400, 'balance.insufficient', { balance: 50 })
    * @example app.throw(400, 'balance.insufficient', { balance: 50 }, 20001)
+   * @example app.throw(400, 'balance.insufficient', { balance: 50 }, 'INSUFFICIENT_BALANCE')
    */
   throw(
     status: number,
     message: string,
-    paramsOrCode?: Record<string, unknown> | number,
-    code?: number,
+    paramsOrCode?: Record<string, unknown> | number | string,
+    code?: number | string,
   ): never;
 
   // ── 运行时数据（不可覆盖）─────────────────────────────

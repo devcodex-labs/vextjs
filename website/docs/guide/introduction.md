@@ -92,7 +92,7 @@ export default definePlugin({
   async setup(app) {
     // 在 app 上注册能力
     const cache = new Map();
-    app.decorate('cache', {
+    app.extend('cache', {
       get: (key: string) => cache.get(key),
       set: (key: string, value: unknown, ttl?: number) => {
         cache.set(key, value);

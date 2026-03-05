@@ -1,4 +1,4 @@
-import type { VextApp } from './app.js'
+import type { VextApp } from "./app.js";
 
 /**
  * VextPlugin — 框架插件接口
@@ -38,7 +38,7 @@ export interface VextPlugin {
    * 用于日志、错误信息和依赖声明。
    * 同名插件后加载的会覆盖先加载的（用于替换内置实现）。
    */
-  readonly name: string
+  readonly name: string;
 
   /**
    * 依赖的其他插件名称列表
@@ -50,7 +50,7 @@ export interface VextPlugin {
    * @example
    * dependencies: ['database']  // 确保 database 插件先初始化
    */
-  readonly dependencies?: string[]
+  readonly dependencies?: string[];
 
   /**
    * 插件初始化函数
@@ -62,7 +62,53 @@ export interface VextPlugin {
    *
    * @param app 应用实例（此时 app.use() 可用，app.services 尚未注入）
    */
-  setup(app: VextApp): Promise<void> | void
+  setup(app: VextApp): Promise<void> | void;
+
+  /**
+   * 就绪钩子（可选）— HTTP 监听后执行
+   *
+   * 在所有插件加载完成、HTTP 开始监听之后触发。
+   * plugin-loader 在 setup() 完成后自动将此钩子注册到 app.onReady()。
+   * 适合：预热缓存、检查外部依赖、打印启动信息。
+   *
+   * 等价于在 setup() 中调用 app.onReady(() => ...)，
+   * 但语义更清晰，与 setup/onClose 形成完整的生命周期三件套。
+   *
+   * @param app 应用实例
+   *
+   * @example
+   * export default definePlugin({
+   *   name: 'my-plugin',
+   *   async setup(app) { ... },
+   *   async onReady(app) {
+   *     app.logger.info('Plugin is ready!')
+   *   },
+   * })
+   */
+  onReady?(app: VextApp): Promise<void> | void;
+
+  /**
+   * 关闭钩子（可选）— 优雅关闭时执行（LIFO 顺序）
+   *
+   * SIGTERM/SIGINT 信号触发时，按注册的逆序执行。
+   * plugin-loader 在 setup() 完成后自动将此钩子注册到 app.onClose()。
+   * 适合：关闭数据库连接、刷新日志缓冲区、取消定时任务。
+   *
+   * 等价于在 setup() 中调用 app.onClose(() => ...)，
+   * 但语义更清晰，生命周期意图更明确。
+   *
+   * @param app 应用实例
+   *
+   * @example
+   * export default definePlugin({
+   *   name: 'my-plugin',
+   *   async setup(app) { ... },
+   *   async onClose(app) {
+   *     await app.db.disconnect()
+   *   },
+   * })
+   */
+  onClose?(app: VextApp): Promise<void> | void;
 }
 
 /**
@@ -87,5 +133,5 @@ export interface VextPlugin {
  * })
  */
 export function definePlugin(plugin: VextPlugin): VextPlugin {
-  return plugin
+  return plugin;
 }

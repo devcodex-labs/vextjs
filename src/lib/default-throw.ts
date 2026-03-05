@@ -23,9 +23,9 @@
  * @see IMPLEMENTATION-PLAN.md 任务 1.8
  */
 
-import { HttpError } from '../types/errors.js'
-import { requestContext } from './request-context.js'
-import { schemaAdapter } from './schema-adapter.js'
+import { HttpError } from "../types/errors.js";
+import { requestContext } from "./request-context.js";
+import { schemaAdapter } from "./schema-adapter.js";
 
 /**
  * VextThrowFn — app.throw 的函数签名
@@ -35,14 +35,14 @@ import { schemaAdapter } from './schema-adapter.js'
  *   - app.throw(status, message, params?, code?)     — i18n key + 插值参数 + 可选业务码
  */
 export type VextThrowFn = {
-  (status: number, message: string, code?: number): never
+  (status: number, message: string, code?: number | string): never;
   (
     status: number,
     message: string,
-    params?: Record<string, unknown> | number,
-    code?: number,
-  ): never
-}
+    params?: Record<string, unknown> | number | string,
+    code?: number | string,
+  ): never;
+};
 
 /**
  * 创建默认的 app.throw 实现
@@ -80,27 +80,25 @@ export function createDefaultThrow(): VextThrowFn {
   const defaultThrow = (
     status: number,
     message: string,
-    paramsOrCode?: Record<string, unknown> | number,
-    code?: number,
+    paramsOrCode?: Record<string, unknown> | number | string,
+    code?: number | string,
   ): never => {
     // ── 智能参数识别 ──────────────────────────────────────
     //
     //   第三参数 paramsOrCode 自动判断类型：
     //     - number → 业务错误码（code）
+    //     - string → 业务错误码（code），如 'UNAUTHORIZED'
     //     - object → i18n 插值参数（params），第四参数为 code
     //     - undefined / null → 无额外参数
     //
-    let params: Record<string, unknown> = {}
-    let bizCodeArg: number | undefined
+    let params: Record<string, unknown> = {};
+    let bizCodeArg: number | string | undefined;
 
-    if (typeof paramsOrCode === 'number') {
-      bizCodeArg = paramsOrCode
-    } else if (
-      typeof paramsOrCode === 'object' &&
-      paramsOrCode !== null
-    ) {
-      params = paramsOrCode
-      bizCodeArg = code
+    if (typeof paramsOrCode === "number" || typeof paramsOrCode === "string") {
+      bizCodeArg = paramsOrCode;
+    } else if (typeof paramsOrCode === "object" && paramsOrCode !== null) {
+      params = paramsOrCode;
+      bizCodeArg = code;
     }
 
     // ── 从请求上下文获取 locale（线程安全，避免全局竞态）──
@@ -112,8 +110,8 @@ export function createDefaultThrow(): VextThrowFn {
     //   正确做法：从 AsyncLocalStorage（requestContext）读取当前请求的 locale，
     //   并将其显式传给 I18nError.create() 的第 4 个参数。
     //
-    const store = requestContext.getStore()
-    const locale = store?.locale // 由请求级中间件写入（见 06b-error.md §1.7）
+    const store = requestContext.getStore();
+    const locale = store?.locale; // 由请求级中间件写入（见 06b-error.md §1.7）
 
     // ── 核心流程 ──────────────────────────────────────────
     //
@@ -137,7 +135,7 @@ export function createDefaultThrow(): VextThrowFn {
       params,
       status,
       locale,
-    )
+    );
 
     // 业务错误码优先级：用户显式传入 > locale 配置中的 code > undefined
     //
@@ -146,17 +144,17 @@ export function createDefaultThrow(): VextThrowFn {
     //   - i18nErr.code === i18nErr.originalKey → 无独立 code 配置（code 等于 key 本身）
     const localeCode =
       i18nErr.code !== i18nErr.originalKey
-        ? Number(i18nErr.code) || undefined // locale 配置中定义了 code
-        : undefined // code 等于 key 本身，说明无独立 code 配置
+        ? Number(i18nErr.code) || i18nErr.code || undefined // locale 配置中定义了 code（number 或 string）
+        : undefined; // code 等于 key 本身，说明无独立 code 配置
 
-    const finalCode = bizCodeArg ?? localeCode
+    const finalCode = bizCodeArg ?? localeCode;
 
     throw new HttpError(
       i18nErr.statusCode ?? status,
       i18nErr.message ?? message,
       finalCode,
-    )
-  }
+    );
+  };
 
-  return defaultThrow as VextThrowFn
+  return defaultThrow as VextThrowFn;
 }

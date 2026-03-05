@@ -29,8 +29,8 @@ export class HttpError extends Error {
     public readonly status: number,
     /** 错误描述 */
     message: string,
-    /** 业务错误码（可选；不传则 code = status） */
-    public readonly code?: number,
+    /** 业务错误码（可选；不传则 code = status；支持 number 或 string） */
+    public readonly code?: number | string,
   ) {
     super(message);
 

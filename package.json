@@ -8,10 +8,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
       "import": "./dist/index.js"
     },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
+      "require": "./dist/testing/index.cjs",
       "import": "./dist/testing/index.js"
     },
     "./adapters/hono": {
@@ -40,12 +42,15 @@
   },
   "files": [
     "dist",
+    "scripts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-cjs.mjs",
+    "build:esm": "tsc",
+    "build:cjs": "node scripts/build-cjs.mjs",
     "dev": "tsc --watch",
     "lint": "eslint src/",
     "test": "vitest run",
@@ -56,7 +61,7 @@
     "test:cov": "vitest run --coverage",
     "test:bench": "node test/benchmark/run-benchmark.mjs",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build:esm && npm run build:cjs"
   },
   "keywords": [
     "vext",

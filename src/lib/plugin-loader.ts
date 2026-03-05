@@ -460,6 +460,21 @@ async function executeSetupWithTimeout(
           clearTimeout(timer);
           timer = undefined;
         }
+
+        // ── 自动注册插件级生命周期钩子（onReady / onClose）──
+        //
+        // 插件可以在对象上声明 onReady / onClose 可选方法，
+        // plugin-loader 在 setup() 成功完成后自动将它们注册到 app 的生命周期。
+        // 这等价于在 setup() 内手动调用 app.onReady(() => ...) / app.onClose(() => ...)，
+        // 但语义更清晰，与 setup 形成完整的生命周期三件套。
+        //
+        if (typeof plugin.onReady === "function") {
+          app.onReady(() => plugin.onReady!(app));
+        }
+        if (typeof plugin.onClose === "function") {
+          app.onClose(() => plugin.onClose!(app));
+        }
+
         return result;
       }),
 
