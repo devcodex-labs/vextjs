@@ -5,8 +5,10 @@
 #
 # 流水线结构：
 #   1. CI 验证（typecheck + build + 全量测试）
-#   2. npm publish（仅 CI 通过后执行）
-#   3. GitHub Release 创建（附带 CHANGELOG 摘要）
+#   2. 版本一致性检查
+#   3. 文档站构建验证（rspress build — 构建失败则阻断发版）
+#   4. npm publish（仅 CI + docs-build 通过后执行）
+#   5. GitHub Release 创建（附带 CHANGELOG 摘要）
 #
 # 前置条件：
 #   - npm token 配置为 GitHub Secret: NPM_TOKEN
@@ -104,12 +106,42 @@ jobs:
           echo "✅ Versions match: v${PKG_VERSION}"
 
   # ────────────────────────────────────────────────────────────
-  # 3. npm Publish
+  # 3. 文档站构建验证
+  # ────────────────────────────────────────────────────────────
+  docs-build:
+    name: Build Docs (Gate)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build docs (rspress build)
+        working-directory: website
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+  # ────────────────────────────────────────────────────────────
+  # 4. npm Publish
   # ────────────────────────────────────────────────────────────
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    needs: [ci, version-check]
+    needs: [ci, version-check, docs-build]
 
     permissions:
       contents: write
