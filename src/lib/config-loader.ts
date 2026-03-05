@@ -324,10 +324,7 @@ function validateConfig(config: Record<string, unknown>): void {
         );
       }
     }
-    if (
-      cluster.enabled !== undefined &&
-      typeof cluster.enabled !== "boolean"
-    ) {
+    if (cluster.enabled !== undefined && typeof cluster.enabled !== "boolean") {
       throw new Error("[vextjs] config.cluster.enabled must be a boolean.");
     }
   }
@@ -338,10 +335,7 @@ function validateConfig(config: Record<string, unknown>): void {
     if (typeof locale !== "object" || locale === null) {
       throw new Error("[vextjs] config.locale must be an object.");
     }
-    if (
-      locale.default !== undefined &&
-      typeof locale.default !== "string"
-    ) {
+    if (locale.default !== undefined && typeof locale.default !== "string") {
       throw new Error(
         `[vextjs] config.locale.default must be a string (e.g. "zh-CN"), got: ${typeof locale.default}`,
       );
@@ -385,10 +379,7 @@ function validateConfig(config: Record<string, unknown>): void {
         );
       }
     }
-    if (
-      logger.pretty !== undefined &&
-      typeof logger.pretty !== "boolean"
-    ) {
+    if (logger.pretty !== undefined && typeof logger.pretty !== "boolean") {
       throw new Error("[vextjs] config.logger.pretty must be a boolean.");
     }
   }
@@ -450,10 +441,7 @@ function validateConfig(config: Record<string, unknown>): void {
     if (typeof openapi !== "object" || openapi === null) {
       throw new Error("[vextjs] config.openapi must be an object.");
     }
-    if (
-      openapi.enabled !== undefined &&
-      typeof openapi.enabled !== "boolean"
-    ) {
+    if (openapi.enabled !== undefined && typeof openapi.enabled !== "boolean") {
       throw new Error("[vextjs] config.openapi.enabled must be a boolean.");
     }
   }
@@ -552,6 +540,23 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
     DEFAULT_CONFIG as unknown as Record<string, unknown>,
     userDefaultConfig,
   );
+
+  // ── 1c. 手动合并用户 default.ts 中的 middlewares ────────
+  //
+  // deepMerge 会跳过 middlewares 键（由 patchMiddlewares 专门处理 env/local 覆盖），
+  // 但用户的 config/default.ts 中声明的 middlewares 是基础白名单，应直接替换
+  // DEFAULT_CONFIG.middlewares（空数组）。否则用户声明的路由级中间件永远不会被加载。
+  //
+  // 🐛 修复：BUG-004 — middlewares 在 deepMerge(DEFAULT_CONFIG, userDefaultConfig) 中被跳过，
+  //    导致 loadMiddlewares 收到空数组，路由引用中间件时报 "not registered"。
+  //
+  if (
+    userDefaultConfig.middlewares &&
+    Array.isArray(userDefaultConfig.middlewares)
+  ) {
+    (defaultConfig as Record<string, unknown>).middlewares =
+      userDefaultConfig.middlewares;
+  }
 
   // ── 2. 加载环境文件（可选）──────────────────────────────
   const env = process.env.NODE_ENV || "development";

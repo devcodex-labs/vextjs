@@ -152,6 +152,29 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     // 加载完成后执行循环依赖静态检测（正则 + DFS）
     await loadServices(app, join(srcDir, "services"));
 
+    // ── 步骤 ④+: 挂载 app.fetch（在 loadRoutes 之前）─────
+    //
+    // 🐛 修复 BUG-005：app.fetch 必须在 loadRoutes 之前赋值。
+    // 原因：executeRouteFactory 会将 app 的属性拷贝到 collector 代理对象，
+    // 路由 handler 闭包中的 `app` 实际是 collector。如果 app.fetch 在
+    // loadRoutes 之后才赋值，collector.fetch 为 undefined，导致路由中
+    // 调用 app.fetch() 时报 "app.fetch is not a function"。
+    //
+    const fetchConfig = (config as Record<string, unknown>).fetch as
+      | {
+          timeout?: number;
+          retry?: number;
+          retryDelay?: number;
+          propagateHeaders?: string[];
+        }
+      | undefined;
+    const requestIdHeader = config.requestId?.header ?? "x-request-id";
+    app.fetch = createVextFetch(
+      app.logger,
+      fetchConfig ?? {},
+      requestIdHeader,
+    ) as unknown as VextApp["fetch"];
+
     // ── 步骤 ⑤: router-loader ────────────────────────────
     // 扫描 src/routes/，解析路由级中间件引用，注册到 adapter
     //
@@ -309,23 +332,6 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
 
     const notFoundHandler = createNotFoundHandler();
     app.adapter.registerNotFound(notFoundHandler);
-
-    // ── 挂载 app.fetch ───────────────────────────────────
-    // 封装 Node.js 内置 fetch，自动传播 requestId + 结构化日志
-    const fetchConfig = (config as Record<string, unknown>).fetch as
-      | {
-          timeout?: number;
-          retry?: number;
-          retryDelay?: number;
-          propagateHeaders?: string[];
-        }
-      | undefined;
-    const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    app.fetch = createVextFetch(
-      app.logger,
-      fetchConfig ?? {},
-      requestIdHeader,
-    ) as unknown as VextApp["fetch"];
 
     // ── 步骤 ⑦: HTTP 开始监听 ────────────────────────────
     serverHandle = await app.adapter.listen(config.port, config.host);
