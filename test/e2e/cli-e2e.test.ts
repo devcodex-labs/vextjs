@@ -598,13 +598,13 @@ describe("E2E: CLI help and version", () => {
     expect(result.stderr).toContain("Unknown command");
   });
 
-  it("'create' command shows coming soon message", async () => {
+  it("'create' command without project name shows error", async () => {
     const result = await runProcess("node", [CLI_ENTRY, "create"], {
       timeout: 10_000,
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("not yet available");
+    expect(result.stderr).toContain("Project name is required");
   });
 });
 

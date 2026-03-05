@@ -8,33 +8,31 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
-      "import": "./dist/testing/index.js",
-      "require": "./dist/testing/index.js"
+      "import": "./dist/testing/index.js"
+    },
+    "./adapters/hono": {
+      "types": "./dist/adapters/hono/index.d.ts",
+      "import": "./dist/adapters/hono/index.js"
     },
     "./adapters/fastify": {
       "types": "./dist/adapters/fastify/index.d.ts",
-      "import": "./dist/adapters/fastify/index.js",
-      "require": "./dist/adapters/fastify/index.js"
+      "import": "./dist/adapters/fastify/index.js"
     },
     "./adapters/express": {
       "types": "./dist/adapters/express/index.d.ts",
-      "import": "./dist/adapters/express/index.js",
-      "require": "./dist/adapters/express/index.js"
+      "import": "./dist/adapters/express/index.js"
     },
     "./adapters/koa": {
       "types": "./dist/adapters/koa/index.d.ts",
-      "import": "./dist/adapters/koa/index.js",
-      "require": "./dist/adapters/koa/index.js"
+      "import": "./dist/adapters/koa/index.js"
     },
     "./adapters/native": {
       "types": "./dist/adapters/native/index.d.ts",
-      "import": "./dist/adapters/native/index.js",
-      "require": "./dist/adapters/native/index.js"
+      "import": "./dist/adapters/native/index.js"
     }
   },
   "bin": {
@@ -43,6 +41,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -60,13 +59,18 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "vext",
     "framework",
     "web",
+    "server",
+    "http",
     "rest",
     "api",
     "adapter",
+    "middleware",
     "plugin",
-    "hono",
+    "cluster",
+    "hot-reload",
     "typescript",
     "node"
   ],
