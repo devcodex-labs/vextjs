@@ -108,19 +108,13 @@ export interface VextFetch {
 interface FetchConfig {
   timeout?: number;
   retry?: number;
-  retryDelay?: number;
+  retryDelay?: number | ((attempt: number) => number);
   propagateHeaders?: string[];
 }
 
 // ── 幂等方法集合（用于判断是否可重试）─────────────────────────
 
-const IDEMPOTENT_METHODS = new Set([
-  "GET",
-  "HEAD",
-  "OPTIONS",
-  "PUT",
-  "DELETE",
-]);
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
 
 // ── 核心实现 ────────────────────────────────────────────────
 
@@ -167,25 +161,34 @@ export function createVextFetch(
     if (propagate) {
       const store = requestContext.getStore();
 
-      // 注入 requestId
+      // ── 1a. 注入 requestId ────────────────────────────
       if (store?.requestId && !headers.has(requestIdHeader)) {
         headers.set(requestIdHeader, store.requestId);
       }
 
-      // 传播自定义头
-      // 从当前请求的 requestContext 中无法获取原始请求头，
-      // propagateHeaders 的值需由用户在 init.headers 中手动设置，
-      // 或通过 create() 的 defaultHeaders 传递。
-      // 此处处理 init.propagateHeaders 配置的声明式传播。
-      const extraHeaders =
-        init?.propagateHeaders ?? globalPropagateHeaders;
-      // 预留：未来可从 requestContext 扩展字段中读取
-      void extraHeaders;
+      // ── 1b. 透传 propagatedHeaders ───────────────────
+      // store.propagatedHeaders 由 request-id 中间件在入站请求阶段
+      // 从原始请求头中捕获并写入（根据 config.fetch.propagateHeaders 列表）。
+      // 此处从 store 中读取并注入到出站请求头，实现"入站头 → 出站头"完整透传链路。
+      //
+      // 优先级：init.headers 手动设置 > store.propagatedHeaders（不覆盖用户显式设置的头）
+      //
+      // 单次请求可通过 init.propagateHeaders 指定额外透传头（已在入站阶段写入 store，
+      // 但仅当 request-id 中间件的 propagateHeaderNames 包含该头时才有值）。
+      // 如需透传未在全局配置中声明的头，直接在 init.headers 中手动设置即可。
+      if (store?.propagatedHeaders) {
+        for (const [key, value] of Object.entries(store.propagatedHeaders)) {
+          if (!headers.has(key)) {
+            headers.set(key, value);
+          }
+        }
+      }
     }
 
     // ── 2. 确定重试配置 ──────────────────────────────────
-    const maxRetries =
-      IDEMPOTENT_METHODS.has(method) ? (init?.retry ?? globalRetry) : 0;
+    const maxRetries = IDEMPOTENT_METHODS.has(method)
+      ? (init?.retry ?? globalRetry)
+      : 0;
     const retryDelay = init?.retryDelay ?? globalRetryDelay;
 
     // ── 3. 执行请求（含重试循环）────────────────────────
@@ -195,9 +198,7 @@ export function createVextFetch(
       // 重试等待（首次请求不等待）
       if (attempt > 0) {
         const delay =
-          typeof retryDelay === "function"
-            ? retryDelay(attempt)
-            : retryDelay;
+          typeof retryDelay === "function" ? retryDelay(attempt) : retryDelay;
         await sleep(delay);
 
         logger.debug(
@@ -372,11 +373,7 @@ export function createVextFetch(
     };
 
     // 创建子 VextFetch（递归使用 createVextFetch）
-    const child = createVextFetch(
-      logger,
-      childFetchConfig,
-      requestIdHeader,
-    );
+    const child = createVextFetch(logger, childFetchConfig, requestIdHeader);
 
     // 包装：自动拼接 baseURL + 合并默认 headers
     const baseURL = options.baseURL.replace(/\/+$/, "");
@@ -404,11 +401,7 @@ export function createVextFetch(
     wrappedFetch.get = (url: string, init?: VextFetchInit) =>
       wrappedFetch(url, { ...init, method: "GET" });
 
-    wrappedFetch.post = (
-      url: string,
-      body?: unknown,
-      init?: VextFetchInit,
-    ) =>
+    wrappedFetch.post = (url: string, body?: unknown, init?: VextFetchInit) =>
       wrappedFetch(url, {
         ...init,
         method: "POST",
@@ -419,11 +412,7 @@ export function createVextFetch(
         },
       });
 
-    wrappedFetch.put = (
-      url: string,
-      body?: unknown,
-      init?: VextFetchInit,
-    ) =>
+    wrappedFetch.put = (url: string, body?: unknown, init?: VextFetchInit) =>
       wrappedFetch(url, {
         ...init,
         method: "PUT",
@@ -434,11 +423,7 @@ export function createVextFetch(
         },
       });
 
-    wrappedFetch.patch = (
-      url: string,
-      body?: unknown,
-      init?: VextFetchInit,
-    ) =>
+    wrappedFetch.patch = (url: string, body?: unknown, init?: VextFetchInit) =>
       wrappedFetch(url, {
         ...init,
         method: "PATCH",

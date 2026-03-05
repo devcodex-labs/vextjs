@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * 请求上下文存储（Request-scoped Store）
@@ -31,12 +31,13 @@ import { AsyncLocalStorage } from 'node:async_hooks'
  * 请求上下文存储的数据结构
  *
  * 各字段由不同的中间件在请求生命周期中写入：
- *   - requestId: requestId 中间件（步骤①）
- *   - locale: i18n 中间件或 Accept-Language 解析（步骤①+）
+ *   - requestId:          requestId 中间件（步骤①）
+ *   - locale:             i18n 中间件或 Accept-Language 解析（步骤①+）
+ *   - propagatedHeaders:  requestId 中间件从入站请求捕获，供 app.fetch 透传到下游
  */
 export interface RequestContextStore {
   /** 当前请求的唯一标识（由 requestId 中间件生成/透传） */
-  requestId?: string
+  requestId?: string;
 
   /**
    * 当前请求的语言环境
@@ -45,7 +46,36 @@ export interface RequestContextStore {
    * app.throw 内部的 I18nError.create() 通过此字段获取 locale，
    * 确保每个请求独立翻译，不受并发请求干扰。
    */
-  locale?: string
+  locale?: string;
+
+  /**
+   * 需要透传到下游服务的入站请求头快照
+   *
+   * 由 requestId 中间件根据 config.fetch.propagateHeaders 列表，
+   * 从当前入站请求中提取对应头的值后写入。
+   *
+   * app.fetch 在构建出站请求时从此字段读取，自动注入到下游请求头。
+   * 这样实现了"入站头 → requestContext → 出站头"的完整透传链路，
+   * 无需用户在每次 app.fetch 调用时手动传递头信息。
+   *
+   * 典型用途：
+   *   - 分布式链路追踪头（如 `x-trace-id`、`traceparent`、`tracestate`）
+   *   - 多租户标识（如 `x-tenant-id`）
+   *   - 自定义业务头（如 `x-user-id`、`x-region`）
+   *
+   * 键名已统一转换为小写（与 HTTP 规范一致），例如：
+   *   `X-Trace-Id` → `x-trace-id`
+   *
+   * @example
+   * // config/default.ts
+   * export default {
+   *   fetch: { propagateHeaders: ['x-trace-id', 'x-tenant-id'] }
+   * }
+   *
+   * // 入站请求携带 x-trace-id: abc123
+   * // app.fetch 出站请求自动携带 x-trace-id: abc123
+   */
+  propagatedHeaders?: Record<string, string>;
 }
 
 /**
@@ -60,4 +90,4 @@ export interface RequestContextStore {
  *   3. handler 执行，app.throw / app.logger 等读取 store
  *   4. 请求结束，store 自动 GC（无需手动清理）
  */
-export const requestContext = new AsyncLocalStorage<RequestContextStore>()
+export const requestContext = new AsyncLocalStorage<RequestContextStore>();

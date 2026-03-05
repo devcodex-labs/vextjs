@@ -273,6 +273,7 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
       const requestIdMiddleware = createRequestIdMiddleware(
         config.requestId,
         () => internals!.getRequestIdGenerator(),
+        fetchConfig?.propagateHeaders ?? [],
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }

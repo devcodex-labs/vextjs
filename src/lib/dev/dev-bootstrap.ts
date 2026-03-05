@@ -269,6 +269,18 @@ export async function devBootstrap(
     // 可重载阶段（首次执行）
     // ════════════════════════════════════════════════════════
 
+    // ── fetchConfig 提前提取（步骤 8 的 requestId 中间件需要用到）──
+    // 必须在步骤 5 之前定义，因为步骤 8 注册 requestId 中间件时
+    // 需要将 propagateHeaders 传入，而 fetchConfig 原本在步骤 8+ 才读取。
+    const fetchConfig = (config as Record<string, unknown>).fetch as
+      | {
+          timeout?: number;
+          retry?: number;
+          retryDelay?: number;
+          propagateHeaders?: string[];
+        }
+      | undefined;
+
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
     const middlewareRegistry = await loadMiddlewares(
       path.join(outDir, "middlewares"),
@@ -296,6 +308,7 @@ export async function devBootstrap(
     const requestIdMiddleware = createRequestIdMiddleware(
       config.requestId,
       () => internals!.getRequestIdGenerator(),
+      (fetchConfig?.propagateHeaders ?? []) as string[],
     );
     app.adapter.registerMiddleware(requestIdMiddleware);
 
@@ -335,14 +348,7 @@ export async function devBootstrap(
     app.adapter.registerNotFound(createNotFoundHandler());
 
     // ── 步骤 8+: 挂载 app.fetch ──────────────────────────
-    const fetchConfig = (config as Record<string, unknown>).fetch as
-      | {
-          timeout?: number;
-          retry?: number;
-          retryDelay?: number;
-          propagateHeaders?: string[];
-        }
-      | undefined;
+    // fetchConfig 已在步骤 5 之前提取，此处直接使用
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
     app.fetch = createVextFetch(
       app.logger,
@@ -448,8 +454,10 @@ export async function devBootstrap(
     //
     const builtinMwCreators: BuiltinMiddlewareCreators = {
       createRequestIdMiddleware: ((cfg: Record<string, unknown>) =>
-        createRequestIdMiddleware(cfg.requestId as any, () =>
-          internals!.getRequestIdGenerator(),
+        createRequestIdMiddleware(
+          cfg.requestId as any,
+          () => internals!.getRequestIdGenerator(),
+          (fetchConfig?.propagateHeaders ?? []) as string[],
         )) as any,
       createCorsMiddleware: ((cfg: Record<string, unknown>) =>
         createCorsMiddleware(cfg.cors as any)) as any,
