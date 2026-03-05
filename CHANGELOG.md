@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **P0 BUG-004**: `config-loader` 的 `deepMerge(DEFAULT_CONFIG, userDefaultConfig)` 跳过 `middlewares` 键（设计用于 env/local overlay 的 `patchMiddlewares`），导致用户 `config/default.ts` 中声明的 `middlewares` 白名单丢失 → `loadMiddlewares` 收到空数组 → 路由引用中间件时报 `Middleware "auth" is not registered`
+- **P1 BUG-005**: `bootstrap.ts` 中 `app.fetch = createVextFetch(...)` 在 `loadRoutes` 之后才挂载，但 `executeRouteFactory` 将 app 属性拷贝到 collector 代理对象（路由 handler 闭包中的 `app`），此时 `app.fetch` 尚未赋值 → 路由中调用 `app.fetch()` 报 `TypeError: app.fetch is not a function`
+- **P1 BUG-003**: hot-reload 日志使用 Unicode emoji（✅/❌）在 Windows PowerShell 非 Unicode 代码页下显示乱码，替换为 ASCII 安全标记 `[OK]` / `[FAIL]`
+
+### Changed
+
+- Access log 中间件在 dev 模式下改为紧凑单行格式（`METHOD PATH STATUS TIMEms | IP`），避免 pino-pretty 将结构化字段展开为多行输出；生产模式保留结构化日志
+
 ---
 
 ## [0.1.2] - 2026-03-05

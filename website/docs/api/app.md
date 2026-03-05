@@ -25,6 +25,7 @@ createApp(config)
   → plugin-loader            // 加载插件，执行 setup()（app.use() 可用）
   → middleware-loader         // 加载中间件定义
   → service-loader            // 加载服务（app.services 注入）
+  → mount app.fetch           // 挂载内置 HTTP 客户端（requestId 传播 + 结构化日志）
   → router-loader             // 加载路由文件，注册路由
   → lockUse()                 // 禁止 app.use()
   → 注册内置中间件            // requestId / cors / bodyParser / responseWrapper / accessLog / errorHandler
@@ -82,6 +83,7 @@ interface BootstrapResult {
 | ④ | `loadPlugins()` | 扫描 `src/plugins/`，按拓扑排序执行 `setup()` |
 | ⑤ | `loadMiddlewares()` | 扫描 `src/middlewares/`，注册中间件定义 |
 | ⑥ | `loadServices()` | 扫描 `src/services/`，注入到 `app.services` |
+| ⑥+ | 挂载 `app.fetch` | 封装 Node.js fetch，自动传播 requestId + 结构化日志 |
 | ⑦ | `loadRoutes()` | 扫描 `src/routes/`，注册路由到 adapter |
 | ⑧ | `lockUse()` | 锁定 `app.use()`，禁止后续注册全局中间件 |
 | ⑨ | 注册内置中间件 | requestId → cors → bodyParser → accessLog → responseWrapper |
