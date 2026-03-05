@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.3] - 2026-03-05
+
 ### Fixed
 
 - **P0 BUG-004**: `config-loader` 的 `deepMerge(DEFAULT_CONFIG, userDefaultConfig)` 跳过 `middlewares` 键（设计用于 env/local overlay 的 `patchMiddlewares`），导致用户 `config/default.ts` 中声明的 `middlewares` 白名单丢失 → `loadMiddlewares` 收到空数组 → 路由引用中间件时报 `Middleware "auth" is not registered`
