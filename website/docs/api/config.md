@@ -206,19 +206,51 @@ export default {
 | `responseHeader` | `string` | `'x-request-id'` | 写入响应头的名称 |
 | `generate` | `() => string` | `crypto.randomUUID()` | 自定义 ID 生成函数 |
 
+### requestId vs traceId
+
+`requestId` 是 vext 内置的请求唯一标识，`traceId` 通常指 APM 链路追踪系统（如 OpenTelemetry / Jaeger）生成的追踪 ID。两者有不同的使用场景：
+
+**模式一：requestId 充当 traceId（简单场景）**
+
+将 `requestId` 的请求头名改为 `x-trace-id`，使其与链路追踪头统一，适合不依赖外部 APM 的系统：
+
 ```typescript
 import { nanoid } from 'nanoid';
 
 export default {
   requestId: {
-    header: 'x-trace-id',
-    responseHeader: 'x-trace-id',
-    generate: () => nanoid(),
+    header: 'x-trace-id',          // 从 x-trace-id 读取（网关注入）
+    responseHeader: 'x-trace-id',  // 写回响应头
+    generate: () => nanoid(),       // 可替换为更短的 ID 生成器
   },
 };
 ```
 
-也可通过插件动态替换：
+**模式二：requestId + APM traceId 并存（企业级场景）**
+
+保留 `requestId`（日志关联），同时通过 `config.fetch.propagateHeaders` 透传 APM 的 `traceparent` 头，适合接入 OpenTelemetry / Jaeger 等系统：
+
+```typescript
+export default {
+  // requestId 保留默认配置（用于日志关联）
+  requestId: {
+    header: 'x-request-id',
+    responseHeader: 'x-request-id',
+  },
+  // APM 追踪头通过 propagateHeaders 自动透传到下游服务
+  fetch: {
+    propagateHeaders: ['traceparent', 'tracestate'],
+  },
+};
+```
+
+:::tip 选择建议
+- 内部系统、简单追踪 → 模式一（改 header 名为 `x-trace-id`）
+- 接入 OpenTelemetry / Jaeger / Datadog → 模式二（保留 requestId，配置 propagateHeaders）
+- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系)
+:::
+
+也可通过插件动态替换生成器：
 
 ```typescript
 app.setRequestIdGenerator(() => myCustomId());

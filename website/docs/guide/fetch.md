@@ -111,9 +111,10 @@ export default {
     timeout: 10000,          // 全局默认超时（毫秒），默认 10000
     retry: 2,                // 默认重试次数（仅幂等方法），默认 0
     retryDelay: 1000,        // 默认重试间隔（毫秒），默认 1000
-    propagateHeaders: [      // 除 x-request-id 外额外传播的请求头
-      'x-trace-id',
-      'x-tenant-id',
+    propagateHeaders: [      // 除 x-request-id 外自动从入站请求透传到出站请求的头
+      'traceparent',         // W3C Trace Context（APM 分布式追踪）
+      'tracestate',          // W3C Trace Context 附加状态
+      // 或 'x-trace-id', 'x-tenant-id' 等自定义头
     ],
   },
 };
@@ -123,8 +124,15 @@ export default {
 |--------|------|--------|------|
 | `timeout` | `number` | `10000` | 全局默认请求超时（毫秒） |
 | `retry` | `number` | `0` | 默认重试次数（仅幂等方法生效） |
-| `retryDelay` | `number` | `1000` | 默认重试间隔（毫秒） |
-| `propagateHeaders` | `string[]` | `[]` | 额外需要传播的请求头列表 |
+| `retryDelay` | `number \| (attempt) => number` | `1000` | 默认重试间隔（毫秒），支持函数形式 |
+| `propagateHeaders` | `string[]` | `[]` | 需要从入站请求自动透传到出站请求的头名称列表 |
+
+:::tip propagateHeaders 工作原理
+配置后，`requestId` 中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
+写入 `requestContext.store.propagatedHeaders`。`app.fetch` 出站请求时自动从 store 中读取并注入。
+
+**无需在每次 `app.fetch` 调用时手动传递这些头**——框架自动完成整个链路。
+:::
 
 ### 单次请求配置（VextFetchInit）
 
@@ -148,8 +156,8 @@ const response = await app.fetch.get('https://api.example.com/data', {
 | `timeout` | `number` | 全局 `config.fetch.timeout` | 请求超时（毫秒） |
 | `retry` | `number` | 全局 `config.fetch.retry` | 重试次数（仅幂等方法） |
 | `retryDelay` | `number \| (attempt: number) => number` | 全局 `config.fetch.retryDelay` | 重试间隔，支持函数形式实现指数退避 |
-| `propagateRequestId` | `boolean` | `true` | 是否自动注入 `x-request-id` 头 |
-| `propagateHeaders` | `string[]` | 全局 `config.fetch.propagateHeaders` | 额外传播的请求头 |
+| `propagateRequestId` | `boolean` | `true` | 是否自动注入 `x-request-id` 头（禁用时仍会透传 `propagatedHeaders`） |
+| `propagateHeaders` | `string[]` | — | 本次请求额外需要透传的头（需已在 `config.fetch.propagateHeaders` 中声明才会有值） |
 
 :::tip 优先级
 单次请求 `init.timeout` > `create()` 的 `options.timeout` > 全局 `config.fetch.timeout`
@@ -262,8 +270,82 @@ Client → [VextJS A: requestId=abc123] → app.fetch → [VextJS B: x-request-i
 ```typescript
 const response = await app.fetch.get('https://third-party-api.com/data', {
   propagateRequestId: false,  // 不注入 x-request-id
+  // 注意：propagatedHeaders（如 x-trace-id）仍会透传
 });
 ```
+
+## 自定义头透传（propagateHeaders）
+
+除 `requestId` 之外，`app.fetch` 还支持自动透传其他入站请求头到下游——典型用途是分布式链路追踪头（`traceparent`）和多租户标识（`x-tenant-id`）。
+
+### 配置方式
+
+在 `config.fetch.propagateHeaders` 中声明需要透传的头名称：
+
+```typescript
+// src/config/default.ts
+export default {
+  fetch: {
+    propagateHeaders: [
+      'traceparent',   // W3C Trace Context（OpenTelemetry / Jaeger / Zipkin）
+      'tracestate',    // W3C Trace Context 附加状态
+      'x-tenant-id',  // 多租户标识
+    ],
+  },
+};
+```
+
+### 工作原理
+
+框架在处理每个入站请求时自动完成透传链路，**无需任何手动操作**：
+
+```
+① 入站请求携带 traceparent: 00-abc123-def456-01
+         ↓
+② requestId 中间件读取并写入 store.propagatedHeaders
+         ↓
+③ app.fetch 出站请求时从 store 读取并注入到请求头
+         ↓
+④ 下游服务收到 traceparent: 00-abc123-def456-01
+         ↓
+⑤ APM 系统识别为同一 trace，建立 span 关联
+```
+
+```typescript
+// 路由中不需要任何额外代码，框架自动处理透传
+export default defineRoutes('/orders', [
+  {
+    method: 'POST',
+    handler: async (req, res) => {
+      // traceparent 已自动从入站请求透传到 inventory-service
+      const stock = await app.fetch.get('http://inventory-service/check');
+      // 同样自动透传到 payment-service
+      const payment = await app.fetch.post('http://payment-service/charge', req.body);
+
+      res.json({ orderId: 'new-id' });
+    },
+  },
+]);
+```
+
+### 手动透传（临时方案）
+
+如果某个头未在全局 `propagateHeaders` 中声明，但本次请求需要透传，直接在 `init.headers` 中手动设置：
+
+```typescript
+await app.fetch.get('https://partner-api.com/data', {
+  headers: {
+    'x-partner-token': req.headers['x-partner-token'] as string,
+  },
+});
+```
+
+:::tip requestId vs traceId
+- **requestId**（vext 内置）：自动生成，用于日志关联和内部服务间追踪
+- **traceId**（APM 系统）：由 OpenTelemetry / Jaeger 等生成，通过 `propagateHeaders` 透传
+
+详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系) 获取完整说明。
+:::
 
 ## 超时控制
 

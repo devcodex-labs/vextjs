@@ -123,8 +123,15 @@ interface VextFetchInit extends RequestInit {
   propagateRequestId?: boolean;
 
   /**
-   * 额外需要传播的请求头列表
-   * @example ['x-trace-id', 'x-tenant-id']
+   * 本次请求额外需要透传到出站请求的头名称列表
+   *
+   * 这些头的值会从 requestContext.store.propagatedHeaders 中读取（由 requestId 中间件
+   * 在入站阶段根据 config.fetch.propagateHeaders 列表捕获写入）。
+   *
+   * 如需透传未在全局 config.fetch.propagateHeaders 中声明的头，
+   * 请直接在 init.headers 中手动设置。
+   *
+   * @example ['traceparent', 'tracestate']
    */
   propagateHeaders?: string[];
 }
@@ -134,9 +141,9 @@ interface VextFetchInit extends RequestInit {
 |------|------|--------|------|
 | `timeout` | `number` | `config.fetch.timeout` (10000) | 请求超时（毫秒） |
 | `retry` | `number` | `config.fetch.retry` (0) | 重试次数（仅幂等方法） |
-| `retryDelay` | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | 重试间隔 |
-| `propagateRequestId` | `boolean` | `true` | 自动注入 requestId |
-| `propagateHeaders` | `string[]` | `config.fetch.propagateHeaders` ([]) | 额外传播的请求头 |
+| `retryDelay` | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | 重试间隔，支持指数退避函数 |
+| `propagateRequestId` | `boolean` | `true` | 是否自动注入 `x-request-id` 头（禁用时 `propagatedHeaders` 仍然透传） |
+| `propagateHeaders` | `string[]` | — | 本次请求额外透传的头（需已在 `config.fetch.propagateHeaders` 中声明才能从 store 读到值） |
 
 ### VextFetchClientOptions
 
@@ -203,8 +210,18 @@ export default {
 |--------|------|--------|------|
 | `timeout` | `number` | `10000` | 全局默认超时（毫秒） |
 | `retry` | `number` | `0` | 全局默认重试次数 |
-| `retryDelay` | `number` | `1000` | 全局默认重试间隔（毫秒） |
-| `propagateHeaders` | `string[]` | `[]` | 额外自动传播的请求头 |
+| `retryDelay` | `number \| (attempt: number) => number` | `1000` | 全局默认重试间隔（毫秒），支持指数退避函数 |
+| `propagateHeaders` | `string[]` | `[]` | 声明需要从入站请求自动捕获并透传到出站请求的头名称列表（如 `traceparent`、`x-tenant-id`） |
+
+:::tip propagateHeaders 工作原理
+配置后，框架在每个请求的 `requestId` 中间件阶段，从入站请求头中读取列表中指定的头，
+写入 `requestContext.store.propagatedHeaders`。`app.fetch` 出站时自动从 store 中读取并注入，
+**无需在每次调用时手动传递**。
+
+- 全局配置 `config.fetch.propagateHeaders`：声明哪些头需要被捕获和透传
+- 未在全局配置中声明的头：在 `init.headers` 中手动设置即可
+- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系)
+:::
 
 ### 优先级
 

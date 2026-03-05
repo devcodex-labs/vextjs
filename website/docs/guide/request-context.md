@@ -84,6 +84,17 @@ interface RequestContextStore {
    * 由中间件从 Accept-Language 请求头或自定义逻辑中解析写入
    */
   locale?: string;
+
+  /**
+   * 需要透传到下游服务的入站请求头快照
+   *
+   * 由 requestId 中间件根据 config.fetch.propagateHeaders 列表，
+   * 从当前入站请求中提取对应头的值后写入。
+   * app.fetch 在构建出站请求时从此字段自动读取并注入。
+   *
+   * 键名统一为小写（如 `x-trace-id`、`x-tenant-id`）。
+   */
+  propagatedHeaders?: Record<string, string>;
 }
 ```
 
@@ -91,6 +102,7 @@ interface RequestContextStore {
 |------|---------|--------|------|
 | `requestId` | 请求进入时 | requestId 中间件 | 日志追踪、出站请求传播 |
 | `locale` | 请求进入时 | i18n 中间件 | 错误消息国际化 |
+| `propagatedHeaders` | 请求进入时 | requestId 中间件 | 分布式追踪头、多租户头等自动透传到下游 |
 
 ## 高级用法
 
@@ -372,6 +384,120 @@ requestContext.run({ requestId: 'abc-123', locale: 'en-US' }, async () => {
 通常你不需要手动调用 `run()`——框架的 Adapter 层在收到每个请求时自动调用。
 :::
 
+## 与分布式追踪（traceId）的关系
+
+### requestId vs traceId：概念区分
+
+VextJS 内置了 `requestId`，但你可能也听说过 `traceId`。两者解决不同层次的问题：
+
+```
+requestId（vext 内置）
+  ├─ 由框架自动生成（crypto.randomUUID 或自定义）
+  ├─ 每个 HTTP 请求独立，可从入站头透传（默认 x-request-id）
+  ├─ 自动注入到 app.logger 每条日志
+  ├─ 自动传播到 app.fetch 出站请求
+  └─ 适合：日志关联、内部服务间请求链路追踪
+
+traceId（APM / 链路追踪系统生成，vext 不内置）
+  ├─ 由 Jaeger / Zipkin / OpenTelemetry / Datadog 等 APM 系统生成
+  ├─ 遵循 W3C Trace Context 标准（traceparent / tracestate 头）
+  │   或 B3 标准（x-b3-traceid 头）
+  └─ 适合：跨系统全链路追踪、APM 系统集成
+```
+
+### 模式一：requestId 充当 traceId（简单场景）
+
+如果你的系统不使用专业 APM 工具，可以直接将 `requestId` 的请求头名改为 `x-trace-id`，用 `requestId` 充当链路追踪 ID：
+
+```typescript
+// src/config/default.ts
+export default {
+  requestId: {
+    header: 'x-trace-id',          // 从 x-trace-id 读取（网关注入）
+    responseHeader: 'x-trace-id',  // 写回响应头
+    generate: () => nanoid(),       // 可替换为更短的 ID 生成器
+  },
+};
+```
+
+这样，所有日志、出站请求都会自动携带 `x-trace-id`，服务间调用形成完整追踪链。
+
+**适合场景**：内部微服务系统、不依赖外部 APM 工具、只需简单请求链路追踪。
+
+### 模式二：requestId + APM traceId 并存（企业级场景）
+
+如果你接入了 OpenTelemetry / Jaeger 等 APM 系统，需要同时保留 `requestId`（日志关联）和 APM 的 `traceparent`（分布式链路追踪）：
+
+**第一步**：配置 `config.fetch.propagateHeaders`，声明需要自动透传的追踪头：
+
+```typescript
+// src/config/default.ts
+export default {
+  // requestId 保留（用于日志关联）
+  requestId: {
+    header: 'x-request-id',
+    responseHeader: 'x-request-id',
+  },
+  // 声明需要透传到下游的 APM 追踪头
+  fetch: {
+    propagateHeaders: [
+      'traceparent',   // W3C Trace Context 主头（含 traceId + spanId）
+      'tracestate',    // W3C Trace Context 附加状态
+      // 或 B3 格式：'x-b3-traceid', 'x-b3-spanid', 'x-b3-sampled'
+    ],
+  },
+};
+```
+
+**第二步**：配置生效后，当入站请求携带 `traceparent` 头时，`app.fetch` 会自动将该头注入到所有出站请求，无需手动处理：
+
+```
+Client → [Service A: traceparent=00-abc123-...] → app.fetch → [Service B: traceparent=00-abc123-...]
+                                                                        ↓
+                                                              APM 系统识别同一 trace
+```
+
+**第三步**（可选）：通过 OpenTelemetry SDK 将 `traceId` 注入到日志，实现日志与 APM 链路的关联：
+
+```typescript
+// src/plugins/otel-log-correlation.ts
+// 参见 examples/opentelemetry 完整示例
+export default definePlugin({
+  name: 'otel-log-correlation',
+  setup(app) {
+    // OpenTelemetry SDK 自动注入 trace_id 到 pino logger
+    // 日志输出：{ requestId: '...', trace_id: 'abc123', msg: '...' }
+  },
+});
+```
+
+**适合场景**：接入 OpenTelemetry / Jaeger / Zipkin / Datadog、需要 APM 系统全链路可观测性。
+
+### propagateHeaders 工作原理
+
+`config.fetch.propagateHeaders` 的完整工作链路：
+
+```
+1. 入站请求携带 traceparent 头
+        ↓
+2. requestId 中间件从入站请求读取该头，写入 store.propagatedHeaders
+        ↓
+3. app.fetch 出站请求时，从 store.propagatedHeaders 读取并注入到请求头
+        ↓
+4. 下游服务收到 traceparent 头，APM 系统建立 span 关联
+```
+
+:::tip
+`propagatedHeaders` 仅捕获 `config.fetch.propagateHeaders` 中声明的头。
+如需临时透传未声明的头，直接在 `app.fetch` 调用时手动设置 `headers` 即可：
+
+```typescript
+await app.fetch.get(downstreamUrl, {
+  headers: { 'x-custom-header': req.headers['x-custom-header'] as string },
+});
+```
+:::
+
 ## 最佳实践
 
 ### 1. 优先使用框架内置能力
@@ -439,5 +565,6 @@ store?.userId;  // 有类型提示
 
 - 了解 [中间件](/guide/middleware) 如何在请求生命周期中写入上下文
 - 查看 [日志](/guide/logger) 中 requestId 自动注入的实现原理
-- 学习 [app.fetch 内置 HTTP 客户端](/guide/fetch) 如何自动传播 requestId
+- 学习 [app.fetch 内置 HTTP 客户端](/guide/fetch) 如何自动传播 requestId 和 propagatedHeaders
 - 探索 [国际化](/guide/i18n) 中 locale 与 requestContext 的关系
+- 查看 [OpenTelemetry 集成示例](/examples/opentelemetry) 了解 APM traceId 与日志关联的完整方案
