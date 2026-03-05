@@ -2,9 +2,7 @@ import path from "node:path";
 
 import type { DevCompiler } from "./compiler.js";
 import type { HotSwappableHandler } from "./hot-swappable-handler.js";
-import {
-  invalidateAndEvict,
-} from "./cache-invalidator.js";
+import { invalidateAndEvict } from "./cache-invalidator.js";
 import { reloadServices } from "./service-reloader.js";
 import type { ServiceReloadResult } from "./service-reloader.js";
 import { reloadRoutes } from "./route-reloader.js";
@@ -19,7 +17,7 @@ import type {
   BuiltinMiddlewareCreators,
 } from "./route-reloader.js";
 import { reloadLocales, shouldReloadLocales } from "./i18n-reloader.js";
-import type { ConfigureI18nFn, } from "./i18n-reloader.js";
+import type { ConfigureI18nFn } from "./i18n-reloader.js";
 import { reportMemoryIfNeeded } from "./memory-monitor.js";
 import type { MemoryReport } from "./memory-monitor.js";
 import type { FileChangeInfo } from "./file-watcher.js";
@@ -530,7 +528,7 @@ export class SoftReloader {
       const reloadCount = this.hotHandler.getReloadCount();
 
       this.logger.info(
-        `[hot-reload] \u2705 ${elapsed.toFixed(0)}ms [${tier}] ` +
+        `[hot-reload] [OK] ${elapsed.toFixed(0)}ms [${tier}] ` +
           `(compile:${(compileEnd - startTime).toFixed(0)}ms ` +
           `cache:${(cacheEnd - compileEnd).toFixed(0)}ms ` +
           `i18n:${(i18nEnd - cacheEnd).toFixed(0)}ms ` +
@@ -579,7 +577,7 @@ export class SoftReloader {
       const elapsed = performance.now() - startTime;
 
       this.logger.error(
-        `[hot-reload] \u274C failed after ${elapsed.toFixed(0)}ms: ${(err as Error).message}`,
+        `[hot-reload] [FAIL] failed after ${elapsed.toFixed(0)}ms: ${(err as Error).message}`,
       );
       this.logger.error(
         "[hot-reload] keeping previous version active. Fix the error and save again.",

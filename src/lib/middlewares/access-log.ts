@@ -7,7 +7,7 @@ import type { VextLogger } from "../../types/app.js";
  *
  * 内置中间件 #6（response-wrapper 之后），职责：
  *   利用洋葱模型 after-middleware 模式，在 `await next()` 前记录请求开始时间，
- *   在 `await next()` 后记录请求耗时、HTTP 状态码、方法、路径、requestId、客户端 IP。
+ *   在 `await next()` 后记录请求耗时、HTTP 状态码、方法、路径、客户端 IP。
  *
  * 配置项（config.accessLog）：
  *   - enabled:   是否启用（默认 true）；false 时直接跳过，零开销
@@ -22,13 +22,14 @@ import type { VextLogger } from "../../types/app.js";
  *   - requestId 中间件在 access-log 之前执行，req.requestId 已填充
  *   - 洋葱回程时 handler 已执行完毕，res.statusCode 已确定
  *
- * 日志字段：
- *   - method:       HTTP 方法（GET / POST / ...）
- *   - path:         请求路径（不含 query string）
- *   - statusCode:   HTTP 响应状态码
- *   - responseTime: 请求处理耗时（毫秒，保留整数）
- *   - requestId:    请求唯一标识
- *   - ip:           客户端 IP
+ * 日志格式（紧凑单行）：
+ *   开发模式（pino-pretty）：
+ *     [17:53:26.174] INFO: GET / 200 1ms | 127.0.0.1
+ *   生产模式（JSON）：
+ *     {"level":30,"time":"...","requestId":"...","msg":"GET / 200 1ms | 127.0.0.1"}
+ *
+ *   requestId 由 pino mixin（AsyncLocalStorage）自动注入，无需在此重复传入。
+ *   这样避免了 pino-pretty 在开发模式下将结构化字段展开为多行的问题。
  *
  * @param config Access Log 配置（从 VextConfig.accessLog 提取）
  * @param logger VextLogger 实例（框架 app.logger）
@@ -69,20 +70,14 @@ export function createAccessLogMiddleware(
     // ── 执行下游中间件 + handler ─────────────────────────
     await next();
 
-    // ── after: 记录耗时 + 状态码 ────────────────────────
+    // ── after: 记录耗时 + 状态码（紧凑单行格式）─────────
     const responseTime = Date.now() - startTime;
     const statusCode = res.statusCode;
 
+    // 紧凑单行消息：METHOD PATH STATUS TIMEms | IP
+    // requestId 由 pino mixin 从 AsyncLocalStorage 自动注入，无需重复传入
     log(
-      {
-        method: req.method,
-        path: req.path,
-        statusCode,
-        responseTime,
-        requestId: req.requestId,
-        ip: req.ip,
-      },
-      `${req.method} ${req.path} ${statusCode} ${responseTime}ms`,
+      `${req.method} ${req.path} ${statusCode} ${responseTime}ms | ${req.ip}`,
     );
   };
 }
