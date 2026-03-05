@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 
 // ── Mock 模块 ──────────────────────────────────────────────
 //
@@ -32,10 +40,12 @@ const mockRemovePidFile = removePidFile as ReturnType<typeof vi.fn>;
 
 // ── 全局 Spy ───────────────────────────────────────────────
 
-let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-let processExitSpy: ReturnType<typeof vi.spyOn>;
-let processKillSpy: ReturnType<typeof vi.spyOn>;
+let consoleLogSpy: MockInstance<(...args: unknown[]) => void>;
+let consoleErrorSpy: MockInstance<(...args: unknown[]) => void>;
+let processExitSpy: MockInstance<(code?: string | number | null) => never>;
+let processKillSpy: MockInstance<
+  (pid: number, signal?: string | number) => true
+>;
 
 // 保存原始 platform
 const originalPlatform = process.platform;
@@ -168,13 +178,12 @@ describe("vext stop (stopCommand)", () => {
 
     const epermError = new Error("EPERM") as NodeJS.ErrnoException;
     epermError.code = "EPERM";
-    processKillSpy.mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
-      if (signal === "SIGTERM") throw epermError;
-      return true;
-    }) as typeof process.kill);
+    processKillSpy.mockImplementation(
+      (pid: number, signal?: string | number) => {
+        if (signal === "SIGTERM") throw epermError;
+        return true;
+      },
+    );
 
     await expect(stopCommand([])).rejects.toThrow("process.exit(1)");
 
@@ -326,13 +335,12 @@ describe("vext reload (reloadCommand)", () => {
 
     const epermError = new Error("EPERM") as NodeJS.ErrnoException;
     epermError.code = "EPERM";
-    processKillSpy.mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
-      if (signal === "SIGHUP") throw epermError;
-      return true;
-    }) as typeof process.kill);
+    processKillSpy.mockImplementation(
+      (pid: number, signal?: string | number) => {
+        if (signal === "SIGHUP") throw epermError;
+        return true;
+      },
+    );
 
     await expect(reloadCommand([])).rejects.toThrow("process.exit(1)");
 
@@ -389,13 +397,12 @@ describe("vext reload (reloadCommand)", () => {
 
     const genericError = new Error("Unknown error") as NodeJS.ErrnoException;
     genericError.code = "ESRCH";
-    processKillSpy.mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
-      if (signal === "SIGHUP") throw genericError;
-      return true;
-    }) as typeof process.kill);
+    processKillSpy.mockImplementation(
+      (pid: number, signal?: string | number) => {
+        if (signal === "SIGHUP") throw genericError;
+        return true;
+      },
+    );
 
     await expect(reloadCommand([])).rejects.toThrow("process.exit(1)");
 
@@ -712,13 +719,12 @@ describe("edge cases", () => {
 
     const esrchError = new Error("ESRCH") as NodeJS.ErrnoException;
     esrchError.code = "ESRCH";
-    processKillSpy.mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
-      if (signal === "SIGTERM") throw esrchError;
-      return true;
-    }) as typeof process.kill);
+    processKillSpy.mockImplementation(
+      (pid: number, signal?: string | number) => {
+        if (signal === "SIGTERM") throw esrchError;
+        return true;
+      },
+    );
 
     await expect(stopCommand([])).rejects.toThrow("process.exit(1)");
 
