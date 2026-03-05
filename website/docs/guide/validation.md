@@ -217,6 +217,41 @@ app.post('/orders', {
 });
 ```
 
+### 边界行为
+
+:::warning 注意事项
+`req.valid(location)` 有以下边界行为需要了解：
+
+1. **未配置 `validate` 时调用**：如果路由未配置 `validate` 字段，调用 `req.valid('body')` 将返回 `undefined`。框架不会抛出错误，但你将无法获取经过校验和类型转换的数据。
+
+2. **location 未在 validate 中声明**：如果 `validate` 中只声明了 `body`，但调用了 `req.valid('query')`，同样返回 `undefined`。只有在 `validate` 中明确声明过的位置才会有校验后的数据。
+
+3. **校验失败时不会到达 handler**：当校验失败时，框架会在 handler 执行之前自动返回 422 错误响应，因此在 handler 内部调用 `req.valid()` 时数据一定是已通过校验的。
+
+```typescript
+// ⚠️ 边界情况示例
+app.get('/items', {
+  validate: {
+    query: { page: 'number:1-' },
+    // 未声明 body
+  },
+}, async (req, res) => {
+  const query = req.valid('query');   // ✅ { page: number } — 已校验
+  const body = req.valid('body');     // ⚠️ undefined — 未在 validate 中声明
+  const param = req.valid('param');   // ⚠️ undefined — 未在 validate 中声明
+  res.json({ query });
+});
+
+// ⚠️ 未配置 validate 的路由
+app.get('/health', async (req, res) => {
+  const body = req.valid('body');     // ⚠️ undefined — 路由未配置 validate
+  res.json({ status: 'ok' });
+});
+```
+
+**最佳实践**：始终确保 `req.valid(location)` 的 `location` 与 `validate` 中声明的位置一致。
+:::
+
 ### 泛型类型提示
 
 可以使用泛型获得更精确的 IDE 类型提示：

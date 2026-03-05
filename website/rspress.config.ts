@@ -5,6 +5,11 @@ export default defineConfig({
   root: path.join(__dirname, "docs"),
   base: "/vext/",
   title: "VextJS",
+  icon: "https://avatars.githubusercontent.com/u/208569640?s=200&v=4",
+  logo: {
+    light: "https://avatars.githubusercontent.com/u/208569640?s=200&v=4",
+    dark: "https://avatars.githubusercontent.com/u/208569640?s=200&v=4",
+  },
   description:
     "一个现代化的 Node.js Web 框架，开箱即用，专为构建高性能 RESTful API 而设计。",
   outDir: "dist",
@@ -68,6 +73,7 @@ export default defineConfig({
         {
           text: "进阶",
           items: [
+            { text: "内置 HTTP 客户端", link: "/guide/fetch" },
             { text: "Adapter 架构", link: "/guide/adapters" },
             { text: "OpenAPI 文档", link: "/guide/openapi" },
             { text: "测试", link: "/guide/testing" },
@@ -100,6 +106,13 @@ export default defineConfig({
             { text: "Zod 校验集成", link: "/examples/zod-validation" },
             { text: "Drizzle ORM 集成", link: "/examples/drizzle-orm" },
             { text: "Prisma ORM 集成", link: "/examples/prisma-orm" },
+          ],
+        },
+        {
+          text: "生态集成",
+          items: [
+            { text: "Nacos 接入", link: "/examples/nacos-integration" },
+            { text: "OpenTelemetry 接入", link: "/examples/opentelemetry" },
           ],
         },
       ],
