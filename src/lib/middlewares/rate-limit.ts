@@ -149,8 +149,6 @@ function resolveKey(
       // fallback 到 IP（用户未认证时）
       return `ip:${req.ip}`;
     }
-
-    case "ip":
     default:
       return `ip:${req.ip}`;
   }

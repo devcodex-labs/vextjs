@@ -424,7 +424,7 @@ function findCycle(
   }
 
   // 兜底：无法找出具体环路时返回列表
-  return remaining.join(" → ") + " → ...";
+  return `${remaining.join(" → ")} → ...`;
 }
 
 // ── setup 超时保护 ────────────────────────────────────────────
@@ -523,10 +523,10 @@ function pathToFileUrl(filePath: string): string {
 
   // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
   if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = "/" + normalized;
+    normalized = `/${normalized}`;
   }
 
-  return "file://" + normalized;
+  return `file://${normalized}`;
 }
 
 /**

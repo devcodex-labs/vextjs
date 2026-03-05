@@ -29,7 +29,7 @@
 
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath, } from "node:url";
 import { fork } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -453,7 +453,7 @@ async function runTests(baseUrl, adapterName, modeName, options = {}) {
       const json = await res.json();
       assert(res.status === 200, `期望 200，实际 ${res.status}`);
       assert(
-        json.openapi && json.openapi.startsWith("3."),
+        json.openapi?.startsWith("3."),
         `期望 openapi 字段以 "3." 开头，实际 ${JSON.stringify(json.openapi)}`,
       );
       assert(json.paths !== undefined, `期望 paths 字段存在`);

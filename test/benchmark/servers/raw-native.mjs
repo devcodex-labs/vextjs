@@ -65,7 +65,7 @@ router.on("GET", "/chain", (req, res) => {
 
   // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────────
   // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
-  req.headers["authorization"];
+  req.headers.authorization;
   const authenticated = true;
 
   // ── handler 逻辑 ─────────────────────────────────────────

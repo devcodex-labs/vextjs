@@ -118,7 +118,7 @@ export interface ClusterMasterEvents {
   /** 健康检查：Worker 心跳超时 */
   "heartbeat-timeout": { workerId: number; lastHeartbeat: number };
   /** 所有 Worker 已退出 */
-  "all-workers-dead": void;
+  "all-workers-dead": undefined;
 }
 
 // ── 默认配置 ────────────────────────────────────────────────
@@ -389,7 +389,7 @@ export class ClusterMaster extends EventEmitter {
 
       try {
         // Fork 新 Worker
-        const newWorker = await this.forkWorker();
+        const _newWorker = await this.forkWorker();
 
         // 新 Worker ready → 通知旧 Worker shutdown
         const oldWorker = cluster.workers?.[oldId];
@@ -802,7 +802,7 @@ export class ClusterMaster extends EventEmitter {
   private calculateRestartDelay(): number {
     const exponent = Math.max(0, this.restartTimestamps.length - 1);
     return Math.min(
-      this.config.restartBaseDelay * Math.pow(2, exponent),
+      this.config.restartBaseDelay * 2 ** exponent,
       this.config.restartMaxDelay,
     );
   }

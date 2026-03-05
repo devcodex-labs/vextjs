@@ -47,7 +47,6 @@ import {
   reloadLocales,
   createI18nReloader,
   type I18nReloaderLogger,
-  type ConfigureI18nFn,
   type ErrorMessages,
 } from "../../src/lib/dev/i18n-reloader.js"
 

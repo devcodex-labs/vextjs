@@ -221,7 +221,7 @@ export class ColdRestarter {
    * @param msg 要发送的消息（可序列化的对象）
    */
   sendToChild(msg: unknown): void {
-    if (this.child && this.child.connected) {
+    if (this.child?.connected) {
       this.child.send(msg as object)
     }
   }

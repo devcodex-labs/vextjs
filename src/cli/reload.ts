@@ -131,7 +131,7 @@ function parseReloadArgs(args: string[]): ReloadOptions {
     } else if (arg === "--help" || arg === "-h") {
       printReloadHelp();
       process.exit(0);
-    } else if (arg && arg.startsWith("--")) {
+    } else if (arg?.startsWith("--")) {
       console.error(`[vextjs] Unknown option: "${arg}"\n`);
       printReloadHelp();
       process.exit(1);

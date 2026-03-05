@@ -20,7 +20,6 @@
  * @see 13-monsqlize-plugin.md §2.3（插件核心实现）
  */
 
-import { join } from "node:path";
 import type { VextApp } from "../../../types/app.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 import { createConnection } from "./connection.js";

@@ -288,8 +288,7 @@ async function generateProject(
   targetDir: string,
   options: CreateOptions,
 ): Promise<void> {
-  const { language, adapter } = options;
-  const ext = language === "ts" ? "ts" : "js";
+  const { language } = options;
 
   // ── 1. 创建目录结构 ────────────────────────────────────
   const dirs = [
@@ -441,7 +440,7 @@ function generatePackageJson(
     pkg.devDependencies = sortObj(devDeps);
   }
 
-  return JSON.stringify(pkg, null, 2) + "\n";
+  return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
 function generateGitignore(): string {
@@ -543,7 +542,7 @@ function generateTsconfig(): string {
     exclude: ["node_modules", "dist"],
   };
 
-  return JSON.stringify(config, null, 2) + "\n";
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 function generateDefaultConfig(adapter: string, isTs: boolean): string {

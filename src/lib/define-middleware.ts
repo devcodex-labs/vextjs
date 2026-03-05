@@ -1,6 +1,5 @@
 import type {
   VextMiddleware,
-  VextMiddlewareFactory,
 } from "../types/middleware.js";
 
 /**

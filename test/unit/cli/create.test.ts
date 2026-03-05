@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import path from "node:path";
 import { execSync } from "node:child_process";
 
 // ── Mock 模块 ──────────────────────────────────────────────

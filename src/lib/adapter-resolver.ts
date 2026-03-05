@@ -179,7 +179,7 @@ function validateAdapterInterface(
   const obj = adapter as Record<string, unknown>;
 
   // 验证 name 属性（string 类型）
-  if (typeof obj["name"] !== "string" || obj["name"].length === 0) {
+  if (typeof obj.name !== "string" || obj.name.length === 0) {
     throw new Error(
       `[vextjs] Custom adapter is missing required property: "name" (must be a non-empty string).\n` +
         `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
@@ -190,7 +190,7 @@ function validateAdapterInterface(
   for (const method of requiredMethods) {
     if (typeof obj[method] !== "function") {
       throw new Error(
-        `[vextjs] Custom adapter "${obj["name"] ?? "unknown"}" is missing required method: "${method}".\n` +
+        `[vextjs] Custom adapter "${obj.name ?? "unknown"}" is missing required method: "${method}".\n` +
           `         Expected: function, received: ${typeof obj[method]}.\n` +
           `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
       );

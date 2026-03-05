@@ -391,12 +391,12 @@ function sleep(ms) {
 }
 
 function formatNumber(n) {
-  if (typeof n !== "number" || isNaN(n)) return "N/A";
+  if (typeof n !== "number" || Number.isNaN(n)) return "N/A";
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function formatBytes(bytes) {
-  if (typeof bytes !== "number" || isNaN(bytes)) return "N/A";
+  if (typeof bytes !== "number" || Number.isNaN(bytes)) return "N/A";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
@@ -405,7 +405,7 @@ function formatBytes(bytes) {
 function calcOverhead(rawRps, vextRps) {
   if (!rawRps || rawRps === 0) return "N/A";
   const overhead = ((rawRps - vextRps) / rawRps) * 100;
-  return overhead.toFixed(2) + "%";
+  return `${overhead.toFixed(2)}%`;
 }
 
 function overheadEmoji(rawRps, vextRps) {
@@ -527,7 +527,7 @@ function selectMedian(metricsArray) {
     mean: Math.round(mean),
     median: median.rps,
     stddev: Math.round(stddev),
-    cv: cv.toFixed(1) + "%",
+    cv: `${cv.toFixed(1)}%`,
   };
 
   // 多轮时输出统计摘要

@@ -16,7 +16,7 @@
  *   # 或由 run-benchmark.mjs fork 启动
  */
 
-'use strict';
+
 
 const path = require('node:path');
 

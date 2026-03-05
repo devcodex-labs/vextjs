@@ -3,20 +3,14 @@ import path from "node:path";
 import type { DevCompiler } from "./compiler.js";
 import type { HotSwappableHandler } from "./hot-swappable-handler.js";
 import {
-  computeInvalidationSet,
-  evictModules,
   invalidateAndEvict,
 } from "./cache-invalidator.js";
 import { reloadServices } from "./service-reloader.js";
 import type { ServiceReloadResult } from "./service-reloader.js";
 import { reloadRoutes } from "./route-reloader.js";
 import type {
-  ReloadRoutesOptions,
-  RouteReloadResult,
   RouteReloaderApp,
   RouteReloaderMiddleware,
-  RouteReloaderAdapter,
-  RouteReloaderErrorMiddleware,
   MiddlewareRegistry,
   AdapterResolver,
   RoutesLoader,
@@ -25,7 +19,7 @@ import type {
   BuiltinMiddlewareCreators,
 } from "./route-reloader.js";
 import { reloadLocales, shouldReloadLocales } from "./i18n-reloader.js";
-import type { ConfigureI18nFn, I18nReloadResult } from "./i18n-reloader.js";
+import type { ConfigureI18nFn, } from "./i18n-reloader.js";
 import { reportMemoryIfNeeded } from "./memory-monitor.js";
 import type { MemoryReport } from "./memory-monitor.js";
 import type { FileChangeInfo } from "./file-watcher.js";

@@ -100,7 +100,7 @@ export class OpenAPIGenerator {
     }
 
     // ── 添加通用错误响应 schema ─────────────────────────────
-    doc.components!.schemas!["ErrorResponse"] = {
+    doc.components!.schemas!.ErrorResponse = {
       type: "object",
       properties: {
         code: {
@@ -119,7 +119,7 @@ export class OpenAPIGenerator {
       required: ["code", "message", "requestId"],
     };
 
-    doc.components!.schemas!["SuccessResponse"] = {
+    doc.components!.schemas!.SuccessResponse = {
       type: "object",
       properties: {
         code: {

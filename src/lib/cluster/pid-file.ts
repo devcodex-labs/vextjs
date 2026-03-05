@@ -81,7 +81,7 @@ export function writePidFile(
         10,
       );
 
-      if (!isNaN(existingPid) && existingPid > 0) {
+      if (!Number.isNaN(existingPid) && existingPid > 0) {
         if (isProcessAlive(existingPid)) {
           return {
             ok: false,
@@ -164,7 +164,7 @@ export function readPidFile(
   }
 
   const pid = parseInt(content, 10);
-  if (isNaN(pid) || pid <= 0) {
+  if (Number.isNaN(pid) || pid <= 0) {
     return {
       ok: false,
       path: absolutePath,
@@ -224,7 +224,7 @@ export function removePidFile(
     const content = readFileSync(absolutePath, "utf-8").trim();
     const filePid = parseInt(content, 10);
 
-    if (!isNaN(filePid) && filePid > 0 && filePid !== expectedPid) {
+    if (!Number.isNaN(filePid) && filePid > 0 && filePid !== expectedPid) {
       // PID 不一致 → 可能已被其他实例覆盖，不删除
       return {
         ok: false,

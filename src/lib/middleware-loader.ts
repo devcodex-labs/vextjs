@@ -363,8 +363,8 @@ function pathToFileUrl(filePath: string): string {
 
   // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
   if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = "/" + normalized;
+    normalized = `/${normalized}`;
   }
 
-  return "file://" + normalized;
+  return `file://${normalized}`;
 }

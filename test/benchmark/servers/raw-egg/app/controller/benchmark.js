@@ -12,7 +12,7 @@
  *   4. health — 健康检查端点，benchmark 脚本用于判断服务器就绪
  */
 
-'use strict';
+
 
 const { Controller } = require('egg');
 

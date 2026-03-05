@@ -22,7 +22,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { VextApp } from "../../../../src/types/app.js";
-import type { VextPlugin } from "../../../../src/types/plugin.js";
 
 // ── 测试辅助：创建 mock app ─────────────────────────────────
 

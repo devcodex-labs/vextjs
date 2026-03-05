@@ -1,6 +1,6 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { Dirent } from "node:fs";
+import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 

@@ -1,4 +1,4 @@
-import { requestContext } from "./request-context.js";
+
 import { createLogger } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { schemaAdapter } from "./schema-adapter.js";
@@ -8,7 +8,6 @@ import type {
   VextApp,
   VextConfig,
   VextServices,
-  VextLogger,
   VextValidator,
   VextRateLimiter,
 } from "../types/app.js";

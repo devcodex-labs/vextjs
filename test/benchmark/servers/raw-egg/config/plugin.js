@@ -8,7 +8,7 @@
  * 基准测试中大部分不需要，禁用后减少初始化和每请求开销。
  */
 
-'use strict';
+
 
 // 禁用 session（基准测试无需会话管理）
 exports.session = {

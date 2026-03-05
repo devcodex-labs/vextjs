@@ -1,6 +1,6 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join, extname, sep, relative } from "node:path";
-import type { VextApp, VextServices, VextLogger } from "../types/app.js";
+import type { VextApp, VextLogger } from "../types/app.js";
 import { resolveModuleDefault } from "./interop.js";
 
 /**
@@ -548,10 +548,10 @@ function pathToFileUrl(filePath: string): string {
 
   // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
   if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = "/" + normalized;
+    normalized = `/${normalized}`;
   }
 
-  return "file://" + normalized;
+  return `file://${normalized}`;
 }
 
 /**

@@ -323,7 +323,7 @@ export function createFastifyAdapter(
 
           try {
             handler(error, req, res);
-          } catch (handlerError) {
+          } catch (_handlerError) {
             try {
               res.rawJson({ code: 500, message: "Internal Server Error" }, 500);
             } catch {

@@ -8,7 +8,7 @@
  *   4. GET /health       → 健康检查（benchmark 脚本用于判断服务器就绪）
  */
 
-'use strict';
+
 
 module.exports = (app) => {
   const { router, controller } = app;

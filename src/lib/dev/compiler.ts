@@ -293,7 +293,7 @@ export class DevCompiler {
     await fs.promises.mkdir(path.dirname(outFile), { recursive: true });
     await fs.promises.writeFile(outFile, result.code);
     if (result.map) {
-      await fs.promises.writeFile(outFile + ".map", result.map);
+      await fs.promises.writeFile(`${outFile}.map`, result.map);
     }
 
     return outFile;

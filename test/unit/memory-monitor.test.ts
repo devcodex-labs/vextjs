@@ -4,8 +4,6 @@ import {
   MemoryMonitor,
   reportMemoryIfNeeded,
   resetDefaultMonitor,
-  type MemorySnapshot,
-  type MemoryReport,
 } from "../../src/lib/dev/memory-monitor.js"
 
 // ── 测试工具 ────────────────────────────────────────────────

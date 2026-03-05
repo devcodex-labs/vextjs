@@ -301,11 +301,11 @@ export class SchemaConverter {
         : undefined;
 
     if (baseType === "string") {
-      if (min !== undefined && !isNaN(min)) schema.minLength = min;
-      if (max !== undefined && !isNaN(max)) schema.maxLength = max;
+      if (min !== undefined && !Number.isNaN(min)) schema.minLength = min;
+      if (max !== undefined && !Number.isNaN(max)) schema.maxLength = max;
     } else if (baseType === "number" || baseType === "integer") {
-      if (min !== undefined && !isNaN(min)) schema.minimum = min;
-      if (max !== undefined && !isNaN(max)) schema.maximum = max;
+      if (min !== undefined && !Number.isNaN(min)) schema.minimum = min;
+      if (max !== undefined && !Number.isNaN(max)) schema.maximum = max;
     }
 
     return schema;

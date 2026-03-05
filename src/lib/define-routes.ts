@@ -298,7 +298,7 @@ function normalizePath(prefix: string, subPath: string): string {
 
   // 当 prefix 是根路径 '/' 时，直接拼接为 '/' + subPath，避免 '//health'
   if (cleanPrefix === "/") {
-    return "/" + cleanSubPath;
+    return `/${cleanSubPath}`;
   }
 
   const fullPath = `${cleanPrefix}/${cleanSubPath}`;

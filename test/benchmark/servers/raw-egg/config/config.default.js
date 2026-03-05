@@ -11,7 +11,7 @@
  *   - chain 场景的 3 层中间件通过 config.middleware 注册
  */
 
-'use strict';
+
 
 const port = parseInt(process.env.PORT || '7001', 10);
 
@@ -19,7 +19,7 @@ module.exports = (appInfo) => {
   const config = {};
 
   // ── 密钥（egg 强制要求）────────────────────────────────
-  config.keys = appInfo.name + '_benchmark_secret_key_2026';
+  config.keys = `${appInfo.name}_benchmark_secret_key_2026`;
 
   // ── 服务器配置 ─────────────────────────────────────────
   config.cluster = {

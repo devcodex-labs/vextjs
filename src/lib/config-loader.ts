@@ -225,7 +225,7 @@ function deepFreeze<T>(obj: T): T {
  */
 function validateConfig(config: Record<string, unknown>): void {
   // ── port ──────────────────────────────────────────────
-  const port = config["port"] as number | undefined;
+  const port = config.port as number | undefined;
   if (
     port !== undefined &&
     (typeof port !== "number" || port < 1 || port > 65535)
@@ -236,7 +236,7 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── adapter（字符串标识 | 工厂函数）──────────────────
-  const adapter = config["adapter"];
+  const adapter = config.adapter;
   if (adapter !== undefined) {
     const knownAdapters = ["hono", "fastify", "express", "koa", "native"];
     if (typeof adapter === "string") {
@@ -255,7 +255,7 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── middlewares ────────────────────────────────────────
-  const middlewares = config["middlewares"] as unknown[] | undefined;
+  const middlewares = config.middlewares as unknown[] | undefined;
   if (middlewares !== undefined) {
     if (!Array.isArray(middlewares)) {
       throw new Error("[vextjs] config.middlewares must be an array.");
@@ -274,18 +274,18 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── rateLimit ─────────────────────────────────────────
-  const rateLimit = config["rateLimit"] as Record<string, unknown> | undefined;
+  const rateLimit = config.rateLimit as Record<string, unknown> | undefined;
   if (rateLimit !== undefined) {
     if (typeof rateLimit !== "object" || rateLimit === null) {
       throw new Error("[vextjs] config.rateLimit must be an object.");
     }
-    const max = rateLimit["max"];
+    const max = rateLimit.max;
     if (max !== undefined && (typeof max !== "number" || max < 1)) {
       throw new Error(
         `[vextjs] config.rateLimit.max must be a positive number, got: ${max}`,
       );
     }
-    const window = rateLimit["window"];
+    const window = rateLimit.window;
     if (window !== undefined && (typeof window !== "number" || window < 1)) {
       throw new Error(
         `[vextjs] config.rateLimit.window must be a positive number (seconds), got: ${window}`,
@@ -294,12 +294,12 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── cluster ───────────────────────────────────────────
-  const cluster = config["cluster"] as Record<string, unknown> | undefined;
+  const cluster = config.cluster as Record<string, unknown> | undefined;
   if (cluster !== undefined) {
     if (typeof cluster !== "object" || cluster === null) {
       throw new Error("[vextjs] config.cluster must be an object.");
     }
-    const workers = cluster["workers"];
+    const workers = cluster.workers;
     if (workers !== undefined) {
       const validWorkerStrings = ["auto", "auto-1"];
       if (
@@ -325,34 +325,34 @@ function validateConfig(config: Record<string, unknown>): void {
       }
     }
     if (
-      cluster["enabled"] !== undefined &&
-      typeof cluster["enabled"] !== "boolean"
+      cluster.enabled !== undefined &&
+      typeof cluster.enabled !== "boolean"
     ) {
       throw new Error("[vextjs] config.cluster.enabled must be a boolean.");
     }
   }
 
   // ── locale ────────────────────────────────────────────
-  const locale = config["locale"] as Record<string, unknown> | undefined;
+  const locale = config.locale as Record<string, unknown> | undefined;
   if (locale !== undefined) {
     if (typeof locale !== "object" || locale === null) {
       throw new Error("[vextjs] config.locale must be an object.");
     }
     if (
-      locale["default"] !== undefined &&
-      typeof locale["default"] !== "string"
+      locale.default !== undefined &&
+      typeof locale.default !== "string"
     ) {
       throw new Error(
-        `[vextjs] config.locale.default must be a string (e.g. "zh-CN"), got: ${typeof locale["default"]}`,
+        `[vextjs] config.locale.default must be a string (e.g. "zh-CN"), got: ${typeof locale.default}`,
       );
     }
-    if (locale["supported"] !== undefined) {
-      if (!Array.isArray(locale["supported"])) {
+    if (locale.supported !== undefined) {
+      if (!Array.isArray(locale.supported)) {
         throw new Error(
           "[vextjs] config.locale.supported must be an array of locale strings.",
         );
       }
-      for (const s of locale["supported"]) {
+      for (const s of locale.supported) {
         if (typeof s !== "string") {
           throw new Error(
             `[vextjs] config.locale.supported[] items must be strings, got: ${typeof s}`,
@@ -363,12 +363,12 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── logger ────────────────────────────────────────────
-  const logger = config["logger"] as Record<string, unknown> | undefined;
+  const logger = config.logger as Record<string, unknown> | undefined;
   if (logger !== undefined) {
     if (typeof logger !== "object" || logger === null) {
       throw new Error("[vextjs] config.logger must be an object.");
     }
-    const level = logger["level"];
+    const level = logger.level;
     if (level !== undefined) {
       const validLevels = [
         "fatal",
@@ -386,20 +386,20 @@ function validateConfig(config: Record<string, unknown>): void {
       }
     }
     if (
-      logger["pretty"] !== undefined &&
-      typeof logger["pretty"] !== "boolean"
+      logger.pretty !== undefined &&
+      typeof logger.pretty !== "boolean"
     ) {
       throw new Error("[vextjs] config.logger.pretty must be a boolean.");
     }
   }
 
   // ── shutdown ──────────────────────────────────────────
-  const shutdown = config["shutdown"] as Record<string, unknown> | undefined;
+  const shutdown = config.shutdown as Record<string, unknown> | undefined;
   if (shutdown !== undefined) {
     if (typeof shutdown !== "object" || shutdown === null) {
       throw new Error("[vextjs] config.shutdown must be an object.");
     }
-    const timeout = shutdown["timeout"];
+    const timeout = shutdown.timeout;
     if (timeout !== undefined && (typeof timeout !== "number" || timeout < 0)) {
       throw new Error(
         `[vextjs] config.shutdown.timeout must be a non-negative number (seconds), got: ${timeout}`,
@@ -408,18 +408,18 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── accessLog ─────────────────────────────────────────
-  const accessLog = config["accessLog"] as Record<string, unknown> | undefined;
+  const accessLog = config.accessLog as Record<string, unknown> | undefined;
   if (accessLog !== undefined) {
     if (typeof accessLog !== "object" || accessLog === null) {
       throw new Error("[vextjs] config.accessLog must be an object.");
     }
     if (
-      accessLog["enabled"] !== undefined &&
-      typeof accessLog["enabled"] !== "boolean"
+      accessLog.enabled !== undefined &&
+      typeof accessLog.enabled !== "boolean"
     ) {
       throw new Error("[vextjs] config.accessLog.enabled must be a boolean.");
     }
-    const alLevel = accessLog["level"];
+    const alLevel = accessLog.level;
     if (alLevel !== undefined) {
       const validAlLevels = ["info", "debug"];
       if (typeof alLevel !== "string" || !validAlLevels.includes(alLevel)) {
@@ -428,13 +428,13 @@ function validateConfig(config: Record<string, unknown>): void {
         );
       }
     }
-    if (accessLog["skipPaths"] !== undefined) {
-      if (!Array.isArray(accessLog["skipPaths"])) {
+    if (accessLog.skipPaths !== undefined) {
+      if (!Array.isArray(accessLog.skipPaths)) {
         throw new Error(
           "[vextjs] config.accessLog.skipPaths must be an array of strings.",
         );
       }
-      for (const sp of accessLog["skipPaths"]) {
+      for (const sp of accessLog.skipPaths) {
         if (typeof sp !== "string") {
           throw new Error(
             `[vextjs] config.accessLog.skipPaths[] items must be strings, got: ${typeof sp}`,
@@ -445,21 +445,21 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── openapi ───────────────────────────────────────────
-  const openapi = config["openapi"] as Record<string, unknown> | undefined;
+  const openapi = config.openapi as Record<string, unknown> | undefined;
   if (openapi !== undefined) {
     if (typeof openapi !== "object" || openapi === null) {
       throw new Error("[vextjs] config.openapi must be an object.");
     }
     if (
-      openapi["enabled"] !== undefined &&
-      typeof openapi["enabled"] !== "boolean"
+      openapi.enabled !== undefined &&
+      typeof openapi.enabled !== "boolean"
     ) {
       throw new Error("[vextjs] config.openapi.enabled must be a boolean.");
     }
   }
 
   // ── requestContext ────────────────────────────────────
-  const requestContext = config["requestContext"] as
+  const requestContext = config.requestContext as
     | Record<string, unknown>
     | undefined;
   if (requestContext !== undefined) {
@@ -467,8 +467,8 @@ function validateConfig(config: Record<string, unknown>): void {
       throw new Error("[vextjs] config.requestContext must be an object.");
     }
     if (
-      requestContext["enabled"] !== undefined &&
-      typeof requestContext["enabled"] !== "boolean"
+      requestContext.enabled !== undefined &&
+      typeof requestContext.enabled !== "boolean"
     ) {
       throw new Error(
         "[vextjs] config.requestContext.enabled must be a boolean.",
@@ -554,7 +554,7 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
   );
 
   // ── 2. 加载环境文件（可选）──────────────────────────────
-  const env = process.env["NODE_ENV"] || "development";
+  const env = process.env.NODE_ENV || "development";
   const envFile = resolveConfigFile(configDir, env);
   const envConfig = envFile ? await importConfigFile(envFile) : {};
 
@@ -565,20 +565,20 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
   // ── 4. 合并 ────────────────────────────────────────────
   // 4a. default + env（深度合并 + middlewares patch）
   let merged = deepMerge(defaultConfig, envConfig);
-  if (envConfig["middlewares"] && Array.isArray(envConfig["middlewares"])) {
-    merged["middlewares"] = patchMiddlewares(
-      (defaultConfig["middlewares"] as MiddlewareDecl[] | undefined) ?? [],
-      envConfig["middlewares"] as MiddlewareDecl[],
+  if (envConfig.middlewares && Array.isArray(envConfig.middlewares)) {
+    merged.middlewares = patchMiddlewares(
+      (defaultConfig.middlewares as MiddlewareDecl[] | undefined) ?? [],
+      envConfig.middlewares as MiddlewareDecl[],
     );
   }
 
   // 4b. (default+env) + local（深度合并 + middlewares patch）
   const beforeLocal = { ...merged };
   merged = deepMerge(merged, localConfig);
-  if (localConfig["middlewares"] && Array.isArray(localConfig["middlewares"])) {
-    merged["middlewares"] = patchMiddlewares(
-      (beforeLocal["middlewares"] as MiddlewareDecl[] | undefined) ?? [],
-      localConfig["middlewares"] as MiddlewareDecl[],
+  if (localConfig.middlewares && Array.isArray(localConfig.middlewares)) {
+    merged.middlewares = patchMiddlewares(
+      (beforeLocal.middlewares as MiddlewareDecl[] | undefined) ?? [],
+      localConfig.middlewares as MiddlewareDecl[],
     );
   }
 

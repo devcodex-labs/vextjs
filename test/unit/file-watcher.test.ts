@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -9,18 +9,15 @@ import {
   getIgnorePatterns,
 } from "../../src/lib/dev/change-classifier.js";
 import type {
-  ChangeClassification,
   ClassifierOptions,
 } from "../../src/lib/dev/change-classifier.js";
 import { VextFileWatcher } from "../../src/lib/dev/file-watcher.js";
 import type {
   FileChangeEvent,
-  FileChangeInfo,
 } from "../../src/lib/dev/file-watcher.js";
 import {
   shouldUsePolling,
   isInContainer,
-  checkBindMount,
 } from "../../src/lib/dev/detect-polling.js";
 
 // ── 测试辅助 ────────────────────────────────────────────────

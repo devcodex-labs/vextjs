@@ -252,7 +252,7 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
         break;
 
       default:
-        if (arg && arg.startsWith("--")) {
+        if (arg?.startsWith("--")) {
           console.error(`[vextjs] Unknown option: "${arg}"\n`);
           printBuildHelp();
           process.exit(1);

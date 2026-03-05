@@ -19,7 +19,7 @@
  *   不需要在响应返回时做任何事），与其他裸跑服务器行为一致。
  */
 
-'use strict';
+
 
 module.exports = () => {
   return async function auth(ctx, next) {

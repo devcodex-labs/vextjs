@@ -1,6 +1,5 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）

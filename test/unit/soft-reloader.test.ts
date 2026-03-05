@@ -33,7 +33,6 @@ vi.mock("../../src/lib/dev/memory-monitor.js", () => ({
 import { SoftReloader } from "../../src/lib/dev/soft-reloader.js";
 import type {
   SoftReloaderOptions,
-  SoftReloadResult,
 } from "../../src/lib/dev/soft-reloader.js";
 import { invalidateAndEvict } from "../../src/lib/dev/cache-invalidator.js";
 import { reloadServices } from "../../src/lib/dev/service-reloader.js";

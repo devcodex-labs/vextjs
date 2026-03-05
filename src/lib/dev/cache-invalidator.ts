@@ -271,7 +271,7 @@ export function evictModules(modulePaths: Set<string>): EvictionResult {
     if (cachedModule) {
       // 清理父模块的 children 引用
       // 这确保下次构建反向依赖图时不会包含已驱逐的模块
-      if (cachedModule.parent && cachedModule.parent.children) {
+      if (cachedModule.parent?.children) {
         const idx = cachedModule.parent.children.indexOf(cachedModule);
         if (idx !== -1) {
           cachedModule.parent.children.splice(idx, 1);

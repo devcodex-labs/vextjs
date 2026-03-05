@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 
 import {
   buildReverseDependencyGraph,
@@ -6,8 +6,6 @@ import {
   evictModules,
   detectCircularInvalidation,
   invalidateAndEvict,
-  type InvalidationResult,
-  type EvictionResult,
 } from "../../src/lib/dev/cache-invalidator.js"
 
 import path from "node:path"

@@ -1008,7 +1008,7 @@ describe("reloadRoutes", () => {
         },
         rateLimit: {
           handler: (opts?: Record<string, unknown>) =>
-            createMockMiddleware("rateLimit-" + JSON.stringify(opts)),
+            createMockMiddleware(`rateLimit-${JSON.stringify(opts)}`),
           defaultOptions: { max: 100 },
           kind: "factory",
         },

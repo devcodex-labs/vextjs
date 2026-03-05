@@ -16,7 +16,7 @@
  * egg 中间件遵循 Koa 洋葱模型：await next() 前为 before，之后为 after。
  */
 
-'use strict';
+
 
 module.exports = () => {
   return async function timing(ctx, next) {

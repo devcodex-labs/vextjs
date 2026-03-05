@@ -16,7 +16,6 @@
 // @see IMPLEMENTATION-PLAN.md 任务 1.19
 
 import { createApp, DEFAULT_CONFIG } from "../lib/app.js";
-import type { AppInternals } from "../lib/app.js";
 import { resolveAdapter } from "../lib/adapter-resolver.js";
 import { loadPlugins } from "../lib/plugin-loader.js";
 import { loadMiddlewares } from "../lib/middleware-loader.js";
@@ -34,7 +33,7 @@ import type { VextMiddleware } from "../types/middleware.js";
 
 import { Readable } from "node:stream";
 import { join } from "node:path";
-import { IncomingMessage, ServerResponse } from "node:http";
+import { type IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 
 // ── 公共类型 ────────────────────────────────────────────────
@@ -416,7 +415,7 @@ function createTestRequest(
     // 请求参数累积
     const _headers: Record<string, string> = {};
     let _queryParams: Record<string, string | number | boolean> | null = null;
-    let _body: unknown = undefined;
+    let _body: unknown ;
     let _contentType: string | null = null;
 
     const builder: TestRequestBuilder = {
@@ -604,10 +603,10 @@ function executeRequest(
 
       // 拦截 writeHead
       const originalWriteHead = mockRes.writeHead.bind(mockRes);
-      (mockRes as any).writeHead = function (
+      (mockRes as any).writeHead = (
         code: number,
         ...args: any[]
-      ): ServerResponse {
+      ): ServerResponse => {
         statusCode = code;
 
         // writeHead 可以接受 (statusCode, headers) 或 (statusCode, reasonPhrase, headers)
@@ -631,7 +630,7 @@ function executeRequest(
 
       // 拦截 write
       const originalWrite = mockRes.write.bind(mockRes);
-      (mockRes as any).write = function (chunk: any, ...args: any[]): boolean {
+      (mockRes as any).write = (chunk: any, ...args: any[]): boolean => {
         if (chunk) {
           if (Buffer.isBuffer(chunk)) {
             responseChunks.push(chunk);
@@ -646,10 +645,10 @@ function executeRequest(
 
       // 拦截 end
       const originalEnd = mockRes.end.bind(mockRes);
-      (mockRes as any).end = function (
+      (mockRes as any).end = (
         chunk?: any,
         ...args: any[]
-      ): ServerResponse {
+      ): ServerResponse => {
         if (chunk) {
           if (Buffer.isBuffer(chunk)) {
             responseChunks.push(chunk);

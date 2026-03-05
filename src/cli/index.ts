@@ -53,7 +53,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
 
 // ── 未实现命令占位 ──────────────────────────────────────────
 
-const COMING_SOON: Record<string, string> = {};
+const _COMING_SOON: Record<string, string> = {};
 
 // ── 主函数 ──────────────────────────────────────────────────
 

@@ -62,7 +62,7 @@ export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
       return;
     }
 
-    const requestOrigin = req.headers["origin"];
+    const requestOrigin = req.headers.origin;
 
     // ── 计算 Access-Control-Allow-Origin 的值 ─────────────
     //

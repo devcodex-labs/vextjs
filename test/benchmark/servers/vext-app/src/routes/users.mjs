@@ -25,8 +25,8 @@ function normalizePath(prefix, subPath) {
     prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
   const cleanSubPath = subPath.startsWith("/") ? subPath.slice(1) : subPath;
   if (!cleanSubPath) return cleanPrefix || "/";
-  if (cleanPrefix === "/") return "/" + cleanSubPath;
-  const fullPath = cleanPrefix + "/" + cleanSubPath;
+  if (cleanPrefix === "/") return `/${cleanSubPath}`;
+  const fullPath = `${cleanPrefix}/${cleanSubPath}`;
   if (fullPath.length > 1 && fullPath.endsWith("/"))
     return fullPath.slice(0, -1);
   return fullPath;

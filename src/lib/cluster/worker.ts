@@ -149,10 +149,10 @@ export async function workerMain(
 
   const config: WorkerConfig = {
     workerId,
-    memoryThreshold: isNaN(memoryThreshold)
+    memoryThreshold: Number.isNaN(memoryThreshold)
       ? DEFAULT_MEMORY_THRESHOLD
       : memoryThreshold,
-    workerCount: isNaN(workerCount) ? 1 : workerCount,
+    workerCount: Number.isNaN(workerCount) ? 1 : workerCount,
   };
 
   // ── 初始化上下文 ──────────────────────────────────────

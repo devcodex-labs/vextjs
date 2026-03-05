@@ -278,7 +278,7 @@ export function createNativeAdapter(
           // errorHandler 自身抛异常的边界保护
           try {
             errorHandler(err, req, res);
-          } catch (handlerError) {
+          } catch (_handlerError) {
             sendFallbackError(nodeRes);
           }
         } else {

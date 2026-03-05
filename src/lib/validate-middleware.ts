@@ -1,5 +1,4 @@
-import { schemaAdapter } from "./schema-adapter.js";
-import type { JSONSchema } from "./schema-adapter.js";
+
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextRequest } from "../types/request.js";
 import { VextValidationError } from "../types/errors.js";

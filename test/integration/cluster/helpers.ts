@@ -403,7 +403,7 @@ export function readPidFileContent(pidFilePath: string): number | null {
   try {
     const content = readFileSync(pidFilePath, "utf-8").trim();
     const pid = parseInt(content, 10);
-    return isNaN(pid) ? null : pid;
+    return Number.isNaN(pid) ? null : pid;
   } catch {
     return null;
   }

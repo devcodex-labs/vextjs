@@ -57,7 +57,7 @@ function requestIdMiddleware(req, res, next) {
 // 中间件 3: 简单鉴权模拟
 function authMiddleware(req, _res, next) {
   // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
-  req.headers["authorization"];
+  req.headers.authorization;
   req._authenticated = true;
   next();
 }

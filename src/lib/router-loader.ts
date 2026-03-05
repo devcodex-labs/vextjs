@@ -423,7 +423,7 @@ function filePathToPrefix(filePath: string, routesDir: string): string {
 
   // 6. 确保以 / 开头
   if (!rel.startsWith("/")) {
-    rel = "/" + rel;
+    rel = `/${rel}`;
   }
 
   // 去除尾部 /（根路径 / 除外）
@@ -517,7 +517,7 @@ async function loadRouteFile(
     // 添加 cache-busting query string，避免 ESM 模块缓存导致重复加载时
     // _factory/_collector 已被 executeRouteFactory 删除。
     // 这在测试场景（多次 createTestApp）和 Phase 2 热重载中都是必要的。
-    const fileUrl = pathToFileUrl(filePath) + `?t=${Date.now()}`;
+    const fileUrl = `${pathToFileUrl(filePath)}?t=${Date.now()}`;
     const mod = await import(fileUrl);
 
     const routeDefinition = resolveModuleDefault<RouteDefinition>(mod);
@@ -595,7 +595,7 @@ function normalizePath(prefix: string, subPath: string): string {
 
   // 当 prefix 是根路径 '/' 时，直接拼接为 '/' + subPath，避免 '//health'
   if (cleanPrefix === "/") {
-    return "/" + cleanSubPath;
+    return `/${cleanSubPath}`;
   }
 
   const fullPath = `${cleanPrefix}/${cleanSubPath}`;
@@ -671,8 +671,8 @@ function pathToFileUrl(filePath: string): string {
 
   // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
   if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = "/" + normalized;
+    normalized = `/${normalized}`;
   }
 
-  return "file://" + normalized;
+  return `file://${normalized}`;
 }

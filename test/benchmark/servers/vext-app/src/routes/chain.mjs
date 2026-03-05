@@ -25,8 +25,8 @@ function normalizePath(prefix, subPath) {
     prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
   const cleanSubPath = subPath.startsWith("/") ? subPath.slice(1) : subPath;
   if (!cleanSubPath) return cleanPrefix || "/";
-  if (cleanPrefix === "/") return "/" + cleanSubPath;
-  const fullPath = cleanPrefix + "/" + cleanSubPath;
+  if (cleanPrefix === "/") return `/${cleanSubPath}`;
+  const fullPath = `${cleanPrefix}/${cleanSubPath}`;
   if (fullPath.length > 1 && fullPath.endsWith("/"))
     return fullPath.slice(0, -1);
   return fullPath;
@@ -77,7 +77,7 @@ function factory(app) {
     const benchRequestId = crypto.randomUUID();
 
     // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────
-    const authHeader = req.headers["authorization"];
+    const authHeader = req.headers.authorization;
     const authenticated = true;
 
     // ── handler 逻辑 ─────────────────────────────────────

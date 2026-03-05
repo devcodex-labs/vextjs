@@ -81,7 +81,7 @@ export function inferOperationId(method: string, path: string): string {
     .replace(/\//g, "-") // 斜杠转连字符（用于后续 split）
     .replace(
       /:(\w+)/g,
-      (_match, p1: string) => "By" + p1.charAt(0).toUpperCase() + p1.slice(1),
+      (_match, p1: string) => `By${p1.charAt(0).toUpperCase()}${p1.slice(1)}`,
     ) // :id → ById, :userId → ByUserId
     .replace(/\*(\w+)/g, "$1") // *path → path
     .split("-")
@@ -91,7 +91,7 @@ export function inferOperationId(method: string, path: string): string {
 
   // ── 3. 空路径（根路由 /）处理 ────────────────────────────
   if (pathPart === "") {
-    return prefix + "Root";
+    return `${prefix}Root`;
   }
 
   return prefix + pathPart;

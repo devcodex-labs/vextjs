@@ -71,7 +71,7 @@ fastify.addHook("preHandler", async (request, reply) => {
 fastify.addHook("preHandler", async (request, _reply) => {
   if (request.url === "/chain") {
     // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
-    request.headers["authorization"];
+    request.headers.authorization;
     request.authenticated = true;
   }
 });

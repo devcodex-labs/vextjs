@@ -180,7 +180,7 @@ function parseStartArgs(args: string[]): StartOptions {
     if (arg === "--port" && i + 1 < args.length) {
       const portStr = args[++i]!;
       const port = parseInt(portStr, 10);
-      if (isNaN(port) || port < 0 || port > 65535) {
+      if (Number.isNaN(port) || port < 0 || port > 65535) {
         console.error(`[vextjs] Invalid port number: "${portStr}"`);
         process.exit(1);
       }
@@ -190,7 +190,7 @@ function parseStartArgs(args: string[]): StartOptions {
     } else if (arg === "--help" || arg === "-h") {
       printStartHelp();
       process.exit(0);
-    } else if (arg && arg.startsWith("--")) {
+    } else if (arg?.startsWith("--")) {
       console.error(`[vextjs] Unknown option: "${arg}"\n`);
       printStartHelp();
       process.exit(1);

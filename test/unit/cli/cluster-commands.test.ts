@@ -179,7 +179,7 @@ describe("vext stop (stopCommand)", () => {
     const epermError = new Error("EPERM") as NodeJS.ErrnoException;
     epermError.code = "EPERM";
     processKillSpy.mockImplementation(
-      (pid: number, signal?: string | number) => {
+      (_pid: number, signal?: string | number) => {
         if (signal === "SIGTERM") throw epermError;
         return true;
       },
@@ -336,7 +336,7 @@ describe("vext reload (reloadCommand)", () => {
     const epermError = new Error("EPERM") as NodeJS.ErrnoException;
     epermError.code = "EPERM";
     processKillSpy.mockImplementation(
-      (pid: number, signal?: string | number) => {
+      (_pid: number, signal?: string | number) => {
         if (signal === "SIGHUP") throw epermError;
         return true;
       },
@@ -398,7 +398,7 @@ describe("vext reload (reloadCommand)", () => {
     const genericError = new Error("Unknown error") as NodeJS.ErrnoException;
     genericError.code = "ESRCH";
     processKillSpy.mockImplementation(
-      (pid: number, signal?: string | number) => {
+      (_pid: number, signal?: string | number) => {
         if (signal === "SIGHUP") throw genericError;
         return true;
       },
@@ -720,7 +720,7 @@ describe("edge cases", () => {
     const esrchError = new Error("ESRCH") as NodeJS.ErrnoException;
     esrchError.code = "ESRCH";
     processKillSpy.mockImplementation(
-      (pid: number, signal?: string | number) => {
+      (_pid: number, signal?: string | number) => {
         if (signal === "SIGTERM") throw esrchError;
         return true;
       },

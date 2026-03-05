@@ -286,11 +286,11 @@ describe("OpenAPIGenerator", () => {
 
     it("始终包含 ErrorResponse 和 SuccessResponse schema", () => {
       const doc = generate([]);
-      expect(doc.components!.schemas!["ErrorResponse"]).toBeDefined();
-      expect(doc.components!.schemas!["SuccessResponse"]).toBeDefined();
+      expect(doc.components!.schemas!.ErrorResponse).toBeDefined();
+      expect(doc.components!.schemas!.SuccessResponse).toBeDefined();
 
       // ErrorResponse 结构
-      const err = doc.components!.schemas!["ErrorResponse"];
+      const err = doc.components!.schemas!.ErrorResponse;
       expect(err.type).toBe("object");
       expect(err.properties!.code.type).toBe("integer");
       expect(err.properties!.message.type).toBe("string");
@@ -298,7 +298,7 @@ describe("OpenAPIGenerator", () => {
       expect(err.required).toEqual(["code", "message", "requestId"]);
 
       // SuccessResponse 结构
-      const success = doc.components!.schemas!["SuccessResponse"];
+      const success = doc.components!.schemas!.SuccessResponse;
       expect(success.type).toBe("object");
       expect(success.properties!.code.example).toBe(0);
       expect(success.required).toEqual(["code", "data", "requestId"]);
@@ -1670,8 +1670,8 @@ describe("OpenAPIGenerator", () => {
       expect(deleteUser.security).toEqual([{ bearerAuth: [] }]);
 
       // ── components ────────────────────────────────────────
-      expect(doc.components!.schemas!["ErrorResponse"]).toBeDefined();
-      expect(doc.components!.schemas!["SuccessResponse"]).toBeDefined();
+      expect(doc.components!.schemas!.ErrorResponse).toBeDefined();
+      expect(doc.components!.schemas!.SuccessResponse).toBeDefined();
       expect(doc.components!.securitySchemes!.bearerAuth).toBeDefined();
     });
 

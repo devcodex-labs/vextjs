@@ -80,7 +80,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
   const globalMiddlewares: VextMiddleware[] = [];
   let errorHandler: VextErrorMiddleware | null = null;
   /** 全局中间件是否已冻结（listen/buildHandler 后不再变更） */
-  let _globalFrozen = false;
+  const _globalFrozen = false;
 
   // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
   const alsEnabled = app.config.requestContext?.enabled !== false;

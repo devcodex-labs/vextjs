@@ -1,5 +1,4 @@
 import { watch, statSync, existsSync, readdirSync } from "node:fs";
-import type { FSWatcher } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { EventEmitter } from "node:events";

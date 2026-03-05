@@ -53,7 +53,7 @@ function envInt(name, defaultValue) {
   const val = process.env[name];
   if (val === undefined || val === "") return defaultValue;
   const parsed = parseInt(val, 10);
-  return isNaN(parsed) ? defaultValue : parsed;
+  return Number.isNaN(parsed) ? defaultValue : parsed;
 }
 
 function envBool(name, defaultValue) {

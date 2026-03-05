@@ -1,15 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createNativeAdapter } from "../../../src/adapters/native/adapter.js";
-import type { NativeAdapterOptions } from "../../../src/adapters/native/adapter.js";
 import type {
   VextAdapter,
   VextServerHandle,
 } from "../../../src/types/adapter.js";
 import type { VextApp, VextConfig } from "../../../src/types/app.js";
-import type {
-  VextMiddleware,
-  VextErrorMiddleware,
-} from "../../../src/types/middleware.js";
 import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
 import { DEFAULT_CONFIG } from "../../../src/lib/app.js";

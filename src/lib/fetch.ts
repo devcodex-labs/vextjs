@@ -1,5 +1,5 @@
 import { requestContext } from "./request-context.js";
-import type { VextApp, VextLogger } from "../types/app.js";
+import type { VextLogger } from "../types/app.js";
 
 /**
  * fetch.ts — app.fetch 内置 HTTP 客户端

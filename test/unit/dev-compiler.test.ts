@@ -525,7 +525,7 @@ describe("DevCompiler", () => {
         path.join(srcDir, "index.ts"),
       );
 
-      expect(fs.existsSync(outFile + ".map")).toBe(true);
+      expect(fs.existsSync(`${outFile}.map`)).toBe(true);
     });
 
     it("应正确处理 .ts 文件的类型移除", async () => {

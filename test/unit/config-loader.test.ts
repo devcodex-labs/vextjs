@@ -48,9 +48,9 @@ describe("deepMerge", () => {
       { cors: { origins: ["http://example.com"] } } as Record<string, unknown>,
     );
 
-    const cors = result["cors"] as Record<string, unknown>;
-    expect(cors["enabled"]).toBe(true); // 未覆盖的子字段保留
-    expect(cors["origins"]).toEqual(["http://example.com"]); // 数组直接覆盖
+    const cors = result.cors as Record<string, unknown>;
+    expect(cors.enabled).toBe(true); // 未覆盖的子字段保留
+    expect(cors.origins).toEqual(["http://example.com"]); // 数组直接覆盖
   });
 
   it("overwrites arrays (not concat)", () => {
@@ -58,7 +58,7 @@ describe("deepMerge", () => {
       { items: [1, 2, 3] } as Record<string, unknown>,
       { items: [4, 5] } as Record<string, unknown>,
     );
-    expect(result["items"]).toEqual([4, 5]);
+    expect(result.items).toEqual([4, 5]);
   });
 
   it("skips middlewares key (handled by patchMiddlewares)", () => {
@@ -73,8 +73,8 @@ describe("deepMerge", () => {
       >,
     );
     // middlewares 应该保留 target 的值（被跳过）
-    expect(result["middlewares"]).toEqual([{ name: "auth" }]);
-    expect(result["port"]).toBe(8080); // 其他字段正常合并
+    expect(result.middlewares).toEqual([{ name: "auth" }]);
+    expect(result.port).toBe(8080); // 其他字段正常合并
   });
 
   it("handles null source values (overwrites with null)", () => {
@@ -82,7 +82,7 @@ describe("deepMerge", () => {
       { cors: { enabled: true } } as Record<string, unknown>,
       { cors: null } as unknown as Record<string, unknown>,
     );
-    expect(result["cors"]).toBeNull();
+    expect(result.cors).toBeNull();
   });
 
   it("handles undefined source values (skips)", () => {
@@ -92,7 +92,7 @@ describe("deepMerge", () => {
     );
     // undefined 值在 Object.keys 遍历中会被包含，但值为 undefined
     // deepMerge 的行为：source[key] 为 undefined 时走 else 分支（直接覆盖）
-    expect(result["port"]).toBeUndefined();
+    expect(result.port).toBeUndefined();
   });
 
   it("deeply merges multiple levels", () => {
@@ -100,11 +100,11 @@ describe("deepMerge", () => {
       { a: { b: { c: 1, d: 2 }, e: 3 } } as Record<string, unknown>,
       { a: { b: { c: 10 } } } as Record<string, unknown>,
     );
-    const a = result["a"] as Record<string, unknown>;
-    const b = a["b"] as Record<string, unknown>;
-    expect(b["c"]).toBe(10);
-    expect(b["d"]).toBe(2); // 未覆盖
-    expect(a["e"]).toBe(3); // 未覆盖
+    const a = result.a as Record<string, unknown>;
+    const b = a.b as Record<string, unknown>;
+    expect(b.c).toBe(10);
+    expect(b.d).toBe(2); // 未覆盖
+    expect(a.e).toBe(3); // 未覆盖
   });
 });
 

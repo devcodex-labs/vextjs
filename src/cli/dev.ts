@@ -406,8 +406,9 @@ function parseDevArgs(args: string[]): DevCommandOptions {
 
       case "--poll-interval":
         if (i + 1 < args.length) {
-          const val = parseInt(args[++i]!, 10);
-          if (!isNaN(val) && val > 0) {
+          i++;
+          const val = parseInt(args[i] ?? "", 10);
+          if (!Number.isNaN(val) && val > 0) {
             options.pollInterval = val;
           } else {
             console.error(
@@ -420,8 +421,9 @@ function parseDevArgs(args: string[]): DevCommandOptions {
 
       case "--debounce":
         if (i + 1 < args.length) {
-          const val = parseInt(args[++i]!, 10);
-          if (!isNaN(val) && val >= 0) {
+          i++;
+          const val = parseInt(args[i] ?? "", 10);
+          if (!Number.isNaN(val) && val >= 0) {
             options.debounce = val;
           } else {
             console.error(`[vextjs] Invalid --debounce value: "${args[i]}"`);
@@ -445,7 +447,7 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       default:
-        if (arg && arg.startsWith("--")) {
+        if (arg?.startsWith("--")) {
           console.error(`[vextjs] Unknown option: "${arg}"\n`);
           printDevHelp();
           process.exit(1);
@@ -466,7 +468,7 @@ function parseDevArgs(args: string[]): DevCommandOptions {
   }
   if (options.debounce === undefined && process.env.VEXT_DEV_DEBOUNCE) {
     const val = parseInt(process.env.VEXT_DEV_DEBOUNCE, 10);
-    if (!isNaN(val) && val >= 0) {
+    if (!Number.isNaN(val) && val >= 0) {
       options.debounce = val;
     }
   }
@@ -492,7 +494,7 @@ function printBanner(options: DevCommandOptions): void {
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  Mode: ${mode.padEnd(39)}\u2551
 \u2551  Watch: ${polling.padEnd(38)}\u2551
-\u2551  Debounce: ${String(debounce + "ms").padEnd(35)}\u2551
+\u2551  Debounce: ${String(`${debounce}ms`).padEnd(35)}\u2551
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  \u{1F7E2} T1 (code):   soft reload (transform)    \u2551
 \u2551  \u{1F7E1} T2 (struct): soft reload (rebuild)      \u2551

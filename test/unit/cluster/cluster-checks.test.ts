@@ -15,10 +15,9 @@
  * @see 12-cluster.md §4.1（Cluster 模式启动检测与警告）
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, } from "vitest";
 import {
   checkClusterCompatibility,
-  type ClusterCheckResult,
 } from "../../../src/lib/cluster/cluster-checks.js";
 import type { VextApp } from "../../../src/types/app.js";
 

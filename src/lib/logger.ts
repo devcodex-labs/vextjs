@@ -97,7 +97,7 @@ export function createLogger(
   options?: { requestContextEnabled?: boolean },
 ): VextLogger {
   const level = config.level ?? "info";
-  const pretty = config.pretty ?? process.env["NODE_ENV"] !== "production";
+  const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
   const alsEnabled = options?.requestContextEnabled !== false;
 
   // ── pino 配置 ──────────────────────────────────────────

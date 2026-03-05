@@ -663,7 +663,7 @@ describe("createAccessLogMiddleware", () => {
     })
 
     it("极长路径应正常记录", async () => {
-      const longPath = "/" + "a".repeat(1000)
+      const longPath = `/${"a".repeat(1000)}`
       const middleware = createAccessLogMiddleware({}, logger)
       const req = createMockReq({ path: longPath })
       const res = createMockRes()
