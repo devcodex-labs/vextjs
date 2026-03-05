@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.1.1] - 2026-03-05
+
 ### Added
 
 - `vext create` CLI command — interactive project scaffolding with TS/JS support, 5 adapter choices (`--adapter hono|fastify|express|koa|native`), `--skip-install`, `--force` options (Phase 4.2)
@@ -16,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Issues templates (Bug Report, Feature Request) and Pull Request template (Phase 4.6)
 - `CONTRIBUTING.md` — contribution guide with development setup, code style, testing, and PR guidelines (Phase 4.6)
 - `CHANGELOG.md` — this file (Phase 4.6)
+- Documentation site — 39 pages SSG with Rspress v2, covering guide (16p), API reference (7p), examples (7p), benchmark
+- `app.fetch` built-in HTTP client guide and API reference
+- MonSQLize database plugin usage guide
+- Logger, requestContext, build, deployment advanced guides
+- Nacos and OpenTelemetry integration examples
+- CI docs-build gate for PR checks
+- Custom SVG favicon with gradient V design
 
 ---
 
@@ -121,6 +132,7 @@ First pre-release of vextjs, covering Phase 0 through Phase 3 of the implementat
 
 | Version | Date | Milestone |
 |---------|------|-----------|
+| 0.1.1 | 2026-03-05 | CLI scaffolding, security fixes, docs site, community files |
 | 0.1.0 | 2026-03-04 | MVP through Phase 3 |
 
 ---
@@ -131,5 +143,6 @@ First pre-release of vextjs, covering Phase 0 through Phase 3 of the implementat
 - [Issues](https://github.com/vextjs/vext/issues)
 - [Contributing Guide](./CONTRIBUTING.md)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/vextjs/vext/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/vextjs/vext/releases/tag/v0.1.0
