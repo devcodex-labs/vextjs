@@ -3,6 +3,7 @@
 import { startCommand } from "./start.js";
 import { devCommand } from "./dev.js";
 import { buildCommand } from "./build.js";
+import { createCommand } from "./create.js";
 import { stopCommand } from "./stop.js";
 import { reloadCommand } from "./reload.js";
 import { statusCommand } from "./status.js";
@@ -14,7 +15,7 @@ import { statusCommand } from "./status.js";
  *   vext start   — 生产模式启动
  *   vext dev     — 开发模式启动（Phase 2A 实现）
  *   vext build   — 编译 TS → JS（Phase 2A 实现）
- *   vext create  — 项目脚手架（Phase 4 实现）
+ *   vext create  — 项目脚手架（Phase 4 实现 ✅）
  *
  * 命令解析：
  *   使用 Node.js 内置 util.parseArgs（Node 18.3+ / 16.17+），
@@ -44,6 +45,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   start: startCommand,
   dev: devCommand,
   build: buildCommand,
+  create: createCommand,
   stop: stopCommand,
   reload: reloadCommand,
   status: statusCommand,
@@ -51,9 +53,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
 
 // ── 未实现命令占位 ──────────────────────────────────────────
 
-const COMING_SOON: Record<string, string> = {
-  create: "Create a new vext project from template",
-};
+const COMING_SOON: Record<string, string> = {};
 
 // ── 主函数 ──────────────────────────────────────────────────
 
@@ -94,16 +94,6 @@ async function main(): Promise<void> {
     commandArgs = args.slice(1);
   }
 
-  // ── 检查是否为未实现命令 ────────────────────────────────
-  if (command in COMING_SOON) {
-    console.error(
-      `\n  [vextjs] "${command}" command is not yet available.\n` +
-        `           ${COMING_SOON[command]}.\n` +
-        `           This feature is planned for a future release.\n`,
-    );
-    process.exit(1);
-  }
-
   // ── 分发到对应的命令 handler ────────────────────────────
   const handler = COMMANDS[command];
 
@@ -129,6 +119,7 @@ function printHelp(): void {
   Usage: vext <command> [options]
 
   Commands:
+    create <name>         Create a new vext project
     start                 Start the application in production mode
     dev                   Start with hot reload (development mode)
     build                 Build the application for production
@@ -136,20 +127,19 @@ function printHelp(): void {
     reload                Trigger zero-downtime rolling restart (cluster mode)
     status                Show server status (cluster mode)
 
-  Coming soon:
-    create <name>         Create a new vext project
-
   Global options:
     -h, --help            Show this help message
     -v, --version         Show version number
 
   Command options:
+    vext create --help    Show create command options
     vext start --help     Show start command options
     vext stop --help      Show stop command options
     vext reload --help    Show reload command options
     vext status --help    Show status command options
 
   Examples:
+    $ vext create my-app
     $ vext start
     $ vext start --port 8080 --host 0.0.0.0
     $ vext                                    (defaults to "start")
