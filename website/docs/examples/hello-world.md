@@ -301,6 +301,6 @@ export default {
 ## 下一步
 
 - 📖 阅读 [快速开始](/guide/quick-start) 了解更完整的项目搭建流程
-- 📖 阅读 [CRUD API 示例](/guide/examples/crud-api) 了解数据库集成
+- 📖 阅读 [CRUD API 示例](/examples/crud-api) 了解数据库集成
 - 📖 阅读 [项目结构](/guide/project-structure) 了解约定式目录规范
 - 📖 阅读 [路由](/guide/routing) 深入了解三段式路由定义

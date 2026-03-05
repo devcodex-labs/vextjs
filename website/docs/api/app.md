@@ -789,7 +789,7 @@ async shutdown(
 import { DEFAULT_CONFIG } from 'vextjs';
 ```
 
-完整内容参见 [配置项 — DEFAULT_CONFIG](/guide/api/config#default_config)。
+完整内容参见 [配置项 — DEFAULT_CONFIG](/api/config#default_config)。
 
 ---
 
@@ -811,7 +811,7 @@ setupShutdown(app, serverHandle, internals);
 
 ### definePlugin
 
-创建 `VextPlugin` 的推荐方式。参见 [插件 API](/guide/api/plugin-api)。
+创建 `VextPlugin` 的推荐方式。参见 [插件 API](/api/plugin-api)。
 
 ```typescript
 import { definePlugin } from 'vextjs';
@@ -826,7 +826,7 @@ export default definePlugin({
 
 ### defineRoutes
 
-创建路由文件的核心函数。参见 [路由定义](/guide/api/route-definition)。
+创建路由文件的核心函数。参见 [路由定义](/api/route-definition)。
 
 ```typescript
 import { defineRoutes } from 'vextjs';
@@ -840,7 +840,7 @@ export default defineRoutes((app) => {
 
 ### defineMiddleware / defineMiddlewareFactory
 
-创建中间件的辅助函数。参见 [插件 API](/guide/api/plugin-api#definemiddleware)。
+创建中间件的辅助函数。参见 [插件 API](/api/plugin-api#definemiddleware)。
 
 ```typescript
 import { defineMiddleware, defineMiddlewareFactory } from 'vextjs';

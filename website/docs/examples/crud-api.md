@@ -913,8 +913,8 @@ handler 中 app.throw(404, '用户不存在')
 
 ## 下一步
 
-- 📖 [Zod 校验集成](/guide/examples/zod-validation) — 使用 Zod 替换内置的 schema-dsl 校验
-- 📖 [Drizzle ORM 集成](/guide/examples/drizzle-orm) — 接入 Drizzle ORM 实现真实数据库操作
-- 📖 [Prisma ORM 集成](/guide/examples/prisma-orm) — 接入 Prisma ORM 实现真实数据库操作
+- 📖 [Zod 校验集成](/examples/zod-validation) — 使用 Zod 替换内置的 schema-dsl 校验
+- 📖 [Drizzle ORM 集成](/examples/drizzle-orm) — 接入 Drizzle ORM 实现真实数据库操作
+- 📖 [Prisma ORM 集成](/examples/prisma-orm) — 接入 Prisma ORM 实现真实数据库操作
 - 📖 [测试](/guide/testing) — 深入了解 VextJS 测试工具的高级用法
 - 📖 [OpenAPI 文档](/guide/openapi) — 深入了解 OpenAPI 自动生成的配置选项

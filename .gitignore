@@ -138,3 +138,7 @@ dist
 # Windows reserved device names (prevent accidental creation from blocking git)
 nul
 NUL
+
+# AI dev guidelines (prevent accidental commit to project repo)
+.ai-memory/
+reports/

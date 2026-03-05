@@ -16,6 +16,21 @@ export default defineConfig({
         activeMatch: "/guide/",
       },
       {
+        text: "API 参考",
+        link: "/api/config",
+        activeMatch: "/api/",
+      },
+      {
+        text: "示例",
+        link: "/examples/hello-world",
+        activeMatch: "/examples/",
+      },
+      {
+        text: "Benchmark",
+        link: "/benchmark",
+        activeMatch: "/benchmark",
+      },
+      {
         text: "v0.1.0",
         items: [
           {
@@ -62,30 +77,30 @@ export default defineConfig({
             { text: "国际化 (i18n)", link: "/guide/i18n" },
           ],
         },
+      ],
+      "/api/": [
         {
           text: "API 参考",
           items: [
-            { text: "配置项", link: "/guide/api/config" },
-            { text: "路由定义", link: "/guide/api/route-definition" },
-            { text: "请求与响应", link: "/guide/api/context" },
-            { text: "应用实例", link: "/guide/api/app" },
-            { text: "插件 API", link: "/guide/api/plugin-api" },
-            { text: "测试工具", link: "/guide/api/testing-api" },
+            { text: "配置项", link: "/api/config" },
+            { text: "路由定义", link: "/api/route-definition" },
+            { text: "请求与响应", link: "/api/context" },
+            { text: "应用实例", link: "/api/app" },
+            { text: "插件 API", link: "/api/plugin-api" },
+            { text: "测试工具", link: "/api/testing-api" },
           ],
         },
+      ],
+      "/examples/": [
         {
           text: "示例",
           items: [
-            { text: "Hello World", link: "/guide/examples/hello-world" },
-            { text: "CRUD API", link: "/guide/examples/crud-api" },
-            { text: "Zod 校验集成", link: "/guide/examples/zod-validation" },
-            { text: "Drizzle ORM 集成", link: "/guide/examples/drizzle-orm" },
-            { text: "Prisma ORM 集成", link: "/guide/examples/prisma-orm" },
+            { text: "Hello World", link: "/examples/hello-world" },
+            { text: "CRUD API", link: "/examples/crud-api" },
+            { text: "Zod 校验集成", link: "/examples/zod-validation" },
+            { text: "Drizzle ORM 集成", link: "/examples/drizzle-orm" },
+            { text: "Prisma ORM 集成", link: "/examples/prisma-orm" },
           ],
-        },
-        {
-          text: "性能基准",
-          items: [{ text: "Benchmark", link: "/guide/benchmark" }],
         },
       ],
     },

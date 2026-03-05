@@ -894,8 +894,8 @@ app.get('/health', {
 
 ## 下一步
 
-- 📖 [Drizzle ORM 集成](/guide/examples/drizzle-orm) — 接入类型安全的 ORM
-- 📖 [Prisma ORM 集成](/guide/examples/prisma-orm) — 接入 Prisma 数据库工具
+- 📖 [Drizzle ORM 集成](/examples/drizzle-orm) — 接入类型安全的 ORM
+- 📖 [Prisma ORM 集成](/examples/prisma-orm) — 接入 Prisma 数据库工具
 - 📖 [参数校验](/guide/validation) — 深入了解内置 schema-dsl 校验
 - 📖 [插件](/guide/plugins) — 了解插件开发的更多细节
 - 📖 [测试](/guide/testing) — 使用 createTestApp 测试 Zod 校验
