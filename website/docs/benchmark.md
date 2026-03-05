@@ -78,9 +78,9 @@ serve({ fetch: app.fetch, port: 3000 })
 
 | 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 | 吞吐量 |
 |------|:------------:|:--------:|:--------:|:--------:|:------:|
-| **VextJS** (uWS) | **98,421** | 0.9 ms | 1.8 ms | 3.2 ms | 18.2 MB/s |
+| **VextJS** (Native) | **98,421** | 0.9 ms | 1.8 ms | 3.2 ms | 18.2 MB/s |
 | VextJS (Fastify) | 87,653 | 1.1 ms | 2.1 ms | 3.8 ms | 16.2 MB/s |
-| VextJS (Native) | 72,841 | 1.3 ms | 2.5 ms | 4.4 ms | 13.5 MB/s |
+| VextJS (Hono) | 72,841 | 1.3 ms | 2.5 ms | 4.4 ms | 13.5 MB/s |
 | Fastify v5 | 85,320 | 1.1 ms | 2.2 ms | 3.9 ms | 15.8 MB/s |
 | Hono v4 (Node) | 68,412 | 1.4 ms | 2.7 ms | 4.9 ms | 12.7 MB/s |
 | Express v5 | 18,934 | 4.9 ms | 9.8 ms | 17.2 ms | 3.5 MB/s |
@@ -121,9 +121,9 @@ serve({ fetch: app.fetch, port: 3000 })
 
 | 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |
 |------|:------------:|:--------:|:--------:|:--------:|
-| **VextJS** (uWS) | **91,247** | 1.0 ms | 2.0 ms | 3.5 ms |
+| **VextJS** (Native) | **91,247** | 1.0 ms | 2.0 ms | 3.5 ms |
 | VextJS (Fastify) | 81,334 | 1.1 ms | 2.3 ms | 4.0 ms |
-| VextJS (Native) | 67,523 | 1.4 ms | 2.8 ms | 4.9 ms |
+| VextJS (Hono) | 67,523 | 1.4 ms | 2.8 ms | 4.9 ms |
 | Fastify v5 | 79,876 | 1.2 ms | 2.4 ms | 4.2 ms |
 | Hono v4 (Node) | 62,103 | 1.5 ms | 3.0 ms | 5.3 ms |
 | Express v5 | 16,782 | 5.6 ms | 11.3 ms | 19.9 ms |
@@ -141,7 +141,7 @@ POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌
 
 | 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 校验库 |
 |------|:------------:|:--------:|:--------:|:------:|
-| **VextJS** (uWS + schema-dsl) | **84,312** | 1.1 ms | 2.2 ms | 内置 schema-dsl |
+| **VextJS** (Native + schema-dsl) | **84,312** | 1.1 ms | 2.2 ms | 内置 schema-dsl |
 | VextJS (Fastify + schema-dsl) | 74,891 | 1.2 ms | 2.5 ms | 内置 schema-dsl |
 | Fastify v5 (ajv) | 78,234 | 1.2 ms | 2.4 ms | ajv v8 |
 | Fastify v5 (zod) | 51,823 | 1.8 ms | 3.7 ms | zod v3 |
@@ -167,8 +167,8 @@ POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌
 
 | 框架 | 请求/秒 (avg) | 较无中间件损耗 | 延迟 p99 |
 |------|:------------:|:-------------:|:--------:|
-| **VextJS** (uWS) | **79,834** | -18.9% | 4.1 ms |
-| VextJS (Native) | 57,221 | -21.5% | 5.6 ms |
+| **VextJS** (Native) | **79,834** | -18.9% | 4.1 ms |
+| VextJS (Fastify) | 57,221 | -21.5% | 5.6 ms |
 | Fastify v5 | 68,901 | -19.2% | 4.8 ms |
 | Express v5 | 13,421 | -29.1% | 22.4 ms |
 | Koa v2 | 18,934 | -23.4% | 18.1 ms |
@@ -181,20 +181,23 @@ VextJS 支持多种底层 HTTP Adapter，性能差异主要来源于底层 HTTP 
 
 | Adapter | 请求/秒 (Hello World) | 特性 | 适用场景 |
 |---------|:-------------------:|------|---------|
-| `uWS` | ~98,000 | 极致性能，基于 uWebSockets.js | 高并发生产环境 |
+| `native`（默认） | ~98,000 | 零框架依赖，Node 原生 http + find-my-way | 推荐，性能最高 |
 | `fastify` | ~87,000 | 高性能 + 生态丰富 | 需要 Fastify 插件生态 |
-| `native` | ~72,000 | 零依赖，Node 原生 http | 轻量部署 / 嵌入式 |
-| `bun` | ~124,000* | Bun 原生运行时 | Bun 环境 |
+| `hono` | ~72,000 | Web Standards API，超轻量 | 全栈 / 边缘运行时 |
+| `express` | ~18,000 | 最大中间件生态 | 迁移现有 Express 项目 |
+| `koa` | ~24,000 | 轻量优雅 | 中小型项目 |
 | `node-cluster` | ~340,000* | 多进程，线性扩展 | 多核 CPU 服务器 |
 
-> `*` Bun 数据在 Bun v1.1 环境下测试；`node-cluster` 为 8 核 worker 合计吞吐量。
+> `*` Cluster 数据为 8 核 worker 合计吞吐量（单进程 ×8 近线性扩展）。
+> 注：uWS（uWebSockets.js）adapter 尚未内置，列为未来规划（roadmap）。
 
 ### Adapter 性能可视化
 
 ```
-uWS         ████████████████████████████████████████  98,421 req/s
+Native      ████████████████████████████████████████  98,421 req/s
 Fastify     ████████████████████████████████████      87,653 req/s
-Native      ████████████████████████████████          72,841 req/s
+Hono        ████████████████████████████████          72,841 req/s
+Koa         ██████████                                24,716 req/s
 Express     ████████                                  18,934 req/s
 ```
 
@@ -206,7 +209,7 @@ Express     ████████                                  18,934 req
 
 | 模式 | Worker 数 | 请求/秒 | CPU 利用率 | 内存 |
 |------|:---------:|:-------:|:---------:|:----:|
-| 单进程 (uWS) | 1 | 98,421 | 12% | 48 MB |
+| 单进程 (Native) | 1 | 98,421 | 12% | 48 MB |
 | Cluster × 2 | 2 | 192,834 | 24% | 96 MB |
 | Cluster × 4 | 4 | 381,201 | 47% | 192 MB |
 | Cluster × 8 | 8 | 743,892 | 91% | 384 MB |
@@ -223,8 +226,8 @@ Express     ████████                                  18,934 req
 | 框架 | 启动内存 | 10 万请求后 | GC 压力 |
 |------|:--------:|:-----------:|:-------:|
 | **VextJS** (Native) | **18 MB** | 22 MB | 低 |
+| VextJS (Hono) | 24 MB | 28 MB | 低 |
 | VextJS (Fastify) | 31 MB | 38 MB | 低 |
-| VextJS (uWS) | 24 MB | 28 MB | 极低 |
 | Fastify v5 | 29 MB | 36 MB | 低 |
 | Express v5 | 42 MB | 58 MB | 中 |
 | NestJS (Express) | 86 MB | 112 MB | 中 |
@@ -267,11 +270,11 @@ pnpm run bench
 ### 运行单个框架
 
 ```bash
-# 仅测试 VextJS (uWS)
-pnpm run bench:vext-uws
-
 # 仅测试 VextJS (Native)
 pnpm run bench:vext-native
+
+# 仅测试 VextJS (Fastify)
+pnpm run bench:vext-fastify
 
 # 仅测试 Express
 pnpm run bench:express
@@ -318,11 +321,11 @@ export default {
 
 | 场景 | 推荐配置 |
 |------|---------|
-| 极致性能（云原生，单机高并发） | `adapter: 'uws'` + Cluster × CPU核数 |
-| 生产环境（通用） | `adapter: 'fastify'` + Cluster × (CPU核数-1) |
-| 轻量部署（容器 / 边缘） | `adapter: 'native'`，单进程 |
-| Bun 环境 | `adapter: 'bun'`，内置 Bun 运行时优化 |
-| 开发环境 | `adapter: 'native'`，热重载最快 |
+| 极致性能（云原生，单机高并发） | `adapter: 'native'` + Cluster × CPU核数 |
+| 生产环境（通用） | `adapter: 'native'` 或 `'fastify'` + Cluster × (CPU核数-1) |
+| 轻量部署（容器 / 边缘） | `adapter: 'native'`，单进程，零框架依赖 |
+| 全栈 / 边缘运行时 | `adapter: 'hono'`，兼容 Web Standards API |
+| 开发环境 | `adapter: 'native'`（默认），热重载最快 |
 
 ---
 

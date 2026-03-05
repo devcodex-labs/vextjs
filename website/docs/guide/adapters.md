@@ -78,6 +78,18 @@ Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `f
 npm install hono @hono/node-server
 ```
 
+**推荐方式（字符串标识）：**
+
+```typescript
+// src/config/default.ts
+export default {
+  adapter: 'hono',
+  port: 3000,
+};
+```
+
+**高级用法（工厂函数，可传入选项）：**
+
 ```typescript
 // src/config/default.ts
 import { honoAdapter } from 'vextjs/adapters/hono';
@@ -96,6 +108,18 @@ Hono 是一个超轻量级的 Web 框架，基于 Web Standards API（`Request` 
 npm install fastify
 ```
 
+**推荐方式（字符串标识）：**
+
+```typescript
+// src/config/default.ts
+export default {
+  adapter: 'fastify',
+  port: 3000,
+};
+```
+
+**高级用法（工厂函数，可传入选项）：**
+
 ```typescript
 // src/config/default.ts
 import { fastifyAdapter } from 'vextjs/adapters/fastify';
@@ -113,6 +137,18 @@ Fastify 是高性能的 Node.js Web 框架，拥有丰富的插件生态和内�
 ```bash
 npm install express
 ```
+
+**推荐方式（字符串标识）：**
+
+```typescript
+// src/config/default.ts
+export default {
+  adapter: 'express',
+  port: 3000,
+};
+```
+
+**高级用法（工厂函数，可传入选项）：**
 
 ```typescript
 // src/config/default.ts
@@ -135,6 +171,18 @@ VextJS 的 Express Adapter 基于 Express v5。如果你使用的是 Express v4�
 ```bash
 npm install koa
 ```
+
+**推荐方式（字符串标识）：**
+
+```typescript
+// src/config/default.ts
+export default {
+  adapter: 'koa',
+  port: 3000,
+};
+```
+
+**高级用法（工厂函数，可传入选项）：**
 
 ```typescript
 // src/config/default.ts

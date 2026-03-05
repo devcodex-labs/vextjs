@@ -44,7 +44,7 @@ export default {
     level: 'info',
   },
   cors: {
-    origin: '*',
+    origins: ['*'],
   },
   openapi: {
     enabled: true,
@@ -59,7 +59,7 @@ export default {
     level: 'warn',      // 生产环境减少日志输出
   },
   cors: {
-    origin: 'https://myapp.com',  // 生产环境限制来源
+    origins: ['https://myapp.com'],  // 生产环境限制来源
   },
   openapi: {
     enabled: false,      // 生产环境关闭 Swagger
@@ -181,19 +181,17 @@ export default {
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `cors.origin` | `string` | `'*'` | 允许的来源 |
-| `cors.methods` | `string` | `'GET,POST,PUT,PATCH,DELETE,OPTIONS'` | 允许的 HTTP 方法 |
-| `cors.allowedHeaders` | `string` | `'Content-Type,Authorization,X-Request-Id'` | 允许的请求头 |
-| `cors.exposedHeaders` | `string` | `'X-Request-Id'` | 暴露给客户端的响应头 |
+| `cors.origins` | `string[]` | `['*']` | 允许的来源列表 |
+| `cors.methods` | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | 允许的 HTTP 方法 |
+| `cors.headers` | `string[]` | `['Content-Type','Authorization','X-Request-Id']` | 允许的请求头 |
 | `cors.credentials` | `boolean` | `false` | 是否允许携带凭证 |
-| `cors.maxAge` | `number` | `86400` | 预检请求缓存时间（秒） |
 
 ```typescript
 export default {
   cors: {
-    origin: 'https://myapp.com',
+    origins: ['https://myapp.com'],  // 生产环境限制来源（数组格式）
     credentials: true,
-    methods: 'GET,POST,PUT,DELETE',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 };
 ```
