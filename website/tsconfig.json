@@ -1,16 +1,24 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "lib": ["DOM", "ES2020"],
     "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
+    "target": "ES2020",
+    "noEmit": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true,
+
+    /* modules */
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
-    "noEmit": true
+
+    /* type checking */
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
   },
-  "include": ["rspress.config.ts", "docs/**/*.tsx", "docs/**/*.ts"]
+  "include": ["docs", "theme", "rspress.config.ts"],
 }

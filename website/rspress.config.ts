@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { defineConfig } from "rspress/config";
+import { defineConfig } from "@rspress/core";
 
 export default defineConfig({
   root: path.join(__dirname, "docs"),
@@ -115,9 +115,5 @@ export default defineConfig({
       message: "Released under the MIT License.",
     },
     lastUpdated: true,
-    outline: true,
-    prevPageText: "上一篇",
-    nextPageText: "下一篇",
-    searchPlaceholderText: "搜索文档...",
   },
 });

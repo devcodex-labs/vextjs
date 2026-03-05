@@ -20,8 +20,14 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "newLine": "lf",
-    "removeComments": false
+    "removeComments": false,
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "website",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+  ],
 }
