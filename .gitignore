@@ -139,6 +139,12 @@ dist
 nul
 NUL
 
+# Vext dev compiler output
+.vext/
+
+# Example project lockfiles (sub-projects)
+examples/*/package-lock.json
+
 # AI dev guidelines (prevent accidental commit to project repo)
 .ai-memory/
 reports/

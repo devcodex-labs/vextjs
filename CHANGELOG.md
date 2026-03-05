@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-03-05
+
+### Fixed
+
+- **P0**: `vext dev` CJS/ESM 不兼容 — dev 编译器输出 CJS 但 vextjs 为 ESM-only，导致 `require('vextjs')` 失败（ERR_REQUIRE_ESM）。新增双包发布（ESM + CJS），通过 `scripts/build-cjs.mjs` 生成 `dist/index.cjs` 和 `dist/testing/index.cjs`
+- **P1**: 文档 `app.decorate()` → `app.extend()`（`website/docs/guide/introduction.md`）
+- 文档站版本号过时（cli.md、quick-start.md、导航栏）
+- `.gitignore` 缺少 `.vext/` 编译产物和 `examples/*/package-lock.json`
+
+### Changed
+
+- `VextServices` 索引签名从 `unknown` 改为 `any`，允许 `app.services.user.findAll()` 直接调用（无需类型断言）
+- `app.throw()` 第三参数支持 `string` 类型业务错误码（原仅支持 `number`）
+- `HttpError.code` 类型扩展为 `number | string`
+- `VextThrowFn` 签名增加 string 业务码智能参数识别
+
+### Added
+
+- `VextPlugin` 新增可选生命周期钩子 `onReady?(app)` 和 `onClose?(app)`，setup 完成后自动注册到 `app.onReady()` / `app.onClose()`
+- `scripts/build-cjs.mjs` — esbuild CJS 构建脚本，支持双包发布
+- `package.json` exports 添加 `"require"` 条件（`.` 和 `./testing`）
+
+---
+
 ## [0.1.1] - 2026-03-05
 
 ### Added
@@ -132,6 +156,7 @@ First pre-release of vextjs, covering Phase 0 through Phase 3 of the implementat
 
 | Version | Date | Milestone |
 |---------|------|-----------|
+| 0.1.2 | 2026-03-05 | Bug fixes (dev mode CJS/ESM), type enhancements, dual-package support |
 | 0.1.1 | 2026-03-05 | CLI scaffolding, security fixes, docs site, community files |
 | 0.1.0 | 2026-03-04 | MVP through Phase 3 |
 
@@ -143,6 +168,7 @@ First pre-release of vextjs, covering Phase 0 through Phase 3 of the implementat
 - [Issues](https://github.com/vextjs/vext/issues)
 - [Contributing Guide](./CONTRIBUTING.md)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/vextjs/vext/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/vextjs/vext/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/vextjs/vext/releases/tag/v0.1.0

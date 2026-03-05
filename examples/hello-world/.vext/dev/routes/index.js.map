@@ -1,8 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../src/routes/index.js"],
-  "sourceRoot": "E:\\MySelf\\vext\\examples\\hello-world\\src",
-  "sourcesContent": ["/**\n * hello-world 示例路由\n *\n * 使用 vextjs 包导出的 defineRoutes 定义路由。\n * 在 monorepo 内通过 node_modules/vextjs symlink 解析到框架根目录。\n */\nimport { defineRoutes } from \"vextjs\";\n\nexport default defineRoutes((app) => {\n  app.get(\"/\", {}, async (_req, res) => {\n    res.json({ message: \"hello world\" });\n  });\n\n  app.get(\"/health\", {}, async (_req, res) => {\n    res.json({ status: \"ok\", uptime: process.uptime() });\n  });\n});\n"],
-  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAMA,oBAA6B;AAE7B,IAAO,qBAAQ,4BAAa,CAAC,QAAQ;AACnC,MAAI,IAAI,KAAK,CAAC,GAAG,OAAO,MAAM,QAAQ;AACpC,QAAI,KAAK,EAAE,SAAS,cAAc,CAAC;AAAA,EACrC,CAAC;AAED,MAAI,IAAI,WAAW,CAAC,GAAG,OAAO,MAAM,QAAQ;AAC1C,QAAI,KAAK,EAAE,QAAQ,MAAM,QAAQ,QAAQ,OAAO,EAAE,CAAC;AAAA,EACrD,CAAC;AACH,CAAC;",
-  "names": []
-}
