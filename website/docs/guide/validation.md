@@ -1,0 +1,600 @@
+# 参数校验
+
+VextJS 集成 [schema-dsl](https://github.com/nicx-next/schema-dsl)，提供**声明式参数校验**。在路由 `options.validate` 中用简洁的 DSL 字符串描述校验规则，框架自动完成校验、类型转换，并同步生成 OpenAPI 文档。
+
+## 基本用法
+
+在路由的三段式定义中，通过 `validate` 字段声明校验规则：
+
+```typescript
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  app.post('/users', {
+    validate: {
+      body: {
+        name: 'string:1-50!',    // 必填字符串，长度 1-50
+        email: 'email!',          // 必填，邮箱格式
+        age: 'number?',           // 可选数字
+        role: 'admin|user',       // 枚举值
+      },
+    },
+    docs: { summary: '创建用户' },
+  }, async (req, res) => {
+    // req.body 已通过校验 + 类型转换
+    const data = req.valid('body');
+    const user = await app.services.user.create(data);
+    res.json(user, 201);
+  });
+});
+```
+
+校验通过后，通过 `req.valid(location)` 获取经过类型转换的数据。校验失败时框架自动返回 422 错误响应，无需手动处理。
+
+## 校验位置
+
+`validate` 支持四个位置，对应请求的不同数据来源：
+
+| 位置 | 数据来源 | 说明 |
+|------|---------|------|
+| `param` | `req.params` | 路径动态参数（如 `/:id`） |
+| `query` | `req.query` | URL 查询参数（如 `?page=1`） |
+| `header` | `req.headers` | 请求头 |
+| `body` | `req.body` | 请求体（JSON / URL-encoded） |
+
+校验按 `param` → `query` → `header` → `body` 的顺序执行，任一位置校验失败会立即返回错误。
+
+```typescript
+app.put('/users/:id', {
+  validate: {
+    param: {
+      id: 'string!',
+    },
+    query: {
+      fields: 'string?',       // 可选，指定返回字段
+    },
+    header: {
+      'x-api-version': 'string?',
+    },
+    body: {
+      name: 'string:1-50?',
+      email: 'email?',
+    },
+  },
+}, async (req, res) => {
+  const { id } = req.valid('param');
+  const body = req.valid('body');
+  const user = await app.services.user.update(id, body);
+  res.json(user);
+});
+```
+
+:::tip 注意
+`validate` 中使用单数 `param`（与路径参数概念对应），但底层数据源是 `req.params`（复数）。框架内部已做正确映射，你无需关心。
+:::
+
+## DSL 语法详解
+
+schema-dsl 使用简洁的字符串表达式描述数据类型和约束。
+
+### 基本类型
+
+| DSL 表达式 | 含义 | 示例值 |
+|-----------|------|--------|
+| `'string'` | 字符串 | `"hello"` |
+| `'number'` | 数字 | `42`、`3.14` |
+| `'boolean'` | 布尔值 | `true`、`false` |
+| `'email'` | 邮箱格式 | `"user@example.com"` |
+| `'url'` | URL 格式 | `"https://example.com"` |
+| `'date'` | 日期字符串 | `"2026-01-15"` |
+
+### 必填与可选
+
+在类型表达式末尾添加 `!` 或 `?` 标记：
+
+| 后缀 | 含义 | 示例 |
+|------|------|------|
+| `!` | 必填（required） | `'string!'` — 必填字符串 |
+| `?` | 可选（optional） | `'string?'` — 可选字符串 |
+| 无后缀 | 可选（默认） | `'string'` — 等同于 `'string?'` |
+
+```typescript
+validate: {
+  body: {
+    name: 'string!',     // 必填
+    nickname: 'string?', // 可选
+    bio: 'string',       // 可选（等同于 'string?'）
+  },
+}
+```
+
+### 范围约束
+
+使用 `:min-max` 语法指定范围：
+
+#### 字符串长度
+
+```typescript
+'string:1-50'     // 长度 1 到 50
+'string:1-50!'    // 必填，长度 1 到 50
+'string:5-'       // 最小长度 5，无上限
+'string:-100'     // 最大长度 100
+```
+
+#### 数字范围
+
+```typescript
+'number:1-100'    // 值范围 1 到 100
+'number:0-'       // 最小值 0（非负数）
+'number:1-'       // 最小值 1（正整数/正数）
+'number:-999'     // 最大值 999
+'number:18-120!'  // 必填，范围 18 到 120
+```
+
+### 枚举值
+
+使用 `|` 分隔枚举选项：
+
+```typescript
+'admin|user|guest'         // 枚举：admin / user / guest
+'draft|published|archived' // 枚举：draft / published / archived
+'male|female|other'        // 枚举：male / female / other
+```
+
+枚举值始终为字符串类型。在 OpenAPI 文档中映射为 `enum`。
+
+### 组合示例
+
+```typescript
+validate: {
+  body: {
+    // 基本类型 + 必填/可选
+    username: 'string:3-30!',      // 必填字符串，长度 3-30
+    password: 'string:8-128!',     // 必填字符串，长度 8-128
+    email: 'email!',               // 必填邮箱
+    website: 'url?',               // 可选 URL
+    age: 'number:0-150?',          // 可选数字，范围 0-150
+    score: 'number:0-100',         // 可选数字，范围 0-100
+    active: 'boolean!',            // 必填布尔值
+    role: 'admin|editor|viewer',   // 枚举
+    birthday: 'date?',             // 可选日期
+  },
+}
+```
+
+## 类型转换
+
+schema-dsl 在校验时自动执行类型转换，尤其对 `query` 和 `param` 数据非常有用（它们原始值始终是字符串）：
+
+| 声明类型 | 原始值 | 转换后 |
+|---------|--------|--------|
+| `'number'` | `"42"` | `42` |
+| `'number'` | `"3.14"` | `3.14` |
+| `'boolean'` | `"true"` | `true` |
+| `'boolean'` | `"false"` | `false` |
+| `'boolean'` | `"1"` | `true` |
+| `'boolean'` | `"0"` | `false` |
+
+```typescript
+app.get('/search', {
+  validate: {
+    query: {
+      page: 'number:1-',      // ?page=3 → number 3（非字符串 "3"）
+      limit: 'number:1-100',   // ?limit=20 → number 20
+      active: 'boolean',       // ?active=true → boolean true
+    },
+  },
+}, async (req, res) => {
+  const { page, limit, active } = req.valid('query');
+  // page: number, limit: number, active: boolean — 已自动转换
+  res.json({ page, limit, active });
+});
+```
+
+## 获取校验后数据
+
+### `req.valid(location)`
+
+使用 `req.valid()` 获取经过校验和类型转换后的数据。必须在 `validate` 中配置了对应位置后才能调用。
+
+```typescript
+app.post('/orders', {
+  validate: {
+    body: {
+      productId: 'string!',
+      quantity: 'number:1-99!',
+    },
+    query: {
+      coupon: 'string?',
+    },
+  },
+}, async (req, res) => {
+  const body = req.valid('body');     // { productId: string, quantity: number }
+  const query = req.valid('query');   // { coupon?: string }
+
+  const order = await app.services.order.create(body, query.coupon);
+  res.json(order, 201);
+});
+```
+
+### 泛型类型提示
+
+可以使用泛型获得更精确的 IDE 类型提示：
+
+```typescript
+interface CreateUserBody {
+  name: string;
+  email: string;
+  age?: number;
+}
+
+app.post('/users', {
+  validate: {
+    body: {
+      name: 'string:1-50!',
+      email: 'email!',
+      age: 'number:0-150?',
+    },
+  },
+}, async (req, res) => {
+  const data = req.valid<CreateUserBody>('body');
+  // data.name — IDE 知道是 string
+  // data.email — IDE 知道是 string
+  // data.age — IDE 知道是 number | undefined
+  res.json(await app.services.user.create(data));
+});
+```
+
+## 校验错误响应
+
+当校验失败时，框架自动返回 422 状态码的结构化错误响应：
+
+```json
+{
+  "code": 422,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "email",
+      "message": "must be a valid email address"
+    },
+    {
+      "field": "name",
+      "message": "length must be between 1 and 50"
+    }
+  ],
+  "requestId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+- `code`：HTTP 状态码 422（Unprocessable Entity）
+- `message`：固定为 `"Validation failed"`
+- `errors`：字段级错误数组，包含 `field`（字段名）和 `message`（错误描述）
+- `requestId`：当前请求的唯一标识
+
+校验错误由框架全局错误处理器统一处理，你不需要在路由中手动 try-catch。
+
+## 与 OpenAPI 文档的联动
+
+`validate` 中的 DSL 规则会自动映射到 OpenAPI 文档的 `parameters` 和 `requestBody` 定义。无需额外配置，校验规则即是文档规则：
+
+```typescript
+app.get('/users', {
+  validate: {
+    query: {
+      page: 'number:1-',
+      limit: 'number:1-100',
+      status: 'active|inactive|banned',
+    },
+  },
+  docs: { summary: '获取用户列表' },
+}, handler);
+```
+
+上面的路由会在 OpenAPI 文档中自动生成：
+- `page` — query parameter, type: integer, minimum: 1
+- `limit` — query parameter, type: integer, minimum: 1, maximum: 100
+- `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
+
+访问 `/docs` 即可在 Swagger UI 中查看自动生成的参数文档和 "Try it out" 功能。
+
+## 高级用法
+
+### 多位置组合校验
+
+同一路由可以同时校验多个位置：
+
+```typescript
+app.put('/users/:id/avatar', {
+  validate: {
+    param: { id: 'string!' },
+    header: { 'content-type': 'string!' },
+    query: { size: 'number:32-512?' },
+    body: { url: 'url!', alt: 'string:0-200?' },
+  },
+}, async (req, res) => {
+  const { id } = req.valid('param');
+  const { url, alt } = req.valid('body');
+  const { size } = req.valid('query');
+
+  await app.services.user.updateAvatar(id, { url, alt, size });
+  res.json({ success: true });
+});
+```
+
+### 与路由级中间件配合
+
+校验中间件在路由级中间件之后、handler 之前执行。这意味着：
+
+```
+请求 → [全局中间件] → [路由级中间件: auth, check-role] → [validate 校验] → [handler]
+```
+
+认证检查先于参数校验执行，未认证的请求不会触发校验逻辑：
+
+```typescript
+app.post('/admin/users', {
+  middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
+  validate: {
+    body: {
+      name: 'string:1-50!',
+      email: 'email!',
+      role: 'admin|editor|viewer!',
+    },
+  },
+}, handler);
+```
+
+### 路由覆盖限流规则
+
+除了参数校验，`options` 还支持路由级配置覆盖（`override`），可以为特定路由调整限流、超时等设置：
+
+```typescript
+app.post('/login', {
+  validate: {
+    body: {
+      email: 'email!',
+      password: 'string:8-128!',
+    },
+  },
+  override: {
+    rateLimit: { max: 5, window: 60000 },  // 每分钟最多 5 次
+  },
+}, handler);
+
+app.get('/public/health', {
+  override: {
+    rateLimit: false,  // 健康检查不限流
+  },
+}, handler);
+```
+
+## 替换校验引擎
+
+VextJS 默认使用 schema-dsl 作为校验引擎。如果你更喜欢 Zod、Yup 等第三方校验库，可以通过插件替换内置校验引擎。
+
+### 使用 Zod 示例
+
+```typescript
+// src/plugins/zod-validator.ts
+import { definePlugin } from 'vextjs';
+import type { VextValidator } from 'vextjs';
+import { z } from 'zod';
+
+export default definePlugin({
+  name: 'zod-validator',
+
+  setup(app) {
+    const zodValidator: VextValidator = {
+      validate(schema, data) {
+        // 当 schema 是 Zod schema 时使用 Zod 校验
+        if (schema instanceof z.ZodType) {
+          const result = schema.safeParse(data);
+          if (!result.success) {
+            return {
+              valid: false,
+              errors: result.error.issues.map((issue) => ({
+                field: issue.path.join('.'),
+                message: issue.message,
+              })),
+            };
+          }
+          return { valid: true, data: result.data };
+        }
+        // 否则退回默认行为
+        return { valid: true, data };
+      },
+      toJSONSchema(schema) {
+        // 转换为 JSON Schema 供 OpenAPI 使用
+        // 可使用 zod-to-json-schema 库
+        return {};
+      },
+    };
+
+    app.setValidator(zodValidator);
+    app.logger.info('Zod validator plugin activated');
+  },
+});
+```
+
+替换后，路由中的 `validate` 可以传入 Zod schema 对象而非 DSL 字符串。
+
+## 常见模式
+
+### 分页查询
+
+```typescript
+app.get('/posts', {
+  validate: {
+    query: {
+      page: 'number:1-',
+      limit: 'number:1-100',
+      sort: 'createdAt|updatedAt|title',
+      order: 'asc|desc',
+    },
+  },
+}, async (req, res) => {
+  const { page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = req.valid('query');
+  const posts = await app.services.post.findAll({ page, limit, sort, order });
+  res.json(posts);
+});
+```
+
+### 搜索过滤
+
+```typescript
+app.get('/products', {
+  validate: {
+    query: {
+      keyword: 'string?',
+      category: 'string?',
+      minPrice: 'number:0-?',
+      maxPrice: 'number:0-?',
+      inStock: 'boolean?',
+    },
+  },
+}, async (req, res) => {
+  const filters = req.valid('query');
+  const products = await app.services.product.search(filters);
+  res.json(products);
+});
+```
+
+### 用户注册
+
+```typescript
+app.post('/auth/register', {
+  validate: {
+    body: {
+      username: 'string:3-30!',
+      email: 'email!',
+      password: 'string:8-128!',
+      confirmPassword: 'string:8-128!',
+    },
+  },
+  override: {
+    rateLimit: { max: 3, window: 60000 },
+  },
+}, async (req, res) => {
+  const data = req.valid('body');
+
+  if (data.password !== data.confirmPassword) {
+    app.throw(400, '两次密码不一致');
+  }
+
+  const user = await app.services.auth.register(data);
+  res.json(user, 201);
+});
+```
+
+### 文件路径参数
+
+```typescript
+// src/routes/files/[id].ts
+app.get('/', {
+  validate: {
+    param: { id: 'string!' },
+    query: { download: 'boolean?' },
+  },
+}, async (req, res) => {
+  const { id } = req.valid('param');
+  const { download } = req.valid('query');
+
+  const file = await app.services.file.findById(id);
+  if (!file) app.throw(404, 'file.not_found');
+
+  if (download) {
+    res.download(file.stream, file.name, file.contentType);
+  } else {
+    res.json(file.metadata);
+  }
+});
+```
+
+## 最佳实践
+
+### 1. 始终使用 `req.valid()` 而非 `req.body`
+
+配置了 `validate` 的路由，应使用 `req.valid('body')` 而非直接访问 `req.body`：
+
+```typescript
+// ✅ 正确 — 使用校验后的数据
+const data = req.valid('body');
+
+// ❌ 避免 — 跳过了类型转换
+const data = req.body;
+```
+
+`req.valid()` 返回的数据经过了类型转换（如 query 中的 `"42"` → `42`），直接访问 `req.body` / `req.query` 则是原始数据。
+
+### 2. 合理使用必填标记
+
+对于 `query` 和 `header` 位置，通常使用可选（`?`）；对于 `body` 中的核心字段，使用必填（`!`）：
+
+```typescript
+validate: {
+  query: {
+    page: 'number:1-',       // 可选（分页有默认值）
+    keyword: 'string?',      // 可选（搜索关键字）
+  },
+  body: {
+    name: 'string:1-50!',    // 必填（创建资源必须提供）
+    email: 'email!',          // 必填
+    bio: 'string:0-500?',    // 可选
+  },
+}
+```
+
+### 3. 校验规则即文档
+
+由于校验规则自动映射到 OpenAPI 文档，写好 `validate` 就相当于写好了接口文档。尽量精确地描述约束条件：
+
+```typescript
+// ✅ 精确约束 — 文档和校验都很清晰
+validate: {
+  body: {
+    username: 'string:3-30!',     // 3-30 字符，必填
+    age: 'number:0-150?',         // 0-150，可选
+    role: 'admin|editor|viewer!', // 明确枚举
+  },
+}
+
+// ❌ 宽泛约束 — 文档信息不足
+validate: {
+  body: {
+    username: 'string!',          // 没有长度约束
+    age: 'number?',               // 没有范围约束
+    role: 'string!',              // 应该用枚举
+  },
+}
+```
+
+### 4. 为 Handler 中的自定义校验使用 `app.throw()`
+
+DSL 语法无法覆盖所有校验场景（如跨字段校验、数据库唯一性检查）。对于这些场景，在 handler 或 service 中使用 `app.throw()` 手动抛出：
+
+```typescript
+app.post('/users', {
+  validate: {
+    body: { email: 'email!', password: 'string:8-128!' },
+  },
+}, async (req, res) => {
+  const data = req.valid('body');
+
+  // 数据库唯一性检查 — DSL 无法覆盖
+  const existing = await app.services.user.findByEmail(data.email);
+  if (existing) {
+    app.throw(409, '邮箱已注册', 10001);
+  }
+
+  const user = await app.services.user.create(data);
+  res.json(user, 201);
+});
+```
+
+## 下一步
+
+- 了解 [配置](/guide/configuration) 中校验相关的全局配置
+- 查看 [OpenAPI 文档](/guide/openapi) 如何与校验规则联动
+- 学习 [路由](/guide/routing) 中三段式的完整用法
+- 探索 [插件](/guide/plugins) 如何替换校验引擎

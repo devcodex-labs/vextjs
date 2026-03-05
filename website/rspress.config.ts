@@ -25,6 +25,11 @@ export default defineConfig({
         activeMatch: "/examples/",
       },
       {
+        text: "Benchmark",
+        link: "/benchmark",
+        activeMatch: "/benchmark",
+      },
+      {
         text: "v0.1.0",
         items: [
           {
