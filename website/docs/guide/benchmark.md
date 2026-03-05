@@ -334,4 +334,4 @@ export default {
 - [benchmarks 仓库](https://github.com/vextjs/benchmarks) — 完整测试代码和历史数据
 - [Adapter 架构](/guide/adapters) — 了解各 Adapter 的技术实现
 - [Cluster 多进程](/guide/cluster) — 如何配置和使用 Cluster 模式
-- [配置项](/api/config) — `adapter` 配置字段详情
+- [配置项](/guide/api/config) — `adapter` 配置字段详情

@@ -592,7 +592,7 @@ VextJS 提供以下内置中间件，由 `bootstrap` 自动注册，无需手动
 | Access Log | `createAccessLogMiddleware()` | 访问日志 |
 | Error Handler | `createErrorHandler()` | 错误处理 |
 
-这些中间件可以通过 `config` 配置其行为（参见 [配置项](/api/config)），但不能通过 `app.use()` 重复注册。
+这些中间件可以通过 `config` 配置其行为（参见 [配置项](/guide/api/config)），但不能通过 `app.use()` 重复注册。
 
 ### 执行顺序
 

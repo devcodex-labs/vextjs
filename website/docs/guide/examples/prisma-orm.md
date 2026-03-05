@@ -1649,8 +1649,8 @@ describe('文章与评论 (Prisma)', () => {
 
 ## 下一步
 
-- 📖 [Drizzle ORM 集成](/examples/drizzle-orm) — 另一种 ORM 集成方案
-- 📖 [Zod 校验集成](/examples/zod-validation) — 更强大的参数校验
+- 📖 [Drizzle ORM 集成](/guide/examples/drizzle-orm) — 另一种 ORM 集成方案
+- 📖 [Zod 校验集成](/guide/examples/zod-validation) — 更强大的参数校验
 - 📖 [插件](/guide/plugins) — 深入了解 VextJS 插件系统
 - 📖 [服务层](/guide/services) — 深入了解服务层设计模式
 - 📖 [测试](/guide/testing) — 测试数据库相关的业务逻辑
