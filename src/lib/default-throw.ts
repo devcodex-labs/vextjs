@@ -30,11 +30,15 @@ import { schemaAdapter } from "./schema-adapter.js";
 /**
  * VextThrowFn — app.throw 的函数签名
  *
- * 支持两种调用形式：
+ * 支持三种调用形式：
+ *   - app.throw(messageKey)                          — i18n key 快捷方式（status 从 i18n 配置读取，默认 400）
+ *   - app.throw(messageKey, params?)                 — i18n key + 插值参数（status 从 i18n 配置读取，默认 400）
  *   - app.throw(status, message, code?)              — 原始文本 + 可选业务码
  *   - app.throw(status, message, params?, code?)     — i18n key + 插值参数 + 可选业务码
  */
 export type VextThrowFn = {
+  (messageKey: string): never;
+  (messageKey: string, params: Record<string, unknown>): never;
   (status: number, message: string, code?: number | string): never;
   (
     status: number,
@@ -78,11 +82,58 @@ export type VextThrowFn = {
  */
 export function createDefaultThrow(): VextThrowFn {
   const defaultThrow = (
-    status: number,
-    message: string,
+    statusOrKey: number | string,
+    messageOrParams?: string | Record<string, unknown>,
     paramsOrCode?: Record<string, unknown> | number | string,
     code?: number | string,
   ): never => {
+    // ── 快捷方式检测 ──────────────────────────────────────
+    //
+    //   第一参数为 string 时，视为 i18n key 快捷调用：
+    //     app.throw('balance.insufficient')
+    //     app.throw('balance.insufficient', { balance: 50 })
+    //
+    //   status 从 i18n 配置的 statusCode 读取，未配置则默认 400。
+    //
+    if (typeof statusOrKey === "string") {
+      const messageKey = statusOrKey;
+      const shorthandParams: Record<string, unknown> =
+        typeof messageOrParams === "object" && messageOrParams !== null
+          ? messageOrParams
+          : {};
+
+      // 从请求上下文获取 locale
+      const store = requestContext.getStore();
+      const locale = store?.locale;
+
+      // 通过 schemaAdapter 查找 i18n 配置（可能包含 statusCode）
+      const i18nErr = schemaAdapter.createI18nError(
+        messageKey,
+        shorthandParams,
+        undefined, // statusCode 留空，让 i18n 配置决定
+        locale,
+      );
+
+      // status 优先级：i18n 配置中的 statusCode > 默认 400
+      const resolvedStatus = i18nErr.statusCode ?? 400;
+
+      // 业务错误码：i18n 配置中的 code（如果与 originalKey 不同）
+      const localeCode =
+        i18nErr.code !== i18nErr.originalKey
+          ? Number(i18nErr.code) || i18nErr.code || undefined
+          : undefined;
+
+      throw new HttpError(
+        resolvedStatus,
+        i18nErr.message ?? messageKey,
+        localeCode,
+      );
+    }
+
+    // ── 标准调用（第一参数为 number）──────────────────────
+    const status = statusOrKey as number;
+    const message = messageOrParams as string;
+
     // ── 智能参数识别 ──────────────────────────────────────
     //
     //   第三参数 paramsOrCode 自动判断类型：

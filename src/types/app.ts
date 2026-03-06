@@ -147,6 +147,49 @@ export interface VextLoggerConfig {
 export interface VextShutdownConfig {
   /** 关闭超时（秒，默认 10） */
   timeout?: number;
+
+  /**
+   * 致命错误回调（uncaughtException / unhandledRejection）
+   *
+   * 当进程捕获到未处理的异常或 Promise rejection 时调用。
+   * 适合接入告警通知（钉钉、企微、Slack、Webhook 等），
+   * 在进程退出前通知运维人员。
+   *
+   * 注意：
+   *   - 回调执行有 10 秒超时保护，超时后强制退出进程
+   *   - 回调内部不应抛出异常（框架会捕获并静默忽略）
+   *   - uncaughtException 触发后进程处于不确定状态，回调应尽量轻量
+   *
+   * @param error  捕获到的错误对象
+   * @param origin 错误来源：'uncaughtException' | 'unhandledRejection'
+   *
+   * @example
+   * ```typescript
+   * // src/config/production.ts
+   * export default {
+   *   shutdown: {
+   *     timeout: 10,
+   *     onFatalError: async (error, origin) => {
+   *       await fetch('https://webhook.example.com/alert', {
+   *         method: 'POST',
+   *         headers: { 'Content-Type': 'application/json' },
+   *         body: JSON.stringify({
+   *           app: 'my-service',
+   *           origin,
+   *           error: error.message,
+   *           stack: error.stack,
+   *           time: new Date().toISOString(),
+   *         }),
+   *       });
+   *     },
+   *   },
+   * };
+   * ```
+   */
+  onFatalError?: (
+    error: Error,
+    origin: "uncaughtException" | "unhandledRejection",
+  ) => void | Promise<void>;
 }
 
 /**
@@ -547,18 +590,21 @@ export interface VextApp {
    * 内部基于 schema-dsl I18nError 实现，支持多语言 + 错误码映射。
    * 无 i18n 语言包时退化为原始 message 传递。
    *
-   * @param status       HTTP 状态码（400/401/403/404/409/500…）
-   * @param message      错误描述（同时作为 i18n key 查找）
-   * @param paramsOrCode i18n 插值参数对象 或 业务错误码（number | string）
-   * @param code         业务错误码（当第三参数为 params 对象时使用）
+   * 支持三种调用形式：
    *
+   * **快捷方式**（i18n key，status 从 i18n 配置读取，默认 400）：
+   * @example app.throw('balance.insufficient')
+   * @example app.throw('balance.insufficient', { balance: 50 })
+   *
+   * **标准调用**（显式指定 HTTP 状态码）：
    * @example app.throw(404, 'user.not_found')
    * @example app.throw(400, '邮箱已注册', 10001)
    * @example app.throw(401, '缺少认证令牌', 'UNAUTHORIZED')
    * @example app.throw(400, 'balance.insufficient', { balance: 50 })
    * @example app.throw(400, 'balance.insufficient', { balance: 50 }, 20001)
-   * @example app.throw(400, 'balance.insufficient', { balance: 50 }, 'INSUFFICIENT_BALANCE')
    */
+  throw(messageKey: string): never;
+  throw(messageKey: string, params: Record<string, unknown>): never;
   throw(
     status: number,
     message: string,
