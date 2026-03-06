@@ -347,6 +347,77 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
       testMode: config._testMode,
     });
 
+    // ── 步骤 ⑧b: 注册致命错误处理 ──────────────────────
+    //
+    // 捕获 uncaughtException / unhandledRejection，在进程退出前：
+    //   1. 记录 fatal 级别日志
+    //   2. 调用用户配置的 onFatalError 回调（如有）— 用于通知运维
+    //   3. 执行优雅关闭（onClose hooks 清理资源）
+    //   4. process.exit(1)
+    //
+    // testMode 下不注册（避免干扰测试进程）
+    //
+    if (!config._testMode) {
+      const onFatalError = config.shutdown?.onFatalError;
+      const FATAL_TIMEOUT_MS = 10_000; // 致命错误处理超时保护
+
+      const handleFatal = async (
+        error: Error,
+        origin: "uncaughtException" | "unhandledRejection",
+      ) => {
+        // 记录致命日志
+        app.logger.fatal(
+          { err: error, origin },
+          `[vextjs] ${origin}: ${error.message}`,
+        );
+
+        // 调用用户回调（如有），带超时保护
+        if (onFatalError) {
+          try {
+            await Promise.race([
+              Promise.resolve(onFatalError(error, origin)),
+              new Promise<void>((resolve) =>
+                setTimeout(() => {
+                  app.logger.warn(
+                    "[vextjs] onFatalError callback timed out, forcing exit",
+                  );
+                  resolve();
+                }, FATAL_TIMEOUT_MS),
+              ),
+            ]);
+          } catch (cbErr) {
+            app.logger.error(
+              { err: cbErr },
+              "[vextjs] onFatalError callback threw an error",
+            );
+          }
+        }
+
+        // 执行优雅关闭（清理资源）
+        if (internals) {
+          try {
+            await internals.shutdown(serverHandle ?? undefined, {
+              skipExit: true,
+            });
+          } catch {
+            // 静默忽略，避免掩盖原始致命错误
+          }
+        }
+
+        process.exit(1);
+      };
+
+      process.on("uncaughtException", (error: Error) => {
+        handleFatal(error, "uncaughtException");
+      });
+
+      process.on("unhandledRejection", (reason: unknown) => {
+        const error =
+          reason instanceof Error ? reason : new Error(String(reason));
+        handleFatal(error, "unhandledRejection");
+      });
+    }
+
     // ── 步骤 ⑨: 执行 onReady 钩子 + 打印启动日志 ─────────
     await internals.runReady();
 
