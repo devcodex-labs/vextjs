@@ -49,7 +49,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.1.2"
+    "vextjs": "^0.1.3"
   }
 }
 ```
@@ -142,11 +142,12 @@ import { defineRoutes } from 'vextjs';
 export default defineRoutes((app) => {
   app.get('/greet/:name', {
     validate: {
-      params: { name: 'string!' },
+      param: { name: 'string!' },
     },
     docs: { summary: '问候接口' },
   }, async (req, res) => {
-    const result = await app.services.example.getGreeting(req.params.name);
+    const { name } = req.valid('param');
+    const result = await app.services.example.getGreeting(name);
     res.json(result);
   });
 });
