@@ -11,6 +11,13 @@ export default defineConfig({
     // 并行执行（Service 单元测试可并行，集成测试按需串行）
     pool: "forks",
 
+    // 提升 MaxListeners 限制（在每个 worker 进程启动时执行）
+    // 原因：cold-restarter / build-compiler 等测试在同一 worker 进程中
+    // fork 多个子进程，每个都注册 process 事件监听器（uncaughtException / SIGTERM / SIGINT / exit），
+    // 并行执行时累计超过默认限制 10，产生 MaxListenersExceededWarning。
+    // setupFiles 在每个测试文件执行前运行，设置 process.setMaxListeners(20) 消除误报警告。
+    setupFiles: ["./test/setup.ts"],
+
     // 环境
     env: {
       NODE_ENV: "test",

@@ -167,21 +167,17 @@ export function hasDistBuild(rootDir: string): boolean {
 /**
  * resolveEntryFile — 解析实际的入口文件路径
  *
- * 当项目有 dist/ 编译产物时，使用 dist/ 中的文件；
- * 否则使用 node_modules/vextjs/dist/ 中的框架入口。
+ * 入口文件始终指向框架内部的 bootstrap.js（node_modules/vextjs/dist/lib/bootstrap.js）。
+ * 用户项目的 dist/ 目录只包含用户业务代码的编译产物，不包含框架 bootstrap。
+ *
+ * dist/ 的存在与否通过 VEXT_BUILT 环境变量告知 bootstrap，
+ * bootstrap 据此决定从 dist/ 还是 src/ 加载用户代码。
  *
  * @param project 项目检测结果
- * @returns 实际的入口文件绝对路径
+ * @returns 实际的入口文件绝对路径（始终为框架内部 bootstrap）
  */
 export function resolveEntryFile(project: ProjectInfo): string {
-  const hasDist = hasDistBuild(project.rootDir);
-
-  if (hasDist) {
-    // dist/ 存在 → 使用项目编译后的入口文件
-    // bootstrap.js 在 dist/lib/ 下（与 src/lib/ 对应）
-    return path.join(project.rootDir, "dist", "lib", "bootstrap.js");
-  }
-
-  // 无 dist → 使用 node_modules 中框架内部的 bootstrap 文件
+  // 始终使用框架内部的 bootstrap 文件
+  // CLI 通过 VEXT_BUILT=1 环境变量告知 bootstrap 从 dist/ 加载用户代码
   return project.entryFile;
 }

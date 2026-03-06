@@ -156,6 +156,45 @@ export interface VextLoggerConfig {
   level?: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent";
   /** 是否美化输出（默认 development 时启用） */
   pretty?: boolean;
+  /**
+   * pino-pretty 模式下忽略的字段列表（逗号分隔）
+   *
+   * 默认值: `"pid,hostname,requestId"`
+   * - `requestId` 默认被忽略，避免 mixin 注入的 requestId 在开发模式下被 pino-pretty 展开为多行噪音
+   * - 生产模式（JSON 输出）不受影响，requestId 仍然存在于结构化日志中
+   *
+   * @example
+   * ```typescript
+   * // 只忽略 pid 和 hostname，保留 requestId 在 pretty 输出中
+   * { prettyIgnore: "pid,hostname" }
+   *
+   * // 额外忽略自定义字段
+   * { prettyIgnore: "pid,hostname,requestId,traceId" }
+   * ```
+   */
+  prettyIgnore?: string;
+  /**
+   * pino-pretty 模式下是否将额外字段压缩到消息同一行
+   *
+   * 默认值: `true`
+   * - 启用后，结构化字段以 JSON 内联形式附加在消息末尾（单行输出）
+   * - 禁用后，结构化字段展开为多行缩进格式（pino-pretty 原始行为）
+   * - 仅影响 pretty 模式（开发环境），生产环境 JSON 输出不受影响
+   *
+   * @example
+   * ```typescript
+   * // 默认行为（单行）:
+   * // [2026-03-05 14:23:05] INFO: Seed data loaded {"count":3,"service":"UserService"}
+   * { prettySingleLine: true }
+   *
+   * // 多行展开（pino-pretty 原始行为）:
+   * // [2026-03-05 14:23:05] INFO: Seed data loaded
+   * //     count: 3
+   * //     service: "UserService"
+   * { prettySingleLine: false }
+   * ```
+   */
+  prettySingleLine?: boolean;
 }
 
 /**
@@ -331,6 +370,44 @@ export interface VextAccessLogConfig {
    * @example ['/health', '/ready', '/metrics']
    */
   skipPaths?: string[];
+
+  /**
+   * 跳过记录的路径前缀列表（前缀匹配）
+   *
+   * 与 skipPaths（精确匹配）互补，适用于需要跳过整个路径树的场景。
+   * 例如 '/internal' 会跳过 '/internal/health'、'/internal/metrics' 等所有子路径。
+   *
+   * @example ['/internal', '/_debug']
+   */
+  skipPathPrefixes?: string[];
+
+  /**
+   * 慢请求阈值（毫秒，默认不启用）
+   *
+   * 设置后，响应时间超过此阈值的请求会自动提升为 warn 级别，
+   * 并在日志消息末尾附加 [SLOW] 标记，便于监控和排查。
+   *
+   * @example 1000  // 超过 1 秒的请求标记为慢请求
+   */
+  slowThreshold?: number;
+
+  /**
+   * 是否对 4xx 响应自动提升日志级别为 warn（默认 false）
+   *
+   * 启用后，4xx 状态码的请求以 warn 级别输出（而非默认的 info/debug），
+   * 便于在日志系统中快速过滤客户端错误。
+   * 注意：5xx 始终自动提升为 error 级别，不受此选项控制。
+   */
+  warnOn4xx?: boolean;
+
+  /**
+   * 是否记录响应体大小（默认 false）
+   *
+   * 启用后，在日志消息中追加 Content-Length 值（如 " 1.2kB"），
+   * 便于分析带宽消耗和异常大响应。
+   * 若响应未设置 Content-Length 头，则显示 "-"。
+   */
+  logResponseSize?: boolean;
 }
 
 /**

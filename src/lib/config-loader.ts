@@ -587,6 +587,27 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
     );
   }
 
+  // ── 4c. CLI 环境变量覆盖（最高优先级）─────────────────
+  //
+  // vext start --port N / --host H 通过环境变量传递给 fork 子进程：
+  //   VEXT_PORT → 覆盖 merged.port
+  //   VEXT_HOST → 覆盖 merged.host
+  //
+  // 优先级链：DEFAULT_CONFIG < user default < env < local < CLI 环境变量
+  //
+  // 🐛 修复：BUG-013 — CLI --port/--host 参数设置了 VEXT_PORT/VEXT_HOST 环境变量，
+  //    但 loadConfig 从未读取这些环境变量，导致端口覆盖静默失效。
+  //
+  if (process.env.VEXT_PORT) {
+    const cliPort = parseInt(process.env.VEXT_PORT, 10);
+    if (!Number.isNaN(cliPort) && cliPort >= 1 && cliPort <= 65535) {
+      merged.port = cliPort;
+    }
+  }
+  if (process.env.VEXT_HOST) {
+    merged.host = process.env.VEXT_HOST;
+  }
+
   // ── 5. Fail Fast 校验 ──────────────────────────────────
   validateConfig(merged);
 

@@ -146,6 +146,34 @@ export function setupShutdown(options: ShutdownOptions): ShutdownCleanup {
   process.on("SIGTERM", onSigterm);
   process.on("SIGINT", onSigint);
 
+  // ── 注册 IPC shutdown 消息监听（Windows 兼容）─────────────
+  //
+  // 🐛 修复 BUG-014：Windows 上 child.kill('SIGTERM') 不会触发子进程的
+  // process.on('SIGTERM') 处理器——Node.js 在 Windows 上直接调用
+  // TerminateProcess API 杀死进程，导致 onClose hooks 不执行。
+  //
+  // 解决方案：当进程有 IPC 通道时（process.send 存在，表明是 fork 子进程），
+  // 额外注册 process.on('message') 监听 { type: 'shutdown' } 消息。
+  // CLI（start.ts）和 ColdRestarter 在 Windows 上发送此 IPC 消息替代 SIGTERM。
+  //
+  // Unix 上此监听器同样生效（双重保障），不影响现有 SIGTERM 流程。
+  // internals.shutdown 内部有 _shuttingDown guard，不会重复执行。
+  //
+  let onMessage: ((msg: unknown) => void) | null = null;
+
+  if (process.send) {
+    onMessage = (msg: unknown) => {
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "shutdown"
+      ) {
+        handleSignal("IPC:shutdown");
+      }
+    };
+    process.on("message", onMessage);
+  }
+
   // ── 返回清理函数 ──────────────────────────────────────────
   //
   // cleanup 移除已注册的信号处理器，防止：
@@ -155,6 +183,9 @@ export function setupShutdown(options: ShutdownOptions): ShutdownCleanup {
   return () => {
     process.removeListener("SIGTERM", onSigterm);
     process.removeListener("SIGINT", onSigint);
+    if (onMessage) {
+      process.removeListener("message", onMessage);
+    }
   };
 }
 

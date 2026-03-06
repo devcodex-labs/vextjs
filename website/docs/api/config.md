@@ -266,12 +266,18 @@ app.setRequestIdGenerator(() => myCustomId());
 |------|------|--------|------|
 | `level` | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'` | 日志级别 |
 | `pretty` | `boolean` | 开发环境 `true` | 是否美化输出（彩色格式） |
+| `prettyIgnore` | `string` | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响 |
+| `prettySingleLine` | `boolean` | `true` | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响 |
 
 ```typescript
 export default {
   logger: {
     level: 'debug',
     pretty: true, // 开发环境美化输出
+    // prettySingleLine: true,                   // 默认值，额外字段压缩到消息同一行
+    // prettySingleLine: false,                  // 恢复多行展开格式
+    // prettyIgnore: 'pid,hostname,requestId',   // 默认值，隐藏 requestId
+    // prettyIgnore: 'pid,hostname',             // 如需在 pretty 模式下显示 requestId
   },
 };
 ```

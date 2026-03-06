@@ -11,14 +11,58 @@ npm run dev
 npx vext dev
 ```
 
-启动后，修改任何 `src/` 目录下的文件，框架会自动检测变更并执行重载。终端会输出重载类型和耗时：
+启动后，终端会显示一个 Banner 框，包含当前运行模式、监听方式、防抖间隔以及三层 Tier 图标说明：
 
 ```
-[vext] Watching for file changes...
-[vext] Server started on http://localhost:3000
-[vext] [Tier 1] Route hot-swap: src/routes/users.ts (3ms)
-[vext] [Tier 2] Service reload: src/services/user.ts (8ms)
-[vext] [Tier 3] Cold restart: src/config/default.ts (1.2s)
+╔══════════════════════════════════════════════╗
+║           Vext Dev Server (Phase 2B)         ║
+╠══════════════════════════════════════════════╣
+║  Mode: Soft Reload + Cold Restart            ║
+║  Watch: fs.watch                             ║
+║  Debounce: 100ms                             ║
+╠══════════════════════════════════════════════╣
+║  🟢 T1 (code):   soft reload (transform)    ║
+║  🟡 T2 (struct): soft reload (rebuild)      ║
+║  🔴 T3 (cold):   cold restart               ║
+║  ⚪ ignored:     skip                        ║
+╠══════════════════════════════════════════════╣
+║  r=restart  h=reload  c=clear  ?=help  ^C=quit║
+╚══════════════════════════════════════════════╝
+```
+
+修改 `src/` 目录下的文件后，终端会输出变更详情和重载结果：
+
+```
+[vext dev] 1 file(s) changed:
+  🟢 src/routes/users.ts (modify)
+[vext dev] source change detected → soft reload [T1:code]...
+[hot-reload] [OK] 45ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms route:25ms swap:2ms) [12 modules evicted] #1
+```
+
+如果变更涉及文件新增或删除（结构变更），会走 Tier 2：
+
+```
+[vext dev] 2 file(s) changed:
+  🟢 src/routes/orders.ts (add)
+  🟢 src/routes/users.ts (modify)
+[vext dev] source change detected → soft reload [T2:structural]...
+[hot-reload] [OK] 82ms [T2:structural] (compile:35ms cache:5ms i18n:0ms mw:6ms svc:10ms route:22ms swap:4ms) [18 modules evicted] #2
+```
+
+如果变更涉及配置或插件，会走 Tier 3 冷重启：
+
+```
+[vext dev] 1 file(s) changed:
+  🔴 src/config/default.ts (modify)
+[vext dev] config/plugin change detected → cold restart (Tier 3)...
+[vext dev] cold restart complete
+```
+
+如果 soft reload 过程中出错，框架会保持旧版本继续运行并提示修复：
+
+```
+[hot-reload] [FAIL] failed after 12ms: Cannot find module './missing.js'
+[hot-reload] keeping previous version active. Fix the error and save again.
 ```
 
 ## 三层重载策略

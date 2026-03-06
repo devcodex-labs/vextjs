@@ -88,17 +88,26 @@ app.logger.info({ event: 'startup', port: 3000 });
 
 ### Pretty 输出格式
 
-开发环境（默认）下使用 pino-pretty，输出彩色格式化日志：
+开发环境（默认）下使用 pino-pretty，输出彩色格式化日志。默认启用单行模式（`prettySingleLine: true`），结构化字段以 JSON 形式内联附加在消息末尾：
+
+```
+[2026-03-05 14:23:05.123] INFO: 服务启动 {"port":3000,"adapter":"native"}
+[2026-03-05 14:23:05.200] DEBUG: 查询参数 {"page":1,"limit":20}
+[2026-03-05 14:23:05.300] INFO: Seed data loaded {"count":3,"service":"UserService"}
+```
+
+如果设置 `prettySingleLine: false`，则恢复 pino-pretty 的多行展开格式：
 
 ```
 [2026-03-05 14:23:05.123] INFO  服务启动
     port: 3000
     adapter: "native"
 [2026-03-05 14:23:05.200] DEBUG 查询参数
-    requestId: "abc-123"
     page: 1
     limit: 20
 ```
+
+> **注意**：`requestId` 默认被 pino-pretty 的 `ignore` 列表排除（`prettyIgnore` 配置项），不会在 pretty 模式下输出。这使开发日志更紧凑。`requestId` 仍然存在于生产环境的 JSON 输出中。如需在 pretty 模式下显示 requestId，可通过 `prettyIgnore` 配置项移除它（见下方配置说明）。
 
 ### 配置 Pretty 模式
 
@@ -125,6 +134,146 @@ export default {
 `pretty` 默认值取决于 `NODE_ENV`：
 - `NODE_ENV !== 'production'` → `pretty: true`
 - `NODE_ENV === 'production'` → `pretty: false`
+
+### 单行 vs 多行格式 {#pretty-single-line}
+
+通过 `prettySingleLine` 配置项可以控制 pino-pretty 在开发模式下的结构化字段展示方式。默认值为 `true`（单行模式）。
+
+```typescript
+// src/config/default.ts — 默认行为（单行输出）
+export default {
+  logger: {
+    pretty: true,
+    // prettySingleLine 默认值: true
+    // 输出: [14:23:05] INFO: Seed data loaded {"count":3,"service":"UserService"}
+  },
+};
+```
+
+如果偏好多行展开格式（pino-pretty 原始行为），可以设置为 `false`：
+
+```typescript
+// src/config/development.ts — 多行展开
+export default {
+  logger: {
+    pretty: true,
+    prettySingleLine: false,
+    // 输出:
+    // [14:23:05] INFO  Seed data loaded
+    //     count: 3
+    //     service: "UserService"
+  },
+};
+```
+
+> **注意**：`prettySingleLine` 仅影响 pretty 模式（开发环境）。生产环境的 JSON 输出格式不受影响。
+
+### 自定义 Pretty 忽略字段 {#pretty-ignore}
+
+通过 `prettyIgnore` 配置项可以控制 pino-pretty 在开发模式下隐藏哪些结构化字段。默认值为 `"pid,hostname,requestId"`，即隐藏进程 ID、主机名和请求 ID，避免开发日志中出现不必要的字段噪音。
+
+```typescript
+// src/config/default.ts — 默认行为（requestId 被隐藏）
+export default {
+  logger: {
+    pretty: true,
+    // prettyIgnore 默认值: "pid,hostname,requestId"
+  },
+};
+```
+
+如果需要在 pretty 模式下**显示** requestId（例如调试请求链路时），可以将其从 ignore 列表中移除：
+
+```typescript
+// src/config/development.ts — 显示 requestId
+export default {
+  logger: {
+    pretty: true,
+    prettyIgnore: "pid,hostname",  // 不再忽略 requestId
+  },
+};
+```
+
+也可以添加额外的忽略字段：
+
+```typescript
+// 隐藏 requestId + 自定义字段
+export default {
+  logger: {
+    prettyIgnore: "pid,hostname,requestId,traceId,spanId",
+  },
+};
+```
+
+> **注意**：`prettyIgnore` 仅影响 pretty 模式（开发环境）。生产环境的 JSON 输出始终包含所有字段（包括 `requestId`），确保日志收集系统能完整解析。
+
+### 自定义消息格式 (messageFormat) {#message-format}
+
+pino-pretty 支持 `messageFormat` 模板，可以将结构化字段内联到消息文本中，而非以 JSON 对象形式追加在末尾。这是一个**进阶用法**，适用于需要高度定制开发日志格式的场景。
+
+:::tip 何时使用 messageFormat
+大多数场景下，默认的 `prettySingleLine: true`（JSON 内联）已经足够紧凑。`messageFormat` 适用于以下需求：
+- 想让某些关键字段（如 `requestId`、`service`）直接出现在消息文本中
+- 想完全控制日志行的可读格式
+- 配合 `prettyIgnore` 隐藏已内联的字段，避免重复显示
+:::
+
+#### 基本用法
+
+`messageFormat` 使用 `{fieldName}` 占位符引用结构化字段：
+
+```typescript
+// src/config/development.ts
+import pino from 'pino';
+
+// 注意：messageFormat 需要直接配置 pino transport，
+// 框架的 prettySingleLine / prettyIgnore 不影响 messageFormat 行为。
+const logger = pino({
+  level: 'debug',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
+      ignore: 'pid,hostname',
+      // 将 requestId 和 service 内联到消息中
+      messageFormat: '[{requestId}] [{service}] {msg}',
+    },
+  },
+});
+
+// 输出效果：
+// [2026-03-06 14:23:05] INFO: [req-abc123] [UserService] 查询完成 {"count":42}
+```
+
+#### 配合 prettyIgnore 避免重复
+
+当字段已通过 `messageFormat` 内联到消息中时，可将其加入 `prettyIgnore` 避免在末尾重复显示：
+
+```typescript
+// messageFormat 内联了 requestId 和 service → 将它们加入 ignore
+export default {
+  logger: {
+    pretty: true,
+    prettyIgnore: 'pid,hostname,requestId,service',
+    // 然后在 pino transport 层配置 messageFormat
+    // （需要自定义 pino 实例，框架层不直接暴露 messageFormat 配置）
+  },
+};
+```
+
+#### 条件格式
+
+`messageFormat` 支持条件语法，当字段不存在时跳过对应部分：
+
+```typescript
+// 仅在有 requestId 时显示前缀
+messageFormat: '{requestId} {msg}'
+// 有 requestId 时: "req-abc123 查询完成"
+// 无 requestId 时: " 查询完成"（前面有空格）
+```
+
+> **注意**：`messageFormat` 是 pino-pretty 的原生功能，框架层不直接提供配置项（因为大多数用户只需 `prettySingleLine` + `prettyIgnore` 即可满足需求）。如需使用 `messageFormat`，请参考 [pino-pretty 文档](https://github.com/pinojs/pino-pretty#messageformat) 了解完整语法。
 
 ## requestId 自动注入
 
@@ -740,6 +889,8 @@ class PaymentService {
 |--------|------|--------|------|
 | `logger.level` | `string` | `'info'` | 日志级别：`'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` |
 | `logger.pretty` | `boolean` | `NODE_ENV !== 'production'` | 是否使用 pino-pretty 彩色格式化输出 |
+| `logger.prettyIgnore` | `string` | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
+| `logger.prettySingleLine` | `boolean` | `true` | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式 |
 
 ## 最佳实践
 

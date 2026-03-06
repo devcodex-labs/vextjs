@@ -23,14 +23,31 @@ import type { BootstrapResult } from "../../src/lib/bootstrap.js";
  *
  * E2E 测试使用 19000+ 端口段，避免与单元测试 / 集成测试冲突。
  * 每次调用 allocatePort() 递增，确保并行测试不冲突。
+ *
+ * 并行隔离策略：
+ *   vitest 的 pool:"forks" 模式下，每个测试文件在独立的 worker 进程中运行。
+ *   如果两个 E2E 测试文件（adapter-e2e / cli-e2e）各自从 19000 开始分配，
+ *   并行运行时会分配到相同端口号，导致 EADDRINUSE。
+ *
+ *   解决方案：使用 VITEST_POOL_ID 环境变量（vitest 为每个 worker 分配的唯一 ID，
+ *   从 1 开始递增）计算端口段偏移，确保不同 worker 使用不同的端口范围。
+ *   每个 worker 分配 500 个端口的独立区间（远超单个测试文件的需求量）。
+ *
+ *   fallback：如果 VITEST_POOL_ID 不可用（手动执行等场景），使用 process.pid
+ *   的低位取模作为偏移，虽非完美但大幅降低碰撞概率。
  */
-let portCounter = 19000;
+const poolId = parseInt(process.env.VITEST_POOL_ID || "0", 10);
+const portBase = poolId > 0
+  ? 19000 + (poolId - 1) * 500
+  : 19000 + (process.pid % 100) * 50;
+let portCounter = portBase;
 
 /**
  * 分配一个唯一端口号
  *
  * 注意：port=0 让系统分配随机端口更稳健，但 E2E 测试需要
  * 预先知道端口号以构建 HTTP 请求 URL，因此使用递增分配。
+ * 不同 worker 进程通过 portBase 偏移保证端口段不重叠。
  */
 export function allocatePort(): number {
   return portCounter++;

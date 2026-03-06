@@ -237,7 +237,18 @@ export class BuildCompiler {
       throw err;
     }
 
-    // ── 4. 统计编译结果 ────────────────────────────────────
+    // ── 4. 写入 dist/package.json（CJS 类型声明）──────────
+    //
+    // 确保 Node.js 将 dist/ 下的 .js 文件按 CommonJS 解析，
+    // 即使用户根 package.json 声明了 "type": "module"。
+    // 与 DevCompiler 在 .vext/dev/ 写入 package.json 的逻辑保持一致。
+    //
+    fs.writeFileSync(
+      path.join(outDir, "package.json"),
+      '{"type":"commonjs"}\n',
+    );
+
+    // ── 5. 统计编译结果 ────────────────────────────────────
     const elapsed = Date.now() - startTime;
     const outputFiles = Object.keys(result.metafile?.outputs ?? {});
     const jsFiles = outputFiles.filter((f) => f.endsWith(".js"));

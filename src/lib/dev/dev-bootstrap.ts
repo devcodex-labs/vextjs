@@ -490,51 +490,10 @@ export async function devBootstrap(
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
     });
 
-    // ── 步骤 12c: 注册 IPC reload 消息监听 ──────────────
+    // ── 步骤 12c-pre: 定义 handleShutdown（提前到 IPC 监听之前）──
     //
-    // 主进程（cli/dev.ts）在 soft 类型的文件变更时，
-    // 通过 restarter.sendToChild({ type: 'reload', files: [...] })
-    // 发送 IPC 消息到本子进程。
-    //
-    // 本监听器接收消息后调用 softReloader.reload()
-    // 执行完整的 Soft Reload 流程。
-    //
-    process.on("message", (msg: unknown) => {
-      if (
-        typeof msg === "object" &&
-        msg !== null &&
-        (msg as Record<string, unknown>).type === "reload"
-      ) {
-        const files = (msg as Record<string, unknown>)
-          .files as FileChangeInfo[];
-        if (Array.isArray(files) && files.length > 0) {
-          softReloader!.reload(files).catch((err: unknown) => {
-            app.logger.error(
-              "[hot-reload] unexpected error in reload:",
-              err instanceof Error ? err.message : err,
-            );
-          });
-        }
-      }
-    });
-
-    // ── 步骤 13: IPC 就绪通知 ────────────────────────────
-    //
-    // 通知主进程（ColdRestarter）子进程已完成初始化，
-    // 可以开始接受请求了。
-    //
-    if (!skipIpc && process.send) {
-      process.send({ type: "ready" });
-    }
-
-    // ── 步骤 14: 信号处理 ────────────────────────────────
-    //
-    // Dev 子进程的信号处理：
-    //   - SIGTERM：由 ColdRestarter.safeKill 发送 → 触发优雅关闭
-    //   - SIGINT：一般不会直接收到（主进程拦截了），但作为保险注册
-    //
-    // 不使用 setupShutdown（因为 dev 子进程的退出由 ColdRestarter 控制，
-    // 不需要 process.exit），直接注册信号处理。
+    // handleShutdown 需要在 IPC message 监听器中引用，
+    // 因此必须在注册 process.on('message') 之前定义（避免 const TDZ 错误）。
     //
     const handleShutdown = async () => {
       app.logger.info("[vext dev] worker shutting down...");
@@ -560,6 +519,64 @@ export async function devBootstrap(
         // 静默忽略 compiler dispose 错误
       }
     };
+
+    // ── 步骤 12c: 注册 IPC 消息监听（reload + shutdown）──
+    //
+    // 主进程（cli/dev.ts）在 soft 类型的文件变更时，
+    // 通过 restarter.sendToChild({ type: 'reload', files: [...] })
+    // 发送 IPC 消息到本子进程。
+    //
+    // 本监听器接收消息后调用 softReloader.reload()
+    // 执行完整的 Soft Reload 流程。
+    //
+    // 🐛 修复 BUG-014：同时监听 { type: 'shutdown' } 消息，
+    // Windows 上 ColdRestarter 通过此 IPC 消息触发优雅关闭。
+    //
+    process.on("message", (msg: unknown) => {
+      if (typeof msg !== "object" || msg === null) return;
+
+      const msgType = (msg as Record<string, unknown>).type;
+
+      if (msgType === "reload") {
+        const files = (msg as Record<string, unknown>)
+          .files as FileChangeInfo[];
+        if (Array.isArray(files) && files.length > 0) {
+          softReloader!.reload(files).catch((err: unknown) => {
+            app.logger.error(
+              "[hot-reload] unexpected error in reload:",
+              err instanceof Error ? err.message : err,
+            );
+          });
+        }
+      } else if (msgType === "shutdown") {
+        handleShutdown().finally(() => {
+          process.exit(0);
+        });
+      }
+    });
+
+    // ── 步骤 13: IPC 就绪通知 ────────────────────────────
+    //
+    // 通知主进程（ColdRestarter）子进程已完成初始化，
+    // 可以开始接受请求了。
+    //
+    if (!skipIpc && process.send) {
+      process.send({ type: "ready" });
+    }
+
+    // ── 步骤 14: 信号处理 ────────────────────────────────
+    //
+    // Dev 子进程的信号处理：
+    //   - SIGTERM：由 ColdRestarter.safeKill 发送 → 触发优雅关闭
+    //   - SIGINT：一般不会直接收到（主进程拦截了），但作为保险注册
+    //   - IPC { type: 'shutdown' }：Windows 上由 ColdRestarter 发送（BUG-014 修复）
+    //     已在步骤 12c 的 process.on('message') 中处理
+    //
+    // 不使用 setupShutdown（因为 dev 子进程的退出由 ColdRestarter 控制，
+    // 不需要 process.exit），直接注册信号处理。
+    //
+    // handleShutdown 已在步骤 12c-pre 中定义（供 IPC + 信号共用）。
+    //
 
     process.once("SIGTERM", () => {
       handleShutdown().finally(() => {

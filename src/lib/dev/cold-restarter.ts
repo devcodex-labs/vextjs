@@ -270,9 +270,16 @@ export class ColdRestarter {
    * safeKill — 安全终止子进程
    *
    * 流程：
-   *   1. 发送 SIGTERM（触发子进程的优雅关闭流程）
+   *   1. 通知子进程关闭：
+   *      - Windows: 优先通过 IPC 发送 { type: 'shutdown' } 消息（触发子进程优雅关闭）
+   *        IPC 不可用时降级为 child.kill('SIGTERM')
+   *      - Unix: 发送 SIGTERM（触发子进程 process.on('SIGTERM') 处理器）
    *   2. 等待子进程退出（最多 killTimeout ms）
    *   3. 超时后发送 SIGKILL 强制终止
+   *
+   * 🐛 修复 BUG-014：Windows 上 child.kill('SIGTERM') 不会触发子进程的
+   * process.on('SIGTERM') 处理器——Node.js 在 Windows 上直接调用
+   * TerminateProcess API 杀死进程，导致 onClose hooks 不执行。
    *
    * 使用 Promise + 双重退出监听确保在任何情况下都能 resolve：
    *   - 正常退出：'exit' 事件触发 → resolve
@@ -296,8 +303,20 @@ export class ColdRestarter {
         done()
       })
 
-      // 第一步: SIGTERM（优雅关闭）
-      child.kill("SIGTERM")
+      // 第一步: 通知子进程优雅关闭
+      if (process.platform === "win32" && child.connected) {
+        // Windows: 通过 IPC 消息通知子进程执行优雅关闭
+        // dev-bootstrap 的 process.on('message') 已监听 { type: 'shutdown' }
+        try {
+          child.send({ type: "shutdown" })
+        } catch {
+          // IPC 发送失败，降级为 kill
+          child.kill("SIGTERM")
+        }
+      } else {
+        // Unix: 标准 SIGTERM 信号（触发子进程 process.on('SIGTERM') 处理器）
+        child.kill("SIGTERM")
+      }
 
       // 第二步: 超时后 SIGKILL（强制终止）
       const timer = setTimeout(() => {

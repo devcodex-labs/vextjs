@@ -61,6 +61,12 @@ export interface DevCommandOptions {
   /** 项目根目录（默认: cwd） */
   root?: string;
 
+  /** 覆盖监听端口（通过 VEXT_PORT 环境变量传递给子进程） */
+  port?: number;
+
+  /** 覆盖监听地址（通过 VEXT_HOST 环境变量传递给子进程） */
+  host?: string;
+
   /** 强制使用 polling 模式（适用于 Docker / 网络文件系统） */
   poll?: boolean;
 
@@ -121,13 +127,24 @@ export async function devCommand(args: string[] = []): Promise<void> {
   );
 
   // ── 4. 创建 ColdRestarter ─────────────────────────────
+  const restarterEnv: Record<string, string> = {
+    VEXT_ROOT: project.rootDir,
+    VEXT_DEV_MODE: "1",
+    NODE_ENV: process.env.NODE_ENV || "development",
+  };
+
+  // --port / --host → VEXT_PORT / VEXT_HOST 环境变量传递给子进程
+  // loadConfig() 内部读取这些环境变量作为最高优先级覆盖
+  if (options.port !== undefined) {
+    restarterEnv.VEXT_PORT = String(options.port);
+  }
+  if (options.host !== undefined) {
+    restarterEnv.VEXT_HOST = options.host;
+  }
+
   const restarterOptions: ColdRestarterOptions = {
     entryScript,
-    env: {
-      VEXT_ROOT: project.rootDir,
-      VEXT_DEV_MODE: "1",
-      NODE_ENV: process.env.NODE_ENV || "development",
-    },
+    env: restarterEnv,
     cwd: project.rootDir,
   };
 
@@ -400,6 +417,24 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         }
         break;
 
+      case "--port":
+        if (i + 1 < args.length) {
+          const portStr = args[++i]!;
+          const port = parseInt(portStr, 10);
+          if (Number.isNaN(port) || port < 1 || port > 65535) {
+            console.error(`[vextjs] Invalid port number: "${portStr}"`);
+            process.exit(1);
+          }
+          options.port = port;
+        }
+        break;
+
+      case "--host":
+        if (i + 1 < args.length) {
+          options.host = args[++i]!;
+        }
+        break;
+
       case "--poll":
         options.poll = true;
         break;
@@ -535,6 +570,8 @@ function printDevHelp(): void {
     T3  Config/plugin/.env       → cold restart (kill + fork)
 
   Options:
+    --port <number>       Override the listening port
+    --host <string>       Override the listening host
     --root <path>         Project root directory (default: cwd)
     --poll                Force polling mode (for Docker / NFS)
     --poll-interval <ms>  Polling interval in ms (default: 1000)
@@ -545,6 +582,8 @@ function printDevHelp(): void {
 
   Examples:
     $ vext dev
+    $ vext dev --port 8080
+    $ vext dev --host 127.0.0.1 --port 3000
     $ vext dev --poll --poll-interval 2000
     $ vext dev --debounce 200
     $ vext dev --no-hot

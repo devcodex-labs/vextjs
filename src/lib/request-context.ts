@@ -25,6 +25,16 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *   // 任意深层代码中读取（无需参数传递）
  *   const store = requestContext.getStore()
  *   const locale = store?.locale  // 'zh-CN'
+ *
+ * ESM/CJS 双包单例保证：
+ *   当框架同时通过 ESM（dist/index.js）和 CJS（dist/index.cjs）加载时，
+ *   Node.js 会将它们视为独立模块，各自执行模块顶层代码。
+ *   如果直接 `new AsyncLocalStorage()`，ESM 和 CJS 会创建两个不同的实例，
+ *   导致 adapter 在实例 A 上 `.run()` 而用户路由代码在实例 B 上 `.getStore()` 返回 null。
+ *
+ *   解决方案：通过 globalThis 缓存单例，确保无论模块系统如何加载，
+ *   整个进程中只存在一个 AsyncLocalStorage 实例。
+ *   Symbol.for() 保证跨模块系统的 key 唯一性（比字符串 key 更安全，避免意外碰撞）。
  */
 
 /**
@@ -78,6 +88,32 @@ export interface RequestContextStore {
   propagatedHeaders?: Record<string, string>;
 }
 
+// ── globalThis 单例 key ─────────────────────────────────────
+//
+// 使用 Symbol.for() 而非普通字符串 key：
+//   - Symbol.for() 在整个 V8 isolate（进程）中全局唯一
+//   - 即使多个 npm 包版本共存，只要 key 字符串相同就返回同一个 Symbol
+//   - 避免与用户代码或其他库的 globalThis 属性意外碰撞
+//
+const GLOBAL_KEY = Symbol.for("vextjs.requestContext");
+
+/**
+ * 获取或创建全局唯一的 requestContext 实例
+ *
+ * 首次调用时创建 AsyncLocalStorage 实例并挂载到 globalThis[GLOBAL_KEY]，
+ * 后续调用（无论来自 ESM 还是 CJS）直接返回已缓存的实例。
+ */
+function getOrCreateRequestContext(): AsyncLocalStorage<RequestContextStore> {
+  const existing = (globalThis as any)[GLOBAL_KEY];
+  if (existing instanceof AsyncLocalStorage) {
+    return existing;
+  }
+
+  const instance = new AsyncLocalStorage<RequestContextStore>();
+  (globalThis as any)[GLOBAL_KEY] = instance;
+  return instance;
+}
+
 /**
  * 请求上下文（AsyncLocalStorage 实例）
  *
@@ -89,5 +125,12 @@ export interface RequestContextStore {
  *   2. callback 内执行中间件链（requestId 中间件写入 store.requestId）
  *   3. handler 执行，app.throw / app.logger 等读取 store
  *   4. 请求结束，store 自动 GC（无需手动清理）
+ *
+ * 单例保证：
+ *   通过 globalThis + Symbol.for() 缓存，确保 ESM（dist/index.js）和
+ *   CJS（dist/index.cjs）加载到同一个 AsyncLocalStorage 实例。
+ *   解决了 adapter 在实例 A 上 .run() 而用户路由代码在实例 B 上
+ *   .getStore() 返回 null 的双包问题。
  */
-export const requestContext = new AsyncLocalStorage<RequestContextStore>();
+export const requestContext: AsyncLocalStorage<RequestContextStore> =
+  getOrCreateRequestContext();

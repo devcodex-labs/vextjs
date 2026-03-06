@@ -311,6 +311,39 @@ describe("BuildCompiler", () => {
       expect(result.metafile!.outputs).toBeDefined();
       expect(Object.keys(result.metafile!.outputs).length).toBeGreaterThan(0);
     });
+
+    it("应在 dist/ 写入 package.json 声明 commonjs 类型", async () => {
+      const compiler = createCompiler(projectRoot);
+      const result = await compiler.build();
+
+      expect(result.success).toBe(true);
+
+      const distPkgPath = path.join(compiler.getOutDir(), "package.json");
+      expect(fs.existsSync(distPkgPath)).toBe(true);
+
+      const content = fs.readFileSync(distPkgPath, "utf8");
+      const parsed = JSON.parse(content);
+      expect(parsed.type).toBe("commonjs");
+    });
+
+    it("dist/package.json 应只包含 type 字段（最小化）", async () => {
+      const compiler = createCompiler(projectRoot);
+      await compiler.build();
+
+      const distPkgPath = path.join(compiler.getOutDir(), "package.json");
+      const parsed = JSON.parse(fs.readFileSync(distPkgPath, "utf8"));
+      expect(Object.keys(parsed)).toEqual(["type"]);
+    });
+
+    it("多次编译后 dist/package.json 仍为 commonjs", async () => {
+      const compiler = createCompiler(projectRoot);
+      await compiler.build();
+      await compiler.build();
+
+      const distPkgPath = path.join(compiler.getOutDir(), "package.json");
+      const parsed = JSON.parse(fs.readFileSync(distPkgPath, "utf8"));
+      expect(parsed.type).toBe("commonjs");
+    });
   });
 
   // ── Source Map ─────────────────────────────────────────────

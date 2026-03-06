@@ -127,7 +127,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.1.0"
+    "vextjs": "^0.1.4"
   }
 }
 ```

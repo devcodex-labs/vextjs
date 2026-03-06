@@ -544,7 +544,9 @@ describe("createAccessLogMiddleware", () => {
 
         await middleware(req, res, createNext());
 
-        const msg = getLogMsg(logger.info);
+        // 5xx 状态码走 logger.error（自动级别提升），其他走 logger.info
+        const logFn = code >= 500 ? logger.error : logger.info;
+        const msg = getLogMsg(logFn);
         expect(msg).toContain(String(code));
       });
     }

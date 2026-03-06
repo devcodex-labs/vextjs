@@ -100,12 +100,17 @@ export function createLogger(
   const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
   const alsEnabled = options?.requestContextEnabled !== false;
 
-  // ── pino 配置 ──────────────────────────────────────────
+  // pino-pretty ignore 字段：默认隐藏 pid, hostname, requestId
+  // requestId 仍通过 mixin 注入到 JSON 日志中（生产环境不受影响），
+  // 但在 pretty 模式下隐藏以避免多行噪音。用户可通过 prettyIgnore 自定义。
+  const prettyIgnoreFields = config.prettyIgnore ?? "pid,hostname,requestId";
 
-  // 🆕 性能优化：预分配空对象常量，避免每条日志都创建新的 {} 对象。
-  // pino mixin 在每条日志写入前调用，非请求上下文的日志（如启动日志）
-  // 会频繁走到 "无 requestId" 分支，复用常量减少 GC 压力。
-  const EMPTY_MIXIN: Record<string, unknown> = {};
+  // pino-pretty singleLine：默认 true，将额外字段压缩到消息同一行，
+  // 避免结构化字段（如 count、service 等）被展开为多行噪音。
+  // 设为 false 可恢复 pino-pretty 默认的多行展开格式。
+  const prettySingleLine = config.prettySingleLine !== false;
+
+  // ── pino 配置 ──────────────────────────────────────────
 
   const pinoOptions: pino.LoggerOptions = {
     level,
@@ -121,19 +126,19 @@ export function createLogger(
      *
      * 当 store 不存在时（非请求上下文，如启动日志），不注入 requestId。
      *
-     * 🆕 性能优化：无 requestId 时返回预分配的空对象常量（EMPTY_MIXIN），
-     * 避免每条日志创建新对象。pino 内部不会修改 mixin 返回值，复用安全。
+     * ⚠️ 每次必须返回新对象：pino 内部会将调用者传入的结构化字段（如 { count }）
+     * 合并到 mixin 返回的对象上（Object.assign 语义）。如果返回共享常量，
+     * 后续所有日志都会被之前的字段污染。
      */
     mixin() {
-      // 🆕 5.7: ALS 禁用时跳过 requestContext.getStore() 调用，
-      // 直接返回空对象（避免无意义的 ALS 查找开销）
-      if (!alsEnabled) return EMPTY_MIXIN;
+      // ALS 禁用时跳过 requestContext.getStore() 调用
+      if (!alsEnabled) return {};
 
       const store = requestContext.getStore();
       if (store?.requestId) {
         return { requestId: store.requestId };
       }
-      return EMPTY_MIXIN;
+      return {};
     },
 
     // 时间戳格式：ISO 8601（pino 默认是 epoch ms，改为人类可读格式）
@@ -154,7 +159,8 @@ export function createLogger(
         options: {
           colorize: true,
           translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
-          ignore: "pid,hostname",
+          ignore: prettyIgnoreFields,
+          singleLine: prettySingleLine,
         },
       },
     });

@@ -37,6 +37,44 @@ env:
 
 jobs:
   # ────────────────────────────────────────────────────────────
+  # 0. Version Check（版本号一致性门禁）
+  # ────────────────────────────────────────────────────────────
+  version-check:
+    name: Version Sync Check
+    runs-on: ubuntu-latest
+    # 仅在 package.json 有变更时运行（PR 场景）
+    # push 到 main 时也运行，确保合并后版本号一致
+    if: >-
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.changed_files_names || '', 'package.json')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if package.json changed (PR)
+        if: github.event_name == 'pull_request'
+        id: check-pkg
+        run: |
+          if git diff HEAD~1 --name-only | grep -q '^package.json$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js 22
+        if: github.event_name == 'push' || steps.check-pkg.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run version sync check
+        if: github.event_name == 'push' || steps.check-pkg.outputs.changed == 'true'
+        run: bash scripts/check-version-sync.sh
+
+  # ────────────────────────────────────────────────────────────
   # 1. Lint + Typecheck（快速门禁）
   # ────────────────────────────────────────────────────────────
   lint-typecheck:
@@ -222,17 +260,24 @@ jobs:
     name: CI ✅
     runs-on: ubuntu-latest
     needs:
-      [lint-typecheck, unit-tests, integration-tests, e2e-tests, docs-build]
+      [version-check, lint-typecheck, unit-tests, integration-tests, e2e-tests, docs-build]
     if: always()
 
     steps:
       - name: Check all jobs passed
         run: |
+          echo "version-check: ${{ needs.version-check.result }}"
           echo "lint-typecheck: ${{ needs.lint-typecheck.result }}"
           echo "unit-tests: ${{ needs.unit-tests.result }}"
           echo "integration-tests: ${{ needs.integration-tests.result }}"
           echo "e2e-tests: ${{ needs.e2e-tests.result }}"
           echo "docs-build: ${{ needs.docs-build.result }}"
+
+          # version-check 可能被跳过（package.json 未变更），跳过视为通过
+          if [[ "${{ needs.version-check.result }}" != "success" && "${{ needs.version-check.result }}" != "skipped" ]]; then
+            echo "❌ version-check failed"
+            exit 1
+          fi
 
           if [[ "${{ needs.lint-typecheck.result }}" != "success" ]]; then
             echo "❌ lint-typecheck failed"

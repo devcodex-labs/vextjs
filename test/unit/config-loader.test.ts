@@ -7,18 +7,23 @@
  *   - deepFreeze：递归冻结、跳过非纯对象（Date/RegExp/Map/Set）
  *   - validateConfig：Fail Fast 校验（port/adapter/middlewares/rateLimit/logger/shutdown 等）
  *   - loadConfig：default 缺失报错、三层合并、deepFreeze 只读
+ *   - VEXT_PORT / VEXT_HOST 环境变量覆盖（BUG-013 防回归）
  *
  * @see 10-testing.md §3（Service 单元测试模式）
  * @see IMPLEMENTATION-PLAN.md 任务 1.20
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   _deepMerge,
   _deepFreeze,
   _patchMiddlewares,
   _validateConfig,
 } from "../../src/lib/config-loader.js";
+import { loadConfig } from "../../src/lib/config-loader.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // ── deepMerge ───────────────────────────────────────────────
 
@@ -567,5 +572,124 @@ describe("validateConfig", () => {
         "config.requestContext must be an object",
       );
     });
+  });
+});
+
+// ── VEXT_PORT / VEXT_HOST 环境变量覆盖（BUG-013 防回归）───────
+
+describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
+  let tmpDir: string;
+  let savedPort: string | undefined;
+  let savedHost: string | undefined;
+  let savedNodeEnv: string | undefined;
+
+  beforeEach(() => {
+    // 创建临时 config 目录，写入最小 default.ts
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vext-config-test-"));
+    fs.writeFileSync(
+      path.join(tmpDir, "default.js"),
+      `module.exports = { port: 3000, host: "0.0.0.0" };\n`,
+    );
+    // 保存环境变量
+    savedPort = process.env.VEXT_PORT;
+    savedHost = process.env.VEXT_HOST;
+    savedNodeEnv = process.env.NODE_ENV;
+    // loadConfig 内部使用 NODE_ENV 查找环境文件
+    process.env.NODE_ENV = "test";
+  });
+
+  afterEach(() => {
+    // 恢复环境变量
+    if (savedPort !== undefined) {
+      process.env.VEXT_PORT = savedPort;
+    } else {
+      delete process.env.VEXT_PORT;
+    }
+    if (savedHost !== undefined) {
+      process.env.VEXT_HOST = savedHost;
+    } else {
+      delete process.env.VEXT_HOST;
+    }
+    if (savedNodeEnv !== undefined) {
+      process.env.NODE_ENV = savedNodeEnv;
+    } else {
+      delete process.env.NODE_ENV;
+    }
+    // 清理临时目录
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("VEXT_PORT 应覆盖 config.port", async () => {
+    process.env.VEXT_PORT = "8080";
+    delete process.env.VEXT_HOST;
+
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(8080);
+  });
+
+  it("VEXT_HOST 应覆盖 config.host", async () => {
+    delete process.env.VEXT_PORT;
+    process.env.VEXT_HOST = "127.0.0.1";
+
+    const config = await loadConfig(tmpDir);
+    expect(config.host).toBe("127.0.0.1");
+  });
+
+  it("VEXT_PORT 和 VEXT_HOST 可同时覆盖", async () => {
+    process.env.VEXT_PORT = "9090";
+    process.env.VEXT_HOST = "localhost";
+
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(9090);
+    expect(config.host).toBe("localhost");
+  });
+
+  it("无 VEXT_PORT 时应使用 config 文件中的 port", async () => {
+    delete process.env.VEXT_PORT;
+    delete process.env.VEXT_HOST;
+
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(3000);
+    expect(config.host).toBe("0.0.0.0");
+  });
+
+  it("VEXT_PORT 非法值应被忽略（保留 config 值）", async () => {
+    process.env.VEXT_PORT = "not-a-number";
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(3000);
+  });
+
+  it("VEXT_PORT=0 应被忽略（port < 1）", async () => {
+    process.env.VEXT_PORT = "0";
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(3000);
+  });
+
+  it("VEXT_PORT=70000 应被忽略（port > 65535）", async () => {
+    process.env.VEXT_PORT = "70000";
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(3000);
+  });
+
+  it("VEXT_PORT 应具有最高优先级（高于 config 文件）", async () => {
+    // 写一个指定 port 的 config
+    fs.writeFileSync(
+      path.join(tmpDir, "default.js"),
+      `module.exports = { port: 4000 };\n`,
+    );
+    process.env.VEXT_PORT = "5000";
+
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(5000);
+  });
+
+  it("返回的 config 应是冻结的（deepFreeze）", async () => {
+    process.env.VEXT_PORT = "8080";
+    const config = await loadConfig(tmpDir);
+
+    expect(Object.isFrozen(config)).toBe(true);
+    expect(() => {
+      (config as Record<string, unknown>).port = 9999;
+    }).toThrow();
   });
 });

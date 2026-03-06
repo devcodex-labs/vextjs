@@ -561,10 +561,30 @@ function createNotFoundHandler(): VextMiddleware {
 //   非 cluster 模式时行为不变（直接调用 bootstrap）。
 //
 
+// ── 防重入保护 ──────────────────────────────────────────────
+//
+// 当 bootstrap.js 被 CLI fork 的子进程直接运行时，模块级代码会检测
+// VEXT_MODE 环境变量并自动调用 detectAndStart() → bootstrap()。
+//
+// 问题：dist/index.cjs（CJS bundle）将 bootstrap.js 的全部代码打包在内，
+// 当用户编译后的 CJS 代码（如 plugin）执行 require("vextjs") 时，
+// index.cjs 的模块级代码也会执行，再次检测到 VEXT_MODE="start"，
+// 触发第二次 detectAndStart() → bootstrap()，导致：
+//   - i18n key 冲突（schema-dsl 重复注册）
+//   - 插件/服务/路由重复加载
+//   - 端口争用（EADDRINUSE）
+//
+// 修复：使用 globalThis 标志位确保自执行入口只触发一次。
+// 第一次进入时设置标志位，后续 require("vextjs") 触发的模块级代码
+// 检测到标志位已设置，跳过自动执行。
+//
 const isDirectRun =
   process.env.VEXT_MODE === "start" || process.env.VEXT_MODE === "dev";
 
-if (isDirectRun) {
+const alreadyStarted = (globalThis as Record<string, unknown>).__vext_bootstrap_started === true;
+
+if (isDirectRun && !alreadyStarted) {
+  (globalThis as Record<string, unknown>).__vext_bootstrap_started = true;
   // 被 CLI fork 时自动执行
   // rootDir 由 CLI 通过 VEXT_ROOT 环境变量传入，
   // 降级使用 process.cwd()
@@ -643,24 +663,33 @@ async function detectAndStart(rootDir: string): Promise<void> {
   const isBuilt = process.env.VEXT_BUILT === "1";
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
 
+  // ── 1. 预加载配置（仅用于检测 cluster.enabled）──────────
+  //
+  // try/catch 仅包裹 loadConfig，不包裹 bootstrap() / startClusterMaster()。
+  // 如果 bootstrap() 运行时出错（如 EADDRINUSE），应直接向上抛出，
+  // 由调用方（CLI）捕获并退出，避免在同一进程内二次调用 bootstrap 导致
+  // 重复初始化（i18n key 冲突、端口争用等）。
+  //
+  let clusterEnabled = false;
+
   try {
-    // 预加载配置（仅用于检测 cluster.enabled）
     const config = await loadConfig(join(srcDir, "config"));
-
     const clusterConfig = config.cluster as { enabled?: boolean } | undefined;
-
-    if (clusterConfig?.enabled === true) {
-      // 配置中启用了 cluster → 启动 Master
-      await startClusterMaster(rootDir);
-    } else {
-      // 非 cluster 模式 → 直接 bootstrap
-      await bootstrap(rootDir);
-    }
+    clusterEnabled = clusterConfig?.enabled === true;
   } catch (err) {
-    // 配置加载失败 → 降级为直接 bootstrap（让 bootstrap 内部报错）
+    // 配置加载失败 → 降级为单进程模式（bootstrap 内部会重新加载配置并报错）
     console.warn(
       `[vextjs] config pre-load failed, falling back to single process: ${(err as Error).message}`,
     );
+  }
+
+  // ── 2. 根据 cluster 配置决定启动方式 ────────────────────
+  //
+  // 此处不再被 try/catch 包裹：运行时错误直接向上传播。
+  //
+  if (clusterEnabled) {
+    await startClusterMaster(rootDir);
+  } else {
     await bootstrap(rootDir);
   }
 }

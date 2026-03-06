@@ -148,13 +148,33 @@ export async function startCommand(args: string[] = []): Promise<void> {
   // 使用 process.once（CLI 进程只需转发一次，
   // 后续由子进程的 exit 事件触发 CLI 进程退出）。
   //
-  process.once("SIGTERM", () => {
-    child.kill("SIGTERM");
-  });
+  // 🐛 修复 BUG-014：Windows 上 child.kill('SIGTERM') 不会触发子进程的
+  // process.on('SIGTERM') 处理器，而是直接通过 TerminateProcess API 杀死进程，
+  // 导致 onClose hooks 不执行、DB 连接池不清理。
+  //
+  // 解决方案：Windows 上通过 IPC 消息 { type: 'shutdown' } 通知子进程
+  // 执行优雅关闭流程。fork() 创建的子进程自带 IPC 通道，无需额外配置。
+  // IPC 通道不可用时（child.connected === false）降级为 child.kill()。
+  //
+  const sendShutdown = () => {
+    if (process.platform === "win32" && child.connected) {
+      // Windows: 通过 IPC 通知子进程优雅关闭
+      child.send({ type: "shutdown" });
+      // 超时保护：如果子进程 15s 内未退出，强制终止
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill();
+        }
+      }, 15_000).unref();
+    } else {
+      // Unix: 标准 SIGTERM 信号（触发子进程 process.on('SIGTERM') 处理器）
+      child.kill("SIGTERM");
+    }
+  };
 
-  process.once("SIGINT", () => {
-    child.kill("SIGINT");
-  });
+  process.once("SIGTERM", sendShutdown);
+
+  process.once("SIGINT", sendShutdown);
 }
 
 // ── 参数解析 ────────────────────────────────────────────────
