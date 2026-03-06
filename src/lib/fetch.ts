@@ -158,29 +158,27 @@ export function createVextFetch(
     // ── 1. 构建请求头（注入追踪头）────────────────────────
     const headers = new Headers(init?.headers);
 
-    if (propagate) {
-      const store = requestContext.getStore();
+    const store = requestContext.getStore();
 
-      // ── 1a. 注入 requestId ────────────────────────────
-      if (store?.requestId && !headers.has(requestIdHeader)) {
-        headers.set(requestIdHeader, store.requestId);
-      }
+    // ── 1a. 注入 requestId（受 propagateRequestId 控制）──
+    if (propagate && store?.requestId && !headers.has(requestIdHeader)) {
+      headers.set(requestIdHeader, store.requestId);
+    }
 
-      // ── 1b. 透传 propagatedHeaders ───────────────────
-      // store.propagatedHeaders 由 request-id 中间件在入站请求阶段
-      // 从原始请求头中捕获并写入（根据 config.fetch.propagateHeaders 列表）。
-      // 此处从 store 中读取并注入到出站请求头，实现"入站头 → 出站头"完整透传链路。
-      //
-      // 优先级：init.headers 手动设置 > store.propagatedHeaders（不覆盖用户显式设置的头）
-      //
-      // 单次请求可通过 init.propagateHeaders 指定额外透传头（已在入站阶段写入 store，
-      // 但仅当 request-id 中间件的 propagateHeaderNames 包含该头时才有值）。
-      // 如需透传未在全局配置中声明的头，直接在 init.headers 中手动设置即可。
-      if (store?.propagatedHeaders) {
-        for (const [key, value] of Object.entries(store.propagatedHeaders)) {
-          if (!headers.has(key)) {
-            headers.set(key, value);
-          }
+    // ── 1b. 透传 propagatedHeaders（始终生效，不受 propagateRequestId 控制）──
+    // store.propagatedHeaders 由 request-id 中间件在入站请求阶段
+    // 从原始请求头中捕获并写入（根据 config.fetch.propagateHeaders 列表）。
+    // 此处从 store 中读取并注入到出站请求头，实现"入站头 → 出站头"完整透传链路。
+    //
+    // 优先级：init.headers 手动设置 > store.propagatedHeaders（不覆盖用户显式设置的头）
+    //
+    // 单次请求可通过 init.propagateHeaders 指定额外透传头（已在入站阶段写入 store，
+    // 但仅当 request-id 中间件的 propagateHeaderNames 包含该头时才有值）。
+    // 如需透传未在全局配置中声明的头，直接在 init.headers 中手动设置即可。
+    if (store?.propagatedHeaders) {
+      for (const [key, value] of Object.entries(store.propagatedHeaders)) {
+        if (!headers.has(key)) {
+          headers.set(key, value);
         }
       }
     }
@@ -332,7 +330,7 @@ export function createVextFetch(
       method: "POST",
       body: body != null ? JSON.stringify(body) : undefined,
       headers: {
-        "content-type": "application/json",
+        ...(body != null ? { "content-type": "application/json" } : {}),
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -343,7 +341,7 @@ export function createVextFetch(
       method: "PUT",
       body: body != null ? JSON.stringify(body) : undefined,
       headers: {
-        "content-type": "application/json",
+        ...(body != null ? { "content-type": "application/json" } : {}),
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -354,7 +352,7 @@ export function createVextFetch(
       method: "PATCH",
       body: body != null ? JSON.stringify(body) : undefined,
       headers: {
-        "content-type": "application/json",
+        ...(body != null ? { "content-type": "application/json" } : {}),
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -407,7 +405,7 @@ export function createVextFetch(
         method: "POST",
         body: body != null ? JSON.stringify(body) : undefined,
         headers: {
-          "content-type": "application/json",
+          ...(body != null ? { "content-type": "application/json" } : {}),
           ...(init?.headers as Record<string, string> | undefined),
         },
       });
@@ -418,7 +416,7 @@ export function createVextFetch(
         method: "PUT",
         body: body != null ? JSON.stringify(body) : undefined,
         headers: {
-          "content-type": "application/json",
+          ...(body != null ? { "content-type": "application/json" } : {}),
           ...(init?.headers as Record<string, string> | undefined),
         },
       });
@@ -429,7 +427,7 @@ export function createVextFetch(
         method: "PATCH",
         body: body != null ? JSON.stringify(body) : undefined,
         headers: {
-          "content-type": "application/json",
+          ...(body != null ? { "content-type": "application/json" } : {}),
           ...(init?.headers as Record<string, string> | undefined),
         },
       });
