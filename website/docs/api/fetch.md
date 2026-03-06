@@ -40,7 +40,7 @@ app.fetch.get(url: string, init?: VextFetchInit): Promise<Response>
 app.fetch.post(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>
 ```
 
-发送 POST 请求。`body` 会自动 `JSON.stringify`，并设置 `Content-Type: application/json`。
+发送 POST 请求。当 `body` 不为 `null`/`undefined` 时，会自动 `JSON.stringify` 并设置 `Content-Type: application/json`；当 `body` 为空时，不设置 `Content-Type`，也不发送请求体。
 
 ### app.fetch.put(url, body?, init?)
 
@@ -48,7 +48,7 @@ app.fetch.post(url: string, body?: unknown, init?: VextFetchInit): Promise<Respo
 app.fetch.put(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>
 ```
 
-发送 PUT 请求。行为与 `post` 相同。
+发送 PUT 请求。`body` 处理行为与 `post` 相同（仅在 `body != null` 时设置 `Content-Type`）。
 
 ### app.fetch.patch(url, body?, init?)
 
@@ -56,7 +56,7 @@ app.fetch.put(url: string, body?: unknown, init?: VextFetchInit): Promise<Respon
 app.fetch.patch(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>
 ```
 
-发送 PATCH 请求。行为与 `post` 相同。
+发送 PATCH 请求。`body` 处理行为与 `post` 相同（仅在 `body != null` 时设置 `Content-Type`）。
 
 ### app.fetch.delete(url, init?)
 

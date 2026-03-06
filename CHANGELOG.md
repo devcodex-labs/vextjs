@@ -16,9 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `propagateHeaders` 功能实现 — `app.fetch` 现在正确透传入站请求中指定的自定义头（如 `x-trace-id`）到出站请求
 - `RequestContextStore` 新增 `propagatedHeaders` 字段，由 request-id 中间件从入站请求捕获并写入
 - 文档补充 `requestId` vs `traceId` 概念区分与使用指南
+- `app.throw('i18n.key')` 字符串快捷方式 — 省略 status 参数，status 从 i18n 配置的 statusCode 读取（默认 400）
+- `app.throw('i18n.key', params)` 支持快捷方式 + 插值参数
+- `onFatalError` 致命错误钩子 — 注册 `uncaughtException` / `unhandledRejection` 处理器，支持 webhook 通知 + 10s 超时优雅关闭
+- 文档增强：fetch 自动重试语义、logger 7 种存储/采集方案、部署致命错误通知、database `use()` 别名
 
 ### Fixed
 - **BUG-006 (P1)**：`config.fetch.propagateHeaders` 和 `VextFetchInit.propagateHeaders` 在 v0.1.3 中配置后不生效（`void extraHeaders` 空实现）
+- `propagateRequestId: false` 时 `propagatedHeaders` 透传被错误阻断 — 分离两个独立功能的控制逻辑
+- `post()`/`put()`/`patch()` 快捷方法在 `body` 为 `undefined` 时仍设置 `content-type: application/json` — 改为仅在 `body != null` 时设置
+- `fetch.test.ts` 日志级别断言与实现对齐（成功请求 `debug`，5xx `error`）
 
 ---
 
