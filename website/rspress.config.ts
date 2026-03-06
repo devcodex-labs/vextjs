@@ -9,6 +9,15 @@ export default defineConfig({
   description:
     "一个现代化的 Node.js Web 框架，开箱即用，专为构建高性能 RESTful API 而设计。",
   outDir: "dist",
+  head: [
+    [
+      "meta",
+      {
+        name: "google-site-verification",
+        content: "eYbt9ZyPTFQHdpEJ8Iujlb9ndhmAcMlstxZd6106840",
+      },
+    ],
+  ],
   search: {
     codeBlocks: true,
   },
