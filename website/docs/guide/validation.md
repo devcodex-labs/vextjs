@@ -1,6 +1,6 @@
 # 参数校验
 
-VextJS 集成 [schema-dsl](https://github.com/nicx-next/schema-dsl)，提供**声明式参数校验**。在路由 `options.validate` 中用简洁的 DSL 字符串描述校验规则，框架自动完成校验、类型转换，并同步生成 OpenAPI 文档。
+VextJS 集成 [schema-dsl](https://github.com/vextjs/schema-dsl)，提供**声明式参数校验**。在路由 `options.validate` 中用简洁的 DSL 字符串描述校验规则，框架自动完成校验、类型转换，并同步生成 OpenAPI 文档。
 
 ## 基本用法
 

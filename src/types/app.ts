@@ -132,6 +132,23 @@ export interface VextRequestIdConfig {
 }
 
 /**
+ * i18n Locale 配置
+ *
+ * 控制框架的多语言行为：
+ *   - default:   默认语言（Accept-Language 无匹配时回退）
+ *   - supported: 支持的语言列表（用于 Accept-Language 匹配）
+ *   - directory: 语言包目录路径（可选，bootstrap 默认使用 src/locales/）
+ */
+export interface VextLocaleConfig {
+  /** 默认语言代码（如 'zh-CN'），Accept-Language 无匹配时使用（默认 'en-US'） */
+  default?: string;
+  /** 支持的语言代码列表（如 ['zh-CN', 'en-US']），用于 Accept-Language 头匹配 */
+  supported?: string[];
+  /** 语言包目录路径（可选） */
+  directory?: string;
+}
+
+/**
  * 日志配置
  */
 export interface VextLoggerConfig {

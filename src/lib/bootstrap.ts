@@ -1,11 +1,12 @@
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import cluster from "node:cluster";
 import { loadConfig } from "./config-loader.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
 import { loadI18n } from "./i18n-loader.js";
+import { schemaAdapter } from "./schema-adapter.js";
 import { loadPlugins } from "./plugin-loader.js";
 import {
   createMonSQLizePlugin,
@@ -106,15 +107,43 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     app.logger.info("[vextjs] initializing...");
 
     // ── 步骤 ①+: i18n 语言包自动加载 ─────────────────────
-    // src/locales/ 目录存在时自动扫描语言文件，
-    // 通过 schemaAdapter.configure({ i18n: locales }) 注册到 schema-dsl
+    //
+    // 两种模式自动检测：
+    //   Mode A（平铺文件）：src/locales/zh-CN.ts → loadI18n() 动态 import + 注册
+    //   Mode B（子目录）  ：src/locales/order/zh-CN.js → schema-dsl 递归扫描
+    //
+    // 优先尝试 Mode A；若未找到平铺语言文件，则回退 Mode B
+    // （schema-dsl 的 dsl.config({ i18n: path }) 支持递归子目录扫描）
+    //
     const localesDir = join(srcDir, "locales");
     if (existsSync(localesDir)) {
       const loadedLocales = await loadI18n(localesDir, app.logger);
       if (loadedLocales.length > 0) {
+        // Mode A: 平铺文件加载成功
         app.logger.info(
           `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
         );
+      } else {
+        // Mode B fallback: 检查是否存在子目录（如 order/, user/）
+        // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
+        try {
+          const entries = readdirSync(localesDir, { withFileTypes: true });
+          const hasSubDirs = entries.some((e) => e.isDirectory());
+          if (hasSubDirs) {
+            schemaAdapter.configure({ i18n: localesDir });
+            const subDirs = entries
+              .filter((e) => e.isDirectory())
+              .map((e) => e.name);
+            app.logger.info(
+              `[vextjs] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+            );
+          }
+        } catch (err) {
+          app.logger.warn(
+            { error: (err as Error).message },
+            "[vextjs] Failed to scan locales subdirectories, i18n may not work",
+          );
+        }
       }
     }
 
@@ -270,10 +299,14 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
 
     // 1. requestId（config.requestId.enabled，默认 true）
     if (config.requestId?.enabled !== false) {
+      const localeConfig = config.locale as
+        | import("../types/app.js").VextLocaleConfig
+        | undefined;
       const requestIdMiddleware = createRequestIdMiddleware(
         config.requestId,
         () => internals!.getRequestIdGenerator(),
         fetchConfig?.propagateHeaders ?? [],
+        localeConfig,
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }

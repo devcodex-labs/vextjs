@@ -59,7 +59,7 @@ export default {
 
 ### 🛡️ 声明式参数校验
 
-集成 [schema-dsl](https://github.com/nicx-next/schema-dsl)，在路由 `options` 中声明校验规则，自动验证 + 自动生成 OpenAPI 文档：
+集成 [schema-dsl](https://github.com/vextjs/schema-dsl)，在路由 `options` 中声明校验规则，自动验证 + 自动生成 OpenAPI 文档：
 
 ```typescript
 app.post('/users', {
