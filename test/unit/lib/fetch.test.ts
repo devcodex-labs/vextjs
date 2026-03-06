@@ -648,7 +648,7 @@ describe("create() 子客户端", () => {
 // ════════════════════════════════════════════════════════════
 
 describe("结构化日志", () => {
-  it("成功请求时调用 logger.info 记录出站日志", async () => {
+  it("成功请求时调用 logger.debug 记录出站日志", async () => {
     const logger = createMockLogger();
     const vextFetch = createVextFetch(logger, {}, "x-request-id");
 
@@ -656,11 +656,11 @@ describe("结构化日志", () => {
       await vextFetch("https://example.com/api");
     });
 
-    // info 应被调用（出站请求日志）
-    expect(logger.info).toHaveBeenCalled();
-    const infoCall = (logger.info as ReturnType<typeof vi.fn>).mock.calls;
+    // debug 应被调用（出站请求日志，成功请求使用 debug 级别）
+    expect(logger.debug).toHaveBeenCalled();
+    const debugCall = (logger.debug as ReturnType<typeof vi.fn>).mock.calls;
     // 至少有一个调用包含 type: "outbound"
-    const outboundLog = infoCall.find(
+    const outboundLog = debugCall.find(
       (args: unknown[]) =>
         typeof args[0] === "object" &&
         args[0] !== null &&
@@ -669,7 +669,7 @@ describe("结构化日志", () => {
     expect(outboundLog).toBeDefined();
   });
 
-  it("失败请求（5xx）时调用 logger.warn", async () => {
+  it("失败请求（5xx）时调用 logger.error", async () => {
     const logger = createMockLogger();
     vi.stubGlobal(
       "fetch",
@@ -679,7 +679,7 @@ describe("结构化日志", () => {
     const vextFetch = createVextFetch(logger, { retry: 0 }, "x-request-id");
     await vextFetch("https://example.com/api");
 
-    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it("网络错误时调用 logger.error", async () => {
