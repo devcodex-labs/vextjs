@@ -271,15 +271,17 @@ const User = app.db.model('User');
 const result = await User.findPage({ role: 'admin' }, { page: 1, limit: 20 });
 ```
 
-### db(name)
+### use(name)
 
-获取其他数据库实例（跨库查询）：
+获取其他数据库实例（跨库查询），类似 MongoDB shell 的 `use <db>` 命令：
 
 ```typescript
-const logsDb = app.db.db('logs');
+const logsDb = app.db.use('logs');
 const errorLogs = logsDb.collection('errors');
 const recent = await errorLogs.find({ level: 'error' });
 ```
+
+> `app.db.db(name)` 仍可使用（向后兼容），但推荐使用语义更清晰的 `app.db.use(name)`。
 
 ### client
 

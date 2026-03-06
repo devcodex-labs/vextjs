@@ -225,34 +225,65 @@ class UserService {
 
 #### `app.throw(status, message, paramsOrCode?, code?)`
 
-抛出 HTTP 错误，框架统一转为标准错误响应。
+抛出 HTTP 错误，框架统一转为标准错误响应。支持三种调用形式。
+
+**函数签名**：
 
 ```typescript
+// 快捷方式（i18n key，status 从 i18n 配置读取，默认 400）
+throw(messageKey: string): never;
+throw(messageKey: string, params: Record<string, unknown>): never;
+
+// 标准调用（显式指定 HTTP 状态码）
 throw(
   status: number,
   message: string,
-  paramsOrCode?: Record<string, unknown> | number,
-  code?: number,
+  paramsOrCode?: Record<string, unknown> | number | string,
+  code?: number | string,
 ): never;
 ```
 
-**参数**：
+---
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `status` | `number` | HTTP 状态码（400/401/403/404/409/500…） |
-| `message` | `string` | 错误描述（同时作为 i18n key 查找） |
-| `paramsOrCode` | `Record<string, unknown> \| number` | i18n 插值参数对象 或 业务错误码 |
-| `code` | `number` | 业务错误码（当第三参数为 params 对象时使用） |
+##### 快捷方式（推荐用于 i18n 场景）
 
-**基本用法**：
+当第一个参数为 **字符串** 时，视为 i18n key 快捷调用。HTTP 状态码从 i18n 语言包配置的 `statusCode` 字段读取，未配置则默认 `400`：
+
+```typescript
+// 最简写法 — status 从 i18n 配置读取，默认 400
+app.throw('balance.insufficient');
+
+// 带 i18n 插值参数
+app.throw('balance.insufficient', { balance: 50, required: 100 });
+
+// i18n 配置中指定了 statusCode: 404 → 自动使用 404
+app.throw('user.not_found');
+```
+
+**快捷方式的 status 解析规则**：
+
+| 优先级 | 来源 | 说明 |
+|:------:|------|------|
+| 1 | i18n 语言包中的 `statusCode` | 如 `user.not_found` 配置了 `statusCode: 404` |
+| 2 | 默认值 `400` | 未配置 `statusCode` 时的兜底值 |
+
+**快捷方式的业务错误码**：如果 i18n 语言包中为该 key 配置了独立的 `code`（与 key 本身不同），会自动附加到响应中。
+
+---
+
+##### 标准调用
+
+当第一个参数为 **数字** 时，作为 HTTP 状态码，行为与之前完全一致：
 
 ```typescript
 // 简单错误
 app.throw(404, '用户不存在');
 
-// 带业务错误码
+// 带业务错误码（number）
 app.throw(400, '邮箱已注册', 10001);
+
+// 带业务错误码（string）
+app.throw(401, '缺少认证令牌', 'UNAUTHORIZED');
 
 // 带 i18n 参数
 app.throw(400, 'balance.insufficient', { balance: 50 });
@@ -261,17 +292,33 @@ app.throw(400, 'balance.insufficient', { balance: 50 });
 app.throw(400, 'balance.insufficient', { balance: 50 }, 20001);
 ```
 
-**i18n 联动**：
+**标准调用参数**：
 
-`message` 同时作为 i18n key 进行语言包查找。框架通过 AsyncLocalStorage 获取当前请求的 `locale`，自动翻译错误消息：
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | HTTP 状态码（400/401/403/404/409/500…） |
+| `message` | `string` | 错误描述（同时作为 i18n key 查找） |
+| `paramsOrCode` | `Record<string, unknown> \| number \| string` | i18n 插值参数对象 或 业务错误码 |
+| `code` | `number \| string` | 业务错误码（当第三参数为 params 对象时使用） |
+
+---
+
+##### i18n 联动
+
+`message`（或快捷方式的 `messageKey`）同时作为 i18n key 进行语言包查找。框架通过 AsyncLocalStorage 获取当前请求的 `locale`，自动翻译错误消息：
 
 ```typescript
+// 标准调用
 app.throw(404, 'user.not_found');
-// 中文环境 → { code: -1, message: '用户不存在' }
-// 英文环境 → { code: -1, message: 'User not found' }
+
+// 快捷方式（效果相同，前提是 i18n 配置中 statusCode: 404）
+app.throw('user.not_found');
+
+// 中文环境 → { code: 404, message: '用户不存在' }
+// 英文环境 → { code: 404, message: 'User not found' }
 ```
 
-无 i18n 语言包时，退化为原始 `message` 直接传递。
+无 i18n 语言包时，退化为原始 message 直接传递。
 
 **错误响应格式**：
 

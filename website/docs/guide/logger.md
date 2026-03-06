@@ -272,56 +272,420 @@ async function processPayment(orderId: string, amount: number) {
 }
 ```
 
-## 自定义 Transport
+## 日志存储与收集
 
-pino 支持通过 transport 将日志输出到不同目标（文件、远程服务等）。
+生产环境中有多种方式将日志持久化存储和收集分析。下面从简到繁介绍各种方案。
 
-### 输出到文件
+### 方案概览
 
-```typescript
-// src/config/production.ts
-export default {
-  logger: {
-    level: 'info',
-    pretty: false,
-    // 注意：pino transport 配置需要在创建 logger 之前设置
-    // 推荐在生产环境中通过外部工具（如 PM2、Docker）管理日志输出
-  },
-};
+| 方案 | 复杂度 | 适用场景 | 说明 |
+|------|:------:|---------|------|
+| **PM2 文件收集** | ⭐ | 单机部署 | PM2 自动收集 stdout/stderr 到文件 |
+| **pino-roll 日志轮转** | ⭐⭐ | 单机 / 需要自动切割 | pino 内置 transport，按大小/时间自动轮转 |
+| **pino/file 文件输出** | ⭐ | 简单文件写入 | pino 内置，直接写入指定文件 |
+| **Filebeat → ELK** | ⭐⭐⭐ | 中大型项目 | 文件采集 → Elasticsearch → Kibana |
+| **pino-elasticsearch 直连** | ⭐⭐⭐ | 中大型项目 | 直接写入 Elasticsearch，无需中间件 |
+| **Docker → Loki** | ⭐⭐ | 容器化部署 | Docker logging driver 推送到 Loki |
+| **stdout → Cloud 原生** | ⭐ | K8s / Cloud Run / ECS | 平台自动采集 stdout |
+
+### 推荐日志目录结构
+
+```
+project/
+├── logs/                    # .gitignore 中排除
+│   ├── app.log              # 当前应用日志
+│   ├── app.1.log            # 轮转后的历史日志
+│   ├── app.2.log
+│   ├── error.log            # 仅 error 及以上级别
+│   └── access.log           # 访问日志（可选）
+├── src/
+└── dist/
 ```
 
-生产环境中，推荐使用外部日志收集而不是 pino 内置 transport：
+:::warning
+确保 `.gitignore` 中包含 `logs/` 目录，不要将日志文件提交到版本库。
+:::
 
-| 方案 | 说明 |
-|------|------|
-| **PM2** | 配置 `error_file` / `out_file`，自动收集 stdout/stderr |
-| **Docker** | 使用 Docker logging driver（json-file / loki / fluentd） |
-| **Kubernetes** | stdout → Node 日志 → Fluentd / Loki 自动采集 |
-| **systemd** | journal 自动记录 stdout |
+---
 
-### 多目标输出（开发环境）
+### 方案一：pino/file 简单文件输出
 
-在开发环境中，可以同时输出 pretty 日志和 JSON 日志文件：
+最基础的文件写入方案，适合小型项目或开发环境：
 
 ```typescript
 import pino from 'pino';
 
-// 这是高级用法，通常不需要
 const transport = pino.transport({
+  target: 'pino/file',
+  options: {
+    destination: './logs/app.log',
+    mkdir: true,    // 自动创建 logs/ 目录
+  },
+});
+
+// 在 VextJS 中，可以通过插件在 logger 创建后替换
+// 或在 src/index.ts 启动前配置
+```
+
+缺点：文件会无限增长，没有自动轮转。适合搭配外部轮转工具（如 `logrotate`）使用。
+
+---
+
+### 方案二：pino-roll 日志轮转（推荐单机方案）
+
+[pino-roll](https://github.com/feugy/pino-roll) 是 pino 官方推荐的日志轮转 transport，支持按文件大小和时间间隔自动切割。
+
+#### 安装
+
+```bash
+npm install pino-roll
+```
+
+#### 按文件大小轮转
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
+  target: 'pino-roll',
+  options: {
+    file: './logs/app.log',     // 日志文件路径
+    size: '10m',                // 单个文件最大 10MB
+    limit: {
+      count: 10,                // 最多保留 10 个历史文件
+    },
+    mkdir: true,                // 自动创建目录
+  },
+}));
+```
+
+轮转后的文件命名：`app.1.log`、`app.2.log`、...
+
+#### 按时间间隔轮转
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
+  target: 'pino-roll',
+  options: {
+    file: './logs/app.log',
+    frequency: 'daily',          // 每天轮转一次（也支持 'hourly'）
+    dateFormat: 'yyyy-MM-dd',    // 历史文件名中的日期格式
+    limit: {
+      count: 30,                 // 保留最近 30 天
+    },
+    mkdir: true,
+  },
+}));
+```
+
+轮转后的文件命名：`app.2026-03-05.log`、`app.2026-03-04.log`、...
+
+#### 同时按大小 + 时间轮转
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
+  target: 'pino-roll',
+  options: {
+    file: './logs/app.log',
+    frequency: 'daily',
+    size: '50m',                 // 单日内超过 50MB 也会切割
+    dateFormat: 'yyyy-MM-dd',
+    limit: {
+      count: 30,
+    },
+    mkdir: true,
+  },
+}));
+```
+
+#### 多目标：控制台 + 文件轮转
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
   targets: [
+    // 控制台 pretty 输出（开发体验）
     {
       target: 'pino-pretty',
       options: { colorize: true, translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l' },
       level: 'debug',
     },
+    // 文件轮转（所有级别）
     {
-      target: 'pino/file',
-      options: { destination: './logs/app.log', mkdir: true },
+      target: 'pino-roll',
+      options: {
+        file: './logs/app.log',
+        size: '10m',
+        limit: { count: 10 },
+        mkdir: true,
+      },
+      level: 'info',
+    },
+    // 错误日志单独文件
+    {
+      target: 'pino-roll',
+      options: {
+        file: './logs/error.log',
+        size: '10m',
+        limit: { count: 20 },
+        mkdir: true,
+      },
+      level: 'error',
+    },
+  ],
+}));
+```
+
+---
+
+### 方案三：系统级 logrotate（Linux）
+
+如果使用 PM2 或 systemd 管理进程，可以用系统自带的 `logrotate` 管理日志轮转：
+
+```bash
+# /etc/logrotate.d/myapp
+/var/log/myapp/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+| 选项 | 说明 |
+|------|------|
+| `daily` | 每天轮转 |
+| `rotate 30` | 保留 30 个历史文件 |
+| `compress` | 历史文件 gzip 压缩 |
+| `delaycompress` | 最近一个文件不压缩（便于查看） |
+| `copytruncate` | 复制后截断（不中断进程写入） |
+
+---
+
+### 方案四：Filebeat → Elasticsearch → Kibana (ELK)
+
+完整的 ELK 日志分析管线。适合需要全文搜索、聚合分析、可视化面板的中大型项目。
+
+#### 架构
+
+```
+VextJS (JSON stdout)
+  → PM2 (写入文件)
+    → Filebeat (采集文件)
+      → Elasticsearch (存储 + 索引)
+        → Kibana (可视化 + 查询)
+```
+
+#### 步骤 1：PM2 输出到文件
+
+```javascript
+// ecosystem.config.cjs
+module.exports = {
+  apps: [{
+    name: 'myapp',
+    script: 'dist/index.js',
+    env: { NODE_ENV: 'production' },
+    error_file: '/var/log/myapp/error.log',
+    out_file: '/var/log/myapp/app.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
+    merge_logs: true,
+  }],
+};
+```
+
+#### 步骤 2：Filebeat 采集
+
+```yaml
+# /etc/filebeat/filebeat.yml
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/myapp/app.log
+    json.keys_under_root: true      # JSON 字段提升到顶层
+    json.overwrite_keys: true       # 覆盖同名字段
+    json.add_error_key: true        # JSON 解析失败时添加 error 字段
+    fields:
+      app: myapp
+      env: production
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/myapp/error.log
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    fields:
+      app: myapp
+      env: production
+      log_type: error
+    fields_under_root: true
+
+output.elasticsearch:
+  hosts: ['http://elasticsearch:9200']
+  index: 'myapp-%{+yyyy.MM.dd}'
+  username: '${ELASTIC_USER}'
+  password: '${ELASTIC_PASSWORD}'
+
+# 索引模板（可选，优化映射）
+setup.template.name: 'myapp'
+setup.template.pattern: 'myapp-*'
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 0
+```
+
+#### 步骤 3：Kibana 索引模式
+
+1. 打开 Kibana → Stack Management → Index Patterns
+2. 创建索引模式：`myapp-*`
+3. 时间字段选择 `time`（pino 的 ISO 时间戳）
+4. 在 Discover 中即可搜索日志
+
+常用查询：
+- 按 requestId 追踪：`requestId: "abc-123"`
+- 按错误级别过滤：`level: 50`（pino level 50 = error）
+- 按服务过滤：`service: "UserService"`
+
+---
+
+### 方案五：pino-elasticsearch 直连
+
+[pino-elasticsearch](https://github.com/pinojs/pino-elasticsearch) 是 pino 官方的 Elasticsearch transport，无需 Filebeat 中间层，直接从 Node.js 进程写入 ES。
+
+#### 安装
+
+```bash
+npm install pino-elasticsearch
+```
+
+#### 配置
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
+  target: 'pino-elasticsearch',
+  options: {
+    index: 'myapp',              // 索引名前缀（自动追加日期）
+    node: 'http://localhost:9200',
+    esVersion: 8,                // Elasticsearch 版本
+    flushBytes: 1000,            // 缓冲区达到 1000 字节后批量写入
+    flushInterval: 5000,         // 或每 5 秒写入一次
+    auth: {
+      username: process.env.ELASTIC_USER,
+      password: process.env.ELASTIC_PASSWORD,
+    },
+    // 可选：自定义索引名（按天分割）
+    'op.type': 'create',
+  },
+}));
+```
+
+#### 多目标：控制台 + ES
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+}, pino.transport({
+  targets: [
+    {
+      target: 'pino-pretty',
+      options: { colorize: true },
+      level: 'debug',
+    },
+    {
+      target: 'pino-elasticsearch',
+      options: {
+        index: 'myapp',
+        node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
+        esVersion: 8,
+        flushBytes: 1000,
+        flushInterval: 5000,
+      },
       level: 'info',
     },
   ],
-});
+}));
 ```
+
+:::tip pino-elasticsearch vs Filebeat
+- **pino-elasticsearch**：部署简单，无需额外进程；但如果 ES 不可用，日志会丢失
+- **Filebeat**：先落盘再采集，ES 宕机时日志不丢失；需要额外部署 Filebeat
+
+生产环境推荐 Filebeat 方案（更可靠），开发/测试环境可用 pino-elasticsearch（更简单）。
+:::
+
+---
+
+### 方案六：Docker → Loki
+
+容器化部署时，使用 Docker logging driver 直接推送到 Grafana Loki：
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    build: .
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://loki:3100/loki/api/v1/push'
+        loki-batch-size: '400'
+        loki-retries: '3'
+        loki-external-labels: 'app=myapp,env=production'
+```
+
+在 Grafana 中添加 Loki 数据源即可查询日志：
+- 按 requestId 查询：`{app="myapp"} |= "abc-123"`
+- 按 JSON 字段过滤：`{app="myapp"} | json | level >= 50`
+
+---
+
+### 方案七：stdout → Cloud 原生
+
+在 Kubernetes / AWS ECS / Google Cloud Run 等平台中，直接输出到 stdout，由平台自动采集：
+
+```bash
+# 不需要额外配置，JSON 日志直接输出到 stdout
+NODE_ENV=production node dist/index.js
+```
+
+| 平台 | 日志采集方式 |
+|------|-------------|
+| **Kubernetes** | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
+| **AWS ECS** | stdout → CloudWatch Logs |
+| **Google Cloud Run** | stdout → Cloud Logging |
+| **Azure Container Apps** | stdout → Azure Monitor |
+
+这是最简单也最推荐的云原生方案——**不做任何日志配置**，让平台处理一切。
 
 ## 日志与 OpenTelemetry
 

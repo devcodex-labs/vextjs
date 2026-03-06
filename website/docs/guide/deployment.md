@@ -542,6 +542,123 @@ spec:
           cpu: '1000m'
 ```
 
+## 异常崩溃通知（onFatalError）
+
+VextJS 内置了进程级异常捕获机制，当发生 `uncaughtException` 或 `unhandledRejection` 时，框架会：
+
+1. 记录 `fatal` 级别日志
+2. 调用用户配置的 `onFatalError` 回调（如有）
+3. 执行优雅关闭（onClose hooks 清理资源）
+4. `process.exit(1)` 退出进程
+
+### 配置 onFatalError
+
+在 `shutdown` 配置中添加 `onFatalError` 回调，接入告警通知：
+
+```typescript
+// src/config/production.ts
+export default {
+  shutdown: {
+    timeout: 10,
+    onFatalError: async (error, origin) => {
+      // origin: 'uncaughtException' | 'unhandledRejection'
+
+      // 示例：发送钉钉 Webhook
+      await fetch('https://oapi.dingtalk.com/robot/send?access_token=xxx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          msgtype: 'markdown',
+          markdown: {
+            title: '⚠️ 服务异常',
+            text: [
+              '## ⚠️ 服务异常崩溃',
+              `- **服务**: my-service`,
+              `- **来源**: ${origin}`,
+              `- **错误**: ${error.message}`,
+              `- **时间**: ${new Date().toISOString()}`,
+              `- **堆栈**:\n\`\`\`\n${error.stack}\n\`\`\``,
+            ].join('\n'),
+          },
+        }),
+      });
+    },
+  },
+};
+```
+
+### 企业微信 Webhook 示例
+
+```typescript
+onFatalError: async (error, origin) => {
+  await fetch('https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      msgtype: 'markdown',
+      markdown: {
+        content: [
+          `## <font color="warning">服务异常崩溃</font>`,
+          `> 服务: my-service`,
+          `> 来源: ${origin}`,
+          `> 错误: ${error.message}`,
+          `> 时间: ${new Date().toISOString()}`,
+        ].join('\n'),
+      },
+    }),
+  });
+},
+```
+
+### Slack Webhook 示例
+
+```typescript
+onFatalError: async (error, origin) => {
+  await fetch('https://hooks.slack.com/services/T00/B00/xxx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: `🚨 *Service Crash* (${origin})\nError: ${error.message}\nTime: ${new Date().toISOString()}`,
+    }),
+  });
+},
+```
+
+### 通用 HTTP Webhook 示例
+
+```typescript
+onFatalError: async (error, origin) => {
+  await fetch(process.env.ALERT_WEBHOOK_URL!, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      app: 'my-service',
+      env: process.env.NODE_ENV,
+      origin,
+      error: error.message,
+      stack: error.stack,
+      hostname: require('os').hostname(),
+      pid: process.pid,
+      time: new Date().toISOString(),
+    }),
+  });
+},
+```
+
+### 注意事项
+
+| 项目 | 说明 |
+|------|------|
+| **超时保护** | `onFatalError` 回调有 10 秒超时，超时后强制退出进程 |
+| **错误隔离** | 回调内部抛出的异常会被捕获并记录，不会阻止进程退出 |
+| **不可恢复** | `uncaughtException` 后进程处于不确定状态，回调应尽量轻量（发通知即可） |
+| **测试模式** | `_testMode` 下不注册致命错误处理器，避免干扰测试 |
+| **配合 PM2** | PM2 自身也有重启通知能力（`pm2-slack` 等插件），可与 `onFatalError` 配合使用 |
+
+:::tip 为什么不能用中间件实现？
+`uncaughtException` 和 `unhandledRejection` 发生在 HTTP 中间件执行链之外（例如定时任务、事件监听器中的异常），中间件无法捕获这类错误。因此必须在框架 bootstrap 层注册 `process` 级事件监听器。
+:::
+
 ## 安全加固
 
 ### 生产环境清单

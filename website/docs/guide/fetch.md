@@ -370,16 +370,90 @@ try {
 
 重试仅对**幂等方法**（GET / HEAD / OPTIONS / PUT / DELETE）生效，POST / PATCH 不会重试（避免副作用重复执行）。
 
+### 幂等方法清单
+
+以下方法被视为幂等方法，允许自动重试：
+
+| 方法 | 幂等 | 可重试 |
+|------|:----:|:------:|
+| GET | ✅ | ✅ |
+| HEAD | ✅ | ✅ |
+| OPTIONS | ✅ | ✅ |
+| PUT | ✅ | ✅ |
+| DELETE | ✅ | ✅ |
+| POST | ❌ | ❌ |
+| PATCH | ❌ | ❌ |
+
 ### 触发条件
 
-- HTTP 5xx 响应
-- 网络错误（连接失败、DNS 解析失败等）
+| 条件 | 是否重试 | 说明 |
+|------|:--------:|------|
+| HTTP 5xx 响应 | ✅ | 服务端错误，重试可能恢复 |
+| 网络错误（连接失败、DNS 解析失败等） | ✅ | 瞬时网络问题，重试可能成功 |
+| HTTP 4xx 响应 | ❌ | 客户端错误，重试无意义 |
+| 超时（AbortError） | ❌ | 直接抛出 `Error`，不重试 |
+| 非幂等方法（POST / PATCH） | ❌ | 任何错误都不重试，避免副作用重复 |
 
-### 不触发重试的情况
+### 重试决策流程
 
-- **超时**：超时直接抛出错误，不重试
-- **非幂等方法**（POST / PATCH）：无论何种错误都不重试
-- **4xx 响应**：客户端错误，重试无意义
+```
+请求发出
+  │
+  ├── 成功（2xx/3xx/4xx）
+  │     └── 直接返回 Response ✅
+  │
+  ├── 5xx 响应
+  │     ├── 是幂等方法？
+  │     │     ├── YES + 还有重试次数 → 等待 retryDelay → 重试
+  │     │     ├── YES + 最后一次重试 → 返回原始 Response ⚠️（不抛出错误）
+  │     │     └── NO → 直接返回 Response
+  │     └──
+  │
+  ├── 网络错误（连接失败、DNS 等）
+  │     ├── 是幂等方法 + 还有重试次数 → 等待 retryDelay → 重试
+  │     └── 最后一次 或 非幂等 → 抛出 Error ❌
+  │
+  └── 超时（AbortError）
+        └── 直接抛出 Error ❌（不重试）
+```
+
+### 最终重试失败时的行为
+
+这是最重要的细节——**5xx 和网络错误的最终行为不同**：
+
+| 场景 | 最终行为 | 说明 |
+|------|---------|------|
+| 5xx + 重试全部耗尽 | **返回 Response** | 调用方需自行检查 `response.ok` 或 `response.status` 处理错误 |
+| 网络错误 + 重试全部耗尽 | **抛出 Error** | 调用方需 try/catch 捕获 |
+| 超时 | **抛出 Error** | `[app.fetch] GET /api/xxx timed out after 10000ms` |
+
+```typescript
+// 5xx 最终失败 → 返回 Response（不抛出）
+const response = await app.fetch.get('https://api.example.com/data', { retry: 2 });
+if (!response.ok) {
+  // 3 次尝试（1 + 2 retry）都返回 5xx
+  app.logger.error({ status: response.status }, 'API request failed after retries');
+}
+
+// 网络错误最终失败 → 抛出 Error
+try {
+  await app.fetch.get('https://unreachable.example.com/data', { retry: 2 });
+} catch (err) {
+  // 3 次尝试都连接失败
+  app.logger.error({ err }, 'API unreachable after retries');
+}
+```
+
+### 重试日志
+
+每次重试会记录 `debug` 级别日志，包含当前重试次数和最大重试次数：
+
+```json
+{"level":20,"type":"outbound","method":"GET","url":"https://api.example.com/data","attempt":1,"maxRetries":3,"msg":"→ GET https://api.example.com/data RETRY attempt 1/3"}
+{"level":20,"type":"outbound","method":"GET","url":"https://api.example.com/data","attempt":2,"maxRetries":3,"msg":"→ GET https://api.example.com/data RETRY attempt 2/3"}
+```
+
+首次请求不记录重试日志，只有 `attempt >= 1` 时才输出。生产环境 `logger.level: 'info'` 时重试日志不会输出（debug 级别被静默）。
 
 ### 指数退避
 
@@ -394,6 +468,8 @@ const response = await app.fetch.get('https://api.example.com/data', {
   // attempt 3: 8000ms
 });
 ```
+
+默认 `retryDelay` 为固定 `1000ms`（1 秒）。
 
 ## 结构化日志
 
