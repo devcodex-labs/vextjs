@@ -84,15 +84,15 @@ export async function buildCommand(args: string[] = []): Promise<void> {
 
   // ── JavaScript 项目跳过编译 ───────────────────────────────
   if (project.language !== "ts") {
-    console.log("[vextjs] JavaScript project detected — no build step needed.");
-    console.log("[vextjs] Use \"vext start\" directly.");
+    console.log("[vextjs] JavaScript project detected - no build step needed.");
+    console.log('[vextjs] Use "vext start" directly.');
     return;
   }
 
   const outDir = path.resolve(project.rootDir, options.outdir);
 
   // ── 打印编译信息 ──────────────────────────────────────────
-  console.log("[vextjs] build — TypeScript → JavaScript");
+  console.log("[vextjs] build - TypeScript -> JavaScript");
   console.log(`[vextjs] src:  ${project.srcDir}`);
   console.log(`[vextjs] out:  ${outDir}`);
 
@@ -121,7 +121,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       });
       console.log("[vextjs] type check passed ✓");
     } catch {
-      console.error("[vextjs] type check failed — build aborted");
+      console.error("[vextjs] type check failed - build aborted");
       process.exit(1);
     }
   }
@@ -145,7 +145,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       for (const err of result.errors) {
         const loc = err.location;
         if (loc) {
-          console.error(`  ${loc.file}:${loc.line} — ${err.text}`);
+          console.error(`  ${loc.file}:${loc.line} - ${err.text}`);
         } else {
           console.error(`  ${err.text}`);
         }
@@ -159,7 +159,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       for (const w of result.warnings) {
         const loc = w.location;
         if (loc) {
-          console.log(`  ${loc.file}:${loc.line} — ${w.text}`);
+          console.log(`  ${loc.file}:${loc.line} - ${w.text}`);
         } else {
           console.log(`  ${w.text}`);
         }

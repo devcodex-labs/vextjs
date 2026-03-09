@@ -1,6 +1,6 @@
 # OpenAPI 文档
 
-VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范的 JSON 文档，并提供 Swagger UI 在线查看和调试。
+VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范的 JSON 文档，并提供 [Scalar API Reference](https://github.com/scalar/scalar) 在线查看和交互式调试。
 
 ## 快速开始
 
@@ -70,7 +70,7 @@ export default defineRoutes((app) => {
 
 | 地址 | 说明 |
 |------|------|
-| `http://localhost:3000/docs` | Swagger UI 交互界面 |
+| `http://localhost:3000/docs` | Scalar API Reference 文档界面（含内置 Try it out） |
 | `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件 |
 
 ## 文档配置
@@ -88,17 +88,19 @@ export default {
     description: '我的应用程序 RESTful API 文档',
     version: '1.0.0',
 
-    // Swagger UI 路径
+    // Scalar 文档路径
     docsPath: '/docs',
 
     // OpenAPI JSON 路径
     specPath: '/openapi.json',
 
-    // 启用 "Try it out" 按钮
-    tryItOut: true,
-
-    // 文档展开方式：'list' | 'full' | 'none'
-    docExpansion: 'list',
+    // Scalar API Reference 配置
+    scalar: {
+      theme: 'default',     // 主题：'default' | 'moon' | 'purple' | 'solarized' | ...
+      darkMode: false,       // 深色模式
+      layout: 'modern',     // 布局：'modern'（三栏） | 'classic'（双栏）
+      favicon: '/favicon.svg', // 文档页面图标
+    },
 
     // API 服务器列表
     servers: [
@@ -202,7 +204,7 @@ app.post('/users', {
 
 ### `summary` — 接口摘要
 
-一句话描述接口功能，显示在 Swagger UI 的接口列表中：
+一句话描述接口功能，显示在文档 UI 的接口列表中：
 
 ```typescript
 docs: { summary: '获取用户列表' }
@@ -276,7 +278,7 @@ app.get('/_health', {
 
 ### `deprecated` — 标记废弃
 
-标记接口为已废弃，在 Swagger UI 中会有删除线提示：
+标记接口为已废弃，在文档中会有删除线和废弃提示：
 
 ```typescript
 app.get('/v1/users', {
@@ -497,7 +499,10 @@ export default {
   openapi: {
     enabled: true,
     title: 'My App API',
-    tryItOut: true,
+    scalar: {
+      theme: 'default',
+      favicon: '/favicon.svg',
+    },
   },
 };
 ```
@@ -506,19 +511,21 @@ export default {
 // src/config/production.ts
 export default {
   openapi: {
-    enabled: false,   // 生产环境关闭 Swagger UI
+    enabled: false,   // 生产环境关闭文档
   },
 };
 ```
 
-如果生产环境需要保留 API 文档但禁用在线调试：
+如果生产环境需要保留 API 文档（只读参考）：
 
 ```typescript
 // src/config/production.ts
 export default {
   openapi: {
     enabled: true,
-    tryItOut: false,   // 禁用 "Try it out" 按钮
+    scalar: {
+      darkMode: false,
+    },
   },
 };
 ```
@@ -529,11 +536,90 @@ export default {
 export default {
   openapi: {
     enabled: true,
-    docsPath: '/api-docs',       // Swagger UI: http://localhost:3000/api-docs
+    docsPath: '/api-docs',       // 文档: http://localhost:3000/api-docs
     specPath: '/api/spec.json',  // JSON: http://localhost:3000/api/spec.json
   },
 };
 ```
+
+## 导入外部 OpenAPI
+
+Scalar 支持同时加载多个 OpenAPI 文档，在文档页面顶部显示切换器。通过 `scalar.sources` 配置：
+
+```typescript
+export default {
+  openapi: {
+    enabled: true,
+    scalar: {
+      sources: [
+        // 框架自动生成的 spec 会作为第一个 source 注入（无需手动添加）
+        { title: 'Partner API', url: 'https://partner.example.com/openapi.json', slug: 'partner' },
+        { title: 'Payment API', url: 'https://pay.example.com/v1/openapi.json', slug: 'payment' },
+      ],
+    },
+  },
+};
+```
+
+每个 source 支持以下字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `title` | `string` | 文档标题（显示在切换器中） |
+| `url` | `string` | OpenAPI 规范 URL（远程或本地端点） |
+| `content` | `string` | OpenAPI 规范内联 JSON 字符串（与 `url` 二选一） |
+| `slug` | `string` | URL slug 标识（如 `/docs#/slug`） |
+
+:::tip 自动注入
+当配置了 `sources` 时，框架自动生成的 `/openapi.json` 会作为第一个 source 注入（除非 sources 中已包含相同路径），无需手动重复声明。
+:::
+
+也可以通过 `content` 内联提供规范（适合小型/固定的 spec）：
+
+```typescript
+scalar: {
+  sources: [
+    {
+      title: 'Mock API',
+      content: JSON.stringify({
+        openapi: '3.0.0',
+        info: { title: 'Mock', version: '1.0.0' },
+        paths: {},
+      }),
+      slug: 'mock',
+    },
+  ],
+}
+```
+
+## 自定义 CDN / 本地资产
+
+默认情况下，Scalar 通过 jsDelivr CDN 加载 JS 文件。如果需要在内网、离线环境或需要版本锁定的场景下使用，可以通过 `scalar.cdnUrl` 自定义加载地址：
+
+```typescript
+export default {
+  openapi: {
+    enabled: true,
+    scalar: {
+      // 方式 1：锁定特定版本
+      cdnUrl: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0',
+
+      // 方式 2：使用内网 CDN 镜像
+      // cdnUrl: 'https://static.internal.com/libs/scalar-api-reference.js',
+
+      // 方式 3：使用本地静态文件（需配合静态文件服务）
+      // cdnUrl: '/static/scalar-api-reference.js',
+    },
+  },
+};
+```
+
+:::warning 离线部署
+对于完全离线的环境，你需要：
+1. 从 npm 下载 `@scalar/api-reference` 包
+2. 将 JS 文件托管到内网静态服务器或应用的 public 目录
+3. 将 `cdnUrl` 指向该地址
+:::
 
 ## 与第三方工具集成
 
@@ -639,6 +725,408 @@ app.get('/v2/users', {
   },
 }, handler);
 ```
+
+## 多级目录示例
+
+VextJS 的文件路由支持多层嵌套目录，每一级目录自动映射为 URL 路径段。配合 `tags` 分组，多级路由在 Scalar 文档页面中自动归类展示。
+
+### 目录结构
+
+```bash
+src/routes/
+├── index.ts                          # → /
+├── api/
+│   └── v1/
+│       ├── index.ts                  # → /api/v1
+│       ├── users.ts                  # → /api/v1/users
+│       ├── users/
+│       │   └── [id]/
+│       │       └── orders.ts         # → /api/v1/users/:id/orders
+│       └── admin/
+│           ├── dashboard.ts          # → /api/v1/admin/dashboard
+│           └── users.ts              # → /api/v1/admin/users
+└── webhooks/
+    └── stripe.ts                     # → /webhooks/stripe
+```
+
+### 路径映射对照
+
+| 文件路径 | URL 前缀 | 说明 |
+|---------|---------|------|
+| `routes/index.ts` | `/` | 根路由（健康检查） |
+| `routes/api/v1/index.ts` | `/api/v1` | API 版本入口 |
+| `routes/api/v1/users.ts` | `/api/v1/users` | 用户公开接口 |
+| `routes/api/v1/users/[id]/orders.ts` | `/api/v1/users/:id/orders` | 用户订单（动态参数嵌套） |
+| `routes/api/v1/admin/dashboard.ts` | `/api/v1/admin/dashboard` | 管理后台仪表盘 |
+| `routes/api/v1/admin/users.ts` | `/api/v1/admin/users` | 管理后台用户管理 |
+| `routes/webhooks/stripe.ts` | `/webhooks/stripe` | Stripe 回调 |
+
+### 全局 tags 定义
+
+在配置中预定义标签，Scalar 文档会按标签分组展示：
+
+```typescript
+// src/config/default.ts
+export default {
+  port: 3000,
+  openapi: {
+    enabled: true,
+    title: 'My App API',
+    version: '2.0.0',
+    tags: [
+      { name: 'v1/用户', description: '用户公开接口' },
+      { name: 'v1/用户订单', description: '用户关联订单' },
+      { name: 'v1/管理后台', description: '管理员专用接口' },
+      { name: 'Webhook', description: '第三方回调' },
+    ],
+  },
+};
+```
+
+### 各路由文件
+
+#### `routes/api/v1/users.ts` — 用户公开接口
+
+```typescript
+// src/routes/api/v1/users.ts
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  // GET /api/v1/users → 用户列表
+  app.get('/', {
+    validate: {
+      query: {
+        page: 'number:1-',
+        limit: 'number:1-50',
+        role: 'admin|user?',
+      },
+    },
+    docs: {
+      summary: '获取用户列表',
+      tags: ['v1/用户'],
+    },
+  }, async (req, res) => {
+    const filters = req.valid('query');
+    const users = await app.services.user.findAll(filters);
+    res.json(users);
+  });
+
+  // GET /api/v1/users/:id → 用户详情
+  app.get('/:id', {
+    validate: { param: { id: 'string!' } },
+    docs: {
+      summary: '获取用户详情',
+      tags: ['v1/用户'],
+      responses: {
+        200: { description: '用户信息' },
+        404: { description: '用户不存在' },
+      },
+    },
+  }, async (req, res) => {
+    const { id } = req.valid('param');
+    const user = await app.services.user.findById(id);
+    if (!user) app.throw(404, 'user.not_found');
+    res.json(user);
+  });
+});
+```
+
+#### `routes/api/v1/users/[id]/orders.ts` — 用户订单（多级动态参数）
+
+```typescript
+// src/routes/api/v1/users/[id]/orders.ts
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  // GET /api/v1/users/:id/orders → 该用户的订单列表
+  app.get('/', {
+    validate: {
+      param: { id: 'string!' },
+      query: {
+        status: 'pending|paid|shipped|completed?',
+        limit: 'number:1-100',
+      },
+    },
+    docs: {
+      summary: '获取用户订单列表',
+      description: '获取指定用户的所有订单，支持按状态筛选。',
+      tags: ['v1/用户订单'],
+      responses: {
+        200: { description: '订单列表' },
+        404: { description: '用户不存在' },
+      },
+    },
+  }, async (req, res) => {
+    const { id } = req.valid('param');
+    const filters = req.valid('query');
+    const orders = await app.services.order.findByUserId(id, filters);
+    res.json(orders);
+  });
+
+  // GET /api/v1/users/:id/orders/:orderId → 订单详情
+  app.get('/:orderId', {
+    validate: {
+      param: { id: 'string!', orderId: 'string!' },
+    },
+    docs: {
+      summary: '获取订单详情',
+      tags: ['v1/用户订单'],
+    },
+  }, async (req, res) => {
+    const { id, orderId } = req.valid('param');
+    const order = await app.services.order.findOne(id, orderId);
+    if (!order) app.throw(404, 'order.not_found');
+    res.json(order);
+  });
+});
+```
+
+#### `routes/api/v1/admin/dashboard.ts` — 管理后台
+
+```typescript
+// src/routes/api/v1/admin/dashboard.ts
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  // GET /api/v1/admin/dashboard/stats → 统计数据
+  app.get('/stats', {
+    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
+    docs: {
+      summary: '获取仪表盘统计',
+      tags: ['v1/管理后台'],
+      responses: {
+        200: {
+          description: '统计数据',
+          example: {
+            totalUsers: 1024,
+            activeToday: 256,
+            totalOrders: 8192,
+            revenue: 99999.99,
+          },
+        },
+        401: { description: '未认证' },
+        403: { description: '权限不足' },
+      },
+    },
+  }, async (_req, res) => {
+    const stats = await app.services.dashboard.getStats();
+    res.json(stats);
+  });
+});
+```
+
+#### `routes/api/v1/admin/users.ts` — 管理后台用户管理
+
+```typescript
+// src/routes/api/v1/admin/users.ts
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  // GET /api/v1/admin/users → 管理员查看所有用户
+  app.get('/', {
+    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
+    validate: {
+      query: {
+        page: 'number:1-',
+        limit: 'number:1-100',
+        status: 'active|banned|suspended?',
+      },
+    },
+    docs: {
+      summary: '管理员查看用户列表',
+      description: '管理员专用，支持按用户状态筛选，返回完整用户信息。',
+      tags: ['v1/管理后台'],
+    },
+  }, async (req, res) => {
+    const filters = req.valid('query');
+    const users = await app.services.user.adminFindAll(filters);
+    res.json(users);
+  });
+
+  // PATCH /api/v1/admin/users/:id/ban → 封禁用户
+  app.patch('/:id/ban', {
+    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
+    validate: {
+      param: { id: 'string!' },
+      body: { reason: 'string:1-500!' },
+    },
+    docs: {
+      summary: '封禁用户',
+      tags: ['v1/管理后台'],
+      responses: {
+        200: { description: '封禁成功' },
+        404: { description: '用户不存在' },
+      },
+    },
+  }, async (req, res) => {
+    const { id } = req.valid('param');
+    const { reason } = req.valid('body');
+    await app.services.user.ban(id, reason);
+    res.json({ success: true });
+  });
+});
+```
+
+#### `routes/webhooks/stripe.ts` — 第三方回调
+
+```typescript
+// src/routes/webhooks/stripe.ts
+import { defineRoutes } from 'vextjs';
+
+export default defineRoutes((app) => {
+  // POST /webhooks/stripe → Stripe 事件回调
+  app.post('/', {
+    validate: {
+      header: { 'stripe-signature': 'string!' },
+    },
+    docs: {
+      summary: 'Stripe Webhook 回调',
+      tags: ['Webhook'],
+      description: '接收 Stripe 支付事件通知。需要验证签名。',
+      responses: {
+        200: { description: '处理成功' },
+        400: { description: '签名验证失败' },
+      },
+    },
+  }, async (req, res) => {
+    const signature = req.valid('header')['stripe-signature'];
+    await app.services.payment.handleStripeWebhook(req.body, signature);
+    res.json({ received: true });
+  });
+});
+```
+
+### 生成的 OpenAPI 路径
+
+以上目录结构最终自动生成以下 OpenAPI 路径，在 Scalar 文档中按 tags 分组展示：
+
+| OpenAPI 路径 | 方法 | Tag | 来源文件 |
+|-------------|------|-----|---------|
+| `/api/v1/users` | GET | v1/用户 | `api/v1/users.ts` |
+| `/api/v1/users/{id}` | GET | v1/用户 | `api/v1/users.ts` |
+| `/api/v1/users/{id}/orders` | GET | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/users/{id}/orders/{orderId}` | GET | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/admin/dashboard/stats` | GET | v1/管理后台 | `api/v1/admin/dashboard.ts` |
+| `/api/v1/admin/users` | GET | v1/管理后台 | `api/v1/admin/users.ts` |
+| `/api/v1/admin/users/{id}/ban` | PATCH | v1/管理后台 | `api/v1/admin/users.ts` |
+| `/webhooks/stripe` | POST | Webhook | `webhooks/stripe.ts` |
+
+:::tip 多级目录最佳实践
+- **用目录层级表达 URL 结构**：`api/v1/admin/` 自动映射为 `/api/v1/admin/` 前缀，无需手动拼接
+- **动态参数用 `[param]` 目录**：`users/[id]/orders.ts` 自动变为 `/users/:id/orders`，文件内的 `param` 校验会出现在 OpenAPI 文档中
+- **tags 统一管理**：在全局配置中预定义 tags，各路由文件通过 `docs.tags` 引用，Scalar 文档按标签分组
+- **文件名即路由**：无需 `app.group()` 或手动注册路由前缀，目录结构就是路由结构
+:::
+
+## 标签分组（x-tagGroups）
+
+OpenAPI 3.x 规范的 `tags` 是**一维扁平列表**，不原生支持嵌套层级。当路由数量较多时，所有 tags 在 Scalar 文档侧边栏中平铺并列，不便于导航。
+
+VextJS 通过 [Scalar 支持的 `x-tagGroups` 扩展](https://github.com/scalar/scalar) 实现**两级导航**：将多个 tags 归入更高级别的分组（group），在 Scalar 侧边栏中展示为可折叠的分组层级。
+
+### 自动推断（默认行为）
+
+当路由文件分布在多个顶层目录时，框架**自动推断** `x-tagGroups`：
+
+- 提取每条路由文件在 `routes/` 之后的**第一层目录名**作为分组名（首字母大写）
+- 直接位于 `routes/` 下的文件归入 **"General"** 分组
+- 如果所有路由都在同一个分组中，则不生成 `x-tagGroups`（避免冗余）
+
+```
+src/routes/
+├── health.ts              → 分组: General
+├── api/
+│   ├── users.ts           → 分组: Api
+│   └── orders.ts          → 分组: Api
+├── admin/
+│   ├── dashboard.ts       → 分组: Admin
+│   └── users.ts           → 分组: Admin
+└── webhooks/
+    └── stripe.ts          → 分组: Webhooks
+```
+
+生成的 `x-tagGroups`：
+
+```json
+{
+  "x-tagGroups": [
+    { "name": "Admin", "tags": ["admin-dashboard", "admin-users"] },
+    { "name": "Api", "tags": ["api-orders", "api-users"] },
+    { "name": "Webhooks", "tags": ["webhooks-stripe"] },
+    { "name": "General", "tags": ["health"] }
+  ]
+}
+```
+
+:::tip
+分组按字母排序，**General 始终排在最后**。同一分组内的 tags 也按字母排序且自动去重。
+:::
+
+### 手动配置（覆盖自动推断）
+
+如果自动推断的分组不满足需求，可以在配置中显式指定 `tagGroups`：
+
+```typescript
+// src/config/app.ts
+export default {
+  port: 3000,
+  openapi: {
+    enabled: true,
+    title: 'My API',
+    version: '1.0.0',
+
+    // 手动配置标签分组
+    tagGroups: [
+      {
+        name: 'User API',
+        tags: ['users', 'user-profile', 'user-orders'],
+      },
+      {
+        name: 'Administration',
+        tags: ['admin-dashboard', 'admin-users'],
+      },
+      {
+        name: 'Integration',
+        tags: ['webhooks'],
+      },
+    ],
+
+    // tags 定义（可选，提供描述信息）
+    tags: [
+      { name: 'users', description: '用户公开接口' },
+      { name: 'user-profile', description: '用户个人资料' },
+      { name: 'user-orders', description: '用户订单' },
+      { name: 'admin-dashboard', description: '管理后台仪表盘' },
+      { name: 'admin-users', description: '管理后台用户管理' },
+      { name: 'webhooks', description: '第三方回调' },
+    ],
+  },
+};
+```
+
+:::warning
+配置了 `tagGroups` 后，框架**不再自动推断**，直接使用用户配置。请确保所有 tags 都被覆盖到至少一个分组中，否则未分组的 tags 在 Scalar 中可能不显示。
+:::
+
+### 效果对比
+
+| 无 x-tagGroups | 有 x-tagGroups |
+|:---:|:---:|
+| 所有 tags 平铺在侧边栏 | tags 按分组折叠展示 |
+| `users` / `admin-dashboard` / `orders` / `webhooks` 并列 | **User API** ▸ users, orders / **Admin** ▸ admin-dashboard |
+| 适合少量路由 | 适合路由数量较多的项目 |
+
+### 与热重载的兼容性
+
+在 dev 模式下，热重载（soft reload）会**自动重新生成** `x-tagGroups`：
+
+1. 路由文件变更 → 触发热重载
+2. 创建新的 adapter 实例
+3. 重新加载路由 + 收集路由元信息
+4. 重新生成 OpenAPI spec（含 `x-tagGroups`）
+5. 在新 adapter 上重新注册 `/docs` 和 `/openapi.json` 端点
+
+无需重启 dev server，刷新文档页面即可看到更新后的分组。
 
 ## 完整示例
 

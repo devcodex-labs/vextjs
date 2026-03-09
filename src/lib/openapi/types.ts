@@ -7,6 +7,10 @@
  * @see 14-openapi.md §3.1（收集的数据结构）
  * @see 14-openapi.md §4.2（JSON Schema 类型）
  * @see 14-openapi.md §5.1（OpenAPI 文档类型）
+ *
+ * @changelog
+ *   - v0.2.0: Scalar API Reference 替换 Redoc + Swagger UI 双端点方案
+ *             单端点 /docs 同时提供文档阅读 + Try it out 交互式测试
  */
 
 import type { RouteOptions } from "../../types/app.js";
@@ -139,6 +143,37 @@ export interface OpenAPIConfig {
    * 例如: { auth: 'bearerAuth', apiKey: 'apiKeyAuth' }
    */
   guardSecurityMap?: Record<string, string>;
+
+  /**
+   * 标签分组（x-tagGroups）
+   *
+   * 用于在 Scalar API Reference 文档中将 tags 分组为多级导航。
+   * OpenAPI 3.x 规范的 tags 是一维扁平列表，不原生支持嵌套层级。
+   * 通过 vendor extension `x-tagGroups`（Scalar / Redocly 支持），
+   * 可以将多个 tags 归入更高级别的分组，实现两级导航结构。
+   *
+   * **自动推断**（默认行为）：
+   *   当未配置 `tagGroups` 时，框架根据路由文件的目录结构自动推断分组。
+   *   例如：`routes/api/v1/users.ts` 和 `routes/api/v1/orders.ts` 的 tags
+   *   会被自动归入 "api" 分组（基于第一层目录名）。
+   *
+   * **手动配置**（覆盖自动推断）：
+   *   提供 `tagGroups` 数组后，框架不再自动推断，直接使用用户配置。
+   *
+   * @example
+   * ```typescript
+   * openapi: {
+   *   tagGroups: [
+   *     { name: 'User API', tags: ['users', 'user-profile'] },
+   *     { name: 'Admin', tags: ['admin-dashboard', 'admin-users'] },
+   *     { name: 'Webhooks', tags: ['webhooks'] },
+   *   ],
+   * }
+   * ```
+   *
+   * @see https://github.com/scalar/scalar — x-tagGroups 支持
+   */
+  tagGroups?: Array<{ name: string; tags: string[] }>;
 }
 
 /**
@@ -160,6 +195,17 @@ export interface OpenAPIDocument {
     securitySchemes?: Record<string, SecurityScheme>;
   };
   tags?: Array<{ name: string; description?: string }>;
+
+  /**
+   * Vendor extension: 标签分组
+   *
+   * Scalar / Redocly 支持的扩展字段，用于将 tags 分组为两级导航。
+   * 由 OpenAPIGenerator 根据配置或自动推断生成。
+   */
+  "x-tagGroups"?: Array<{ name: string; tags: string[] }>;
+
+  /** 允许其他 vendor extensions (x-*) */
+  [key: `x-${string}`]: unknown;
 }
 
 /**
@@ -221,32 +267,204 @@ export interface OpenAPIResponse {
   >;
 }
 
-// ── Swagger UI 端点配置 ─────────────────────────────────────
+// ── Scalar API Reference 配置 ───────────────────────────────
 
 /**
- * OpenAPIEndpointConfig — Swagger UI + spec 端点配置
+ * ScalarConfig — Scalar API Reference UI 配置
+ *
+ * 控制 Scalar 文档页面的外观和行为。
+ * Scalar 同时提供文档阅读 + Try it out 交互式测试，
+ * 替代原有的 Redoc + Swagger UI 双端点方案。
+ *
+ * @see https://github.com/scalar/scalar
  */
-export interface OpenAPIEndpointConfig {
-  /** Swagger UI 路径 @default '/docs' */
-  docsPath?: string;
+export interface ScalarConfig {
+  /** 页面标题 */
+  title?: string;
 
+  /**
+   * 主题
+   *
+   * Scalar 内置主题：
+   *   - 'default' — 默认主题
+   *   - 'alternate' — 备选主题
+   *   - 'moon' — 深色月亮主题
+   *   - 'purple' — 紫色主题
+   *   - 'solarized' — Solarized 主题
+   *   - 'bluePlanet' — 蓝色星球主题
+   *   - 'saturn' — 土星主题
+   *   - 'kepler' — 开普勒主题
+   *   - 'mars' — 火星主题
+   *   - 'deepSpace' — 深空主题
+   *   - 'none' — 无主题（自定义 CSS）
+   *
+   * @default 'default'
+   */
+  theme?:
+    | "default"
+    | "alternate"
+    | "moon"
+    | "purple"
+    | "solarized"
+    | "bluePlanet"
+    | "saturn"
+    | "kepler"
+    | "mars"
+    | "deepSpace"
+    | "none";
+
+  /** 是否启用深色模式 @default false */
+  darkMode?: boolean;
+
+  /**
+   * 布局模式
+   *
+   * - 'modern' — 现代三栏布局（默认）
+   * - 'classic' — 经典双栏布局
+   *
+   * @default 'modern'
+   */
+  layout?: "modern" | "classic";
+
+  /** 是否显示侧边栏 @default true */
+  showSidebar?: boolean;
+
+  /** 是否隐藏 Models/Schemas 面板 @default false */
+  hideModels?: boolean;
+
+  /**
+   * 隐藏的客户端语言列表
+   *
+   * 在 Try it out 面板中隐藏指定语言的代码示例。
+   * 例如: ['php', 'ruby'] 隐藏 PHP 和 Ruby 示例。
+   */
+  hiddenClients?: string[];
+
+  /** 搜索热键 @default 'k' (Ctrl+K / Cmd+K) */
+  searchHotKey?: string;
+
+  /**
+   * 代理 URL
+   *
+   * 用于避免 CORS 问题。Scalar 会通过此代理转发 Try it out 请求。
+   * 留空则直接请求 API 服务器（同源时无需代理）。
+   */
+  proxyUrl?: string;
+
+  /**
+   * Favicon URL
+   *
+   * 文档页面的 favicon 图标地址。
+   * 支持相对路径（如 '/favicon.svg'）或绝对 URL。
+   * 未设置时浏览器使用默认行为（尝试加载 /favicon.ico）。
+   */
+  favicon?: string;
+
+  /**
+   * 多 OpenAPI 文档源
+   *
+   * 配置多个 OpenAPI 规范来源，Scalar 会在 UI 顶部显示文档切换器。
+   * 每个 source 可以通过 `url`（远程/本地端点）或 `content`（内联 JSON 字符串）提供规范。
+   *
+   * 当配置了 `sources` 时，框架自动生成的 spec 会作为第一个 source 注入（除非 sources 中已包含本地 spec 路径）。
+   *
+   * @example
+   * ```typescript
+   * openapi: {
+   *   scalar: {
+   *     sources: [
+   *       { title: 'Main API', url: '/openapi.json', slug: 'main' },
+   *       { title: 'Partner API', url: 'https://partner.example.com/openapi.json', slug: 'partner' },
+   *       { title: 'Legacy API', content: '{ "openapi": "3.0.0", ... }', slug: 'legacy' },
+   *     ],
+   *   },
+   * }
+   * ```
+   *
+   * @see https://github.com/scalar/scalar — sources 配置
+   */
+  sources?: Array<{
+    /** 文档标题（显示在切换器中） */
+    title?: string;
+    /** OpenAPI 规范 URL（远程或本地端点） */
+    url?: string;
+    /** OpenAPI 规范内联 JSON 字符串（与 url 二选一） */
+    content?: string;
+    /** URL slug（用于浏览器地址栏标识，如 `/docs#/slug`） */
+    slug?: string;
+  }>;
+
+  /**
+   * 自定义 Scalar JS 加载地址
+   *
+   * 替代默认的 `https://cdn.jsdelivr.net/npm/@scalar/api-reference` CDN 地址。
+   * 适用于以下场景：
+   *   - **内网/离线部署**：将 Scalar JS 文件托管在内网 CDN 或静态服务器
+   *   - **版本锁定**：使用特定版本的 Scalar（如 `https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0`）
+   *   - **自托管镜像**：使用公司内部 npm 镜像或 CDN 镜像
+   *
+   * 未设置时默认使用 `https://cdn.jsdelivr.net/npm/@scalar/api-reference`。
+   *
+   * @example
+   * ```typescript
+   * openapi: {
+   *   scalar: {
+   *     // 内网 CDN
+   *     cdnUrl: 'https://static.internal.com/scalar/api-reference.js',
+   *     // 或版本锁定
+   *     cdnUrl: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0',
+   *     // 或本地静态文件（需配合框架静态文件服务）
+   *     cdnUrl: '/static/scalar-api-reference.js',
+   *   },
+   * }
+   * ```
+   */
+  cdnUrl?: string;
+
+  /** 自定义 CSS */
+  customCss?: string;
+
+  /** 是否加载默认字体 @default true */
+  withDefaultFonts?: boolean;
+
+  /**
+   * 默认认证方案
+   *
+   * 指定 Try it out 面板默认使用的认证方案名称。
+   * 必须与 OpenAPI spec 中 components.securitySchemes 的 key 匹配。
+   */
+  defaultHttpClient?: {
+    /** 目标语言 (如 'javascript', 'python', 'shell') */
+    targetKey: string;
+    /** 客户端库 (如 'fetch', 'axios', 'requests', 'curl') */
+    clientKey: string;
+  };
+}
+
+// ── 文档端点统一配置 ─────────────────────────────────────────
+
+/**
+ * DocEndpointsConfig — 文档端点统一配置
+ *
+ * 使用 Scalar API Reference 作为唯一文档 UI，
+ * 同时提供文档阅读和交互式 Try it out 功能。
+ *
+ * 默认端点布局：
+ *   - GET /docs         → Scalar API Reference（文档阅读 + Try it out）
+ *   - GET /openapi.json → OpenAPI spec JSON
+ */
+export interface DocEndpointsConfig {
   /** OpenAPI spec 路径 @default '/openapi.json' */
   specPath?: string;
+
+  /** 文档页面路径 @default '/docs' */
+  docsPath?: string;
 
   /** 页面标题 */
   title?: string;
 
-  /** Swagger UI CDN 版本 @default '5.18.2' */
-  swaggerUIVersion?: string;
-
-  /** 是否启用 "Try it out" 功能 @default true */
-  tryItOutEnabled?: boolean;
-
-  /** 默认展开级别 @default 'list' */
-  docExpansion?: "none" | "list" | "full";
-
-  /** 深度链接 @default true */
-  deepLinking?: boolean;
+  /** Scalar API Reference 配置 */
+  scalar?: ScalarConfig;
 }
 
 // ── ResponseConfig 扩展（docs.responses 内的单条配置）────────

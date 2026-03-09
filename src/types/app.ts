@@ -1,5 +1,6 @@
 import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware } from "./middleware.js";
+import type { VextFetch } from "../lib/fetch.js";
 
 /**
  * VextServices — 服务集合类型
@@ -284,7 +285,7 @@ export interface VextOpenAPIConfig {
   version?: string;
   /** 文档描述 */
   description?: string;
-  /** Swagger UI 路径（默认 '/docs'） */
+  /** Scalar 文档路径（默认 '/docs'） */
   docsPath?: string;
   /** OpenAPI JSON 路径（默认 '/openapi.json'） */
   jsonPath?: string;
@@ -320,9 +321,9 @@ export interface VextOpenAPIConfig {
     }
   >;
 
-  /** 是否启用 "Try it out" 功能 @default true */
+  /** @deprecated Scalar 内置 Try it out，无需单独配置。此字段仅为向后兼容保留 */
   tryItOutEnabled?: boolean;
-  /** 默认展开级别 @default 'list' */
+  /** @deprecated Scalar 不使用此配置。请使用 openapi.scalar.layout 替代。此字段仅为向后兼容保留 */
   docExpansion?: "none" | "list" | "full";
 }
 
@@ -847,11 +848,12 @@ export interface VextApp {
    * 内置 HTTP 客户端（封装 Node.js fetch）
    *
    * 自动传播 requestId，结构化日志记录请求/响应。
+   * 支持 timeout / retry / retryDelay / propagateRequestId 等扩展选项。
    * 插件可通过 app.setFetch() 替换实现。
    *
    * @see 06d-fetch.md
    */
-  fetch?: (url: string, options?: RequestInit) => Promise<Response>;
+  fetch: VextFetch;
 
   // ── 允许插件扩展（declare module 方式）──────────────────
   [key: string]: unknown;

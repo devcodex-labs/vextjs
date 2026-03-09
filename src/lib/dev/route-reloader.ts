@@ -1,5 +1,9 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { RouteMetadataCollector } from "../openapi/collector.js";
+import { OpenAPIGenerator } from "../openapi/generator.js";
+import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
+import type { OpenAPIConfig } from "../openapi/types.js";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）
@@ -152,6 +156,7 @@ export type RoutesLoader = (
     middlewareDefs: MiddlewareRegistry | Map<string, RouteReloaderMiddleware>;
     globalMiddlewares: RouteReloaderMiddleware[];
   },
+  collector?: RouteMetadataCollector | null,
 ) => Promise<void>;
 
 /**
@@ -276,6 +281,18 @@ export interface ReloadRoutesOptions {
    * 或者调用方自行处理内置中间件注册。
    */
   builtinMiddlewares?: BuiltinMiddlewareCreators;
+
+  /**
+   * OpenAPI 配置（可选）
+   *
+   * 如果提供且 enabled 不为 false，在路由重载后自动：
+   *   1. 创建 RouteMetadataCollector 收集路由元信息
+   *   2. 使用 OpenAPIGenerator 生成新的 OpenAPI spec
+   *   3. 在新 adapter 上注册 /docs 和 /openapi.json 端点
+   *
+   * 确保热重载后文档端点仍然可用（修复 BUG-022）。
+   */
+  openapiConfig?: Record<string, unknown>;
 }
 
 /**
@@ -429,14 +446,97 @@ export async function reloadRoutes(
     //   scanRouteFiles → filePathToPrefix → loadRouteFile →
     //   registerRouteDefinition（含中间件解析 + validate 构建）
     //
+    // 🆕 BUG-022 修复：如果 openapiConfig 存在，创建 collector
+    // 传入 loadRoutes，在路由加载完成后重新生成 OpenAPI spec
+    // 并注册文档端点到新 adapter。
+    //
+    const openapiCfg = options.openapiConfig;
+    const openapiEnabled =
+      openapiCfg != null &&
+      (openapiCfg as Record<string, unknown>).enabled !== false;
+    const collector = openapiEnabled ? new RouteMetadataCollector() : null;
+
     if (existsSync(routesDir)) {
-      await loadRoutesFn(app, routesDir, {
-        middlewareDefs,
-        globalMiddlewares,
-      });
+      await loadRoutesFn(
+        app,
+        routesDir,
+        {
+          middlewareDefs,
+          globalMiddlewares,
+        },
+        collector,
+      );
     } else {
       app.logger.warn(
         "[hot-reload] routes directory not found, no routes registered",
+      );
+    }
+
+    // ── 6b. 🆕 重新生成 OpenAPI spec + 注册文档端点 ─────
+    //
+    // BUG-022 修复：热重载创建全新 adapter 实例后，
+    // 原有的 /docs 和 /openapi.json 端点不在新 adapter 上，
+    // 必须重新生成 spec 并注册端点。
+    //
+    if (openapiEnabled && collector) {
+      const generator = new OpenAPIGenerator({
+        title: (openapiCfg as Record<string, unknown>)?.title as
+          | string
+          | undefined,
+        description: (openapiCfg as Record<string, unknown>)?.description as
+          | string
+          | undefined,
+        version: (openapiCfg as Record<string, unknown>)?.version as
+          | string
+          | undefined,
+        servers: (openapiCfg as Record<string, unknown>)?.servers as
+          | Array<{ url: string; description?: string }>
+          | undefined,
+        tags: (openapiCfg as Record<string, unknown>)?.tags as
+          | Array<{ name: string; description?: string }>
+          | undefined,
+        securitySchemes: (openapiCfg as Record<string, unknown>)
+          ?.securitySchemes as Record<
+          string,
+          {
+            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+            scheme?: string;
+            bearerFormat?: string;
+            description?: string;
+          }
+        >,
+        guardSecurityMap: (openapiCfg as Record<string, unknown>)
+          ?.guardSecurityMap as Record<string, string> | undefined,
+        contact: (openapiCfg as Record<string, unknown>)?.contact as
+          | { name?: string; email?: string; url?: string }
+          | undefined,
+        license: (openapiCfg as Record<string, unknown>)?.license as
+          | { name: string; url?: string }
+          | undefined,
+        tagGroups: (openapiCfg as Record<string, unknown>)?.tagGroups as
+          | Array<{ name: string; tags: string[] }>
+          | undefined,
+      } as OpenAPIConfig);
+
+      const spec = generator.generate(collector.getRoutes());
+
+      registerDocEndpoints(app as any, spec, {
+        specPath:
+          ((openapiCfg as Record<string, unknown>)?.jsonPath as string) ??
+          "/openapi.json",
+        docsPath:
+          ((openapiCfg as Record<string, unknown>)?.docsPath as string) ??
+          "/docs",
+        title: (openapiCfg as Record<string, unknown>)?.title as
+          | string
+          | undefined,
+        scalar: (openapiCfg as Record<string, unknown>)?.scalar as
+          | Record<string, unknown>
+          | undefined,
+      });
+
+      app.logger.info(
+        `[hot-reload] [openapi] ${collector.getCount()} route(s) documented`,
       );
     }
 
@@ -514,6 +614,7 @@ export function createSimpleRouteReloader(deps: {
   middlewareDefs: MiddlewareRegistry | Map<string, RouteReloaderMiddleware>;
   globalMiddlewares: RouteReloaderMiddleware[];
   builtinMiddlewares?: BuiltinMiddlewareCreators;
+  openapiConfig?: Record<string, unknown>;
 }): (outDir: string) => Promise<RouteReloadResult> {
   return (outDir: string) =>
     reloadRoutes({
@@ -526,5 +627,6 @@ export function createSimpleRouteReloader(deps: {
       createErrorHandler: deps.createErrorHandler,
       createNotFoundHandler: deps.createNotFoundHandler,
       builtinMiddlewares: deps.builtinMiddlewares,
+      openapiConfig: deps.openapiConfig,
     });
 }

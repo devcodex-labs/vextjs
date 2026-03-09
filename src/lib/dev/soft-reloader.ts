@@ -130,6 +130,15 @@ export interface SoftReloaderOptions {
    * 通常绑定为 () => internals.getGlobalMiddlewares()
    */
   getGlobalMiddlewares: () => RouteReloaderMiddleware[];
+
+  /**
+   * OpenAPI 配置（可选）
+   *
+   * 如果提供，soft reload 时会传递给 reloadRoutes()，
+   * 使其在路由重载后自动重新生成 OpenAPI spec 并注册文档端点。
+   * 修复 BUG-022：热重载后 /docs 和 /openapi.json 返回 404。
+   */
+  openapiConfig?: Record<string, unknown>;
 }
 
 /**
@@ -233,6 +242,7 @@ export class SoftReloader {
   private readonly builtinMiddlewares: BuiltinMiddlewareCreators;
   private readonly configureI18n?: ConfigureI18nFn;
   private readonly getGlobalMiddlewares: () => RouteReloaderMiddleware[];
+  private readonly openapiConfig?: Record<string, unknown>;
 
   /**
    * v2.2 并发锁 — 防止多次 softReload 并行执行
@@ -276,6 +286,7 @@ export class SoftReloader {
     this.builtinMiddlewares = options.builtinMiddlewares;
     this.configureI18n = options.configureI18n;
     this.getGlobalMiddlewares = options.getGlobalMiddlewares;
+    this.openapiConfig = options.openapiConfig;
   }
 
   // ── 公开方法 ──────────────────────────────────────────────
@@ -514,6 +525,7 @@ export class SoftReloader {
         createErrorHandler: this.createErrorHandlerFn,
         createNotFoundHandler: this.createNotFoundHandlerFn,
         builtinMiddlewares: this.builtinMiddlewares,
+        openapiConfig: this.openapiConfig,
       });
       routeEnd = performance.now();
 

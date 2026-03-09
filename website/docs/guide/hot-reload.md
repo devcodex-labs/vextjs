@@ -19,7 +19,7 @@ npx vext dev
 ╠══════════════════════════════════════════════╣
 ║  Mode: Soft Reload + Cold Restart            ║
 ║  Watch: fs.watch                             ║
-║  Debounce: 100ms                             ║
+║  Debounce: 0ms                               ║
 ╠══════════════════════════════════════════════╣
 ║  🟢 T1 (code):   soft reload (transform)    ║
 ║  🟡 T2 (struct): soft reload (rebuild)      ║
@@ -211,9 +211,14 @@ npm start            # vext start，从 dist/ 启动
 vext dev [options]
 
 Options:
-  --port <port>      指定监听端口（覆盖配置文件）
-  --host <host>      指定监听地址
-  -h, --help         显示帮助信息
+  --port <port>        指定监听端口（覆盖配置文件）
+  --host <host>        指定监听地址
+  --debounce <ms>      防抖间隔（毫秒，默认 0 不开启）
+  --poll               强制轮询模式（Docker / NFS 环境）
+  --poll-interval <ms> 轮询间隔（毫秒，默认 1000）
+  --no-hot             禁用 Soft Reload，所有变更走 Cold Restart
+  --clear              每次重载后清空控制台
+  -h, --help           显示帮助信息
 ```
 
 ```bash
@@ -222,6 +227,12 @@ vext dev --port 8080
 
 # 指定监听地址
 vext dev --host 127.0.0.1
+
+# 开启 50ms 防抖（快速连续保存时合并为一次重载）
+vext dev --debounce 50
+
+# Docker / NFS 环境使用轮询模式
+vext dev --poll --poll-interval 2000
 ```
 
 ## 文件监听规则
@@ -254,7 +265,7 @@ src/
 
 ### 防抖处理
 
-文件保存后，框架会有短暂的防抖延迟（通常 50-100ms），避免快速连续保存触发多次重载。如果在防抖窗口内有多个文件变更，框架会合并处理，选择最高级别的重载策略。
+默认情况下防抖**未开启**（`debounce: 0`），文件变更后**立即触发**重载，响应最快。如需在快速连续保存时合并多次变更为一次重载，可通过 `--debounce <ms>` 开启防抖窗口。
 
 例如：同时修改了 `routes/users.ts`（Tier 1）和 `config/default.ts`（Tier 3），框架会执行一次 Tier 3 冷重启（包含所有变更）。
 

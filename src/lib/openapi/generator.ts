@@ -105,15 +105,15 @@ export class OpenAPIGenerator {
       properties: {
         code: {
           type: "integer",
-          description: "HTTP 状态码或业务错误码",
+          description: "HTTP status code or business error code",
         },
         message: {
           type: "string",
-          description: "错误信息",
+          description: "Error message",
         },
         requestId: {
           type: "string",
-          description: "请求追踪 ID",
+          description: "Request trace ID",
         },
       },
       required: ["code", "message", "requestId"],
@@ -124,19 +124,29 @@ export class OpenAPIGenerator {
       properties: {
         code: {
           type: "integer",
-          description: "状态码（0 表示成功）",
+          description: "Status code (0 = success)",
           example: 0,
         },
         data: {
-          description: "响应数据",
+          description: "Response data",
         },
         requestId: {
           type: "string",
-          description: "请求追踪 ID",
+          description: "Request trace ID",
         },
       },
       required: ["code", "data", "requestId"],
     };
+
+    // ── 添加 x-tagGroups（标签分组）────────────────────────
+    //
+    // Scalar / Redocly 支持的 vendor extension，将 tags 分组为两级导航。
+    // 优先使用用户配置的 tagGroups，否则自动从路由文件路径推断。
+    //
+    const tagGroups = this.buildTagGroups(routes, doc.tags ?? []);
+    if (tagGroups.length > 0) {
+      doc["x-tagGroups"] = tagGroups;
+    }
 
     return doc;
   }
@@ -317,11 +327,97 @@ export class OpenAPIGenerator {
 
     // ── 默认响应（未声明 docs.responses 时） ─────────────────
     if (Object.keys(operation.responses).length === 0) {
-      operation.responses["200"] = {
-        description: "OK",
+      // 尝试从 validate.body 推断响应 schema（写操作通常返回创建/更新后的对象）
+      const isWriteMethod = ["POST", "PUT", "PATCH"].includes(
+        method.toUpperCase(),
+      );
+      const hasBody =
+        options.validate?.body &&
+        typeof options.validate.body === "object" &&
+        Object.keys(options.validate.body as Record<string, unknown>).length >
+          0;
+
+      if (isWriteMethod && hasBody) {
+        const bodySchema = this.converter.convertValidateObject(
+          options.validate!.body as Record<string, unknown>,
+        );
+        const statusCode = method.toUpperCase() === "POST" ? "201" : "200";
+        const description =
+          method.toUpperCase() === "POST"
+            ? "Created successfully"
+            : "Updated successfully";
+
+        const wrappedSchema = this.wrapResponseSchema(
+          Number(statusCode),
+          bodySchema.schema,
+        );
+
+        // 生成示例值：从 schema properties 中提取 example
+        const exampleData: Record<string, unknown> = {};
+        if (bodySchema.schema.properties) {
+          for (const [key, prop] of Object.entries(
+            bodySchema.schema.properties,
+          )) {
+            if (prop.example !== undefined) {
+              exampleData[key] = prop.example;
+            } else if (prop.type === "string") {
+              exampleData[key] = key;
+            } else if (prop.type === "number" || prop.type === "integer") {
+              exampleData[key] = 0;
+            } else if (prop.type === "boolean") {
+              exampleData[key] = true;
+            }
+          }
+        }
+
+        const wrappedExample = this.wrapResponseExample(
+          Number(statusCode),
+          exampleData,
+        );
+
+        operation.responses[statusCode] = {
+          description,
+          content: {
+            "application/json": {
+              schema: wrappedSchema,
+              example: wrappedExample,
+            },
+          },
+        };
+      } else {
+        operation.responses["200"] = {
+          description: "OK",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SuccessResponse" },
+            },
+          },
+        };
+      }
+    }
+
+    // ── 通用错误响应（所有路由自动追加 4xx/5xx 引用）─────────
+    if (!operation.responses["400"] && options.validate) {
+      operation.responses["400"] = {
+        description: "Validation error",
         content: {
           "application/json": {
-            schema: { $ref: "#/components/schemas/SuccessResponse" },
+            schema: { $ref: "#/components/schemas/ErrorResponse" },
+            example: {
+              code: 400,
+              message: "Validation failed",
+              requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
+          },
+        },
+      };
+    }
+    if (!operation.responses["500"]) {
+      operation.responses["500"] = {
+        description: "Internal server error",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/ErrorResponse" },
           },
         },
       };
@@ -516,7 +612,7 @@ export class OpenAPIGenerator {
         type: "http",
         scheme: "bearer",
         bearerFormat: "JWT",
-        description: "JWT Bearer Token 认证",
+        description: "JWT Bearer Token authentication",
       },
     };
   }
@@ -530,6 +626,141 @@ export class OpenAPIGenerator {
    * @param routes 路由元信息列表
    * @returns tag 定义列表（按名称排序）
    */
+  /**
+   * 构建标签分组（x-tagGroups）
+   *
+   * 优先级：
+   *   1. 用户在 config.tagGroups 中显式配置 → 直接使用
+   *   2. 未配置 → 自动从路由文件路径推断分组
+   *
+   * 自动推断逻辑：
+   *   - 提取每条路由文件路径在 routes/ 之后的第一层目录名作为分组名
+   *   - 同一分组下的所有 tags 归入该分组
+   *   - 直接位于 routes/ 下的文件（如 routes/index.ts）归入 "General" 分组
+   *   - 分组名首字母大写（如 api → Api, admin → Admin）
+   *   - 如果所有路由都在同一个分组中（无多级），则不生成 x-tagGroups（避免冗余）
+   *
+   * @param routes 路由元信息列表
+   * @param tags 已生成的 tags 列表（用于确保所有 tag 都被分组覆盖）
+   * @returns tagGroups 数组，空数组表示不需要分组
+   */
+  private buildTagGroups(
+    routes: RouteMetadata[],
+    tags: Array<{ name: string; description?: string }>,
+  ): Array<{ name: string; tags: string[] }> {
+    // 用户显式配置 → 直接使用
+    if (this.config.tagGroups && this.config.tagGroups.length > 0) {
+      return this.config.tagGroups;
+    }
+
+    // 自动推断
+    return this.inferTagGroups(routes, tags);
+  }
+
+  /**
+   * 从路由文件路径自动推断标签分组
+   *
+   * 策略：
+   *   - 提取 routes/ 之后的第一层目录名作为 group name
+   *   - 直接在 routes/ 下的文件归入 "General" 组
+   *   - 每个 group 收集其下所有 tag（去重排序）
+   *   - 如果只有一个分组，返回空数组（不需要分组）
+   *
+   * @example
+   *   routes/users.ts          → group "General", tag "users"
+   *   routes/api/v1/users.ts   → group "Api",     tag 从 docs.tags 或推断
+   *   routes/admin/dashboard.ts→ group "Admin",    tag 从 docs.tags 或推断
+   */
+  private inferTagGroups(
+    routes: RouteMetadata[],
+    tags: Array<{ name: string; description?: string }>,
+  ): Array<{ name: string; tags: string[] }> {
+    // group name → Set<tag name>
+    const groupMap = new Map<string, Set<string>>();
+
+    for (const route of routes) {
+      // 提取 routes/ 之后的相对路径
+      const relative = route.sourceFile
+        .replace(/\\/g, "/")
+        .replace(/^.*routes\//, "");
+
+      // 获取第一层目录名
+      const segments = relative.split("/");
+      let groupName: string;
+
+      if (segments.length <= 1) {
+        // 直接在 routes/ 下的文件（如 routes/users.ts）
+        groupName = "General";
+      } else {
+        // 取第一层目录名并首字母大写
+        const firstDir = segments[0] ?? "General";
+        groupName = firstDir.charAt(0).toUpperCase() + firstDir.slice(1);
+      }
+
+      // 获取该路由的 tags
+      const routeTags = route.options.docs?.tags ?? [
+        this.inferTagFromFile(route.sourceFile),
+      ];
+
+      if (!groupMap.has(groupName)) {
+        groupMap.set(groupName, new Set());
+      }
+      const tagSet = groupMap.get(groupName)!;
+      for (const tag of routeTags) {
+        tagSet.add(tag);
+      }
+    }
+
+    // 如果只有一个分组（或没有路由），不需要 x-tagGroups
+    if (groupMap.size <= 1) {
+      return [];
+    }
+
+    // 确保所有已声明的 tags 都被覆盖
+    // 收集已分组的 tags
+    const groupedTags = new Set<string>();
+    for (const tagSet of groupMap.values()) {
+      for (const tag of tagSet) {
+        groupedTags.add(tag);
+      }
+    }
+
+    // 检查是否有未分组的 tags（来自 config.tags 但未被任何路由关联）
+    const ungroupedTags: string[] = [];
+    for (const tag of tags) {
+      if (!groupedTags.has(tag.name)) {
+        ungroupedTags.push(tag.name);
+      }
+    }
+
+    // 构建结果（按 group name 排序，General 放最后）
+    const result: Array<{ name: string; tags: string[] }> = [];
+
+    const sortedGroups = [...groupMap.keys()].sort((a, b) => {
+      if (a === "General") return 1;
+      if (b === "General") return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const groupName of sortedGroups) {
+      const tagSet = groupMap.get(groupName)!;
+      result.push({
+        name: groupName,
+        tags: [...tagSet].sort(),
+      });
+    }
+
+    // 未分组的 tags 追加到 "Other" 分组
+    if (ungroupedTags.length > 0) {
+      result.push({
+        name: "Other",
+        tags: ungroupedTags.sort(),
+      });
+    }
+
+    return result;
+  }
+
   private inferTags(
     routes: RouteMetadata[],
   ): Array<{ name: string; description?: string }> {

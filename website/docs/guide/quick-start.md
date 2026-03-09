@@ -49,7 +49,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.1.4"
+    "vextjs": "^0.1.5"
   }
 }
 ```
@@ -198,7 +198,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，
 
 配置中开启 `openapi.enabled: true` 后，启动项目即可访问：
 
-- **Swagger UI**: `http://localhost:3000/docs`
+- **Scalar 文档**: `http://localhost:3000/docs`
 - **OpenAPI JSON**: `http://localhost:3000/openapi.json`
 
 ## CLI 命令速览

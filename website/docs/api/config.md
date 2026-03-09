@@ -432,7 +432,7 @@ OpenAPI 文档自动生成配置。
 | `title` | `string` | `undefined` | 文档标题 |
 | `version` | `string` | `undefined` | 文档版本号 |
 | `description` | `string` | `undefined` | 文档描述 |
-| `docsPath` | `string` | `'/docs'` | Swagger UI 路径 |
+| `docsPath` | `string` | `'/docs'` | Scalar 文档路径 |
 | `jsonPath` | `string` | `'/openapi.json'` | OpenAPI JSON 路径 |
 | `contact` | `object` | `undefined` | 联系信息 |
 | `license` | `object` | `undefined` | 许可证信息 |
@@ -440,8 +440,21 @@ OpenAPI 文档自动生成配置。
 | `tags` | `array` | `undefined` | 全局标签定义 |
 | `guardSecurityMap` | `Record<string, string>` | `undefined` | Guard → Security Scheme 映射 |
 | `securitySchemes` | `object` | `undefined` | 安全方案定义 |
-| `tryItOutEnabled` | `boolean` | `true` | 是否启用 "Try it out" |
-| `docExpansion` | `'none' \| 'list' \| 'full'` | `'list'` | 默认展开级别 |
+| `scalar` | `object` | `{}` | Scalar API Reference UI 配置（主题、深色模式、布局、favicon 等） |
+| `scalar.theme` | `string` | `'default'` | 主题：`'default'` \| `'moon'` \| `'purple'` \| `'solarized'` \| `'bluePlanet'` \| `'saturn'` \| `'kepler'` \| `'mars'` \| `'deepSpace'` \| `'none'` |
+| `scalar.darkMode` | `boolean` | `false` | 是否启用深色模式 |
+| `scalar.layout` | `string` | `'modern'` | 布局模式：`'modern'`（三栏） \| `'classic'`（双栏） |
+| `scalar.favicon` | `string` | `undefined` | 文档页面 favicon URL（如 `'/favicon.svg'`） |
+| `scalar.sources` | `array` | `undefined` | 多 OpenAPI 文档源（[详见指南](/guide/openapi#导入外部-openapi)）。每项含 `title`、`url` 或 `content`、`slug` |
+| `scalar.cdnUrl` | `string` | jsDelivr CDN | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#自定义-cdn--本地资产)）。适用于内网/离线/版本锁定 |
+| `scalar.showSidebar` | `boolean` | `true` | 是否显示侧边栏 |
+| `scalar.hideModels` | `boolean` | `false` | 是否隐藏 Models/Schemas 面板 |
+| `scalar.hiddenClients` | `string[]` | `undefined` | 隐藏的客户端语言列表（如 `['php', 'ruby']`） |
+| `scalar.searchHotKey` | `string` | `'k'` | 搜索热键（Ctrl+K / Cmd+K） |
+| `scalar.proxyUrl` | `string` | `undefined` | 代理 URL（Try it out 请求避免 CORS） |
+| `scalar.customCss` | `string` | `undefined` | 自定义 CSS |
+| ~~`tryItOutEnabled`~~ | `boolean` | `true` | ~~已废弃~~ Scalar 内置 Try it out，无需单独配置 |
+| ~~`docExpansion`~~ | `'none' \| 'list' \| 'full'` | `'list'` | ~~已废弃~~ 请使用 `scalar.layout` 替代 |
 
 ```typescript
 export default {
@@ -450,6 +463,12 @@ export default {
     title: 'My API',
     version: '1.0.0',
     description: '我的 API 文档',
+    scalar: {
+      theme: 'default',
+      darkMode: false,
+      layout: 'modern',
+      favicon: '/favicon.svg',
+    },
     servers: [
       { url: 'http://localhost:3000', description: '开发环境' },
       { url: 'https://api.example.com', description: '生产环境' },

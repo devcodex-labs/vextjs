@@ -31,9 +31,7 @@ vi.mock("../../src/lib/dev/memory-monitor.js", () => ({
 }));
 
 import { SoftReloader } from "../../src/lib/dev/soft-reloader.js";
-import type {
-  SoftReloaderOptions,
-} from "../../src/lib/dev/soft-reloader.js";
+import type { SoftReloaderOptions } from "../../src/lib/dev/soft-reloader.js";
 import { invalidateAndEvict } from "../../src/lib/dev/cache-invalidator.js";
 import { reloadServices } from "../../src/lib/dev/service-reloader.js";
 import { reloadRoutes } from "../../src/lib/dev/route-reloader.js";
@@ -117,7 +115,7 @@ function createDefaultOptions(
     app: app as any,
     config: app.config,
     logger: app.logger,
-    resolveAdapter: vi.fn((_cfg: any, _app: any) => ({
+    resolveAdapter: vi.fn(async (_cfg: any, _app: any) => ({
       name: "hono",
       registerMiddleware: vi.fn(),
       registerRoute: vi.fn(),
@@ -1136,7 +1134,7 @@ describe("SoftReloader", () => {
 
   describe("路由重载", () => {
     it("应使用 resolveAdapter 创建全新 adapter 实例", async () => {
-      const resolveAdapter = vi.fn((_cfg: any, _app: any) => ({
+      const resolveAdapter = vi.fn(async (_cfg: any, _app: any) => ({
         name: "hono",
         registerMiddleware: vi.fn(),
         registerRoute: vi.fn(),
@@ -1582,7 +1580,7 @@ describe("SoftReloader", () => {
 
   describe("与已有模块的集成", () => {
     it("reloadRoutes 应接收完整的 ReloadRoutesOptions", async () => {
-      const resolveAdapter = vi.fn(() => ({
+      const resolveAdapter = vi.fn(async () => ({
         name: "hono",
         registerMiddleware: vi.fn(),
         registerRoute: vi.fn(),

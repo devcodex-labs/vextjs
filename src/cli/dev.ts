@@ -203,7 +203,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
   const watcher = new VextFileWatcher({
     root: project.rootDir,
-    debounce: options.debounce ?? 100,
+    debounce: options.debounce ?? 0,
     usePolling,
     pollInterval: options.pollInterval ?? 1000,
   });
@@ -518,7 +518,7 @@ function parseDevArgs(args: string[]): DevCommandOptions {
  */
 function printBanner(options: DevCommandOptions): void {
   const polling = options.poll ? "polling" : "fs.watch";
-  const debounce = options.debounce ?? 100;
+  const debounce = options.debounce ?? 0;
   const mode = options.noHot
     ? "Cold Restart (--no-hot)"
     : "Soft Reload + Cold Restart";
@@ -575,7 +575,7 @@ function printDevHelp(): void {
     --root <path>         Project root directory (default: cwd)
     --poll                Force polling mode (for Docker / NFS)
     --poll-interval <ms>  Polling interval in ms (default: 1000)
-    --debounce <ms>       Debounce interval in ms (default: 100)
+    --debounce <ms>       Debounce interval in ms (default: 0, disabled)
     --no-hot              Disable soft reload, always cold restart
     --clear               Clear console on each reload
     -h, --help            Show this help message
@@ -585,13 +585,13 @@ function printDevHelp(): void {
     $ vext dev --port 8080
     $ vext dev --host 127.0.0.1 --port 3000
     $ vext dev --poll --poll-interval 2000
-    $ vext dev --debounce 200
+    $ vext dev --debounce 50
     $ vext dev --no-hot
 
   Environment variables:
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload
-    VEXT_DEV_DEBOUNCE=200 Set debounce interval
+    VEXT_DEV_DEBOUNCE=50  Set debounce interval (ms, default: 0)
 `);
 }

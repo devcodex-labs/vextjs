@@ -20,7 +20,7 @@ import type { ClassifierOptions } from "./change-classifier.js";
  *   - FileWatcher 监听的是 `src/` **源码目录**，不是 `.vext/dev/` 编译产物目录。
  *     这避免了 esbuild 编译输出触发二次变更事件的问题。
  *   - 使用 Node.js 内置 `fs.watch`（零外部依赖），不依赖 chokidar 等第三方库。
- *   - 防抖窗口默认 100ms，覆盖 Vim/Emacs 的 "delete + rename" 写文件策略。
+ *   - 防抖窗口默认 0ms（不开启），文件变更立即触发重载；可通过 --debounce 选项开启。
  *
  * 事件：
  *   - `change` — 文件变更事件（FileChangeEvent），防抖合并后发射
@@ -40,7 +40,7 @@ export interface WatcherOptions {
   /** 项目根目录（绝对路径） */
   root: string;
 
-  /** 防抖间隔（ms），默认 100ms */
+  /** 防抖间隔（ms），默认 0（不开启防抖，文件变更立即触发重载） */
   debounce?: number;
 
   /** 使用轮询模式（Docker/网络文件系统降级方案） */
@@ -76,7 +76,7 @@ export interface FileChangeInfo {
 /**
  * 文件变更事件（防抖合并后发射）
  *
- * 一个事件可能包含多个文件的变更（100ms 防抖窗口内的所有变更合并为一个事件）。
+ * 一个事件可能包含多个文件的变更（防抖窗口内的所有变更合并为一个事件）。
  *
  * action 字段是所有变更的合并结果：
  *   - 只要有一个 `cold` 分类的文件 → action = 'cold'（触发 Cold Restart）
@@ -159,7 +159,7 @@ export class VextFileWatcher extends EventEmitter {
   constructor(options: WatcherOptions) {
     super();
     this.options = {
-      debounce: 100,
+      debounce: 0,
       usePolling: false,
       pollInterval: 1000,
       ...options,

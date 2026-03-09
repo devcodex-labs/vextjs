@@ -24,7 +24,8 @@ export type {
   OpenAPIOperation,
   OpenAPIParameter,
   OpenAPIResponse,
-  OpenAPIEndpointConfig,
+  ScalarConfig,
+  DocEndpointsConfig,
   ResponseConfig,
 } from "./types.js";
 
@@ -44,6 +45,10 @@ export { OpenAPIGenerator } from "./generator.js";
 
 export { inferOperationId } from "./operation-id.js";
 
-// ── Swagger UI 端点注册 ─────────────────────────────────────
+// ── Swagger UI 端点注册（向后兼容） ─────────────────────────
 
 export { registerOpenAPIRoutes } from "./swagger-ui.js";
+
+// ── 文档端点统一注册（Scalar API Reference） ────────────────
+
+export { registerDocEndpoints } from "./doc-endpoints.js";

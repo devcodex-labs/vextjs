@@ -331,7 +331,7 @@ app.get('/users', {
 - `limit` — query parameter, type: integer, minimum: 1, maximum: 100
 - `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
 
-访问 `/docs` 即可在 Swagger UI 中查看自动生成的参数文档和 "Try it out" 功能。
+访问 `/docs` 即可在 Scalar 文档中查看自动生成的参数文档和内置的 "Try it out" 功能。
 
 ## 高级用法
 

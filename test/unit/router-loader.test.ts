@@ -146,6 +146,8 @@ function createMockApp(): VextApp & {
       response: { hideInternalErrors: true },
       bodyParser: { maxBodySize: "1mb" },
       openapi: { enabled: false },
+      accessLog: { enabled: false },
+      requestContext: { enabled: false },
       _testMode: true,
     } as VextConfig,
     services: {} as any,

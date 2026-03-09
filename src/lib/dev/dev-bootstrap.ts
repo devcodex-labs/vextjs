@@ -24,6 +24,9 @@ import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createErrorHandler } from "../middlewares/error-handler.js";
 import { createVextFetch } from "../fetch.js";
+import { RouteMetadataCollector } from "../openapi/collector.js";
+import { OpenAPIGenerator } from "../openapi/generator.js";
+import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
 import type { VextApp } from "../../types/app.js";
 import type { VextMiddleware } from "../../types/middleware.js";
 import type { VextServerHandle } from "../../types/adapter.js";
@@ -292,10 +295,75 @@ export async function devBootstrap(
     await loadServices(app, path.join(outDir, "services"));
 
     // ── 步骤 7: 加载路由 ─────────────────────────────────
-    await loadRoutes(app, path.join(outDir, "routes"), {
-      middlewareDefs: middlewareRegistry,
-      globalMiddlewares: internals.getGlobalMiddlewares(),
-    });
+    //
+    // 🆕 OpenAPI 集成：若 openapi.enabled，创建 collector 传入 loadRoutes，
+    // 在每条路由注册到 adapter 时同步收集元信息（method / path / options / sourceFile）。
+    const openapiConfig = config.openapi;
+    const openapiEnabled =
+      openapiConfig?.enabled ?? process.env.NODE_ENV !== "production";
+
+    const collector = openapiEnabled ? new RouteMetadataCollector() : null;
+
+    await loadRoutes(
+      app,
+      path.join(outDir, "routes"),
+      {
+        middlewareDefs: middlewareRegistry,
+        globalMiddlewares: internals.getGlobalMiddlewares(),
+      },
+      collector,
+    );
+
+    // ── 步骤 7+: OpenAPI 文档生成 ────────────────────────
+    //
+    // 在所有路由注册完成后、步骤 8（内置中间件注册）之前生成 OpenAPI 文档。
+    // 使用 collector 收集到的路由元信息 + config.openapi 配置，
+    // 生成 OpenAPI 3.0 spec 并注册 /docs + /openapi.json 端点。
+    //
+    if (openapiEnabled && collector) {
+      const generator = new OpenAPIGenerator({
+        title: openapiConfig?.title,
+        description: openapiConfig?.description,
+        version: openapiConfig?.version,
+        servers: (openapiConfig as Record<string, unknown>)?.servers as
+          | Array<{ url: string; description?: string }>
+          | undefined,
+        tags: (openapiConfig as Record<string, unknown>)?.tags as
+          | Array<{ name: string; description?: string }>
+          | undefined,
+        securitySchemes: (openapiConfig as Record<string, unknown>)
+          ?.securitySchemes as Record<
+          string,
+          {
+            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+            scheme?: string;
+            bearerFormat?: string;
+            description?: string;
+          }
+        >,
+        guardSecurityMap: (openapiConfig as Record<string, unknown>)
+          ?.guardSecurityMap as Record<string, string> | undefined,
+        contact: (openapiConfig as Record<string, unknown>)?.contact as
+          | { name?: string; email?: string; url?: string }
+          | undefined,
+        license: (openapiConfig as Record<string, unknown>)?.license as
+          | { name: string; url?: string }
+          | undefined,
+      });
+
+      const spec = generator.generate(collector.getRoutes());
+
+      registerDocEndpoints(app, spec, {
+        specPath: openapiConfig?.jsonPath ?? "/openapi.json",
+        docsPath: openapiConfig?.docsPath ?? "/docs",
+        title: openapiConfig?.title,
+        scalar: (openapiConfig as Record<string, unknown>)?.scalar as
+          | Record<string, unknown>
+          | undefined,
+      });
+
+      app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
+    }
 
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
     //
@@ -488,6 +556,10 @@ export async function devBootstrap(
       createNotFoundHandler: createNotFoundHandler as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
+      // 🆕 BUG-022 修复：传递 openapiConfig 使热重载后自动重新注册 /docs + /openapi.json
+      openapiConfig: openapiEnabled
+        ? (openapiConfig as Record<string, unknown>)
+        : undefined,
     });
 
     // ── 步骤 12c-pre: 定义 handleShutdown（提前到 IPC 监听之前）──

@@ -1,4 +1,3 @@
-
 import { createLogger } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { schemaAdapter } from "./schema-adapter.js";
@@ -11,6 +10,7 @@ import type {
   VextValidator,
   VextRateLimiter,
 } from "../types/app.js";
+import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextServerHandle } from "../types/adapter.js";
 
@@ -209,6 +209,40 @@ export function createApp(config: VextConfig): {
       }
       globalMiddlewares.push(middleware);
     },
+
+    // ── fetch 占位（由 bootstrap 在步骤 ④+ 覆盖为 createVextFetch 实例）──
+    //
+    // 在 createApp 阶段 fetch 尚未初始化（需要 config.fetch + requestId 配置）。
+    // 提供占位实现确保类型为非可选，bootstrap 会在 loadRoutes 之前赋值真实实现。
+    // 若路由 handler 在 bootstrap 赋值前调用 app.fetch，会收到明确的错误提示。
+    fetch: Object.assign(
+      async (_input: unknown, _init?: unknown): Promise<Response> => {
+        throw new Error(
+          "[vextjs] app.fetch is not initialized yet. " +
+            "It is available after bootstrap completes step ④+.",
+        );
+      },
+      {
+        get: async () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+        post: async () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+        put: async () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+        patch: async () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+        delete: async () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+        create: () => {
+          throw new Error("[vextjs] app.fetch not initialized");
+        },
+      },
+    ) as unknown as VextFetch,
   };
 
   // ── adapter 延迟赋值 ──────────────────────────────────────
@@ -251,7 +285,7 @@ export function createApp(config: VextConfig): {
       if (_shuttingDown) return;
       _shuttingDown = true;
 
-      app.logger.info("[vextjs] 开始优雅关闭...");
+      app.logger.info("[vextjs] starting graceful shutdown...");
 
       const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
 
@@ -261,7 +295,9 @@ export function createApp(config: VextConfig): {
           serverHandle.close(),
           new Promise<void>((resolve) =>
             setTimeout(() => {
-              app.logger.warn("[vextjs] 等待飞行请求超时，强制继续关闭");
+              app.logger.warn(
+                "[vextjs] in-flight request wait timed out, forcing shutdown",
+              );
               resolve();
             }, shutdownTimeout),
           ),
@@ -275,7 +311,7 @@ export function createApp(config: VextConfig): {
         } catch (err) {
           app.logger.error(
             { error: (err as Error).message },
-            "[vextjs] onClose hook 执行失败",
+            "[vextjs] onClose hook failed",
           );
         }
       }

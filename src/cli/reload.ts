@@ -1,4 +1,9 @@
-import { readPidFile, isProcessAlive, removePidFile, DEFAULT_PID_FILE } from "../lib/cluster/pid-file.js";
+import {
+  readPidFile,
+  isProcessAlive,
+  removePidFile,
+  DEFAULT_PID_FILE,
+} from "../lib/cluster/pid-file.js";
 
 /**
  * reload.ts — vext reload CLI 命令
@@ -70,7 +75,9 @@ export async function reloadCommand(args: string[] = []): Promise<void> {
   const result = readPidFile(options.pidFile, false);
 
   if (!result.ok || result.pid === undefined) {
-    console.error(`[vextjs] ${result.error ?? "PID file not found. Is the server running?"}`);
+    console.error(
+      `[vextjs] ${result.error ?? "PID file not found. Is the server running?"}`,
+    );
     process.exit(1);
   }
 
@@ -78,7 +85,9 @@ export async function reloadCommand(args: string[] = []): Promise<void> {
 
   // ── 验证进程存活 ──────────────────────────────────────────
   if (!isProcessAlive(pid)) {
-    console.error(`[vextjs] Master process ${pid} is not running (stale PID file).`);
+    console.error(
+      `[vextjs] Master process ${pid} is not running (stale PID file).`,
+    );
     // 清理残留 PID 文件
     removePidFile(options.pidFile, pid);
     console.log(`[vextjs] Stale PID file removed: ${result.path}`);
@@ -95,15 +104,23 @@ export async function reloadCommand(args: string[] = []): Promise<void> {
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === "EPERM") {
-      console.error(`[vextjs] Permission denied: cannot send signal to process ${pid}.`);
+      console.error(
+        `[vextjs] Permission denied: cannot send signal to process ${pid}.`,
+      );
       process.exit(1);
     }
-    console.error(`[vextjs] Failed to send SIGHUP to process ${pid}: ${error.message}`);
+    console.error(
+      `[vextjs] Failed to send SIGHUP to process ${pid}: ${error.message}`,
+    );
     process.exit(1);
   }
 
-  console.log(`[vextjs] ✅ Reload signal (SIGHUP) sent to master (pid: ${pid}).`);
-  console.log(`[vextjs] Rolling restart in progress — workers will be replaced one by one.`);
+  console.log(
+    `[vextjs] ✅ Reload signal (SIGHUP) sent to master (pid: ${pid}).`,
+  );
+  console.log(
+    `[vextjs] Rolling restart in progress - workers will be replaced one by one.`,
+  );
 }
 
 // ── 参数解析 ────────────────────────────────────────────────

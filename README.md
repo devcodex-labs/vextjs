@@ -127,7 +127,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.1.4"
+    "vextjs": "^0.1.5"
   }
 }
 ```
@@ -207,7 +207,7 @@ vext start --host 127.0.0.1   # 指定监听地址
 vext dev                      # 启动开发服务器
 vext dev --poll               # Docker / NFS 环境使用轮询模式
 vext dev --poll-interval 2000 # 自定义轮询间隔（毫秒）
-vext dev --debounce 200       # 自定义防抖间隔（毫秒）
+vext dev --debounce 50        # 自定义防抖间隔（毫秒，默认 0 不开启）
 vext dev --no-hot             # 禁用 Soft Reload，所有变更走 Cold Restart
 vext dev --clear              # 每次重载后清空控制台
 ```
@@ -532,10 +532,8 @@ export default {
   },
   openapi: {
     enabled: true,
-    info: {
-      title: 'My API',
-      version: '1.0.0',
-    },
+    title: 'My API',
+    version: '1.0.0',
   },
   shutdown: {
     timeout: 10,          // 优雅关闭超时（秒）
@@ -594,12 +592,44 @@ app.post('/users', {
 
 ## 📖 OpenAPI 文档
 
-启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.1 文档。
+启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.1 文档，并提供交互式文档页面。
+
+### 文档端点
+
+| 端点 | 说明 |
+|------|------|
+| `GET /openapi.json` | OpenAPI JSON spec（供外部工具消费） |
+| `GET /docs` | [Scalar API Reference](https://github.com/scalar/scalar) 交互式文档页面（文档阅读 + Try it out） |
 
 ```bash
 # 获取 OpenAPI JSON
 curl http://localhost:3000/openapi.json
+
+# 浏览器打开交互式文档
+open http://localhost:3000/docs
 ```
+
+### Scalar 配置
+
+```js
+// src/config/default.js
+export default {
+  openapi: {
+    enabled: true,
+    title: 'My API',
+    version: '1.0.0',
+    // Scalar API Reference 配置
+    scalar: {
+      theme: 'default',    // 主题: default / alternate / moon / purple / solarized / ...
+      darkMode: false,      // 深色模式
+      layout: 'modern',     // 布局: modern / classic
+      showSidebar: true,    // 显示侧边栏
+    },
+  },
+}
+```
+
+### 路由文档元信息
 
 路由的 `docs` 选项用于补充文档元信息：
 
@@ -731,7 +761,7 @@ HTTP 响应 → { code: 0, data: {...} }
 | `VEXT_HOST` | 覆盖监听地址 | — |
 | `VEXT_DEV_POLL` | 强制轮询模式（`1` / `0`） | 自动检测 |
 | `VEXT_DEV_NO_HOT` | 禁用 Soft Reload | — |
-| `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒） | `100` |
+| `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒） | `0`（不开启） |
 
 ---
 

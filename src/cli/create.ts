@@ -600,6 +600,7 @@ function generateProductionConfig(isTs: boolean): string {
     return `import type { VextUserConfig } from 'vextjs'
 
 const config: Partial<VextUserConfig> = {
+  port: 3001,
   logger: {
     level: 'info',
     pretty: false,
@@ -612,6 +613,7 @@ export default config
 
   return `/** @type {Partial<import('vextjs').VextUserConfig>} */
 const config = {
+  port: 3001,
   logger: {
     level: 'info',
     pretty: false,

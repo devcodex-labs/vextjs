@@ -116,7 +116,7 @@ export default definePlugin({
 - **`vext dev`** — 文件监听 + 智能热重载（Soft Reload Tier 1/2 + Cold Restart Tier 3）
 - **`vext build`** — esbuild 极速构建，TypeScript 零配置
 - **`vext create`** — 交互式脚手架，支持 5 种 Adapter 选择
-- **OpenAPI / Swagger** — 基于路由 `docs` + `validate` 自动生成，访问 `/docs` 查看
+- **OpenAPI / Scalar** — 基于路由 `docs` + `validate` 自动生成，访问 `/docs` 查看（内置 Try it out 交互式测试）
 
 ### 🏢 企业级特性
 

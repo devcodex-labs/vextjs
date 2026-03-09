@@ -1,6 +1,6 @@
 # Release Checklist
 
-当 `package.json` 中的 `version` 字段发生变更时（例如 `0.1.3` → `0.1.4`），**必须**按以下清单逐项检查并同步更新。
+当 `package.json` 中的 `version` 字段发生变更时（例如 `0.1.4` → `0.1.5`），**必须**按以下清单逐项检查并同步更新。
 
 > ⚠️ 此清单是强制性的。每次版本发布 PR 中，提交者和审阅者都必须确认所有项已完成。
 
@@ -29,7 +29,7 @@
 - [ ] `npm run build` — 框架编译成功（ESM + CJS）
 - [ ] `npm test` — 所有单元/集成/E2E 测试通过
 - [ ] `cd website && npm run build` — 文档站编译成功
-- [ ] `node verify.mjs`（在 vext-test 项目中）— 113/113 功能验证通过
+- [ ] `node verify.mjs`（在 vext-test 项目中）— 121/121 功能验证通过
 
 ## 发布流程
 

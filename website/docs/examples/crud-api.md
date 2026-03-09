@@ -808,7 +808,7 @@ pnpm dev
 启动后可以：
 
 - 访问 `http://localhost:3000/` 查看健康检查
-- 访问 `http://localhost:3000/docs` 查看自动生成的 Swagger UI 文档
+- 访问 `http://localhost:3000/docs` 查看自动生成的 Scalar API 文档
 - 使用 `curl` 测试各个接口
 
 ### 运行测试
@@ -909,7 +909,7 @@ handler 中 app.throw(404, '用户不存在')
 | **声明式校验** | `validate` 使用 schema-dsl DSL 语法，自动类型转换 |
 | **统一错误处理** | `app.throw()` 抛出错误，框架自动转为标准格式 |
 | **出口包装** | 所有成功响应自动包装为 `{ code: 0, data, requestId }` |
-| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 Swagger 文档 |
+| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档 |
 
 ## 下一步
 

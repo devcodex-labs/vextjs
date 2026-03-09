@@ -62,7 +62,7 @@ export default {
     origins: ['https://myapp.com'],  // 生产环境限制来源
   },
   openapi: {
-    enabled: false,      // 生产环境关闭 Swagger
+    enabled: false,      // 生产环境关闭文档
   },
 };
 ```
@@ -375,10 +375,9 @@ INFO  GET /api/users → 200 (12ms)
 | `openapi.title` | `string` | `'API Documentation'` | 文档标题 |
 | `openapi.description` | `string` | `''` | 文档描述 |
 | `openapi.version` | `string` | `'1.0.0'` | API 版本号 |
-| `openapi.docsPath` | `string` | `'/docs'` | Swagger UI 路径 |
+| `openapi.docsPath` | `string` | `'/docs'` | Scalar 文档路径 |
 | `openapi.specPath` | `string` | `'/openapi.json'` | OpenAPI JSON 路径 |
-| `openapi.tryItOut` | `boolean` | `true` | Swagger UI "Try it out" 功能 |
-| `openapi.docExpansion` | `string` | `'list'` | Swagger UI 展开方式 |
+| `openapi.scalar` | `object` | `{}` | Scalar API Reference UI 配置（主题、深色模式、布局、favicon 等） |
 | `openapi.servers` | `Array` | `[]` | API 服务器列表 |
 | `openapi.tags` | `Array` | `[]` | 标签定义 |
 | `openapi.securitySchemes` | `object` | `{}` | 安全方案 |
@@ -394,7 +393,12 @@ export default {
     version: '1.0.0',
     docsPath: '/docs',
     specPath: '/openapi.json',
-    tryItOut: true,
+    scalar: {
+      theme: 'default',
+      darkMode: false,
+      layout: 'modern',
+      favicon: '/favicon.svg',
+    },
     servers: [
       { url: 'http://localhost:3000', description: '本地开发' },
       { url: 'https://api.myapp.com', description: '生产环境' },

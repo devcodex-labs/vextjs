@@ -295,7 +295,7 @@ export default {
 | `validate` | 声明式参数校验（schema-dsl DSL 语法） |
 | `req.valid()` | 获取校验并类型转换后的数据 |
 | `res.json()` | 返回 JSON 响应（自动出口包装） |
-| `docs` | OpenAPI 文档配置，自动生成 Swagger UI |
+| `docs` | OpenAPI 文档配置，自动生成 Scalar API 文档 |
 | 出口包装 | 统一响应格式 `{ code, data, requestId }` |
 
 ## 下一步

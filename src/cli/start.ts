@@ -69,11 +69,11 @@ export async function startCommand(args: string[] = []): Promise<void> {
 
   // ── 打印启动信息 ──────────────────────────────────────────
   if (hasDist) {
-    console.log("[vextjs] start mode — built (node, from dist/)");
+    console.log("[vextjs] start mode - built (node, from dist/)");
   } else if (project.language === "ts") {
-    console.log("[vextjs] start mode — TypeScript (tsx)");
+    console.log("[vextjs] start mode - TypeScript (tsx)");
   } else {
-    console.log("[vextjs] start mode — JavaScript (node)");
+    console.log("[vextjs] start mode - JavaScript (node)");
   }
 
   // ── 构建子进程 execArgv ──────────────────────────────────

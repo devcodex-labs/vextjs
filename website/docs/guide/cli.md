@@ -76,7 +76,8 @@ npx vextjs create my-app --skip-install
 my-app/
 ├── src/
 │   ├── config/
-│   │   └── default.ts        # 默认配置
+│   │   ├── default.ts        # 默认配置（port: 3000）
+│   │   └── production.ts     # 生产环境覆盖（port: 3001）
 │   ├── routes/
 │   │   └── index.ts          # 示例路由
 │   └── services/
@@ -111,6 +112,11 @@ vext dev [options]
 |------|------|--------|
 | `--port <number>` | 指定端口 | 配置文件中的值 |
 | `--host <address>` | 指定监听地址 | 配置文件中的值 |
+| `--debounce <ms>` | 防抖间隔（毫秒，0 = 不开启） | `0` |
+| `--poll` | 强制轮询模式（Docker / NFS 环境） | `false` |
+| `--poll-interval <ms>` | 轮询间隔（毫秒，仅 `--poll` 时有效） | `1000` |
+| `--no-hot` | 禁用 Soft Reload，所有变更走 Cold Restart | — |
+| `--clear` | 每次重载后清空控制台 | — |
 | `-h, --help` | 显示帮助 | — |
 
 ### 示例
@@ -124,6 +130,15 @@ vext dev --port 8080
 
 # 指定地址和端口
 vext dev --host 127.0.0.1 --port 8080
+
+# 开启 50ms 防抖（快速连续保存时合并为一次重载）
+vext dev --debounce 50
+
+# Docker / NFS 环境使用轮询模式
+vext dev --poll --poll-interval 2000
+
+# 禁用 Soft Reload（所有变更均走 Cold Restart）
+vext dev --no-hot
 ```
 
 ### 热重载策略
@@ -398,7 +413,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.1.4
+# 输出: vextjs v0.1.5
 
 # 查看帮助
 vext --help

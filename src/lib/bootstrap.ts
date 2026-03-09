@@ -26,7 +26,7 @@ import { createVextFetch } from "./fetch.js";
 import { setupShutdown } from "./shutdown.js";
 import { RouteMetadataCollector } from "./openapi/collector.js";
 import { OpenAPIGenerator } from "./openapi/generator.js";
-import { registerOpenAPIRoutes } from "./openapi/swagger-ui.js";
+import { registerDocEndpoints } from "./openapi/doc-endpoints.js";
 import type { VextServerHandle } from "../types/adapter.js";
 import type { VextApp } from "../types/app.js";
 import type { VextMiddleware } from "../types/middleware.js";
@@ -264,13 +264,13 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
 
       const spec = generator.generate(collector.getRoutes());
 
-      registerOpenAPIRoutes(app, spec, {
-        docsPath: openapiConfig?.docsPath ?? "/docs",
+      registerDocEndpoints(app, spec, {
         specPath: openapiConfig?.jsonPath ?? "/openapi.json",
-        tryItOutEnabled: ((openapiConfig as Record<string, unknown>)
-          ?.tryItOutEnabled ?? true) as boolean,
-        docExpansion: ((openapiConfig as Record<string, unknown>)
-          ?.docExpansion ?? "list") as "none" | "list" | "full",
+        docsPath: openapiConfig?.docsPath ?? "/docs",
+        title: openapiConfig?.title,
+        scalar: (openapiConfig as Record<string, unknown>)?.scalar as
+          | Record<string, unknown>
+          | undefined,
       });
 
       app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
@@ -581,7 +581,8 @@ function createNotFoundHandler(): VextMiddleware {
 const isDirectRun =
   process.env.VEXT_MODE === "start" || process.env.VEXT_MODE === "dev";
 
-const alreadyStarted = (globalThis as Record<string, unknown>).__vext_bootstrap_started === true;
+const alreadyStarted =
+  (globalThis as Record<string, unknown>).__vext_bootstrap_started === true;
 
 if (isDirectRun && !alreadyStarted) {
   (globalThis as Record<string, unknown>).__vext_bootstrap_started = true;
