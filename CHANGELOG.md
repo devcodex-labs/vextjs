@@ -16,6 +16,24 @@ _No changes yet._
 
 ---
 
+## [0.1.6] - 2026-03-10
+
+> 📄 [Detailed changelog →](./changelogs/v0.1.6.md)
+
+### Fixed
+- **BUG-023**: `buildMonSQLizeConfig` type 字段映射错误 — 传递 `type: config.type ?? "url"` 给 MonSQLize，但 MonSQLize 只接受 `"mongodb"`。修复为硬编码 `type: "mongodb"`。
+- **BUG-024**: `buildMonSQLizeConfig` 的 `config.url` → `config.uri` 映射缺失 — vext 使用 `config.url`，MonSQLize 期望 `config.uri`。新增字段名自动映射。
+- **BUG-025**: `connection.ts` client getter 使用错误的属性路径 — `_client` 修正为 `_adapter?.client`。
+- **BUG-026**: model-loader 使用错误的 API 注册 Model — `monsqlize.model(name, def)` 是 getter 不是 setter，修正为 `Model.define(collectionName, def)` 静态方法。
+- **BUG-027**: model-loader CJS/ESM interop 双层嵌套 — esbuild CJS 输出的 `__esModule` 导致 `mod.default` 双层包装，新增自动解包逻辑。
+- **FIX-019**: `plugin.test.ts` 死代码 `const originalImport = globalThis.importOriginal` 导致 TS 类型错误，已移除。
+
+### Added
+- **TEST-003**: MonSQLize 集成测试 — 新增 `test/integration/monsqlize/plugin-lifecycle.test.ts`（34 个测试），使用 `mongodb-memory-server` 覆盖生命周期、CRUD、Model 注册、配置传递、健康检查、聚合查询等场景。
+- **TEST-004**: vext-test 验证项从 121 扩展至 131 — 新增 10 个 MonSQLize 端到端检查（#122-#131），覆盖插件加载、健康检查、insertOne/find/findOne/deleteOne、Model 自动加载。
+
+---
+
 ## [0.1.5] - 2026-03-09
 
 > 📄 [Detailed changelog →](./changelogs/v0.1.5.md)

@@ -40,8 +40,10 @@ export async function createConnection(
     model: (name: string) => monsqlize.model(name),
 
     // 暴露底层 MongoDB Client（事务等高级场景）
+    // MonSQLize 将 MongoClient 存储在 _adapter.client（而非 _client）
     get client() {
-      const client = (monsqlize as any)._client;
+      const adapter = (monsqlize as any)._adapter;
+      const client = adapter?.client;
       if (!client) {
         throw new Error(
           "[monsqlize] MongoDB client is not available. " +

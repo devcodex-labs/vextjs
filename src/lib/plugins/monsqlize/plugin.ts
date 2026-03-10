@@ -127,9 +127,26 @@ function buildMonSQLizeConfig(
   config: MonSQLizeDatabaseConfig,
   app: VextApp,
 ): Record<string, unknown> {
+  // ── 映射 config.config（vext 用户配置 → MonSQLize 配置）────
+  // vext 类型定义使用 `url` 字段，MonSQLize 期望 `uri` 字段。
+  // 在此做字段名映射，保持 vext 用户 API 不变。
+  const mongoConfig: Record<string, unknown> = { ...config.config };
+  if (
+    "url" in mongoConfig &&
+    mongoConfig.url != null &&
+    !("uri" in mongoConfig)
+  ) {
+    mongoConfig.uri = mongoConfig.url;
+    delete mongoConfig.url;
+  }
+
   const result: Record<string, unknown> = {
-    type: config.type ?? "url",
-    config: config.config,
+    // MonSQLize 的 type 字段是数据库类型（目前仅支持 "mongodb"），
+    // 不同于 vext 的 database.type（连接模式：url / replica / srv）。
+    // vext 的 config.type 已包含在 config.config 的结构中（url vs hosts vs host），
+    // MonSQLize 内部通过 config 结构自动判断连接方式。
+    type: "mongodb",
+    config: mongoConfig,
     maxTimeMS: config.maxTimeMS ?? 2000,
     findLimit: config.findLimit ?? 10,
     findPageMaxLimit: config.findPageMaxLimit ?? 500,

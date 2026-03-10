@@ -123,7 +123,7 @@ function createMockMonSQLize() {
     collection: mockCollection,
     db: mockDb,
     model: mockModel,
-    _client: { db: vi.fn() }, // mock MongoDB client
+    _adapter: { client: { db: vi.fn(), close: vi.fn() } }, // mock MongoDB client via _adapter
   };
 
   return {
@@ -301,7 +301,6 @@ describe("deriveModelName", () => {
 
 describe("setupMonSQLize", () => {
   let setupMonSQLize: typeof import("../../../../src/lib/plugins/monsqlize/plugin.js").setupMonSQLize;
-  const originalImport = globalThis.importOriginal;
 
   beforeEach(async () => {
     vi.restoreAllMocks();
@@ -559,18 +558,18 @@ describe("setupMonSQLize", () => {
       await setupMonSQLize(app, "/tmp/src");
 
       const db = extendedProps.get("db") as any;
-      expect(db.client).toBe(mockMonSQLize.instance._client);
+      expect(db.client).toBe(mockMonSQLize.instance._adapter.client);
     });
 
-    it("connection.client throws if _client is unavailable", async () => {
+    it("connection.client throws if _adapter.client is unavailable", async () => {
       const { app, extendedProps } = createMockApp({
         database: { config: { url: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
 
-      // Remove _client to simulate unavailable state
-      (mockMonSQLize.instance as any)._client = null;
+      // Remove _adapter.client to simulate unavailable state
+      (mockMonSQLize.instance as any)._adapter = { client: null };
 
       const db = extendedProps.get("db") as any;
       expect(() => db.client).toThrow("MongoDB client is not available");
@@ -626,7 +625,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     vi.restoreAllMocks();
   });
 
-  it("passes type with default 'url'", async () => {
+  it("passes type as 'mongodb' regardless of vext config.type", async () => {
     const { app } = createMockApp({
       database: { config: { url: "mongodb://localhost/db" } },
     });
@@ -634,10 +633,10 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
-    expect(passedConfig.type).toBe("url");
+    expect(passedConfig.type).toBe("mongodb");
   });
 
-  it("passes explicit type", async () => {
+  it("always passes type 'mongodb' even when vext config specifies 'replica'", async () => {
     const { app } = createMockApp({
       database: {
         type: "replica",
@@ -648,7 +647,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
-    expect(passedConfig.type).toBe("replica");
+    expect(passedConfig.type).toBe("mongodb");
   });
 
   it("applies default values for maxTimeMS / findLimit / findPageMaxLimit / slowQueryMs", async () => {
@@ -1035,12 +1034,16 @@ describe("loadModels", () => {
   let mockExistsSync: ReturnType<typeof vi.fn>;
   let mockFastGlob: ReturnType<typeof vi.fn>;
   let importMocks: Map<string, Record<string, unknown>>;
+  let mockModelDefine: ReturnType<typeof vi.fn>;
+  let mockModelHas: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.resetModules();
     importMocks = new Map();
     mockExistsSync = vi.fn().mockReturnValue(false);
     mockFastGlob = vi.fn().mockResolvedValue([]);
+    mockModelDefine = vi.fn();
+    mockModelHas = vi.fn().mockReturnValue(false);
 
     vi.doMock("node:fs", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:fs")>();
@@ -1052,6 +1055,17 @@ describe("loadModels", () => {
 
     vi.doMock("fast-glob", () => ({
       default: mockFastGlob,
+    }));
+
+    // Mock monsqlize 包 — model-loader 中 getModelClass() 通过
+    // import("monsqlize") 获取 Model 类的 define/has 静态方法
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: {
+          define: mockModelDefine,
+          has: mockModelHas,
+        },
+      }),
     }));
 
     const mod =
@@ -1081,7 +1095,7 @@ describe("loadModels", () => {
 
     await loadModels(monsqlize, { autoRegister: false }, app, "/tmp/src");
 
-    expect(monsqlize.model).not.toHaveBeenCalled();
+    expect(mockModelDefine).not.toHaveBeenCalled();
     expect(app.logger.debug).toHaveBeenCalledWith(
       expect.stringContaining("auto-register disabled"),
     );
@@ -1096,7 +1110,7 @@ describe("loadModels", () => {
 
     await loadModels(monsqlize, undefined, app, "/tmp/src");
 
-    expect(monsqlize.model).not.toHaveBeenCalled();
+    expect(mockModelDefine).not.toHaveBeenCalled();
     expect(app.logger.debug).toHaveBeenCalledWith(
       expect.stringContaining("no models/ directory found"),
     );
@@ -1132,11 +1146,23 @@ describe("loadModels", () => {
   it("loads shared models from default export object", async () => {
     vi.resetModules();
 
+    const localModelDefine = vi.fn();
+    const localModelHas = vi.fn().mockReturnValue(false);
+
     // We need to re-mock after resetModules
     vi.doMock("node:fs", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:fs")>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
+
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: {
+          define: localModelDefine,
+          has: localModelHas,
+        },
+      }),
+    }));
 
     vi.doMock("@project/models", () => ({
       default: {
@@ -1161,9 +1187,9 @@ describe("loadModels", () => {
       "/tmp/src",
     );
 
-    expect(monsqlize.model).toHaveBeenCalledTimes(2);
-    expect(monsqlize.model).toHaveBeenCalledWith("User", expect.any(Object));
-    expect(monsqlize.model).toHaveBeenCalledWith("Order", expect.any(Object));
+    expect(localModelDefine).toHaveBeenCalledTimes(2);
+    expect(localModelDefine).toHaveBeenCalledWith("users", expect.any(Object));
+    expect(localModelDefine).toHaveBeenCalledWith("orders", expect.any(Object));
   });
 
   it("loads shared models via registerModels function", async () => {
@@ -1175,6 +1201,12 @@ describe("loadModels", () => {
       const actual = await importOriginal<typeof import("node:fs")>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
+
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
 
     vi.doMock("@project/shared-models", () => ({
       default: null,
@@ -1204,6 +1236,12 @@ describe("loadModels", () => {
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
 
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
+
     vi.doMock("@project/missing-models", () => {
       throw new Error("Cannot find module '@project/missing-models'");
     });
@@ -1230,6 +1268,12 @@ describe("loadModels", () => {
       const actual = await importOriginal<typeof import("node:fs")>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
+
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
 
     vi.doMock("@project/empty-models", () => ({
       default: null,
@@ -1263,6 +1307,12 @@ describe("loadModels", () => {
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
 
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
+
     vi.doMock("@project/count-models", () => ({
       default: {
         User: { schema: {} },
@@ -1293,16 +1343,16 @@ describe("loadModels", () => {
   it("loads local model files from models/ directory", async () => {
     vi.resetModules();
 
-    const userModel = {
-      name: "User",
-      collection: "users",
-      schema: { name: "string" },
-    };
-
     vi.doMock("node:fs", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:fs")>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(true) };
     });
+
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
 
     vi.doMock("fast-glob", () => ({
       default: vi.fn().mockResolvedValue(["user.ts"]),
@@ -1384,6 +1434,12 @@ describe("loadModels", () => {
       const actual = await importOriginal<typeof import("node:fs")>();
       return { ...actual, existsSync: vi.fn().mockReturnValue(false) };
     });
+
+    vi.doMock("monsqlize", () => ({
+      default: Object.assign(vi.fn(), {
+        Model: { define: vi.fn(), has: vi.fn().mockReturnValue(false) },
+      }),
+    }));
 
     vi.doMock("@project/has-models", () => ({
       default: { User: { schema: {} } },
@@ -1474,12 +1530,12 @@ describe("createConnection", () => {
 
     const conn = await createConnection(mock.instance as any, app);
 
-    expect(conn.client).toBe(mock.instance._client);
+    expect(conn.client).toBe(mock.instance._adapter.client);
   });
 
-  it("client getter throws when _client is null", async () => {
+  it("client getter throws when _adapter.client is null", async () => {
     const mock = createMockMonSQLize();
-    mock.instance._client = null as any;
+    (mock.instance as any)._adapter = { client: null };
     const { app } = createMockApp();
 
     const conn = await createConnection(mock.instance as any, app);

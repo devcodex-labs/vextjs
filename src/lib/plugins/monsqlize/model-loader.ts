@@ -29,6 +29,24 @@ import type { VextApp } from "../../../types/app.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 
 /**
+ * 获取 MonSQLize 的 Model 类（静态注册器）
+ *
+ * MonSQLize 通过 `Model.define(collectionName, definition)` 注册 Model，
+ * 通过 `monsqlize.model(collectionName)` 获取已注册的 Model 实例。
+ * 这两个 API 不可混淆：前者是静态注册，后者是实例获取。
+ *
+ * @returns Model 类（含 define / has / get 静态方法）
+ */
+async function getModelClass(): Promise<{
+  define: (name: string, definition: any) => void;
+  has: (name: string) => boolean;
+}> {
+  const mod: any = await import("monsqlize");
+  const MonSQLizeClass = mod.default ?? mod.MonSQLize ?? mod;
+  return MonSQLizeClass.Model;
+}
+
+/**
  * 加载 Model 定义
  *
  * 支持两种来源（可同时使用）：
@@ -116,11 +134,24 @@ async function loadSharedModels(
       !Array.isArray(sharedModels.default)
     ) {
       // 格式 1：export default { User: { ... }, Order: { ... } }
+      const ModelClass = await getModelClass();
       for (const [name, definition] of Object.entries(sharedModels.default)) {
         if (definition && typeof definition === "object") {
-          monsqlize.model(name, definition as any);
+          const collectionName =
+            ((definition as Record<string, unknown>).collection as
+              | string
+              | undefined) ??
+            ((definition as Record<string, unknown>).name as
+              | string
+              | undefined) ??
+            name;
+          if (!ModelClass.has(collectionName)) {
+            ModelClass.define(collectionName, definition as any);
+          }
           count++;
-          app.logger.debug(`[monsqlize] model loaded from shared: ${name}`);
+          app.logger.debug(
+            `[monsqlize] model loaded from shared: ${collectionName}`,
+          );
         }
       }
     } else if (
@@ -139,9 +170,7 @@ async function loadSharedModels(
       );
     }
 
-    app.logger.info(
-      `[monsqlize] shared models loaded from "${packageName}"`,
-    );
+    app.logger.info(`[monsqlize] shared models loaded from "${packageName}"`);
   } catch (err) {
     throw new Error(
       `[monsqlize] Failed to load shared model package "${packageName}":\n` +
@@ -197,23 +226,52 @@ async function loadLocalModels(
       continue;
     }
 
-    const definition = mod.default;
+    // CJS/ESM interop 处理：
+    // esbuild 将 ESM 编译为 CJS 时会输出 { __esModule: true, default: { ... } }。
+    // Node.js 动态 import() CJS 模块时，把 module.exports 整体当作 default，
+    // 导致 mod.default = { __esModule: true, default: { name, schema, ... } }（双层嵌套）。
+    // 需要解包到真正的 definition 对象。
+    let definition = mod.default;
+    if (
+      definition &&
+      typeof definition === "object" &&
+      (definition as Record<string, unknown>).__esModule &&
+      (definition as Record<string, unknown>).default
+    ) {
+      definition = (definition as Record<string, unknown>).default;
+    }
 
-    if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+    if (
+      !definition ||
+      typeof definition !== "object" ||
+      Array.isArray(definition)
+    ) {
       app.logger.warn(
         `[monsqlize] models/${file} — invalid export (expected default object), skipped`,
       );
       continue;
     }
 
-    // Model 名称：定义对象中的 name 字段优先，否则从文件名推断
-    const modelName =
-      (definition as Record<string, unknown>).name as string | undefined ??
+    // 集合名称：定义对象中的 collection 字段优先，其次 name 字段，最后从文件名推断
+    const def = definition as Record<string, unknown>;
+    const collectionName =
+      (def.collection as string | undefined) ??
+      (def.name as string | undefined) ??
       deriveModelName(file);
 
-    monsqlize.model(modelName, definition as any);
-    count++;
-    app.logger.debug(`[monsqlize] model loaded: ${modelName} (from ${file})`);
+    // 使用 Model.define() 静态方法注册（而非 monsqlize.model()）
+    const ModelClass = await getModelClass();
+    if (ModelClass.has(collectionName)) {
+      app.logger.debug(
+        `[monsqlize] model '${collectionName}' already registered, skipping ${file}`,
+      );
+    } else {
+      ModelClass.define(collectionName, definition as any);
+      count++;
+      app.logger.debug(
+        `[monsqlize] model loaded: ${collectionName} (from ${file})`,
+      );
+    }
   }
 
   return count;
