@@ -17,7 +17,7 @@
  * 通过 Omit 排除内部方法 _enableWrap 和 rawJson，
  * 用户代码中只能访问公开的响应方法。
  */
-export type VextPublicResponse = Omit<VextResponse, "_enableWrap" | "rawJson">;
+export type VextPublicResponse = Omit<VextResponse, "_enableWrap" | "rawJson" | "_onSend">;
 
 export interface VextResponse {
   /**
@@ -153,6 +153,18 @@ export interface VextResponse {
    * @internal
    */
   _enableWrap(): void;
+
+  /**
+   * 发送前拦截钩子（内部方法）
+   *
+   * cache MISS 时由缓存中间件注册，json() 发送前回调以捕获原始 data。
+   * 在包装逻辑（_wrapEnabled）之前调用，缓存的是原始 data 而非包装后的响应体。
+   * 当前单钩子设计（覆盖赋值）。
+   *
+   * @internal
+   * @see 15-route-cache.md §4.3（_onSend 钩子设计）
+   */
+  _onSend?: (data: unknown, statusCode: number) => void;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 

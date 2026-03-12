@@ -16,7 +16,7 @@ _No changes yet._
 
 ---
 
-## [0.1.6] - 2026-03-10
+## [0.1.6] - 2026-03-12
 
 > 📄 [Detailed changelog →](./changelogs/v0.1.6.md)
 
@@ -29,6 +29,7 @@ _No changes yet._
 - **FIX-019**: `plugin.test.ts` 死代码 `const originalImport = globalThis.importOriginal` 导致 TS 类型错误，已移除。
 
 ### Added
+- **CACHE-001**: 路由级响应缓存（Route Cache Phase 1 MVP） — 声明式 `RouteOptions.cache` 配置，支持数字简写 / 完整对象，LRU 内存存储（MemoryCacheStore），`_onSend` 钩子拦截（5 个 adapter 统一支持），`app.cache` 运行时 API（invalidate/delete/clear/stats），Vary headers、条件缓存、标签失效、X-Cache/Cache-Control 响应头、auth+cache 安全警告。80 个单元测试，13 项端到端验证。
 - **TEST-003**: MonSQLize 集成测试 — 新增 `test/integration/monsqlize/plugin-lifecycle.test.ts`（34 个测试），使用 `mongodb-memory-server` 覆盖生命周期、CRUD、Model 注册、配置传递、健康检查、聚合查询等场景。
 - **TEST-004**: vext-test 验证项从 121 扩展至 131 — 新增 10 个 MonSQLize 端到端检查（#122-#131），覆盖插件加载、健康检查、insertOne/find/findOne/deleteOne、Model 自动加载。
 

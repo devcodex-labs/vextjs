@@ -111,6 +111,9 @@ export interface RouteReloaderApp {
   };
   adapter: RouteReloaderAdapter;
   services: Record<string, unknown>;
+  cache?: {
+    clear(): Promise<void>;
+  };
 }
 
 /**
@@ -546,6 +549,12 @@ export async function reloadRoutes(
     // Hono trie router、trustProxy 处理等）全部保持一致。
     //
     const handler = freshAdapter.buildHandler();
+
+    // ── 7.1 清空路由缓存 ────────────────────────────────
+    // 路由定义已变化，旧缓存可能无效，安全起见全部清空。
+    if (app.cache) {
+      await app.cache.clear();
+    }
 
     app.logger.info(
       `[hot-reload] routes reloaded via fresh adapter (${freshAdapter.name})`,

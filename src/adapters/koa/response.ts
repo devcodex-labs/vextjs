@@ -130,6 +130,11 @@ export function createVextResponse(
       const finalStatus = status ?? _status;
       _status = finalStatus;
 
+      // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+      if (res._onSend) {
+        res._onSend(data, finalStatus);
+      }
+
       ctx.res.statusCode = finalStatus;
       applyHeaders();
 

@@ -78,6 +78,111 @@ export interface VextValidator {
   };
 }
 
+// ── 缓存类型定义 ────────────────────────────────────────────
+
+/**
+ * RouteCacheOptions — 路由级缓存配置
+ *
+ * 在 RouteOptions.cache 中使用。
+ *
+ * @see 15-route-cache.md §3.2
+ */
+export interface RouteCacheOptions {
+  /** 缓存有效期（秒），必须 > 0 */
+  ttl: number;
+
+  /**
+   * 自定义 key 生成函数
+   *
+   * 默认: `${method}:${path}[?sortedQuery][|vary]`
+   * 自定义场景：按用户 ID / 角色 / 语言等维度区分缓存
+   */
+  key?: (req: import("./request.js").VextRequest) => string;
+
+  /**
+   * 条件缓存：返回 true 时才走缓存逻辑
+   *
+   * 典型场景：
+   * - `(req) => !req.query.refresh`（跳过刷新请求）
+   * - `(req) => !req.headers.authorization`（登录用户不走缓存）
+   */
+  condition?: (req: import("./request.js").VextRequest) => boolean;
+
+  /**
+   * Vary headers：不同 header 值视为不同缓存条目
+   *
+   * 类似 HTTP Vary 语义。
+   * 常用：`['accept-language', 'accept-encoding']`
+   */
+  vary?: string[];
+
+  /** 是否设置 Cache-Control 响应头（默认 true） */
+  cacheControl?: boolean;
+
+  /** 存储适配器名称（默认 'memory'，可扩展 'redis' 等） */
+  store?: string;
+
+  /** 缓存失效标签（用于 `app.cache.invalidate(tag)` 批量失效） */
+  tags?: string[];
+
+  /** SWR 模式容忍窗口（秒），0 = 禁用（默认 0） */
+  swr?: number;
+}
+
+/**
+ * VextCacheConfig — 全局缓存配置
+ *
+ * @see 15-route-cache.md §3.3
+ */
+export interface VextCacheConfig {
+  /** 是否启用路由缓存（默认 true） */
+  enabled?: boolean;
+  /** 默认 TTL 秒数（路由未配置 ttl 时回退，默认 60） */
+  defaultTtl?: number;
+  /** 最大缓存条目数（默认 1000） */
+  maxEntries?: number;
+  /** 最大内存占用 bytes（默认 50MB） */
+  maxMemory?: number;
+  /** 自定义存储适配器注册 */
+  stores?: Record<string, CacheStore>;
+}
+
+/**
+ * CacheStore — 缓存存储接口
+ *
+ * 内置 MemoryCacheStore 实现，可通过此接口扩展 Redis 等外部存储。
+ *
+ * @see 15-route-cache.md §3.4
+ */
+export interface CacheStore {
+  /** 获取缓存（内存存储同步返回，外部存储返回 Promise） */
+  get(key: string): CacheEntry | null | Promise<CacheEntry | null>;
+  /** 写入缓存 */
+  set(key: string, entry: CacheEntry, ttl: number): void | Promise<void>;
+  /** 删除单条 */
+  delete(key: string): void | Promise<void>;
+  /** 按标签批量失效 */
+  invalidateByTag(tag: string): void | Promise<void>;
+  /** 清空 */
+  clear(): void | Promise<void>;
+}
+
+/**
+ * CacheEntry — 缓存条目
+ *
+ * @see 15-route-cache.md §3.4
+ */
+export interface CacheEntry {
+  /** 缓存的响应数据（包装前的原始 data） */
+  body: unknown;
+  /** 响应状态码 */
+  statusCode: number;
+  /** 缓存写入时间戳（ms） */
+  cachedAt: number;
+  /** 关联标签 */
+  tags: string[];
+}
+
 // ── 配置类型定义 ────────────────────────────────────────────
 
 /**
@@ -602,6 +707,16 @@ export interface VextConfig {
   cluster?: Partial<VextClusterConfig>;
 
   /**
+   * 路由级响应缓存配置
+   *
+   * 控制内置 MemoryCacheStore 的行为。
+   * 路由级配置通过 RouteOptions.cache 声明。
+   *
+   * @see 15-route-cache.md §2.2（全局配置）
+   */
+  cache?: VextCacheConfig;
+
+  /**
    * 测试模式标志（内部使用）
    *
    * createTestApp 设置为 true，阻止 shutdown 中的 process.exit()。
@@ -845,6 +960,27 @@ export interface VextApp {
   use(middleware: VextMiddleware): void;
 
   /**
+   * 缓存管理 API
+   *
+   * 提供缓存失效、删除、清空、统计等操作。
+   * 在 createApp 中初始化 MemoryCacheStore 并挂载。
+   *
+   * @see 15-route-cache.md §2.3（运行时 API）
+   */
+  cache: {
+    /** 按标签批量失效 */
+    invalidate(tag: string): Promise<void>;
+    /** 删除指定 key */
+    delete(key: string): Promise<void>;
+    /** 清空所有缓存 */
+    clear(): Promise<void>;
+    /** 缓存统计 */
+    stats(): { entries: number; hits: number; misses: number; hitRate: number };
+    /** @internal 获取存储实例 */
+    _getStore(name?: string): CacheStore;
+  };
+
+  /**
    * 内置 HTTP 客户端（封装 Node.js fetch）
    *
    * 自动传播 requestId，结构化日志记录请求/响应。
@@ -988,6 +1124,17 @@ export interface RouteOptions {
    * OpenAPI 文档配置（可选）
    */
   docs?: RouteDocsConfig;
+
+  /**
+   * 路由级响应缓存
+   *
+   * - `false`：显式禁用
+   * - `number`：TTL 秒数简写（等价 `{ ttl: number }`）
+   * - `RouteCacheOptions`：完整配置
+   *
+   * @see 15-route-cache.md §3.1
+   */
+  cache?: false | number | RouteCacheOptions;
 
   /**
    * 路由级覆盖（覆盖 config/default.ts 中的全局配置）

@@ -11,6 +11,10 @@ import {
   resolveMiddlewares,
   validateMiddlewareRefs,
 } from "./middleware-loader.js";
+import {
+  normalizeCacheOptions,
+  buildRouteCacheMiddleware,
+} from "./middlewares/route-cache.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 
 /**
@@ -249,6 +253,33 @@ function registerRouteDefinition(
         registry,
       );
       routeMiddlewares.push(...resolved);
+    }
+
+    // ── 2.5 auth+cache 安全警告 ──────────────────────────
+    if (route.options?.cache && route.options?.middlewares) {
+      const hasAuth = (route.options.middlewares as Array<string | { name: string }>).some((m) =>
+        (typeof m === "string" ? m : m.name).toLowerCase().includes("auth"),
+      );
+      const cacheOpts = normalizeCacheOptions(route.options.cache, app.config.cache?.defaultTtl);
+      if (hasAuth && cacheOpts && !cacheOpts.key && !cacheOpts.condition) {
+        app.logger.warn(
+          `[vextjs] ⚠️ Route ${route.method} "${fullPath}" has both cache and auth middleware. ` +
+            `Default cache key does not include user identity. ` +
+            `Consider adding a custom key or condition to prevent data leakage.`,
+        );
+      }
+    }
+
+    // ── 2.6 构建路由缓存中间件 ──────────────────────────
+    if (app.config.cache?.enabled !== false) {
+      const cacheOpts = normalizeCacheOptions(route.options?.cache, app.config.cache?.defaultTtl);
+      const cacheMiddleware = buildRouteCacheMiddleware(
+        cacheOpts,
+        () => app.cache._getStore(cacheOpts?.store),
+      );
+      if (cacheMiddleware) {
+        routeMiddlewares.push(cacheMiddleware);
+      }
     }
 
     // ── 3. 构建 validate 中间件（Phase 1 升级）──────────

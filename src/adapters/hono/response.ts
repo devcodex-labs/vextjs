@@ -138,6 +138,11 @@ export function createVextResponse(
       const finalStatus = status ?? _status;
       _status = finalStatus;
 
+      // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+      if (res._onSend) {
+        res._onSend(data, finalStatus);
+      }
+
       // 设置 HTTP 状态码和响应头
       c.status(finalStatus as any);
       applyHeaders();

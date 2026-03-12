@@ -20,6 +20,7 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **📖 OpenAPI 文档** — 路由元信息自动收集，生成 OpenAPI 3.1 JSON
 - **🔥 开发模式热重载** — 三层重载策略（Soft Reload + Cold Restart），毫秒级反馈
 - **🏗️ 内置中间件** — requestId、CORS、bodyParser、rateLimit、accessLog、responseWrapper 开箱即用
+- **⚡ 路由缓存** — 声明式 `cache: 60`，LRU 内存存储，标签失效，Vary headers，条件缓存
 - **🌐 i18n 支持** — `src/locales/` 语言包自动加载，校验错误消息多语言
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
@@ -127,7 +128,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.1.5"
+    "vextjs": "^0.1.6"
   }
 }
 ```
@@ -590,6 +591,60 @@ app.post('/users', {
 
 ---
 
+## ⚡ 路由缓存
+
+路由选项中的 `cache` 字段提供声明式响应缓存，支持数字简写或完整配置对象。
+
+```js
+// 数字简写：缓存 60 秒
+app.get('/products', { cache: 60 }, async (req, res) => {
+  res.json(await db.getProducts())
+})
+
+// 完整配置：TTL + Vary headers + 标签失效
+app.get('/products', {
+  cache: {
+    ttl: 120,
+    vary: ['accept-language'],      // 不同语言单独缓存
+    tags: ['products'],             // 标签（用于批量失效）
+    condition: (req) => !req.query.refresh, // 条件缓存
+  },
+}, async (req, res) => {
+  res.json(await db.getProducts())
+})
+```
+
+缓存命中时自动设置 `X-Cache: HIT` 和 `Cache-Control: public, max-age=N` 响应头。
+
+### 运行时 API
+
+```js
+// 按标签批量失效
+await app.cache.invalidate('products')
+
+// 清空所有缓存
+await app.cache.clear()
+
+// 查看缓存统计
+const stats = app.cache.stats()
+// → { entries: 42, hits: 128, misses: 31, hitRate: 0.805 }
+```
+
+### 全局配置
+
+```js
+// src/config/default.js
+export default {
+  cache: {
+    enabled: true,       // 是否启用（默认 true）
+    defaultTtl: 60,      // 默认 TTL 秒数
+    maxEntries: 1000,    // 最大缓存条目数
+  },
+}
+```
+
+---
+
 ## 📖 OpenAPI 文档
 
 启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.1 文档，并提供交互式文档页面。
@@ -784,6 +839,7 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] Native Adapter 性能优化（Overhead 降至 ~20%，领先 Fastify 15-45%）
 - [x] `vext create` 项目脚手架
 - [x] 文档站（rspress）
+- [x] 路由级响应缓存（LRU 内存存储，标签失效，Vary headers）
 - [ ] SSE 支持
 - [ ] WebSocket 支持
 

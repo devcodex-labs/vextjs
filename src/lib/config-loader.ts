@@ -463,6 +463,46 @@ function validateConfig(config: Record<string, unknown>): void {
       );
     }
   }
+
+  // ── cache ──────────────────────────────────────────────
+  const cache = config.cache as Record<string, unknown> | undefined;
+  if (cache !== undefined) {
+    if (typeof cache !== "object" || cache === null) {
+      throw new Error("[vextjs] config.cache must be an object.");
+    }
+    if (cache.enabled !== undefined && typeof cache.enabled !== "boolean") {
+      throw new Error("[vextjs] config.cache.enabled must be a boolean.");
+    }
+    const defaultTtl = cache.defaultTtl;
+    if (
+      defaultTtl !== undefined &&
+      (typeof defaultTtl !== "number" || defaultTtl <= 0)
+    ) {
+      throw new Error(
+        `[vextjs] config.cache.defaultTtl must be a positive number (seconds), got: ${defaultTtl}`,
+      );
+    }
+    const maxEntries = cache.maxEntries;
+    if (
+      maxEntries !== undefined &&
+      (typeof maxEntries !== "number" ||
+        !Number.isInteger(maxEntries) ||
+        maxEntries < 1)
+    ) {
+      throw new Error(
+        `[vextjs] config.cache.maxEntries must be a positive integer, got: ${maxEntries}`,
+      );
+    }
+    const maxMemory = cache.maxMemory;
+    if (
+      maxMemory !== undefined &&
+      (typeof maxMemory !== "number" || maxMemory <= 0)
+    ) {
+      throw new Error(
+        `[vextjs] config.cache.maxMemory must be a positive number (bytes), got: ${maxMemory}`,
+      );
+    }
+  }
 }
 
 // ── 动态导入辅助 ────────────────────────────────────────────

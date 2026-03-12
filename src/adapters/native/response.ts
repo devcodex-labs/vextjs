@@ -101,6 +101,9 @@ class NativeVextResponse implements VextResponse {
   /** 重复发送保护标志（防止 handler 中多次调用 json/rawJson/text） */
   private _sent: boolean = false;
 
+  /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
+  _onSend?: (data: unknown, statusCode: number) => void;
+
   constructor(serverResponse: ServerResponse, getRequestId: () => string) {
     this._serverResponse = serverResponse;
     this._getRequestId = getRequestId;
@@ -203,6 +206,11 @@ class NativeVextResponse implements VextResponse {
 
     const finalStatus = status ?? this._status;
     this._status = finalStatus;
+
+    // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+    if (this._onSend) {
+      this._onSend(data, finalStatus);
+    }
 
     if (this._wrapEnabled) {
       // 204 No Content 不能有消息体（RFC 9110 §15.3.5）

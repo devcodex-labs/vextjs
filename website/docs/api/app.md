@@ -405,6 +405,44 @@ declare module 'vextjs' {
 
 ---
 
+#### `app.cache`
+
+路由缓存管理 API。在 `createApp` 阶段初始化，提供缓存失效、删除、清空、统计等操作。
+
+```typescript
+cache: {
+  invalidate(tag: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  clear(): Promise<void>;
+  stats(): { entries: number; hits: number; misses: number; hitRate: number };
+};
+```
+
+| 方法 | 说明 |
+|------|------|
+| `invalidate(tag)` | 按标签批量失效所有关联缓存条目 |
+| `delete(key)` | 删除指定 key 的缓存 |
+| `clear()` | 清空所有缓存条目 |
+| `stats()` | 返回缓存统计（条目数、命中数、未命中数、命中率） |
+
+```typescript
+// 商品更新后失效相关缓存
+app.post('/products', {}, async (req, res) => {
+  await db.createProduct(req.body);
+  await app.cache.invalidate('products');
+  res.json({ created: true }, 201);
+});
+
+// 查看缓存统计
+app.get('/admin/cache-stats', {}, async (req, res) => {
+  res.json(app.cache.stats());
+});
+```
+
+详见 [路由缓存指南](/guide/cache)。
+
+---
+
 #### `app.adapter`
 
 底层适配器实例（由 `resolveAdapter()` 解析后挂载）。

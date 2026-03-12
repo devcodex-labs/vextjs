@@ -131,6 +131,7 @@
     "@types/express": "^5.0.6",
     "@types/koa": "^3.0.1",
     "@types/node": "^22.15.17",
+    "@vitest/coverage-v8": "^3.2.4",
     "autocannon": "^8.0.0",
     "express": "^5.2.1",
     "fastify": "^5.7.4",

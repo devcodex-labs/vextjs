@@ -44,7 +44,7 @@ export default defineConfig({
         activeMatch: "/benchmark",
       },
       {
-        text: "v0.1.5",
+        text: "v0.1.6",
         items: [
           {
             text: "更新日志",
@@ -75,6 +75,7 @@ export default defineConfig({
             { text: "中间件", link: "/guide/middleware" },
             { text: "插件", link: "/guide/plugins" },
             { text: "参数校验", link: "/guide/validation" },
+            { text: "路由缓存", link: "/guide/cache" },
             { text: "配置", link: "/guide/configuration" },
           ],
         },

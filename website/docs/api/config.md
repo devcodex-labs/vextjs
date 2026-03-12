@@ -574,6 +574,31 @@ VEXT_CLUSTER=1 node dist/index.js
 
 ---
 
+## VextCacheConfig
+
+路由级响应缓存全局配置。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | `boolean` | `true` | 是否启用路由缓存 |
+| `defaultTtl` | `number` | `60` | 路由未指定 TTL 时的默认值（秒） |
+| `maxEntries` | `number` | `1000` | LRU 最大缓存条目数 |
+| `maxMemory` | `number` | `52428800` | 最大内存占用 bytes（默认 50MB） |
+
+```typescript
+export default {
+  cache: {
+    enabled: true,
+    defaultTtl: 120,
+    maxEntries: 2000,
+  },
+};
+```
+
+路由级缓存通过 `RouteOptions.cache` 配置，详见 [路由缓存指南](/guide/cache)。
+
+---
+
 ## DEFAULT_CONFIG
 
 框架内置默认配置的完整值：

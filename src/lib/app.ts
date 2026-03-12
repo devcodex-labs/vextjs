@@ -9,10 +9,12 @@ import type {
   VextServices,
   VextValidator,
   VextRateLimiter,
+  CacheStore,
 } from "../types/app.js";
 import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextServerHandle } from "../types/adapter.js";
+import { MemoryCacheStore } from "./cache/memory-store.js";
 
 /**
  * 框架内部方法接口（不暴露给用户，仅 bootstrap 使用）
@@ -144,6 +146,15 @@ export function createApp(config: VextConfig): {
   //
   const defaultThrow = createDefaultThrow();
 
+  // ── 创建缓存存储（MemoryCacheStore，Phase 1 路由缓存）──────
+  //
+  // 在 createApp 阶段初始化（与 app.logger / app.throw 同模式），
+  // config 在 createApp 参数中已可用，无需等到 bootstrap 阶段。
+  //
+  const cacheStore = new MemoryCacheStore({
+    maxEntries: config.cache?.maxEntries ?? 1000,
+  });
+
   // ── 创建 app 对象 ──────────────────────────────────────────
 
   const app: VextApp = {
@@ -208,6 +219,26 @@ export function createApp(config: VextConfig): {
         );
       }
       globalMiddlewares.push(middleware);
+    },
+
+    // ── 缓存管理 API（Phase 1 路由缓存）──────────────────────
+    cache: {
+      async invalidate(tag: string) {
+        await cacheStore.invalidateByTag(tag);
+      },
+      async delete(key: string) {
+        await cacheStore.delete(key);
+      },
+      async clear() {
+        await cacheStore.clear();
+      },
+      stats() {
+        return cacheStore.stats();
+      },
+      _getStore(_name?: string): CacheStore {
+        // MVP: 仅支持内置 memory store。Phase 3 按 name 查找自定义 store。
+        return cacheStore;
+      },
     },
 
     // ── fetch 占位（由 bootstrap 在步骤 ④+ 覆盖为 createVextFetch 实例）──
