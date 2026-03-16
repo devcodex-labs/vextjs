@@ -7,11 +7,17 @@ import { DevCompiler } from "./compiler.js";
 import type { CompileStats } from "./compiler.js";
 import { HotSwappableHandler } from "./hot-swappable-handler.js";
 import { SoftReloader } from "./soft-reloader.js";
+import { reloadModels as reloadModelDefs } from "./model-reloader.js";
+import type { ModelReloadResult } from "./model-reloader.js";
 import { loadConfig } from "../config-loader.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
 import { loadI18n } from "../i18n-loader.js";
 import { loadPlugins } from "../plugin-loader.js";
+import {
+  createMonSQLizePlugin,
+  shouldLoadMonSQLize,
+} from "../plugins/monsqlize/index.js";
 import { loadMiddlewares } from "../middleware-loader.js";
 import { loadServices } from "../service-loader.js";
 import { loadRoutes } from "../router-loader.js";
@@ -256,6 +262,30 @@ export async function devBootstrap(
           `[vext dev] i18n locales loaded: ${loadedLocales.join(", ")}`,
         );
       }
+    }
+
+    // ── 步骤 3.5: 内置插件（MonSQLize）条件加载（P0 修复）──
+    //
+    // 生产 bootstrap.ts 有此步骤，dev-bootstrap 原先缺失，
+    // 导致 dev 模式下 app.db / app.monsqlize 不存在。
+    //
+    // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
+    // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
+    // 无 database 配置则完全跳过，零开销。
+    //
+    // 注意：dev 模式使用 outDir（编译产物目录）而非 srcDir，
+    // 因为 dev 子进程不带 tsx loader，需要从 .vext/dev/models/ 加载 CJS 编译产物。
+    //
+    const hasMonsqlize = shouldLoadMonSQLize(
+      config as unknown as Record<string, unknown>,
+    );
+    if (hasMonsqlize) {
+      const monsqlizePlugin = createMonSQLizePlugin(outDir);
+      app.logger.debug(
+        "[vext dev] built-in plugin: monsqlize (database config detected)",
+      );
+      await monsqlizePlugin.setup(app);
+      app.logger.info("[vext dev] built-in plugin: monsqlize loaded");
     }
 
     // ── 步骤 4: 加载插件 ─────────────────────────────────
@@ -520,6 +550,16 @@ export async function devBootstrap(
     // RouteReloaderMiddleware 使用 ctx/next 两参数），
     // 但运行时实际传递的函数是同一个对象，adapter 内部做转换。
     //
+    // ── 步骤 12b-pre: 构造 reloadModels 闭包 ────────────
+    //
+    // 仅当 monSQLize 插件已加载时，构造 model 重载闭包注入 SoftReloader。
+    // 闭包捕获 app 和 outDir，SoftReloader 在 Step 4.5 调用。
+    //
+    const reloadModelsClosure = hasMonsqlize
+      ? (invalidated: Set<string>): Promise<ModelReloadResult> =>
+          reloadModelDefs(app as any, outDir, invalidated)
+      : undefined;
+
     const builtinMwCreators: BuiltinMiddlewareCreators = {
       createRequestIdMiddleware: ((cfg: Record<string, unknown>) =>
         createRequestIdMiddleware(
@@ -556,6 +596,8 @@ export async function devBootstrap(
       createNotFoundHandler: createNotFoundHandler as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
+      // 🆕 monSQLize 热重载：传递 reloadModels 闭包（仅当 monsqlize 已加载）
+      reloadModels: reloadModelsClosure,
       // 🆕 BUG-022 修复：传递 openapiConfig 使热重载后自动重新注册 /docs + /openapi.json
       openapiConfig: openapiEnabled
         ? (openapiConfig as Record<string, unknown>)

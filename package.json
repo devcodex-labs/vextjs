@@ -97,7 +97,7 @@
     "fast-glob": "^3.3.3",
     "find-my-way": "^9.5.0",
     "flex-rate-limit": "1.0.3",
-    "monsqlize": "1.1.7",
+    "monsqlize": "1.1.8",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "schema-dsl": "^1.2.5"

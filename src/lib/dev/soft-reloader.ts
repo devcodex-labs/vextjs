@@ -5,6 +5,7 @@ import type { HotSwappableHandler } from "./hot-swappable-handler.js";
 import { invalidateAndEvict } from "./cache-invalidator.js";
 import { reloadServices } from "./service-reloader.js";
 import type { ServiceReloadResult } from "./service-reloader.js";
+import type { ModelReloadResult } from "./model-reloader.js";
 import { reloadRoutes } from "./route-reloader.js";
 import type {
   RouteReloaderApp,
@@ -139,6 +140,15 @@ export interface SoftReloaderOptions {
    * 修复 BUG-022：热重载后 /docs 和 /openapi.json 返回 404。
    */
   openapiConfig?: Record<string, unknown>;
+
+  /**
+   * Model 重载函数（可选）
+   *
+   * 如果提供，soft reload 时在 services 重载之后、routes 重载之前
+   * 调用此函数重新加载变更的 model 定义。
+   * 仅当 monSQLize 插件已加载时注入。
+   */
+  reloadModels?: (invalidated: Set<string>) => Promise<ModelReloadResult>;
 }
 
 /**
@@ -169,6 +179,9 @@ export interface SoftReloadResult {
   /** 服务重载耗时（毫秒） */
   serviceTime: number;
 
+  /** Model 重载耗时（毫秒） */
+  modelTime: number;
+
   /** 路由重载耗时（毫秒） */
   routeTime: number;
 
@@ -183,6 +196,9 @@ export interface SoftReloadResult {
 
   /** 服务重载结果 */
   serviceResult?: ServiceReloadResult;
+
+  /** Model 重载结果 */
+  modelResult?: ModelReloadResult;
 
   /** 内存报告 */
   memoryReport?: MemoryReport;
@@ -243,6 +259,9 @@ export class SoftReloader {
   private readonly configureI18n?: ConfigureI18nFn;
   private readonly getGlobalMiddlewares: () => RouteReloaderMiddleware[];
   private readonly openapiConfig?: Record<string, unknown>;
+  private readonly reloadModelsFn?: (
+    invalidated: Set<string>,
+  ) => Promise<ModelReloadResult>;
 
   /**
    * v2.2 并发锁 — 防止多次 softReload 并行执行
@@ -287,6 +306,7 @@ export class SoftReloader {
     this.configureI18n = options.configureI18n;
     this.getGlobalMiddlewares = options.getGlobalMiddlewares;
     this.openapiConfig = options.openapiConfig;
+    this.reloadModelsFn = options.reloadModels;
   }
 
   // ── 公开方法 ──────────────────────────────────────────────
@@ -326,6 +346,7 @@ export class SoftReloader {
         i18nTime: 0,
         middlewareTime: 0,
         serviceTime: 0,
+        modelTime: 0,
         routeTime: 0,
         swapTime: 0,
         tier: "T1:code",
@@ -413,6 +434,7 @@ export class SoftReloader {
     let i18nEnd = startTime;
     let mwEnd = startTime;
     let svcEnd = startTime;
+    let modelEnd = startTime;
     let routeEnd = startTime;
     let swapEnd = startTime;
 
@@ -474,6 +496,7 @@ export class SoftReloader {
           i18nTime: 0,
           middlewareTime: 0,
           serviceTime: 0,
+          modelTime: 0,
           routeTime: 0,
           swapTime: 0,
           tier,
@@ -512,6 +535,14 @@ export class SoftReloader {
       );
       svcEnd = performance.now();
 
+      // ── Step 4.5: 选择性重载 models ─────────────────────
+
+      let modelResult: ModelReloadResult | undefined;
+      if (this.reloadModelsFn) {
+        modelResult = await this.reloadModelsFn(cacheResult.invalidated);
+      }
+      modelEnd = performance.now();
+
       // ── Step 5: 创建新 adapter + 重载 routes ────────────
 
       const globalMiddlewares = this.getGlobalMiddlewares();
@@ -546,7 +577,8 @@ export class SoftReloader {
           `i18n:${(i18nEnd - cacheEnd).toFixed(0)}ms ` +
           `mw:${(mwEnd - i18nEnd).toFixed(0)}ms ` +
           `svc:${(svcEnd - mwEnd).toFixed(0)}ms ` +
-          `route:${(routeEnd - svcEnd).toFixed(0)}ms ` +
+          `model:${(modelEnd - svcEnd).toFixed(0)}ms ` +
+          `route:${(routeEnd - modelEnd).toFixed(0)}ms ` +
           `swap:${(swapEnd - routeEnd).toFixed(0)}ms) ` +
           `[${cacheResult.evicted} modules evicted] ` +
           `#${reloadCount}`,
@@ -566,11 +598,13 @@ export class SoftReloader {
         i18nTime: i18nEnd - cacheEnd,
         middlewareTime: mwEnd - i18nEnd,
         serviceTime: svcEnd - mwEnd,
-        routeTime: routeEnd - svcEnd,
+        modelTime: modelEnd - svcEnd,
+        routeTime: routeEnd - modelEnd,
         swapTime: swapEnd - routeEnd,
         tier,
         evictedModules: cacheResult.evicted,
         serviceResult,
+        modelResult,
         memoryReport,
       };
     } catch (err) {
@@ -606,7 +640,8 @@ export class SoftReloader {
         i18nTime: i18nEnd - cacheEnd,
         middlewareTime: mwEnd - i18nEnd,
         serviceTime: svcEnd - mwEnd,
-        routeTime: routeEnd - svcEnd,
+        modelTime: modelEnd - svcEnd,
+        routeTime: routeEnd - modelEnd,
         swapTime: 0,
         tier,
         evictedModules: 0,

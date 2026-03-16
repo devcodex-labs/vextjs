@@ -12,7 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet._
+> Target: v0.1.7 — dev 模式 P0 修复 + Model 热重载
+
+### Fixed
+- **BUG-028**: `dev-bootstrap.ts` 缺失 monSQLize 插件加载 — dev 模式启动时未加载内置 monsqlize 插件，导致 `app.db` / `app.monsqlize` 为 undefined。修复为在 dev-bootstrap 中条件检测 `shouldLoadMonSQLize(config)` 并使用 `createMonSQLizePlugin` 加载（使用 `outDir` 路径）。
+
+### Added
+- **DEV-001**: Model 热重载（monSQLize Hot Reload） — `vext dev` 模式下修改 `src/models/` 目录中的 model 定义文件时，自动触发选择性 Model 重载。
+  - 新增 `model-reloader.ts` 模块，参照 `service-reloader.ts` 模式实现。
+  - 使用 monSQLize v1.1.8 的 `Model.redefine()` / `Model.undefine()` API。
+  - 仅重载 invalidation set 中的 model 文件，其他保持不变。
+  - 失败时全量回滚到旧定义，保证 Model 注册表一致性。
+  - Soft Reload 日志新增 `model:Xms` 计时指标。
+
+### Changed
+- **DEP-001**: 升级 `monsqlize` 依赖 `1.1.7` → `1.1.8`，启用 `Model.redefine` / `Model.undefine` 静态方法。
 
 ---
 
