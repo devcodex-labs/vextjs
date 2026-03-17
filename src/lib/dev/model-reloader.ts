@@ -14,7 +14,7 @@ const esmRequire = createRequire(import.meta.url);
  * model-reloader.ts — 选择性 Model 定义重载（monSQLize 热重载集成）
  *
  * Soft Reload 时只重新加载 invalidation set 中包含的 model 定义文件，
- * 其他 model 定义保持不变。使用 monSQLize v1.1.8 的 Model.redefine() API。
+ * 其他 model 定义保持不变。使用 monSQLize v1.1.8 原生 Model.redefine() API。
  *
  * 核心流程：
  *
@@ -91,14 +91,12 @@ interface SavedModelEntry {
 /**
  * ModelClassAPI — model-reloader 所需的 Model 静态方法接口
  *
- * 核心方法（monSQLize 原生）：
- *   - define(name, definition)  — 注册新 model
- *   - has(name)                 — 检查 model 是否已注册
- *   - getDefinition(name)       — 获取 model 定义对象（从 registry entry 中提取 .definition）
- *
- * Polyfill 方法（使用 _registry 模拟，monSQLize 未原生提供）：
- *   - redefine(name, definition) — 更新已有 model 定义（delete + define）
- *   - undefine(name)             — 移除 model 定义（delete from _registry）
+ * 全部使用 monSQLize v1.1.8 原生 API：
+ *   - define(name, definition)    — 注册新 model
+ *   - redefine(name, definition)  — 更新已有 model 定义（v1.1.7+）
+ *   - undefine(name)              — 移除 model 定义（v1.1.7+）
+ *   - has(name)                   — 检查 model 是否已注册
+ *   - getDefinition(name)         — 获取 model 定义对象（从 registry entry 中提取 .definition）
  */
 interface ModelClassAPI {
   define: (name: string, definition: unknown) => void;
@@ -111,13 +109,9 @@ interface ModelClassAPI {
 /**
  * getModelClass — 获取 monSQLize 的 Model 静态类并包装为统一接口
  *
- * monSQLize 的 Model 类原生提供 define / has / get，
- * 但 get 返回 { collectionName, definition } 包装对象，
- * 且没有 redefine / undefine 方法。
- *
- * 本函数通过 _registry（Map）操作 polyfill 这两个方法：
- *   - redefine: _registry.delete(name) → define(name, newDef)
- *   - undefine: _registry.delete(name)
+ * monSQLize v1.1.8 原生提供 define / has / get / redefine / undefine。
+ * get 返回 { collectionName, definition } 包装对象，
+ * 本函数额外提供 getDefinition() 便捷方法提取纯 definition。
  *
  * @returns 统一的 Model 操作接口
  */
@@ -130,15 +124,18 @@ async function getModelClass(): Promise<ModelClassAPI> {
 
   const ModelStatic = MonSQLizeClass.Model as {
     define: (name: string, definition: unknown) => void;
+    redefine: (name: string, definition: unknown) => void;
+    undefine: (name: string) => boolean;
     has: (name: string) => boolean;
     get: (
       name: string,
     ) => { collectionName: string; definition: unknown } | undefined;
-    _registry: Map<string, { collectionName: string; definition: unknown }>;
   };
 
   return {
     define: ModelStatic.define.bind(ModelStatic),
+    redefine: ModelStatic.redefine.bind(ModelStatic),
+    undefine: ModelStatic.undefine.bind(ModelStatic),
     has: ModelStatic.has.bind(ModelStatic),
 
     /**
@@ -150,26 +147,6 @@ async function getModelClass(): Promise<ModelClassAPI> {
     getDefinition(name: string): unknown | undefined {
       const entry = ModelStatic.get(name);
       return entry?.definition;
-    },
-
-    /**
-     * redefine — 更新已注册的 model 定义
-     *
-     * Polyfill：从 _registry 中删除旧条目，再用 define() 重新注册。
-     * 这保证 define() 的所有内部校验逻辑仍然被执行。
-     */
-    redefine(name: string, definition: unknown): void {
-      ModelStatic._registry.delete(name);
-      ModelStatic.define(name, definition);
-    },
-
-    /**
-     * undefine — 移除已注册的 model 定义
-     *
-     * Polyfill：直接从 _registry Map 中删除条目。
-     */
-    undefine(name: string): boolean {
-      return ModelStatic._registry.delete(name);
     },
   };
 }

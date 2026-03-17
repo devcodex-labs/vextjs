@@ -49,7 +49,7 @@ export interface MonSQLizeConnection {
   model: (name: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
 
   /** 原始 MongoDB Client（事务等高级场景） */
-  readonly client: import("mongodb").MongoClient;
+  readonly client: any;
 }
 
 // ── 配置类型 ────────────────────────────────────────────────

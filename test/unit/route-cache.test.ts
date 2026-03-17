@@ -210,10 +210,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("MISS 时应调用 next 并设置 X-Cache: MISS", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
     expect(middleware).not.toBeNull();
 
     const req = createMockReq();
@@ -231,10 +228,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("MISS 时应注册 _onSend 钩子", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -246,10 +240,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("MISS → handler 调用 json() → 触发 _onSend → 缓存写入", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -268,10 +259,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("HIT 时应直接返回缓存数据并设置 X-Cache: HIT", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     // 第一次请求：MISS → 写入缓存
     const req1 = createMockReq();
@@ -315,11 +303,12 @@ describe("buildRouteCacheMiddleware", () => {
 
     // 应直接调用 next，不走缓存
     expect(next).toHaveBeenCalled();
-    // 不应设置 X-Cache
-    expect(
-      res._headerCalls.find((h) => h.name === "X-Cache"),
-    ).toBeUndefined();
-    // 不应注册 _onSend
+    // condition=false 时跳过缓存，应设置 X-Cache: MISS（让客户端感知缓存被跳过）
+    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
+      name: "X-Cache",
+      value: "MISS",
+    });
+    // 不应注册 _onSend（跳过缓存，不写入）
     expect(res._onSend).toBeUndefined();
   });
 
@@ -340,10 +329,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("204 响应不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -358,10 +344,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("非 2xx 响应不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -376,10 +359,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("Cache-Control 响应头应正确设置", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 120 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 120 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -389,9 +369,7 @@ describe("buildRouteCacheMiddleware", () => {
 
     await middleware(req, res, next);
 
-    const ccHeader = res._headerCalls.find(
-      (h) => h.name === "Cache-Control",
-    );
+    const ccHeader = res._headerCalls.find((h) => h.name === "Cache-Control");
     expect(ccHeader).toBeDefined();
     expect(ccHeader!.value).toBe("public, max-age=120");
   });
@@ -410,9 +388,7 @@ describe("buildRouteCacheMiddleware", () => {
 
     await middleware(req, res, next);
 
-    const ccHeader = res._headerCalls.find(
-      (h) => h.name === "Cache-Control",
-    );
+    const ccHeader = res._headerCalls.find((h) => h.name === "Cache-Control");
     expect(ccHeader).toBeUndefined();
   });
 
@@ -421,17 +397,18 @@ describe("buildRouteCacheMiddleware", () => {
     const now = Date.now();
     vi.setSystemTime(now);
 
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 120 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 120 }, () => store)!;
 
     // MISS → 写入缓存
     const req1 = createMockReq();
     const res1 = createMockRes();
-    await middleware(req1, res1, vi.fn(async () => {
-      res1.json({ data: "cached" });
-    }));
+    await middleware(
+      req1,
+      res1,
+      vi.fn(async () => {
+        res1.json({ data: "cached" });
+      }),
+    );
 
     // 30 秒后 HIT
     vi.setSystemTime(now + 30_000);
@@ -439,9 +416,7 @@ describe("buildRouteCacheMiddleware", () => {
     const res2 = createMockRes();
     await middleware(req2, res2, vi.fn());
 
-    const ccHeader = res2._headerCalls.find(
-      (h) => h.name === "Cache-Control",
-    );
+    const ccHeader = res2._headerCalls.find((h) => h.name === "Cache-Control");
     expect(ccHeader).toBeDefined();
     expect(ccHeader!.value).toBe("public, max-age=90"); // 120 - 30
 
@@ -456,9 +431,13 @@ describe("buildRouteCacheMiddleware", () => {
 
     const req = createMockReq();
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json({ data: "test" });
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json({ data: "test" });
+      }),
+    );
 
     const cached = store.get("GET:/products");
     expect(cached).not.toBeNull();
@@ -480,9 +459,13 @@ describe("buildRouteCacheMiddleware", () => {
       headers: { "accept-language": "zh-CN" },
     });
     const res1 = createMockRes();
-    await middleware(req1, res1, vi.fn(async () => {
-      res1.json({ lang: "zh-CN" });
-    }));
+    await middleware(
+      req1,
+      res1,
+      vi.fn(async () => {
+        res1.json({ lang: "zh-CN" });
+      }),
+    );
 
     // 英文请求（不同 key）
     const req2 = createMockReq({
@@ -517,9 +500,13 @@ describe("buildRouteCacheMiddleware", () => {
 
     const req = createMockReq({ params: { id: "42" } });
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json({ id: 42 });
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json({ id: 42 });
+      }),
+    );
 
     const cached = store.get("custom:42");
     expect(cached).not.toBeNull();
@@ -529,10 +516,7 @@ describe("buildRouteCacheMiddleware", () => {
   // ── 补充边界场景 ─────────────────────────────────────────
 
   it("handler 不调用任何发送方法 → 不缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -546,10 +530,7 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("handler 抛出异常应传播错误（不缓存）", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
@@ -565,17 +546,18 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("HIT 返回非 200 状态码（如 201）应正确传递", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     // MISS → 写入 201 缓存
     const req1 = createMockReq();
     const res1 = createMockRes();
-    await middleware(req1, res1, vi.fn(async () => {
-      res1.json({ id: 1, created: true }, 201);
-    }));
+    await middleware(
+      req1,
+      res1,
+      vi.fn(async () => {
+        res1.json({ id: 1, created: true }, 201);
+      }),
+    );
 
     // HIT → 应返回 201
     const req2 = createMockReq();
@@ -633,9 +615,13 @@ describe("buildRouteCacheMiddleware", () => {
 
     // 不应抛出异常
     await expect(
-      middleware(req, res, vi.fn(async () => {
-        res.json({ data: "test" });
-      })),
+      middleware(
+        req,
+        res,
+        vi.fn(async () => {
+          res.json({ data: "test" });
+        }),
+      ),
     ).resolves.not.toThrow();
   });
 
@@ -669,9 +655,10 @@ describe("buildRouteCacheMiddleware", () => {
     // 应 HIT
     expect(next).not.toHaveBeenCalled();
     expect(res._jsonCalls[0]!.data).toEqual({ cached: true });
-    expect(
-      res._headerCalls.find((h) => h.name === "X-Cache"),
-    ).toEqual({ name: "X-Cache", value: "HIT" });
+    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
+      name: "X-Cache",
+      value: "HIT",
+    });
   });
 
   it("多个 vary headers 应全部包含在 key 中", () => {
@@ -688,46 +675,49 @@ describe("buildRouteCacheMiddleware", () => {
   });
 
   it("1xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json(null, 100);
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json(null, 100);
+      }),
+    );
 
     expect(store.get("GET:/products")).toBeNull();
   });
 
   it("3xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json({ redirect: true }, 301);
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json({ redirect: true }, 301);
+      }),
+    );
 
     expect(store.get("GET:/products")).toBeNull();
   });
 
   it("5xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => store,
-    )!;
+    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
 
     const req = createMockReq();
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json({ error: "internal" }, 500);
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json({ error: "internal" }, 500);
+      }),
+    );
 
     expect(store.get("GET:/products")).toBeNull();
   });
@@ -740,14 +730,19 @@ describe("buildRouteCacheMiddleware", () => {
 
     const req = createMockReq();
     const res = createMockRes();
-    await middleware(req, res, vi.fn(async () => {
-      res.json({ data: "test" });
-    }));
+    await middleware(
+      req,
+      res,
+      vi.fn(async () => {
+        res.json({ data: "test" });
+      }),
+    );
 
     // 应注册 _onSend
-    expect(
-      res._headerCalls.find((h) => h.name === "X-Cache"),
-    ).toEqual({ name: "X-Cache", value: "MISS" });
+    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
+      name: "X-Cache",
+      value: "MISS",
+    });
   });
 });
 
@@ -787,4 +782,3 @@ describe("normalizeCacheOptions 补充", () => {
     expect(result).toEqual(opts);
   });
 });
-

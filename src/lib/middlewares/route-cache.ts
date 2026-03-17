@@ -118,11 +118,19 @@ export function buildRouteCacheMiddleware(
 ): VextMiddleware | null {
   if (!cacheOpts) return null;
 
-  const { ttl, key: keyFn, condition, vary = [], cacheControl = true, tags = [] } = cacheOpts;
+  const {
+    ttl,
+    key: keyFn,
+    condition,
+    vary = [],
+    cacheControl = true,
+    tags = [],
+  } = cacheOpts;
 
   const cacheMiddleware: VextMiddleware = async (req, res, next) => {
     // ── condition 检查 ───────────────────────────────────
     if (condition && !condition(req)) {
+      res.setHeader("X-Cache", "MISS");
       await next();
       return;
     }
@@ -191,4 +199,3 @@ export function buildRouteCacheMiddleware(
 
   return cacheMiddleware;
 }
-

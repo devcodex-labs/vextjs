@@ -12,21 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> Target: v0.1.7 — dev 模式 P0 修复 + Model 热重载
+---
+
+## [0.1.7] - 2026-03-17
+
+> 📄 [Detailed changelog →](./changelogs/v0.1.7.md)
 
 ### Fixed
 - **BUG-028**: `dev-bootstrap.ts` 缺失 monSQLize 插件加载 — dev 模式启动时未加载内置 monsqlize 插件，导致 `app.db` / `app.monsqlize` 为 undefined。修复为在 dev-bootstrap 中条件检测 `shouldLoadMonSQLize(config)` 并使用 `createMonSQLizePlugin` 加载（使用 `outDir` 路径）。
+- **BUG-029**: `route-cache.ts` condition 返回 false 时未设置 `X-Cache` 头 — 当 `condition(req)` 返回 false（跳过缓存）时，中间件直接透传给 handler，响应头中缺少 `X-Cache: MISS`，客户端无法感知缓存被跳过。修复为在 condition 分支补充 `res.setHeader("X-Cache", "MISS")`。同步更新 `route-cache.test.ts` 断言对齐新行为。
 
 ### Added
 - **DEV-001**: Model 热重载（monSQLize Hot Reload） — `vext dev` 模式下修改 `src/models/` 目录中的 model 定义文件时，自动触发选择性 Model 重载。
   - 新增 `model-reloader.ts` 模块，参照 `service-reloader.ts` 模式实现。
-  - 使用 monSQLize v1.1.8 的 `Model.redefine()` / `Model.undefine()` API。
+  - 使用 monSQLize v1.1.8 原生 `Model.redefine()` / `Model.undefine()` API（移除 `_registry` polyfill）。
   - 仅重载 invalidation set 中的 model 文件，其他保持不变。
   - 失败时全量回滚到旧定义，保证 Model 注册表一致性。
   - Soft Reload 日志新增 `model:Xms` 计时指标。
 
 ### Changed
-- **DEP-001**: 升级 `monsqlize` 依赖 `1.1.7` → `1.1.8`，启用 `Model.redefine` / `Model.undefine` 静态方法。
+- **DEP-001**: 升级 `monsqlize` 依赖 `^1.1.7` → `^1.1.8`，启用 `Model.redefine` / `Model.undefine` 静态方法；取消本地 `npm link`，安装正式 npm 包。
 
 ---
 

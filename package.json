@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "VextJS is a modern Node.js web framework with adapter architecture, plugin system, and out-of-the-box features for building high-performance RESTful APIs.",
   "type": "module",
   "main": "./dist/index.js",
@@ -97,7 +97,7 @@
     "fast-glob": "^3.3.3",
     "find-my-way": "^9.5.0",
     "flex-rate-limit": "1.0.3",
-    "monsqlize": "1.1.8",
+    "monsqlize": "^1.1.8",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
     "schema-dsl": "^1.2.5"

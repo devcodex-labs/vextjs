@@ -105,7 +105,7 @@ export default defineRoutes((app) => {
 
 ### Tier 2 — 服务重载 ⚡
 
-| 触发条件 | `src/services/` 或 `src/locales/` 下的文件变更 |
+| 触发条件 | `src/services/`、`src/models/` 或 `src/locales/` 下的文件变更 |
 |---------|----------------------------------------------|
 | 行为 | 重建受影响的服务实例 |
 | 速度 | 毫秒级（5-50ms） |
@@ -137,6 +137,24 @@ export default class UserService {
     return { items: [], total: 0 };
   }
 }
+```
+
+修改 `src/models/` 目录下的 Model 定义文件同样触发 Tier 2。框架会通过 `Model.redefine()` 原子替换 Model 定义，失败时自动回滚到旧定义，确保服务持续可用：
+
+```typescript
+// 修改这个文件 → Tier 2 Model 重载
+// src/models/item.ts
+export default {
+  name: "Item",
+  collection: "items",
+  schema: {
+    title: "string",
+    description: "string",
+    price: "number",
+    // 新增字段：保存后立即对后续写入操作的 schema 校验生效
+    tags: "string[]",
+  },
+};
 ```
 
 ### Tier 3 — 冷重启 🔄
@@ -177,6 +195,7 @@ export default {
 |---------|---------|------|------|
 | `src/routes/**` | Tier 1 | ⚡ 毫秒级 | 路由处理器原子替换 |
 | `src/services/**` | Tier 2 | ⚡ 毫秒级 | 服务实例重建 |
+| `src/models/**` | Tier 2 | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚 |
 | `src/locales/**` | Tier 2 | ⚡ 毫秒级 | 语言包重新加载 |
 | `src/config/**` | Tier 3 | 🔄 秒级 | 配置影响全局，需重启 |
 | `src/plugins/**` | Tier 3 | 🔄 秒级 | 插件影响全局，需重启 |
@@ -248,6 +267,7 @@ src/
 ├── middlewares/   → Tier 3
 ├── routes/       → Tier 1
 ├── services/     → Tier 2
+├── models/       → Tier 2
 ├── locales/      → Tier 2
 └── types/        → 忽略（仅类型）
 ```

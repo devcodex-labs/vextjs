@@ -7,19 +7,28 @@ import { createRequire } from "node:module";
 const esmRequire = createRequire(import.meta.url);
 
 // Mock monsqlize 的 Model 静态类
-// 源码中 getModelClass() 使用 _registry Map + define/has/get 来 polyfill redefine/undefine
+// monSQLize v1.1.8 原生提供 define/redefine/undefine/has/get
 const mockRegistry = new Map<
   string,
   { collectionName: string; definition: unknown }
 >();
 
 const mockModel = {
-  _registry: mockRegistry,
   define: vi.fn((name: string, definition: unknown) => {
     if (mockRegistry.has(name)) {
       throw new Error(`Model '${name}' is already defined.`);
     }
     mockRegistry.set(name, { collectionName: name, definition });
+  }),
+  redefine: vi.fn((name: string, definition: unknown) => {
+    mockRegistry.delete(name);
+    if (mockRegistry.has(name)) {
+      throw new Error(`Model '${name}' is already defined.`);
+    }
+    mockRegistry.set(name, { collectionName: name, definition });
+  }),
+  undefine: vi.fn((name: string) => {
+    return mockRegistry.delete(name);
   }),
   has: vi.fn((name: string) => mockRegistry.has(name)),
   get: vi.fn((name: string) => mockRegistry.get(name)),
@@ -252,9 +261,8 @@ describe("reloadModels", () => {
       const app = createMockApp();
       await reloadModels(app, outDir, new Set([file]));
 
-      // polyfill redefine = _registry.delete + define
-      // 验证 define 被调用（polyfill 内部调用），且新定义已更新到 registry
-      expect(mockModel.define).toHaveBeenCalledWith(
+      // monSQLize v1.1.8 原生 redefine — 直接调用 Model.redefine()
+      expect(mockModel.redefine).toHaveBeenCalledWith(
         "users",
         expect.any(Object),
       );
@@ -305,10 +313,10 @@ describe("reloadModels", () => {
         reloadModels(app, outDir, new Set([goodFile, badFile])),
       ).rejects.toThrow();
 
-      // good.js 先成功 redefine（_registry.delete + define），然后 bad.js 失败触发回滚
-      // 回滚时 good 的旧定义存在 → polyfill redefine 恢复（再次 _registry.delete + define）
-      // 验证 define 被调用过（包括正向 + 回滚）
-      expect(mockModel.define).toHaveBeenCalled();
+      // good.js 先成功 redefine（原生 API），然后 bad.js 失败触发回滚
+      // 回滚时 good 的旧定义存在 → 调用原生 redefine 恢复旧定义
+      // 验证 redefine 被调用过（包括正向 + 回滚）
+      expect(mockModel.redefine).toHaveBeenCalled();
       // 回滚后 goods 应恢复到 registry 中
       expect(mockRegistry.has("goods")).toBe(true);
     });

@@ -709,6 +709,58 @@ export default {
 [14:23:05.123] WARN [monsqlize] Slow query: users.find({role:"admin"}) 523ms
 ```
 
+## Model 热重载（开发模式）
+
+在 `vext dev` 开发模式下，修改 `src/models/` 目录下的 Model 定义文件会自动触发 **Tier 2 软重载**，框架将重新加载变更的 Model 定义，无需手动重启服务器。
+
+### 工作原理
+
+```
+修改 src/models/item.ts
+  ↓
+esbuild 重新编译 → dist/models/item.js
+  ↓
+model-reloader 检测到 invalidated 文件
+  ↓
+保存旧定义（回滚备份）
+  ↓
+Model.redefine("items", newDefinition)
+  ↓
+新请求使用新 Model 定义
+```
+
+### 重载行为说明
+
+| 场景 | 行为 |
+|------|------|
+| 修改 schema 字段类型 | 下次写入使用新 schema 校验规则 |
+| 修改 hooks | 新的 hooks 立即对后续操作生效 |
+| 修改 indexes | 索引变更需要冷重启才能同步到 MongoDB |
+| 重载失败（如语法错误） | 自动回滚到旧定义，服务继续运行 |
+| 并发请求 | 重载期间正在处理的请求使用旧定义完成，新请求使用新定义 |
+
+### 日志输出示例
+
+保存 `src/models/item.ts` 后，终端会输出：
+
+```
+[vext dev] 1 file(s) changed:
+  🟢 src/models/item.ts (modify)
+[vext dev] source change detected → soft reload [T1:code]...
+[hot-reload] model "items" reloaded
+[hot-reload] [OK] 48ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms model:3ms route:25ms swap:2ms) [12 modules evicted] #3
+```
+
+注意日志中的 `model:3ms` 计时段，表示 Model 重载耗时。
+
+:::tip 回滚保障
+若新 Model 定义存在问题（如 schema 定义抛出异常），框架会自动将旧定义重新注册，确保服务不中断。修复代码后保存，重载会再次触发。
+:::
+
+:::info 框架内部机制
+`Model.redefine()` / `Model.undefine()` 是 monSQLize v1.1.8 提供的原生 API，由 vext 框架在热重载流程中自动调用，用户无需手动调用。
+:::
+
 ## 优雅关闭
 
 MonSQLize 插件在 `app.onClose()` 中注册了数据库连接关闭钩子。当应用收到 `SIGTERM` / `SIGINT` 信号时：
