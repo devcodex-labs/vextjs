@@ -10,6 +10,8 @@
 
 - [ ] **`package.json`** — `version` 字段（主版本号来源）
 - [ ] **`CHANGELOG.md`** — 新增 `[X.Y.Z] - YYYY-MM-DD` 版本条目，将 `[Unreleased]` 中的内容移入
+- [ ] **`src/cli/create.ts`** — `generatePackageJson` 中 `vextjs` 依赖版本（已改为动态读取，确认 `readVextVersion()` 正常工作）
+      smoke test：`vext create test-smoke --skip-install`，检查生成的 `package.json` 中 `vextjs` 版本与 `package.json` 当前版本一致，完成后删除 `test-smoke/`
 - [ ] **`README.md`** — 快速开始 → `"dependencies"` 中的 `"vextjs": "^X.Y.Z"`
 - [ ] **`website/rspress.config.ts`** — 导航栏 `text: "vX.Y.Z"` 版本号
 - [ ] **`website/docs/guide/quick-start.md`** — 手动创建项目 → `"dependencies"` 中的 `"vextjs": "^X.Y.Z"`

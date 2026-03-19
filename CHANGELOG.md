@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.8] - 2026-03-19
+
+> 📄 [Detailed changelog →](./changelogs/v0.1.8.md)
+
+### Fixed
+- **BUG-030**: `vext create` 脚手架 `generatePackageJson` 将 vextjs 依赖硬编码为 `^1.0.0`（npm 上不存在该版本），导致用户执行 `vext create` 后 `npm install` 必然失败。修复为新增 `readVextVersion()` 异步函数动态读取框架自身 `package.json` 版本号（与 `printVersion()` 使用相同 `createRequire` 模式），调用链 `createCommand → generateProject → getTemplateFiles → generatePackageJson` 全链透传 `vextVersion`，读取失败时 fallback 为 `"latest"`。
+
+### Changed
+- **CHORE-001**: `src/cli/index.ts` `printVersion()` 异常 fallback 从已过期的硬编码 `"vextjs v0.1.0"` 改为语义化的 `"vextjs vunknown"`，明确表示版本信息不可用。
+- **CHORE-002**: `RELEASE-CHECKLIST.md` 必须更新清单中补充 `src/cli/create.ts` 检查项，堵住发版流程漏洞（此前即使完整执行清单，BUG-030 也不会被检测到）。
+
+---
+
 ## [0.1.7] - 2026-03-17
 
 > 📄 [Detailed changelog →](./changelogs/v0.1.7.md)
@@ -218,6 +231,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.1.8] | 2026-03-19 | Patch | 脚手架版本硬编码修复 (BUG-030) + 发版流程漏洞堵塞 |
+| [0.1.7] | 2026-03-17 | Minor | Model Hot Reload (DEV-001) + Route Cache Fix (BUG-029) |
+| [0.1.6] | 2026-03-12 | Patch | MonSQLize 集成修复 (BUG-023~027) |
 | [0.1.5] | 2026-03-09 | Minor | Scalar API Reference + OpenAPI pipeline + multi-level routing docs + schema-dsl delegation + 12 bug fixes |
 | [0.1.4] | 2026-03-06 | Patch | CLI entry fix + CJS bundle re-entry guard + detectAndStart catch fix + BuildCompiler dist/package.json + dependency pinning |
 | [0.1.3] | 2026-03-05 | Patch | BUG-004/005/003 critical bug fixes |
@@ -234,7 +250,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/vextjs/vext/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/vextjs/vext/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/vextjs/vext/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/vextjs/vext/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/vextjs/vext/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/vextjs/vext/compare/v0.1.2...v0.1.3

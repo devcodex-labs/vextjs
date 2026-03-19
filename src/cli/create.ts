@@ -92,6 +92,28 @@ const ADAPTER_DEV_DEPS: Record<string, Record<string, string>> = {
   native: {},
 };
 
+// ── 版本读取 ──────────────────────────────────────────────────
+
+/**
+ * readVextVersion — 读取 vext 框架当前版本号
+ *
+ * 动态读取框架自身的 package.json，用于脚手架生成项目时写入正确的 vextjs 依赖范围。
+ * 与 index.ts 的 printVersion() 使用相同的 createRequire 模式，保持实现一致。
+ *
+ * @returns `^X.Y.Z` 格式的版本范围字符串；读取失败时降级为 `"latest"`
+ */
+async function readVextVersion(): Promise<string> {
+  try {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const pkg = require("../../package.json") as { version: string };
+    return `^${pkg.version}`;
+  } catch {
+    // package.json 读取失败时降级为 latest，避免写入不存在的版本号
+    return "latest";
+  }
+}
+
 // ── 主函数 ──────────────────────────────────────────────────
 
 /**
@@ -137,7 +159,8 @@ export async function createCommand(args: string[] = []): Promise<void> {
       `     Template: ${options.template}\n`,
   );
 
-  await generateProject(targetDir, options);
+  const vextVersion = await readVextVersion();
+  await generateProject(targetDir, options, vextVersion);
 
   // ── npm install ───────────────────────────────────────────
   if (!options.skipInstall) {
@@ -287,6 +310,7 @@ function confirmOverwrite(dirName: string): Promise<boolean> {
 async function generateProject(
   targetDir: string,
   options: CreateOptions,
+  vextVersion: string,
 ): Promise<void> {
   const { language } = options;
 
@@ -305,7 +329,7 @@ async function generateProject(
   }
 
   // ── 2. 生成所有模板文件 ────────────────────────────────
-  const templates = getTemplateFiles(options);
+  const templates = getTemplateFiles(options, vextVersion);
 
   for (const [filePath, content] of Object.entries(templates)) {
     const fullPath = path.join(targetDir, filePath);
@@ -346,7 +370,10 @@ async function generateProject(
  * @param options 创建选项
  * @returns 模板文件映射
  */
-function getTemplateFiles(options: CreateOptions): Record<string, string> {
+function getTemplateFiles(
+  options: CreateOptions,
+  vextVersion: string,
+): Record<string, string> {
   const { name, language, adapter } = options;
   const ext = language === "ts" ? "ts" : "js";
   const isTs = language === "ts";
@@ -354,7 +381,12 @@ function getTemplateFiles(options: CreateOptions): Record<string, string> {
   const files: Record<string, string> = {};
 
   // ── package.json ──────────────────────────────────────
-  files["package.json"] = generatePackageJson(name, language, adapter);
+  files["package.json"] = generatePackageJson(
+    name,
+    language,
+    adapter,
+    vextVersion,
+  );
 
   // ── .gitignore ────────────────────────────────────────
   files[".gitignore"] = generateGitignore();
@@ -396,11 +428,12 @@ function generatePackageJson(
   name: string,
   language: "ts" | "js",
   adapter: string,
+  vextVersion: string,
 ): string {
   const isTs = language === "ts";
 
   const deps: Record<string, string> = {
-    vextjs: "^1.0.0",
+    vextjs: vextVersion,
     ...ADAPTER_DEPS[adapter],
   };
 

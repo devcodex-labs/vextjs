@@ -164,7 +164,7 @@ async function printVersion(): Promise<void> {
     console.log(`vextjs v${pkg.version}`);
   } catch {
     // package.json 读取失败（极少发生，如路径变更）
-    console.log("vextjs v0.1.0");
+    console.log("vextjs vunknown");
   }
 }
 
