@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.9] - 2026-03-20
+
+> 📄 [Detailed changelog →](./changelogs/v0.1.9.md)
+
+### Fixed
+- **BUG-031**: 各 adapter（Hono / Express / Fastify / Koa / Native）`text()` 方法在用户通过 `setHeader("Content-Type", "text/html")` 预设响应类型后，调用 `res.text()` 会将 Content-Type 强制覆盖为 `text/plain`，导致 HTML 内容（如 Scalar API 文档页面）在浏览器中显示为源码文本而非渲染页面。修复：改为先设默认 `text/plain; charset=utf-8`，再调 `applyHeaders()` 应用用户通过 `setHeader()` 设置的头信息，使上层 Content-Type 设置得以生效。Hono adapter 额外将 `c.text()` 替换为 `c.body()`，避免 Hono 内部强制重写 Content-Type。
+
+---
+
 ## [0.1.8] - 2026-03-19
 
 > 📄 [Detailed changelog →](./changelogs/v0.1.8.md)

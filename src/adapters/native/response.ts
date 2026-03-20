@@ -268,9 +268,11 @@ class NativeVextResponse implements VextResponse {
 
     const sr = this._serverResponse;
     sr.statusCode = finalStatus;
+    // 先设默认 Content-Type: text/plain，再调 _applyHeaders()
+    // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
     sr.setHeader("Content-Type", "text/plain; charset=utf-8");
-    sr.setHeader("Content-Length", Buffer.byteLength(content));
     this._applyHeaders();
+    sr.setHeader("Content-Length", Buffer.byteLength(content));
     sr.end(content);
   }
 

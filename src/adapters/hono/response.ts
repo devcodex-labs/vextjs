@@ -190,8 +190,15 @@ export function createVextResponse(
       const finalStatus = status ?? _status;
       _status = finalStatus;
       c.status(finalStatus as any);
+      // 先设默认 Content-Type: text/plain，再调 applyHeaders()
+      // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
+      // 最后用 c.body() 而非 c.text()：
+      //   c.text() 会在内部强制重写 Content-Type: text/plain，
+      //   导致 setHeader 设置的 text/html 被覆盖（/docs 页面显示为源码的根因）。
+      //   c.body() 不干预 Content-Type，完全尊重已设置的头信息。
+      c.header("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
-      captureResponse(c.text(content));
+      captureResponse(c.body(content));
     },
 
     stream(

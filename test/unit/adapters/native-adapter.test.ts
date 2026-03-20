@@ -786,6 +786,25 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
       expect(response.body).toBe("Hello, World!");
     });
 
+    it("text() 在 setHeader 预设 Content-Type 后不应覆盖（BUG-031 回归）", async () => {
+      adapter.registerRoute("GET", "/text-html", [
+        async (req, res) => {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.text("<h1>Hello</h1>");
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/text-html",
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/html");
+      expect(response.body).toBe("<h1>Hello</h1>");
+    });
+
     it("text() 可指定状态码", async () => {
       adapter.registerRoute("GET", "/text-status", [
         async (req, res) => {
@@ -1790,10 +1809,7 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
     });
 
     it("maxParamLength 应限制参数长度", async () => {
-      const limitAdapter = createNativeAdapter(
-        { maxParamLength: 5 },
-        mockApp,
-      );
+      const limitAdapter = createNativeAdapter({ maxParamLength: 5 }, mockApp);
 
       limitAdapter.registerNotFound(async (req, res) => {
         res.rawJson({ code: 404, message: "Not Found" }, 404);
@@ -1919,9 +1935,8 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
   describe("AsyncLocalStorage 请求上下文", () => {
     it("请求处理应在 requestContext.run 内执行", async () => {
       // 通过导入 requestContext 验证
-      const { requestContext } = await import(
-        "../../../src/lib/request-context.js"
-      );
+      const { requestContext } =
+        await import("../../../src/lib/request-context.js");
 
       let store: any = null;
 
@@ -1949,18 +1964,16 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
 
   describe("nativeAdapter 工厂函数", () => {
     it("nativeAdapter() 应返回工厂函数", async () => {
-      const { nativeAdapter } = await import(
-        "../../../src/adapters/native/index.js"
-      );
+      const { nativeAdapter } =
+        await import("../../../src/adapters/native/index.js");
 
       const factory = nativeAdapter();
       expect(typeof factory).toBe("function");
     });
 
     it("nativeAdapter() 工厂函数应创建有效的 adapter", async () => {
-      const { nativeAdapter } = await import(
-        "../../../src/adapters/native/index.js"
-      );
+      const { nativeAdapter } =
+        await import("../../../src/adapters/native/index.js");
 
       const factory = nativeAdapter();
       const nAdapter = factory(mockApp);
@@ -1971,9 +1984,8 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
     });
 
     it("nativeAdapter(options) 应传递选项", async () => {
-      const { nativeAdapter } = await import(
-        "../../../src/adapters/native/index.js"
-      );
+      const { nativeAdapter } =
+        await import("../../../src/adapters/native/index.js");
 
       const factory = nativeAdapter({ caseSensitive: true });
       const csAdapter = factory(mockApp);

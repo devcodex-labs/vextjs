@@ -197,9 +197,11 @@ export function createVextResponse(
       _status = finalStatus;
 
       expressRes.statusCode = finalStatus;
+      // 先设默认 Content-Type: text/plain，再调 applyHeaders()
+      // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
+      expressRes.setHeader("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
 
-      expressRes.setHeader("Content-Type", "text/plain; charset=utf-8");
       expressRes.end(content);
     },
 

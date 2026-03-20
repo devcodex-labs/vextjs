@@ -620,6 +620,25 @@ describe("Fastify Adapter — VextAdapter 接口合规性", () => {
       expect(response.body).toBe("Hello, World!");
     });
 
+    it("text() 在 setHeader 预设 Content-Type 后不应覆盖（BUG-031 回归）", async () => {
+      adapter.registerRoute("GET", "/text-html", [
+        async (req, res) => {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.text("<h1>Hello</h1>");
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/text-html",
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/html");
+      expect(response.body).toBe("<h1>Hello</h1>");
+    });
+
     it("status() 应支持链式调用", async () => {
       adapter.registerRoute("POST", "/created", [
         async (req, res) => {
