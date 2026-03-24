@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-03-24
+
+> 📄 [Detailed changelog →](./changelogs/v0.2.1.md)
+
+### Added
+- **OPENAPI-012**: `jsonPublicPath` 配置项 — 解耦 vext 内部路由注册路径与 Scalar HTML 中引用 spec 的公开 URL。用于反向代理剥离路径前缀场景（如 Nginx `/admin/*` → vext `/`），配置后 Scalar "Try it out" 可正确获取 spec，不再因绝对路径丢失代理前缀而 404。新增字段：`VextOpenAPIConfig.jsonPublicPath`（`src/types/app.ts`）、`DocEndpointsConfig.specPublicPath`（`src/lib/openapi/types.ts`），三处 bootstrap 入口同步透传（`bootstrap.ts` / `dev-bootstrap.ts` / `route-reloader.ts`）。
+
+### Fixed
+- **BUG-033**: 反向代理前缀剥离场景下 Scalar "Try it out" 请求发往错误地址 — `doc-endpoints.ts` 生成 Scalar HTML 时 `specUrl` 硬编码为内部路由路径（绝对路径），浏览器请求时丢失代理前缀导致 404。修复为引入 `specPublicPath` 字段，允许独立配置 Scalar HTML 中的 spec URL，内部路由注册路径不受影响。
+
+### Docs
+- **DOCS-003**: `website/docs/guide/openapi.md` 新增"反向代理路径前缀场景"章节，覆盖代理剥离/透传两种策略、`jsonPublicPath` 用法、请求链路说明，以及 `servers` 字段用途说明。
+- **DOCS-004**: 修正 `website/docs/guide/configuration.md` 和 `website/docs/guide/openapi.md` 中错误的 `specPath` 字段名（正确为 `jsonPath`）；`website/docs/api/config.md` 新增 `jsonPublicPath` 行。
+
+---
+
 ## [0.2.0] - 2026-03-24
 
 > 📄 [Detailed changelog →](./changelogs/v0.2.0.md)

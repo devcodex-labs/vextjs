@@ -372,7 +372,8 @@ INFO  GET /api/users → 200 (12ms)
 | `openapi.description` | `string` | `''` | 文档描述 |
 | `openapi.version` | `string` | `'1.0.0'` | API 版本号 |
 | `openapi.docsPath` | `string` | `'/docs'` | Scalar 文档路径 |
-| `openapi.specPath` | `string` | `'/openapi.json'` | OpenAPI JSON 路径 |
+| `openapi.jsonPath` | `string` | `'/openapi.json'` | OpenAPI JSON 端点路径（vext 内部路由注册路径） |
+| `openapi.jsonPublicPath` | `string` | 同 `jsonPath` | Scalar HTML 中引用 spec 的公开路径。反向代理剥离前缀场景必填，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景) |
 | `openapi.scalar` | `object` | `{}` | Scalar API Reference UI 配置（主题、深色模式、布局、favicon 等） |
 | `openapi.servers` | `Array` | `[]` | API 服务器列表 |
 | `openapi.tags` | `Array` | `[]` | 标签定义 |
@@ -388,7 +389,7 @@ export default {
     description: '我的应用 API 文档',
     version: '1.0.0',
     docsPath: '/docs',
-    specPath: '/openapi.json',
+    jsonPath: '/openapi.json',
     scalar: {
       theme: 'default',
       darkMode: false,

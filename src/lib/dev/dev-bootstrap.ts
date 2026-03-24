@@ -387,6 +387,8 @@ export async function devBootstrap(
 
       registerDocEndpoints(app, spec, {
         specPath: openapiConfig?.jsonPath ?? "/openapi.json",
+        specPublicPath: (openapiConfig as Record<string, unknown>)
+          ?.jsonPublicPath as string | undefined,
         docsPath: openapiConfig?.docsPath ?? "/docs",
         title: openapiConfig?.title,
         scalar: (openapiConfig as Record<string, unknown>)?.scalar as
@@ -445,11 +447,20 @@ export async function devBootstrap(
     // 错误处理 + 404
     // 🆕 Dev 错误覆盖层：读取 config.dev.errorOverlay 配置，enabled !== false 时注入
     const devOverlayConfig = (config as Record<string, unknown>).dev as
-      | { errorOverlay?: { enabled?: boolean; theme?: "dark" | "light"; maxFrames?: number } }
+      | {
+          errorOverlay?: {
+            enabled?: boolean;
+            theme?: "dark" | "light";
+            maxFrames?: number;
+          };
+        }
       | undefined;
     const overlayEnabled = devOverlayConfig?.errorOverlay?.enabled !== false;
     const overlayOptions = devOverlayConfig?.errorOverlay
-      ? { theme: devOverlayConfig.errorOverlay.theme, maxFrames: devOverlayConfig.errorOverlay.maxFrames }
+      ? {
+          theme: devOverlayConfig.errorOverlay.theme,
+          maxFrames: devOverlayConfig.errorOverlay.maxFrames,
+        }
       : undefined;
     const overlayFn = overlayEnabled
       ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
@@ -610,7 +621,8 @@ export async function devBootstrap(
           (cfg as any).response ?? {},
           // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
           overlayEnabled
-            ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
+            ? (err: unknown) =>
+                renderDevErrorPage(err, projectRoot, overlayOptions)
             : undefined,
         )) as any,
       createNotFoundHandler: createNotFoundHandler as any,

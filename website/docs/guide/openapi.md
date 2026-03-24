@@ -92,7 +92,10 @@ export default {
     docsPath: '/docs',
 
     // OpenAPI JSON 路径
-    specPath: '/openapi.json',
+    jsonPath: '/openapi.json',
+
+    // 反向代理公开路径（代理剥离前缀时配置，详见"自定义文档路径"章节）
+    // jsonPublicPath: '/admin/openapi.json',
 
     // Scalar API Reference 配置
     scalar: {
@@ -532,15 +535,119 @@ export default {
 
 ## 自定义文档路径
 
+通过 `docsPath` 和 `jsonPath` 修改两个端点的注册路径：
+
 ```typescript
 export default {
   openapi: {
     enabled: true,
-    docsPath: '/api-docs',       // 文档: http://localhost:3000/api-docs
-    specPath: '/api/spec.json',  // JSON: http://localhost:3000/api/spec.json
+    docsPath: '/api-docs',         // 文档: http://localhost:3000/api-docs
+    jsonPath: '/api/spec.json',    // JSON: http://localhost:3000/api/spec.json
   },
 };
 ```
+
+### 反向代理路径前缀场景
+
+当应用部署在反向代理后，需要根据代理是否**剥离前缀**分两种情况处理。
+
+#### 情况一：代理剥离前缀（`proxy_pass` 末尾带 `/`）
+
+```nginx
+# Nginx：/admin/* → vext（剥离 /admin 前缀）
+location /admin/ {
+    proxy_pass http://127.0.0.1:3000/;
+}
+```
+
+此时 vext 收到的请求路径已去掉 `/admin`，路由注册无需修改。但 Scalar HTML 里的 spec URL 是绝对路径（如 `/openapi.json`），浏览器会请求 `https://example.com/openapi.json`，**丢失了 `/admin` 前缀**，导致 404。
+
+需要通过 `jsonPublicPath` 告诉 Scalar 使用带前缀的公开地址：
+
+```typescript
+// config/production.ts
+export default {
+  openapi: {
+    enabled: true,
+    // vext 内部路由保持默认
+    jsonPath: '/openapi.json',
+    docsPath: '/docs',
+    // 告诉 Scalar HTML 用带前缀的完整路径获取 spec
+    jsonPublicPath: '/admin/openapi.json',
+  },
+};
+```
+
+请求链路：
+
+```
+浏览器 GET /admin/docs
+  → Nginx 剥离 /admin → vext GET /docs → 返回 Scalar HTML
+  → Scalar 读取 jsonPublicPath，fetch /admin/openapi.json
+  → Nginx 剥离 /admin → vext GET /openapi.json → 返回 spec ✅
+```
+
+#### 情况二：代理透传前缀（`proxy_pass` 末尾不带 `/`）
+
+```nginx
+# Nginx：/admin/* → vext（保留 /admin 前缀透传）
+location /admin/ {
+    proxy_pass http://127.0.0.1:3000;
+}
+```
+
+此时 vext 收到的请求路径仍带 `/admin`，需要同步配置端点路径，无需配置 `jsonPublicPath`：
+
+```typescript
+// config/production.ts
+export default {
+  openapi: {
+    enabled: true,
+    jsonPath: '/admin/openapi.json',
+    docsPath: '/admin/docs',
+  },
+};
+```
+
+#### 两种情况对比
+
+| | 代理剥离前缀 | 代理透传前缀 |
+|---|---|---|
+| Nginx `proxy_pass` | `http://127.0.0.1:3000/`（末尾有 `/`） | `http://127.0.0.1:3000`（末尾无 `/`） |
+| `jsonPath` | `/openapi.json`（默认） | `/admin/openapi.json` |
+| `docsPath` | `/docs`（默认） | `/admin/docs` |
+| `jsonPublicPath` | `/admin/openapi.json`（**必须配置**） | 无需配置 |
+
+### `servers` — 文档交互地址
+
+`servers` 是写入 OpenAPI 规范文档本身的元数据字段，**与端点注册路径无关**。它的唯一作用是告诉 Scalar "Try it out" 功能发请求时使用哪个基础地址。
+
+**默认行为**（不配置时）：
+
+```json
+{ "url": "/", "description": "Current server" }
+```
+
+相对路径 `/` 会自动跟随当前页面的域名，**绝大多数情况下默认值已够用**。
+
+**需要显式配置的场景**：
+
+- 文档页面和 API 不在同一个域（跨域）
+- 希望在 Scalar 顶部提供多环境切换下拉框
+
+```typescript
+export default {
+  openapi: {
+    enabled: true,
+    servers: [
+      { url: 'https://sit-api.example.com/admin', description: 'SIT 环境' },
+      { url: 'https://api.example.com/admin',     description: '生产环境' },
+    ],
+  },
+};
+```
+
+配置后 Scalar 顶部出现服务器下拉框，用户可手动切换目标环境。
 
 ## 导入外部 OpenAPI
 

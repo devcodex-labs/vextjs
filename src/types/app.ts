@@ -404,6 +404,27 @@ export interface VextOpenAPIConfig {
   docsPath?: string;
   /** OpenAPI JSON 路径（默认 '/openapi.json'） */
   jsonPath?: string;
+  /**
+   * OpenAPI JSON 的公开访问路径（用于 Scalar HTML 中引用 spec 的 URL）
+   *
+   * 仅影响 Scalar HTML 里 `url` 字段的值，**不影响** vext 内部路由注册路径。
+   * 未设置时默认与 `jsonPath` 相同。
+   *
+   * **使用场景**：应用部署在反向代理路径前缀下，且代理**剥离**前缀后转发给 vext。
+   * 此时 vext 内部路由是 `/openapi.json`，但浏览器必须通过 `/admin/openapi.json` 访问。
+   * 如果不配置此字段，Scalar HTML 里会写死 `/openapi.json`（绝对路径），
+   * 浏览器会请求 `https://example.com/openapi.json`（丢失代理前缀）导致 404。
+   *
+   * @example
+   * ```typescript
+   * // Nginx: /admin/* → vext（剥离 /admin 前缀）
+   * openapi: {
+   *   jsonPath: '/openapi.json',           // vext 内部路由
+   *   jsonPublicPath: '/admin/openapi.json', // Scalar HTML 引用地址
+   * }
+   * ```
+   */
+  jsonPublicPath?: string;
 
   /** 联系信息 */
   contact?: { name?: string; email?: string; url?: string };

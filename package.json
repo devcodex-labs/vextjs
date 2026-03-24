@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "VextJS is a modern Node.js web framework with adapter architecture, plugin system, and out-of-the-box features for building high-performance RESTful APIs.",
   "type": "module",
   "main": "./dist/index.js",

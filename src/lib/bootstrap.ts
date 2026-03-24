@@ -267,6 +267,8 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
 
       registerDocEndpoints(app, spec, {
         specPath: openapiConfig?.jsonPath ?? "/openapi.json",
+        specPublicPath: (openapiConfig as Record<string, unknown>)
+          ?.jsonPublicPath as string | undefined,
         docsPath: openapiConfig?.docsPath ?? "/docs",
         title: openapiConfig?.title,
         scalar: (openapiConfig as Record<string, unknown>)?.scalar as

@@ -527,6 +527,8 @@ export async function reloadRoutes(
         specPath:
           ((openapiCfg as Record<string, unknown>)?.jsonPath as string) ??
           "/openapi.json",
+        specPublicPath: (openapiCfg as Record<string, unknown>)
+          ?.jsonPublicPath as string | undefined,
         docsPath:
           ((openapiCfg as Record<string, unknown>)?.docsPath as string) ??
           "/docs",

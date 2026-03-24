@@ -434,6 +434,7 @@ OpenAPI 文档自动生成配置。
 | `description` | `string` | `undefined` | 文档描述 |
 | `docsPath` | `string` | `'/docs'` | Scalar 文档路径 |
 | `jsonPath` | `string` | `'/openapi.json'` | OpenAPI JSON 路径 |
+| `jsonPublicPath` | `string` | 同 `jsonPath` | OpenAPI spec 的公开访问路径（仅影响 Scalar HTML 中引用 spec 的 URL，不影响路由注册）。用于反向代理剥离前缀场景，[详见指南](/guide/openapi#反向代理路径前缀场景) |
 | `contact` | `object` | `undefined` | 联系信息 |
 | `license` | `object` | `undefined` | 许可证信息 |
 | `servers` | `array` | `undefined` | 服务器地址列表 |

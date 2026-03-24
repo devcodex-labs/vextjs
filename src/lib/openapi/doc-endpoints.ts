@@ -51,6 +51,7 @@ export function registerDocEndpoints(
   config: DocEndpointsConfig,
 ): void {
   const specPath = config.specPath ?? "/openapi.json";
+  const specPublicPath = config.specPublicPath ?? specPath;
   const docsPath = config.docsPath ?? "/docs";
   const title = config.title ?? "API Documentation";
 
@@ -87,7 +88,7 @@ export function registerDocEndpoints(
 
   app.adapter.registerRoute("GET", docsPath, [
     async (_req, res) => {
-      const html = generateScalarHTML(specPath, scalarConfig);
+      const html = generateScalarHTML(specPublicPath, scalarConfig);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.text(html);
     },
