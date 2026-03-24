@@ -29,6 +29,7 @@ import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
 import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createErrorHandler } from "../middlewares/error-handler.js";
+import { renderDevErrorPage } from "./error-overlay.js";
 import { createVextFetch } from "../fetch.js";
 import { RouteMetadataCollector } from "../openapi/collector.js";
 import { OpenAPIGenerator } from "../openapi/generator.js";
@@ -442,7 +443,18 @@ export async function devBootstrap(
     }
 
     // 错误处理 + 404
-    const errorHandler = createErrorHandler(config.response ?? {});
+    // 🆕 Dev 错误覆盖层：读取 config.dev.errorOverlay 配置，enabled !== false 时注入
+    const devOverlayConfig = (config as Record<string, unknown>).dev as
+      | { errorOverlay?: { enabled?: boolean; theme?: "dark" | "light"; maxFrames?: number } }
+      | undefined;
+    const overlayEnabled = devOverlayConfig?.errorOverlay?.enabled !== false;
+    const overlayOptions = devOverlayConfig?.errorOverlay
+      ? { theme: devOverlayConfig.errorOverlay.theme, maxFrames: devOverlayConfig.errorOverlay.maxFrames }
+      : undefined;
+    const overlayFn = overlayEnabled
+      ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
+      : undefined;
+    const errorHandler = createErrorHandler(config.response ?? {}, overlayFn);
     app.adapter.registerErrorHandler(errorHandler);
     app.adapter.registerNotFound(createNotFoundHandler());
 
@@ -593,7 +605,14 @@ export async function devBootstrap(
       resolveAdapter: resolveAdapter as any,
       loadRoutes: loadRoutes as any,
       loadMiddlewares: loadMiddlewares as any,
-      createErrorHandler: createErrorHandler as any,
+      createErrorHandler: ((cfg: Record<string, unknown>) =>
+        createErrorHandler(
+          (cfg as any).response ?? {},
+          // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
+          overlayEnabled
+            ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
+            : undefined,
+        )) as any,
       createNotFoundHandler: createNotFoundHandler as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,

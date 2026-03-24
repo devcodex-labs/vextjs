@@ -193,13 +193,19 @@ export class ColdRestarter {
         ...this.env,
       }
 
+      // 🆕 合并父进程现有 Node.js 标志（防止覆盖 --inspect、--max-old-space-size 等），
+      // 追加 --enable-source-maps 使 Error.stack 自动翻译为 .ts 源码路径（dev 模式调试）
+      const devExecArgv = [
+        ...process.execArgv.filter((f) => f !== "--enable-source-maps"),
+        "--enable-source-maps",
+      ]
+
       this.child = fork(this.entryScript, [], {
         env: childEnv,
         stdio: ["inherit", "inherit", "inherit", "ipc"],
         cwd: this.cwd,
+        execArgv: devExecArgv,
       })
-
-      // ── 3. 注册监听器 ─────────────────────────────────
       this.setupChildListeners(this.child)
 
       // ── 4. 等待新进程就绪 ──────────────────────────────

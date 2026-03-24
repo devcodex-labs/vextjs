@@ -634,6 +634,50 @@ export interface VextClusterConfig {
 }
 
 /**
+ * VextDevOverlayConfig — Dev 模式错误覆盖层配置
+ *
+ * 控制开发模式下浏览器访问出错路由时的 HTML 错误覆盖层行为。
+ * 仅在 dev 模式（vext dev）下生效，生产模式自动忽略。
+ *
+ * @example
+ * // src/config/default.ts
+ * export default {
+ *   dev: {
+ *     errorOverlay: { theme: 'light', maxFrames: 10 }
+ *   }
+ * }
+ */
+export interface VextDevOverlayConfig {
+  /**
+   * 是否启用 dev 错误覆盖层
+   * @default true
+   */
+  enabled?: boolean;
+
+  /**
+   * 主题：深色 / 浅色
+   * @default 'dark'
+   */
+  theme?: "dark" | "light";
+
+  /**
+   * 最多显示的堆栈帧数
+   * @default 25
+   */
+  maxFrames?: number;
+}
+
+/**
+ * VextDevConfig — Dev 模式专属配置
+ *
+ * 仅在开发模式下读取，生产模式忽略所有字段。
+ */
+export interface VextDevConfig {
+  /** Dev 模式错误覆盖层配置 */
+  errorOverlay?: VextDevOverlayConfig;
+}
+
+/**
  * VextConfig — 框架运行时配置（只读）
  *
  * 由 config-loader 通过 default → env → local 三层合并后 deepFreeze 生成。
@@ -735,6 +779,14 @@ export interface VextConfig {
    * @internal
    */
   _testMode?: boolean;
+
+  /**
+   * Dev 模式专属配置（仅在开发模式下读取）
+   *
+   * 用于控制 Dev Error Overlay 等开发辅助功能。
+   * 生产模式下所有字段被忽略。
+   */
+  dev?: VextDevConfig;
 
   /**
    * 允许用户扩展自定义配置字段

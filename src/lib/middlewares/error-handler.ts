@@ -3,6 +3,15 @@ import type { VextResponseConfig } from "../../types/app.js";
 import { HttpError, VextValidationError } from "../../types/errors.js";
 
 /**
+ * DevOverlayFn — Dev 错误覆盖层渲染函数
+ *
+ * 接受原始错误，返回 HTML 字符串。
+ * 由 dev-bootstrap 在注入时通过闭包绑定 projectRoot 和 overlayOptions。
+ * error-handler.ts 不直接依赖 error-overlay.ts（避免生产 bundle 引入 dev 代码）。
+ */
+export type DevOverlayFn = (err: unknown) => string;
+
+/**
  * createErrorHandler — 全局错误处理中间件工厂
  *
  * 内置中间件 #6（通过 adapter.registerErrorHandler() 注册），职责：
@@ -28,6 +37,11 @@ import { HttpError, VextValidationError } from "../../types/errors.js";
  *      生产环境（hideInternalErrors = true）隐藏 stack trace，
  *      开发环境（hideInternalErrors = false）附带 stack 供调试。
  *
+ * Dev 错误覆盖层（可选 devOverlay 参数）：
+ *   当 devOverlay 已注入且请求 Accept 包含 'text/html' 时，
+ *   返回 HTML 错误覆盖层而非 JSON。适用于浏览器直接访问出错路由的场景。
+ *   devOverlay 渲染失败时，自动降级到 JSON 处理。
+ *
  * 工厂函数设计（Q21）：
  *   使用工厂模式 createErrorHandler(config) 而非直接引用 app.config，
  *   原因是错误处理器需要持有 config 引用但不应直接依赖 app 对象。
@@ -48,10 +62,12 @@ import { HttpError, VextValidationError } from "../../types/errors.js";
  *   这遵循单一职责原则——错误格式化与错误日志分离。
  *
  * @param responseConfig 响应配置（从 VextConfig.response 提取）
+ * @param devOverlay     可选：dev 模式错误覆盖层渲染函数（生产模式不传）
  * @returns VextErrorMiddleware
  */
 export function createErrorHandler(
   responseConfig: VextResponseConfig,
+  devOverlay?: DevOverlayFn,
 ): VextErrorMiddleware {
   // 是否隐藏内部错误详情（生产环境默认 true）
   // 当 hideInternalErrors = true 时，500 错误不暴露 stack trace，
@@ -59,6 +75,40 @@ export function createErrorHandler(
   const hideInternalErrors = responseConfig.hideInternalErrors ?? true;
 
   return (err: unknown, req, res) => {
+    // ── Dev 错误覆盖层：浏览器请求 + dev overlay 已注入 ────
+    //
+    // 触发条件：
+    //   1. devOverlay 函数已注入（仅 dev 模式）
+    //   2. 请求 Accept 包含 'text/html'（浏览器特征）
+    // API 客户端（curl/axios/fetch）的 Accept 不含 text/html，不受影响。
+    //
+    if (devOverlay) {
+      const accept = (req.headers["accept"] as string | undefined) ?? "";
+      if (accept.includes("text/html")) {
+        // 计算正确的 HTTP 状态码
+        // 🆕 使用 error.name 字符串检测替代 instanceof，防止 CJS/ESM 双包 instanceof 失败
+        const errObj = err instanceof Error ? err : new Error(String(err));
+        let statusCode = 500;
+        if (errObj.name === "VextValidationError") {
+          statusCode = 422;
+        } else if (
+          errObj.name === "HttpError" &&
+          typeof (errObj as unknown as Record<string, unknown>).status === "number"
+        ) {
+          statusCode = (errObj as unknown as Record<string, unknown>).status as number;
+        }
+
+        try {
+          const html = devOverlay(err);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.text(html, statusCode);
+          return;
+        } catch {
+          // overlay 渲染失败 → fallback 到 JSON（继续执行下方逻辑）
+        }
+      }
+    }
+
     const requestId = req.requestId;
 
     // ── 层 1：校验错误（422）────────────────────────────
@@ -132,3 +182,4 @@ export function createErrorHandler(
     res.rawJson(body, 500);
   };
 }
+
