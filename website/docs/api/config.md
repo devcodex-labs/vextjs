@@ -541,35 +541,64 @@ export default {
 
 ## VextClusterConfig
 
-Cluster 多进程配置。
+Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterConfig`。
+
+### 基础字段
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `enabled` | `boolean` | `false` | 是否启用多进程 |
-| `workers` | `number \| 'auto'` | `'auto'` | Worker 数量（`'auto'` = CPU 核心数） |
-| `maxRestarts` | `number` | `10` | 单个 Worker 最大重启次数 |
-| `restartDelay` | `number` | `1000` | 重启延迟（毫秒） |
-| `shutdownTimeout` | `number` | `10000` | Worker 关闭超时（毫秒） |
-| `healthCheckInterval` | `number` | `30000` | 健康检查间隔（毫秒） |
-| `healthCheckTimeout` | `number` | `5000` | 健康检查超时（毫秒） |
-| `rollingRestart` | `boolean` | `true` | 是否滚动重启 |
-| `pidFile` | `string` | `'.vext.pid'` | PID 文件路径 |
+| `enabled` | `boolean` | `false` | 是否启用 Cluster 模式（也可通过 `VEXT_CLUSTER=1` 开启） |
+| `workers` | `'auto' \| 'auto-1' \| number` | `'auto'` | Worker 数量（`'auto'` = CPU 核心数；`'auto-1'` = CPU 核心数 - 1；number = 固定数量，clamp 到 [1, 64]） |
+| `autoRestart` | `boolean` | `true` | Worker 崩溃后自动重启 |
+| `maxRestarts` | `number` | `5` | 快速重启检测窗口内允许的最大重启次数 |
+| `restartWindow` | `number` | `60000` | 快速重启检测窗口（毫秒） |
+| `restartBaseDelay` | `number` | `1000` | 重启间隔退避基数（毫秒） |
+| `restartMaxDelay` | `number` | `30000` | 重启间隔上限（毫秒） |
+| `pidFile` | `string` | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程） |
+| `titlePrefix` | `string` | `'vext'` | Worker 进程标题前缀 |
+| `sticky` | `'none' \| 'ip'` | `'none'` | 粘性会话模式（`'ip'` 基于客户端 IP 分配固定 Worker，适用于 WebSocket / SSE） |
+
+### `healthCheck` — 心跳检测
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `healthCheck.enabled` | `boolean` | `true` | 是否启用 Worker 心跳检测 |
+| `healthCheck.interval` | `number` | `15000` | Master 发送心跳探测的间隔（毫秒） |
+| `healthCheck.timeout` | `number` | `30000` | Worker 心跳超时阈值（毫秒），超时则强制重启 |
+
+### `reload` — 零停机滚动重启
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `reload.workerDelay` | `number` | `2000` | 替换下一个 Worker 前的等待时间（毫秒） |
+| `reload.readyTimeout` | `number` | `30000` | 新 Worker 就绪超时（毫秒） |
+| `reload.shutdownTimeout` | `number` | `10000` | 旧 Worker 关闭超时（毫秒） |
 
 ```typescript
 export default {
   cluster: {
     enabled: true,
-    workers: 4,
+    workers: 'auto',       // 充分利用所有 CPU 核心
+    autoRestart: true,
     maxRestarts: 5,
-    rollingRestart: true,
+    healthCheck: {
+      enabled: true,
+      interval: 15000,
+      timeout: 30000,
+    },
+    reload: {
+      workerDelay: 2000,
+      readyTimeout: 30000,
+      shutdownTimeout: 10000,
+    },
   },
 };
 ```
 
-也可通过环境变量启用：
+也可通过环境变量启用（无需修改配置文件）：
 
 ```bash
-VEXT_CLUSTER=1 node dist/index.js
+VEXT_CLUSTER=1 vext start
 ```
 
 ---

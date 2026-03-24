@@ -31,9 +31,9 @@
 // src/routes/index.ts
 import { defineRoutes } from 'vextjs'
 
-export default defineRoutes((router) => {
-  router.get('/', async (ctx) => {
-    ctx.body = { message: 'Hello, World!' }
+export default defineRoutes((app) => {
+  app.get('/', {}, async (req, res) => {
+    res.json({ message: 'Hello, World!' })
   })
 })
 ```
@@ -311,7 +311,7 @@ export default {
 
 ## 结论
 
-- **最高吞吐量**: VextJS + uWS Adapter，在 Hello World 场景下达到约 **98,000 req/s**，开启 Cluster 模式可突破 **700,000 req/s**（8 核）
+- **最高吞吐量**: VextJS + Native Adapter，在 Hello World 场景下达到约 **98,000 req/s**，开启 Cluster 模式可突破 **700,000 req/s**（8 核）
 - **最低内存**: VextJS + Native Adapter，空载仅 **18 MB**，适合资源受限环境
 - **最快启动**: VextJS + Native Adapter，冷启动约 **42 ms**，热重载约 **180 ms**
 - **校验性能**: 内置 schema-dsl 基于 ajv 编译，校验开销极低，接近原生 ajv 性能

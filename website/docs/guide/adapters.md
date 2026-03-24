@@ -37,13 +37,16 @@ VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 基准测试（JSON 响应场景，5 轮中位数）：
 
 | Adapter | Raw RPS | Vext RPS | 框架开销 |
-|---------|---------|----------|---------|
-| Native | 80,148 | 50,806 | 36.6% |
-| Fastify | 75,825 | 40,058 | 47.2% |
-| Hono | 41,800 | 23,600 | 43.5% |
-| Express | 15,700 | 13,600 | 13.4% |
+|---------|--------:|---------:|--------:|
+| Native | 44,932 | 36,819 | 18.1% |
+| Express | 29,868 | 30,974 | -3.7% |
+| Fastify | 45,619 | 29,203 | 36.0% |
+| Koa | 31,833 | 22,488 | 29.4% |
+| Hono | 20,703 | 15,684 | 24.2% |
 
 > Vext 开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
+>
+> **测试环境**：Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数，2026-03-23）
 
 ## 使用方法
 
@@ -423,4 +426,4 @@ VextJS 将所有底层框架声明为可选的 `peerDependencies`。你只需安
 - 了解 [配置](/guide/configuration) 中 Adapter 相关的配置项
 - 查看 [OpenAPI 文档](/guide/openapi) 在不同 Adapter 下的表现
 - 探索 [Cluster 多进程](/guide/cluster) 与 Adapter 的配合
-- 阅读 [性能优化](/guide/testing) 相关的基准测试方法
+- 阅读 [性能基准](/benchmark) 相关的基准测试数据

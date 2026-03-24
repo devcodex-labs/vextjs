@@ -193,7 +193,17 @@ export interface VextMiddlewareConfig {
   name: string;
   /** 中间件配置选项（传给 middlewareFactory(options)） */
   options?: Record<string, unknown>;
+  /** 是否启用该中间件声明（用于环境配置 patch） */
+  enabled?: boolean;
 }
+
+/**
+ * 中间件声明（config.middlewares 数组元素）
+ *
+ * - string: 简写形式，如 "auth"
+ * - object: 完整形式，如 { name: "auth", options: {...}, enabled: true }
+ */
+export type VextMiddlewareDecl = string | VextMiddlewareConfig;
 
 /**
  * CORS 配置
@@ -653,8 +663,8 @@ export interface VextConfig {
   /** 是否信任代理（影响 req.ip / req.protocol 从 X-Forwarded-* 读取） */
   trustProxy: boolean;
 
-  /** 路由级中间件白名单（按 name + options 声明） */
-  middlewares: VextMiddlewareConfig[];
+  /** 路由级中间件白名单（支持字符串简写或对象完整声明） */
+  middlewares: VextMiddlewareDecl[];
 
   /** CORS 配置 */
   cors: VextCorsConfig;

@@ -69,17 +69,16 @@ export default {
     enabled: true,
 
     // Worker 数量
-    // 'auto' — 等于 CPU 核数
-    // 'max'  — 等于 CPU 核数
-    // 'half' — 等于 CPU 核数的一半
-    // number — 固定数量
+    // 'auto'   — 等于 CPU 核数（默认推荐）
+    // 'auto-1' — 等于 CPU 核数 - 1（为 Master 预留一个核心）
+    // number   — 固定数量
     workers: 'auto',
 
     // Worker 崩溃时自动重启
     autoRestart: true,
 
     // 时间窗口内最大重启次数（超过则停止重启，防止无限崩溃循环）
-    maxRestarts: 10,
+    maxRestarts: 5,
 
     // 重启计数窗口（毫秒）
     restartWindow: 60000,
@@ -90,11 +89,19 @@ export default {
     // 重启最大延迟（毫秒）
     restartMaxDelay: 30000,
 
-    // 是否启用 Worker 心跳检测
-    healthCheck: true,
+    // Worker 心跳检测配置
+    healthCheck: {
+      enabled: true,        // 是否启用心跳检测
+      interval: 15000,      // 探测间隔（毫秒）
+      timeout: 30000,       // 心跳超时（毫秒）
+    },
 
-    // 是否允许滚动重启（vext reload 命令）
-    reload: true,
+    // 零停机滚动重启配置
+    reload: {
+      workerDelay: 2000,      // 替换下一个 Worker 前的等待时间（毫秒）
+      readyTimeout: 30000,    // Worker 就绪超时（毫秒）
+      shutdownTimeout: 10000, // Worker 关闭超时（毫秒）
+    },
 
     // PID 文件路径（用于 vext stop / vext reload 定位进程）
     pidFile: '.vext.pid',
@@ -102,8 +109,10 @@ export default {
     // Worker 进程标题前缀
     titlePrefix: 'vext',
 
-    // 是否启用 sticky session（基于客户端 IP 分配固定 Worker）
-    sticky: false,
+    // sticky session 模式（'none' | 'ip'）
+    // 'none' — 不启用（默认）
+    // 'ip'   — 基于客户端 IP 分配固定 Worker（WebSocket / SSE 场景）
+    sticky: 'none',
   },
 };
 ```
@@ -113,8 +122,7 @@ export default {
 | 值 | 含义 | 适用场景 |
 |-----|------|---------|
 | `'auto'` | CPU 核数 | 生产环境（默认推荐） |
-| `'max'` | CPU 核数 | 同 `'auto'` |
-| `'half'` | CPU 核数 / 2 | 机器上还运行其他服务时 |
+| `'auto-1'` | CPU 核数 - 1 | 单机混部（为 Master 预留一个核心） |
 | `2` | 固定 2 个 Worker | 开发环境测试 Cluster |
 | `1` | 固定 1 个 Worker | 调试 Cluster 逻辑 |
 
@@ -122,8 +130,8 @@ export default {
 // 生产环境：充分利用所有 CPU 核心
 cluster: { workers: 'auto' }
 
-// 共享服务器：只用一半核心
-cluster: { workers: 'half' }
+// 单机混部：保留一个核心给系统 / Master 进程
+cluster: { workers: 'auto-1' }
 
 // 开发测试：固定 2 个 Worker
 cluster: { workers: 2 }
@@ -195,7 +203,7 @@ Worker 3:                               [运行中] → [关闭] → [重启] �
 - 热修复
 
 :::warning 前提条件
-`vext reload` 要求配置中 `cluster.reload: true`（默认开启）。如果设置为 `false`，reload 命令将被拒绝。
+`vext reload` 要求 `cluster.reload` 已配置（默认启用）。如需禁用滚动重启，移除 `reload` 配置项即可。
 :::
 
 ### `vext status` — 查看状态
@@ -248,10 +256,10 @@ Worker  PID    Status   Uptime      Requests
 
 ### 崩溃循环保护
 
-如果在 `restartWindow`（默认 60 秒）内重启次数达到 `maxRestarts`（默认 10 次），Master 将停止重启并输出告警：
+如果在 `restartWindow`（默认 60 秒）内重启次数达到 `maxRestarts`（默认 5 次），Master 将停止重启并输出告警：
 
 ```
-[vextjs] ⚠️ Worker 3 has restarted 10 times in 60s, stopping auto-restart
+[vextjs] ⚠️ Worker 3 has restarted 5 times in 60s, stopping auto-restart
 [vextjs] Please investigate the root cause before manually restarting
 ```
 
@@ -259,7 +267,7 @@ Worker  PID    Status   Uptime      Requests
 
 ### 心跳检测
 
-当 `healthCheck: true`（默认）时，Master 定期向 Worker 发送心跳探测。如果 Worker 长时间未响应（可能死锁或阻塞），Master 会强制杀死并重启该 Worker：
+当 `healthCheck.enabled: true`（默认）时，Master 每隔 `healthCheck.interval`（默认 15 秒）向 Worker 发送心跳探测。如果 Worker 在 `healthCheck.timeout`（默认 30 秒）内未响应（可能死锁或阻塞），Master 会强制杀死并重启该 Worker：
 
 ```
 [vextjs] Worker 2 (PID: 12347) heartbeat timeout, killing...
@@ -350,8 +358,8 @@ export default {
     enabled: true,
     workers: 'auto',
     autoRestart: true,
-    healthCheck: true,
-    reload: true,
+    healthCheck: { enabled: true },
+    reload: { workerDelay: 2000 },
   },
 };
 ```

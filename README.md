@@ -71,25 +71,25 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 
 | 场景 | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
 |------|----------:|----------:|----------:|----------:|:----------:|
-| **JSON 响应** | 94,252 | **70,874** | 90,871 | 60,150 | **+17.8%** |
-| **路由参数** | 87,660 | **~68,000** | 89,382 | 47,021 | **+44.6%** |
-| **中间件链** | 78,100 | **63,158** | 81,126 | 54,707 | **+15.4%** |
+| **JSON 响应** | 44,932 | **36,819** | 45,619 | 29,203 | **+26.1%** |
+| **路由参数** | 43,859 | **36,755** | 43,676 | 24,386 | **+50.7%** |
+| **中间件链** | 28,337 | **31,698** | 41,286 | 22,719 | **+39.5%** |
 
-> Vext-Native 在所有场景全面领先 Vext-Fastify **15-45%**。
+> Vext-Native 在所有场景领先 Vext-Fastify **26~51%**（中间件链场景 Vext-Native 甚至超越裸跑 Native +11.9%）。
 
 ### 全 Adapter 性能概览（JSON 场景）
 
 | Adapter | Vext RPS | Overhead | 额外依赖 | 推荐场景 |
 |---------|--------:|---------:|----------|----------|
-| **Native** ⭐ | **70,874** | 24.8% | ✅ 零依赖 | **默认推荐**，性能最优 |
-| Fastify | 60,150 | 33.8% | `fastify` | 需要 Fastify 生态插件 |
-| Koa | 42,010 | 31.6% | `koa` | 已有 Koa 中间件需复用 |
-| Hono | 26,630 | 37.7% | `hono` `@hono/node-server` | Web Standard API 兼容 |
-| Express | 14,098 | 10.9% | `express` | 已有 Express 生态需复用 |
+| **Native** ⭐ | **36,819** | 18.1% | ✅ 零依赖 | **默认推荐**，性能最优 |
+| Express | 30,974 | -3.7% | `express` | 已有 Express 生态需复用 |
+| Fastify | 29,203 | 36.0% | `fastify` | 需要 Fastify 生态插件 |
+| Koa | 22,488 | 29.4% | `koa` | 已有 Koa 中间件需复用 |
+| Hono | 15,684 | 24.2% | `hono` `@hono/node-server` | Web Standard API 兼容 |
 
-> **测试环境**: Node.js v22.13.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i5-14400, 32GB RAM）
+> **测试环境**: Node.js v24.14.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i7-9700, 32GB RAM，2026-03-23）
 >
-> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie 路由，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **17.8%**（JSON）/ **15.4%**（中间件链），比 Vext-Hono 快 **166%**，比 Vext-Express 快 **403%**。所有数据经 5 轮中位数验证，CV（变异系数）< 1.5%。
+> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie 路由，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **26.1%**（JSON）/ **39.5%**（中间件链），比 Vext-Hono 快 **135%**，比 Vext-Express 快 **18.9%**（Express v5 + Node.js v24 性能大幅提升）。所有数据经 5 轮中位数验证，绝大多数 CV（变异系数）< 3.5%。
 
 ### Adapter 选择指南
 
@@ -128,7 +128,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.1.9"
+    "vextjs": "^0.2.0"
   }
 }
 ```
@@ -333,7 +333,7 @@ app.get('/protected', {
   // 参数校验（schema-dsl 语法）
   validate: {
     query: { page: 'number', limit: 'number' },
-    params: { id: 'string' },
+    param: { id: 'string' },
     body: { name: 'string:1-100', email: 'email' },
   },
 
@@ -836,7 +836,7 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] Cluster 多进程（Master/Worker + Rolling Restart）
 - [x] 性能基准测试（autocannon 自动化 + 多轮取中位数）
 - [x] AsyncLocalStorage 可配置跳过
-- [x] Native Adapter 性能优化（Overhead 降至 ~20%，领先 Fastify 15-45%）
+- [x] Native Adapter 性能优化（Overhead 降至 ~18%，领先 Fastify 26~51%）
 - [x] `vext create` 项目脚手架
 - [x] 文档站（rspress）
 - [x] 路由级响应缓存（LRU 内存存储，标签失效，Vary headers）

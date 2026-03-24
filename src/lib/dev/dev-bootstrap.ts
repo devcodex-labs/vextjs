@@ -38,6 +38,7 @@ import type { VextMiddleware } from "../../types/middleware.js";
 import type { VextServerHandle } from "../../types/adapter.js";
 import type { FileChangeInfo } from "./file-watcher.js";
 import type { BuiltinMiddlewareCreators } from "./route-reloader.js";
+import { printReadyLog } from "../utils/network.js";
 
 /**
  * dev-bootstrap.ts — Dev 模式启动编排（Phase 2B Soft Reload 版）
@@ -707,9 +708,10 @@ export async function devBootstrap(
     // ── 步骤 15: 执行 onReady 钩子 ──────────────────────
     await internals.runReady();
 
-    app.logger.info(
-      `[vext dev] ready on http://${serverHandle.host}:${serverHandle.port} (soft reload enabled)`,
-    );
+    printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
+      prefix: "[vext dev]",
+      suffix: "(soft reload enabled)",
+    });
 
     return {
       app,

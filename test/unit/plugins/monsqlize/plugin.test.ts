@@ -978,7 +978,10 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
-    expect(passedConfig.useMemoryServer).toBe(true);
+    // useMemoryServer 必须在 config.config 内部（connectMongo 从中读取），
+    // 而非顶层 passedConfig.useMemoryServer
+    expect(passedConfig.config.useMemoryServer).toBe(true);
+    expect(passedConfig.useMemoryServer).toBeUndefined();
   });
 
   it("does not set useMemoryServer when not configured", async () => {
@@ -989,6 +992,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.config?.useMemoryServer).toBeUndefined();
     expect(passedConfig.useMemoryServer).toBeUndefined();
   });
 

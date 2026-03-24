@@ -30,6 +30,7 @@ import { registerDocEndpoints } from "./openapi/doc-endpoints.js";
 import type { VextServerHandle } from "../types/adapter.js";
 import type { VextApp } from "../types/app.js";
 import type { VextMiddleware } from "../types/middleware.js";
+import { printReadyLog } from "./utils/network.js";
 
 /**
  * bootstrap — 框架完整启动编排（Phase 1）
@@ -454,9 +455,9 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     // ── 步骤 ⑨: 执行 onReady 钩子 + 打印启动日志 ─────────
     await internals.runReady();
 
-    app.logger.info(
-      `[vextjs] ready on http://${serverHandle.host}:${serverHandle.port}`,
-    );
+    printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
+      prefix: "[vextjs]",
+    });
 
     return { app, serverHandle, internals };
   } catch (err) {

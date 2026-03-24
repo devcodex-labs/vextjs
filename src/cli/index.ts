@@ -58,6 +58,26 @@ const _COMING_SOON: Record<string, string> = {};
 // ── 主函数 ──────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // ── Windows UTF-8 控制台初始化 ─────────────────────────────
+  //
+  // 问题：Windows 控制台默认代码页为 GBK（CP936）。
+  // vext dev 的子进程通过 stdio:'inherit' 直接写入同一控制台句柄，
+  // 导致 UTF-8 多字节字符（中文 / emoji）被控制台误读为 GBK，显示为乱码。
+  //
+  // 修复：在进程启动最早期将代码页切换为 UTF-8（65001），
+  // 子进程继承该控制台句柄后所有后续输出均可正确显示。
+  //
+  // 安全性：try-catch 保护，非致命 —— 某些受限环境（如 CI 容器）
+  // 可能不提供 chcp，此时静默忽略，不影响启动流程。
+  if (process.platform === "win32") {
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("chcp 65001", { stdio: "ignore" });
+    } catch {
+      // 非致命：chcp 不可用时静默忽略
+    }
+  }
+
   const args = process.argv.slice(2);
 
   // 第一个参数如果不以 - 开头，则视为命令名

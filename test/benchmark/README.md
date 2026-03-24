@@ -9,29 +9,29 @@
 - **全框架覆盖**：测试 vext 支持的全部 5 个 adapter（Native / Hono / Fastify / Express / Koa）
 - **多场景验证**：覆盖最常见的 API 使用模式
 
-## ⚡ 性能概览（5 轮中位数，CV < 1.5%）
+## ⚡ 性能概览（5 轮中位数）
 
 ### Native vs Fastify 核心对比
 
 | 场景 | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
 |------|----------:|----------:|----------:|----------:|:----------:|
-| **JSON 响应** | 94,252 | **70,874** | 90,871 | 60,150 | **+17.8%** |
-| **路由参数** | 87,660 | **~68,000** | 89,382 | 47,021 | **+44.6%** |
-| **中间件链** | 78,100 | **63,158** | 81,126 | 54,707 | **+15.4%** |
+| **JSON 响应** | 44,932 | **36,819** | 45,619 | 29,203 | **+26.1%** |
+| **路由参数** | 43,859 | **36,755** | 43,676 | 24,386 | **+50.7%** |
+| **中间件链** | 28,337 | **31,698** | 41,286 | 22,719 | **+39.5%** |
 
 ### 全 Adapter 性能概览（JSON 场景）
 
 | Adapter | Vext RPS | Overhead | 额外依赖 |
 |---------|--------:|---------:|----------|
-| **Native** ⭐ | **70,874** | 24.8% | ✅ 零依赖（默认） |
-| Fastify | 60,150 | 33.8% | `fastify` |
-| Koa | 42,010 | 31.6% | `koa` |
-| Hono | 26,630 | 37.7% | `hono` `@hono/node-server` |
-| Express | 14,098 | 10.9% | `express` |
+| **Native** ⭐ | **36,819** | 18.1% | ✅ 零依赖（默认） |
+| Express | 30,974 | -3.7% | `express` |
+| Fastify | 29,203 | 36.0% | `fastify` |
+| Koa | 22,488 | 29.4% | `koa` |
+| Hono | 15,684 | 24.2% | `hono` `@hono/node-server` |
 
-> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Vext-Native 在所有场景全面领先 Vext-Fastify **15-45%**。
-> 测试环境：Node.js v22.13.0, Windows x64, i5-14400, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数)。
-> 所有核心数据 CV（变异系数）< 1.5%，数据高度可信。
+> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Vext-Native 领先 Vext-Fastify **26~51%**；中间件链场景 Vext-Native 反超裸跑 Native **+11.9%**。
+> 测试环境：Node.js v24.14.0, Windows x64, i7-9700, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数，2026-03-23)。
+> 绝大多数场景 CV（变异系数）< 3.5%，数据高度可信。
 
 ## 📋 测试场景
 

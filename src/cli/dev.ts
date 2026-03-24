@@ -8,7 +8,7 @@ import { classifyChange } from "../lib/dev/change-classifier.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
 
 /**
- * cli/dev.ts — vext dev 命令实现（Phase 2B）
+ * cli/dev.ts — vext dev 命令实现
  *
  * 启动开发模式服务器，集成：
  *   - ColdRestarter：子进程管理（fork / kill / restart）
@@ -396,7 +396,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
  *   --poll                强制使用 polling 模式
  *   --poll-interval <ms>  Polling 间隔
  *   --debounce <ms>       防抖间隔
- *   --no-hot              禁用 soft reload（Phase 2B 有效）
+ *   --no-hot              禁用 soft reload
  *   --clear               每次 reload 后清空控制台
  *
  * 使用手动解析（不引入第三方 CLI 库），保持零依赖。
@@ -525,7 +525,7 @@ function printBanner(options: DevCommandOptions): void {
 
   console.log(`
 \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
-\u2551           Vext Dev Server (Phase 2B)         \u2551
+\u2551               Vext Dev Server                \u2551
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  Mode: ${mode.padEnd(39)}\u2551
 \u2551  Watch: ${polling.padEnd(38)}\u2551

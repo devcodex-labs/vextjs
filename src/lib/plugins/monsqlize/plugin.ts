@@ -206,8 +206,12 @@ function buildMonSQLizeConfig(
   }
 
   // ── 内存数据库（测试用）───────────────────────────────────
+  // useMemoryServer 必须放入 mongoConfig（即 result.config），
+  // 因为 connectMongo 从 config 参数内部读取该字段：
+  //   let { uri, useMemoryServer } = config || {}
+  // 而非从顶层 monsqlize 配置读取。
   if (config.useMemoryServer) {
-    result.useMemoryServer = true;
+    mongoConfig.useMemoryServer = true;
   }
 
   return result;

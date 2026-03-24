@@ -332,19 +332,21 @@ Model 是对集合操作的封装，提供字段校验、钩子、虚拟字段�
 
 ### 创建 Model 文件
 
+> MonSQLize Model 层集成了 **schema-dsl**，schema 字段支持 DSL 简洁语法。
+
+#### 推荐写法：schema-dsl 简洁语法 + options.timestamps
+
 ```typescript
 // src/models/user.ts
 export default {
   collection: 'users',
 
-  // 字段定义
+  // schema-dsl 简洁语法
   schema: {
-    name: { type: 'string', required: true },
-    email: { type: 'string', required: true, unique: true },
-    role: { type: 'string', enum: ['admin', 'editor', 'viewer'], default: 'viewer' },
-    avatar: { type: 'string' },
-    createdAt: { type: 'date', default: () => new Date() },
-    updatedAt: { type: 'date', default: () => new Date() },
+    name:   'string:1-50!',          // 必填字符串，1~50 字符
+    email:  'email!',                // 必填，邮箱格式
+    role:   'admin|editor|viewer',   // 枚举值
+    avatar: 'string',                // 可选字符串
   },
 
   // 索引
@@ -353,18 +355,70 @@ export default {
     { fields: { role: 1, createdAt: -1 } },
   ],
 
-  // 钩子
+  // 使用 options.timestamps 自动管理 createdAt/updatedAt
+  options: {
+    timestamps: true,
+  },
+}
+```
+
+#### 对象格式（复杂场景）
+
+当字段需要 `default` 函数、嵌套 schema 等高级能力时，可使用对象格式：
+
+```typescript
+// src/models/user.ts
+export default {
+  collection: 'users',
+
+  // 字段定义（对象格式）
+  schema: {
+    name: { type: 'string', required: true },
+    email: { type: 'string', required: true, unique: true },
+    role: { type: 'string', enum: ['admin', 'editor', 'viewer'], default: 'viewer' },
+    avatar: { type: 'string' },
+  },
+
+  // 索引
+  indexes: [
+    { fields: { email: 1 }, options: { unique: true } },
+    { fields: { role: 1, createdAt: -1 } },
+  ],
+
+  // 钩子（仅用于非 timestamps 的自定义逻辑）
   hooks: {
     beforeInsert(doc: any) {
-      doc.createdAt = new Date();
-      doc.updatedAt = new Date();
-    },
-    beforeUpdate(update: any) {
-      if (!update.$set) update.$set = {};
-      update.$set.updatedAt = new Date();
+      // 自定义逻辑示例
+      doc.slug = doc.name.toLowerCase().replace(/\s+/g, '-');
     },
   },
-};
+
+  options: {
+    timestamps: true,
+  },
+}
+```
+
+### Model options（模型选项）
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `timestamps` | `boolean \| object` | `undefined` | 自动管理 createdAt/updatedAt |
+| `softDelete` | `boolean \| object` | `undefined` | 软删除支持 |
+| `version` | `boolean \| object` | `undefined` | 乐观锁版本号 |
+| `validate` | `boolean` | `true` | 插入/更新时的 schema 校验开关 |
+
+#### timestamps 配置
+
+```typescript
+// 简单模式：自动添加 createdAt + updatedAt
+options: { timestamps: true }
+
+// 自定义字段名
+options: { timestamps: { createdAt: 'created_time', updatedAt: 'updated_time' } }
+
+// 只启用 createdAt（日志类集合）
+options: { timestamps: { createdAt: true, updatedAt: false } }
 ```
 
 ### 目录结构

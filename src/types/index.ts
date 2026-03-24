@@ -30,6 +30,7 @@ export type {
   VextValidator,
   VextConfig,
   VextUserConfig,
+  VextMiddlewareDecl,
   VextMiddlewareConfig,
   VextCorsConfig,
   VextRateLimitConfig,

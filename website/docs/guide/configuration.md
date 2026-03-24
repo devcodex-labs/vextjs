@@ -202,7 +202,7 @@ export default {
 |--------|------|--------|------|
 | `rateLimit.enabled` | `boolean` | `true` | 是否启用全局限流 |
 | `rateLimit.max` | `number` | `100` | 时间窗口内最大请求数 |
-| `rateLimit.window` | `number` | `60000` | 时间窗口（毫秒） |
+| `rateLimit.window` | `number` | `60` | 时间窗口（秒） |
 | `rateLimit.message` | `string` | `'Too many requests'` | 限流响应消息 |
 | `rateLimit.keyBy` | `string` | `'ip'` | 限流维度（`'ip'` / 自定义字段） |
 
@@ -211,7 +211,7 @@ export default {
   rateLimit: {
     enabled: true,
     max: 100,
-    window: 60000,       // 1 分钟
+    window: 60,          // 1 分钟（单位：秒）
     message: 'Too many requests, please try again later',
     keyBy: 'ip',
   },
@@ -224,7 +224,7 @@ export default {
 ```typescript
 app.post('/login', {
   override: {
-    rateLimit: { max: 5, window: 60000 },  // 登录接口更严格
+    rateLimit: { max: 5, window: 60 },  // 登录接口更严格（window 单位：秒）
   },
 }, handler);
 
@@ -260,29 +260,35 @@ export default {
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `logger.level` | `string` | `'info'` | 日志级别 |
+| `logger.pretty` | `boolean` | 开发环境 `true` | 是否使用 pino-pretty 彩色格式化输出；生产环境默认关闭（输出 JSON） |
+| `logger.prettySingleLine` | `boolean` | `true` | pino-pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 恢复多行展开格式 |
+| `logger.prettyIgnore` | `string` | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
 
 支持的日志级别（从低到高）：`'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
 
 ```typescript
 export default {
   logger: {
-    level: 'info',      // 生产环境建议 'warn'
+    level: 'info',          // 生产环境建议 'warn'
+    pretty: true,           // 开发环境开启彩色格式化（生产环境默认关闭）
+    // prettySingleLine: true,              // 额外字段压缩到同行（默认）
+    // prettyIgnore: 'pid,hostname,requestId',  // 默认隐藏字段
   },
 };
 ```
 
-VextJS 内置 [pino](https://github.com/pinojs/pino) 作为日志引擎，默认使用 `pino-pretty` 格式化输出。
+VextJS 内置 [pino](https://github.com/pinojs/pino) 作为日志引擎，`pretty` 模式使用 `pino-pretty` 彩色格式化输出。完整的日志系统说明（Child Logger、存储方案、requestId 注入等）见 [日志文档](/guide/logger)。
 
 ### 优雅关闭配置 (`shutdown`)
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `shutdown.timeout` | `number` | `10000` | 关闭超时（毫秒），超时后强制退出 |
+| `shutdown.timeout` | `number` | `10` | 关闭超时（秒），超时后强制退出 |
 
 ```typescript
 export default {
   shutdown: {
-    timeout: 15000,     // 15 秒超时
+    timeout: 15,        // 15 秒超时（单位：秒）
   },
 };
 ```
@@ -293,25 +299,19 @@ export default {
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `response.envelope` | `boolean` | `true` | 是否启用响应包装 |
-| `response.codeField` | `string` | `'code'` | 状态码字段名 |
-| `response.dataField` | `string` | `'data'` | 数据字段名 |
-| `response.messageField` | `string` | `'message'` | 消息字段名 |
-| `response.requestIdField` | `string` | `'requestId'` | 请求 ID 字段名 |
-| `response.successCode` | `number` | `0` | 成功响应的 code 值 |
+| `response.wrap` | `boolean` | `true` | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
+| `response.hideInternalErrors` | `boolean` | `true` | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace） |
 
 ```typescript
 export default {
   response: {
-    envelope: true,
-    successCode: 0,
-    codeField: 'code',
-    dataField: 'data',
+    wrap: true,
+    hideInternalErrors: true,
   },
 };
 ```
 
-启用包装后，`res.json(data)` 的实际输出：
+启用 `wrap: true` 后，`res.json(data)` 的实际输出：
 
 ```json
 {
@@ -321,29 +321,25 @@ export default {
 }
 ```
 
-设置 `envelope: false` 可关闭包装，`res.json(data)` 直接输出原始数据。
+设置 `wrap: false` 可关闭包装，`res.json(data)` 直接输出原始数据。
 
 ### Body Parser 配置 (`bodyParser`)
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `bodyParser.enabled` | `boolean` | `true` | 是否启用 body 解析 |
-| `bodyParser.limit` | `string \| number` | `'1mb'` | 请求体大小限制 |
-| `bodyParser.json` | `boolean` | `true` | 是否解析 JSON |
-| `bodyParser.urlencoded` | `boolean` | `true` | 是否解析 URL-encoded |
+| `bodyParser.maxBodySize` | `string \| number` | `'1mb'` | 最大请求体大小 |
 
 ```typescript
 export default {
   bodyParser: {
     enabled: true,
-    limit: '5mb',       // 允许更大的请求体
-    json: true,
-    urlencoded: true,
+    maxBodySize: '5mb',  // 允许更大的请求体
   },
 };
 ```
 
-`limit` 支持字符串格式（`'1mb'`、`'500kb'`）和数字格式（字节数）。
+`maxBodySize` 支持字符串格式（`'1mb'`、`'500kb'`）和数字格式（字节数）。
 
 ### Access Log 配置 (`accessLog`)
 
@@ -456,12 +452,16 @@ export default {
 | `cluster.enabled` | `boolean` | `false` | 是否启用 Cluster 模式 |
 | `cluster.workers` | `number \| string` | `'auto'` | Worker 数量（`'auto'` = CPU 核数） |
 | `cluster.autoRestart` | `boolean` | `true` | Worker 崩溃时自动重启 |
-| `cluster.maxRestarts` | `number` | `10` | 时间窗口内最大重启次数 |
+| `cluster.maxRestarts` | `number` | `5` | 时间窗口内最大重启次数 |
 | `cluster.restartWindow` | `number` | `60000` | 重启计数窗口（毫秒） |
 | `cluster.restartBaseDelay` | `number` | `1000` | 重启基础延迟（毫秒） |
 | `cluster.restartMaxDelay` | `number` | `30000` | 重启最大延迟（毫秒） |
-| `cluster.healthCheck` | `boolean` | `true` | 是否启用 Worker 心跳检测 |
-| `cluster.reload` | `boolean` | `true` | 是否允许滚动重启 |
+| `cluster.healthCheck.enabled` | `boolean` | `true` | 是否启用 Worker 心跳检测 |
+| `cluster.healthCheck.interval` | `number` | `15000` | 心跳探测间隔（毫秒） |
+| `cluster.healthCheck.timeout` | `number` | `30000` | 心跳超时（毫秒） |
+| `cluster.reload.workerDelay` | `number` | `2000` | 替换下一个 Worker 前的等待时间（毫秒） |
+| `cluster.reload.readyTimeout` | `number` | `30000` | Worker 就绪超时（毫秒） |
+| `cluster.reload.shutdownTimeout` | `number` | `10000` | Worker 关闭超时（毫秒） |
 | `cluster.pidFile` | `string` | `'.vext.pid'` | PID 文件路径 |
 
 ```typescript
@@ -470,9 +470,9 @@ export default {
     enabled: true,
     workers: 'auto',         // 自动检测 CPU 核数
     autoRestart: true,
-    maxRestarts: 10,
-    healthCheck: true,
-    reload: true,
+    maxRestarts: 5,
+    healthCheck: { enabled: true },
+    reload: { workerDelay: 2000 },
   },
 };
 ```
@@ -623,7 +623,7 @@ export default {
 - `rateLimit.window` 必须是正整数
 - `logger.level` 必须是合法的日志级别
 - `shutdown.timeout` 必须是正整数
-- `cluster.workers` 必须是正整数或 `'auto'` / `'max'` / `'half'`
+- `cluster.workers` 必须是正整数或 `'auto'` / `'auto-1'`
 
 如果校验失败，框架会在启动时立即报错并给出清晰的错误信息，避免配置错误在运行时才暴露。
 
@@ -631,12 +631,10 @@ export default {
 
 ```typescript
 // src/config/default.ts
-import { honoAdapter } from 'vextjs/adapters/hono';
-
 export default {
   port: Number(process.env.PORT) || 3000,
   host: '0.0.0.0',
-  adapter: honoAdapter(),
+  adapter: 'native',
   trustProxy: false,
 
   logger: {
@@ -644,14 +642,14 @@ export default {
   },
 
   cors: {
-    origin: '*',
+    origins: ['*'],
     credentials: false,
   },
 
   rateLimit: {
     enabled: true,
     max: 100,
-    window: 60000,
+    window: 60,          // 单位：秒
     keyBy: 'ip',
   },
 
@@ -662,7 +660,7 @@ export default {
 
   bodyParser: {
     enabled: true,
-    limit: '1mb',
+    maxBodySize: '1mb',
   },
 
   accessLog: {
@@ -671,12 +669,12 @@ export default {
   },
 
   response: {
-    envelope: true,
-    successCode: 0,
+    wrap: true,
+    hideInternalErrors: true,
   },
 
   shutdown: {
-    timeout: 10000,
+    timeout: 10,        // 单位：秒
   },
 
   requestContext: {
@@ -705,7 +703,7 @@ export default {
 // src/config/production.ts
 export default {
   logger: { level: 'warn' },
-  cors: { origin: 'https://myapp.com', credentials: true },
+  cors: { origins: ['https://myapp.com'], credentials: true },
   openapi: { enabled: false },
   accessLog: { level: 'warn' },
   cluster: {

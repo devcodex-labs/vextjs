@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-03-24
+
+> 📄 [Detailed changelog →](./changelogs/v0.2.0.md)
+
+### Added
+- **DEV-002**: 启动日志网络地址增强 — 当 `host=0.0.0.0`（或 `::`）时，启动日志从单行 `http://0.0.0.0:PORT` 改为多行展示可访问地址：`Local: http://localhost:PORT`、`Local: http://127.0.0.1:PORT`，以及所有非 loopback 网卡的 `Network: http://<IP>:PORT`；具体 IP 场景维持原有单行输出不变。新增内部工具模块 `src/lib/utils/network.ts`（`getNetworkAddresses()` + `printReadyLog()`），生产模式（`bootstrap.ts`）与 dev 模式（`dev-bootstrap.ts`）共用同一实现，零新增外部依赖。
+
+### Fixed
+- **BUG-032**: `buildMonSQLizeConfig` 中 `useMemoryServer` 字段位置错误 — 被写入 MonSQLize 构造函数配置的顶层（`result.useMemoryServer`）而非嵌套连接配置内部（`result.config.useMemoryServer`），导致 `connectMongo` 解构 `config` 时始终读取到 `undefined`，内存服务器永不启动，实际回退连接 `localhost:27017`；无真实 MongoDB 时报 `MongoServerSelectionError: connect ECONNREFUSED`。修复为将 `useMemoryServer: true` 写入 `mongoConfig`（即 `result.config`）。同步更新单元测试断言以覆盖正确行为。
+
+### Changed
+- **DOCS-001**: 性能基准数据更新 — 重新执行全量 benchmark（5 adapter × 3 场景 × 5 轮中位数，Node.js v24.14.0 / Windows / i7-9700）。更新 `test/benchmark/README.md`、`README.md`、`website/docs/guide/introduction.md`、`website/docs/index.md`、`website/docs/guide/adapters.md` 中的性能数字，明确标注测试环境，消除与 website/benchmark.md 官方数字的混用。
+- **DOCS-002**: 文档审查修复（23 条问题）— 修复 `website/docs/guide/configuration.md`（`rateLimit.window` 单位、`cors.origin` → `cors.origins`、`shutdown.timeout` 单位、`logger` 配置字段等）、`website/docs/api/config.md`（Cluster 旧版 schema）、`profile/03-代码风格.md`（路由示例错误）、`website/docs/benchmark.md`（API 示例更新为当前 `defineRoutes` 风格）等 13 个文档文件，综合评分从 70 → 94/100。
+
+---
+
 ## [0.1.9] - 2026-03-20
 
 > 📄 [Detailed changelog →](./changelogs/v0.1.9.md)

@@ -393,7 +393,7 @@ app.post('/login', {
     },
   },
   override: {
-    rateLimit: { max: 5, window: 60000 },  // 每分钟最多 5 次
+    rateLimit: { max: 5, window: 60 },  // 每分钟最多 5 次（window 单位：秒）
   },
 }, handler);
 
@@ -508,7 +508,7 @@ app.post('/auth/register', {
     },
   },
   override: {
-    rateLimit: { max: 3, window: 60000 },
+    rateLimit: { max: 3, window: 60 },  // 单位：秒
   },
 }, async (req, res) => {
   const data = req.valid('body');

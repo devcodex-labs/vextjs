@@ -31,7 +31,7 @@
 - [ ] `npm run build` — 框架编译成功（ESM + CJS）
 - [ ] `npm test` — 所有单元/集成/E2E 测试通过
 - [ ] `cd website && npm run build` — 文档站编译成功
-- [ ] `node verify.mjs`（在 vext-test 项目中）— 121/121 功能验证通过
+- [ ] `node verify.mjs`（在 vext-test 项目中）— 131/131 功能验证通过
 
 ## 发布流程
 
