@@ -1,4 +1,4 @@
-import { readdir, stat, readFile } from "node:fs/promises";
+import { readdir, stat, readFile, writeFile, unlink } from "node:fs/promises";
 import { join, extname, sep, relative } from "node:path";
 import type { VextApp, VextLogger } from "../types/app.js";
 import { resolveModuleDefault } from "./interop.js";
@@ -170,6 +170,8 @@ function shouldExclude(filename: string): boolean {
   if (filename.includes(".test.") || filename.includes(".spec.")) return true;
   // 排除类型声明文件
   if (filename.endsWith(".d.ts")) return true;
+  // 排除 loadServiceFile 生成的 esbuild 临时编译产物（.__vext_compiled__<ts>.mjs）
+  if (filename.includes(".__vext_compiled__")) return true;
   return false;
 }
 
@@ -313,6 +315,17 @@ function setNestedKey(
  * 通过 dynamic import 加载 service 模块，获取其 default export。
  * default export 必须是 class / 构造函数。
  *
+ * TypeScript 源文件（.ts）的处理：
+ *   当 filePath 以 .ts 结尾时（`createTestApp()` 指向 src/services/ 时触发），
+ *   存在两层问题：
+ *     1. Node.js 原生 ESM 不支持 .ts 扩展名（ERR_UNKNOWN_FILE_EXTENSION）
+ *     2. .ts 文件内使用 TypeScript ESM 约定（如 import './dep.js'），
+ *        Node.js / Vite resolver 均不做 .js → .ts 自动回退
+ *   修复：调用 esbuild build()（bundle:true）将 .ts 及所有本地相对依赖
+ *   打包为单一 .mjs，npm 包保持 external 以复用项目 node_modules。
+ *   临时文件写到源文件同目录（确保 npm 包 node_modules 查找路径正确），
+ *   import 完成后在 finally 中清理。
+ *
  * @param filePath service 文件的绝对路径
  * @param flatKey  service key 的扁平化表示（用于错误信息，如 'payment.stripe'）
  * @returns default export（class 构造函数）
@@ -322,8 +335,42 @@ async function loadServiceFile(
   filePath: string,
   flatKey: string,
 ): Promise<Function> {
+  let tmpFile: string | undefined;
+
   try {
-    const fileUrl = pathToFileUrl(filePath);
+    let fileUrl: string;
+
+    if (extname(filePath) === ".ts") {
+      // ── TypeScript 源文件：esbuild bundle → 临时 .mjs → import ──────
+      //
+      // bundle:true    — 将所有本地相对 import 递归解析并内联，
+      //                  esbuild 原生理解 .ts，自动完成 .js → .ts 重映射
+      // packages:external — npm 包保持原样，Node.js 从源文件所在目录向上查找
+      // write:false    — 编译产物通过 outputFiles 返回，不写磁盘
+      // tmpFile 写到源文件同目录，命名含 .__vext_compiled__ 使 shouldExclude()
+      // 将其过滤，避免被 scanServiceFiles() 重复扫描
+      //
+      const { build } = await import("esbuild");
+      const buildResult = await build({
+        entryPoints: [filePath],
+        bundle: true,
+        packages: "external",
+        format: "esm",
+        platform: "node",
+        target: "node18",
+        write: false,
+        logLevel: "silent",
+      });
+
+      const compiledCode = buildResult.outputFiles![0]!.text;
+
+      tmpFile = `${filePath.slice(0, -3)}.__vext_compiled__${Date.now()}.mjs`;
+      await writeFile(tmpFile, compiledCode, "utf-8");
+      fileUrl = pathToFileUrl(tmpFile);
+    } else {
+      fileUrl = pathToFileUrl(filePath);
+    }
+
     const mod = await import(fileUrl);
 
     const ServiceClass = resolveModuleDefault<Function>(mod);
@@ -364,6 +411,11 @@ async function loadServiceFile(
         `         Service key: ${flatKey}\n` +
         `         ${(err as Error).message}`,
     );
+  } finally {
+    // 临时编译产物 best-effort 清理（不阻塞加载流程，失败静默忽略）
+    if (tmpFile) {
+      unlink(tmpFile).catch(() => {});
+    }
   }
 }
 

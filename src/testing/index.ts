@@ -60,7 +60,22 @@ export interface CreateTestAppOptions {
   setupPlugins?: (app: VextApp) => Promise<void> | void;
 
   /**
-   * 是否加载 src/services/（默认 true）
+   * 是否加载 `src/services/`（默认 true）
+   *
+   * 为 `true` 时，`service-loader` 扫描 `src/services/` 并自动加载所有 `.ts` 服务文件。
+   * `.ts` 文件通过 esbuild bundle 编译后加载，完整支持：
+   *   - TypeScript 语法及类型擦除
+   *   - 服务文件内部的 `.js` 扩展名 import（TypeScript ESM 约定）
+   *   - 相对路径模块依赖（esbuild bundle 内联解析）
+   *
+   * **单元测试推荐**：设为 `false` + 配合 `mockServices`，避免加载真实服务：
+   *
+   * ```typescript
+   * await createTestApp({
+   *   services: false,
+   *   mockServices: { user: mockUserService },
+   * })
+   * ```
    */
   services?: boolean;
 
@@ -210,6 +225,33 @@ const TEST_DEFAULTS: Partial<VextConfig> = {
  *
  * 零配置创建测试用 app 实例，支持 mock services、路由级集成测试。
  * 内部不启动 HTTP 服务器，通过 adapter.buildHandler() 模拟请求。
+ *
+ * ---
+ *
+ * ### TypeScript 服务文件与 ESM 加载
+ *
+ * 当 `services: true`（默认）时，`createTestApp()` 调用 `loadServices(app, 'src/services/')`
+ * 加载 `.ts` 源文件。`service-loader` 内部会自动用 esbuild 将 `.ts` 文件
+ * bundle 编译为 `.mjs` 后加载，解决两个原生问题：
+ *
+ *   1. `ERR_UNKNOWN_FILE_EXTENSION` — Node.js 原生 ESM 不支持 `.ts` 扩展名
+ *   2. `.js → .ts` 重映射缺失 — TypeScript ESM 约定使用 `.js` 扩展名，
+ *      Node.js / Vite resolver 均不自动回退到 `.ts`；
+ *      esbuild bundle 阶段已完整处理此映射
+ *
+ * **单元测试推荐**：若只测试路由逻辑，使用 `mockServices` 跳过真实服务加载，
+ * 速度更快且完全隔离：
+ *
+ * ```typescript
+ * const t = await createTestApp({
+ *   services: false,   // 不加载真实 .ts 服务文件
+ *   mockServices: {
+ *     user: { findAll: vi.fn().mockResolvedValue([]) },
+ *   },
+ * })
+ * ```
+ *
+ * **集成测试**：保持 `services: true`（默认），`service-loader` 自动处理编译。
  *
  * @param options 创建选项（全部可选）
  * @returns 包含 app、request、close 的测试 App 实例
@@ -415,7 +457,7 @@ function createTestRequest(
     // 请求参数累积
     const _headers: Record<string, string> = {};
     let _queryParams: Record<string, string | number | boolean> | null = null;
-    let _body: unknown ;
+    let _body: unknown;
     let _contentType: string | null = null;
 
     const builder: TestRequestBuilder = {
@@ -645,10 +687,7 @@ function executeRequest(
 
       // 拦截 end
       const originalEnd = mockRes.end.bind(mockRes);
-      (mockRes as any).end = (
-        chunk?: any,
-        ...args: any[]
-      ): ServerResponse => {
+      (mockRes as any).end = (chunk?: any, ...args: any[]): ServerResponse => {
         if (chunk) {
           if (Buffer.isBuffer(chunk)) {
             responseChunks.push(chunk);

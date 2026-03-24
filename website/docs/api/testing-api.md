@@ -170,20 +170,38 @@ testApp = await createTestApp({
 控制是否自动加载 `src/services/` 目录的服务。
 
 ```typescript
-// 加载真实服务（默认）
+// 加载真实服务（默认，集成测试推荐）
 testApp = await createTestApp(); // services: true
 
-// 不加载服务（纯路由测试 + mock）
+// 不加载服务（单元测试推荐：使用 mockServices 替代）
 testApp = await createTestApp({
   services: false,
   mockServices: {
     user: {
-      findAll: async () => [{ id: '1', name: 'Alice' }],
-      findById: async (id) => ({ id, name: 'Test User' }),
+      findAll: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      findById: vi.fn().mockResolvedValue({ id: '1', name: 'Test User' }),
     },
   },
 });
 ```
+
+#### TypeScript 服务文件加载机制
+
+当 `services: true` 时，`service-loader` 扫描 `src/services/` 目录并自动加载 `.ts` 源文件。由于 Node.js 原生 ESM 存在两个限制，框架内部使用 **esbuild** 自动处理：
+
+| 限制 | 说明 |
+|------|------|
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js 原生 ESM 不支持直接 `import()` `.ts` 文件 |
+| `.js → .ts` 重映射缺失 | TypeScript ESM 约定在 import 中写 `.js` 扩展名，Node.js/Vite resolver 均不自动回退到 `.ts` |
+
+`service-loader` 对每个 `.ts` 服务文件执行以下流程：
+1. 调用 `esbuild.build({ bundle: true, packages: 'external' })` 将 `.ts` 及其本地相对依赖打包为 `.mjs`
+2. 将编译产物写到源文件同目录的临时文件（命名含 `.__vext_compiled__`，不会被重复扫描）
+3. `import()` 临时 `.mjs` 文件，完成后自动清理
+
+:::tip 单元测试推荐：优先使用 mockServices
+`services: false` + `mockServices` 方案无需 esbuild 编译，速度更快且隔离性更好，是**单元测试**的推荐方式。`services: true` 适用于需要真实服务行为的**集成测试**。
+:::
 
 ---
 

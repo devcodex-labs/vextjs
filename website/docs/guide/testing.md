@@ -606,6 +606,37 @@ describe('Request headers', () => {
 
 ## 项目配置
 
+### TypeScript 服务文件与 ESM 加载
+
+当 `services: true`（默认）时，`createTestApp()` 会扫描 `src/services/` 并加载 `.ts` 源文件。`service-loader` 内部自动用 **esbuild** 将每个 `.ts` 文件 bundle 编译后加载，完整解决两个原生问题：
+
+| 问题 | 原因 | 解决方式 |
+|------|------|---------|
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js 原生 ESM 不支持 `.ts` 扩展名 | esbuild 编译为 `.mjs` 后再 `import()` |
+| `.js → .ts` 重映射缺失 | TypeScript ESM 约定在 `import` 中写 `.js`，Node.js/Vite resolver 均不自动回退到 `.ts` | esbuild `bundle: true` 在编译阶段完整解析所有本地依赖 |
+
+**不受此限制影响的场景**：
+
+- `vext start`（从 `dist/services/*.js` 加载已编译文件）
+- `vext dev`（从 `.vext/dev/services/*.js` 加载 esbuild 编译产物）
+- 集成测试使用 `mockServices`（绕过 service-loader 扫描）
+
+:::tip 单元测试推荐 mockServices
+如果测试只关注路由逻辑，使用 `mockServices` + `services: false` 速度更快且完全隔离，无需加载真实 `.ts` 服务文件：
+
+```typescript
+const app = await createTestApp({
+  services: false,
+  mockServices: {
+    user: {
+      findAll: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      findById: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+    },
+  },
+});
+```
+:::
+
 ### Vitest 配置
 
 推荐的 `vitest.config.ts` 配置：
@@ -705,7 +736,7 @@ describe('Users API', () => {
 
 ```typescript
 const app = await createTestApp({
-  loadServices: false,
+  services: false,
   mockServices: {
     user: createFreshMockUserService(), // 每组测试使用新的 mock
   },
@@ -744,6 +775,40 @@ expect(res.body).toMatchObject({
 // ❌ 只检查单个字段（容易遗漏问题）
 expect(res.body.data.name).toBe('Alice');
 ```
+
+### 6. 单元测试优先使用 mockServices
+
+**单元测试**（测试路由逻辑、中间件、错误处理）应使用 `mockServices` 替代真实服务，原因：
+
+- ✅ 速度更快（无 esbuild 编译开销，无数据库连接）
+- ✅ 完全隔离（不依赖服务实现细节，测试更稳定）
+- ✅ 可精确控制返回值和错误场景
+
+```typescript
+// ✅ 单元测试：mock 服务，专注路由逻辑
+const app = await createTestApp({
+  services: false,
+  mockServices: {
+    user: {
+      findAll: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      findById: vi.fn().mockResolvedValue(null),     // 模拟"不存在"场景
+      create: vi.fn().mockRejectedValue(            // 模拟"邮箱重复"场景
+        Object.assign(new Error('email_taken'), { status: 409 })
+      ),
+    },
+  },
+});
+
+// ✅ 集成测试：加载真实服务，测试完整业务流程
+const app = await createTestApp({
+  services: true, // 默认，service-loader 自动处理 .ts 编译
+});
+```
+
+| 测试类型 | `services` | `mockServices` | 适用场景 |
+|---------|:----------:|:--------------:|---------|
+| 单元测试 | `false` | 有值 | 路由逻辑、中间件、错误响应格式 |
+| 集成测试 | `true`（默认） | 可选覆盖 | 完整业务流程、服务间依赖 |
 
 ## 下一步
 
