@@ -699,34 +699,70 @@ scalar: {
 }
 ```
 
-## 自定义 CDN / 本地资产
+## 本地资产自动服务（v0.3.0+）
 
-默认情况下，Scalar 通过 jsDelivr CDN 加载 JS 文件。如果需要在内网、离线环境或需要版本锁定的场景下使用，可以通过 `scalar.cdnUrl` 自定义加载地址：
+从 **v0.3.0** 开始，当 `openapi.enabled: true` 时，框架**强制本地服务** Scalar JS，不再依赖外部 CDN。这解决了中国大陆、内网、离线环境下白屏或加载缓慢的问题。
+
+### 工作原理
+
+启动时框架自动执行以下流程：
+
+```
+1. 检测 @scalar/api-reference 是否已安装
+   ├─ 已安装 → 读取本地文件，注册 GET /_vext/scalar.js 路由
+   └─ 未安装 → 检测包管理器（pnpm / yarn / bun / npm）→ 自动安装 → 注册路由
+```
+
+`/docs` 页面的 `<script src>` 将自动指向 `/_vext/scalar.js`（本地路由），而非 CDN 地址。
+
+### 手动预装（推荐用于生产环境）
+
+自动安装依赖运行时网络访问，不适合 Docker/K8s 只读容器或 CI/CD 部署。建议在构建阶段提前安装：
+
+```bash
+# npm
+npm install @scalar/api-reference --no-save
+
+# pnpm
+pnpm add @scalar/api-reference
+
+# yarn
+yarn add @scalar/api-reference
+
+# bun
+bun add @scalar/api-reference
+```
+
+:::tip 生产环境最佳实践
+在 `Dockerfile` 中的依赖安装步骤提前安装 `@scalar/api-reference`，避免容器启动时触发网络请求：
+
+```dockerfile
+RUN npm install && npm install @scalar/api-reference --no-save
+```
+:::
+
+:::warning 安装失败
+如果自动安装失败（如无网络访问权限），框架会抛出明确错误并提示手动安装命令，**不会静默降级回 CDN**。
+:::
+
+### 使用自定义地址（覆盖本地服务）
+
+如果你有特殊需求（如内网 CDN 镜像、版本锁定），可以通过 `scalar.cdnUrl` 显式指定加载地址。配置后框架**跳过**本地检测和安装，直接使用你提供的地址：
 
 ```typescript
 export default {
   openapi: {
     enabled: true,
     scalar: {
-      // 方式 1：锁定特定版本
+      // 锁定特定版本（此时框架不再自动安装本地包）
       cdnUrl: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0',
 
-      // 方式 2：使用内网 CDN 镜像
+      // 或使用内网 CDN 镜像
       // cdnUrl: 'https://static.internal.com/libs/scalar-api-reference.js',
-
-      // 方式 3：使用本地静态文件（需配合静态文件服务）
-      // cdnUrl: '/static/scalar-api-reference.js',
     },
   },
 };
 ```
-
-:::warning 离线部署
-对于完全离线的环境，你需要：
-1. 从 npm 下载 `@scalar/api-reference` 包
-2. 将 JS 文件托管到内网静态服务器或应用的 public 目录
-3. 将 `cdnUrl` 指向该地址
-:::
 
 ## 与第三方工具集成
 

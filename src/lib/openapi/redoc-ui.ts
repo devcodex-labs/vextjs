@@ -11,8 +11,11 @@
  *   - 深色/浅色主题支持
  *   - 搜索（Ctrl+K / Cmd+K）
  *
- * Scalar 通过 CDN 加载（无需本地静态资源），
- * 页面加载后从 OpenAPI spec 端点获取 spec 并渲染。
+ * Scalar JS 加载策略（v0.2.2 起）：
+ *   - 默认：本地资产优先（doc-endpoints.ts 通过 registerScalarAssets 注册
+ *     GET /_vext/scalar.js，并将 cdnUrl 设为本地路由路径）
+ *   - 用户配置 scalar.cdnUrl：使用用户指定地址（CDN / 内网镜像等）
+ *   - 本函数本身无感知，直接使用 config.cdnUrl（由调用方注入正确值）
  *
  * 替代原有 Redoc + Swagger UI 双端点方案，
  * 用单一 Scalar 端点同时满足文档阅读和交互式测试需求。
@@ -22,6 +25,8 @@
  * @changelog
  *   - v0.2.0: 从 Redoc 切换为 Scalar API Reference
  *             合并文档阅读 + Try it out 到单一 /docs 端点
+ *   - v0.2.2: 本地资产优先模式（默认 CDN fallback 为死代码，
+ *             正常情况下 config.cdnUrl 始终由 doc-endpoints.ts 注入）
  */
 
 import type { ScalarConfig } from "./types.js";
@@ -29,8 +34,10 @@ import type { ScalarConfig } from "./types.js";
 /**
  * 生成 Scalar API Reference HTML 页面
  *
- * 使用 CDN 加载 Scalar（无需本地静态资源），
- * 配置项通过 Scalar.createApiReference() 初始化参数传入。
+ * config.cdnUrl 由调用方（doc-endpoints.ts）注入：
+ *   - 本地模式（默认）：'/_vext/scalar.js'（框架内存路由）
+ *   - 用户自定义模式：用户在 scalar.cdnUrl 中配置的地址
+ * 本函数本身不处理资产加载策略，只负责 HTML 模板生成。
  *
  * 页面特性：
  *   - 左侧多级导航（tag -> operation -> schema）
@@ -155,7 +162,14 @@ export function generateScalarHTML(
 </head>
 <body>
   <div id="app"></div>
-  <script src="${escapeHtml(config?.cdnUrl ?? "https://cdn.jsdelivr.net/npm/@scalar/api-reference")}" crossorigin></script>
+  <script src="${escapeHtml(
+    // config.cdnUrl 由 doc-endpoints.ts 注入（本地路由或用户配置的 CDN 地址）。
+    // 以下 jsDelivr URL 为最后防线 fallback，v0.2.2 起正常运行时不应被触及：
+    //   - 本地模式：cdnUrl = '/_vext/scalar.js'（registerScalarAssets 注册）
+    //   - 用户配置：cdnUrl = 用户指定地址
+    // 若未来调用方未注入 cdnUrl 才会降级到此 CDN URL。
+    config?.cdnUrl ?? "https://cdn.jsdelivr.net/npm/@scalar/api-reference",
+  )}" crossorigin></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       var config = JSON.parse('${configJson}');
