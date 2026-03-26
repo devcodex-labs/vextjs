@@ -84,6 +84,28 @@ export interface MonSQLizeDatabaseConfig {
     password?: string;
     authSource?: string;
     options?: Record<string, unknown>;
+    /**
+     * SSH 隧道配置（v1.3.0+）
+     * 配置后将通过 SSH 跳板机连接数据库，uri 中的 host:port 作为隧道目标地址
+     */
+    ssh?: {
+      /** SSH 服务器地址 */
+      host: string;
+      /** SSH 端口（默认 22） */
+      port?: number;
+      /** SSH 用户名 */
+      username: string;
+      /** SSH 密码（与 privateKey 二选一） */
+      password?: string;
+      /** SSH 私钥内容（与 password 二选一） */
+      privateKey?: string | Buffer;
+      /** 私钥密码 */
+      passphrase?: string;
+      /** 连接超时（毫秒，默认 20000） */
+      readyTimeout?: number;
+      /** 心跳间隔（毫秒，默认 30000） */
+      keepaliveInterval?: number;
+    };
   };
 
   /**
