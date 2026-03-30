@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { defineConfig } from "@rspress/core";
+import { pluginSitemap } from "@rspress/plugin-sitemap";
 
 export default defineConfig({
   root: path.join(__dirname, "docs"),
@@ -17,6 +18,11 @@ export default defineConfig({
         content: "eYbt9ZyPTFQHdpEJ8Iujlb9ndhmAcMlstxZd6106840",
       },
     ],
+  ],
+  plugins: [
+    pluginSitemap({
+      siteUrl: "https://vextjs.github.io/vext",
+    }),
   ],
   search: {
     codeBlocks: true,
