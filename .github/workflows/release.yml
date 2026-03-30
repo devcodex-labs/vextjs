@@ -90,6 +90,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Verify tag matches package.json version
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
@@ -104,6 +109,9 @@ jobs:
           fi
 
           echo "✅ Versions match: v${PKG_VERSION}"
+
+      - name: Verify docs version sync
+        run: bash scripts/check-version-sync.sh
 
   # ────────────────────────────────────────────────────────────
   # 3. 文档站构建验证
