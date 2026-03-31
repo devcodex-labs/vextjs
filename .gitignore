@@ -142,6 +142,10 @@ NUL
 # Vext dev compiler output
 .vext/
 
+# JetBrains IDE（仅共享 Prettier 配置）
+.idea/
+!.idea/prettier.xml
+
 # Example project lockfiles (sub-projects)
 examples/*/package-lock.json
 
