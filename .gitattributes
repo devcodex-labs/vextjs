@@ -1,0 +1,3 @@
+# 强制所有文本文件使用 LF 换行（与 Prettier endOfLine: "lf" + .editorconfig 一致）
+* text=auto eol=lf
+
