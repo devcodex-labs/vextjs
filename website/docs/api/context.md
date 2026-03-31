@@ -13,6 +13,7 @@
 | `method` | `string` | HTTP 方法（大写，如 `'GET'`、`'POST'`） |
 | `url` | `string` | 完整请求 URL |
 | `path` | `string` | 路径部分（不含 query string） |
+| `route` | `string` | 当前请求匹配的路由模板（如 `/users/:id`）；静态路由与 `path` 相同；未匹配路由（404）时为空字符串 `''` |
 | `params` | `Record<string, string>` | 路径动态参数 |
 | `query` | `Record<string, string>` | URL 查询参数（已解析） |
 | `body` | `unknown` | 请求体（由 body-parser 中间件填充） |
@@ -56,6 +57,30 @@ URL 的路径部分，不包含查询字符串。
 // 请求: GET /users?page=1
 console.log(req.path); // '/users'
 ```
+
+---
+
+### `route`
+
+当前请求所匹配的路由注册模板，由各 Adapter 在路由匹配后自动注入。与 `path` 的区别在于：`path` 是实际请求路径（高基数），`route` 是路由模板（低基数）。
+
+这是解决 Prometheus 等指标系统**高基数问题**的关键属性——指标应按路由模板聚合，而非实际路径。
+
+```typescript
+// 路由注册: app.get('/users/:id', ...)
+// 请求: GET /users/abc-123
+
+console.log(req.path);   // '/users/abc-123'（实际路径，高基数）
+console.log(req.route);  // '/users/:id'（路由模板，低基数）✅
+
+// 在 OpenTelemetry / Prometheus 中使用 req.route 作为 http.route 标签
+```
+
+| 场景 | `req.path` | `req.route` |
+|------|-----------|-------------|
+| 参数路由 `/users/:id`，请求 `/users/123` | `/users/123` | `/users/:id` |
+| 静态路由 `/health`，请求 `/health` | `/health` | `/health` |
+| 未匹配路由（404） | `/unknown/path` | `''`（空字符串） |
 
 ---
 

@@ -86,6 +86,49 @@ export interface RequestContextStore {
    * // app.fetch 出站请求自动携带 x-trace-id: abc123
    */
   propagatedHeaders?: Record<string, string>;
+
+  // ── F-03：OpenTelemetry trace context（可观测性扩展点）──────────
+
+  /**
+   * 当前请求的 OpenTelemetry Trace ID
+   *
+   * 由用户 tracing 中间件在请求开始时写入，框架不负责填充：
+   * ```typescript
+   * // src/middlewares/tracing.ts
+   * import { trace } from '@opentelemetry/api'
+   * import { requestContext } from 'vextjs'
+   *
+   * export default defineMiddleware(async (req, res, next) => {
+   *   const span = trace.getActiveSpan()
+   *   if (span?.isRecording()) {
+   *     const store = requestContext.getStore()
+   *     if (store) {
+   *       store.traceId = span.spanContext().traceId
+   *       store.spanId  = span.spanContext().spanId
+   *     }
+   *   }
+   *   await next()
+   * })
+   * ```
+   *
+   * 写入后，`src/lib/logger.ts` 的内置 mixin 会自动将其注入每条日志的
+   * `trace_id` 字段（字段名遵循 OTEL 语义约定，使用下划线格式）。
+   *
+   * 与 `VextLoggerConfig.mixin`（F-02）互补：
+   *   - F-03（此字段）：零配置自动注入，适合"写一次、处处生效"的场景
+   *   - F-02（mixin 回调）：更灵活，可实时读取 OTEL active span，无需写入 ALS
+   */
+  traceId?: string;
+
+  /**
+   * 当前请求的 OpenTelemetry Span ID
+   *
+   * 由用户 tracing 中间件在请求开始时写入（与 `traceId` 用法完全对称）。
+   * 写入后，logger 内置 mixin 自动将其注入每条日志的 `span_id` 字段。
+   *
+   * @see traceId 字段注释（用法与 traceId 完全相同）
+   */
+  spanId?: string;
 }
 
 // ── globalThis 单例 key ─────────────────────────────────────

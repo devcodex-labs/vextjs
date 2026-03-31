@@ -95,6 +95,24 @@ interface RequestContextStore {
    * 键名统一为小写（如 `x-trace-id`、`x-tenant-id`）。
    */
   propagatedHeaders?: Record<string, string>;
+
+  /**
+   * OpenTelemetry 链路追踪 ID（遵循 OTEL 语义约定字段名 `trace_id`）
+   *
+   * 由用户的 tracing 中间件在请求开始时写入。
+   * logger 内置 mixin 在此字段存在时自动将 `trace_id` 注入到每条日志输出，
+   * 实现日志与链路追踪系统的关联。框架自身不负责写入此字段。
+   */
+  traceId?: string;
+
+  /**
+   * OpenTelemetry Span ID（遵循 OTEL 语义约定字段名 `span_id`）
+   *
+   * 由用户的 tracing 中间件在请求开始时写入。
+   * logger 内置 mixin 在此字段存在时自动将 `span_id` 注入到每条日志输出。
+   * 框架自身不负责写入此字段。
+   */
+  spanId?: string;
 }
 ```
 
@@ -103,6 +121,8 @@ interface RequestContextStore {
 | `requestId` | 请求进入时 | requestId 中间件 | 日志追踪、出站请求传播 |
 | `locale` | 请求进入时 | i18n 中间件 | 错误消息国际化 |
 | `propagatedHeaders` | 请求进入时 | requestId 中间件 | 分布式追踪头、多租户头等自动透传到下游 |
+| `traceId` | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `trace_id` 到日志（OTEL 语义约定） |
+| `spanId` | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `span_id` 到日志（OTEL 语义约定） |
 
 ## 高级用法
 

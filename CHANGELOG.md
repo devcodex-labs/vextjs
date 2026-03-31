@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.2.3] | 2026-03-31 | Patch | 原生 OpenTelemetry 支持：req.route / logger.mixin / ALS trace fields（208 项 E2E 验证）[查看](./changelogs/v0.2.3.md) |
 | [0.2.2] | 2026-03-25 | Patch | Scalar JS 本地资产自动安装与本地服务（OPENAPI-013）+ exports 双策略解析修复（BUG-FIX-001）|
 | [0.2.1] | 2026-03-21 | Patch | OpenAPI tagGroups 自动推断 + 多级目录路由支持 + Model softDelete/versioning |
 | [0.2.0] | 2026-03-20 | Minor | MonSQLize 内置插件 + 路由级响应缓存 + Model CRUD API + 204 项 E2E 验证 |
@@ -38,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/vextjs/vext/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/vextjs/vext/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/vextjs/vext/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/vextjs/vext/compare/v0.1.9...v0.2.0

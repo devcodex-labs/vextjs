@@ -56,7 +56,7 @@ export interface VextLogger {
 export interface VextRateLimiter {
   /** 检查是否允许请求通过 */
   check(
-    key: string,
+    key: string
   ): Promise<{ allowed: boolean; remaining: number; resetAt: number }>;
 }
 
@@ -311,6 +311,39 @@ export interface VextLoggerConfig {
    * ```
    */
   prettySingleLine?: boolean;
+
+  /**
+   * 自定义 mixin 函数（日志字段扩展）
+   *
+   * 在每条日志写入前调用，返回值会与框架内置字段（`requestId` / `trace_id` / `span_id`）
+   * 合并输出。合并优先级：
+   *   - `requestId`：框架强制注入，**不可**被用户 mixin 覆盖
+   *   - 其余字段：用户 mixin 返回值优先（可覆盖框架注入的 `trace_id` / `span_id`）
+   *
+   * 框架不关心 mixin 的具体实现，用户可在此注入任意自定义字段，
+   * 包括但不限于 OTEL trace context、租户 ID、环境标识等。
+   *
+   * ⚠️ 注意：mixin 函数必须是**同步**函数，不支持 async。
+   * 若 mixin 抛出异常，框架会降级为空对象并输出一次 warn 日志（防日志风暴）。
+   *
+   * @example
+   * ```typescript
+   * // vext.config.ts — 注入 OTEL trace context（与特定后端无关）
+   * import { trace } from '@opentelemetry/api'
+   *
+   * export default {
+   *   logger: {
+   *     mixin() {
+   *       const span = trace.getActiveSpan()
+   *       if (!span?.isRecording()) return {}
+   *       const ctx = span.spanContext()
+   *       return { trace_id: ctx.traceId, span_id: ctx.spanId }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  mixin?: () => Record<string, unknown>;
 }
 
 /**
@@ -360,7 +393,7 @@ export interface VextShutdownConfig {
    */
   onFatalError?: (
     error: Error,
-    origin: "uncaughtException" | "unhandledRejection",
+    origin: "uncaughtException" | "unhandledRejection"
   ) => void | Promise<void>;
 }
 
@@ -902,7 +935,7 @@ export interface VextApp {
     status: number,
     message: string,
     paramsOrCode?: Record<string, unknown> | number | string,
-    code?: number | string,
+    code?: number | string
   ): never;
 
   // ── 运行时数据（不可覆盖）─────────────────────────────

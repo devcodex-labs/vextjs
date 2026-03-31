@@ -92,9 +92,19 @@ function wrapPinoAsVextLogger(pinoInstance: PinoLogger): VextLogger {
  * logger.child({ service: 'UserService' }).info('创建用户')
  * ```
  */
+
+/**
+ * 空 mixin 占位对象（模块顶层常量）
+ *
+ * 用于 config.mixin 未配置时的无分支快速返回。
+ * 注意：mixin() 最终返回的始终是通过 spread 新建的 result 对象，
+ * pino 的 object mutation 只影响 result，不会污染此共享常量（BUG-012 防回归）。
+ */
+const EMPTY_MIXIN: Record<string, unknown> = {};
+
 export function createLogger(
   config: VextLoggerConfig = {},
-  options?: { requestContextEnabled?: boolean },
+  options?: { requestContextEnabled?: boolean }
 ): VextLogger {
   const level = config.level ?? "info";
   const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
@@ -110,6 +120,13 @@ export function createLogger(
   // 设为 false 可恢复 pino-pretty 默认的多行展开格式。
   const prettySingleLine = config.prettySingleLine !== false;
 
+  // mixin 异常降级状态标志（防日志风暴：相同错误仅 warn 一次）
+  let _mixinWarnEmitted = false;
+
+  // ⚠️ 前向引用：pinoInstance 在 pinoOptions 之后赋值，
+  // 但 mixin() 仅在日志写入时被 pino 调用（非初始化阶段），届时已赋值，运行时安全。
+  let pinoInstance: PinoLogger;
+
   // ── pino 配置 ──────────────────────────────────────────
 
   const pinoOptions: pino.LoggerOptions = {
@@ -118,27 +135,86 @@ export function createLogger(
     /**
      * mixin hook — 每条日志写入前调用
      *
-     * 从 AsyncLocalStorage（requestContext）读取当前请求的 requestId，
-     * 自动附加到日志字段中。这确保了：
-     *   - handler / service / 中间件中的所有日志都携带 requestId
-     *   - 无需手动传入 requestId（零侵入）
-     *   - 并发安全（每个请求有独立的 AsyncLocalStorage store）
+     * 合并框架内置字段（requestId / trace_id / span_id）与用户自定义 mixin，
+     * 确保每条日志都携带请求级追踪信息，支持日志与链路追踪系统的关联查询。
      *
-     * 当 store 不存在时（非请求上下文，如启动日志），不注入 requestId。
+     * 合并优先级（从低到高）：
+     *   1. 框架内置字段（ALS requestId、trace_id、span_id）
+     *   2. 用户 config.mixin() 返回值（可覆盖 trace_id / span_id，但不能覆盖 requestId）
      *
-     * ⚠️ 每次必须返回新对象：pino 内部会将调用者传入的结构化字段（如 { count }）
-     * 合并到 mixin 返回的对象上（Object.assign 语义）。如果返回共享常量，
-     * 后续所有日志都会被之前的字段污染。
+     * requestId 保护规则：
+     *   - ALS 中有值时：强制使用框架值，不允许用户 mixin 覆盖
+     *   - ALS 中无值时：删除 requestId key（防止用户 mixin 注入此字段）
+     *   结果对象中永远不含 requestId: undefined key，
+     *   避免自定义序列化器或 Vitest toEqual 断言的意外行为。
+     *
+     * ⚠️ 返回的 result 始终是通过 spread 新建的对象，
+     * pino 的 object mutation 只影响 result，不污染 EMPTY_MIXIN 共享常量（BUG-012 防回归）。
      */
     mixin() {
-      // ALS 禁用时跳过 requestContext.getStore() 调用
-      if (!alsEnabled) return {};
+      // ── 层1：框架内置字段（ALS requestId + trace context）──────
+      const builtIn: Record<string, unknown> = {};
 
-      const store = requestContext.getStore();
-      if (store?.requestId) {
-        return { requestId: store.requestId };
+      if (alsEnabled) {
+        const store = requestContext.getStore();
+        // requestId：框架核心追踪字段，最终会被强制保护（见下方合并逻辑）
+        if (store?.requestId) builtIn.requestId = store.requestId;
+        // F-03：ALS trace context 自动注入（若中间件已写入）
+        if (store?.traceId) builtIn.trace_id = store.traceId;
+        if (store?.spanId) builtIn.span_id = store.spanId;
       }
-      return {};
+
+      // ── 层2：用户自定义 mixin（可覆盖非 requestId 字段）────────
+      const userFields: Record<string, unknown> = (() => {
+        if (!config.mixin) return EMPTY_MIXIN;
+        try {
+          const mixinResult = config.mixin();
+          // 防御：用户误传 async 函数时 mixinResult 是 Promise 对象，
+          // 直接展开会导致日志中出现 Promise 序列化的意外字段，降级处理
+          if (
+            mixinResult !== null &&
+            typeof mixinResult === "object" &&
+            typeof (mixinResult as Record<string, unknown>)["then"] ===
+              "function"
+          ) {
+            if (!_mixinWarnEmitted) {
+              _mixinWarnEmitted = true;
+              // pinoInstance 此时已赋值（mixin 仅在日志写入时调用，非初始化时）
+              pinoInstance.warn(
+                "[vextjs] config.logger.mixin 返回了 Promise，mixin 必须是同步函数，已降级为 {}"
+              );
+            }
+            return EMPTY_MIXIN;
+          }
+          return mixinResult ?? EMPTY_MIXIN;
+        } catch (err) {
+          if (!_mixinWarnEmitted) {
+            _mixinWarnEmitted = true;
+            // pinoInstance 此时已赋值（mixin 仅在日志写入时调用，非初始化时）
+            pinoInstance.warn(
+              { err },
+              "[vextjs] config.logger.mixin 抛出异常，已降级为 {}"
+            );
+          }
+          return EMPTY_MIXIN;
+        }
+      })();
+
+      // ── 合并：builtIn 先、userFields 后；requestId 强制保护 ────
+      // spread 操作始终创建新对象，pino 的 object mutation 只影响 result，
+      // 不会污染 EMPTY_MIXIN 共享常量（BUG-012 防回归）
+      const result: Record<string, unknown> = { ...builtIn, ...userFields };
+
+      // requestId 保护：
+      //   有值时强制用框架值覆盖 → 不允许用户 mixin 覆盖
+      //   无值时 delete key   → 防止用户 mixin 注入 requestId key
+      if (builtIn.requestId !== undefined) {
+        result.requestId = builtIn.requestId;
+      } else {
+        delete result.requestId;
+      }
+
+      return result;
     },
 
     // 时间戳格式：ISO 8601（pino 默认是 epoch ms，改为人类可读格式）
@@ -146,8 +222,6 @@ export function createLogger(
   };
 
   // ── transport 配置（pretty 模式）──────────────────────
-
-  let pinoInstance: PinoLogger;
 
   if (pretty) {
     // pino-pretty 作为 pino 内置 transport（pino v7+ 支持）

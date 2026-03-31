@@ -268,6 +268,7 @@ app.setRequestIdGenerator(() => myCustomId());
 | `pretty` | `boolean` | 开发环境 `true` | 是否美化输出（彩色格式） |
 | `prettyIgnore` | `string` | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响 |
 | `prettySingleLine` | `boolean` | `true` | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响 |
+| `mixin` | `() => Record<string, unknown>` | `undefined` | 自定义日志 mixin 函数，返回值与内置 `requestId` 字段合并注入每条日志（用户字段优先）。典型用途：注入 OpenTelemetry `trace_id` / `span_id`，实现日志与链路追踪关联。不配置时行为与之前完全一致（零 overhead）。 |
 
 ```typescript
 export default {

@@ -128,6 +128,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     method: c.req.method.toUpperCase(),
     url: c.req.url,
     path: c.req.path,
+    route: "", // registerRoute handler 覆写为真实路由模板（F-01）
 
     // ── 元信息 ──────────────────────────────────────────
     app,
@@ -142,7 +143,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
 
     // ── 校验数据 ────────────────────────────────────────
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header",
+      location: "query" | "body" | "param" | "header"
     ): T {
       // validate 中间件将校验后的数据存储在 req._validated_<location> 上
       return (req as Record<string, any>)[`_validated_${location}`] as T;

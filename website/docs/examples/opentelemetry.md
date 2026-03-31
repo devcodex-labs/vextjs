@@ -6,7 +6,12 @@
 
 - Node.js 18+
 - VextJS 项目已初始化
-- 可观测性后端（如 Jaeger / Zipkin / Grafana Tempo 用于 Traces，Prometheus 用于 Metrics）
+- 可观测性后端（任意兼容 OpenTelemetry 的后端均可，通过 OTLP 协议接入）
+
+:::tip 后端无关设计
+本文示例基于 **OTLP（OpenTelemetry Protocol）**，不绑定任何具体后端。
+只需配置 `OTEL_EXPORTER_OTLP_ENDPOINT` 环境变量，即可将数据发送到 Jaeger、Zipkin、Grafana Tempo、Prometheus、Datadog、New Relic、阿里云 ARMS、腾讯云 APM 等任意支持 OTLP 的后端。
+:::
 
 ## 安装依赖
 
@@ -235,7 +240,7 @@ export default defineMiddleware(async (req, res, next) => {
   const activeSpan = trace.getActiveSpan();
   if (activeSpan) {
     activeSpan.setAttributes({
-      'http.route': req.route?.path ?? req.url,
+      'http.route': req.route || req.path,
       'http.request_id': req.requestId ?? '',
       'vext.service': app.config.otel?.serviceName ?? 'vext-app',
     });
@@ -251,13 +256,13 @@ export default defineMiddleware(async (req, res, next) => {
     metrics.httpRequestTotal.add(1, {
       'http.method': req.method,
       'http.status_code': statusCode,
-      'http.route': req.route?.path ?? req.url,
+      'http.route': req.route || req.path,
     });
 
     metrics.httpRequestDuration.record(duration, {
       'http.method': req.method,
       'http.status_code': statusCode,
-      'http.route': req.route?.path ?? req.url,
+      'http.route': req.route || req.path,
     });
 
     // 设置 Span 状态
@@ -277,13 +282,13 @@ export default defineMiddleware(async (req, res, next) => {
     metrics.httpRequestTotal.add(1, {
       'http.method': req.method,
       'http.status_code': 500,
-      'http.route': req.route?.path ?? req.url,
+      'http.route': req.route || req.path,
     });
 
     metrics.httpRequestDuration.record(duration, {
       'http.method': req.method,
       'http.status_code': 500,
-      'http.route': req.route?.path ?? req.url,
+      'http.route': req.route || req.path,
     });
 
     if (activeSpan) {
@@ -525,67 +530,84 @@ export class OrderService {
 
 ## 日志关联
 
-将 `app.logger` 的日志与 Traces 关联，实现日志和链路的联动查询：
+将 `app.logger` 的日志与 Traces 关联，实现日志和链路的联动查询。vext 提供两种互补方式：
 
-```typescript
-// src/plugins/log-correlation.ts
-import { definePlugin } from 'vextjs';
-import { trace, context } from '@opentelemetry/api';
+### 方式一：`VextLoggerConfig.mixin`（F-02，灵活，实时读取 active span）
 
-export default definePlugin({
-  name: 'log-correlation',
-  dependencies: ['opentelemetry'],
-
-  async setup(app) {
-    // 通过 pino 的 mixin 注入 trace 上下文
-    // 如果 app.logger 是 pino 实例，可以在 logger 配置中添加 mixin
-    app.logger.info('[log-correlation] Log correlation enabled');
-    app.logger.info('[log-correlation] Logs will include trace_id and span_id fields');
-  },
-});
-```
-
-在 `vext.config.ts` 中配置 logger 的 mixin 来自动注入 trace context：
+在 `vext.config.ts` 中配置 `logger.mixin`，每次写日志时实时读取当前 active span：
 
 ```typescript
 // vext.config.ts
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 export default {
   port: 3000,
 
   logger: {
+    /**
+     * mixin 在每条日志写入前调用（同步）。
+     * 框架将其返回值与内置字段（requestId）合并输出。
+     * requestId 由框架保护，不可被此函数覆盖。
+     */
     mixin() {
       const span = trace.getActiveSpan();
-      if (span) {
-        const spanContext = span.spanContext();
-        return {
-          trace_id: spanContext.traceId,
-          span_id: spanContext.spanId,
-          trace_flags: spanContext.traceFlags,
-        };
-      }
-      return {};
+      if (!span?.isRecording()) return {};
+      const ctx = span.spanContext();
+      return {
+        trace_id: ctx.traceId,
+        span_id: ctx.spanId,
+      };
     },
   },
 };
 ```
+
+### 方式二：`RequestContextStore` ALS 字段（F-03，零配置，写入一次处处生效）
+
+在 tracing 中间件中将 trace context 写入 ALS，logger 内置 mixin 自动读取：
+
+```typescript
+// src/middlewares/tracing.ts（在 §第三步 基础上补充 ALS 写入）
+import { defineMiddleware } from 'vextjs';
+import { requestContext } from 'vextjs';
+import { trace } from '@opentelemetry/api';
+
+export default defineMiddleware(async (req, res, next) => {
+  const span = trace.getActiveSpan();
+  if (span?.isRecording()) {
+    const store = requestContext.getStore();
+    if (store) {
+      // 写入 ALS store → logger 内置 mixin 自动注入 trace_id / span_id
+      store.traceId = span.spanContext().traceId;
+      store.spanId  = span.spanContext().spanId;
+    }
+  }
+  await next();
+});
+```
+
+无需修改 `vext.config.ts`，只需注册此中间件，日志即自动携带 trace 字段。
+
+:::tip 两种方式如何选择？
+- **方式一（mixin）**：推荐，实时读取 active span，无需额外中间件，trace context 更准确
+- **方式二（ALS）**：适合不想修改 `vext.config.ts` 的场景，或需要在非 OTEL 环境下灵活控制字段写入
+- 两者可同时启用，mixin 返回值优先级更高
+:::
 
 关联后的日志输出示例：
 
 ```json
 {
   "level": 30,
-  "time": 1709625600000,
+  "time": "2026-03-31T10:00:00.000Z",
   "msg": "→ GET /api/users/123 200 45ms",
   "trace_id": "abc123def456789012345678abcdef12",
   "span_id": "1234567890abcdef",
-  "trace_flags": 1,
   "requestId": "req-uuid-xxx"
 }
 ```
 
-在 Grafana Loki / Elasticsearch 中可以通过 `trace_id` 从日志跳转到对应的链路详情。
+在 Grafana Loki / Elasticsearch / Jaeger 中可以通过 `trace_id` 从日志跳转到对应的链路详情。
 
 ## 与 app.fetch 的集成
 
@@ -613,39 +635,45 @@ Client Request
 
 ### Docker Compose（本地开发）
 
+应用和 OTEL Collector 始终启动；后端服务（Jaeger / Prometheus / Grafana）通过 Docker `profiles` 按需启用，避免本地环境臃肿：
+
 ```yaml
 # docker-compose.yml
 version: '3.8'
 
 services:
+  # ── 应用（始终启动）──────────────────────────────────────
   app:
     build: .
     ports:
       - '3000:3000'
     environment:
+      # 通过标准 OTEL 环境变量配置，不硬编码后端地址
       - OTEL_SERVICE_NAME=vext-app
-      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
-      - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
     depends_on:
       - otel-collector
 
+  # ── OTEL Collector（始终启动，统一接收 + 分发）──────────
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     ports:
-      - '4317:4317'   # gRPC
-      - '4318:4318'   # HTTP
-      - '8889:8889'   # Prometheus metrics
+      - '4317:4317'   # gRPC（OTLP）
+      - '4318:4318'   # HTTP（OTLP）
     volumes:
       - ./otel-config.yaml:/etc/otelcol/config.yaml
 
+  # ── 可选后端（按需启用，仅本地开发使用）────────────────
+  # 启动命令：docker compose --profile observability up
   jaeger:
     image: jaegertracing/all-in-one:latest
+    profiles: [observability]
     ports:
       - '16686:16686'  # Jaeger UI
-      - '14250:14250'
 
   prometheus:
     image: prom/prometheus:latest
+    profiles: [observability]
     ports:
       - '9090:9090'
     volumes:
@@ -653,13 +681,27 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+    profiles: [observability]
     ports:
       - '3001:3000'
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
 ```
 
+:::tip 对接商业 / 云厂商后端
+只需修改 `OTEL_EXPORTER_OTLP_ENDPOINT` 和相应的认证头，无需改动应用代码：
+
+| 后端 | 环境变量示例 |
+|------|-------------|
+| Datadog | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.datadoghq.com` |
+| New Relic | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net` |
+| Honeycomb | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io` |
+| 阿里云 ARMS | `OTEL_EXPORTER_OTLP_ENDPOINT=https://arms-opentelemetry-<region>.aliyuncs.com` |
+:::
+
 ### OTEL Collector 配置
+
+Collector 统一接收 OTLP 数据，通过 `exporters` 分发到下游后端；替换后端只需修改 Collector 配置，无需改动应用：
 
 ```yaml
 # otel-config.yaml
@@ -677,27 +719,30 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  jaeger:
-    endpoint: jaeger:14250
-    tls:
-      insecure: true
+  # 调试用：将数据输出到 Collector 日志（开发环境）
+  debug:
+    verbosity: detailed
 
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
-  logging:
-    loglevel: info
+  # 生产环境：替换为实际后端的 exporter，例如：
+  # otlphttp/jaeger:
+  #   endpoint: http://jaeger:4318
+  # prometheusremotewrite:
+  #   endpoint: http://prometheus:9090/api/v1/write
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheus, logging]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
 ```
 
 ## 生产环境建议
@@ -758,6 +803,56 @@ const resource = new Resource({
   'cloud.region': process.env.CLOUD_REGION ?? 'cn-hangzhou',
 });
 ```
+
+## Cluster 模式
+
+vext 支持 Cluster 多进程模式（`vext.config.ts` 中配置 `cluster`）。在 Cluster 模式下，OTEL SDK 必须在**每个 Worker 进程**中独立初始化，而非在 Master 进程中初始化。
+
+### 正确配置方式
+
+通过 `cluster.execArgv` 向 Worker 进程注入 `--import` 参数，让每个 Worker 在启动时自动加载 `instrumentation.js`：
+
+```typescript
+// vext.config.ts
+export default {
+  port: 3000,
+  cluster: {
+    // Worker 进程数（默认 CPU 核心数）
+    workers: 4,
+    // 向每个 Worker 注入 OTEL SDK 加载参数
+    execArgv: ['--import', './dist/instrumentation.js'],
+  },
+};
+```
+
+### 为什么在 Worker 而非 Master 中初始化？
+
+| | Master 进程 | Worker 进程 |
+|--|------------|------------|
+| HTTP 请求处理 | ❌ 不处理（仅管理 Workers） | ✅ 处理所有请求 |
+| OTEL SDK 初始化 | ❌ 无意义（无请求数据产生） | ✅ 必须初始化 |
+| Trace / Metrics 上报 | ❌ | ✅ 各 Worker 独立上报 |
+
+每个 Worker 是一个独立的 Node.js 进程，拥有独立的 V8 isolate，OTEL SDK 的 `AsyncLocalStorage` 在 Worker 内是进程级单例，并发安全。
+
+### Collector 聚合多 Worker 数据
+
+多个 Worker 分别将遥测数据发送到同一个 OTEL Collector，Collector 通过 `service.instance.id`（由 OTEL SDK 自动生成）区分不同进程：
+
+```
+Worker 0 ──┐
+Worker 1 ──┤──→ OTEL Collector ──→ 后端（Jaeger / Datadog / ...）
+Worker 2 ──┤
+Worker 3 ──┘
+```
+
+在可观测性后端中，可以按 `service.instance.id` 过滤查看单个 Worker 的数据，也可以聚合查看整个服务的全局指标。
+
+:::warning 注意事项
+- `instrumentation.js` 必须是编译后的文件（`dist/instrumentation.js`），而非 TypeScript 源文件
+- 确保 `instrumentation.js` 在应用启动前完成 SDK 初始化（`sdk.start()` 是同步的）
+- 开发模式（`vext dev`）下，Worker 通过热重载重启时会重新初始化 OTEL SDK，属于正常行为
+:::
 
 ## 下一步
 

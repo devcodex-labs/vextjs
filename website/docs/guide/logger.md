@@ -842,17 +842,31 @@ NODE_ENV=production node dist/index.js
 
 ```typescript
 // src/config/production.ts
-import { trace } from '@opentelemetry/api';
+import { trace } from "@opentelemetry/api";
 
 export default {
   logger: {
-    level: 'info',
-    // pino mixin 可以叠加多个数据源
-    // VextJS 内置 mixin 已注入 requestId
-    // 以下示例展示如何额外注入 trace context
+    level: "info",
+    mixin() {
+      const span = trace.getActiveSpan();
+      if (!span?.isRecording()) return {};
+      const ctx = span.spanContext();
+      return {
+        trace_id: ctx.traceId, // 注入到每条日志的 trace_id 字段（OTEL 语义约定）
+        span_id: ctx.spanId,   // 注入到每条日志的 span_id 字段
+      };
+    },
   },
 };
 ```
+
+**工作原理**：
+- `mixin()` 在每条日志写入前被调用，返回值与内置的 `requestId` 字段合并注入
+- 框架内置 mixin（注入 `requestId`）与用户 mixin 并存，互不覆盖（用户字段优先）
+- 未配置 `mixin` 时，行为与之前完全一致（零 overhead）
+- 框架不依赖 `@opentelemetry/api`，该包由用户在 tracing 初始化时引入
+
+**与 F-03（ALS 自动注入）的关系**：如果你在 tracing 中间件中向 `requestContext` 写入了 `traceId` / `spanId`，框架内置 mixin 会自动将其注入日志——无需配置 `mixin` 选项。`mixin` 配置适用于需要**直接从 OTEL Context API 实时读取**当前活跃 Span 的场景。
 
 详见 [OpenTelemetry 接入示例](/examples/opentelemetry) 中的日志关联章节。
 

@@ -1,4 +1,4 @@
-import type { VextApp } from './app.js'
+import type { VextApp } from "./app.js";
 
 /**
  * VextRequest — 框架统一请求对象接口
@@ -11,28 +11,49 @@ export interface VextRequest {
   // ── 原始数据 ──────────────────────────────────────────────
 
   /** URL 查询参数（已解析为键值对） */
-  query: Record<string, string>
+  query: Record<string, string>;
 
   /**
    * 请求体（由 body-parser 中间件负责填充）
    * 中间件执行前为 undefined，执行后为解析后的对象
    */
-  body: unknown
+  body: unknown;
 
   /** 路径动态参数（如 /users/:id 中的 { id: '123' }） */
-  params: Record<string, string>
+  params: Record<string, string>;
 
   /** 请求头（全部小写 key） */
-  headers: Record<string, string | undefined>
+  headers: Record<string, string | undefined>;
 
   /** HTTP 方法（大写，如 'GET'、'POST'） */
-  method: string
+  method: string;
 
   /** 完整请求 URL */
-  url: string
+  url: string;
 
   /** 路径部分（不含 query string） */
-  path: string
+  path: string;
+
+  /**
+   * 当前请求匹配的路由模板（如 `/users/:id`）
+   *
+   * 由各 Adapter 在路由匹配完成后注入，值为路由注册时使用的模板字符串。
+   * 与 `path`（实际请求路径，如 `/users/abc-123`）不同，`route` 是低基数字段，
+   * 适合作为 Prometheus / OTEL 指标的维度标签，可避免高基数问题。
+   *
+   * 未匹配到路由时（如 404 场景），值为空字符串 `''`。
+   *
+   * @example
+   * // 注册：app.get('/users/:id', ...)
+   * // 请求：GET /users/abc-123
+   * req.path   // '/users/abc-123'（实际路径，高基数）
+   * req.route  // '/users/:id'（路由模板，低基数）✅
+   *
+   * @example
+   * // 404 场景（无匹配路由）
+   * req.route  // ''
+   */
+  route: string;
 
   // ── 请求元信息 ────────────────────────────────────────────
 
@@ -45,7 +66,7 @@ export interface VextRequest {
    * 是为了保持 VextRequest 接口职责清晰——业务扩展字段（req.user 等）
    * 和框架核心能力（app）通过命名空间隔离。
    */
-  app: VextApp
+  app: VextApp;
 
   /**
    * 请求唯一标识
@@ -55,7 +76,7 @@ export interface VextRequest {
    *
    * 由 requestId 中间件负责填充，创建时为空字符串。
    */
-  requestId: string
+  requestId: string;
 
   /**
    * 客户端 IP
@@ -63,7 +84,7 @@ export interface VextRequest {
    * 当 config.trustProxy = true 时从 X-Forwarded-For 请求头读取第一个 IP，
    * 否则从底层 socket 的 remoteAddress 读取。
    */
-  ip: string
+  ip: string;
 
   /**
    * 请求协议
@@ -71,7 +92,7 @@ export interface VextRequest {
    * 当 config.trustProxy = true 时从 X-Forwarded-Proto 请求头读取，
    * 否则默认为 'http'。
    */
-  protocol: 'http' | 'https'
+  protocol: "http" | "https";
 
   // ── 生命周期 ──────────────────────────────────────────────
 
@@ -85,7 +106,7 @@ export interface VextRequest {
    * @param handler 关闭时执行的回调
    * @example req.onClose(() => sseStream.close())
    */
-  onClose(handler: () => void): void
+  onClose(handler: () => void): void;
 
   // ── 校验后数据 ────────────────────────────────────────────
 
@@ -117,7 +138,9 @@ export interface VextRequest {
    * const param = req.valid<{ id: string }>('param')
    * param.id  // IDE 知道是 string
    */
-  valid<T = Record<string, any>>(location: 'query' | 'body' | 'param' | 'header'): T
+  valid<T = Record<string, any>>(
+    location: "query" | "body" | "param" | "header"
+  ): T;
 
   // ── 国际化（插件注入，可选）────────────────────────────
 
@@ -126,7 +149,7 @@ export interface VextRequest {
    * @example req.t('user.not_found')        → '用户不存在'
    * @example req.t('welcome', { name: 'Alice' })  → '欢迎, Alice'
    */
-  t?: (key: string, params?: Record<string, unknown>) => string
+  t?: (key: string, params?: Record<string, unknown>) => string;
 
   // ── 中间件 / 插件扩展字段 ────────────────────────────────
 
@@ -141,5 +164,5 @@ export interface VextRequest {
    *   }
    * }
    */
-  [key: string]: unknown
+  [key: string]: unknown;
 }

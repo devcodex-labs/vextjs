@@ -58,6 +58,14 @@ interface RouteStore {
   routeChain: VextMiddleware[];
   /** 预解析的 URL 信息（由 handleRequest 在 lookup 前设置，供 handler 传给 createVextRequest） */
   parsedUrl: ParsedUrl | null;
+  /**
+   * 路由模板字符串（如 `/users/:id`）
+   *
+   * 在 registerRoute 时写入，onRouteMatch 读取后赋值到 req.route。
+   * find-my-way 的 onRouteMatch 是独立函数，无法直接访问 registerRoute closure，
+   * 因此通过 store 传递（D2 架构决策）。
+   */
+  routePath: string;
 }
 
 /**
@@ -81,7 +89,7 @@ interface RouteStore {
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse,
+  res: VextResponse
 ): Promise<void> {
   const len = chain.length;
 
@@ -172,7 +180,7 @@ const _noop = async (): Promise<void> => {};
  */
 export function createNativeAdapter(
   options: NativeAdapterOptions,
-  app: VextApp,
+  app: VextApp
 ): VextAdapter {
   // ── 创建 find-my-way 路由器 ────────────────────────────────
   //
@@ -238,7 +246,7 @@ export function createNativeAdapter(
     nodeReq: IncomingMessage,
     nodeRes: ServerResponse,
     params: Record<string, string | undefined>,
-    store: RouteStore,
+    store: RouteStore
   ): void {
     const routeParams = (params ?? {}) as Record<string, string>;
 
@@ -251,6 +259,8 @@ export function createNativeAdapter(
     // ── 构造 VextRequest / VextResponse ──────────────────
     // P2 优化：传递预解析的 URL 信息，createVextRequest 不再重复 indexOf('?')
     const req = createVextRequest(nodeReq, app, routeParams, parsedUrl);
+    // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
+    req.route = store.routePath;
     const res = createVextResponse(nodeRes, () => req.requestId);
 
     // ── 预组装中间件链（首次请求时构建，后续复用）──────────
@@ -306,7 +316,7 @@ export function createNativeAdapter(
    */
   function handleRequest(
     nodeReq: IncomingMessage,
-    nodeRes: ServerResponse,
+    nodeRes: ServerResponse
   ): void {
     // ── P2 优化：预解析 URL（一次性 indexOf('?')）──────────
     const url = nodeReq.url ?? "/";
@@ -334,7 +344,7 @@ export function createNativeAdapter(
    */
   function handleNotFound(
     nodeReq: IncomingMessage,
-    nodeRes: ServerResponse,
+    nodeRes: ServerResponse
   ): void {
     if (!notFoundHandler) {
       // 无 notFound handler（理论上 bootstrap 一定会注册），发送默认 404
@@ -377,7 +387,7 @@ export function createNativeAdapter(
     if (alsEnabled) {
       requestContext.run(
         { requestId: req.requestId, locale: undefined },
-        runNotFound,
+        runNotFound
       );
     } else {
       runNotFound();
@@ -449,6 +459,7 @@ export function createNativeAdapter(
         chain: null, // 延迟组装
         routeChain: chain,
         parsedUrl: null, // handleRequest 在 lookup 前设置
+        routePath: fmwPath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
       };
 
       // P3 优化：注册 onRouteMatch 为 handler，lookup() 直接调用它
@@ -460,14 +471,14 @@ export function createNativeAdapter(
           nodeReq: IncomingMessage,
           nodeRes: ServerResponse,
           params: Record<string, string | undefined>,
-          routeStore: RouteStore,
+          routeStore: RouteStore
         ) => {
           // 从模块级临时变量取出预解析 URL 并存入 store
           routeStore.parsedUrl = _pendingParsedUrl;
           _pendingParsedUrl = null;
           onRouteMatch(nodeReq, nodeRes, params, routeStore);
         },
-        store,
+        store
       );
     },
 
@@ -509,7 +520,7 @@ export function createNativeAdapter(
     //
     async listen(
       port: number,
-      host: string = "0.0.0.0",
+      host: string = "0.0.0.0"
     ): Promise<VextServerHandle> {
       const server: Server = createServer(handleRequest);
 
@@ -524,7 +535,7 @@ export function createNativeAdapter(
             typeof addr === "object" && addr !== null ? addr.port : port;
           const actualHost =
             typeof addr === "object" && addr !== null
-              ? (addr.address ?? host)
+              ? addr.address ?? host
               : host;
 
           resolve({
