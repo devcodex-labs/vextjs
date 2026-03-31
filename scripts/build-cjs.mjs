@@ -143,11 +143,15 @@ async function buildCjs() {
     });
 
     built++;
-    console.log(`✅ [build-cjs] ${entry.name}: ${entry.input} → ${entry.output}`);
+    console.log(
+      `✅ [build-cjs] ${entry.name}: ${entry.input} → ${entry.output}`,
+    );
   }
 
   const elapsed = Date.now() - startTime;
-  console.log(`\n🎉 [build-cjs] ${built} CJS bundle(s) generated in ${elapsed}ms`);
+  console.log(
+    `\n🎉 [build-cjs] ${built} CJS bundle(s) generated in ${elapsed}ms`,
+  );
 }
 
 buildCjs().catch((err) => {

@@ -139,7 +139,7 @@ export interface VextRequest {
    * param.id  // IDE 知道是 string
    */
   valid<T = Record<string, any>>(
-    location: "query" | "body" | "param" | "header"
+    location: "query" | "body" | "param" | "header",
   ): T;
 
   // ── 国际化（插件注入，可选）────────────────────────────

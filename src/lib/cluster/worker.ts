@@ -207,14 +207,9 @@ export async function workerMain(
     // ── 8. Cluster 兼容性检测 ────────────────────────────
     checkClusterCompatibility(ctx.app, config.workerCount);
 
-    console.log(
-      `[worker:${config.workerId}] ready (pid: ${process.pid})`,
-    );
+    console.log(`[worker:${config.workerId}] ready (pid: ${process.pid})`);
   } catch (err) {
-    console.error(
-      `[worker:${config.workerId}] bootstrap failed:`,
-      err,
-    );
+    console.error(`[worker:${config.workerId}] bootstrap failed:`, err);
     cleanupTimers(ctx);
     process.exit(1);
   }
@@ -231,10 +226,7 @@ export async function workerMain(
  *   - health-check: 立即回复心跳
  *   - broadcast:    转发给 app 事件系统（后续扩展用）
  */
-function registerIPCHandlers(
-  ctx: WorkerContext,
-  config: WorkerConfig,
-): void {
+function registerIPCHandlers(ctx: WorkerContext, config: WorkerConfig): void {
   process.on("message", (msg: unknown) => {
     if (typeof msg !== "object" || msg === null) return;
 
@@ -288,10 +280,7 @@ function registerIPCHandlers(
  *
  * 同时清理 Worker 自己的定时器（心跳 / 指标 / 内存检测）。
  */
-function shutdownWorker(
-  ctx: WorkerContext,
-  config: WorkerConfig,
-): void {
+function shutdownWorker(ctx: WorkerContext, config: WorkerConfig): void {
   if (ctx.isShuttingDown) return;
   ctx.isShuttingDown = true;
 
@@ -301,15 +290,13 @@ function shutdownWorker(
   cleanupTimers(ctx);
 
   if (ctx.internals && ctx.serverHandle) {
-    ctx.internals
-      .shutdown(ctx.serverHandle)
-      .catch((err) => {
-        console.error(
-          `[worker:${config.workerId}] shutdown error:`,
-          (err as Error).message,
-        );
-        process.exit(1);
-      });
+    ctx.internals.shutdown(ctx.serverHandle).catch((err) => {
+      console.error(
+        `[worker:${config.workerId}] shutdown error:`,
+        (err as Error).message,
+      );
+      process.exit(1);
+    });
   } else {
     // internals 不可用（bootstrap 可能未完成），直接退出
     process.exit(0);
@@ -359,14 +346,18 @@ function startHeartbeat(): ReturnType<typeof setInterval> {
  * @param app VextApp 实例
  * @returns 定时器引用（用于清理）
  */
-function startMetricsReporter(
-  app: VextApp,
-): ReturnType<typeof setInterval> {
+function startMetricsReporter(app: VextApp): ReturnType<typeof setInterval> {
   const timer = setInterval(() => {
     // 尝试从 app 内部获取请求级指标
     // 当前版本使用固定值，后续由 response-wrapper 计数器实现
     const metrics = (app as Record<string, unknown>)._internals as
-      | { getMetrics?: () => { activeRequests: number; totalRequests: number; avgResponseTime: number } }
+      | {
+          getMetrics?: () => {
+            activeRequests: number;
+            totalRequests: number;
+            avgResponseTime: number;
+          };
+        }
       | undefined;
 
     const requestMetrics = metrics?.getMetrics?.() ?? {

@@ -20,10 +20,7 @@
 // ── Master ──────────────────────────────────────────────────
 
 export { ClusterMaster, DEFAULT_CLUSTER_CONFIG } from "./master.js";
-export type {
-  ClusterMasterConfig,
-  ClusterMasterEvents,
-} from "./master.js";
+export type { ClusterMasterConfig, ClusterMasterEvents } from "./master.js";
 
 // ── Worker ──────────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ VextJS 的中间件采用 **洋葱模型**（Onion Model），支持请求前处
 ```
 
 ```typescript
-import type { VextMiddleware } from 'vextjs';
+import type { VextMiddleware } from "vextjs";
 
 const timing: VextMiddleware = async (req, res, next) => {
   // ── 前置逻辑（请求进入时执行）──
@@ -21,8 +21,10 @@ const timing: VextMiddleware = async (req, res, next) => {
 
   // ── 后置逻辑（响应返回时执行）──
   const ms = Date.now() - start;
-  res.setHeader('X-Response-Time', `${ms}ms`);
-  req.app.logger.info(`${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`);
+  res.setHeader("X-Response-Time", `${ms}ms`);
+  req.app.logger.info(
+    `${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`,
+  );
 };
 ```
 
@@ -36,10 +38,10 @@ type VextMiddleware = (
 ) => Promise<void> | void;
 ```
 
-| 参数 | 说明 |
-|------|------|
-| `req` | 框架统一的请求对象（与 Adapter 解耦） |
-| `res` | 框架统一的响应对象 |
+| 参数   | 说明                                                     |
+| ------ | -------------------------------------------------------- |
+| `req`  | 框架统一的请求对象（与 Adapter 解耦）                    |
+| `res`  | 框架统一的响应对象                                       |
 | `next` | 调用下一个中间件；必须 `await`，否则后置逻辑无法正确执行 |
 
 ## 定义中间件
@@ -52,13 +54,13 @@ type VextMiddleware = (
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
+  const token = req.headers["authorization"]?.replace("Bearer ", "");
 
   if (!token) {
-    req.app.throw(401, 'Authorization token is required');
+    req.app.throw(401, "Authorization token is required");
   }
 
   // 验证 token（示例）
@@ -66,7 +68,7 @@ export default defineMiddleware(async (req, res, next) => {
     const payload = verifyJWT(token);
     (req as any).user = payload;
   } catch {
-    req.app.throw(401, 'Invalid or expired token');
+    req.app.throw(401, "Invalid or expired token");
   }
 
   await next();
@@ -74,7 +76,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 function verifyJWT(token: string) {
   // JWT 验证逻辑...
-  return { id: '1', role: 'user' };
+  return { id: "1", role: "user" };
 }
 ```
 
@@ -84,7 +86,7 @@ function verifyJWT(token: string) {
 
 ```typescript
 // src/middlewares/check-role.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface CheckRoleOptions {
   roles: string[];
@@ -97,11 +99,11 @@ export default defineMiddlewareFactory<CheckRoleOptions>((options) => {
     const user = (req as any).user;
 
     if (!user) {
-      req.app.throw(401, 'Authentication required');
+      req.app.throw(401, "Authentication required");
     }
 
     if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-      req.app.throw(403, 'Insufficient permissions');
+      req.app.throw(403, "Insufficient permissions");
     }
 
     await next();
@@ -129,18 +131,19 @@ export default {
   port: 3000,
   middlewares: [
     // 普通中间件 — 字符串声明
-    'auth',
+    "auth",
 
     // 工厂中间件 — 对象声明（附带默认参数）
-    { name: 'check-role', options: { roles: ['user'] } },
+    { name: "check-role", options: { roles: ["user"] } },
 
     // 工厂中间件 — 无默认参数
-    'rate-limit-api',
+    "rate-limit-api",
   ],
 };
 ```
 
 白名单机制的好处：
+
 - **安全性**：防止路由随意引用未审核的中间件
 - **显式依赖**：一眼看到项目使用了哪些中间件
 - **参数默认值**：工厂中间件的默认参数集中管理
@@ -151,27 +154,35 @@ export default {
 
 ```typescript
 // src/routes/admin.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // 字符串引用 — 使用配置中的默认参数
-  app.get('/profile', {
-    middlewares: ['auth'],
-  }, async (req, res) => {
-    res.json((req as any).user);
-  });
+  app.get(
+    "/profile",
+    {
+      middlewares: ["auth"],
+    },
+    async (req, res) => {
+      res.json((req as any).user);
+    },
+  );
 
   // 对象引用 — 覆盖默认参数
-  app.delete('/users/:id', {
-    middlewares: [
-      'auth',
-      { name: 'check-role', options: { roles: ['superadmin'] } },
-    ],
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    await app.services.user.delete(id);
-    res.status(204).json(null);
-  });
+  app.delete(
+    "/users/:id",
+    {
+      middlewares: [
+        "auth",
+        { name: "check-role", options: { roles: ["superadmin"] } },
+      ],
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      await app.services.user.delete(id);
+      res.status(204).json(null);
+    },
+  );
 });
 ```
 
@@ -216,10 +227,14 @@ errorHandler      — 全局错误处理（捕获任何阶段抛出的异常）
 路由级中间件按 `options.middlewares` 数组中的声明顺序执行：
 
 ```typescript
-app.post('/sensitive-action', {
-  middlewares: ['auth', 'check-role', 'audit-log'],
-  //            ↑ 1st    ↑ 2nd        ↑ 3rd
-}, handler);
+app.post(
+  "/sensitive-action",
+  {
+    middlewares: ["auth", "check-role", "audit-log"],
+    //            ↑ 1st    ↑ 2nd        ↑ 3rd
+  },
+  handler,
+);
 ```
 
 ## 全局中间件（插件注册）
@@ -228,16 +243,16 @@ app.post('/sensitive-action', {
 
 ```typescript
 // src/plugins/security-headers.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'security-headers',
+  name: "security-headers",
   setup(app) {
     app.use(async (req, res, next) => {
       await next();
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("X-XSS-Protection", "1; mode=block");
     });
   },
 });
@@ -253,13 +268,13 @@ export default definePlugin({
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const header = req.headers['authorization'];
+  const header = req.headers["authorization"];
 
-  if (!header?.startsWith('Bearer ')) {
-    req.app.throw(401, 'Missing or invalid Authorization header');
+  if (!header?.startsWith("Bearer ")) {
+    req.app.throw(401, "Missing or invalid Authorization header");
   }
 
   const token = header.slice(7);
@@ -269,7 +284,7 @@ export default defineMiddleware(async (req, res, next) => {
     const payload = await verifyToken(token);
     (req as any).user = payload;
   } catch (err) {
-    req.app.throw(401, 'Token expired or invalid');
+    req.app.throw(401, "Token expired or invalid");
   }
 
   await next();
@@ -277,7 +292,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 async function verifyToken(token: string) {
   // 实际实现中使用 jsonwebtoken 或 jose 等库
-  return { id: '1', email: 'user@example.com', role: 'user' };
+  return { id: "1", email: "user@example.com", role: "user" };
 }
 ```
 
@@ -285,7 +300,7 @@ async function verifyToken(token: string) {
 
 ```typescript
 // src/middlewares/check-role.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface RoleOptions {
   roles: string[];
@@ -296,16 +311,16 @@ export default defineMiddlewareFactory<RoleOptions>((options) => {
     const user = (req as any).user;
 
     if (!user) {
-      req.app.throw(401, 'Not authenticated');
+      req.app.throw(401, "Not authenticated");
     }
 
     const allowed = options?.roles ?? [];
     if (allowed.length > 0 && !allowed.includes(user.role)) {
       req.app.logger.warn(
         { userId: user.id, role: user.role, required: allowed },
-        'Access denied: insufficient role',
+        "Access denied: insufficient role",
       );
-      req.app.throw(403, 'Access denied');
+      req.app.throw(403, "Access denied");
     }
 
     await next();
@@ -317,7 +332,7 @@ export default defineMiddlewareFactory<RoleOptions>((options) => {
 
 ```typescript
 // src/middlewares/timing.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
   const start = performance.now();
@@ -325,14 +340,17 @@ export default defineMiddleware(async (req, res, next) => {
   await next();
 
   const duration = (performance.now() - start).toFixed(2);
-  res.setHeader('X-Response-Time', `${duration}ms`);
+  res.setHeader("X-Response-Time", `${duration}ms`);
 
-  req.app.logger.info({
-    method: req.method,
-    path: req.path,
-    status: res.statusCode,
-    duration: `${duration}ms`,
-  }, 'Request completed');
+  req.app.logger.info(
+    {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+    },
+    "Request completed",
+  );
 });
 ```
 
@@ -340,7 +358,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 ```typescript
 // src/middlewares/api-key.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface ApiKeyOptions {
   header?: string;
@@ -348,7 +366,7 @@ interface ApiKeyOptions {
 }
 
 export default defineMiddlewareFactory<ApiKeyOptions>((options) => {
-  const headerName = options?.header ?? 'x-api-key';
+  const headerName = options?.header ?? "x-api-key";
   const validKeys = new Set(options?.keys ?? []);
 
   return async (req, res, next) => {
@@ -360,7 +378,7 @@ export default defineMiddlewareFactory<ApiKeyOptions>((options) => {
 
     const apiKey = req.headers[headerName];
     if (!apiKey || !validKeys.has(apiKey)) {
-      req.app.throw(401, 'Invalid API key');
+      req.app.throw(401, "Invalid API key");
     }
 
     await next();
@@ -372,21 +390,21 @@ export default defineMiddlewareFactory<ApiKeyOptions>((options) => {
 
 ```typescript
 // src/middlewares/cache-control.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface CacheOptions {
-  maxAge?: number;        // 秒
-  directive?: string;     // 'public' | 'private' | 'no-cache' | 'no-store'
+  maxAge?: number; // 秒
+  directive?: string; // 'public' | 'private' | 'no-cache' | 'no-store'
 }
 
 export default defineMiddlewareFactory<CacheOptions>((options) => {
   const maxAge = options?.maxAge ?? 0;
-  const directive = options?.directive ?? 'public';
-  const value = maxAge > 0 ? `${directive}, max-age=${maxAge}` : 'no-store';
+  const directive = options?.directive ?? "public";
+  const value = maxAge > 0 ? `${directive}, max-age=${maxAge}` : "no-store";
 
   return async (req, res, next) => {
     await next();
-    res.setHeader('Cache-Control', value);
+    res.setHeader("Cache-Control", value);
   };
 });
 ```
@@ -403,10 +421,10 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
 
 ```typescript
 // src/plugins/sentry.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'sentry',
+  name: "sentry",
   setup(app) {
     app.use(async (req, res, next) => {
       try {
@@ -414,7 +432,7 @@ export default definePlugin({
       } catch (err) {
         // 上报错误到 Sentry
         // Sentry.captureException(err);
-        app.logger.error({ err }, 'Captured by Sentry plugin');
+        app.logger.error({ err }, "Captured by Sentry plugin");
 
         // 重新抛出，让框架的 error-handler 处理响应
         throw err;
@@ -431,10 +449,10 @@ export default definePlugin({
 ```typescript
 export default defineMiddleware(async (req, res, next) => {
   // 通过 req.app 访问各种框架能力
-  req.app.logger.info('Middleware executing');       // 日志
-  req.app.throw(403, 'Forbidden');                   // 抛出错误
-  const config = req.app.config;                     // 读取配置
-  const userSvc = req.app.services.user;             // 访问服务
+  req.app.logger.info("Middleware executing"); // 日志
+  req.app.throw(403, "Forbidden"); // 抛出错误
+  const config = req.app.config; // 读取配置
+  const userSvc = req.app.services.user; // 访问服务
 
   await next();
 });
@@ -447,10 +465,7 @@ export default defineMiddleware(async (req, res, next) => {
 ```typescript
 // src/config/default.ts
 export default {
-  middlewares: [
-    'auth',
-    { name: 'check-role', options: { roles: ['user'] } },
-  ],
+  middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],
 };
 ```
 
@@ -458,7 +473,7 @@ export default {
 // src/config/development.ts — 开发环境关闭某些中间件
 export default {
   middlewares: [
-    { name: 'check-role', options: { roles: [] } }, // 开发环境不检查角色
+    { name: "check-role", options: { roles: [] } }, // 开发环境不检查角色
   ],
 };
 ```
@@ -469,15 +484,15 @@ export default {
 
 VextJS 内置以下全局中间件，通过配置项控制行为：
 
-| 中间件 | 配置项 | 说明 |
-|--------|--------|------|
-| **requestId** | `config.requestId` | 生成/透传请求唯一标识 |
-| **cors** | `config.cors` | CORS 跨域处理 |
-| **bodyParser** | `config.bodyParser` | 请求体解析（JSON / URL-encoded） |
-| **rateLimit** | `config.rateLimit` | 全局速率限制 |
-| **accessLog** | `config.accessLog` | 访问日志（method / path / status / duration） |
-| **responseWrapper** | `config.response` | 响应出口包装 `{ code, data, requestId }` |
-| **errorHandler** | — | 全局错误处理（不可配置，始终启用） |
+| 中间件              | 配置项              | 说明                                          |
+| ------------------- | ------------------- | --------------------------------------------- |
+| **requestId**       | `config.requestId`  | 生成/透传请求唯一标识                         |
+| **cors**            | `config.cors`       | CORS 跨域处理                                 |
+| **bodyParser**      | `config.bodyParser` | 请求体解析（JSON / URL-encoded）              |
+| **rateLimit**       | `config.rateLimit`  | 全局速率限制                                  |
+| **accessLog**       | `config.accessLog`  | 访问日志（method / path / status / duration） |
+| **responseWrapper** | `config.response`   | 响应出口包装 `{ code, data, requestId }`      |
+| **errorHandler**    | —                   | 全局错误处理（不可配置，始终启用）            |
 
 详见 [配置](/guide/configuration) 章节了解各项配置选项。
 
@@ -487,7 +502,7 @@ VextJS 内置以下全局中间件，通过配置项控制行为：
 
 ```typescript
 // src/types/extensions.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextRequest {
     user?: {
       id: string;
@@ -508,10 +523,10 @@ declare module 'vextjs' {
 
 ```typescript
 // ✅ 正确 — 职责单一
-middlewares: ['auth', 'check-role']
+middlewares: ["auth", "check-role"];
 
 // ❌ 避免 — 一个中间件做太多事
-middlewares: ['auth-and-role-check']
+middlewares: ["auth-and-role-check"];
 ```
 
 ### 2. 始终 `await next()`
@@ -521,16 +536,16 @@ middlewares: ['auth-and-role-check']
 ```typescript
 // ✅ 正确
 export default defineMiddleware(async (req, res, next) => {
-  console.log('before');
-  await next();     // 等待后续中间件和 handler 完成
-  console.log('after');
+  console.log("before");
+  await next(); // 等待后续中间件和 handler 完成
+  console.log("after");
 });
 
 // ❌ 错误 — 忘记 await，后置逻辑会在 handler 完成前执行
 export default defineMiddleware(async (req, res, next) => {
-  console.log('before');
-  next();           // 没有 await！
-  console.log('after — 这会在 handler 之前执行');
+  console.log("before");
+  next(); // 没有 await！
+  console.log("after — 这会在 handler 之前执行");
 });
 ```
 
@@ -542,7 +557,7 @@ export default defineMiddleware(async (req, res, next) => {
 export default defineMiddleware(async (req, res, next) => {
   if (!isAllowed(req)) {
     // 直接抛出错误，不调用 next() — 请求在此终止
-    req.app.throw(403, 'Access denied');
+    req.app.throw(403, "Access denied");
   }
 
   await next();
@@ -561,14 +576,14 @@ export default defineMiddlewareFactory<{ maxAge: number }>((options) => {
   const maxAge = options?.maxAge ?? 3600;
   return async (req, res, next) => {
     await next();
-    res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+    res.setHeader("Cache-Control", `public, max-age=${maxAge}`);
   };
 });
 
 // ❌ 避免 — 硬编码
 export default defineMiddleware(async (req, res, next) => {
   await next();
-  res.setHeader('Cache-Control', 'public, max-age=3600'); // 无法按环境变更
+  res.setHeader("Cache-Control", "public, max-age=3600"); // 无法按环境变更
 });
 ```
 

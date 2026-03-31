@@ -85,13 +85,9 @@ function createTempProject(): string {
   // src/config/default.ts
   fs.writeFileSync(
     path.join(srcDir, "config", "default.ts"),
-    [
-      "export default {",
-      "  port: 3000,",
-      '  host: "0.0.0.0",',
-      "};",
-      "",
-    ].join("\n"),
+    ["export default {", "  port: 3000,", '  host: "0.0.0.0",', "};", ""].join(
+      "\n",
+    ),
   );
 
   // tsconfig.json
@@ -432,9 +428,9 @@ describe("DevCompiler", () => {
       expect(fs.existsSync(path.join(outDir, "routes", "user.test.js"))).toBe(
         false,
       );
-      expect(
-        fs.existsSync(path.join(outDir, "services", "auth.spec.js")),
-      ).toBe(false);
+      expect(fs.existsSync(path.join(outDir, "services", "auth.spec.js"))).toBe(
+        false,
+      );
     });
 
     it("应返回正确的文件数量", async () => {
@@ -617,7 +613,7 @@ describe("DevCompiler", () => {
       // 新增一个文件
       fs.writeFileSync(
         path.join(srcDir, "routes", "post.ts"),
-        'export function listPosts() { return []; }\n',
+        "export function listPosts() { return []; }\n",
       );
 
       const stats = await compiler.rebuildWithNewEntryPoints();

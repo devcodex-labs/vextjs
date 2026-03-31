@@ -22,45 +22,53 @@ export default {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
+  app.get(
+    "/",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+        },
+      },
+      docs: {
+        summary: "获取用户列表",
+        description: "分页获取所有用户信息",
+        tags: ["用户管理"],
       },
     },
-    docs: {
-      summary: '获取用户列表',
-      description: '分页获取所有用户信息',
-      tags: ['用户管理'],
+    async (req, res) => {
+      const { page = 1, limit = 20 } = req.valid("query");
+      const users = await app.services.user.findAll({ page, limit });
+      res.json(users);
     },
-  }, async (req, res) => {
-    const { page = 1, limit = 20 } = req.valid('query');
-    const users = await app.services.user.findAll({ page, limit });
-    res.json(users);
-  });
+  );
 
-  app.post('/', {
-    validate: {
-      body: {
-        name: 'string:1-50!',
-        email: 'email!',
-        age: 'number:0-150?',
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50!",
+          email: "email!",
+          age: "number:0-150?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建用户",
+        tags: ["用户管理"],
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建用户',
-      tags: ['用户管理'],
+    async (req, res) => {
+      const data = req.valid("body");
+      const user = await app.services.user.create(data);
+      res.json(user, 201);
     },
-  }, async (req, res) => {
-    const data = req.valid('body');
-    const user = await app.services.user.create(data);
-    res.json(user, 201);
-  });
+  );
 });
 ```
 
@@ -68,10 +76,10 @@ export default defineRoutes((app) => {
 
 启动项目后，访问以下地址：
 
-| 地址 | 说明 |
-|------|------|
-| `http://localhost:3000/docs` | Scalar API Reference 文档界面（含内置 Try it out） |
-| `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件 |
+| 地址                                 | 说明                                               |
+| ------------------------------------ | -------------------------------------------------- |
+| `http://localhost:3000/docs`         | Scalar API Reference 文档界面（含内置 Try it out） |
+| `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                              |
 
 ## 文档配置
 
@@ -84,71 +92,71 @@ export default defineRoutes((app) => {
 export default {
   openapi: {
     enabled: true,
-    title: 'My App API',
-    description: '我的应用程序 RESTful API 文档',
-    version: '1.0.0',
+    title: "My App API",
+    description: "我的应用程序 RESTful API 文档",
+    version: "1.0.0",
 
     // Scalar 文档路径
-    docsPath: '/docs',
+    docsPath: "/docs",
 
     // OpenAPI JSON 路径
-    jsonPath: '/openapi.json',
+    jsonPath: "/openapi.json",
 
     // 反向代理公开路径（代理剥离前缀时配置，详见"自定义文档路径"章节）
     // jsonPublicPath: '/admin/openapi.json',
 
     // Scalar API Reference 配置
     scalar: {
-      theme: 'default',     // 主题：'default' | 'moon' | 'purple' | 'solarized' | ...
-      darkMode: false,       // 深色模式
-      layout: 'modern',     // 布局：'modern'（三栏） | 'classic'（双栏）
-      favicon: '/favicon.svg', // 文档页面图标
+      theme: "default", // 主题：'default' | 'moon' | 'purple' | 'solarized' | ...
+      darkMode: false, // 深色模式
+      layout: "modern", // 布局：'modern'（三栏） | 'classic'（双栏）
+      favicon: "/favicon.svg", // 文档页面图标
     },
 
     // API 服务器列表
     servers: [
-      { url: 'http://localhost:3000', description: '本地开发' },
-      { url: 'https://api.myapp.com', description: '生产环境' },
+      { url: "http://localhost:3000", description: "本地开发" },
+      { url: "https://api.myapp.com", description: "生产环境" },
     ],
 
     // 标签定义（控制分组顺序和描述）
     tags: [
-      { name: '用户管理', description: '用户 CRUD 操作' },
-      { name: '订单管理', description: '订单相关接口' },
-      { name: '系统', description: '系统级接口' },
+      { name: "用户管理", description: "用户 CRUD 操作" },
+      { name: "订单管理", description: "订单相关接口" },
+      { name: "系统", description: "系统级接口" },
     ],
 
     // 安全方案定义
     securitySchemes: {
       bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
       },
       apiKeyAuth: {
-        type: 'apiKey',
-        in: 'header',
-        name: 'X-API-Key',
+        type: "apiKey",
+        in: "header",
+        name: "X-API-Key",
       },
     },
 
     // 中间件名 → 安全方案映射
     guardSecurityMap: {
-      auth: 'bearerAuth',
-      'api-key': 'apiKeyAuth',
+      auth: "bearerAuth",
+      "api-key": "apiKeyAuth",
     },
 
     // 联系方式
     contact: {
-      name: 'API Support',
-      email: 'support@myapp.com',
-      url: 'https://myapp.com/support',
+      name: "API Support",
+      email: "support@myapp.com",
+      url: "https://myapp.com/support",
     },
 
     // 许可证
     license: {
-      name: 'MIT',
-      url: 'https://opensource.org/licenses/MIT',
+      name: "MIT",
+      url: "https://opensource.org/licenses/MIT",
     },
   },
 };
@@ -210,7 +218,9 @@ app.post('/users', {
 一句话描述接口功能，显示在文档 UI 的接口列表中：
 
 ```typescript
-docs: { summary: '获取用户列表' }
+docs: {
+  summary: "获取用户列表";
+}
 ```
 
 ### `description` — 详细描述
@@ -245,7 +255,9 @@ src/routes/admin/users.ts → 默认 tag: 'admin'
 
 ```typescript
 // 手动指定（覆盖自动推断）
-docs: { tags: ['用户管理', '管理后台'] }
+docs: {
+  tags: ["用户管理", "管理后台"];
+}
 ```
 
 ### `operationId` — 操作标识
@@ -262,7 +274,9 @@ DELETE /users/:id → operationId: 'deleteUsersById'
 
 ```typescript
 // 手动指定
-docs: { operationId: 'createNewUser' }
+docs: {
+  operationId: "createNewUser";
+}
 ```
 
 ### `hidden` — 隐藏路由
@@ -270,13 +284,21 @@ docs: { operationId: 'createNewUser' }
 不希望出现在文档中的路由（如内部接口）：
 
 ```typescript
-app.get('/internal/metrics', {
-  docs: { hidden: true },
-}, handler);
+app.get(
+  "/internal/metrics",
+  {
+    docs: { hidden: true },
+  },
+  handler,
+);
 
-app.get('/_health', {
-  docs: { hidden: true },
-}, handler);
+app.get(
+  "/_health",
+  {
+    docs: { hidden: true },
+  },
+  handler,
+);
 ```
 
 ### `deprecated` — 标记废弃
@@ -284,13 +306,17 @@ app.get('/_health', {
 标记接口为已废弃，在文档中会有删除线和废弃提示：
 
 ```typescript
-app.get('/v1/users', {
-  docs: {
-    summary: '获取用户列表（已废弃）',
-    description: '请使用 `/v2/users` 替代',
-    deprecated: true,
+app.get(
+  "/v1/users",
+  {
+    docs: {
+      summary: "获取用户列表（已废弃）",
+      description: "请使用 `/v2/users` 替代",
+      deprecated: true,
+    },
   },
-}, handler);
+  handler,
+);
 ```
 
 ### `security` — 安全方案
@@ -302,10 +328,10 @@ app.get('/v1/users', {
 export default {
   openapi: {
     securitySchemes: {
-      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
     guardSecurityMap: {
-      auth: 'bearerAuth',  // middlewares 中包含 'auth' → 映射为 bearerAuth
+      auth: "bearerAuth", // middlewares 中包含 'auth' → 映射为 bearerAuth
     },
   },
 };
@@ -317,10 +343,14 @@ export default {
 
 ```typescript
 // 无需认证（即使有 auth 中间件）
-docs: { security: [] }
+docs: {
+  security: [];
+}
 
 // 指定特定安全方案
-docs: { security: [{ apiKeyAuth: [] }] }
+docs: {
+  security: [{ apiKeyAuth: [] }];
+}
 ```
 
 ### `responses` — 响应定义
@@ -442,40 +472,48 @@ docs: {
 路由中的 `validate` 规则会自动映射到 OpenAPI 文档，无需重复编写：
 
 ```typescript
-app.get('/users', {
-  validate: {
-    query: {
-      page: 'number:1-',
-      limit: 'number:1-100',
-      status: 'active|inactive|banned',
-      keyword: 'string?',
+app.get(
+  "/users",
+  {
+    validate: {
+      query: {
+        page: "number:1-",
+        limit: "number:1-100",
+        status: "active|inactive|banned",
+        keyword: "string?",
+      },
     },
+    docs: { summary: "获取用户列表" },
   },
-  docs: { summary: '获取用户列表' },
-}, handler);
+  handler,
+);
 ```
 
 自动生成的 OpenAPI 参数：
 
-| 参数 | 位置 | 类型 | 约束 |
-|------|------|------|------|
-| `page` | query | integer | minimum: 1 |
-| `limit` | query | integer | minimum: 1, maximum: 100 |
-| `status` | query | string | enum: ["active", "inactive", "banned"] |
-| `keyword` | query | string | — |
+| 参数      | 位置  | 类型    | 约束                                   |
+| --------- | ----- | ------- | -------------------------------------- |
+| `page`    | query | integer | minimum: 1                             |
+| `limit`   | query | integer | minimum: 1, maximum: 100               |
+| `status`  | query | string  | enum: ["active", "inactive", "banned"] |
+| `keyword` | query | string  | —                                      |
 
 `validate.body` 的规则自动映射为 `requestBody`（JSON schema）：
 
 ```typescript
-app.post('/users', {
-  validate: {
-    body: {
-      name: 'string:1-50!',
-      email: 'email!',
-      age: 'number:0-150?',
+app.post(
+  "/users",
+  {
+    validate: {
+      body: {
+        name: "string:1-50!",
+        email: "email!",
+        age: "number:0-150?",
+      },
     },
   },
-}, handler);
+  handler,
+);
 ```
 
 生成的 requestBody schema：
@@ -501,10 +539,10 @@ app.post('/users', {
 export default {
   openapi: {
     enabled: true,
-    title: 'My App API',
+    title: "My App API",
     scalar: {
-      theme: 'default',
-      favicon: '/favicon.svg',
+      theme: "default",
+      favicon: "/favicon.svg",
     },
   },
 };
@@ -514,7 +552,7 @@ export default {
 // src/config/production.ts
 export default {
   openapi: {
-    enabled: false,   // 生产环境关闭文档
+    enabled: false, // 生产环境关闭文档
   },
 };
 ```
@@ -541,8 +579,8 @@ export default {
 export default {
   openapi: {
     enabled: true,
-    docsPath: '/api-docs',         // 文档: http://localhost:3000/api-docs
-    jsonPath: '/api/spec.json',    // JSON: http://localhost:3000/api/spec.json
+    docsPath: "/api-docs", // 文档: http://localhost:3000/api-docs
+    jsonPath: "/api/spec.json", // JSON: http://localhost:3000/api/spec.json
   },
 };
 ```
@@ -570,10 +608,10 @@ export default {
   openapi: {
     enabled: true,
     // vext 内部路由保持默认
-    jsonPath: '/openapi.json',
-    docsPath: '/docs',
+    jsonPath: "/openapi.json",
+    docsPath: "/docs",
     // 告诉 Scalar HTML 用带前缀的完整路径获取 spec
-    jsonPublicPath: '/admin/openapi.json',
+    jsonPublicPath: "/admin/openapi.json",
   },
 };
 ```
@@ -603,20 +641,20 @@ location /admin/ {
 export default {
   openapi: {
     enabled: true,
-    jsonPath: '/admin/openapi.json',
-    docsPath: '/admin/docs',
+    jsonPath: "/admin/openapi.json",
+    docsPath: "/admin/docs",
   },
 };
 ```
 
 #### 两种情况对比
 
-| | 代理剥离前缀 | 代理透传前缀 |
-|---|---|---|
+|                    | 代理剥离前缀                           | 代理透传前缀                          |
+| ------------------ | -------------------------------------- | ------------------------------------- |
 | Nginx `proxy_pass` | `http://127.0.0.1:3000/`（末尾有 `/`） | `http://127.0.0.1:3000`（末尾无 `/`） |
-| `jsonPath` | `/openapi.json`（默认） | `/admin/openapi.json` |
-| `docsPath` | `/docs`（默认） | `/admin/docs` |
-| `jsonPublicPath` | `/admin/openapi.json`（**必须配置**） | 无需配置 |
+| `jsonPath`         | `/openapi.json`（默认）                | `/admin/openapi.json`                 |
+| `docsPath`         | `/docs`（默认）                        | `/admin/docs`                         |
+| `jsonPublicPath`   | `/admin/openapi.json`（**必须配置**）  | 无需配置                              |
 
 ### `servers` — 文档交互地址
 
@@ -640,8 +678,8 @@ export default {
   openapi: {
     enabled: true,
     servers: [
-      { url: 'https://sit-api.example.com/admin', description: 'SIT 环境' },
-      { url: 'https://api.example.com/admin',     description: '生产环境' },
+      { url: "https://sit-api.example.com/admin", description: "SIT 环境" },
+      { url: "https://api.example.com/admin", description: "生产环境" },
     ],
   },
 };
@@ -660,8 +698,16 @@ export default {
     scalar: {
       sources: [
         // 框架自动生成的 spec 会作为第一个 source 注入（无需手动添加）
-        { title: 'Partner API', url: 'https://partner.example.com/openapi.json', slug: 'partner' },
-        { title: 'Payment API', url: 'https://pay.example.com/v1/openapi.json', slug: 'payment' },
+        {
+          title: "Partner API",
+          url: "https://partner.example.com/openapi.json",
+          slug: "partner",
+        },
+        {
+          title: "Payment API",
+          url: "https://pay.example.com/v1/openapi.json",
+          slug: "payment",
+        },
       ],
     },
   },
@@ -670,12 +716,12 @@ export default {
 
 每个 source 支持以下字段：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `title` | `string` | 文档标题（显示在切换器中） |
-| `url` | `string` | OpenAPI 规范 URL（远程或本地端点） |
+| 字段      | 类型     | 说明                                            |
+| --------- | -------- | ----------------------------------------------- |
+| `title`   | `string` | 文档标题（显示在切换器中）                      |
+| `url`     | `string` | OpenAPI 规范 URL（远程或本地端点）              |
 | `content` | `string` | OpenAPI 规范内联 JSON 字符串（与 `url` 二选一） |
-| `slug` | `string` | URL slug 标识（如 `/docs#/slug`） |
+| `slug`    | `string` | URL slug 标识（如 `/docs#/slug`）               |
 
 :::tip 自动注入
 当配置了 `sources` 时，框架自动生成的 `/openapi.json` 会作为第一个 source 注入（除非 sources 中已包含相同路径），无需手动重复声明。
@@ -739,6 +785,7 @@ bun add @scalar/api-reference
 ```dockerfile
 RUN npm install && npm install @scalar/api-reference --no-save
 ```
+
 :::
 
 :::warning 安装失败
@@ -755,7 +802,7 @@ export default {
     enabled: true,
     scalar: {
       // 锁定特定版本（此时框架不再自动安装本地包）
-      cdnUrl: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0',
+      cdnUrl: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0",
 
       // 或使用内网 CDN 镜像
       // cdnUrl: 'https://static.internal.com/libs/scalar-api-reference.js',
@@ -793,13 +840,23 @@ npx openapi-generator-cli generate \
 
 ```typescript
 // ✅ 好的 summary
-docs: { summary: '获取用户列表' }
-docs: { summary: '创建订单' }
-docs: { summary: '上传用户头像' }
+docs: {
+  summary: "获取用户列表";
+}
+docs: {
+  summary: "创建订单";
+}
+docs: {
+  summary: "上传用户头像";
+}
 
 // ❌ 不好的 summary
-docs: { summary: '这个接口用于获取系统中所有用户的列表数据' }  // 太长
-docs: { summary: 'GET users' }  // 没有价值
+docs: {
+  summary: "这个接口用于获取系统中所有用户的列表数据";
+} // 太长
+docs: {
+  summary: "GET users";
+} // 没有价值
 ```
 
 ### 2. 使用一致的标签
@@ -841,9 +898,9 @@ docs: {
 
 ```typescript
 // 健康检查、指标、调试接口等
-app.get('/health', { docs: { hidden: true } }, handler);
-app.get('/metrics', { docs: { hidden: true } }, handler);
-app.get('/debug/config', { docs: { hidden: true } }, handler);
+app.get("/health", { docs: { hidden: true } }, handler);
+app.get("/metrics", { docs: { hidden: true } }, handler);
+app.get("/debug/config", { docs: { hidden: true } }, handler);
 ```
 
 ### 5. 善用 `deprecated`
@@ -852,21 +909,29 @@ API 版本迭代时，使用 `deprecated` 而非直接删除旧接口：
 
 ```typescript
 // v1 接口标记废弃
-app.get('/v1/users', {
-  docs: {
-    summary: '获取用户列表 (v1)',
-    deprecated: true,
-    description: '此接口已废弃，请使用 `GET /v2/users`',
+app.get(
+  "/v1/users",
+  {
+    docs: {
+      summary: "获取用户列表 (v1)",
+      deprecated: true,
+      description: "此接口已废弃，请使用 `GET /v2/users`",
+    },
   },
-}, handler);
+  handler,
+);
 
 // v2 新接口
-app.get('/v2/users', {
-  docs: {
-    summary: '获取用户列表',
-    tags: ['用户 v2'],
+app.get(
+  "/v2/users",
+  {
+    docs: {
+      summary: "获取用户列表",
+      tags: ["用户 v2"],
+    },
   },
-}, handler);
+  handler,
+);
 ```
 
 ## 多级目录示例
@@ -894,15 +959,15 @@ src/routes/
 
 ### 路径映射对照
 
-| 文件路径 | URL 前缀 | 说明 |
-|---------|---------|------|
-| `routes/index.ts` | `/` | 根路由（健康检查） |
-| `routes/api/v1/index.ts` | `/api/v1` | API 版本入口 |
-| `routes/api/v1/users.ts` | `/api/v1/users` | 用户公开接口 |
+| 文件路径                             | URL 前缀                   | 说明                     |
+| ------------------------------------ | -------------------------- | ------------------------ |
+| `routes/index.ts`                    | `/`                        | 根路由（健康检查）       |
+| `routes/api/v1/index.ts`             | `/api/v1`                  | API 版本入口             |
+| `routes/api/v1/users.ts`             | `/api/v1/users`            | 用户公开接口             |
 | `routes/api/v1/users/[id]/orders.ts` | `/api/v1/users/:id/orders` | 用户订单（动态参数嵌套） |
-| `routes/api/v1/admin/dashboard.ts` | `/api/v1/admin/dashboard` | 管理后台仪表盘 |
-| `routes/api/v1/admin/users.ts` | `/api/v1/admin/users` | 管理后台用户管理 |
-| `routes/webhooks/stripe.ts` | `/webhooks/stripe` | Stripe 回调 |
+| `routes/api/v1/admin/dashboard.ts`   | `/api/v1/admin/dashboard`  | 管理后台仪表盘           |
+| `routes/api/v1/admin/users.ts`       | `/api/v1/admin/users`      | 管理后台用户管理         |
+| `routes/webhooks/stripe.ts`          | `/webhooks/stripe`         | Stripe 回调              |
 
 ### 全局 tags 定义
 
@@ -914,13 +979,13 @@ export default {
   port: 3000,
   openapi: {
     enabled: true,
-    title: 'My App API',
-    version: '2.0.0',
+    title: "My App API",
+    version: "2.0.0",
     tags: [
-      { name: 'v1/用户', description: '用户公开接口' },
-      { name: 'v1/用户订单', description: '用户关联订单' },
-      { name: 'v1/管理后台', description: '管理员专用接口' },
-      { name: 'Webhook', description: '第三方回调' },
+      { name: "v1/用户", description: "用户公开接口" },
+      { name: "v1/用户订单", description: "用户关联订单" },
+      { name: "v1/管理后台", description: "管理员专用接口" },
+      { name: "Webhook", description: "第三方回调" },
     ],
   },
 };
@@ -932,45 +997,53 @@ export default {
 
 ```typescript
 // src/routes/api/v1/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /api/v1/users → 用户列表
-  app.get('/', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-50',
-        role: 'admin|user?',
+  app.get(
+    "/",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-50",
+          role: "admin|user?",
+        },
+      },
+      docs: {
+        summary: "获取用户列表",
+        tags: ["v1/用户"],
       },
     },
-    docs: {
-      summary: '获取用户列表',
-      tags: ['v1/用户'],
+    async (req, res) => {
+      const filters = req.valid("query");
+      const users = await app.services.user.findAll(filters);
+      res.json(users);
     },
-  }, async (req, res) => {
-    const filters = req.valid('query');
-    const users = await app.services.user.findAll(filters);
-    res.json(users);
-  });
+  );
 
   // GET /api/v1/users/:id → 用户详情
-  app.get('/:id', {
-    validate: { param: { id: 'string!' } },
-    docs: {
-      summary: '获取用户详情',
-      tags: ['v1/用户'],
-      responses: {
-        200: { description: '用户信息' },
-        404: { description: '用户不存在' },
+  app.get(
+    "/:id",
+    {
+      validate: { param: { id: "string!" } },
+      docs: {
+        summary: "获取用户详情",
+        tags: ["v1/用户"],
+        responses: {
+          200: { description: "用户信息" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const user = await app.services.user.findById(id);
-    if (!user) app.throw(404, 'user.not_found');
-    res.json(user);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
+      if (!user) app.throw(404, "user.not_found");
+      res.json(user);
+    },
+  );
 });
 ```
 
@@ -978,49 +1051,57 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/api/v1/users/[id]/orders.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /api/v1/users/:id/orders → 该用户的订单列表
-  app.get('/', {
-    validate: {
-      param: { id: 'string!' },
-      query: {
-        status: 'pending|paid|shipped|completed?',
-        limit: 'number:1-100',
+  app.get(
+    "/",
+    {
+      validate: {
+        param: { id: "string!" },
+        query: {
+          status: "pending|paid|shipped|completed?",
+          limit: "number:1-100",
+        },
+      },
+      docs: {
+        summary: "获取用户订单列表",
+        description: "获取指定用户的所有订单，支持按状态筛选。",
+        tags: ["v1/用户订单"],
+        responses: {
+          200: { description: "订单列表" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-    docs: {
-      summary: '获取用户订单列表',
-      description: '获取指定用户的所有订单，支持按状态筛选。',
-      tags: ['v1/用户订单'],
-      responses: {
-        200: { description: '订单列表' },
-        404: { description: '用户不存在' },
-      },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const filters = req.valid("query");
+      const orders = await app.services.order.findByUserId(id, filters);
+      res.json(orders);
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const filters = req.valid('query');
-    const orders = await app.services.order.findByUserId(id, filters);
-    res.json(orders);
-  });
+  );
 
   // GET /api/v1/users/:id/orders/:orderId → 订单详情
-  app.get('/:orderId', {
-    validate: {
-      param: { id: 'string!', orderId: 'string!' },
+  app.get(
+    "/:orderId",
+    {
+      validate: {
+        param: { id: "string!", orderId: "string!" },
+      },
+      docs: {
+        summary: "获取订单详情",
+        tags: ["v1/用户订单"],
+      },
     },
-    docs: {
-      summary: '获取订单详情',
-      tags: ['v1/用户订单'],
+    async (req, res) => {
+      const { id, orderId } = req.valid("param");
+      const order = await app.services.order.findOne(id, orderId);
+      if (!order) app.throw(404, "order.not_found");
+      res.json(order);
     },
-  }, async (req, res) => {
-    const { id, orderId } = req.valid('param');
-    const order = await app.services.order.findOne(id, orderId);
-    if (!order) app.throw(404, 'order.not_found');
-    res.json(order);
-  });
+  );
 });
 ```
 
@@ -1028,33 +1109,40 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/api/v1/admin/dashboard.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /api/v1/admin/dashboard/stats → 统计数据
-  app.get('/stats', {
-    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
-    docs: {
-      summary: '获取仪表盘统计',
-      tags: ['v1/管理后台'],
-      responses: {
-        200: {
-          description: '统计数据',
-          example: {
-            totalUsers: 1024,
-            activeToday: 256,
-            totalOrders: 8192,
-            revenue: 99999.99,
+  app.get(
+    "/stats",
+    {
+      middlewares: [
+        "auth",
+        { name: "check-role", options: { roles: ["admin"] } },
+      ],
+      docs: {
+        summary: "获取仪表盘统计",
+        tags: ["v1/管理后台"],
+        responses: {
+          200: {
+            description: "统计数据",
+            example: {
+              totalUsers: 1024,
+              activeToday: 256,
+              totalOrders: 8192,
+              revenue: 99999.99,
+            },
           },
+          401: { description: "未认证" },
+          403: { description: "权限不足" },
         },
-        401: { description: '未认证' },
-        403: { description: '权限不足' },
       },
     },
-  }, async (_req, res) => {
-    const stats = await app.services.dashboard.getStats();
-    res.json(stats);
-  });
+    async (_req, res) => {
+      const stats = await app.services.dashboard.getStats();
+      res.json(stats);
+    },
+  );
 });
 ```
 
@@ -1062,51 +1150,65 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/api/v1/admin/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /api/v1/admin/users → 管理员查看所有用户
-  app.get('/', {
-    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
-        status: 'active|banned|suspended?',
+  app.get(
+    "/",
+    {
+      middlewares: [
+        "auth",
+        { name: "check-role", options: { roles: ["admin"] } },
+      ],
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+          status: "active|banned|suspended?",
+        },
+      },
+      docs: {
+        summary: "管理员查看用户列表",
+        description: "管理员专用，支持按用户状态筛选，返回完整用户信息。",
+        tags: ["v1/管理后台"],
       },
     },
-    docs: {
-      summary: '管理员查看用户列表',
-      description: '管理员专用，支持按用户状态筛选，返回完整用户信息。',
-      tags: ['v1/管理后台'],
+    async (req, res) => {
+      const filters = req.valid("query");
+      const users = await app.services.user.adminFindAll(filters);
+      res.json(users);
     },
-  }, async (req, res) => {
-    const filters = req.valid('query');
-    const users = await app.services.user.adminFindAll(filters);
-    res.json(users);
-  });
+  );
 
   // PATCH /api/v1/admin/users/:id/ban → 封禁用户
-  app.patch('/:id/ban', {
-    middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
-    validate: {
-      param: { id: 'string!' },
-      body: { reason: 'string:1-500!' },
-    },
-    docs: {
-      summary: '封禁用户',
-      tags: ['v1/管理后台'],
-      responses: {
-        200: { description: '封禁成功' },
-        404: { description: '用户不存在' },
+  app.patch(
+    "/:id/ban",
+    {
+      middlewares: [
+        "auth",
+        { name: "check-role", options: { roles: ["admin"] } },
+      ],
+      validate: {
+        param: { id: "string!" },
+        body: { reason: "string:1-500!" },
+      },
+      docs: {
+        summary: "封禁用户",
+        tags: ["v1/管理后台"],
+        responses: {
+          200: { description: "封禁成功" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const { reason } = req.valid('body');
-    await app.services.user.ban(id, reason);
-    res.json({ success: true });
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const { reason } = req.valid("body");
+      await app.services.user.ban(id, reason);
+      res.json({ success: true });
+    },
+  );
 });
 ```
 
@@ -1114,28 +1216,32 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/webhooks/stripe.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // POST /webhooks/stripe → Stripe 事件回调
-  app.post('/', {
-    validate: {
-      header: { 'stripe-signature': 'string!' },
-    },
-    docs: {
-      summary: 'Stripe Webhook 回调',
-      tags: ['Webhook'],
-      description: '接收 Stripe 支付事件通知。需要验证签名。',
-      responses: {
-        200: { description: '处理成功' },
-        400: { description: '签名验证失败' },
+  app.post(
+    "/",
+    {
+      validate: {
+        header: { "stripe-signature": "string!" },
+      },
+      docs: {
+        summary: "Stripe Webhook 回调",
+        tags: ["Webhook"],
+        description: "接收 Stripe 支付事件通知。需要验证签名。",
+        responses: {
+          200: { description: "处理成功" },
+          400: { description: "签名验证失败" },
+        },
       },
     },
-  }, async (req, res) => {
-    const signature = req.valid('header')['stripe-signature'];
-    await app.services.payment.handleStripeWebhook(req.body, signature);
-    res.json({ received: true });
-  });
+    async (req, res) => {
+      const signature = req.valid("header")["stripe-signature"];
+      await app.services.payment.handleStripeWebhook(req.body, signature);
+      res.json({ received: true });
+    },
+  );
 });
 ```
 
@@ -1143,23 +1249,24 @@ export default defineRoutes((app) => {
 
 以上目录结构最终自动生成以下 OpenAPI 路径，在 Scalar 文档中按 tags 分组展示：
 
-| OpenAPI 路径 | 方法 | Tag | 来源文件 |
-|-------------|------|-----|---------|
-| `/api/v1/users` | GET | v1/用户 | `api/v1/users.ts` |
-| `/api/v1/users/{id}` | GET | v1/用户 | `api/v1/users.ts` |
-| `/api/v1/users/{id}/orders` | GET | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/users/{id}/orders/{orderId}` | GET | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/admin/dashboard/stats` | GET | v1/管理后台 | `api/v1/admin/dashboard.ts` |
-| `/api/v1/admin/users` | GET | v1/管理后台 | `api/v1/admin/users.ts` |
-| `/api/v1/admin/users/{id}/ban` | PATCH | v1/管理后台 | `api/v1/admin/users.ts` |
-| `/webhooks/stripe` | POST | Webhook | `webhooks/stripe.ts` |
+| OpenAPI 路径                          | 方法  | Tag         | 来源文件                      |
+| ------------------------------------- | ----- | ----------- | ----------------------------- |
+| `/api/v1/users`                       | GET   | v1/用户     | `api/v1/users.ts`             |
+| `/api/v1/users/{id}`                  | GET   | v1/用户     | `api/v1/users.ts`             |
+| `/api/v1/users/{id}/orders`           | GET   | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/users/{id}/orders/{orderId}` | GET   | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/admin/dashboard/stats`       | GET   | v1/管理后台 | `api/v1/admin/dashboard.ts`   |
+| `/api/v1/admin/users`                 | GET   | v1/管理后台 | `api/v1/admin/users.ts`       |
+| `/api/v1/admin/users/{id}/ban`        | PATCH | v1/管理后台 | `api/v1/admin/users.ts`       |
+| `/webhooks/stripe`                    | POST  | Webhook     | `webhooks/stripe.ts`          |
 
 :::tip 多级目录最佳实践
+
 - **用目录层级表达 URL 结构**：`api/v1/admin/` 自动映射为 `/api/v1/admin/` 前缀，无需手动拼接
 - **动态参数用 `[param]` 目录**：`users/[id]/orders.ts` 自动变为 `/users/:id/orders`，文件内的 `param` 校验会出现在 OpenAPI 文档中
 - **tags 统一管理**：在全局配置中预定义 tags，各路由文件通过 `docs.tags` 引用，Scalar 文档按标签分组
 - **文件名即路由**：无需 `app.group()` 或手动注册路由前缀，目录结构就是路由结构
-:::
+  :::
 
 ## 标签分组（x-tagGroups）
 
@@ -1215,33 +1322,33 @@ export default {
   port: 3000,
   openapi: {
     enabled: true,
-    title: 'My API',
-    version: '1.0.0',
+    title: "My API",
+    version: "1.0.0",
 
     // 手动配置标签分组
     tagGroups: [
       {
-        name: 'User API',
-        tags: ['users', 'user-profile', 'user-orders'],
+        name: "User API",
+        tags: ["users", "user-profile", "user-orders"],
       },
       {
-        name: 'Administration',
-        tags: ['admin-dashboard', 'admin-users'],
+        name: "Administration",
+        tags: ["admin-dashboard", "admin-users"],
       },
       {
-        name: 'Integration',
-        tags: ['webhooks'],
+        name: "Integration",
+        tags: ["webhooks"],
       },
     ],
 
     // tags 定义（可选，提供描述信息）
     tags: [
-      { name: 'users', description: '用户公开接口' },
-      { name: 'user-profile', description: '用户个人资料' },
-      { name: 'user-orders', description: '用户订单' },
-      { name: 'admin-dashboard', description: '管理后台仪表盘' },
-      { name: 'admin-users', description: '管理后台用户管理' },
-      { name: 'webhooks', description: '第三方回调' },
+      { name: "users", description: "用户公开接口" },
+      { name: "user-profile", description: "用户个人资料" },
+      { name: "user-orders", description: "用户订单" },
+      { name: "admin-dashboard", description: "管理后台仪表盘" },
+      { name: "admin-users", description: "管理后台用户管理" },
+      { name: "webhooks", description: "第三方回调" },
     ],
   },
 };
@@ -1253,11 +1360,11 @@ export default {
 
 ### 效果对比
 
-| 无 x-tagGroups | 有 x-tagGroups |
-|:---:|:---:|
-| 所有 tags 平铺在侧边栏 | tags 按分组折叠展示 |
+|                      无 x-tagGroups                      |                       有 x-tagGroups                       |
+| :------------------------------------------------------: | :--------------------------------------------------------: |
+|                  所有 tags 平铺在侧边栏                  |                    tags 按分组折叠展示                     |
 | `users` / `admin-dashboard` / `orders` / `webhooks` 并列 | **User API** ▸ users, orders / **Admin** ▸ admin-dashboard |
-| 适合少量路由 | 适合路由数量较多的项目 |
+|                       适合少量路由                       |                   适合路由数量较多的项目                   |
 
 ### 与热重载的兼容性
 
@@ -1275,98 +1382,110 @@ export default {
 
 ```typescript
 // src/routes/orders.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // 获取订单列表
-  app.get('/', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-50',
-        status: 'pending|paid|shipped|completed|cancelled',
-        startDate: 'date?',
-        endDate: 'date?',
+  app.get(
+    "/",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-50",
+          status: "pending|paid|shipped|completed|cancelled",
+          startDate: "date?",
+          endDate: "date?",
+        },
       },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '获取订单列表',
-      description: '分页获取当前用户的订单列表，支持按状态和日期范围筛选。',
-      tags: ['订单'],
-      responses: {
-        200: {
-          description: '订单列表',
-          headers: {
-            'X-Total-Count': {
-              description: '总订单数',
-              schema: { type: 'integer' },
+      middlewares: ["auth"],
+      docs: {
+        summary: "获取订单列表",
+        description: "分页获取当前用户的订单列表，支持按状态和日期范围筛选。",
+        tags: ["订单"],
+        responses: {
+          200: {
+            description: "订单列表",
+            headers: {
+              "X-Total-Count": {
+                description: "总订单数",
+                schema: { type: "integer" },
+              },
             },
           },
         },
       },
     },
-  }, async (req, res) => {
-    const filters = req.valid('query');
-    const orders = await app.services.order.findAll(filters);
-    res.json(orders);
-  });
+    async (req, res) => {
+      const filters = req.valid("query");
+      const orders = await app.services.order.findAll(filters);
+      res.json(orders);
+    },
+  );
 
   // 创建订单
-  app.post('/', {
-    validate: {
-      body: {
-        productId: 'string!',
-        quantity: 'number:1-99!',
-        shippingAddress: 'string:1-200!',
-        couponCode: 'string?',
-      },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建订单',
-      tags: ['订单'],
-      responses: {
-        201: {
-          description: '订单创建成功',
-          example: {
-            orderId: 'ord_abc123',
-            status: 'pending',
-            total: 99.99,
-          },
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          productId: "string!",
+          quantity: "number:1-99!",
+          shippingAddress: "string:1-200!",
+          couponCode: "string?",
         },
-        400: { description: '库存不足或优惠券无效' },
-        401: { description: '未认证' },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建订单",
+        tags: ["订单"],
+        responses: {
+          201: {
+            description: "订单创建成功",
+            example: {
+              orderId: "ord_abc123",
+              status: "pending",
+              total: 99.99,
+            },
+          },
+          400: { description: "库存不足或优惠券无效" },
+          401: { description: "未认证" },
+        },
       },
     },
-  }, async (req, res) => {
-    const data = req.valid('body');
-    const order = await app.services.order.create(data);
-    res.json(order, 201);
-  });
+    async (req, res) => {
+      const data = req.valid("body");
+      const order = await app.services.order.create(data);
+      res.json(order, 201);
+    },
+  );
 
   // 取消订单
-  app.post('/:id/cancel', {
-    validate: {
-      param: { id: 'string!' },
-      body: { reason: 'string:1-500?' },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '取消订单',
-      tags: ['订单'],
-      responses: {
-        200: { description: '取消成功' },
-        400: { description: '订单状态不允许取消' },
-        404: { description: '订单不存在' },
+  app.post(
+    "/:id/cancel",
+    {
+      validate: {
+        param: { id: "string!" },
+        body: { reason: "string:1-500?" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "取消订单",
+        tags: ["订单"],
+        responses: {
+          200: { description: "取消成功" },
+          400: { description: "订单状态不允许取消" },
+          404: { description: "订单不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const { reason } = req.valid('body');
-    await app.services.order.cancel(id, reason);
-    res.json({ success: true });
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const { reason } = req.valid("body");
+      await app.services.order.cancel(id, reason);
+      res.json({ success: true });
+    },
+  );
 });
 ```
 

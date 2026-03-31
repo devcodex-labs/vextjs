@@ -89,7 +89,7 @@ interface RouteStore {
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse
+  res: VextResponse,
 ): Promise<void> {
   const len = chain.length;
 
@@ -180,7 +180,7 @@ const _noop = async (): Promise<void> => {};
  */
 export function createNativeAdapter(
   options: NativeAdapterOptions,
-  app: VextApp
+  app: VextApp,
 ): VextAdapter {
   // ── 创建 find-my-way 路由器 ────────────────────────────────
   //
@@ -246,7 +246,7 @@ export function createNativeAdapter(
     nodeReq: IncomingMessage,
     nodeRes: ServerResponse,
     params: Record<string, string | undefined>,
-    store: RouteStore
+    store: RouteStore,
   ): void {
     const routeParams = (params ?? {}) as Record<string, string>;
 
@@ -316,7 +316,7 @@ export function createNativeAdapter(
    */
   function handleRequest(
     nodeReq: IncomingMessage,
-    nodeRes: ServerResponse
+    nodeRes: ServerResponse,
   ): void {
     // ── P2 优化：预解析 URL（一次性 indexOf('?')）──────────
     const url = nodeReq.url ?? "/";
@@ -344,7 +344,7 @@ export function createNativeAdapter(
    */
   function handleNotFound(
     nodeReq: IncomingMessage,
-    nodeRes: ServerResponse
+    nodeRes: ServerResponse,
   ): void {
     if (!notFoundHandler) {
       // 无 notFound handler（理论上 bootstrap 一定会注册），发送默认 404
@@ -387,7 +387,7 @@ export function createNativeAdapter(
     if (alsEnabled) {
       requestContext.run(
         { requestId: req.requestId, locale: undefined },
-        runNotFound
+        runNotFound,
       );
     } else {
       runNotFound();
@@ -471,14 +471,14 @@ export function createNativeAdapter(
           nodeReq: IncomingMessage,
           nodeRes: ServerResponse,
           params: Record<string, string | undefined>,
-          routeStore: RouteStore
+          routeStore: RouteStore,
         ) => {
           // 从模块级临时变量取出预解析 URL 并存入 store
           routeStore.parsedUrl = _pendingParsedUrl;
           _pendingParsedUrl = null;
           onRouteMatch(nodeReq, nodeRes, params, routeStore);
         },
-        store
+        store,
       );
     },
 
@@ -520,7 +520,7 @@ export function createNativeAdapter(
     //
     async listen(
       port: number,
-      host: string = "0.0.0.0"
+      host: string = "0.0.0.0",
     ): Promise<VextServerHandle> {
       const server: Server = createServer(handleRequest);
 
@@ -535,7 +535,7 @@ export function createNativeAdapter(
             typeof addr === "object" && addr !== null ? addr.port : port;
           const actualHost =
             typeof addr === "object" && addr !== null
-              ? addr.address ?? host
+              ? (addr.address ?? host)
               : host;
 
           resolve({

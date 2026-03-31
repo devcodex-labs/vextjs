@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http"
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 /**
  * hot-swappable-handler.ts — 请求处理函数原子替换（Phase 2B）
@@ -46,7 +46,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 export type RequestHandler = (
   req: IncomingMessage,
   res: ServerResponse,
-) => void
+) => void;
 
 // ── HotSwappableHandler ─────────────────────────────────────
 
@@ -72,7 +72,7 @@ export class HotSwappableHandler {
    * soft reload 成功时通过 swap() 替换为新的 handler。
    * soft reload 失败时保持不变，旧 handler 通过闭包继续服务。
    */
-  private currentHandler: RequestHandler
+  private currentHandler: RequestHandler;
 
   /**
    * 累计 reload 次数（swap 调用次数）
@@ -80,7 +80,7 @@ export class HotSwappableHandler {
    * 用于日志、调试和性能统计。
    * 初始值为 0（表示尚未执行过热替换）。
    */
-  private reloadCount = 0
+  private reloadCount = 0;
 
   /**
    * 最近一次成功 swap 的时间戳（毫秒）
@@ -88,13 +88,13 @@ export class HotSwappableHandler {
    * 用于日志输出和调试（如显示"距上次 reload 过去了多久"）。
    * 初始为 null，表示尚未执行过 swap。
    */
-  private lastSwapTime: number | null = null
+  private lastSwapTime: number | null = null;
 
   /**
    * @param initialHandler 初始请求处理函数（来自首次 adapter.buildHandler()）
    */
   constructor(initialHandler: RequestHandler) {
-    this.currentHandler = initialHandler
+    this.currentHandler = initialHandler;
   }
 
   /**
@@ -113,9 +113,9 @@ export class HotSwappableHandler {
    */
   handle = (req: IncomingMessage, res: ServerResponse): void => {
     // 读取当前 handler 引用（原子操作，JS 单线程保证安全）
-    const handler = this.currentHandler
-    handler(req, res)
-  }
+    const handler = this.currentHandler;
+    handler(req, res);
+  };
 
   /**
    * swap — 原子替换 handler
@@ -132,9 +132,9 @@ export class HotSwappableHandler {
    * @param newHandler 新的请求处理函数（来自 freshAdapter.buildHandler()）
    */
   swap(newHandler: RequestHandler): void {
-    this.currentHandler = newHandler
-    this.reloadCount++
-    this.lastSwapTime = Date.now()
+    this.currentHandler = newHandler;
+    this.reloadCount++;
+    this.lastSwapTime = Date.now();
   }
 
   /**
@@ -148,7 +148,7 @@ export class HotSwappableHandler {
    * @returns 累计 swap 调用次数
    */
   getReloadCount(): number {
-    return this.reloadCount
+    return this.reloadCount;
   }
 
   /**
@@ -157,7 +157,7 @@ export class HotSwappableHandler {
    * @returns Unix 毫秒时间戳，如果从未 swap 过则返回 null
    */
   getLastSwapTime(): number | null {
-    return this.lastSwapTime
+    return this.lastSwapTime;
   }
 
   /**
@@ -168,6 +168,6 @@ export class HotSwappableHandler {
    * @returns 当前 handler 函数引用
    */
   getCurrentHandler(): RequestHandler {
-    return this.currentHandler
+    return this.currentHandler;
   }
 }

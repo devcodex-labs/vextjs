@@ -11,9 +11,7 @@
  *   - chain 场景的 3 层中间件通过 config.middleware 注册
  */
 
-
-
-const port = parseInt(process.env.PORT || '7001', 10);
+const port = parseInt(process.env.PORT || "7001", 10);
 
 module.exports = (appInfo) => {
   const config = {};
@@ -25,15 +23,15 @@ module.exports = (appInfo) => {
   config.cluster = {
     listen: {
       port,
-      hostname: '127.0.0.1',
+      hostname: "127.0.0.1",
     },
   };
 
   // ── 日志配置 ───────────────────────────────────────────
   // 完全静默日志，避免 I/O 影响性能
   config.logger = {
-    level: 'NONE',
-    consoleLevel: 'NONE',
+    level: "NONE",
+    consoleLevel: "NONE",
     disableConsoleAfterReady: true,
   };
 
@@ -43,7 +41,7 @@ module.exports = (appInfo) => {
     csrf: {
       enable: false,
     },
-    domainWhiteList: ['*'],
+    domainWhiteList: ["*"],
   };
 
   // ── 禁用不必要的内置中间件 ─────────────────────────────
@@ -71,25 +69,25 @@ module.exports = (appInfo) => {
 
   // ── 注册 chain 场景中间件 ──────────────────────────────
   // 仅对 /chain 路径生效的 3 层中间件
-  config.middleware = ['timing', 'requestId', 'auth'];
+  config.middleware = ["timing", "requestId", "auth"];
 
   // 中间件配置：限定路径匹配
   config.timing = {
-    match: '/chain',
+    match: "/chain",
   };
 
   config.requestId = {
-    match: '/chain',
+    match: "/chain",
   };
 
   config.auth = {
-    match: '/chain',
+    match: "/chain",
   };
 
   // ── 其他优化 ───────────────────────────────────────────
   // 关闭 watcher（减少后台文件监控开销）
   config.watcher = {
-    type: 'default',
+    type: "default",
   };
 
   // 关闭 logrotator

@@ -70,9 +70,9 @@ mkdir -p src/config src/routes src/services
 // src/config/default.ts
 export default {
   port: 3000,
-  host: '0.0.0.0',
+  host: "0.0.0.0",
   logger: {
-    level: 'info',
+    level: "info",
   },
   openapi: {
     enabled: true,
@@ -88,7 +88,7 @@ npm install hono @hono/node-server
 
 ```typescript
 // src/config/default.ts
-import { honoAdapter } from 'vextjs/adapters/hono';
+import { honoAdapter } from "vextjs/adapters/hono";
 
 export default {
   adapter: honoAdapter(),
@@ -100,25 +100,33 @@ export default {
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /
-  app.get('/', {
-    docs: { summary: '首页' },
-  }, async (_req, res) => {
-    res.json({ message: 'Hello VextJS!' });
-  });
+  app.get(
+    "/",
+    {
+      docs: { summary: "首页" },
+    },
+    async (_req, res) => {
+      res.json({ message: "Hello VextJS!" });
+    },
+  );
 
   // GET /health
-  app.get('/health', {
-    docs: { summary: '健康检查' },
-  }, async (_req, res) => {
-    res.json({
-      status: 'ok',
-      uptime: process.uptime(),
-    });
-  });
+  app.get(
+    "/health",
+    {
+      docs: { summary: "健康检查" },
+    },
+    async (_req, res) => {
+      res.json({
+        status: "ok",
+        uptime: process.uptime(),
+      });
+    },
+  );
 });
 ```
 
@@ -137,19 +145,23 @@ export default class ExampleService {
 
 ```typescript
 // src/routes/greet.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/greet/:name', {
-    validate: {
-      param: { name: 'string!' },
+  app.get(
+    "/greet/:name",
+    {
+      validate: {
+        param: { name: "string!" },
+      },
+      docs: { summary: "问候接口" },
     },
-    docs: { summary: '问候接口' },
-  }, async (req, res) => {
-    const { name } = req.valid('param');
-    const result = await app.services.example.getGreeting(name);
-    res.json(result);
-  });
+    async (req, res) => {
+      const { name } = req.valid("param");
+      const result = await app.services.example.getGreeting(name);
+      res.json(result);
+    },
+  );
 });
 ```
 
@@ -186,12 +198,13 @@ my-app/
 :::info 约定
 VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
 
-| 文件路径 | URL 前缀 |
-|---------|---------|
-| `src/routes/index.ts` | `/` |
-| `src/routes/users.ts` | `/users` |
-| `src/routes/admin/index.ts` | `/admin` |
+| 文件路径                       | URL 前缀          |
+| ------------------------------ | ----------------- |
+| `src/routes/index.ts`          | `/`               |
+| `src/routes/users.ts`          | `/users`          |
+| `src/routes/admin/index.ts`    | `/admin`          |
 | `src/routes/admin/settings.ts` | `/admin/settings` |
+
 :::
 
 ## 访问 OpenAPI 文档
@@ -203,25 +216,25 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，
 
 ## CLI 命令速览
 
-| 命令 | 说明 |
-|------|------|
-| `vext dev` | 开发模式，文件监听 + 热重载 |
-| `vext start` | 生产模式启动 |
-| `vext build` | 构建项目（TypeScript → JavaScript） |
-| `vext create <name>` | 创建新项目 |
-| `vext stop` | 停止 Cluster 进程 |
-| `vext reload` | 滚动重启 Worker |
-| `vext status` | 查看 Cluster 运行状态 |
+| 命令                 | 说明                                |
+| -------------------- | ----------------------------------- |
+| `vext dev`           | 开发模式，文件监听 + 热重载         |
+| `vext start`         | 生产模式启动                        |
+| `vext build`         | 构建项目（TypeScript → JavaScript） |
+| `vext create <name>` | 创建新项目                          |
+| `vext stop`          | 停止 Cluster 进程                   |
+| `vext reload`        | 滚动重启 Worker                     |
+| `vext status`        | 查看 Cluster 运行状态               |
 
 ## 开发模式热重载
 
 `vext dev` 提供三层热重载策略，自动选择最优方式：
 
-| 层级 | 触发条件 | 行为 | 速度 |
-|------|---------|------|------|
-| **Tier 1** — 路由热替换 | 路由文件变更 | 原子替换请求处理器，零中断 | ⚡ 毫秒级 |
-| **Tier 2** — 服务重载 | 服务 / i18n 文件变更 | 重建受影响的服务实例 | ⚡ 毫秒级 |
-| **Tier 3** — 冷重启 | 配置 / 插件变更 | 完整重启进程 | 🔄 秒级 |
+| 层级                    | 触发条件             | 行为                       | 速度      |
+| ----------------------- | -------------------- | -------------------------- | --------- |
+| **Tier 1** — 路由热替换 | 路由文件变更         | 原子替换请求处理器，零中断 | ⚡ 毫秒级 |
+| **Tier 2** — 服务重载   | 服务 / i18n 文件变更 | 重建受影响的服务实例       | ⚡ 毫秒级 |
+| **Tier 3** — 冷重启     | 配置 / 插件变更      | 完整重启进程               | 🔄 秒级   |
 
 ## 下一步
 

@@ -32,14 +32,14 @@ src/                          dist/
 
 ### 编译选项
 
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| Source Map | 开启（外部 `.js.map`） | 错误堆栈映射回 TypeScript 行号 |
-| Minify | 关闭 | 可选开启，减小产物体积 |
-| Target | `node18` | 与 `engines.node >= 18` 对齐 |
-| Format | CJS | CommonJS 输出，Node.js 稳定运行 |
-| Tree Shaking | 开启 | 移除未使用的导出 |
-| Keep Names | 开启 | 保留函数/类名称（错误堆栈可读性） |
+| 选项         | 默认值                 | 说明                              |
+| ------------ | ---------------------- | --------------------------------- |
+| Source Map   | 开启（外部 `.js.map`） | 错误堆栈映射回 TypeScript 行号    |
+| Minify       | 关闭                   | 可选开启，减小产物体积            |
+| Target       | `node18`               | 与 `engines.node >= 18` 对齐      |
+| Format       | CJS                    | CommonJS 输出，Node.js 稳定运行   |
+| Tree Shaking | 开启                   | 移除未使用的导出                  |
+| Keep Names   | 开启                   | 保留函数/类名称（错误堆栈可读性） |
 
 ### 编译排除
 
@@ -74,16 +74,17 @@ NODE_ENV=production node --enable-source-maps dist/index.js
 ```
 
 `vext start` 会自动检测 `dist/` 目录是否存在：
+
 - **存在** → 直接用 `node` 运行 `dist/index.js`（不依赖 tsx）
 - **不存在** → 使用 tsx 运行时编译 `src/index.ts`（开发模式回退）
 
 ### 环境变量
 
-| 变量 | 说明 | 推荐值 |
-|------|------|--------|
+| 变量       | 说明     | 推荐值       |
+| ---------- | -------- | ------------ |
 | `NODE_ENV` | 运行环境 | `production` |
-| `PORT` | 监听端口 | `3000` |
-| `HOST` | 监听地址 | `0.0.0.0` |
+| `PORT`     | 监听端口 | `3000`       |
+| `HOST`     | 监听地址 | `0.0.0.0`    |
 
 ## Docker 部署
 
@@ -157,13 +158,13 @@ reports
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+version: "3.8"
 
 services:
   app:
     build: .
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -176,12 +177,12 @@ services:
       resources:
         limits:
           memory: 512M
-          cpus: '1.0'
+          cpus: "1.0"
 
   mongo:
     image: mongo:7
     ports:
-      - '27017:27017'
+      - "27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -311,32 +312,32 @@ npm install -g pm2
 module.exports = {
   apps: [
     {
-      name: 'myapp',
-      script: 'dist/index.js',
-      node_args: '--enable-source-maps',
+      name: "myapp",
+      script: "dist/index.js",
+      node_args: "--enable-source-maps",
 
       // 多实例（或使用 VextJS 内置 Cluster 模式）
       instances: 1,
 
       // 环境变量
       env: {
-        NODE_ENV: 'production',
+        NODE_ENV: "production",
         PORT: 3000,
       },
 
       // 日志
-      error_file: '/var/log/myapp/error.log',
-      out_file: '/var/log/myapp/out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
+      error_file: "/var/log/myapp/error.log",
+      out_file: "/var/log/myapp/out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
       merge_logs: true,
 
       // 自动重启
       max_restarts: 10,
-      min_uptime: '10s',
+      min_uptime: "10s",
       restart_delay: 5000,
 
       // 内存限制（超出则重启）
-      max_memory_restart: '500M',
+      max_memory_restart: "500M",
 
       // 优雅关闭
       kill_timeout: 10000,
@@ -392,7 +393,12 @@ VextJS 内置了 Cluster 多进程模式（`vext start --cluster`），提供 Ro
 VextJS 在生产环境（`NODE_ENV=production`）下默认输出 JSON 格式日志，适合被日志收集系统解析：
 
 ```json
-{"level":30,"time":"2026-03-05T14:23:05.123Z","requestId":"abc-123","msg":"→ GET /api/users 200 45ms"}
+{
+  "level": 30,
+  "time": "2026-03-05T14:23:05.123Z",
+  "requestId": "abc-123",
+  "msg": "→ GET /api/users 200 45ms"
+}
 ```
 
 ### 配置日志级别
@@ -401,8 +407,8 @@ VextJS 在生产环境（`NODE_ENV=production`）下默认输出 JSON 格式日�
 // src/config/production.ts
 export default {
   logger: {
-    level: 'info',    // 生产环境建议 info（不输出 debug）
-    pretty: false,    // 生产环境禁用 pretty（默认行为）
+    level: "info", // 生产环境建议 info（不输出 debug）
+    pretty: false, // 生产环境禁用 pretty（默认行为）
   },
 };
 ```
@@ -428,8 +434,8 @@ filebeat.inputs:
     json.overwrite_keys: true
 
 output.elasticsearch:
-  hosts: ['http://elasticsearch:9200']
-  index: 'myapp-%{+yyyy.MM.dd}'
+  hosts: ["http://elasticsearch:9200"]
+  index: "myapp-%{+yyyy.MM.dd}"
 ```
 
 #### 方案二：Docker 日志 → Loki
@@ -442,8 +448,8 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: 'http://loki:3100/loki/api/v1/push'
-        loki-batch-size: '400'
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-batch-size: "400"
 ```
 
 #### 方案三：stdout → Cloud 原生
@@ -461,51 +467,59 @@ NODE_ENV=production node dist/index.js
 
 ```typescript
 // src/routes/health.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/health', {
-    override: { rateLimit: false },
-    docs: { summary: '健康检查', tags: ['System'] },
-  }, async (req, res) => {
-    const checks: Record<string, unknown> = {
-      status: 'ok',
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      memory: {
-        rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB',
-        heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
-      },
-    };
+  app.get(
+    "/health",
+    {
+      override: { rateLimit: false },
+      docs: { summary: "健康检查", tags: ["System"] },
+    },
+    async (req, res) => {
+      const checks: Record<string, unknown> = {
+        status: "ok",
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        memory: {
+          rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + "MB",
+          heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB",
+        },
+      };
 
-    // 数据库连接检查
-    if (app.db) {
-      try {
-        await app.db.client.db().admin().ping();
-        checks.database = 'connected';
-      } catch {
-        checks.database = 'disconnected';
-        checks.status = 'degraded';
+      // 数据库连接检查
+      if (app.db) {
+        try {
+          await app.db.client.db().admin().ping();
+          checks.database = "connected";
+        } catch {
+          checks.database = "disconnected";
+          checks.status = "degraded";
+        }
       }
-    }
 
-    const statusCode = checks.status === 'ok' ? 200 : 503;
-    res.json(checks, statusCode);
-  });
+      const statusCode = checks.status === "ok" ? 200 : 503;
+      res.json(checks, statusCode);
+    },
+  );
 
   // 就绪检查（Kubernetes readinessProbe）
-  app.get('/ready', {
-    override: { rateLimit: false },
-  }, async (req, res) => {
-    // 检查所有关键依赖是否就绪
-    const ready = app.db !== undefined;
+  app.get(
+    "/ready",
+    {
+      override: { rateLimit: false },
+    },
+    async (req, res) => {
+      // 检查所有关键依赖是否就绪
+      const ready = app.db !== undefined;
 
-    if (ready) {
-      res.json({ status: 'ready' });
-    } else {
-      res.json({ status: 'not_ready' }, 503);
-    }
-  });
+      if (ready) {
+        res.json({ status: "ready" });
+      } else {
+        res.json({ status: "not_ready" }, 503);
+      }
+    },
+  );
 });
 ```
 
@@ -535,11 +549,11 @@ spec:
         timeoutSeconds: 3
       resources:
         requests:
-          memory: '128Mi'
-          cpu: '250m'
+          memory: "128Mi"
+          cpu: "250m"
         limits:
-          memory: '512Mi'
-          cpu: '1000m'
+          memory: "512Mi"
+          cpu: "1000m"
 ```
 
 ## 异常崩溃通知（onFatalError）
@@ -564,21 +578,21 @@ export default {
       // origin: 'uncaughtException' | 'unhandledRejection'
 
       // 示例：发送钉钉 Webhook
-      await fetch('https://oapi.dingtalk.com/robot/send?access_token=xxx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("https://oapi.dingtalk.com/robot/send?access_token=xxx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          msgtype: 'markdown',
+          msgtype: "markdown",
           markdown: {
-            title: '⚠️ 服务异常',
+            title: "⚠️ 服务异常",
             text: [
-              '## ⚠️ 服务异常崩溃',
+              "## ⚠️ 服务异常崩溃",
               `- **服务**: my-service`,
               `- **来源**: ${origin}`,
               `- **错误**: ${error.message}`,
               `- **时间**: ${new Date().toISOString()}`,
               `- **堆栈**:\n\`\`\`\n${error.stack}\n\`\`\``,
-            ].join('\n'),
+            ].join("\n"),
           },
         }),
       });
@@ -647,12 +661,12 @@ onFatalError: async (error, origin) => {
 
 ### 注意事项
 
-| 项目 | 说明 |
-|------|------|
-| **超时保护** | `onFatalError` 回调有 10 秒超时，超时后强制退出进程 |
-| **错误隔离** | 回调内部抛出的异常会被捕获并记录，不会阻止进程退出 |
-| **不可恢复** | `uncaughtException` 后进程处于不确定状态，回调应尽量轻量（发通知即可） |
-| **测试模式** | `_testMode` 下不注册致命错误处理器，避免干扰测试 |
+| 项目         | 说明                                                                         |
+| ------------ | ---------------------------------------------------------------------------- |
+| **超时保护** | `onFatalError` 回调有 10 秒超时，超时后强制退出进程                          |
+| **错误隔离** | 回调内部抛出的异常会被捕获并记录，不会阻止进程退出                           |
+| **不可恢复** | `uncaughtException` 后进程处于不确定状态，回调应尽量轻量（发通知即可）       |
+| **测试模式** | `_testMode` 下不注册致命错误处理器，避免干扰测试                             |
 | **配合 PM2** | PM2 自身也有重启通知能力（`pm2-slack` 等插件），可与 `onFatalError` 配合使用 |
 
 :::tip 为什么不能用中间件实现？
@@ -663,18 +677,18 @@ onFatalError: async (error, origin) => {
 
 ### 生产环境清单
 
-| # | 检查项 | 说明 |
-|---|--------|------|
-| 1 | **HTTPS** | 通过 Nginx/CDN 终结 TLS，不在 Node.js 层处理 SSL |
-| 2 | **CORS** | 配置 `config.cors` 限制允许的来源域名 |
-| 3 | **限流** | 配置 `config.rateLimit`，对登录等敏感接口设更严格限流 |
-| 4 | **Helmet** | 通过中间件设置安全响应头（X-Frame-Options, CSP 等） |
-| 5 | **环境变量** | 敏感信息（数据库密码、API Key）通过环境变量传入，不写入配置文件 |
-| 6 | **config/local.ts** | 确保 `.gitignore` 中包含 `config/local.*` |
-| 7 | **日志** | 不输出敏感数据（密码、token 等）到日志 |
-| 8 | **依赖审计** | 定期 `npm audit`，及时修复已知漏洞 |
-| 9 | **非 root** | Docker 容器中使用非 root 用户运行 |
-| 10 | **优雅关闭** | 确保 `SIGTERM` 信号被正确处理（VextJS 内置支持） |
+| #   | 检查项              | 说明                                                            |
+| --- | ------------------- | --------------------------------------------------------------- |
+| 1   | **HTTPS**           | 通过 Nginx/CDN 终结 TLS，不在 Node.js 层处理 SSL                |
+| 2   | **CORS**            | 配置 `config.cors` 限制允许的来源域名                           |
+| 3   | **限流**            | 配置 `config.rateLimit`，对登录等敏感接口设更严格限流           |
+| 4   | **Helmet**          | 通过中间件设置安全响应头（X-Frame-Options, CSP 等）             |
+| 5   | **环境变量**        | 敏感信息（数据库密码、API Key）通过环境变量传入，不写入配置文件 |
+| 6   | **config/local.ts** | 确保 `.gitignore` 中包含 `config/local.*`                       |
+| 7   | **日志**            | 不输出敏感数据（密码、token 等）到日志                          |
+| 8   | **依赖审计**        | 定期 `npm audit`，及时修复已知漏洞                              |
+| 9   | **非 root**         | Docker 容器中使用非 root 用户运行                               |
+| 10  | **优雅关闭**        | 确保 `SIGTERM` 信号被正确处理（VextJS 内置支持）                |
 
 ### 环境变量管理
 
@@ -725,8 +739,8 @@ vext start --cluster --workers 4
 export default {
   // HTTP fetch 连接优化
   fetch: {
-    timeout: 5000,        // 生产环境缩短超时
-    retry: 2,             // 幂等方法自动重试
+    timeout: 5000, // 生产环境缩短超时
+    retry: 2, // 幂等方法自动重试
   },
 
   // 数据库连接池
@@ -780,27 +794,31 @@ upstream vext_backend {
 
 ### 关键监控指标
 
-| 指标 | 正常范围 | 告警条件 |
-|------|---------|---------|
-| 响应时间 P99 | < 500ms | > 1s 持续 5 分钟 |
-| 错误率（5xx） | < 0.1% | > 1% 持续 1 分钟 |
-| 内存使用 | < 80% limit | > 90% 持续 5 分钟 |
-| CPU 使用 | < 70% | > 90% 持续 5 分钟 |
-| 活跃连接数 | < 1000 | > 5000 |
-| 数据库连接池 | 无等待 | 等待时间 > 1s |
+| 指标          | 正常范围    | 告警条件          |
+| ------------- | ----------- | ----------------- |
+| 响应时间 P99  | < 500ms     | > 1s 持续 5 分钟  |
+| 错误率（5xx） | < 0.1%      | > 1% 持续 1 分钟  |
+| 内存使用      | < 80% limit | > 90% 持续 5 分钟 |
+| CPU 使用      | < 70%       | > 90% 持续 5 分钟 |
+| 活跃连接数    | < 1000      | > 5000            |
+| 数据库连接池  | 无等待      | 等待时间 > 1s     |
 
 ### Prometheus 指标端点
 
 结合 [OpenTelemetry 接入示例](/examples/opentelemetry) 暴露 Prometheus 指标：
 
 ```typescript
-app.get('/metrics', {
-  override: { rateLimit: false },
-}, async (req, res) => {
-  // OpenTelemetry Prometheus Exporter 会在此端点暴露指标
-  // 详见 OpenTelemetry 接入示例
-  res.json({ message: 'See /examples/opentelemetry for setup' });
-});
+app.get(
+  "/metrics",
+  {
+    override: { rateLimit: false },
+  },
+  async (req, res) => {
+    // OpenTelemetry Prometheus Exporter 会在此端点暴露指标
+    // 详见 OpenTelemetry 接入示例
+    res.json({ message: "See /examples/opentelemetry for setup" });
+  },
+);
 ```
 
 ## 下一步

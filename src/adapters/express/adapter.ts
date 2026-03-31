@@ -58,7 +58,7 @@ export interface ExpressAdapterOptions {
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse
+  res: VextResponse,
 ): Promise<void> {
   const len = chain.length;
 
@@ -146,7 +146,7 @@ function collectRawBody(req: ExpressRequest): Promise<Buffer> {
  */
 export function createExpressAdapter(
   options: ExpressAdapterOptions,
-  app: VextApp
+  app: VextApp,
 ): VextAdapter {
   // ── 创建 Express 实例 ────────────────────────────────────
   //
@@ -204,14 +204,14 @@ export function createExpressAdapter(
       async (
         expressReq: ExpressRequest,
         expressRes: ExpressResponse,
-        _next: express.NextFunction
+        _next: express.NextFunction,
       ) => {
         if (!notFoundHandler) {
           // 默认 404 响应
           expressRes.statusCode = 404;
           expressRes.setHeader(
             "Content-Type",
-            "application/json; charset=utf-8"
+            "application/json; charset=utf-8",
           );
           expressRes.end(JSON.stringify({ code: 404, message: "Not Found" }));
           return;
@@ -239,12 +239,12 @@ export function createExpressAdapter(
         if (alsEnabled) {
           await requestContext.run(
             { requestId: req.requestId, locale: undefined },
-            runNotFound
+            runNotFound,
           );
         } else {
           await runNotFound();
         }
-      }
+      },
     );
 
     // ── 错误处理 ───────────────────────────────────────────
@@ -261,7 +261,7 @@ export function createExpressAdapter(
         err: unknown,
         expressReq: ExpressRequest,
         expressRes: ExpressResponse,
-        _next: express.NextFunction
+        _next: express.NextFunction,
       ) => {
         if (errorHandler) {
           try {
@@ -282,10 +282,10 @@ export function createExpressAdapter(
               expressRes.statusCode = 500;
               expressRes.setHeader(
                 "Content-Type",
-                "application/json; charset=utf-8"
+                "application/json; charset=utf-8",
               );
               expressRes.end(
-                JSON.stringify({ code: 500, message: "Internal Server Error" })
+                JSON.stringify({ code: 500, message: "Internal Server Error" }),
               );
             }
           }
@@ -295,14 +295,14 @@ export function createExpressAdapter(
             expressRes.statusCode = 500;
             expressRes.setHeader(
               "Content-Type",
-              "application/json; charset=utf-8"
+              "application/json; charset=utf-8",
             );
             expressRes.end(
-              JSON.stringify({ code: 500, message: "Internal Server Error" })
+              JSON.stringify({ code: 500, message: "Internal Server Error" }),
             );
           }
         }
-      }
+      },
     );
   }
 
@@ -361,7 +361,7 @@ export function createExpressAdapter(
         async (
           expressReq: ExpressRequest,
           expressRes: ExpressResponse,
-          next: express.NextFunction
+          next: express.NextFunction,
         ) => {
           try {
             // 手动收集原始请求体（避免与 Express body-parser 冲突）
@@ -399,7 +399,7 @@ export function createExpressAdapter(
                     try {
                       res.rawJson(
                         { code: 500, message: "Internal Server Error" },
-                        500
+                        500,
                       );
                     } catch {
                       // 完全放弃，让 Express 的兜底处理
@@ -415,7 +415,7 @@ export function createExpressAdapter(
             if (alsEnabled) {
               await requestContext.run(
                 { requestId: "", locale: undefined },
-                runChain
+                runChain,
               );
             } else {
               await runChain();
@@ -424,7 +424,7 @@ export function createExpressAdapter(
             // rawBody 收集或其他初始化错误
             next(err);
           }
-        }
+        },
       );
     },
 
@@ -465,7 +465,7 @@ export function createExpressAdapter(
     //
     async listen(
       port: number,
-      host: string = "0.0.0.0"
+      host: string = "0.0.0.0",
     ): Promise<VextServerHandle> {
       // 注册兜底中间件（确保在所有路由之后）
       registerFallbacks();
@@ -483,7 +483,7 @@ export function createExpressAdapter(
             typeof addr === "object" && addr !== null ? addr.port : port;
           const actualHost =
             typeof addr === "object" && addr !== null
-              ? addr.address ?? host
+              ? (addr.address ?? host)
               : host;
 
           resolve({

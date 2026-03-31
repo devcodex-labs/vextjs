@@ -13,21 +13,21 @@
 
 ### Native vs Fastify 核心对比
 
-| 场景 | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
-|------|----------:|----------:|----------:|----------:|:----------:|
-| **JSON 响应** | 44,932 | **36,819** | 45,619 | 29,203 | **+26.1%** |
-| **路由参数** | 43,859 | **36,755** | 43,676 | 24,386 | **+50.7%** |
-| **中间件链** | 28,337 | **31,698** | 41,286 | 22,719 | **+39.5%** |
+| 场景          | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
+| ------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
+| **JSON 响应** |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
+| **路由参数**  |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
+| **中间件链**  |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
 
 ### 全 Adapter 性能概览（JSON 场景）
 
-| Adapter | Vext RPS | Overhead | 额外依赖 |
-|---------|--------:|---------:|----------|
-| **Native** ⭐ | **36,819** | 18.1% | ✅ 零依赖（默认） |
-| Express | 30,974 | -3.7% | `express` |
-| Fastify | 29,203 | 36.0% | `fastify` |
-| Koa | 22,488 | 29.4% | `koa` |
-| Hono | 15,684 | 24.2% | `hono` `@hono/node-server` |
+| Adapter       |   Vext RPS | Overhead | 额外依赖                   |
+| ------------- | ---------: | -------: | -------------------------- |
+| **Native** ⭐ | **36,819** |    18.1% | ✅ 零依赖（默认）          |
+| Express       |     30,974 |    -3.7% | `express`                  |
+| Fastify       |     29,203 |    36.0% | `fastify`                  |
+| Koa           |     22,488 |    29.4% | `koa`                      |
+| Hono          |     15,684 |    24.2% | `hono` `@hono/node-server` |
 
 > Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Vext-Native 领先 Vext-Fastify **26~51%**；中间件链场景 Vext-Native 反超裸跑 Native **+11.9%**。
 > 测试环境：Node.js v24.14.0, Windows x64, i7-9700, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数，2026-03-23)。
@@ -35,11 +35,11 @@
 
 ## 📋 测试场景
 
-| 场景 | 路径 | 说明 |
-|------|------|------|
-| **JSON 响应** | `GET /json` | 纯 JSON 序列化 + 路由匹配，测量最小开销 |
-| **路由参数** | `GET /users/:id` | 动态路由参数解析，测量路由匹配 + 参数提取开销 |
-| **中间件链** | `GET /chain` | 3 层洋葱模型中间件（计时 + requestId + 鉴权模拟）+ JSON 响应 |
+| 场景          | 路径             | 说明                                                         |
+| ------------- | ---------------- | ------------------------------------------------------------ |
+| **JSON 响应** | `GET /json`      | 纯 JSON 序列化 + 路由匹配，测量最小开销                      |
+| **路由参数**  | `GET /users/:id` | 动态路由参数解析，测量路由匹配 + 参数提取开销                |
+| **中间件链**  | `GET /chain`     | 3 层洋葱模型中间件（计时 + requestId + 鉴权模拟）+ JSON 响应 |
 
 ### 对比维度
 
@@ -91,16 +91,16 @@ node test/benchmark/run-benchmark.mjs --output ./my-results.md
 
 ### 可用选项
 
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `--duration <seconds>` | `15` | 压测持续时间（秒） |
-| `--connections <number>` | `50` | 并发连接数 |
-| `--pipelining <number>` | `10` | HTTP 流水线深度 |
-| `--warmup <seconds>` | `5` | 预热时间（秒） |
-| `--rounds <number>` | `1` | 轮次数（≥3 时取中位数，推荐 5 或 7） |
-| `--scenario <name>` | `all` | 场景过滤：`json` / `params` / `chain` / `all` |
-| `--framework <names>` | 全部 | 框架过滤（逗号分隔）：`native,hono,fastify,express,koa` |
-| `--output <path>` | `test/benchmark/RESULTS.md` | 报告输出路径 |
+| 选项                     | 默认值                      | 说明                                                    |
+| ------------------------ | --------------------------- | ------------------------------------------------------- |
+| `--duration <seconds>`   | `15`                        | 压测持续时间（秒）                                      |
+| `--connections <number>` | `50`                        | 并发连接数                                              |
+| `--pipelining <number>`  | `10`                        | HTTP 流水线深度                                         |
+| `--warmup <seconds>`     | `5`                         | 预热时间（秒）                                          |
+| `--rounds <number>`      | `1`                         | 轮次数（≥3 时取中位数，推荐 5 或 7）                    |
+| `--scenario <name>`      | `all`                       | 场景过滤：`json` / `params` / `chain` / `all`           |
+| `--framework <names>`    | 全部                        | 框架过滤（逗号分隔）：`native,hono,fastify,express,koa` |
+| `--output <path>`        | `test/benchmark/RESULTS.md` | 报告输出路径                                            |
 
 ### 多轮模式说明
 
@@ -113,11 +113,11 @@ node test/benchmark/run-benchmark.mjs --output ./my-results.md
 
 #### 耗时参考
 
-| 模式 | 轮次 | 每轮耗时 | 6 场景(2 框架) | 总耗时 |
-|------|:----:|:-------:|:------:|:------:|
-| 单轮（快速） | 1 | ~20s | × 12 | ~4 min |
-| 标准 5 轮 | 5 | ~17s × 5 | × 12 | ~17 min |
-| 精确 7 轮 | 7 | ~22s × 7 | × 12 | ~31 min |
+| 模式         | 轮次 | 每轮耗时 | 6 场景(2 框架) | 总耗时  |
+| ------------ | :--: | :------: | :------------: | :-----: |
+| 单轮（快速） |  1   |   ~20s   |      × 12      | ~4 min  |
+| 标准 5 轮    |  5   | ~17s × 5 |      × 12      | ~17 min |
+| 精确 7 轮    |  7   | ~22s × 7 |      × 12      | ~31 min |
 
 ## 📁 文件结构
 

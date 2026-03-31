@@ -35,7 +35,7 @@ import { requestContext } from "../../lib/request-context.js";
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse
+  res: VextResponse,
 ): Promise<void> {
   const len = chain.length;
 
@@ -140,7 +140,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
                 try {
                   res.rawJson(
                     { code: 500, message: "Internal Server Error" },
-                    500
+                    500,
                   );
                 } catch {
                   // 完全放弃，让底层框架的 catch 处理
@@ -160,7 +160,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         if (alsEnabled) {
           return requestContext.run(
             { requestId: "", locale: undefined },
-            runChain
+            runChain,
           );
         } else {
           return runChain();
@@ -196,7 +196,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         if (alsEnabled) {
           await requestContext.run(
             { requestId: req.requestId, locale: undefined },
-            runNotFound
+            runNotFound,
           );
         } else {
           await runNotFound();
@@ -210,7 +210,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
     async listen(
       port: number,
-      host: string = "0.0.0.0"
+      host: string = "0.0.0.0",
     ): Promise<VextServerHandle> {
       const requestHandler = this.buildHandler();
 
@@ -227,7 +227,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             typeof addr === "object" && addr !== null ? addr.port : port;
           const actualHost =
             typeof addr === "object" && addr !== null
-              ? addr.address ?? host
+              ? (addr.address ?? host)
               : host;
 
           resolve({
@@ -362,7 +362,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
                 JSON.stringify({
                   code: 500,
                   message: "Internal Server Error",
-                })
+                }),
               );
             }
           });

@@ -36,14 +36,25 @@ const workerId = process.env.VEXT_WORKER_ID || "?";
 
 // ── 配置 ──────────────────────────────────────────────────
 
-const HEARTBEAT_INTERVAL = parseInt(process.env.STUB_HEARTBEAT_INTERVAL || "1000", 10);
-const METRICS_INTERVAL = parseInt(process.env.STUB_METRICS_INTERVAL || "2000", 10);
+const HEARTBEAT_INTERVAL = parseInt(
+  process.env.STUB_HEARTBEAT_INTERVAL || "1000",
+  10,
+);
+const METRICS_INTERVAL = parseInt(
+  process.env.STUB_METRICS_INTERVAL || "2000",
+  10,
+);
 const STARTUP_DELAY = parseInt(process.env.STUB_STARTUP_DELAY || "0", 10);
 const FAIL_ON_START = process.env.STUB_FAIL_ON_START === "1";
 const STOP_HEARTBEAT = process.env.STUB_STOP_HEARTBEAT === "1";
 const REQUEST_RESTART = process.env.STUB_REQUEST_RESTART === "1";
-const REQUEST_RESTART_DELAY = parseInt(process.env.STUB_REQUEST_RESTART_DELAY || "500", 10);
-const EXIT_AFTER = process.env.STUB_EXIT_AFTER ? parseInt(process.env.STUB_EXIT_AFTER, 10) : null;
+const REQUEST_RESTART_DELAY = parseInt(
+  process.env.STUB_REQUEST_RESTART_DELAY || "500",
+  10,
+);
+const EXIT_AFTER = process.env.STUB_EXIT_AFTER
+  ? parseInt(process.env.STUB_EXIT_AFTER, 10)
+  : null;
 const EXIT_CODE = parseInt(process.env.STUB_EXIT_CODE || "1", 10);
 const SHUTDOWN_DELAY = parseInt(process.env.STUB_SHUTDOWN_DELAY || "100", 10);
 

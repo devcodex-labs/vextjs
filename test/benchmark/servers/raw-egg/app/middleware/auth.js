@@ -19,12 +19,10 @@
  *   不需要在响应返回时做任何事），与其他裸跑服务器行为一致。
  */
 
-
-
 module.exports = () => {
   return async function auth(ctx, next) {
     // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
-    ctx.get('Authorization');
+    ctx.get("Authorization");
     ctx.state.authenticated = true;
     await next();
   };

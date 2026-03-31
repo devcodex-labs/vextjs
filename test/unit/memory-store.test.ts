@@ -171,11 +171,7 @@ describe("MemoryCacheStore", () => {
     });
 
     it("多标签条目：失效其中一个标签应删除整个条目", () => {
-      store.set(
-        "key1",
-        createEntry("multi-tag", 200, ["tag-a", "tag-b"]),
-        60,
-      );
+      store.set("key1", createEntry("multi-tag", 200, ["tag-a", "tag-b"]), 60);
 
       store.invalidateByTag("tag-a");
 
@@ -424,4 +420,3 @@ describe("MemoryCacheStore", () => {
     });
   });
 });
-

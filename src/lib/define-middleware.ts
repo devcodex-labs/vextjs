@@ -1,6 +1,4 @@
-import type {
-  VextMiddleware,
-} from "../types/middleware.js";
+import type { VextMiddleware } from "../types/middleware.js";
 
 /**
  * define-middleware.ts — 中间件定义辅助函数 + 类型检测

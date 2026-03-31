@@ -77,7 +77,9 @@ export function createAccessLogMiddleware(
 
   // 选择 logger 方法（避免每次请求动态查找）— 预绑定基础级别和提升级别
   const logInfo: VextLogger["info"] =
-    baseLevel === "debug" ? logger.debug.bind(logger) : logger.info.bind(logger);
+    baseLevel === "debug"
+      ? logger.debug.bind(logger)
+      : logger.info.bind(logger);
   const logWarn: VextLogger["warn"] = logger.warn.bind(logger);
   const logError: VextLogger["error"] = logger.error.bind(logger);
 
@@ -136,11 +138,19 @@ export function createAccessLogMiddleware(
       const resAny = res as unknown as Record<string, unknown>;
       const getHeaderFn =
         typeof resAny.getHeader === "function"
-          ? (resAny.getHeader as (name: string) => string | number | string[] | undefined)
+          ? (resAny.getHeader as (
+              name: string,
+            ) => string | number | string[] | undefined)
           : typeof resAny._serverResponse === "object" &&
               resAny._serverResponse !== null &&
-              typeof (resAny._serverResponse as Record<string, unknown>).getHeader === "function"
-            ? ((resAny._serverResponse as Record<string, unknown>).getHeader as (name: string) => string | number | string[] | undefined).bind(resAny._serverResponse)
+              typeof (resAny._serverResponse as Record<string, unknown>)
+                .getHeader === "function"
+            ? (
+                (resAny._serverResponse as Record<string, unknown>)
+                  .getHeader as (
+                  name: string,
+                ) => string | number | string[] | undefined
+              ).bind(resAny._serverResponse)
             : null;
 
       if (getHeaderFn) {

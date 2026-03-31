@@ -7,25 +7,29 @@ VextJS 集成 [schema-dsl](https://github.com/vextjs/schema-dsl)，提供**声�
 在路由的三段式定义中，通过 `validate` 字段声明校验规则：
 
 ```typescript
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.post('/users', {
-    validate: {
-      body: {
-        name: 'string:1-50!',    // 必填字符串，长度 1-50
-        email: 'email!',          // 必填，邮箱格式
-        age: 'number?',           // 可选数字
-        role: 'admin|user',       // 枚举值
+  app.post(
+    "/users",
+    {
+      validate: {
+        body: {
+          name: "string:1-50!", // 必填字符串，长度 1-50
+          email: "email!", // 必填，邮箱格式
+          age: "number?", // 可选数字
+          role: "admin|user", // 枚举值
+        },
       },
+      docs: { summary: "创建用户" },
     },
-    docs: { summary: '创建用户' },
-  }, async (req, res) => {
-    // req.body 已通过校验 + 类型转换
-    const data = req.valid('body');
-    const user = await app.services.user.create(data);
-    res.json(user, 201);
-  });
+    async (req, res) => {
+      // req.body 已通过校验 + 类型转换
+      const data = req.valid("body");
+      const user = await app.services.user.create(data);
+      res.json(user, 201);
+    },
+  );
 });
 ```
 
@@ -35,38 +39,42 @@ export default defineRoutes((app) => {
 
 `validate` 支持四个位置，对应请求的不同数据来源：
 
-| 位置 | 数据来源 | 说明 |
-|------|---------|------|
-| `param` | `req.params` | 路径动态参数（如 `/:id`） |
-| `query` | `req.query` | URL 查询参数（如 `?page=1`） |
-| `header` | `req.headers` | 请求头 |
-| `body` | `req.body` | 请求体（JSON / URL-encoded） |
+| 位置     | 数据来源      | 说明                         |
+| -------- | ------------- | ---------------------------- |
+| `param`  | `req.params`  | 路径动态参数（如 `/:id`）    |
+| `query`  | `req.query`   | URL 查询参数（如 `?page=1`） |
+| `header` | `req.headers` | 请求头                       |
+| `body`   | `req.body`    | 请求体（JSON / URL-encoded） |
 
 校验按 `param` → `query` → `header` → `body` 的顺序执行，任一位置校验失败会立即返回错误。
 
 ```typescript
-app.put('/users/:id', {
-  validate: {
-    param: {
-      id: 'string!',
-    },
-    query: {
-      fields: 'string?',       // 可选，指定返回字段
-    },
-    header: {
-      'x-api-version': 'string?',
-    },
-    body: {
-      name: 'string:1-50?',
-      email: 'email?',
+app.put(
+  "/users/:id",
+  {
+    validate: {
+      param: {
+        id: "string!",
+      },
+      query: {
+        fields: "string?", // 可选，指定返回字段
+      },
+      header: {
+        "x-api-version": "string?",
+      },
+      body: {
+        name: "string:1-50?",
+        email: "email?",
+      },
     },
   },
-}, async (req, res) => {
-  const { id } = req.valid('param');
-  const body = req.valid('body');
-  const user = await app.services.user.update(id, body);
-  res.json(user);
-});
+  async (req, res) => {
+    const { id } = req.valid("param");
+    const body = req.valid("body");
+    const user = await app.services.user.update(id, body);
+    res.json(user);
+  },
+);
 ```
 
 :::tip 注意
@@ -79,24 +87,24 @@ schema-dsl 使用简洁的字符串表达式描述数据类型和约束。
 
 ### 基本类型
 
-| DSL 表达式 | 含义 | 示例值 |
-|-----------|------|--------|
-| `'string'` | 字符串 | `"hello"` |
-| `'number'` | 数字 | `42`、`3.14` |
-| `'boolean'` | 布尔值 | `true`、`false` |
-| `'email'` | 邮箱格式 | `"user@example.com"` |
-| `'url'` | URL 格式 | `"https://example.com"` |
-| `'date'` | 日期字符串 | `"2026-01-15"` |
+| DSL 表达式  | 含义       | 示例值                  |
+| ----------- | ---------- | ----------------------- |
+| `'string'`  | 字符串     | `"hello"`               |
+| `'number'`  | 数字       | `42`、`3.14`            |
+| `'boolean'` | 布尔值     | `true`、`false`         |
+| `'email'`   | 邮箱格式   | `"user@example.com"`    |
+| `'url'`     | URL 格式   | `"https://example.com"` |
+| `'date'`    | 日期字符串 | `"2026-01-15"`          |
 
 ### 必填与可选
 
 在类型表达式末尾添加 `!` 或 `?` 标记：
 
-| 后缀 | 含义 | 示例 |
-|------|------|------|
-| `!` | 必填（required） | `'string!'` — 必填字符串 |
-| `?` | 可选（optional） | `'string?'` — 可选字符串 |
-| 无后缀 | 可选（默认） | `'string'` — 等同于 `'string?'` |
+| 后缀   | 含义             | 示例                            |
+| ------ | ---------------- | ------------------------------- |
+| `!`    | 必填（required） | `'string!'` — 必填字符串        |
+| `?`    | 可选（optional） | `'string?'` — 可选字符串        |
+| 无后缀 | 可选（默认）     | `'string'` — 等同于 `'string?'` |
 
 ```typescript
 validate: {
@@ -115,20 +123,20 @@ validate: {
 #### 字符串长度
 
 ```typescript
-'string:1-50'     // 长度 1 到 50
-'string:1-50!'    // 必填，长度 1 到 50
-'string:5-'       // 最小长度 5，无上限
-'string:-100'     // 最大长度 100
+"string:1-50"; // 长度 1 到 50
+"string:1-50!"; // 必填，长度 1 到 50
+"string:5-"; // 最小长度 5，无上限
+"string:-100"; // 最大长度 100
 ```
 
 #### 数字范围
 
 ```typescript
-'number:1-100'    // 值范围 1 到 100
-'number:0-'       // 最小值 0（非负数）
-'number:1-'       // 最小值 1（正整数/正数）
-'number:-999'     // 最大值 999
-'number:18-120!'  // 必填，范围 18 到 120
+"number:1-100"; // 值范围 1 到 100
+"number:0-"; // 最小值 0（非负数）
+"number:1-"; // 最小值 1（正整数/正数）
+"number:-999"; // 最大值 999
+"number:18-120!"; // 必填，范围 18 到 120
 ```
 
 ### 枚举值
@@ -136,9 +144,9 @@ validate: {
 使用 `|` 分隔枚举选项：
 
 ```typescript
-'admin|user|guest'         // 枚举：admin / user / guest
-'draft|published|archived' // 枚举：draft / published / archived
-'male|female|other'        // 枚举：male / female / other
+"admin|user|guest"; // 枚举：admin / user / guest
+"draft|published|archived"; // 枚举：draft / published / archived
+"male|female|other"; // 枚举：male / female / other
 ```
 
 枚举值始终为字符串类型。在 OpenAPI 文档中映射为 `enum`。
@@ -166,29 +174,33 @@ validate: {
 
 schema-dsl 在校验时自动执行类型转换，尤其对 `query` 和 `param` 数据非常有用（它们原始值始终是字符串）：
 
-| 声明类型 | 原始值 | 转换后 |
-|---------|--------|--------|
-| `'number'` | `"42"` | `42` |
-| `'number'` | `"3.14"` | `3.14` |
-| `'boolean'` | `"true"` | `true` |
+| 声明类型    | 原始值    | 转换后  |
+| ----------- | --------- | ------- |
+| `'number'`  | `"42"`    | `42`    |
+| `'number'`  | `"3.14"`  | `3.14`  |
+| `'boolean'` | `"true"`  | `true`  |
 | `'boolean'` | `"false"` | `false` |
-| `'boolean'` | `"1"` | `true` |
-| `'boolean'` | `"0"` | `false` |
+| `'boolean'` | `"1"`     | `true`  |
+| `'boolean'` | `"0"`     | `false` |
 
 ```typescript
-app.get('/search', {
-  validate: {
-    query: {
-      page: 'number:1-',      // ?page=3 → number 3（非字符串 "3"）
-      limit: 'number:1-100',   // ?limit=20 → number 20
-      active: 'boolean',       // ?active=true → boolean true
+app.get(
+  "/search",
+  {
+    validate: {
+      query: {
+        page: "number:1-", // ?page=3 → number 3（非字符串 "3"）
+        limit: "number:1-100", // ?limit=20 → number 20
+        active: "boolean", // ?active=true → boolean true
+      },
     },
   },
-}, async (req, res) => {
-  const { page, limit, active } = req.valid('query');
-  // page: number, limit: number, active: boolean — 已自动转换
-  res.json({ page, limit, active });
-});
+  async (req, res) => {
+    const { page, limit, active } = req.valid("query");
+    // page: number, limit: number, active: boolean — 已自动转换
+    res.json({ page, limit, active });
+  },
+);
 ```
 
 ## 获取校验后数据
@@ -198,23 +210,27 @@ app.get('/search', {
 使用 `req.valid()` 获取经过校验和类型转换后的数据。必须在 `validate` 中配置了对应位置后才能调用。
 
 ```typescript
-app.post('/orders', {
-  validate: {
-    body: {
-      productId: 'string!',
-      quantity: 'number:1-99!',
-    },
-    query: {
-      coupon: 'string?',
+app.post(
+  "/orders",
+  {
+    validate: {
+      body: {
+        productId: "string!",
+        quantity: "number:1-99!",
+      },
+      query: {
+        coupon: "string?",
+      },
     },
   },
-}, async (req, res) => {
-  const body = req.valid('body');     // { productId: string, quantity: number }
-  const query = req.valid('query');   // { coupon?: string }
+  async (req, res) => {
+    const body = req.valid("body"); // { productId: string, quantity: number }
+    const query = req.valid("query"); // { coupon?: string }
 
-  const order = await app.services.order.create(body, query.coupon);
-  res.json(order, 201);
-});
+    const order = await app.services.order.create(body, query.coupon);
+    res.json(order, 201);
+  },
+);
 ```
 
 ### 边界行为
@@ -230,22 +246,26 @@ app.post('/orders', {
 
 ```typescript
 // ⚠️ 边界情况示例
-app.get('/items', {
-  validate: {
-    query: { page: 'number:1-' },
-    // 未声明 body
+app.get(
+  "/items",
+  {
+    validate: {
+      query: { page: "number:1-" },
+      // 未声明 body
+    },
   },
-}, async (req, res) => {
-  const query = req.valid('query');   // ✅ { page: number } — 已校验
-  const body = req.valid('body');     // ⚠️ undefined — 未在 validate 中声明
-  const param = req.valid('param');   // ⚠️ undefined — 未在 validate 中声明
-  res.json({ query });
-});
+  async (req, res) => {
+    const query = req.valid("query"); // ✅ { page: number } — 已校验
+    const body = req.valid("body"); // ⚠️ undefined — 未在 validate 中声明
+    const param = req.valid("param"); // ⚠️ undefined — 未在 validate 中声明
+    res.json({ query });
+  },
+);
 
 // ⚠️ 未配置 validate 的路由
-app.get('/health', async (req, res) => {
-  const body = req.valid('body');     // ⚠️ undefined — 路由未配置 validate
-  res.json({ status: 'ok' });
+app.get("/health", async (req, res) => {
+  const body = req.valid("body"); // ⚠️ undefined — 路由未配置 validate
+  res.json({ status: "ok" });
 });
 ```
 
@@ -263,21 +283,25 @@ interface CreateUserBody {
   age?: number;
 }
 
-app.post('/users', {
-  validate: {
-    body: {
-      name: 'string:1-50!',
-      email: 'email!',
-      age: 'number:0-150?',
+app.post(
+  "/users",
+  {
+    validate: {
+      body: {
+        name: "string:1-50!",
+        email: "email!",
+        age: "number:0-150?",
+      },
     },
   },
-}, async (req, res) => {
-  const data = req.valid<CreateUserBody>('body');
-  // data.name — IDE 知道是 string
-  // data.email — IDE 知道是 string
-  // data.age — IDE 知道是 number | undefined
-  res.json(await app.services.user.create(data));
-});
+  async (req, res) => {
+    const data = req.valid<CreateUserBody>("body");
+    // data.name — IDE 知道是 string
+    // data.email — IDE 知道是 string
+    // data.age — IDE 知道是 number | undefined
+    res.json(await app.services.user.create(data));
+  },
+);
 ```
 
 ## 校验错误响应
@@ -314,19 +338,24 @@ app.post('/users', {
 `validate` 中的 DSL 规则会自动映射到 OpenAPI 文档的 `parameters` 和 `requestBody` 定义。无需额外配置，校验规则即是文档规则：
 
 ```typescript
-app.get('/users', {
-  validate: {
-    query: {
-      page: 'number:1-',
-      limit: 'number:1-100',
-      status: 'active|inactive|banned',
+app.get(
+  "/users",
+  {
+    validate: {
+      query: {
+        page: "number:1-",
+        limit: "number:1-100",
+        status: "active|inactive|banned",
+      },
     },
+    docs: { summary: "获取用户列表" },
   },
-  docs: { summary: '获取用户列表' },
-}, handler);
+  handler,
+);
 ```
 
 上面的路由会在 OpenAPI 文档中自动生成：
+
 - `page` — query parameter, type: integer, minimum: 1
 - `limit` — query parameter, type: integer, minimum: 1, maximum: 100
 - `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
@@ -340,21 +369,25 @@ app.get('/users', {
 同一路由可以同时校验多个位置：
 
 ```typescript
-app.put('/users/:id/avatar', {
-  validate: {
-    param: { id: 'string!' },
-    header: { 'content-type': 'string!' },
-    query: { size: 'number:32-512?' },
-    body: { url: 'url!', alt: 'string:0-200?' },
+app.put(
+  "/users/:id/avatar",
+  {
+    validate: {
+      param: { id: "string!" },
+      header: { "content-type": "string!" },
+      query: { size: "number:32-512?" },
+      body: { url: "url!", alt: "string:0-200?" },
+    },
   },
-}, async (req, res) => {
-  const { id } = req.valid('param');
-  const { url, alt } = req.valid('body');
-  const { size } = req.valid('query');
+  async (req, res) => {
+    const { id } = req.valid("param");
+    const { url, alt } = req.valid("body");
+    const { size } = req.valid("query");
 
-  await app.services.user.updateAvatar(id, { url, alt, size });
-  res.json({ success: true });
-});
+    await app.services.user.updateAvatar(id, { url, alt, size });
+    res.json({ success: true });
+  },
+);
 ```
 
 ### 与路由级中间件配合
@@ -368,16 +401,23 @@ app.put('/users/:id/avatar', {
 认证检查先于参数校验执行，未认证的请求不会触发校验逻辑：
 
 ```typescript
-app.post('/admin/users', {
-  middlewares: ['auth', { name: 'check-role', options: { roles: ['admin'] } }],
-  validate: {
-    body: {
-      name: 'string:1-50!',
-      email: 'email!',
-      role: 'admin|editor|viewer!',
+app.post(
+  "/admin/users",
+  {
+    middlewares: [
+      "auth",
+      { name: "check-role", options: { roles: ["admin"] } },
+    ],
+    validate: {
+      body: {
+        name: "string:1-50!",
+        email: "email!",
+        role: "admin|editor|viewer!",
+      },
     },
   },
-}, handler);
+  handler,
+);
 ```
 
 ### 路由覆盖限流规则
@@ -385,23 +425,31 @@ app.post('/admin/users', {
 除了参数校验，`options` 还支持路由级配置覆盖（`override`），可以为特定路由调整限流、超时等设置：
 
 ```typescript
-app.post('/login', {
-  validate: {
-    body: {
-      email: 'email!',
-      password: 'string:8-128!',
+app.post(
+  "/login",
+  {
+    validate: {
+      body: {
+        email: "email!",
+        password: "string:8-128!",
+      },
+    },
+    override: {
+      rateLimit: { max: 5, window: 60 }, // 每分钟最多 5 次（window 单位：秒）
     },
   },
-  override: {
-    rateLimit: { max: 5, window: 60 },  // 每分钟最多 5 次（window 单位：秒）
-  },
-}, handler);
+  handler,
+);
 
-app.get('/public/health', {
-  override: {
-    rateLimit: false,  // 健康检查不限流
+app.get(
+  "/public/health",
+  {
+    override: {
+      rateLimit: false, // 健康检查不限流
+    },
   },
-}, handler);
+  handler,
+);
 ```
 
 ## 替换校验引擎
@@ -412,12 +460,12 @@ VextJS 默认使用 schema-dsl 作为校验引擎。如果你更喜欢 Zod、Yup
 
 ```typescript
 // src/plugins/zod-validator.ts
-import { definePlugin } from 'vextjs';
-import type { VextValidator } from 'vextjs';
-import { z } from 'zod';
+import { definePlugin } from "vextjs";
+import type { VextValidator } from "vextjs";
+import { z } from "zod";
 
 export default definePlugin({
-  name: 'zod-validator',
+  name: "zod-validator",
 
   setup(app) {
     const zodValidator: VextValidator = {
@@ -429,7 +477,7 @@ export default definePlugin({
             return {
               valid: false,
               errors: result.error.issues.map((issue) => ({
-                field: issue.path.join('.'),
+                field: issue.path.join("."),
                 message: issue.message,
               })),
             };
@@ -447,7 +495,7 @@ export default definePlugin({
     };
 
     app.setValidator(zodValidator);
-    app.logger.info('Zod validator plugin activated');
+    app.logger.info("Zod validator plugin activated");
   },
 });
 ```
@@ -459,91 +507,112 @@ export default definePlugin({
 ### 分页查询
 
 ```typescript
-app.get('/posts', {
-  validate: {
-    query: {
-      page: 'number:1-',
-      limit: 'number:1-100',
-      sort: 'createdAt|updatedAt|title',
-      order: 'asc|desc',
+app.get(
+  "/posts",
+  {
+    validate: {
+      query: {
+        page: "number:1-",
+        limit: "number:1-100",
+        sort: "createdAt|updatedAt|title",
+        order: "asc|desc",
+      },
     },
   },
-}, async (req, res) => {
-  const { page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = req.valid('query');
-  const posts = await app.services.post.findAll({ page, limit, sort, order });
-  res.json(posts);
-});
+  async (req, res) => {
+    const {
+      page = 1,
+      limit = 20,
+      sort = "createdAt",
+      order = "desc",
+    } = req.valid("query");
+    const posts = await app.services.post.findAll({ page, limit, sort, order });
+    res.json(posts);
+  },
+);
 ```
 
 ### 搜索过滤
 
 ```typescript
-app.get('/products', {
-  validate: {
-    query: {
-      keyword: 'string?',
-      category: 'string?',
-      minPrice: 'number:0-?',
-      maxPrice: 'number:0-?',
-      inStock: 'boolean?',
+app.get(
+  "/products",
+  {
+    validate: {
+      query: {
+        keyword: "string?",
+        category: "string?",
+        minPrice: "number:0-?",
+        maxPrice: "number:0-?",
+        inStock: "boolean?",
+      },
     },
   },
-}, async (req, res) => {
-  const filters = req.valid('query');
-  const products = await app.services.product.search(filters);
-  res.json(products);
-});
+  async (req, res) => {
+    const filters = req.valid("query");
+    const products = await app.services.product.search(filters);
+    res.json(products);
+  },
+);
 ```
 
 ### 用户注册
 
 ```typescript
-app.post('/auth/register', {
-  validate: {
-    body: {
-      username: 'string:3-30!',
-      email: 'email!',
-      password: 'string:8-128!',
-      confirmPassword: 'string:8-128!',
+app.post(
+  "/auth/register",
+  {
+    validate: {
+      body: {
+        username: "string:3-30!",
+        email: "email!",
+        password: "string:8-128!",
+        confirmPassword: "string:8-128!",
+      },
+    },
+    override: {
+      rateLimit: { max: 3, window: 60 }, // 单位：秒
     },
   },
-  override: {
-    rateLimit: { max: 3, window: 60 },  // 单位：秒
+  async (req, res) => {
+    const data = req.valid("body");
+
+    if (data.password !== data.confirmPassword) {
+      app.throw(400, "两次密码不一致");
+    }
+
+    const user = await app.services.auth.register(data);
+    res.json(user, 201);
   },
-}, async (req, res) => {
-  const data = req.valid('body');
-
-  if (data.password !== data.confirmPassword) {
-    app.throw(400, '两次密码不一致');
-  }
-
-  const user = await app.services.auth.register(data);
-  res.json(user, 201);
-});
+);
 ```
 
 ### 文件路径参数
 
 ```typescript
 // src/routes/files/[id].ts
-app.get('/', {
-  validate: {
-    param: { id: 'string!' },
-    query: { download: 'boolean?' },
+app.get(
+  "/",
+  {
+    validate: {
+      param: { id: "string!" },
+      query: { download: "boolean?" },
+    },
   },
-}, async (req, res) => {
-  const { id } = req.valid('param');
-  const { download } = req.valid('query');
+  async (req, res) => {
+    const { id } = req.valid("param");
+    const { download } = req.valid("query");
 
-  const file = await app.services.file.findById(id);
-  if (!file) app.throw(404, 'file.not_found');
+    const file = await app.services.file.findById(id);
+    if (!file) app.throw(404, "file.not_found");
 
-  if (download) {
-    res.download(file.stream, file.name, file.contentType);
-  } else {
-    res.json(file.metadata);
-  }
-});
+    if (download) {
+      res.download(file.stream, file.name, file.contentType);
+    } else {
+      res.json(file.metadata);
+    }
+  },
+);
 ```
 
 ## 最佳实践
@@ -554,7 +623,7 @@ app.get('/', {
 
 ```typescript
 // ✅ 正确 — 使用校验后的数据
-const data = req.valid('body');
+const data = req.valid("body");
 
 // ❌ 避免 — 跳过了类型转换
 const data = req.body;
@@ -609,22 +678,26 @@ validate: {
 DSL 语法无法覆盖所有校验场景（如跨字段校验、数据库唯一性检查）。对于这些场景，在 handler 或 service 中使用 `app.throw()` 手动抛出：
 
 ```typescript
-app.post('/users', {
-  validate: {
-    body: { email: 'email!', password: 'string:8-128!' },
+app.post(
+  "/users",
+  {
+    validate: {
+      body: { email: "email!", password: "string:8-128!" },
+    },
   },
-}, async (req, res) => {
-  const data = req.valid('body');
+  async (req, res) => {
+    const data = req.valid("body");
 
-  // 数据库唯一性检查 — DSL 无法覆盖
-  const existing = await app.services.user.findByEmail(data.email);
-  if (existing) {
-    app.throw(409, '邮箱已注册', 10001);
-  }
+    // 数据库唯一性检查 — DSL 无法覆盖
+    const existing = await app.services.user.findByEmail(data.email);
+    if (existing) {
+      app.throw(409, "邮箱已注册", 10001);
+    }
 
-  const user = await app.services.user.create(data);
-  res.json(user, 201);
-});
+    const user = await app.services.user.create(data);
+    res.json(user, 201);
+  },
+);
 ```
 
 ## 下一步

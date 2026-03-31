@@ -15,10 +15,8 @@
  * @see 12-cluster.md §4.1（Cluster 模式启动检测与警告）
  */
 
-import { describe, it, expect, vi, } from "vitest";
-import {
-  checkClusterCompatibility,
-} from "../../../src/lib/cluster/cluster-checks.js";
+import { describe, it, expect, vi } from "vitest";
+import { checkClusterCompatibility } from "../../../src/lib/cluster/cluster-checks.js";
 import type { VextApp } from "../../../src/types/app.js";
 
 // ── Mock 工厂 ────────────────────────────────────────────────
@@ -31,11 +29,13 @@ import type { VextApp } from "../../../src/types/app.js";
  *   - logger.warn（验证警告输出）
  *   - _rateLimiterOverridden（标记用户是否替换了 rate limiter）
  */
-function createMockApp(options: {
-  rateLimitEnabled?: boolean;
-  rateLimitMax?: number;
-  rateLimiterOverridden?: boolean;
-} = {}): VextApp {
+function createMockApp(
+  options: {
+    rateLimitEnabled?: boolean;
+    rateLimitMax?: number;
+    rateLimiterOverridden?: boolean;
+  } = {},
+): VextApp {
   const {
     rateLimitEnabled = true,
     rateLimitMax = 100,

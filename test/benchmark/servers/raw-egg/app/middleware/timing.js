@@ -16,13 +16,11 @@
  * egg 中间件遵循 Koa 洋葱模型：await next() 前为 before，之后为 after。
  */
 
-
-
 module.exports = () => {
   return async function timing(ctx, next) {
     ctx.state.startTime = Date.now();
     await next();
     const elapsed = Date.now() - ctx.state.startTime;
-    ctx.set('X-Response-Time', `${elapsed}ms`);
+    ctx.set("X-Response-Time", `${elapsed}ms`);
   };
 };

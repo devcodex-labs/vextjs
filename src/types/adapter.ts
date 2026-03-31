@@ -1,4 +1,4 @@
-import type { VextMiddleware, VextErrorMiddleware } from './middleware.js'
+import type { VextMiddleware, VextErrorMiddleware } from "./middleware.js";
 
 /**
  * VextAdapter — 框架底层适配器接口
@@ -29,7 +29,7 @@ import type { VextMiddleware, VextErrorMiddleware } from './middleware.js'
  */
 export interface VextAdapter {
   /** adapter 名称标识（用于日志和错误信息） */
-  readonly name: string
+  readonly name: string;
 
   /**
    * 注册单条路由
@@ -42,11 +42,7 @@ export interface VextAdapter {
    * @param path   完整路径（含前缀，如 /api/v1/users/:id）
    * @param chain  中间件执行链（已组装完毕）
    */
-  registerRoute(
-    method: string,
-    path: string,
-    chain: VextMiddleware[],
-  ): void
+  registerRoute(method: string, path: string, chain: VextMiddleware[]): void;
 
   /**
    * 注册全局中间件（在所有路由之前执行）
@@ -56,7 +52,7 @@ export interface VextAdapter {
    *
    * @param middleware 标准 VextMiddleware
    */
-  registerMiddleware(middleware: VextMiddleware): void
+  registerMiddleware(middleware: VextMiddleware): void;
 
   /**
    * 注册全局错误处理
@@ -67,7 +63,7 @@ export interface VextAdapter {
    *
    * @param handler 错误处理函数
    */
-  registerErrorHandler(handler: VextErrorMiddleware): void
+  registerErrorHandler(handler: VextErrorMiddleware): void;
 
   /**
    * 注册 404 兜底
@@ -77,7 +73,7 @@ export interface VextAdapter {
    *
    * @param handler 兜底处理函数
    */
-  registerNotFound(handler: VextMiddleware): void
+  registerNotFound(handler: VextMiddleware): void;
 
   /**
    * 启动 HTTP 服务器
@@ -89,7 +85,7 @@ export interface VextAdapter {
    * @param host 监听地址（默认 '0.0.0.0'）
    * @returns 包含 close() 的服务器句柄
    */
-  listen(port: number, host?: string): Promise<VextServerHandle>
+  listen(port: number, host?: string): Promise<VextServerHandle>;
 
   /**
    * 构建完整的请求处理函数（不启动 server）
@@ -108,9 +104,9 @@ export interface VextAdapter {
    * @returns Node.js HTTP 请求处理函数
    */
   buildHandler(): (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void
+    req: import("node:http").IncomingMessage,
+    res: import("node:http").ServerResponse,
+  ) => void;
 }
 
 /**
@@ -126,11 +122,11 @@ export interface VextServerHandle {
    * 返回的 Promise 在所有飞行中请求处理完毕后 resolve。
    * shutdown 模块会用 Promise.race 加超时保护。
    */
-  close(): Promise<void>
+  close(): Promise<void>;
 
   /** 实际监听的端口（当传入 port=0 时可获取系统分配的端口） */
-  readonly port: number
+  readonly port: number;
 
   /** 实际监听的地址 */
-  readonly host: string
+  readonly host: string;
 }

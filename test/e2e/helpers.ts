@@ -37,9 +37,8 @@ import type { BootstrapResult } from "../../src/lib/bootstrap.js";
  *   的低位取模作为偏移，虽非完美但大幅降低碰撞概率。
  */
 const poolId = parseInt(process.env.VITEST_POOL_ID || "0", 10);
-const portBase = poolId > 0
-  ? 19000 + (poolId - 1) * 500
-  : 19000 + (process.pid % 100) * 50;
+const portBase =
+  poolId > 0 ? 19000 + (poolId - 1) * 500 : 19000 + (process.pid % 100) * 50;
 let portCounter = portBase;
 
 /**

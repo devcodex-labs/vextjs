@@ -24,25 +24,25 @@ Adapter 负责：
 
 VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
-| Adapter | 底层框架 | 特点 | 适用场景 | 额外依赖 |
-|---------|---------|------|---------|---------|
-| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高 | 追求极致性能 | 无 |
-| **Hono** | Hono | Web Standards API，轻量 | 全栈 / 边缘运行时 | `hono` `@hono/node-server` |
-| **Fastify** | Fastify | 生态丰富，JSON 序列化优化 | 大型项目 | `fastify` |
-| **Express** | Express v5 | 最大中间件生态 | 迁移项目 | `express` |
-| **Koa** | Koa v3 | 轻量优雅 | 中小型项目 | `koa` |
+| Adapter            | 底层框架                            | 特点                      | 适用场景          | 额外依赖                   |
+| ------------------ | ----------------------------------- | ------------------------- | ----------------- | -------------------------- |
+| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高      | 追求极致性能      | 无                         |
+| **Hono**           | Hono                                | Web Standards API，轻量   | 全栈 / 边缘运行时 | `hono` `@hono/node-server` |
+| **Fastify**        | Fastify                             | 生态丰富，JSON 序列化优化 | 大型项目          | `fastify`                  |
+| **Express**        | Express v5                          | 最大中间件生态            | 迁移项目          | `express`                  |
+| **Koa**            | Koa v3                              | 轻量优雅                  | 中小型项目        | `koa`                      |
 
 ### 性能对比
 
 基准测试（JSON 响应场景，5 轮中位数）：
 
 | Adapter | Raw RPS | Vext RPS | 框架开销 |
-|---------|--------:|---------:|--------:|
-| Native | 44,932 | 36,819 | 18.1% |
-| Express | 29,868 | 30,974 | -3.7% |
-| Fastify | 45,619 | 29,203 | 36.0% |
-| Koa | 31,833 | 22,488 | 29.4% |
-| Hono | 20,703 | 15,684 | 24.2% |
+| ------- | ------: | -------: | -------: |
+| Native  |  44,932 |   36,819 |    18.1% |
+| Express |  29,868 |   30,974 |    -3.7% |
+| Fastify |  45,619 |   29,203 |    36.0% |
+| Koa     |  31,833 |   22,488 |    29.4% |
+| Hono    |  20,703 |   15,684 |    24.2% |
 
 > Vext 开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
 >
@@ -65,7 +65,7 @@ export default {
 如需显式声明：
 
 ```typescript
-import { nativeAdapter } from 'vextjs/adapters/native';
+import { nativeAdapter } from "vextjs/adapters/native";
 
 export default {
   adapter: nativeAdapter(),
@@ -86,7 +86,7 @@ npm install hono @hono/node-server
 ```typescript
 // src/config/default.ts
 export default {
-  adapter: 'hono',
+  adapter: "hono",
   port: 3000,
 };
 ```
@@ -95,7 +95,7 @@ export default {
 
 ```typescript
 // src/config/default.ts
-import { honoAdapter } from 'vextjs/adapters/hono';
+import { honoAdapter } from "vextjs/adapters/hono";
 
 export default {
   adapter: honoAdapter(),
@@ -116,7 +116,7 @@ npm install fastify
 ```typescript
 // src/config/default.ts
 export default {
-  adapter: 'fastify',
+  adapter: "fastify",
   port: 3000,
 };
 ```
@@ -125,7 +125,7 @@ export default {
 
 ```typescript
 // src/config/default.ts
-import { fastifyAdapter } from 'vextjs/adapters/fastify';
+import { fastifyAdapter } from "vextjs/adapters/fastify";
 
 export default {
   adapter: fastifyAdapter(),
@@ -146,7 +146,7 @@ npm install express
 ```typescript
 // src/config/default.ts
 export default {
-  adapter: 'express',
+  adapter: "express",
   port: 3000,
 };
 ```
@@ -155,7 +155,7 @@ export default {
 
 ```typescript
 // src/config/default.ts
-import { expressAdapter } from 'vextjs/adapters/express';
+import { expressAdapter } from "vextjs/adapters/express";
 
 export default {
   adapter: expressAdapter(),
@@ -180,7 +180,7 @@ npm install koa
 ```typescript
 // src/config/default.ts
 export default {
-  adapter: 'koa',
+  adapter: "koa",
   port: 3000,
 };
 ```
@@ -189,7 +189,7 @@ export default {
 
 ```typescript
 // src/config/default.ts
-import { koaAdapter } from 'vextjs/adapters/koa';
+import { koaAdapter } from "vextjs/adapters/koa";
 
 export default {
   adapter: koaAdapter(),
@@ -284,7 +284,7 @@ interface VextAdapter {
 
 ```typescript
 // src/config/default.ts
-import type { VextAdapter, VextApp } from 'vextjs';
+import type { VextAdapter, VextApp } from "vextjs";
 
 function myCustomAdapter(): (app: VextApp) => VextAdapter {
   return (app) => ({
@@ -311,7 +311,9 @@ function myCustomAdapter(): (app: VextApp) => VextAdapter {
     async listen(port, host) {
       // 启动监听
       return {
-        close: async () => { /* 关闭服务器 */ },
+        close: async () => {
+          /* 关闭服务器 */
+        },
         address: { port, host },
       };
     },
@@ -334,19 +336,19 @@ export default {
 
 ```typescript
 interface VextRequest {
-  method: string;                          // HTTP 方法
-  url: string;                             // 完整 URL
-  path: string;                            // 路径部分
-  query: Record<string, string>;           // 查询参数
-  body: unknown;                           // 请求体
-  params: Record<string, string>;          // 路径参数
-  headers: Record<string, string>;         // 请求头
-  requestId: string;                       // 请求唯一标识
-  ip: string;                              // 客户端 IP
-  protocol: 'http' | 'https';             // 协议
-  app: VextApp;                            // 应用实例
-  valid<T>(location: string): T;           // 获取校验后数据
-  onClose(handler: () => void): void;      // 连接关闭钩子
+  method: string; // HTTP 方法
+  url: string; // 完整 URL
+  path: string; // 路径部分
+  query: Record<string, string>; // 查询参数
+  body: unknown; // 请求体
+  params: Record<string, string>; // 路径参数
+  headers: Record<string, string>; // 请求头
+  requestId: string; // 请求唯一标识
+  ip: string; // 客户端 IP
+  protocol: "http" | "https"; // 协议
+  app: VextApp; // 应用实例
+  valid<T>(location: string): T; // 获取校验后数据
+  onClose(handler: () => void): void; // 连接关闭钩子
 }
 ```
 
@@ -354,14 +356,14 @@ interface VextRequest {
 
 ```typescript
 interface VextResponse {
-  json(data: unknown, status?: number): void;            // JSON 响应
-  text(content: string, status?: number): void;           // 文本响应
-  stream(readable: ReadableStream, type?: string): void;  // 流式响应
+  json(data: unknown, status?: number): void; // JSON 响应
+  text(content: string, status?: number): void; // 文本响应
+  stream(readable: ReadableStream, type?: string): void; // 流式响应
   download(readable: ReadableStream, filename: string): void; // 文件下载
-  redirect(url: string, status?: number): void;           // 重定向
-  status(code: number): this;                             // 设置状态码
-  setHeader(name: string, value: string): this;           // 设置响应头
-  readonly statusCode: number;                            // 当前状态码
+  redirect(url: string, status?: number): void; // 重定向
+  status(code: number): this; // 设置状态码
+  setHeader(name: string, value: string): this; // 设置响应头
+  readonly statusCode: number; // 当前状态码
 }
 ```
 
@@ -385,7 +387,7 @@ export default {
 
 ```typescript
 // src/config/development.ts — 开发环境使用 Hono（利用其 DevTools）
-import { honoAdapter } from 'vextjs/adapters/hono';
+import { honoAdapter } from "vextjs/adapters/hono";
 
 export default {
   adapter: honoAdapter(),

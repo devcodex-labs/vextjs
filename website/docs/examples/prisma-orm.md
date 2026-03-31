@@ -4,14 +4,14 @@
 
 ## 为什么选择 Prisma？
 
-| 特性 | 说明 |
-|------|------|
-| **类型安全** | 代码生成的 Prisma Client，查询和结果自动类型推断 |
-| **直观 API** | 高级查询 API，支持嵌套创建、关联查询、事务等 |
-| **数据库迁移** | 内置 `prisma migrate` 进行声明式 schema 迁移 |
-| **多数据库** | 支持 PostgreSQL、MySQL、SQLite、MongoDB、CockroachDB |
-| **可视化工具** | Prisma Studio 提供数据库图形化管理界面 |
-| **生态丰富** | 广泛的社区插件和第三方集成 |
+| 特性           | 说明                                                 |
+| -------------- | ---------------------------------------------------- |
+| **类型安全**   | 代码生成的 Prisma Client，查询和结果自动类型推断     |
+| **直观 API**   | 高级查询 API，支持嵌套创建、关联查询、事务等         |
+| **数据库迁移** | 内置 `prisma migrate` 进行声明式 schema 迁移         |
+| **多数据库**   | 支持 PostgreSQL、MySQL、SQLite、MongoDB、CockroachDB |
+| **可视化工具** | Prisma Studio 提供数据库图形化管理界面               |
+| **生态丰富**   | 广泛的社区插件和第三方集成                           |
 
 :::tip
 **Prisma vs Drizzle**：Prisma 提供更高层次的抽象和更丰富的查询 API（如 `include`、`select`、嵌套写入），适合需要快速开发和复杂关联操作的项目。Drizzle 更贴近 SQL 原生语义，适合对 SQL 控制力要求更高的场景。VextJS 两者都支持，选择取决于团队偏好。
@@ -165,12 +165,12 @@ DATABASE_URL="file:./data/app.db"
 
 ```typescript
 // prisma/seed.ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('正在填充种子数据...');
+  console.log("正在填充种子数据...");
 
   // 清空数据（按依赖顺序）
   await prisma.comment.deleteMany();
@@ -179,36 +179,42 @@ async function main() {
   await prisma.user.deleteMany();
 
   // 创建标签
-  const tagBackend = await prisma.tag.create({ data: { name: '后端' } });
-  const tagFrontend = await prisma.tag.create({ data: { name: '前端' } });
-  const tagDevOps = await prisma.tag.create({ data: { name: 'DevOps' } });
-  const tagTypeScript = await prisma.tag.create({ data: { name: 'TypeScript' } });
+  const tagBackend = await prisma.tag.create({ data: { name: "后端" } });
+  const tagFrontend = await prisma.tag.create({ data: { name: "前端" } });
+  const tagDevOps = await prisma.tag.create({ data: { name: "DevOps" } });
+  const tagTypeScript = await prisma.tag.create({
+    data: { name: "TypeScript" },
+  });
 
   // 创建用户 + 文章（嵌套创建）
   const alice = await prisma.user.create({
     data: {
-      name: 'Alice',
-      email: 'alice@example.com',
+      name: "Alice",
+      email: "alice@example.com",
       age: 28,
-      role: 'admin',
-      bio: '全栈开发者，热爱开源',
+      role: "admin",
+      bio: "全栈开发者，热爱开源",
       posts: {
         create: [
           {
-            title: 'VextJS 入门指南',
-            content: '本文介绍如何使用 VextJS 构建高性能 RESTful API。VextJS 提供 Adapter 架构、插件系统、约定式路由等企业级特性...',
+            title: "VextJS 入门指南",
+            content:
+              "本文介绍如何使用 VextJS 构建高性能 RESTful API。VextJS 提供 Adapter 架构、插件系统、约定式路由等企业级特性...",
             published: true,
-            tags: { connect: [{ id: tagBackend.id }, { id: tagTypeScript.id }] },
+            tags: {
+              connect: [{ id: tagBackend.id }, { id: tagTypeScript.id }],
+            },
           },
           {
-            title: 'Prisma ORM 最佳实践',
-            content: '深入探索 Prisma 的高级查询技巧，包括关联查询、事务、中间件等...',
+            title: "Prisma ORM 最佳实践",
+            content:
+              "深入探索 Prisma 的高级查询技巧，包括关联查询、事务、中间件等...",
             published: true,
             tags: { connect: [{ id: tagBackend.id }] },
           },
           {
-            title: '未发布的草稿',
-            content: '这是一篇还在编写中的文章...',
+            title: "未发布的草稿",
+            content: "这是一篇还在编写中的文章...",
             published: false,
           },
         ],
@@ -218,18 +224,21 @@ async function main() {
 
   const bob = await prisma.user.create({
     data: {
-      name: 'Bob',
-      email: 'bob@example.com',
+      name: "Bob",
+      email: "bob@example.com",
       age: 32,
-      role: 'user',
-      bio: '前端工程师',
+      role: "user",
+      bio: "前端工程师",
       posts: {
         create: [
           {
-            title: 'React 18 新特性',
-            content: '探索 React 18 中的并发特性、Suspense 改进和自动批量更新...',
+            title: "React 18 新特性",
+            content:
+              "探索 React 18 中的并发特性、Suspense 改进和自动批量更新...",
             published: true,
-            tags: { connect: [{ id: tagFrontend.id }, { id: tagTypeScript.id }] },
+            tags: {
+              connect: [{ id: tagFrontend.id }, { id: tagTypeScript.id }],
+            },
           },
         ],
       },
@@ -238,11 +247,11 @@ async function main() {
 
   const charlie = await prisma.user.create({
     data: {
-      name: 'Charlie',
-      email: 'charlie@example.com',
+      name: "Charlie",
+      email: "charlie@example.com",
       age: 25,
-      role: 'editor',
-      bio: '技术博客作者',
+      role: "editor",
+      bio: "技术博客作者",
     },
   });
 
@@ -255,17 +264,17 @@ async function main() {
     await prisma.comment.createMany({
       data: [
         {
-          content: '写得太好了！收藏了 👍',
+          content: "写得太好了！收藏了 👍",
           authorId: bob.id,
           postId: alicePosts[0].id,
         },
         {
-          content: '请问有配套的视频教程吗？',
+          content: "请问有配套的视频教程吗？",
           authorId: charlie.id,
           postId: alicePosts[0].id,
         },
         {
-          content: '非常实用的 Prisma 教程',
+          content: "非常实用的 Prisma 教程",
           authorId: charlie.id,
           postId: alicePosts[1].id,
         },
@@ -273,7 +282,7 @@ async function main() {
     });
   }
 
-  console.log('种子数据填充完成 ✅');
+  console.log("种子数据填充完成 ✅");
   console.log(`  用户: ${await prisma.user.count()}`);
   console.log(`  文章: ${await prisma.post.count()}`);
   console.log(`  评论: ${await prisma.comment.count()}`);
@@ -282,7 +291,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('种子数据填充失败:', e);
+    console.error("种子数据填充失败:", e);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());
@@ -314,54 +323,54 @@ pnpm db:seed
 
 ```typescript
 // src/plugins/database.ts
-import { definePlugin } from 'vextjs';
-import { PrismaClient } from '@prisma/client';
+import { definePlugin } from "vextjs";
+import { PrismaClient } from "@prisma/client";
 
 export default definePlugin({
-  name: 'database',
+  name: "database",
   async setup(app) {
-    app.logger.info('正在初始化 Prisma Client...');
+    app.logger.info("正在初始化 Prisma Client...");
 
     const prisma = new PrismaClient({
       log:
-        app.config.logger.level === 'debug'
+        app.config.logger.level === "debug"
           ? [
-              { emit: 'event', level: 'query' },
-              { emit: 'stdout', level: 'info' },
-              { emit: 'stdout', level: 'warn' },
-              { emit: 'stdout', level: 'error' },
+              { emit: "event", level: "query" },
+              { emit: "stdout", level: "info" },
+              { emit: "stdout", level: "warn" },
+              { emit: "stdout", level: "error" },
             ]
           : [
-              { emit: 'stdout', level: 'warn' },
-              { emit: 'stdout', level: 'error' },
+              { emit: "stdout", level: "warn" },
+              { emit: "stdout", level: "error" },
             ],
     });
 
     // 开发环境打印 SQL 查询
-    if (app.config.logger.level === 'debug') {
-      prisma.$on('query' as any, (e: any) => {
+    if (app.config.logger.level === "debug") {
+      prisma.$on("query" as any, (e: any) => {
         app.logger.debug(
           { query: e.query, params: e.params, duration: `${e.duration}ms` },
-          'Prisma SQL',
+          "Prisma SQL",
         );
       });
     }
 
     // 连接数据库
     await prisma.$connect();
-    app.logger.info('Prisma Client 连接成功');
+    app.logger.info("Prisma Client 连接成功");
 
     // 挂载到 app
-    app.extend('prisma', prisma);
+    app.extend("prisma", prisma);
 
     // 就绪钩子：验证连接
     app.onReady(async () => {
       try {
         await prisma.$queryRaw`SELECT 1`;
         const userCount = await prisma.user.count();
-        app.logger.info({ userCount }, '数据库连接验证成功');
+        app.logger.info({ userCount }, "数据库连接验证成功");
       } catch (err) {
-        app.logger.error({ error: err }, '数据库连接验证失败');
+        app.logger.error({ error: err }, "数据库连接验证失败");
         throw err;
       }
     });
@@ -369,7 +378,7 @@ export default definePlugin({
     // 关闭钩子：断开连接
     app.onClose(async () => {
       await prisma.$disconnect();
-      app.logger.info('Prisma Client 已断开连接');
+      app.logger.info("Prisma Client 已断开连接");
     });
   },
 });
@@ -379,9 +388,9 @@ export default definePlugin({
 
 ```typescript
 // types/vext.d.ts
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from "@prisma/client";
 
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     prisma: PrismaClient;
   }
@@ -401,14 +410,14 @@ declare module 'vextjs' {
 // src/config/default.ts
 export default {
   port: 3000,
-  adapter: 'native',
+  adapter: "native",
   logger: {
-    level: 'debug',
+    level: "debug",
     pretty: true,
   },
   cors: {
     enabled: true,
-    origins: ['*'],
+    origins: ["*"],
   },
   response: {
     wrap: true,
@@ -416,28 +425,26 @@ export default {
   },
   openapi: {
     enabled: true,
-    title: 'Prisma ORM 示例',
-    version: '1.0.0',
-    description: '使用 Prisma ORM 集成的 VextJS RESTful API',
+    title: "Prisma ORM 示例",
+    version: "1.0.0",
+    description: "使用 Prisma ORM 集成的 VextJS RESTful API",
     tags: [
-      { name: '基础', description: '基础接口' },
-      { name: '用户', description: '用户管理接口' },
-      { name: '文章', description: '文章管理接口' },
+      { name: "基础", description: "基础接口" },
+      { name: "用户", description: "用户管理接口" },
+      { name: "文章", description: "文章管理接口" },
     ],
     securitySchemes: {
       bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
       },
     },
     guardSecurityMap: {
-      auth: 'bearerAuth',
+      auth: "bearerAuth",
     },
   },
-  middlewares: [
-    { name: 'auth' },
-  ],
+  middlewares: [{ name: "auth" }],
 };
 ```
 
@@ -445,7 +452,7 @@ export default {
 // src/config/production.ts
 export default {
   logger: {
-    level: 'info',
+    level: "info",
     pretty: false,
   },
   response: {
@@ -463,14 +470,14 @@ export default {
 
 ```typescript
 // src/services/user.ts
-import type { VextApp, VextLogger } from 'vextjs';
-import type { User, Prisma } from '@prisma/client';
+import type { VextApp, VextLogger } from "vextjs";
+import type { User, Prisma } from "@prisma/client";
 
 export default class UserService {
   private logger: VextLogger;
 
   constructor(private app: VextApp) {
-    this.logger = app.logger.child({ service: 'UserService' });
+    this.logger = app.logger.child({ service: "UserService" });
   }
 
   /**
@@ -484,9 +491,9 @@ export default class UserService {
     keyword?: string;
     role?: string;
     sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
+    sortOrder?: "asc" | "desc";
   }) {
-    this.logger.debug(options, '查询用户列表');
+    this.logger.debug(options, "查询用户列表");
 
     const prisma = this.app.prisma;
 
@@ -512,7 +519,7 @@ export default class UserService {
         skip: (options.page - 1) * options.limit,
         take: options.limit,
         orderBy: {
-          [options.sortBy ?? 'createdAt']: options.sortOrder ?? 'desc',
+          [options.sortBy ?? "createdAt"]: options.sortOrder ?? "desc",
         },
         select: {
           id: true,
@@ -547,14 +554,14 @@ export default class UserService {
    * 包含已发布的文章列表和统计信息。
    */
   async findById(id: number) {
-    this.logger.debug({ userId: id }, '查询用户详情');
+    this.logger.debug({ userId: id }, "查询用户详情");
 
     const user = await this.app.prisma.user.findUnique({
       where: { id },
       include: {
         posts: {
           where: { published: true },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           select: {
             id: true,
             title: true,
@@ -591,7 +598,7 @@ export default class UserService {
     role?: string;
     bio?: string;
   }): Promise<User> {
-    this.logger.info({ email: data.email }, '创建用户');
+    this.logger.info({ email: data.email }, "创建用户");
 
     // Prisma 的 unique 约束会自动检测重复邮箱
     // 但我们提前检查以返回友好的业务错误码
@@ -601,7 +608,7 @@ export default class UserService {
     });
 
     if (existing) {
-      this.app.throw(409, '邮箱已注册', 10001);
+      this.app.throw(409, "邮箱已注册", 10001);
     }
 
     const user = await this.app.prisma.user.create({
@@ -609,12 +616,12 @@ export default class UserService {
         name: data.name,
         email: data.email,
         age: data.age,
-        role: data.role ?? 'user',
+        role: data.role ?? "user",
         bio: data.bio,
       },
     });
 
-    this.logger.info({ userId: user.id, email: user.email }, '用户创建成功');
+    this.logger.info({ userId: user.id, email: user.email }, "用户创建成功");
     return user;
   }
 
@@ -631,7 +638,7 @@ export default class UserService {
       avatarUrl?: string;
     },
   ): Promise<User> {
-    this.logger.info({ userId: id }, '更新用户');
+    this.logger.info({ userId: id }, "更新用户");
 
     // 检查用户是否存在
     const existing = await this.app.prisma.user.findUnique({
@@ -640,7 +647,7 @@ export default class UserService {
     });
 
     if (!existing) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     // 邮箱唯一性检查
@@ -651,7 +658,7 @@ export default class UserService {
       });
 
       if (emailTaken) {
-        this.app.throw(409, '邮箱已被其他用户使用', 10002);
+        this.app.throw(409, "邮箱已被其他用户使用", 10002);
       }
     }
 
@@ -660,7 +667,7 @@ export default class UserService {
       data,
     });
 
-    this.logger.info({ userId: id }, '用户更新成功');
+    this.logger.info({ userId: id }, "用户更新成功");
     return user;
   }
 
@@ -670,7 +677,7 @@ export default class UserService {
    * 由于 schema 设置了 onDelete: Cascade，关联的文章和评论会自动删除。
    */
   async delete(id: number): Promise<void> {
-    this.logger.info({ userId: id }, '删除用户');
+    this.logger.info({ userId: id }, "删除用户");
 
     const existing = await this.app.prisma.user.findUnique({
       where: { id },
@@ -678,12 +685,12 @@ export default class UserService {
     });
 
     if (!existing) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     await this.app.prisma.user.delete({ where: { id } });
 
-    this.logger.info({ userId: id }, '用户删除成功（关联数据已级联删除）');
+    this.logger.info({ userId: id }, "用户删除成功（关联数据已级联删除）");
   }
 
   /**
@@ -699,14 +706,14 @@ export default class UserService {
 
 ```typescript
 // src/services/post.ts
-import type { VextApp, VextLogger } from 'vextjs';
-import type { Post, Prisma } from '@prisma/client';
+import type { VextApp, VextLogger } from "vextjs";
+import type { Post, Prisma } from "@prisma/client";
 
 export default class PostService {
   private logger: VextLogger;
 
   constructor(private app: VextApp) {
-    this.logger = app.logger.child({ service: 'PostService' });
+    this.logger = app.logger.child({ service: "PostService" });
   }
 
   /**
@@ -718,7 +725,7 @@ export default class PostService {
     keyword?: string;
     tag?: string;
   }) {
-    this.logger.debug(options, '查询文章列表');
+    this.logger.debug(options, "查询文章列表");
 
     const prisma = this.app.prisma;
 
@@ -744,7 +751,7 @@ export default class PostService {
         where,
         skip: (options.page - 1) * options.limit,
         take: options.limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         include: {
           author: {
             select: { id: true, name: true, avatarUrl: true },
@@ -773,7 +780,7 @@ export default class PostService {
    * 查询文章详情（含评论）
    */
   async findById(id: number) {
-    this.logger.debug({ postId: id }, '查询文章详情');
+    this.logger.debug({ postId: id }, "查询文章详情");
 
     const prisma = this.app.prisma;
 
@@ -787,7 +794,7 @@ export default class PostService {
           select: { id: true, name: true },
         },
         comments: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           include: {
             author: {
               select: { id: true, name: true, avatarUrl: true },
@@ -821,7 +828,10 @@ export default class PostService {
     published?: boolean;
     tags?: string[];
   }): Promise<Post> {
-    this.logger.info({ authorId: data.authorId, title: data.title }, '创建文章');
+    this.logger.info(
+      { authorId: data.authorId, title: data.title },
+      "创建文章",
+    );
 
     const prisma = this.app.prisma;
 
@@ -832,7 +842,7 @@ export default class PostService {
     });
 
     if (!author) {
-      this.app.throw(404, '作者不存在');
+      this.app.throw(404, "作者不存在");
     }
 
     // 处理标签：connectOrCreate（已有则关联，没有则创建）
@@ -847,9 +857,7 @@ export default class PostService {
         content: data.content,
         authorId: data.authorId,
         published: data.published ?? false,
-        tags: tagConnections
-          ? { connectOrCreate: tagConnections }
-          : undefined,
+        tags: tagConnections ? { connectOrCreate: tagConnections } : undefined,
       },
       include: {
         author: { select: { id: true, name: true } },
@@ -857,7 +865,7 @@ export default class PostService {
       },
     });
 
-    this.logger.info({ postId: post.id }, '文章创建成功');
+    this.logger.info({ postId: post.id }, "文章创建成功");
     return post;
   }
 
@@ -873,7 +881,7 @@ export default class PostService {
       tags?: string[];
     },
   ) {
-    this.logger.info({ postId: id }, '更新文章');
+    this.logger.info({ postId: id }, "更新文章");
 
     const prisma = this.app.prisma;
 
@@ -883,7 +891,7 @@ export default class PostService {
     });
 
     if (!existing) {
-      this.app.throw(404, '文章不存在');
+      this.app.throw(404, "文章不存在");
     }
 
     // 如果提供了 tags，先断开所有现有标签，再关联新标签
@@ -912,7 +920,7 @@ export default class PostService {
       },
     });
 
-    this.logger.info({ postId: id }, '文章更新成功');
+    this.logger.info({ postId: id }, "文章更新成功");
     return post;
   }
 
@@ -920,7 +928,7 @@ export default class PostService {
    * 删除文章
    */
   async delete(id: number): Promise<void> {
-    this.logger.info({ postId: id }, '删除文章');
+    this.logger.info({ postId: id }, "删除文章");
 
     const existing = await this.app.prisma.post.findUnique({
       where: { id },
@@ -928,12 +936,12 @@ export default class PostService {
     });
 
     if (!existing) {
-      this.app.throw(404, '文章不存在');
+      this.app.throw(404, "文章不存在");
     }
 
     await this.app.prisma.post.delete({ where: { id } });
 
-    this.logger.info({ postId: id }, '文章删除成功');
+    this.logger.info({ postId: id }, "文章删除成功");
   }
 
   /**
@@ -944,7 +952,10 @@ export default class PostService {
     authorId: number;
     content: string;
   }) {
-    this.logger.info({ postId: data.postId, authorId: data.authorId }, '添加评论');
+    this.logger.info(
+      { postId: data.postId, authorId: data.authorId },
+      "添加评论",
+    );
 
     const prisma = this.app.prisma;
 
@@ -955,11 +966,11 @@ export default class PostService {
     });
 
     if (!post) {
-      this.app.throw(404, '文章不存在');
+      this.app.throw(404, "文章不存在");
     }
 
     if (!post.published) {
-      this.app.throw(400, '不能评论未发布的文章');
+      this.app.throw(400, "不能评论未发布的文章");
     }
 
     const comment = await prisma.comment.create({
@@ -973,7 +984,7 @@ export default class PostService {
       },
     });
 
-    this.logger.info({ commentId: comment.id }, '评论添加成功');
+    this.logger.info({ commentId: comment.id }, "评论添加成功");
     return comment;
   }
 }
@@ -985,24 +996,28 @@ export default class PostService {
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {
-    docs: {
-      summary: '健康检查',
-      tags: ['基础'],
+  app.get(
+    "/",
+    {
+      docs: {
+        summary: "健康检查",
+        tags: ["基础"],
+      },
     },
-  }, async (_req, res) => {
-    const userCount = await app.services.user.count();
-    res.json({
-      status: 'ok',
-      database: 'connected',
-      users: userCount,
-      uptime: Math.floor(process.uptime()),
-      timestamp: new Date().toISOString(),
-    });
-  });
+    async (_req, res) => {
+      const userCount = await app.services.user.count();
+      res.json({
+        status: "ok",
+        database: "connected",
+        users: userCount,
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+      });
+    },
+  );
 });
 ```
 
@@ -1010,127 +1025,153 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /users/list — 分页查询
-  app.get('/list', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
-        keyword: 'string?',
-        role: 'string?',
+  app.get(
+    "/list",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+          keyword: "string?",
+          role: "string?",
+        },
+      },
+      docs: {
+        summary: "用户列表",
+        description:
+          "分页查询用户列表，支持关键词搜索和角色筛选。返回每个用户的文章和评论计数。",
+        tags: ["用户"],
       },
     },
-    docs: {
-      summary: '用户列表',
-      description: '分页查询用户列表，支持关键词搜索和角色筛选。返回每个用户的文章和评论计数。',
-      tags: ['用户'],
+    async (req, res) => {
+      const { page, limit, keyword, role } = req.valid("query");
+      const result = await app.services.user.findAll({
+        page,
+        limit,
+        keyword,
+        role,
+      });
+      res.json(result);
     },
-  }, async (req, res) => {
-    const { page, limit, keyword, role } = req.valid('query');
-    const result = await app.services.user.findAll({ page, limit, keyword, role });
-    res.json(result);
-  });
+  );
 
   // GET /users/:id — 查询详情（含文章列表）
-  app.get('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    docs: {
-      summary: '获取用户详情',
-      description: '查询用户详情，包含已发布文章列表及统计信息。',
-      tags: ['用户'],
-      responses: {
-        200: { description: '查询成功' },
-        404: { description: '用户不存在' },
+  app.get(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      docs: {
+        summary: "获取用户详情",
+        description: "查询用户详情，包含已发布文章列表及统计信息。",
+        tags: ["用户"],
+        responses: {
+          200: { description: "查询成功" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const user = await app.services.user.findById(id);
-    if (!user) app.throw(404, '用户不存在');
-    res.json(user);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
+      if (!user) app.throw(404, "用户不存在");
+      res.json(user);
+    },
+  );
 
   // POST /users — 创建用户（需认证）
-  app.post('/', {
-    validate: {
-      body: {
-        name: 'string:1-50',
-        email: 'email',
-        age: 'number:0-200?',
-        role: 'enum:admin,user,editor?',
-        bio: 'string?',
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50",
+          email: "email",
+          age: "number:0-200?",
+          role: "enum:admin,user,editor?",
+          bio: "string?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建用户",
+        tags: ["用户"],
+        responses: {
+          201: { description: "创建成功" },
+          400: { description: "参数校验失败" },
+          401: { description: "未认证" },
+          409: { description: "邮箱已注册" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建用户',
-      tags: ['用户'],
-      responses: {
-        201: { description: '创建成功' },
-        400: { description: '参数校验失败' },
-        401: { description: '未认证' },
-        409: { description: '邮箱已注册' },
-      },
+    async (req, res) => {
+      const body = req.valid("body");
+      const user = await app.services.user.create(body);
+      res.json(user, 201);
     },
-  }, async (req, res) => {
-    const body = req.valid('body');
-    const user = await app.services.user.create(body);
-    res.json(user, 201);
-  });
+  );
 
   // PUT /users/:id — 更新用户（需认证）
-  app.put('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-      body: {
-        name: 'string:1-50?',
-        email: 'email?',
-        age: 'number:0-200?',
-        bio: 'string?',
+  app.put(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+        body: {
+          name: "string:1-50?",
+          email: "email?",
+          age: "number:0-200?",
+          bio: "string?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "更新用户",
+        tags: ["用户"],
+        responses: {
+          200: { description: "更新成功" },
+          404: { description: "用户不存在" },
+          409: { description: "邮箱已被占用" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '更新用户',
-      tags: ['用户'],
-      responses: {
-        200: { description: '更新成功' },
-        404: { description: '用户不存在' },
-        409: { description: '邮箱已被占用' },
-      },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const body = req.valid("body");
+      const user = await app.services.user.update(id, body);
+      res.json(user);
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const body = req.valid('body');
-    const user = await app.services.user.update(id, body);
-    res.json(user);
-  });
+  );
 
   // DELETE /users/:id — 删除用户（需认证）
-  app.delete('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '删除用户',
-      description: '删除用户及其所有文章和评论（级联删除）。',
-      tags: ['用户'],
-      responses: {
-        204: { description: '删除成功' },
-        404: { description: '用户不存在' },
+  app.delete(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "删除用户",
+        description: "删除用户及其所有文章和评论（级联删除）。",
+        tags: ["用户"],
+        responses: {
+          204: { description: "删除成功" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    await app.services.user.delete(id);
-    res.status(204).json(null);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      await app.services.user.delete(id);
+      res.status(204).json(null);
+    },
+  );
 });
 ```
 
@@ -1138,180 +1179,211 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/posts.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /posts/list — 查询已发布文章
-  app.get('/list', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
-        keyword: 'string?',
-        tag: 'string?',
+  app.get(
+    "/list",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+          keyword: "string?",
+          tag: "string?",
+        },
+      },
+      docs: {
+        summary: "文章列表",
+        description: "查询已发布文章列表，支持关键词搜索和标签筛选。",
+        tags: ["文章"],
       },
     },
-    docs: {
-      summary: '文章列表',
-      description: '查询已发布文章列表，支持关键词搜索和标签筛选。',
-      tags: ['文章'],
+    async (req, res) => {
+      const { page, limit, keyword, tag } = req.valid("query");
+      const result = await app.services.post.findPublished({
+        page,
+        limit,
+        keyword,
+        tag,
+      });
+      res.json(result);
     },
-  }, async (req, res) => {
-    const { page, limit, keyword, tag } = req.valid('query');
-    const result = await app.services.post.findPublished({ page, limit, keyword, tag });
-    res.json(result);
-  });
+  );
 
   // GET /posts/:id — 文章详情（含评论）
-  app.get('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    docs: {
-      summary: '文章详情',
-      description: '查询文章详情，包含作者信息、标签、评论列表。每次访问自动增加浏览计数。',
-      tags: ['文章'],
-      responses: {
-        200: { description: '查询成功' },
-        404: { description: '文章不存在' },
+  app.get(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      docs: {
+        summary: "文章详情",
+        description:
+          "查询文章详情，包含作者信息、标签、评论列表。每次访问自动增加浏览计数。",
+        tags: ["文章"],
+        responses: {
+          200: { description: "查询成功" },
+          404: { description: "文章不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const post = await app.services.post.findById(id);
-    if (!post) app.throw(404, '文章不存在');
-    res.json(post);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const post = await app.services.post.findById(id);
+      if (!post) app.throw(404, "文章不存在");
+      res.json(post);
+    },
+  );
 
   // POST /posts — 创建文章（需认证）
-  app.post('/', {
-    validate: {
-      body: {
-        title: 'string:1-200',
-        content: 'string:1-',
-        published: 'boolean?',
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          title: "string:1-200",
+          content: "string:1-",
+          published: "boolean?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建文章",
+        description:
+          "创建一篇新文章。可通过请求体中的 tags 字段关联标签（字符串数组）。",
+        tags: ["文章"],
+        responses: {
+          201: { description: "创建成功" },
+          401: { description: "未认证" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建文章',
-      description: '创建一篇新文章。可通过请求体中的 tags 字段关联标签（字符串数组）。',
-      tags: ['文章'],
-      responses: {
-        201: { description: '创建成功' },
-        401: { description: '未认证' },
-      },
+    async (req, res) => {
+      const body = req.valid("body");
+
+      // 从认证信息中获取作者 ID
+      const authorId = parseInt(req.user?.id ?? "0", 10);
+      if (!authorId) {
+        app.throw(401, "无法确定用户身份");
+      }
+
+      // tags 从原始 body 中获取（不在 validate schema 中声明，因为 schema-dsl 不支持数组校验）
+      const rawBody = req.body as any;
+      const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;
+
+      const post = await app.services.post.create({
+        title: body.title,
+        content: body.content,
+        authorId,
+        published: body.published,
+        tags,
+      });
+
+      res.json(post, 201);
     },
-  }, async (req, res) => {
-    const body = req.valid('body');
-
-    // 从认证信息中获取作者 ID
-    const authorId = parseInt(req.user?.id ?? '0', 10);
-    if (!authorId) {
-      app.throw(401, '无法确定用户身份');
-    }
-
-    // tags 从原始 body 中获取（不在 validate schema 中声明，因为 schema-dsl 不支持数组校验）
-    const rawBody = req.body as any;
-    const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;
-
-    const post = await app.services.post.create({
-      title: body.title,
-      content: body.content,
-      authorId,
-      published: body.published,
-      tags,
-    });
-
-    res.json(post, 201);
-  });
+  );
 
   // PUT /posts/:id — 更新文章（需认证）
-  app.put('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-      body: {
-        title: 'string:1-200?',
-        content: 'string?',
-        published: 'boolean?',
+  app.put(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+        body: {
+          title: "string:1-200?",
+          content: "string?",
+          published: "boolean?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "更新文章",
+        tags: ["文章"],
+        responses: {
+          200: { description: "更新成功" },
+          404: { description: "文章不存在" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '更新文章',
-      tags: ['文章'],
-      responses: {
-        200: { description: '更新成功' },
-        404: { description: '文章不存在' },
-      },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const body = req.valid("body");
+
+      const rawBody = req.body as any;
+      const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;
+
+      const post = await app.services.post.update(id, { ...body, tags });
+      res.json(post);
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const body = req.valid('body');
-
-    const rawBody = req.body as any;
-    const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;
-
-    const post = await app.services.post.update(id, { ...body, tags });
-    res.json(post);
-  });
+  );
 
   // DELETE /posts/:id — 删除文章（需认证）
-  app.delete('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '删除文章',
-      tags: ['文章'],
-      responses: {
-        204: { description: '删除成功' },
-        404: { description: '文章不存在' },
+  app.delete(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "删除文章",
+        tags: ["文章"],
+        responses: {
+          204: { description: "删除成功" },
+          404: { description: "文章不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    await app.services.post.delete(id);
-    res.status(204).json(null);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      await app.services.post.delete(id);
+      res.status(204).json(null);
+    },
+  );
 
   // POST /posts/:id/comments — 添加评论（需认证）
-  app.post('/:id/comments', {
-    validate: {
-      param: { id: 'number:1-' },
-      body: {
-        content: 'string:1-1000',
+  app.post(
+    "/:id/comments",
+    {
+      validate: {
+        param: { id: "number:1-" },
+        body: {
+          content: "string:1-1000",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "添加评论",
+        description: "为指定文章添加评论。文章必须已发布。",
+        tags: ["文章"],
+        responses: {
+          201: { description: "评论成功" },
+          400: { description: "不能评论未发布的文章" },
+          404: { description: "文章不存在" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '添加评论',
-      description: '为指定文章添加评论。文章必须已发布。',
-      tags: ['文章'],
-      responses: {
-        201: { description: '评论成功' },
-        400: { description: '不能评论未发布的文章' },
-        404: { description: '文章不存在' },
-      },
+    async (req, res) => {
+      const { id: postId } = req.valid("param");
+      const { content } = req.valid("body");
+
+      const authorId = parseInt(req.user?.id ?? "0", 10);
+      if (!authorId) {
+        app.throw(401, "无法确定用户身份");
+      }
+
+      const comment = await app.services.post.addComment({
+        postId,
+        authorId,
+        content,
+      });
+
+      res.json(comment, 201);
     },
-  }, async (req, res) => {
-    const { id: postId } = req.valid('param');
-    const { content } = req.valid('body');
-
-    const authorId = parseInt(req.user?.id ?? '0', 10);
-    if (!authorId) {
-      app.throw(401, '无法确定用户身份');
-    }
-
-    const comment = await app.services.post.addComment({
-      postId,
-      authorId,
-      content,
-    });
-
-    res.json(comment, 201);
-  });
+  );
 });
 ```
 
@@ -1319,10 +1391,10 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/index.ts
-import { bootstrap } from 'vextjs';
+import { bootstrap } from "vextjs";
 
 bootstrap().catch((err) => {
-  console.error('启动失败:', err);
+  console.error("启动失败:", err);
   process.exit(1);
 });
 ```
@@ -1400,13 +1472,13 @@ Prisma 中间件可以拦截查询，实现软删除等功能：
 // src/plugins/database.ts 中添加
 prisma.$use(async (params, next) => {
   // 软删除：delete 操作改为 update deletedAt
-  if (params.action === 'delete') {
-    params.action = 'update';
+  if (params.action === "delete") {
+    params.action = "update";
     params.args.data = { deletedAt: new Date() };
   }
 
   // 查询时自动过滤已删除记录
-  if (params.action === 'findMany' || params.action === 'findFirst') {
+  if (params.action === "findMany" || params.action === "findFirst") {
     if (!params.args.where) params.args.where = {};
     params.args.where.deletedAt = null;
   }
@@ -1422,13 +1494,13 @@ prisma.$use(async (params, next) => {
 const result = await prisma.$transaction(async (tx) => {
   // 在事务中创建用户和初始文章
   const user = await tx.user.create({
-    data: { name: 'Diana', email: 'diana@example.com' },
+    data: { name: "Diana", email: "diana@example.com" },
   });
 
   const post = await tx.post.create({
     data: {
-      title: '我的第一篇文章',
-      content: '欢迎来到我的博客！',
+      title: "我的第一篇文章",
+      content: "欢迎来到我的博客！",
       authorId: user.id,
       published: true,
     },
@@ -1441,12 +1513,12 @@ const result = await prisma.$transaction(async (tx) => {
 const [updatedUser, newPost] = await prisma.$transaction([
   prisma.user.update({
     where: { id: 1 },
-    data: { name: 'Alice Updated' },
+    data: { name: "Alice Updated" },
   }),
   prisma.post.create({
     data: {
-      title: '新文章',
-      content: '内容',
+      title: "新文章",
+      content: "内容",
       authorId: 1,
     },
   }),
@@ -1488,7 +1560,7 @@ const posts = await prisma.post.findMany({
   take: 10,
   cursor: { id: lastPostId },
   skip: 1, // 跳过 cursor 本身
-  orderBy: { id: 'desc' },
+  orderBy: { id: "desc" },
 });
 ```
 
@@ -1496,13 +1568,13 @@ const posts = await prisma.post.findMany({
 
 ```typescript
 // test/users.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
-import type { TestApp } from 'vextjs';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
+import type { TestApp } from "vextjs";
 
-describe('用户 CRUD (Prisma)', () => {
+describe("用户 CRUD (Prisma)", () => {
   let testApp: TestApp;
-  const AUTH = 'Bearer user-1-admin';
+  const AUTH = "Bearer user-1-admin";
 
   beforeEach(async () => {
     testApp = await createTestApp({
@@ -1514,54 +1586,54 @@ describe('用户 CRUD (Prisma)', () => {
     await testApp?.close();
   });
 
-  it('GET /users/list 应包含用户统计', async () => {
+  it("GET /users/list 应包含用户统计", async () => {
     const res = await testApp.request
-      .get('/users/list')
+      .get("/users/list")
       .query({ page: 1, limit: 10 });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.items[0]).toHaveProperty('_count');
-    expect(res.body.data.items[0]._count).toHaveProperty('posts');
+    expect(res.body.data.items[0]).toHaveProperty("_count");
+    expect(res.body.data.items[0]._count).toHaveProperty("posts");
   });
 
-  it('GET /users/:id 应包含关联文章和标签', async () => {
-    const res = await testApp.request.get('/users/1');
+  it("GET /users/:id 应包含关联文章和标签", async () => {
+    const res = await testApp.request.get("/users/1");
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data.posts)).toBe(true);
 
     if (res.body.data.posts.length > 0) {
-      expect(res.body.data.posts[0]).toHaveProperty('tags');
-      expect(res.body.data.posts[0]).toHaveProperty('_count');
+      expect(res.body.data.posts[0]).toHaveProperty("tags");
+      expect(res.body.data.posts[0]).toHaveProperty("_count");
     }
   });
 
-  it('POST /users 应创建用户', async () => {
+  it("POST /users 应创建用户", async () => {
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', AUTH)
+      .post("/users")
+      .set("Authorization", AUTH)
       .send({
-        name: 'Diana',
-        email: 'diana@example.com',
-        bio: '新用户',
+        name: "Diana",
+        email: "diana@example.com",
+        bio: "新用户",
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.name).toBe('Diana');
-    expect(res.body.data.role).toBe('user');
+    expect(res.body.data.name).toBe("Diana");
+    expect(res.body.data.role).toBe("user");
     expect(res.body.data.createdAt).toBeDefined();
   });
 
-  it('DELETE /users/:id 应级联删除文章和评论', async () => {
+  it("DELETE /users/:id 应级联删除文章和评论", async () => {
     const deleteRes = await testApp.request
-      .delete('/users/1')
-      .set('Authorization', AUTH);
+      .delete("/users/1")
+      .set("Authorization", AUTH);
 
     expect(deleteRes.status).toBe(204);
 
     // 确认关联文章也被删除
     const postsRes = await testApp.request
-      .get('/posts/list')
+      .get("/posts/list")
       .query({ page: 1, limit: 100 });
 
     const alicePosts = postsRes.body.data.items.filter(
@@ -1571,9 +1643,9 @@ describe('用户 CRUD (Prisma)', () => {
   });
 });
 
-describe('文章与评论 (Prisma)', () => {
+describe("文章与评论 (Prisma)", () => {
   let testApp: TestApp;
-  const AUTH = 'Bearer user-1-admin';
+  const AUTH = "Bearer user-1-admin";
 
   beforeEach(async () => {
     testApp = await createTestApp({ plugins: true });
@@ -1583,34 +1655,34 @@ describe('文章与评论 (Prisma)', () => {
     await testApp?.close();
   });
 
-  it('GET /posts/list 应支持标签筛选', async () => {
+  it("GET /posts/list 应支持标签筛选", async () => {
     const res = await testApp.request
-      .get('/posts/list')
-      .query({ page: 1, limit: 10, tag: 'TypeScript' });
+      .get("/posts/list")
+      .query({ page: 1, limit: 10, tag: "TypeScript" });
 
     expect(res.status).toBe(200);
     for (const post of res.body.data.items) {
       const tagNames = post.tags.map((t: any) => t.name);
-      expect(tagNames).toContain('TypeScript');
+      expect(tagNames).toContain("TypeScript");
     }
   });
 
-  it('POST /posts/:id/comments 应添加评论', async () => {
+  it("POST /posts/:id/comments 应添加评论", async () => {
     const res = await testApp.request
-      .post('/posts/1/comments')
-      .set('Authorization', AUTH)
-      .send({ content: '测试评论' });
+      .post("/posts/1/comments")
+      .set("Authorization", AUTH)
+      .send({ content: "测试评论" });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.content).toBe('测试评论');
-    expect(res.body.data.author).toHaveProperty('name');
+    expect(res.body.data.content).toBe("测试评论");
+    expect(res.body.data.author).toHaveProperty("name");
   });
 
-  it('GET /posts/:id 应自增浏览计数', async () => {
-    const res1 = await testApp.request.get('/posts/1');
+  it("GET /posts/:id 应自增浏览计数", async () => {
+    const res1 = await testApp.request.get("/posts/1");
     const viewCount1 = res1.body.data.viewCount;
 
-    const res2 = await testApp.request.get('/posts/1');
+    const res2 = await testApp.request.get("/posts/1");
     const viewCount2 = res2.body.data.viewCount;
 
     expect(viewCount2).toBe(viewCount1 + 1);
@@ -1620,30 +1692,30 @@ describe('文章与评论 (Prisma)', () => {
 
 ## 项目模式总结
 
-| 层级 | 职责 | 文件 |
-|------|------|------|
-| **Schema** | Prisma 数据模型定义 | `prisma/schema.prisma` |
-| **种子数据** | 初始数据填充 | `prisma/seed.ts` |
-| **迁移** | 数据库结构版本管理 | `prisma/migrations/` |
-| **插件** | 初始化 PrismaClient、挂载 `app.prisma`、清理 | `src/plugins/database.ts` |
-| **服务层** | 业务逻辑 + Prisma 查询 | `src/services/*.ts` |
-| **路由层** | 请求校验 + 调用服务 + 响应 | `src/routes/*.ts` |
-| **类型声明** | `app.prisma` 类型扩展 | `types/vext.d.ts` |
+| 层级         | 职责                                         | 文件                      |
+| ------------ | -------------------------------------------- | ------------------------- |
+| **Schema**   | Prisma 数据模型定义                          | `prisma/schema.prisma`    |
+| **种子数据** | 初始数据填充                                 | `prisma/seed.ts`          |
+| **迁移**     | 数据库结构版本管理                           | `prisma/migrations/`      |
+| **插件**     | 初始化 PrismaClient、挂载 `app.prisma`、清理 | `src/plugins/database.ts` |
+| **服务层**   | 业务逻辑 + Prisma 查询                       | `src/services/*.ts`       |
+| **路由层**   | 请求校验 + 调用服务 + 响应                   | `src/routes/*.ts`         |
+| **类型声明** | `app.prisma` 类型扩展                        | `types/vext.d.ts`         |
 
 ### 与 Drizzle 方案的对比
 
-| 维度 | Prisma | Drizzle |
-|------|--------|---------|
-| Schema 定义 | `.prisma` DSL 文件 | TypeScript 代码 |
-| 类型生成 | 代码生成（`prisma generate`） | Schema 推断（`$inferSelect`） |
-| 查询 API | 高级 ORM API（`include`、嵌套写入） | SQL-like API（接近原生 SQL） |
-| 关联查询 | `include` / `select` 嵌套 | Relations API / 手动 JOIN |
-| 迁移 | `prisma migrate`（声明式） | `drizzle-kit`（声明式） |
-| 事务 | `$transaction` | `db.transaction` |
-| 可视化工具 | Prisma Studio | Drizzle Studio |
-| 性能 | 中等（有查询层抽象） | 较高（直接编译 SQL） |
-| 包体积 | 较大（生成的 Client） | 轻量 |
-| 学习曲线 | 低（文档丰富） | 中（需要 SQL 基础） |
+| 维度        | Prisma                              | Drizzle                       |
+| ----------- | ----------------------------------- | ----------------------------- |
+| Schema 定义 | `.prisma` DSL 文件                  | TypeScript 代码               |
+| 类型生成    | 代码生成（`prisma generate`）       | Schema 推断（`$inferSelect`） |
+| 查询 API    | 高级 ORM API（`include`、嵌套写入） | SQL-like API（接近原生 SQL）  |
+| 关联查询    | `include` / `select` 嵌套           | Relations API / 手动 JOIN     |
+| 迁移        | `prisma migrate`（声明式）          | `drizzle-kit`（声明式）       |
+| 事务        | `$transaction`                      | `db.transaction`              |
+| 可视化工具  | Prisma Studio                       | Drizzle Studio                |
+| 性能        | 中等（有查询层抽象）                | 较高（直接编译 SQL）          |
+| 包体积      | 较大（生成的 Client）               | 轻量                          |
+| 学习曲线    | 低（文档丰富）                      | 中（需要 SQL 基础）           |
 
 两种方案在 VextJS 中的集成模式完全相同：**通过插件初始化连接 → 挂载到 app → 服务层封装查询 → 路由层编排调用**。选择哪种取决于团队偏好和项目需求。
 

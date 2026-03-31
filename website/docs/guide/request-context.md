@@ -37,7 +37,7 @@ Adapter 收到请求
 最常见的用法是在任意位置获取当前请求的 `requestId`：
 
 ```typescript
-import { requestContext } from 'vextjs';
+import { requestContext } from "vextjs";
 
 export class OrderService {
   constructor(private app: any) {}
@@ -46,7 +46,7 @@ export class OrderService {
     const store = requestContext.getStore();
     const requestId = store?.requestId;
 
-    this.app.logger.info({ requestId, orderId: data.id }, '开始创建订单');
+    this.app.logger.info({ requestId, orderId: data.id }, "开始创建订单");
 
     // ... 业务逻辑
   }
@@ -62,11 +62,11 @@ export class OrderService {
 `requestContext` 也存储了当前请求的语言环境，由 i18n 中间件写入：
 
 ```typescript
-import { requestContext } from 'vextjs';
+import { requestContext } from "vextjs";
 
 function getCurrentLocale(): string {
   const store = requestContext.getStore();
-  return store?.locale ?? 'zh-CN';
+  return store?.locale ?? "zh-CN";
 }
 ```
 
@@ -116,13 +116,13 @@ interface RequestContextStore {
 }
 ```
 
-| 字段 | 写入时机 | 写入者 | 用途 |
-|------|---------|--------|------|
-| `requestId` | 请求进入时 | requestId 中间件 | 日志追踪、出站请求传播 |
-| `locale` | 请求进入时 | i18n 中间件 | 错误消息国际化 |
-| `propagatedHeaders` | 请求进入时 | requestId 中间件 | 分布式追踪头、多租户头等自动透传到下游 |
-| `traceId` | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `trace_id` 到日志（OTEL 语义约定） |
-| `spanId` | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `span_id` 到日志（OTEL 语义约定） |
+| 字段                | 写入时机   | 写入者              | 用途                                                                |
+| ------------------- | ---------- | ------------------- | ------------------------------------------------------------------- |
+| `requestId`         | 请求进入时 | requestId 中间件    | 日志追踪、出站请求传播                                              |
+| `locale`            | 请求进入时 | i18n 中间件         | 错误消息国际化                                                      |
+| `propagatedHeaders` | 请求进入时 | requestId 中间件    | 分布式追踪头、多租户头等自动透传到下游                              |
+| `traceId`           | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `trace_id` 到日志（OTEL 语义约定） |
+| `spanId`            | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `span_id` 到日志（OTEL 语义约定）  |
 
 ## 高级用法
 
@@ -131,15 +131,15 @@ interface RequestContextStore {
 你可以在自定义中间件中向 `requestContext` store 写入额外数据：
 
 ```typescript
-import { defineMiddleware } from 'vextjs';
-import { requestContext } from 'vextjs';
+import { defineMiddleware } from "vextjs";
+import { requestContext } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
   const store = requestContext.getStore();
 
   if (store) {
     // 从 JWT token 中提取用户信息写入上下文
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    const token = req.headers.authorization?.replace("Bearer ", "");
     if (token) {
       const decoded = verifyToken(token);
       (store as any).userId = decoded.userId;
@@ -154,13 +154,13 @@ export default defineMiddleware(async (req, res, next) => {
 在后续的 handler 或 service 中读取：
 
 ```typescript
-import { requestContext } from 'vextjs';
+import { requestContext } from "vextjs";
 
 export class AuditService {
   async log(action: string, resource: string) {
     const store = requestContext.getStore() as any;
 
-    await this.app.db.collection('audit_logs').insertOne({
+    await this.app.db.collection("audit_logs").insertOne({
       action,
       resource,
       userId: store?.userId,
@@ -178,7 +178,7 @@ export class AuditService {
 
 ```typescript
 // src/types/request-context.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface RequestContextStore {
     /** JWT 解码后的用户 ID */
     userId?: string;
@@ -199,8 +199,8 @@ declare module 'vextjs' {
 
 ```typescript
 const store = requestContext.getStore();
-store?.userId;    // string | undefined — IDE 有类型提示
-store?.tenantId;  // string | undefined
+store?.userId; // string | undefined — IDE 有类型提示
+store?.tenantId; // string | undefined
 ```
 
 ### 多租户数据隔离
@@ -209,13 +209,13 @@ store?.tenantId;  // string | undefined
 
 ```typescript
 // src/middlewares/tenant.ts
-import { defineMiddleware } from 'vextjs';
-import { requestContext } from 'vextjs';
+import { defineMiddleware } from "vextjs";
+import { requestContext } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const tenantId = req.headers['x-tenant-id'] as string;
+  const tenantId = req.headers["x-tenant-id"] as string;
   if (!tenantId) {
-    req.app.throw(400, 'Missing X-Tenant-ID header');
+    req.app.throw(400, "Missing X-Tenant-ID header");
   }
 
   const store = requestContext.getStore();
@@ -229,7 +229,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 ```typescript
 // src/services/base.ts — 所有 Service 的基类
-import { requestContext } from 'vextjs';
+import { requestContext } from "vextjs";
 
 export class TenantAwareService {
   constructor(protected app: any) {}
@@ -239,13 +239,15 @@ export class TenantAwareService {
     const store = requestContext.getStore() as any;
     const tenantId = store?.tenantId;
     if (!tenantId) {
-      throw new Error('Tenant ID not found in request context');
+      throw new Error("Tenant ID not found in request context");
     }
     return tenantId;
   }
 
   /** 为查询自动注入租户过滤条件 */
-  protected tenantFilter(filter: Record<string, unknown> = {}): Record<string, unknown> {
+  protected tenantFilter(
+    filter: Record<string, unknown> = {},
+  ): Record<string, unknown> {
     return { ...filter, tenantId: this.getTenantId() };
   }
 }
@@ -258,14 +260,13 @@ export class OrderService extends TenantAwareService {
     const { page = 1, limit = 20 } = options;
 
     // 自动注入 tenantId 过滤 — 不同租户只能看到自己的数据
-    return this.app.db.collection('orders').find(
-      this.tenantFilter(),
-      { skip: (page - 1) * limit, limit },
-    );
+    return this.app.db
+      .collection("orders")
+      .find(this.tenantFilter(), { skip: (page - 1) * limit, limit });
   }
 
   async create(data: any) {
-    return this.app.db.collection('orders').insertOne({
+    return this.app.db.collection("orders").insertOne({
       ...data,
       tenantId: this.getTenantId(),
       createdAt: new Date(),
@@ -280,8 +281,8 @@ export class OrderService extends TenantAwareService {
 
 ```typescript
 // src/middlewares/performance.ts
-import { defineMiddleware } from 'vextjs';
-import { requestContext } from 'vextjs';
+import { defineMiddleware } from "vextjs";
+import { requestContext } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
   const store = requestContext.getStore();
@@ -298,11 +299,14 @@ export default defineMiddleware(async (req, res, next) => {
 
     // 慢请求告警
     if (duration > 1000) {
-      req.app.logger.warn({
-        url: req.url,
-        method: req.method,
-        duration,
-      }, `慢请求: ${req.method} ${req.url} ${duration}ms`);
+      req.app.logger.warn(
+        {
+          url: req.url,
+          method: req.method,
+          duration,
+        },
+        `慢请求: ${req.method} ${req.url} ${duration}ms`,
+      );
     }
   }
 });
@@ -322,7 +326,7 @@ export class NotificationService {
     // ✅ setTimeout 中也能读取 requestContext
     setTimeout(() => {
       const currentStore = requestContext.getStore();
-      console.log(currentStore?.requestId);  // 正确：仍然是原始请求的 requestId
+      console.log(currentStore?.requestId); // 正确：仍然是原始请求的 requestId
     }, 1000);
 
     // ✅ Promise.all 中也能读取
@@ -343,26 +347,26 @@ export class NotificationService {
 在某些特殊场景中（如定时任务、消息队列消费者），你可能需要手动创建请求上下文：
 
 ```typescript
-import { requestContext } from 'vextjs';
-import { randomUUID } from 'node:crypto';
+import { requestContext } from "vextjs";
+import { randomUUID } from "node:crypto";
 
 // 定时任务中手动创建上下文
 async function scheduledTask(app: any) {
   const store = {
     requestId: `scheduled-${randomUUID()}`,
-    locale: 'zh-CN',
+    locale: "zh-CN",
   };
 
   await requestContext.run(store, async () => {
     // 在这个回调内部，所有代码都能读取到 store
-    app.logger.info('定时任务开始执行');
+    app.logger.info("定时任务开始执行");
     // requestId 会自动注入到日志中
 
     await app.services.report.generateDaily();
 
     // app.fetch 也会自动传播 requestId
-    await app.fetch.post('https://webhook.example.com/notify', {
-      type: 'daily-report',
+    await app.fetch.post("https://webhook.example.com/notify", {
+      type: "daily-report",
     });
   });
 }
@@ -370,12 +374,12 @@ async function scheduledTask(app: any) {
 
 ## 与框架内置功能的关系
 
-| 功能 | 读取的字段 | 说明 |
-|------|-----------|------|
-| `app.logger` | `requestId` | 通过 pino mixin 自动注入到每条日志 |
-| `app.fetch` | `requestId` | 自动注入到出站请求的 `x-request-id` 头 |
-| `app.throw()` | `locale` | I18nError 根据 locale 翻译错误消息 |
-| 访问日志中间件 | `requestId` | 记录入站请求的 requestId |
+| 功能           | 读取的字段  | 说明                                   |
+| -------------- | ----------- | -------------------------------------- |
+| `app.logger`   | `requestId` | 通过 pino mixin 自动注入到每条日志     |
+| `app.fetch`    | `requestId` | 自动注入到出站请求的 `x-request-id` 头 |
+| `app.throw()`  | `locale`    | I18nError 根据 locale 翻译错误消息     |
+| 访问日志中间件 | `requestId` | 记录入站请求的 requestId               |
 
 ## requestContext API
 
@@ -393,10 +397,10 @@ const store = requestContext.getStore();
 创建新的请求作用域并执行回调。回调内部和所有后续异步操作都能通过 `getStore()` 访问到 store。
 
 ```typescript
-requestContext.run({ requestId: 'abc-123', locale: 'en-US' }, async () => {
+requestContext.run({ requestId: "abc-123", locale: "en-US" }, async () => {
   // 这里和所有后续异步操作都能读取到 store
   const store = requestContext.getStore();
-  console.log(store?.requestId);  // 'abc-123'
+  console.log(store?.requestId); // 'abc-123'
 });
 ```
 
@@ -433,9 +437,9 @@ traceId（APM / 链路追踪系统生成，vext 不内置）
 // src/config/default.ts
 export default {
   requestId: {
-    header: 'x-trace-id',          // 从 x-trace-id 读取（网关注入）
-    responseHeader: 'x-trace-id',  // 写回响应头
-    generate: () => nanoid(),       // 可替换为更短的 ID 生成器
+    header: "x-trace-id", // 从 x-trace-id 读取（网关注入）
+    responseHeader: "x-trace-id", // 写回响应头
+    generate: () => nanoid(), // 可替换为更短的 ID 生成器
   },
 };
 ```
@@ -455,14 +459,14 @@ export default {
 export default {
   // requestId 保留（用于日志关联）
   requestId: {
-    header: 'x-request-id',
-    responseHeader: 'x-request-id',
+    header: "x-request-id",
+    responseHeader: "x-request-id",
   },
   // 声明需要透传到下游的 APM 追踪头
   fetch: {
     propagateHeaders: [
-      'traceparent',   // W3C Trace Context 主头（含 traceId + spanId）
-      'tracestate',    // W3C Trace Context 附加状态
+      "traceparent", // W3C Trace Context 主头（含 traceId + spanId）
+      "tracestate", // W3C Trace Context 附加状态
       // 或 B3 格式：'x-b3-traceid', 'x-b3-spanid', 'x-b3-sampled'
     ],
   },
@@ -483,7 +487,7 @@ Client → [Service A: traceparent=00-abc123-...] → app.fetch → [Service B: 
 // src/plugins/otel-log-correlation.ts
 // 参见 examples/opentelemetry 完整示例
 export default definePlugin({
-  name: 'otel-log-correlation',
+  name: "otel-log-correlation",
   setup(app) {
     // OpenTelemetry SDK 自动注入 trace_id 到 pino logger
     // 日志输出：{ requestId: '...', trace_id: 'abc123', msg: '...' }
@@ -513,9 +517,10 @@ export default definePlugin({
 
 ```typescript
 await app.fetch.get(downstreamUrl, {
-  headers: { 'x-custom-header': req.headers['x-custom-header'] as string },
+  headers: { "x-custom-header": req.headers["x-custom-header"] as string },
 });
 ```
+
 :::
 
 ## 最佳实践
@@ -530,12 +535,16 @@ await app.fetch.get(downstreamUrl, {
 
 ```typescript
 // ✅ 好 — 轻量级请求级数据
-(store as any).userId = 'user-123';
-(store as any).tenantId = 'tenant-456';
+(store as any).userId = "user-123";
+(store as any).tenantId = "tenant-456";
 
 // ❌ 不好 — 大对象，浪费内存
-(store as any).fullUserProfile = { /* 大量字段 */ };
-(store as any).queryResults = [ /* 大量数据 */ ];
+(store as any).fullUserProfile = {
+  /* 大量字段 */
+};
+(store as any).queryResults = [
+  /* 大量数据 */
+];
 ```
 
 ### 3. 处理 store 为 undefined 的情况
@@ -546,11 +555,11 @@ await app.fetch.get(downstreamUrl, {
 const store = requestContext.getStore();
 
 // ✅ 安全访问
-const requestId = store?.requestId ?? 'unknown';
-const locale = store?.locale ?? 'zh-CN';
+const requestId = store?.requestId ?? "unknown";
+const locale = store?.locale ?? "zh-CN";
 
 // ❌ 可能抛错
-const requestId = store!.requestId;  // 非请求上下文时报错
+const requestId = store!.requestId; // 非请求上下文时报错
 ```
 
 ### 4. 使用类型声明扩展 Store
@@ -559,7 +568,7 @@ const requestId = store!.requestId;  // 非请求上下文时报错
 
 ```typescript
 // src/types/request-context.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface RequestContextStore {
     userId?: string;
     tenantId?: string;
@@ -568,7 +577,7 @@ declare module 'vextjs' {
 
 // 使用时无需 as any
 const store = requestContext.getStore();
-store?.userId;  // 有类型提示
+store?.userId; // 有类型提示
 ```
 
 ### 5. 不要在 store 中存储可变共享对象

@@ -32,14 +32,14 @@ function definePlugin(plugin: VextPlugin): VextPlugin;
 
 ```typescript
 // src/plugins/redis.ts
-import { definePlugin } from 'vextjs';
-import Redis from 'ioredis';
+import { definePlugin } from "vextjs";
+import Redis from "ioredis";
 
 export default definePlugin({
-  name: 'redis',
+  name: "redis",
   async setup(app) {
     const redis = new Redis(app.config.redis);
-    app.extend('cache', redis);
+    app.extend("cache", redis);
     app.onClose(() => redis.quit());
   },
 });
@@ -71,8 +71,10 @@ readonly name: string;
 
 ```typescript
 export default definePlugin({
-  name: 'my-plugin', // 唯一标识
-  setup(app) { /* ... */ },
+  name: "my-plugin", // 唯一标识
+  setup(app) {
+    /* ... */
+  },
 });
 ```
 
@@ -88,21 +90,23 @@ readonly dependencies?: string[];
 
 ```typescript
 export default definePlugin({
-  name: 'user-cache',
-  dependencies: ['redis', 'database'], // 确保 redis 和 database 先初始化
+  name: "user-cache",
+  dependencies: ["redis", "database"], // 确保 redis 和 database 先初始化
   async setup(app) {
     // 此时 app.cache（redis 插件挂载）和 app.db（database 插件挂载）已就绪
     const userCache = new UserCacheService(app.cache, app.db);
-    app.extend('userCache', userCache);
+    app.extend("userCache", userCache);
   },
 });
 ```
 
 :::warning
 循环依赖会导致启动失败：
+
 ```
 [vextjs] Circular dependency detected: redis → database → redis
 ```
+
 :::
 
 ### `setup(app)`
@@ -115,8 +119,8 @@ setup(app: VextApp): Promise<void> | void;
 
 **参数**：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
+| 参数  | 类型      | 说明                                                       |
+| ----- | --------- | ---------------------------------------------------------- |
 | `app` | `VextApp` | 应用实例（此时 `app.use()` 可用，`app.services` 尚未注入） |
 
 **关键说明**：
@@ -128,26 +132,26 @@ setup(app: VextApp): Promise<void> | void;
 
 ```typescript
 export default definePlugin({
-  name: 'database',
+  name: "database",
   async setup(app) {
     // ✅ 可以访问 app.config
     const pool = await createPool(app.config.database);
 
     // ✅ 可以挂载自定义属性
-    app.extend('db', pool);
+    app.extend("db", pool);
 
     // ✅ 可以注册全局中间件
     app.use(myMiddleware);
 
     // ✅ 可以注册生命周期钩子
     app.onReady(async () => {
-      await pool.query('SELECT 1');
-      app.logger.info('数据库连接验证成功');
+      await pool.query("SELECT 1");
+      app.logger.info("数据库连接验证成功");
     });
 
     app.onClose(async () => {
       await pool.end();
-      app.logger.info('数据库连接池已关闭');
+      app.logger.info("数据库连接池已关闭");
     });
 
     // ❌ 不能访问 app.services（此时尚未注入）
@@ -201,7 +205,7 @@ definePlugin({
 VextJS 内置了 `monsqlize` 插件（数据库抽象层），通过 `createMonSQLizePlugin()` 创建：
 
 ```typescript
-import { createMonSQLizePlugin } from 'vextjs';
+import { createMonSQLizePlugin } from "vextjs";
 ```
 
 ---
@@ -213,29 +217,27 @@ import { createMonSQLizePlugin } from 'vextjs';
 ### 函数签名
 
 ```typescript
-function defineMiddleware(
-  middleware: VextMiddleware
-): TaggedMiddleware;
+function defineMiddleware(middleware: VextMiddleware): TaggedMiddleware;
 ```
 
 ### 基本用法
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, _res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const token = req.headers.authorization?.replace("Bearer ", "");
 
   if (!token) {
-    req.app.throw(401, '未提供认证令牌');
+    req.app.throw(401, "未提供认证令牌");
   }
 
   try {
     const decoded = await verifyJWT(token);
     req.user = decoded;
   } catch {
-    req.app.throw(401, '认证令牌无效或已过期');
+    req.app.throw(401, "认证令牌无效或已过期");
   }
 
   await next();
@@ -254,10 +256,10 @@ type VextMiddleware = (
 
 三个参数：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `req` | `VextRequest` | 请求对象 |
-| `res` | `VextResponse` | 响应对象 |
+| 参数   | 类型                  | 说明                       |
+| ------ | --------------------- | -------------------------- |
+| `req`  | `VextRequest`         | 请求对象                   |
+| `res`  | `VextResponse`        | 响应对象                   |
 | `next` | `() => Promise<void>` | 调用下一个中间件 / handler |
 
 ### 洋葱模型
@@ -292,7 +294,7 @@ export default defineMiddleware(async (req, res, next) => {
 export default defineMiddleware(async (req, res, next) => {
   // IP 黑名单检查
   if (blockedIPs.has(req.ip)) {
-    res.status(403).json({ message: '访问被拒绝' });
+    res.status(403).json({ message: "访问被拒绝" });
     return; // 不调用 next()
   }
 
@@ -308,7 +310,7 @@ export default defineMiddleware(async (req, res, next) => {
 export default defineMiddleware(async (req, _res, next) => {
   if (!req.headers.authorization) {
     // 使用 app.throw 抛出标准 HTTP 错误
-    req.app.throw(401, '未提供认证令牌');
+    req.app.throw(401, "未提供认证令牌");
     // 等价于 throw new HttpError(401, '未提供认证令牌')
   }
 
@@ -326,7 +328,7 @@ export default defineMiddleware(async (req, _res, next) => {
 
 ```typescript
 function defineMiddlewareFactory<T = unknown>(
-  factory: (options: T) => VextMiddleware
+  factory: (options: T) => VextMiddleware,
 ): TaggedMiddlewareFactory;
 ```
 
@@ -334,7 +336,7 @@ function defineMiddlewareFactory<T = unknown>(
 
 ```typescript
 // src/middlewares/role.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface RoleOptions {
   required: string | string[];
@@ -347,12 +349,12 @@ export default defineMiddlewareFactory<RoleOptions>((options) => {
 
   return async (req, _res, next) => {
     if (!req.user) {
-      req.app.throw(401, '未认证');
+      req.app.throw(401, "未认证");
     }
 
     if (!requiredRoles.includes(req.user.role)) {
-      req.app.throw(403, '权限不足', {
-        required: requiredRoles.join(', '),
+      req.app.throw(403, "权限不足", {
+        required: requiredRoles.join(", "),
         current: req.user.role,
       });
     }
@@ -370,9 +372,9 @@ export default defineMiddlewareFactory<RoleOptions>((options) => {
 // src/config/default.ts
 export default {
   middlewares: [
-    { name: 'auth' },                              // 无配置中间件
-    { name: 'role', options: { required: 'admin' } }, // 工厂中间件 + 配置
-    { name: 'cache', options: { ttl: 300 } },        // 工厂中间件 + 配置
+    { name: "auth" }, // 无配置中间件
+    { name: "role", options: { required: "admin" } }, // 工厂中间件 + 配置
+    { name: "cache", options: { ttl: 300 } }, // 工厂中间件 + 配置
   ],
 };
 ```
@@ -380,12 +382,16 @@ export default {
 路由中引用时可以覆盖默认配置：
 
 ```typescript
-app.get('/admin/users', {
-  middlewares: [
-    'auth',
-    { name: 'role', options: { required: ['admin', 'superadmin'] } },
-  ],
-}, handler);
+app.get(
+  "/admin/users",
+  {
+    middlewares: [
+      "auth",
+      { name: "role", options: { required: ["admin", "superadmin"] } },
+    ],
+  },
+  handler,
+);
 ```
 
 ### 更多示例
@@ -394,16 +400,16 @@ app.get('/admin/users', {
 
 ```typescript
 // src/middlewares/cache.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface CacheOptions {
-  ttl: number;        // 缓存时间（秒）
+  ttl: number; // 缓存时间（秒）
   keyPrefix?: string; // 缓存 key 前缀
 }
 
 export default defineMiddlewareFactory<CacheOptions>((options) => {
   return async (req, res, next) => {
-    const cacheKey = `${options.keyPrefix ?? 'cache'}:${req.path}`;
+    const cacheKey = `${options.keyPrefix ?? "cache"}:${req.path}`;
     const cached = await req.app.cache?.get(cacheKey);
 
     if (cached) {
@@ -422,7 +428,7 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
 
 ```typescript
 // src/middlewares/throttle.ts
-import { defineMiddlewareFactory } from 'vextjs';
+import { defineMiddlewareFactory } from "vextjs";
 
 interface ThrottleOptions {
   max: number;
@@ -439,7 +445,7 @@ export default defineMiddlewareFactory<ThrottleOptions>((options) => {
 
     if (entry && now < entry.resetAt) {
       if (entry.count >= options.max) {
-        req.app.throw(429, '请求过于频繁');
+        req.app.throw(429, "请求过于频繁");
       }
       entry.count++;
     } else {
@@ -470,12 +476,9 @@ function isMiddlewareFactory(value: unknown): value is TaggedMiddlewareFactory;
 ### 用法
 
 ```typescript
-import {
-  isMiddleware,
-  isMiddlewareFactory,
-} from 'vextjs';
+import { isMiddleware, isMiddlewareFactory } from "vextjs";
 
-const middlewareModule = await import('./middlewares/auth.ts');
+const middlewareModule = await import("./middlewares/auth.ts");
 const exported = middlewareModule.default;
 
 if (isMiddleware(exported)) {
@@ -529,10 +532,7 @@ interface TaggedMiddlewareFactory {
 ### Symbol 常量
 
 ```typescript
-import {
-  MIDDLEWARE_SYMBOL,
-  MIDDLEWARE_FACTORY_SYMBOL,
-} from 'vextjs';
+import { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "vextjs";
 ```
 
 这些 Symbol 由 `defineMiddleware` / `defineMiddlewareFactory` 自动附加，用户代码不需要手动设置。
@@ -568,8 +568,8 @@ src/middlewares/
 // src/config/default.ts
 export default {
   middlewares: [
-    { name: 'auth' },
-    { name: 'role', options: { required: 'user' } },
+    { name: "auth" },
+    { name: "role", options: { required: "user" } },
   ],
 };
 ```
@@ -582,15 +582,15 @@ export default {
 
 VextJS 提供以下内置中间件，由 `bootstrap` 自动注册，无需手动配置：
 
-| 中间件 | 函数 | 说明 |
-|--------|------|------|
-| Request ID | `createRequestIdMiddleware()` | 请求 ID 生成/透传 |
-| CORS | `createCorsMiddleware()` | 跨域资源共享 |
-| Body Parser | `createBodyParserMiddleware()` | 请求体解析 |
-| Rate Limit | `createRateLimitMiddleware()` | 速率限制 |
-| Response Wrapper | `responseWrapper` | 出口包装 |
-| Access Log | `createAccessLogMiddleware()` | 访问日志 |
-| Error Handler | `createErrorHandler()` | 错误处理 |
+| 中间件           | 函数                           | 说明              |
+| ---------------- | ------------------------------ | ----------------- |
+| Request ID       | `createRequestIdMiddleware()`  | 请求 ID 生成/透传 |
+| CORS             | `createCorsMiddleware()`       | 跨域资源共享      |
+| Body Parser      | `createBodyParserMiddleware()` | 请求体解析        |
+| Rate Limit       | `createRateLimitMiddleware()`  | 速率限制          |
+| Response Wrapper | `responseWrapper`              | 出口包装          |
+| Access Log       | `createAccessLogMiddleware()`  | 访问日志          |
+| Error Handler    | `createErrorHandler()`         | 错误处理          |
 
 这些中间件可以通过 `config` 配置其行为（参见 [配置项](/api/config)），但不能通过 `app.use()` 重复注册。
 
@@ -631,10 +631,10 @@ VextJS 提供以下内置中间件，由 `bootstrap` 自动注册，无需手动
 
 ```typescript
 // types/vext.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
-    cache: import('ioredis').Redis;
-    db: import('./db').DatabasePool;
+    cache: import("ioredis").Redis;
+    db: import("./db").DatabasePool;
   }
 
   interface VextRequest {
@@ -662,15 +662,15 @@ declare module 'vextjs' {
 
 ```typescript
 export default definePlugin({
-  name: 'database',
+  name: "database",
   async setup(app) {
     const pool = await createPool(app.config.database);
-    app.extend('db', pool);
+    app.extend("db", pool);
 
     // ✅ 务必注册关闭钩子
     app.onClose(async () => {
       await pool.end();
-      app.logger.info('数据库连接池已关闭');
+      app.logger.info("数据库连接池已关闭");
     });
   },
 });
@@ -682,13 +682,13 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'database',
+  name: "database",
   async setup(app) {
     try {
       const pool = await createPool(app.config.database);
-      app.extend('db', pool);
+      app.extend("db", pool);
     } catch (err) {
-      app.logger.fatal({ error: err }, '数据库连接失败');
+      app.logger.fatal({ error: err }, "数据库连接失败");
       throw err; // 重新抛出，阻止启动
     }
   },
@@ -701,16 +701,16 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'user-cache',
+  name: "user-cache",
   // 不声明 dependencies，手动检查
   setup(app) {
     if (app.cache) {
       // Redis 可用，启用缓存
-      app.extend('userCache', new CachedUserService(app.cache));
+      app.extend("userCache", new CachedUserService(app.cache));
     } else {
       // Redis 不可用，降级为无缓存模式
-      app.logger.warn('Redis 未配置，用户缓存已禁用');
-      app.extend('userCache', new UserService());
+      app.logger.warn("Redis 未配置，用户缓存已禁用");
+      app.extend("userCache", new UserService());
     }
   },
 });
@@ -729,7 +729,7 @@ import {
   isMiddlewareFactory,
   MIDDLEWARE_SYMBOL,
   MIDDLEWARE_FACTORY_SYMBOL,
-} from 'vextjs';
+} from "vextjs";
 
 import type {
   VextPlugin,
@@ -741,5 +741,5 @@ import type {
   VextMiddlewareExport,
   TaggedMiddleware,
   TaggedMiddlewareFactory,
-} from 'vextjs';
+} from "vextjs";
 ```

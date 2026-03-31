@@ -93,9 +93,11 @@ export function createErrorHandler(
           statusCode = 422;
         } else if (
           errObj.name === "HttpError" &&
-          typeof (errObj as unknown as Record<string, unknown>).status === "number"
+          typeof (errObj as unknown as Record<string, unknown>).status ===
+            "number"
         ) {
-          statusCode = (errObj as unknown as Record<string, unknown>).status as number;
+          statusCode = (errObj as unknown as Record<string, unknown>)
+            .status as number;
         }
 
         try {
@@ -182,4 +184,3 @@ export function createErrorHandler(
     res.rawJson(body, 500);
   };
 }
-

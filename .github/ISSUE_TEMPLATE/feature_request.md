@@ -1,9 +1,9 @@
 ---
 name: ✨ Feature Request
 about: Suggest a new feature or improvement for vext
-title: '[Feature] '
+title: "[Feature] "
 labels: enhancement
-assignees: ''
+assignees: ""
 ---
 
 ## Feature Description
@@ -22,11 +22,11 @@ Describe your proposed solution or API design.
 
 ```typescript
 // Show how you'd like to use this feature
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // Example of the proposed API
-})
+});
 ```
 
 ### Configuration (if applicable)
@@ -35,7 +35,7 @@ export default defineRoutes((app) => {
 // src/config/default.ts
 export default {
   // Any new config options needed
-}
+};
 ```
 
 ## Alternatives Considered

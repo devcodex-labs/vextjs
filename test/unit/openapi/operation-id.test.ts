@@ -120,9 +120,9 @@ describe("inferOperationId", () => {
     });
 
     it("/orders/:orderId/items/:itemId → 多个动态参数", () => {
-      expect(
-        inferOperationId("GET", "/orders/:orderId/items/:itemId"),
-      ).toBe("getOrdersByOrderIdItemsByItemId");
+      expect(inferOperationId("GET", "/orders/:orderId/items/:itemId")).toBe(
+        "getOrdersByOrderIdItemsByItemId",
+      );
     });
 
     it("/posts/:id/comments → 嵌套资源", () => {
@@ -259,7 +259,10 @@ describe("inferOperationId", () => {
 
     it("多层级 RESTful 嵌套资源", () => {
       expect(
-        inferOperationId("PATCH", "/organizations/:orgId/teams/:teamId/members/:memberId"),
+        inferOperationId(
+          "PATCH",
+          "/organizations/:orgId/teams/:teamId/members/:memberId",
+        ),
       ).toBe("patchOrganizationsByOrgIdTeamsByTeamIdMembersByMemberId");
     });
 

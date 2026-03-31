@@ -16,15 +16,13 @@
  * egg 中间件遵循 Koa 洋葱模型：await next() 前为 before，之后为 after。
  */
 
-
-
-const crypto = require('node:crypto');
+const crypto = require("node:crypto");
 
 module.exports = () => {
   return async function requestId(ctx, next) {
     const id = crypto.randomUUID();
     ctx.state.requestId = id;
     await next();
-    ctx.set('X-Request-Id', id);
+    ctx.set("X-Request-Id", id);
   };
 };

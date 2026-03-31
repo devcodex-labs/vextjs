@@ -1,5 +1,5 @@
-import type { VextRequest } from './request.js'
-import type { VextResponse } from './response.js'
+import type { VextRequest } from "./request.js";
+import type { VextResponse } from "./response.js";
 
 /**
  * 标准中间件函数
@@ -19,7 +19,7 @@ export type VextMiddleware = (
   req: VextRequest,
   res: VextResponse,
   next: () => Promise<void>,
-) => Promise<void> | void
+) => Promise<void> | void;
 
 /**
  * 错误处理中间件
@@ -38,7 +38,7 @@ export type VextErrorMiddleware = (
   err: unknown,
   req: VextRequest,
   res: VextResponse,
-) => void
+) => void;
 
 /**
  * 路由处理函数
@@ -56,21 +56,21 @@ export type VextErrorMiddleware = (
 export type VextHandler = (
   req: VextRequest,
   res: VextResponse,
-) => Promise<void> | void
+) => Promise<void> | void;
 
 /**
  * Symbol 标记，用于 defineMiddleware/defineMiddlewareFactory 标识
  * middleware-loader 通过此标记进行类型检测
  */
-export const MIDDLEWARE_SYMBOL = Symbol.for('vext.middleware')
-export const MIDDLEWARE_FACTORY_SYMBOL = Symbol.for('vext.middleware.factory')
+export const MIDDLEWARE_SYMBOL = Symbol.for("vext.middleware");
+export const MIDDLEWARE_FACTORY_SYMBOL = Symbol.for("vext.middleware.factory");
 
 /**
  * 经过 defineMiddleware 标记的中间件对象
  */
 export interface VextDefinedMiddleware {
-  readonly [MIDDLEWARE_SYMBOL]: true
-  readonly handler: VextMiddleware
+  readonly [MIDDLEWARE_SYMBOL]: true;
+  readonly handler: VextMiddleware;
 }
 
 /**
@@ -80,12 +80,14 @@ export interface VextDefinedMiddleware {
  * 用于需要运行时配置的中间件（如 auth({ role: 'admin' })）。
  */
 export interface VextMiddlewareFactory<TOptions = unknown> {
-  readonly [MIDDLEWARE_FACTORY_SYMBOL]: true
-  (options?: TOptions): VextMiddleware
+  readonly [MIDDLEWARE_FACTORY_SYMBOL]: true;
+  (options?: TOptions): VextMiddleware;
 }
 
 /**
  * 中间件模块导出类型
  * middleware-loader 扫描 src/middlewares/ 时期望的 default export 类型
  */
-export type VextMiddlewareExport = VextDefinedMiddleware | VextMiddlewareFactory
+export type VextMiddlewareExport =
+  | VextDefinedMiddleware
+  | VextMiddlewareFactory;

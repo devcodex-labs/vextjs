@@ -37,29 +37,29 @@ src/
 // vext.config.ts
 export default {
   port: 3000,
-  adapter: 'native',
+  adapter: "native",
 
   // 自定义 Nacos 配置（通过 app.config.nacos 访问）
   nacos: {
-    serverAddr: process.env.NACOS_SERVER_ADDR ?? '127.0.0.1:8848',
-    namespace: process.env.NACOS_NAMESPACE ?? 'public',
+    serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
+    namespace: process.env.NACOS_NAMESPACE ?? "public",
 
     // 服务注册配置
     service: {
-      name: 'order-service',
-      group: 'DEFAULT_GROUP',
-      ip: process.env.SERVICE_IP ?? '127.0.0.1',
+      name: "order-service",
+      group: "DEFAULT_GROUP",
+      ip: process.env.SERVICE_IP ?? "127.0.0.1",
       port: 3000,
       metadata: {
-        version: '1.0.0',
-        env: process.env.NODE_ENV ?? 'development',
+        version: "1.0.0",
+        env: process.env.NODE_ENV ?? "development",
       },
     },
 
     // 配置中心
     config: {
-      dataId: 'order-service',
-      group: 'DEFAULT_GROUP',
+      dataId: "order-service",
+      group: "DEFAULT_GROUP",
     },
   },
 };
@@ -71,16 +71,16 @@ export default {
 
 ```typescript
 // src/plugins/nacos.ts
-import { definePlugin } from 'vextjs';
-import { NacosNamingClient, NacosConfigClient } from 'nacos';
+import { definePlugin } from "vextjs";
+import { NacosNamingClient, NacosConfigClient } from "nacos";
 
 export default definePlugin({
-  name: 'nacos',
+  name: "nacos",
 
   async setup(app) {
     const nacosConfig = app.config.nacos;
     if (!nacosConfig) {
-      app.logger.warn('[nacos] No nacos config found, skipping');
+      app.logger.warn("[nacos] No nacos config found, skipping");
       return;
     }
 
@@ -93,20 +93,24 @@ export default definePlugin({
     });
 
     await namingClient.ready();
-    app.logger.info('[nacos] Naming client connected');
+    app.logger.info("[nacos] Naming client connected");
 
     // 注册当前服务实例
     const { name, group, ip, port, metadata } = nacosConfig.service;
-    await namingClient.registerInstance(name, {
-      ip,
-      port,
-      metadata,
-    }, group);
+    await namingClient.registerInstance(
+      name,
+      {
+        ip,
+        port,
+        metadata,
+      },
+      group,
+    );
 
     app.logger.info(`[nacos] Service registered: ${name} (${ip}:${port})`);
 
     // 挂载到 app 上供全局使用
-    app.extend('nacos', {
+    app.extend("nacos", {
       naming: namingClient,
 
       /**
@@ -115,19 +119,25 @@ export default definePlugin({
        * @param group       分组（默认 DEFAULT_GROUP）
        * @returns 健康实例的 host:port
        */
-      async discover(serviceName: string, group = 'DEFAULT_GROUP'): Promise<string> {
+      async discover(
+        serviceName: string,
+        group = "DEFAULT_GROUP",
+      ): Promise<string> {
         const instances = await namingClient.selectInstances(
           serviceName,
           group,
-          true,  // 仅返回健康实例
+          true, // 仅返回健康实例
         );
 
         if (!instances || instances.length === 0) {
-          throw new Error(`[nacos] No healthy instances for service: ${serviceName}`);
+          throw new Error(
+            `[nacos] No healthy instances for service: ${serviceName}`,
+          );
         }
 
         // 简单随机负载均衡
-        const instance = instances[Math.floor(Math.random() * instances.length)];
+        const instance =
+          instances[Math.floor(Math.random() * instances.length)];
         return `http://${instance.ip}:${instance.port}`;
       },
     });
@@ -141,7 +151,7 @@ export default definePlugin({
       });
 
       await configClient.ready();
-      app.logger.info('[nacos] Config client connected');
+      app.logger.info("[nacos] Config client connected");
 
       // 获取初始配置
       const { dataId, group: configGroup } = nacosConfig.config;
@@ -150,7 +160,7 @@ export default definePlugin({
       if (rawConfig) {
         try {
           const remoteConfig = JSON.parse(rawConfig);
-          app.extend('remoteConfig', remoteConfig);
+          app.extend("remoteConfig", remoteConfig);
           app.logger.info(`[nacos] Remote config loaded: ${dataId}`);
         } catch {
           app.logger.warn(`[nacos] Failed to parse config as JSON: ${dataId}`);
@@ -158,19 +168,24 @@ export default definePlugin({
       }
 
       // 监听配置变更
-      configClient.subscribe({ dataId, group: configGroup }, (content: string) => {
-        try {
-          const updatedConfig = JSON.parse(content);
-          app.extend('remoteConfig', updatedConfig);
-          app.logger.info(`[nacos] Remote config updated: ${dataId}`);
-        } catch {
-          app.logger.warn(`[nacos] Failed to parse updated config: ${dataId}`);
-        }
-      });
+      configClient.subscribe(
+        { dataId, group: configGroup },
+        (content: string) => {
+          try {
+            const updatedConfig = JSON.parse(content);
+            app.extend("remoteConfig", updatedConfig);
+            app.logger.info(`[nacos] Remote config updated: ${dataId}`);
+          } catch {
+            app.logger.warn(
+              `[nacos] Failed to parse updated config: ${dataId}`,
+            );
+          }
+        },
+      );
 
       // 优雅关闭
       app.onClose(async () => {
-        app.logger.info('[nacos] Closing config client...');
+        app.logger.info("[nacos] Closing config client...");
         await configClient.close();
       });
     }
@@ -181,7 +196,7 @@ export default definePlugin({
       app.logger.info(`[nacos] Deregistering service: ${name}`);
       await namingClient.deregisterInstance(name, { ip, port }, group);
       await namingClient.close();
-      app.logger.info('[nacos] Naming client closed');
+      app.logger.info("[nacos] Naming client closed");
     });
   },
 });
@@ -191,10 +206,18 @@ export default definePlugin({
  */
 function createNacosLogger(app: any) {
   return {
-    info(...args: any[]) { app.logger.debug({ source: 'nacos' }, ...args); },
-    warn(...args: any[]) { app.logger.warn({ source: 'nacos' }, ...args); },
-    error(...args: any[]) { app.logger.error({ source: 'nacos' }, ...args); },
-    debug(...args: any[]) { app.logger.debug({ source: 'nacos' }, ...args); },
+    info(...args: any[]) {
+      app.logger.debug({ source: "nacos" }, ...args);
+    },
+    warn(...args: any[]) {
+      app.logger.warn({ source: "nacos" }, ...args);
+    },
+    error(...args: any[]) {
+      app.logger.error({ source: "nacos" }, ...args);
+    },
+    debug(...args: any[]) {
+      app.logger.debug({ source: "nacos" }, ...args);
+    },
   };
 }
 ```
@@ -205,9 +228,9 @@ function createNacosLogger(app: any) {
 
 ```typescript
 // src/types/nacos.d.ts
-import type { NacosNamingClient } from 'nacos';
+import type { NacosNamingClient } from "nacos";
 
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     nacos: {
       naming: NacosNamingClient;
@@ -249,7 +272,7 @@ export class UserService {
 
   async getUser(userId: string) {
     // 通过 Nacos 发现 user-service 的地址
-    const baseURL = await this.app.nacos.discover('user-service');
+    const baseURL = await this.app.nacos.discover("user-service");
 
     // 使用 app.fetch 调用（自动传播 requestId）
     const response = await this.app.fetch.get(`${baseURL}/api/users/${userId}`);
@@ -269,27 +292,27 @@ export class UserService {
 
 ```typescript
 // src/plugins/service-clients.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'service-clients',
-  dependencies: ['nacos'],
+  name: "service-clients",
+  dependencies: ["nacos"],
 
   async setup(app) {
     // 发现用户服务地址
-    const userServiceURL = await app.nacos.discover('user-service');
+    const userServiceURL = await app.nacos.discover("user-service");
 
     // 创建预配置的客户端
     const userClient = app.fetch.create({
       baseURL: userServiceURL,
       headers: {
-        'x-caller': 'order-service',
+        "x-caller": "order-service",
       },
       timeout: 5000,
       retry: 2,
     });
 
-    app.extend('userClient', userClient);
+    app.extend("userClient", userClient);
   },
 });
 ```
@@ -298,29 +321,40 @@ export default definePlugin({
 
 ```typescript
 // src/routes/config.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // 获取远程配置（用于调试/管理）
-  app.get('/admin/remote-config', {
-    middlewares: ['auth'],
-  }, async (req, res) => {
-    res.json({
-      config: app.remoteConfig,
-      message: 'Remote config from Nacos',
-    });
-  });
+  app.get(
+    "/admin/remote-config",
+    {
+      middlewares: ["auth"],
+    },
+    async (req, res) => {
+      res.json({
+        config: app.remoteConfig,
+        message: "Remote config from Nacos",
+      });
+    },
+  );
 
   // 动态特性开关示例
-  app.get('/features/:key', {
-    validate: { param: { key: 'string!' } },
-  }, async (req, res) => {
-    const { key } = req.valid('param');
-    const features = (app.remoteConfig?.features ?? {}) as Record<string, boolean>;
-    const enabled = features[key] ?? false;
+  app.get(
+    "/features/:key",
+    {
+      validate: { param: { key: "string!" } },
+    },
+    async (req, res) => {
+      const { key } = req.valid("param");
+      const features = (app.remoteConfig?.features ?? {}) as Record<
+        string,
+        boolean
+      >;
+      const enabled = features[key] ?? false;
 
-    res.json({ feature: key, enabled });
-  });
+      res.json({ feature: key, enabled });
+    },
+  );
 });
 ```
 
@@ -328,32 +362,36 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/health.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/health', {
-    override: { rateLimit: false },
-  }, async (req, res) => {
-    const checks: Record<string, string> = {
-      status: 'ok',
-      service: app.config.nacos?.service?.name ?? 'unknown',
-    };
+  app.get(
+    "/health",
+    {
+      override: { rateLimit: false },
+    },
+    async (req, res) => {
+      const checks: Record<string, string> = {
+        status: "ok",
+        service: app.config.nacos?.service?.name ?? "unknown",
+      };
 
-    // 检查 Nacos 连接状态
-    try {
-      const instances = await app.nacos.naming.selectInstances(
-        app.config.nacos.service.name,
-        'DEFAULT_GROUP',
-        true,
-      );
-      checks.nacos = 'connected';
-      checks.instances = String(instances.length);
-    } catch {
-      checks.nacos = 'disconnected';
-    }
+      // 检查 Nacos 连接状态
+      try {
+        const instances = await app.nacos.naming.selectInstances(
+          app.config.nacos.service.name,
+          "DEFAULT_GROUP",
+          true,
+        );
+        checks.nacos = "connected";
+        checks.instances = String(instances.length);
+      } catch {
+        checks.nacos = "disconnected";
+      }
 
-    res.json(checks);
-  });
+      res.json(checks);
+    },
+  );
 });
 ```
 
@@ -424,11 +462,17 @@ async function discoverWithCache(
 ### 2. 优雅处理服务不可用
 
 ```typescript
-async function safeDiscover(app: any, serviceName: string): Promise<string | null> {
+async function safeDiscover(
+  app: any,
+  serviceName: string,
+): Promise<string | null> {
   try {
     return await app.nacos.discover(serviceName);
   } catch (err) {
-    app.logger.error({ serviceName, error: (err as Error).message }, 'Service discovery failed');
+    app.logger.error(
+      { serviceName, error: (err as Error).message },
+      "Service discovery failed",
+    );
     return null;
   }
 }
@@ -441,13 +485,16 @@ configClient.subscribe({ dataId, group: configGroup }, (content: string) => {
   const previous = JSON.stringify(app.remoteConfig);
   try {
     const updated = JSON.parse(content);
-    app.logger.info({
-      type: 'config-change',
-      dataId,
-      previous: previous.slice(0, 200),
-      current: content.slice(0, 200),
-    }, `[nacos] Config changed: ${dataId}`);
-    app.extend('remoteConfig', updated);
+    app.logger.info(
+      {
+        type: "config-change",
+        dataId,
+        previous: previous.slice(0, 200),
+        current: content.slice(0, 200),
+      },
+      `[nacos] Config changed: ${dataId}`,
+    );
+    app.extend("remoteConfig", updated);
   } catch {
     app.logger.warn(`[nacos] Invalid config format: ${dataId}`);
   }

@@ -7,15 +7,15 @@ VextJS 基于 [pino](https://github.com/pinojs/pino) 提供高性能结构化日
 `app.logger` 在路由、服务、插件和中间件中均可直接使用：
 
 ```typescript
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/users', async (req, res) => {
-    app.logger.info('获取用户列表');
-    app.logger.debug({ page: 1, limit: 20 }, '查询参数');
+  app.get("/users", async (req, res) => {
+    app.logger.info("获取用户列表");
+    app.logger.debug({ page: 1, limit: 20 }, "查询参数");
 
     const users = await app.services.user.findAll();
-    app.logger.info({ count: users.length }, '查询完成');
+    app.logger.info({ count: users.length }, "查询完成");
 
     res.json(users);
   });
@@ -26,13 +26,13 @@ export default defineRoutes((app) => {
 
 VextJS 支持 6 个日志级别，按严重程度从低到高排列：
 
-| 级别 | 方法 | 说明 | 典型场景 |
-|------|------|------|----------|
-| `debug` | `app.logger.debug()` | 调试信息 | 变量值、SQL 查询、详细流程 |
-| `info` | `app.logger.info()` | 一般信息 | 服务启动、请求处理、业务事件 |
-| `warn` | `app.logger.warn()` | 警告 | 性能下降、弃用 API、重试 |
-| `error` | `app.logger.error()` | 错误 | 异常、失败的操作 |
-| `fatal` | `app.logger.fatal()` | 致命错误 | 应用无法继续运行 |
+| 级别    | 方法                 | 说明     | 典型场景                     |
+| ------- | -------------------- | -------- | ---------------------------- |
+| `debug` | `app.logger.debug()` | 调试信息 | 变量值、SQL 查询、详细流程   |
+| `info`  | `app.logger.info()`  | 一般信息 | 服务启动、请求处理、业务事件 |
+| `warn`  | `app.logger.warn()`  | 警告     | 性能下降、弃用 API、重试     |
+| `error` | `app.logger.error()` | 错误     | 异常、失败的操作             |
+| `fatal` | `app.logger.fatal()` | 致命错误 | 应用无法继续运行             |
 
 ### 配置日志级别
 
@@ -40,7 +40,7 @@ VextJS 支持 6 个日志级别，按严重程度从低到高排列：
 // src/config/default.ts
 export default {
   logger: {
-    level: 'debug',  // 开发环境输出所有级别
+    level: "debug", // 开发环境输出所有级别
   },
 };
 ```
@@ -49,7 +49,7 @@ export default {
 // src/config/production.ts
 export default {
   logger: {
-    level: 'info',   // 生产环境只输出 info 及以上
+    level: "info", // 生产环境只输出 info 及以上
   },
 };
 ```
@@ -64,13 +64,13 @@ pino 的核心理念是**结构化日志**——每条日志都是一个 JSON �
 
 ```typescript
 // 纯消息
-app.logger.info('服务启动');
+app.logger.info("服务启动");
 
 // 对象 + 消息（推荐）
-app.logger.info({ port: 3000, adapter: 'native' }, '服务启动');
+app.logger.info({ port: 3000, adapter: "native" }, "服务启动");
 
 // 对象（无消息）
-app.logger.info({ event: 'startup', port: 3000 });
+app.logger.info({ event: "startup", port: 3000 });
 ```
 
 :::tip 推荐写法
@@ -115,8 +115,8 @@ app.logger.info({ event: 'startup', port: 3000 });
 // src/config/default.ts
 export default {
   logger: {
-    level: 'debug',
-    pretty: true,     // 开发环境使用 pretty 格式（默认行为）
+    level: "debug",
+    pretty: true, // 开发环境使用 pretty 格式（默认行为）
   },
 };
 ```
@@ -125,13 +125,14 @@ export default {
 // src/config/production.ts
 export default {
   logger: {
-    level: 'info',
-    pretty: false,    // 生产环境使用 JSON 格式（默认行为）
+    level: "info",
+    pretty: false, // 生产环境使用 JSON 格式（默认行为）
   },
 };
 ```
 
 `pretty` 默认值取决于 `NODE_ENV`：
+
 - `NODE_ENV !== 'production'` → `pretty: true`
 - `NODE_ENV === 'production'` → `pretty: false`
 
@@ -189,7 +190,7 @@ export default {
 export default {
   logger: {
     pretty: true,
-    prettyIgnore: "pid,hostname",  // 不再忽略 requestId
+    prettyIgnore: "pid,hostname", // 不再忽略 requestId
   },
 };
 ```
@@ -213,10 +214,11 @@ pino-pretty 支持 `messageFormat` 模板，可以将结构化字段内联到消
 
 :::tip 何时使用 messageFormat
 大多数场景下，默认的 `prettySingleLine: true`（JSON 内联）已经足够紧凑。`messageFormat` 适用于以下需求：
+
 - 想让某些关键字段（如 `requestId`、`service`）直接出现在消息文本中
 - 想完全控制日志行的可读格式
 - 配合 `prettyIgnore` 隐藏已内联的字段，避免重复显示
-:::
+  :::
 
 #### 基本用法
 
@@ -224,20 +226,20 @@ pino-pretty 支持 `messageFormat` 模板，可以将结构化字段内联到消
 
 ```typescript
 // src/config/development.ts
-import pino from 'pino';
+import pino from "pino";
 
 // 注意：messageFormat 需要直接配置 pino transport，
 // 框架的 prettySingleLine / prettyIgnore 不影响 messageFormat 行为。
 const logger = pino({
-  level: 'debug',
+  level: "debug",
   transport: {
-    target: 'pino-pretty',
+    target: "pino-pretty",
     options: {
       colorize: true,
-      translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
-      ignore: 'pid,hostname',
+      translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+      ignore: "pid,hostname",
       // 将 requestId 和 service 内联到消息中
-      messageFormat: '[{requestId}] [{service}] {msg}',
+      messageFormat: "[{requestId}] [{service}] {msg}",
     },
   },
 });
@@ -255,7 +257,7 @@ const logger = pino({
 export default {
   logger: {
     pretty: true,
-    prettyIgnore: 'pid,hostname,requestId,service',
+    prettyIgnore: "pid,hostname,requestId,service",
     // 然后在 pino transport 层配置 messageFormat
     // （需要自定义 pino 实例，框架层不直接暴露 messageFormat 配置）
   },
@@ -268,7 +270,7 @@ export default {
 
 ```typescript
 // 仅在有 requestId 时显示前缀
-messageFormat: '{requestId} {msg}'
+messageFormat: "{requestId} {msg}";
 // 有 requestId 时: "req-abc123 查询完成"
 // 无 requestId 时: " 查询完成"（前面有空格）
 ```
@@ -298,10 +300,10 @@ pino 的 `mixin` 钩子在每条日志写入前调用，从 `requestContext`（�
 
 ```typescript
 // 不需要这样做 ❌
-app.logger.info({ requestId: req.requestId }, '处理请求');
+app.logger.info({ requestId: req.requestId }, "处理请求");
 
 // 直接这样就行 ✅
-app.logger.info('处理请求');
+app.logger.info("处理请求");
 // 输出自动包含 requestId
 ```
 
@@ -318,12 +320,12 @@ mixin 钩子在每条日志写入时都会调用。VextJS 做了两项优化：
 
 ```typescript
 // 创建带 service 字段的子 logger
-const serviceLogger = app.logger.child({ service: 'UserService' });
+const serviceLogger = app.logger.child({ service: "UserService" });
 
-serviceLogger.info('初始化完成');
+serviceLogger.info("初始化完成");
 // 输出: {"service":"UserService","msg":"初始化完成"}
 
-serviceLogger.info({ userId: '123' }, '查询用户');
+serviceLogger.info({ userId: "123" }, "查询用户");
 // 输出: {"service":"UserService","userId":"123","msg":"查询用户"}
 ```
 
@@ -337,20 +339,20 @@ export class UserService {
 
   constructor(private app: any) {
     // 创建带 service 标识的子 logger
-    this.logger = app.logger.child({ service: 'UserService' });
+    this.logger = app.logger.child({ service: "UserService" });
   }
 
   async findById(userId: string) {
-    this.logger.debug({ userId }, '查询用户');
+    this.logger.debug({ userId }, "查询用户");
 
-    const user = await this.app.db.collection('users').findOne({ _id: userId });
+    const user = await this.app.db.collection("users").findOne({ _id: userId });
 
     if (!user) {
-      this.logger.warn({ userId }, '用户不存在');
-      this.app.throw(404, '用户不存在');
+      this.logger.warn({ userId }, "用户不存在");
+      this.app.throw(404, "用户不存在");
     }
 
-    this.logger.info({ userId, event: 'user.found' }, '用户查询成功');
+    this.logger.info({ userId, event: "user.found" }, "用户查询成功");
     return user;
   }
 }
@@ -368,10 +370,10 @@ export class UserService {
 child logger 可以嵌套创建，字段会累积：
 
 ```typescript
-const dbLogger = app.logger.child({ module: 'database' });
-const queryLogger = dbLogger.child({ collection: 'users' });
+const dbLogger = app.logger.child({ module: "database" });
+const queryLogger = dbLogger.child({ collection: "users" });
 
-queryLogger.debug('执行查询');
+queryLogger.debug("执行查询");
 // 输出: {"module":"database","collection":"users","msg":"执行查询"}
 ```
 
@@ -385,7 +387,7 @@ pino 自动序列化 Error 对象（保留 message、stack、name）：
 try {
   await someOperation();
 } catch (err) {
-  app.logger.error({ err }, '操作失败');
+  app.logger.error({ err }, "操作失败");
   // pino 会自动序列化 Error:
   // {"err":{"type":"Error","message":"xxx","stack":"..."},"msg":"操作失败"}
 }
@@ -396,11 +398,12 @@ try {
 
 ```typescript
 // ✅ 正确
-app.logger.error({ err: error }, '操作失败');
+app.logger.error({ err: error }, "操作失败");
 
 // ❌ 避免 — pino 无法正确序列化
-app.logger.error(error, '操作失败');
+app.logger.error(error, "操作失败");
 ```
+
 :::
 
 ### 记录错误上下文
@@ -409,13 +412,10 @@ app.logger.error(error, '操作失败');
 async function processPayment(orderId: string, amount: number) {
   try {
     const result = await paymentGateway.charge(amount);
-    app.logger.info({ orderId, amount, chargeId: result.id }, '支付成功');
+    app.logger.info({ orderId, amount, chargeId: result.id }, "支付成功");
     return result;
   } catch (err) {
-    app.logger.error(
-      { err, orderId, amount, gateway: 'stripe' },
-      '支付失败',
-    );
+    app.logger.error({ err, orderId, amount, gateway: "stripe" }, "支付失败");
     throw err;
   }
 }
@@ -427,15 +427,15 @@ async function processPayment(orderId: string, amount: number) {
 
 ### 方案概览
 
-| 方案 | 复杂度 | 适用场景 | 说明 |
-|------|:------:|---------|------|
-| **PM2 文件收集** | ⭐ | 单机部署 | PM2 自动收集 stdout/stderr 到文件 |
-| **pino-roll 日志轮转** | ⭐⭐ | 单机 / 需要自动切割 | pino 内置 transport，按大小/时间自动轮转 |
-| **pino/file 文件输出** | ⭐ | 简单文件写入 | pino 内置，直接写入指定文件 |
-| **Filebeat → ELK** | ⭐⭐⭐ | 中大型项目 | 文件采集 → Elasticsearch → Kibana |
-| **pino-elasticsearch 直连** | ⭐⭐⭐ | 中大型项目 | 直接写入 Elasticsearch，无需中间件 |
-| **Docker → Loki** | ⭐⭐ | 容器化部署 | Docker logging driver 推送到 Loki |
-| **stdout → Cloud 原生** | ⭐ | K8s / Cloud Run / ECS | 平台自动采集 stdout |
+| 方案                        | 复杂度 | 适用场景              | 说明                                     |
+| --------------------------- | :----: | --------------------- | ---------------------------------------- |
+| **PM2 文件收集**            |   ⭐   | 单机部署              | PM2 自动收集 stdout/stderr 到文件        |
+| **pino-roll 日志轮转**      |  ⭐⭐  | 单机 / 需要自动切割   | pino 内置 transport，按大小/时间自动轮转 |
+| **pino/file 文件输出**      |   ⭐   | 简单文件写入          | pino 内置，直接写入指定文件              |
+| **Filebeat → ELK**          | ⭐⭐⭐ | 中大型项目            | 文件采集 → Elasticsearch → Kibana        |
+| **pino-elasticsearch 直连** | ⭐⭐⭐ | 中大型项目            | 直接写入 Elasticsearch，无需中间件       |
+| **Docker → Loki**           |  ⭐⭐  | 容器化部署            | Docker logging driver 推送到 Loki        |
+| **stdout → Cloud 原生**     |   ⭐   | K8s / Cloud Run / ECS | 平台自动采集 stdout                      |
 
 ### 推荐日志目录结构
 
@@ -462,13 +462,13 @@ project/
 最基础的文件写入方案，适合小型项目或开发环境：
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
 const transport = pino.transport({
-  target: 'pino/file',
+  target: "pino/file",
   options: {
-    destination: './logs/app.log',
-    mkdir: true,    // 自动创建 logs/ 目录
+    destination: "./logs/app.log",
+    mkdir: true, // 自动创建 logs/ 目录
   },
 });
 
@@ -493,22 +493,25 @@ npm install pino-roll
 #### 按文件大小轮转
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  target: 'pino-roll',
-  options: {
-    file: './logs/app.log',     // 日志文件路径
-    size: '10m',                // 单个文件最大 10MB
-    limit: {
-      count: 10,                // 最多保留 10 个历史文件
-    },
-    mkdir: true,                // 自动创建目录
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
   },
-}));
+  pino.transport({
+    target: "pino-roll",
+    options: {
+      file: "./logs/app.log", // 日志文件路径
+      size: "10m", // 单个文件最大 10MB
+      limit: {
+        count: 10, // 最多保留 10 个历史文件
+      },
+      mkdir: true, // 自动创建目录
+    },
+  }),
+);
 ```
 
 轮转后的文件命名：`app.1.log`、`app.2.log`、...
@@ -516,23 +519,26 @@ const logger = pino({
 #### 按时间间隔轮转
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  target: 'pino-roll',
-  options: {
-    file: './logs/app.log',
-    frequency: 'daily',          // 每天轮转一次（也支持 'hourly'）
-    dateFormat: 'yyyy-MM-dd',    // 历史文件名中的日期格式
-    limit: {
-      count: 30,                 // 保留最近 30 天
-    },
-    mkdir: true,
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
   },
-}));
+  pino.transport({
+    target: "pino-roll",
+    options: {
+      file: "./logs/app.log",
+      frequency: "daily", // 每天轮转一次（也支持 'hourly'）
+      dateFormat: "yyyy-MM-dd", // 历史文件名中的日期格式
+      limit: {
+        count: 30, // 保留最近 30 天
+      },
+      mkdir: true,
+    },
+  }),
+);
 ```
 
 轮转后的文件命名：`app.2026-03-05.log`、`app.2026-03-04.log`、...
@@ -540,66 +546,72 @@ const logger = pino({
 #### 同时按大小 + 时间轮转
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  target: 'pino-roll',
-  options: {
-    file: './logs/app.log',
-    frequency: 'daily',
-    size: '50m',                 // 单日内超过 50MB 也会切割
-    dateFormat: 'yyyy-MM-dd',
-    limit: {
-      count: 30,
-    },
-    mkdir: true,
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
   },
-}));
+  pino.transport({
+    target: "pino-roll",
+    options: {
+      file: "./logs/app.log",
+      frequency: "daily",
+      size: "50m", // 单日内超过 50MB 也会切割
+      dateFormat: "yyyy-MM-dd",
+      limit: {
+        count: 30,
+      },
+      mkdir: true,
+    },
+  }),
+);
 ```
 
 #### 多目标：控制台 + 文件轮转
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  targets: [
-    // 控制台 pretty 输出（开发体验）
-    {
-      target: 'pino-pretty',
-      options: { colorize: true, translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l' },
-      level: 'debug',
-    },
-    // 文件轮转（所有级别）
-    {
-      target: 'pino-roll',
-      options: {
-        file: './logs/app.log',
-        size: '10m',
-        limit: { count: 10 },
-        mkdir: true,
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
+  },
+  pino.transport({
+    targets: [
+      // 控制台 pretty 输出（开发体验）
+      {
+        target: "pino-pretty",
+        options: { colorize: true, translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l" },
+        level: "debug",
       },
-      level: 'info',
-    },
-    // 错误日志单独文件
-    {
-      target: 'pino-roll',
-      options: {
-        file: './logs/error.log',
-        size: '10m',
-        limit: { count: 20 },
-        mkdir: true,
+      // 文件轮转（所有级别）
+      {
+        target: "pino-roll",
+        options: {
+          file: "./logs/app.log",
+          size: "10m",
+          limit: { count: 10 },
+          mkdir: true,
+        },
+        level: "info",
       },
-      level: 'error',
-    },
-  ],
-}));
+      // 错误日志单独文件
+      {
+        target: "pino-roll",
+        options: {
+          file: "./logs/error.log",
+          size: "10m",
+          limit: { count: 20 },
+          mkdir: true,
+        },
+        level: "error",
+      },
+    ],
+  }),
+);
 ```
 
 ---
@@ -621,13 +633,13 @@ const logger = pino({
 }
 ```
 
-| 选项 | 说明 |
-|------|------|
-| `daily` | 每天轮转 |
-| `rotate 30` | 保留 30 个历史文件 |
-| `compress` | 历史文件 gzip 压缩 |
+| 选项            | 说明                           |
+| --------------- | ------------------------------ |
+| `daily`         | 每天轮转                       |
+| `rotate 30`     | 保留 30 个历史文件             |
+| `compress`      | 历史文件 gzip 压缩             |
 | `delaycompress` | 最近一个文件不压缩（便于查看） |
-| `copytruncate` | 复制后截断（不中断进程写入） |
+| `copytruncate`  | 复制后截断（不中断进程写入）   |
 
 ---
 
@@ -650,15 +662,17 @@ VextJS (JSON stdout)
 ```javascript
 // ecosystem.config.cjs
 module.exports = {
-  apps: [{
-    name: 'myapp',
-    script: 'dist/index.js',
-    env: { NODE_ENV: 'production' },
-    error_file: '/var/log/myapp/error.log',
-    out_file: '/var/log/myapp/app.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
-    merge_logs: true,
-  }],
+  apps: [
+    {
+      name: "myapp",
+      script: "dist/index.js",
+      env: { NODE_ENV: "production" },
+      error_file: "/var/log/myapp/error.log",
+      out_file: "/var/log/myapp/app.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
+      merge_logs: true,
+    },
+  ],
 };
 ```
 
@@ -671,9 +685,9 @@ filebeat.inputs:
     enabled: true
     paths:
       - /var/log/myapp/app.log
-    json.keys_under_root: true      # JSON 字段提升到顶层
-    json.overwrite_keys: true       # 覆盖同名字段
-    json.add_error_key: true        # JSON 解析失败时添加 error 字段
+    json.keys_under_root: true # JSON 字段提升到顶层
+    json.overwrite_keys: true # 覆盖同名字段
+    json.add_error_key: true # JSON 解析失败时添加 error 字段
     fields:
       app: myapp
       env: production
@@ -692,14 +706,14 @@ filebeat.inputs:
     fields_under_root: true
 
 output.elasticsearch:
-  hosts: ['http://elasticsearch:9200']
-  index: 'myapp-%{+yyyy.MM.dd}'
-  username: '${ELASTIC_USER}'
-  password: '${ELASTIC_PASSWORD}'
+  hosts: ["http://elasticsearch:9200"]
+  index: "myapp-%{+yyyy.MM.dd}"
+  username: "${ELASTIC_USER}"
+  password: "${ELASTIC_PASSWORD}"
 
 # 索引模板（可选，优化映射）
-setup.template.name: 'myapp'
-setup.template.pattern: 'myapp-*'
+setup.template.name: "myapp"
+setup.template.pattern: "myapp-*"
 setup.template.settings:
   index.number_of_shards: 1
   index.number_of_replicas: 0
@@ -713,6 +727,7 @@ setup.template.settings:
 4. 在 Discover 中即可搜索日志
 
 常用查询：
+
 - 按 requestId 追踪：`requestId: "abc-123"`
 - 按错误级别过滤：`level: 50`（pino level 50 = error）
 - 按服务过滤：`service: "UserService"`
@@ -732,60 +747,67 @@ npm install pino-elasticsearch
 #### 配置
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  target: 'pino-elasticsearch',
-  options: {
-    index: 'myapp',              // 索引名前缀（自动追加日期）
-    node: 'http://localhost:9200',
-    esVersion: 8,                // Elasticsearch 版本
-    flushBytes: 1000,            // 缓冲区达到 1000 字节后批量写入
-    flushInterval: 5000,         // 或每 5 秒写入一次
-    auth: {
-      username: process.env.ELASTIC_USER,
-      password: process.env.ELASTIC_PASSWORD,
-    },
-    // 可选：自定义索引名（按天分割）
-    'op.type': 'create',
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
   },
-}));
+  pino.transport({
+    target: "pino-elasticsearch",
+    options: {
+      index: "myapp", // 索引名前缀（自动追加日期）
+      node: "http://localhost:9200",
+      esVersion: 8, // Elasticsearch 版本
+      flushBytes: 1000, // 缓冲区达到 1000 字节后批量写入
+      flushInterval: 5000, // 或每 5 秒写入一次
+      auth: {
+        username: process.env.ELASTIC_USER,
+        password: process.env.ELASTIC_PASSWORD,
+      },
+      // 可选：自定义索引名（按天分割）
+      "op.type": "create",
+    },
+  }),
+);
 ```
 
 #### 多目标：控制台 + ES
 
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
-const logger = pino({
-  level: 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.transport({
-  targets: [
-    {
-      target: 'pino-pretty',
-      options: { colorize: true },
-      level: 'debug',
-    },
-    {
-      target: 'pino-elasticsearch',
-      options: {
-        index: 'myapp',
-        node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
-        esVersion: 8,
-        flushBytes: 1000,
-        flushInterval: 5000,
+const logger = pino(
+  {
+    level: "info",
+    timestamp: pino.stdTimeFunctions.isoTime,
+  },
+  pino.transport({
+    targets: [
+      {
+        target: "pino-pretty",
+        options: { colorize: true },
+        level: "debug",
       },
-      level: 'info',
-    },
-  ],
-}));
+      {
+        target: "pino-elasticsearch",
+        options: {
+          index: "myapp",
+          node: process.env.ELASTICSEARCH_URL || "http://localhost:9200",
+          esVersion: 8,
+          flushBytes: 1000,
+          flushInterval: 5000,
+        },
+        level: "info",
+      },
+    ],
+  }),
+);
 ```
 
 :::tip pino-elasticsearch vs Filebeat
+
 - **pino-elasticsearch**：部署简单，无需额外进程；但如果 ES 不可用，日志会丢失
 - **Filebeat**：先落盘再采集，ES 宕机时日志不丢失；需要额外部署 Filebeat
 
@@ -806,13 +828,14 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: 'http://loki:3100/loki/api/v1/push'
-        loki-batch-size: '400'
-        loki-retries: '3'
-        loki-external-labels: 'app=myapp,env=production'
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-batch-size: "400"
+        loki-retries: "3"
+        loki-external-labels: "app=myapp,env=production"
 ```
 
 在 Grafana 中添加 Loki 数据源即可查询日志：
+
 - 按 requestId 查询：`{app="myapp"} |= "abc-123"`
 - 按 JSON 字段过滤：`{app="myapp"} | json | level >= 50`
 
@@ -827,12 +850,12 @@ services:
 NODE_ENV=production node dist/index.js
 ```
 
-| 平台 | 日志采集方式 |
-|------|-------------|
-| **Kubernetes** | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
-| **AWS ECS** | stdout → CloudWatch Logs |
-| **Google Cloud Run** | stdout → Cloud Logging |
-| **Azure Container Apps** | stdout → Azure Monitor |
+| 平台                     | 日志采集方式                                          |
+| ------------------------ | ----------------------------------------------------- |
+| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
+| **AWS ECS**              | stdout → CloudWatch Logs                              |
+| **Google Cloud Run**     | stdout → Cloud Logging                                |
+| **Azure Container Apps** | stdout → Azure Monitor                                |
 
 这是最简单也最推荐的云原生方案——**不做任何日志配置**，让平台处理一切。
 
@@ -853,7 +876,7 @@ export default {
       const ctx = span.spanContext();
       return {
         trace_id: ctx.traceId, // 注入到每条日志的 trace_id 字段（OTEL 语义约定）
-        span_id: ctx.spanId,   // 注入到每条日志的 span_id 字段
+        span_id: ctx.spanId, // 注入到每条日志的 span_id 字段
       };
     },
   },
@@ -861,6 +884,7 @@ export default {
 ```
 
 **工作原理**：
+
 - `mixin()` 在每条日志写入前被调用，返回值与内置的 `requestId` 字段合并注入
 - 框架内置 mixin（注入 `requestId`）与用户 mixin 并存，互不覆盖（用户字段优先）
 - 未配置 `mixin` 时，行为与之前完全一致（零 overhead）
@@ -886,25 +910,25 @@ interface VextLogger {
 `VextLogger` 是对 pino 的接口适配。你可以在类型声明中使用这个接口：
 
 ```typescript
-import type { VextLogger } from 'vextjs';
+import type { VextLogger } from "vextjs";
 
 class PaymentService {
   private logger: VextLogger;
 
   constructor(app: VextApp) {
-    this.logger = app.logger.child({ service: 'PaymentService' });
+    this.logger = app.logger.child({ service: "PaymentService" });
   }
 }
 ```
 
 ## 配置参考
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `logger.level` | `string` | `'info'` | 日志级别：`'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` |
-| `logger.pretty` | `boolean` | `NODE_ENV !== 'production'` | 是否使用 pino-pretty 彩色格式化输出 |
-| `logger.prettyIgnore` | `string` | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
-| `logger.prettySingleLine` | `boolean` | `true` | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式 |
+| 配置项                    | 类型      | 默认值                      | 说明                                                                                                |
+| ------------------------- | --------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`  | `'info'`                    | 日志级别：`'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'`                                   |
+| `logger.pretty`           | `boolean` | `NODE_ENV !== 'production'` | 是否使用 pino-pretty 彩色格式化输出                                                                 |
+| `logger.prettyIgnore`     | `string`  | `'pid,hostname,requestId'`  | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
+| `logger.prettySingleLine` | `boolean` | `true`                      | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式     |
 
 ## 最佳实践
 
@@ -912,7 +936,7 @@ class PaymentService {
 
 ```typescript
 // ✅ 结构化字段 — 可索引、可过滤
-app.logger.info({ userId, action: 'login', ip: req.ip }, '用户登录');
+app.logger.info({ userId, action: "login", ip: req.ip }, "用户登录");
 
 // ❌ 字符串拼接 — 难以解析和过滤
 app.logger.info(`用户 ${userId} 从 ${req.ip} 登录`);
@@ -932,32 +956,32 @@ app.logger.info({ service: 'OrderService', ... }, 'xxx');
 
 ```typescript
 // ✅ 安全
-app.logger.info({ userId, action: 'password_change' }, '密码已修改');
+app.logger.info({ userId, action: "password_change" }, "密码已修改");
 
 // ❌ 危险 — 密码泄漏到日志
-app.logger.info({ userId, newPassword }, '密码已修改');
+app.logger.info({ userId, newPassword }, "密码已修改");
 
 // ❌ 危险 — token 泄漏到日志
-app.logger.debug({ token: req.headers.authorization }, '认证信息');
+app.logger.debug({ token: req.headers.authorization }, "认证信息");
 ```
 
 ### 4. 合理使用日志级别
 
 ```typescript
 // debug — 详细调试信息（生产环境不输出）
-app.logger.debug({ sql: query, params }, '执行数据库查询');
+app.logger.debug({ sql: query, params }, "执行数据库查询");
 
 // info — 重要业务事件
-app.logger.info({ orderId, total }, '订单创建成功');
+app.logger.info({ orderId, total }, "订单创建成功");
 
 // warn — 需要关注但不影响运行
-app.logger.warn({ retryCount: 3, url }, '请求重试');
+app.logger.warn({ retryCount: 3, url }, "请求重试");
 
 // error — 出错了
-app.logger.error({ err, orderId }, '支付处理失败');
+app.logger.error({ err, orderId }, "支付处理失败");
 
 // fatal — 应用无法继续运行
-app.logger.fatal({ err }, '数据库连接断开，无法恢复');
+app.logger.fatal({ err }, "数据库连接断开，无法恢复");
 ```
 
 ### 5. 在生产环境使用 JSON 格式

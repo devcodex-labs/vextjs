@@ -125,20 +125,41 @@ describe("isUserFrame", () => {
 
   it("项目内用户代码帧 → true", () => {
     expect(
-      isUserFrame({ fn: "handler", file: "/home/user/project/src/routes/user.ts", line: 5, col: 3 }, root),
+      isUserFrame(
+        {
+          fn: "handler",
+          file: "/home/user/project/src/routes/user.ts",
+          line: 5,
+          col: 3,
+        },
+        root,
+      ),
     ).toBe(true);
   });
 
   it("项目内深层路径 → true", () => {
     expect(
-      isUserFrame({ fn: "fn", file: "/home/user/project/src/services/auth.ts", line: 1, col: 1 }, root),
+      isUserFrame(
+        {
+          fn: "fn",
+          file: "/home/user/project/src/services/auth.ts",
+          line: 1,
+          col: 1,
+        },
+        root,
+      ),
     ).toBe(true);
   });
 
   it("node_modules 帧 → false", () => {
     expect(
       isUserFrame(
-        { fn: "fn", file: "/home/user/project/node_modules/express/index.js", line: 1, col: 1 },
+        {
+          fn: "fn",
+          file: "/home/user/project/node_modules/express/index.js",
+          line: 1,
+          col: 1,
+        },
         root,
       ),
     ).toBe(false);
@@ -147,26 +168,44 @@ describe("isUserFrame", () => {
   it(".vext/dev/ 编译产物帧 → false", () => {
     expect(
       isUserFrame(
-        { fn: "fn", file: "/home/user/project/.vext/dev/routes/user.js", line: 1, col: 1 },
+        {
+          fn: "fn",
+          file: "/home/user/project/.vext/dev/routes/user.js",
+          line: 1,
+          col: 1,
+        },
         root,
       ),
     ).toBe(false);
   });
 
   it("node: 内置模块帧 → false", () => {
-    expect(isUserFrame({ fn: "fn", file: "node:fs", line: 1, col: 1 }, root)).toBe(false);
+    expect(
+      isUserFrame({ fn: "fn", file: "node:fs", line: 1, col: 1 }, root),
+    ).toBe(false);
   });
 
   it("项目外路径 → false", () => {
     expect(
-      isUserFrame({ fn: "fn", file: "/other/project/src/file.ts", line: 1, col: 1 }, root),
+      isUserFrame(
+        { fn: "fn", file: "/other/project/src/file.ts", line: 1, col: 1 },
+        root,
+      ),
     ).toBe(false);
   });
 
   it("同前缀但不同项目（B1 修复：防止前缀假阳性）→ false", () => {
     // root = "/home/user/project"，文件在 "/home/user/project-other/..."
     expect(
-      isUserFrame({ fn: "fn", file: "/home/user/project-other/src/file.ts", line: 1, col: 1 }, root),
+      isUserFrame(
+        {
+          fn: "fn",
+          file: "/home/user/project-other/src/file.ts",
+          line: 1,
+          col: 1,
+        },
+        root,
+      ),
     ).toBe(false);
   });
 });
@@ -181,7 +220,10 @@ describe("getSourceContext", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vext-overlay-test-"));
     tmpFile = path.join(tmpDir, "test.ts");
     // 写入 10 行内容
-    const lines = Array.from({ length: 10 }, (_, i) => `const line${i + 1} = ${i + 1};`);
+    const lines = Array.from(
+      { length: 10 },
+      (_, i) => `const line${i + 1} = ${i + 1};`,
+    );
     fs.writeFileSync(tmpFile, lines.join("\n"), "utf-8");
   });
 
@@ -256,7 +298,8 @@ describe("renderDevErrorPage", () => {
         { field: "email", message: "邮箱格式不正确" },
         { field: "age", message: "必须为正整数" },
       ],
-    });    const html = renderDevErrorPage(err, projectRoot);
+    });
+    const html = renderDevErrorPage(err, projectRoot);
     expect(html).toContain("Validation Errors");
     expect(html).toContain("email");
     expect(html).toContain("邮箱格式不正确");
@@ -277,7 +320,9 @@ describe("renderDevErrorPage", () => {
     const err = new Error('<script>alert("xss")</script>');
     const html = renderDevErrorPage(err, projectRoot);
     // error-message 区域中，消息内容必须被转义（&lt;script&gt; 而非 <script>）
-    expect(html).toContain("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;");
+    expect(html).toContain(
+      "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;",
+    );
     // 标题区同样转义
     expect(html).toContain("&lt;script&gt;alert");
   });
@@ -323,4 +368,3 @@ describe("renderDevErrorPage", () => {
     expect(html).toContain("</html>");
   });
 });
-

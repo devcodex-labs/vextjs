@@ -57,8 +57,8 @@ npm install koa
 ```js
 // src/config/default.js
 export default {
-  adapter: 'fastify', // 'native' (默认) | 'fastify' | 'hono' | 'express' | 'koa'
-}
+  adapter: "fastify", // 'native' (默认) | 'fastify' | 'hono' | 'express' | 'koa'
+};
 ```
 
 ---
@@ -69,23 +69,23 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 
 ### Native vs Fastify（核心对比）
 
-| 场景 | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
-|------|----------:|----------:|----------:|----------:|:----------:|
-| **JSON 响应** | 44,932 | **36,819** | 45,619 | 29,203 | **+26.1%** |
-| **路由参数** | 43,859 | **36,755** | 43,676 | 24,386 | **+50.7%** |
-| **中间件链** | 28,337 | **31,698** | 41,286 | 22,719 | **+39.5%** |
+| 场景          | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
+| ------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
+| **JSON 响应** |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
+| **路由参数**  |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
+| **中间件链**  |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
 
 > Vext-Native 在所有场景领先 Vext-Fastify **26~51%**（中间件链场景 Vext-Native 甚至超越裸跑 Native +11.9%）。
 
 ### 全 Adapter 性能概览（JSON 场景）
 
-| Adapter | Vext RPS | Overhead | 额外依赖 | 推荐场景 |
-|---------|--------:|---------:|----------|----------|
-| **Native** ⭐ | **36,819** | 18.1% | ✅ 零依赖 | **默认推荐**，性能最优 |
-| Express | 30,974 | -3.7% | `express` | 已有 Express 生态需复用 |
-| Fastify | 29,203 | 36.0% | `fastify` | 需要 Fastify 生态插件 |
-| Koa | 22,488 | 29.4% | `koa` | 已有 Koa 中间件需复用 |
-| Hono | 15,684 | 24.2% | `hono` `@hono/node-server` | Web Standard API 兼容 |
+| Adapter       |   Vext RPS | Overhead | 额外依赖                   | 推荐场景                |
+| ------------- | ---------: | -------: | -------------------------- | ----------------------- |
+| **Native** ⭐ | **36,819** |    18.1% | ✅ 零依赖                  | **默认推荐**，性能最优  |
+| Express       |     30,974 |    -3.7% | `express`                  | 已有 Express 生态需复用 |
+| Fastify       |     29,203 |    36.0% | `fastify`                  | 需要 Fastify 生态插件   |
+| Koa           |     22,488 |    29.4% | `koa`                      | 已有 Koa 中间件需复用   |
+| Hono          |     15,684 |    24.2% | `hono` `@hono/node-server` | Web Standard API 兼容   |
 
 > **测试环境**: Node.js v24.14.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i7-9700, 32GB RAM，2026-03-23）
 >
@@ -93,13 +93,13 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 
 ### Adapter 选择指南
 
-| 你的场景 | 推荐 Adapter | 理由 |
-|---------|-------------|------|
-| 新项目，无历史包袱 | **native**（默认） | 零外部依赖 + 性能最优 |
-| 已有 Fastify 插件生态 | fastify | 可复用 Fastify 插件（如 fastify-multipart） |
-| 已有 Express 中间件 | express | 兼容庞大的 Express 中间件生态 |
-| 已有 Koa 中间件 | koa | 兼容 Koa 中间件 |
-| 需要 Web Standard API | hono | Hono 支持 Request/Response Web API 标准 |
+| 你的场景              | 推荐 Adapter       | 理由                                        |
+| --------------------- | ------------------ | ------------------------------------------- |
+| 新项目，无历史包袱    | **native**（默认） | 零外部依赖 + 性能最优                       |
+| 已有 Fastify 插件生态 | fastify            | 可复用 Fastify 插件（如 fastify-multipart） |
+| 已有 Express 中间件   | express            | 兼容庞大的 Express 中间件生态               |
+| 已有 Koa 中间件       | koa                | 兼容 Koa 中间件                             |
+| 需要 Web Standard API | hono               | Hono 支持 Request/Response Web API 标准     |
 
 ---
 
@@ -139,14 +139,14 @@ my-app/
 // src/config/default.js
 export default {
   port: 3000,
-  host: '0.0.0.0',
+  host: "0.0.0.0",
   logger: {
-    level: 'info',
+    level: "info",
   },
   openapi: {
     enabled: true,
   },
-}
+};
 ```
 
 > 💡 只需声明你关心的字段，其他字段（`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等）由框架自动补全默认值。
@@ -155,17 +155,17 @@ export default {
 
 ```js
 // src/routes/index.js
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {}, async (req, res) => {
-    res.json({ message: 'Hello, VextJS!' })
-  })
+  app.get("/", {}, async (req, res) => {
+    res.json({ message: "Hello, VextJS!" });
+  });
 
-  app.get('/health', {}, async (req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() })
-  })
-})
+  app.get("/health", {}, async (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+});
 ```
 
 ### 5. 启动
@@ -215,21 +215,21 @@ vext dev --clear              # 每次重载后清空控制台
 
 **三层重载策略：**
 
-| Tier | 触发条件 | 动作 | 速度 |
-|------|---------|------|------|
-| T1 | 代码修改（modify） | Soft Reload — `esbuild.transform()` 热替换 | ⚡ 毫秒级 |
-| T2 | 文件新增 / 删除 | Soft Reload — `esbuild ctx.rebuild()` 重建 | ⚡ 毫秒级 |
-| T3 | 配置 / 插件 / `.env` 变更 | Cold Restart — kill + fork 重启子进程 | 🔄 秒级 |
+| Tier | 触发条件                  | 动作                                       | 速度      |
+| ---- | ------------------------- | ------------------------------------------ | --------- |
+| T1   | 代码修改（modify）        | Soft Reload — `esbuild.transform()` 热替换 | ⚡ 毫秒级 |
+| T2   | 文件新增 / 删除           | Soft Reload — `esbuild ctx.rebuild()` 重建 | ⚡ 毫秒级 |
+| T3   | 配置 / 插件 / `.env` 变更 | Cold Restart — kill + fork 重启子进程      | 🔄 秒级   |
 
 **键盘快捷键：**
 
-| 按键 | 功能 |
-|------|------|
-| `r` | 手动 Cold Restart |
-| `h` | 手动 Soft Reload（全量） |
-| `c` | 清空控制台 |
-| `?` | 显示帮助 |
-| `Ctrl+C` | 退出开发服务器 |
+| 按键     | 功能                     |
+| -------- | ------------------------ |
+| `r`      | 手动 Cold Restart        |
+| `h`      | 手动 Soft Reload（全量） |
+| `c`      | 清空控制台               |
+| `?`      | 显示帮助                 |
+| `Ctrl+C` | 退出开发服务器           |
 
 ### `vext build` — 构建
 
@@ -277,73 +277,85 @@ my-app/
 
 ```js
 // src/routes/users.js
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // 三段式：path, options, handler
-  app.get('/list', {
-    docs: { summary: '获取用户列表' },
-    validate: {
-      query: { page: 'number:1-', limit: 'number:1-100' },
+  app.get(
+    "/list",
+    {
+      docs: { summary: "获取用户列表" },
+      validate: {
+        query: { page: "number:1-", limit: "number:1-100" },
+      },
     },
-  }, async (req, res) => {
-    const { page, limit } = req.valid('query')
-    const users = await app.services.user.findAll({ page, limit })
-    res.json(users)
-  })
+    async (req, res) => {
+      const { page, limit } = req.valid("query");
+      const users = await app.services.user.findAll({ page, limit });
+      res.json(users);
+    },
+  );
 
   // 两段式：path, handler（无 options）
-  app.get('/:id', async (req, res) => {
-    const user = await app.services.user.findById(req.params.id)
-    res.json(user)
-  })
+  app.get("/:id", async (req, res) => {
+    const user = await app.services.user.findById(req.params.id);
+    res.json(user);
+  });
 
-  app.post('/', {
-    validate: {
-      body: { name: 'string:1-50', email: 'email' },
+  app.post(
+    "/",
+    {
+      validate: {
+        body: { name: "string:1-50", email: "email" },
+      },
     },
-  }, async (req, res) => {
-    const user = await app.services.user.create(req.valid('body'))
-    res.json(user, 201)
-  })
+    async (req, res) => {
+      const user = await app.services.user.create(req.valid("body"));
+      res.json(user, 201);
+    },
+  );
 
-  app.delete('/:id', {}, async (req, res) => {
-    await app.services.user.delete(req.params.id)
-    res.json({ deleted: true })
-  })
-})
+  app.delete("/:id", {}, async (req, res) => {
+    await app.services.user.delete(req.params.id);
+    res.json({ deleted: true });
+  });
+});
 ```
 
 ### 路由映射规则
 
-| 文件路径 | 路由前缀 |
-|---------|---------|
-| `src/routes/index.js` | `/` |
-| `src/routes/users.js` | `/users` |
-| `src/routes/api/posts.js` | `/api/posts` |
+| 文件路径                      | 路由前缀         |
+| ----------------------------- | ---------------- |
+| `src/routes/index.js`         | `/`              |
+| `src/routes/users.js`         | `/users`         |
+| `src/routes/api/posts.js`     | `/api/posts`     |
 | `src/routes/api/v2/orders.js` | `/api/v2/orders` |
 
 ### 路由选项
 
 ```js
-app.get('/protected', {
-  // 路由级中间件引用（需在 config.middlewares 白名单中声明）
-  middlewares: ['auth', { name: 'rbac', options: { roles: ['admin'] } }],
+app.get(
+  "/protected",
+  {
+    // 路由级中间件引用（需在 config.middlewares 白名单中声明）
+    middlewares: ["auth", { name: "rbac", options: { roles: ["admin"] } }],
 
-  // 参数校验（schema-dsl 语法）
-  validate: {
-    query: { page: 'number', limit: 'number' },
-    param: { id: 'string' },
-    body: { name: 'string:1-100', email: 'email' },
-  },
+    // 参数校验（schema-dsl 语法）
+    validate: {
+      query: { page: "number", limit: "number" },
+      param: { id: "string" },
+      body: { name: "string:1-100", email: "email" },
+    },
 
-  // OpenAPI 文档元信息
-  docs: {
-    summary: '获取受保护资源',
-    description: '需要认证和管理员角色',
-    tags: ['Admin'],
+    // OpenAPI 文档元信息
+    docs: {
+      summary: "获取受保护资源",
+      description: "需要认证和管理员角色",
+      tags: ["Admin"],
+    },
   },
-}, handler)
+  handler,
+);
 ```
 
 ---
@@ -356,14 +368,14 @@ app.get('/protected', {
 // src/services/user.js
 export default class UserService {
   constructor(app) {
-    this.app = app
-    this.logger = app.logger
+    this.app = app;
+    this.logger = app.logger;
   }
 
   async findAll({ page = 1, limit = 20 }) {
-    this.logger.info(`Fetching users page=${page} limit=${limit}`)
+    this.logger.info(`Fetching users page=${page} limit=${limit}`);
     // 数据库查询...
-    return { users: [], total: 0 }
+    return { users: [], total: 0 };
   }
 
   async findById(id) {
@@ -378,10 +390,10 @@ export default class UserService {
 
 ```js
 // 在路由中使用
-app.get('/users', {}, async (req, res) => {
-  const result = await app.services.user.findAll({ page: 1 })
-  res.json(result)
-})
+app.get("/users", {}, async (req, res) => {
+  const result = await app.services.user.findAll({ page: 1 });
+  res.json(result);
+});
 ```
 
 ### 嵌套服务
@@ -407,39 +419,39 @@ services/
 
 ```js
 // src/plugins/redis.js
-import { definePlugin } from 'vextjs'
-import Redis from 'ioredis'
+import { definePlugin } from "vextjs";
+import Redis from "ioredis";
 
 export default definePlugin({
-  name: 'redis',
+  name: "redis",
 
   // 声明依赖（可选），框架自动按拓扑顺序加载
   // dependencies: ['database'],
 
   async setup(app) {
-    const redis = new Redis(app.config.redis)
+    const redis = new Redis(app.config.redis);
 
     // 扩展 app 对象
-    app.extend('cache', redis)
+    app.extend("cache", redis);
 
     // 注册全局中间件
     app.use(async (req, res, next) => {
-      req.cache = app.cache
-      await next()
-    })
+      req.cache = app.cache;
+      await next();
+    });
 
     // 注册关闭钩子（优雅关闭时执行）
     app.onClose(async () => {
-      await redis.quit()
-      app.logger.info('Redis disconnected')
-    })
+      await redis.quit();
+      app.logger.info("Redis disconnected");
+    });
   },
-})
+});
 ```
 
 ```js
 // 在路由/服务中使用插件扩展的能力
-const cached = await app.cache.get('user:123')
+const cached = await app.cache.get("user:123");
 ```
 
 ---
@@ -450,53 +462,57 @@ const cached = await app.cache.get('user:123')
 
 VextJS 内置以下中间件，全部开箱即用，无需手动注册：
 
-| 中间件 | 功能 | 配置字段 |
-|--------|------|---------|
-| requestId | 为每个请求生成唯一 ID | `config.requestId` |
-| cors | 跨域资源共享 | `config.cors` |
-| bodyParser | 请求体解析（JSON / URLEncoded） | `config.bodyParser` |
-| rateLimit | 速率限制 | `config.rateLimit` |
-| responseWrapper | 统一响应格式 `{ code, data, message }` | `config.response` |
-| accessLog | 请求访问日志 | `config.accessLog` |
-| errorHandler | 全局错误处理 + 404 兜底 | — |
+| 中间件          | 功能                                   | 配置字段            |
+| --------------- | -------------------------------------- | ------------------- |
+| requestId       | 为每个请求生成唯一 ID                  | `config.requestId`  |
+| cors            | 跨域资源共享                           | `config.cors`       |
+| bodyParser      | 请求体解析（JSON / URLEncoded）        | `config.bodyParser` |
+| rateLimit       | 速率限制                               | `config.rateLimit`  |
+| responseWrapper | 统一响应格式 `{ code, data, message }` | `config.response`   |
+| accessLog       | 请求访问日志                           | `config.accessLog`  |
+| errorHandler    | 全局错误处理 + 404 兜底                | —                   |
 
 ### 自定义中间件
 
 ```js
 // src/middlewares/auth.js
-import { defineMiddleware } from 'vextjs'
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const token = req.headers['authorization']
+  const token = req.headers["authorization"];
   if (!token) {
-    req.app.throw(401, 'Unauthorized')
+    req.app.throw(401, "Unauthorized");
   }
   // 解析 token，设置用户信息...
-  await next()
-})
+  await next();
+});
 ```
 
 ### 工厂中间件（带配置参数）
 
 ```js
 // src/middlewares/rbac.js
-import { defineMiddlewareFactory } from 'vextjs'
+import { defineMiddlewareFactory } from "vextjs";
 
 export default defineMiddlewareFactory((options) => {
   return async (req, res, next) => {
     if (!options.roles.includes(req.user?.role)) {
-      req.app.throw(403, 'Forbidden')
+      req.app.throw(403, "Forbidden");
     }
-    await next()
-  }
-})
+    await next();
+  };
+});
 ```
 
 ```js
 // 在路由中使用（需在 config.middlewares 白名单声明）
-app.get('/admin', {
-  middlewares: [{ name: 'rbac', options: { roles: ['admin'] } }],
-}, handler)
+app.get(
+  "/admin",
+  {
+    middlewares: [{ name: "rbac", options: { roles: ["admin"] } }],
+  },
+  handler,
+);
 ```
 
 ---
@@ -509,53 +525,53 @@ app.get('/admin', {
 // src/config/default.js — 默认配置
 export default {
   port: 3000,
-  host: '0.0.0.0',
+  host: "0.0.0.0",
   logger: {
-    level: 'info',        // 'debug' | 'info' | 'warn' | 'error' | 'silent'
+    level: "info", // 'debug' | 'info' | 'warn' | 'error' | 'silent'
   },
   cors: {
-    origins: ['*'],       // 允许的来源列表（数组格式）
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    origins: ["*"], // 允许的来源列表（数组格式）
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   },
   bodyParser: {
-    maxBodySize: '1mb',
+    maxBodySize: "1mb",
   },
   rateLimit: {
-    max: 100,             // 每个窗口期最大请求数
-    window: 60,           // 窗口期时长（秒，数字）
+    max: 100, // 每个窗口期最大请求数
+    window: 60, // 窗口期时长（秒，数字）
   },
   requestId: {
     enabled: true,
-    header: 'X-Request-Id',
+    header: "X-Request-Id",
   },
   response: {
-    hideInternalErrors: true,   // 生产环境隐藏内部错误详情
+    hideInternalErrors: true, // 生产环境隐藏内部错误详情
   },
   openapi: {
     enabled: true,
-    title: 'My API',
-    version: '1.0.0',
+    title: "My API",
+    version: "1.0.0",
   },
   shutdown: {
-    timeout: 10,          // 优雅关闭超时（秒）
+    timeout: 10, // 优雅关闭超时（秒）
   },
-}
+};
 ```
 
 ```js
 // src/config/production.js — 生产环境覆盖
 export default {
-  logger: { level: 'warn' },
+  logger: { level: "warn" },
   response: { hideInternalErrors: true },
-}
+};
 ```
 
 ```js
 // src/config/local.js — 本地开发覆盖（加入 .gitignore）
 export default {
   port: 4000,
-  logger: { level: 'debug' },
-}
+  logger: { level: "debug" },
+};
 ```
 
 CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件中的值。
@@ -567,24 +583,28 @@ CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件中的值。
 路由选项中的 `validate` 字段使用 [schema-dsl](https://www.npmjs.com/package/schema-dsl) 语法，声明式校验请求参数。
 
 ```js
-app.post('/users', {
-  validate: {
-    body: {
-      name: 'string:1-50',           // 字符串，长度 1-50
-      email: 'email',                // 邮箱格式
-      age: 'number:0-150?',          // 可选数字，范围 0-150
-      role: 'enum:admin,user,guest', // 枚举值
-      tags: '[string]',              // 字符串数组
-    },
-    query: {
-      format: 'enum:json,xml?',      // 可选枚举
+app.post(
+  "/users",
+  {
+    validate: {
+      body: {
+        name: "string:1-50", // 字符串，长度 1-50
+        email: "email", // 邮箱格式
+        age: "number:0-150?", // 可选数字，范围 0-150
+        role: "enum:admin,user,guest", // 枚举值
+        tags: "[string]", // 字符串数组
+      },
+      query: {
+        format: "enum:json,xml?", // 可选枚举
+      },
     },
   },
-}, async (req, res) => {
-  const body = req.valid('body')    // 类型安全的校验后数据
-  const query = req.valid('query')
-  // ...
-})
+  async (req, res) => {
+    const body = req.valid("body"); // 类型安全的校验后数据
+    const query = req.valid("query");
+    // ...
+  },
+);
 ```
 
 校验失败时自动返回 `400` 错误，包含详细的字段错误信息。支持 i18n 多语言错误消息。
@@ -597,21 +617,25 @@ app.post('/users', {
 
 ```js
 // 数字简写：缓存 60 秒
-app.get('/products', { cache: 60 }, async (req, res) => {
-  res.json(await db.getProducts())
-})
+app.get("/products", { cache: 60 }, async (req, res) => {
+  res.json(await db.getProducts());
+});
 
 // 完整配置：TTL + Vary headers + 标签失效
-app.get('/products', {
-  cache: {
-    ttl: 120,
-    vary: ['accept-language'],      // 不同语言单独缓存
-    tags: ['products'],             // 标签（用于批量失效）
-    condition: (req) => !req.query.refresh, // 条件缓存
+app.get(
+  "/products",
+  {
+    cache: {
+      ttl: 120,
+      vary: ["accept-language"], // 不同语言单独缓存
+      tags: ["products"], // 标签（用于批量失效）
+      condition: (req) => !req.query.refresh, // 条件缓存
+    },
   },
-}, async (req, res) => {
-  res.json(await db.getProducts())
-})
+  async (req, res) => {
+    res.json(await db.getProducts());
+  },
+);
 ```
 
 缓存命中时自动设置 `X-Cache: HIT` 和 `Cache-Control: public, max-age=N` 响应头。
@@ -620,13 +644,13 @@ app.get('/products', {
 
 ```js
 // 按标签批量失效
-await app.cache.invalidate('products')
+await app.cache.invalidate("products");
 
 // 清空所有缓存
-await app.cache.clear()
+await app.cache.clear();
 
 // 查看缓存统计
-const stats = app.cache.stats()
+const stats = app.cache.stats();
 // → { entries: 42, hits: 128, misses: 31, hitRate: 0.805 }
 ```
 
@@ -636,11 +660,11 @@ const stats = app.cache.stats()
 // src/config/default.js
 export default {
   cache: {
-    enabled: true,       // 是否启用（默认 true）
-    defaultTtl: 60,      // 默认 TTL 秒数
-    maxEntries: 1000,    // 最大缓存条目数
+    enabled: true, // 是否启用（默认 true）
+    defaultTtl: 60, // 默认 TTL 秒数
+    maxEntries: 1000, // 最大缓存条目数
   },
-}
+};
 ```
 
 ---
@@ -651,10 +675,10 @@ export default {
 
 ### 文档端点
 
-| 端点 | 说明 |
-|------|------|
-| `GET /openapi.json` | OpenAPI JSON spec（供外部工具消费） |
-| `GET /docs` | [Scalar API Reference](https://github.com/scalar/scalar) 交互式文档页面（文档阅读 + Try it out） |
+| 端点                | 说明                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET /openapi.json` | OpenAPI JSON spec（供外部工具消费）                                                              |
+| `GET /docs`         | [Scalar API Reference](https://github.com/scalar/scalar) 交互式文档页面（文档阅读 + Try it out） |
 
 ```bash
 # 获取 OpenAPI JSON
@@ -671,17 +695,17 @@ open http://localhost:3000/docs
 export default {
   openapi: {
     enabled: true,
-    title: 'My API',
-    version: '1.0.0',
+    title: "My API",
+    version: "1.0.0",
     // Scalar API Reference 配置
     scalar: {
-      theme: 'default',    // 主题: default / alternate / moon / purple / solarized / ...
-      darkMode: false,      // 深色模式
-      layout: 'modern',     // 布局: modern / classic
-      showSidebar: true,    // 显示侧边栏
+      theme: "default", // 主题: default / alternate / moon / purple / solarized / ...
+      darkMode: false, // 深色模式
+      layout: "modern", // 布局: modern / classic
+      showSidebar: true, // 显示侧边栏
     },
   },
-}
+};
 ```
 
 ### 路由文档元信息
@@ -689,16 +713,20 @@ export default {
 路由的 `docs` 选项用于补充文档元信息：
 
 ```js
-app.get('/users/:id', {
-  docs: {
-    summary: '获取用户详情',
-    description: '根据用户 ID 获取完整的用户信息',
-    tags: ['Users'],
+app.get(
+  "/users/:id",
+  {
+    docs: {
+      summary: "获取用户详情",
+      description: "根据用户 ID 获取完整的用户信息",
+      tags: ["Users"],
+    },
+    validate: {
+      params: { id: "string" },
+    },
   },
-  validate: {
-    params: { id: 'string' },
-  },
-}, handler)
+  handler,
+);
 ```
 
 ---
@@ -708,22 +736,22 @@ app.get('/users/:id', {
 VextJS 提供内置测试工具，无需启动 HTTP 服务器即可测试路由。
 
 ```js
-import { describe, it, expect } from 'vitest'
-import { createTestApp } from 'vextjs/testing'
+import { describe, it, expect } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('User API', () => {
-  it('should return user list', async () => {
+describe("User API", () => {
+  it("should return user list", async () => {
     const app = await createTestApp({
-      rootDir: '/path/to/project',
-    })
+      rootDir: "/path/to/project",
+    });
 
-    const res = await app.request.get('/users/list?page=1&limit=10')
+    const res = await app.request.get("/users/list?page=1&limit=10");
 
-    expect(res.status).toBe(200)
-    expect(res.body.code).toBe(0)
-    expect(res.body.data).toBeDefined()
-  })
-})
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe(0);
+    expect(res.body.data).toBeDefined();
+  });
+});
 ```
 
 ---
@@ -809,14 +837,14 @@ HTTP 响应 → { code: 0, data: {...} }
 
 ## 📋 环境变量
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `NODE_ENV` | 运行环境 | `production`（start）/ `development`（dev） |
-| `VEXT_PORT` | 覆盖监听端口 | — |
-| `VEXT_HOST` | 覆盖监听地址 | — |
-| `VEXT_DEV_POLL` | 强制轮询模式（`1` / `0`） | 自动检测 |
-| `VEXT_DEV_NO_HOT` | 禁用 Soft Reload | — |
-| `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒） | `0`（不开启） |
+| 变量                | 说明                      | 默认值                                      |
+| ------------------- | ------------------------- | ------------------------------------------- |
+| `NODE_ENV`          | 运行环境                  | `production`（start）/ `development`（dev） |
+| `VEXT_PORT`         | 覆盖监听端口              | —                                           |
+| `VEXT_HOST`         | 覆盖监听地址              | —                                           |
+| `VEXT_DEV_POLL`     | 强制轮询模式（`1` / `0`） | 自动检测                                    |
+| `VEXT_DEV_NO_HOT`   | 禁用 Soft Reload          | —                                           |
+| `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒）          | `0`（不开启）                               |
 
 ---
 

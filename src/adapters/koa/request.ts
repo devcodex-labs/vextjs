@@ -43,7 +43,7 @@ export function createVextRequest(
   ctx: Koa.Context,
   vextApp: VextApp,
   params: Record<string, string>,
-  rawBody?: Buffer
+  rawBody?: Buffer,
 ): VextRequest {
   const trustProxy = vextApp.config.trustProxy ?? false;
   const closeHandlers: Array<() => void> = [];
@@ -114,13 +114,13 @@ export function createVextRequest(
       const firstIp = xff.split(",")[0];
       ip = firstIp
         ? firstIp.trim()
-        : ctx.req.socket.remoteAddress ?? "127.0.0.1";
+        : (ctx.req.socket.remoteAddress ?? "127.0.0.1");
     } else if (Array.isArray(xff) && xff.length > 0) {
       const firstEntry = xff[0];
       const firstIp = firstEntry ? firstEntry.split(",")[0] : undefined;
       ip = firstIp
         ? firstIp.trim()
-        : ctx.req.socket.remoteAddress ?? "127.0.0.1";
+        : (ctx.req.socket.remoteAddress ?? "127.0.0.1");
     } else {
       ip = ctx.req.socket.remoteAddress ?? "127.0.0.1";
     }
@@ -170,7 +170,7 @@ export function createVextRequest(
     // valid() 方法从对应的 key 中读取数据返回。
     //
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header"
+      location: "query" | "body" | "param" | "header",
     ): T {
       return (req as Record<string, any>)[`_validated_${location}`] as T;
     },

@@ -1,4 +1,3 @@
-
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextRequest } from "../types/request.js";
 import { VextValidationError } from "../types/errors.js";
@@ -184,10 +183,7 @@ export function buildValidateMiddleware(
  * @param loc 校验位置
  * @returns 对应位置的原始数据
  */
-function getRawData(
-  req: VextRequest,
-  loc: ValidateLocation,
-): unknown {
+function getRawData(req: VextRequest, loc: ValidateLocation): unknown {
   switch (loc) {
     case "query":
       return req.query;

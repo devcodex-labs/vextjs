@@ -92,7 +92,7 @@ function httpRequest(options: {
             body: Buffer.concat(chunks).toString("utf-8"),
           });
         });
-      }
+      },
     );
     req.on("error", reject);
     req.end();
@@ -123,7 +123,7 @@ function registerNotFoundEcho(adapter: VextAdapter) {
  */
 function makeRouteInjectionSuite(
   name: string,
-  create: (app: VextApp) => VextAdapter
+  create: (app: VextApp) => VextAdapter,
 ) {
   describe(`${name} Adapter — req.route 注入`, () => {
     let adapter: VextAdapter;

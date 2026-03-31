@@ -4,14 +4,14 @@
 
 ## 为什么选择 Drizzle ORM？
 
-| 特性 | 说明 |
-|------|------|
+| 特性         | 说明                                            |
+| ------------ | ----------------------------------------------- |
 | **类型安全** | Schema 即类型，查询结果自动推断 TypeScript 类型 |
-| **轻量** | 无运行时代码生成，零抽象开销 |
-| **SQL-like** | API 贴近 SQL 语法，学习成本低 |
-| **多数据库** | 支持 PostgreSQL、MySQL、SQLite |
-| **迁移工具** | 内置 `drizzle-kit` 进行 schema 迁移 |
-| **性能** | 无额外查询层，直接编译为 SQL |
+| **轻量**     | 无运行时代码生成，零抽象开销                    |
+| **SQL-like** | API 贴近 SQL 语法，学习成本低                   |
+| **多数据库** | 支持 PostgreSQL、MySQL、SQLite                  |
+| **迁移工具** | 内置 `drizzle-kit` 进行 schema 迁移             |
+| **性能**     | 无额外查询层，直接编译为 SQL                    |
 
 ## 项目结构
 
@@ -56,6 +56,7 @@ pnpm add -D drizzle-kit @types/better-sqlite3
 
 :::tip
 **其他数据库驱动**：
+
 - PostgreSQL：`pnpm add drizzle-orm postgres` 或 `pnpm add drizzle-orm @neondatabase/serverless`
 - MySQL：`pnpm add drizzle-orm mysql2`
 
@@ -68,45 +69,43 @@ pnpm add -D drizzle-kit @types/better-sqlite3
 
 ```typescript
 // src/db/schema.ts
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 // ── 用户表 ──────────────────────────────────────────────────
 
-export const users = sqliteTable('users', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  age: integer('age'),
-  role: text('role', { enum: ['admin', 'user', 'editor'] })
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  age: integer("age"),
+  role: text("role", { enum: ["admin", "user", "editor"] })
     .notNull()
-    .default('user'),
-  bio: text('bio'),
-  avatarUrl: text('avatar_url'),
-  createdAt: text('created_at')
+    .default("user"),
+  bio: text("bio"),
+  avatarUrl: text("avatar_url"),
+  createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
-  updatedAt: text('updated_at')
+  updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),
 });
 
 // ── 文章表（演示关联查询）──────────────────────────────────
 
-export const posts = sqliteTable('posts', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  title: text('title').notNull(),
-  content: text('content').notNull(),
-  authorId: integer('author_id')
+export const posts = sqliteTable("posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  authorId: integer("author_id")
     .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  published: integer('published', { mode: 'boolean' })
-    .notNull()
-    .default(false),
-  createdAt: text('created_at')
+    .references(() => users.id, { onDelete: "cascade" }),
+  published: integer("published", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
-  updatedAt: text('updated_at')
+  updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),
 });
@@ -128,6 +127,7 @@ export type NewPost = typeof posts.$inferInsert;
 
 :::tip
 Drizzle 的 `$inferSelect` 和 `$inferInsert` 类型工具非常强大：
+
 - `$inferSelect` — 从表定义推断查询结果类型（包含所有字段，`id`、`createdAt` 等为必填）
 - `$inferInsert` — 从表定义推断插入类型（有默认值的字段变为可选，如 `role`、`createdAt`）
 
@@ -138,9 +138,9 @@ Drizzle 的 `$inferSelect` 和 `$inferInsert` 类型工具非常强大：
 
 ```typescript
 // src/db/index.ts
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import Database from 'better-sqlite3';
-import * as schema from './schema.js';
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import * as schema from "./schema.js";
 
 export interface DatabaseConfig {
   /** SQLite 数据库文件路径 */
@@ -164,11 +164,11 @@ export function createDatabase(config: DatabaseConfig) {
 
   // WAL 模式：提升并发读写性能
   if (config.wal !== false) {
-    client.pragma('journal_mode = WAL');
+    client.pragma("journal_mode = WAL");
   }
 
   // 启用外键约束
-  client.pragma('foreign_keys = ON');
+  client.pragma("foreign_keys = ON");
 
   const db = drizzle(client, { schema });
 
@@ -203,7 +203,7 @@ export function createDatabase(config: DatabaseConfig) {
 }
 
 /** Drizzle DB 实例类型 */
-export type DrizzleDB = ReturnType<typeof createDatabase>['db'];
+export type DrizzleDB = ReturnType<typeof createDatabase>["db"];
 ```
 
 :::warning
@@ -214,14 +214,14 @@ export type DrizzleDB = ReturnType<typeof createDatabase>['db'];
 
 ```typescript
 // drizzle.config.ts
-import { defineConfig } from 'drizzle-kit';
+import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: './src/db/schema.ts',
-  out: './drizzle',
-  dialect: 'sqlite',
+  schema: "./src/db/schema.ts",
+  out: "./drizzle",
+  dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? './data/app.db',
+    url: process.env.DATABASE_URL ?? "./data/app.db",
   },
 });
 ```
@@ -243,43 +243,43 @@ pnpm drizzle-kit studio
 
 ```typescript
 // src/plugins/database.ts
-import { definePlugin } from 'vextjs';
-import { createDatabase } from '../db/index.js';
-import type { DrizzleDB } from '../db/index.js';
-import { users, posts } from '../db/schema.js';
+import { definePlugin } from "vextjs";
+import { createDatabase } from "../db/index.js";
+import type { DrizzleDB } from "../db/index.js";
+import { users, posts } from "../db/schema.js";
 
 export default definePlugin({
-  name: 'database',
+  name: "database",
   async setup(app) {
     const dbConfig = (app.config as any).database ?? {
-      url: './data/app.db',
+      url: "./data/app.db",
       wal: true,
       autoCreate: true,
     };
 
-    app.logger.info({ url: dbConfig.url }, '正在连接数据库...');
+    app.logger.info({ url: dbConfig.url }, "正在连接数据库...");
 
     const { db, client } = createDatabase(dbConfig);
 
     // 挂载到 app
-    app.extend('db', db);
+    app.extend("db", db);
 
     // 就绪钩子：验证连接 + 填充种子数据
     app.onReady(async () => {
       try {
         // 验证连接
-        client.pragma('quick_check');
-        app.logger.info('数据库连接验证成功');
+        client.pragma("quick_check");
+        app.logger.info("数据库连接验证成功");
 
         // 检查是否需要种子数据
         const userCount = db.select().from(users).all();
         if (userCount.length === 0) {
-          app.logger.info('数据库为空，正在填充种子数据...');
+          app.logger.info("数据库为空，正在填充种子数据...");
           await seedDatabase(db);
-          app.logger.info('种子数据填充完成');
+          app.logger.info("种子数据填充完成");
         }
       } catch (err) {
-        app.logger.error({ error: err }, '数据库初始化失败');
+        app.logger.error({ error: err }, "数据库初始化失败");
         throw err;
       }
     });
@@ -287,7 +287,7 @@ export default definePlugin({
     // 关闭钩子：断开连接
     app.onClose(() => {
       client.close();
-      app.logger.info('数据库连接已关闭');
+      app.logger.info("数据库连接已关闭");
     });
   },
 });
@@ -301,25 +301,25 @@ async function seedDatabase(db: DrizzleDB): Promise<void> {
     .insert(users)
     .values([
       {
-        name: 'Alice',
-        email: 'alice@example.com',
+        name: "Alice",
+        email: "alice@example.com",
         age: 28,
-        role: 'admin',
-        bio: '全栈开发者，热爱开源',
+        role: "admin",
+        bio: "全栈开发者，热爱开源",
       },
       {
-        name: 'Bob',
-        email: 'bob@example.com',
+        name: "Bob",
+        email: "bob@example.com",
         age: 32,
-        role: 'user',
-        bio: '前端工程师',
+        role: "user",
+        bio: "前端工程师",
       },
       {
-        name: 'Charlie',
-        email: 'charlie@example.com',
+        name: "Charlie",
+        email: "charlie@example.com",
         age: 25,
-        role: 'editor',
-        bio: '技术博客作者',
+        role: "editor",
+        bio: "技术博客作者",
       },
     ])
     .returning()
@@ -329,20 +329,20 @@ async function seedDatabase(db: DrizzleDB): Promise<void> {
   db.insert(posts)
     .values([
       {
-        title: 'VextJS 入门指南',
-        content: '本文介绍如何使用 VextJS 构建高性能 RESTful API...',
+        title: "VextJS 入门指南",
+        content: "本文介绍如何使用 VextJS 构建高性能 RESTful API...",
         authorId: insertedUsers[0].id,
         published: true,
       },
       {
-        title: 'Drizzle ORM 最佳实践',
-        content: '探索 Drizzle ORM 的高级查询技巧...',
+        title: "Drizzle ORM 最佳实践",
+        content: "探索 Drizzle ORM 的高级查询技巧...",
         authorId: insertedUsers[0].id,
         published: true,
       },
       {
-        title: 'TypeScript 类型体操',
-        content: '深入理解 TypeScript 的高级类型系统...',
+        title: "TypeScript 类型体操",
+        content: "深入理解 TypeScript 的高级类型系统...",
         authorId: insertedUsers[2].id,
         published: false,
       },
@@ -355,9 +355,9 @@ async function seedDatabase(db: DrizzleDB): Promise<void> {
 
 ```typescript
 // types/vext.d.ts
-import type { DrizzleDB } from '../src/db/index.js';
+import type { DrizzleDB } from "../src/db/index.js";
 
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     db: DrizzleDB;
   }
@@ -385,14 +385,14 @@ declare module 'vextjs' {
 // src/config/default.ts
 export default {
   port: 3000,
-  adapter: 'native',
+  adapter: "native",
   logger: {
-    level: 'debug',
+    level: "debug",
     pretty: true,
   },
   cors: {
     enabled: true,
-    origins: ['*'],
+    origins: ["*"],
   },
   response: {
     wrap: true,
@@ -400,31 +400,29 @@ export default {
   },
   openapi: {
     enabled: true,
-    title: 'Drizzle ORM 示例',
-    version: '1.0.0',
-    description: '使用 Drizzle ORM 集成的 VextJS RESTful API',
+    title: "Drizzle ORM 示例",
+    version: "1.0.0",
+    description: "使用 Drizzle ORM 集成的 VextJS RESTful API",
     tags: [
-      { name: '基础', description: '基础接口' },
-      { name: '用户', description: '用户管理接口' },
-      { name: '文章', description: '文章管理接口' },
+      { name: "基础", description: "基础接口" },
+      { name: "用户", description: "用户管理接口" },
+      { name: "文章", description: "文章管理接口" },
     ],
     securitySchemes: {
       bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
       },
     },
     guardSecurityMap: {
-      auth: 'bearerAuth',
+      auth: "bearerAuth",
     },
   },
-  middlewares: [
-    { name: 'auth' },
-  ],
+  middlewares: [{ name: "auth" }],
   // 数据库配置
   database: {
-    url: './data/app.db',
+    url: "./data/app.db",
     wal: true,
     autoCreate: true,
   },
@@ -435,7 +433,7 @@ export default {
 // src/config/production.ts
 export default {
   logger: {
-    level: 'info',
+    level: "info",
     pretty: false,
   },
   response: {
@@ -445,7 +443,7 @@ export default {
     enabled: false,
   },
   database: {
-    url: process.env.DATABASE_URL ?? './data/production.db',
+    url: process.env.DATABASE_URL ?? "./data/production.db",
     autoCreate: false, // 生产环境使用迁移
   },
 };
@@ -455,16 +453,16 @@ export default {
 
 ```typescript
 // src/services/user.ts
-import type { VextApp, VextLogger } from 'vextjs';
-import { users, posts } from '../db/schema.js';
-import type { User, NewUser } from '../db/schema.js';
-import { eq, like, or, sql, desc, asc, count } from 'drizzle-orm';
+import type { VextApp, VextLogger } from "vextjs";
+import { users, posts } from "../db/schema.js";
+import type { User, NewUser } from "../db/schema.js";
+import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";
 
 export default class UserService {
   private logger: VextLogger;
 
   constructor(private app: VextApp) {
-    this.logger = app.logger.child({ service: 'UserService' });
+    this.logger = app.logger.child({ service: "UserService" });
   }
 
   /**
@@ -476,8 +474,8 @@ export default class UserService {
     page: number;
     limit: number;
     keyword?: string;
-    sortBy?: 'name' | 'createdAt';
-    sortOrder?: 'asc' | 'desc';
+    sortBy?: "name" | "createdAt";
+    sortOrder?: "asc" | "desc";
   }): Promise<{
     items: User[];
     total: number;
@@ -485,7 +483,7 @@ export default class UserService {
     limit: number;
     totalPages: number;
   }> {
-    this.logger.debug(options, '查询用户列表');
+    this.logger.debug(options, "查询用户列表");
 
     const db = this.app.db;
     const offset = (options.page - 1) * options.limit;
@@ -500,11 +498,11 @@ export default class UserService {
 
     // 构建排序
     const orderBy =
-      options.sortBy === 'name'
-        ? options.sortOrder === 'desc'
+      options.sortBy === "name"
+        ? options.sortOrder === "desc"
           ? desc(users.name)
           : asc(users.name)
-        : options.sortOrder === 'asc'
+        : options.sortOrder === "asc"
           ? asc(users.createdAt)
           : desc(users.createdAt);
 
@@ -538,7 +536,7 @@ export default class UserService {
    * 根据 ID 查询用户（含文章列表）
    */
   async findById(id: number): Promise<(User & { posts: any[] }) | null> {
-    this.logger.debug({ userId: id }, '查询用户详情');
+    this.logger.debug({ userId: id }, "查询用户详情");
 
     const db = this.app.db;
 
@@ -567,11 +565,11 @@ export default class UserService {
     name: string;
     email: string;
     age?: number;
-    role?: 'admin' | 'user' | 'editor';
+    role?: "admin" | "user" | "editor";
     bio?: string;
     avatarUrl?: string;
   }): Promise<User> {
-    this.logger.info({ email: data.email }, '创建用户');
+    this.logger.info({ email: data.email }, "创建用户");
 
     const db = this.app.db;
 
@@ -583,7 +581,7 @@ export default class UserService {
       .get();
 
     if (existing) {
-      this.app.throw(409, '邮箱已注册', 10001);
+      this.app.throw(409, "邮箱已注册", 10001);
     }
 
     // 插入并返回完整记录
@@ -593,14 +591,14 @@ export default class UserService {
         name: data.name,
         email: data.email,
         age: data.age,
-        role: data.role ?? 'user',
+        role: data.role ?? "user",
         bio: data.bio,
         avatarUrl: data.avatarUrl,
       })
       .returning()
       .get();
 
-    this.logger.info({ userId: user.id, email: user.email }, '用户创建成功');
+    this.logger.info({ userId: user.id, email: user.email }, "用户创建成功");
 
     return user;
   }
@@ -618,14 +616,14 @@ export default class UserService {
       avatarUrl?: string;
     },
   ): Promise<User> {
-    this.logger.info({ userId: id }, '更新用户');
+    this.logger.info({ userId: id }, "更新用户");
 
     const db = this.app.db;
 
     // 检查用户是否存在
     const existing = db.select().from(users).where(eq(users.id, id)).get();
     if (!existing) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     // 如果更新邮箱，检查唯一性
@@ -637,7 +635,7 @@ export default class UserService {
         .get();
 
       if (emailTaken) {
-        this.app.throw(409, '邮箱已被其他用户使用', 10002);
+        this.app.throw(409, "邮箱已被其他用户使用", 10002);
       }
     }
 
@@ -652,7 +650,7 @@ export default class UserService {
       .returning()
       .get();
 
-    this.logger.info({ userId: id }, '用户更新成功');
+    this.logger.info({ userId: id }, "用户更新成功");
 
     return updated;
   }
@@ -663,7 +661,7 @@ export default class UserService {
    * 由于设置了 ON DELETE CASCADE，关联的文章会自动删除。
    */
   async delete(id: number): Promise<void> {
-    this.logger.info({ userId: id }, '删除用户');
+    this.logger.info({ userId: id }, "删除用户");
 
     const db = this.app.db;
 
@@ -674,12 +672,12 @@ export default class UserService {
       .get();
 
     if (!existing) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     db.delete(users).where(eq(users.id, id)).run();
 
-    this.logger.info({ userId: id }, '用户删除成功');
+    this.logger.info({ userId: id }, "用户删除成功");
   }
 
   /**
@@ -702,24 +700,28 @@ export default class UserService {
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {
-    docs: {
-      summary: '健康检查',
-      tags: ['基础'],
+  app.get(
+    "/",
+    {
+      docs: {
+        summary: "健康检查",
+        tags: ["基础"],
+      },
     },
-  }, async (_req, res) => {
-    const userCount = await app.services.user.count();
-    res.json({
-      status: 'ok',
-      uptime: Math.floor(process.uptime()),
-      database: 'connected',
-      users: userCount,
-      timestamp: new Date().toISOString(),
-    });
-  });
+    async (_req, res) => {
+      const userCount = await app.services.user.count();
+      res.json({
+        status: "ok",
+        uptime: Math.floor(process.uptime()),
+        database: "connected",
+        users: userCount,
+        timestamp: new Date().toISOString(),
+      });
+    },
+  );
 });
 ```
 
@@ -727,165 +729,185 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // GET /users/list — 分页查询用户列表
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.get('/list', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
-        keyword: 'string?',
+  app.get(
+    "/list",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+          keyword: "string?",
+        },
       },
-    },
-    docs: {
-      summary: '用户列表',
-      description: '分页查询用户列表。支持按姓名或邮箱关键词搜索。',
-      tags: ['用户'],
-      responses: {
-        200: {
-          description: '查询成功',
-          example: {
-            items: [
-              {
-                id: 1,
-                name: 'Alice',
-                email: 'alice@example.com',
-                age: 28,
-                role: 'admin',
-                bio: '全栈开发者',
-                createdAt: '2026-03-05 00:00:00',
-              },
-            ],
-            total: 3,
-            page: 1,
-            limit: 10,
-            totalPages: 1,
+      docs: {
+        summary: "用户列表",
+        description: "分页查询用户列表。支持按姓名或邮箱关键词搜索。",
+        tags: ["用户"],
+        responses: {
+          200: {
+            description: "查询成功",
+            example: {
+              items: [
+                {
+                  id: 1,
+                  name: "Alice",
+                  email: "alice@example.com",
+                  age: 28,
+                  role: "admin",
+                  bio: "全栈开发者",
+                  createdAt: "2026-03-05 00:00:00",
+                },
+              ],
+              total: 3,
+              page: 1,
+              limit: 10,
+              totalPages: 1,
+            },
           },
         },
       },
     },
-  }, async (req, res) => {
-    const { page, limit, keyword } = req.valid('query');
-    const result = await app.services.user.findAll({ page, limit, keyword });
-    res.json(result);
-  });
+    async (req, res) => {
+      const { page, limit, keyword } = req.valid("query");
+      const result = await app.services.user.findAll({ page, limit, keyword });
+      res.json(result);
+    },
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // GET /users/:id — 查询用户详情（含文章）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.get('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    docs: {
-      summary: '获取用户详情',
-      description: '查询用户详情，包含该用户发布的所有文章。',
-      tags: ['用户'],
-      responses: {
-        200: { description: '查询成功' },
-        404: { description: '用户不存在' },
+  app.get(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      docs: {
+        summary: "获取用户详情",
+        description: "查询用户详情，包含该用户发布的所有文章。",
+        tags: ["用户"],
+        responses: {
+          200: { description: "查询成功" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const user = await app.services.user.findById(id);
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
 
-    if (!user) {
-      app.throw(404, '用户不存在');
-    }
+      if (!user) {
+        app.throw(404, "用户不存在");
+      }
 
-    res.json(user);
-  });
+      res.json(user);
+    },
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // POST /users — 创建用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.post('/', {
-    validate: {
-      body: {
-        name: 'string:1-50',
-        email: 'email',
-        age: 'number:0-200?',
-        role: 'enum:admin,user,editor?',
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50",
+          email: "email",
+          age: "number:0-200?",
+          role: "enum:admin,user,editor?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建用户",
+        description: "创建新用户。需要 Bearer Token 认证。邮箱必须唯一。",
+        tags: ["用户"],
+        responses: {
+          201: { description: "创建成功" },
+          400: { description: "参数校验失败" },
+          401: { description: "未认证" },
+          409: { description: "邮箱已注册" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建用户',
-      description: '创建新用户。需要 Bearer Token 认证。邮箱必须唯一。',
-      tags: ['用户'],
-      responses: {
-        201: { description: '创建成功' },
-        400: { description: '参数校验失败' },
-        401: { description: '未认证' },
-        409: { description: '邮箱已注册' },
-      },
+    async (req, res) => {
+      const body = req.valid("body");
+      const user = await app.services.user.create(body);
+      res.json(user, 201);
     },
-  }, async (req, res) => {
-    const body = req.valid('body');
-    const user = await app.services.user.create(body);
-    res.json(user, 201);
-  });
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // PUT /users/:id — 更新用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.put('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-      body: {
-        name: 'string:1-50?',
-        email: 'email?',
-        age: 'number:0-200?',
+  app.put(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+        body: {
+          name: "string:1-50?",
+          email: "email?",
+          age: "number:0-200?",
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "更新用户",
+        description: "更新用户信息。只需传入需要更新的字段。",
+        tags: ["用户"],
+        responses: {
+          200: { description: "更新成功" },
+          400: { description: "参数校验失败" },
+          401: { description: "未认证" },
+          404: { description: "用户不存在" },
+          409: { description: "邮箱已被占用" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '更新用户',
-      description: '更新用户信息。只需传入需要更新的字段。',
-      tags: ['用户'],
-      responses: {
-        200: { description: '更新成功' },
-        400: { description: '参数校验失败' },
-        401: { description: '未认证' },
-        404: { description: '用户不存在' },
-        409: { description: '邮箱已被占用' },
-      },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const body = req.valid("body");
+      const user = await app.services.user.update(id, body);
+      res.json(user);
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const body = req.valid('body');
-    const user = await app.services.user.update(id, body);
-    res.json(user);
-  });
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // DELETE /users/:id — 删除用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.delete('/:id', {
-    validate: {
-      param: { id: 'number:1-' },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '删除用户',
-      description: '删除用户及其所有文章（CASCADE）。不可逆操作。',
-      tags: ['用户'],
-      responses: {
-        204: { description: '删除成功' },
-        401: { description: '未认证' },
-        404: { description: '用户不存在' },
+  app.delete(
+    "/:id",
+    {
+      validate: {
+        param: { id: "number:1-" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "删除用户",
+        description: "删除用户及其所有文章（CASCADE）。不可逆操作。",
+        tags: ["用户"],
+        responses: {
+          204: { description: "删除成功" },
+          401: { description: "未认证" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    await app.services.user.delete(id);
-    res.status(204).json(null);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      await app.services.user.delete(id);
+      res.status(204).json(null);
+    },
+  );
 });
 ```
 
@@ -893,10 +915,10 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/index.ts
-import { bootstrap } from 'vextjs';
+import { bootstrap } from "vextjs";
 
 bootstrap().catch((err) => {
-  console.error('启动失败:', err);
+  console.error("启动失败:", err);
   process.exit(1);
 });
 ```
@@ -961,20 +983,20 @@ curl -X POST http://localhost:3000/users \
 
 ```typescript
 // test/users.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
-import type { TestApp } from 'vextjs';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
+import type { TestApp } from "vextjs";
 
-describe('用户 CRUD (Drizzle)', () => {
+describe("用户 CRUD (Drizzle)", () => {
   let testApp: TestApp;
-  const AUTH = 'Bearer user-1-admin';
+  const AUTH = "Bearer user-1-admin";
 
   beforeEach(async () => {
     testApp = await createTestApp({
       plugins: true, // 加载数据库插件
       config: {
         database: {
-          url: ':memory:', // 使用内存数据库，测试间隔离
+          url: ":memory:", // 使用内存数据库，测试间隔离
           autoCreate: true,
         },
       },
@@ -985,53 +1007,53 @@ describe('用户 CRUD (Drizzle)', () => {
     await testApp?.close();
   });
 
-  it('GET /users/list 应返回种子数据', async () => {
+  it("GET /users/list 应返回种子数据", async () => {
     const res = await testApp.request
-      .get('/users/list')
+      .get("/users/list")
       .query({ page: 1, limit: 10 });
 
     expect(res.status).toBe(200);
     expect(res.body.data.total).toBe(3); // 种子数据 3 个用户
-    expect(res.body.data.items[0]).toHaveProperty('id');
-    expect(res.body.data.items[0]).toHaveProperty('name');
-    expect(res.body.data.items[0]).toHaveProperty('email');
+    expect(res.body.data.items[0]).toHaveProperty("id");
+    expect(res.body.data.items[0]).toHaveProperty("name");
+    expect(res.body.data.items[0]).toHaveProperty("email");
   });
 
-  it('GET /users/:id 应包含关联文章', async () => {
-    const res = await testApp.request.get('/users/1');
+  it("GET /users/:id 应包含关联文章", async () => {
+    const res = await testApp.request.get("/users/1");
 
     expect(res.status).toBe(200);
-    expect(res.body.data.name).toBe('Alice');
+    expect(res.body.data.name).toBe("Alice");
     expect(Array.isArray(res.body.data.posts)).toBe(true);
     expect(res.body.data.posts.length).toBeGreaterThan(0);
   });
 
-  it('POST /users 应创建用户并返回自增 ID', async () => {
+  it("POST /users 应创建用户并返回自增 ID", async () => {
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', AUTH)
+      .post("/users")
+      .set("Authorization", AUTH)
       .send({
-        name: 'Diana',
-        email: 'diana@example.com',
+        name: "Diana",
+        email: "diana@example.com",
         age: 26,
       });
 
     expect(res.status).toBe(201);
     expect(res.body.data.id).toBe(4); // 种子数据占了 1-3
-    expect(res.body.data.role).toBe('user'); // 默认值
+    expect(res.body.data.role).toBe("user"); // 默认值
     expect(res.body.data.createdAt).toBeDefined();
   });
 
-  it('DELETE /users/:id 应级联删除文章', async () => {
+  it("DELETE /users/:id 应级联删除文章", async () => {
     // Alice (id=1) 有 2 篇文章
     const deleteRes = await testApp.request
-      .delete('/users/1')
-      .set('Authorization', AUTH);
+      .delete("/users/1")
+      .set("Authorization", AUTH);
 
     expect(deleteRes.status).toBe(204);
 
     // 确认用户和文章都已删除
-    const getRes = await testApp.request.get('/users/1');
+    const getRes = await testApp.request.get("/users/1");
     expect(getRes.status).toBe(404);
   });
 });
@@ -1044,8 +1066,8 @@ describe('用户 CRUD (Drizzle)', () => {
 Drizzle 支持声明式的关联查询，避免手动 JOIN：
 
 ```typescript
-import { relations } from 'drizzle-orm';
-import { users, posts } from './schema.js';
+import { relations } from "drizzle-orm";
+import { users, posts } from "./schema.js";
 
 // 声明关联关系
 export const usersRelations = relations(users, ({ many }) => ({
@@ -1074,7 +1096,7 @@ const usersWithPosts = await db.query.users.findMany({
 ### 事务
 
 ```typescript
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql } from "drizzle-orm";
 
 // 事务：转账操作
 async function transfer(fromId: number, toId: number, amount: number) {
@@ -1093,7 +1115,7 @@ async function transfer(fromId: number, toId: number, amount: number) {
 
     // 记录交易
     tx.insert(transactions)
-      .values({ fromId, toId, amount, type: 'transfer' })
+      .values({ fromId, toId, amount, type: "transfer" })
       .run();
   });
 }
@@ -1102,7 +1124,7 @@ async function transfer(fromId: number, toId: number, amount: number) {
 ### 子查询与聚合
 
 ```typescript
-import { eq, count, avg, gt, sql } from 'drizzle-orm';
+import { eq, count, avg, gt, sql } from "drizzle-orm";
 
 // 统计每个用户的文章数
 const userPostCounts = db
@@ -1141,8 +1163,8 @@ const activeAuthors = db
 ### 动态条件构建
 
 ```typescript
-import { and, or, eq, like, gte, lte, sql } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
+import { and, or, eq, like, gte, lte, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 interface UserFilter {
   keyword?: string;
@@ -1182,7 +1204,7 @@ function buildUserFilter(filter: UserFilter): SQL | undefined {
 const items = db
   .select()
   .from(users)
-  .where(buildUserFilter({ keyword: 'alice', role: 'admin', minAge: 20 }))
+  .where(buildUserFilter({ keyword: "alice", role: "admin", minAge: 20 }))
   .all();
 ```
 
@@ -1199,24 +1221,24 @@ import {
   integer,
   timestamp,
   boolean,
-} from 'drizzle-orm/pg-core';
+} from "drizzle-orm/pg-core";
 
-export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  age: integer('age'),
-  role: text('role').notNull().default('user'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  age: integer("age"),
+  role: text("role").notNull().default("user"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 ```
 
 ```typescript
 // src/db/index.ts — 改用 pg 驱动
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema.js';
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema.js";
 
 export function createDatabase(config: { url: string }) {
   const client = postgres(config.url);
@@ -1229,14 +1251,14 @@ export function createDatabase(config: { url: string }) {
 
 ## 项目模式总结
 
-| 层级 | 职责 | 文件 |
-|------|------|------|
-| **Schema** | 表定义 + 类型推断 | `src/db/schema.ts` |
-| **连接工厂** | 创建数据库实例 | `src/db/index.ts` |
-| **插件** | 初始化连接、挂载 `app.db`、清理 | `src/plugins/database.ts` |
-| **服务层** | 业务逻辑 + Drizzle 查询 | `src/services/user.ts` |
-| **路由层** | 请求校验 + 调用服务 + 响应 | `src/routes/users.ts` |
-| **类型声明** | `app.db` 类型扩展 | `types/vext.d.ts` |
+| 层级         | 职责                            | 文件                      |
+| ------------ | ------------------------------- | ------------------------- |
+| **Schema**   | 表定义 + 类型推断               | `src/db/schema.ts`        |
+| **连接工厂** | 创建数据库实例                  | `src/db/index.ts`         |
+| **插件**     | 初始化连接、挂载 `app.db`、清理 | `src/plugins/database.ts` |
+| **服务层**   | 业务逻辑 + Drizzle 查询         | `src/services/user.ts`    |
+| **路由层**   | 请求校验 + 调用服务 + 响应      | `src/routes/users.ts`     |
+| **类型声明** | `app.db` 类型扩展               | `types/vext.d.ts`         |
 
 ### 核心原则
 

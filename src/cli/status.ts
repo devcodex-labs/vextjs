@@ -1,4 +1,8 @@
-import { readPidFile, isProcessAlive, DEFAULT_PID_FILE } from "../lib/cluster/pid-file.js";
+import {
+  readPidFile,
+  isProcessAlive,
+  DEFAULT_PID_FILE,
+} from "../lib/cluster/pid-file.js";
 
 /**
  * status.ts — vext status CLI 命令
@@ -189,7 +193,8 @@ function formatUptime(seconds: number): string {
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 

@@ -17,6 +17,7 @@ VextJS 采用 **分层架构**，将业务逻辑集中在服务层（Service Lay
 - **数据层** 由插件提供（如数据库 ORM），通过 `app` 对象访问
 
 这种分层使得：
+
 - 业务逻辑可以在不同路由间复用
 - 服务层可以独立进行单元测试（不依赖 HTTP）
 - 切换底层 Adapter 不影响业务代码
@@ -29,7 +30,7 @@ VextJS 采用 **分层架构**，将业务逻辑集中在服务层（Service Lay
 
 ```typescript
 // src/services/user.ts
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export default class UserService {
   private app: VextApp;
@@ -51,23 +52,23 @@ export default class UserService {
 
   async findById(id: string) {
     // 业务逻辑...
-    const user = { id, name: 'Alice', email: 'alice@example.com' };
+    const user = { id, name: "Alice", email: "alice@example.com" };
     return user;
   }
 
   async create(data: { name: string; email: string }) {
-    this.app.logger.info({ data }, 'Creating user');
+    this.app.logger.info({ data }, "Creating user");
     // 业务逻辑...
     return { id: crypto.randomUUID(), ...data };
   }
 
   async update(id: string, data: Partial<{ name: string; email: string }>) {
-    this.app.logger.info({ id, data }, 'Updating user');
+    this.app.logger.info({ id, data }, "Updating user");
     return { id, ...data };
   }
 
   async delete(id: string) {
-    this.app.logger.info({ id }, 'Deleting user');
+    this.app.logger.info({ id }, "Deleting user");
   }
 }
 ```
@@ -76,34 +77,42 @@ export default class UserService {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', async (_req, res) => {
+  app.get("/", async (_req, res) => {
     // 通过 app.services 访问已注入的服务实例
     const users = await app.services.user.findAll();
     res.json(users);
   });
 
-  app.get('/:id', {
-    validate: { param: { id: 'string!' } },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const user = await app.services.user.findById(id);
-    if (!user) app.throw(404, 'user.not_found');
-    res.json(user);
-  });
-
-  app.post('/', {
-    validate: {
-      body: { name: 'string:1-50!', email: 'email!' },
+  app.get(
+    "/:id",
+    {
+      validate: { param: { id: "string!" } },
     },
-    middlewares: ['auth'],
-  }, async (req, res) => {
-    const data = req.valid('body');
-    const user = await app.services.user.create(data);
-    res.json(user, 201);
-  });
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
+      if (!user) app.throw(404, "user.not_found");
+      res.json(user);
+    },
+  );
+
+  app.post(
+    "/",
+    {
+      validate: {
+        body: { name: "string:1-50!", email: "email!" },
+      },
+      middlewares: ["auth"],
+    },
+    async (req, res) => {
+      const data = req.valid("body");
+      const user = await app.services.user.create(data);
+      res.json(user, 201);
+    },
+  );
 });
 ```
 
@@ -113,14 +122,14 @@ export default defineRoutes((app) => {
 
 ### 映射规则
 
-| 文件路径 | 访问方式 | 说明 |
-|---------|---------|------|
-| `services/user.ts` | `app.services.user` | 扁平命名 |
-| `services/order.ts` | `app.services.order` | 扁平命名 |
-| `services/user-profile.ts` | `app.services.userProfile` | kebab-case → camelCase |
-| `services/payment/stripe.ts` | `app.services.payment.stripe` | 嵌套命名空间 |
-| `services/payment/alipay.ts` | `app.services.payment.alipay` | 嵌套命名空间 |
-| `services/admin/user-manage.ts` | `app.services.admin.userManage` | 嵌套 + 驼峰转换 |
+| 文件路径                        | 访问方式                        | 说明                   |
+| ------------------------------- | ------------------------------- | ---------------------- |
+| `services/user.ts`              | `app.services.user`             | 扁平命名               |
+| `services/order.ts`             | `app.services.order`            | 扁平命名               |
+| `services/user-profile.ts`      | `app.services.userProfile`      | kebab-case → camelCase |
+| `services/payment/stripe.ts`    | `app.services.payment.stripe`   | 嵌套命名空间           |
+| `services/payment/alipay.ts`    | `app.services.payment.alipay`   | 嵌套命名空间           |
+| `services/admin/user-manage.ts` | `app.services.admin.userManage` | 嵌套 + 驼峰转换        |
 
 **转换规则：**
 
@@ -141,7 +150,7 @@ src/services/
 
 ```typescript
 // src/services/payment/stripe.ts
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export default class StripeService {
   private app: VextApp;
@@ -151,22 +160,22 @@ export default class StripeService {
   }
 
   async createPayment(amount: number, currency: string) {
-    this.app.logger.info({ amount, currency }, 'Creating Stripe payment');
+    this.app.logger.info({ amount, currency }, "Creating Stripe payment");
     // Stripe API 调用...
-    return { paymentId: 'pi_xxx', status: 'pending' };
+    return { paymentId: "pi_xxx", status: "pending" };
   }
 
   async refund(paymentId: string) {
-    this.app.logger.info({ paymentId }, 'Refunding Stripe payment');
-    return { refundId: 're_xxx', status: 'refunded' };
+    this.app.logger.info({ paymentId }, "Refunding Stripe payment");
+    return { refundId: "re_xxx", status: "refunded" };
   }
 }
 ```
 
 ```typescript
 // 在路由中使用嵌套服务
-app.post('/pay', async (req, res) => {
-  const result = await app.services.payment.stripe.createPayment(100, 'usd');
+app.post("/pay", async (req, res) => {
+  const result = await app.services.payment.stripe.createPayment(100, "usd");
   res.json(result);
 });
 ```
@@ -177,7 +186,7 @@ app.post('/pay', async (req, res) => {
 
 ```typescript
 // src/services/order.ts
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export default class OrderService {
   private app: VextApp;
@@ -186,18 +195,24 @@ export default class OrderService {
     this.app = app;
   }
 
-  async createOrder(userId: string, items: Array<{ productId: string; quantity: number }>) {
+  async createOrder(
+    userId: string,
+    items: Array<{ productId: string; quantity: number }>,
+  ) {
     // 调用其他 service — 通过 this.app.services 延迟访问
     const user = await this.app.services.user.findById(userId);
     if (!user) {
-      this.app.throw(404, 'user.not_found');
+      this.app.throw(404, "user.not_found");
     }
 
     // 计算价格
     const total = await this.calculateTotal(items);
 
     // 调用支付服务
-    const payment = await this.app.services.payment.stripe.createPayment(total, 'usd');
+    const payment = await this.app.services.payment.stripe.createPayment(
+      total,
+      "usd",
+    );
 
     return {
       orderId: crypto.randomUUID(),
@@ -205,11 +220,13 @@ export default class OrderService {
       items,
       total,
       paymentId: payment.paymentId,
-      status: 'created',
+      status: "created",
     };
   }
 
-  private async calculateTotal(items: Array<{ productId: string; quantity: number }>) {
+  private async calculateTotal(
+    items: Array<{ productId: string; quantity: number }>,
+  ) {
     // 业务逻辑...
     return items.reduce((sum, item) => sum + item.quantity * 10, 0);
   }
@@ -227,7 +244,7 @@ export default class OrderService {
 
   async createOrder() {
     // ✅ 方法调用时 user service 已经初始化完成
-    const user = await this.app.services.user.findById('123');
+    const user = await this.app.services.user.findById("123");
   }
 }
 ```
@@ -244,6 +261,7 @@ export default class OrderService {
   }
 }
 ```
+
 :::
 
 ## 使用插件提供的能力
@@ -253,7 +271,7 @@ export default class OrderService {
 ```typescript
 // 假设 redis 插件已通过 app.extend('cache', redis) 注入
 // src/services/user.ts
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export default class UserService {
   private app: VextApp;
@@ -280,7 +298,7 @@ export default class UserService {
 
   private async queryDatabase(id: string) {
     // 数据库查询逻辑...
-    return { id, name: 'Alice' };
+    return { id, name: "Alice" };
   }
 }
 ```
@@ -290,7 +308,7 @@ export default class UserService {
 
 ```typescript
 // src/types/extensions.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     cache: {
       get(key: string): Promise<string | null>;
@@ -315,7 +333,7 @@ export default class UserService {
     const user = await this.queryDatabase(id);
     if (!user) {
       // 直接在 service 中抛出，框架统一处理
-      this.app.throw(404, 'user.not_found');
+      this.app.throw(404, "user.not_found");
     }
     return user;
   }
@@ -323,7 +341,7 @@ export default class UserService {
   async create(data: { name: string; email: string }) {
     const existing = await this.findByEmail(data.email);
     if (existing) {
-      this.app.throw(409, '邮箱已注册', 10001);
+      this.app.throw(409, "邮箱已注册", 10001);
     }
     // 创建逻辑...
     return { id: crypto.randomUUID(), ...data };
@@ -348,16 +366,19 @@ export default class PaymentService {
   constructor(private app: VextApp) {}
 
   async processPayment(orderId: string, amount: number) {
-    this.app.logger.info({ orderId, amount }, 'Processing payment');
+    this.app.logger.info({ orderId, amount }, "Processing payment");
 
     try {
       // 调用外部支付 API...
-      const result = { transactionId: 'txn_xxx' };
-      this.app.logger.info({ orderId, transactionId: result.transactionId }, 'Payment successful');
+      const result = { transactionId: "txn_xxx" };
+      this.app.logger.info(
+        { orderId, transactionId: result.transactionId },
+        "Payment successful",
+      );
       return result;
     } catch (err) {
-      this.app.logger.error({ orderId, err }, 'Payment failed');
-      this.app.throw(500, 'payment.failed');
+      this.app.logger.error({ orderId, err }, "Payment failed");
+      this.app.throw(500, "payment.failed");
     }
   }
 }
@@ -450,7 +471,7 @@ services/
 
 ```typescript
 // src/services/_base.ts（不会被自动加载）
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export abstract class BaseService {
   protected app: VextApp;
@@ -477,7 +498,7 @@ export abstract class BaseService {
 
 ```typescript
 // src/services/user.ts
-import { BaseService } from './_base.js';
+import { BaseService } from "./_base.js";
 
 export default class UserService extends BaseService {
   async findAll(page = 1, limit = 20) {
@@ -505,15 +526,15 @@ export default class UserService extends BaseService {
 
 ```typescript
 // src/types/services.d.ts
-import type UserService from '../services/user.js';
-import type OrderService from '../services/order.js';
+import type UserService from "../services/user.js";
+import type OrderService from "../services/order.js";
 
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextServices {
     user: UserService;
     order: OrderService;
     payment: {
-      stripe: import('../services/payment/stripe.js').default;
+      stripe: import("../services/payment/stripe.js").default;
     };
   }
 }

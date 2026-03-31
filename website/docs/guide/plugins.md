@@ -8,25 +8,25 @@ VextJS 的插件系统是框架的**唯一扩展入口**。通过插件，你可
 
 ```typescript
 // src/plugins/redis.ts
-import { definePlugin } from 'vextjs';
-import Redis from 'ioredis';
+import { definePlugin } from "vextjs";
+import Redis from "ioredis";
 
 export default definePlugin({
-  name: 'redis',
+  name: "redis",
 
   async setup(app) {
-    const redis = new Redis(app.config.redis?.url ?? 'redis://localhost:6379');
+    const redis = new Redis(app.config.redis?.url ?? "redis://localhost:6379");
 
     // 向 app 挂载自定义能力
-    app.extend('cache', redis);
+    app.extend("cache", redis);
 
     // 注册优雅关闭钩子
     app.onClose(async () => {
-      app.logger.info('Closing Redis connection...');
+      app.logger.info("Closing Redis connection...");
       await redis.quit();
     });
 
-    app.logger.info('Redis plugin initialized');
+    app.logger.info("Redis plugin initialized");
   },
 });
 ```
@@ -56,8 +56,8 @@ interface VextPlugin {
 
 ```typescript
 export default definePlugin({
-  name: 'user-cache',
-  dependencies: ['redis'],  // 确保 redis 插件先初始化
+  name: "user-cache",
+  dependencies: ["redis"], // 确保 redis 插件先初始化
 
   async setup(app) {
     // 此时 app.cache（由 redis 插件注入）已可用
@@ -79,17 +79,17 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'mailer',
+  name: "mailer",
 
   async setup(app) {
     const mailer = {
       async send(to: string, subject: string, body: string) {
         // 发送邮件逻辑...
-        app.logger.info({ to, subject }, 'Email sent');
+        app.logger.info({ to, subject }, "Email sent");
       },
     };
 
-    app.extend('mailer', mailer);
+    app.extend("mailer", mailer);
   },
 });
 ```
@@ -98,7 +98,7 @@ export default definePlugin({
 
 ```typescript
 // 在路由或服务中
-await (app as any).mailer.send('user@example.com', 'Welcome', 'Hello!');
+await (app as any).mailer.send("user@example.com", "Welcome", "Hello!");
 ```
 
 :::tip 类型提示
@@ -106,7 +106,7 @@ await (app as any).mailer.send('user@example.com', 'Welcome', 'Hello!');
 
 ```typescript
 // src/types/extensions.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     mailer: {
       send(to: string, subject: string, body: string): Promise<void>;
@@ -124,15 +124,18 @@ declare module 'vextjs' {
 
 ```typescript
 export default definePlugin({
-  name: 'security-headers',
+  name: "security-headers",
 
   setup(app) {
     app.use(async (req, res, next) => {
       await next();
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("X-XSS-Protection", "1; mode=block");
+      res.setHeader(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains",
+      );
     });
   },
 });
@@ -150,14 +153,14 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'database',
+  name: "database",
 
   async setup(app) {
     const db = await createDatabaseConnection(app.config.database);
-    app.extend('db', db);
+    app.extend("db", db);
 
     app.onClose(async () => {
-      app.logger.info('Closing database connection...');
+      app.logger.info("Closing database connection...");
       await db.disconnect();
     });
   },
@@ -170,14 +173,14 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'warmup',
+  name: "warmup",
 
   setup(app) {
     app.onReady(async () => {
       // HTTP 已开始监听，可以执行预热操作
-      app.logger.info('Warming up caches...');
+      app.logger.info("Warming up caches...");
       await app.services.product.warmupCache();
-      app.logger.info('Cache warmup complete');
+      app.logger.info("Cache warmup complete");
     });
   },
 });
@@ -188,11 +191,11 @@ export default definePlugin({
 替换框架内置的参数校验引擎。默认使用 schema-dsl，可替换为 Zod、Yup 等第三方校验库。
 
 ```typescript
-import { definePlugin } from 'vextjs';
-import type { VextValidator } from 'vextjs';
+import { definePlugin } from "vextjs";
+import type { VextValidator } from "vextjs";
 
 export default definePlugin({
-  name: 'zod-validator',
+  name: "zod-validator",
 
   setup(app) {
     const zodValidator: VextValidator = {
@@ -217,13 +220,13 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'error-tracker',
+  name: "error-tracker",
 
   setup(app) {
     app.setThrow((originalThrow) => {
       return (status, message, paramsOrCode, code) => {
         // 在抛出前记录错误
-        app.logger.warn({ status, message }, 'HTTP error thrown');
+        app.logger.warn({ status, message }, "HTTP error thrown");
         // 调用原始实现
         originalThrow(status, message, paramsOrCode, code);
       };
@@ -238,8 +241,8 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'redis-rate-limit',
-  dependencies: ['redis'],
+  name: "redis-rate-limit",
+  dependencies: ["redis"],
 
   setup(app) {
     app.setRateLimiter({
@@ -266,7 +269,7 @@ export default definePlugin({
 
 ```typescript
 export default definePlugin({
-  name: 'custom-request-id',
+  name: "custom-request-id",
 
   setup(app) {
     let counter = 0;
@@ -334,45 +337,45 @@ definePlugin({ name: 'session', dependencies: ['cache', 'database'], setup: ... 
 
 ```typescript
 // src/plugins/database.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'database',
+  name: "database",
 
   async setup(app) {
     // 从配置中读取数据库连接信息
     const dbConfig = app.config.database ?? {
-      host: 'localhost',
+      host: "localhost",
       port: 5432,
-      database: 'myapp',
+      database: "myapp",
     };
 
     // 创建数据库连接（示例）
     const pool = await createPool(dbConfig);
 
     // 注入到 app
-    app.extend('db', {
+    app.extend("db", {
       query: (sql: string, params?: unknown[]) => pool.query(sql, params),
       transaction: (fn: Function) => pool.transaction(fn),
     });
 
     // 优雅关闭
     app.onClose(async () => {
-      app.logger.info('Closing database pool...');
+      app.logger.info("Closing database pool...");
       await pool.end();
     });
 
     // 就绪检查
     app.onReady(async () => {
       try {
-        await pool.query('SELECT 1');
-        app.logger.info('Database connection verified');
+        await pool.query("SELECT 1");
+        app.logger.info("Database connection verified");
       } catch (err) {
-        app.logger.error({ err }, 'Database health check failed');
+        app.logger.error({ err }, "Database health check failed");
       }
     });
 
-    app.logger.info('Database plugin initialized');
+    app.logger.info("Database plugin initialized");
   },
 });
 
@@ -390,15 +393,15 @@ async function createPool(config: any) {
 
 ```typescript
 // src/plugins/sentry.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'sentry',
+  name: "sentry",
 
   setup(app) {
     const dsn = app.config.sentry?.dsn;
     if (!dsn) {
-      app.logger.warn('Sentry DSN not configured, skipping initialization');
+      app.logger.warn("Sentry DSN not configured, skipping initialization");
       return;
     }
 
@@ -412,14 +415,17 @@ export default definePlugin({
       } catch (err) {
         // 上报到 Sentry
         // Sentry.captureException(err, { extra: { requestId: req.requestId } });
-        app.logger.error({ err, requestId: req.requestId }, 'Error captured by Sentry');
+        app.logger.error(
+          { err, requestId: req.requestId },
+          "Error captured by Sentry",
+        );
 
         // 重新抛出，让框架的 error-handler 处理响应
         throw err;
       }
     });
 
-    app.logger.info('Sentry plugin initialized');
+    app.logger.info("Sentry plugin initialized");
   },
 });
 ```
@@ -428,25 +434,25 @@ export default definePlugin({
 
 ```typescript
 // src/plugins/scheduler.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'scheduler',
+  name: "scheduler",
 
   setup(app) {
     const timers: NodeJS.Timeout[] = [];
 
-    app.extend('scheduler', {
+    app.extend("scheduler", {
       every(ms: number, name: string, fn: () => Promise<void>) {
         const timer = setInterval(async () => {
           try {
             await fn();
           } catch (err) {
-            app.logger.error({ err, task: name }, 'Scheduled task failed');
+            app.logger.error({ err, task: name }, "Scheduled task failed");
           }
         }, ms);
         timers.push(timer);
-        app.logger.info({ name, intervalMs: ms }, 'Scheduled task registered');
+        app.logger.info({ name, intervalMs: ms }, "Scheduled task registered");
       },
     });
 
@@ -460,10 +466,14 @@ export default definePlugin({
 
     // 就绪后注册定时任务
     app.onReady(async () => {
-      (app as any).scheduler.every(60_000, 'cleanup-expired-sessions', async () => {
-        // await app.services.session.cleanupExpired();
-        app.logger.debug('Expired sessions cleaned up');
-      });
+      (app as any).scheduler.every(
+        60_000,
+        "cleanup-expired-sessions",
+        async () => {
+          // await app.services.session.cleanupExpired();
+          app.logger.debug("Expired sessions cleaned up");
+        },
+      );
     });
   },
 });
@@ -473,22 +483,22 @@ export default definePlugin({
 
 VextJS 内置了以下插件：
 
-| 插件名 | 说明 | 条件加载 |
-|--------|------|---------|
+| 插件名        | 说明                      | 条件加载                          |
+| ------------- | ------------------------- | --------------------------------- |
 | **monsqlize** | MonSQLize 数据库 ORM 集成 | 检测到 `monsqlize` 依赖时自动加载 |
 
 内置插件通过 `shouldLoadMonSQLize()` 检测是否应加载，实现零配置零开销——未安装对应依赖时完全不加载。
 
 ## 插件 vs 中间件 vs 服务
 
-| 方面 | 插件 | 中间件 | 服务 |
-|------|------|--------|------|
-| 放置目录 | `src/plugins/` | `src/middlewares/` | `src/services/` |
-| 定义方式 | `definePlugin()` | `defineMiddleware()` | `export default class` |
-| 执行时机 | 启动时（一次性） | 每个请求 | 每次方法调用 |
-| 访问 `app` | `setup(app)` | `req.app` | `constructor(app)` |
-| 主要职责 | 扩展框架能力 | 请求拦截/处理 | 业务逻辑 |
-| 典型用例 | 数据库连接、缓存、监控 | 认证、日志、限流 | CRUD、计算、外部 API |
+| 方面       | 插件                   | 中间件               | 服务                   |
+| ---------- | ---------------------- | -------------------- | ---------------------- |
+| 放置目录   | `src/plugins/`         | `src/middlewares/`   | `src/services/`        |
+| 定义方式   | `definePlugin()`       | `defineMiddleware()` | `export default class` |
+| 执行时机   | 启动时（一次性）       | 每个请求             | 每次方法调用           |
+| 访问 `app` | `setup(app)`           | `req.app`            | `constructor(app)`     |
+| 主要职责   | 扩展框架能力           | 请求拦截/处理        | 业务逻辑               |
+| 典型用例   | 数据库连接、缓存、监控 | 认证、日志、限流     | CRUD、计算、外部 API   |
 
 **选择指南：**
 
@@ -506,11 +516,11 @@ VextJS 内置了以下插件：
 
 ```typescript
 export default definePlugin({
-  name: 'redis',
+  name: "redis",
 
   async setup(app) {
     if (!app.config.redis?.enabled) {
-      app.logger.info('Redis not configured, skipping');
+      app.logger.info("Redis not configured, skipping");
       return;
     }
 
@@ -524,7 +534,7 @@ export default definePlugin({
 如果插件打开了外部连接（数据库、消息队列、Redis 等），必须注册 `app.onClose()` 钩子确保优雅关闭：
 
 ```typescript
-app.extend('mq', messageQueue);
+app.extend("mq", messageQueue);
 app.onClose(async () => {
   await messageQueue.close();
 });
@@ -537,16 +547,20 @@ app.onClose(async () => {
 ```typescript
 // ✅ 正确 — 显式声明
 definePlugin({
-  name: 'session',
-  dependencies: ['redis'],
-  setup(app) { /* ... */ },
+  name: "session",
+  dependencies: ["redis"],
+  setup(app) {
+    /* ... */
+  },
 });
 
 // ❌ 危险 — 依赖文件名排序
 definePlugin({
-  name: 'session',
+  name: "session",
   // 没有 dependencies，假设 redis 因为字母序在前面会先加载
-  setup(app) { /* ... */ },
+  setup(app) {
+    /* ... */
+  },
 });
 ```
 
@@ -572,16 +586,19 @@ setup(app) {
 
 ```typescript
 export default definePlugin({
-  name: 'analytics',
+  name: "analytics",
 
   async setup(app) {
     try {
       const client = await initAnalytics(app.config.analytics);
-      app.extend('analytics', client);
+      app.extend("analytics", client);
     } catch (err) {
-      app.logger.warn({ err }, 'Analytics plugin init failed, continuing without analytics');
+      app.logger.warn(
+        { err },
+        "Analytics plugin init failed, continuing without analytics",
+      );
       // 提供空实现，避免其他代码因 app.analytics 不存在而崩溃
-      app.extend('analytics', {
+      app.extend("analytics", {
         track: () => {},
         identify: () => {},
       });

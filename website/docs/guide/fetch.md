@@ -4,34 +4,40 @@ VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 18+ 原生
 
 ## 功能概览
 
-| 能力 | 说明 |
-|------|------|
+| 能力               | 说明                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
 | **requestId 传播** | 自动从 `requestContext` 读取 `requestId`，注入到出站请求的 `x-request-id` 头，实现跨服务请求追踪 |
-| **超时控制** | 基于 `AbortController` + `setTimeout`，支持全局默认 + 单次请求覆盖 |
-| **自动重试** | 仅对幂等方法（GET/HEAD/OPTIONS/PUT/DELETE）在 5xx 或网络错误时自动重试 |
-| **结构化日志** | 出站请求自动记录 method/url/status/duration/requestId，与 `app.logger` 统一 |
-| **快捷方法** | `get` / `post` / `put` / `patch` / `delete` 快捷调用 |
-| **create() 工厂** | 创建预配置的子客户端（固定 baseURL + 默认 headers），适合对接多个微服务 |
+| **超时控制**       | 基于 `AbortController` + `setTimeout`，支持全局默认 + 单次请求覆盖                               |
+| **自动重试**       | 仅对幂等方法（GET/HEAD/OPTIONS/PUT/DELETE）在 5xx 或网络错误时自动重试                           |
+| **结构化日志**     | 出站请求自动记录 method/url/status/duration/requestId，与 `app.logger` 统一                      |
+| **快捷方法**       | `get` / `post` / `put` / `patch` / `delete` 快捷调用                                             |
+| **create() 工厂**  | 创建预配置的子客户端（固定 baseURL + 默认 headers），适合对接多个微服务                          |
 
 ## 基本用法
 
 `app.fetch` 的签名与原生 `fetch` 完全兼容，可以无缝替换：
 
 ```typescript
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/users/:id/posts', {
-    validate: { param: { id: 'string!' } },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
+  app.get(
+    "/users/:id/posts",
+    {
+      validate: { param: { id: "string!" } },
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
 
-    // 使用 app.fetch 调用下游服务
-    const response = await app.fetch(`https://api.example.com/users/${id}/posts`);
-    const posts = await response.json();
+      // 使用 app.fetch 调用下游服务
+      const response = await app.fetch(
+        `https://api.example.com/users/${id}/posts`,
+      );
+      const posts = await response.json();
 
-    res.json(posts);
-  });
+      res.json(posts);
+    },
+  );
 });
 ```
 
@@ -46,7 +52,7 @@ export default defineRoutes((app) => {
 ### GET
 
 ```typescript
-const response = await app.fetch.get('https://api.example.com/users');
+const response = await app.fetch.get("https://api.example.com/users");
 const users = await response.json();
 ```
 
@@ -55,9 +61,9 @@ const users = await response.json();
 `post` / `put` / `patch` 方法的第二个参数为请求体对象，会自动 `JSON.stringify` 并设置 `Content-Type: application/json`：
 
 ```typescript
-const response = await app.fetch.post('https://api.example.com/users', {
-  name: '张三',
-  email: 'zhangsan@example.com',
+const response = await app.fetch.post("https://api.example.com/users", {
+  name: "张三",
+  email: "zhangsan@example.com",
 });
 const newUser = await response.json();
 ```
@@ -66,8 +72,8 @@ const newUser = await response.json();
 
 ```typescript
 const response = await app.fetch.put(`https://api.example.com/users/${id}`, {
-  name: '李四',
-  email: 'lisi@example.com',
+  name: "李四",
+  email: "lisi@example.com",
 });
 ```
 
@@ -75,7 +81,7 @@ const response = await app.fetch.put(`https://api.example.com/users/${id}`, {
 
 ```typescript
 const response = await app.fetch.patch(`https://api.example.com/users/${id}`, {
-  name: '王五',
+  name: "王五",
 });
 ```
 
@@ -87,15 +93,15 @@ const response = await app.fetch.delete(`https://api.example.com/users/${id}`);
 
 ### 方法签名一览
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `app.fetch(input, init?)` | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | 通用调用（与原生 fetch 兼容） |
-| `app.fetch.get(url, init?)` | `(url: string, init?: VextFetchInit) => Promise<Response>` | GET 请求 |
-| `app.fetch.post(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | POST 请求，body 自动序列化 |
-| `app.fetch.put(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | PUT 请求，body 自动序列化 |
-| `app.fetch.patch(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | PATCH 请求，body 自动序列化 |
-| `app.fetch.delete(url, init?)` | `(url: string, init?: VextFetchInit) => Promise<Response>` | DELETE 请求 |
-| `app.fetch.create(options)` | `(options: VextFetchClientOptions) => VextFetch` | 创建子客户端 |
+| 方法                                 | 签名                                                                           | 说明                          |
+| ------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------- |
+| `app.fetch(input, init?)`            | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | 通用调用（与原生 fetch 兼容） |
+| `app.fetch.get(url, init?)`          | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | GET 请求                      |
+| `app.fetch.post(url, body?, init?)`  | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | POST 请求，body 自动序列化    |
+| `app.fetch.put(url, body?, init?)`   | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PUT 请求，body 自动序列化     |
+| `app.fetch.patch(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PATCH 请求，body 自动序列化   |
+| `app.fetch.delete(url, init?)`       | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | DELETE 请求                   |
+| `app.fetch.create(options)`          | `(options: VextFetchClientOptions) => VextFetch`                               | 创建子客户端                  |
 
 ## 配置
 
@@ -108,24 +114,25 @@ const response = await app.fetch.delete(`https://api.example.com/users/${id}`);
 export default {
   port: 3000,
   fetch: {
-    timeout: 10000,          // 全局默认超时（毫秒），默认 10000
-    retry: 2,                // 默认重试次数（仅幂等方法），默认 0
-    retryDelay: 1000,        // 默认重试间隔（毫秒），默认 1000
-    propagateHeaders: [      // 除 x-request-id 外自动从入站请求透传到出站请求的头
-      'traceparent',         // W3C Trace Context（APM 分布式追踪）
-      'tracestate',          // W3C Trace Context 附加状态
+    timeout: 10000, // 全局默认超时（毫秒），默认 10000
+    retry: 2, // 默认重试次数（仅幂等方法），默认 0
+    retryDelay: 1000, // 默认重试间隔（毫秒），默认 1000
+    propagateHeaders: [
+      // 除 x-request-id 外自动从入站请求透传到出站请求的头
+      "traceparent", // W3C Trace Context（APM 分布式追踪）
+      "tracestate", // W3C Trace Context 附加状态
       // 或 'x-trace-id', 'x-tenant-id' 等自定义头
     ],
   },
 };
 ```
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `timeout` | `number` | `10000` | 全局默认请求超时（毫秒） |
-| `retry` | `number` | `0` | 默认重试次数（仅幂等方法生效） |
-| `retryDelay` | `number \| (attempt) => number` | `1000` | 默认重试间隔（毫秒），支持函数形式 |
-| `propagateHeaders` | `string[]` | `[]` | 需要从入站请求自动透传到出站请求的头名称列表 |
+| 配置项             | 类型                            | 默认值  | 说明                                         |
+| ------------------ | ------------------------------- | ------- | -------------------------------------------- |
+| `timeout`          | `number`                        | `10000` | 全局默认请求超时（毫秒）                     |
+| `retry`            | `number`                        | `0`     | 默认重试次数（仅幂等方法生效）               |
+| `retryDelay`       | `number \| (attempt) => number` | `1000`  | 默认重试间隔（毫秒），支持函数形式           |
+| `propagateHeaders` | `string[]`                      | `[]`    | 需要从入站请求自动透传到出站请求的头名称列表 |
 
 :::tip propagateHeaders 工作原理
 配置后，`requestId` 中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
@@ -140,7 +147,7 @@ export default {
 
 ```typescript
 // 单次请求设置 5 秒超时 + 3 次重试
-const response = await app.fetch.get('https://api.example.com/data', {
+const response = await app.fetch.get("https://api.example.com/data", {
   timeout: 5000,
   retry: 3,
   retryDelay: 500,
@@ -151,13 +158,13 @@ const response = await app.fetch.get('https://api.example.com/data', {
 
 `VextFetchInit` 继承自标准 `RequestInit`，额外扩展了以下字段：
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `timeout` | `number` | 全局 `config.fetch.timeout` | 请求超时（毫秒） |
-| `retry` | `number` | 全局 `config.fetch.retry` | 重试次数（仅幂等方法） |
-| `retryDelay` | `number \| (attempt: number) => number` | 全局 `config.fetch.retryDelay` | 重试间隔，支持函数形式实现指数退避 |
-| `propagateRequestId` | `boolean` | `true` | 是否自动注入 `x-request-id` 头（禁用时仍会透传 `propagatedHeaders`） |
-| `propagateHeaders` | `string[]` | — | 本次请求额外需要透传的头（需已在 `config.fetch.propagateHeaders` 中声明才会有值） |
+| 字段                 | 类型                                    | 默认值                         | 说明                                                                              |
+| -------------------- | --------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
+| `timeout`            | `number`                                | 全局 `config.fetch.timeout`    | 请求超时（毫秒）                                                                  |
+| `retry`              | `number`                                | 全局 `config.fetch.retry`      | 重试次数（仅幂等方法）                                                            |
+| `retryDelay`         | `number \| (attempt: number) => number` | 全局 `config.fetch.retryDelay` | 重试间隔，支持函数形式实现指数退避                                                |
+| `propagateRequestId` | `boolean`                               | `true`                         | 是否自动注入 `x-request-id` 头（禁用时仍会透传 `propagatedHeaders`）              |
+| `propagateHeaders`   | `string[]`                              | —                              | 本次请求额外需要透传的头（需已在 `config.fetch.propagateHeaders` 中声明才会有值） |
 
 :::tip 优先级
 单次请求 `init.timeout` > `create()` 的 `options.timeout` > 全局 `config.fetch.timeout`
@@ -168,18 +175,18 @@ const response = await app.fetch.get('https://api.example.com/data', {
 当你需要频繁调用同一个下游服务时，使用 `create()` 创建预配置的子客户端，避免重复传入 `baseURL` 和公共 headers：
 
 ```typescript
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'api-clients',
+  name: "api-clients",
 
   setup(app) {
     // 创建用户服务客户端
     const userServiceClient = app.fetch.create({
-      baseURL: 'http://user-service:3001/api/v1',
+      baseURL: "http://user-service:3001/api/v1",
       headers: {
-        'x-service-name': 'order-service',
-        'Authorization': `Bearer ${app.config.serviceToken}`,
+        "x-service-name": "order-service",
+        Authorization: `Bearer ${app.config.serviceToken}`,
       },
       timeout: 5000,
       retry: 2,
@@ -187,15 +194,15 @@ export default definePlugin({
 
     // 创建支付服务客户端
     const paymentClient = app.fetch.create({
-      baseURL: 'http://payment-service:3002/api/v1',
+      baseURL: "http://payment-service:3002/api/v1",
       headers: {
-        'x-service-name': 'order-service',
+        "x-service-name": "order-service",
       },
-      timeout: 15000,  // 支付服务超时设长一些
+      timeout: 15000, // 支付服务超时设长一些
     });
 
     // 挂载到 app 上供全局使用
-    app.extend('clients', {
+    app.extend("clients", {
       userService: userServiceClient,
       payment: paymentClient,
     });
@@ -207,47 +214,54 @@ export default definePlugin({
 
 ```typescript
 export default defineRoutes((app) => {
-  app.post('/orders', {
-    validate: {
-      body: {
-        productId: 'string!',
-        quantity: 'number:1-99!',
+  app.post(
+    "/orders",
+    {
+      validate: {
+        body: {
+          productId: "string!",
+          quantity: "number:1-99!",
+        },
       },
     },
-  }, async (req, res) => {
-    const body = req.valid('body');
+    async (req, res) => {
+      const body = req.valid("body");
 
-    // 使用预配置的子客户端 — 自动拼接 baseURL + 合并 headers
-    const userResp = await app.clients.userService.get(`/users/${req.userId}`);
-    const user = await userResp.json();
+      // 使用预配置的子客户端 — 自动拼接 baseURL + 合并 headers
+      const userResp = await app.clients.userService.get(
+        `/users/${req.userId}`,
+      );
+      const user = await userResp.json();
 
-    const payResp = await app.clients.payment.post('/charges', {
-      userId: user.id,
-      amount: body.quantity * 100,
-    });
-    const charge = await payResp.json();
+      const payResp = await app.clients.payment.post("/charges", {
+        userId: user.id,
+        amount: body.quantity * 100,
+      });
+      const charge = await payResp.json();
 
-    res.json({ orderId: charge.orderId }, 201);
-  });
+      res.json({ orderId: charge.orderId }, 201);
+    },
+  );
 });
 ```
 
 ### VextFetchClientOptions
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `baseURL` | `string` | ✅ | 基础 URL，所有请求路径自动拼接 |
-| `headers` | `Record<string, string>` | ❌ | 默认请求头（与单次请求 headers 合并） |
-| `timeout` | `number` | ❌ | 子客户端默认超时 |
-| `retry` | `number` | ❌ | 子客户端默认重试次数 |
+| 字段      | 类型                     | 必填 | 说明                                  |
+| --------- | ------------------------ | ---- | ------------------------------------- |
+| `baseURL` | `string`                 | ✅   | 基础 URL，所有请求路径自动拼接        |
+| `headers` | `Record<string, string>` | ❌   | 默认请求头（与单次请求 headers 合并） |
+| `timeout` | `number`                 | ❌   | 子客户端默认超时                      |
+| `retry`   | `number`                 | ❌   | 子客户端默认重试次数                  |
 
 :::info 嵌套 create
 子客户端也支持再次调用 `create()`，创建更细粒度的客户端：
 
 ```typescript
-const apiClient = app.fetch.create({ baseURL: 'https://api.example.com' });
-const v2Client = apiClient.create({ baseURL: 'https://api.example.com/v2' });
+const apiClient = app.fetch.create({ baseURL: "https://api.example.com" });
+const v2Client = apiClient.create({ baseURL: "https://api.example.com/v2" });
 ```
+
 :::
 
 ## requestId 自动传播
@@ -268,8 +282,8 @@ Client → [VextJS A: requestId=abc123] → app.fetch → [VextJS B: x-request-i
 某些外部 API 不支持自定义头，可以禁用传播：
 
 ```typescript
-const response = await app.fetch.get('https://third-party-api.com/data', {
-  propagateRequestId: false,  // 不注入 x-request-id
+const response = await app.fetch.get("https://third-party-api.com/data", {
+  propagateRequestId: false, // 不注入 x-request-id
   // 注意：propagatedHeaders（如 x-trace-id）仍会透传
 });
 ```
@@ -287,9 +301,9 @@ const response = await app.fetch.get('https://third-party-api.com/data', {
 export default {
   fetch: {
     propagateHeaders: [
-      'traceparent',   // W3C Trace Context（OpenTelemetry / Jaeger / Zipkin）
-      'tracestate',    // W3C Trace Context 附加状态
-      'x-tenant-id',  // 多租户标识
+      "traceparent", // W3C Trace Context（OpenTelemetry / Jaeger / Zipkin）
+      "tracestate", // W3C Trace Context 附加状态
+      "x-tenant-id", // 多租户标识
     ],
   },
 };
@@ -313,16 +327,19 @@ export default {
 
 ```typescript
 // 路由中不需要任何额外代码，框架自动处理透传
-export default defineRoutes('/orders', [
+export default defineRoutes("/orders", [
   {
-    method: 'POST',
+    method: "POST",
     handler: async (req, res) => {
       // traceparent 已自动从入站请求透传到 inventory-service
-      const stock = await app.fetch.get('http://inventory-service/check');
+      const stock = await app.fetch.get("http://inventory-service/check");
       // 同样自动透传到 payment-service
-      const payment = await app.fetch.post('http://payment-service/charge', req.body);
+      const payment = await app.fetch.post(
+        "http://payment-service/charge",
+        req.body,
+      );
 
-      res.json({ orderId: 'new-id' });
+      res.json({ orderId: "new-id" });
     },
   },
 ]);
@@ -333,14 +350,15 @@ export default defineRoutes('/orders', [
 如果某个头未在全局 `propagateHeaders` 中声明，但本次请求需要透传，直接在 `init.headers` 中手动设置：
 
 ```typescript
-await app.fetch.get('https://partner-api.com/data', {
+await app.fetch.get("https://partner-api.com/data", {
   headers: {
-    'x-partner-token': req.headers['x-partner-token'] as string,
+    "x-partner-token": req.headers["x-partner-token"] as string,
   },
 });
 ```
 
 :::tip requestId vs traceId
+
 - **requestId**（vext 内置）：自动生成，用于日志关联和内部服务间追踪
 - **traceId**（APM 系统）：由 OpenTelemetry / Jaeger 等生成，通过 `propagateHeaders` 透传
 
@@ -353,14 +371,14 @@ await app.fetch.get('https://partner-api.com/data', {
 
 ```typescript
 try {
-  const response = await app.fetch.get('https://slow-api.example.com/data', {
-    timeout: 3000,  // 3 秒超时
+  const response = await app.fetch.get("https://slow-api.example.com/data", {
+    timeout: 3000, // 3 秒超时
   });
   const data = await response.json();
   res.json(data);
 } catch (err) {
   // err.message: "[app.fetch] GET https://slow-api.example.com/data timed out after 3000ms"
-  app.throw(504, '下游服务超时');
+  app.throw(504, "下游服务超时");
 }
 ```
 
@@ -374,25 +392,25 @@ try {
 
 以下方法被视为幂等方法，允许自动重试：
 
-| 方法 | 幂等 | 可重试 |
-|------|:----:|:------:|
-| GET | ✅ | ✅ |
-| HEAD | ✅ | ✅ |
-| OPTIONS | ✅ | ✅ |
-| PUT | ✅ | ✅ |
-| DELETE | ✅ | ✅ |
-| POST | ❌ | ❌ |
-| PATCH | ❌ | ❌ |
+| 方法    | 幂等 | 可重试 |
+| ------- | :--: | :----: |
+| GET     |  ✅  |   ✅   |
+| HEAD    |  ✅  |   ✅   |
+| OPTIONS |  ✅  |   ✅   |
+| PUT     |  ✅  |   ✅   |
+| DELETE  |  ✅  |   ✅   |
+| POST    |  ❌  |   ❌   |
+| PATCH   |  ❌  |   ❌   |
 
 ### 触发条件
 
-| 条件 | 是否重试 | 说明 |
-|------|:--------:|------|
-| HTTP 5xx 响应 | ✅ | 服务端错误，重试可能恢复 |
-| 网络错误（连接失败、DNS 解析失败等） | ✅ | 瞬时网络问题，重试可能成功 |
-| HTTP 4xx 响应 | ❌ | 客户端错误，重试无意义 |
-| 超时（AbortError） | ❌ | 直接抛出 `Error`，不重试 |
-| 非幂等方法（POST / PATCH） | ❌ | 任何错误都不重试，避免副作用重复 |
+| 条件                                 | 是否重试 | 说明                             |
+| ------------------------------------ | :------: | -------------------------------- |
+| HTTP 5xx 响应                        |    ✅    | 服务端错误，重试可能恢复         |
+| 网络错误（连接失败、DNS 解析失败等） |    ✅    | 瞬时网络问题，重试可能成功       |
+| HTTP 4xx 响应                        |    ❌    | 客户端错误，重试无意义           |
+| 超时（AbortError）                   |    ❌    | 直接抛出 `Error`，不重试         |
+| 非幂等方法（POST / PATCH）           |    ❌    | 任何错误都不重试，避免副作用重复 |
 
 ### 重试决策流程
 
@@ -421,26 +439,31 @@ try {
 
 这是最重要的细节——**5xx 和网络错误的最终行为不同**：
 
-| 场景 | 最终行为 | 说明 |
-|------|---------|------|
-| 5xx + 重试全部耗尽 | **返回 Response** | 调用方需自行检查 `response.ok` 或 `response.status` 处理错误 |
-| 网络错误 + 重试全部耗尽 | **抛出 Error** | 调用方需 try/catch 捕获 |
-| 超时 | **抛出 Error** | `[app.fetch] GET /api/xxx timed out after 10000ms` |
+| 场景                    | 最终行为          | 说明                                                         |
+| ----------------------- | ----------------- | ------------------------------------------------------------ |
+| 5xx + 重试全部耗尽      | **返回 Response** | 调用方需自行检查 `response.ok` 或 `response.status` 处理错误 |
+| 网络错误 + 重试全部耗尽 | **抛出 Error**    | 调用方需 try/catch 捕获                                      |
+| 超时                    | **抛出 Error**    | `[app.fetch] GET /api/xxx timed out after 10000ms`           |
 
 ```typescript
 // 5xx 最终失败 → 返回 Response（不抛出）
-const response = await app.fetch.get('https://api.example.com/data', { retry: 2 });
+const response = await app.fetch.get("https://api.example.com/data", {
+  retry: 2,
+});
 if (!response.ok) {
   // 3 次尝试（1 + 2 retry）都返回 5xx
-  app.logger.error({ status: response.status }, 'API request failed after retries');
+  app.logger.error(
+    { status: response.status },
+    "API request failed after retries",
+  );
 }
 
 // 网络错误最终失败 → 抛出 Error
 try {
-  await app.fetch.get('https://unreachable.example.com/data', { retry: 2 });
+  await app.fetch.get("https://unreachable.example.com/data", { retry: 2 });
 } catch (err) {
   // 3 次尝试都连接失败
-  app.logger.error({ err }, 'API unreachable after retries');
+  app.logger.error({ err }, "API unreachable after retries");
 }
 ```
 
@@ -460,7 +483,7 @@ try {
 `retryDelay` 支持函数形式，实现指数退避策略：
 
 ```typescript
-const response = await app.fetch.get('https://api.example.com/data', {
+const response = await app.fetch.get("https://api.example.com/data", {
   retry: 3,
   retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   // attempt 1: 2000ms
@@ -475,25 +498,25 @@ const response = await app.fetch.get('https://api.example.com/data', {
 
 每个出站请求自动记录结构化日志，包含以下字段：
 
-| 字段 | 说明 |
-|------|------|
-| `type` | 固定为 `"outbound"` |
-| `method` | HTTP 方法 |
-| `url` | 请求 URL |
-| `status` | 响应状态码（成功时） |
-| `duration` | 耗时（毫秒） |
-| `requestId` | 当前请求的 requestId |
-| `error` | 错误信息（失败时） |
-| `attempt` | 当前重试次数（重试时） |
+| 字段        | 说明                   |
+| ----------- | ---------------------- |
+| `type`      | 固定为 `"outbound"`    |
+| `method`    | HTTP 方法              |
+| `url`       | 请求 URL               |
+| `status`    | 响应状态码（成功时）   |
+| `duration`  | 耗时（毫秒）           |
+| `requestId` | 当前请求的 requestId   |
+| `error`     | 错误信息（失败时）     |
+| `attempt`   | 当前重试次数（重试时） |
 
 日志级别根据响应状态自动调整：
 
-| 条件 | 日志级别 |
-|------|---------|
-| 2xx / 3xx | `debug` |
-| 4xx | `warn` |
-| 5xx | `error` |
-| 网络错误 / 超时 | `error` |
+| 条件            | 日志级别 |
+| --------------- | -------- |
+| 2xx / 3xx       | `debug`  |
+| 4xx             | `warn`   |
+| 5xx             | `error`  |
+| 网络错误 / 超时 | `error`  |
 
 日志输出示例：
 
@@ -509,11 +532,11 @@ const response = await app.fetch.get('https://api.example.com/data', {
 如果你需要使用 axios 或其他 HTTP 客户端替代内置 `app.fetch`，可以通过 `app.setFetch()` 替换：
 
 ```typescript
-import { definePlugin } from 'vextjs';
-import axios from 'axios';
+import { definePlugin } from "vextjs";
+import axios from "axios";
 
 export default definePlugin({
-  name: 'axios-fetch',
+  name: "axios-fetch",
 
   setup(app) {
     // 自定义 fetch 实现需符合 VextFetch 接口
@@ -532,23 +555,30 @@ export default definePlugin({
 
 ```typescript
 // src/plugins/service-clients.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'service-clients',
+  name: "service-clients",
 
   setup(app) {
-    app.extend('userClient', app.fetch.create({
-      baseURL: process.env.USER_SERVICE_URL ?? 'http://user-service:3001',
-      timeout: 5000,
-      retry: 2,
-    }));
+    app.extend(
+      "userClient",
+      app.fetch.create({
+        baseURL: process.env.USER_SERVICE_URL ?? "http://user-service:3001",
+        timeout: 5000,
+        retry: 2,
+      }),
+    );
 
-    app.extend('inventoryClient', app.fetch.create({
-      baseURL: process.env.INVENTORY_SERVICE_URL ?? 'http://inventory-service:3002',
-      timeout: 8000,
-      retry: 1,
-    }));
+    app.extend(
+      "inventoryClient",
+      app.fetch.create({
+        baseURL:
+          process.env.INVENTORY_SERVICE_URL ?? "http://inventory-service:3002",
+        timeout: 8000,
+        retry: 1,
+      }),
+    );
   },
 });
 ```
@@ -562,19 +592,21 @@ export class OrderService {
     // 1. 查询用户信息
     const userResp = await this.app.userClient.get(`/api/users/${userId}`);
     if (!userResp.ok) {
-      this.app.throw(400, '用户不存在');
+      this.app.throw(400, "用户不存在");
     }
     const user = await userResp.json();
 
     // 2. 检查库存
-    const stockResp = await this.app.inventoryClient.get(`/api/stock/${productId}`);
+    const stockResp = await this.app.inventoryClient.get(
+      `/api/stock/${productId}`,
+    );
     if (!stockResp.ok) {
-      this.app.throw(500, '库存服务不可用');
+      this.app.throw(500, "库存服务不可用");
     }
     const stock = await stockResp.json();
 
     if (stock.available < quantity) {
-      this.app.throw(400, '库存不足', 'INSUFFICIENT_STOCK');
+      this.app.throw(400, "库存不足", "INSUFFICIENT_STOCK");
     }
 
     // 3. 扣减库存
@@ -589,7 +621,7 @@ export class OrderService {
       userId: user.id,
       productId,
       quantity,
-      status: 'created',
+      status: "created",
     };
   }
 }

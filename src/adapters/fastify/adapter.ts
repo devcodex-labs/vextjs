@@ -72,7 +72,7 @@ export interface FastifyAdapterOptions {
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse
+  res: VextResponse,
 ): Promise<void> {
   const len = chain.length;
 
@@ -125,7 +125,7 @@ async function executeChain(
  */
 export function createFastifyAdapter(
   options: FastifyAdapterOptions,
-  app: VextApp
+  app: VextApp,
 ): VextAdapter {
   // ── 创建 Fastify 实例 ────────────────────────────────────
   //
@@ -181,10 +181,10 @@ export function createFastifyAdapter(
     (
       _req: FastifyRequest,
       body: Buffer,
-      done: (err: null, body: Buffer) => void
+      done: (err: null, body: Buffer) => void,
     ) => {
       done(null, body);
-    }
+    },
   );
 
   return {
@@ -274,7 +274,7 @@ export function createFastifyAdapter(
                   try {
                     res.rawJson(
                       { code: 500, message: "Internal Server Error" },
-                      500
+                      500,
                     );
                   } catch {
                     // 完全放弃，让 Fastify 的兜底处理
@@ -290,12 +290,12 @@ export function createFastifyAdapter(
           if (alsEnabled) {
             await requestContext.run(
               { requestId: "", locale: undefined },
-              runChain
+              runChain,
             );
           } else {
             await runChain();
           }
-        }
+        },
       );
     },
 
@@ -333,7 +333,7 @@ export function createFastifyAdapter(
               reply.status(500).send("Internal Server Error");
             }
           }
-        }
+        },
       );
     },
 
@@ -370,12 +370,12 @@ export function createFastifyAdapter(
           if (alsEnabled) {
             await requestContext.run(
               { requestId: req.requestId, locale: undefined },
-              runNotFound
+              runNotFound,
             );
           } else {
             await runNotFound();
           }
-        }
+        },
       );
     },
 
@@ -392,7 +392,7 @@ export function createFastifyAdapter(
     //
     async listen(
       port: number,
-      host: string = "0.0.0.0"
+      host: string = "0.0.0.0",
     ): Promise<VextServerHandle> {
       // 确保所有路由和插件注册完成
       await fastify.ready();
@@ -406,7 +406,9 @@ export function createFastifyAdapter(
       const actualPort =
         typeof addr === "object" && addr !== null ? addr.port : port;
       const actualHost =
-        typeof addr === "object" && addr !== null ? addr.address ?? host : host;
+        typeof addr === "object" && addr !== null
+          ? (addr.address ?? host)
+          : host;
 
       return {
         port: actualPort,
@@ -475,7 +477,7 @@ export function createFastifyAdapter(
                   JSON.stringify({
                     code: 500,
                     message: "Internal Server Error: adapter not ready",
-                  })
+                  }),
                 );
               }
             });

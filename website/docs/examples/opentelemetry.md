@@ -58,18 +58,21 @@ OpenTelemetry SDK 必须在应用所有其他模块之前初始化。创建一�
 
 ```typescript
 // src/instrumentation.ts
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { Resource } from "@opentelemetry/resources";
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions";
 
 const resource = new Resource({
-  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'vext-app',
-  [ATTR_SERVICE_VERSION]: process.env.npm_package_version ?? '0.0.0',
-  'deployment.environment': process.env.NODE_ENV ?? 'development',
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "vext-app",
+  [ATTR_SERVICE_VERSION]: process.env.npm_package_version ?? "0.0.0",
+  "deployment.environment": process.env.NODE_ENV ?? "development",
 });
 
 const sdk = new NodeSDK({
@@ -77,36 +80,39 @@ const sdk = new NodeSDK({
 
   // Traces — 导出到 OTLP Collector
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-      ?? 'http://localhost:4318/v1/traces',
+    url:
+      process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ??
+      "http://localhost:4318/v1/traces",
   }),
 
   // Metrics — 定期导出到 OTLP Collector
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-        ?? 'http://localhost:4318/v1/metrics',
+      url:
+        process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ??
+        "http://localhost:4318/v1/metrics",
     }),
-    exportIntervalMillis: 15000,  // 每 15 秒导出一次
+    exportIntervalMillis: 15000, // 每 15 秒导出一次
   }),
 
   // 自动检测（HTTP 入站/出站、fetch、dns 等）
   instrumentations: [
     getNodeAutoInstrumentations({
       // 按需禁用不需要的检测
-      '@opentelemetry/instrumentation-fs': { enabled: false },
+      "@opentelemetry/instrumentation-fs": { enabled: false },
     }),
   ],
 });
 
 sdk.start();
-console.log('[otel] OpenTelemetry SDK initialized');
+console.log("[otel] OpenTelemetry SDK initialized");
 
 // 优雅关闭
-process.on('SIGTERM', () => {
-  sdk.shutdown()
-    .then(() => console.log('[otel] SDK shut down'))
-    .catch((err) => console.error('[otel] SDK shutdown error', err))
+process.on("SIGTERM", () => {
+  sdk
+    .shutdown()
+    .then(() => console.log("[otel] SDK shut down"))
+    .catch((err) => console.error("[otel] SDK shutdown error", err))
     .finally(() => process.exit(0));
 });
 
@@ -123,6 +129,7 @@ node --import ./dist/instrumentation.js ./dist/index.js
 # 或使用 vext.config.ts 中的 NODE_OPTIONS
 NODE_OPTIONS="--import ./dist/instrumentation.js" vext start
 ```
+
 :::
 
 ## 第二步：VextJS 插件
@@ -131,15 +138,15 @@ NODE_OPTIONS="--import ./dist/instrumentation.js" vext start
 
 ```typescript
 // src/plugins/opentelemetry.ts
-import { definePlugin } from 'vextjs';
-import { trace, metrics, SpanStatusCode } from '@opentelemetry/api';
-import type { Tracer, Meter } from '@opentelemetry/api';
+import { definePlugin } from "vextjs";
+import { trace, metrics, SpanStatusCode } from "@opentelemetry/api";
+import type { Tracer, Meter } from "@opentelemetry/api";
 
 export default definePlugin({
-  name: 'opentelemetry',
+  name: "opentelemetry",
 
   async setup(app) {
-    const serviceName = app.config.otel?.serviceName ?? 'vext-app';
+    const serviceName = app.config.otel?.serviceName ?? "vext-app";
 
     // 获取 Tracer 和 Meter 实例
     const tracer: Tracer = trace.getTracer(serviceName);
@@ -147,21 +154,24 @@ export default definePlugin({
 
     // ── 创建通用指标 ────────────────────────────────────
 
-    const httpRequestDuration = meter.createHistogram('http.server.duration', {
-      description: 'HTTP request duration in milliseconds',
-      unit: 'ms',
+    const httpRequestDuration = meter.createHistogram("http.server.duration", {
+      description: "HTTP request duration in milliseconds",
+      unit: "ms",
     });
 
-    const httpRequestTotal = meter.createCounter('http.server.request.total', {
-      description: 'Total number of HTTP requests',
+    const httpRequestTotal = meter.createCounter("http.server.request.total", {
+      description: "Total number of HTTP requests",
     });
 
-    const httpActiveRequests = meter.createUpDownCounter('http.server.active_requests', {
-      description: 'Number of active HTTP requests',
-    });
+    const httpActiveRequests = meter.createUpDownCounter(
+      "http.server.active_requests",
+      {
+        description: "Number of active HTTP requests",
+      },
+    );
 
     // 挂载到 app 上
-    app.extend('otel', {
+    app.extend("otel", {
       tracer,
       meter,
       metrics: {
@@ -171,12 +181,14 @@ export default definePlugin({
       },
     });
 
-    app.logger.info(`[otel] OpenTelemetry plugin initialized (service: ${serviceName})`);
+    app.logger.info(
+      `[otel] OpenTelemetry plugin initialized (service: ${serviceName})`,
+    );
 
     // ── 注册 onClose 清理 ───────────────────────────────
 
     app.onClose(async () => {
-      app.logger.info('[otel] Flushing telemetry data...');
+      app.logger.info("[otel] Flushing telemetry data...");
       // SDK 的 shutdown 在 instrumentation.ts 中处理
     });
   },
@@ -187,9 +199,15 @@ export default definePlugin({
 
 ```typescript
 // src/types/otel.d.ts
-import type { Tracer, Meter, Histogram, Counter, UpDownCounter } from '@opentelemetry/api';
+import type {
+  Tracer,
+  Meter,
+  Histogram,
+  Counter,
+  UpDownCounter,
+} from "@opentelemetry/api";
 
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextApp {
     otel: {
       tracer: Tracer;
@@ -217,8 +235,8 @@ declare module 'vextjs' {
 
 ```typescript
 // src/middlewares/tracing.ts
-import { defineMiddleware } from 'vextjs';
-import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
+import { defineMiddleware } from "vextjs";
+import { trace, SpanStatusCode, SpanKind } from "@opentelemetry/api";
 
 export default defineMiddleware(async (req, res, next) => {
   const app = req.app;
@@ -233,16 +251,16 @@ export default defineMiddleware(async (req, res, next) => {
 
   // 活跃请求 +1
   metrics.httpActiveRequests.add(1, {
-    'http.method': req.method,
+    "http.method": req.method,
   });
 
   // 创建 Span（通常自动检测已创建，这里添加业务属性）
   const activeSpan = trace.getActiveSpan();
   if (activeSpan) {
     activeSpan.setAttributes({
-      'http.route': req.route || req.path,
-      'http.request_id': req.requestId ?? '',
-      'vext.service': app.config.otel?.serviceName ?? 'vext-app',
+      "http.route": req.route || req.path,
+      "http.request_id": req.requestId ?? "",
+      "vext.service": app.config.otel?.serviceName ?? "vext-app",
     });
   }
 
@@ -254,15 +272,15 @@ export default defineMiddleware(async (req, res, next) => {
     const statusCode = res.statusCode ?? 200;
 
     metrics.httpRequestTotal.add(1, {
-      'http.method': req.method,
-      'http.status_code': statusCode,
-      'http.route': req.route || req.path,
+      "http.method": req.method,
+      "http.status_code": statusCode,
+      "http.route": req.route || req.path,
     });
 
     metrics.httpRequestDuration.record(duration, {
-      'http.method': req.method,
-      'http.status_code': statusCode,
-      'http.route': req.route || req.path,
+      "http.method": req.method,
+      "http.status_code": statusCode,
+      "http.route": req.route || req.path,
     });
 
     // 设置 Span 状态
@@ -273,22 +291,22 @@ export default defineMiddleware(async (req, res, next) => {
           message: `HTTP ${statusCode}`,
         });
       }
-      activeSpan.setAttribute('http.status_code', statusCode);
+      activeSpan.setAttribute("http.status_code", statusCode);
     }
   } catch (err) {
     // 记录错误
     const duration = Math.round(performance.now() - startTime);
 
     metrics.httpRequestTotal.add(1, {
-      'http.method': req.method,
-      'http.status_code': 500,
-      'http.route': req.route || req.path,
+      "http.method": req.method,
+      "http.status_code": 500,
+      "http.route": req.route || req.path,
     });
 
     metrics.httpRequestDuration.record(duration, {
-      'http.method': req.method,
-      'http.status_code': 500,
-      'http.route': req.route || req.path,
+      "http.method": req.method,
+      "http.status_code": 500,
+      "http.route": req.route || req.path,
     });
 
     if (activeSpan) {
@@ -303,7 +321,7 @@ export default defineMiddleware(async (req, res, next) => {
   } finally {
     // 活跃请求 -1
     metrics.httpActiveRequests.add(-1, {
-      'http.method': req.method,
+      "http.method": req.method,
     });
   }
 });
@@ -315,80 +333,88 @@ export default defineMiddleware(async (req, res, next) => {
 
 ```typescript
 // src/services/user.ts
-import { SpanStatusCode } from '@opentelemetry/api';
+import { SpanStatusCode } from "@opentelemetry/api";
 
 export class UserService {
   constructor(private app: any) {}
 
   async findById(userId: string) {
     // 创建自定义 Span — 跟踪数据库查询
-    return this.app.otel.tracer.startActiveSpan('UserService.findById', async (span) => {
-      span.setAttributes({
-        'user.id': userId,
-        'db.system': 'mongodb',
-        'db.operation': 'findOne',
-      });
-
-      try {
-        const user = await this.app.db.collection('users').findOne({ _id: userId });
-
-        if (!user) {
-          span.setAttributes({ 'user.found': false });
-          span.setStatus({ code: SpanStatusCode.OK });
-          return null;
-        }
-
-        span.setAttributes({ 'user.found': true });
-        span.setStatus({ code: SpanStatusCode.OK });
-        return user;
-      } catch (err) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: (err as Error).message,
+    return this.app.otel.tracer.startActiveSpan(
+      "UserService.findById",
+      async (span) => {
+        span.setAttributes({
+          "user.id": userId,
+          "db.system": "mongodb",
+          "db.operation": "findOne",
         });
-        span.recordException(err as Error);
-        throw err;
-      } finally {
-        span.end();
-      }
-    });
+
+        try {
+          const user = await this.app.db
+            .collection("users")
+            .findOne({ _id: userId });
+
+          if (!user) {
+            span.setAttributes({ "user.found": false });
+            span.setStatus({ code: SpanStatusCode.OK });
+            return null;
+          }
+
+          span.setAttributes({ "user.found": true });
+          span.setStatus({ code: SpanStatusCode.OK });
+          return user;
+        } catch (err) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: (err as Error).message,
+          });
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
+        }
+      },
+    );
   }
 
   async create(data: { name: string; email: string }) {
-    return this.app.otel.tracer.startActiveSpan('UserService.create', async (span) => {
-      span.setAttributes({
-        'user.email': data.email,
-        'db.system': 'mongodb',
-        'db.operation': 'insertOne',
-      });
-
-      try {
-        // 检查邮箱是否已存在
-        const existing = await this.app.db.collection('users').findOne({
-          email: data.email,
+    return this.app.otel.tracer.startActiveSpan(
+      "UserService.create",
+      async (span) => {
+        span.setAttributes({
+          "user.email": data.email,
+          "db.system": "mongodb",
+          "db.operation": "insertOne",
         });
 
-        if (existing) {
-          span.addEvent('user.email_conflict', { email: data.email });
-          this.app.throw(409, '邮箱已注册', 'EMAIL_EXISTS');
+        try {
+          // 检查邮箱是否已存在
+          const existing = await this.app.db.collection("users").findOne({
+            email: data.email,
+          });
+
+          if (existing) {
+            span.addEvent("user.email_conflict", { email: data.email });
+            this.app.throw(409, "邮箱已注册", "EMAIL_EXISTS");
+          }
+
+          const result = await this.app.db.collection("users").insertOne(data);
+          span.setAttributes({ "user.id": String(result.insertedId) });
+          span.setStatus({ code: SpanStatusCode.OK });
+
+          return { id: result.insertedId, ...data };
+        } catch (err) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: (err as Error).message,
+          });
+          span.recordException(err as Error);
+          throw err;
+        } finally {
+          span.end();
         }
-
-        const result = await this.app.db.collection('users').insertOne(data);
-        span.setAttributes({ 'user.id': String(result.insertedId) });
-        span.setStatus({ code: SpanStatusCode.OK });
-
-        return { id: result.insertedId, ...data };
-      } catch (err) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: (err as Error).message,
-        });
-        span.recordException(err as Error);
-        throw err;
-      } finally {
-        span.end();
-      }
-    });
+      },
+    );
   }
 }
 ```
@@ -397,58 +423,66 @@ export class UserService {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
-import { trace } from '@opentelemetry/api';
+import { defineRoutes } from "vextjs";
+import { trace } from "@opentelemetry/api";
 
 export default defineRoutes((app) => {
-  app.get('/users/:id', {
-    validate: { param: { id: 'string!' } },
-    docs: { summary: '获取用户详情' },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-
-    // 在当前 Span 上添加事件
-    const span = trace.getActiveSpan();
-    span?.addEvent('user.lookup_start', { userId: id });
-
-    const user = await app.services.user.findById(id);
-
-    if (!user) {
-      span?.addEvent('user.not_found', { userId: id });
-      app.throw(404, '用户不存在');
-    }
-
-    span?.addEvent('user.found', { userId: id });
-    res.json(user);
-  });
-
-  app.get('/users', {
-    validate: {
-      query: {
-        page: 'number:1-',
-        limit: 'number:1-100',
-      },
+  app.get(
+    "/users/:id",
+    {
+      validate: { param: { id: "string!" } },
+      docs: { summary: "获取用户详情" },
     },
-    docs: { summary: '获取用户列表' },
-  }, async (req, res) => {
-    const { page = 1, limit = 20 } = req.valid('query');
+    async (req, res) => {
+      const { id } = req.valid("param");
 
-    // 手动创建子 Span
-    const result = await app.otel.tracer.startActiveSpan(
-      'handler.listUsers',
-      async (span) => {
-        span.setAttributes({ 'query.page': page, 'query.limit': limit });
+      // 在当前 Span 上添加事件
+      const span = trace.getActiveSpan();
+      span?.addEvent("user.lookup_start", { userId: id });
 
-        const users = await app.services.user.findAll({ page, limit });
+      const user = await app.services.user.findById(id);
 
-        span.setAttribute('result.count', users.length);
-        span.end();
-        return users;
+      if (!user) {
+        span?.addEvent("user.not_found", { userId: id });
+        app.throw(404, "用户不存在");
+      }
+
+      span?.addEvent("user.found", { userId: id });
+      res.json(user);
+    },
+  );
+
+  app.get(
+    "/users",
+    {
+      validate: {
+        query: {
+          page: "number:1-",
+          limit: "number:1-100",
+        },
       },
-    );
+      docs: { summary: "获取用户列表" },
+    },
+    async (req, res) => {
+      const { page = 1, limit = 20 } = req.valid("query");
 
-    res.json(result);
-  });
+      // 手动创建子 Span
+      const result = await app.otel.tracer.startActiveSpan(
+        "handler.listUsers",
+        async (span) => {
+          span.setAttributes({ "query.page": page, "query.limit": limit });
+
+          const users = await app.services.user.findAll({ page, limit });
+
+          span.setAttribute("result.count", users.length);
+          span.end();
+          return users;
+        },
+      );
+
+      res.json(result);
+    },
+  );
 });
 ```
 
@@ -458,37 +492,35 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/plugins/business-metrics.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'business-metrics',
-  dependencies: ['opentelemetry'],
+  name: "business-metrics",
+  dependencies: ["opentelemetry"],
 
   async setup(app) {
     const { meter } = app.otel;
 
     // 订单相关指标
-    const orderCreated = meter.createCounter('business.order.created', {
-      description: 'Total orders created',
+    const orderCreated = meter.createCounter("business.order.created", {
+      description: "Total orders created",
     });
 
-    const orderAmount = meter.createHistogram('business.order.amount', {
-      description: 'Order amount distribution',
-      unit: 'CNY',
+    const orderAmount = meter.createHistogram("business.order.amount", {
+      description: "Order amount distribution",
+      unit: "CNY",
     });
 
-    const activeUsers = meter.createObservableGauge('business.users.active', {
-      description: 'Number of active users in the last 5 minutes',
+    const activeUsers = meter.createObservableGauge("business.users.active", {
+      description: "Number of active users in the last 5 minutes",
     });
 
     // 异步指标回调 — 定期从数据库读取
     activeUsers.addCallback(async (result) => {
       try {
-        const count = await app.db
-          .collection('sessions')
-          .countDocuments({
-            lastActive: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
-          });
+        const count = await app.db.collection("sessions").countDocuments({
+          lastActive: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
+        });
         result.observe(count);
       } catch {
         // 静默失败，不影响业务
@@ -496,7 +528,7 @@ export default definePlugin({
     });
 
     // 挂载到 app 供业务使用
-    app.extend('businessMetrics', {
+    app.extend("businessMetrics", {
       orderCreated,
       orderAmount,
     });
@@ -512,15 +544,15 @@ export class OrderService {
   constructor(private app: any) {}
 
   async create(data: { userId: string; items: any[]; total: number }) {
-    const order = await this.app.db.collection('orders').insertOne(data);
+    const order = await this.app.db.collection("orders").insertOne(data);
 
     // 记录业务指标
     this.app.businessMetrics.orderCreated.add(1, {
-      'order.type': data.items.length > 1 ? 'multi' : 'single',
+      "order.type": data.items.length > 1 ? "multi" : "single",
     });
 
     this.app.businessMetrics.orderAmount.record(data.total, {
-      'order.type': data.items.length > 1 ? 'multi' : 'single',
+      "order.type": data.items.length > 1 ? "multi" : "single",
     });
 
     return { id: order.insertedId, ...data };
@@ -538,7 +570,7 @@ export class OrderService {
 
 ```typescript
 // vext.config.ts
-import { trace } from '@opentelemetry/api';
+import { trace } from "@opentelemetry/api";
 
 export default {
   port: 3000,
@@ -568,9 +600,9 @@ export default {
 
 ```typescript
 // src/middlewares/tracing.ts（在 §第三步 基础上补充 ALS 写入）
-import { defineMiddleware } from 'vextjs';
-import { requestContext } from 'vextjs';
-import { trace } from '@opentelemetry/api';
+import { defineMiddleware } from "vextjs";
+import { requestContext } from "vextjs";
+import { trace } from "@opentelemetry/api";
 
 export default defineMiddleware(async (req, res, next) => {
   const span = trace.getActiveSpan();
@@ -579,7 +611,7 @@ export default defineMiddleware(async (req, res, next) => {
     if (store) {
       // 写入 ALS store → logger 内置 mixin 自动注入 trace_id / span_id
       store.traceId = span.spanContext().traceId;
-      store.spanId  = span.spanContext().spanId;
+      store.spanId = span.spanContext().spanId;
     }
   }
   await next();
@@ -589,10 +621,11 @@ export default defineMiddleware(async (req, res, next) => {
 无需修改 `vext.config.ts`，只需注册此中间件，日志即自动携带 trace 字段。
 
 :::tip 两种方式如何选择？
+
 - **方式一（mixin）**：推荐，实时读取 active span，无需额外中间件，trace context 更准确
 - **方式二（ALS）**：适合不想修改 `vext.config.ts` 的场景，或需要在非 OTEL 环境下灵活控制字段写入
 - 两者可同时启用，mixin 返回值优先级更高
-:::
+  :::
 
 关联后的日志输出示例：
 
@@ -626,10 +659,10 @@ Client Request
 
 `app.fetch` 注入的 `x-request-id` 和 OTEL 的 `traceparent` 头会同时传播，两套追踪体系互不干扰：
 
-| 头 | 来源 | 用途 |
-|----|------|------|
-| `x-request-id` | VextJS `app.fetch` | 业务层请求追踪 |
-| `traceparent` | OpenTelemetry SDK | W3C 标准分布式追踪 |
+| 头             | 来源               | 用途               |
+| -------------- | ------------------ | ------------------ |
+| `x-request-id` | VextJS `app.fetch` | 业务层请求追踪     |
+| `traceparent`  | OpenTelemetry SDK  | W3C 标准分布式追踪 |
 
 ## 部署配置
 
@@ -639,14 +672,14 @@ Client Request
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+version: "3.8"
 
 services:
   # ── 应用（始终启动）──────────────────────────────────────
   app:
     build: .
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
       # 通过标准 OTEL 环境变量配置，不硬编码后端地址
       - OTEL_SERVICE_NAME=vext-app
@@ -658,8 +691,8 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     ports:
-      - '4317:4317'   # gRPC（OTLP）
-      - '4318:4318'   # HTTP（OTLP）
+      - "4317:4317" # gRPC（OTLP）
+      - "4318:4318" # HTTP（OTLP）
     volumes:
       - ./otel-config.yaml:/etc/otelcol/config.yaml
 
@@ -669,13 +702,13 @@ services:
     image: jaegertracing/all-in-one:latest
     profiles: [observability]
     ports:
-      - '16686:16686'  # Jaeger UI
+      - "16686:16686" # Jaeger UI
 
   prometheus:
     image: prom/prometheus:latest
     profiles: [observability]
     ports:
-      - '9090:9090'
+      - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
 
@@ -683,7 +716,7 @@ services:
     image: grafana/grafana:latest
     profiles: [observability]
     ports:
-      - '3001:3000'
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
 ```
@@ -691,12 +724,13 @@ services:
 :::tip 对接商业 / 云厂商后端
 只需修改 `OTEL_EXPORTER_OTLP_ENDPOINT` 和相应的认证头，无需改动应用代码：
 
-| 后端 | 环境变量示例 |
-|------|-------------|
-| Datadog | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.datadoghq.com` |
-| New Relic | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net` |
-| Honeycomb | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io` |
+| 后端        | 环境变量示例                                                                   |
+| ----------- | ------------------------------------------------------------------------------ |
+| Datadog     | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.datadoghq.com`                       |
+| New Relic   | `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.nr-data.net`                         |
+| Honeycomb   | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io`                         |
 | 阿里云 ARMS | `OTEL_EXPORTER_OTLP_ENDPOINT=https://arms-opentelemetry-<region>.aliyuncs.com` |
+
 :::
 
 ### OTEL Collector 配置
@@ -753,7 +787,7 @@ service:
 
 ```typescript
 // src/instrumentation.ts
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
+import { TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-node";
 
 const sdk = new NodeSDK({
   // 采样 10% 的请求
@@ -768,25 +802,23 @@ const sdk = new NodeSDK({
 
 ```typescript
 // ❌ 不要这样做
-span.setAttribute('user.password', password);
-span.setAttribute('auth.token', bearerToken);
+span.setAttribute("user.password", password);
+span.setAttribute("auth.token", bearerToken);
 
 // ✅ 正确做法
-span.setAttribute('user.id', userId);
-span.setAttribute('auth.method', 'bearer');
+span.setAttribute("user.id", userId);
+span.setAttribute("auth.method", "bearer");
 ```
 
 ### 3. Span 命名规范
 
 ```typescript
 // ✅ 好的命名 — 低基数、有意义
-'UserService.findById'
-'OrderService.create'
-'HTTP GET /api/users/:id'
-
+"UserService.findById";
+"OrderService.create";
+"HTTP GET /api/users/:id"
 // ❌ 差的命名 — 高基数，会导致后端存储膨胀
-`HTTP GET /api/users/${userId}`
-`query-${Date.now()}`
+`HTTP GET /api/users/${userId}``query-${Date.now()}`;
 ```
 
 ### 4. 资源属性
@@ -795,12 +827,12 @@ span.setAttribute('auth.method', 'bearer');
 
 ```typescript
 const resource = new Resource({
-  [ATTR_SERVICE_NAME]: 'order-service',
-  [ATTR_SERVICE_VERSION]: '1.2.3',
-  'deployment.environment': 'production',
-  'service.namespace': 'ecommerce',
-  'host.name': os.hostname(),
-  'cloud.region': process.env.CLOUD_REGION ?? 'cn-hangzhou',
+  [ATTR_SERVICE_NAME]: "order-service",
+  [ATTR_SERVICE_VERSION]: "1.2.3",
+  "deployment.environment": "production",
+  "service.namespace": "ecommerce",
+  "host.name": os.hostname(),
+  "cloud.region": process.env.CLOUD_REGION ?? "cn-hangzhou",
 });
 ```
 
@@ -820,18 +852,18 @@ export default {
     // Worker 进程数（默认 CPU 核心数）
     workers: 4,
     // 向每个 Worker 注入 OTEL SDK 加载参数
-    execArgv: ['--import', './dist/instrumentation.js'],
+    execArgv: ["--import", "./dist/instrumentation.js"],
   },
 };
 ```
 
 ### 为什么在 Worker 而非 Master 中初始化？
 
-| | Master 进程 | Worker 进程 |
-|--|------------|------------|
-| HTTP 请求处理 | ❌ 不处理（仅管理 Workers） | ✅ 处理所有请求 |
-| OTEL SDK 初始化 | ❌ 无意义（无请求数据产生） | ✅ 必须初始化 |
-| Trace / Metrics 上报 | ❌ | ✅ 各 Worker 独立上报 |
+|                      | Master 进程                 | Worker 进程           |
+| -------------------- | --------------------------- | --------------------- |
+| HTTP 请求处理        | ❌ 不处理（仅管理 Workers） | ✅ 处理所有请求       |
+| OTEL SDK 初始化      | ❌ 无意义（无请求数据产生） | ✅ 必须初始化         |
+| Trace / Metrics 上报 | ❌                          | ✅ 各 Worker 独立上报 |
 
 每个 Worker 是一个独立的 Node.js 进程，拥有独立的 V8 isolate，OTEL SDK 的 `AsyncLocalStorage` 在 Worker 内是进程级单例，并发安全。
 
@@ -849,10 +881,11 @@ Worker 3 ──┘
 在可观测性后端中，可以按 `service.instance.id` 过滤查看单个 Worker 的数据，也可以聚合查看整个服务的全局指标。
 
 :::warning 注意事项
+
 - `instrumentation.js` 必须是编译后的文件（`dist/instrumentation.js`），而非 TypeScript 源文件
 - 确保 `instrumentation.js` 在应用启动前完成 SDK 初始化（`sdk.start()` 是同步的）
 - 开发模式（`vext dev`）下，Worker 通过热重载重启时会重新初始化 OTEL SDK，属于正常行为
-:::
+  :::
 
 ## 下一步
 

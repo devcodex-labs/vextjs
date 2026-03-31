@@ -88,7 +88,7 @@ function createCapture(): {
 function buildMixin(
   config: VextLoggerConfig,
   alsEnabled: boolean,
-  getPino: () => PinoLogger
+  getPino: () => PinoLogger,
 ): () => Record<string, unknown> {
   let _mixinWarnEmitted = false;
 
@@ -117,7 +117,7 @@ function buildMixin(
           if (!_mixinWarnEmitted) {
             _mixinWarnEmitted = true;
             getPino().warn(
-              "[vextjs] config.logger.mixin 返回了 Promise，mixin 必须是同步函数，已降级为 {}"
+              "[vextjs] config.logger.mixin 返回了 Promise，mixin 必须是同步函数，已降级为 {}",
             );
           }
           return EMPTY_MIXIN;
@@ -128,7 +128,7 @@ function buildMixin(
           _mixinWarnEmitted = true;
           getPino().warn(
             { err },
-            "[vextjs] config.logger.mixin 抛出异常，已降级为 {}"
+            "[vextjs] config.logger.mixin 抛出异常，已降级为 {}",
           );
         }
         return EMPTY_MIXIN;
@@ -153,7 +153,7 @@ function buildMixin(
 function createTestLogger(
   config: VextLoggerConfig,
   stream: Writable,
-  opts?: { alsEnabled?: boolean }
+  opts?: { alsEnabled?: boolean },
 ): PinoLogger {
   const alsEnabled = opts?.alsEnabled !== false;
   let pinoInstance: PinoLogger;
@@ -166,7 +166,7 @@ function createTestLogger(
       mixin: mixinFn,
       timestamp: pino.stdTimeFunctions.isoTime,
     },
-    stream
+    stream,
   );
 
   return pinoInstance;
@@ -192,7 +192,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           return { trace_id: "abc123", custom_field: "hello" };
         },
       },
-      stream
+      stream,
     );
 
     logger.info("test message");
@@ -230,7 +230,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           return { call: callCount };
         },
       },
-      stream
+      stream,
     );
 
     logger.info("first");
@@ -255,7 +255,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           return { requestId: "user-injected-id" }; // 尝试注入
         },
       },
-      stream
+      stream,
     );
 
     // 在 ALS 上下文中运行（有 requestId）
@@ -277,7 +277,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           return { requestId: "sneaky-id" }; // 尝试注入
         },
       },
-      stream
+      stream,
     );
 
     logger.info("outside als");
@@ -296,7 +296,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           return { env: "production", version: "1.2.3" };
         },
       },
-      stream
+      stream,
     );
 
     logger.info("startup");
@@ -316,7 +316,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           throw new Error("mixin boom");
         },
       },
-      stream
+      stream,
     );
 
     // 应写入降级 warn + 业务 info
@@ -341,7 +341,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
           throw new Error(`error #${throwCount}`);
         },
       },
-      stream
+      stream,
     );
 
     // 连续写 5 条日志，mixin 每次都抛出
@@ -360,7 +360,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
       (l) =>
         l.level === 40 && // pino warn level = 40
         typeof l.msg === "string" &&
-        (l.msg as string).includes("mixin")
+        (l.msg as string).includes("mixin"),
     );
     expect(warnLines).toHaveLength(1);
   });
@@ -373,7 +373,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
         // 用户误传 async 函数
         mixin: (async () => ({ trace_id: "should-not-appear" })) as any,
       },
-      stream
+      stream,
     );
 
     logger.info("first");
@@ -388,7 +388,7 @@ describe("F-02 — 用户 mixin 字段扩展", () => {
       (l) =>
         l.level === 40 &&
         typeof l.msg === "string" &&
-        (l.msg as string).includes("Promise")
+        (l.msg as string).includes("Promise"),
     );
     expect(warnLines).toHaveLength(1);
   });
@@ -408,7 +408,7 @@ describe("F-03 — ALS trace context 自动注入", () => {
       async () => {
         logger.info("traced request");
         await flush(stream);
-      }
+      },
     );
 
     expect(lines).toHaveLength(1);
@@ -426,7 +426,7 @@ describe("F-03 — ALS trace context 自动注入", () => {
       async () => {
         logger.info("spanned request");
         await flush(stream);
-      }
+      },
     );
 
     expect(lines[0]!.span_id).toBe("span-def-456");
@@ -446,7 +446,7 @@ describe("F-03 — ALS trace context 自动注入", () => {
       async () => {
         logger.info("full otel context");
         await flush(stream);
-      }
+      },
     );
 
     expect(lines[0]!.trace_id).toBe("full-trace-id");
@@ -497,7 +497,7 @@ describe("合并优先级 — 用户 mixin vs ALS 内置字段", () => {
           return { trace_id: "user-mixin-trace" };
         },
       },
-      stream
+      stream,
     );
 
     await requestContext.run(
@@ -505,7 +505,7 @@ describe("合并优先级 — 用户 mixin vs ALS 内置字段", () => {
       async () => {
         logger.info("priority test");
         await flush(stream);
-      }
+      },
     );
 
     // 用户 mixin 优先
@@ -523,7 +523,7 @@ describe("合并优先级 — 用户 mixin vs ALS 内置字段", () => {
           return { custom_key: "custom_val" };
         },
       },
-      stream
+      stream,
     );
 
     await requestContext.run(
@@ -531,7 +531,7 @@ describe("合并优先级 — 用户 mixin vs ALS 内置字段", () => {
       async () => {
         logger.info("combined fields");
         await flush(stream);
-      }
+      },
     );
 
     expect(lines[0]!.custom_key).toBe("custom_val");
@@ -548,7 +548,7 @@ describe("合并优先级 — 用户 mixin vs ALS 内置字段", () => {
           return { dynamic_field: "value" };
         },
       },
-      stream
+      stream,
     );
 
     logger.info({ structured: 42 }, "first log");
@@ -580,7 +580,7 @@ describe("ALS 禁用（requestContextEnabled: false）", () => {
         },
       },
       stream,
-      { alsEnabled: false }
+      { alsEnabled: false },
     );
 
     // 即使在 ALS 上下文中，alsEnabled=false 时也不读取 store
@@ -589,7 +589,7 @@ describe("ALS 禁用（requestContextEnabled: false）", () => {
       async () => {
         logger.info("als disabled test");
         await flush(stream);
-      }
+      },
     );
 
     // 用户 mixin 字段正常出现

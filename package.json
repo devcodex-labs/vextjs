@@ -61,6 +61,8 @@
     "test:cov": "vitest run --coverage",
     "test:bench": "node test/benchmark/run-benchmark.mjs",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "prepublishOnly": "npm run build:esm && npm run build:cjs"
   },
   "keywords": [
@@ -138,6 +140,7 @@
     "hono": "^4.7.6",
     "koa": "^3.1.2",
     "mongodb-memory-server": "^11.0.1",
+    "prettier": "^3.8.1",
     "typescript": "^5.8.3",
     "vitest": "^3.1.3"
   }

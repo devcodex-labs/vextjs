@@ -43,14 +43,16 @@ npx vext start --host 127.0.0.1 --port 3000
 **方式 2 — 代码调用：**
 
 ```js
-import { bootstrap } from 'vextjs'
-import { fileURLToPath } from 'node:url'
-import { dirname } from 'node:path'
+import { bootstrap } from "vextjs";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const result = await bootstrap(__dirname)
-console.log(`Server started on http://${result.serverHandle.host}:${result.serverHandle.port}`)
+const result = await bootstrap(__dirname);
+console.log(
+  `Server started on http://${result.serverHandle.host}:${result.serverHandle.port}`,
+);
 ```
 
 **方式 3 — 本示例（monorepo 内部）：**
@@ -101,21 +103,21 @@ VEXT_ROOT=$(pwd) VEXT_DEV_MODE=1 NODE_ENV=development node ../../dist/lib/dev/de
 
 **三层重载策略：**
 
-| Tier | 触发条件 | 动作 | 速度 |
-|------|---------|------|------|
-| T1 | 代码修改（modify） | Soft Reload — `esbuild.transform()` 热替换 | ⚡ 毫秒级 |
-| T2 | 文件新增 / 删除 | Soft Reload — `esbuild ctx.rebuild()` 重建 | ⚡ 毫秒级 |
-| T3 | 配置 / 插件 / `.env` 变更 | Cold Restart — kill + fork 重启子进程 | 🔄 秒级 |
+| Tier | 触发条件                  | 动作                                       | 速度      |
+| ---- | ------------------------- | ------------------------------------------ | --------- |
+| T1   | 代码修改（modify）        | Soft Reload — `esbuild.transform()` 热替换 | ⚡ 毫秒级 |
+| T2   | 文件新增 / 删除           | Soft Reload — `esbuild ctx.rebuild()` 重建 | ⚡ 毫秒级 |
+| T3   | 配置 / 插件 / `.env` 变更 | Cold Restart — kill + fork 重启子进程      | 🔄 秒级   |
 
 **键盘快捷键（开发模式下可用）：**
 
-| 按键 | 功能 |
-|------|------|
-| `r` | 手动 Cold Restart |
-| `h` | 手动 Soft Reload（全量） |
-| `c` | 清空控制台 |
-| `?` | 显示帮助 |
-| `Ctrl+C` | 退出开发服务器 |
+| 按键     | 功能                     |
+| -------- | ------------------------ |
+| `r`      | 手动 Cold Restart        |
+| `h`      | 手动 Soft Reload（全量） |
+| `c`      | 清空控制台               |
+| `?`      | 显示帮助                 |
+| `Ctrl+C` | 退出开发服务器           |
 
 ---
 
@@ -145,21 +147,21 @@ curl http://localhost:3000/openapi.json
 
 ```js
 export default {
-  port: 3000,              // 监听端口（1-65535）
-  host: '0.0.0.0',         // 监听地址（"0.0.0.0" 允许外部访问，"127.0.0.1" 仅本地）
+  port: 3000, // 监听端口（1-65535）
+  host: "0.0.0.0", // 监听地址（"0.0.0.0" 允许外部访问，"127.0.0.1" 仅本地）
 
   // adapter: "hono",      // 内置 adapter: "hono"(默认) | "fastify" | "express" | "koa"
 
   logger: {
-    level: 'info',         // 日志级别: fatal | error | warn | info | debug | trace | silent
+    level: "info", // 日志级别: fatal | error | warn | info | debug | trace | silent
   },
   response: {
-    hideInternalErrors: false,  // 生产环境建议设为 true，隐藏 500 错误的 stack 信息
+    hideInternalErrors: false, // 生产环境建议设为 true，隐藏 500 错误的 stack 信息
   },
   openapi: {
-    enabled: true,         // 启用后自动注册 GET /openapi.json + GET /docs（Swagger UI）
+    enabled: true, // 启用后自动注册 GET /openapi.json + GET /docs（Swagger UI）
   },
-}
+};
 ```
 
 框架自动补全的默认值包括：`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等，
@@ -177,11 +179,11 @@ VextJS 支持 4 种内置 HTTP Adapter，切换 Adapter **不影响业务代码*
 
 ```js
 export default {
-  adapter: "hono",      // 默认值，可省略
+  adapter: "hono", // 默认值，可省略
   // adapter: "fastify",
   // adapter: "express",
   // adapter: "koa",
-}
+};
 ```
 
 ### 方式 2 — 工厂函数（需要自定义底层框架选项）
@@ -208,14 +210,15 @@ export default {
 
 ### 各 Adapter 特点
 
-| Adapter | 底层框架 | 特点 | 适用场景 |
-|---------|---------|------|---------|
-| `hono` | [Hono](https://hono.dev/) | 轻量高性能，零额外依赖 | 默认推荐，追求极致性能 |
-| `fastify` | [Fastify](https://fastify.dev/) | 企业级，丰富插件生态 | 需要 Fastify 插件生态 |
-| `express` | [Express](https://expressjs.com/) | 最广泛社区生态 | 复用已有 Express 中间件 |
-| `koa` | [Koa](https://koajs.com/) | 洋葱模型中间件 | 偏好 Koa 风格 |
+| Adapter   | 底层框架                          | 特点                   | 适用场景                |
+| --------- | --------------------------------- | ---------------------- | ----------------------- |
+| `hono`    | [Hono](https://hono.dev/)         | 轻量高性能，零额外依赖 | 默认推荐，追求极致性能  |
+| `fastify` | [Fastify](https://fastify.dev/)   | 企业级，丰富插件生态   | 需要 Fastify 插件生态   |
+| `express` | [Express](https://expressjs.com/) | 最广泛社区生态         | 复用已有 Express 中间件 |
+| `koa`     | [Koa](https://koajs.com/)         | 洋葱模型中间件         | 偏好 Koa 风格           |
 
 > 💡 **一致性保证**：无论选择哪个 Adapter，以下行为完全一致：
+>
 > - 统一响应格式 `{ code, data, requestId }`
 > - 统一错误处理（422 / 404 / 500）
 > - 统一 Body 解析（由 vext body-parser 中间件控制）
@@ -228,26 +231,26 @@ export default {
 `src/routes/index.js` 使用 `defineRoutes` 定义路由：
 
 ```js
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // 三段式路由：path, options, handler
-  app.get('/', {}, async (req, res) => {
-    res.json({ message: 'hello world' })
-  })
+  app.get("/", {}, async (req, res) => {
+    res.json({ message: "hello world" });
+  });
 
-  app.get('/health', {}, async (req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() })
-  })
-})
+  app.get("/health", {}, async (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+});
 ```
 
 路由文件放在 `src/routes/` 目录下会被自动扫描加载，文件路径即路由前缀：
 
-| 文件路径 | 路由前缀 |
-|---------|---------|
-| `src/routes/index.js` | `/` |
-| `src/routes/users.js` | `/users` |
+| 文件路径                  | 路由前缀     |
+| ------------------------- | ------------ |
+| `src/routes/index.js`     | `/`          |
+| `src/routes/users.js`     | `/users`     |
 | `src/routes/api/posts.js` | `/api/posts` |
 
 ---

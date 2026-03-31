@@ -39,7 +39,7 @@ import type { VextApp } from "../../types/app.js";
 export function createVextRequest(
   expressReq: ExpressRequest,
   app: VextApp,
-  rawBody?: Buffer
+  rawBody?: Buffer,
 ): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
   const closeHandlers: Array<() => void> = [];
@@ -111,13 +111,13 @@ export function createVextRequest(
       const firstIp = xff.split(",")[0];
       ip = firstIp
         ? firstIp.trim()
-        : expressReq.socket.remoteAddress ?? "127.0.0.1";
+        : (expressReq.socket.remoteAddress ?? "127.0.0.1");
     } else if (Array.isArray(xff) && xff.length > 0) {
       const firstEntry = xff[0];
       const firstIp = firstEntry ? firstEntry.split(",")[0] : undefined;
       ip = firstIp
         ? firstIp.trim()
-        : expressReq.socket.remoteAddress ?? "127.0.0.1";
+        : (expressReq.socket.remoteAddress ?? "127.0.0.1");
     } else {
       ip = expressReq.socket.remoteAddress ?? "127.0.0.1";
     }
@@ -163,7 +163,7 @@ export function createVextRequest(
 
     // ── 校验数据 ────────────────────────────────────────
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header"
+      location: "query" | "body" | "param" | "header",
     ): T {
       return (req as Record<string, any>)[`_validated_${location}`] as T;
     },

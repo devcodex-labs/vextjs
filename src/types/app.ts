@@ -56,7 +56,7 @@ export interface VextLogger {
 export interface VextRateLimiter {
   /** 检查是否允许请求通过 */
   check(
-    key: string
+    key: string,
   ): Promise<{ allowed: boolean; remaining: number; resetAt: number }>;
 }
 
@@ -393,7 +393,7 @@ export interface VextShutdownConfig {
    */
   onFatalError?: (
     error: Error,
-    origin: "uncaughtException" | "unhandledRejection"
+    origin: "uncaughtException" | "unhandledRejection",
   ) => void | Promise<void>;
 }
 
@@ -935,7 +935,7 @@ export interface VextApp {
     status: number,
     message: string,
     paramsOrCode?: Record<string, unknown> | number | string,
-    code?: number | string
+    code?: number | string,
   ): never;
 
   // ── 运行时数据（不可覆盖）─────────────────────────────

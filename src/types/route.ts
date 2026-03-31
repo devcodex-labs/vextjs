@@ -1,6 +1,6 @@
-import type { VextAdapter } from './adapter.js'
-import type { VextApp, RouteRecord, RouteOptions } from './app.js'
-import type { VextMiddleware, VextHandler } from './middleware.js'
+import type { VextAdapter } from "./adapter.js";
+import type { VextApp, RouteRecord, RouteOptions } from "./app.js";
+import type { VextMiddleware, VextHandler } from "./middleware.js";
 
 /**
  * RouteDefinition — 路由定义对象（内部数据结构）
@@ -19,7 +19,7 @@ import type { VextMiddleware, VextHandler } from './middleware.js'
  */
 export interface RouteDefinition {
   /** 收集到的路由记录列表 */
-  readonly routes: RouteRecord[]
+  readonly routes: RouteRecord[];
 
   /**
    * 来源文件路径（由 router-loader 注入，用于错误信息和日志）
@@ -27,7 +27,7 @@ export interface RouteDefinition {
    * defineRoutes 返回时为空字符串，
    * router-loader 在加载模块后设置此字段。
    */
-  sourceFile: string
+  sourceFile: string;
 
   /**
    * 将收集到的路由注册到底层适配器
@@ -49,7 +49,7 @@ export interface RouteDefinition {
     prefix: string,
     middlewareDefs: Map<string, VextMiddleware>,
     globalMiddlewares: VextMiddleware[],
-  ): void
+  ): void;
 }
 
 /**
@@ -60,26 +60,26 @@ export interface RouteDefinition {
  * 用户在 factory 回调中调用的 app.get/post/... 实际上是调用此 collector。
  */
 export interface RouteCollector {
-  get(path: string, options: RouteOptions, handler: VextHandler): void
-  get(path: string, handler: VextHandler): void
+  get(path: string, options: RouteOptions, handler: VextHandler): void;
+  get(path: string, handler: VextHandler): void;
 
-  post(path: string, options: RouteOptions, handler: VextHandler): void
-  post(path: string, handler: VextHandler): void
+  post(path: string, options: RouteOptions, handler: VextHandler): void;
+  post(path: string, handler: VextHandler): void;
 
-  put(path: string, options: RouteOptions, handler: VextHandler): void
-  put(path: string, handler: VextHandler): void
+  put(path: string, options: RouteOptions, handler: VextHandler): void;
+  put(path: string, handler: VextHandler): void;
 
-  patch(path: string, options: RouteOptions, handler: VextHandler): void
-  patch(path: string, handler: VextHandler): void
+  patch(path: string, options: RouteOptions, handler: VextHandler): void;
+  patch(path: string, handler: VextHandler): void;
 
-  delete(path: string, options: RouteOptions, handler: VextHandler): void
-  delete(path: string, handler: VextHandler): void
+  delete(path: string, options: RouteOptions, handler: VextHandler): void;
+  delete(path: string, handler: VextHandler): void;
 
-  head(path: string, options: RouteOptions, handler: VextHandler): void
-  head(path: string, handler: VextHandler): void
+  head(path: string, options: RouteOptions, handler: VextHandler): void;
+  head(path: string, handler: VextHandler): void;
 
-  options(path: string, options: RouteOptions, handler: VextHandler): void
-  options(path: string, handler: VextHandler): void
+  options(path: string, options: RouteOptions, handler: VextHandler): void;
+  options(path: string, handler: VextHandler): void;
 }
 
 /**
@@ -88,4 +88,4 @@ export interface RouteCollector {
  * 接收完整的 VextApp 对象（实际上是 RouteCollector + app 引用），
  * 在其上注册路由。
  */
-export type RouteFactory = (app: VextApp) => void
+export type RouteFactory = (app: VextApp) => void;

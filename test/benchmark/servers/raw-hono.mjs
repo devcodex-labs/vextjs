@@ -80,7 +80,9 @@ const server = createServer(async (nodeReq, nodeRes) => {
   if (hasBody) {
     body = new ReadableStream({
       start(controller) {
-        nodeReq.on("data", (chunk) => controller.enqueue(new Uint8Array(chunk)));
+        nodeReq.on("data", (chunk) =>
+          controller.enqueue(new Uint8Array(chunk)),
+        );
         nodeReq.on("end", () => controller.close());
         nodeReq.on("error", (err) => controller.error(err));
       },

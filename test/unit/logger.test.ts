@@ -465,7 +465,10 @@ describe("requestContextEnabled 选项", () => {
 
   it("requestContextEnabled: true 显式传入应正常工作", () => {
     process.env.NODE_ENV = "production";
-    const logger = createLogger({ pretty: false }, { requestContextEnabled: true });
+    const logger = createLogger(
+      { pretty: false },
+      { requestContextEnabled: true },
+    );
     expect(logger).toBeDefined();
   });
 });

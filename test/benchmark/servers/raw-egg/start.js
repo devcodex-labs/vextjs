@@ -16,38 +16,41 @@
  *   # 或由 run-benchmark.mjs fork 启动
  */
 
+const path = require("node:path");
 
-
-const path = require('node:path');
-
-const port = parseInt(process.env.PORT || '7001', 10);
+const port = parseInt(process.env.PORT || "7001", 10);
 const baseDir = __dirname;
 
 // egg.startCluster 是 egg 官方推荐的编程式启动方式
 // 内部启动 master → agent → worker 多进程模型
-const egg = require('egg');
+const egg = require("egg");
 
-egg.startCluster({
-  baseDir,
-  port,
-  workers: 1,          // 单 worker，避免多进程优势干扰基准测试公平性
-  framework: path.dirname(require.resolve('egg')),
-}, () => {
-  console.log(`[raw-egg] egg started on http://127.0.0.1:${port} (single worker mode)`);
+egg.startCluster(
+  {
+    baseDir,
+    port,
+    workers: 1, // 单 worker，避免多进程优势干扰基准测试公平性
+    framework: path.dirname(require.resolve("egg")),
+  },
+  () => {
+    console.log(
+      `[raw-egg] egg started on http://127.0.0.1:${port} (single worker mode)`,
+    );
 
-  // 通知父进程已就绪（子进程模式）
-  if (process.send) {
-    process.send({ type: 'ready', port });
-  }
-});
+    // 通知父进程已就绪（子进程模式）
+    if (process.send) {
+      process.send({ type: "ready", port });
+    }
+  },
+);
 
 // 优雅关闭
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   // egg master 会自行处理 SIGTERM 信号
   // 这里确保进程最终退出
   setTimeout(() => process.exit(0), 3000);
 });
 
-process.on('SIGINT', () => {
+process.on("SIGINT", () => {
   setTimeout(() => process.exit(0), 3000);
 });

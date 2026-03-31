@@ -62,7 +62,7 @@ import {
  * 跟踪所有方法调用，用于断言调用顺序和参数。
  */
 function createMockAdapter(
-  overrides?: Partial<RouteReloaderAdapter>
+  overrides?: Partial<RouteReloaderAdapter>,
 ): RouteReloaderAdapter & {
   _registeredMiddlewares: RouteReloaderMiddleware[];
   _registeredRoutes: Array<{
@@ -92,7 +92,7 @@ function createMockAdapter(
     registerRoute: vi.fn(
       (method: string, path: string, chain: RouteReloaderMiddleware[]) => {
         registeredRoutes.push({ method, path, chain });
-      }
+      },
     ),
     registerErrorHandler: vi.fn((handler: RouteReloaderErrorMiddleware) => {
       errorHandler = handler;
@@ -117,7 +117,7 @@ function createMockAdapter(
  * 创建 mock VextApp
  */
 function createMockApp(
-  overrides?: Partial<RouteReloaderApp>
+  overrides?: Partial<RouteReloaderApp>,
 ): RouteReloaderApp {
   return {
     config: {
@@ -192,7 +192,7 @@ describe("reloadRoutes", () => {
    * 创建默认的 reloadRoutes 选项
    */
   function createDefaultOptions(
-    overrides?: Partial<ReloadRoutesOptions>
+    overrides?: Partial<ReloadRoutesOptions>,
   ): ReloadRoutesOptions {
     const freshAdapter = createMockAdapter();
     const app = createMockApp();
@@ -205,10 +205,10 @@ describe("reloadRoutes", () => {
       resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       ...overrides,
     };
@@ -297,7 +297,7 @@ describe("reloadRoutes", () => {
       expect(callOrder[callOrder.length - 1]).toBe("buildHandler");
       // loadRoutes 应在 buildHandler 之前
       expect(callOrder.indexOf("loadRoutes")).toBeLessThan(
-        callOrder.indexOf("buildHandler")
+        callOrder.indexOf("buildHandler"),
       );
     });
 
@@ -513,7 +513,7 @@ describe("reloadRoutes", () => {
       const options = createDefaultOptions({
         app,
         resolveAdapter: vi.fn(() =>
-          createMockAdapter()
+          createMockAdapter(),
         ) as unknown as AdapterResolver,
         builtinMiddlewares,
       });
@@ -542,7 +542,7 @@ describe("reloadRoutes", () => {
 
       expect(freshAdapter.registerErrorHandler).toHaveBeenCalledOnce();
       expect(freshAdapter.registerErrorHandler).toHaveBeenCalledWith(
-        mockErrorHandler
+        mockErrorHandler,
       );
     });
 
@@ -701,7 +701,7 @@ describe("reloadRoutes", () => {
 
       expect(loadRoutesFn).not.toHaveBeenCalled();
       expect(app.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("routes directory not found")
+        expect.stringContaining("routes directory not found"),
       );
     });
   });
@@ -763,7 +763,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "route loading failed"
+        "route loading failed",
       );
 
       // 失败后 app.adapter 仍应恢复
@@ -785,7 +785,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "buildHandler failed"
+        "buildHandler failed",
       );
 
       expect(app.adapter).toBe(originalAdapter);
@@ -803,7 +803,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "resolveAdapter failed"
+        "resolveAdapter failed",
       );
 
       expect(app.adapter).toBe(originalAdapter);
@@ -821,7 +821,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "adapter creation failed"
+        "adapter creation failed",
       );
     });
 
@@ -833,7 +833,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "failed to load route file"
+        "failed to load route file",
       );
     });
 
@@ -845,7 +845,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "error handler creation failed"
+        "error handler creation failed",
       );
     });
 
@@ -857,7 +857,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "not found handler creation failed"
+        "not found handler creation failed",
       );
     });
 
@@ -873,7 +873,7 @@ describe("reloadRoutes", () => {
       });
 
       await expect(reloadRoutes(options)).rejects.toThrow(
-        "build handler failed"
+        "build handler failed",
       );
     });
 
@@ -905,7 +905,7 @@ describe("reloadRoutes", () => {
       await reloadRoutes(options);
 
       expect(app.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("routes reloaded via fresh adapter")
+        expect.stringContaining("routes reloaded via fresh adapter"),
       );
     });
 
@@ -923,7 +923,7 @@ describe("reloadRoutes", () => {
       await reloadRoutes(options);
 
       expect(app.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("test-adapter")
+        expect.stringContaining("test-adapter"),
       );
     });
 
@@ -934,7 +934,7 @@ describe("reloadRoutes", () => {
       await reloadRoutes(options);
 
       expect(app.logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("creating fresh adapter")
+        expect.stringContaining("creating fresh adapter"),
       );
     });
   });
@@ -1055,14 +1055,14 @@ describe("createSimpleRouteReloader", () => {
     const reloader = createSimpleRouteReloader({
       app: createMockApp(),
       resolveAdapter: vi.fn(() =>
-        createMockAdapter()
+        createMockAdapter(),
       ) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1106,14 +1106,14 @@ describe("createSimpleRouteReloader", () => {
     const reloader = createSimpleRouteReloader({
       app: createMockApp(),
       resolveAdapter: vi.fn(() =>
-        createMockAdapter()
+        createMockAdapter(),
       ) as unknown as AdapterResolver,
       loadRoutes: loadRoutesFn as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1137,10 +1137,10 @@ describe("createSimpleRouteReloader", () => {
       resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1165,10 +1165,10 @@ describe("createSimpleRouteReloader", () => {
       resolveAdapter: resolveAdapterFn as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1201,7 +1201,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
    * 创建默认的 reloadRoutes 选项（BUG-022 测试专用）
    */
   function createBugFixOptions(
-    overrides?: Partial<ReloadRoutesOptions>
+    overrides?: Partial<ReloadRoutesOptions>,
   ): ReloadRoutesOptions {
     const freshAdapter = createMockAdapter();
     const app = createMockApp();
@@ -1212,14 +1212,14 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       ...overrides,
     };
@@ -1230,7 +1230,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const loadRoutesFn = vi.fn(async () => {});
     const options = createBugFixOptions({
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       loadRoutes: loadRoutesFn as unknown as RoutesLoader,
       openapiConfig: {
@@ -1245,7 +1245,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     // 验证 /openapi.json 和 /docs 端点被注册到新 adapter
     const registeredRoutes = freshAdapter._registeredRoutes;
     const registeredPaths = registeredRoutes.map(
-      (r: { method: string; path: string }) => r.path
+      (r: { method: string; path: string }) => r.path,
     );
     expect(registeredPaths).toContain("/openapi.json");
     expect(registeredPaths).toContain("/docs");
@@ -1257,11 +1257,11 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
         _app: unknown,
         _dir: string,
         _opts: unknown,
-        collector?: unknown
+        collector?: unknown,
       ) => {
         // noop — 仅捕获参数
         void collector;
-      }
+      },
     );
     const options = createBugFixOptions({
       loadRoutes: loadRoutesFn as unknown as RoutesLoader,
@@ -1280,10 +1280,10 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     expect(callArgs[3]).toBeDefined();
     expect(callArgs[3]).not.toBeNull();
     expect(typeof (callArgs[3] as Record<string, unknown>).addRoute).toBe(
-      "function"
+      "function",
     );
     expect(typeof (callArgs[3] as Record<string, unknown>).getRoutes).toBe(
-      "function"
+      "function",
     );
   });
 
@@ -1291,7 +1291,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const freshAdapter = createMockAdapter();
     const options = createBugFixOptions({
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       openapiConfig: {
         enabled: false,
@@ -1303,7 +1303,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
 
     const registeredRoutes = freshAdapter._registeredRoutes;
     const registeredPaths = registeredRoutes.map(
-      (r: { method: string; path: string }) => r.path
+      (r: { method: string; path: string }) => r.path,
     );
     expect(registeredPaths).not.toContain("/openapi.json");
     expect(registeredPaths).not.toContain("/docs");
@@ -1313,7 +1313,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const freshAdapter = createMockAdapter();
     const options = createBugFixOptions({
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       // 不提供 openapiConfig
     });
@@ -1322,7 +1322,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
 
     const registeredRoutes = freshAdapter._registeredRoutes;
     const registeredPaths = registeredRoutes.map(
-      (r: { method: string; path: string }) => r.path
+      (r: { method: string; path: string }) => r.path,
     );
     expect(registeredPaths).not.toContain("/openapi.json");
     expect(registeredPaths).not.toContain("/docs");
@@ -1332,7 +1332,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const freshAdapter = createMockAdapter();
     const options = createBugFixOptions({
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       openapiConfig: {
         enabled: true,
@@ -1346,7 +1346,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
 
     const registeredRoutes = freshAdapter._registeredRoutes;
     const registeredPaths = registeredRoutes.map(
-      (r: { method: string; path: string }) => r.path
+      (r: { method: string; path: string }) => r.path,
     );
     expect(registeredPaths).toContain("/api/spec.json");
     expect(registeredPaths).toContain("/api-docs");
@@ -1361,7 +1361,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const options = createBugFixOptions({
       app: app as unknown as RouteReloaderApp,
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       openapiConfig: {
         enabled: true,
@@ -1375,7 +1375,8 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const infoCalls = (app.logger.info as ReturnType<typeof vi.fn>).mock.calls;
     const openapiLog = infoCalls.find(
       (args: unknown[]) =>
-        typeof args[0] === "string" && (args[0] as string).includes("[openapi]")
+        typeof args[0] === "string" &&
+        (args[0] as string).includes("[openapi]"),
     );
     expect(openapiLog).toBeDefined();
   });
@@ -1387,10 +1388,10 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
         _app: unknown,
         _dir: string,
         _opts: unknown,
-        collector?: unknown
+        collector?: unknown,
       ) => {
         collectorInstances.push(collector);
-      }
+      },
     );
 
     const options = createBugFixOptions({
@@ -1419,14 +1420,14 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     const reloader = createSimpleRouteReloader({
       app: createMockApp(),
       resolveAdapter: vi.fn(
-        async () => freshAdapter
+        async () => freshAdapter,
       ) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
       createErrorHandler: vi.fn(() =>
-        createMockErrorMiddleware()
+        createMockErrorMiddleware(),
       ) as unknown as ErrorHandlerFactory,
       createNotFoundHandler: vi.fn(() =>
-        createMockNotFoundHandler()
+        createMockNotFoundHandler(),
       ) as unknown as NotFoundHandlerFactory,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1437,7 +1438,7 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
 
     // 验证文档端点被注册
     const registeredPaths = freshAdapter._registeredRoutes.map(
-      (r: { method: string; path: string }) => r.path
+      (r: { method: string; path: string }) => r.path,
     );
     expect(registeredPaths).toContain("/openapi.json");
     expect(registeredPaths).toContain("/docs");

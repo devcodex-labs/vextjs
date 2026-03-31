@@ -7,7 +7,7 @@
 VextJS 提供零配置的测试工具，通过 `vextjs/testing` 子路径导入：
 
 ```typescript
-import { createTestApp } from 'vextjs/testing';
+import { createTestApp } from "vextjs/testing";
 ```
 
 **核心设计**：
@@ -26,28 +26,28 @@ import { createTestApp } from 'vextjs/testing';
 ### 函数签名
 
 ```typescript
-async function createTestApp(
-  options?: CreateTestAppOptions
-): Promise<TestApp>;
+async function createTestApp(options?: CreateTestAppOptions): Promise<TestApp>;
 ```
 
 ### 基本用法
 
 ```typescript
-import { describe, it, expect, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('用户接口', () => {
+describe("用户接口", () => {
   let testApp;
 
   afterEach(async () => {
     await testApp?.close();
   });
 
-  it('GET /users/list 应返回用户列表', async () => {
+  it("GET /users/list 应返回用户列表", async () => {
     testApp = await createTestApp();
 
-    const res = await testApp.request.get('/users/list').query({ page: '1', limit: '10' });
+    const res = await testApp.request
+      .get("/users/list")
+      .query({ page: "1", limit: "10" });
 
     expect(res.status).toBe(200);
     expect(res.body.code).toBe(0);
@@ -81,16 +81,16 @@ interface CreateTestAppOptions {
 
 ### 字段说明
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `config` | `Partial<VextConfig>` | `{}` | 覆盖默认配置（深度合并到测试默认配置之上） |
-| `plugins` | `boolean` | `false` | 是否加载 `src/plugins/`（测试环境默认不加载） |
-| `setupPlugins` | `Function` | `undefined` | 手动注册插件（替代自动扫描） |
-| `services` | `boolean` | `true` | 是否加载 `src/services/` |
-| `mockServices` | `Partial<VextServices>` | `undefined` | 手动注入 mock services |
-| `routes` | `boolean` | `true` | 是否加载 `src/routes/` |
-| `middlewares` | `boolean` | `true` | 是否加载 `src/middlewares/` |
-| `rootDir` | `string` | `process.cwd()` | 项目根目录（用于定位 `src/` 子目录） |
+| 字段           | 类型                    | 默认值          | 说明                                          |
+| -------------- | ----------------------- | --------------- | --------------------------------------------- |
+| `config`       | `Partial<VextConfig>`   | `{}`            | 覆盖默认配置（深度合并到测试默认配置之上）    |
+| `plugins`      | `boolean`               | `false`         | 是否加载 `src/plugins/`（测试环境默认不加载） |
+| `setupPlugins` | `Function`              | `undefined`     | 手动注册插件（替代自动扫描）                  |
+| `services`     | `boolean`               | `true`          | 是否加载 `src/services/`                      |
+| `mockServices` | `Partial<VextServices>` | `undefined`     | 手动注入 mock services                        |
+| `routes`       | `boolean`               | `true`          | 是否加载 `src/routes/`                        |
+| `middlewares`  | `boolean`               | `true`          | 是否加载 `src/middlewares/`                   |
+| `rootDir`      | `string`                | `process.cwd()` | 项目根目录（用于定位 `src/` 子目录）          |
 
 ---
 
@@ -101,9 +101,9 @@ interface CreateTestAppOptions {
 ```typescript
 testApp = await createTestApp({
   config: {
-    adapter: 'fastify',       // 测试特定 adapter
+    adapter: "fastify", // 测试特定 adapter
     response: { wrap: false }, // 禁用出口包装
-    cors: { enabled: false },  // 禁用 CORS
+    cors: { enabled: false }, // 禁用 CORS
   },
 });
 ```
@@ -153,8 +153,8 @@ testApp = await createTestApp({ plugins: true });
 testApp = await createTestApp({
   setupPlugins: async (app) => {
     // 只注册测试需要的插件
-    app.extend('cache', new MockCache());
-    app.extend('db', new MockDatabase());
+    app.extend("cache", new MockCache());
+    app.extend("db", new MockDatabase());
   },
 });
 ```
@@ -179,7 +179,7 @@ testApp = await createTestApp({
   mockServices: {
     user: {
       findAll: vi.fn().mockResolvedValue({ items: [], total: 0 }),
-      findById: vi.fn().mockResolvedValue({ id: '1', name: 'Test User' }),
+      findById: vi.fn().mockResolvedValue({ id: "1", name: "Test User" }),
     },
   },
 });
@@ -189,12 +189,13 @@ testApp = await createTestApp({
 
 当 `services: true` 时，`service-loader` 扫描 `src/services/` 目录并自动加载 `.ts` 源文件。由于 Node.js 原生 ESM 存在两个限制，框架内部使用 **esbuild** 自动处理：
 
-| 限制 | 说明 |
-|------|------|
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js 原生 ESM 不支持直接 `import()` `.ts` 文件 |
-| `.js → .ts` 重映射缺失 | TypeScript ESM 约定在 import 中写 `.js` 扩展名，Node.js/Vite resolver 均不自动回退到 `.ts` |
+| 限制                              | 说明                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js 原生 ESM 不支持直接 `import()` `.ts` 文件                                          |
+| `.js → .ts` 重映射缺失            | TypeScript ESM 约定在 import 中写 `.js` 扩展名，Node.js/Vite resolver 均不自动回退到 `.ts` |
 
 `service-loader` 对每个 `.ts` 服务文件执行以下流程：
+
 1. 调用 `esbuild.build({ bundle: true, packages: 'external' })` 将 `.ts` 及其本地相对依赖打包为 `.mjs`
 2. 将编译产物写到源文件同目录的临时文件（命名含 `.__vext_compiled__`，不会被重复扫描）
 3. `import()` 临时 `.mjs` 文件，完成后自动清理
@@ -212,15 +213,15 @@ testApp = await createTestApp({
 ```typescript
 const mockUserService = {
   findAll: vi.fn().mockResolvedValue([
-    { id: '1', name: 'Alice' },
-    { id: '2', name: 'Bob' },
+    { id: "1", name: "Alice" },
+    { id: "2", name: "Bob" },
   ]),
-  findById: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+  findById: vi.fn().mockResolvedValue({ id: "1", name: "Alice" }),
   create: vi.fn().mockImplementation(async (data) => ({
-    id: '3',
+    id: "3",
     ...data,
   })),
-  update: vi.fn().mockResolvedValue({ id: '1', name: 'Updated' }),
+  update: vi.fn().mockResolvedValue({ id: "1", name: "Updated" }),
   delete: vi.fn().mockResolvedValue(undefined),
 };
 
@@ -233,12 +234,12 @@ testApp = await createTestApp({
 
 **合并逻辑**：
 
-| `services` | `mockServices` | 行为 |
-|:----------:|:--------------:|------|
-| `true` | 有值 | 先加载真实服务，再用 `mockServices` 覆盖同名服务 |
-| `true` | 无值 | 仅使用真实服务 |
-| `false` | 有值 | 仅使用 `mockServices` |
-| `false` | 无值 | `app.services` 为空对象 `{}` |
+| `services` | `mockServices` | 行为                                             |
+| :--------: | :------------: | ------------------------------------------------ |
+|   `true`   |      有值      | 先加载真实服务，再用 `mockServices` 覆盖同名服务 |
+|   `true`   |      无值      | 仅使用真实服务                                   |
+|  `false`   |      有值      | 仅使用 `mockServices`                            |
+|  `false`   |      无值      | `app.services` 为空对象 `{}`                     |
 
 ---
 
@@ -279,10 +280,10 @@ testApp = await createTestApp({ middlewares: false });
 项目根目录，用于定位 `src/routes`、`src/services`、`src/plugins` 等目录。
 
 ```typescript
-import { join } from 'node:path';
+import { join } from "node:path";
 
 testApp = await createTestApp({
-  rootDir: join(__dirname, '../../'), // 自定义项目根目录
+  rootDir: join(__dirname, "../../"), // 自定义项目根目录
 });
 ```
 
@@ -311,10 +312,10 @@ const testApp = await createTestApp();
 console.log(testApp.app.config.port);
 
 // 访问服务
-const user = await testApp.app.services.user.findById('1');
+const user = await testApp.app.services.user.findById("1");
 
 // 访问日志
-testApp.app.logger.info('测试中');
+testApp.app.logger.info("测试中");
 ```
 
 ### `request`
@@ -334,7 +335,7 @@ close(): Promise<void>;
 :::
 
 ```typescript
-import { afterEach } from 'vitest';
+import { afterEach } from "vitest";
 
 let testApp;
 
@@ -363,15 +364,15 @@ interface TestRequest {
 
 ### 支持的 HTTP 方法
 
-| 方法 | 说明 |
-|------|------|
-| `request.get(path)` | 发送 GET 请求 |
-| `request.post(path)` | 发送 POST 请求 |
-| `request.put(path)` | 发送 PUT 请求 |
-| `request.patch(path)` | 发送 PATCH 请求 |
-| `request.delete(path)` | 发送 DELETE 请求 |
+| 方法                    | 说明              |
+| ----------------------- | ----------------- |
+| `request.get(path)`     | 发送 GET 请求     |
+| `request.post(path)`    | 发送 POST 请求    |
+| `request.put(path)`     | 发送 PUT 请求     |
+| `request.patch(path)`   | 发送 PATCH 请求   |
+| `request.delete(path)`  | 发送 DELETE 请求  |
 | `request.options(path)` | 发送 OPTIONS 请求 |
-| `request.head(path)` | 发送 HEAD 请求 |
+| `request.head(path)`    | 发送 HEAD 请求    |
 
 每个方法返回 `TestRequestBuilder`，支持链式配置后通过 `await` 执行请求。
 
@@ -379,24 +380,24 @@ interface TestRequest {
 
 ```typescript
 // GET 请求
-const res = await testApp.request.get('/users/list');
+const res = await testApp.request.get("/users/list");
 
 // POST 请求
-const res = await testApp.request.post('/users').send({
-  name: 'Alice',
-  email: 'alice@example.com',
+const res = await testApp.request.post("/users").send({
+  name: "Alice",
+  email: "alice@example.com",
 });
 
 // PUT 请求
-const res = await testApp.request.put('/users/1').send({
-  name: 'Alice Updated',
+const res = await testApp.request.put("/users/1").send({
+  name: "Alice Updated",
 });
 
 // DELETE 请求
-const res = await testApp.request.delete('/users/1');
+const res = await testApp.request.delete("/users/1");
 
 // OPTIONS 请求（CORS 预检）
-const res = await testApp.request.options('/users');
+const res = await testApp.request.options("/users");
 ```
 
 ---
@@ -431,9 +432,9 @@ set(key: string, value: string): this;
 
 ```typescript
 const res = await testApp.request
-  .get('/profile')
-  .set('Authorization', 'Bearer eyJ...')
-  .set('Accept-Language', 'zh-CN');
+  .get("/profile")
+  .set("Authorization", "Bearer eyJ...")
+  .set("Accept-Language", "zh-CN");
 
 expect(res.status).toBe(200);
 ```
@@ -449,13 +450,11 @@ headers(headers: Record<string, string>): this;
 ```
 
 ```typescript
-const res = await testApp.request
-  .get('/profile')
-  .headers({
-    'Authorization': 'Bearer eyJ...',
-    'Accept-Language': 'zh-CN',
-    'X-Custom-Header': 'custom-value',
-  });
+const res = await testApp.request.get("/profile").headers({
+  Authorization: "Bearer eyJ...",
+  "Accept-Language": "zh-CN",
+  "X-Custom-Header": "custom-value",
+});
 ```
 
 :::tip
@@ -476,7 +475,7 @@ query(params: Record<string, string | number | boolean>): this;
 
 ```typescript
 const res = await testApp.request
-  .get('/users/list')
+  .get("/users/list")
   .query({ page: 1, limit: 10, active: true });
 // 等价于 GET /users/list?page=1&limit=10&active=true
 
@@ -488,8 +487,8 @@ expect(res.body.data).toHaveLength(10);
 
 ```typescript
 const res = await testApp.request
-  .get('/search')
-  .query({ keyword: 'hello' })
+  .get("/search")
+  .query({ keyword: "hello" })
   .query({ page: 1 });
 // 等价于 GET /search?keyword=hello&page=1
 ```
@@ -507,35 +506,33 @@ send(body: unknown): this;
 ```typescript
 // JSON 对象
 const res = await testApp.request
-  .post('/users')
-  .send({ name: 'Alice', email: 'alice@example.com' });
+  .post("/users")
+  .send({ name: "Alice", email: "alice@example.com" });
 
 expect(res.status).toBe(201);
-expect(res.body.data.name).toBe('Alice');
+expect(res.body.data.name).toBe("Alice");
 ```
 
 ```typescript
 // 嵌套对象
-const res = await testApp.request
-  .post('/orders')
-  .send({
-    items: [
-      { productId: 'p1', quantity: 2 },
-      { productId: 'p2', quantity: 1 },
-    ],
-    shippingAddress: {
-      city: '北京',
-      street: '朝阳区xxx路',
-    },
-  });
+const res = await testApp.request.post("/orders").send({
+  items: [
+    { productId: "p1", quantity: 2 },
+    { productId: "p2", quantity: 1 },
+  ],
+  shippingAddress: {
+    city: "北京",
+    street: "朝阳区xxx路",
+  },
+});
 ```
 
 ```typescript
 // 字符串（直接发送，不做 JSON 序列化）
 const res = await testApp.request
-  .post('/webhook')
-  .type('text/plain')
-  .send('raw text body');
+  .post("/webhook")
+  .type("text/plain")
+  .send("raw text body");
 ```
 
 ---
@@ -551,15 +548,15 @@ type(contentType: string): this;
 ```typescript
 // 发送 form-urlencoded
 const res = await testApp.request
-  .post('/login')
-  .type('application/x-www-form-urlencoded')
-  .send('username=alice&password=secret');
+  .post("/login")
+  .type("application/x-www-form-urlencoded")
+  .send("username=alice&password=secret");
 
 // 发送 XML
 const res = await testApp.request
-  .post('/xml-endpoint')
-  .type('application/xml')
-  .send('<user><name>Alice</name></user>');
+  .post("/xml-endpoint")
+  .type("application/xml")
+  .send("<user><name>Alice</name></user>");
 ```
 
 :::tip
@@ -574,21 +571,21 @@ const res = await testApp.request
 
 ```typescript
 const res = await testApp.request
-  .post('/users')
-  .set('Authorization', 'Bearer eyJ...')
-  .set('X-Request-Id', 'test-req-001')
-  .query({ notify: 'true' })
-  .type('application/json')
+  .post("/users")
+  .set("Authorization", "Bearer eyJ...")
+  .set("X-Request-Id", "test-req-001")
+  .query({ notify: "true" })
+  .type("application/json")
   .send({
-    name: 'Alice',
-    email: 'alice@example.com',
-    role: 'admin',
+    name: "Alice",
+    email: "alice@example.com",
+    role: "admin",
   });
 
 expect(res.status).toBe(201);
 expect(res.body.code).toBe(0);
-expect(res.body.data.name).toBe('Alice');
-expect(res.headers['x-request-id']).toBe('test-req-001');
+expect(res.body.data.name).toBe("Alice");
+expect(res.headers["x-request-id"]).toBe("test-req-001");
 ```
 
 ---
@@ -615,13 +612,15 @@ status: number;
 ```
 
 ```typescript
-const res = await testApp.request.get('/users/list');
+const res = await testApp.request.get("/users/list");
 expect(res.status).toBe(200);
 
-const res2 = await testApp.request.get('/users/nonexistent');
+const res2 = await testApp.request.get("/users/nonexistent");
 expect(res2.status).toBe(404);
 
-const res3 = await testApp.request.post('/users').send({ name: 'Alice', email: 'alice@example.com' });
+const res3 = await testApp.request
+  .post("/users")
+  .send({ name: "Alice", email: "alice@example.com" });
 expect(res3.status).toBe(201);
 ```
 
@@ -636,16 +635,16 @@ headers: Record<string, string>;
 ```
 
 ```typescript
-const res = await testApp.request.get('/users/list');
+const res = await testApp.request.get("/users/list");
 
 // 检查 Content-Type
-expect(res.headers['content-type']).toContain('application/json');
+expect(res.headers["content-type"]).toContain("application/json");
 
 // 检查自定义响应头
-expect(res.headers['x-request-id']).toBeDefined();
+expect(res.headers["x-request-id"]).toBeDefined();
 
 // 检查 CORS 头
-expect(res.headers['access-control-allow-origin']).toBeDefined();
+expect(res.headers["access-control-allow-origin"]).toBeDefined();
 ```
 
 ---
@@ -659,7 +658,7 @@ body: any;
 ```
 
 ```typescript
-const res = await testApp.request.get('/users/list');
+const res = await testApp.request.get("/users/list");
 
 // 出口包装格式
 expect(res.body).toEqual({
@@ -670,17 +669,17 @@ expect(res.body).toEqual({
 
 // 直接访问业务数据
 expect(res.body.data).toHaveLength(2);
-expect(res.body.data[0].name).toBe('Alice');
+expect(res.body.data[0].name).toBe("Alice");
 ```
 
 **错误响应**：
 
 ```typescript
-const res = await testApp.request.get('/users/nonexistent-id');
+const res = await testApp.request.get("/users/nonexistent-id");
 
 expect(res.body).toEqual({
   code: -1,
-  message: '用户不存在',
+  message: "用户不存在",
   requestId: expect.any(String),
 });
 ```
@@ -688,12 +687,12 @@ expect(res.body).toEqual({
 **带业务错误码**：
 
 ```typescript
-const res = await testApp.request.post('/users').send({
-  email: 'existing@example.com',
+const res = await testApp.request.post("/users").send({
+  email: "existing@example.com",
 });
 
 expect(res.body.code).toBe(10001);
-expect(res.body.message).toBe('邮箱已注册');
+expect(res.body.message).toBe("邮箱已注册");
 ```
 
 ---
@@ -708,13 +707,13 @@ text: string;
 
 ```typescript
 // JSON 响应的原始文本
-const res = await testApp.request.get('/users/list');
+const res = await testApp.request.get("/users/list");
 console.log(res.text);
 // '{"code":0,"data":[...],"requestId":"..."}'
 
 // 文本响应
-const res2 = await testApp.request.get('/health');
-expect(res2.text).toBe('OK');
+const res2 = await testApp.request.get("/health");
+expect(res2.text).toBe("OK");
 ```
 
 ---
@@ -726,11 +725,11 @@ expect(res2.text).toBe('OK');
 加载真实的路由、服务、中间件，验证完整的请求-响应流程：
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
-import type { TestApp } from 'vextjs';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
+import type { TestApp } from "vextjs";
 
-describe('用户 CRUD', () => {
+describe("用户 CRUD", () => {
   let testApp: TestApp;
 
   beforeEach(async () => {
@@ -743,27 +742,27 @@ describe('用户 CRUD', () => {
     await testApp.close();
   });
 
-  it('创建用户', async () => {
+  it("创建用户", async () => {
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', 'Bearer test-admin-token')
+      .post("/users")
+      .set("Authorization", "Bearer test-admin-token")
       .send({
-        name: 'Alice',
-        email: 'alice@example.com',
+        name: "Alice",
+        email: "alice@example.com",
       });
 
     expect(res.status).toBe(201);
     expect(res.body.code).toBe(0);
     expect(res.body.data).toMatchObject({
-      name: 'Alice',
-      email: 'alice@example.com',
+      name: "Alice",
+      email: "alice@example.com",
     });
     expect(res.body.data.id).toBeDefined();
   });
 
-  it('查询用户列表', async () => {
+  it("查询用户列表", async () => {
     const res = await testApp.request
-      .get('/users/list')
+      .get("/users/list")
       .query({ page: 1, limit: 10 });
 
     expect(res.status).toBe(200);
@@ -771,20 +770,20 @@ describe('用户 CRUD', () => {
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 
-  it('用户不存在应返回 404', async () => {
-    const res = await testApp.request.get('/users/nonexistent');
+  it("用户不存在应返回 404", async () => {
+    const res = await testApp.request.get("/users/nonexistent");
 
     expect(res.status).toBe(404);
-    expect(res.body.message).toBe('用户不存在');
+    expect(res.body.message).toBe("用户不存在");
   });
 
-  it('参数校验失败应返回 400', async () => {
+  it("参数校验失败应返回 400", async () => {
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', 'Bearer test-admin-token')
+      .post("/users")
+      .set("Authorization", "Bearer test-admin-token")
       .send({
-        name: '', // 不满足 string:1-50
-        email: 'invalid-email', // 不满足 email 格式
+        name: "", // 不满足 string:1-50
+        email: "invalid-email", // 不满足 email 格式
       });
 
     expect(res.status).toBe(400);
@@ -801,23 +800,23 @@ describe('用户 CRUD', () => {
 不加载真实服务，使用 mock 替代，专注测试路由逻辑：
 
 ```typescript
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('用户路由（mock 服务）', () => {
+describe("用户路由（mock 服务）", () => {
   let testApp;
 
   const mockUserService = {
     findAll: vi.fn().mockResolvedValue([
-      { id: '1', name: 'Alice' },
-      { id: '2', name: 'Bob' },
+      { id: "1", name: "Alice" },
+      { id: "2", name: "Bob" },
     ]),
     findById: vi.fn().mockImplementation(async (id) => {
-      if (id === '1') return { id: '1', name: 'Alice' };
+      if (id === "1") return { id: "1", name: "Alice" };
       return null;
     }),
     create: vi.fn().mockImplementation(async (data) => ({
-      id: '3',
+      id: "3",
       ...data,
       createdAt: new Date().toISOString(),
     })),
@@ -828,37 +827,37 @@ describe('用户路由（mock 服务）', () => {
     vi.clearAllMocks();
   });
 
-  it('GET /users/list 调用 findAll', async () => {
+  it("GET /users/list 调用 findAll", async () => {
     testApp = await createTestApp({
       mockServices: { user: mockUserService },
     });
 
     const res = await testApp.request
-      .get('/users/list')
-      .query({ page: '1', limit: '10' });
+      .get("/users/list")
+      .query({ page: "1", limit: "10" });
 
     expect(res.status).toBe(200);
     expect(mockUserService.findAll).toHaveBeenCalledOnce();
   });
 
-  it('GET /users/:id 存在时返回用户', async () => {
+  it("GET /users/:id 存在时返回用户", async () => {
     testApp = await createTestApp({
       mockServices: { user: mockUserService },
     });
 
-    const res = await testApp.request.get('/users/1');
+    const res = await testApp.request.get("/users/1");
 
     expect(res.status).toBe(200);
-    expect(res.body.data.name).toBe('Alice');
-    expect(mockUserService.findById).toHaveBeenCalledWith('1');
+    expect(res.body.data.name).toBe("Alice");
+    expect(mockUserService.findById).toHaveBeenCalledWith("1");
   });
 
-  it('GET /users/:id 不存在时返回 404', async () => {
+  it("GET /users/:id 不存在时返回 404", async () => {
     testApp = await createTestApp({
       mockServices: { user: mockUserService },
     });
 
-    const res = await testApp.request.get('/users/999');
+    const res = await testApp.request.get("/users/999");
 
     expect(res.status).toBe(404);
   });
@@ -872,51 +871,51 @@ describe('用户路由（mock 服务）', () => {
 验证认证、权限等中间件的行为：
 
 ```typescript
-import { describe, it, expect, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('认证中间件', () => {
+describe("认证中间件", () => {
   let testApp;
 
   afterEach(async () => {
     await testApp?.close();
   });
 
-  it('无 token 应返回 401', async () => {
+  it("无 token 应返回 401", async () => {
     testApp = await createTestApp();
 
-    const res = await testApp.request.post('/users').send({
-      name: 'Alice',
-      email: 'alice@example.com',
+    const res = await testApp.request.post("/users").send({
+      name: "Alice",
+      email: "alice@example.com",
     });
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain('认证');
+    expect(res.body.message).toContain("认证");
   });
 
-  it('无效 token 应返回 401', async () => {
+  it("无效 token 应返回 401", async () => {
     testApp = await createTestApp();
 
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', 'Bearer invalid-token')
+      .post("/users")
+      .set("Authorization", "Bearer invalid-token")
       .send({
-        name: 'Alice',
-        email: 'alice@example.com',
+        name: "Alice",
+        email: "alice@example.com",
       });
 
     expect(res.status).toBe(401);
   });
 
-  it('有效 token 应正常通过', async () => {
+  it("有效 token 应正常通过", async () => {
     testApp = await createTestApp();
 
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', 'Bearer valid-admin-token')
+      .post("/users")
+      .set("Authorization", "Bearer valid-admin-token")
       .send({
-        name: 'Alice',
-        email: 'alice@example.com',
+        name: "Alice",
+        email: "alice@example.com",
       });
 
     expect(res.status).not.toBe(401);
@@ -931,38 +930,36 @@ describe('认证中间件', () => {
 验证 Adapter 切换后行为一致：
 
 ```typescript
-import { describe, it, expect, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-const adapters = ['native', 'hono', 'fastify', 'express', 'koa'] as const;
+const adapters = ["native", "hono", "fastify", "express", "koa"] as const;
 
-describe.each(adapters)('Adapter: %s', (adapter) => {
+describe.each(adapters)("Adapter: %s", (adapter) => {
   let testApp;
 
   afterEach(async () => {
     await testApp?.close();
   });
 
-  it('GET /health 应返回 200', async () => {
+  it("GET /health 应返回 200", async () => {
     testApp = await createTestApp({
       config: { adapter },
     });
 
-    const res = await testApp.request.get('/health');
+    const res = await testApp.request.get("/health");
     expect(res.status).toBe(200);
   });
 
-  it('POST JSON 应正确解析 body', async () => {
+  it("POST JSON 应正确解析 body", async () => {
     testApp = await createTestApp({
       config: { adapter },
     });
 
-    const res = await testApp.request
-      .post('/echo')
-      .send({ message: 'hello' });
+    const res = await testApp.request.post("/echo").send({ message: "hello" });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.message).toBe('hello');
+    expect(res.body.data.message).toBe("hello");
   });
 });
 ```
@@ -974,23 +971,26 @@ describe.each(adapters)('Adapter: %s', (adapter) => {
 使用 `setupPlugins` 注册测试专用插件：
 
 ```typescript
-import { describe, it, expect, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('Redis 缓存插件', () => {
+describe("Redis 缓存插件", () => {
   let testApp;
 
   afterEach(async () => {
     await testApp?.close();
   });
 
-  it('缓存命中时直接返回', async () => {
+  it("缓存命中时直接返回", async () => {
     const mockCache = new Map();
-    mockCache.set('cache:/users/1', JSON.stringify({ id: '1', name: 'Cached Alice' }));
+    mockCache.set(
+      "cache:/users/1",
+      JSON.stringify({ id: "1", name: "Cached Alice" }),
+    );
 
     testApp = await createTestApp({
       setupPlugins: async (app) => {
-        app.extend('cache', {
+        app.extend("cache", {
           get: async (key) => mockCache.get(key) ?? null,
           set: async (key, value, ttl) => mockCache.set(key, value),
           del: async (key) => mockCache.delete(key),
@@ -999,7 +999,7 @@ describe('Redis 缓存插件', () => {
     });
 
     // 假设路由有缓存中间件，应返回缓存数据
-    const res = await testApp.request.get('/users/1');
+    const res = await testApp.request.get("/users/1");
     expect(res.status).toBe(200);
   });
 });
@@ -1010,20 +1010,20 @@ describe('Redis 缓存插件', () => {
 ### 测试错误处理
 
 ```typescript
-import { describe, it, expect, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
+import { describe, it, expect, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
 
-describe('错误处理', () => {
+describe("错误处理", () => {
   let testApp;
 
   afterEach(async () => {
     await testApp?.close();
   });
 
-  it('404 路由应返回标准格式', async () => {
+  it("404 路由应返回标准格式", async () => {
     testApp = await createTestApp();
 
-    const res = await testApp.request.get('/nonexistent-path');
+    const res = await testApp.request.get("/nonexistent-path");
 
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({
@@ -1033,12 +1033,12 @@ describe('错误处理', () => {
     });
   });
 
-  it('校验失败应返回错误列表', async () => {
+  it("校验失败应返回错误列表", async () => {
     testApp = await createTestApp();
 
     const res = await testApp.request
-      .post('/users')
-      .set('Authorization', 'Bearer valid-token')
+      .post("/users")
+      .set("Authorization", "Bearer valid-token")
       .send({}); // 缺少必填字段
 
     expect(res.status).toBe(400);
@@ -1046,29 +1046,29 @@ describe('错误处理', () => {
     expect(Array.isArray(res.body.errors)).toBe(true);
 
     for (const error of res.body.errors) {
-      expect(error).toHaveProperty('field');
-      expect(error).toHaveProperty('message');
+      expect(error).toHaveProperty("field");
+      expect(error).toHaveProperty("message");
     }
   });
 
-  it('500 错误在生产模式隐藏详情', async () => {
+  it("500 错误在生产模式隐藏详情", async () => {
     testApp = await createTestApp({
       config: {
         response: { hideInternalErrors: true },
       },
       mockServices: {
         user: {
-          findAll: vi.fn().mockRejectedValue(new Error('数据库连接失败')),
+          findAll: vi.fn().mockRejectedValue(new Error("数据库连接失败")),
         },
       },
     });
 
-    const res = await testApp.request.get('/users/list');
+    const res = await testApp.request.get("/users/list");
 
     expect(res.status).toBe(500);
-    expect(res.body.message).toBe('Internal Server Error');
+    expect(res.body.message).toBe("Internal Server Error");
     // 不应暴露内部错误信息
-    expect(res.body.message).not.toContain('数据库连接失败');
+    expect(res.body.message).not.toContain("数据库连接失败");
   });
 });
 ```
@@ -1078,31 +1078,31 @@ describe('错误处理', () => {
 ### 测试出口包装
 
 ```typescript
-describe('出口包装', () => {
-  it('wrap: true 时响应包含 code/data/requestId', async () => {
+describe("出口包装", () => {
+  it("wrap: true 时响应包含 code/data/requestId", async () => {
     const testApp = await createTestApp({
       config: { response: { wrap: true } },
     });
 
-    const res = await testApp.request.get('/health');
+    const res = await testApp.request.get("/health");
 
-    expect(res.body).toHaveProperty('code', 0);
-    expect(res.body).toHaveProperty('data');
-    expect(res.body).toHaveProperty('requestId');
+    expect(res.body).toHaveProperty("code", 0);
+    expect(res.body).toHaveProperty("data");
+    expect(res.body).toHaveProperty("requestId");
 
     await testApp.close();
   });
 
-  it('wrap: false 时响应为原始数据', async () => {
+  it("wrap: false 时响应为原始数据", async () => {
     const testApp = await createTestApp({
       config: { response: { wrap: false } },
     });
 
-    const res = await testApp.request.get('/health');
+    const res = await testApp.request.get("/health");
 
     // 原始数据，无 code/data 包装
-    expect(res.body).not.toHaveProperty('code');
-    expect(res.body).toHaveProperty('status', 'ok');
+    expect(res.body).not.toHaveProperty("code");
+    expect(res.body).toHaveProperty("status", "ok");
 
     await testApp.close();
   });
@@ -1127,12 +1127,12 @@ afterEach(async () => {
 
 ```typescript
 // ✅ 推荐：每个测试独立 app
-it('test 1', async () => {
+it("test 1", async () => {
   testApp = await createTestApp();
   // ...
 });
 
-it('test 2', async () => {
+it("test 2", async () => {
   testApp = await createTestApp();
   // ...
 });
@@ -1161,15 +1161,15 @@ testApp = await createTestApp({
 
 ```typescript
 const mockService = {
-  create: vi.fn().mockResolvedValue({ id: '1' }),
+  create: vi.fn().mockResolvedValue({ id: "1" }),
 };
 
 testApp = await createTestApp({ mockServices: { user: mockService } });
 
-await testApp.request.post('/users').send({ name: 'Alice' });
+await testApp.request.post("/users").send({ name: "Alice" });
 
 expect(mockService.create).toHaveBeenCalledWith(
-  expect.objectContaining({ name: 'Alice' })
+  expect.objectContaining({ name: "Alice" }),
 );
 ```
 
@@ -1189,7 +1189,7 @@ describe('用户管理接口', () => {
 
 ```typescript
 // 运行时值
-import { createTestApp } from 'vextjs/testing';
+import { createTestApp } from "vextjs/testing";
 
 // 类型（从主入口导入）
 import type {
@@ -1198,7 +1198,7 @@ import type {
   TestRequest,
   TestRequestBuilder,
   TestResponse,
-} from 'vextjs';
+} from "vextjs";
 ```
 
 :::tip

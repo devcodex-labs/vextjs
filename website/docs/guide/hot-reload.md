@@ -71,12 +71,12 @@ VextJS 的热重载采用三层策略，根据变更文件的类型自动选择�
 
 ### Tier 1 — 路由热替换 ⚡
 
-| 触发条件 | `src/routes/` 下的文件变更 |
-|---------|--------------------------|
-| 行为 | 原子替换请求处理器，零中断 |
-| 速度 | 毫秒级（1-10ms） |
-| 影响 | 仅变更的路由文件，其他路由不受影响 |
-| 连接中断 | ❌ 不中断，正在处理的请求不受影响 |
+| 触发条件 | `src/routes/` 下的文件变更         |
+| -------- | ---------------------------------- |
+| 行为     | 原子替换请求处理器，零中断         |
+| 速度     | 毫秒级（1-10ms）                   |
+| 影响     | 仅变更的路由文件，其他路由不受影响 |
+| 连接中断 | ❌ 不中断，正在处理的请求不受影响  |
 
 ```
 修改 src/routes/users.ts
@@ -93,12 +93,12 @@ Tier 1 是最快的重载方式。当你修改路由 handler 的业务逻辑时�
 ```typescript
 // 修改这个文件 → Tier 1 热替换
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', async (_req, res) => {
+  app.get("/", async (_req, res) => {
     // 修改这里的代码，保存后立即生效
-    res.json({ message: 'Updated response!' });
+    res.json({ message: "Updated response!" });
   });
 });
 ```
@@ -106,11 +106,11 @@ export default defineRoutes((app) => {
 ### Tier 2 — 服务重载 ⚡
 
 | 触发条件 | `src/services/`、`src/models/` 或 `src/locales/` 下的文件变更 |
-|---------|----------------------------------------------|
-| 行为 | 重建受影响的服务实例 |
-| 速度 | 毫秒级（5-50ms） |
-| 影响 | 变更的服务及其依赖链 |
-| 连接中断 | ❌ 不中断 |
+| -------- | ------------------------------------------------------------- |
+| 行为     | 重建受影响的服务实例                                          |
+| 速度     | 毫秒级（5-50ms）                                              |
+| 影响     | 变更的服务及其依赖链                                          |
+| 连接中断 | ❌ 不中断                                                     |
 
 ```
 修改 src/services/user.ts
@@ -160,11 +160,11 @@ export default {
 ### Tier 3 — 冷重启 🔄
 
 | 触发条件 | `src/config/`、`src/plugins/`、`src/middlewares/` 下的文件变更 |
-|---------|-------------------------------------------------------------|
-| 行为 | 完整重启进程 |
-| 速度 | 秒级（1-3s） |
-| 影响 | 整个应用重新初始化 |
-| 连接中断 | ✅ 正在处理的请求可能被中断 |
+| -------- | -------------------------------------------------------------- |
+| 行为     | 完整重启进程                                                   |
+| 速度     | 秒级（1-3s）                                                   |
+| 影响     | 整个应用重新初始化                                             |
+| 连接中断 | ✅ 正在处理的请求可能被中断                                    |
 
 ```
 修改 src/config/default.ts
@@ -185,33 +185,33 @@ export default {
 // src/config/default.ts
 export default {
   port: 3000,
-  logger: { level: 'debug' },  // 修改配置需要冷重启
+  logger: { level: "debug" }, // 修改配置需要冷重启
 };
 ```
 
 ## 重载策略决策表
 
-| 变更文件 | 重载策略 | 速度 | 说明 |
-|---------|---------|------|------|
-| `src/routes/**` | Tier 1 | ⚡ 毫秒级 | 路由处理器原子替换 |
-| `src/services/**` | Tier 2 | ⚡ 毫秒级 | 服务实例重建 |
-| `src/models/**` | Tier 2 | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚 |
-| `src/locales/**` | Tier 2 | ⚡ 毫秒级 | 语言包重新加载 |
-| `src/config/**` | Tier 3 | 🔄 秒级 | 配置影响全局，需重启 |
-| `src/plugins/**` | Tier 3 | 🔄 秒级 | 插件影响全局，需重启 |
-| `src/middlewares/**` | Tier 3 | 🔄 秒级 | 中间件定义变更需重启 |
-| `src/types/**` | — | — | 类型文件不触发重载 |
-| `package.json` | Tier 3 | 🔄 秒级 | 依赖变更需重启 |
+| 变更文件             | 重载策略 | 速度      | 说明                             |
+| -------------------- | -------- | --------- | -------------------------------- |
+| `src/routes/**`      | Tier 1   | ⚡ 毫秒级 | 路由处理器原子替换               |
+| `src/services/**`    | Tier 2   | ⚡ 毫秒级 | 服务实例重建                     |
+| `src/models/**`      | Tier 2   | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚 |
+| `src/locales/**`     | Tier 2   | ⚡ 毫秒级 | 语言包重新加载                   |
+| `src/config/**`      | Tier 3   | 🔄 秒级   | 配置影响全局，需重启             |
+| `src/plugins/**`     | Tier 3   | 🔄 秒级   | 插件影响全局，需重启             |
+| `src/middlewares/**` | Tier 3   | 🔄 秒级   | 中间件定义变更需重启             |
+| `src/types/**`       | —        | —         | 类型文件不触发重载               |
+| `package.json`       | Tier 3   | 🔄 秒级   | 依赖变更需重启                   |
 
 ## 与 `vext build` 的关系
 
 `vext dev` 在开发模式下直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），不需要预先执行 `vext build`。
 
-| 命令 | 源码目录 | 编译方式 | 热重载 |
-|------|---------|---------|--------|
-| `vext dev` | `src/` | esbuild 即时编译 | ✅ 三层热重载 |
-| `vext start` | `dist/` | 预编译（需先 `vext build`） | ❌ 无 |
-| `vext build` | `src/` → `dist/` | tsc 完整编译 | — |
+| 命令         | 源码目录         | 编译方式                    | 热重载        |
+| ------------ | ---------------- | --------------------------- | ------------- |
+| `vext dev`   | `src/`           | esbuild 即时编译            | ✅ 三层热重载 |
+| `vext start` | `dist/`          | 预编译（需先 `vext build`） | ❌ 无         |
+| `vext build` | `src/` → `dist/` | tsc 完整编译                | —             |
 
 开发流程：
 
@@ -299,10 +299,11 @@ src/
 
 :::warning 类型检查
 `vext dev` 不会在热重载时执行类型检查（为了速度）。建议：
+
 - 开发时依赖 IDE（VS Code / WebStorm）的实时类型检查
 - 提交前运行 `npm run typecheck`（`tsc --noEmit`）进行完整类型检查
 - CI 中执行 `tsc --noEmit` 确保类型正确
-:::
+  :::
 
 ## 常见问题
 
@@ -369,9 +370,9 @@ vext reload  # 滚动重启 Worker
 ```typescript
 // src/config/development.ts
 export default {
-  rateLimit: { enabled: false },    // 开发时关闭限流
-  accessLog: { enabled: false },    // 减少日志噪音
-  logger: { level: 'debug' },       // 开发时使用 debug 级别
+  rateLimit: { enabled: false }, // 开发时关闭限流
+  accessLog: { enabled: false }, // 减少日志噪音
+  logger: { level: "debug" }, // 开发时使用 debug 级别
 };
 ```
 

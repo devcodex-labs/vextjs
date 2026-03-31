@@ -145,19 +145,19 @@ Push your branch and open a PR against `main`.
 
 ### Naming Conventions
 
-| Type | Convention | Example |
-|------|-----------|---------|
-| Variables / Functions | camelCase | `createApp`, `loadConfig` |
-| Classes | PascalCase | `ClusterMaster`, `HttpError` |
-| Constants | UPPER_SNAKE_CASE | `DEFAULT_CONFIG`, `EMPTY_MIXIN` |
-| Interfaces / Types | PascalCase | `VextAdapter`, `VextRequest` |
-| Files | kebab-case | `config-loader.ts`, `rate-limit.ts` |
+| Type                  | Convention       | Example                             |
+| --------------------- | ---------------- | ----------------------------------- |
+| Variables / Functions | camelCase        | `createApp`, `loadConfig`           |
+| Classes               | PascalCase       | `ClusterMaster`, `HttpError`        |
+| Constants             | UPPER_SNAKE_CASE | `DEFAULT_CONFIG`, `EMPTY_MIXIN`     |
+| Interfaces / Types    | PascalCase       | `VextAdapter`, `VextRequest`        |
+| Files                 | kebab-case       | `config-loader.ts`, `rate-limit.ts` |
 
 ### Comments
 
 - All public APIs must have JSDoc with `@param`, `@returns`, and `@example` where helpful
 - Use `// ── Section Name ──` comment separators for file organization
-- Keep comments meaningful — explain *why*, not *what*
+- Keep comments meaningful — explain _why_, not _what_
 
 ### File Organization
 
@@ -169,16 +169,22 @@ import path from "node:path";
 import type { VextApp } from "../types/app.js";
 
 // 2. Type definitions
-interface MyOptions { /* ... */ }
+interface MyOptions {
+  /* ... */
+}
 
 // 3. Constants
 const DEFAULT_VALUE = 42;
 
 // 4. Main exports (classes, functions)
-export function myFunction(): void { /* ... */ }
+export function myFunction(): void {
+  /* ... */
+}
 
 // 5. Helper functions (private)
-function helperFunction(): void { /* ... */ }
+function helperFunction(): void {
+  /* ... */
+}
 ```
 
 ---
@@ -212,12 +218,12 @@ describe("ModuleName", () => {
 
 ### Test Categories
 
-| Type | Location | Command | Purpose |
-|------|----------|---------|---------|
-| Unit | `test/unit/` | `npm run test:unit` | Test individual functions/classes in isolation |
-| Integration | `test/integration/` | `npm run test:int` | Test module interactions (cluster IPC, etc.) |
-| E2E | `test/e2e/` | `npm run test:e2e` | Test full HTTP request/response with real adapters |
-| Benchmark | `test/benchmark/` | `npm run test:bench` | Performance measurements (not part of CI) |
+| Type        | Location            | Command              | Purpose                                            |
+| ----------- | ------------------- | -------------------- | -------------------------------------------------- |
+| Unit        | `test/unit/`        | `npm run test:unit`  | Test individual functions/classes in isolation     |
+| Integration | `test/integration/` | `npm run test:int`   | Test module interactions (cluster IPC, etc.)       |
+| E2E         | `test/e2e/`         | `npm run test:e2e`   | Test full HTTP request/response with real adapters |
+| Benchmark   | `test/benchmark/`   | `npm run test:bench` | Performance measurements (not part of CI)          |
 
 ### Coverage
 
@@ -257,16 +263,16 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ### Types
 
-| Type | Description |
-|------|-------------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `test` | Adding or updating tests |
+| Type       | Description                                             |
+| ---------- | ------------------------------------------------------- |
+| `feat`     | New feature                                             |
+| `fix`      | Bug fix                                                 |
+| `docs`     | Documentation only                                      |
+| `test`     | Adding or updating tests                                |
 | `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `perf` | Performance improvement |
-| `ci` | CI/CD changes |
-| `chore` | Maintenance tasks |
+| `perf`     | Performance improvement                                 |
+| `ci`       | CI/CD changes                                           |
+| `chore`    | Maintenance tasks                                       |
 
 ### Scopes (optional)
 

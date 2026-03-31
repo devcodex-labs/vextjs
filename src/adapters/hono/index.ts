@@ -1,1 +1,1 @@
-export { createHonoAdapter } from './adapter.js'
+export { createHonoAdapter } from "./adapter.js";

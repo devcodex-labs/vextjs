@@ -84,14 +84,14 @@ pnpm add -D typescript @types/node
 // src/config/default.ts
 export default {
   port: 3000,
-  adapter: 'native',
+  adapter: "native",
   logger: {
-    level: 'debug',
+    level: "debug",
     pretty: true,
   },
   cors: {
     enabled: true,
-    origins: ['*'],
+    origins: ["*"],
   },
 };
 ```
@@ -104,85 +104,97 @@ export default {
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET / → 问候接口
-  app.get('/', {
-    docs: {
-      summary: '问候接口',
-      tags: ['基础'],
+  app.get(
+    "/",
+    {
+      docs: {
+        summary: "问候接口",
+        tags: ["基础"],
+      },
     },
-  }, async (_req, res) => {
-    res.json({ message: 'Hello VextJS! 🚀' });
-  });
+    async (_req, res) => {
+      res.json({ message: "Hello VextJS! 🚀" });
+    },
+  );
 
   // GET /health → 健康检查
-  app.get('/health', async (_req, res) => {
+  app.get("/health", async (_req, res) => {
     res.json({
-      status: 'ok',
+      status: "ok",
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
   });
 
   // GET /echo → 回显查询参数
-  app.get('/echo', {
-    validate: {
-      query: {
-        message: 'string?',
+  app.get(
+    "/echo",
+    {
+      validate: {
+        query: {
+          message: "string?",
+        },
+      },
+      docs: {
+        summary: "回显接口",
+        description: "将查询参数中的 message 原样返回",
       },
     },
-    docs: {
-      summary: '回显接口',
-      description: '将查询参数中的 message 原样返回',
+    async (req, res) => {
+      const { message } = req.valid("query");
+      res.json({
+        echo: message ?? "no message provided",
+        method: req.method,
+        path: req.path,
+        requestId: req.requestId,
+        ip: req.ip,
+      });
     },
-  }, async (req, res) => {
-    const { message } = req.valid('query');
-    res.json({
-      echo: message ?? 'no message provided',
-      method: req.method,
-      path: req.path,
-      requestId: req.requestId,
-      ip: req.ip,
-    });
-  });
+  );
 
   // POST /greet → 带参数校验的问候
-  app.post('/greet', {
-    validate: {
-      body: {
-        name: 'string:1-50',
-        language: 'enum:zh,en,ja?',
+  app.post(
+    "/greet",
+    {
+      validate: {
+        body: {
+          name: "string:1-50",
+          language: "enum:zh,en,ja?",
+        },
       },
-    },
-    docs: {
-      summary: '个性化问候',
-      description: '根据姓名和语言返回问候语',
-      responses: {
-        200: {
-          description: '问候成功',
-          example: {
-            greeting: '你好, Alice!',
-            language: 'zh',
+      docs: {
+        summary: "个性化问候",
+        description: "根据姓名和语言返回问候语",
+        responses: {
+          200: {
+            description: "问候成功",
+            example: {
+              greeting: "你好, Alice!",
+              language: "zh",
+            },
           },
         },
       },
     },
-  }, async (req, res) => {
-    const { name, language = 'zh' } = req.valid('body');
+    async (req, res) => {
+      const { name, language = "zh" } = req.valid("body");
 
-    const greetings: Record<string, string> = {
-      zh: `你好, ${name}!`,
-      en: `Hello, ${name}!`,
-      ja: `こんにちは, ${name}!`,
-    };
+      const greetings: Record<string, string> = {
+        zh: `你好, ${name}!`,
+        en: `Hello, ${name}!`,
+        ja: `こんにちは, ${name}!`,
+      };
 
-    res.json({
-      greeting: greetings[language],
-      language,
-    });
-  });
+      res.json({
+        greeting: greetings[language],
+        language,
+      });
+    },
+  );
 });
 ```
 
@@ -190,10 +202,10 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/index.ts
-import { bootstrap } from 'vextjs';
+import { bootstrap } from "vextjs";
 
 bootstrap().catch((err) => {
-  console.error('启动失败:', err);
+  console.error("启动失败:", err);
   process.exit(1);
 });
 ```
@@ -207,6 +219,7 @@ pnpm dev
 ```
 
 开发模式特性：
+
 - 文件修改自动热重载（三层策略：路由/服务/配置智能刷新）
 - 美化日志输出（彩色格式）
 - 自动启用 OpenAPI 文档（访问 `http://localhost:3000/docs`）
@@ -268,9 +281,7 @@ VextJS 默认启用**出口包装**（`config.response.wrap: true`），所有 `
 {
   "code": -1,
   "message": "Validation failed",
-  "errors": [
-    { "field": "name", "message": "length must be between 1 and 50" }
-  ],
+  "errors": [{ "field": "name", "message": "length must be between 1 and 50" }],
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
@@ -288,15 +299,15 @@ export default {
 
 ## 关键概念回顾
 
-| 概念 | 说明 |
-|------|------|
-| `defineRoutes` | 路由定义函数，在回调中注册路由 |
-| `bootstrap` | 框架启动函数，编排完整的初始化流程 |
-| `validate` | 声明式参数校验（schema-dsl DSL 语法） |
-| `req.valid()` | 获取校验并类型转换后的数据 |
-| `res.json()` | 返回 JSON 响应（自动出口包装） |
-| `docs` | OpenAPI 文档配置，自动生成 Scalar API 文档 |
-| 出口包装 | 统一响应格式 `{ code, data, requestId }` |
+| 概念           | 说明                                       |
+| -------------- | ------------------------------------------ |
+| `defineRoutes` | 路由定义函数，在回调中注册路由             |
+| `bootstrap`    | 框架启动函数，编排完整的初始化流程         |
+| `validate`     | 声明式参数校验（schema-dsl DSL 语法）      |
+| `req.valid()`  | 获取校验并类型转换后的数据                 |
+| `res.json()`   | 返回 JSON 响应（自动出口包装）             |
+| `docs`         | OpenAPI 文档配置，自动生成 Scalar API 文档 |
+| 出口包装       | 统一响应格式 `{ code, data, requestId }`   |
 
 ## 下一步
 

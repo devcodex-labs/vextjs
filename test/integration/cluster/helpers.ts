@@ -214,9 +214,7 @@ function waitForOutputImpl(
   // 先检查已有输出
   for (const line of managed.lines) {
     const matches =
-      typeof pattern === "string"
-        ? line.includes(pattern)
-        : pattern.test(line);
+      typeof pattern === "string" ? line.includes(pattern) : pattern.test(line);
     if (matches) return Promise.resolve(line);
   }
 
@@ -453,9 +451,7 @@ export function countMatchingLines(
   let count = 0;
   for (const line of lines) {
     const matches =
-      typeof pattern === "string"
-        ? line.includes(pattern)
-        : pattern.test(line);
+      typeof pattern === "string" ? line.includes(pattern) : pattern.test(line);
     if (matches) count++;
   }
   return count;

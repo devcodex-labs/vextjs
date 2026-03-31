@@ -19,9 +19,9 @@ Closes #<!-- issue number -->
 
 ## Changes Made
 
-- 
-- 
-- 
+-
+-
+-
 
 ## Adapter Impact
 

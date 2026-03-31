@@ -1,4 +1,4 @@
-import { devBootstrap } from "./dev-bootstrap.js"
+import { devBootstrap } from "./dev-bootstrap.js";
 
 /**
  * dev-entry.ts — Dev 子进程入口（Phase 2A）
@@ -31,15 +31,15 @@ import { devBootstrap } from "./dev-bootstrap.js"
 
 // ── 读取项目根目录 ──────────────────────────────────────────
 
-const projectRoot = process.env.VEXT_ROOT
+const projectRoot = process.env.VEXT_ROOT;
 
 if (!projectRoot) {
   console.error(
     "[vext dev] VEXT_ROOT environment variable is not set.\n" +
       "           This file should be executed by ColdRestarter via fork(),\n" +
       "           not run directly.",
-  )
-  process.exit(1)
+  );
+  process.exit(1);
 }
 
 // ── 执行 devBootstrap ──────────────────────────────────────
@@ -51,19 +51,19 @@ devBootstrap({ projectRoot }).catch((err: unknown) => {
   // ColdRestarter.waitForReady() 会捕获 'exit' 事件（非零码），
   // 并将错误传播给 cli/dev.ts 的调用方。
 
-  console.error("[vext dev] worker startup failed:")
+  console.error("[vext dev] worker startup failed:");
 
   if (err instanceof Error) {
-    console.error(err.message)
+    console.error(err.message);
 
     // 输出完整 stack trace 帮助用户定位问题
     // （如配置文件语法错误、插件 setup() 异常等）
     if (err.stack) {
-      console.error(err.stack)
+      console.error(err.stack);
     }
   } else {
-    console.error(err)
+    console.error(err);
   }
 
-  process.exit(1)
-})
+  process.exit(1);
+});

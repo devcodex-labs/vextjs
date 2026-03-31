@@ -17,7 +17,10 @@
  * 通过 Omit 排除内部方法 _enableWrap 和 rawJson，
  * 用户代码中只能访问公开的响应方法。
  */
-export type VextPublicResponse = Omit<VextResponse, "_enableWrap" | "rawJson" | "_onSend">;
+export type VextPublicResponse = Omit<
+  VextResponse,
+  "_enableWrap" | "rawJson" | "_onSend"
+>;
 
 export interface VextResponse {
   /**

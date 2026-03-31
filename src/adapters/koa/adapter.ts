@@ -126,7 +126,7 @@ function parsePattern(pattern: string): RouteSegment[] {
  */
 function matchSegments(
   segments: RouteSegment[],
-  pathSegments: string[]
+  pathSegments: string[],
 ): Record<string, string> | null {
   const params: Record<string, string> = {};
 
@@ -174,7 +174,7 @@ function matchSegments(
 async function executeChain(
   chain: VextMiddleware[],
   req: VextRequest,
-  res: VextResponse
+  res: VextResponse,
 ): Promise<void> {
   const len = chain.length;
 
@@ -267,7 +267,7 @@ function collectRawBody(ctx: KoaContext): Promise<Buffer> {
  */
 export function createKoaAdapter(
   options: KoaAdapterOptions,
-  vextApp: VextApp
+  vextApp: VextApp,
 ): VextAdapter {
   // ── 创建 Koa 实例 ─────────────────────────────────────────
   //
@@ -381,7 +381,7 @@ export function createKoaAdapter(
                   try {
                     res.rawJson(
                       { code: 500, message: "Internal Server Error" },
-                      500
+                      500,
                     );
                   } catch {
                     // 完全放弃，Koa 的 onerror 兜底
@@ -397,7 +397,7 @@ export function createKoaAdapter(
           if (alsEnabled) {
             await requestContext.run(
               { requestId: "", locale: undefined },
-              runChain
+              runChain,
             );
           } else {
             await runChain();
@@ -430,13 +430,13 @@ export function createKoaAdapter(
                 ctx.res.statusCode = 500;
                 ctx.res.setHeader(
                   "Content-Type",
-                  "application/json; charset=utf-8"
+                  "application/json; charset=utf-8",
                 );
                 ctx.res.end(
                   JSON.stringify({
                     code: 500,
                     message: "Internal Server Error",
-                  })
+                  }),
                 );
               }
               ctx.respond = false;
@@ -446,13 +446,13 @@ export function createKoaAdapter(
               ctx.res.statusCode = 500;
               ctx.res.setHeader(
                 "Content-Type",
-                "application/json; charset=utf-8"
+                "application/json; charset=utf-8",
               );
               ctx.res.end(
                 JSON.stringify({
                   code: 500,
                   message: "Internal Server Error",
-                })
+                }),
               );
             }
             ctx.respond = false;
@@ -484,7 +484,7 @@ export function createKoaAdapter(
           if (alsEnabled) {
             await requestContext.run(
               { requestId: req.requestId, locale: undefined },
-              runNotFound
+              runNotFound,
             );
           } else {
             await runNotFound();
@@ -584,7 +584,7 @@ export function createKoaAdapter(
     //
     async listen(
       port: number,
-      host: string = "0.0.0.0"
+      host: string = "0.0.0.0",
     ): Promise<VextServerHandle> {
       // 挂载 Koa 主中间件（确保所有路由已注册完毕）
       registerKoaMiddleware();
@@ -603,7 +603,7 @@ export function createKoaAdapter(
             typeof addr === "object" && addr !== null ? addr.port : port;
           const actualHost =
             typeof addr === "object" && addr !== null
-              ? addr.address ?? host
+              ? (addr.address ?? host)
               : host;
 
           resolve({

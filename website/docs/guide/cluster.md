@@ -12,7 +12,7 @@ export default {
   port: 3000,
   cluster: {
     enabled: true,
-    workers: 'auto',  // 自动检测 CPU 核数
+    workers: "auto", // 自动检测 CPU 核数
   },
 };
 ```
@@ -72,7 +72,7 @@ export default {
     // 'auto'   — 等于 CPU 核数（默认推荐）
     // 'auto-1' — 等于 CPU 核数 - 1（为 Master 预留一个核心）
     // number   — 固定数量
-    workers: 'auto',
+    workers: "auto",
 
     // Worker 崩溃时自动重启
     autoRestart: true,
@@ -91,50 +91,56 @@ export default {
 
     // Worker 心跳检测配置
     healthCheck: {
-      enabled: true,        // 是否启用心跳检测
-      interval: 15000,      // 探测间隔（毫秒）
-      timeout: 30000,       // 心跳超时（毫秒）
+      enabled: true, // 是否启用心跳检测
+      interval: 15000, // 探测间隔（毫秒）
+      timeout: 30000, // 心跳超时（毫秒）
     },
 
     // 零停机滚动重启配置
     reload: {
-      workerDelay: 2000,      // 替换下一个 Worker 前的等待时间（毫秒）
-      readyTimeout: 30000,    // Worker 就绪超时（毫秒）
+      workerDelay: 2000, // 替换下一个 Worker 前的等待时间（毫秒）
+      readyTimeout: 30000, // Worker 就绪超时（毫秒）
       shutdownTimeout: 10000, // Worker 关闭超时（毫秒）
     },
 
     // PID 文件路径（用于 vext stop / vext reload 定位进程）
-    pidFile: '.vext.pid',
+    pidFile: ".vext.pid",
 
     // Worker 进程标题前缀
-    titlePrefix: 'vext',
+    titlePrefix: "vext",
 
     // sticky session 模式（'none' | 'ip'）
     // 'none' — 不启用（默认）
     // 'ip'   — 基于客户端 IP 分配固定 Worker（WebSocket / SSE 场景）
-    sticky: 'none',
+    sticky: "none",
   },
 };
 ```
 
 ### Worker 数量策略
 
-| 值 | 含义 | 适用场景 |
-|-----|------|---------|
-| `'auto'` | CPU 核数 | 生产环境（默认推荐） |
-| `'auto-1'` | CPU 核数 - 1 | 单机混部（为 Master 预留一个核心） |
-| `2` | 固定 2 个 Worker | 开发环境测试 Cluster |
-| `1` | 固定 1 个 Worker | 调试 Cluster 逻辑 |
+| 值         | 含义             | 适用场景                           |
+| ---------- | ---------------- | ---------------------------------- |
+| `'auto'`   | CPU 核数         | 生产环境（默认推荐）               |
+| `'auto-1'` | CPU 核数 - 1     | 单机混部（为 Master 预留一个核心） |
+| `2`        | 固定 2 个 Worker | 开发环境测试 Cluster               |
+| `1`        | 固定 1 个 Worker | 调试 Cluster 逻辑                  |
 
 ```typescript
 // 生产环境：充分利用所有 CPU 核心
-cluster: { workers: 'auto' }
+cluster: {
+  workers: "auto";
+}
 
 // 单机混部：保留一个核心给系统 / Master 进程
-cluster: { workers: 'auto-1' }
+cluster: {
+  workers: "auto-1";
+}
 
 // 开发测试：固定 2 个 Worker
-cluster: { workers: 2 }
+cluster: {
+  workers: 2;
+}
 ```
 
 ## CLI 命令
@@ -332,11 +338,11 @@ PID 文件自动删除
 ```typescript
 export default {
   shutdown: {
-    timeout: 15000,  // 15 秒超时
+    timeout: 15000, // 15 秒超时
   },
   cluster: {
     enabled: true,
-    workers: 'auto',
+    workers: "auto",
   },
 };
 ```
@@ -356,7 +362,7 @@ export default {
 export default {
   cluster: {
     enabled: true,
-    workers: 'auto',
+    workers: "auto",
     autoRestart: true,
     healthCheck: { enabled: true },
     reload: { workerDelay: 2000 },
@@ -384,21 +390,21 @@ Master 和 Worker 之间通过 IPC 消息通信。VextJS 定义了标准化的�
 
 ### Worker → Master 消息
 
-| 消息类型 | 说明 |
-|---------|------|
-| `worker:ready` | Worker 初始化完成，开始接受请求 |
-| `worker:heartbeat` | 心跳响应 |
-| `worker:metrics` | Worker 上报运行指标（请求数、内存等） |
+| 消息类型                 | 说明                                    |
+| ------------------------ | --------------------------------------- |
+| `worker:ready`           | Worker 初始化完成，开始接受请求         |
+| `worker:heartbeat`       | 心跳响应                                |
+| `worker:metrics`         | Worker 上报运行指标（请求数、内存等）   |
 | `worker:request-restart` | Worker 请求自身重启（如检测到内存泄漏） |
 
 ### Master → Worker 消息
 
-| 消息类型 | 说明 |
-|---------|------|
-| `master:set-title` | 设置 Worker 进程标题 |
-| `master:shutdown` | 通知 Worker 优雅关闭 |
-| `master:health-check` | 心跳探测 |
-| `master:broadcast` | 广播消息到所有 Worker |
+| 消息类型              | 说明                  |
+| --------------------- | --------------------- |
+| `master:set-title`    | 设置 Worker 进程标题  |
+| `master:shutdown`     | 通知 Worker 优雅关闭  |
+| `master:health-check` | 心跳探测              |
+| `master:broadcast`    | 广播消息到所有 Worker |
 
 ## 与 Docker 部署
 
@@ -441,7 +447,7 @@ services:
       - NODE_ENV=production
     ports:
       - "3000:3000"
-    stop_grace_period: 30s  # 大于 shutdown.timeout
+    stop_grace_period: 30s # 大于 shutdown.timeout
 ```
 
 ## 常见问题

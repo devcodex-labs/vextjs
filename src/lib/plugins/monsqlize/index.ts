@@ -69,9 +69,7 @@ export function createMonSQLizePlugin(srcDir: string) {
  * @param config  VextConfig（已合并默认值）
  * @returns true 表示应该加载 monsqlize 插件
  */
-export function shouldLoadMonSQLize(
-  config: Record<string, unknown>,
-): boolean {
+export function shouldLoadMonSQLize(config: Record<string, unknown>): boolean {
   return (
     config.database != null &&
     typeof config.database === "object" &&

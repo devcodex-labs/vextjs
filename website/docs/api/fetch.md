@@ -15,10 +15,10 @@ const response: Promise<Response> = app.fetch(
 
 **参数**
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `input` | `string \| URL \| Request` | 请求 URL 或 Request 对象 |
-| `init` | `VextFetchInit` | 可选，请求配置（见下方类型定义） |
+| 参数    | 类型                       | 说明                             |
+| ------- | -------------------------- | -------------------------------- |
+| `input` | `string \| URL \| Request` | 请求 URL 或 Request 对象         |
+| `init`  | `VextFetchInit`            | 可选，请求配置（见下方类型定义） |
 
 **返回值**: `Promise<Response>` — 标准 Fetch API Response 对象
 
@@ -80,14 +80,14 @@ app.fetch.create(options: VextFetchClientOptions): VextFetch
 
 ```typescript
 const client = app.fetch.create({
-  baseURL: 'http://user-service:3001/api/v1',
-  headers: { 'x-service-name': 'order-service' },
+  baseURL: "http://user-service:3001/api/v1",
+  headers: { "x-service-name": "order-service" },
   timeout: 5000,
   retry: 2,
 });
 
 // 自动拼接 baseURL
-const response = await client.get('/users/123');
+const response = await client.get("/users/123");
 // 实际请求: GET http://user-service:3001/api/v1/users/123
 ```
 
@@ -137,13 +137,13 @@ interface VextFetchInit extends RequestInit {
 }
 ```
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `timeout` | `number` | `config.fetch.timeout` (10000) | 请求超时（毫秒） |
-| `retry` | `number` | `config.fetch.retry` (0) | 重试次数（仅幂等方法） |
-| `retryDelay` | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | 重试间隔，支持指数退避函数 |
-| `propagateRequestId` | `boolean` | `true` | 是否自动注入 `x-request-id` 头（禁用时 `propagatedHeaders` 仍然透传） |
-| `propagateHeaders` | `string[]` | — | 本次请求额外透传的头（需已在 `config.fetch.propagateHeaders` 中声明才能从 store 读到值） |
+| 字段                 | 类型                                    | 默认值                           | 说明                                                                                     |
+| -------------------- | --------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `timeout`            | `number`                                | `config.fetch.timeout` (10000)   | 请求超时（毫秒）                                                                         |
+| `retry`              | `number`                                | `config.fetch.retry` (0)         | 重试次数（仅幂等方法）                                                                   |
+| `retryDelay`         | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | 重试间隔，支持指数退避函数                                                               |
+| `propagateRequestId` | `boolean`                               | `true`                           | 是否自动注入 `x-request-id` 头（禁用时 `propagatedHeaders` 仍然透传）                    |
+| `propagateHeaders`   | `string[]`                              | —                                | 本次请求额外透传的头（需已在 `config.fetch.propagateHeaders` 中声明才能从 store 读到值） |
 
 ### VextFetchClientOptions
 
@@ -165,12 +165,12 @@ interface VextFetchClientOptions {
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|:----:|------|
-| `baseURL` | `string` | ✅ | 基础 URL，请求路径自动拼接到此 URL 后 |
-| `headers` | `Record<string, string>` | ❌ | 默认请求头 |
-| `timeout` | `number` | ❌ | 覆盖全局超时 |
-| `retry` | `number` | ❌ | 覆盖全局重试 |
+| 字段      | 类型                     | 必填 | 说明                                  |
+| --------- | ------------------------ | :--: | ------------------------------------- |
+| `baseURL` | `string`                 |  ✅  | 基础 URL，请求路径自动拼接到此 URL 后 |
+| `headers` | `Record<string, string>` |  ❌  | 默认请求头                            |
+| `timeout` | `number`                 |  ❌  | 覆盖全局超时                          |
+| `retry`   | `number`                 |  ❌  | 覆盖全局重试                          |
 
 ### VextFetch
 
@@ -206,12 +206,12 @@ export default {
 };
 ```
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `timeout` | `number` | `10000` | 全局默认超时（毫秒） |
-| `retry` | `number` | `0` | 全局默认重试次数 |
-| `retryDelay` | `number \| (attempt: number) => number` | `1000` | 全局默认重试间隔（毫秒），支持指数退避函数 |
-| `propagateHeaders` | `string[]` | `[]` | 声明需要从入站请求自动捕获并透传到出站请求的头名称列表（如 `traceparent`、`x-tenant-id`） |
+| 配置项             | 类型                                    | 默认值  | 说明                                                                                      |
+| ------------------ | --------------------------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `timeout`          | `number`                                | `10000` | 全局默认超时（毫秒）                                                                      |
+| `retry`            | `number`                                | `0`     | 全局默认重试次数                                                                          |
+| `retryDelay`       | `number \| (attempt: number) => number` | `1000`  | 全局默认重试间隔（毫秒），支持指数退避函数                                                |
+| `propagateHeaders` | `string[]`                              | `[]`    | 声明需要从入站请求自动捕获并透传到出站请求的头名称列表（如 `traceparent`、`x-tenant-id`） |
 
 :::tip propagateHeaders 工作原理
 配置后，框架在每个请求的 `requestId` 中间件阶段，从入站请求头中读取列表中指定的头，
@@ -221,7 +221,7 @@ export default {
 - 全局配置 `config.fetch.propagateHeaders`：声明哪些头需要被捕获和透传
 - 未在全局配置中声明的头：在 `init.headers` 中手动设置即可
 - 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系)
-:::
+  :::
 
 ### 优先级
 
@@ -257,12 +257,12 @@ export default {
 
 每个出站请求自动记录结构化日志：
 
-| 条件 | 日志级别 |
-|------|---------|
-| 2xx / 3xx 响应 | `debug` |
-| 4xx 响应 | `warn` |
-| 5xx 响应 | `error` |
-| 网络错误 / 超时 | `error` |
+| 条件            | 日志级别 |
+| --------------- | -------- |
+| 2xx / 3xx 响应  | `debug`  |
+| 4xx 响应        | `warn`   |
+| 5xx 响应        | `error`  |
+| 网络错误 / 超时 | `error`  |
 
 日志字段：`type: "outbound"` / `method` / `url` / `status` / `duration` / `requestId`
 
@@ -285,11 +285,7 @@ app.setFetch(customFetchImplementation);
 ## 类型导入
 
 ```typescript
-import type {
-  VextFetch,
-  VextFetchInit,
-  VextFetchClientOptions,
-} from 'vextjs';
+import type { VextFetch, VextFetchInit, VextFetchClientOptions } from "vextjs";
 ```
 
 ## 下一步

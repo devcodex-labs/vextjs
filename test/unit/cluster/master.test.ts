@@ -382,9 +382,7 @@ describe("ClusterMaster", () => {
       expect(master2.config.healthCheck.timeout).toBe(2);
 
       // 不同实例的 healthCheck 应为不同对象引用
-      expect(master1.config.healthCheck).not.toBe(
-        master2.config.healthCheck,
-      );
+      expect(master1.config.healthCheck).not.toBe(master2.config.healthCheck);
     });
   });
 
@@ -639,9 +637,7 @@ describe("ClusterMaster", () => {
       const master1 = new ClusterMaster();
       const master2 = new ClusterMaster();
 
-      expect(master1.getLatestMetrics()).not.toBe(
-        master2.getLatestMetrics(),
-      );
+      expect(master1.getLatestMetrics()).not.toBe(master2.getLatestMetrics());
     });
   });
 

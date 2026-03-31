@@ -1,9 +1,7 @@
 {
   "config": {
     "security": {
-      "domainWhiteList": [
-        "*"
-      ],
+      "domainWhiteList": ["*"],
       "protocolWhiteList": [],
       "defaultMiddleware": "csrf,hsts,methodnoallow,noopen,nosniff,csp,xssProtection,xframe,dta",
       "csrf": {
@@ -20,13 +18,7 @@
         "supportedRequests": [
           {
             "path": {},
-            "methods": [
-              "POST",
-              "PATCH",
-              "DELETE",
-              "PUT",
-              "CONNECT"
-            ]
+            "methods": ["POST", "PATCH", "DELETE", "PUT", "CONNECT"]
           }
         ],
         "refererWhiteList": [],
@@ -86,10 +78,7 @@
     },
     "jsonp": {
       "limit": 50,
-      "callback": [
-        "_callback",
-        "callback"
-      ],
+      "callback": ["_callback", "callback"],
       "csrf": false
     },
     "onerror": {
@@ -242,11 +231,7 @@
     "static": {
       "enable": false
     },
-    "middleware": [
-      "timing",
-      "requestId",
-      "auth"
-    ],
+    "middleware": ["timing", "requestId", "auth"],
     "timing": {
       "match": "/chain"
     },
@@ -273,9 +258,7 @@
       "package": "egg-onerror",
       "name": "onerror",
       "dependencies": [],
-      "optionalDependencies": [
-        "jsonp"
-      ],
+      "optionalDependencies": ["jsonp"],
       "env": [],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
       "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-onerror",
@@ -319,9 +302,7 @@
       "package": "egg-multipart",
       "name": "multipart",
       "dependencies": [],
-      "optionalDependencies": [
-        "schedule"
-      ],
+      "optionalDependencies": ["schedule"],
       "env": [],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
       "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-multipart",
@@ -332,9 +313,7 @@
       "package": "egg-security",
       "name": "security",
       "dependencies": [],
-      "optionalDependencies": [
-        "session"
-      ],
+      "optionalDependencies": ["session"],
       "env": [],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
       "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-security",
@@ -344,13 +323,9 @@
       "enable": false,
       "package": "egg-development",
       "name": "development",
-      "dependencies": [
-        "watcher"
-      ],
+      "dependencies": ["watcher"],
       "optionalDependencies": [],
-      "env": [
-        "local"
-      ],
+      "env": ["local"],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
       "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-development",
       "version": "3.0.2"
@@ -359,9 +334,7 @@
       "enable": false,
       "package": "egg-logrotator",
       "name": "logrotator",
-      "dependencies": [
-        "schedule"
-      ],
+      "dependencies": ["schedule"],
       "optionalDependencies": [],
       "env": [],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\config\\plugin.js",
@@ -395,9 +368,7 @@
       "package": "egg-jsonp",
       "name": "jsonp",
       "dependencies": [],
-      "optionalDependencies": [
-        "security"
-      ],
+      "optionalDependencies": ["security"],
       "env": [],
       "from": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg\\config\\plugin.js",
       "path": "E:\\MySelf\\vext\\test\\benchmark\\servers\\raw-egg\\node_modules\\egg-jsonp",

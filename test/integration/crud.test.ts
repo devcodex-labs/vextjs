@@ -19,7 +19,15 @@
  * @see IMPLEMENTATION-PLAN.md 任务 1.21
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -414,9 +422,19 @@ export default routeDefinition;
 function createMockUserService() {
   // 内存数据存储
   const users = [
-    { id: "1", name: "Alice", email: "alice@example.com", createdAt: "2026-01-01" },
+    {
+      id: "1",
+      name: "Alice",
+      email: "alice@example.com",
+      createdAt: "2026-01-01",
+    },
     { id: "2", name: "Bob", email: "bob@example.com", createdAt: "2026-01-02" },
-    { id: "3", name: "Charlie", email: "charlie@example.com", createdAt: "2026-01-03" },
+    {
+      id: "3",
+      name: "Charlie",
+      email: "charlie@example.com",
+      createdAt: "2026-01-03",
+    },
   ];
 
   let nextId = 4;
@@ -494,7 +512,9 @@ describe("CRUD integration tests", () => {
     });
 
     it("returns 200 with user list", async () => {
-      const res = await t.request.get("/users/list").query({ page: 1, limit: 10 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 10 });
 
       expect(res.status).toBe(200);
       expect(res.body).toBeDefined();
@@ -509,7 +529,9 @@ describe("CRUD integration tests", () => {
     });
 
     it("returns paginated results", async () => {
-      const res = await t.request.get("/users/list").query({ page: 1, limit: 2 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 2 });
 
       expect(res.status).toBe(200);
       expect(res.body.data.list.length).toBe(2);
@@ -517,7 +539,9 @@ describe("CRUD integration tests", () => {
     });
 
     it("returns empty list for page beyond data", async () => {
-      const res = await t.request.get("/users/list").query({ page: 100, limit: 10 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: 100, limit: 10 });
 
       expect(res.status).toBe(200);
       expect(res.body.data.list).toEqual([]);
@@ -525,28 +549,28 @@ describe("CRUD integration tests", () => {
     });
 
     it("returns 422 on invalid page parameter", async () => {
-      const res = await t.request.get("/users/list").query({ page: -1, limit: 10 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: -1, limit: 10 });
 
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(422);
       expect(res.body.message).toContain("Validation");
       expect(res.body.errors).toBeDefined();
       expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "page" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ field: "page" })]),
       );
     });
 
     it("returns 422 on invalid limit parameter", async () => {
-      const res = await t.request.get("/users/list").query({ page: 1, limit: 999 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 999 });
 
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(422);
       expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "limit" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ field: "limit" })]),
       );
     });
 
@@ -599,9 +623,7 @@ describe("CRUD integration tests", () => {
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(422);
       expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "name" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ field: "name" })]),
       );
     });
 
@@ -613,9 +635,7 @@ describe("CRUD integration tests", () => {
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(422);
       expect(res.body.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "email" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ field: "email" })]),
       );
     });
 
@@ -661,9 +681,7 @@ describe("CRUD integration tests", () => {
     });
 
     it("returns 404 when user does not exist", async () => {
-      const res = await t.request
-        .put("/users/999")
-        .send({ name: "Ghost" });
+      const res = await t.request.put("/users/999").send({ name: "Ghost" });
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(404);
@@ -807,7 +825,9 @@ describe("CRUD integration tests", () => {
     });
 
     it("auto-generates requestId when not provided", async () => {
-      const res = await t.request.get("/users/list").query({ page: 1, limit: 10 });
+      const res = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 10 });
 
       expect(res.status).toBe(200);
       expect(res.body.requestId).toBeDefined();
@@ -828,8 +848,12 @@ describe("CRUD integration tests", () => {
     });
 
     it("generates unique requestId for each request", async () => {
-      const res1 = await t.request.get("/users/list").query({ page: 1, limit: 10 });
-      const res2 = await t.request.get("/users/list").query({ page: 1, limit: 10 });
+      const res1 = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 10 });
+      const res2 = await t.request
+        .get("/users/list")
+        .query({ page: 1, limit: 10 });
 
       expect(res1.body.requestId).not.toBe(res2.body.requestId);
     });
@@ -1049,7 +1073,9 @@ describe("CRUD integration tests", () => {
       const results = await Promise.all([
         t.request.get("/users/list").query({ page: 1, limit: 10 }),
         t.request.get("/health"),
-        t.request.post("/users").send({ name: "Parallel", email: "parallel@test.com" }),
+        t.request
+          .post("/users")
+          .send({ name: "Parallel", email: "parallel@test.com" }),
       ]);
 
       // 每个请求应独立成功

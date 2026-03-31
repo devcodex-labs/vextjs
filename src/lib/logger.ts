@@ -104,7 +104,7 @@ const EMPTY_MIXIN: Record<string, unknown> = {};
 
 export function createLogger(
   config: VextLoggerConfig = {},
-  options?: { requestContextEnabled?: boolean }
+  options?: { requestContextEnabled?: boolean },
 ): VextLogger {
   const level = config.level ?? "info";
   const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
@@ -181,7 +181,7 @@ export function createLogger(
               _mixinWarnEmitted = true;
               // pinoInstance 此时已赋值（mixin 仅在日志写入时调用，非初始化时）
               pinoInstance.warn(
-                "[vextjs] config.logger.mixin 返回了 Promise，mixin 必须是同步函数，已降级为 {}"
+                "[vextjs] config.logger.mixin 返回了 Promise，mixin 必须是同步函数，已降级为 {}",
               );
             }
             return EMPTY_MIXIN;
@@ -193,7 +193,7 @@ export function createLogger(
             // pinoInstance 此时已赋值（mixin 仅在日志写入时调用，非初始化时）
             pinoInstance.warn(
               { err },
-              "[vextjs] config.logger.mixin 抛出异常，已降级为 {}"
+              "[vextjs] config.logger.mixin 抛出异常，已降级为 {}",
             );
           }
           return EMPTY_MIXIN;

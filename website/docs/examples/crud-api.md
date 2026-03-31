@@ -37,14 +37,14 @@ pnpm install
 // src/config/default.ts
 export default {
   port: 3000,
-  adapter: 'native',
+  adapter: "native",
   logger: {
-    level: 'debug',
+    level: "debug",
     pretty: true,
   },
   cors: {
     enabled: true,
-    origins: ['*'],
+    origins: ["*"],
   },
   rateLimit: {
     enabled: true,
@@ -57,29 +57,27 @@ export default {
   },
   openapi: {
     enabled: true,
-    title: 'CRUD API 示例',
-    version: '1.0.0',
-    description: '一个完整的用户管理 RESTful API',
+    title: "CRUD API 示例",
+    version: "1.0.0",
+    description: "一个完整的用户管理 RESTful API",
     tags: [
-      { name: '基础', description: '基础接口' },
-      { name: '用户', description: '用户管理接口' },
+      { name: "基础", description: "基础接口" },
+      { name: "用户", description: "用户管理接口" },
     ],
     securitySchemes: {
       bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        description: '使用 Bearer Token 认证',
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+        description: "使用 Bearer Token 认证",
       },
     },
     guardSecurityMap: {
-      auth: 'bearerAuth',
+      auth: "bearerAuth",
     },
   },
   // 路由级中间件白名单
-  middlewares: [
-    { name: 'auth' },
-  ],
+  middlewares: [{ name: "auth" }],
 };
 ```
 
@@ -91,7 +89,7 @@ export default {
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 /**
  * 简易认证中间件
@@ -103,21 +101,21 @@ export default defineMiddleware(async (req, _res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
-    req.app.throw(401, '未提供认证令牌');
+    req.app.throw(401, "未提供认证令牌");
   }
 
-  const token = authorization.replace('Bearer ', '');
+  const token = authorization.replace("Bearer ", "");
 
-  if (!token || token === 'undefined') {
-    req.app.throw(401, '认证令牌格式无效');
+  if (!token || token === "undefined") {
+    req.app.throw(401, "认证令牌格式无效");
   }
 
   // 模拟 JWT 解码（生产环境应使用 jose/jsonwebtoken 等库）
   try {
     // 简单示例：token 格式为 "user-{id}-{role}"
-    const parts = token.split('-');
-    if (parts.length < 3 || parts[0] !== 'user') {
-      req.app.throw(401, '认证令牌无效');
+    const parts = token.split("-");
+    if (parts.length < 3 || parts[0] !== "user") {
+      req.app.throw(401, "认证令牌无效");
     }
 
     req.user = {
@@ -125,7 +123,7 @@ export default defineMiddleware(async (req, _res, next) => {
       role: parts[2],
     };
   } catch {
-    req.app.throw(401, '认证令牌解析失败');
+    req.app.throw(401, "认证令牌解析失败");
   }
 
   await next();
@@ -136,7 +134,7 @@ export default defineMiddleware(async (req, _res, next) => {
 
 ```typescript
 // types/vext.d.ts
-declare module 'vextjs' {
+declare module "vextjs" {
   interface VextRequest {
     user?: {
       id: string;
@@ -150,7 +148,7 @@ declare module 'vextjs' {
 
 ```typescript
 // src/services/user.ts
-import type { VextApp, VextLogger } from 'vextjs';
+import type { VextApp, VextLogger } from "vextjs";
 
 /**
  * 用户数据接口
@@ -177,7 +175,7 @@ export default class UserService {
   private nextId = 1;
 
   constructor(private app: VextApp) {
-    this.logger = app.logger.child({ service: 'UserService' });
+    this.logger = app.logger.child({ service: "UserService" });
 
     // 初始化一些测试数据
     this.seed();
@@ -188,9 +186,9 @@ export default class UserService {
    */
   private seed(): void {
     const seedUsers = [
-      { name: 'Alice', email: 'alice@example.com', age: 28, role: 'admin' },
-      { name: 'Bob', email: 'bob@example.com', age: 32, role: 'user' },
-      { name: 'Charlie', email: 'charlie@example.com', role: 'user' },
+      { name: "Alice", email: "alice@example.com", age: 28, role: "admin" },
+      { name: "Bob", email: "bob@example.com", age: 32, role: "user" },
+      { name: "Charlie", email: "charlie@example.com", role: "user" },
     ];
 
     for (const u of seedUsers) {
@@ -199,7 +197,7 @@ export default class UserService {
       this.users.set(id, { id, ...u, createdAt: now, updatedAt: now });
     }
 
-    this.logger.info({ count: this.users.size }, '初始数据已加载');
+    this.logger.info({ count: this.users.size }, "初始数据已加载");
   }
 
   /**
@@ -216,7 +214,7 @@ export default class UserService {
     limit: number;
     totalPages: number;
   }> {
-    this.logger.debug(options, '查询用户列表');
+    this.logger.debug(options, "查询用户列表");
 
     let allUsers = Array.from(this.users.values());
 
@@ -235,14 +233,20 @@ export default class UserService {
     const start = (options.page - 1) * options.limit;
     const items = allUsers.slice(start, start + options.limit);
 
-    return { items, total, page: options.page, limit: options.limit, totalPages };
+    return {
+      items,
+      total,
+      page: options.page,
+      limit: options.limit,
+      totalPages,
+    };
   }
 
   /**
    * 根据 ID 查询用户
    */
   async findById(id: string): Promise<User | null> {
-    this.logger.debug({ userId: id }, '查询用户');
+    this.logger.debug({ userId: id }, "查询用户");
     return this.users.get(id) ?? null;
   }
 
@@ -255,12 +259,12 @@ export default class UserService {
     age?: number;
     role?: string;
   }): Promise<User> {
-    this.logger.info({ email: data.email }, '创建用户');
+    this.logger.info({ email: data.email }, "创建用户");
 
     // 检查邮箱唯一性
     for (const user of this.users.values()) {
       if (user.email === data.email) {
-        this.app.throw(409, '邮箱已注册', 10001);
+        this.app.throw(409, "邮箱已注册", 10001);
       }
     }
 
@@ -272,13 +276,13 @@ export default class UserService {
       name: data.name,
       email: data.email,
       age: data.age,
-      role: data.role ?? 'user',
+      role: data.role ?? "user",
       createdAt: now,
       updatedAt: now,
     };
 
     this.users.set(id, user);
-    this.logger.info({ userId: id, email: data.email }, '用户创建成功');
+    this.logger.info({ userId: id, email: data.email }, "用户创建成功");
 
     return user;
   }
@@ -290,18 +294,18 @@ export default class UserService {
     id: string,
     data: { name?: string; email?: string; age?: number },
   ): Promise<User> {
-    this.logger.info({ userId: id }, '更新用户');
+    this.logger.info({ userId: id }, "更新用户");
 
     const user = this.users.get(id);
     if (!user) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     // 如果更新邮箱，检查唯一性
     if (data.email && data.email !== user.email) {
       for (const u of this.users.values()) {
         if (u.email === data.email) {
-          this.app.throw(409, '邮箱已被其他用户使用', 10002);
+          this.app.throw(409, "邮箱已被其他用户使用", 10002);
         }
       }
     }
@@ -313,7 +317,7 @@ export default class UserService {
     };
 
     this.users.set(id, updated);
-    this.logger.info({ userId: id }, '用户更新成功');
+    this.logger.info({ userId: id }, "用户更新成功");
 
     return updated;
   }
@@ -322,14 +326,14 @@ export default class UserService {
    * 删除用户
    */
   async delete(id: string): Promise<void> {
-    this.logger.info({ userId: id }, '删除用户');
+    this.logger.info({ userId: id }, "删除用户");
 
     if (!this.users.has(id)) {
-      this.app.throw(404, '用户不存在');
+      this.app.throw(404, "用户不存在");
     }
 
     this.users.delete(id);
-    this.logger.info({ userId: id }, '用户删除成功');
+    this.logger.info({ userId: id }, "用户删除成功");
   }
 
   /**
@@ -353,24 +357,28 @@ VextJS 的服务层通过约定式目录自动加载。将 class 或对象放在
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET / → 健康检查
-  app.get('/', {
-    docs: {
-      summary: '健康检查',
-      tags: ['基础'],
+  app.get(
+    "/",
+    {
+      docs: {
+        summary: "健康检查",
+        tags: ["基础"],
+      },
     },
-  }, async (_req, res) => {
-    const userCount = await app.services.user.count();
-    res.json({
-      status: 'ok',
-      uptime: Math.floor(process.uptime()),
-      users: userCount,
-      timestamp: new Date().toISOString(),
-    });
-  });
+    async (_req, res) => {
+      const userCount = await app.services.user.count();
+      res.json({
+        status: "ok",
+        uptime: Math.floor(process.uptime()),
+        users: userCount,
+        timestamp: new Date().toISOString(),
+      });
+    },
+  );
 });
 ```
 
@@ -378,184 +386,210 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // GET /users/list — 分页查询用户列表（公开）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.get('/list', {
-    validate: {
-      query: {
-        page: 'number:1-',       // 页码，最小值 1
-        limit: 'number:1-100',   // 每页条数，1-100
-        keyword: 'string?',     // 搜索关键词（可选）
+  app.get(
+    "/list",
+    {
+      validate: {
+        query: {
+          page: "number:1-", // 页码，最小值 1
+          limit: "number:1-100", // 每页条数，1-100
+          keyword: "string?", // 搜索关键词（可选）
+        },
       },
-    },
-    docs: {
-      summary: '用户列表',
-      description: '分页查询用户列表，支持按姓名或邮箱模糊搜索。',
-      tags: ['用户'],
-      responses: {
-        200: {
-          description: '查询成功',
-          example: {
-            items: [
-              { id: '1', name: 'Alice', email: 'alice@example.com', role: 'admin' },
-            ],
-            total: 3,
-            page: 1,
-            limit: 10,
-            totalPages: 1,
+      docs: {
+        summary: "用户列表",
+        description: "分页查询用户列表，支持按姓名或邮箱模糊搜索。",
+        tags: ["用户"],
+        responses: {
+          200: {
+            description: "查询成功",
+            example: {
+              items: [
+                {
+                  id: "1",
+                  name: "Alice",
+                  email: "alice@example.com",
+                  role: "admin",
+                },
+              ],
+              total: 3,
+              page: 1,
+              limit: 10,
+              totalPages: 1,
+            },
           },
         },
       },
     },
-  }, async (req, res) => {
-    const { page, limit, keyword } = req.valid('query');
-    const result = await app.services.user.findAll({ page, limit, keyword });
-    res.json(result);
-  });
+    async (req, res) => {
+      const { page, limit, keyword } = req.valid("query");
+      const result = await app.services.user.findAll({ page, limit, keyword });
+      res.json(result);
+    },
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // GET /users/:id — 根据 ID 查询用户（公开）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.get('/:id', {
-    validate: {
-      param: { id: 'string:1-' },
-    },
-    docs: {
-      summary: '获取用户详情',
-      tags: ['用户'],
-      responses: {
-        200: { description: '查询成功' },
-        404: { description: '用户不存在' },
+  app.get(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+      },
+      docs: {
+        summary: "获取用户详情",
+        tags: ["用户"],
+        responses: {
+          200: { description: "查询成功" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const user = await app.services.user.findById(id);
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
 
-    if (!user) {
-      app.throw(404, '用户不存在');
-    }
+      if (!user) {
+        app.throw(404, "用户不存在");
+      }
 
-    res.json(user);
-  });
+      res.json(user);
+    },
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // POST /users — 创建用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.post('/', {
-    validate: {
-      body: {
-        name: 'string:1-50',              // 必填，长度 1-50
-        email: 'email',                   // 必填，邮箱格式
-        age: 'number:0-200?',             // 可选，0-200
-        role: 'enum:admin,user?',         // 可选，枚举值
-      },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '创建用户',
-      description: '创建一个新用户。需要 Bearer Token 认证。',
-      tags: ['用户'],
-      responses: {
-        201: {
-          description: '创建成功',
-          example: {
-            id: '4',
-            name: 'Diana',
-            email: 'diana@example.com',
-            role: 'user',
-            createdAt: '2026-03-05T00:00:00.000Z',
-            updatedAt: '2026-03-05T00:00:00.000Z',
-          },
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50", // 必填，长度 1-50
+          email: "email", // 必填，邮箱格式
+          age: "number:0-200?", // 可选，0-200
+          role: "enum:admin,user?", // 可选，枚举值
         },
-        400: { description: '参数校验失败' },
-        401: { description: '未认证' },
-        409: { description: '邮箱已注册' },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "创建用户",
+        description: "创建一个新用户。需要 Bearer Token 认证。",
+        tags: ["用户"],
+        responses: {
+          201: {
+            description: "创建成功",
+            example: {
+              id: "4",
+              name: "Diana",
+              email: "diana@example.com",
+              role: "user",
+              createdAt: "2026-03-05T00:00:00.000Z",
+              updatedAt: "2026-03-05T00:00:00.000Z",
+            },
+          },
+          400: { description: "参数校验失败" },
+          401: { description: "未认证" },
+          409: { description: "邮箱已注册" },
+        },
       },
     },
-  }, async (req, res) => {
-    const body = req.valid('body');
+    async (req, res) => {
+      const body = req.valid("body");
 
-    app.logger.info(
-      { operator: req.user?.id, email: body.email },
-      '操作员创建用户',
-    );
+      app.logger.info(
+        { operator: req.user?.id, email: body.email },
+        "操作员创建用户",
+      );
 
-    const user = await app.services.user.create(body);
-    res.json(user, 201);
-  });
+      const user = await app.services.user.create(body);
+      res.json(user, 201);
+    },
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // PUT /users/:id — 更新用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.put('/:id', {
-    validate: {
-      param: { id: 'string:1-' },
-      body: {
-        name: 'string:1-50?',    // 可选
-        email: 'email?',         // 可选
-        age: 'number:0-200?',    // 可选
+  app.put(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+        body: {
+          name: "string:1-50?", // 可选
+          email: "email?", // 可选
+          age: "number:0-200?", // 可选
+        },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "更新用户",
+        description:
+          "更新指定用户的信息。需要 Bearer Token 认证。只需传入需要更新的字段。",
+        tags: ["用户"],
+        responses: {
+          200: { description: "更新成功" },
+          400: { description: "参数校验失败" },
+          401: { description: "未认证" },
+          404: { description: "用户不存在" },
+          409: { description: "邮箱已被其他用户使用" },
+        },
       },
     },
-    middlewares: ['auth'],
-    docs: {
-      summary: '更新用户',
-      description: '更新指定用户的信息。需要 Bearer Token 认证。只需传入需要更新的字段。',
-      tags: ['用户'],
-      responses: {
-        200: { description: '更新成功' },
-        400: { description: '参数校验失败' },
-        401: { description: '未认证' },
-        404: { description: '用户不存在' },
-        409: { description: '邮箱已被其他用户使用' },
-      },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const body = req.valid("body");
+
+      app.logger.info(
+        { operator: req.user?.id, targetUser: id },
+        "操作员更新用户",
+      );
+
+      const user = await app.services.user.update(id, body);
+      res.json(user);
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
-    const body = req.valid('body');
-
-    app.logger.info(
-      { operator: req.user?.id, targetUser: id },
-      '操作员更新用户',
-    );
-
-    const user = await app.services.user.update(id, body);
-    res.json(user);
-  });
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // DELETE /users/:id — 删除用户（需认证）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  app.delete('/:id', {
-    validate: {
-      param: { id: 'string:1-' },
-    },
-    middlewares: ['auth'],
-    docs: {
-      summary: '删除用户',
-      description: '删除指定用户。需要 Bearer Token 认证。此操作不可逆。',
-      tags: ['用户'],
-      responses: {
-        204: { description: '删除成功（无响应体）' },
-        401: { description: '未认证' },
-        404: { description: '用户不存在' },
+  app.delete(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "删除用户",
+        description: "删除指定用户。需要 Bearer Token 认证。此操作不可逆。",
+        tags: ["用户"],
+        responses: {
+          204: { description: "删除成功（无响应体）" },
+          401: { description: "未认证" },
+          404: { description: "用户不存在" },
+        },
       },
     },
-  }, async (req, res) => {
-    const { id } = req.valid('param');
+    async (req, res) => {
+      const { id } = req.valid("param");
 
-    app.logger.info(
-      { operator: req.user?.id, targetUser: id },
-      '操作员删除用户',
-    );
+      app.logger.info(
+        { operator: req.user?.id, targetUser: id },
+        "操作员删除用户",
+      );
 
-    await app.services.user.delete(id);
-    res.status(204).json(null);
-  });
+      await app.services.user.delete(id);
+      res.status(204).json(null);
+    },
+  );
 });
 ```
 
@@ -563,10 +597,10 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/index.ts
-import { bootstrap } from 'vextjs';
+import { bootstrap } from "vextjs";
 
 bootstrap().catch((err) => {
-  console.error('启动失败:', err);
+  console.error("启动失败:", err);
   process.exit(1);
 });
 ```
@@ -575,13 +609,13 @@ bootstrap().catch((err) => {
 
 ```typescript
 // test/users.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestApp } from 'vextjs/testing';
-import type { TestApp } from 'vextjs';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestApp } from "vextjs/testing";
+import type { TestApp } from "vextjs";
 
-describe('用户 CRUD', () => {
+describe("用户 CRUD", () => {
   let testApp: TestApp;
-  const AUTH_TOKEN = 'user-1-admin'; // 模拟管理员 token
+  const AUTH_TOKEN = "user-1-admin"; // 模拟管理员 token
 
   beforeEach(async () => {
     testApp = await createTestApp();
@@ -593,10 +627,10 @@ describe('用户 CRUD', () => {
 
   // ── 查询 ──────────────────────────────────────
 
-  describe('GET /users/list', () => {
-    it('应返回分页用户列表', async () => {
+  describe("GET /users/list", () => {
+    it("应返回分页用户列表", async () => {
       const res = await testApp.request
-        .get('/users/list')
+        .get("/users/list")
         .query({ page: 1, limit: 10 });
 
       expect(res.status).toBe(200);
@@ -606,111 +640,111 @@ describe('用户 CRUD', () => {
       expect(res.body.data.page).toBe(1);
     });
 
-    it('支持关键词搜索', async () => {
+    it("支持关键词搜索", async () => {
       const res = await testApp.request
-        .get('/users/list')
-        .query({ page: 1, limit: 10, keyword: 'alice' });
+        .get("/users/list")
+        .query({ page: 1, limit: 10, keyword: "alice" });
 
       expect(res.status).toBe(200);
       expect(res.body.data.items.length).toBe(1);
-      expect(res.body.data.items[0].name).toBe('Alice');
+      expect(res.body.data.items[0].name).toBe("Alice");
     });
 
-    it('分页参数校验失败应返回 400', async () => {
+    it("分页参数校验失败应返回 400", async () => {
       const res = await testApp.request
-        .get('/users/list')
+        .get("/users/list")
         .query({ page: 0, limit: 10 }); // page 最小值为 1
 
       expect(res.status).toBe(400);
     });
   });
 
-  describe('GET /users/:id', () => {
-    it('存在时应返回用户详情', async () => {
-      const res = await testApp.request.get('/users/1');
+  describe("GET /users/:id", () => {
+    it("存在时应返回用户详情", async () => {
+      const res = await testApp.request.get("/users/1");
 
       expect(res.status).toBe(200);
       expect(res.body.data).toMatchObject({
-        id: '1',
-        name: 'Alice',
-        email: 'alice@example.com',
+        id: "1",
+        name: "Alice",
+        email: "alice@example.com",
       });
     });
 
-    it('不存在时应返回 404', async () => {
-      const res = await testApp.request.get('/users/999');
+    it("不存在时应返回 404", async () => {
+      const res = await testApp.request.get("/users/999");
 
       expect(res.status).toBe(404);
-      expect(res.body.message).toBe('用户不存在');
+      expect(res.body.message).toBe("用户不存在");
     });
   });
 
   // ── 创建 ──────────────────────────────────────
 
-  describe('POST /users', () => {
-    it('认证后应成功创建用户', async () => {
+  describe("POST /users", () => {
+    it("认证后应成功创建用户", async () => {
       const res = await testApp.request
-        .post('/users')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .post("/users")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
         .send({
-          name: 'Diana',
-          email: 'diana@example.com',
+          name: "Diana",
+          email: "diana@example.com",
           age: 25,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.code).toBe(0);
       expect(res.body.data).toMatchObject({
-        name: 'Diana',
-        email: 'diana@example.com',
+        name: "Diana",
+        email: "diana@example.com",
         age: 25,
-        role: 'user',
+        role: "user",
       });
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.createdAt).toBeDefined();
     });
 
-    it('未认证应返回 401', async () => {
+    it("未认证应返回 401", async () => {
       const res = await testApp.request
-        .post('/users')
-        .send({ name: 'Test', email: 'test@example.com' });
+        .post("/users")
+        .send({ name: "Test", email: "test@example.com" });
 
       expect(res.status).toBe(401);
     });
 
-    it('邮箱重复应返回 409', async () => {
+    it("邮箱重复应返回 409", async () => {
       const res = await testApp.request
-        .post('/users')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .post("/users")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
         .send({
-          name: 'Alice Copy',
-          email: 'alice@example.com', // 已存在
+          name: "Alice Copy",
+          email: "alice@example.com", // 已存在
         });
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(10001);
     });
 
-    it('name 为空应返回 400', async () => {
+    it("name 为空应返回 400", async () => {
       const res = await testApp.request
-        .post('/users')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .post("/users")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
         .send({
-          name: '',
-          email: 'new@example.com',
+          name: "",
+          email: "new@example.com",
         });
 
       expect(res.status).toBe(400);
       expect(res.body.errors).toBeDefined();
     });
 
-    it('email 格式无效应返回 400', async () => {
+    it("email 格式无效应返回 400", async () => {
       const res = await testApp.request
-        .post('/users')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .post("/users")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
         .send({
-          name: 'Valid Name',
-          email: 'not-an-email',
+          name: "Valid Name",
+          email: "not-an-email",
         });
 
       expect(res.status).toBe(400);
@@ -719,32 +753,32 @@ describe('用户 CRUD', () => {
 
   // ── 更新 ──────────────────────────────────────
 
-  describe('PUT /users/:id', () => {
-    it('认证后应成功更新用户', async () => {
+  describe("PUT /users/:id", () => {
+    it("认证后应成功更新用户", async () => {
       const res = await testApp.request
-        .put('/users/1')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
-        .send({ name: 'Alice Updated' });
+        .put("/users/1")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
+        .send({ name: "Alice Updated" });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.name).toBe('Alice Updated');
-      expect(res.body.data.email).toBe('alice@example.com'); // 未修改的字段保持不变
+      expect(res.body.data.name).toBe("Alice Updated");
+      expect(res.body.data.email).toBe("alice@example.com"); // 未修改的字段保持不变
     });
 
-    it('更新不存在的用户应返回 404', async () => {
+    it("更新不存在的用户应返回 404", async () => {
       const res = await testApp.request
-        .put('/users/999')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
-        .send({ name: 'Ghost' });
+        .put("/users/999")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
+        .send({ name: "Ghost" });
 
       expect(res.status).toBe(404);
     });
 
-    it('邮箱冲突应返回 409', async () => {
+    it("邮箱冲突应返回 409", async () => {
       const res = await testApp.request
-        .put('/users/1')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
-        .send({ email: 'bob@example.com' }); // Bob 的邮箱
+        .put("/users/1")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`)
+        .send({ email: "bob@example.com" }); // Bob 的邮箱
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(10002);
@@ -753,29 +787,29 @@ describe('用户 CRUD', () => {
 
   // ── 删除 ──────────────────────────────────────
 
-  describe('DELETE /users/:id', () => {
-    it('认证后应成功删除用户', async () => {
+  describe("DELETE /users/:id", () => {
+    it("认证后应成功删除用户", async () => {
       const res = await testApp.request
-        .delete('/users/2')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`);
+        .delete("/users/2")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`);
 
       expect(res.status).toBe(204);
 
       // 确认已删除
-      const getRes = await testApp.request.get('/users/2');
+      const getRes = await testApp.request.get("/users/2");
       expect(getRes.status).toBe(404);
     });
 
-    it('删除不存在的用户应返回 404', async () => {
+    it("删除不存在的用户应返回 404", async () => {
       const res = await testApp.request
-        .delete('/users/999')
-        .set('Authorization', `Bearer ${AUTH_TOKEN}`);
+        .delete("/users/999")
+        .set("Authorization", `Bearer ${AUTH_TOKEN}`);
 
       expect(res.status).toBe(404);
     });
 
-    it('未认证应返回 401', async () => {
-      const res = await testApp.request.delete('/users/1');
+    it("未认证应返回 401", async () => {
+      const res = await testApp.request.delete("/users/1");
 
       expect(res.status).toBe(401);
     });
@@ -783,13 +817,13 @@ describe('用户 CRUD', () => {
 
   // ── 健康检查 ──────────────────────────────────
 
-  describe('GET /', () => {
-    it('应返回服务状态', async () => {
-      const res = await testApp.request.get('/');
+  describe("GET /", () => {
+    it("应返回服务状态", async () => {
+      const res = await testApp.request.get("/");
 
       expect(res.status).toBe(200);
       expect(res.body.data).toMatchObject({
-        status: 'ok',
+        status: "ok",
         users: expect.any(Number),
       });
     });
@@ -901,15 +935,15 @@ handler 中 app.throw(404, '用户不存在')
 
 ### 设计模式
 
-| 模式 | 说明 |
-|------|------|
-| **三段式路由** | `app.method(path, options, handler)` — 声明式配置 |
-| **服务层分离** | 业务逻辑封装在 `src/services/` 中，路由只做编排 |
-| **中间件白名单** | 路由级中间件必须在 `config.middlewares` 中声明 |
-| **声明式校验** | `validate` 使用 schema-dsl DSL 语法，自动类型转换 |
-| **统一错误处理** | `app.throw()` 抛出错误，框架自动转为标准格式 |
-| **出口包装** | 所有成功响应自动包装为 `{ code: 0, data, requestId }` |
-| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档 |
+| 模式                 | 说明                                                  |
+| -------------------- | ----------------------------------------------------- |
+| **三段式路由**       | `app.method(path, options, handler)` — 声明式配置     |
+| **服务层分离**       | 业务逻辑封装在 `src/services/` 中，路由只做编排       |
+| **中间件白名单**     | 路由级中间件必须在 `config.middlewares` 中声明        |
+| **声明式校验**       | `validate` 使用 schema-dsl DSL 语法，自动类型转换     |
+| **统一错误处理**     | `app.throw()` 抛出错误，框架自动转为标准格式          |
+| **出口包装**         | 所有成功响应自动包装为 `{ code: 0, data, requestId }` |
+| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档         |
 
 ## 下一步
 

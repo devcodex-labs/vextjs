@@ -5,14 +5,18 @@
 VextJS 是一个现代化的 Node.js Web 框架，专为构建高性能 RESTful API 而设计。它提供 **Adapter 架构**（底层 HTTP 框架可替换）、**插件系统**、**约定式路由**、**服务自动注入**、**声明式参数校验**、**OpenAPI 文档自动生成** 等企业级特性，让你专注于业务逻辑。
 
 ```typescript
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/hello', {
-    docs: { summary: '问候接口' },
-  }, async (_req, res) => {
-    res.json({ message: 'Hello VextJS!' });
-  });
+  app.get(
+    "/hello",
+    {
+      docs: { summary: "问候接口" },
+    },
+    async (_req, res) => {
+      res.json({ message: "Hello VextJS!" });
+    },
+  );
 });
 ```
 
@@ -22,19 +26,19 @@ export default defineRoutes((app) => {
 
 VextJS 的底层 HTTP 处理层是可替换的。内置 5 种 Adapter：
 
-| Adapter | 底层框架 | 特点 | 适用场景 |
-|---------|---------|------|---------|
-| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高 | 追求极致性能 |
-| **Hono** | Hono | Web Standards API | 全栈 / 边缘运行时 |
-| **Fastify** | Fastify | 生态丰富，序列化优化 | 大型项目 |
-| **Express** | Express | 最大中间件生态 | 迁移项目 |
-| **Koa** | Koa | 轻量优雅 | 中小型项目 |
+| Adapter            | 底层框架                            | 特点                 | 适用场景          |
+| ------------------ | ----------------------------------- | -------------------- | ----------------- |
+| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高 | 追求极致性能      |
+| **Hono**           | Hono                                | Web Standards API    | 全栈 / 边缘运行时 |
+| **Fastify**        | Fastify                             | 生态丰富，序列化优化 | 大型项目          |
+| **Express**        | Express                             | 最大中间件生态       | 迁移项目          |
+| **Koa**            | Koa                                 | 轻量优雅             | 中小型项目        |
 
 切换 Adapter 仅需修改一行配置，**业务代码零改动**：
 
 ```typescript
 // src/config/default.ts
-import { nativeAdapter } from 'vextjs/adapters/native';
+import { nativeAdapter } from "vextjs/adapters/native";
 // import { honoAdapter } from 'vextjs/adapters/hono';
 // import { fastifyAdapter } from 'vextjs/adapters/fastify';
 
@@ -48,12 +52,12 @@ export default {
 
 基准测试（JSON 响应场景，5 轮中位数）：
 
-| 框架 | Raw RPS | Vext RPS | 框架开销 |
-|------|--------:|---------:|--------:|
-| Native | 44,932 | 36,819 | 18.1% |
-| Fastify | 45,619 | 29,203 | 36.0% |
-| Hono | 20,703 | 15,684 | 24.2% |
-| Express | 29,868 | 30,974 | -3.7% |
+| 框架    | Raw RPS | Vext RPS | 框架开销 |
+| ------- | ------: | -------: | -------: |
+| Native  |  44,932 |   36,819 |    18.1% |
+| Fastify |  45,619 |   29,203 |    36.0% |
+| Hono    |  20,703 |   15,684 |    24.2% |
+| Express |  29,868 |   30,974 |    -3.7% |
 
 > Vext 的开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
 
@@ -64,21 +68,25 @@ export default {
 集成 [schema-dsl](https://github.com/vextjs/schema-dsl)，在路由 `options` 中声明校验规则，自动验证 + 自动生成 OpenAPI 文档：
 
 ```typescript
-app.post('/users', {
-  validate: {
-    body: {
-      name: 'string!',      // 必填字符串
-      email: 'email!',      // 必填邮箱格式
-      age: 'number?',       // 可选数字
-      role: 'admin|user',   // 枚举
+app.post(
+  "/users",
+  {
+    validate: {
+      body: {
+        name: "string!", // 必填字符串
+        email: "email!", // 必填邮箱格式
+        age: "number?", // 可选数字
+        role: "admin|user", // 枚举
+      },
     },
+    docs: { summary: "创建用户" },
   },
-  docs: { summary: '创建用户' },
-}, async (req, res) => {
-  // req.body 已通过校验，类型安全
-  const user = await app.services.user.create(req.body);
-  res.json(user);
-});
+  async (req, res) => {
+    // req.body 已通过校验，类型安全
+    const user = await app.services.user.create(req.body);
+    res.json(user);
+  },
+);
 ```
 
 ### 🧩 插件系统
@@ -86,15 +94,15 @@ app.post('/users', {
 通过 `definePlugin()` 扩展框架能力，支持完整生命周期钩子：
 
 ```typescript
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'my-cache-plugin',
+  name: "my-cache-plugin",
 
   async setup(app) {
     // 在 app 上注册能力
     const cache = new Map();
-    app.extend('cache', {
+    app.extend("cache", {
       get: (key: string) => cache.get(key),
       set: (key: string, value: unknown, ttl?: number) => {
         cache.set(key, value);
@@ -104,7 +112,7 @@ export default definePlugin({
   },
 
   async onReady(app) {
-    app.logger.info('Cache plugin ready');
+    app.logger.info("Cache plugin ready");
   },
 
   async onClose(app) {
@@ -154,15 +162,15 @@ export default definePlugin({
 
 ## 与其他框架对比
 
-| 特性 | VextJS | Fastify | Express | NestJS |
-|------|--------|---------|---------|--------|
-| 底层可替换 | ✅ 5 种 Adapter | ❌ | ❌ | ✅ Express/Fastify |
-| 约定式路由 | ✅ 文件级自动扫描 | ❌ 手动注册 | ❌ 手动注册 | ✅ 装饰器 |
-| 参数校验 | ✅ 声明式 schema-dsl | ✅ JSON Schema | 需中间件 | ✅ class-validator |
-| OpenAPI 生成 | ✅ 自动 | 需插件 | 需中间件 | ✅ 装饰器 |
-| 热重载 | ✅ Soft + Cold | ❌ | ❌ | ❌ |
-| Cluster 管理 | ✅ 内置 | ❌ | ❌ | ❌ |
-| 体量 | 轻量 | 轻量 | 轻量 | 重量 |
+| 特性         | VextJS               | Fastify        | Express     | NestJS             |
+| ------------ | -------------------- | -------------- | ----------- | ------------------ |
+| 底层可替换   | ✅ 5 种 Adapter      | ❌             | ❌          | ✅ Express/Fastify |
+| 约定式路由   | ✅ 文件级自动扫描    | ❌ 手动注册    | ❌ 手动注册 | ✅ 装饰器          |
+| 参数校验     | ✅ 声明式 schema-dsl | ✅ JSON Schema | 需中间件    | ✅ class-validator |
+| OpenAPI 生成 | ✅ 自动              | 需插件         | 需中间件    | ✅ 装饰器          |
+| 热重载       | ✅ Soft + Cold       | ❌             | ❌          | ❌                 |
+| Cluster 管理 | ✅ 内置              | ❌             | ❌          | ❌                 |
+| 体量         | 轻量                 | 轻量           | 轻量        | 重量               |
 
 ## 环境要求
 

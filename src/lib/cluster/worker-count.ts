@@ -141,7 +141,10 @@ function adjustForCgroupV1(fallback: number): number {
       return fallback;
     }
 
-    if (!existsSync(CGROUP_V1_QUOTA_PATH) || !existsSync(CGROUP_V1_PERIOD_PATH)) {
+    if (
+      !existsSync(CGROUP_V1_QUOTA_PATH) ||
+      !existsSync(CGROUP_V1_PERIOD_PATH)
+    ) {
       return fallback;
     }
 

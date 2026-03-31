@@ -1,9 +1,9 @@
 ---
 name: 🐛 Bug Report
 about: Report a bug to help us improve vext
-title: '[Bug] '
+title: "[Bug] "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## Bug Description
@@ -30,13 +30,13 @@ What actually happened. Include error messages and stack traces if available.
 
 ```typescript
 // Provide the smallest possible code that reproduces the issue
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {}, async (req, res) => {
+  app.get("/", {}, async (req, res) => {
     // ...
-  })
-})
+  });
+});
 ```
 
 ## Environment
@@ -55,9 +55,9 @@ If applicable, provide your `src/config/default.ts`:
 // src/config/default.ts
 export default {
   port: 3000,
-  adapter: 'hono',
+  adapter: "hono",
   // ...
-}
+};
 ```
 
 ## Logs

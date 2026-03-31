@@ -4,16 +4,16 @@
 
 ## 测试环境
 
-| 项目 | 规格 |
-|------|------|
-| **CPU** | Intel Core i9-13900K (24 核 / 32 线程) |
-| **内存** | 64 GB DDR5-5600 |
-| **操作系统** | Ubuntu 22.04 LTS |
-| **Node.js** | v22.12.0 |
+| 项目         | 规格                                                         |
+| ------------ | ------------------------------------------------------------ |
+| **CPU**      | Intel Core i9-13900K (24 核 / 32 线程)                       |
+| **内存**     | 64 GB DDR5-5600                                              |
+| **操作系统** | Ubuntu 22.04 LTS                                             |
+| **Node.js**  | v22.12.0                                                     |
 | **测试工具** | [autocannon](https://github.com/mcollina/autocannon) v7.15.0 |
-| **并发连接** | 100 |
-| **持续时间** | 30 秒 |
-| **预热** | 5 秒（不计入统计） |
+| **并发连接** | 100                                                          |
+| **持续时间** | 30 秒                                                        |
+| **预热**     | 5 秒（不计入统计）                                           |
 
 > ⚠️ **注意**: 性能基准测试结果受测试环境、负载模式和代码实现方式影响较大。建议在自己的硬件上运行基准测试以获得最准确的结果。
 
@@ -27,66 +27,71 @@
 
 ::: code-tabs
 @tab VextJS
+
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from 'vextjs'
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get('/', {}, async (req, res) => {
-    res.json({ message: 'Hello, World!' })
-  })
-})
+  app.get("/", {}, async (req, res) => {
+    res.json({ message: "Hello, World!" });
+  });
+});
 ```
 
 @tab Fastify
+
 ```javascript
-const fastify = require('fastify')()
+const fastify = require("fastify")();
 
-fastify.get('/', async () => {
-  return { message: 'Hello, World!' }
-})
+fastify.get("/", async () => {
+  return { message: "Hello, World!" };
+});
 
-fastify.listen({ port: 3000 })
+fastify.listen({ port: 3000 });
 ```
 
 @tab Express
+
 ```javascript
-const express = require('express')
-const app = express()
+const express = require("express");
+const app = express();
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello, World!' })
-})
+app.get("/", (req, res) => {
+  res.json({ message: "Hello, World!" });
+});
 
-app.listen(3000)
+app.listen(3000);
 ```
 
 @tab Hono (Node)
+
 ```typescript
-import { Hono } from 'hono'
-import { serve } from '@hono/node-server'
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 
-const app = new Hono()
+const app = new Hono();
 
-app.get('/', (c) => c.json({ message: 'Hello, World!' }))
+app.get("/", (c) => c.json({ message: "Hello, World!" }));
 
-serve({ fetch: app.fetch, port: 3000 })
+serve({ fetch: app.fetch, port: 3000 });
 ```
+
 :::
 
 ### 结果
 
-| 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 | 吞吐量 |
-|------|:------------:|:--------:|:--------:|:--------:|:------:|
-| **VextJS** (Native) | **98,421** | 0.9 ms | 1.8 ms | 3.2 ms | 18.2 MB/s |
-| VextJS (Fastify) | 87,653 | 1.1 ms | 2.1 ms | 3.8 ms | 16.2 MB/s |
-| VextJS (Hono) | 72,841 | 1.3 ms | 2.5 ms | 4.4 ms | 13.5 MB/s |
-| Fastify v5 | 85,320 | 1.1 ms | 2.2 ms | 3.9 ms | 15.8 MB/s |
-| Hono v4 (Node) | 68,412 | 1.4 ms | 2.7 ms | 4.9 ms | 12.7 MB/s |
-| Express v5 | 18,934 | 4.9 ms | 9.8 ms | 17.2 ms | 3.5 MB/s |
-| Koa v2 | 24,716 | 3.8 ms | 7.6 ms | 13.4 ms | 4.6 MB/s |
-| NestJS (Express) | 16,821 | 5.5 ms | 11.2 ms | 19.8 ms | 3.1 MB/s |
-| NestJS (Fastify) | 79,234 | 1.2 ms | 2.3 ms | 4.1 ms | 14.7 MB/s |
+| 框架                | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |  吞吐量   |
+| ------------------- | :-----------: | :------: | :------: | :------: | :-------: |
+| **VextJS** (Native) |  **98,421**   |  0.9 ms  |  1.8 ms  |  3.2 ms  | 18.2 MB/s |
+| VextJS (Fastify)    |    87,653     |  1.1 ms  |  2.1 ms  |  3.8 ms  | 16.2 MB/s |
+| VextJS (Hono)       |    72,841     |  1.3 ms  |  2.5 ms  |  4.4 ms  | 13.5 MB/s |
+| Fastify v5          |    85,320     |  1.1 ms  |  2.2 ms  |  3.9 ms  | 15.8 MB/s |
+| Hono v4 (Node)      |    68,412     |  1.4 ms  |  2.7 ms  |  4.9 ms  | 12.7 MB/s |
+| Express v5          |    18,934     |  4.9 ms  |  9.8 ms  | 17.2 ms  | 3.5 MB/s  |
+| Koa v2              |    24,716     |  3.8 ms  |  7.6 ms  | 13.4 ms  | 4.6 MB/s  |
+| NestJS (Express)    |    16,821     |  5.5 ms  | 11.2 ms  | 19.8 ms  | 3.1 MB/s  |
+| NestJS (Fastify)    |    79,234     |  1.2 ms  |  2.3 ms  |  4.1 ms  | 14.7 MB/s |
 
 > 数据来源：[benchmark 仓库](https://github.com/vextjs/benchmarks)，2026-01-15 测试
 
@@ -119,15 +124,15 @@ serve({ fetch: app.fetch, port: 3000 })
 
 ### 结果
 
-| 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |
-|------|:------------:|:--------:|:--------:|:--------:|
-| **VextJS** (Native) | **91,247** | 1.0 ms | 2.0 ms | 3.5 ms |
-| VextJS (Fastify) | 81,334 | 1.1 ms | 2.3 ms | 4.0 ms |
-| VextJS (Hono) | 67,523 | 1.4 ms | 2.8 ms | 4.9 ms |
-| Fastify v5 | 79,876 | 1.2 ms | 2.4 ms | 4.2 ms |
-| Hono v4 (Node) | 62,103 | 1.5 ms | 3.0 ms | 5.3 ms |
-| Express v5 | 16,782 | 5.6 ms | 11.3 ms | 19.9 ms |
-| NestJS (Fastify) | 73,910 | 1.3 ms | 2.6 ms | 4.6 ms |
+| 框架                | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |
+| ------------------- | :-----------: | :------: | :------: | :------: |
+| **VextJS** (Native) |  **91,247**   |  1.0 ms  |  2.0 ms  |  3.5 ms  |
+| VextJS (Fastify)    |    81,334     |  1.1 ms  |  2.3 ms  |  4.0 ms  |
+| VextJS (Hono)       |    67,523     |  1.4 ms  |  2.8 ms  |  4.9 ms  |
+| Fastify v5          |    79,876     |  1.2 ms  |  2.4 ms  |  4.2 ms  |
+| Hono v4 (Node)      |    62,103     |  1.5 ms  |  3.0 ms  |  5.3 ms  |
+| Express v5          |    16,782     |  5.6 ms  | 11.3 ms  | 19.9 ms  |
+| NestJS (Fastify)    |    73,910     |  1.3 ms  |  2.6 ms  |  4.6 ms  |
 
 ---
 
@@ -139,14 +144,14 @@ serve({ fetch: app.fetch, port: 3000 })
 
 POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌套对象。
 
-| 框架 | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 校验库 |
-|------|:------------:|:--------:|:--------:|:------:|
-| **VextJS** (Native + schema-dsl) | **84,312** | 1.1 ms | 2.2 ms | 内置 schema-dsl |
-| VextJS (Fastify + schema-dsl) | 74,891 | 1.2 ms | 2.5 ms | 内置 schema-dsl |
-| Fastify v5 (ajv) | 78,234 | 1.2 ms | 2.4 ms | ajv v8 |
-| Fastify v5 (zod) | 51,823 | 1.8 ms | 3.7 ms | zod v3 |
-| Express + zod | 12,341 | 7.6 ms | 15.3 ms | zod v3 |
-| NestJS (class-validator) | 42,156 | 2.2 ms | 4.4 ms | class-validator |
+| 框架                             | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 |     校验库      |
+| -------------------------------- | :-----------: | :------: | :------: | :-------------: |
+| **VextJS** (Native + schema-dsl) |  **84,312**   |  1.1 ms  |  2.2 ms  | 内置 schema-dsl |
+| VextJS (Fastify + schema-dsl)    |    74,891     |  1.2 ms  |  2.5 ms  | 内置 schema-dsl |
+| Fastify v5 (ajv)                 |    78,234     |  1.2 ms  |  2.4 ms  |     ajv v8      |
+| Fastify v5 (zod)                 |    51,823     |  1.8 ms  |  3.7 ms  |     zod v3      |
+| Express + zod                    |    12,341     |  7.6 ms  | 15.3 ms  |     zod v3      |
+| NestJS (class-validator)         |    42,156     |  2.2 ms  |  4.4 ms  | class-validator |
 
 > VextJS 的 schema-dsl 基于 ajv 编译，拥有接近原生 ajv 的校验性能，同时提供更简洁的 DSL 语法。
 
@@ -159,19 +164,20 @@ POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌
 ### 中间件配置
 
 5 层中间件：
+
 1. 请求 ID 注入
 2. 请求日志记录（内存 Buffer，不写磁盘）
 3. JWT 验证（跳过签名验证，仅解析）
 4. 限流检查（内存计数器）
 5. 响应头注入
 
-| 框架 | 请求/秒 (avg) | 较无中间件损耗 | 延迟 p99 |
-|------|:------------:|:-------------:|:--------:|
-| **VextJS** (Native) | **79,834** | -18.9% | 4.1 ms |
-| VextJS (Fastify) | 57,221 | -21.5% | 5.6 ms |
-| Fastify v5 | 68,901 | -19.2% | 4.8 ms |
-| Express v5 | 13,421 | -29.1% | 22.4 ms |
-| Koa v2 | 18,934 | -23.4% | 18.1 ms |
+| 框架                | 请求/秒 (avg) | 较无中间件损耗 | 延迟 p99 |
+| ------------------- | :-----------: | :------------: | :------: |
+| **VextJS** (Native) |  **79,834**   |     -18.9%     |  4.1 ms  |
+| VextJS (Fastify)    |    57,221     |     -21.5%     |  5.6 ms  |
+| Fastify v5          |    68,901     |     -19.2%     |  4.8 ms  |
+| Express v5          |    13,421     |     -29.1%     | 22.4 ms  |
+| Koa v2              |    18,934     |     -23.4%     | 18.1 ms  |
 
 ---
 
@@ -179,14 +185,14 @@ POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌
 
 VextJS 支持多种底层 HTTP Adapter，性能差异主要来源于底层 HTTP 实现：
 
-| Adapter | 请求/秒 (Hello World) | 特性 | 适用场景 |
-|---------|:-------------------:|------|---------|
-| `native`（默认） | ~98,000 | 零框架依赖，Node 原生 http + find-my-way | 推荐，性能最高 |
-| `fastify` | ~87,000 | 高性能 + 生态丰富 | 需要 Fastify 插件生态 |
-| `hono` | ~72,000 | Web Standards API，超轻量 | 全栈 / 边缘运行时 |
-| `express` | ~18,000 | 最大中间件生态 | 迁移现有 Express 项目 |
-| `koa` | ~24,000 | 轻量优雅 | 中小型项目 |
-| `node-cluster` | ~340,000* | 多进程，线性扩展 | 多核 CPU 服务器 |
+| Adapter          | 请求/秒 (Hello World) | 特性                                     | 适用场景              |
+| ---------------- | :-------------------: | ---------------------------------------- | --------------------- |
+| `native`（默认） |        ~98,000        | 零框架依赖，Node 原生 http + find-my-way | 推荐，性能最高        |
+| `fastify`        |        ~87,000        | 高性能 + 生态丰富                        | 需要 Fastify 插件生态 |
+| `hono`           |        ~72,000        | Web Standards API，超轻量                | 全栈 / 边缘运行时     |
+| `express`        |        ~18,000        | 最大中间件生态                           | 迁移现有 Express 项目 |
+| `koa`            |        ~24,000        | 轻量优雅                                 | 中小型项目            |
+| `node-cluster`   |      ~340,000\*       | 多进程，线性扩展                         | 多核 CPU 服务器       |
 
 > `*` Cluster 数据为 8 核 worker 合计吞吐量（单进程 ×8 近线性扩展）。
 > 注：uWS（uWebSockets.js）adapter 尚未内置，列为未来规划（roadmap）。
@@ -207,13 +213,13 @@ Express     ████████                                  18,934 req
 
 测试在多核环境下，VextJS Cluster 模式与单进程模式的吞吐量对比：
 
-| 模式 | Worker 数 | 请求/秒 | CPU 利用率 | 内存 |
-|------|:---------:|:-------:|:---------:|:----:|
-| 单进程 (Native) | 1 | 98,421 | 12% | 48 MB |
-| Cluster × 2 | 2 | 192,834 | 24% | 96 MB |
-| Cluster × 4 | 4 | 381,201 | 47% | 192 MB |
-| Cluster × 8 | 8 | 743,892 | 91% | 384 MB |
-| Cluster × 16 | 16 | 891,234 | 98% | 768 MB |
+| 模式            | Worker 数 | 请求/秒 | CPU 利用率 |  内存  |
+| --------------- | :-------: | :-----: | :--------: | :----: |
+| 单进程 (Native) |     1     | 98,421  |    12%     | 48 MB  |
+| Cluster × 2     |     2     | 192,834 |    24%     | 96 MB  |
+| Cluster × 4     |     4     | 381,201 |    47%     | 192 MB |
+| Cluster × 8     |     8     | 743,892 |    91%     | 384 MB |
+| Cluster × 16    |    16     | 891,234 |    98%     | 768 MB |
 
 > 8 核以上受 CPU 调度开销影响，扩展效率略有下降，但仍接近线性扩展。
 
@@ -223,15 +229,15 @@ Express     ████████                                  18,934 req
 
 框架空载时的内存占用（仅启动 HTTP 服务器，无请求处理）：
 
-| 框架 | 启动内存 | 10 万请求后 | GC 压力 |
-|------|:--------:|:-----------:|:-------:|
-| **VextJS** (Native) | **18 MB** | 22 MB | 低 |
-| VextJS (Hono) | 24 MB | 28 MB | 低 |
-| VextJS (Fastify) | 31 MB | 38 MB | 低 |
-| Fastify v5 | 29 MB | 36 MB | 低 |
-| Express v5 | 42 MB | 58 MB | 中 |
-| NestJS (Express) | 86 MB | 112 MB | 中 |
-| NestJS (Fastify) | 71 MB | 94 MB | 低-中 |
+| 框架                | 启动内存  | 10 万请求后 | GC 压力 |
+| ------------------- | :-------: | :---------: | :-----: |
+| **VextJS** (Native) | **18 MB** |    22 MB    |   低    |
+| VextJS (Hono)       |   24 MB   |    28 MB    |   低    |
+| VextJS (Fastify)    |   31 MB   |    38 MB    |   低    |
+| Fastify v5          |   29 MB   |    36 MB    |   低    |
+| Express v5          |   42 MB   |    58 MB    |   中    |
+| NestJS (Express)    |   86 MB   |   112 MB    |   中    |
+| NestJS (Fastify)    |   71 MB   |    94 MB    |  低-中  |
 
 ---
 
@@ -239,13 +245,13 @@ Express     ████████                                  18,934 req
 
 从进程启动到第一个请求可响应的时间（冷启动）：
 
-| 框架 | 冷启动时间 | 热重载时间 |
-|------|:---------:|:---------:|
-| **VextJS** (Native) | **42 ms** | 180 ms |
-| VextJS (Fastify) | 68 ms | 210 ms |
-| Fastify v5 | 61 ms | — |
-| Express v5 | 38 ms | — |
-| NestJS | 1,240 ms | — |
+| 框架                | 冷启动时间 | 热重载时间 |
+| ------------------- | :--------: | :--------: |
+| **VextJS** (Native) | **42 ms**  |   180 ms   |
+| VextJS (Fastify)    |   68 ms    |   210 ms   |
+| Fastify v5          |   61 ms    |     —      |
+| Express v5          |   38 ms    |     —      |
+| NestJS              |  1,240 ms  |     —      |
 
 > VextJS 热重载时间包含 esbuild 增量编译 + worker 替换的完整流程，实际热重载感知延迟约 200 ms。
 
@@ -299,12 +305,12 @@ kill %1
 
 ```typescript
 export default {
-  connections: 100,     // 并发连接数
-  duration: 30,         // 测试持续秒数
-  warmup: 5,            // 预热秒数
-  pipelining: 1,        // HTTP 管道化请求数
-  workers: 1,           // autocannon worker 线程数
-}
+  connections: 100, // 并发连接数
+  duration: 30, // 测试持续秒数
+  warmup: 5, // 预热秒数
+  pipelining: 1, // HTTP 管道化请求数
+  workers: 1, // autocannon worker 线程数
+};
 ```
 
 ---
@@ -319,13 +325,13 @@ export default {
 
 ### 性能建议
 
-| 场景 | 推荐配置 |
-|------|---------|
-| 极致性能（云原生，单机高并发） | `adapter: 'native'` + Cluster × CPU核数 |
-| 生产环境（通用） | `adapter: 'native'` 或 `'fastify'` + Cluster × (CPU核数-1) |
-| 轻量部署（容器 / 边缘） | `adapter: 'native'`，单进程，零框架依赖 |
-| 全栈 / 边缘运行时 | `adapter: 'hono'`，兼容 Web Standards API |
-| 开发环境 | `adapter: 'native'`（默认），热重载最快 |
+| 场景                           | 推荐配置                                                   |
+| ------------------------------ | ---------------------------------------------------------- |
+| 极致性能（云原生，单机高并发） | `adapter: 'native'` + Cluster × CPU核数                    |
+| 生产环境（通用）               | `adapter: 'native'` 或 `'fastify'` + Cluster × (CPU核数-1) |
+| 轻量部署（容器 / 边缘）        | `adapter: 'native'`，单进程，零框架依赖                    |
+| 全栈 / 边缘运行时              | `adapter: 'hono'`，兼容 Web Standards API                  |
+| 开发环境                       | `adapter: 'native'`（默认），热重载最快                    |
 
 ---
 

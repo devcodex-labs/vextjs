@@ -107,10 +107,10 @@ export default {
 
     // 日志级别（默认 'info'）
     // 设为 'debug' 可通过 logger.level 统一控制
-    level: 'info',
+    level: "info",
 
     // 跳过记录的路径列表（精确匹配）
-    skipPaths: ['/health', '/ready', '/metrics'],
+    skipPaths: ["/health", "/ready", "/metrics"],
 
     // 慢请求阈值（毫秒，默认 3000）
     // 超过此阈值的请求自动提升为 warn 级别
@@ -127,15 +127,15 @@ export default {
     // skipPaths 匹配模式（默认 'exact'）
     // 'exact': 精确匹配（如 '/health' 只匹配 '/health'）
     // 'prefix': 前缀匹配（如 '/api/internal' 匹配 '/api/internal/xxx'）
-    skipMode: 'exact',
+    skipMode: "exact",
   },
 };
 ```
 
 ### `enabled`
 
-| 类型 | 默认值 | 说明 |
-|------|--------|------|
+| 类型      | 默认值 | 说明                       |
+| --------- | ------ | -------------------------- |
 | `boolean` | `true` | 是否启用 access-log 中间件 |
 
 设为 `false` 时，中间件直接调用 `next()`，零开销跳过。
@@ -149,17 +149,17 @@ export default {
 
 ### `level`
 
-| 类型 | 默认值 | 可选值 | 说明 |
-|------|--------|--------|------|
+| 类型     | 默认值   | 可选值                | 说明         |
+| -------- | -------- | --------------------- | ------------ |
 | `string` | `'info'` | `'info'` \| `'debug'` | 日志输出级别 |
 
 设为 `'debug'` 后，可以在生产环境通过 `logger.level` 统一控制是否输出访问日志。当 `autoLevelUpgrade` 启用时，此配置作为基础级别，4xx/5xx 请求会自动提升。
 
 ### `skipPaths`
 
-| 类型 | 默认值 | 说明 |
-|------|--------|------|
-| `string[]` | `[]` | 不记录访问日志的路径列表 |
+| 类型       | 默认值 | 说明                     |
+| ---------- | ------ | ------------------------ |
+| `string[]` | `[]`   | 不记录访问日志的路径列表 |
 
 内部使用 `Set` 实现 O(1) 查找（精确匹配模式）或前缀扫描（前缀匹配模式），不影响性能。
 
@@ -168,15 +168,15 @@ export default {
 ```typescript
 export default {
   accessLog: {
-    skipPaths: ['/health', '/ready', '/metrics', '/favicon.ico'],
+    skipPaths: ["/health", "/ready", "/metrics", "/favicon.ico"],
   },
 };
 ```
 
 ### `skipMode`
 
-| 类型 | 默认值 | 可选值 | 说明 |
-|------|--------|--------|------|
+| 类型     | 默认值    | 可选值                  | 说明                 |
+| -------- | --------- | ----------------------- | -------------------- |
 | `string` | `'exact'` | `'exact'` \| `'prefix'` | skipPaths 的匹配方式 |
 
 - `'exact'`：路径必须完全匹配（如 `'/health'` 只跳过 `/health`，不跳过 `/health/detail`）
@@ -185,16 +185,16 @@ export default {
 ```typescript
 export default {
   accessLog: {
-    skipPaths: ['/api/internal', '/_next'],
-    skipMode: 'prefix',
+    skipPaths: ["/api/internal", "/_next"],
+    skipMode: "prefix",
   },
 };
 ```
 
 ### `slowThreshold`
 
-| 类型 | 默认值 | 说明 |
-|------|--------|------|
+| 类型     | 默认值 | 说明               |
+| -------- | ------ | ------------------ |
 | `number` | `3000` | 慢请求阈值（毫秒） |
 
 响应时间超过此阈值的请求，日志级别自动提升为 `warn`，并在消息中追加 `[SLOW]` 标记：
@@ -205,8 +205,8 @@ export default {
 
 ### `logResponseSize`
 
-| 类型 | 默认值 | 说明 |
-|------|--------|------|
+| 类型      | 默认值  | 说明                       |
+| --------- | ------- | -------------------------- |
 | `boolean` | `false` | 是否在日志中包含响应体大小 |
 
 启用后，日志消息会在 IP 之后追加 `Content-Length`（如果响应头中存在）：
@@ -217,17 +217,17 @@ export default {
 
 ### `autoLevelUpgrade`
 
-| 类型 | 默认值 | 说明 |
-|------|--------|------|
+| 类型      | 默认值 | 说明                           |
+| --------- | ------ | ------------------------------ |
 | `boolean` | `true` | 是否根据状态码自动提升日志级别 |
 
 启用后的级别映射：
 
-| 状态码范围 | 日志级别 | 说明 |
-|-----------|---------|------|
-| 1xx / 2xx / 3xx | 配置的 `level`（默认 `info`） | 正常请求 |
-| 4xx | `warn` | 客户端错误 |
-| 5xx | `error` | 服务端错误 |
+| 状态码范围      | 日志级别                      | 说明       |
+| --------------- | ----------------------------- | ---------- |
+| 1xx / 2xx / 3xx | 配置的 `level`（默认 `info`） | 正常请求   |
+| 4xx             | `warn`                        | 客户端错误 |
+| 5xx             | `error`                       | 服务端错误 |
 
 ```
 [17:53:27.003] WARN: GET /api/users/999 404 2ms | 192.168.1.10
@@ -253,13 +253,13 @@ interface VextAccessLogConfig {
   enabled?: boolean;
 
   /** 日志输出级别（默认 'info'） */
-  level?: 'info' | 'debug';
+  level?: "info" | "debug";
 
   /** 跳过记录的路径列表 */
   skipPaths?: string[];
 
   /** skipPaths 匹配模式（默认 'exact'） */
-  skipMode?: 'exact' | 'prefix';
+  skipMode?: "exact" | "prefix";
 
   /** 慢请求阈值（毫秒，默认 3000） */
   slowThreshold?: number;

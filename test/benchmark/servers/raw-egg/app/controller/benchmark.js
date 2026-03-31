@@ -12,9 +12,7 @@
  *   4. health — 健康检查端点，benchmark 脚本用于判断服务器就绪
  */
 
-
-
-const { Controller } = require('egg');
+const { Controller } = require("egg");
 
 class BenchmarkController extends Controller {
   /**
@@ -26,7 +24,7 @@ class BenchmarkController extends Controller {
    * egg 通过 ctx.body 赋值发送 JSON（Koa 风格）。
    */
   async json() {
-    this.ctx.body = { message: 'Hello World' };
+    this.ctx.body = { message: "Hello World" };
   }
 
   /**
@@ -55,7 +53,7 @@ class BenchmarkController extends Controller {
    */
   async chain() {
     this.ctx.body = {
-      message: 'Chain complete',
+      message: "Chain complete",
       requestId: this.ctx.state.requestId,
       authenticated: this.ctx.state.authenticated,
     };
@@ -69,7 +67,7 @@ class BenchmarkController extends Controller {
    * benchmark 脚本通过轮询此端点判断服务器是否就绪。
    */
   async health() {
-    this.ctx.body = { status: 'ok' };
+    this.ctx.body = { status: "ok" };
   }
 }
 

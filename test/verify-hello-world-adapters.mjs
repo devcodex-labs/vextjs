@@ -29,7 +29,7 @@
 
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath, } from "node:url";
+import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 

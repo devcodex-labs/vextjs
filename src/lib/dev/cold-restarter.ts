@@ -1,5 +1,5 @@
-import { fork } from "node:child_process"
-import type { ChildProcess } from "node:child_process"
+import { fork } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 
 /**
  * cold-restarter.ts — Cold Restart 子进程管理器（Phase 2A）
@@ -42,7 +42,7 @@ export interface ColdRestarterOptions {
    * 指向 esbuild 编译后的 JS 文件（如 dev-entry.js），
    * 由 ColdRestarter 通过 `child_process.fork()` 执行。
    */
-  entryScript: string
+  entryScript: string;
 
   /**
    * safeKill 超时时间（毫秒），默认 5000ms
@@ -54,7 +54,7 @@ export interface ColdRestarterOptions {
    *   - 开发环境：5000ms（默认）
    *   - 大型项目（DB 连接池较大）：10000ms
    */
-  killTimeout?: number
+  killTimeout?: number;
 
   /**
    * waitForReady 超时时间（毫秒），默认 30000ms
@@ -62,19 +62,19 @@ export interface ColdRestarterOptions {
    * 等待子进程发送 `{ type: 'ready' }` 消息的最大时间。
    * 超时视为启动失败。
    */
-  readyTimeout?: number
+  readyTimeout?: number;
 
   /**
    * 传递给子进程的环境变量（合并到 process.env 上）
    *
    * 可用于传递 VEXT_DEV_MODE / VEXT_ROOT 等标识。
    */
-  env?: Record<string, string>
+  env?: Record<string, string>;
 
   /**
    * 子进程的工作目录（默认继承当前进程 cwd）
    */
-  cwd?: string
+  cwd?: string;
 }
 
 /**
@@ -89,7 +89,7 @@ export interface ColdRestarterEvents {
    *
    * 用于捕获子进程的 `request-cold-restart` 等消息。
    */
-  onChildMessage?: (msg: unknown) => void
+  onChildMessage?: (msg: unknown) => void;
 
   /**
    * 子进程异常退出
@@ -97,7 +97,7 @@ export interface ColdRestarterEvents {
    * code 为退出码（可能为 null），signal 为终止信号（可能为 null）。
    * 仅在非预期退出时触发（restart 期间的退出不触发）。
    */
-  onChildExit?: (code: number | null, signal: string | null) => void
+  onChildExit?: (code: number | null, signal: string | null) => void;
 }
 
 // ── ColdRestarter 类 ────────────────────────────────────────
@@ -109,7 +109,7 @@ export class ColdRestarter {
    * 初始为 null，restart() 调用后持有子进程引用。
    * kill() 后重置为 null。
    */
-  private child: ChildProcess | null = null
+  private child: ChildProcess | null = null;
 
   /**
    * 重启中 guard — 防止并行 restart
@@ -117,26 +117,26 @@ export class ColdRestarter {
    * 当 restart() 正在执行时，后续的 restart() 调用直接返回。
    * 这避免了用户快速连续修改多个配置文件时触发多次 fork。
    */
-  private isRestarting = false
+  private isRestarting = false;
 
   /**
    * 标记是否由 restart 发起的 kill（区分预期退出和异常退出）
    */
-  private isExpectedKill = false
+  private isExpectedKill = false;
 
-  private readonly entryScript: string
-  private readonly killTimeout: number
-  private readonly readyTimeout: number
-  private readonly env: Record<string, string>
-  private readonly cwd: string | undefined
-  private events: ColdRestarterEvents = {}
+  private readonly entryScript: string;
+  private readonly killTimeout: number;
+  private readonly readyTimeout: number;
+  private readonly env: Record<string, string>;
+  private readonly cwd: string | undefined;
+  private events: ColdRestarterEvents = {};
 
   constructor(options: ColdRestarterOptions) {
-    this.entryScript = options.entryScript
-    this.killTimeout = options.killTimeout ?? 5000
-    this.readyTimeout = options.readyTimeout ?? 30_000
-    this.env = options.env ?? {}
-    this.cwd = options.cwd
+    this.entryScript = options.entryScript;
+    this.killTimeout = options.killTimeout ?? 5000;
+    this.readyTimeout = options.readyTimeout ?? 30_000;
+    this.env = options.env ?? {};
+    this.cwd = options.cwd;
   }
 
   /**
@@ -148,7 +148,7 @@ export class ColdRestarter {
    * @param events 事件回调集合
    */
   setEvents(events: ColdRestarterEvents): void {
-    this.events = events
+    this.events = events;
   }
 
   /**
@@ -167,19 +167,19 @@ export class ColdRestarter {
   async restart(reason: string): Promise<void> {
     if (this.isRestarting) {
       // 已经在重启中，合并（不重复执行）
-      return
+      return;
     }
 
-    this.isRestarting = true
+    this.isRestarting = true;
 
     try {
       // ── 1. 安全终止旧进程 ──────────────────────────────
       if (this.child && !this.child.killed) {
-        this.isExpectedKill = true
-        await this.safeKill(this.child)
-        this.isExpectedKill = false
+        this.isExpectedKill = true;
+        await this.safeKill(this.child);
+        this.isExpectedKill = false;
       }
-      this.child = null
+      this.child = null;
 
       // ── 2. Fork 新进程 ─────────────────────────────────
       //
@@ -191,27 +191,27 @@ export class ColdRestarter {
         ...(process.env as Record<string, string>),
         VEXT_DEV_MODE: "1",
         ...this.env,
-      }
+      };
 
       // 🆕 合并父进程现有 Node.js 标志（防止覆盖 --inspect、--max-old-space-size 等），
       // 追加 --enable-source-maps 使 Error.stack 自动翻译为 .ts 源码路径（dev 模式调试）
       const devExecArgv = [
         ...process.execArgv.filter((f) => f !== "--enable-source-maps"),
         "--enable-source-maps",
-      ]
+      ];
 
       this.child = fork(this.entryScript, [], {
         env: childEnv,
         stdio: ["inherit", "inherit", "inherit", "ipc"],
         cwd: this.cwd,
         execArgv: devExecArgv,
-      })
-      this.setupChildListeners(this.child)
+      });
+      this.setupChildListeners(this.child);
 
       // ── 4. 等待新进程就绪 ──────────────────────────────
-      await this.waitForReady(this.child)
+      await this.waitForReady(this.child);
     } finally {
-      this.isRestarting = false
+      this.isRestarting = false;
     }
   }
 
@@ -228,7 +228,7 @@ export class ColdRestarter {
    */
   sendToChild(msg: unknown): void {
     if (this.child?.connected) {
-      this.child.send(msg as object)
+      this.child.send(msg as object);
     }
   }
 
@@ -240,10 +240,10 @@ export class ColdRestarter {
    */
   async kill(): Promise<void> {
     if (this.child && !this.child.killed) {
-      this.isExpectedKill = true
-      await this.safeKill(this.child)
-      this.isExpectedKill = false
-      this.child = null
+      this.isExpectedKill = true;
+      await this.safeKill(this.child);
+      this.isExpectedKill = false;
+      this.child = null;
     }
   }
 
@@ -253,21 +253,21 @@ export class ColdRestarter {
    * @returns 子进程 PID，如果无活跃子进程返回 null
    */
   getChildPid(): number | null {
-    return this.child?.pid ?? null
+    return this.child?.pid ?? null;
   }
 
   /**
    * 检查是否正在重启中
    */
   getIsRestarting(): boolean {
-    return this.isRestarting
+    return this.isRestarting;
   }
 
   /**
    * 检查子进程是否存活
    */
   isChildAlive(): boolean {
-    return this.child !== null && !this.child.killed
+    return this.child !== null && !this.child.killed;
   }
 
   // ── 私有方法 ──────────────────────────────────────────────
@@ -295,45 +295,45 @@ export class ColdRestarter {
    */
   private async safeKill(child: ChildProcess): Promise<void> {
     return new Promise<void>((resolve) => {
-      let resolved = false
+      let resolved = false;
       const done = () => {
         if (!resolved) {
-          resolved = true
-          resolve()
+          resolved = true;
+          resolve();
         }
-      }
+      };
 
       // 监听退出事件
       child.once("exit", () => {
-        clearTimeout(timer)
-        done()
-      })
+        clearTimeout(timer);
+        done();
+      });
 
       // 第一步: 通知子进程优雅关闭
       if (process.platform === "win32" && child.connected) {
         // Windows: 通过 IPC 消息通知子进程执行优雅关闭
         // dev-bootstrap 的 process.on('message') 已监听 { type: 'shutdown' }
         try {
-          child.send({ type: "shutdown" })
+          child.send({ type: "shutdown" });
         } catch {
           // IPC 发送失败，降级为 kill
-          child.kill("SIGTERM")
+          child.kill("SIGTERM");
         }
       } else {
         // Unix: 标准 SIGTERM 信号（触发子进程 process.on('SIGTERM') 处理器）
-        child.kill("SIGTERM")
+        child.kill("SIGTERM");
       }
 
       // 第二步: 超时后 SIGKILL（强制终止）
       const timer = setTimeout(() => {
         if (!child.killed) {
-          child.kill("SIGKILL")
+          child.kill("SIGKILL");
         }
         // SIGKILL 后 exit 事件通常很快触发，
         // 但作为保险也在这里调用 done()
-        done()
-      }, this.killTimeout)
-    })
+        done();
+      }, this.killTimeout);
+    });
   }
 
   /**
@@ -352,26 +352,26 @@ export class ColdRestarter {
    */
   private async waitForReady(child: ChildProcess): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      let settled = false
+      let settled = false;
 
       const cleanup = () => {
-        settled = true
-        clearTimeout(timer)
-        child.removeListener("message", onMessage)
-        child.removeListener("error", onError)
-        child.removeListener("exit", onExit)
-      }
+        settled = true;
+        clearTimeout(timer);
+        child.removeListener("message", onMessage);
+        child.removeListener("error", onError);
+        child.removeListener("exit", onExit);
+      };
 
       const timer = setTimeout(() => {
         if (!settled) {
-          cleanup()
+          cleanup();
           reject(
             new Error(
               `[vext dev] worker startup timeout (${this.readyTimeout}ms)`,
             ),
-          )
+          );
         }
-      }, this.readyTimeout)
+      }, this.readyTimeout);
 
       const onMessage = (msg: unknown) => {
         if (
@@ -380,31 +380,33 @@ export class ColdRestarter {
           msg !== null &&
           (msg as Record<string, unknown>).type === "ready"
         ) {
-          cleanup()
-          resolve()
+          cleanup();
+          resolve();
         }
-      }
+      };
 
       const onError = (err: Error) => {
         if (!settled) {
-          cleanup()
-          reject(err)
+          cleanup();
+          reject(err);
         }
-      }
+      };
 
       const onExit = (code: number | null) => {
         if (!settled) {
-          cleanup()
+          cleanup();
           reject(
-            new Error(`[vext dev] worker exited with code ${code ?? "unknown"}`),
-          )
+            new Error(
+              `[vext dev] worker exited with code ${code ?? "unknown"}`,
+            ),
+          );
         }
-      }
+      };
 
-      child.on("message", onMessage)
-      child.once("error", onError)
-      child.once("exit", onExit)
-    })
+      child.on("message", onMessage);
+      child.once("error", onError);
+      child.once("exit", onExit);
+    });
   }
 
   /**
@@ -424,9 +426,9 @@ export class ColdRestarter {
     //
     child.on("message", (msg: unknown) => {
       if (this.events.onChildMessage) {
-        this.events.onChildMessage(msg)
+        this.events.onChildMessage(msg);
       }
-    })
+    });
 
     // ── 异常退出处理 ──────────────────────────────────────
     //
@@ -436,13 +438,13 @@ export class ColdRestarter {
     child.once("exit", (code, signal) => {
       // 清除引用（防止对已退出进程调用 send/kill）
       if (this.child === child) {
-        this.child = null
+        this.child = null;
       }
 
       // 非预期退出 → 通知外部
       if (!this.isExpectedKill && this.events.onChildExit) {
-        this.events.onChildExit(code, signal)
+        this.events.onChildExit(code, signal);
       }
-    })
+    });
   }
 }

@@ -18,7 +18,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -131,7 +137,12 @@ describe("pid-file", () => {
     });
 
     it("should create parent directories if they do not exist", () => {
-      const dir = join(tmpdir(), `vext-pid-test-${process.pid}`, "nested", "deep");
+      const dir = join(
+        tmpdir(),
+        `vext-pid-test-${process.pid}`,
+        "nested",
+        "deep",
+      );
       const filePath = join(dir, ".vext.pid");
 
       const result = writePidFile(filePath);

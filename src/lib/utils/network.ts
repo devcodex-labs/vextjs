@@ -1,12 +1,12 @@
-import { networkInterfaces } from 'node:os'
+import { networkInterfaces } from "node:os";
 
 // ── 类型定义 ────────────────────────────────────────────────
 
 interface ReadyLogOptions {
   /** 日志前缀，如 '[vextjs]' 或 '[vext dev]' */
-  prefix: string
+  prefix: string;
   /** 附加后缀（括号说明），如 '(soft reload enabled)'；省略时不附加 */
-  suffix?: string
+  suffix?: string;
 }
 
 // ── 工具函数 ────────────────────────────────────────────────
@@ -22,18 +22,18 @@ interface ReadyLogOptions {
  * @returns 非 loopback IPv4 地址列表（可能为空数组，如纯 loopback 环境）
  */
 export function getNetworkAddresses(): string[] {
-  const nets = networkInterfaces()
-  const result: string[] = []
+  const nets = networkInterfaces();
+  const result: string[] = [];
 
   for (const ifaces of Object.values(nets)) {
-    for (const iface of (ifaces ?? [])) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        result.push(iface.address)
+    for (const iface of ifaces ?? []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        result.push(iface.address);
       }
     }
   }
 
-  return result
+  return result;
 }
 
 /**
@@ -64,20 +64,20 @@ export function printReadyLog(
   port: number,
   options: ReadyLogOptions,
 ): void {
-  const { prefix, suffix } = options
-  const suffixPart = suffix ? ` ${suffix}` : ''
-  const isAllInterfaces = host === '0.0.0.0' || host === '::'
+  const { prefix, suffix } = options;
+  const suffixPart = suffix ? ` ${suffix}` : "";
+  const isAllInterfaces = host === "0.0.0.0" || host === "::";
 
   if (isAllInterfaces) {
-    logger.info(`${prefix} ready${suffixPart}`)
-    logger.info(`  ➜  Local:   http://localhost:${port}`)
-    logger.info(`  ➜  Local:   http://127.0.0.1:${port}`)
+    logger.info(`${prefix} ready${suffixPart}`);
+    logger.info(`  ➜  Local:   http://localhost:${port}`);
+    logger.info(`  ➜  Local:   http://127.0.0.1:${port}`);
 
-    const networkAddrs = getNetworkAddresses()
+    const networkAddrs = getNetworkAddresses();
     for (const addr of networkAddrs) {
-      logger.info(`  ➜  Network: http://${addr}:${port}`)
+      logger.info(`  ➜  Network: http://${addr}:${port}`);
     }
   } else {
-    logger.info(`${prefix} ready on http://${host}:${port}${suffixPart}`)
+    logger.info(`${prefix} ready on http://${host}:${port}${suffixPart}`);
   }
 }

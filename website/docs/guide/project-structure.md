@@ -56,13 +56,13 @@ my-app/
 框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts
 ```
 
-| 文件 | 用途 | 是否必须 |
-|------|------|---------|
-| `default.ts` | 所有环境的基础配置 | ✅ 必须 |
-| `development.ts` | 开发环境覆盖 | 可选 |
-| `production.ts` | 生产环境覆盖 | 可选 |
-| `test.ts` | 测试环境覆盖 | 可选 |
-| `local.ts` | 本地开发覆盖（应加入 `.gitignore`） | 可选 |
+| 文件             | 用途                                | 是否必须 |
+| ---------------- | ----------------------------------- | -------- |
+| `default.ts`     | 所有环境的基础配置                  | ✅ 必须  |
+| `development.ts` | 开发环境覆盖                        | 可选     |
+| `production.ts`  | 生产环境覆盖                        | 可选     |
+| `test.ts`        | 测试环境覆盖                        | 可选     |
+| `local.ts`       | 本地开发覆盖（应加入 `.gitignore`） | 可选     |
 
 环境文件通过 `NODE_ENV` 环境变量自动匹配。例如 `NODE_ENV=production` 时加载 `production.ts`。
 
@@ -70,8 +70,8 @@ my-app/
 // src/config/default.ts
 export default {
   port: 3000,
-  host: '0.0.0.0',
-  logger: { level: 'info' },
+  host: "0.0.0.0",
+  logger: { level: "info" },
   openapi: { enabled: true },
 };
 ```
@@ -79,7 +79,7 @@ export default {
 ```typescript
 // src/config/production.ts — 仅覆盖需要变更的字段
 export default {
-  logger: { level: 'warn' },
+  logger: { level: "warn" },
   openapi: { enabled: false },
 };
 ```
@@ -94,13 +94,13 @@ export default {
 
 #### 路径映射规则
 
-| 文件路径 | URL 前缀 | 说明 |
-|---------|---------|------|
-| `routes/index.ts` | `/` | 根路由 |
-| `routes/users.ts` | `/users` | 一级路由 |
-| `routes/users/index.ts` | `/users` | 等同于 `users.ts` |
-| `routes/users/[id].ts` | `/users/:id` | 动态参数 |
-| `routes/admin/settings.ts` | `/admin/settings` | 嵌套路由 |
+| 文件路径                   | URL 前缀          | 说明              |
+| -------------------------- | ----------------- | ----------------- |
+| `routes/index.ts`          | `/`               | 根路由            |
+| `routes/users.ts`          | `/users`          | 一级路由          |
+| `routes/users/index.ts`    | `/users`          | 等同于 `users.ts` |
+| `routes/users/[id].ts`     | `/users/:id`      | 动态参数          |
+| `routes/admin/settings.ts` | `/admin/settings` | 嵌套路由          |
 
 #### 动态参数
 
@@ -117,23 +117,23 @@ routes/posts/[slug]/comments.ts → /posts/:slug/comments
 
 ```typescript
 // src/routes/users.ts → 前缀 /users
-import { defineRoutes } from 'vextjs';
+import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   // GET /users/list
-  app.get('/list', async (req, res) => {
+  app.get("/list", async (req, res) => {
     const users = await app.services.user.findAll();
     res.json(users);
   });
 
   // POST /users（子路径为 / 时与前缀合并）
-  app.post('/', async (req, res) => {
+  app.post("/", async (req, res) => {
     const user = await app.services.user.create(req.body);
     res.json(user, 201);
   });
 
   // GET /users/:id
-  app.get('/:id', async (req, res) => {
+  app.get("/:id", async (req, res) => {
     const user = await app.services.user.findById(req.params.id);
     res.json(user);
   });
@@ -154,12 +154,12 @@ export default defineRoutes((app) => {
 
 #### 命名映射规则
 
-| 文件路径 | 访问方式 | 说明 |
-|---------|---------|------|
-| `services/user.ts` | `app.services.user` | 扁平命名 |
-| `services/order.ts` | `app.services.order` | 扁平命名 |
-| `services/payment/stripe.ts` | `app.services.payment.stripe` | 嵌套命名 |
-| `services/user-profile.ts` | `app.services.userProfile` | kebab → camelCase |
+| 文件路径                     | 访问方式                      | 说明              |
+| ---------------------------- | ----------------------------- | ----------------- |
+| `services/user.ts`           | `app.services.user`           | 扁平命名          |
+| `services/order.ts`          | `app.services.order`          | 扁平命名          |
+| `services/payment/stripe.ts` | `app.services.payment.stripe` | 嵌套命名          |
+| `services/user-profile.ts`   | `app.services.userProfile`    | kebab → camelCase |
 
 文件名自动从 `kebab-case` 转换为 `camelCase`。子目录会映射为嵌套对象。
 
@@ -167,7 +167,7 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/services/user.ts
-import type { VextApp } from 'vextjs';
+import type { VextApp } from "vextjs";
 
 export default class UserService {
   private app: VextApp;
@@ -184,12 +184,12 @@ export default class UserService {
   async findById(id: string) {
     // 可以访问其他 service
     // const profile = await this.app.services.userProfile.get(id);
-    return { id, name: 'Alice' };
+    return { id, name: "Alice" };
   }
 
   async create(data: unknown) {
-    this.app.logger.info({ data }, 'Creating user');
-    return { id: '1', ...data as object };
+    this.app.logger.info({ data }, "Creating user");
+    return { id: "1", ...(data as object) };
   }
 }
 ```
@@ -208,11 +208,11 @@ export default class UserService {
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from 'vextjs';
+import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const token = req.headers['authorization'];
-  if (!token) req.app.throw(401, 'Unauthorized');
+  const token = req.headers["authorization"];
+  if (!token) req.app.throw(401, "Unauthorized");
   // ... 验证 token
   await next();
 });
@@ -224,17 +224,21 @@ export default defineMiddleware(async (req, res, next) => {
 // src/config/default.ts
 export default {
   middlewares: [
-    'auth',                                          // 普通中间件
-    { name: 'check-role', options: { roles: ['admin'] } },  // 工厂中间件 + 默认参数
+    "auth", // 普通中间件
+    { name: "check-role", options: { roles: ["admin"] } }, // 工厂中间件 + 默认参数
   ],
 };
 ```
 
 ```typescript
 // src/routes/admin.ts — 路由中引用
-app.get('/dashboard', {
-  middlewares: ['auth', 'check-role'],
-}, handler);
+app.get(
+  "/dashboard",
+  {
+    middlewares: ["auth", "check-role"],
+  },
+  handler,
+);
 ```
 
 详见 [中间件](/guide/middleware) 章节。
@@ -245,13 +249,13 @@ app.get('/dashboard', {
 
 ```typescript
 // src/plugins/redis.ts
-import { definePlugin } from 'vextjs';
+import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: 'redis',
+  name: "redis",
   async setup(app) {
     const redis = createRedisClient(app.config.redis);
-    app.extend('cache', redis);
+    app.extend("cache", redis);
     app.onClose(() => redis.quit());
   },
 });
@@ -266,16 +270,22 @@ export default definePlugin({
 ```typescript
 // src/locales/zh-CN.ts
 export default {
-  'user.not_found':       { code: 40001, message: '用户不存在' },
-  'balance.insufficient': { code: 20001, message: '余额不足，当前余额 {{balance}}' },
+  "user.not_found": { code: 40001, message: "用户不存在" },
+  "balance.insufficient": {
+    code: 20001,
+    message: "余额不足，当前余额 {{balance}}",
+  },
 };
 ```
 
 ```typescript
 // src/locales/en-US.ts
 export default {
-  'user.not_found':       { code: 40001, message: 'User not found' },
-  'balance.insufficient': { code: 20001, message: 'Insufficient balance, current: {{balance}}' },
+  "user.not_found": { code: 40001, message: "User not found" },
+  "balance.insufficient": {
+    code: 20001,
+    message: "Insufficient balance, current: {{balance}}",
+  },
 };
 ```
 
@@ -296,6 +306,7 @@ export default {
 ```
 
 这个顺序确保：
+
 - 配置在所有模块之前就绪
 - 插件可以扩展 `app` 对象（如注入数据库连接）
 - 中间件在路由注册前就绪
@@ -354,9 +365,10 @@ dist/
 ```
 
 :::tip 开发 vs 生产
+
 - **`vext dev`**：直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），支持热重载
 - **`vext start`**：从 `dist/` 加载 `.js` 文件，需要先执行 `vext build`
-:::
+  :::
 
 ## 下一步
 

@@ -143,10 +143,7 @@ export function resolveModuleExport<T = unknown>(
 
   // 检查 CJS interop：named export 可能在 mod.default 内部
   const defaultExport = mod.default;
-  if (
-    isEsbuildCjsModule(defaultExport) &&
-    name in defaultExport
-  ) {
+  if (isEsbuildCjsModule(defaultExport) && name in defaultExport) {
     return defaultExport[name] as T | undefined;
   }
 

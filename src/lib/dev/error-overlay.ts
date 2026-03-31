@@ -149,7 +149,9 @@ export function resolveFramePath(file: string, projectRoot: string): string {
   if (path.isAbsolute(file)) {
     try {
       if (fs.existsSync(file)) return file;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // 通用后缀匹配：尝试所有不少于 2 段的尾部拼接到 projectRoot
@@ -160,7 +162,9 @@ export function resolveFramePath(file: string, projectRoot: string): string {
     const candidate = path.join(projectRoot, tail);
     try {
       if (fs.existsSync(candidate)) return candidate;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // 相对路径 → 相对于 projectRoot 解析
@@ -168,7 +172,9 @@ export function resolveFramePath(file: string, projectRoot: string): string {
     const resolved = path.resolve(projectRoot, file);
     try {
       if (fs.existsSync(resolved)) return resolved;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   return file;
@@ -190,7 +196,9 @@ export function isUserFrame(frame: StackFrame, projectRoot: string): boolean {
   const normalizedFile = file.replace(/\\/g, "/");
   const normalizedRoot = projectRoot.replace(/\\/g, "/");
   // 确保以目录分隔符结尾，防止 "project" 错误匹配 "project-other" 前缀
-  const rootPrefix = normalizedRoot.endsWith("/") ? normalizedRoot : normalizedRoot + "/";
+  const rootPrefix = normalizedRoot.endsWith("/")
+    ? normalizedRoot
+    : normalizedRoot + "/";
   if (!normalizedFile.startsWith(rootPrefix)) return false;
   if (normalizedFile.includes("node_modules")) return false;
   if (normalizedFile.includes("/.vext/dev/")) return false;
@@ -645,7 +653,9 @@ export function renderDevErrorPage(
     Array.isArray(validationErrors) &&
     validationErrors.length > 0
   ) {
-    const items = (validationErrors as Array<{ field?: string; message?: string }>)
+    const items = (
+      validationErrors as Array<{ field?: string; message?: string }>
+    )
       .map(
         (e) =>
           `<div class="val-error-item"><span class="val-field">${escapeHtml(e.field ?? "unknown")}</span><span class="val-msg">${escapeHtml(e.message ?? "")}</span></div>`,
@@ -679,7 +689,15 @@ export function renderDevErrorPage(
     });
 
     const frameItems = visibleFrames
-      .map((f, i) => renderFrame(f, projectRoot, userFrameIndices.has(i), i === primaryFrameIdx, i))
+      .map((f, i) =>
+        renderFrame(
+          f,
+          projectRoot,
+          userFrameIndices.has(i),
+          i === primaryFrameIdx,
+          i,
+        ),
+      )
       .join("\n");
 
     const hasInternal = visibleFrames.some((_, i) => !userFrameIndices.has(i));
@@ -753,4 +771,3 @@ export function renderDevErrorPage(
 </body>
 </html>`;
 }
-
