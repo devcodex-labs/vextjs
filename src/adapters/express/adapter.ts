@@ -4,6 +4,7 @@ import type {
   Request as ExpressRequest,
   Response as ExpressResponse,
 } from "express";
+import crypto from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createVextRequest } from "./request.js";

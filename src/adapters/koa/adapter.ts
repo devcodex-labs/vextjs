@@ -2,6 +2,7 @@ import Koa from "koa";
 import type { Context as KoaContext } from "koa";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";

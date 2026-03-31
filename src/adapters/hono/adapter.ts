@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse, createResponseBox } from "./response.js";
 import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";

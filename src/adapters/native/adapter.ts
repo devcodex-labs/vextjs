@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
+import crypto from "node:crypto";
 import Router from "find-my-way";
 import { createVextRequest, type ParsedUrl } from "./request.js";
 import { createVextResponse } from "./response.js";

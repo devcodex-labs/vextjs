@@ -142,6 +142,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build (required for cluster integration tests)
+        run: npm run build
+
       - name: Run integration tests
         run: npx vitest run test/integration --reporter=verbose
 
