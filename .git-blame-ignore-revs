@@ -2,6 +2,5 @@
 # 使用方法：git config blame.ignoreRevsFile .git-blame-ignore-revs
 # GitHub 会自动识别此文件
 
-# style: 应用 prettier 全量格式化
-# <commit 后填入 hash>
-
+# style: 引入 prettier 并执行全量格式化
+3b0f2db1cdfc5cdad29dc4932e53665a26ceeeed
