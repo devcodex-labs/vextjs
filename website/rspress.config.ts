@@ -133,7 +133,7 @@ export default defineConfig({
           text: "生态集成",
           items: [
             { text: "Nacos 接入", link: "/examples/nacos-integration" },
-            { text: "OpenTelemetry 接入", link: "/examples/opentelemetry" },
+            { text: "OpenTelemetry 可观测性", link: "/examples/opentelemetry" },
           ],
         },
       ],
