@@ -207,7 +207,7 @@ vext 的 access log 采用**紧凑单行格式**：`METHOD PATH STATUS TIMEms | 
 
 **Prometheus 中的指标样例（OTel SDK 自动转换 `.` 为 `_`）：**
 
-```prometheus
+```text
 # 请求时长分布（直方图）
 http_server_duration_milliseconds_bucket{http_method="GET",http_route="/users/:id",http_status_code="200",le="50"}  15
 http_server_duration_milliseconds_bucket{http_method="GET",http_route="/users/:id",http_status_code="200",le="100"} 42
@@ -225,7 +225,7 @@ http_server_active_requests{http_method="GET"} 2
 
 **常用 PromQL 查询：**
 
-```promql
+```text
 # P99 请求延迟（按路由）
 histogram_quantile(0.99,
   sum(rate(http_server_duration_milliseconds_bucket[5m])) by (le, http_route)
