@@ -275,6 +275,14 @@ export default {
 VEXT_CLUSTER=1 vext start
 ```
 
+### 预加载（Preload）自动注入
+
+`vext start` 和 `vext dev` 会自动扫描已安装依赖包中声明了 `vext.preload` 的包，
+在子进程启动前通过 `--import` 注入预加载脚本。例如 `vextjs-opentelemetry` 利用此机制
+在应用代码加载前自动初始化 OpenTelemetry SDK。
+
+详见 [预加载 (Preload)](/guide/preload)。
+
 ### package.json 脚本
 
 ```json

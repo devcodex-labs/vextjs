@@ -99,6 +99,7 @@ export default defineConfig({
             { text: "构建", link: "/guide/build" },
             { text: "部署与生产环境", link: "/guide/deployment" },
             { text: "热重载", link: "/guide/hot-reload" },
+            { text: "预加载 (Preload)", link: "/guide/preload" },
             { text: "Cluster 多进程", link: "/guide/cluster" },
             { text: "国际化 (i18n)", link: "/guide/i18n" },
           ],

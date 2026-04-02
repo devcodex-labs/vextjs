@@ -609,6 +609,7 @@ export default definePlugin({
 
 ## 下一步
 
+- 了解 [预加载 (Preload)](/guide/preload) 机制，让插件包自动注入启动前脚本（如 OpenTelemetry SDK）
 - 了解 [参数校验](/guide/validation) 的声明式 DSL 语法
 - 学习 [中间件](/guide/middleware) 如何配合插件使用
 - 查看 [配置](/guide/configuration) 中插件相关的配置项
