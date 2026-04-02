@@ -60,7 +60,19 @@ export default opentelemetryPlugin({
 
 ### 第二步：（可选）启用 SDK — 将数据发送到后端
 
-若需要在 Jaeger / Grafana 等后端中查看实际链路和指标数据，需要通过 `--import` 在应用启动前加载 SDK：
+若需要在 Jaeger / Grafana 等后端中查看实际链路和指标数据，需要启用 SDK。
+
+**使用 `vext start` / `vext dev`（推荐 — 零配置）：**
+
+```bash
+# 无需额外配置！vext CLI 自动检测 vextjs-opentelemetry 并注入 --import
+vext start
+vext dev
+```
+
+> `vext start` / `vext dev` 会自动扫描 `package.json` 依赖中的 `vext.preload` 字段，发现 `vextjs-opentelemetry` 后自动注入 `--import vextjs-opentelemetry/instrumentation`，无需手动配置。
+
+**自定义启动脚本（手动添加 `--import`）：**
 
 ```json
 {
@@ -71,7 +83,9 @@ export default opentelemetryPlugin({
 ```
 
 :::tip 开发环境如何使用 --import？
-`vext dev` 内置 TypeScript 编译，直接运行 `.ts` 文件。若需要在开发时启用真实的 OTEL 追踪，可通过 `NODE_OPTIONS` 注入：
+使用 `vext dev` 时，`--import` 会**自动注入**，无需手动配置。
+
+如果使用自定义启动方式，可通过 `NODE_OPTIONS` 注入：
 
 ```bash
 NODE_OPTIONS="--import vextjs-opentelemetry/instrumentation" vext dev
@@ -307,6 +321,21 @@ export default opentelemetryPlugin({
      * - 批处理/长任务：               [100, 500, 1000, 5000, 10000, 30000]
      */
     durationBuckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+
+    /**
+     * 为 HTTP 指标附加自定义业务标签（合并到 httpRequestTotal / httpRequestDuration）
+     *
+     * 支持静态对象或函数形式（函数形式可从 req 动态读取）。
+     *
+     * ⚠️ 避免高基数字段（如 user.id、session.id），高基数会导致
+     * 时间序列数据库资源消耗剧增。
+     *
+     * 注：不合并到 httpActiveRequests（该指标仅使用 http.method，符合 OTEL 语义约定）。
+     */
+    customLabels: (req) => ({
+      "tenant.id": req.headers["x-tenant-id"] ?? "default",
+    }),
+    // 也支持静态对象形式：customLabels: { "env": "production" }
   },
 });
 ```

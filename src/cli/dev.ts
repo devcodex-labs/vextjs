@@ -1,5 +1,6 @@
 import { resolve, join } from "node:path";
 import { detectProject } from "./utils/detect-project.js";
+import { resolvePreloads } from "./utils/preload.js";
 import { ColdRestarter } from "../lib/dev/cold-restarter.js";
 import type { ColdRestarterOptions } from "../lib/dev/cold-restarter.js";
 import { VextFileWatcher } from "../lib/dev/file-watcher.js";
@@ -142,10 +143,20 @@ export async function devCommand(args: string[] = []): Promise<void> {
     restarterEnv.VEXT_HOST = options.host;
   }
 
+  // ── 解析预加载模块（vext.preload 字段）──────────────
+  //
+  // 扫描直接依赖的 package.json vext.preload 字段，
+  // 生成 ["--import", "file:///..."] 格式的 execArgv 追加列表。
+  // Cold Restart 时 extraExecArgv 自动复用，无需重新计算。
+  //
+  const preloads = resolvePreloads(project.rootDir);
+  const preloadExecArgv = preloads.flatMap((p) => ["--import", p]);
+
   const restarterOptions: ColdRestarterOptions = {
     entryScript,
     env: restarterEnv,
     cwd: project.rootDir,
+    extraExecArgv: preloadExecArgv,
   };
 
   const restarter = new ColdRestarter(restarterOptions);

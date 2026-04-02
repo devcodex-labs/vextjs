@@ -741,6 +741,18 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     execArgv.push("--import", "tsx/esm");
   }
 
+  // ── 注入预加载模块（vext.preload 字段）──────────────
+  //
+  // 动态导入 resolvePreloads（CLI 工具函数，仅 cluster master 路径需要）。
+  // 扫描直接依赖的 vext.preload 字段，将预加载文件以 --import 形式
+  // 注入到 Worker 进程的 execArgv，使 Worker 继承预加载能力。
+  //
+  const { resolvePreloads } = await import("../cli/utils/preload.js");
+  const preloads = resolvePreloads(rootDir);
+  for (const fileUrl of preloads) {
+    execArgv.push("--import", fileUrl);
+  }
+
   cluster.setupPrimary({
     exec: entryFile,
     execArgv,
