@@ -560,6 +560,131 @@ export {};
 
 ---
 
+## 日志字段规划
+
+VextJS + vextjs-opentelemetry 支持两层日志输出，各有侧重：
+
+- **A. 落地日志（stdout / file JSON）**：业务字段清晰可读，便于人工排查和日志聚合（ELK/Loki）
+- **B. OTel Logs（LogRecord → Collector）**：轻量级，通过 `trace_id` 关联完整链路
+
+### A. 落地日志字段（stdout / file JSON）
+
+通过 `config.logger.mixin` 注入 Resource 级和 Span 级上下文：
+
+```typescript
+// src/config/default.ts
+import os from "node:os";
+
+let getActiveSpan: (() => unknown) | undefined;
+try {
+  const api = await import("@opentelemetry/api");
+  getActiveSpan = api.trace.getActiveSpan.bind(api.trace);
+} catch {}
+
+export default {
+  logger: {
+    level: "info",
+    mixin() {
+      const fields: Record<string, unknown> = {
+        // Resource 级字段（每条日志都有）
+        service_name: "my-app",
+        env: process.env.NODE_ENV ?? "development",
+        host: os.hostname(),
+      };
+
+      // Span 级字段（请求上下文中有值时注入）
+      if (getActiveSpan) {
+        const span = getActiveSpan() as
+          | { isRecording?: () => boolean; name?: string }
+          | undefined;
+        if (span?.isRecording?.()) {
+          fields.span = span.name; // "GET", "mongodb.find", "redis.GET" 等
+        }
+      }
+
+      return fields;
+    },
+  },
+};
+```
+
+输出示例：
+
+```json
+{
+  "level": 30,
+  "time": 1743431641234,
+  "service_name": "my-app",
+  "env": "production",
+  "host": "web-pod-a1b2c3",
+  "requestId": "my-app-19f8d0dd",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "span": "GET",
+  "msg": "→ GET /users/42 200 45ms"
+}
+```
+
+> `requestId`、`trace_id`、`span_id` 由框架内置 mixin 自动注入，不需要在用户 mixin 中重复配置。
+
+#### 字段对照表
+
+| 字段 | 来源 | 配置方式 |
+|------|------|---------|
+| `timestamp` | pino 自动 | 无需配置 |
+| `level` | pino 自动 | 无需配置 |
+| `msg` | `logger.info("...")` | 无需配置 |
+| `requestId` | 框架 ALS → mixin 自动 | 无需配置 |
+| `trace_id` | otel 中间件 → ALS → mixin 自动 | 无需配置 |
+| `span_id` | otel 中间件 → ALS → mixin 自动 | 无需配置 |
+| `service_name` | `config.logger.mixin` | 用户 mixin 注入 |
+| `env` | `config.logger.mixin` | 用户 mixin 注入 |
+| `host` | `config.logger.mixin` | 用户 mixin 注入 |
+| `span` | `trace.getActiveSpan().name` | 用户 mixin 注入 |
+| `endpoint` | access log 中的 `req.route` | 自动包含在请求日志 msg 中 |
+| `latency_ms` | access log | 自动包含在请求日志 msg 中 |
+| `user_id` | 业务代码 | `logger.info({ user_id: "..." }, msg)` |
+| `feature.flag` | 业务代码 | `logger.info({ "feature.flag": "..." }, msg)` |
+| `exception.*` | `logger.error(err)` | pino serializer 自动展开 |
+
+### B. OTel Logs（LogRecord → Collector）
+
+由 `@opentelemetry/instrumentation-pino`（auto-instrumentations-node 包含）自动完成：
+
+- **`trace_id` / `span_id`**：自动从 active span 注入到 LogRecord
+- **`severity_text`**：从 pino level 自动映射
+- **`body`**：日志消息内容
+- **`service.name`**：来自 Resource（instrumentation.ts 已配置）
+- **`attributes`**：pino 日志的自定义字段自动映射为 LogRecord attributes
+
+用户 mixin 注入的字段（如 `service_name`、`host`、`span`）会**自动出现在 LogRecord.attributes** 中。
+
+::: tip OTel Logs 最佳实践
+避免在 LogRecord attributes 中放入所有落地日志字段。OTel Logs 通过 `trace_id` 关联 Trace 即可看到 `endpoint`、`latency_ms`、`user.id` 等完整上下文。保持 LogRecord 轻量有助于控制 Collector 流量。
+:::
+
+### C. 深层字段（自动出现在子 Span 中）
+
+以下字段由 `@opentelemetry/auto-instrumentations-node` 自动采集，无需手动配置：
+
+```
+GET /users/:id                        (http, 45ms)  ← user.id, tenant.id 在此
+├── mongodb.find users                (db, 12ms)    ← db.statement 自动
+├── redis.GET user:cache:42           (cache, 2ms)  ← cache.system 自动
+└── HTTP GET https://api.xxx/verify   (http, 28ms)  ← 自动
+```
+
+| 字段 | 来源 | 出现位置 |
+|------|------|---------|
+| `db.statement` | DB instrumentation 自动 | 数据库子 Span attributes |
+| `db.system` | DB instrumentation 自动 | 数据库子 Span attributes |
+| `cache.system` | Redis/Memcached instrumentation 自动 | 缓存子 Span attributes |
+| `http.url` | HTTP instrumentation 自动 | 外部调用子 Span attributes |
+
+> 通过 `trace_id` 在 Jaeger / Grafana Tempo 中查看完整调用链路即可关联这些深层字段。
+
+---
+
 ## 生产最佳实践
 
 1. **配置上报地址** — 未配置时不会上报（安全默认值），但也意味着无可观测性数据
