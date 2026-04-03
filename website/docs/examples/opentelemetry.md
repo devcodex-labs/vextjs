@@ -480,7 +480,51 @@ export {};
 
 ## 高级用法
 
-### 手动创建 Span
+### 手动追踪业务操作（withSpan）
+
+`withSpan()` 是追踪自定义业务操作的推荐方式。它对 `tracer.startActiveSpan()` 做了 try/catch/finally 封装，自动处理 `span.end()`、`span.recordException()`、`span.setStatus()` 三件最容易遗漏的事。
+
+```typescript
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.post("/payments", async (req, res) => {
+    // ① 最简：完全不接触 span（仅追踪生命周期）
+    const result = await req.app.otel!.withSpan(
+      "payment.process",
+      () => processPayment(req.body.id),
+    );
+
+    // ② 带静态初始属性（通过 SpanOptions.attributes，SDK 原生写入，无需调用 setAttributes）
+    const result = await req.app.otel!.withSpan(
+      "payment.process",
+      () => processPayment(req.body.id),
+      { attributes: { "payment.provider": "stripe", "payment.currency": "USD" } },
+    );
+
+    // ③ 动态属性（依赖执行结果时，通过回调参数访问 span）
+    const result = await req.app.otel!.withSpan("payment.process", async (span) => {
+      const res = await processPayment(req.body.id);
+      span.setAttribute("payment.result", res.status);  // 基于结果动态标注
+      return res;
+    });
+
+    res.json(result);
+  });
+});
+```
+
+**行为说明**：
+
+| 场景 | 自动行为 |
+|------|---------|
+| 回调正常返回 | `span.end()` 自动调用 |
+| 回调抛出异常 | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
+| SDK 未初始化 | Noop span，零 overhead（OTel API 契约保证） |
+
+### 底层 API（自定义 SpanKind / Processor 等高级场景）
+
+需要精细控制 span 类型或自定义处理时，可直接使用 `tracer`：
 
 ```typescript
 import { SpanStatusCode } from "@opentelemetry/api";
