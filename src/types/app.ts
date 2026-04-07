@@ -1005,12 +1005,28 @@ export interface VextApp {
   getValidator(): VextValidator;
 
   /**
-   * 包装或替换 app.throw 的实现（插件专用）
+   * 包装或替换 app.logger 的实现（插件专用）
    *
-   * 默认：schema-dsl I18nError（支持多语言、错误码映射）
-   * @param wrapper 接收原始实现，返回新实现
+   * 与 setThrow 模式一致：接收原始实现，返回新实现。
+   * 常见用途：
+   *   - 将日志同时转发到外部系统（OTel Logs、Sentry、自定义聚合）
+   *   - 在所有日志中注入全局字段（tenant.id、app.version 等）
+   *   - 过滤或采样日志
+   *
+   * @param wrapper 接收原始 logger，返回新 logger
+   *
+   * @example
+   * // 在插件中将所有日志转发到 OTel
+   * app.setLogger((original) => ({
+   *   ...original,
+   *   info(msgOrObj: unknown, ...args: unknown[]) {
+   *     otelBridge.emit("info", ...)
+   *     ;(original.info as (...a: unknown[]) => void)(msgOrObj, ...args)
+   *   },
+   *   child: (b) => original.child(b),
+   * }))
    */
-  setThrow(wrapper: (original: VextApp["throw"]) => VextApp["throw"]): void;
+  setLogger(wrapper: (original: VextLogger) => VextLogger): void;
 
   /**
    * 替换全局速率限制实现（插件专用）

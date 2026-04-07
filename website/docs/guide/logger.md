@@ -421,6 +421,82 @@ async function processPayment(orderId: string, amount: number) {
 }
 ```
 
+## 扩展 Logger：setLogger()
+
+`app.setLogger(wrapper)` 是插件专用的 API，允许你在不替换原始 pino logger 的情况下，对所有日志方法进行包装——常见用途是将框架日志**同时转发**到外部系统（OTel Logs、Sentry、云日志平台等）。
+
+### 函数签名
+
+```typescript
+setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+```
+
+`wrapper` 接收当前 logger（原始 pino 实现），返回新的 `VextLogger` 实现。可以在新实现中：
+
+- 调用外部 SDK 上报日志
+- 过滤或采样某些级别
+- 注入全局字段
+
+### 典型用法：桥接到 OpenTelemetry Logs
+
+当你使用 `vextjs-opentelemetry` 插件时，它会在 `setup()` 中调用 `app.setLogger()` 自动将 `app.logger` 的所有调用转发到 OTel Logs SDK，无需额外配置：
+
+```typescript
+// src/plugins/otel.ts
+import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+
+export default opentelemetryPlugin({
+  endpoint: "grpc://collector:4317",
+  protocol: "grpc",
+  logs: {
+    bridgeAppLogger: true, // 默认 true（endpoint 有效时自动开启）
+    globalAttributes: {
+      "app.version": "1.2.0",
+    },
+  },
+});
+// → app.logger.info("xxx") 同时上报到 OTel Collector + 输出到 stdout
+```
+
+### 自定义 Logger 扩展示例
+
+```typescript
+import { definePlugin } from "vextjs";
+import type { VextLogger } from "vextjs";
+
+export default definePlugin({
+  name: "sentry-logger",
+  setup(app) {
+    app.setLogger((original) => ({
+      ...original,
+      error(...args: unknown[]) {
+        // 上报 error 级别日志到 Sentry
+        const msg = typeof args[0] === "string" ? args[0] : String(args[1] ?? "");
+        Sentry.captureMessage(msg, "error");
+        // 原始 pino 输出不变
+        (original.error as (...a: unknown[]) => void)(...args);
+      },
+      // child logger 保持原逻辑
+      child: (bindings) => original.child(bindings),
+    }));
+  },
+});
+```
+
+:::tip 与 setThrow 模式一致
+`setLogger` 采用与 `setThrow` 完全相同的 wrapper 模式：接收原始实现，返回包装后的实现。这意味着：
+
+- 可以多次调用（每次包裹上一次的结果）
+- 原始 pino 功能（requestId 注入、pretty 格式、child logger）完整保留
+- 包装函数中抛出的异常不会影响原始 logger
+:::
+
+:::warning child logger 不自动桥接
+`child()` 方法继续返回原始 pino child logger，不会重复经过 wrapper 逻辑，避免同一条日志被多次转发到外部系统。如需子 logger 也桥接，请在 child logger 上另行包装。
+:::
+
+---
+
 ## 日志存储与收集
 
 生产环境中有多种方式将日志持久化存储和收集分析。下面从简到繁介绍各种方案。

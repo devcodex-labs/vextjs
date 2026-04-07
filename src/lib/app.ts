@@ -9,6 +9,7 @@ import type {
   VextServices,
   VextValidator,
   VextRateLimiter,
+  VextLogger,
   CacheStore,
 } from "../types/app.js";
 import type { VextFetch } from "./fetch.js";
@@ -193,6 +194,10 @@ export function createApp(config: VextConfig): {
 
     setThrow(wrapper: (original: VextApp["throw"]) => VextApp["throw"]) {
       app.throw = wrapper(app.throw.bind(app));
+    },
+
+    setLogger(wrapper: (original: VextLogger) => VextLogger) {
+      app.logger = wrapper(app.logger);
     },
 
     setRateLimiter(limiter: VextRateLimiter) {

@@ -661,6 +661,55 @@ export default definePlugin({
 
 ---
 
+#### `app.setLogger(wrapper)`
+
+包装或替换 `app.logger` 的实现（**插件专用**）。
+
+```typescript
+setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+```
+
+接收原始 logger，返回新 logger。与 `setThrow` 模式完全一致。常见用途：将框架日志同时转发到外部系统（OTel Logs、Sentry 等）。
+
+```typescript
+import { definePlugin } from "vextjs";
+import type { VextLogger } from "vextjs";
+
+export default definePlugin({
+  name: "otel-logger-bridge",
+  setup(app) {
+    app.setLogger((original) => ({
+      info(...args: unknown[]) {
+        otelBridge.emit("info", extractMsg(args));
+        (original.info as (...a: unknown[]) => void)(...args);
+      },
+      warn(...args: unknown[]) {
+        otelBridge.emit("warn", extractMsg(args));
+        (original.warn as (...a: unknown[]) => void)(...args);
+      },
+      error(...args: unknown[]) {
+        otelBridge.emit("error", extractMsg(args));
+        (original.error as (...a: unknown[]) => void)(...args);
+      },
+      debug(...args: unknown[]) {
+        (original.debug as (...a: unknown[]) => void)(...args);
+      },
+      fatal(...args: unknown[]) {
+        otelBridge.emit("fatal", extractMsg(args));
+        (original.fatal as (...a: unknown[]) => void)(...args);
+      },
+      child: (bindings) => original.child(bindings),
+    }));
+  },
+});
+```
+
+:::tip
+`vextjs-opentelemetry` 插件内置了此模式，开启 `logs.bridgeAppLogger: true`（默认）后自动调用 `app.setLogger()`，无需手动实现。
+:::
+
+---
+
 #### `app.setRateLimiter(limiter)`
 
 替换全局速率限制实现（**插件专用**）。

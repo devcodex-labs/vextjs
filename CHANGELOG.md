@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.2.5] | 2026-04-07 | Patch | `app.setLogger(wrapper)` 插件扩展点：允许插件包装 logger 转发到外部系统（OTel Logs、Sentry 等），与 setThrow 模式一致 |
 | [0.2.4] | 2026-04-02 | Patch | vext.preload 自动注入：CLI start/dev/cluster 自动透传插件 --import 参数，零配置启动 [查看](./changelogs/v0.2.4.md) |
 | [0.2.3] | 2026-03-31 | Patch | 原生 OpenTelemetry 支持：req.route / logger.mixin / ALS trace fields（208 项 E2E 验证）[查看](./changelogs/v0.2.3.md) |
 | [0.2.2] | 2026-03-25 | Patch | Scalar JS 本地资产自动安装与本地服务（OPENAPI-013）+ exports 双策略解析修复（BUG-FIX-001）|
@@ -40,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/vextjs/vext/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/vextjs/vext/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/vextjs/vext/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/vextjs/vext/compare/v0.2.1...v0.2.2
