@@ -202,250 +202,245 @@ open http://localhost:16686  # Jaeger UI
 
 ## 多框架接入（非 VextJS）
 
-不使用 VextJS 框架时，通过 `vextjs-opentelemetry/init` 子路径初始化 SDK，再按需选择框架适配器。
-
 ### 安装
 
 ```bash
-npm install vextjs-opentelemetry @opentelemetry/api
+npm install vextjs-opentelemetry @opentelemetry/api @opentelemetry/sdk-node
 ```
 
-如需上报到 OTLP Collector，以下包已内置于 `vextjs-opentelemetry/init`，**无需额外安装**：
+### 端点格式说明
 
-```text
-@opentelemetry/sdk-trace-node  @opentelemetry/sdk-metrics  @opentelemetry/sdk-logs
-@opentelemetry/otlp-transformer（Protobuf 序列化）
-```
+所有框架的 `endpoint` 字段遵循相同规则：
 
-### SDK 初始化（`vextjs-opentelemetry/init`）
+| 格式 | 传输协议 | 适用场景 |
+|------|---------|---------|
+| `"host:port"` | gRPC h2c（明文 HTTP/2）| 内网/自建 Collector（Jaeger、K8s） |
+| `"http://host:port"` | OTLP HTTP | 公网或明确需要 HTTP |
+| `"none"` / 不传 | 不上报 | 本地开发、测试 |
 
-`initOtel()` 封装了完整的三路 SDK（Trace / Metric / Log）初始化，以及 h2c gRPC 传输层（原生 `node:http2`，兼容自建采集器）。
+> **gRPC h2c** 使用原生 `node:http2` 实现，绕开 `@grpc/grpc-js` 与自建 Collector h2c 握手不兼容的问题。
 
-```typescript
-import { initOtel } from "vextjs-opentelemetry/init";
+### SDK 初始化（`initOtel`）
+
+非 VextJS 框架通过 `vextjs-opentelemetry/koa` 子路径的 `initOtel` 函数完成 SDK 初始化，在 `--require` CJS 预加载文件中调用。
+
+```javascript
+// app/otel-init.cjs（通过 --require 预加载）
+'use strict';
+const { initOtel } = require('vextjs-opentelemetry/koa');
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
+const { UndiciInstrumentation } = require('@opentelemetry/instrumentation-undici');
+const { MongoDBInstrumentation } = require('@opentelemetry/instrumentation-mongodb');
+const { RuntimeNodeInstrumentation } = require('@opentelemetry/instrumentation-runtime-node');
 
 initOtel({
-  serviceName: "my-app",
-  endpoint: "otel-collector.internal:4317",   // host:port → h2c gRPC（推荐）
-  // endpoint: "none",                         // 不上报（安全默认值）
-  instrumentations: [],                        // 由调用方传入 Instrumentation 实例
-  metricExportIntervalMs: 30_000,              // 指标上报间隔（默认 30s）
-  globalLoggerKey: "_otelLogger",              // globalThis key，供 log bridge 使用
+  serviceName: 'my-app',
+  endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || 'otel-collector.internal:4317', // host:port → gRPC h2c
+  instrumentations: [
+    new HttpInstrumentation(),
+    new UndiciInstrumentation(),
+    new MongoDBInstrumentation(),
+    // Node.js 运行时指标（CPU / 内存 / 事件循环 / GC）
+    new RuntimeNodeInstrumentation(),
+  ],
 });
 ```
 
-**endpoint 格式**：
+`initOtel` 选项：
 
-| 格式 | 传输模式 | 说明 |
-|------|---------|------|
-| `"host:port"` | h2c gRPC（明文 HTTP/2）| 原生 `node:http2`，兼容自建采集器 |
-| `"none"` / `""` | 不上报 | SDK 初始化，context propagation 生效，数据被丢弃 |
-
-> **为什么用 h2c gRPC？** `@grpc/grpc-js` 与部分自建采集器的 h2c 握手不兼容。本实现直接用 `node:http2`，三路会话（Trace/Metric/Log）独立管理，断连自动重建。
-
----
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `serviceName` | `string` | 服务名，写入 Resource `service.name` |
+| `endpoint` | `string` | 上报地址（见端点格式说明） |
+| `headers` | `Record<string,string>` | OTLP 请求头（HTTP 模式时有效） |
+| `instrumentations` | `Instrumentation[]` | 自动检测列表（HTTP/DB/Redis 等） |
+| `metricIntervalMs` | `number` | 指标上报间隔（默认 15000ms） |
 
 ### Express
 
 ```typescript
-// app.ts（在 SDK 初始化之后执行）
 import express from "express";
 import { createExpressMiddleware } from "vextjs-opentelemetry/express";
-import { createWithSpan, getOtelStatus } from "vextjs-opentelemetry";
+import { getOtelStatus } from "vextjs-opentelemetry";
 
 const app = express();
 
-// OTel 中间件（全局，越早越好）
 app.use(createExpressMiddleware({
   serviceName: "my-express-app",
   tracing: {
-    ignorePaths: ["/health"],
-    extraAttributes: (req) => ({ "user.id": req.headers["x-user-id"] ?? "" }),
+    ignorePaths: ["/health", "/_otel/status"],
+    spanNameResolver: (ctx) => `${ctx.method} ${ctx.route ?? ctx.path}`,
+  },
+  metrics: {
+    customLabels: (ctx) => ({ "http.path": ctx.route ?? ctx.path }),
   },
 }));
 
-// /_otel/status 手动注册
-app.get("/_otel/status", (_req, res) => {
-  res.json(getOtelStatus({
-    serviceName: "my-express-app",
-    endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || "otel-collector.internal:4317",
-  }));
-});
-
-// 业务路由中使用 withSpan
-const withSpan = createWithSpan("my-express-app");
-
-app.get("/users/:id", async (req, res) => {
-  const user = await withSpan("db.user.find", () => UserModel.findById(req.params.id));
-  res.json(user);
-});
+app.get("/_otel/status", (_req, res) => res.json(getOtelStatus()));
 ```
 
-运行时通过 `--import` 加载 SDK（ESM）或 `--require`（CJS），需在主入口前初始化：
+启动命令（CJS 项目）：
 
-```bash
-# 方案一：单独的 esm preload 文件
-node --import ./otel-init.mjs app.js
-
-# 方案二：应用顶部同步初始化（CJS 时有效）
-const { initOtel } = require("vextjs-opentelemetry/init");
-initOtel({ serviceName: "my-express-app", endpoint: "..." });
+```json
+{
+  "scripts": {
+    "start": "node --require ./otel-init.cjs dist/server.js"
+  }
+}
 ```
-
----
 
 ### Koa
 
 ```typescript
-// app.ts
 import Koa from "koa";
-import Router from "@koa/router";
 import { createKoaMiddleware } from "vextjs-opentelemetry/koa";
-import { createWithSpan, getOtelStatus } from "vextjs-opentelemetry";
+import { getOtelStatus } from "vextjs-opentelemetry";
 
 const app = new Koa();
-const router = new Router();
 
-// OTel 中间件（最先注册）
 app.use(createKoaMiddleware({
   serviceName: "my-koa-app",
-  tracing: { ignorePaths: ["/health", /^\/internal\//] },
+  tracing: {
+    ignorePaths: ["/health", "/_otel/status"],
+    spanNameResolver: (ctx) => `${ctx.method} ${ctx.route ?? ctx.path}`,
+  },
 }));
 
-// /_otel/status
-router.get("/_otel/status", (ctx) => {
-  ctx.body = getOtelStatus({
-    serviceName: "my-koa-app",
-    endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || "otel-collector.internal:4317",
-  });
+app.use(async (ctx, next) => {
+  if (ctx.path === "/_otel/status") { ctx.body = getOtelStatus(); return; }
+  await next();
 });
-
-// 业务路由
-const withSpan = createWithSpan("my-koa-app");
-
-router.get("/users/:id", async (ctx) => {
-  ctx.body = await withSpan("db.user.find", () => UserModel.findById(ctx.params.id));
-});
-
-app.use(router.routes());
 ```
-
-> **无 HTTP auto-instrumentation 时**，`createKoaMiddleware` 会自动创建 `SpanKind.SERVER` span；若已有 active span（如注册了 `@opentelemetry/instrumentation-http`）则不重复创建，直接标注已有 span。
-
----
 
 ### Egg.js
 
-Egg.js 采用 `--require` CJS 模式初始化 SDK（必须在应用 Worker 加载任何模块前执行），并通过 Egg 扩展机制将 `withSpan` 注入到 `ctx`。
+Egg.js 采用 CJS `--require` 预加载，**SDK 必须在任何模块加载前初始化**。
 
-#### 步骤 1：otel-init.cjs
+#### Step 1：otel-init.cjs
 
 ```javascript
 // app/otel-init.cjs
 'use strict';
-
-const { initOtel } = require('vextjs-opentelemetry/init');
+const { initOtel } = require('vextjs-opentelemetry/koa');
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
+const { UndiciInstrumentation } = require('@opentelemetry/instrumentation-undici');
 const { MongoDBInstrumentation } = require('@opentelemetry/instrumentation-mongodb');
 const { IORedisInstrumentation } = require('@opentelemetry/instrumentation-ioredis');
 const { MySQL2Instrumentation } = require('@opentelemetry/instrumentation-mysql2');
+const { RuntimeNodeInstrumentation } = require('@opentelemetry/instrumentation-runtime-node');
 
 initOtel({
   serviceName: 'my-service',
   endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || 'otel-collector.internal:4317',
   instrumentations: [
+    new HttpInstrumentation(),
+    new UndiciInstrumentation(),
     new MongoDBInstrumentation(),
     new IORedisInstrumentation(),
     new MySQL2Instrumentation(),
+    // Node.js 运行时指标（CPU / 内存 / 事件循环 / GC）
+    new RuntimeNodeInstrumentation(),
   ],
 });
 ```
 
-在 `package.json` 的 `scripts` 中通过 `--require` 加载：
+#### Step 2：package.json scripts
 
 ```json
 {
   "scripts": {
-    "dev": "egg-bin dev --require ./app/otel-init.cjs",
+    "dev":   "egg-bin dev --require ./app/otel-init.cjs",
     "start": "egg-scripts start --require ./app/otel-init.cjs"
   }
 }
 ```
 
-#### 步骤 2：OTel 中间件
+#### Step 3：OTel 中间件（`app/middleware/otel.ts`）
+
+使用 `createEggMiddleware`，内置 trace_id / span_name / endpoint / latency_ms 自动注入，并通过回调暴露业务扩展点：
 
 ```typescript
-// app/middleware/otel.ts
-import { createKoaMiddleware } from 'vextjs-opentelemetry/koa';
-import type { Application } from 'egg';
+import { createEggMiddleware } from 'vextjs-opentelemetry/egg';
 
-export default (_options: unknown, _app: Application) =>
-  createKoaMiddleware({
-    serviceName: 'my-service',
-    tracing: {
-      ignorePaths: ['/health', '/_otel/status', /^\/internal\//],
-    },
-  });
+export default createEggMiddleware({
+  serviceName: 'my-service',
+
+  tracing: {
+    ignorePaths: [/^\/favicon/, /^\/_/, '/health'],
+    spanNameResolver: (ctx) => `${ctx.method} ${ctx.route ?? ctx.path}`,
+  },
+
+  metrics: {
+    customLabels: (ctx) => ({ 'http.path': ctx.route ?? ctx.path }),
+  },
+
+  // 业务字段注入（span 创建前，各服务自行扩展）
+  onCtxInit: (ctx) => {
+    ctx.user_id = ctx.state?.userId ?? ctx.state?.user?.id ?? '';
+    ctx.feature_flag = ctx.get('x-feature-flag') || '';
+  },
+
+  // 自定义 access log（请求完成后，finally 块）
+  onRequestDone: (ctx, info) => {
+    ctx.logger.info(`${info.method} ${ctx.status} ${info.route} ${info.latencyMs}ms`);
+  },
+});
 ```
+
+`createEggMiddleware` 自动注入的 ctx 字段：
+
+| 字段 | 说明 |
+|------|------|
+| `ctx.trace_id` | W3C trace ID（无 active span 时为空字符串） |
+| `ctx.span_name` | `${method} ${routerPath}` |
+| `ctx.endpoint` | routerPath（路由模板） |
+| `ctx.latency_ms` | 请求总耗时（ms） |
+
+TypeScript 类型声明（`typings/index.d.ts`）：
+
+```typescript
+declare module 'egg' {
+  interface Context {
+    trace_id: string;
+    span_name: string;
+    endpoint: string;
+    latency_ms: number;
+    user_id: string;       // 由 onCtxInit 注入
+    feature_flag: string;  // 由 onCtxInit 注入
+  }
+}
+```
+
+#### Step 4：注册中间件
 
 ```typescript
 // config/config.default.ts
 config.middleware = ['otel', /* 其他中间件 */];
 ```
 
-#### 步骤 3：ctx.withSpan 扩展
+#### Step 5：`/_otel/status` 路由
+
+```typescript
+// app/router.ts
+import { getOtelStatus } from 'vextjs-opentelemetry';
+
+router.get('/_otel/status', async (ctx) => {
+  ctx.body = getOtelStatus(); // 无参，自动读取环境变量
+});
+```
+
+#### Step 6：ctx.withSpan 扩展（可选）
 
 ```typescript
 // app/extend/context.ts
 import { createWithSpan } from 'vextjs-opentelemetry';
-
-const withSpan = createWithSpan('my-service');
-
-export default { withSpan };
+export default { withSpan: createWithSpan('my-service') };
 ```
 
-TypeScript 类型声明：
-
-```typescript
-// typings/index.d.ts
-import 'egg';
-
-declare module 'egg' {
-  interface Context {
-    withSpan: ReturnType<typeof import('vextjs-opentelemetry').createWithSpan>;
-    // ... 其他扩展
-  }
-}
-```
-
-#### 步骤 4：注册 /_otel/status 路由
-
-```typescript
-// app/router.ts
-import { Application } from 'egg';
-import { getOtelStatus } from 'vextjs-opentelemetry';
-
-export default (app: Application) => {
-  const { router, controller } = app;
-
-  // OTel 状态检查（生产环境建议网关层限制内网访问）
-  router.get('/_otel/status', async (ctx) => {
-    ctx.body = getOtelStatus({
-      serviceName: 'my-service',
-      endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || 'otel-collector.internal:4317',
-    });
-  });
-
-  // 业务路由
-  router.get('/users/:id', controller.user.findById);
-};
-```
-
-#### 步骤 5：在 Controller 中使用
+使用：
 
 ```typescript
 // app/controller/userController.ts
-import { Controller } from 'egg';
-
 export default class UserController extends Controller {
   async findById() {
     const { ctx } = this;
@@ -458,74 +453,40 @@ export default class UserController extends Controller {
 }
 ```
 
----
-
 ### Hono
 
 ```typescript
-// app.ts
 import { Hono } from "hono";
 import { createHonoMiddleware } from "vextjs-opentelemetry/hono";
-import { createWithSpan, getOtelStatus } from "vextjs-opentelemetry";
+import { getOtelStatus } from "vextjs-opentelemetry";
 
 const app = new Hono();
-
-app.use(createHonoMiddleware({
-  serviceName: "my-hono-app",
-  tracing: { ignorePaths: ["/health"] },
-}));
-
-app.get("/_otel/status", (c) =>
-  c.json(getOtelStatus({
-    serviceName: "my-hono-app",
-    endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || "otel-collector.internal:4317",
-  })),
-);
-
-const withSpan = createWithSpan("my-hono-app");
-
-app.get("/users/:id", async (c) => {
-  const user = await withSpan("db.user.find", () =>
-    UserModel.findById(c.req.param("id")),
-  );
-  return c.json(user);
-});
+app.use(createHonoMiddleware({ serviceName: "my-hono-app" }));
+app.get("/_otel/status", (c) => c.json(getOtelStatus()));
 ```
-
----
 
 ### Fastify
 
 ```typescript
-// app.ts
 import Fastify from "fastify";
 import { createFastifyPlugin } from "vextjs-opentelemetry/fastify";
-import { createWithSpan, getOtelStatus } from "vextjs-opentelemetry";
+import { getOtelStatus } from "vextjs-opentelemetry";
 
 const fastify = Fastify();
-
-await fastify.register(createFastifyPlugin({
-  serviceName: "my-fastify-app",
-  tracing: { ignorePaths: ["/health"] },
-}));
-
-fastify.get("/_otel/status", () =>
-  getOtelStatus({
-    serviceName: "my-fastify-app",
-    endpoint: process.env.OTEL_COLLECTOR_ENDPOINT || "otel-collector.internal:4317",
-  }),
-);
-
-const withSpan = createWithSpan("my-fastify-app");
-
-fastify.get("/users/:id", async (request) => {
-  return withSpan("db.user.find", () =>
-    UserModel.findById((request.params as any).id),
-  );
-});
+await fastify.register(createFastifyPlugin({ serviceName: "my-fastify-app" }));
+fastify.get("/_otel/status", () => getOtelStatus());
 ```
 
----
+### 框架差异对比
+
+| 特性 | VextJS | Egg.js | Koa / Express / Hono / Fastify |
+|------|--------|--------|-------------------------------|
+| SDK 初始化 | `--import`（自动/手动）| `--require otel-init.cjs` | `--require otel-init.cjs` |
+| exporter 配置 | plugin options | `initOtel()` | `initOtel()` |
+| 中间件 | `opentelemetryPlugin()` | `createEggMiddleware()` | `createXxxMiddleware()` |
+| 业务字段注入 | N/A | `onCtxInit` 回调 | 手动 |
+| logger bridge | `logs.bridgeAppLogger` | Egg logger formatter | 手动 |
+| `onCtxInit`/`onRequestDone` | ❌ | ✅ 专属 | ❌ |
 
 ## `/_otel/status` 状态检查接口
 
@@ -583,9 +544,22 @@ curl http://localhost:3000/_otel/status
 
 | 指标名 | 类型 | 标签 | 说明 |
 |--------|------|------|------|
-| `http.server.duration` | Histogram（毫秒） | method, route, status_code | 请求耗时分布 |
+| `http.server.duration` | Histogram（ms） | method, route, status_code | 请求耗时分布 |
 | `http.server.request.total` | Counter | method, route, status_code | 请求总数 |
 | `http.server.active_requests` | UpDownCounter | method | 当前并发请求数 |
+| `http.server.request.size` | Histogram（bytes） | method, route | 请求体大小分布（Content-Length 存在时记录） |
+| `http.server.response.size` | Histogram（bytes） | method, status_code | 响应体大小分布（Content-Length 存在时记录） |
+
+> **`ignorePaths` 同时抑制 Trace 和 Metrics**——被忽略路径（如 `/health`）不会产生任何 Span 或指标数据，不会在监控面板产生噪声。
+
+**Node.js Runtime 指标**（通过 `@opentelemetry/instrumentation-runtime-node` 自动上报）：
+
+| 指标名 | 说明 |
+|--------|------|
+| `process.cpu.usage` | 进程 CPU 使用率 |
+| `process.memory.usage` | 堆内存使用量（heap_used / rss） |
+| `nodejs.eventloop.lag` | 事件循环延迟 |
+| `nodejs.gc.duration` / `nodejs.gc.count` | GC 耗时和次数 |
 
 ### Logs（日志关联）
 
@@ -646,11 +620,11 @@ const bridge = createOtelLogBridge(() => (globalThis as any)._otelLogger);
 const formatter = createStructuredLogFormatter({
   serviceName: 'my-service',
   getTraceFields: (meta: any) => ({
-    trace_id:   meta.ctx?.trace_id  ?? '',
-    span:        meta.ctx?.span      ?? '',
-    endpoint:    meta.ctx?.endpoint  ?? '',
+    trace_id:   meta.ctx?.trace_id   ?? '',
+    span:        meta.ctx?.span_name  ?? '',   // ctx.span_name 由 createEggMiddleware 注入
+    endpoint:    meta.ctx?.endpoint   ?? '',
     latency_ms:  meta.ctx?.latency_ms ?? 0,
-    user_id:     meta.ctx?.user_id   ?? '',
+    user_id:     meta.ctx?.user_id    ?? '',
   }),
   getCustomFields: (meta: any) => ({
     'feature.flag': meta.ctx?.feature_flag ?? '',
