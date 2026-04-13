@@ -350,8 +350,8 @@ export default {
 
   // 索引
   indexes: [
-    { fields: { email: 1 }, options: { unique: true } },
-    { fields: { role: 1, createdAt: -1 } },
+    { key: { email: 1 }, options: { unique: true } },
+    { key: { role: 1, createdAt: -1 } },
   ],
 
   // 使用 options.timestamps 自动管理 createdAt/updatedAt
@@ -384,8 +384,8 @@ export default {
 
   // 索引
   indexes: [
-    { fields: { email: 1 }, options: { unique: true } },
-    { fields: { role: 1, createdAt: -1 } },
+    { key: { email: 1 }, options: { unique: true } },
+    { key: { role: 1, createdAt: -1 } },
   ],
 
   // 钩子（仅用于非 timestamps 的自定义逻辑）
