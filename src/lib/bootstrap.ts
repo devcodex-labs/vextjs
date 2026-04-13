@@ -364,7 +364,7 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     }
 
     // ── 注册错误处理 + 404 兜底 ──────────────────────────
-    const errorHandler = createErrorHandler(config.response ?? {});
+    const errorHandler = createErrorHandler(config.response ?? {}, undefined, app.logger);
     app.adapter.registerErrorHandler(errorHandler);
 
     const notFoundHandler = createNotFoundHandler();

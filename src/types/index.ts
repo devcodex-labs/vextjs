@@ -38,6 +38,7 @@ export type {
   VextLoggerConfig,
   VextShutdownConfig,
   VextResponseConfig,
+  VextLogErrorsConfig,
   VextOpenAPIConfig,
   VextBodyParserConfig,
   VextAccessLogConfig,

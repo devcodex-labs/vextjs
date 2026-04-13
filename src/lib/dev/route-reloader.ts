@@ -363,8 +363,11 @@ export async function reloadRoutes(
 
   // ── 2. 注册内置中间件（如果提供）─────────────────────
   //
-  // 与 dev-bootstrap.ts 中的中间件注册顺序保持一致：
-  //   requestId → cors → body-parser → rate-limit → response-wrapper
+  // 与 dev-bootstrap.ts 中的中间件注册顺序和条件守卫保持一致：
+  //   requestId → cors → body-parser → rate-limit → response-wrapper → access-log
+  //
+  // 注意：builtinMwCreators 中对应 creator 为 undefined 时表示该中间件被禁用，
+  // route-reloader 通过 if 检查自动跳过，行为与 dev-bootstrap 条件守卫完全一致。
   //
   if (builtinMiddlewares) {
     if (builtinMiddlewares.createRequestIdMiddleware) {

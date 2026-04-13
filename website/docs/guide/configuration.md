@@ -181,6 +181,7 @@ export default {
 
 | 配置项             | 类型       | 默认值                                                   | 说明             |
 | ------------------ | ---------- | -------------------------------------------------------- | ---------------- |
+| `cors.enabled`     | `boolean`  | `true`                                                   | 是否启用 CORS 中间件 |
 | `cors.origins`     | `string[]` | `['*']`                                                  | 允许的来源列表   |
 | `cors.methods`     | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | 允许的 HTTP 方法 |
 | `cors.headers`     | `string[]` | `['Content-Type','Authorization','X-Request-Id']`        | 允许的请求头     |
@@ -306,16 +307,24 @@ export default {
 
 ### 响应配置 (`response`)
 
-| 配置项                        | 类型      | 默认值 | 说明                                                                        |
-| ----------------------------- | --------- | ------ | --------------------------------------------------------------------------- |
-| `response.wrap`               | `boolean` | `true` | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
-| `response.hideInternalErrors` | `boolean` | `true` | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace）               |
+| 配置项                           | 类型      | 默认值 | 说明                                                                        |
+| -------------------------------- | --------- | ------ | --------------------------------------------------------------------------- |
+| `response.wrap`                  | `boolean` | `true` | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
+| `response.hideInternalErrors`    | `boolean` | `true` | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace）               |
+| `response.logErrors.unknownErrors` | `boolean` | `true`  | 是否记录未知 500 错误（含完整 err 对象和 stack trace）                      |
+| `response.logErrors.http5xx`     | `boolean` | `true`  | 是否记录 HttpError 5xx（error 级别）                                        |
+| `response.logErrors.http4xx`     | `boolean` | `false` | 是否记录 HttpError 4xx（warn 级别，高流量场景建议关闭以减少日志噪音）       |
 
 ```typescript
 export default {
   response: {
     wrap: true,
     hideInternalErrors: true,
+    logErrors: {
+      unknownErrors: true, // 未知错误必须记录
+      http5xx: true,       // 5xx 是服务端责任
+      http4xx: false,      // 4xx 默认不记录（高流量场景避免噪音）
+    },
   },
 };
 ```
@@ -489,6 +498,36 @@ export default {
 ```
 
 也可以通过环境变量 `VEXT_CLUSTER=1` 开启 Cluster 模式，无需修改配置文件。
+
+### Dev 模式配置 (`dev`)
+
+| 配置项                        | 类型                | 默认值   | 说明                                                      |
+| ----------------------------- | ------------------- | -------- | --------------------------------------------------------- |
+| `dev.errorOverlay.enabled`    | `boolean`           | `true`   | 是否启用 Dev 错误覆盖层（浏览器访问出错路由时显示 HTML 错误页） |
+| `dev.errorOverlay.theme`      | `'dark' \| 'light'` | `'dark'` | 错误覆盖层主题                                            |
+| `dev.errorOverlay.maxFrames`  | `number`            | `25`     | 最多显示的堆栈帧数                                        |
+
+```typescript
+export default {
+  dev: {
+    errorOverlay: {
+      enabled: true,    // 设为 false 可禁用 HTML 错误覆盖层
+      theme: "dark",
+      maxFrames: 25,
+    },
+  },
+};
+```
+
+:::tip 仅开发模式生效
+`dev` 配置项仅在 `vext dev` 开发模式下读取，生产模式（`vext start`）自动忽略所有字段。
+
+Dev 错误覆盖层基于 **Accept 内容协商**，而非 HTTP 方法：
+- `Accept: text/html`（浏览器地址栏 GET、HTML 表单 POST）→ 返回 HTML 错误页
+- `Accept: application/json`（前端 fetch / axios / curl）→ 始终返回 JSON
+
+控制台日志**不受 overlay 影响**——无论响应返回 HTML 还是 JSON，`logErrors` 配置的日志行为完全相同。
+:::
 
 ### 中间件白名单 (`middlewares`)
 

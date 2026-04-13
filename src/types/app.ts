@@ -398,6 +398,34 @@ export interface VextShutdownConfig {
 }
 
 /**
+ * 错误日志配置
+ *
+ * 控制 error-handler 在捕获到各类错误时是否向 logger 输出日志。
+ * 未传时全部使用默认值。
+ *
+ * @see VextResponseConfig.logErrors
+ */
+export interface VextLogErrorsConfig {
+  /**
+   * 是否记录未知 500 错误（含完整 err 对象和 stack trace）
+   * 默认 true — 未知错误属于意外异常，必须在控制台可见
+   */
+  unknownErrors?: boolean;
+
+  /**
+   * 是否记录 HttpError 5xx（输出 error 级别日志，含 status 和 message）
+   * 默认 true — 5xx 是服务端责任，需要在控制台可见
+   */
+  http5xx?: boolean;
+
+  /**
+   * 是否记录 HttpError 4xx（输出 warn 级别日志，含 status 和 message）
+   * 默认 false — 4xx 属于客户端错误，高流量场景避免日志噪音
+   */
+  http4xx?: boolean;
+}
+
+/**
  * 响应配置
  */
 export interface VextResponseConfig {
@@ -419,6 +447,16 @@ export interface VextResponseConfig {
    *   - 与第三方 API 规范对齐（如 RESTful 纯净响应）
    */
   wrap?: boolean;
+
+  /**
+   * 错误日志配置（可选，未传时使用各字段默认值）
+   *
+   * 控制 error-handler 捕获到各类错误时是否向 logger 输出日志。
+   * 与 hideInternalErrors（控制响应体内容）正交：
+   *   - hideInternalErrors 决定"响应给客户端什么"
+   *   - logErrors 决定"控制台记录什么"
+   */
+  logErrors?: VextLogErrorsConfig;
 }
 
 /**

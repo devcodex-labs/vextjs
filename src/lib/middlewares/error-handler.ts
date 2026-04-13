@@ -1,5 +1,5 @@
 import type { VextErrorMiddleware } from "../../types/middleware.js";
-import type { VextResponseConfig } from "../../types/app.js";
+import type { VextResponseConfig, VextLogger } from "../../types/app.js";
 import { HttpError, VextValidationError } from "../../types/errors.js";
 
 /**
@@ -49,33 +49,88 @@ export type DevOverlayFn = (err: unknown) => string;
  *   解决了作用域和生命周期问题。
  *
  * 注册方式（在 bootstrap 中）：
- *   app.adapter.registerErrorHandler(createErrorHandler(config.response))
+ *   app.adapter.registerErrorHandler(
+ *     createErrorHandler(config.response ?? {}, undefined, app.logger)
+ *   )
  *
  * 与 rawJson 的关系：
  *   错误响应始终使用 res.rawJson()，绕过出口包装（response-wrapper）。
  *   这确保错误响应格式为 { code, message, requestId } 而非被二次包装为
  *   { code: 0, data: { code, message, ... }, requestId }。
  *
- * 日志记录：
- *   本中间件仅负责格式化错误响应，不负责日志记录。
- *   日志由调用方（adapter 的 try-catch）或上层中间件负责。
- *   这遵循单一职责原则——错误格式化与错误日志分离。
+ * 日志记录（可选 logger 参数）：
+ *   当 logger 传入时，error-handler 负责在响应格式决策之前记录日志：
+ *     - 未知错误（500）：logger.error({ err }, '[uncaught] ...')（含 stack trace）
+ *     - HttpError 5xx：logger.error('[http-error] status message')
+ *     - HttpError 4xx：logger.warn(...)（需 logErrors.http4xx = true 开启）
+ *     - VextValidationError：不记录（客户端输入问题）
+ *   日志记录先于 devOverlay 判断，确保无论响应格式如何日志都可见。
+ *   不传 logger 时行为与原来完全一致（向后兼容）。
  *
  * @param responseConfig 响应配置（从 VextConfig.response 提取）
  * @param devOverlay     可选：dev 模式错误覆盖层渲染函数（生产模式不传）
+ * @param logger         可选：VextLogger 实例，传入后自动记录错误日志
  * @returns VextErrorMiddleware
  */
 export function createErrorHandler(
   responseConfig: VextResponseConfig,
   devOverlay?: DevOverlayFn,
+  logger?: VextLogger,
 ): VextErrorMiddleware {
   // 是否隐藏内部错误详情（生产环境默认 true）
   // 当 hideInternalErrors = true 时，500 错误不暴露 stack trace，
   // 防止敏感信息泄漏（如文件路径、依赖版本、SQL 语句等）
   const hideInternalErrors = responseConfig.hideInternalErrors ?? true;
+  const logErrors = responseConfig.logErrors;
 
   return (err: unknown, req, res) => {
-    // ── Dev 错误覆盖层：浏览器请求 + dev overlay 已注入 ────
+    // ── Step 0: 错误归一化（统一为 Error 对象，消除后续重复转换）──
+    //
+    // 非 Error 对象（如 throw "string" / throw null）统一包装为 Error。
+    // 后续所有步骤直接使用 errObj，避免重复 `err instanceof Error ? err : new Error(...)`.
+    //
+    const errObj = err instanceof Error ? err : new Error(String(err));
+
+    // ── Step 1: 日志记录（先于响应格式决策，确保任何路径都能记录）──
+    //
+    // 关键设计：日志前置于 devOverlay 判断。
+    // 原因：devOverlay 触发时会提前 return，若日志在其后则 browser 访问场景日志丢失。
+    // 日志记录（side effect）与响应格式（HTML/JSON）正交，互不影响。
+    //
+    // try-catch 保护：logger 可能是用户通过 setLogger() 注入的自定义实现，
+    // 若 logger 自身抛出异常，不能让 error-handler（最后防线）崩溃，否则请求会挂起。
+    //
+    // 使用 .name 字符串检测替代 instanceof：
+    // 防止 CJS/ESM 双包场景下 instanceof 失败（与 Step 2 devOverlay 保持一致）。
+    //
+    if (logger) {
+      try {
+        if (errObj.name === "VextValidationError") {
+          // 校验错误属于客户端输入问题，不记录日志
+        } else if (
+          errObj.name === "HttpError" &&
+          typeof (errObj as unknown as Record<string, unknown>).status ===
+            "number"
+        ) {
+          const status = (errObj as unknown as Record<string, unknown>)
+            .status as number;
+          if (status >= 500 && logErrors?.http5xx !== false) {
+            logger.error(`[http-error] ${status} ${errObj.message}`);
+          } else if (status < 500 && logErrors?.http4xx === true) {
+            logger.warn(`[http-error] ${status} ${errObj.message}`);
+          }
+        } else {
+          // 未知错误（运行时异常、第三方库异常等）
+          if (logErrors?.unknownErrors !== false) {
+            logger.error({ err: errObj }, `[uncaught] ${errObj.message}`);
+          }
+        }
+      } catch {
+        // logger 自身异常，静默忽略（error-handler 是最后防线，不能崩溃）
+      }
+    }
+
+    // ── Step 2: Dev 错误覆盖层：浏览器请求 + dev overlay 已注入 ────
     //
     // 触发条件：
     //   1. devOverlay 函数已注入（仅 dev 模式）
@@ -86,8 +141,7 @@ export function createErrorHandler(
       const accept = (req.headers["accept"] as string | undefined) ?? "";
       if (accept.includes("text/html")) {
         // 计算正确的 HTTP 状态码
-        // 🆕 使用 error.name 字符串检测替代 instanceof，防止 CJS/ESM 双包 instanceof 失败
-        const errObj = err instanceof Error ? err : new Error(String(err));
+        // 使用 error.name 字符串检测替代 instanceof，防止 CJS/ESM 双包 instanceof 失败
         let statusCode = 500;
         if (errObj.name === "VextValidationError") {
           statusCode = 422;
@@ -168,8 +222,6 @@ export function createErrorHandler(
     // 开发环境显示 stack（调试便利性）：
     //   - 附带 stack 字段，开发者可快速定位错误位置
     //
-    const errorObj = err instanceof Error ? err : new Error(String(err));
-
     const body: Record<string, unknown> = {
       code: 500,
       message: "Internal Server Error",
@@ -178,7 +230,7 @@ export function createErrorHandler(
 
     // 开发环境：附带 stack trace 供调试
     if (!hideInternalErrors) {
-      body.stack = errorObj.stack;
+      body.stack = errObj.stack;
     }
 
     res.rawJson(body, 500);

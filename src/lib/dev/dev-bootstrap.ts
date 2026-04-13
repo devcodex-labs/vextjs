@@ -401,43 +401,65 @@ export async function devBootstrap(
 
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
     //
-    // 与生产 bootstrap 保持一致的中间件注册顺序：
+    // 与生产 bootstrap 保持一致的中间件注册顺序和条件守卫：
     //   requestId → cors → body-parser → rate-limit → response-wrapper
     //   → access-log → 插件全局中间件 → 错误处理 → 404
     //
+    // 🔧 D2/D3 修复：每个中间件仅在 enabled !== false 时注册（与生产 bootstrap.ts 对齐）。
+    // 禁用的中间件完全不进入中间件链，实现真正的零开销。
+    // D3 修复：createRequestIdMiddleware 补传第四参数 localeConfig，
+    // 确保 dev 模式下 store.locale 正确写入（i18n 语言解析生效）。
+    //
 
-    // 1. requestId
-    const requestIdMiddleware = createRequestIdMiddleware(
-      config.requestId,
-      () => internals!.getRequestIdGenerator(),
-      (fetchConfig?.propagateHeaders ?? []) as string[],
-    );
-    app.adapter.registerMiddleware(requestIdMiddleware);
+    // 1. requestId（config.requestId.enabled，默认 true）
+    if (config.requestId?.enabled !== false) {
+      const localeConfig = config.locale as
+        | import("../../types/app.js").VextLocaleConfig
+        | undefined;
+      const requestIdMiddleware = createRequestIdMiddleware(
+        config.requestId,
+        () => internals!.getRequestIdGenerator(),
+        (fetchConfig?.propagateHeaders ?? []) as string[],
+        localeConfig,
+      );
+      app.adapter.registerMiddleware(requestIdMiddleware);
+    }
 
-    // 2. cors
-    const corsMiddleware = createCorsMiddleware(config.cors);
-    app.adapter.registerMiddleware(corsMiddleware);
+    // 2. cors（config.cors.enabled，默认 true）
+    if (config.cors?.enabled !== false) {
+      const corsMiddleware = createCorsMiddleware(config.cors);
+      app.adapter.registerMiddleware(corsMiddleware);
+    }
 
-    // 3. body-parser
-    const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser);
-    app.adapter.registerMiddleware(bodyParserMiddleware);
+    // 3. body-parser（config.bodyParser.enabled，默认 true）
+    if (config.bodyParser?.enabled !== false) {
+      const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser);
+      app.adapter.registerMiddleware(bodyParserMiddleware);
+    }
 
-    // 4. rate-limit
-    const rateLimitMiddleware = createRateLimitMiddleware(
-      config.rateLimit,
-      () => internals!.getRateLimiter(),
-    );
-    app.adapter.registerMiddleware(rateLimitMiddleware);
+    // 4. rate-limit（config.rateLimit.enabled，默认 true）
+    if (config.rateLimit?.enabled !== false) {
+      const rateLimitMiddleware = createRateLimitMiddleware(
+        config.rateLimit,
+        () => internals!.getRateLimiter(),
+      );
+      app.adapter.registerMiddleware(rateLimitMiddleware);
+    }
 
-    // 5. response-wrapper
-    app.adapter.registerMiddleware(responseWrapper);
+    // 5. response-wrapper（config.response.wrap，默认 true）
+    if (config.response?.wrap !== false) {
+      app.adapter.registerMiddleware(responseWrapper);
+    }
 
-    // 6. access-log（洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码）
-    const accessLogMiddleware = createAccessLogMiddleware(
-      config.accessLog ?? {},
-      app.logger,
-    );
-    app.adapter.registerMiddleware(accessLogMiddleware);
+    // 6. access-log（config.accessLog.enabled，默认 true）
+    //    洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码
+    if (config.accessLog?.enabled !== false) {
+      const accessLogMiddleware = createAccessLogMiddleware(
+        config.accessLog ?? {},
+        app.logger,
+      );
+      app.adapter.registerMiddleware(accessLogMiddleware);
+    }
 
     // 注册插件全局中间件
     for (const mw of internals.getGlobalMiddlewares()) {
@@ -465,7 +487,7 @@ export async function devBootstrap(
     const overlayFn = overlayEnabled
       ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
       : undefined;
-    const errorHandler = createErrorHandler(config.response ?? {}, overlayFn);
+    const errorHandler = createErrorHandler(config.response ?? {}, overlayFn, app.logger);
     app.adapter.registerErrorHandler(errorHandler);
     app.adapter.registerNotFound(createNotFoundHandler());
 
@@ -584,27 +606,43 @@ export async function devBootstrap(
           reloadModelDefs(app as any, outDir, invalidated)
       : undefined;
 
+    // 🔧 D2/D3 修复（soft reload 侧）：
+    // - 每个 creator 仅在对应 enabled 条件满足时注入（undefined 时 route-reloader 自动跳过）
+    // - createRequestIdMiddleware 补传 cfg.locale（D3 修复），确保热重载后 store.locale 仍写入
     const builtinMwCreators: BuiltinMiddlewareCreators = {
-      createRequestIdMiddleware: ((cfg: Record<string, unknown>) =>
-        createRequestIdMiddleware(
-          cfg.requestId as any,
-          () => internals!.getRequestIdGenerator(),
-          (fetchConfig?.propagateHeaders ?? []) as string[],
-        )) as any,
-      createCorsMiddleware: ((cfg: Record<string, unknown>) =>
-        createCorsMiddleware(cfg.cors as any)) as any,
-      createBodyParserMiddleware: ((cfg: Record<string, unknown>) =>
-        createBodyParserMiddleware(cfg.bodyParser as any)) as any,
-      createRateLimitMiddleware: ((cfg: Record<string, unknown>) =>
-        createRateLimitMiddleware(cfg.rateLimit as any, () =>
-          internals!.getRateLimiter(),
-        )) as any,
-      responseWrapper: responseWrapper as any,
-      createAccessLogMiddleware: ((cfg: Record<string, unknown>) =>
-        createAccessLogMiddleware(
-          (cfg.accessLog ?? {}) as any,
-          app.logger,
-        )) as any,
+      createRequestIdMiddleware: config.requestId?.enabled !== false
+        ? ((cfg: Record<string, unknown>) =>
+            createRequestIdMiddleware(
+              cfg.requestId as any,
+              () => internals!.getRequestIdGenerator(),
+              (fetchConfig?.propagateHeaders ?? []) as string[],
+              cfg.locale as any,  // D3 修复：补传 localeConfig
+            )) as any
+        : undefined,
+      createCorsMiddleware: config.cors?.enabled !== false
+        ? ((cfg: Record<string, unknown>) =>
+            createCorsMiddleware(cfg.cors as any)) as any
+        : undefined,
+      createBodyParserMiddleware: config.bodyParser?.enabled !== false
+        ? ((cfg: Record<string, unknown>) =>
+            createBodyParserMiddleware(cfg.bodyParser as any)) as any
+        : undefined,
+      createRateLimitMiddleware: config.rateLimit?.enabled !== false
+        ? ((cfg: Record<string, unknown>) =>
+            createRateLimitMiddleware(cfg.rateLimit as any, () =>
+              internals!.getRateLimiter(),
+            )) as any
+        : undefined,
+      responseWrapper: config.response?.wrap !== false
+        ? (responseWrapper as any)
+        : undefined,
+      createAccessLogMiddleware: config.accessLog?.enabled !== false
+        ? ((cfg: Record<string, unknown>) =>
+            createAccessLogMiddleware(
+              (cfg.accessLog ?? {}) as any,
+              app.logger,
+            )) as any
+        : undefined,
     };
 
     softReloader = new SoftReloader({
@@ -624,6 +662,7 @@ export async function devBootstrap(
             ? (err: unknown) =>
                 renderDevErrorPage(err, projectRoot, overlayOptions)
             : undefined,
+          app.logger,  // 🆕 soft reload 后重建的错误处理器同样传入 logger
         )) as any,
       createNotFoundHandler: createNotFoundHandler as any,
       builtinMiddlewares: builtinMwCreators,

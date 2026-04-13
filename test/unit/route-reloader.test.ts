@@ -501,6 +501,38 @@ describe("reloadRoutes", () => {
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(corsMw);
     });
 
+    it("条件守卫 disabled → creator undefined → 对应中间件不被注册（D2 修复覆盖）", async () => {
+      // 模拟 config.response.wrap = false → builtinMwCreators.responseWrapper = undefined
+      // 模拟 config.cors.enabled = false → builtinMwCreators.createCorsMiddleware = undefined
+      // 只注册 requestId 和 bodyParser（enabled = true）
+      const reqIdMw = createMockMiddleware("requestId");
+      const bodyMw = createMockMiddleware("bodyParser");
+
+      const builtinMiddlewares: BuiltinMiddlewareCreators = {
+        createRequestIdMiddleware: vi.fn(() => reqIdMw),
+        createCorsMiddleware: undefined,        // cors disabled
+        createBodyParserMiddleware: vi.fn(() => bodyMw),
+        createRateLimitMiddleware: undefined,   // rateLimit disabled
+        responseWrapper: undefined,             // response.wrap = false
+        createAccessLogMiddleware: undefined,   // accessLog disabled
+      };
+
+      const freshAdapter = createMockAdapter();
+
+      const options = createDefaultOptions({
+        resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
+        builtinMiddlewares,
+        globalMiddlewares: [],
+      });
+
+      await reloadRoutes(options);
+
+      // 只有 requestId 和 bodyParser 被注册
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledTimes(2);
+      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(1, reqIdMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(2, bodyMw);
+    });
+
     it("应将 app.config 传递给内置中间件工厂", async () => {
       const createReqId = vi.fn(() => createMockMiddleware("rid"));
 

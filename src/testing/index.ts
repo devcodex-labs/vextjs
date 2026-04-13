@@ -364,26 +364,45 @@ export async function createTestApp(
   //   + 错误处理 + 404 兜底
   //
   // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
+  //
+  // 🔧 同步 bootstrap.ts / dev-bootstrap.ts：
+  //   - 每个中间件仅在 enabled !== false 时注册（条件守卫）
+  //   - createRequestIdMiddleware 补传第 3/4 参（propagateHeaders / localeConfig）
 
-  // requestId
-  const requestIdMiddleware = createRequestIdMiddleware(
-    finalConfig.requestId,
-    () => internals.getRequestIdGenerator(),
-  );
-  app.adapter.registerMiddleware(requestIdMiddleware);
+  // requestId（config.requestId.enabled，默认 true）
+  if (finalConfig.requestId?.enabled !== false) {
+    const fetchCfg = (finalConfig as Record<string, unknown>).fetch as
+      | { propagateHeaders?: string[] }
+      | undefined;
+    const requestIdMiddleware = createRequestIdMiddleware(
+      finalConfig.requestId,
+      () => internals.getRequestIdGenerator(),
+      fetchCfg?.propagateHeaders ?? [],
+      (finalConfig as Record<string, unknown>).locale as
+        | import("../types/app.js").VextLocaleConfig
+        | undefined,
+    );
+    app.adapter.registerMiddleware(requestIdMiddleware);
+  }
 
-  // cors
-  const corsMiddleware = createCorsMiddleware(finalConfig.cors);
-  app.adapter.registerMiddleware(corsMiddleware);
+  // cors（config.cors.enabled，默认 true）
+  if (finalConfig.cors?.enabled !== false) {
+    const corsMiddleware = createCorsMiddleware(finalConfig.cors);
+    app.adapter.registerMiddleware(corsMiddleware);
+  }
 
-  // body-parser
-  const bodyParserMiddleware = createBodyParserMiddleware(
-    finalConfig.bodyParser,
-  );
-  app.adapter.registerMiddleware(bodyParserMiddleware);
+  // body-parser（config.bodyParser.enabled，默认 true）
+  if (finalConfig.bodyParser?.enabled !== false) {
+    const bodyParserMiddleware = createBodyParserMiddleware(
+      finalConfig.bodyParser,
+    );
+    app.adapter.registerMiddleware(bodyParserMiddleware);
+  }
 
-  // response-wrapper（开启出口包装标志）
-  app.adapter.registerMiddleware(responseWrapper);
+  // response-wrapper（config.response.wrap，默认 true）
+  if (finalConfig.response?.wrap !== false) {
+    app.adapter.registerMiddleware(responseWrapper);
+  }
 
   // 插件全局中间件
   for (const mw of internals.getGlobalMiddlewares()) {
