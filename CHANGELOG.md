@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.2.9] | 2026-04-13 | Patch | MonSQLize 依赖升级至 `^1.2.1`（msq.model() 实例缓存 + 索引去重）[查看](./changelogs/v0.2.9.md) |
 | [0.2.8] | 2026-04-13 | Patch | dev 模式子目录 i18n 未加载修复（dev-bootstrap Mode B 回退缺失）[查看](./changelogs/v0.2.8.md) |
 | [0.2.7] | 2026-04-13 | Patch | monsqlize 依赖升级至 `^1.2.0`，确保 `findPage` projection 在 vext 应用中正确生效 [查看](./changelogs/v0.2.7.md) |
 | [0.2.6] | 2026-04-13 | Patch | GitHub Actions CI/CD + OpenTelemetry 文档全面重写 + setLogger API 文档 + 社区模板 [查看](./changelogs/v0.2.6.md) |
