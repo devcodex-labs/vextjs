@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.2.8] | 2026-04-13 | Patch | dev 模式子目录 i18n 未加载修复（dev-bootstrap Mode B 回退缺失）[查看](./changelogs/v0.2.8.md) |
 | [0.2.7] | 2026-04-13 | Patch | monsqlize 依赖升级至 `^1.2.0`，确保 `findPage` projection 在 vext 应用中正确生效 [查看](./changelogs/v0.2.7.md) |
 | [0.2.6] | 2026-04-13 | Patch | GitHub Actions CI/CD + OpenTelemetry 文档全面重写 + setLogger API 文档 + 社区模板 [查看](./changelogs/v0.2.6.md) |
 | [0.2.5] | 2026-04-13 | Patch | error-handler 日志注入 + dev-bootstrap 中间件条件注册对齐 + Dev Error Overlay + logErrors 配置文档 [查看](./changelogs/v0.2.5.md) |
@@ -43,8 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.6...HEAD
-[0.2.6]: https://github.com/vextjs/vext/compare/v0.2.5...v0.2.6
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/vextjs/vext/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/vextjs/vext/compare/v0.2.6...v0.2.7
 [0.2.5]: https://github.com/vextjs/vext/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/vextjs/vext/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/vextjs/vext/compare/v0.2.2...v0.2.3

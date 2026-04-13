@@ -1,7 +1,7 @@
 import path from "node:path";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 
 import { DevCompiler } from "./compiler.js";
 import type { CompileStats } from "./compiler.js";
@@ -13,6 +13,7 @@ import { loadConfig } from "../config-loader.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
 import { loadI18n } from "../i18n-loader.js";
+import { schemaAdapter } from "../schema-adapter.js";
 import { loadPlugins } from "../plugin-loader.js";
 import {
   createMonSQLizePlugin,
@@ -256,13 +257,39 @@ export async function devBootstrap(
     //
     // 从编译产物的 locales/ 子目录加载（如果存在）
     //
+    // 两种模式自动检测（与生产 bootstrap 保持一致）：
+    //   Mode A（平铺文件）：locales/zh-CN.js → loadI18n() 动态 import + 注册
+    //   Mode B（子目录）  ：locales/user/zh-CN.js → schema-dsl 递归扫描
+    //
     const localesDir = path.join(outDir, "locales");
     if (existsSync(localesDir)) {
       const loadedLocales = await loadI18n(localesDir, app.logger);
       if (loadedLocales.length > 0) {
+        // Mode A: 平铺文件加载成功
         app.logger.info(
           `[vext dev] i18n locales loaded: ${loadedLocales.join(", ")}`,
         );
+      } else {
+        // Mode B fallback: 检查是否存在子目录（如 user/, auth/）
+        // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
+        try {
+          const entries = readdirSync(localesDir, { withFileTypes: true });
+          const hasSubDirs = entries.some((e) => e.isDirectory());
+          if (hasSubDirs) {
+            schemaAdapter.configure({ i18n: localesDir });
+            const subDirs = entries
+              .filter((e) => e.isDirectory())
+              .map((e) => e.name);
+            app.logger.info(
+              `[vext dev] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+            );
+          }
+        } catch (err) {
+          app.logger.warn(
+            { error: (err as Error).message },
+            "[vext dev] Failed to scan locales subdirectories, i18n may not work",
+          );
+        }
       }
     }
 
