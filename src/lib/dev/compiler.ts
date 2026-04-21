@@ -171,7 +171,6 @@ export class DevCompiler {
       outdir: this.outDir,
       outbase: this.srcDir, // 保持目录结构: src/routes/user.ts → .vext/dev/routes/user.js
       sourcemap: true, // 错误堆栈指向原始 TS 源码
-      sourceRoot: this.srcDir,
       packages: "external", // 不打包 node_modules（保持 require 外部包）
     });
 
@@ -245,7 +244,6 @@ export class DevCompiler {
       outdir: this.outDir,
       outbase: this.srcDir,
       sourcemap: true,
-      sourceRoot: this.srcDir,
       packages: "external",
     });
 
