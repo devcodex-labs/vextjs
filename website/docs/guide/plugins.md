@@ -556,7 +556,14 @@ Fastify adapter 会自动将 `bodyLimit` 与 `multipart.maxFileSize` 联动（�
 
 ### 自定义解析（高级）
 
-如需使用 [busboy](https://github.com/mscdex/busboy) 等第三方库进行更细粒度的控制（如流式写入磁盘），可通过插件实现。此时建议将 `multipart.enabled` 保持 `false`，在插件内自行处理：
+如需使用 [busboy](https://github.com/mscdex/busboy) 等第三方库进行更细粒度的控制（如流式写入磁盘），可通过插件实现。
+
+支持两种使用模式：
+
+- **独占模式**：将 `multipart.enabled` 保持 `false`（默认），由插件全权负责解析
+- **共存模式**：`multipart.enabled: true` 时全局 body-parser 先解析，插件通过 `req.files !== undefined` 检测并提前退出，避免双重解析
+
+推荐共存模式时在插件开头加 guard，使两种场景均能安全使用：
 
 ```typescript
 // src/plugins/upload-custom.ts
@@ -571,6 +578,12 @@ export default definePlugin({
     app.use(async (req, _res, next) => {
       const ct = req.headers['content-type'] ?? '';
       if (!ct.startsWith('multipart/form-data')) {
+        await next();
+        return;
+      }
+
+      // guard：全局 body-parser 已解析时直接跳过，避免双重处理
+      if (req.files !== undefined) {
         await next();
         return;
       }
