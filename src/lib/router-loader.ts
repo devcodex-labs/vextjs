@@ -15,6 +15,7 @@ import {
   normalizeCacheOptions,
   buildRouteCacheMiddleware,
 } from "./middlewares/route-cache.js";
+import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 
 /**
@@ -168,9 +169,9 @@ export async function loadRoutes(
       if (existingFile) {
         throw new Error(
           `[vextjs] Duplicate route: ${routeKey}\n` +
-            `         Already registered by: ${existingFile}\n` +
-            `         Conflict in: ${entry.filePath}\n` +
-            `         Rename the route or use a different path/method.`,
+          `         Already registered by: ${existingFile}\n` +
+          `         Conflict in: ${entry.filePath}\n` +
+          `         Rename the route or use a different path/method.`,
         );
       }
 
@@ -269,8 +270,8 @@ function registerRouteDefinition(
       if (hasAuth && cacheOpts && !cacheOpts.key && !cacheOpts.condition) {
         app.logger.warn(
           `[vextjs] ⚠️ Route ${route.method} "${fullPath}" has both cache and auth middleware. ` +
-            `Default cache key does not include user identity. ` +
-            `Consider adding a custom key or condition to prevent data leakage.`,
+          `Default cache key does not include user identity. ` +
+          `Consider adding a custom key or condition to prevent data leakage.`,
         );
       }
     }
@@ -289,6 +290,22 @@ function registerRouteDefinition(
       }
     }
 
+    // ── 2.7 路由级 multipart 解析中间件 ──────────────────
+    //
+    // 当路由声明 multipart.enabled = true 时，自动注入路由级解析中间件。
+    // 插入到用户中间件链之前（第一个执行），确保 req.files 对所有后续中间件可见。
+    // 行为：
+    //   - 若全局 body-parser 已解析（req.files 不为 undefined）：只做路由级二次校验
+    //   - 若全局未解析：用合并配置（路由级覆盖全局默认值）解析 multipart
+    //
+    if ((route.options as { multipart?: { enabled?: boolean } })?.multipart?.enabled === true) {
+      const routeMultipartMW = createRouteMultipartMiddleware(
+        route.options.multipart as import('../types/app.js').MultipartRouteConfig,
+        app.config.multipart,
+      )
+      routeMiddlewares.unshift(routeMultipartMW)
+    }
+
     // ── 3. 构建 validate 中间件（Phase 1 升级）──────────
     //
     // 当 route.options.validate 存在时，通过 buildValidateMiddleware()
@@ -297,8 +314,8 @@ function registerRouteDefinition(
     //
     const validateMiddleware = buildValidateMiddleware(
       route.options?.validate as
-        | import("./validate-middleware.js").ValidateConfig
-        | undefined,
+      | import("./validate-middleware.js").ValidateConfig
+      | undefined,
       () => app.getValidator(),
     );
 
@@ -399,8 +416,8 @@ async function scanRouteFiles(dir: string): Promise<string[]> {
       if (isTestFile(entry.name)) {
         throw new Error(
           `[vextjs] Unexpected file in routes/: ${entry.name}\n` +
-            `         routes/ should only contain route files.\n` +
-            `         Move test files to test/routes/ instead.`,
+          `         routes/ should only contain route files.\n` +
+          `         Move test files to test/routes/ instead.`,
         );
       }
 
@@ -491,11 +508,11 @@ function detectPrefixConflicts(entries: RouteEntry[]): void {
     if (existing) {
       throw new Error(
         `[vextjs] Route prefix conflict detected:\n` +
-          `         Prefix: "${entry.prefix}"\n` +
-          `         File 1: ${existing}\n` +
-          `         File 2: ${entry.filePath}\n` +
-          `         Two route files cannot map to the same prefix. ` +
-          `Consider merging them into a single file or reorganizing the directory structure.`,
+        `         Prefix: "${entry.prefix}"\n` +
+        `         File 1: ${existing}\n` +
+        `         File 2: ${entry.filePath}\n` +
+        `         Two route files cannot map to the same prefix. ` +
+        `Consider merging them into a single file or reorganizing the directory structure.`,
       );
     }
     prefixMap.set(entry.prefix, entry.filePath);
@@ -563,7 +580,7 @@ async function loadRouteFile(
     if (!routeDefinition) {
       throw new Error(
         `[vextjs] Route file "${filePath}" has no default export.\n` +
-          `         Route files must use: export default defineRoutes((app) => { ... })`,
+        `         Route files must use: export default defineRoutes((app) => { ... })`,
       );
     }
 
@@ -574,7 +591,7 @@ async function loadRouteFile(
     ) {
       throw new Error(
         `[vextjs] Route file "${filePath}" default export is not a valid RouteDefinition.\n` +
-          `         Make sure to use defineRoutes() to create the route definition.`,
+        `         Make sure to use defineRoutes() to create the route definition.`,
       );
     }
 
@@ -591,7 +608,7 @@ async function loadRouteFile(
     // 其他错误（如语法错误、模块找不到），包装后抛出
     throw new Error(
       `[vextjs] Failed to load route file: ${filePath}\n` +
-        `         ${(err as Error).message}`,
+      `         ${(err as Error).message}`,
     );
   }
 }

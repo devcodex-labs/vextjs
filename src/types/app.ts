@@ -592,6 +592,31 @@ export interface MultipartFileFieldConfig {
  */
 export interface MultipartRouteConfig {
   /**
+   * 是否为此路由启用 multipart 解析（覆盖全局 multipart.enabled）
+   *
+   * - `true`：即使全局 `multipart.enabled = false`，此路由也启用内置解析
+   * - `false`：即使全局 `multipart.enabled = true`，此路由也跳过全局解析的二次校验
+   * - 未设置：跟随全局 `multipart.enabled`
+   */
+  enabled?: boolean;
+
+  /**
+   * 此路由单个文件最大大小（字节，覆盖全局 multipart.maxFileSize）
+   * 若全局已解析则对已解析结果执行二次校验
+   */
+  maxFileSize?: number;
+
+  /**
+   * 此路由最多文件数（覆盖全局 multipart.maxFiles）
+   */
+  maxFiles?: number;
+
+  /**
+   * 此路由允许的 MIME 类型白名单（覆盖全局 multipart.allowedMimeTypes）
+   */
+  allowedMimeTypes?: string[];
+
+  /**
    * 文件字段列表，键为表单字段名
    *
    * 字符串值为字段说明，对象形式可配置 required 等选项。

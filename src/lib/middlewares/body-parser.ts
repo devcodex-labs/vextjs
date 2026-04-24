@@ -1,5 +1,5 @@
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextBodyParserConfig, VextMultipartConfig } from "../../types/app.js";
+import type { VextBodyParserConfig, VextMultipartConfig, MultipartRouteConfig } from "../../types/app.js";
 import type { VextRequest, ParsedFile } from "../../types/request.js";
 
 /**
@@ -42,31 +42,29 @@ export function parseBytes(value: string | number): number {
  * parseMultipart — 内置 multipart/form-data 解析器
  *
  * 使用 Node.js 18+ Web API（Request.formData()）解析，零外部依赖。
- * Hono adapter 走直接路径（c.req.raw.formData()），其余 adapter 构造
- * 标准 Web Request 后调用 formData()。
+ *
+ * 统一路径（所有 5 个 adapter）：
+ *   1. 通过 req._getRawBodyBuffer() 一次性读取原始 Buffer（有缓存，多次调用安全）
+ *   2. 用该 Buffer 构造一个新的 Web API Request 并调用 formData()
+ *
+ * 不使用 Hono 特殊路径（c.req.raw.formData()）原因：
+ *   Web API Request.formData() 会消费 ReadableStream body，之后 arrayBuffer()
+ *   等方法在同一 Request 上无法再次读取，导致 _getRawBodyBuffer() 缓存未命中、
+ *   二次调用返回空 Buffer（破坏 busboy 等插件的流读取）。
+ *   统一走 _getRawBodyBuffer() 保证 _rawBufferCache 始终有效。
  */
 async function parseMultipart(
   req: VextRequest,
   contentType: string,
   config: VextMultipartConfig,
 ): Promise<ParsedFile[]> {
-  let formData: FormData
-
-  // Hono adapter 暴露了 _getHonoRawRequest()，走原生路径无 Buffer 中转
-  if (typeof (req as Record<string, unknown>)._getHonoRawRequest === 'function') {
-    const rawReq = (req as Record<string, unknown>)._getHonoRawRequest as () => Request
-    formData = await rawReq().formData()
-  } else {
-    // 其余 4 个 adapter：通过 Buffer 构造标准 Web Request
-    const rawBuffer = await req._getRawBodyBuffer()
-    const dummyRequest = new Request('http://localhost', {
-      method: 'POST',
-      body: rawBuffer,
-      headers: { 'content-type': contentType },
-    })
-    formData = await dummyRequest.formData()
-  }
-
+  const rawBuffer = await req._getRawBodyBuffer()
+  const dummyRequest = new Request('http://localhost', {
+    method: 'POST',
+    body: rawBuffer,
+    headers: { 'content-type': contentType },
+  })
+  const formData = await dummyRequest.formData()
   return formDataToFiles(formData, config)
 }
 
@@ -290,4 +288,74 @@ export function createBodyParserMiddleware(
 
     await next();
   };
+}
+
+/**
+ * createRouteMultipartMiddleware — 路由级 multipart 解析中间件工厂
+ *
+ * 在 router-loader 中，当路由声明 `multipart.enabled = true` 时自动注入。
+ * 行为语义：
+ *   - 若 body-parser（全局）已解析（`req.files !== undefined`）：
+ *       用路由级配置做二次校验（覆盖全局限制）
+ *   - 若未解析（全局 enabled = false）：
+ *       用合并后的配置重新解析（路由级覆盖全局）
+ *
+ * @param routeConfig   路由级 multipart 配置
+ * @param globalConfig  全局 multipart 配置（提供默认值）
+ */
+export function createRouteMultipartMiddleware(
+  routeConfig: MultipartRouteConfig,
+  globalConfig?: VextMultipartConfig,
+): VextMiddleware {
+  const mergedConfig: VextMultipartConfig = {
+    enabled: true,
+    maxFileSize: routeConfig.maxFileSize ?? globalConfig?.maxFileSize,
+    maxFiles: routeConfig.maxFiles ?? globalConfig?.maxFiles,
+    allowedMimeTypes: routeConfig.allowedMimeTypes ?? globalConfig?.allowedMimeTypes,
+  }
+
+  return async (req, res, next) => {
+    const contentType = req.headers['content-type'] ?? ''
+    if (!contentType.startsWith('multipart/form-data')) {
+      await next()
+      return
+    }
+
+    try {
+      if (req.files !== undefined) {
+        // 全局 body-parser 已解析 → 用路由级配置做二次校验
+        const maxFiles = mergedConfig.maxFiles ?? 10
+        const maxFileSize = mergedConfig.maxFileSize ?? 10 * 1024 * 1024
+
+        if (req.files.length > maxFiles) {
+          throw { status: 413, message: 'Too many files' }
+        }
+
+        for (const file of req.files) {
+          if (file.size > maxFileSize) {
+            throw { status: 413, message: `File "${file.filename}" exceeds maxFileSize` }
+          }
+          if (mergedConfig.allowedMimeTypes && !mergedConfig.allowedMimeTypes.includes(file.mimetype)) {
+            throw { status: 415, message: `MIME type "${file.mimetype}" is not allowed` }
+          }
+        }
+      } else {
+        // 全局未解析 → 路由级解析
+        req.files = await parseMultipart(req, contentType, mergedConfig)
+      }
+    } catch (err: unknown) {
+      const httpErr = err as { status?: number; message?: string }
+      res.rawJson(
+        {
+          code: httpErr.status ?? 400,
+          message: httpErr.message ?? 'Bad Request: multipart parse error',
+          requestId: req.requestId,
+        },
+        (httpErr.status ?? 400) as 400 | 413 | 415,
+      )
+      return
+    }
+
+    await next()
+  }
 }
