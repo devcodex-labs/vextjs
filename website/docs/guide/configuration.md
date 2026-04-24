@@ -359,6 +359,26 @@ export default {
 
 `maxBodySize` 支持字符串格式（`'1mb'`、`'500kb'`）和数字格式（字节数）。
 
+### Multipart / 文件上传配置 (`multipart`)
+
+| 配置项                       | 类型       | 默认值      | 说明                     |
+| ------------------------------ | ---------- | ----------- | ------------------------ |
+| `multipart.enabled`            | `boolean`  | `false`     | 是否启用内置 multipart 解析（开启后自动填充 `req.files`） |
+| `multipart.maxFileSize`        | `number`   | `10485760`  | 单个文件最大大小（字节，默认 10MB）   |
+| `multipart.maxFiles`           | `number`   | `10`        | 单次请求最多文件数     |
+| `multipart.allowedMimeTypes`   | `string[]` | `undefined` | 允许的 MIME 类型白名单（不设置则不限制） |
+
+```typescript
+export default {
+  multipart: {
+    enabled: true,                  // 开启内置解析
+    maxFileSize: 10 * 1024 * 1024,  // 10MB
+    maxFiles: 5,
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+  },
+};
+```
+
 ### Access Log 配置 (`accessLog`)
 
 | 配置项              | 类型      | 默认值   | 说明             |

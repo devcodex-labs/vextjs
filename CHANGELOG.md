@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.2.11] | 2026-04-24 | Minor | 内置 multipart/form-data 解析（zero-dep，Node.js `Request.formData()`）+ `req.files` + `_getRawBodyBuffer()` 正式类型 + OpenAPI multipart 生成 [查看](./changelogs/v0.2.11.md) |
 | [0.2.10] | 2026-04-21 | Patch | dev 模式堆栈路径修复：移除 `sourceRoot` 配置，sourcemap 路径不再缺失项目目录段 [查看](./changelogs/v0.2.10.md) |
 | [0.2.9] | 2026-04-13 | Patch | MonSQLize 依赖升级至 `^1.2.1`（msq.model() 实例缓存 + 索引去重）[查看](./changelogs/v0.2.9.md) |
 | [0.2.8] | 2026-04-13 | Patch | dev 模式子目录 i18n 未加载修复（dev-bootstrap Mode B 回退缺失）[查看](./changelogs/v0.2.8.md) |
@@ -46,7 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/vextjs/vext/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/vextjs/vext/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/vextjs/vext/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/vextjs/vext/compare/v0.2.7...v0.2.8

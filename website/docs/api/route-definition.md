@@ -171,6 +171,9 @@ interface RouteOptions {
   };
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
+  multipart?: {
+    files?: Record<string, string | { description?: string; required?: boolean }>;
+  };
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
     timeout?: number;
@@ -620,6 +623,42 @@ docs: {
   },
 }
 ```
+
+---
+
+## multipart
+
+路由级文件上传配置。配置后 OpenAPI 生成器自动输出 `multipart/form-data` requestBody，无需手动编写 `docs.requestBody`。
+
+```typescript
+app.post(
+  '/upload/avatar',
+  {
+    middlewares: ['upload'],
+    multipart: {
+      files: {
+        avatar: { description: '头像图片（JPEG/PNG）', required: true },
+        thumbnail: '可选缩略图',
+      },
+    },
+    docs: { summary: '上传头像', tags: ['用户'] },
+  },
+  async (req, res) => {
+    const file = req.files?.find(f => f.fieldname === 'avatar');
+    res.json({ filename: file?.filename, size: file?.size });
+  },
+);
+```
+
+| 子字段        | 类型                               | 说明                                         |
+| ------------- | ---------------------------------- | -------------------------------------------- |
+| `files`       | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多 |
+| `files[].description` | `string`                 | 字段说明（用于 OpenAPI 文档）                |
+| `files[].required`    | `boolean`                | 是否必传（默认 `false`）                     |
+
+:::warning 注意
+`multipart.files` 与 `validate.body` 互斥，同时配置时 `multipart.files` 优先生效于 OpenAPI 文档生成。
+:::
 
 ---
 

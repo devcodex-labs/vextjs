@@ -238,23 +238,57 @@ export class OpenAPIGenerator {
       }
     }
 
-    // ── 请求体（body） ──────────────────────────────────────
-    // 仅 POST / PUT / PATCH 方法生成 requestBody
-    if (
-      options.validate?.body &&
-      ["POST", "PUT", "PATCH"].includes(method.toUpperCase())
-    ) {
-      const bodyResult = this.converter.convertValidateObject(
-        options.validate.body as Record<string, unknown>,
-      );
-      operation.requestBody = {
-        required: true,
-        content: {
-          "application/json": {
-            schema: bodyResult.schema,
+    // ── 请求体（body / multipart） ──────────────────────────
+    // 仅 POST / PUT / PATCH 方法生成 requestBody。
+    // multipart.files 优先于 validate.body（两者互斥）。
+    if (["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
+      if (options.multipart?.files) {
+        // multipart/form-data 文件上传
+        const properties: Record<string, JsonSchema> = {};
+        const required: string[] = [];
+
+        for (const [fieldname, fieldConfig] of Object.entries(
+          options.multipart.files,
+        )) {
+          const desc =
+            typeof fieldConfig === "string"
+              ? fieldConfig
+              : (fieldConfig.description ?? "上传的文件");
+          properties[fieldname] = {
+            type: "string",
+            format: "binary",
+            description: desc,
+          };
+          if (typeof fieldConfig === "object" && fieldConfig.required) {
+            required.push(fieldname);
+          }
+        }
+
+        operation.requestBody = {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                properties,
+                ...(required.length > 0 ? { required } : {}),
+              },
+            },
           },
-        },
-      };
+        };
+      } else if (options.validate?.body) {
+        const bodyResult = this.converter.convertValidateObject(
+          options.validate.body as Record<string, unknown>,
+        );
+        operation.requestBody = {
+          required: true,
+          content: {
+            "application/json": {
+              schema: bodyResult.schema,
+            },
+          },
+        };
+      }
     }
 
     // ── 响应（responses） ───────────────────────────────────
@@ -301,9 +335,9 @@ export class OpenAPIGenerator {
           if ((config as Record<string, unknown>).examples) {
             const examples = (config as Record<string, unknown>)
               .examples as Record<
-              string,
-              { summary?: string; description?: string; value: unknown }
-            >;
+                string,
+                { summary?: string; description?: string; value: unknown }
+              >;
             contentEntry.examples = {};
             for (const [name, ex] of Object.entries(examples)) {
               contentEntry.examples![name] = {
@@ -335,7 +369,7 @@ export class OpenAPIGenerator {
         options.validate?.body &&
         typeof options.validate.body === "object" &&
         Object.keys(options.validate.body as Record<string, unknown>).length >
-          0;
+        0;
 
       if (isWriteMethod && hasBody) {
         const bodySchema = this.converter.convertValidateObject(

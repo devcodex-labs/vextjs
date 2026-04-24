@@ -87,22 +87,20 @@ export function createVextRequest(
   // ── 缓存原始请求体（body-parser 用）───────────────────────
   //
   // 直接从 IncomingMessage 读取 body 数据流。
-  // 使用 Buffer 拼接所有 chunk，最终转为 UTF-8 字符串。
-  // 缓存结果确保多次调用返回相同字符串。
+  // 以 Buffer 为主缓存（流只能消费一次），字符串从中惰性派生。
+  // 这样 _getRawBodyBuffer() 和 _getRawBody() 都不会重复消费数据流。
   //
-  // 对于 GET/HEAD 等无 body 方法，IncomingMessage 不会产生 data 事件，
-  // 直接返回空字符串。
-  //
-  let _rawBodyPromise: Promise<string> | undefined;
+  let _rawBufferPromise: Promise<Buffer> | undefined;
+  let _rawStringPromise: Promise<string> | undefined;
 
-  function getRawBody(): Promise<string> {
-    if (_rawBodyPromise !== undefined) return _rawBodyPromise;
+  function getRawBodyBuffer(): Promise<Buffer> {
+    if (_rawBufferPromise !== undefined) return _rawBufferPromise;
 
-    _rawBodyPromise = new Promise<string>((resolve, reject) => {
-      // 对于无 body 方法，快速返回空字符串
+    _rawBufferPromise = new Promise<Buffer>((resolve, reject) => {
+      // 对于无 body 方法，快速返回空 Buffer
       const method = incoming.method?.toUpperCase();
       if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
-        resolve("");
+        resolve(Buffer.alloc(0));
         return;
       }
 
@@ -113,12 +111,7 @@ export function createVextRequest(
       });
 
       incoming.on("end", () => {
-        if (chunks.length === 0) {
-          resolve("");
-          return;
-        }
-
-        resolve(Buffer.concat(chunks).toString("utf-8"));
+        resolve(chunks.length > 0 ? Buffer.concat(chunks) : Buffer.alloc(0));
       });
 
       incoming.on("error", (err) => {
@@ -126,7 +119,13 @@ export function createVextRequest(
       });
     });
 
-    return _rawBodyPromise;
+    return _rawBufferPromise;
+  }
+
+  function getRawBody(): Promise<string> {
+    if (_rawStringPromise !== undefined) return _rawStringPromise;
+    _rawStringPromise = getRawBodyBuffer().then((buf) => buf.toString("utf-8"));
+    return _rawStringPromise;
   }
 
   // ── 解析 IP ──────────────────────────────────────────────
@@ -246,11 +245,11 @@ export function createVextRequest(
 
     // ── 内部方法（body-parser 中间件使用）───────────────────
     //
-    // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
-    // 从 IncomingMessage 数据流读取原始 body 并转为 string，
+    // 从 IncomingMessage 数据流读取原始 body 并转为 string/Buffer，
     // 供 body-parser 中间件解析。
     //
     _getRawBody: getRawBody,
+    _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // P1 优化：已在对象字面量中使用 get query() 替代 Object.defineProperty

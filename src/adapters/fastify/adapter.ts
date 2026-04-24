@@ -137,10 +137,15 @@ export function createFastifyAdapter(
   //   - ignoreTrailingSlash: true — /users 和 /users/ 等价
   //   - caseSensitive: false — /Users 和 /users 等价
   //
+  const multipartMaxSize = app.config.multipart?.maxFileSize;
+  const defaultBodyLimit = multipartMaxSize != null
+    ? Math.max(multipartMaxSize, 1048576)
+    : 1048576;
+
   const fastify: FastifyInstance = Fastify({
     logger: options.logger ?? false,
     pluginTimeout: options.pluginTimeout ?? 10000,
-    bodyLimit: options.bodyLimit ?? 1048576, // 1MB
+    bodyLimit: options.bodyLimit ?? defaultBodyLimit, // 联动 multipart.maxFileSize
     // Fastify v5 要求路由器选项通过 routerOptions 传递（FSTDEP022）
     // 直接传 ignoreTrailingSlash / caseSensitive 在 v5 仍可用但会触发 deprecation warning，
     // v6 将彻底移除顶层支持。
@@ -364,7 +369,7 @@ export function createFastifyAdapter(
 
           // 🆕 5.7: ALS 可配置跳过
           const runNotFound = async () => {
-            const noop = async (): Promise<void> => {};
+            const noop = async (): Promise<void> => { };
             await handler(req, res, noop);
           };
 

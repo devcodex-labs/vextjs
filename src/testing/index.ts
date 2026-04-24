@@ -379,8 +379,8 @@ export async function createTestApp(
       () => internals.getRequestIdGenerator(),
       fetchCfg?.propagateHeaders ?? [],
       (finalConfig as Record<string, unknown>).locale as
-        | import("../types/app.js").VextLocaleConfig
-        | undefined,
+      | import("../types/app.js").VextLocaleConfig
+      | undefined,
     );
     app.adapter.registerMiddleware(requestIdMiddleware);
   }
@@ -395,6 +395,7 @@ export async function createTestApp(
   if (finalConfig.bodyParser?.enabled !== false) {
     const bodyParserMiddleware = createBodyParserMiddleware(
       finalConfig.bodyParser,
+      finalConfig.multipart,
     );
     app.adapter.registerMiddleware(bodyParserMiddleware);
   }

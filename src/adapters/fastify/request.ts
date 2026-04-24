@@ -90,6 +90,13 @@ export function createVextRequest(
     return Promise.resolve(_rawBodyCache);
   }
 
+  function getRawBodyBuffer(): Promise<Buffer> {
+    const body = request.body;
+    if (body === undefined || body === null) return Promise.resolve(Buffer.alloc(0));
+    if (Buffer.isBuffer(body)) return Promise.resolve(body);
+    return Promise.resolve(Buffer.alloc(0));
+  }
+
   // ── 解析 IP 和 Protocol ──────────────────────────────────
   //
   // 从 utils.ts 中导入的 resolveIp / resolveProtocol 已在 adapter.ts 中
@@ -172,7 +179,7 @@ export function createVextRequest(
     // 从 Fastify request.body（Buffer，由通用 content-type parser 提供）
     // 转为 string，供 body-parser 中间件解析。
     //
-    _getRawBody: getRawBody,
+    _getRawBody: getRawBody, _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────

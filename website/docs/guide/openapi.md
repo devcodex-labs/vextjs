@@ -530,6 +530,58 @@ app.post(
 }
 ```
 
+### 文件上传路由（multipart/form-data）
+
+使用 `RouteOptions.multipart.files` 声明文件上传路由，生成器自动输出 `multipart/form-data` requestBody。
+
+```typescript
+app.post(
+  '/upload/avatar',
+  {
+    middlewares: ['upload'],
+    multipart: {
+      files: {
+        avatar: { description: '头像图片（JPEG/PNG，最大 5MB）', required: true },
+      },
+    },
+    docs: {
+      summary: '上传头像',
+      tags: ['用户'],
+    },
+  },
+  handler,
+);
+```
+
+生成的 OpenAPI 片段：
+
+```json
+{
+  "requestBody": {
+    "required": true,
+    "content": {
+      "multipart/form-data": {
+        "schema": {
+          "type": "object",
+          "required": ["avatar"],
+          "properties": {
+            "avatar": {
+              "type": "string",
+              "format": "binary",
+              "description": "头像图片（JPEG/PNG，最大 5MB）"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+:::tip 和 validate.body 的关系
+`multipart.files` 和 `validate.body` 互斥。同时配置时，`multipart.files` 优先。
+:::
+
 ## 按环境控制
 
 建议在开发环境启用文档，生产环境关闭：

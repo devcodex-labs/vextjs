@@ -39,14 +39,23 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   let _paramsCache: Record<string, string> | undefined;
 
   // ── 缓存原始请求体（body-parser 用）───────────────────────
-  // _getRawBody 从 Hono Context 读取原始请求体文本（c.req.text()）。
-  // 使用缓存确保多次调用只读取一次流（ReadableStream 只能消费一次）。
-  let _rawBodyCache: string | undefined;
+  // 使用 Buffer 作为主缓存（arrayBuffer() 读取一次），字符串从中惰性派生。
+  // 这样 _getRawBodyBuffer() 和 _getRawBody() 都不会重复消费 ReadableStream。
+  let _rawBufferCache: Buffer | undefined;
+  let _rawStringCache: string | undefined;
+
+  async function getRawBodyBuffer(): Promise<Buffer> {
+    if (_rawBufferCache !== undefined) return _rawBufferCache;
+    const ab = await c.req.arrayBuffer();
+    _rawBufferCache = Buffer.from(ab);
+    return _rawBufferCache;
+  }
 
   async function getRawBody(): Promise<string> {
-    if (_rawBodyCache !== undefined) return _rawBodyCache;
-    _rawBodyCache = await c.req.text();
-    return _rawBodyCache;
+    if (_rawStringCache !== undefined) return _rawStringCache;
+    const buf = await getRawBodyBuffer();
+    _rawStringCache = buf.toString("utf-8");
+    return _rawStringCache;
   }
 
   // ── 懒解析函数 ──────────────────────────────────────────
@@ -150,9 +159,17 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     },
 
     // ── 内部方法（body-parser 中间件使用）───────────────────
-    // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
-    // 从 Hono Context 读取原始请求体文本，带缓存（流只能消费一次）。
+    // 从 Hono Context 读取原始请求体，带缓存（流只能消费一次）。
     _getRawBody: getRawBody,
+    _getRawBodyBuffer: getRawBodyBuffer,
+
+    // ── 内部方法（body-parser multipart 解析用）────────────
+    // 返回 Hono 原生 Web Request 对象，供 body-parser 直接调用
+    // c.req.raw.formData()，跳过 Buffer 中转，性能更优。
+    // 仅供框架内部使用，不建议用户代码直接调用。
+    _getHonoRawRequest(): Request {
+      return c.req.raw
+    },
   };
 
   // ── 定义懒解析 getter（query / headers / params）────────

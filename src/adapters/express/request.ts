@@ -99,6 +99,12 @@ export function createVextRequest(
     return Promise.resolve(_rawBodyCache);
   }
 
+  function getRawBodyBuffer(): Promise<Buffer> {
+    if (rawBody === undefined || rawBody === null) return Promise.resolve(Buffer.alloc(0));
+    if (Buffer.isBuffer(rawBody)) return Promise.resolve(rawBody);
+    return Promise.resolve(Buffer.alloc(0));
+  }
+
   // ── 解析 IP ──────────────────────────────────────────────
   //
   // 不使用 Express 的 req.ip（受 Express 自身 trust proxy 配置影响），
@@ -169,7 +175,7 @@ export function createVextRequest(
     },
 
     // ── 内部方法（body-parser 中间件使用）───────────────────
-    _getRawBody: getRawBody,
+    _getRawBody: getRawBody, _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────

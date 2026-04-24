@@ -336,11 +336,11 @@ export async function devBootstrap(
     // 需要将 propagateHeaders 传入，而 fetchConfig 原本在步骤 8+ 才读取。
     const fetchConfig = (config as Record<string, unknown>).fetch as
       | {
-          timeout?: number;
-          retry?: number;
-          retryDelay?: number;
-          propagateHeaders?: string[];
-        }
+        timeout?: number;
+        retry?: number;
+        retryDelay?: number;
+        propagateHeaders?: string[];
+      }
       | undefined;
 
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
@@ -392,14 +392,14 @@ export async function devBootstrap(
           | undefined,
         securitySchemes: (openapiConfig as Record<string, unknown>)
           ?.securitySchemes as Record<
-          string,
-          {
-            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-            scheme?: string;
-            bearerFormat?: string;
-            description?: string;
-          }
-        >,
+            string,
+            {
+              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+              scheme?: string;
+              bearerFormat?: string;
+              description?: string;
+            }
+          >,
         guardSecurityMap: (openapiConfig as Record<string, unknown>)
           ?.guardSecurityMap as Record<string, string> | undefined,
         contact: (openapiConfig as Record<string, unknown>)?.contact as
@@ -460,7 +460,7 @@ export async function devBootstrap(
 
     // 3. body-parser（config.bodyParser.enabled，默认 true）
     if (config.bodyParser?.enabled !== false) {
-      const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser);
+      const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser, config.multipart);
       app.adapter.registerMiddleware(bodyParserMiddleware);
     }
 
@@ -497,19 +497,19 @@ export async function devBootstrap(
     // 🆕 Dev 错误覆盖层：读取 config.dev.errorOverlay 配置，enabled !== false 时注入
     const devOverlayConfig = (config as Record<string, unknown>).dev as
       | {
-          errorOverlay?: {
-            enabled?: boolean;
-            theme?: "dark" | "light";
-            maxFrames?: number;
-          };
-        }
+        errorOverlay?: {
+          enabled?: boolean;
+          theme?: "dark" | "light";
+          maxFrames?: number;
+        };
+      }
       | undefined;
     const overlayEnabled = devOverlayConfig?.errorOverlay?.enabled !== false;
     const overlayOptions = devOverlayConfig?.errorOverlay
       ? {
-          theme: devOverlayConfig.errorOverlay.theme,
-          maxFrames: devOverlayConfig.errorOverlay.maxFrames,
-        }
+        theme: devOverlayConfig.errorOverlay.theme,
+        maxFrames: devOverlayConfig.errorOverlay.maxFrames,
+      }
       : undefined;
     const overlayFn = overlayEnabled
       ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
@@ -561,10 +561,10 @@ export async function devBootstrap(
     // 应用与生产模式一致的 server 配置
     const serverConfig = (config as Record<string, unknown>).server as
       | {
-          keepAliveTimeout?: number;
-          headersTimeout?: number;
-          requestTimeout?: number;
-        }
+        keepAliveTimeout?: number;
+        headersTimeout?: number;
+        requestTimeout?: number;
+      }
       | undefined;
 
     if (serverConfig?.keepAliveTimeout) {
@@ -630,7 +630,7 @@ export async function devBootstrap(
     //
     const reloadModelsClosure = hasMonsqlize
       ? (invalidated: Set<string>): Promise<ModelReloadResult> =>
-          reloadModelDefs(app as any, outDir, invalidated)
+        reloadModelDefs(app as any, outDir, invalidated)
       : undefined;
 
     // 🔧 D2/D3 修复（soft reload 侧）：
@@ -639,36 +639,36 @@ export async function devBootstrap(
     const builtinMwCreators: BuiltinMiddlewareCreators = {
       createRequestIdMiddleware: config.requestId?.enabled !== false
         ? ((cfg: Record<string, unknown>) =>
-            createRequestIdMiddleware(
-              cfg.requestId as any,
-              () => internals!.getRequestIdGenerator(),
-              (fetchConfig?.propagateHeaders ?? []) as string[],
-              cfg.locale as any,  // D3 修复：补传 localeConfig
-            )) as any
+          createRequestIdMiddleware(
+            cfg.requestId as any,
+            () => internals!.getRequestIdGenerator(),
+            (fetchConfig?.propagateHeaders ?? []) as string[],
+            cfg.locale as any,  // D3 修复：补传 localeConfig
+          )) as any
         : undefined,
       createCorsMiddleware: config.cors?.enabled !== false
         ? ((cfg: Record<string, unknown>) =>
-            createCorsMiddleware(cfg.cors as any)) as any
+          createCorsMiddleware(cfg.cors as any)) as any
         : undefined,
       createBodyParserMiddleware: config.bodyParser?.enabled !== false
         ? ((cfg: Record<string, unknown>) =>
-            createBodyParserMiddleware(cfg.bodyParser as any)) as any
+          createBodyParserMiddleware(cfg.bodyParser as any, cfg.multipart as any)) as any
         : undefined,
       createRateLimitMiddleware: config.rateLimit?.enabled !== false
         ? ((cfg: Record<string, unknown>) =>
-            createRateLimitMiddleware(cfg.rateLimit as any, () =>
-              internals!.getRateLimiter(),
-            )) as any
+          createRateLimitMiddleware(cfg.rateLimit as any, () =>
+            internals!.getRateLimiter(),
+          )) as any
         : undefined,
       responseWrapper: config.response?.wrap !== false
         ? (responseWrapper as any)
         : undefined,
       createAccessLogMiddleware: config.accessLog?.enabled !== false
         ? ((cfg: Record<string, unknown>) =>
-            createAccessLogMiddleware(
-              (cfg.accessLog ?? {}) as any,
-              app.logger,
-            )) as any
+          createAccessLogMiddleware(
+            (cfg.accessLog ?? {}) as any,
+            app.logger,
+          )) as any
         : undefined,
     };
 
@@ -687,7 +687,7 @@ export async function devBootstrap(
           // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
           overlayEnabled
             ? (err: unknown) =>
-                renderDevErrorPage(err, projectRoot, overlayOptions)
+              renderDevErrorPage(err, projectRoot, overlayOptions)
             : undefined,
           app.logger,  // 🆕 soft reload 后重建的错误处理器同样传入 logger
         )) as any,

@@ -489,6 +489,129 @@ VextJS 内置了以下插件：
 
 内置插件通过 `shouldLoadMonSQLize()` 检测是否应加载，实现零配置零开销——未安装对应依赖时完全不加载。
 
+## 文件上传
+
+VextJS 内置 `multipart/form-data` 解析，基于 Node.js 18+ 原生 `Request.formData()` API，零外部依赖。只需在配置中开启即可。
+
+### 开启内置解析
+
+```typescript
+// vext.config.ts
+export default defineConfig({
+  multipart: {
+    enabled: true,          // 开启内置解析
+    maxFileSize: 10 * 1024 * 1024,  // 单文件上限 10MB（默认）
+    maxFiles: 10,           // 单次最多文件数（默认）
+    // allowedMimeTypes: ['image/jpeg', 'image/png'],  // 可选：MIME 白名单
+  },
+});
+```
+
+开启后，所有 `multipart/form-data` 请求体将由 body-parser 自动解析，结果填充到 `req.files`（类型 `ParsedFile[]`）。未开启时对性能零影响。
+
+### 路由中使用
+
+```typescript
+// src/routes/upload.ts
+export default defineRoutes((app) => {
+  app.post('/upload', {
+    multipart: {
+      files: { avatar: '用户头像', resume: { description: '简历文件', required: true } },
+    },
+  }, async (req, res) => {
+    const avatarFile = req.files?.find(f => f.fieldname === 'avatar');
+    if (!avatarFile) {
+      res.json({ code: 400, message: '未上传文件' }, 400);
+      return;
+    }
+
+    // 校验文件类型
+    if (!avatarFile.mimetype.startsWith('image/')) {
+      res.json({ code: 400, message: '仅支持图片格式' }, 400);
+      return;
+    }
+
+    // 保存文件（avatarFile.buffer 保证二进制完整）
+    const filename = `${Date.now()}-${avatarFile.filename}`;
+    await fs.writeFile(`./uploads/${filename}`, avatarFile.buffer);
+
+    res.json({ filename, size: avatarFile.size });
+  });
+});
+```
+
+### ParsedFile 结构
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fieldname` | `string` | 表单字段名（`<input name="avatar">` 的 `avatar`） |
+| `filename` | `string` | 客户端原始文件名 |
+| `mimetype` | `string` | MIME 类型（如 `image/jpeg`） |
+| `buffer` | `Buffer` | 文件完整二进制内容 |
+| `size` | `number` | 文件大小（字节） |
+
+:::tip Fastify 用户
+Fastify adapter 会自动将 `bodyLimit` 与 `multipart.maxFileSize` 联动（取较大值），确保大文件不被 Fastify 层提前以 413 拒绝。
+:::
+
+### 自定义解析（高级）
+
+如需使用 [busboy](https://github.com/mscdex/busboy) 等第三方库进行更细粒度的控制（如流式写入磁盘），可通过插件实现。此时建议将 `multipart.enabled` 保持 `false`，在插件内自行处理：
+
+```typescript
+// src/plugins/upload-custom.ts
+import { definePlugin } from 'vextjs';
+import type { ParsedFile } from 'vextjs';
+import busboy from 'busboy';
+
+export default definePlugin({
+  name: 'upload-custom',
+
+  setup(app) {
+    app.use(async (req, _res, next) => {
+      const ct = req.headers['content-type'] ?? '';
+      if (!ct.startsWith('multipart/form-data')) {
+        await next();
+        return;
+      }
+
+      const rawBuffer = await req._getRawBodyBuffer();
+
+      req.files = await new Promise<ParsedFile[]>((resolve, reject) => {
+        const bb = busboy({ headers: { 'content-type': ct } });
+        const collected: ParsedFile[] = [];
+
+        bb.on('file', (fieldname, stream, info) => {
+          const chunks: Buffer[] = [];
+          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+          stream.on('end', () => {
+            const buffer = Buffer.concat(chunks);
+            collected.push({
+              fieldname,
+              filename: info.filename,
+              mimetype: info.mimeType,
+              buffer,
+              size: buffer.byteLength,
+            });
+          });
+        });
+
+        bb.on('finish', () => resolve(collected));
+        bb.on('error', reject);
+        bb.write(rawBuffer);
+        bb.end();
+      });
+
+      await next();
+    });
+  },
+});
+```
+
+:::tip 文件大小限制
+通过 `app.config.multipart.maxFileSize`（字节）控制最大文件大小。Fastify adapter 会自动将此值与 `bodyLimit` 联动，确保底层框架也接受足够大的请求体。
+:::
+
 ## 插件 vs 中间件 vs 服务
 
 | 方面       | 插件                   | 中间件               | 服务                   |

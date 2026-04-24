@@ -23,6 +23,7 @@
 | `ip`        | `string`                              | 客户端 IP                                                                                             |
 | `protocol`  | `'http' \| 'https'`                   | 请求协议                                                                                              |
 | `t`         | `Function \| undefined`               | i18n 翻译函数（插件注入）                                                                             |
+| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（multipart 插件解析后填充）                                                 |
 
 ---
 
@@ -379,6 +380,64 @@ app.get("/greeting", async (req, res) => {
     // → '欢迎, Alice'（中文）或 'Welcome, Alice'（英文）
     res.json({ message });
   }
+});
+```
+
+---
+
+### `files`
+
+文件上传列表，初始状态为 `undefined`。需配合文件上传插件（如 busboy 插件）设置。每个元素符合 `ParsedFile` 接口：
+
+```typescript
+interface ParsedFile {
+  fieldname: string;  // 表单字段名称
+  filename: string;   // 上传文件名
+  mimetype: string;   // MIME 类型，如 'image/png'
+  buffer: Buffer;     // 文件原始内容
+  size: number;       // 文件字节数
+}
+```
+
+```typescript
+app.post("/upload", { middlewares: ["upload"] }, async (req, res) => {
+  const file = req.files?.[0];
+  if (!file) {
+    res.json({ code: 400, message: "未上传文件" }, 400);
+    return;
+  }
+  // file.buffer 包含文件内容的完整 Buffer
+  res.json({ filename: file.filename, size: file.size });
+});
+```
+
+---
+
+### `_getRawBodyBuffer()`
+
+> ℹ️ 此为框架内部方法，主要供插件开发者使用。
+
+```typescript
+_getRawBodyBuffer(): Promise<Buffer>
+```
+
+返回原始请求体的 `Buffer`。每个 adapter 保证只消费一次数据流，结果内部缓存。阿这是实现文件上传插件的基础方法：
+
+```typescript
+// 插件示例（使用 busboy 解析 multipart/form-data）
+import { createBusboy } from 'busboy';
+import type { ParsedFile } from 'vextjs';
+
+export default definePlugin(async (app) => {
+  app.use(async (req, _res, next) => {
+    const ct = req.headers['content-type'] ?? '';
+    if (!ct.startsWith('multipart/form-data')) { await next(); return; }
+
+    const rawBuffer = await req._getRawBodyBuffer();
+    const files: ParsedFile[] = await parseMultipart(rawBuffer, ct);
+    req.files = files;
+    await next();
+  });
 });
 ```
 

@@ -1,6 +1,33 @@
 import type { VextApp } from "./app.js";
 
 /**
+ * ParsedFile — 已解析的上传文件
+ *
+ * 由 multipart 解析插件解析后填充到 req.files。
+ * 框架本身不包含 multipart 解析逻辑，仅提供类型定义。
+ * 具体解析由用户通过插件引入 busboy / formidable 等库实现。
+ *
+ * @example
+ * // 在 multipart 解析插件中：
+ * req.files = parsedFiles  // ParsedFile[]
+ * // 在路由 handler 中：
+ * const avatar = req.files?.[0]
+ * console.log(avatar.filename, avatar.size)
+ */
+export interface ParsedFile {
+  /** 表单字段名（<input name="avatar"> 中的 "avatar"） */
+  fieldname: string
+  /** 原始文件名（客户端文件系统中的名称，可能含路径，需自行处理安全） */
+  filename: string
+  /** MIME 类型（如 'image/jpeg'、'application/pdf'） */
+  mimetype: string
+  /** 文件二进制数据 */
+  buffer: Buffer
+  /** 文件大小（字节数） */
+  size: number
+}
+
+/**
  * VextRequest — 框架统一请求对象接口
  *
  * 由各 Adapter 负责将底层框架的请求对象转换为此接口。
@@ -150,6 +177,53 @@ export interface VextRequest {
    * @example req.t('welcome', { name: 'Alice' })  → '欢迎, Alice'
    */
   t?: (key: string, params?: Record<string, unknown>) => string;
+
+  // ── 文件上传 ────────────────────────────────────────────
+
+  /**
+   * 已解析的上传文件列表（由 multipart 解析插件填充）
+   *
+   * 需在路由或全局注册 multipart 解析插件后方可访问。
+   * 插件解析 multipart/form-data 请求体，将文件写入此字段。
+   * 非文件上传请求此字段为 undefined。
+   *
+   * @example
+   * app.post('/upload', {}, async (req, res) => {
+   *   const file = req.files?.[0]
+   *   if (!file) return res.json({ error: '未收到文件' })
+   *   // 处理 file.buffer ...
+   * })
+   */
+  files?: ParsedFile[]
+
+  // ── 内部方法（框架/插件使用）────────────────────────────
+
+  /**
+   * 获取原始请求体字符串（框架内部使用）
+   *
+   * 供 body-parser 中间件读取，不建议用户代码直接调用。
+   * 多次调用返回相同字符串（带缓存，流只消费一次）。
+   * GET / HEAD / OPTIONS 等无 body 方法返回空字符串。
+   *
+   * @internal 由各 adapter 注入实现
+   */
+  _getRawBody(): Promise<string>
+
+  /**
+   * 获取原始请求体 Buffer（插件使用）
+   *
+   * 返回未经任何编码转换的原始字节，是实现 multipart 解析的前提。
+   * 多次调用返回相同 Buffer 实例（带缓存，流只消费一次）。
+   * GET / HEAD / OPTIONS 等无 body 方法返回空 Buffer（length = 0）。
+   *
+   * @example
+   * // 在 multipart 解析插件中：
+   * const buffer = await req._getRawBodyBuffer()
+   * // 将 buffer 传递给 busboy / formidable 解析
+   *
+   * @internal 由各 adapter 注入实现
+   */
+  _getRawBodyBuffer(): Promise<Buffer>
 
   // ── 中间件 / 插件扩展字段 ────────────────────────────────
 

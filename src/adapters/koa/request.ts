@@ -102,6 +102,12 @@ export function createVextRequest(
     return Promise.resolve(_rawBodyCache);
   }
 
+  function getRawBodyBuffer(): Promise<Buffer> {
+    if (rawBody === undefined || rawBody === null) return Promise.resolve(Buffer.alloc(0));
+    if (Buffer.isBuffer(rawBody)) return Promise.resolve(rawBody);
+    return Promise.resolve(Buffer.alloc(0));
+  }
+
   // ── 解析 IP ──────────────────────────────────────────────
   //
   // 不使用 Koa 的 ctx.ip（受 Koa 自身 proxy 配置影响），
@@ -180,7 +186,7 @@ export function createVextRequest(
     // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
     // 从预收集的 rawBody（Buffer）转为 string，供 body-parser 中间件解析。
     //
-    _getRawBody: getRawBody,
+    _getRawBody: getRawBody, _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────

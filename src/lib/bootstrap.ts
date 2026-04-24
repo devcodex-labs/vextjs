@@ -192,11 +192,11 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     //
     const fetchConfig = (config as Record<string, unknown>).fetch as
       | {
-          timeout?: number;
-          retry?: number;
-          retryDelay?: number;
-          propagateHeaders?: string[];
-        }
+        timeout?: number;
+        retry?: number;
+        retryDelay?: number;
+        propagateHeaders?: string[];
+      }
       | undefined;
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
     app.fetch = createVextFetch(
@@ -245,14 +245,14 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
           | undefined,
         securitySchemes: (openapiConfig as Record<string, unknown>)
           ?.securitySchemes as Record<
-          string,
-          {
-            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-            scheme?: string;
-            bearerFormat?: string;
-            description?: string;
-          }
-        >,
+            string,
+            {
+              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+              scheme?: string;
+              bearerFormat?: string;
+              description?: string;
+            }
+          >,
         guardSecurityMap: (openapiConfig as Record<string, unknown>)
           ?.guardSecurityMap as Record<string, string> | undefined,
         contact: (openapiConfig as Record<string, unknown>)?.contact as
@@ -324,6 +324,7 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
     if (config.bodyParser?.enabled !== false) {
       const bodyParserMiddleware = createBodyParserMiddleware(
         config.bodyParser,
+        config.multipart,
       );
       app.adapter.registerMiddleware(bodyParserMiddleware);
     }

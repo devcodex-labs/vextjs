@@ -1,5 +1,6 @@
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextBodyParserConfig } from "../../types/app.js";
+import type { VextBodyParserConfig, VextMultipartConfig } from "../../types/app.js";
+import type { VextRequest, ParsedFile } from "../../types/request.js";
 
 /**
  * parseBytes — 将人类可读的体积字符串转为字节数
@@ -20,7 +21,7 @@ export function parseBytes(value: string | number): number {
   if (!match) {
     throw new Error(
       `[vextjs] Invalid body size format: "${value}". ` +
-        `Expected format: '1mb', '512kb', '1gb', or a number (bytes).`,
+      `Expected format: '1mb', '512kb', '1gb', or a number (bytes).`,
     );
   }
 
@@ -35,6 +36,83 @@ export function parseBytes(value: string | number): number {
   };
 
   return Math.floor(num * multipliers[unit]!);
+}
+
+/**
+ * parseMultipart — 内置 multipart/form-data 解析器
+ *
+ * 使用 Node.js 18+ Web API（Request.formData()）解析，零外部依赖。
+ * Hono adapter 走直接路径（c.req.raw.formData()），其余 adapter 构造
+ * 标准 Web Request 后调用 formData()。
+ */
+async function parseMultipart(
+  req: VextRequest,
+  contentType: string,
+  config: VextMultipartConfig,
+): Promise<ParsedFile[]> {
+  let formData: FormData
+
+  // Hono adapter 暴露了 _getHonoRawRequest()，走原生路径无 Buffer 中转
+  if (typeof (req as Record<string, unknown>)._getHonoRawRequest === 'function') {
+    const rawReq = (req as Record<string, unknown>)._getHonoRawRequest as () => Request
+    formData = await rawReq().formData()
+  } else {
+    // 其余 4 个 adapter：通过 Buffer 构造标准 Web Request
+    const rawBuffer = await req._getRawBodyBuffer()
+    const dummyRequest = new Request('http://localhost', {
+      method: 'POST',
+      body: rawBuffer,
+      headers: { 'content-type': contentType },
+    })
+    formData = await dummyRequest.formData()
+  }
+
+  return formDataToFiles(formData, config)
+}
+
+/**
+ * formDataToFiles — 将 FormData 中的 File 条目转换为 ParsedFile[]
+ *
+ * 按顺序校验 maxFiles / maxFileSize / allowedMimeTypes，
+ * 不满足时抛出带 status 的错误对象（由调用方转换为 HTTP 响应）。
+ */
+async function formDataToFiles(
+  formData: FormData,
+  config: VextMultipartConfig,
+): Promise<ParsedFile[]> {
+  const files: ParsedFile[] = []
+  const maxFiles = config.maxFiles ?? 10
+  const maxFileSize = config.maxFileSize ?? 10 * 1024 * 1024
+
+  for (const [fieldname, value] of formData.entries()) {
+    if (value instanceof File) {
+      if (files.length >= maxFiles) {
+        throw { status: 413, message: 'Too many files' }
+      }
+
+      const buffer = Buffer.from(await value.arrayBuffer())
+
+      if (buffer.length > maxFileSize) {
+        throw { status: 413, message: `File "${value.name}" exceeds maxFileSize` }
+      }
+
+      const mimetype = value.type || 'application/octet-stream'
+
+      if (config.allowedMimeTypes && !config.allowedMimeTypes.includes(mimetype)) {
+        throw { status: 415, message: `MIME type "${mimetype}" is not allowed` }
+      }
+
+      files.push({
+        fieldname,
+        filename: value.name,
+        mimetype,
+        buffer,
+        size: buffer.length,
+      })
+    }
+  }
+
+  return files
 }
 
 /**
@@ -59,7 +137,8 @@ export function parseBytes(value: string | number): number {
  *   - Hono adapter 已将 Node.js IncomingMessage 转为 Web Request，
  *     但 body 解析由 vext body-parser 在中间件层完成（而非 adapter 层），
  *     确保用户中间件和 handler 拿到的 req.body 是已解析的对象
- *   - multipart/form-data 不在内置支持范围内，需通过插件扩展
+ *   - multipart/form-data：当 multipartConfig.enabled = true 时内置解析并填充 req.files，
+ *     否则跳过（req.files 保持 undefined）
  *
  * 与 Hono adapter 的协作：
  *   Hono adapter 的 buildHandler() 将 Node.js IncomingMessage 转为 Web ReadableStream
@@ -84,6 +163,7 @@ export function parseBytes(value: string | number): number {
  */
 export function createBodyParserMiddleware(
   config: VextBodyParserConfig,
+  multipartConfig?: VextMultipartConfig,
 ): VextMiddleware {
   const maxBytes = parseBytes(config.maxBodySize ?? "1mb");
 
@@ -109,35 +189,44 @@ export function createBodyParserMiddleware(
       "application/x-www-form-urlencoded",
     );
 
+    // ── 内置 multipart 解析（enabled 时自动填充 req.files）──────
+    if (contentType.startsWith('multipart/form-data')) {
+      if (multipartConfig?.enabled) {
+        try {
+          req.files = await parseMultipart(req, contentType, multipartConfig)
+        } catch (err: unknown) {
+          const httpErr = err as { status?: number; message?: string }
+          res.rawJson(
+            {
+              code: httpErr.status ?? 400,
+              message: httpErr.message ?? 'Bad Request: multipart parse error',
+              requestId: req.requestId,
+            },
+            (httpErr.status ?? 400) as 400 | 413 | 415,
+          )
+          return
+        }
+      }
+      // enabled = false 时跳过（req.files 保持 undefined）
+      await next()
+      return
+    }
+
     if (!isJson && !isUrlEncoded) {
-      // 其他 Content-Type（multipart 等）跳过，req.body 保持 undefined
+      // 其他非 multipart Content-Type → 跳过
       await next();
       return;
     }
 
     // ── 读取原始请求体 ──────────────────────────────────
     //
-    // VextRequest 上通过 adapter 注入了 _getRawBody() 方法，
-    // 返回原始请求体的字符串。adapter 内部通过 Hono Context 的
-    // c.req.text() 读取 Web Request body。
-    //
-    // 如果 _getRawBody 不可用（理论上不应发生，但防御性编码），
-    // 则跳过解析。
+    // VextRequest 上定义了 _getRawBody() 方法，由 adapter 实现。
+    // 直接调用，无需类型转换。
     //
     let rawBody: string;
 
     try {
-      const getRawBody = (req as Record<string, unknown>)._getRawBody as
-        | (() => Promise<string>)
-        | undefined;
-
-      if (!getRawBody) {
-        // adapter 未注入 _getRawBody，跳过（不应发生）
-        await next();
-        return;
-      }
-
-      rawBody = await getRawBody();
+      rawBody = await req._getRawBody();
     } catch {
       // 读取失败（客户端可能已断开）
       res.rawJson(

@@ -551,6 +551,56 @@ export interface VextBodyParserConfig {
 }
 
 /**
+ * Multipart / 文件上传全局配置
+ */
+export interface VextMultipartConfig {
+  /**
+   * 是否启用内置 multipart 解析（默认 false）
+   *
+   * 设为 true 后，body-parser 在检测到 multipart/form-data 请求时
+   * 自动填充 req.files，无需用户编写解析插件。
+   * 未启用时对性能零影响。
+   */
+  enabled?: boolean;
+
+  /** 单个文件最大大小（字节，默认 10MB） */
+  maxFileSize?: number;
+
+  /** 单次请求最多文件数（默认 10） */
+  maxFiles?: number;
+
+  /**
+   * 允许的 MIME 类型列表（不设置则允许所有）
+   * @example ['image/jpeg', 'image/png', 'application/pdf']
+   */
+  allowedMimeTypes?: string[];
+}
+
+/**
+ * 路由级单个文件字段配置
+ */
+export interface MultipartFileFieldConfig {
+  /** 字段说明（供 OpenAPI 文档使用） */
+  description?: string;
+
+  /** 是否必传（默认 false） */
+  required?: boolean;
+}
+
+/**
+ * 路由级 Multipart 配置
+ */
+export interface MultipartRouteConfig {
+  /**
+   * 文件字段列表，键为表单字段名
+   *
+   * 字符串值为字段说明，对象形式可配置 required 等选项。
+   * @example { avatar: 'Profile avatar image', doc: { description: 'PDF document', required: true } }
+   */
+  files?: Record<string, string | MultipartFileFieldConfig>;
+}
+
+/**
  * Access Log 配置
  *
  * 控制内置 access-log 中间件的行为。
@@ -822,6 +872,9 @@ export interface VextConfig {
 
   /** Body 解析配置 */
   bodyParser: VextBodyParserConfig;
+
+  /** Multipart / 文件上传配置 */
+  multipart?: VextMultipartConfig;
 
   /** Access Log 配置 */
   accessLog: VextAccessLogConfig;
@@ -1317,6 +1370,13 @@ export interface RouteOptions {
     maxBodySize?: string | number;
     cors?: VextCorsConfig;
   };
+
+  /**
+   * 路由级 multipart / 文件上传配置
+   *
+   * 配置后 OpenAPI 生成器会自动输出 multipart/form-data requestBody。
+   */
+  multipart?: MultipartRouteConfig;
 }
 
 // ── 路由内部类型 ────────────────────────────────────────────
