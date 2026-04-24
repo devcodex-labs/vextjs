@@ -11,7 +11,7 @@ export type {
 export { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "./middleware.js";
 
 // ── 请求 / 响应类型 ────────────────────────────────────────
-export type { VextRequest } from "./request.js";
+export type { VextRequest, ParsedFile } from "./request.js";
 export type { VextResponse, VextPublicResponse } from "./response.js";
 
 // ── 错误类型 ────────────────────────────────────────────────

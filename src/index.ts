@@ -15,6 +15,7 @@ export type {
 
   // 请求 / 响应类型
   VextRequest,
+  ParsedFile,
   VextResponse,
   VextPublicResponse,
 
