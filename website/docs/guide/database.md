@@ -274,17 +274,40 @@ const User = app.db.model("User");
 const result = await User.findPage({ role: "admin" }, { page: 1, limit: 20 });
 ```
 
-### use(name)
+### use(dbName)
 
-获取其他数据库实例（跨库查询），类似 MongoDB shell 的 `use <db>` 命令：
+切换到指定数据库（默认连接池），适合单连接多库的场景：
 
 ```typescript
-const logsDb = app.db.use("logs");
-const errorLogs = logsDb.collection("errors");
-const recent = await errorLogs.find({ level: "error" });
+// 访问 billing 数据库的 invoices 集合
+const billing = app.db.use("billing");
+const invoice = await billing.collection("invoices").findOne({ _id: id });
+
+// 也可直接链式调用
+const invoice = await app.db.use("billing").collection("invoices").findOne({ _id: id });
+
+// use().model() 会自动加前缀（dbName + modelName）查找 Model key
+// 例：use('billing').model('Invoice') 内部查找 key = 'BillingInvoice'
+const Invoice = app.db.use("billing").model("Invoice");
 ```
 
-> `app.db.db(name)` 仍可使用（向后兼容），但推荐使用语义更清晰的 `app.db.use(name)`。
+### pool(poolName)
+
+切换到指定连接池，返回包含 `collection` / `model` / `use` 的访问器：
+
+```typescript
+// 访问 cn 池的 orders 集合
+const order = await app.db.pool("cn").collection("orders").findOne({ _id: id });
+
+// cn 池 + billing 库
+const invoice = await app.db.pool("cn").use("billing").collection("invoices").findOne({});
+
+// cn 池 + billing 库 + Model
+const Invoice = app.db.pool("cn").use("billing").model("Invoice");
+// 内部 key: BillingInvoice（前缀逻辑同 use()）
+```
+
+> ⚠️ `pool()` 会立即校验连接池是否存在，找不到时抛出 `POOL_NOT_FOUND` 错误（`err.available` 含可用池列表）。
 
 ### client
 
@@ -424,7 +447,44 @@ options: { timestamps: { createdAt: 'created_time', updatedAt: 'updated_time' } 
 options: { timestamps: { createdAt: true, updatedAt: false } }
 ```
 
-### 目录结构
+### `key` 别名（跨连接池快捷访问）
+
+当 Model 集合名包含前缀（如 `BillingInvoice`）时，可以定义 `key` 别名，通过短名快捷访问：
+
+```typescript
+// src/models/billing-invoice.ts
+export default {
+  collection: "BillingInvoice",  // MongoDB 实际集合名
+  key: "Invoice",                // 短名别名（可选）
+
+  schema: {
+    amount: "number!",
+    currency: "CNY|USD|EUR",
+    status: "draft|pending|paid",
+  },
+
+  // 绑定到指定连接池 + 数据库（让 app.db.model() 路由正确）
+  connection: {
+    pool: "billing",
+    database: "billing",
+  },
+};
+```
+
+注册后，两个 key 均可使用：
+
+```typescript
+app.db.model("BillingInvoice")  // 按集合名（全路径）
+app.db.model("Invoice")          // 按别名（短名）
+
+// 搭配 pool() 使用
+app.db.pool("billing").model("BillingInvoice")
+app.db.pool("billing").model("Invoice")
+```
+
+> **注意**：如果别名与已注册的其他 Model 冲突，别名注册会被跳过（不覆盖现有注册），仅集合名有效。
+
+
 
 Model 文件放在 `src/models/` 目录下，插件会自动扫描并注册：
 
@@ -864,3 +924,40 @@ MonSQLize 插件在 `app.onClose()` 中注册了数据库连接关闭钩子。�
 - 查看 [插件](/guide/plugins) 如何通过 `definePlugin()` 扩展框架
 - 学习 [测试](/guide/testing) 中如何使用 `createTestApp()` 进行集成测试
 - 探索 [app.fetch 内置 HTTP 客户端](/guide/fetch) 在微服务中调用其他服务
+
+## 迁移指南 (v0.2.x → v0.3.0)
+
+### B1：`app.db.db()` 已移除
+
+旧用法（v0.2.x，存在运行时 bug — monSQLize 并未提供 `db()` 方法）：
+
+```typescript
+// ❌ v0.2.x — 实际会在运行时报错
+const logsDb = app.db.db("logs");
+```
+
+新用法（v0.3.0）：
+
+```typescript
+// ✅ v0.3.0 — 切换数据库（默认连接池）
+const logsDb = app.db.use("logs");
+
+// 如需同时切换连接池
+const logsDb = app.db.pool("cn").use("logs");
+```
+
+### B2：`app.db.use()` 变为单参数
+
+旧用法（如有自行扩展传入两个参数）：
+
+```typescript
+// ❌ v0.2.x 非标准用法
+app.db.use("cn", "billing")
+```
+
+新用法：
+
+```typescript
+// ✅ v0.3.0 — 先切换连接池，再切换数据库
+app.db.pool("cn").use("billing")
+```

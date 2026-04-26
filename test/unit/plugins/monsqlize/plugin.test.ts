@@ -110,19 +110,25 @@ function createMockMonSQLize() {
   const mockCollection = vi
     .fn()
     .mockReturnValue({ find: vi.fn(), insertOne: vi.fn() });
-  const mockDb = vi.fn().mockReturnValue({ collection: vi.fn() });
   const mockModel = vi.fn().mockReturnValue({ find: vi.fn(), create: vi.fn() });
+  const mockScopedCollection = vi
+    .fn()
+    .mockReturnValue({ find: vi.fn(), insertOne: vi.fn() });
+  const mockScopedModel = vi
+    .fn()
+    .mockReturnValue({ find: vi.fn(), create: vi.fn() });
   const mockConnect = vi
     .fn()
-    .mockResolvedValue({ collection: mockCollection, db: mockDb });
+    .mockResolvedValue({ collection: mockCollection });
   const mockClose = vi.fn().mockResolvedValue(undefined);
 
   const instance = {
     connect: mockConnect,
     close: mockClose,
     collection: mockCollection,
-    db: mockDb,
     model: mockModel,
+    scopedCollection: mockScopedCollection,
+    scopedModel: mockScopedModel,
     _adapter: { client: { db: vi.fn(), close: vi.fn() } }, // mock MongoDB client via _adapter
   };
 
@@ -131,8 +137,9 @@ function createMockMonSQLize() {
     mockConnect,
     mockClose,
     mockCollection,
-    mockDb,
     mockModel,
+    mockScopedCollection,
+    mockScopedModel,
   };
 }
 
@@ -1518,14 +1525,101 @@ describe("createConnection", () => {
     expect(mock.mockModel).toHaveBeenCalledWith("User");
   });
 
-  it("returns connection with db method", async () => {
+  it("returns connection with use() method (B1: db() removed)", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
 
     const conn = await createConnection(mock.instance as any, app);
 
-    const result = conn.db("admin");
-    expect(mock.mockDb).toHaveBeenCalledWith("admin");
+    // use() returns scoped accessor
+    expect(typeof conn.use).toBe("function");
+    const scoped = conn.use("billing");
+    expect(typeof scoped.model).toBe("function");
+    expect(typeof scoped.collection).toBe("function");
+  });
+
+  it("use().collection() delegates to scopedCollection with database opt", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.use("billing").collection("invoices");
+
+    expect(mock.mockScopedCollection).toHaveBeenCalledWith("invoices", {
+      database: "billing",
+    });
+  });
+
+  it("use().model() applies prefix logic for model key", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.use("billing").model("Invoice");
+
+    // prefix = 'Billing', key = 'BillingInvoice'
+    expect(mock.mockModel).toHaveBeenCalledWith("BillingInvoice");
+  });
+
+  it("returns connection with pool() method (R3)", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+
+    expect(typeof conn.pool).toBe("function");
+    const poolAccessor = conn.pool("cn");
+    expect(typeof poolAccessor.collection).toBe("function");
+    expect(typeof poolAccessor.model).toBe("function");
+    expect(typeof poolAccessor.use).toBe("function");
+  });
+
+  it("pool().collection() delegates to scopedCollection with pool opt", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.pool("cn").collection("orders");
+
+    expect(mock.mockScopedCollection).toHaveBeenCalledWith("orders", {
+      pool: "cn",
+    });
+  });
+
+  it("pool().model() delegates to scopedModel with pool opt", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.pool("cn").model("Order");
+
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("Order", { pool: "cn" });
+  });
+
+  it("pool().use().collection() delegates with pool + database opts", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.pool("cn").use("billing").collection("invoices");
+
+    expect(mock.mockScopedCollection).toHaveBeenCalledWith("invoices", {
+      pool: "cn",
+      database: "billing",
+    });
+  });
+
+  it("pool().use().model() applies prefix + pool opts", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.pool("cn").use("billing").model("Invoice");
+
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("BillingInvoice", {
+      pool: "cn",
+      database: "billing",
+    });
   });
 
   it("returns connection with client getter", async () => {

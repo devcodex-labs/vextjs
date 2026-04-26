@@ -36,8 +36,52 @@ export async function createConnection(
   // ── 构建连接对象 ──────────────────────────────────────
   const connection: MonSQLizeConnection = {
     collection: (name: string) => monsqlize.collection(name),
-    db: (name: string) => (monsqlize as any).db(name),
+
+    // db() — 已删除（R4：原实现调用不存在的 monsqlize.db()，为运行时 bug）
+
     model: (name: string) => monsqlize.model(name),
+
+    // R2：单参数；R1：补全 collection
+    use(dbName: string) {
+      const prefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
+      return {
+        model: (name: string) => {
+          const key = prefix + name.charAt(0).toUpperCase() + name.slice(1);
+          return monsqlize.model(key);
+        },
+        collection: (name: string) =>
+          monsqlize.scopedCollection(name, { database: dbName }),
+      };
+    },
+
+    // R3：新增 pool()
+    pool(poolName: string) {
+      return {
+        model: (key: string) =>
+          monsqlize.scopedModel(key, { pool: poolName }),
+
+        collection: (name: string) =>
+          monsqlize.scopedCollection(name, { pool: poolName }),
+
+        use(dbName: string) {
+          const prefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
+          return {
+            model: (key: string) => {
+              const scopedKey = prefix + key.charAt(0).toUpperCase() + key.slice(1);
+              return monsqlize.scopedModel(scopedKey, {
+                pool: poolName,
+                database: dbName,
+              });
+            },
+            collection: (name: string) =>
+              monsqlize.scopedCollection(name, {
+                pool: poolName,
+                database: dbName,
+              }),
+          };
+        },
+      };
+    },
 
     // 暴露底层 MongoDB Client（事务等高级场景）
     // MonSQLize 将 MongoClient 存储在 _adapter.client（而非 _client）

@@ -36,23 +36,85 @@ declare module "../../../types/app.js" {
  * 由插件在 setup 阶段创建并挂载到 app.db。
  * 封装 MonSQLize 实例的常用方法，提供简洁的 API。
  */
+/**
+ * 连接池访问器
+ *
+ * 通过 app.db.pool(name) 获取，提供与 app.db 对称的访问接口。
+ * 所有方法均将操作路由到指定连接池。
+ */
+export interface PoolAccessor {
+  /** 获取指定池上的 Model 实例 */
+  model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
+  /** 获取指定池上的原生 Collection */
+  collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+  /** 切换数据库，返回限定池+库的访问器 */
+  use: (dbName: string) => {
+    model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
+    collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+  };
+}
+
 export interface MonSQLizeConnection {
   /** 获取集合操作对象 */
   collection: (
     name: string,
   ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
 
-  /** 获取数据库实例（跨库查询） */
-  db: (name: string) => { collection: (name: string) => unknown };
+  // db() — 已移除（R4 Breaking Change）
 
   /** 获取 Model 操作对象（需先定义 Model） */
   model: (name: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
+
+  /**
+   * 切换数据库作用域（R1 补全 collection，R2 改为单参数）
+   *
+   * `use('billing').model('Invoice')`     → key=BillingInvoice，默认池 billing库
+   * `use('billing').collection('orders')` → 默认池 billing库 orders集合
+   */
+  use: (dbName: string) => {
+    model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
+    collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+  };
+
+  /** 切换连接池（R3 新增） */
+  pool: (name: string) => PoolAccessor;
 
   /** 原始 MongoDB Client（事务等高级场景） */
   readonly client: any;
 }
 
 // ── 配置类型 ────────────────────────────────────────────────
+
+/**
+ * Vext Model 定义对象类型
+ *
+ * 在 src/models/ 下的 Model 文件中 export default 此对象。
+ */
+export interface VextModelDefinition {
+  /**
+   * 自定义注册别名（R5 新增）
+   *
+   * 为 Model 额外添加一个短名（如将 billing/invoice.ts 额外注册为 'Invoice'），
+   * 路径推断名 'BillingInvoice' 同时保留，两者均可访问同一 Model（双重注册）。
+   * 只影响 `app.db.model(key)` 的查找名，不影响 MongoDB 集合名。
+   *
+   * 建议仅在需要跨模块短名访问时使用，注意避免与其他 Model 的推断名冲突。
+   */
+  key?: string;
+  /** @deprecated 用 key 控制注册名；用 collection 控制集合名 */
+  name?: string;
+  /** MongoDB 集合名（不填则使用文件名/name/key） */
+  collection?: string;
+  schema?: (dsl: unknown) => unknown;
+  relations?: Record<string, unknown>;
+  hooks?: (model: unknown) => Record<string, unknown>;
+  methods?: (model: unknown) => {
+    instance?: Record<string, unknown>;
+    static?: Record<string, unknown>;
+  };
+  indexes?: Array<Record<string, unknown>>;
+  enums?: Record<string, unknown>;
+}
 
 /**
  * MonSQLize 数据库配置

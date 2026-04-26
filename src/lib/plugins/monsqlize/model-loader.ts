@@ -272,6 +272,15 @@ async function loadLocalModels(
         `[monsqlize] model loaded: ${collectionName} (from ${file})`,
       );
     }
+
+    // R5：若配了 key 且与推断名不同，额外注册别名（双重注册，原推断名保留）
+    const aliasKey = def.key as string | undefined;
+    if (aliasKey && aliasKey !== collectionName && !ModelClass.has(aliasKey)) {
+      ModelClass.define(aliasKey, definition as any);
+      app.logger.debug(
+        `[monsqlize] model alias '${aliasKey}' registered (from ${file})`,
+      );
+    }
   }
 
   return count;
