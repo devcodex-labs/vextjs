@@ -38,7 +38,7 @@ export async function setupMonSQLize(
   app: VextApp,
   srcDir: string,
 ): Promise<void> {
-  const config = (app.config as { database?: MonSQLizeDatabaseConfig })
+  let config = (app.config as { database?: MonSQLizeDatabaseConfig })
     .database;
 
   // ── 配置校验 ──────────────────────────────────────────────
@@ -58,6 +58,52 @@ export async function setupMonSQLize(
     throw new Error(
       '[monsqlize] Missing "database.config" — at minimum provide { url: "..." }.',
     );
+  }
+
+  // ── 0. 多连接池 useMemoryServer 预处理（仅测试场景）────────
+  // monSQLize 的 PoolConfig 校验器要求 pool 必须有真实 mongodb:// uri，
+  // 不接受 useMemoryServer 标志。此处在 vext 层为标记了 useMemoryServer
+  // 的 pool 条目预先启动 MongoMemoryServer，并把生成的 URI 写回 config.uri，
+  // 同时在 onClose 中停止这些 memory server。
+  const memoryServersToStop: Array<{ stop: () => Promise<void> }> = [];
+  if (config.pools && config.pools.length > 0) {
+    // 深拷贝 pools（vext 配置可能被冻结，无法原地写入）
+    const clonedPools: Array<any> = config.pools.map((p: any) => ({
+      ...p,
+      config: { ...(p.config || {}) },
+    }));
+    for (const pool of clonedPools) {
+      const innerCfg = pool.config;
+      const hasUri =
+        typeof innerCfg.uri === "string" || typeof innerCfg.url === "string";
+      if (innerCfg.useMemoryServer === true && !hasUri) {
+        try {
+          const { MongoMemoryServer } = await import("mongodb-memory-server");
+          const server = await MongoMemoryServer.create(
+            innerCfg.memoryServerOptions,
+          );
+          const uri = server.getUri();
+          innerCfg.uri = uri;
+          delete innerCfg.useMemoryServer;
+          delete innerCfg.memoryServerOptions;
+          memoryServersToStop.push({
+            stop: async () => {
+              await server.stop();
+            },
+          });
+          app.logger.info(
+            `[monsqlize] pool '${pool.name}' using in-memory MongoDB`,
+            { uri },
+          );
+        } catch (err) {
+          throw new Error(
+            `[monsqlize] Failed to start MongoMemoryServer for pool '${pool.name}': ${(err as Error).message}\n` +
+              "  Make sure mongodb-memory-server is installed.",
+          );
+        }
+      }
+    }
+    config = { ...config, pools: clonedPools };
   }
 
   // ── 1. 构建 MonSQLize 配置 ────────────────────────────────
@@ -92,6 +138,16 @@ export async function setupMonSQLize(
       app.logger.error("[monsqlize] error closing connection", {
         error: (err as Error).message,
       });
+    }
+    // 停止本插件为 pool 启动的 in-memory MongoDB 实例
+    for (const ms of memoryServersToStop) {
+      try {
+        await ms.stop();
+      } catch (err) {
+        app.logger.warn("[monsqlize] failed to stop pool memory server", {
+          error: (err as Error).message,
+        });
+      }
     }
   });
 
@@ -197,15 +253,21 @@ function buildMonSQLizeConfig(
   }
 
   // ── 多连接池 ──────────────────────────────────────────────
+  // monSQLize 的 PoolConfig 校验器要求扁平结构 { name, uri, options? }，
+  // 而非嵌套的 { name, config: { uri } }。此处把用户在 vext 配置中写的
+  // { name, config: { url|uri } } 平铺为 { name, uri, options? }。
   if (config.pools && config.pools.length > 0) {
-    // N1: 每个 pool 也需要做 url → uri 映射
     result.pools = config.pools.map((pool) => {
-      const poolConfig: Record<string, unknown> = { ...pool.config };
-      if ("url" in poolConfig && poolConfig.url != null && !("uri" in poolConfig)) {
-        poolConfig.uri = poolConfig.url;
-        delete poolConfig.url;
+      const inner: Record<string, unknown> = { ...(pool.config || {}) };
+      let uri: unknown = inner.uri;
+      if (uri == null && inner.url != null) uri = inner.url;
+      const flat: Record<string, unknown> = { name: pool.name, uri };
+      if (pool.options !== undefined) flat.options = pool.options;
+      // 透传可选字段（role/weight/tags/healthCheck 等）
+      for (const k of ["role", "weight", "tags", "healthCheck"] as const) {
+        if ((pool as any)[k] !== undefined) flat[k] = (pool as any)[k];
       }
-      return { ...pool, config: poolConfig };
+      return flat;
     });
     result.poolStrategy = config.poolStrategy ?? "auto";
   }

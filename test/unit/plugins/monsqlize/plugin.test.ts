@@ -956,8 +956,8 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.pools).toEqual([
-      { name: "primary", config: { uri: "mongodb://primary:27017/db" } },
-      { name: "replica", config: { uri: "mongodb://replica:27017/db" } },
+      { name: "primary", uri: "mongodb://primary:27017/db" },
+      { name: "replica", uri: "mongodb://replica:27017/db" },
     ]);
     expect(passedConfig.poolStrategy).toBe("round-robin");
   });
@@ -1216,7 +1216,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     expect(passedConfig.config.uri).toBe("mongodb://localhost:27017/myapp");
   });
 
-  it("N1: maps url to uri for each pool entry", async () => {
+  it("N1: flattens pool config to { name, uri } for monSQLize compat", async () => {
     const { app } = createMockApp({
       database: {
         config: { uri: "mongodb://localhost/main" },
@@ -1230,8 +1230,15 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
-    expect(passedConfig.pools[0].config.uri).toBe("mongodb://p1:27017/db");
-    expect(passedConfig.pools[1].config.uri).toBe("mongodb://p2:27017/db");
+    // monSQLize 的 PoolConfig 校验器要求扁平 { name, uri }，不接受 { config: { uri } }
+    expect(passedConfig.pools[0]).toEqual({
+      name: "p1",
+      uri: "mongodb://p1:27017/db",
+    });
+    expect(passedConfig.pools[1]).toEqual({
+      name: "p2",
+      uri: "mongodb://p2:27017/db",
+    });
   });
 });
 
@@ -1808,14 +1815,45 @@ describe("createConnection", () => {
     });
   });
 
-  it("pool().use().model() applies prefix + pool opts", async () => {
+  it("pool().use().model() tries depth-2 key first then falls back to depth-1", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
+
+    // 模拟 depth-2 key 未注册：首次调用抛 MODEL_NOT_DEFINED
+    let call = 0;
+    mock.mockScopedModel.mockImplementation((key: string) => {
+      call++;
+      if (call === 1) {
+        const err: any = new Error(`Model '${key}' is not defined.`);
+        err.code = "MODEL_NOT_DEFINED";
+        throw err;
+      }
+      return { _key: key };
+    });
 
     const conn = await createConnection(mock.instance as any, app);
     conn.pool("cn").use("billing").model("Invoice");
 
-    expect(mock.mockScopedModel).toHaveBeenCalledWith("BillingInvoice", {
+    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(1, "CnBillingInvoice", {
+      pool: "cn",
+      database: "billing",
+    });
+    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(2, "BillingInvoice", {
+      pool: "cn",
+      database: "billing",
+    });
+  });
+
+  it("pool().use().model() uses depth-2 key directly when registered", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+    mock.mockScopedModel.mockReturnValue({ _ok: true } as any);
+
+    const conn = await createConnection(mock.instance as any, app);
+    conn.pool("cn").use("billing").model("Order");
+
+    expect(mock.mockScopedModel).toHaveBeenCalledTimes(1);
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("CnBillingOrder", {
       pool: "cn",
       database: "billing",
     });

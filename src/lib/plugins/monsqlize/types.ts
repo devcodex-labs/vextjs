@@ -229,11 +229,27 @@ export interface MonSQLizeDatabaseConfig {
   /**
    * 多连接池配置
    * 微服务场景中用于读写分离或多库访问
+   *
+   * 注：vext 接收两种 uri 写法（uri / url），平铺时统一映射为 monSQLize 要求的扁平 { name, uri }。
    */
   pools?: Array<{
     name: string;
-    config: MonSQLizeDatabaseConfig["config"];
+    config: {
+      uri?: string;
+      url?: string;
+      useMemoryServer?: boolean;
+      memoryServerOptions?: Record<string, unknown>;
+    } & Record<string, unknown>;
     options?: Record<string, unknown>;
+    role?: "primary" | "secondary" | "analytics" | "custom";
+    weight?: number;
+    tags?: string[];
+    healthCheck?: {
+      enabled?: boolean;
+      interval?: number;
+      timeout?: number;
+      retries?: number;
+    };
   }>;
 
   /**

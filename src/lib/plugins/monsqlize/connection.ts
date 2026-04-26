@@ -64,14 +64,31 @@ export async function createConnection(
           monsqlize.scopedCollection(name, { pool: poolName }),
 
         use(dbName: string) {
-          const prefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
+          const dbPrefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
+          const poolPrefix =
+            poolName.charAt(0).toUpperCase() + poolName.slice(1);
           return {
             model: (key: string) => {
-              const scopedKey = prefix + key.charAt(0).toUpperCase() + key.slice(1);
-              return monsqlize.scopedModel(scopedKey, {
-                pool: poolName,
-                database: dbName,
-              });
+              const tail = key.charAt(0).toUpperCase() + key.slice(1);
+              // 优先匹配深度-2 注册键（Pool+Db+Name），兼容 models/<pool>/<db>/<name>.ts
+              const depth2Key = poolPrefix + dbPrefix + tail;
+              // 回落到深度-1 注册键（Db+Name），兼容 models/<db>/<name>.ts
+              const depth1Key = dbPrefix + tail;
+              try {
+                return monsqlize.scopedModel(depth2Key, {
+                  pool: poolName,
+                  database: dbName,
+                });
+              } catch (err) {
+                const e = err as { code?: string };
+                if (e && e.code === "MODEL_NOT_DEFINED") {
+                  return monsqlize.scopedModel(depth1Key, {
+                    pool: poolName,
+                    database: dbName,
+                  });
+                }
+                throw err;
+              }
             },
             collection: (name: string) =>
               monsqlize.scopedCollection(name, {

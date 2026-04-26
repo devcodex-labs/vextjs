@@ -310,6 +310,12 @@ const invoice = await app.db.pool("cn").use("billing").collection("invoices").fi
 // cn 池 + billing 库 + Model（传入短名称，前缀逻辑同 use()）
 const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
 // 内部 key: BillingInvoice，database: billing，pool: cn
+
+// 深度-2 模型目录（models/cn/billing/order.ts）：注册键 = CnBillingOrder
+// pool().use().model() 链式访问会优先匹配 depth-2 键，未注册时自动回落到 depth-1（Db+Name）
+const Order1 = app.db.model("CnBillingOrder");                    // 完整 key
+const Order2 = app.db.pool("cn").use("billing").model("Order");   // 等价短链
+// Order1 与 Order2 操作的是同一 collection（cn 池 / billing 库 / orders 集合）
 ```
 
 > ⚠️ `pool()` 会立即校验连接池是否存在，找不到时抛出 `POOL_NOT_FOUND` 错误（`err.available` 含可用池列表）。
