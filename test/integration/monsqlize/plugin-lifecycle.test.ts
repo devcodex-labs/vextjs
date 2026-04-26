@@ -137,7 +137,7 @@ async function executeCloseHooks(
   closeHooks: Array<() => Promise<void> | void>,
 ): Promise<void> {
   for (let i = closeHooks.length - 1; i >= 0; i--) {
-    await closeHooks[i]();
+    await closeHooks[i]?.();
   }
 }
 
