@@ -591,7 +591,7 @@ describe("setupMonSQLize", () => {
       expect(closeHooks.length).toBeGreaterThanOrEqual(1);
 
       // 执行 onClose hook
-      await closeHooks[0]();
+      await closeHooks[0]!();
       expect(mockMonSQLize.mockClose).toHaveBeenCalledOnce();
     });
 
@@ -601,7 +601,7 @@ describe("setupMonSQLize", () => {
       });
 
       await setupMonSQLize(app, "/tmp/src");
-      await closeHooks[0]();
+      await closeHooks[0]!();
 
       expect(app.logger.info).toHaveBeenCalledWith(
         expect.stringContaining("connection closed"),
@@ -617,7 +617,7 @@ describe("setupMonSQLize", () => {
 
       await setupMonSQLize(app, "/tmp/src");
       // Should not throw
-      await closeHooks[0]();
+      await closeHooks[0]!();
 
       expect(app.logger.error).toHaveBeenCalledWith(
         expect.stringContaining("error closing connection"),
@@ -746,7 +746,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.type).toBe("mongodb");
   });
 
@@ -760,7 +760,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.type).toBe("mongodb");
   });
 
@@ -771,7 +771,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.maxTimeMS).toBe(2000);
     expect(passedConfig.findLimit).toBe(10);
     expect(passedConfig.findPageMaxLimit).toBe(500);
@@ -791,7 +791,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.maxTimeMS).toBe(5000);
     expect(passedConfig.findLimit).toBe(50);
     expect(passedConfig.findPageMaxLimit).toBe(1000);
@@ -805,7 +805,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.namespace).toEqual({ scope: "database" });
   });
 
@@ -819,7 +819,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.namespace).toEqual({ scope: "user-service" });
   });
 
@@ -833,7 +833,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cursorSecret).toBe("my-secret-key");
   });
 
@@ -849,7 +849,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache.memory).toEqual({
       maxSize: 1000,
       ttl: 300,
@@ -866,7 +866,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache.memory).toEqual({
       maxSize: 5000,
       ttl: 600,
@@ -883,7 +883,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache.memory).toBeUndefined();
   });
 
@@ -904,7 +904,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache.redis).toEqual({
       url: "redis://localhost:6379",
       prefix: "myapp:",
@@ -922,7 +922,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache?.redis).toBeUndefined();
   });
 
@@ -933,7 +933,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache).toBeUndefined();
   });
 
@@ -954,7 +954,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.pools).toEqual([
       { name: "primary", config: { uri: "mongodb://primary:27017/db" } },
       { name: "replica", config: { uri: "mongodb://replica:27017/db" } },
@@ -972,7 +972,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.poolStrategy).toBe("auto");
   });
 
@@ -986,7 +986,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.pools).toBeUndefined();
   });
 
@@ -1002,7 +1002,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.slowQueryLog).toEqual({
       collection: "slow_queries",
     });
@@ -1018,7 +1018,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.slowQueryLog.collection).toBe("_slow_queries");
   });
 
@@ -1032,7 +1032,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.slowQueryLog).toBeUndefined();
   });
 
@@ -1045,7 +1045,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.logger).toBeDefined();
     expect(typeof passedConfig.logger.info).toBe("function");
     expect(typeof passedConfig.logger.warn).toBe("function");
@@ -1060,7 +1060,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     passedConfig.logger.info("test message");
     expect(app.logger.info).toHaveBeenCalledWith(
       "[monsqlize] test message",
@@ -1078,7 +1078,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.logger).toBeUndefined();
   });
 
@@ -1094,7 +1094,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     // useMemoryServer 必须在 config.config 内部（connectMongo 从中读取），
     // 而非顶层 passedConfig.useMemoryServer
     expect(passedConfig.config.useMemoryServer).toBe(true);
@@ -1108,7 +1108,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.config?.useMemoryServer).toBeUndefined();
     expect(passedConfig.useMemoryServer).toBeUndefined();
   });
@@ -1125,7 +1125,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.autoConvertObjectId).toBe(true);
   });
 
@@ -1139,7 +1139,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.autoConvertObjectId).toEqual({
       fields: ["userId", "orderId"],
     });
@@ -1157,7 +1157,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.databaseName).toBe("my_explicit_db");
   });
 
@@ -1170,7 +1170,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.databaseName).toBe("myapp");
   });
 
@@ -1184,7 +1184,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.databaseName).toBe("from_explicit");
   });
 
@@ -1197,7 +1197,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.databaseName).toBeUndefined();
   });
 
@@ -1212,7 +1212,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.config.uri).toBe("mongodb://localhost:27017/myapp");
   });
 
@@ -1229,7 +1229,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     await setupMonSQLize(app, "/tmp/src");
 
-    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.pools[0].config.uri).toBe("mongodb://p1:27017/db");
     expect(passedConfig.pools[1].config.uri).toBe("mongodb://p2:27017/db");
   });
@@ -1895,7 +1895,7 @@ describe("integration: plugin lifecycle", () => {
     expect(closeHooks.length).toBe(1);
 
     // Simulate shutdown
-    await closeHooks[0]();
+    await closeHooks[0]!();
     expect(mockMonSQLize.mockClose).toHaveBeenCalledOnce();
   });
 

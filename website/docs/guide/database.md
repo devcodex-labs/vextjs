@@ -300,15 +300,22 @@ const Invoice = app.db.use("billing").model("Invoice");
 // 访问 cn 池的 orders 集合
 const order = await app.db.pool("cn").collection("orders").findOne({ _id: id });
 
-// cn 池 + billing 库
+// cn 池 直接访问 Model（使用完整 key 或别名，数据库由 Model 定义的 connection.database 决定）
+const Invoice = app.db.pool("billing").model("Invoice");         // 别名，内部 key = 'BillingInvoice'
+const Invoice2 = app.db.pool("billing").model("BillingInvoice"); // 完整 key
+
+// cn 池 + billing 库（collection）
 const invoice = await app.db.pool("cn").use("billing").collection("invoices").findOne({});
 
-// cn 池 + billing 库 + Model
-const Invoice = app.db.pool("cn").use("billing").model("Invoice");
-// 内部 key: BillingInvoice（前缀逻辑同 use()）
+// cn 池 + billing 库 + Model（传入短名称，前缀逻辑同 use()）
+const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
+// 内部 key: BillingInvoice，database: billing，pool: cn
 ```
 
 > ⚠️ `pool()` 会立即校验连接池是否存在，找不到时抛出 `POOL_NOT_FOUND` 错误（`err.available` 含可用池列表）。
+
+> ℹ️ **`pool().use(dbName)` 中的 `dbName` 会覆盖 Model 定义中 `connection.database` 的值**。例如，Model 定义了 `connection.database: "billing"`，通过 `pool("cn").use("archive")` 访问时，实际查询将使用 `archive` 数据库而非 `billing`。
+> 如需直接用完整 key 并覆盖数据库/连接池，可通过 `app.monsqlize.scopedModel(key, { pool, database })` 访问底层 API。
 
 ### client
 
