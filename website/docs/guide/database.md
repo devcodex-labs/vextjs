@@ -153,6 +153,7 @@ export default {
 | `logger`              | `'app' \| false`              | `'app'`                 | 日志桥接（`'app'` 使用 app.logger） |
 | `cache`               | `object`                      | —                       | 缓存配置（见下方）                  |
 | `models`              | `object`                      | —                       | Model 加载配置（见下方）            |
+| `databaseName`        | `string`                      | URI 自动提取            | 默认数据库名（跨库路由回退值，不填时从 `config.uri` 的路径段提取）|
 | `pools`               | `array`                       | —                       | 多连接池配置                        |
 | `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                      |
 | `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                    |
