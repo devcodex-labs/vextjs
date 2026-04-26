@@ -173,6 +173,7 @@ export {
 export type {
   MonSQLizeConnection,
   MonSQLizeDatabaseConfig,
+  VextModelDefinition,
 } from "./lib/plugins/monsqlize/index.js";
 
 // 路由定义辅助函数

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MonSQLize 插件集成测试
  *
  * 使用 mongodb-memory-server 创建内存 MongoDB 实例，
@@ -165,7 +165,7 @@ describe("MonSQLize 插件集成测试", () => {
   describe("插件连接生命周期", () => {
     it("setupMonSQLize 成功连接并挂载 app.db 和 app.monsqlize", async () => {
       const { app, closeHooks, extendedProps } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
 
@@ -205,7 +205,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     it("onClose 钩子正确关闭数据库连接", async () => {
       const { app, closeHooks } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
 
@@ -227,7 +227,7 @@ describe("MonSQLize 插件集成测试", () => {
     it("多次连接/断开循环无资源泄漏", async () => {
       for (let cycle = 0; cycle < 3; cycle++) {
         const { app, closeHooks } = createMockApp({
-          config: { url: mongoUri },
+          config: { uri: mongoUri },
           logger: false,
         });
 
@@ -252,7 +252,7 @@ describe("MonSQLize 插件集成测试", () => {
     it("shouldLoadMonSQLize 正确判断配置", () => {
       // 有 database 配置 → true
       expect(
-        shouldLoadMonSQLize({ database: { config: { url: mongoUri } } }),
+        shouldLoadMonSQLize({ database: { config: { uri: mongoUri } } }),
       ).toBe(true);
 
       // 无 database 配置 → false
@@ -288,7 +288,7 @@ describe("MonSQLize 插件集成测试", () => {
     it("无效连接 URL 时 connect 失败（Fail Fast）", async () => {
       const { app, closeHooks } = createMockApp({
         config: {
-          url: "mongodb://invalid-host-that-does-not-exist:99999/testdb",
+          uri: "mongodb://invalid-host-that-does-not-exist:99999/testdb",
         },
         logger: false,
       });
@@ -315,7 +315,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     beforeEach(async () => {
       const result = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
       app = result.app;
@@ -496,7 +496,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     beforeEach(async () => {
       const result = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
       app = result.app;
@@ -578,7 +578,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     beforeEach(async () => {
       const result = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
         // 禁用自动加载 model 文件（我们手动注册）
         models: { autoRegister: false },
@@ -702,7 +702,7 @@ describe("MonSQLize 插件集成测试", () => {
   describe("配置选项传递", () => {
     it("maxTimeMS 和 findLimit 正确传递到 MonSQLize 实例", async () => {
       const { app, closeHooks } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         maxTimeMS: 5000,
         findLimit: 20,
         logger: false,
@@ -720,7 +720,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     it("默认值正确应用（maxTimeMS=2000, findLimit=10）", async () => {
       const { app, closeHooks } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
 
@@ -736,7 +736,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     it("内存缓存正确配置", async () => {
       const { app, closeHooks } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         cache: {
           memory: { enabled: true, maxSize: 500, ttl: 120 },
         },
@@ -761,7 +761,7 @@ describe("MonSQLize 插件集成测试", () => {
   describe("健康检查", () => {
     it("连接状态下 health() 返回 status=up", async () => {
       const { app, closeHooks } = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
 
@@ -787,7 +787,7 @@ describe("MonSQLize 插件集成测试", () => {
 
     beforeEach(async () => {
       const result = createMockApp({
-        config: { url: mongoUri },
+        config: { uri: mongoUri },
         logger: false,
       });
       app = result.app;

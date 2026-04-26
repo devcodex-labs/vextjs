@@ -23,7 +23,7 @@ import { definePlugin } from "../../../types/plugin.js";
 import { setupMonSQLize } from "./plugin.js";
 
 // Re-export 类型供外部使用
-export type { MonSQLizeConnection, MonSQLizeDatabaseConfig } from "./types.js";
+export type { MonSQLizeConnection, MonSQLizeDatabaseConfig, VextModelDefinition } from "./types.js";
 
 // 导入类型扩展（确保 declare module 生效）
 import "./types.js";

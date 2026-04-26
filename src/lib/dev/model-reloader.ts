@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { deriveModelName } from "../plugins/monsqlize/model-loader.js";
+import { deriveModelName, resolveModelEntry } from "../plugins/monsqlize/model-loader.js";
 
 // 在 ESM 环境中通过 createRequire 获取 CJS 的 require 函数。
 // model-reloader 需要 require() 加载 .vext/dev/models/ 下的 CJS 编译产物，
@@ -343,28 +343,37 @@ export async function reloadModels(
         continue;
       }
 
-      // 5.3 确定 collection name
+      // 5.3 确定 registry key 和最终定义（N4 目录路由）
       //
-      // 优先使用定义对象中的 collection 字段，其次 name 字段，最后从文件名推断。
-      // 与 model-loader.ts loadLocalModels 保持一致。
+      // 使用 resolveModelEntry 与 model-loader 保持完全一致的逻辑：
+      //   - 0-depth：registry key = def.collection ?? def.name ?? PascalCase(file)
+      //   - 1-depth：registry key = PascalCase(all), 自动注入 name + connection
+      //   - 2-depth：同上 + pool 路由
+      //   - >= 3 depth：跳过
       //
       const def = definition as Record<string, unknown>;
-      const collectionName =
-        (def.collection as string | undefined) ??
-        (def.name as string | undefined) ??
-        deriveModelName(relativePath);
+      const entry = resolveModelEntry(relativePath, def);
+      if (!entry) {
+        const depthCount =
+          relativePath.replace(/\.\w+$/, "").split(/[/\\]/).length - 1;
+        app.logger.warn(
+          `[hot-reload] models/${relativePath} — directory depth ${depthCount} exceeds maximum (2), skipped`,
+        );
+        continue;
+      }
+      const { registryKey, finalDef } = entry;
 
       // 5.4 更新保存的旧定义的 name（可能与 inferred 不同）
       //
-      // 如果实际 collectionName 与推断的 inferredName 不同，
-      // 需要更新 previousModels 中的记录，确保回滚使用正确的 name。
+      // inferredName（步骤 4 预先推断的）可能与 registryKey 不同，
+      // 仅在 0-depth 且定义有 collection/name 字段时会出现此差异。
+      // 此时需要重新获取旧定义，确保回滚使用正确的 name。
       //
       const savedEntry = previousModels[i]!;
-      if (savedEntry.name !== collectionName) {
-        // 实际名称与推断名称不同，重新获取旧定义
-        savedEntry.name = collectionName;
-        savedEntry.definition = ModelClass.has(collectionName)
-          ? ModelClass.getDefinition(collectionName)
+      if (savedEntry.name !== registryKey) {
+        savedEntry.name = registryKey;
+        savedEntry.definition = ModelClass.has(registryKey)
+          ? ModelClass.getDefinition(registryKey)
           : undefined;
       }
 
@@ -373,14 +382,25 @@ export async function reloadModels(
       // redefine() 是 v1.1.8 新增 API，原子更新已注册的 model 定义。
       // 如果 model 尚未注册（新文件），则使用 define() 注册。
       //
-      if (ModelClass.has(collectionName)) {
-        ModelClass.redefine(collectionName, definition);
+      if (ModelClass.has(registryKey)) {
+        ModelClass.redefine(registryKey, finalDef);
       } else {
-        ModelClass.define(collectionName, definition);
+        ModelClass.define(registryKey, finalDef);
       }
 
-      reloadedNames.push(collectionName);
-      app.logger.debug(`[hot-reload] model "${collectionName}" reloaded`);
+      reloadedNames.push(registryKey);
+      app.logger.debug(`[hot-reload] model "${registryKey}" reloaded`);
+
+      // R5：若配了 key 且与推断名不同，额外注册/更新别名
+      const aliasKey = def.key as string | undefined;
+      if (aliasKey && aliasKey !== registryKey) {
+        if (ModelClass.has(aliasKey)) {
+          ModelClass.redefine(aliasKey, finalDef);
+        } else {
+          ModelClass.define(aliasKey, finalDef);
+        }
+        app.logger.debug(`[hot-reload] model alias "${aliasKey}" reloaded`);
+      }
     }
 
     app.logger.info(

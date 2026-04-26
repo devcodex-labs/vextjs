@@ -254,29 +254,36 @@ async function loadLocalModels(
 
     // 集合名称：定义对象中的 collection 字段优先，其次 name 字段，最后从文件名推断
     const def = definition as Record<string, unknown>;
-    const collectionName =
-      (def.collection as string | undefined) ??
-      (def.name as string | undefined) ??
-      deriveModelName(file);
+
+    // N4: 使用 resolveModelEntry 统一处理 0-depth / 1-depth / 2-depth 逻辑
+    const entry = resolveModelEntry(file, def);
+    if (!entry) {
+      const depthCount = file.replace(/\.\w+$/, "").split(/[/\\]/).length - 1;
+      app.logger.warn(
+        `[monsqlize] models/${file} — directory depth ${depthCount} exceeds maximum (2), skipped`,
+      );
+      continue;
+    }
+    const { registryKey, finalDef } = entry;
 
     // 使用 Model.define() 静态方法注册（而非 monsqlize.model()）
     const ModelClass = await getModelClass();
-    if (ModelClass.has(collectionName)) {
+    if (ModelClass.has(registryKey)) {
       app.logger.debug(
-        `[monsqlize] model '${collectionName}' already registered, skipping ${file}`,
+        `[monsqlize] model '${registryKey}' already registered, skipping ${file}`,
       );
     } else {
-      ModelClass.define(collectionName, definition as any);
+      ModelClass.define(registryKey, finalDef as any);
       count++;
       app.logger.debug(
-        `[monsqlize] model loaded: ${collectionName} (from ${file})`,
+        `[monsqlize] model loaded: ${registryKey} (from ${file})`,
       );
     }
 
     // R5：若配了 key 且与推断名不同，额外注册别名（双重注册，原推断名保留）
     const aliasKey = def.key as string | undefined;
-    if (aliasKey && aliasKey !== collectionName && !ModelClass.has(aliasKey)) {
-      ModelClass.define(aliasKey, definition as any);
+    if (aliasKey && aliasKey !== registryKey && !ModelClass.has(aliasKey)) {
+      ModelClass.define(aliasKey, finalDef as any);
       app.logger.debug(
         `[monsqlize] model alias '${aliasKey}' registered (from ${file})`,
       );
@@ -336,4 +343,72 @@ export function deriveModelName(filePath: string): string {
         .join(""),
     )
     .join("");
+}
+
+/**
+ * resolveModelEntry — 计算 Model 注册信息
+ *
+ * 根据文件相对路径和定义对象，返回：
+ *   - registryKey：注册到 MonSQLize 的键名（用于 app.db.model()）
+ *   - finalDef：最终定义对象（深度 >= 1 时自动注入 name / connection）
+ *   - depth：目录深度（文件名以外的路径段数）
+ *
+ * **深度规则：**
+ *
+ * | 深度 | 示例                   | 行为                                         |
+ * |------|------------------------|----------------------------------------------|
+ * | 0    | `order.ts`             | 行为不变，registry key = def.collection ?? def.name ?? PascalCase(file) |
+ * | 1    | `a/order.ts`           | key = 'AOrder'，自动注入 name:'order', connection:{database:'a'} |
+ * | 2    | `c/a/order.ts`         | key = 'CAOrder'，自动注入 name:'order', connection:{pool:'c',database:'a'} |
+ * | >= 3 | `x/c/a/order.ts`       | 返回 null（调用方应发出警告并跳过）               |
+ *
+ * **优先级：**
+ * - 用户在定义对象中显式设置的 `collection` / `name` / `connection` 字段均会覆盖自动推断值。
+ *
+ * @param file  相对于 models/ 目录的文件路径，如 'a/order.ts' 或 'order.ts'
+ * @param def   Model 定义对象（来自文件的 export default）
+ * @returns     注册信息，或 null（深度超限时）
+ */
+export function resolveModelEntry(
+  file: string,
+  def: Record<string, unknown>,
+): { registryKey: string; finalDef: Record<string, unknown>; depth: number } | null {
+  const withoutExt = file.replace(/\.\w+$/, "");
+  const parts = withoutExt.split(/[/\\]/);
+  const depth = parts.length - 1;
+
+  if (depth >= 3) {
+    return null;
+  }
+
+  if (depth === 0) {
+    // 0-depth：保持现有行为不变
+    const registryKey =
+      (def.collection as string | undefined) ??
+      (def.name as string | undefined) ??
+      deriveModelName(file);
+    return { registryKey, finalDef: def, depth };
+  }
+
+  // 1-2 depth：N4 目录路由
+  const registryKey = deriveModelName(file);
+  const rawBase = parts[parts.length - 1]!; // 原始文件名（不含扩展名，不做 PascalCase）
+  const finalDef: Record<string, unknown> = { ...def };
+
+  // 未设置 collection/name 时，自动以文件名作为 MongoDB 集合名
+  if (!def.collection && !def.name) {
+    finalDef.name = rawBase;
+  }
+
+  // 未设置 connection 时，根据目录层级自动注入路由信息
+  if (!def.connection) {
+    if (depth === 1) {
+      finalDef.connection = { database: parts[0] };
+    } else {
+      // depth === 2
+      finalDef.connection = { pool: parts[0], database: parts[1] };
+    }
+  }
+
+  return { registryKey, finalDef, depth };
 }

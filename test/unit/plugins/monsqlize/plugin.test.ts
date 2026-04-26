@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MonSQLize 内置插件单元测试
  *
  * 测试覆盖：
@@ -157,7 +157,7 @@ describe("shouldLoadMonSQLize", () => {
 
   it("returns true when database config exists with fields", () => {
     const config = {
-      database: { config: { url: "mongodb://localhost/test" } },
+      database: { config: { uri: "mongodb://localhost/test" } },
     };
     expect(shouldLoadMonSQLize(config)).toBe(true);
   });
@@ -196,7 +196,7 @@ describe("shouldLoadMonSQLize", () => {
     const config = {
       database: {
         type: "url",
-        config: { url: "mongodb://prod:27017/mydb" },
+        config: { uri: "mongodb://prod:27017/mydb" },
         cache: { memory: { enabled: true, maxSize: 5000 } },
         findLimit: 20,
         slowQueryMs: 1000,
@@ -303,8 +303,115 @@ describe("deriveModelName", () => {
 });
 
 // ═════════════════════════════════════════════════════════════
-// setupMonSQLize — 插件 setup 核心流程
+// resolveModelEntry — N4 目录路由 + N3 connection 字段
 // ═════════════════════════════════════════════════════════════
+
+describe("resolveModelEntry", () => {
+  let resolveModelEntry: typeof import("../../../../src/lib/plugins/monsqlize/model-loader.js").resolveModelEntry;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod =
+      await import("../../../../src/lib/plugins/monsqlize/model-loader.js");
+    resolveModelEntry = mod.resolveModelEntry;
+  });
+
+  // ── depth 0：行为不变 ──────────────────────────────────────
+
+  it("depth 0: uses def.collection as registry key when set", () => {
+    const result = resolveModelEntry("order.ts", { collection: "MyOrder" });
+    expect(result).not.toBeNull();
+    expect(result!.registryKey).toBe("MyOrder");
+    expect(result!.depth).toBe(0);
+    expect(result!.finalDef).toEqual({ collection: "MyOrder" });
+  });
+
+  it("depth 0: uses def.name as registry key when collection not set", () => {
+    const result = resolveModelEntry("order.ts", { name: "CustomOrder" });
+    expect(result).not.toBeNull();
+    expect(result!.registryKey).toBe("CustomOrder");
+    expect(result!.finalDef).toEqual({ name: "CustomOrder" });
+  });
+
+  it("depth 0: derives registry key from filename when no collection/name", () => {
+    const result = resolveModelEntry("user-order.ts", {});
+    expect(result).not.toBeNull();
+    expect(result!.registryKey).toBe("UserOrder");
+    expect(result!.depth).toBe(0);
+  });
+
+  it("depth 0: does not inject connection", () => {
+    const result = resolveModelEntry("order.ts", { schema: {} });
+    expect(result).not.toBeNull();
+    expect(result!.finalDef).not.toHaveProperty("connection");
+  });
+
+  // ── depth 1：自动注入 database ────────────────────────────
+
+  it("depth 1: derives PascalCase registry key from dir + file", () => {
+    const result = resolveModelEntry("billing/invoice.ts", {});
+    expect(result).not.toBeNull();
+    expect(result!.registryKey).toBe("BillingInvoice");
+    expect(result!.depth).toBe(1);
+  });
+
+  it("depth 1: injects name = raw filename (without ext)", () => {
+    const result = resolveModelEntry("billing/invoice.ts", {});
+    expect(result!.finalDef.name).toBe("invoice");
+  });
+
+  it("depth 1: injects connection.database = dir name", () => {
+    const result = resolveModelEntry("billing/invoice.ts", {});
+    expect(result!.finalDef.connection).toEqual({ database: "billing" });
+  });
+
+  it("depth 1: does not override explicit def.name", () => {
+    const result = resolveModelEntry("billing/invoice.ts", { name: "MyInvoice" });
+    expect(result!.finalDef.name).toBe("MyInvoice");
+  });
+
+  it("depth 1: does not override explicit def.collection", () => {
+    const result = resolveModelEntry("billing/invoice.ts", { collection: "inv" });
+    expect(result!.finalDef).not.toHaveProperty("name");
+  });
+
+  it("depth 1: does not override explicit def.connection", () => {
+    const def = { connection: { pool: "custom", database: "custom_db" } };
+    const result = resolveModelEntry("billing/invoice.ts", def);
+    expect(result!.finalDef.connection).toEqual({ pool: "custom", database: "custom_db" });
+  });
+
+  // ── depth 2：自动注入 pool + database ─────────────────────
+
+  it("depth 2: derives PascalCase registry key from all path segments", () => {
+    const result = resolveModelEntry("main/billing/invoice.ts", {});
+    expect(result).not.toBeNull();
+    expect(result!.registryKey).toBe("MainBillingInvoice");
+    expect(result!.depth).toBe(2);
+  });
+
+  it("depth 2: injects connection with pool and database", () => {
+    const result = resolveModelEntry("main/billing/invoice.ts", {});
+    expect(result!.finalDef.connection).toEqual({ pool: "main", database: "billing" });
+  });
+
+  it("depth 2: injects name = raw filename", () => {
+    const result = resolveModelEntry("main/billing/invoice.ts", {});
+    expect(result!.finalDef.name).toBe("invoice");
+  });
+
+  // ── depth >= 3：返回 null ──────────────────────────────────
+
+  it("depth 3: returns null", () => {
+    const result = resolveModelEntry("a/b/c/order.ts", {});
+    expect(result).toBeNull();
+  });
+
+  it("depth 4: returns null", () => {
+    const result = resolveModelEntry("a/b/c/d/order.ts", {});
+    expect(result).toBeNull();
+  });
+});
 
 describe("setupMonSQLize", () => {
   let setupMonSQLize: typeof import("../../../../src/lib/plugins/monsqlize/plugin.js").setupMonSQLize;
@@ -379,7 +486,7 @@ describe("setupMonSQLize", () => {
       const { setupMonSQLize: setup } =
         await import("../../../../src/lib/plugins/monsqlize/plugin.js");
       const { app } = createMockApp({
-        database: { config: { url: "mongodb://localhost/test" } },
+        database: { config: { uri: "mongodb://localhost/test" } },
       });
 
       await expect(setup(app, "/tmp/src")).rejects.toThrow(
@@ -422,7 +529,7 @@ describe("setupMonSQLize", () => {
 
     it("connects to the database", async () => {
       const { app } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -432,7 +539,7 @@ describe("setupMonSQLize", () => {
 
     it("extends app with db property", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -443,7 +550,7 @@ describe("setupMonSQLize", () => {
 
     it("extends app with monsqlize property", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -454,7 +561,7 @@ describe("setupMonSQLize", () => {
 
     it("registers onClose hook before connecting", async () => {
       const { app } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       // Track call order
@@ -476,7 +583,7 @@ describe("setupMonSQLize", () => {
 
     it("onClose hook calls monsqlize.close()", async () => {
       const { app, closeHooks } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -490,7 +597,7 @@ describe("setupMonSQLize", () => {
 
     it("onClose hook logs info on successful close", async () => {
       const { app, closeHooks } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -503,7 +610,7 @@ describe("setupMonSQLize", () => {
 
     it("onClose hook logs error when close fails (does not throw)", async () => {
       const { app, closeHooks } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       mockMonSQLize.mockClose.mockRejectedValueOnce(new Error("close timeout"));
@@ -520,7 +627,7 @@ describe("setupMonSQLize", () => {
 
     it("logs info messages during setup", async () => {
       const { app } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -535,7 +642,7 @@ describe("setupMonSQLize", () => {
 
     it("connection.collection delegates to monsqlize.collection", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -547,7 +654,7 @@ describe("setupMonSQLize", () => {
 
     it("connection.model delegates to monsqlize.model", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -559,7 +666,7 @@ describe("setupMonSQLize", () => {
 
     it("connection.client returns the underlying MongoDB client", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -570,7 +677,7 @@ describe("setupMonSQLize", () => {
 
     it("connection.client throws if _adapter.client is unavailable", async () => {
       const { app, extendedProps } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
@@ -584,7 +691,7 @@ describe("setupMonSQLize", () => {
 
     it("connect failure causes setup to throw (Fail Fast)", async () => {
       const { app } = createMockApp({
-        database: { config: { url: "mongodb://localhost:27017/testdb" } },
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       mockMonSQLize.mockConnect.mockRejectedValueOnce(
@@ -634,7 +741,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("passes type as 'mongodb' regardless of vext config.type", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -659,7 +766,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("applies default values for maxTimeMS / findLimit / findPageMaxLimit / slowQueryMs", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -674,7 +781,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("allows overriding default values", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         maxTimeMS: 5000,
         findLimit: 50,
         findPageMaxLimit: 1000,
@@ -693,7 +800,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("passes namespace with default scope", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -705,7 +812,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("passes custom namespace", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         namespace: { scope: "user-service" },
       },
     });
@@ -719,7 +826,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("passes cursorSecret", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cursorSecret: "my-secret-key",
       },
     });
@@ -735,7 +842,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("configures memory cache with defaults when cache.memory provided", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cache: { memory: { enabled: true } },
       },
     });
@@ -752,7 +859,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("configures memory cache with custom values", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cache: { memory: { enabled: true, maxSize: 5000, ttl: 600 } },
       },
     });
@@ -769,7 +876,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("skips memory cache when explicitly disabled", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cache: { memory: { enabled: false } },
       },
     });
@@ -783,7 +890,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("configures Redis cache when enabled", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cache: {
           redis: {
             enabled: true,
@@ -808,7 +915,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("skips Redis cache when not enabled", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         cache: { redis: { enabled: false } },
       },
     });
@@ -821,7 +928,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("does not set cache when cache config is absent", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -834,12 +941,12 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("passes pools config when provided", async () => {
     const pools = [
-      { name: "primary", config: { url: "mongodb://primary:27017/db" } },
-      { name: "replica", config: { url: "mongodb://replica:27017/db" } },
+      { name: "primary", config: { uri: "mongodb://primary:27017/db" } },
+      { name: "replica", config: { uri: "mongodb://replica:27017/db" } },
     ];
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         pools,
         poolStrategy: "round-robin",
       },
@@ -848,15 +955,18 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
-    expect(passedConfig.pools).toBe(pools);
+    expect(passedConfig.pools).toEqual([
+      { name: "primary", config: { uri: "mongodb://primary:27017/db" } },
+      { name: "replica", config: { uri: "mongodb://replica:27017/db" } },
+    ]);
     expect(passedConfig.poolStrategy).toBe("round-robin");
   });
 
   it("defaults poolStrategy to 'auto'", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
-        pools: [{ name: "p1", config: { url: "mongodb://p1:27017/db" } }],
+        config: { uri: "mongodb://localhost/db" },
+        pools: [{ name: "p1", config: { uri: "mongodb://p1:27017/db" } }],
       },
     });
 
@@ -869,7 +979,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("does not set pools when pools array is empty", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         pools: [],
       },
     });
@@ -885,7 +995,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("configures slow query log when enabled", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         slowQueryLog: { enabled: true, collection: "slow_queries" },
       },
     });
@@ -901,7 +1011,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("defaults slow query collection name to '_slow_queries'", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         slowQueryLog: { enabled: true },
       },
     });
@@ -915,7 +1025,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("does not set slowQueryLog when disabled", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         slowQueryLog: { enabled: false },
       },
     });
@@ -930,7 +1040,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("bridges logger to app.logger by default", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -945,7 +1055,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("bridged logger forwards to app.logger with [monsqlize] prefix", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -961,7 +1071,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("does not set logger when logger=false", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         logger: false,
       },
     });
@@ -977,7 +1087,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("passes useMemoryServer when configured", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         useMemoryServer: true,
       },
     });
@@ -993,7 +1103,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   it("does not set useMemoryServer when not configured", async () => {
     const { app } = createMockApp({
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -1008,7 +1118,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("passes autoConvertObjectId boolean", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         autoConvertObjectId: true,
       },
     });
@@ -1022,7 +1132,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   it("passes autoConvertObjectId object with fields", async () => {
     const { app } = createMockApp({
       database: {
-        config: { url: "mongodb://localhost/db" },
+        config: { uri: "mongodb://localhost/db" },
         autoConvertObjectId: { fields: ["userId", "orderId"] },
       },
     });
@@ -1033,6 +1143,95 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     expect(passedConfig.autoConvertObjectId).toEqual({
       fields: ["userId", "orderId"],
     });
+  });
+
+  // ── N2: databaseName 提取 ──────────────────────────────────
+
+  it("N2: passes explicit databaseName from config", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/ignored" },
+        databaseName: "my_explicit_db",
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.databaseName).toBe("my_explicit_db");
+  });
+
+  it("N2: auto-extracts databaseName from URI pathname when not explicit", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost:27017/myapp" },
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.databaseName).toBe("myapp");
+  });
+
+  it("N2: explicit databaseName takes priority over URI-extracted one", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost:27017/from_uri" },
+        databaseName: "from_explicit",
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.databaseName).toBe("from_explicit");
+  });
+
+  it("N2: omits databaseName when URI has no pathname database", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost:27017/" },
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.databaseName).toBeUndefined();
+  });
+
+  // ── N1: url deprecated → uri mapping ─────────────────────
+
+  it("N1: maps deprecated url to uri for main connection", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { url: "mongodb://localhost:27017/myapp" } as any,
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.config.uri).toBe("mongodb://localhost:27017/myapp");
+  });
+
+  it("N1: maps url to uri for each pool entry", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/main" },
+        pools: [
+          { name: "p1", config: { url: "mongodb://p1:27017/db" } as any },
+          { name: "p2", config: { uri: "mongodb://p2:27017/db" } },
+        ],
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0][0];
+    expect(passedConfig.pools[0].config.uri).toBe("mongodb://p1:27017/db");
+    expect(passedConfig.pools[1].config.uri).toBe("mongodb://p2:27017/db");
   });
 });
 
@@ -1684,7 +1883,7 @@ describe("integration: plugin lifecycle", () => {
     const { setupMonSQLize } =
       await import("../../../../src/lib/plugins/monsqlize/plugin.js");
     const { app, closeHooks, extendedProps } = createMockApp({
-      database: { config: { url: "mongodb://localhost:27017/testdb" } },
+      database: { config: { uri: "mongodb://localhost:27017/testdb" } },
     });
 
     // Setup
@@ -1704,7 +1903,7 @@ describe("integration: plugin lifecycle", () => {
     const { createMonSQLizePlugin } =
       await import("../../../../src/lib/plugins/monsqlize/index.js");
     const { app, closeHooks, extendedProps } = createMockApp({
-      database: { config: { url: "mongodb://localhost:27017/testdb" } },
+      database: { config: { uri: "mongodb://localhost:27017/testdb" } },
     });
 
     const plugin = createMonSQLizePlugin("/tmp/src");
@@ -1728,7 +1927,7 @@ describe("integration: plugin lifecycle", () => {
     // With database config
     const configWith = {
       port: 3000,
-      database: { config: { url: "mongodb://localhost/db" } },
+      database: { config: { uri: "mongodb://localhost/db" } },
     };
     expect(shouldLoadMonSQLize(configWith)).toBe(true);
   });
@@ -1737,7 +1936,7 @@ describe("integration: plugin lifecycle", () => {
     const { setupMonSQLize } =
       await import("../../../../src/lib/plugins/monsqlize/plugin.js");
     const { app, extendedProps } = createMockApp({
-      database: { config: { url: "mongodb://localhost:27017/testdb" } },
+      database: { config: { uri: "mongodb://localhost:27017/testdb" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");
@@ -1758,7 +1957,7 @@ describe("integration: plugin lifecycle", () => {
     const { setupMonSQLize } =
       await import("../../../../src/lib/plugins/monsqlize/plugin.js");
     const { app, extendedProps } = createMockApp({
-      database: { config: { url: "mongodb://localhost:27017/testdb" } },
+      database: { config: { uri: "mongodb://localhost:27017/testdb" } },
     });
 
     await setupMonSQLize(app, "/tmp/src");

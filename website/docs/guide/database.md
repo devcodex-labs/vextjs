@@ -1,4 +1,4 @@
-# 数据库 (MonSQLize)
+﻿# 数据库 (MonSQLize)
 
 VextJS 内置了 [MonSQLize](https://github.com/vextjs/monSQLize) 数据库插件，提供开箱即用的 MongoDB 数据库支持。只需在配置文件中添加 `database` 字段，框架会自动完成连接管理、Model 加载和资源清理。
 
@@ -19,7 +19,7 @@ export default {
 
   database: {
     config: {
-      url: "mongodb://localhost:27017/myapp",
+      uri: "mongodb://localhost:27017/myapp",
     },
   },
 };
@@ -94,7 +94,7 @@ export default {
 
     // 连接配置
     config: {
-      url: "mongodb://localhost:27017/myapp",
+      uri: "mongodb://localhost:27017/myapp",
     },
   },
 };
@@ -164,7 +164,7 @@ MonSQLize 支持两级缓存：L1 内存 LRU + L2 Redis（可选）。
 ```typescript
 export default {
   database: {
-    config: { url: "mongodb://localhost:27017/myapp" },
+    config: { uri: "mongodb://localhost:27017/myapp" },
 
     cache: {
       // L1 内存缓存（默认开启）
@@ -177,7 +177,7 @@ export default {
       // L2 Redis 缓存（可选）
       redis: {
         enabled: true,
-        url: "redis://localhost:6379",
+        uri: "redis://localhost:6379",
         prefix: "myapp:cache:",
         ttl: 600,
       },
@@ -194,7 +194,7 @@ export default {
 // src/config/default.ts — 基础配置
 export default {
   database: {
-    config: { url: "mongodb://localhost:27017/myapp" },
+    config: { uri: "mongodb://localhost:27017/myapp" },
     findLimit: 10,
     slowQueryMs: 500,
   },
@@ -505,12 +505,62 @@ src/
 - `.test.ts` / `.spec.ts` → 跳过（测试文件）
 - `index.ts` → 跳过
 
+### 目录路由（自动绑定连接池 / 数据库）
+
+将 Model 文件放入 `models/` 的子目录，可以让 vext 自动推断所属连接池和数据库，无需在每个文件中手动填写 `connection` 字段。
+
+**目录深度规则：**
+
+| 目录结构 | 注册键名 | 自动注入 |
+|---------|---------|---------|
+| `models/order.ts` | `Order`（或 `def.collection` / `def.name`）| 无（行为不变）|
+| `models/billing/invoice.ts` | `BillingInvoice` | `connection: { database: 'billing' }` |
+| `models/main/billing/invoice.ts` | `MainBillingInvoice` | `connection: { pool: 'main', database: 'billing' }` |
+| `models/a/b/c/invoice.ts` | ❌ 跳过（超出最大深度 2，输出警告）| — |
+
+> 💡 目录深度超过 2 层时，vext 会输出警告日志并跳过该文件。如需更复杂的路由，请在 Model 文件中显式设置 `connection` 字段。
+
+**示例：按业务领域拆分 Model**
+
+```
+src/models/
+├── order.ts              → 注册为 'Order'（默认数据库）
+├── billing/
+│   ├── invoice.ts        → 注册为 'BillingInvoice'，database: 'billing'
+│   └── payment.ts        → 注册为 'BillingPayment'，database: 'billing'
+└── main/
+    └── billing/
+        └── invoice.ts    → 注册为 'MainBillingInvoice'，pool: 'main', database: 'billing'
+```
+
+```typescript
+// src/models/billing/invoice.ts
+// 无需手动写 connection — 由目录路径自动推断
+export default {
+  schema: {
+    amount: "number!",
+    currency: "CNY|USD|EUR",
+    status: "draft|pending|paid",
+  },
+} satisfies VextModelDefinition;
+
+// 效果等同于显式配置：
+// export default {
+//   name: "invoice",
+//   connection: { database: "billing" },
+//   schema: { ... },
+// };
+```
+
+**注入优先级：** 若 Model 文件已显式设置 `connection` 或 `name`/`collection`，则优先使用显式值，目录路由不会覆盖。
+
 ### Model 加载配置
+
 
 ```typescript
 export default {
   database: {
-    config: { url: "mongodb://localhost:27017/myapp" },
+    config: { uri: "mongodb://localhost:27017/myapp" },
 
     models: {
       // Model 定义文件目录（相对于 src/，默认 'models'）
@@ -836,7 +886,7 @@ MonSQLize 内置慢查询检测。查询耗时超过 `slowQueryMs` 阈值时自�
 ```typescript
 export default {
   database: {
-    config: { url: "mongodb://localhost:27017/myapp" },
+    config: { uri: "mongodb://localhost:27017/myapp" },
     slowQueryMs: 200, // 超过 200ms 的查询会产生警告
 
     // 可选：持久化慢查询记录到专用集合

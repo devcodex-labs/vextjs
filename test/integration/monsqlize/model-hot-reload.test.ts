@@ -714,8 +714,10 @@ describe("Model 热重载集成测试", () => {
       const result = await reloadModels(app, outDir, new Set([filePath]));
 
       expect(result.reloaded).toBe(1);
-      expect(result.reloadedNames).toContain("adminRoles");
-      expect(Model.has("adminRoles")).toBe(true);
+      // N4: depth-1 registryKey = deriveModelName("admin/role.js") = "AdminRole"
+      // collection: "adminRoles" still sets the MongoDB collection name, not the registry key
+      expect(result.reloadedNames).toContain("AdminRole");
+      expect(Model.has("AdminRole")).toBe(true);
 
       // 清理
       clearRequireCache(filePath);

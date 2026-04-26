@@ -129,7 +129,7 @@ function buildMonSQLizeConfig(
 ): Record<string, unknown> {
   // ── 映射 config.config（vext 用户配置 → MonSQLize 配置）────
   // vext 类型定义使用 `url` 字段，MonSQLize 期望 `uri` 字段。
-  // 在此做字段名映射，保持 vext 用户 API 不变。
+  // N1: 同时支持 uri（主要）和 url（已废弃），做字段名映射。
   const mongoConfig: Record<string, unknown> = { ...config.config };
   if (
     "url" in mongoConfig &&
@@ -140,6 +140,23 @@ function buildMonSQLizeConfig(
     delete mongoConfig.url;
   }
 
+  // N2: 提取 databaseName 传给 MonSQLize 实例
+  // MonSQLize 从顶层 databaseName 字段读取并设置 this.databaseName，
+  // 用于 _resolveModelCollection 中无 connection.database 时的默认数据库回退。
+  const resolvedDatabaseName =
+    config.databaseName ??
+    (() => {
+      const uri = (mongoConfig.uri ?? mongoConfig.url) as string | undefined;
+      if (!uri) return undefined;
+      try {
+        const pathname = new URL(uri).pathname;
+        const dbName = pathname.replace(/^\//, "").split("?")[0];
+        return dbName || undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
   const result: Record<string, unknown> = {
     // MonSQLize 的 type 字段是数据库类型（目前仅支持 "mongodb"），
     // 不同于 vext 的 database.type（连接模式：url / replica / srv）。
@@ -147,6 +164,7 @@ function buildMonSQLizeConfig(
     // MonSQLize 内部通过 config 结构自动判断连接方式。
     type: "mongodb",
     config: mongoConfig,
+    ...(resolvedDatabaseName != null && { databaseName: resolvedDatabaseName }),
     maxTimeMS: config.maxTimeMS ?? 2000,
     findLimit: config.findLimit ?? 10,
     findPageMaxLimit: config.findPageMaxLimit ?? 500,
@@ -180,7 +198,15 @@ function buildMonSQLizeConfig(
 
   // ── 多连接池 ──────────────────────────────────────────────
   if (config.pools && config.pools.length > 0) {
-    result.pools = config.pools;
+    // N1: 每个 pool 也需要做 url → uri 映射
+    result.pools = config.pools.map((pool) => {
+      const poolConfig: Record<string, unknown> = { ...pool.config };
+      if ("url" in poolConfig && poolConfig.url != null && !("uri" in poolConfig)) {
+        poolConfig.uri = poolConfig.url;
+        delete poolConfig.url;
+      }
+      return { ...pool, config: poolConfig };
+    });
     result.poolStrategy = config.poolStrategy ?? "auto";
   }
 

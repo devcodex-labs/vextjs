@@ -40,8 +40,8 @@ vi.mock("monsqlize", () => ({
 }));
 
 // Mock deriveModelName
-vi.mock("../../src/lib/plugins/monsqlize/model-loader.js", () => ({
-  deriveModelName: vi.fn((relativePath: string) => {
+vi.mock("../../src/lib/plugins/monsqlize/model-loader.js", () => {
+  const deriveModelNameFn = vi.fn((relativePath: string) => {
     // 简化版：user.js → User, order-item.js → OrderItem
     const base = relativePath.replace(/\.js$/, "").replace(/\\/g, "/");
     const parts = base.split("/");
@@ -53,8 +53,44 @@ vi.mock("../../src/lib/plugins/monsqlize/model-loader.js", () => ({
           .join(""),
       )
       .join("");
-  }),
-}));
+  });
+
+  return {
+    deriveModelName: deriveModelNameFn,
+    resolveModelEntry: vi.fn(
+      (file: string, def: Record<string, unknown>) => {
+        const withoutExt = file.replace(/\.\w+$/, "");
+        const parts = withoutExt.replace(/\\/g, "/").split("/");
+        const depth = parts.length - 1;
+
+        if (depth >= 3) return null;
+
+        if (depth === 0) {
+          const registryKey =
+            (def.collection as string | undefined) ??
+            (def.name as string | undefined) ??
+            deriveModelNameFn(file);
+          return { registryKey, finalDef: def, depth };
+        }
+
+        const registryKey = deriveModelNameFn(file);
+        const rawBase = parts[parts.length - 1]!;
+        const finalDef: Record<string, unknown> = { ...def };
+        if (!def.collection && !def.name) {
+          finalDef.name = rawBase;
+        }
+        if (!def.connection) {
+          if (depth === 1) {
+            finalDef.connection = { database: parts[0] };
+          } else {
+            finalDef.connection = { pool: parts[0], database: parts[1] };
+          }
+        }
+        return { registryKey, finalDef, depth };
+      },
+    ),
+  };
+});
 
 import {
   reloadModels,
@@ -431,7 +467,8 @@ describe("reloadModels", () => {
       const result = await reloadModels(app, outDir, new Set([file]));
 
       expect(result.reloaded).toBe(1);
-      expect(result.reloadedNames).toContain("roles");
+      // N4: depth-1 registryKey = deriveModelName("admin/role.js") = "AdminRole"
+      expect(result.reloadedNames).toContain("AdminRole");
     });
 
     it("应跳过 _ 开头的文件", async () => {

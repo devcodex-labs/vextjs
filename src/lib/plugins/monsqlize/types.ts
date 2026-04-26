@@ -105,6 +105,21 @@ export interface VextModelDefinition {
   name?: string;
   /** MongoDB 集合名（不填则使用文件名/name/key） */
   collection?: string;
+  /**
+   * 数据源绑定（N4 目录路由自动注入，也可手动指定）
+   *
+   * 子目录模型文件会根据目录层级自动推断并注入此字段：
+   *   - `models/a/order.ts`     → `{ database: 'a' }`
+   *   - `models/c/a/order.ts`   → `{ pool: 'c', database: 'a' }`
+   *
+   * 手动显式配置会覆盖自动推断值。
+   */
+  connection?: {
+    /** 连接池名称（对应 config.database.pools[].name） */
+    pool?: string;
+    /** 数据库名称（对应 MonSQLize 实例的 databaseName） */
+    database?: string;
+  };
   schema?: (dsl: unknown) => unknown;
   relations?: Record<string, unknown>;
   hooks?: (model: unknown) => Record<string, unknown>;
@@ -130,12 +145,29 @@ export interface MonSQLizeDatabaseConfig {
   type?: "url" | "replica" | "srv";
 
   /**
+   * 数据库名称（N2 新增）
+   *
+   * 默认从 uri/url 中自动解析（如 `mongodb://host/mydb` → `'mydb'`）。
+   * 显式配置时优先使用，用于 URI 不包含数据库名的场景。
+   */
+  databaseName?: string;
+
+  /**
    * 连接配置
    * - type='url' 时：{ url: string }
    * - type='replica' 时：{ hosts: string[], replicaSet: string }
    * - type='srv' 时：{ host: string }
    */
   config: {
+    /**
+     * MongoDB 连接 URI（主要字段，N1 新增）
+     * @example 'mongodb://localhost:27017/mydb'
+     */
+    uri?: string;
+    /**
+     * MongoDB 连接 URL（已废弃，请使用 uri）
+     * @deprecated 使用 uri 替代
+     */
     url?: string;
     host?: string;
     hosts?: string[];
