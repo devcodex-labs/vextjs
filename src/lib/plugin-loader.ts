@@ -1,8 +1,246 @@
-import { readdir, stat } from "node:fs/promises";
-import { join, extname, sep } from "node:path";
+import { readdir, stat, readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { join, extname, sep, dirname } from "node:path";
+import { createRequire } from "node:module";
 import type { VextApp } from "../types/app.js";
 import type { VextPlugin } from "../types/plugin.js";
 import { resolveModuleDefault } from "./interop.js";
+
+// ── ESM-only 包兼容层 ─────────────────────────────────────────
+//
+// vext dev 编译器将用户代码输出为 CJS，当用户插件 import 了一个
+// ESM-only 包（package.json 有 "type":"module" 但无 "require" 条件）时，
+// CJS require() 会抛 ERR_REQUIRE_ESM。
+//
+// 解决方案：
+//   1. 加载插件前扫描其 require() 调用
+//   2. 对 ESM-only 包提前 await import() 拿到模块命名空间
+//   3. 注入 Module._load 缓存，让后续 require() 命中预加载值
+//
+// 注意：plugin-loader.ts 以 ESM 格式编译（vextjs 使用 NodeNext module），
+//       不能使用全局 require()，所有 CJS 调用必须通过 createRequire 创建的 _req。
+
+/** module-level CJS require，供 ESM 兼容层内部使用 */
+const _req = createRequire(import.meta.url);
+
+type ModuleResolver = NodeJS.Require;
+
+interface PackageRequest {
+  packageId: string;
+  exportKey: string;
+}
+
+/** ESM-only 包的预加载缓存：pkgId → 模块命名空间对象 */
+const _esmPreloadCache = new Map<string, Record<string, unknown>>();
+
+/** 是否已 patch Module._load */
+let _moduleLoadPatched = false;
+
+/**
+ * （一次性）patch Node.js Module._load，拦截对已预加载 ESM 包的 require()。
+ *
+ * 使用 _req("node:module") 而非全局 require()（ESM 上下文无全局 require）。
+ */
+function _ensureModuleLoadPatch(): void {
+  if (_moduleLoadPatched) return;
+  _moduleLoadPatched = true;
+
+  const Module = _req("node:module") as {
+    _load: (request: string, ...args: unknown[]) => unknown;
+  };
+  const _orig = Module._load;
+  Module._load = function (request: string, ...args: unknown[]) {
+    if (_esmPreloadCache.has(request)) {
+      return _esmPreloadCache.get(request);
+    }
+    return _orig.call(this, request, ...args);
+  };
+}
+
+/**
+ * 读取包的 package.json。
+ *
+ * 两步策略：
+ *   1. 直接 _req.resolve('pkg/package.json')（快速路径，但 strict exports 会报错）
+ *   2. 回退：_req.resolve('pkg') 定位主文件，向上遍历目录找 package.json
+ *
+ * @returns 解析后的 package.json 对象，找不到返回 null
+ */
+function _findPkgJsonPath(pkgId: string, resolver: ModuleResolver): string | null {
+  try {
+    // 方法 1：直接解析 package.json（包允许访问时最快）
+    try {
+      return resolver.resolve(`${pkgId}/package.json`);
+    } catch {
+      // strict exports 不导出 ./package.json 时继续走 node_modules 搜索路径
+    }
+
+    // 方法 2：基于当前插件文件的 module resolution paths 手动定位包目录
+    const searchPaths = resolver.resolve.paths(pkgId) ?? [];
+    const pkgSegments = pkgId.split("/");
+    for (const searchPath of searchPaths) {
+      const candidate = join(searchPath, ...pkgSegments, "package.json");
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function _readPkgJson(
+  pkgId: string,
+  resolver: ModuleResolver,
+): Record<string, unknown> | null {
+  try {
+    const pkgJsonPath = _findPkgJsonPath(pkgId, resolver);
+    if (!pkgJsonPath) return null;
+    return JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+}
+
+function _parsePackageRequest(requestId: string): PackageRequest {
+  const parts = requestId.split("/");
+  const packageParts = requestId.startsWith("@")
+    ? parts.slice(0, 2)
+    : parts.slice(0, 1);
+  const subpathParts = parts.slice(packageParts.length);
+
+  return {
+    packageId: packageParts.join("/"),
+    exportKey:
+      subpathParts.length === 0 ? "." : `./${subpathParts.join("/")}`,
+  };
+}
+
+function _getExportEntry(
+  pkgJson: Record<string, unknown>,
+  exportKey: string,
+): unknown {
+  const exports = pkgJson["exports"];
+  if (exports === undefined) return undefined;
+  if (typeof exports !== "object" || exports === null) {
+    return exportKey === "." ? exports : undefined;
+  }
+
+  const exportsMap = exports as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(exportsMap, exportKey)) {
+    return exportsMap[exportKey];
+  }
+
+  return exportKey === "." ? exportsMap : undefined;
+}
+
+function _resolveEsmEntryPath(
+  requestId: string,
+  resolver: ModuleResolver,
+): string | null {
+  const { packageId, exportKey } = _parsePackageRequest(requestId);
+  const pkgJsonPath = _findPkgJsonPath(packageId, resolver);
+  if (!pkgJsonPath) return null;
+
+  const pkgJson = _readPkgJson(packageId, resolver);
+  if (!pkgJson) return null;
+
+  const pkgDir = dirname(pkgJsonPath);
+  const entry = _getExportEntry(pkgJson, exportKey);
+
+  if (typeof entry === "string") {
+    return join(pkgDir, entry);
+  }
+
+  if (entry !== null && typeof entry === "object") {
+    const cond = entry as Record<string, unknown>;
+    if (typeof cond["import"] === "string") {
+      return join(pkgDir, cond["import"] as string);
+    }
+    if (typeof cond["default"] === "string") {
+      return join(pkgDir, cond["default"] as string);
+    }
+  }
+
+  if (exportKey !== ".") return null;
+
+  if (typeof pkgJson["main"] === "string") {
+    return join(pkgDir, pkgJson["main"] as string);
+  }
+
+  return join(pkgDir, "index.js");
+}
+
+/**
+ * 检测一个外部包是否为 ESM-only（无法被 CJS require() 加载）。
+ *
+ * 判断标准：
+ *   - package.json 中 "type" === "module" 且
+ *   - exports["."] 只有 "import" 条件，无 "require" / "default" 条件
+ */
+function _isEsmOnly(requestId: string, resolver: ModuleResolver): boolean {
+  const { packageId, exportKey } = _parsePackageRequest(requestId);
+  const pkgJson = _readPkgJson(packageId, resolver);
+  if (!pkgJson) return false;
+  if (pkgJson["type"] !== "module") return false;
+
+  const exports = pkgJson["exports"];
+  if (!exports) return true; // type:module 无 exports → ESM-only
+
+  const entry = _getExportEntry(pkgJson, exportKey);
+
+  if (typeof entry !== "object" || entry === null) return false;
+  const cond = entry as Record<string, unknown>;
+
+  // 有 require 或 default 条件 → 支持 CJS
+  if (cond["require"] !== undefined || cond["default"] !== undefined) {
+    return false;
+  }
+  // 只有 import / types → ESM-only
+  return cond["import"] !== undefined;
+}
+
+/**
+ * 扫描已编译的 CJS 插件文件，找出其中 require() 的 ESM-only 包，
+ * 提前 await import() 并注入缓存，避免运行时 ERR_REQUIRE_ESM 错误。
+ *
+ * @param compiledFilePath 编译产物的绝对路径（.vext/dev/plugins/xxx.js）
+ */
+async function _preloadEsmDeps(compiledFilePath: string): Promise<void> {
+  const resolver = createRequire(compiledFilePath);
+  let content: string;
+  try {
+    content = await readFile(compiledFilePath, "utf-8");
+  } catch {
+    return; // 文件不存在或读取失败，跳过
+  }
+
+  // 提取所有 require('pkg') / require("pkg") 中的外部包名（排除相对路径）
+  const requireRegex = /require\(["']([^./][^"']*?)["']\)/g;
+  const candidates = new Set<string>();
+  for (const m of content.matchAll(requireRegex)) {
+    candidates.add(m[1]!);
+  }
+
+  for (const requestId of candidates) {
+    if (_esmPreloadCache.has(requestId)) continue;
+    if (!_isEsmOnly(requestId, resolver)) continue;
+
+    try {
+      const esmEntryPath = _resolveEsmEntryPath(requestId, resolver);
+      if (!esmEntryPath) continue;
+      const mod = await import(pathToFileUrl(esmEntryPath));
+      _esmPreloadCache.set(requestId, mod as Record<string, unknown>);
+    } catch {
+      // 预加载失败，忽略（让 require() 在运行时自然报错，给出真实错误信息）
+    }
+  }
+}
+
 
 /**
  * plugin-loader.ts — 插件自动加载器
@@ -197,6 +435,10 @@ async function loadPluginFile(
   pluginsDir: string,
 ): Promise<VextPlugin> {
   try {
+    // ESM-only 兼容：预加载此插件依赖的 ESM-only 包，注入 Module._load 缓存
+    _ensureModuleLoadPatch();
+    await _preloadEsmDeps(filePath);
+
     const fileUrl = pathToFileUrl(filePath);
     const mod = await import(fileUrl);
 

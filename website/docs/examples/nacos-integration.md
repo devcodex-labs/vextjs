@@ -71,6 +71,38 @@ export default nacosPlugin({
 });
 ```
 
+#### 动态端口（推荐：与 app.config.port 保持一致）
+
+`config/default.ts` 中的 `service.port` 是静态值，无法读取最终合并后的端口号。
+若各环境端口不同（如 sit: 10019 / prod: 20019），推荐在插件中动态注入：
+
+```typescript
+// src/plugins/nacos.ts
+import { definePlugin } from "vextjs";
+import { nacosPlugin } from "vextjs-nacos";
+
+export default definePlugin({
+  name: "nacos",
+
+  async setup(app) {
+    const nacosConfig = app.config.nacos as any;
+    if (!nacosConfig) return;
+
+    const inner = nacosPlugin({
+      // 只覆盖 service.port，其余字段继承 app.config.nacos
+      ...(nacosConfig.service
+        ? { service: { ...nacosConfig.service, port: app.config.port } }
+        : {}),
+    });
+
+    await inner.setup(app);
+  },
+});
+```
+
+这样 `config/默认.ts` 里 `service.port` 仅作类型占位，实际注册端口由 `app.config.port` 决定，
+各环境只需在对应 config 文件设置 `port: 10019`，nacos 自动跟随。
+
 完成。插件自动完成：
 
 - ✅ 启动时注册当前服务实例到 Nacos

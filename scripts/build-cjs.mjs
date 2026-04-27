@@ -135,10 +135,20 @@ async function buildCjs() {
       // ── 日志 ────────────────────────────────────────
       logLevel: "warning",
 
+      // ── import.meta.url CJS 兼容 ────────────────────
+      // 源代码中（如 plugin-loader.ts）使用 createRequire(import.meta.url)，
+      // 在 CJS bundle 上下文中 import.meta 是 undefined。
+      // 用 __filename 通过 pathToFileURL 模拟为 file:// URL。
+      define: {
+        "import.meta.url": "__vext_esm_url",
+      },
+
       // ── Banner ──────────────────────────────────────
-      // 标记文件为自动生成，避免误编辑
+      // 注入 import.meta.url 的 CJS 等价物 + 标记文件为自动生成
       banner: {
-        js: "/* Auto-generated CJS entry by build-cjs.mjs — DO NOT EDIT */",
+        js:
+          '/* Auto-generated CJS entry by build-cjs.mjs — DO NOT EDIT */\n' +
+          'const __vext_esm_url = require("node:url").pathToFileURL(__filename).href;',
       },
     });
 
