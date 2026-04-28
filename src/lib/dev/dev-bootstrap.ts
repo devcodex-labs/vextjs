@@ -9,7 +9,7 @@ import { HotSwappableHandler } from "./hot-swappable-handler.js";
 import { SoftReloader } from "./soft-reloader.js";
 import { reloadModels as reloadModelDefs } from "./model-reloader.js";
 import type { ModelReloadResult } from "./model-reloader.js";
-import { loadConfig } from "../config-loader.js";
+import { finalizeConfig, loadRawConfig } from "../config-loader.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
 import { loadI18n } from "../i18n-loader.js";
@@ -41,6 +41,19 @@ import type { VextServerHandle } from "../../types/adapter.js";
 import type { FileChangeInfo } from "./file-watcher.js";
 import type { BuiltinMiddlewareCreators } from "./route-reloader.js";
 import { printReadyLog } from "../utils/network.js";
+import {
+  normalizePortConflictStrategy,
+  resolvePortConflict,
+} from "../port-conflict.js";
+import {
+  requestPortConflictDecisionFromParent,
+  sendLifecycleLevelToParent,
+} from "../ipc-port-conflict.js";
+
+function getLifecycleLevel(config: Record<string, unknown>): "concise" | "verbose" {
+  const logger = config.logger as Record<string, unknown> | undefined;
+  return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
+}
 
 /**
  * dev-bootstrap.ts — Dev 模式启动编排（Phase 2B Soft Reload 版）
@@ -236,7 +249,34 @@ export async function devBootstrap(
     // dev 子进程不带 tsx loader，无法直接 require TS 文件。
     // compiler.start() 已将 src/config/ 编译为 .vext/dev/config/ 下的 CJS .js
     //
-    const config = await loadConfig(path.join(outDir, "config"));
+    const rawConfig = await loadRawConfig(path.join(outDir, "config"), {
+      rootDir: projectRoot,
+      command: "dev",
+      env: process.env,
+    });
+
+    const resolution = await resolvePortConflict({
+      host: rawConfig.host as string | undefined,
+      port: rawConfig.port as number,
+      strategy: normalizePortConflictStrategy(process.env.VEXT_PORT_CONFLICT),
+      interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+      requestDecision: (request) => requestPortConflictDecisionFromParent(request),
+    });
+
+    if (resolution.changed) {
+      rawConfig.port = resolution.port;
+      process.env.VEXT_PORT = String(resolution.port);
+      console.log(
+        `[vext dev] port conflict resolved: using next available port ${resolution.port}`,
+      );
+    } else if (resolution.action === "kill" && resolution.details?.pid) {
+      console.log(
+        `[vext dev] port conflict resolved: stopped process ${resolution.details.pid} on ${resolution.port}`,
+      );
+    }
+
+    const config = finalizeConfig(rawConfig);
+    sendLifecycleLevelToParent(getLifecycleLevel(rawConfig));
 
     // ── 步骤 2: createApp ────────────────────────────────
     const result = createApp(config);
@@ -348,6 +388,7 @@ export async function devBootstrap(
       path.join(outDir, "middlewares"),
       config.middlewares ?? [],
       app.logger,
+      config.logger?.lifecycleLevel ?? "concise",
     );
 
     // ── 步骤 6: 加载服务 ─────────────────────────────────

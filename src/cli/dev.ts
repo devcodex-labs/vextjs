@@ -1,4 +1,5 @@
 import { resolve, join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { detectProject } from "./utils/detect-project.js";
 import { resolvePreloads } from "./utils/preload.js";
 import { ColdRestarter } from "../lib/dev/cold-restarter.js";
@@ -87,6 +88,74 @@ export interface DevCommandOptions {
 
   /** 每次 reload 后清空控制台 */
   clear?: boolean;
+
+  /** 生命周期日志增强 */
+  verboseLifecycle?: boolean;
+
+  /** 端口冲突策略 */
+  portConflict?: "error" | "prompt" | "kill" | "next";
+}
+
+async function promptPortConflictDecision(
+  host: string | undefined,
+  port: number,
+  details?: { pid?: number; command?: string; source?: string },
+  restoreRawMode?: () => void,
+): Promise<"retry" | "kill" | "next" | "abort"> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return "abort";
+  }
+
+  process.stdin.setRawMode?.(false);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const owner = details?.pid
+      ? ` pid=${details.pid}${details.command ? ` (${details.command})` : ""}`
+      : "";
+    const answer = await rl.question(
+      `[vext dev] Port ${host ?? "0.0.0.0"}:${port} is in use${owner}. Choose: [r]etry / [k]ill / [n]ext / [a]bort: `,
+    );
+    switch (answer.trim().toLowerCase()) {
+      case "r":
+      case "retry":
+        return "retry";
+      case "k":
+      case "kill":
+        return "kill";
+      case "n":
+      case "next":
+        return "next";
+      default:
+        return "abort";
+    }
+  } finally {
+    rl.close();
+    restoreRawMode?.();
+  }
+}
+
+function printFileChanges(
+  files: FileChangeEvent["files"],
+  lifecycleLevel: "concise" | "verbose",
+): void {
+  if (lifecycleLevel === "verbose") {
+    console.log(`\n[vext dev] ${files.length} file(s) changed:`);
+    for (const f of files) {
+      const cls = classifyChange(f.path);
+      const icon =
+        cls.action === "cold"
+          ? "\u{1F534}"
+          : cls.action === "soft"
+            ? "\u{1F7E2}"
+            : "\u26AA";
+      console.log(`  ${icon} ${f.path} (${f.type})`);
+    }
+    return;
+  }
+
+  const preview = files.slice(0, 3).map((item) => item.path).join(", ");
+  const suffix = files.length > 3 ? `, +${files.length - 3} more` : "";
+  console.log(`\n[vext dev] ${files.length} file(s) changed${preview ? `: ${preview}${suffix}` : ""}`);
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -101,6 +170,12 @@ export interface DevCommandOptions {
  */
 export async function devCommand(args: string[] = []): Promise<void> {
   const options = parseDevArgs(args);
+  const hasLifecycleOverride =
+    options.verboseLifecycle === true || process.env.VEXT_LIFECYCLE_LEVEL === "verbose";
+  let lifecycleLevel: "concise" | "verbose" = hasLifecycleOverride
+    ? "verbose"
+    : "concise";
+  let promptActive = false;
 
   // ── 1. 检测项目结构 ────────────────────────────────────
   const projectRoot = resolve(options.root || process.cwd());
@@ -142,6 +217,12 @@ export async function devCommand(args: string[] = []): Promise<void> {
   if (options.host !== undefined) {
     restarterEnv.VEXT_HOST = options.host;
   }
+  if (options.portConflict) {
+    restarterEnv.VEXT_PORT_CONFLICT = options.portConflict;
+  }
+  if (options.verboseLifecycle) {
+    restarterEnv.VEXT_LIFECYCLE_LEVEL = "verbose";
+  }
 
   // ── 解析预加载模块（vext.preload 字段）──────────────
   //
@@ -180,6 +261,48 @@ export async function devCommand(args: string[] = []): Promise<void> {
             err instanceof Error ? err.message : err,
           );
         });
+        return;
+      }
+
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "lifecycle-config" &&
+        !hasLifecycleOverride
+      ) {
+        lifecycleLevel =
+          (msg as Record<string, unknown>).level === "verbose"
+            ? "verbose"
+            : "concise";
+        return;
+      }
+
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "port-conflict"
+      ) {
+        promptActive = true;
+        promptPortConflictDecision(
+          (msg as Record<string, unknown>).host as string | undefined,
+          (msg as Record<string, unknown>).port as number,
+          (msg as Record<string, unknown>).details as {
+            pid?: number;
+            command?: string;
+            source?: string;
+          },
+          () => {
+            if (process.stdin.isTTY) {
+              process.stdin.setRawMode(true);
+            }
+          },
+        )
+          .then((action) => {
+            restarter.sendToChild({ type: "port-conflict-decision", action });
+          })
+          .finally(() => {
+            promptActive = false;
+          });
       }
     },
 
@@ -221,17 +344,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
   watcher.on("change", async (event: FileChangeEvent) => {
     // ── 打印变更详情 ──────────────────────────────────
-    console.log(`\n[vext dev] ${event.files.length} file(s) changed:`);
-    for (const f of event.files) {
-      const cls = classifyChange(f.path);
-      const icon =
-        cls.action === "cold"
-          ? "\u{1F534}" // 🔴
-          : cls.action === "soft"
-            ? "\u{1F7E2}" // 🟢
-            : "\u26AA"; // ⚪
-      console.log(`  ${icon} ${f.path} (${f.type})`);
-    }
+    printFileChanges(event.files, lifecycleLevel);
 
     if (options.clear) {
       console.clear();
@@ -359,6 +472,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
     process.stdin.on("data", (key: string) => {
       switch (key) {
         case "r":
+          if (promptActive) break;
           console.log("\n[vext dev] manual cold restart...");
           restarter.restart("manual").catch((err: unknown) => {
             console.error(
@@ -369,10 +483,12 @@ export async function devCommand(args: string[] = []): Promise<void> {
           break;
 
         case "c":
+          if (promptActive) break;
           console.clear();
           break;
 
         case "h":
+          if (promptActive) break;
           // 手动触发 soft reload（全文件）
           console.log("\n[vext dev] manual soft reload (all sources)...");
           restarter.sendToChild({
@@ -382,6 +498,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
           break;
 
         case "?":
+          if (promptActive) break;
           printKeyboardHelp();
           break;
 
@@ -482,6 +599,28 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         options.noHot = true;
         break;
 
+      case "--verbose-lifecycle":
+        options.verboseLifecycle = true;
+        break;
+
+      case "--port-conflict":
+        if (i + 1 < args.length) {
+          const strategy = args[++i]!;
+          if (
+            strategy !== "error" &&
+            strategy !== "prompt" &&
+            strategy !== "kill" &&
+            strategy !== "next"
+          ) {
+            console.error(
+              `[vextjs] Invalid --port-conflict value: "${strategy}"`,
+            );
+            process.exit(1);
+          }
+          options.portConflict = strategy;
+        }
+        break;
+
       case "--clear":
         options.clear = true;
         break;
@@ -517,6 +656,23 @@ function parseDevArgs(args: string[]): DevCommandOptions {
     if (!Number.isNaN(val) && val >= 0) {
       options.debounce = val;
     }
+  }
+  if (
+    options.verboseLifecycle === undefined &&
+    process.env.VEXT_VERBOSE_LIFECYCLE === "1"
+  ) {
+    options.verboseLifecycle = true;
+  }
+  if (
+    options.portConflict === undefined &&
+    process.env.VEXT_PORT_CONFLICT &&
+    ["error", "prompt", "kill", "next"].includes(process.env.VEXT_PORT_CONFLICT)
+  ) {
+    options.portConflict = process.env.VEXT_PORT_CONFLICT as
+      | "error"
+      | "prompt"
+      | "kill"
+      | "next";
   }
 
   return options;
@@ -588,6 +744,9 @@ function printDevHelp(): void {
     --poll-interval <ms>  Polling interval in ms (default: 1000)
     --debounce <ms>       Debounce interval in ms (default: 0, disabled)
     --no-hot              Disable soft reload, always cold restart
+    --port-conflict <error|prompt|kill|next>
+                           Configure how port conflicts are handled
+    --verbose-lifecycle   Show verbose lifecycle logs
     --clear               Clear console on each reload
     -h, --help            Show this help message
 
@@ -598,11 +757,14 @@ function printDevHelp(): void {
     $ vext dev --poll --poll-interval 2000
     $ vext dev --debounce 50
     $ vext dev --no-hot
+    $ vext dev --port-conflict prompt
 
   Environment variables:
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload
     VEXT_DEV_DEBOUNCE=50  Set debounce interval (ms, default: 0)
+    VEXT_PORT_CONFLICT=next
+    VEXT_VERBOSE_LIFECYCLE=1
 `);
 }

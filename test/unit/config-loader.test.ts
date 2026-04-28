@@ -581,6 +581,7 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
   let tmpDir: string;
   let savedPort: string | undefined;
   let savedHost: string | undefined;
+  let savedLifecycleLevel: string | undefined;
   let savedNodeEnv: string | undefined;
 
   beforeEach(() => {
@@ -593,6 +594,7 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
     // 保存环境变量
     savedPort = process.env.VEXT_PORT;
     savedHost = process.env.VEXT_HOST;
+    savedLifecycleLevel = process.env.VEXT_LIFECYCLE_LEVEL;
     savedNodeEnv = process.env.NODE_ENV;
     // loadConfig 内部使用 NODE_ENV 查找环境文件
     process.env.NODE_ENV = "test";
@@ -609,6 +611,11 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
       process.env.VEXT_HOST = savedHost;
     } else {
       delete process.env.VEXT_HOST;
+    }
+    if (savedLifecycleLevel !== undefined) {
+      process.env.VEXT_LIFECYCLE_LEVEL = savedLifecycleLevel;
+    } else {
+      delete process.env.VEXT_LIFECYCLE_LEVEL;
     }
     if (savedNodeEnv !== undefined) {
       process.env.NODE_ENV = savedNodeEnv;
@@ -691,5 +698,130 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
     expect(() => {
       (config as Record<string, unknown>).port = 9999;
     }).toThrow();
+  });
+
+  it("VEXT_LIFECYCLE_LEVEL 应覆盖 logger.lifecycleLevel", async () => {
+    delete process.env.VEXT_PORT;
+    delete process.env.VEXT_HOST;
+    process.env.VEXT_LIFECYCLE_LEVEL = "verbose";
+
+    const config = await loadConfig(tmpDir);
+    expect(config.logger?.lifecycleLevel).toBe("verbose");
+  });
+});
+
+describe("loadConfig — bootstrap config provider", () => {
+  let tmpRoot: string;
+  let configDir: string;
+  let savedNodeEnv: string | undefined;
+  let savedPort: string | undefined;
+  let savedHost: string | undefined;
+
+  beforeEach(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vext-bootstrap-provider-"));
+    configDir = path.join(tmpRoot, "config");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "default.js"),
+      `module.exports = { port: 3000, host: "default.local", logger: { level: "info" } };\n`,
+    );
+    fs.writeFileSync(
+      path.join(configDir, "local.js"),
+      `module.exports = { host: "local.local" };\n`,
+    );
+
+    savedNodeEnv = process.env.NODE_ENV;
+    savedPort = process.env.VEXT_PORT;
+    savedHost = process.env.VEXT_HOST;
+    process.env.NODE_ENV = "test";
+    delete process.env.VEXT_PORT;
+    delete process.env.VEXT_HOST;
+  });
+
+  afterEach(() => {
+    if (savedNodeEnv !== undefined) {
+      process.env.NODE_ENV = savedNodeEnv;
+    } else {
+      delete process.env.NODE_ENV;
+    }
+    if (savedPort !== undefined) {
+      process.env.VEXT_PORT = savedPort;
+    } else {
+      delete process.env.VEXT_PORT;
+    }
+    if (savedHost !== undefined) {
+      process.env.VEXT_HOST = savedHost;
+    } else {
+      delete process.env.VEXT_HOST;
+    }
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it("applies provider patch after local config and before CLI overrides", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = {
+  providers: [{
+    name: "test-provider",
+    async load() {
+      return { host: "provider.local", logger: { lifecycleLevel: "concise" } };
+    }
+  }]
+};\n`,
+    );
+
+    process.env.VEXT_HOST = "cli.local";
+
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "start",
+    });
+
+    expect(config.host).toBe("cli.local");
+    expect(config.logger?.lifecycleLevel).toBe("concise");
+  });
+
+  it("allows optional provider failure outside production", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = {
+  providers: [{
+    name: "unstable-provider",
+    async load() {
+      throw new Error("network down");
+    }
+  }]
+};\n`,
+    );
+
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "dev",
+    });
+
+    expect(config.host).toBe("local.local");
+  });
+
+  it("fails fast for default-required provider in production", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = {
+  providers: [{
+    name: "required-provider",
+    async load() {
+      throw new Error("remote unavailable");
+    }
+  }]
+};\n`,
+    );
+
+    process.env.NODE_ENV = "production";
+
+    await expect(
+      loadConfig(configDir, {
+        rootDir: tmpRoot,
+        command: "start",
+      }),
+    ).rejects.toThrow('Bootstrap config provider "required-provider" failed');
   });
 });

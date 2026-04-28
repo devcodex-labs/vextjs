@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "VextJS is a modern Node.js web framework with adapter architecture, plugin system, and out-of-the-box features for building high-performance RESTful APIs.",
   "type": "module",
   "main": "./dist/index.js",
@@ -137,6 +137,7 @@
     "@types/node": "^22.15.17",
     "@vitest/coverage-v8": "^3.2.4",
     "autocannon": "^8.0.0",
+    "eslint": "^10.2.1",
     "express": "^5.2.1",
     "fastify": "^5.7.4",
     "hono": "^4.7.6",
@@ -144,6 +145,7 @@
     "mongodb-memory-server": "^11.0.1",
     "prettier": "^3.8.1",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.0",
     "vitest": "^3.1.3"
   }
 }

@@ -91,6 +91,23 @@ sequenceDiagram
 | **全局 polyfill** | 需要在所有代码执行前注入的全局补丁 |
 | **进程级配置** | 例如设置全局环境变量、注册自定义 loader |
 
+## preload 与 bootstrap config provider 的边界
+
+`preload` 和 `src/config/bootstrap.ts` 都发生在应用完全启动前，但职责不同：
+
+| 能力 | preload | bootstrap config provider |
+|------|---------|---------------------------|
+| 执行时机 | Node.js 模块加载前（`--import`） | 配置 merge / validate / freeze 之前 |
+| 主要职责 | SDK 初始化、monkey patch、全局 polyfill | 返回结构化配置补丁 |
+| 是否参与配置优先级链 | ❌ | ✅ |
+| 是否适合作为远程数据库配置主路径 | ❌ | ✅ |
+
+推荐做法：
+
+- **APM / OpenTelemetry / monkey patch** → 用 `preload`
+- **远程配置中心 / 启动期数据库配置** → 用 `bootstrap config provider`
+- 两者可以配合：preload 先准备 SDK 或 token cache，provider 再读取共享状态产出 patch
+
 ## 三种启动模式
 
 | 模式 | preload 生效？ | 说明 |

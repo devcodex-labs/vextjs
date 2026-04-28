@@ -25,6 +25,10 @@ export default {
 VEXT_CLUSTER=1 vext start
 ```
 
+:::tip 配置一致性
+Cluster 模式下，Master 会先完成配置检测和端口预检；`bootstrap config provider` 的 patch 会在同一启动周期内传递给 Worker 复用，避免 Master 与 Worker、不同 Worker 看到不同的远程配置结果。
+:::
+
 ### 启动效果
 
 ```bash
@@ -454,7 +458,7 @@ services:
 
 ### Cluster 模式下 WebSocket / SSE 需要注意什么？
 
-长连接（WebSocket、SSE）在 Cluster 模式下需要考虑 sticky session，确保同一客户端的连接始终路由到同一个 Worker。可以通过 `cluster.sticky: true` 启用。
+长连接（WebSocket、SSE）在 Cluster 模式下需要考虑 sticky session，确保同一客户端的连接尽量路由到同一个 Worker。可以通过 `cluster.sticky: "ip"` 启用基于客户端 IP 的粘性分配；默认值为 `"none"`。
 
 ### Worker 数量设多少合适？
 

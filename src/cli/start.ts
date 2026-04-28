@@ -1,5 +1,6 @@
 import { fork } from "node:child_process";
 import { resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import {
   detectProject,
   hasDistBuild,
@@ -45,6 +46,51 @@ interface StartOptions {
   port?: number;
   /** 覆盖监听地址 */
   host?: string;
+  /** 生命周期日志增强 */
+  verboseLifecycle?: boolean;
+  /** 端口冲突策略 */
+  portConflict?: "error" | "prompt" | "kill" | "next";
+}
+
+async function promptPortConflictDecision(
+  host: string | undefined,
+  port: number,
+  details?: { pid?: number; command?: string; source?: string },
+): Promise<"retry" | "kill" | "next" | "abort"> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return "abort";
+  }
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const owner = details?.pid
+      ? ` pid=${details.pid}${details.command ? ` (${details.command})` : ""}`
+      : "";
+    const target = `${host ?? "0.0.0.0"}:${port}`;
+    const answer = await rl.question(
+      `[vextjs] Port ${target} is in use${owner}. Choose: [r]etry / [k]ill / [n]ext / [a]bort: `,
+    );
+
+    switch (answer.trim().toLowerCase()) {
+      case "r":
+      case "retry":
+        return "retry";
+      case "k":
+      case "kill":
+        return "kill";
+      case "n":
+      case "next":
+        return "next";
+      default:
+        return "abort";
+    }
+  } finally {
+    rl.close();
+  }
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -121,6 +167,12 @@ export async function startCommand(args: string[] = []): Promise<void> {
   if (options.host !== undefined) {
     env.VEXT_HOST = options.host;
   }
+  if (options.portConflict) {
+    env.VEXT_PORT_CONFLICT = options.portConflict;
+  }
+  if (options.verboseLifecycle) {
+    env.VEXT_LIFECYCLE_LEVEL = "verbose";
+  }
 
   // ── fork 子进程 ──────────────────────────────────────────
   //
@@ -132,8 +184,24 @@ export async function startCommand(args: string[] = []): Promise<void> {
   const child = fork(entryFile, [], {
     cwd: project.rootDir,
     execArgv,
-    stdio: "inherit",
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
     env,
+  });
+
+  child.on("message", async (msg: unknown) => {
+    if (typeof msg !== "object" || msg === null) {
+      return;
+    }
+
+    const payload = msg as Record<string, unknown>;
+    if (payload.type === "port-conflict") {
+      const action = await promptPortConflictDecision(
+        payload.host as string | undefined,
+        payload.port as number,
+        payload.details as { pid?: number; command?: string; source?: string },
+      );
+      child.send({ type: "port-conflict-decision", action });
+    }
   });
 
   // ── 子进程退出处理 ────────────────────────────────────────
@@ -219,6 +287,20 @@ function parseStartArgs(args: string[]): StartOptions {
       options.port = port;
     } else if (arg === "--host" && i + 1 < args.length) {
       options.host = args[++i]!;
+    } else if (arg === "--port-conflict" && i + 1 < args.length) {
+      const strategy = args[++i]!;
+      if (
+        strategy !== "error" &&
+        strategy !== "prompt" &&
+        strategy !== "kill" &&
+        strategy !== "next"
+      ) {
+        console.error(`[vextjs] Invalid --port-conflict value: "${strategy}"`);
+        process.exit(1);
+      }
+      options.portConflict = strategy;
+    } else if (arg === "--verbose-lifecycle") {
+      options.verboseLifecycle = true;
     } else if (arg === "--help" || arg === "-h") {
       printStartHelp();
       process.exit(0);
@@ -227,6 +309,25 @@ function parseStartArgs(args: string[]): StartOptions {
       printStartHelp();
       process.exit(1);
     }
+  }
+
+  if (
+    options.portConflict === undefined &&
+    process.env.VEXT_PORT_CONFLICT &&
+    ["error", "prompt", "kill", "next"].includes(process.env.VEXT_PORT_CONFLICT)
+  ) {
+    options.portConflict = process.env.VEXT_PORT_CONFLICT as
+      | "error"
+      | "prompt"
+      | "kill"
+      | "next";
+  }
+
+  if (
+    options.verboseLifecycle === undefined &&
+    process.env.VEXT_VERBOSE_LIFECYCLE === "1"
+  ) {
+    options.verboseLifecycle = true;
   }
 
   return options;
@@ -244,15 +345,22 @@ function printStartHelp(): void {
   Options:
     --port <number>   Override the listening port
     --host <string>   Override the listening host
+    --port-conflict <error|prompt|kill|next>
+                       Configure how port conflicts are handled
+    --verbose-lifecycle
+                       Show verbose lifecycle logs
     -h, --help        Show this help message
 
   Examples:
     $ vext start
     $ vext start --port 8080
     $ vext start --host 127.0.0.1 --port 3000
+    $ vext start --port-conflict prompt
 
   Environment variables:
     NODE_ENV          Set the environment (default: production)
     VEXT_CLUSTER=1    Enable cluster mode
+    VEXT_PORT_CONFLICT=next
+    VEXT_VERBOSE_LIFECYCLE=1
 `);
 }

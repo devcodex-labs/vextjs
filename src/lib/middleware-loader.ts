@@ -101,6 +101,7 @@ export async function loadMiddlewares(
   middlewaresDir: string,
   declarations: MiddlewareDecl[],
   logger: VextLogger,
+  lifecycleLevel: "concise" | "verbose" = "concise",
 ): Promise<MiddlewareRegistry> {
   const registry: MiddlewareRegistry = {};
 
@@ -184,9 +185,11 @@ export async function loadMiddlewares(
   }
 
   if (Object.keys(registry).length > 0) {
-    logger.info(
-      `[vextjs] ${Object.keys(registry).length} middleware(s) loaded: ${Object.keys(registry).join(", ")}`,
-    );
+    const names = Object.keys(registry);
+    logger.info(`[vextjs] ${names.length} middleware(s) loaded`);
+    if (lifecycleLevel === "verbose") {
+      logger.info(`[middleware-loader] ${names.join(", ")}`);
+    }
   }
 
   return registry;

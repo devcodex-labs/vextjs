@@ -351,14 +351,19 @@ export async function loadPlugins(
 
   // ── 4. 拓扑排序（按 dependencies 字段）────────────────────
   const sorted = topoSort(plugins, nameSet);
+  const lifecycleLevel = app.config.logger?.lifecycleLevel ?? "concise";
 
   // ── 5. 依次执行 setup（含超时保护）────────────────────────
   for (const { plugin, sourceFile } of sorted) {
-    app.logger.debug(`[plugin] loading: ${plugin.name}`);
+    if (lifecycleLevel === "verbose") {
+      app.logger.info(`[plugin] loading: ${plugin.name}`);
+    }
 
     await executeSetupWithTimeout(plugin, app, setupTimeout, sourceFile);
 
-    app.logger.info(`[plugin] loaded:  ${plugin.name}`);
+    if (lifecycleLevel === "verbose") {
+      app.logger.info(`[plugin] loaded:  ${plugin.name}`);
+    }
   }
 
   app.logger.info(`[vextjs] ${sorted.length} plugin(s) loaded`);

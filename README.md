@@ -111,7 +111,8 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 my-app/
 ├── src/
 │   ├── config/
-│   │   └── default.js       # 应用配置
+│   │   ├── default.js       # 应用配置
+│   │   └── bootstrap.js     # 启动期远程配置 provider（可选）
 │   └── routes/
 │       └── index.js          # 路由定义
 └── package.json
@@ -128,7 +129,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.2.6"
+    "vextjs": "^0.3.1"
   }
 }
 ```
@@ -519,7 +520,7 @@ app.get(
 
 ## ⚙️ 配置
 
-配置文件支持三层合并：`default` → `{NODE_ENV}` → `local`。
+配置文件支持分层合并：框架内置默认值 → `default` → `{NODE_ENV}` → `local` → `bootstrap provider patch` → CLI override。
 
 ```js
 // src/config/default.js — 默认配置
@@ -574,7 +575,7 @@ export default {
 };
 ```
 
-CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件中的值。
+CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件和 `bootstrap provider patch` 中的值。
 
 ---
 
@@ -822,7 +823,7 @@ HTTP 响应 → { code: 0, data: {...} }
 
 ### 启动流程
 
-1. **配置加载** — `default` → `{env}` → `local` 三层合并 + 冻结
+1. **配置加载** — 内置默认值 → `default` → `{env}` → `local` → `bootstrap provider patch` → CLI override + 冻结
 2. **创建 App** — 初始化 logger、validator、adapter、throw
 3. **i18n 加载** — 自动扫描 `src/locales/`
 4. **插件加载** — 拓扑排序 + 依次 `setup()`
@@ -842,6 +843,8 @@ HTTP 响应 → { code: 0, data: {...} }
 | `NODE_ENV`          | 运行环境                  | `production`（start）/ `development`（dev） |
 | `VEXT_PORT`         | 覆盖监听端口              | —                                           |
 | `VEXT_HOST`         | 覆盖监听地址              | —                                           |
+| `VEXT_PORT_CONFLICT` | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error` |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`） | `concise` |
 | `VEXT_DEV_POLL`     | 强制轮询模式（`1` / `0`） | 自动检测                                    |
 | `VEXT_DEV_NO_HOT`   | 禁用 Soft Reload          | —                                           |
 | `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒）          | `0`（不开启）                               |

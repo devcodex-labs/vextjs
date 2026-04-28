@@ -26,6 +26,10 @@ import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { VextConfig, VextMiddlewareConfig } from "../types/app.js";
 import { DEFAULT_CONFIG } from "./app.js";
+import {
+  loadBootstrapConfigPatch,
+  type BootstrapCommand,
+} from "./bootstrap-config.js";
 
 // ── 常量 ────────────────────────────────────────────────────
 
@@ -44,6 +48,18 @@ const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
  *   - 对象：带配置的中间件声明（如 { name: 'auth', options: { ... } }）
  */
 type MiddlewareDecl = string | (VextMiddlewareConfig & { enabled?: boolean });
+
+export interface LoadConfigMetadata {
+  providerPatch?: Record<string, unknown>;
+}
+
+export interface LoadConfigOptions {
+  rootDir?: string;
+  command?: BootstrapCommand;
+  isBuilt?: boolean;
+  env?: NodeJS.ProcessEnv;
+  meta?: LoadConfigMetadata;
+}
 
 // ── 文件解析 ────────────────────────────────────────────────
 
@@ -167,6 +183,52 @@ function patchMiddlewares(
   }
 
   return result;
+}
+
+function applyConfigLayer(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const beforeOverride = { ...base };
+  const merged = deepMerge(base, override);
+
+  if (override.middlewares && Array.isArray(override.middlewares)) {
+    merged.middlewares = patchMiddlewares(
+      (beforeOverride.middlewares as MiddlewareDecl[] | undefined) ?? [],
+      override.middlewares as MiddlewareDecl[],
+    );
+  }
+
+  return merged;
+}
+
+function applyCliOverrides(
+  merged: Record<string, unknown>,
+  env: NodeJS.ProcessEnv,
+): Record<string, unknown> {
+  if (env.VEXT_PORT) {
+    const cliPort = parseInt(env.VEXT_PORT, 10);
+    if (!Number.isNaN(cliPort) && cliPort >= 1 && cliPort <= 65535) {
+      merged.port = cliPort;
+    }
+  }
+
+  if (env.VEXT_HOST) {
+    merged.host = env.VEXT_HOST;
+  }
+
+  if (env.VEXT_LIFECYCLE_LEVEL) {
+    const lifecycleLevel = env.VEXT_LIFECYCLE_LEVEL;
+    if (lifecycleLevel === "concise" || lifecycleLevel === "verbose") {
+      const logger = {
+        ...((merged.logger as Record<string, unknown> | undefined) ?? {}),
+        lifecycleLevel,
+      };
+      merged.logger = logger;
+    }
+  }
+
+  return merged;
 }
 
 // ── deepFreeze ──────────────────────────────────────────────
@@ -382,6 +444,17 @@ function validateConfig(config: Record<string, unknown>): void {
     if (logger.pretty !== undefined && typeof logger.pretty !== "boolean") {
       throw new Error("[vextjs] config.logger.pretty must be a boolean.");
     }
+    if (logger.lifecycleLevel !== undefined) {
+      const validLifecycleLevels = ["concise", "verbose"];
+      if (
+        typeof logger.lifecycleLevel !== "string" ||
+        !validLifecycleLevels.includes(logger.lifecycleLevel)
+      ) {
+        throw new Error(
+          `[vextjs] config.logger.lifecycleLevel must be one of: ${validLifecycleLevels.join(", ")}, got: "${logger.lifecycleLevel}"`,
+        );
+      }
+    }
   }
 
   // ── shutdown ──────────────────────────────────────────
@@ -558,7 +631,12 @@ async function importConfigFile(
  * // config 已 deepFreeze，运行时不可修改
  * ```
  */
-export async function loadConfig(configDir: string): Promise<VextConfig> {
+export async function loadRawConfig(
+  configDir: string,
+  options: LoadConfigOptions = {},
+): Promise<Record<string, unknown>> {
+  const processEnv = options.env ?? process.env;
+
   // ── 1. 加载 default（必须存在）────────────────────────
   const defaultFile = resolveConfigFile(configDir, "default");
   if (!defaultFile) {
@@ -599,7 +677,7 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
   }
 
   // ── 2. 加载环境文件（可选）──────────────────────────────
-  const env = process.env.NODE_ENV || "development";
+  const env = processEnv.NODE_ENV || "development";
   const envFile = resolveConfigFile(configDir, env);
   const envConfig = envFile ? await importConfigFile(envFile) : {};
 
@@ -608,24 +686,23 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
   const localConfig = localFile ? await importConfigFile(localFile) : {};
 
   // ── 4. 合并 ────────────────────────────────────────────
-  // 4a. default + env（深度合并 + middlewares patch）
-  let merged = deepMerge(defaultConfig, envConfig);
-  if (envConfig.middlewares && Array.isArray(envConfig.middlewares)) {
-    merged.middlewares = patchMiddlewares(
-      (defaultConfig.middlewares as MiddlewareDecl[] | undefined) ?? [],
-      envConfig.middlewares as MiddlewareDecl[],
-    );
-  }
+  let merged = applyConfigLayer(defaultConfig, envConfig);
+  merged = applyConfigLayer(merged, localConfig);
 
-  // 4b. (default+env) + local（深度合并 + middlewares patch）
-  const beforeLocal = { ...merged };
-  merged = deepMerge(merged, localConfig);
-  if (localConfig.middlewares && Array.isArray(localConfig.middlewares)) {
-    merged.middlewares = patchMiddlewares(
-      (beforeLocal.middlewares as MiddlewareDecl[] | undefined) ?? [],
-      localConfig.middlewares as MiddlewareDecl[],
-    );
+  const rootDir = options.rootDir ?? path.dirname(path.dirname(configDir));
+  const providerPatch = await loadBootstrapConfigPatch({
+    rootDir,
+    configDir,
+    env,
+    command: options.command ?? "start",
+    isBuilt: options.isBuilt ?? false,
+    baseConfig: merged,
+    processEnv,
+  });
+  if (options.meta) {
+    options.meta.providerPatch = providerPatch;
   }
+  merged = applyConfigLayer(merged, providerPatch);
 
   // ── 4c. CLI 环境变量覆盖（最高优先级）─────────────────
   //
@@ -638,21 +715,19 @@ export async function loadConfig(configDir: string): Promise<VextConfig> {
   // 🐛 修复：BUG-013 — CLI --port/--host 参数设置了 VEXT_PORT/VEXT_HOST 环境变量，
   //    但 loadConfig 从未读取这些环境变量，导致端口覆盖静默失效。
   //
-  if (process.env.VEXT_PORT) {
-    const cliPort = parseInt(process.env.VEXT_PORT, 10);
-    if (!Number.isNaN(cliPort) && cliPort >= 1 && cliPort <= 65535) {
-      merged.port = cliPort;
-    }
-  }
-  if (process.env.VEXT_HOST) {
-    merged.host = process.env.VEXT_HOST;
-  }
+  return applyCliOverrides(merged, processEnv);
+}
 
-  // ── 5. Fail Fast 校验 ──────────────────────────────────
-  validateConfig(merged);
+export function finalizeConfig(rawConfig: Record<string, unknown>): VextConfig {
+  validateConfig(rawConfig);
+  return deepFreeze(rawConfig) as VextConfig;
+}
 
-  // ── 6. 深冻结并返回 ────────────────────────────────────
-  return deepFreeze(merged) as VextConfig;
+export async function loadConfig(
+  configDir: string,
+  options: LoadConfigOptions = {},
+): Promise<VextConfig> {
+  return finalizeConfig(await loadRawConfig(configDir, options));
 }
 
 // ── 导出辅助函数（供测试使用）───────────────────────────────
@@ -661,6 +736,8 @@ export {
   deepMerge as _deepMerge,
   deepFreeze as _deepFreeze,
   patchMiddlewares as _patchMiddlewares,
+  applyCliOverrides as _applyCliOverrides,
+  applyConfigLayer as _applyConfigLayer,
   validateConfig as _validateConfig,
   resolveConfigFile as _resolveConfigFile,
 };

@@ -76,6 +76,7 @@ export type MiddlewareLoader = (
   middlewaresDir: string,
   declarations: unknown[],
   logger: SoftReloaderLogger,
+  lifecycleLevel?: "concise" | "verbose",
 ) => Promise<MiddlewareRegistry>;
 
 /**
@@ -290,6 +291,11 @@ export class SoftReloader {
    * 累计失败 reload 次数
    */
   private failureCount = 0;
+
+  private get lifecycleLevel(): "concise" | "verbose" {
+    const logger = this.config.logger as Record<string, unknown> | undefined;
+    return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
+  }
 
   constructor(options: SoftReloaderOptions) {
     this.compiler = options.compiler;
@@ -523,6 +529,7 @@ export class SoftReloader {
         path.join(outDir, "middlewares"),
         (this.config.middlewares as unknown[]) ?? [],
         this.logger,
+        this.lifecycleLevel,
       );
       mwEnd = performance.now();
 
@@ -570,19 +577,25 @@ export class SoftReloader {
       const elapsed = swapEnd - startTime;
       const reloadCount = this.hotHandler.getReloadCount();
 
-      this.logger.info(
-        `[hot-reload] [OK] ${elapsed.toFixed(0)}ms [${tier}] ` +
-          `(compile:${(compileEnd - startTime).toFixed(0)}ms ` +
-          `cache:${(cacheEnd - compileEnd).toFixed(0)}ms ` +
-          `i18n:${(i18nEnd - cacheEnd).toFixed(0)}ms ` +
-          `mw:${(mwEnd - i18nEnd).toFixed(0)}ms ` +
-          `svc:${(svcEnd - mwEnd).toFixed(0)}ms ` +
-          `model:${(modelEnd - svcEnd).toFixed(0)}ms ` +
-          `route:${(routeEnd - modelEnd).toFixed(0)}ms ` +
-          `swap:${(swapEnd - routeEnd).toFixed(0)}ms) ` +
-          `[${cacheResult.evicted} modules evicted] ` +
-          `#${reloadCount}`,
-      );
+      if (this.lifecycleLevel === "verbose") {
+        this.logger.info(
+          `[hot-reload] [OK] ${elapsed.toFixed(0)}ms [${tier}] ` +
+            `(compile:${(compileEnd - startTime).toFixed(0)}ms ` +
+            `cache:${(cacheEnd - compileEnd).toFixed(0)}ms ` +
+            `i18n:${(i18nEnd - cacheEnd).toFixed(0)}ms ` +
+            `mw:${(mwEnd - i18nEnd).toFixed(0)}ms ` +
+            `svc:${(svcEnd - mwEnd).toFixed(0)}ms ` +
+            `model:${(modelEnd - svcEnd).toFixed(0)}ms ` +
+            `route:${(routeEnd - modelEnd).toFixed(0)}ms ` +
+            `swap:${(swapEnd - routeEnd).toFixed(0)}ms) ` +
+            `[${cacheResult.evicted} modules evicted] ` +
+            `#${reloadCount}`,
+        );
+      } else {
+        this.logger.info(
+          `[hot-reload] [OK] ${elapsed.toFixed(0)}ms [${tier}] #${reloadCount}`,
+        );
+      }
 
       // 内存监控
       const memoryReport = reportMemoryIfNeeded(reloadCount);

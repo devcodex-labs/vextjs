@@ -336,6 +336,7 @@ export async function createTestApp(
       join(srcDir, "middlewares"),
       finalConfig.middlewares,
       app.logger,
+      finalConfig.logger?.lifecycleLevel ?? "concise",
     );
   }
 

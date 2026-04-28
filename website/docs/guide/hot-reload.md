@@ -36,7 +36,13 @@ npx vext dev
 [vext dev] 1 file(s) changed:
   🟢 src/routes/users.ts (modify)
 [vext dev] source change detected → soft reload [T1:code]...
-[hot-reload] [OK] 45ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms route:25ms swap:2ms) [12 modules evicted] #1
+[hot-reload] [OK] 45ms [T1:code] #1
+```
+
+开启 `--verbose-lifecycle` 后会额外输出各阶段耗时与缓存驱逐数量：
+
+```
+[hot-reload] [OK] 45ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms model:0ms route:25ms swap:2ms) [12 modules evicted] #1
 ```
 
 如果变更涉及文件新增或删除（结构变更），会走 Tier 2：
@@ -46,7 +52,7 @@ npx vext dev
   🟢 src/routes/orders.ts (add)
   🟢 src/routes/users.ts (modify)
 [vext dev] source change detected → soft reload [T2:structural]...
-[hot-reload] [OK] 82ms [T2:structural] (compile:35ms cache:5ms i18n:0ms mw:6ms svc:10ms route:22ms swap:4ms) [18 modules evicted] #2
+[hot-reload] [OK] 82ms [T2:structural] #2
 ```
 
 如果变更涉及配置或插件，会走 Tier 3 冷重启：
@@ -236,6 +242,9 @@ Options:
   --poll               强制轮询模式（Docker / NFS 环境）
   --poll-interval <ms> 轮询间隔（毫秒，默认 1000）
   --no-hot             禁用 Soft Reload，所有变更走 Cold Restart
+  --port-conflict <strategy>
+                       端口冲突策略：error / prompt / kill / next
+  --verbose-lifecycle  输出详细生命周期日志与完整 watcher 变更列表
   --clear              每次重载后清空控制台
   -h, --help           显示帮助信息
 ```
@@ -252,6 +261,12 @@ vext dev --debounce 50
 
 # Docker / NFS 环境使用轮询模式
 vext dev --poll --poll-interval 2000
+
+# 端口冲突时自动使用下一个可用端口
+vext dev --port-conflict next
+
+# 排查 loader / hot reload 细节
+vext dev --verbose-lifecycle
 ```
 
 ## 文件监听规则
@@ -327,7 +342,20 @@ src/
 
 ### 端口占用怎么办？
 
-冷重启时如果端口释放不及时，可能遇到 `EADDRINUSE` 错误。框架内部会自动重试，通常在几百毫秒内恢复。如果持续报错：
+冷重启时如果端口仍被占用，VextJS 不再承诺“内部自动重试直到恢复”。当前行为是按 `--port-conflict` / `VEXT_PORT_CONFLICT` 执行显式策略：
+
+- `error`（默认）：直接失败
+- `prompt`：交互式询问 `retry / kill / next / abort`
+- `kill`：尝试终止占用进程
+- `next`：自动切换到下一个可用端口
+
+如果你希望开发期端口占用时自动平滑继续，推荐：
+
+```bash
+vext dev --port-conflict next
+```
+
+如果需要手动排查占用进程：
 
 ```bash
 # 手动查找并终止占用端口的进程

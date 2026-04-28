@@ -270,6 +270,8 @@ export interface VextLocaleConfig {
 export interface VextLoggerConfig {
   /** 日志级别（默认 'info'） */
   level?: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent";
+  /** 生命周期系统日志级别（默认 'concise'） */
+  lifecycleLevel?: "concise" | "verbose";
   /** 是否美化输出（默认 development 时启用） */
   pretty?: boolean;
   /**

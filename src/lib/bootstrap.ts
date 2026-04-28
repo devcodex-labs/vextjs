@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import { existsSync, readdirSync } from "node:fs";
 import cluster from "node:cluster";
-import { loadConfig } from "./config-loader.js";
+import {
+  finalizeConfig,
+  loadConfig,
+  type LoadConfigMetadata,
+  loadRawConfig,
+} from "./config-loader.js";
+import { CLUSTER_BOOTSTRAP_PATCH_ENV } from "./bootstrap-config.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
@@ -31,6 +37,59 @@ import type { VextServerHandle } from "../types/adapter.js";
 import type { VextApp } from "../types/app.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import { printReadyLog } from "./utils/network.js";
+import {
+  normalizePortConflictStrategy,
+  resolvePortConflict,
+} from "./port-conflict.js";
+import {
+  requestPortConflictDecisionFromParent,
+  sendLifecycleLevelToParent,
+} from "./ipc-port-conflict.js";
+
+function getLifecycleLevel(config: Record<string, unknown>): "concise" | "verbose" {
+  const logger = config.logger as Record<string, unknown> | undefined;
+  return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
+}
+
+async function resolveStartupConfig(
+  rootDir: string,
+  configDir: string,
+  command: "start" | "dev" | "test",
+  isBuilt: boolean,
+  metadata?: LoadConfigMetadata,
+): Promise<Record<string, unknown>> {
+  const rawConfig = await loadRawConfig(configDir, {
+    rootDir,
+    command,
+    isBuilt,
+    meta: metadata,
+  });
+
+  if (!cluster.isWorker) {
+    const strategy = normalizePortConflictStrategy(process.env.VEXT_PORT_CONFLICT);
+    const resolution = await resolvePortConflict({
+      host: rawConfig.host as string | undefined,
+      port: rawConfig.port as number,
+      strategy,
+      interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+      requestDecision: (request) => requestPortConflictDecisionFromParent(request),
+    });
+
+    if (resolution.changed) {
+      rawConfig.port = resolution.port;
+      process.env.VEXT_PORT = String(resolution.port);
+      console.log(
+        `[vextjs] port conflict resolved: using next available port ${resolution.port}`,
+      );
+    } else if (resolution.action === "kill" && resolution.details?.pid) {
+      console.log(
+        `[vextjs] port conflict resolved: stopped process ${resolution.details.pid} on ${resolution.port}`,
+      );
+    }
+  }
+
+  return rawConfig;
+}
 
 /**
  * bootstrap — 框架完整启动编排（Phase 1）
@@ -92,7 +151,14 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
 
     // ── 步骤 0: config-loader ─────────────────────────────
     // default → env → local 三层合并 + deepFreeze
-    const config = await loadConfig(join(srcDir, "config"));
+    const rawConfig = await resolveStartupConfig(
+      rootDir,
+      join(srcDir, "config"),
+      "start",
+      isBuilt,
+    );
+    const config = finalizeConfig(rawConfig);
+    sendLifecycleLevelToParent(getLifecycleLevel(rawConfig));
 
     // ── 步骤 ①: createApp ─────────────────────────────────
     // 创建 app + internals（logger / throw / validator 已初始化，adapter 延迟解析）
@@ -175,6 +241,7 @@ export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
       join(srcDir, "middlewares"),
       config.middlewares ?? [],
       app.logger,
+      config.logger?.lifecycleLevel ?? "concise",
     );
 
     // ── 步骤 ④: service-loader ────────────────────────────
@@ -678,7 +745,11 @@ async function detectAndStart(rootDir: string): Promise<void> {
   let clusterEnabled = false;
 
   try {
-    const config = await loadConfig(join(srcDir, "config"));
+    const config = await loadConfig(join(srcDir, "config"), {
+      rootDir,
+      command: "start",
+      isBuilt,
+    });
     const clusterConfig = config.cluster as { enabled?: boolean } | undefined;
     clusterEnabled = clusterConfig?.enabled === true;
   } catch (err) {
@@ -716,7 +787,15 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
 
   // 加载配置
-  const config = await loadConfig(join(srcDir, "config"));
+  const configMeta: LoadConfigMetadata = {};
+  const rawConfig = await resolveStartupConfig(
+    rootDir,
+    join(srcDir, "config"),
+    "start",
+    isBuilt,
+    configMeta,
+  );
+  const config = finalizeConfig(rawConfig);
   const clusterConfig = (config.cluster ?? {}) as Record<string, unknown>;
 
   // 动态导入 ClusterMaster（避免非 cluster 场景加载 node:cluster 相关模块）
@@ -764,6 +843,13 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 这里通过 process.env 设置 Worker 继承的全局变量
   process.env.VEXT_ROOT = rootDir;
   process.env.VEXT_WORKER_COUNT = String(workerCount);
+  process.env[CLUSTER_BOOTSTRAP_PATCH_ENV] = JSON.stringify(
+    configMeta.providerPatch ?? {},
+  );
+  process.env.VEXT_PORT = String(config.port);
+  if (config.host) {
+    process.env.VEXT_HOST = config.host;
+  }
   if (isBuilt) {
     process.env.VEXT_BUILT = "1";
   }

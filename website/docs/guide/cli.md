@@ -116,8 +116,31 @@ vext dev [options]
 | `--poll`               | 强制轮询模式（Docker / NFS 环境）         | `false`        |
 | `--poll-interval <ms>` | 轮询间隔（毫秒，仅 `--poll` 时有效）      | `1000`         |
 | `--no-hot`             | 禁用 Soft Reload，所有变更走 Cold Restart | —              |
+| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error` |
+| `--verbose-lifecycle`  | 输出详细生命周期日志与完整 watcher 变更列表 | —            |
 | `--clear`              | 每次重载后清空控制台                      | —              |
 | `-h, --help`           | 显示帮助                                  | —              |
+#### 端口冲突策略
+
+- `error`：直接失败（默认）
+- `prompt`：在 TTY 环境下询问父进程如何处理
+- `kill`：尝试终止占用端口的进程
+- `next`：自动选择下一个可用端口
+
+```bash
+vext dev --port-conflict prompt
+vext start --port-conflict next
+```
+
+#### 生命周期日志分层
+
+默认使用 `concise` 模式，只保留启动摘要、ready、cold restart / hot reload 结果；如需排障细节，可开启：
+
+```bash
+vext dev --verbose-lifecycle
+VEXT_VERBOSE_LIFECYCLE=1 vext start
+```
+
 
 ### 示例
 
@@ -229,6 +252,8 @@ vext start [options]
 | ------------------ | ------------ | -------------- |
 | `--port <number>`  | 指定端口     | 配置文件中的值 |
 | `--host <address>` | 指定监听地址 | 配置文件中的值 |
+| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error` |
+| `--verbose-lifecycle` | 输出详细生命周期日志 | — |
 | `-h, --help`       | 显示帮助     | —              |
 
 ### 示例
@@ -240,6 +265,9 @@ vext start
 
 # 指定端口
 vext start --port 8080
+
+# 端口冲突时自动切到下一个可用端口
+vext start --port-conflict next
 
 # 使用环境变量
 PORT=8080 NODE_ENV=production vext start
@@ -282,6 +310,12 @@ VEXT_CLUSTER=1 vext start
 在应用代码加载前自动初始化 OpenTelemetry SDK。
 
 详见 [预加载 (Preload)](/guide/preload)。
+
+### 启动期配置 Provider
+
+如果项目存在 `src/config/bootstrap.ts`，`vext start` / `vext dev` 会在配置 validate / freeze 前执行其中声明的 `bootstrap config provider`，并将 provider 返回的 patch 合并到最终配置中。优先级为：`default < env < local < provider < CLI`。
+
+Cluster 模式下，Master 会把本轮 provider patch 传递给 Worker 复用，避免同一启动周期内 Master / Worker 看到不同远程配置。
 
 ### package.json 脚本
 

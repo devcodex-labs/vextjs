@@ -77,6 +77,7 @@ export async function loadServices(
   options: LoadServicesOptions = {},
 ): Promise<void> {
   const { checkCircularDeps = true } = options;
+  const lifecycleLevel = app.config.logger?.lifecycleLevel ?? "concise";
 
   // ── 1. 检查 services/ 目录是否存在 ────────────────────────
   const dirExists = await directoryExists(servicesDir);
@@ -138,7 +139,9 @@ export async function loadServices(
     // 4.5 记录文件映射（供循环依赖检测使用）
     serviceFileMap.set(flatKey, filePath);
 
-    app.logger.debug(`[service-loader] loaded: ${flatKey}`);
+    if (lifecycleLevel === "verbose") {
+      app.logger.info(`[service-loader] loaded: ${flatKey}`);
+    }
   }
 
   // ── 5. 循环依赖检测 ───────────────────────────────────────

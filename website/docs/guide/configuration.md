@@ -7,7 +7,7 @@ VextJS 采用 **三层配置合并** 机制，支持按环境覆盖配置，同�
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts
+框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
 每一层都可以只声明需要覆盖的字段，未声明的字段从上一层继承。
@@ -21,6 +21,7 @@ VextJS 采用 **三层配置合并** 机制，支持按环境覆盖配置，同�
 | `src/config/production.ts`  | 生产环境覆盖（`NODE_ENV=production`）  | 可选     |
 | `src/config/test.ts`        | 测试环境覆盖（`NODE_ENV=test`）        | 可选     |
 | `src/config/local.ts`       | 本地开发覆盖（应加入 `.gitignore`）    | 可选     |
+| `src/config/bootstrap.ts`   | 启动期 provider 注册入口               | 可选     |
 
 环境文件通过 `NODE_ENV` 环境变量自动匹配。未设置 `NODE_ENV` 时默认为 `development`。
 
@@ -29,7 +30,44 @@ VextJS 采用 **三层配置合并** 机制，支持按环境覆盖配置，同�
 - **对象字段**：深度合并（deep merge），环境文件只需声明需要覆盖的字段
 - **`middlewares` 数组**：智能 patch 策略——按 `name` 匹配并合并，而非简单替换整个数组
 - **其他数组**：后层覆盖前层
+- **`bootstrap provider patch`**：在 `local.ts` 之后、CLI override 之前参与同一套 merge / validate / freeze 流程
 - **最终结果**：深冻结（`deepFreeze`），运行时不可修改
+
+### Bootstrap Config Provider
+
+如果你需要在 **配置定稿前** 拉取远程配置（例如 Nacos / 配置中心 / 启动期密钥派发），可以新增 `src/config/bootstrap.ts`：
+
+```typescript
+import { defineBootstrapConfig } from "vextjs";
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "remote-config",
+      async load({ env, baseConfig, signal }) {
+        const response = await fetch(`https://config.example.com/${env}`, {
+          signal,
+        });
+
+        const remote = await response.json();
+        return {
+          database: remote.database,
+          logger: {
+            lifecycleLevel: baseConfig.logger?.lifecycleLevel ?? "concise",
+          },
+        };
+      },
+    },
+  ],
+});
+```
+
+约束：
+
+- provider 必须返回 **plain object patch** 或 `null`
+- patch 只支持 JSON-like 结构；**不支持**函数、类实例、adapter factory
+- 默认优先级：`local < provider < CLI`
+- 未声明 `required` 时：`production` 默认 fail-fast，`development / test` 默认 warning 后继续
 
 ### 配置文件格式
 
@@ -42,6 +80,7 @@ export default {
   host: "0.0.0.0",
   logger: {
     level: "info",
+    lifecycleLevel: "concise",
   },
   cors: {
     origins: ["*"],
@@ -270,6 +309,7 @@ export default {
 | 配置项                    | 类型      | 默认值                     | 说明                                                                                             |
 | ------------------------- | --------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
 | `logger.level`            | `string`  | `'info'`                   | 日志级别                                                                                         |
+| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'` | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                           |
 | `logger.pretty`           | `boolean` | 开发环境 `true`            | 是否使用 pino-pretty 彩色格式化输出；生产环境默认关闭（输出 JSON）                               |
 | `logger.prettySingleLine` | `boolean` | `true`                     | pino-pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 恢复多行展开格式           |
 | `logger.prettyIgnore`     | `string`  | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
@@ -280,6 +320,7 @@ export default {
 export default {
   logger: {
     level: "info", // 生产环境建议 'warn'
+    lifecycleLevel: "concise", // 如需排障可设为 'verbose'
     pretty: true, // 开发环境开启彩色格式化（生产环境默认关闭）
     // prettySingleLine: true,              // 额外字段压缩到同行（默认）
     // prettyIgnore: 'pid,hostname,requestId',  // 默认隐藏字段
@@ -662,9 +703,13 @@ declare module "vextjs" {
 
 | 环境变量       | 说明                                                              |
 | -------------- | ----------------------------------------------------------------- |
-| `NODE_ENV`     | 决定加载哪个环境配置文件（`development` / `production` / `test`） |
-| `PORT`         | 可在 `default.ts` 中引用 `process.env.PORT`                       |
-| `VEXT_CLUSTER` | 设为 `1` 时启用 Cluster 模式                                      |
+| `NODE_ENV`              | 决定加载哪个环境配置文件（`development` / `production` / `test`） |
+| `PORT`                  | 可在 `default.ts` 中引用 `process.env.PORT`                       |
+| `VEXT_PORT`             | CLI `--port` 的内部传递变量，优先级高于 provider patch             |
+| `VEXT_HOST`             | CLI `--host` 的内部传递变量，优先级高于 provider patch             |
+| `VEXT_PORT_CONFLICT`    | 端口冲突策略：`error` / `prompt` / `kill` / `next`                 |
+| `VEXT_LIFECYCLE_LEVEL`  | 生命周期日志级别：`concise` / `verbose`                            |
+| `VEXT_CLUSTER`          | 设为 `1` 时启用 Cluster 模式                                      |
 
 ```typescript
 // src/config/default.ts — 使用环境变量

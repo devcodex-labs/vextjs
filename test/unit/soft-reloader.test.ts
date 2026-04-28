@@ -331,7 +331,10 @@ describe("SoftReloader", () => {
 
     it("应输出性能报告日志（含 tier / 各阶段耗时 / evicted 数量 / reload 编号）", async () => {
       const logger = createMockLogger();
-      const options = createDefaultOptions({ logger });
+      const options = createDefaultOptions({
+        config: { middlewares: [], logger: { lifecycleLevel: "verbose" } },
+        logger,
+      });
 
       const reloader = new SoftReloader(options);
       await reloader.reload([{ path: "src/routes/user.ts", type: "modify" }]);

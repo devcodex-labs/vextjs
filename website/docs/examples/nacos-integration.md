@@ -1,18 +1,23 @@
 # Nacos 接入示例
 
-本示例演示如何在 VextJS 中集成 [Nacos](https://nacos.io/)，实现**服务注册与发现**和**动态配置管理**。
+本示例演示如何在 VextJS 中集成 [Nacos](https://nacos.io/)，实现**服务注册与发现**、**运行期动态配置**，以及**启动期远程配置补丁**。
 
-VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/vextjs-nacos)，封装了完整的注册/发现/配置订阅流程，**只需一行代码即可接入**。
+VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/vextjs-nacos)，封装了注册/发现与运行期配置订阅流程。对于必须在框架配置冻结前生效的内容（如数据库配置），应使用 `src/config/bootstrap.ts` 的 `bootstrap config provider`。
 
 :::tip 推荐做法
-直接使用官方插件 `vextjs-nacos`。本文档同时保留"手动集成"章节供深入定制场景参考。
+推荐分层使用：
+
+- **服务注册/发现、运行期动态开关**：直接使用官方插件 `vextjs-nacos`
+- **启动期数据库/密钥/基础设施配置**：使用 `src/config/bootstrap.ts` 拉取 Nacos 配置并返回 patch
+
+本文档保留"手动集成"章节，仅供官方插件无法覆盖的高级定制场景参考。
 :::
 
 ## 前置条件
 
 - Nacos Server 2.x（已实测 nacos@2.6.1）
 - Node.js >= 18
-- VextJS >= 0.2.0
+- VextJS >= 0.2.0（使用 `src/config/bootstrap.ts` 推荐 VextJS >= 0.3.1）
 
 ## 一、推荐：使用 `vextjs-nacos` 官方插件
 
@@ -91,7 +96,7 @@ export default definePlugin({
     const inner = nacosPlugin({
       // 只覆盖 service.port，其余字段继承 app.config.nacos
       ...(nacosConfig.service
-        ? { service: { ...nacosConfig.service, port: app.config.port } }
+        ? { service: { ...nacosConfig.service, ip:"xxxx",port: app.config.port } }
         : {}),
     });
 
@@ -102,6 +107,59 @@ export default definePlugin({
 
 这样 `config/默认.ts` 里 `service.port` 仅作类型占位，实际注册端口由 `app.config.port` 决定，
 各环境只需在对应 config 文件设置 `port: 10019`，nacos 自动跟随。
+
+### 3.1 启动期远程配置推荐走 `src/config/bootstrap.ts`
+
+如果你希望在 **MonSQLize 初始化之前** 就从 Nacos 拉取数据库配置，不要把这一步放在普通插件里；推荐使用 `bootstrap config provider`：
+
+```typescript
+// src/config/bootstrap.ts
+import { defineBootstrapConfig } from "vextjs";
+import { NacosConfigClient } from "nacos";
+
+async function loadConfigFromNacos({ env, signal }: { env: string; signal: AbortSignal }) {
+  const client = new NacosConfigClient({
+    serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
+    namespace: process.env.NACOS_NAMESPACE ?? "public",
+    username: process.env.NACOS_USERNAME,
+    password: process.env.NACOS_PASSWORD,
+  });
+
+  signal.throwIfAborted();
+  const raw = await client.getConfig(`order-service-${env}.json`, "DEFAULT_GROUP");
+  client.close();
+  return raw ? JSON.parse(raw) : {};
+}
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "nacos-config",
+      async load({ env, signal }) {
+        const config = await loadConfigFromNacos({ env, signal });
+        return {
+          database: config.database,
+          nacos: config.nacos,
+        };
+      },
+    },
+  ],
+});
+```
+
+这样配置优先级会进入正式链路：`default < env < local < provider < CLI`。
+
+:::info 当前边界
+`vextjs-nacos@0.1.x` 当前提供的是普通插件能力：服务注册、服务发现、运行期 `app.remoteConfig` 更新。它**不会自动注册** `src/config/bootstrap.ts` provider；启动期远程配置需要像上例一样在业务项目中编写 provider（或等待后续插件版本提供专用 helper）。
+:::
+
+### 3.2 运行期动态配置继续使用 `app.remoteConfig`
+
+如果配置只影响运行期功能开关、灰度策略、外部 API 地址等，不需要参与 `database` / `plugins` / `middlewares` 初始化，则直接使用 `vextjs-nacos` 的配置订阅能力即可：
+
+- 初次启动后插件会拉取 Nacos 配置并挂载到 `app.remoteConfig`
+- 后续配置变更会自动更新 `app.remoteConfig`
+- 无需重启服务
 
 完成。插件自动完成：
 

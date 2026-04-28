@@ -84,6 +84,12 @@ export type {
 
 // 配置加载器
 export { loadConfig } from "./lib/config-loader.js";
+export { defineBootstrapConfig } from "./lib/bootstrap-config.js";
+export type {
+  BootstrapConfigContext,
+  BootstrapConfigDefinition,
+  BootstrapConfigProvider,
+} from "./lib/bootstrap-config.js";
 
 // 日志（pino 封装）
 export { createLogger } from "./lib/logger.js";

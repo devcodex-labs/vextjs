@@ -56,6 +56,29 @@ export default {
 
 设置某个级别后，**低于该级别的日志不会输出**。例如 `level: 'info'` 时，`debug()` 调用会被静默忽略（零开销）。
 
+## 生命周期日志分层
+
+除了常规 `logger.level` 外，VextJS 还提供 `logger.lifecycleLevel`，专门控制框架自己的**启动 / 加载 / 热重载**系统日志：
+
+```typescript
+export default {
+  logger: {
+    level: "info",
+    lifecycleLevel: "concise", // "concise" | "verbose"
+  },
+};
+```
+
+- `concise`（默认）：仅输出初始化开始、聚合加载数量、ready、cold restart / hot reload 单行结果
+- `verbose`：额外输出逐插件 / 逐服务 / watcher 文件列表 / reload 分阶段耗时
+
+也可以通过环境变量或 CLI 覆盖：
+
+```bash
+VEXT_LIFECYCLE_LEVEL=verbose vext start
+VEXT_VERBOSE_LIFECYCLE=1 vext dev
+```
+
 ## 结构化日志
 
 pino 的核心理念是**结构化日志**——每条日志都是一个 JSON 对象，便于机器解析和查询。

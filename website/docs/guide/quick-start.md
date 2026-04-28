@@ -49,7 +49,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.2.4"
+    "vextjs": "^0.3.1"
   }
 }
 ```
@@ -185,6 +185,7 @@ my-app/
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 默认配置
+│   │   ├── bootstrap.ts      # 启动期远程配置 provider（可选）
 │   │   ├── development.ts    # 开发环境覆盖（可选）
 │   │   └── production.ts     # 生产环境覆盖（可选）
 │   ├── routes/
