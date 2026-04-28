@@ -126,66 +126,31 @@ export default definePlugin({
 
 ### 3.1 启动期远程配置推荐走 `src/config/bootstrap.ts`
 
-如果你希望在 **MonSQLize 初始化之前** 就从 Nacos 拉取数据库配置，不要把这一步放在普通插件里；推荐使用 `bootstrap config provider`：
+如果你希望在 **MonSQLize 初始化之前** 就从 Nacos 拉取数据库配置，不要把这一步放在普通插件里；推荐直接使用 `vextjs-nacos` 提供的 `createNacosBootstrapProvider()`：
 
 ```typescript
-// src/config/bootstrap.ts
 import { defineBootstrapConfig } from "vextjs";
-import { NacosConfigClient } from "nacos";
+import { createNacosBootstrapProvider } from "vextjs-nacos";
 
-async function loadOneConfig(
-  client: NacosConfigClient,
-  params: { dataId: string; group: string },
-) {
-  const raw = await client.getConfig(params.dataId, params.group);
-  return raw ? JSON.parse(raw) : {};
-}
-
-async function loadConfigFromNacos({
-  env,
-  signal,
-}: {
-  env: string;
-  signal: AbortSignal;
-}) {
-  const client = new NacosConfigClient({
-    serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
-    namespace: process.env.NACOS_NAMESPACE ?? "public",
-    username: process.env.NACOS_USERNAME,
-    password: process.env.NACOS_PASSWORD,
-  });
-
-  signal.throwIfAborted();
-  const [base, database] = await Promise.all([
-    loadOneConfig(client, {
-      dataId: `order-service-${env}.json`,
-      group: "DEFAULT_GROUP",
-    }),
-    loadOneConfig(client, {
-      dataId: `order-service-database-${env}.json`,
-      group: "DEFAULT_GROUP",
-    }),
-  ]);
-  client.close();
-
-  return {
-    ...base,
-    database: {
-      ...(base.database ?? {}),
-      ...(database.database ?? database),
-    },
-  };
-}
-
+// src/config/bootstrap.ts
 export default defineBootstrapConfig({
   providers: [
     {
       name: "nacos-config",
-      async load({ env, signal }) {
-        const config = await loadConfigFromNacos({ env, signal });
+      async load() {
+        const provider = createNacosBootstrapProvider({
+          name: "admin-nacos-bootstrap",
+          serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
+          namespace: process.env.NACOS_NAMESPACE ?? "public",
+          username: process.env.NACOS_USERNAME,
+          password: process.env.NACOS_PASSWORD,
+          configs: [
+            { dataId: "config.json", group: "db-config" }
+          ],
+        });
+
         return {
-          database: config.database,
-          nacos: config.nacos,
+          remoteConfig:await provider.load()
         };
       },
     },
@@ -196,8 +161,42 @@ export default defineBootstrapConfig({
 这样配置优先级会进入正式链路：`default < env < local < provider < CLI`。
 
 :::info 当前边界
-`vextjs-nacos@0.1.x` 当前提供的是普通插件能力：服务注册、服务发现、运行期 `app.remoteConfig` 更新。它**不会自动注册** `src/config/bootstrap.ts` provider；启动期远程配置需要像上例一样在业务项目中编写 provider（或等待后续插件版本提供专用 helper）。
+`createNacosBootstrapProvider()` 只负责**启动期批量拉取并深合并 JSON 对象 patch**，适合数据库、密钥、基础设施配置这类“必须在配置冻结前生效”的内容。
+
+这份返回值会进入 **`app.config` 的 provider patch 合并链路**，不会自动变成 `app.remoteConfig`。
+
+它**不负责**：
+
+- 服务注册
+- 服务发现
+- `app.nacos` 挂载
+- `app.remoteConfig` 注入与运行期订阅更新
+
+这些运行期能力仍然由 `nacosPlugin()` 负责。
 :::
+
+如果你需要：
+
+- 服务注册 / 服务发现
+- 与插件一致的 `app.remoteConfig` 行为
+- 配置变更后的持续订阅更新
+
+都应该继续在 `src/plugins/nacos.ts` 中使用 `nacosPlugin()` 处理，而不是在 bootstrap 阶段完成。
+
+#### 3.1.1 `bootstrap.ts` 里能不能做服务发现？
+
+默认**不能直接使用** `app.nacos!.discover()`。
+
+原因是 `src/config/bootstrap.ts` 运行在 **Vext App 创建之前**：
+
+- 此时还没有 `app`
+- `nacosPlugin()` 也还没有执行
+- 因而不存在 `app.nacos` / `app.remoteConfig`
+
+所以推荐边界是：
+
+- **启动期只做配置 patch 拉取** → `createNacosBootstrapProvider()`
+- **运行期服务注册 / 服务发现 / 配置订阅** → `nacosPlugin()`
 
 ### 3.2 运行期动态配置继续使用 `app.remoteConfig`
 
@@ -294,25 +293,7 @@ export default {
 
 ---
 
-## 二、不建议手动集成的原因
-
-对于大多数项目，直接使用官方插件 + `src/config/bootstrap.ts` 已经足够。手动集成大段 SDK 细节通常没有必要，原因包括：
-
-- 容易踩到 Nacos SDK 参数与字段细节（如 `serverAddr` / `serverList`、`selectInstances` 参数顺序）
-- 需要自行维护 `app.nacos` / `app.remoteConfig` 类型增强
-- 需要自行处理关闭顺序、订阅清理和运行期更新合并逻辑
-
-推荐决策：
-
-- **普通业务接入**：`vextjs-nacos`
-- **启动期数据库 / 密钥 / 基础设施 patch**：`src/config/bootstrap.ts`
-- **仅在官方插件确实无法覆盖时**，再回到 SDK 级手动实现
-
-> 使用 `vextjs-nacos` 时，类型声明已通过 `declare module` 内置在包中，**无需手动声明**。
-
----
-
-## 三、最佳实践
+## 二、最佳实践
 
 ### 服务发现缓存（高频调用场景）
 
@@ -379,7 +360,7 @@ export default defineRoutes((app) => {
 
 ---
 
-## 下一步
+## 三、下一步
 
 - 📦 [`vextjs-nacos` npm 包](https://www.npmjs.com/package/vextjs-nacos) — 完整 API 文档与变更日志
 - 🔭 [OpenTelemetry 接入示例](/examples/opentelemetry) — 完整可观测性
