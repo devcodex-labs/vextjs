@@ -55,11 +55,12 @@ bootstrap();
 ### 函数签名
 
 ```typescript
-function bootstrap(options?: { rootDir?: string }): Promise<BootstrapResult>;
+function bootstrap(rootDir?: string): Promise<BootstrapResult>;
 
 interface BootstrapResult {
   app: VextApp;
   serverHandle: VextServerHandle;
+  internals: AppInternals;
 }
 ```
 

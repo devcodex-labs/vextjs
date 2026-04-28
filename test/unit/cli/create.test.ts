@@ -576,11 +576,11 @@ describe("vext create", () => {
         expect(files["src/config/default.ts"]).toContain("adapter: 'native'");
       });
 
-      it("默认 adapter 为 hono", async () => {
+      it("默认 adapter 为 native", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
-        expect(files["src/config/default.ts"]).toContain("adapter: 'hono'");
+        expect(files["src/config/default.ts"]).toContain("adapter: 'native'");
       });
 
       it("JS 模式使用 JSDoc 类型注释", async () => {
@@ -720,15 +720,15 @@ describe("vext create", () => {
   // ────────────────────────────────────────────────────────
 
   describe("adapter 选项", () => {
-    it("默认 adapter 为 hono", async () => {
+    it("默认 adapter 为 native", async () => {
       await createCommand(["test-app", "--skip-install"]);
 
       const files = getWrittenFiles();
       const pkg = JSON.parse(files["package.json"]);
 
-      expect(pkg.dependencies.hono).toBeDefined();
-      expect(pkg.dependencies["@hono/node-server"]).toBeDefined();
-      expect(files["src/config/default.ts"]).toContain("adapter: 'hono'");
+      expect(pkg.dependencies.hono).toBeUndefined();
+      expect(pkg.dependencies["@hono/node-server"]).toBeUndefined();
+      expect(files["src/config/default.ts"]).toContain("adapter: 'native'");
     });
 
     it("--adapter fastify 添加 fastify 依赖", async () => {

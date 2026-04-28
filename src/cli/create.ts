@@ -14,7 +14,7 @@ import { parseArgs } from "node:util";
  *   --js                 生成 JavaScript 项目（默认 TypeScript）
  *   --template <name>    项目模板（默认 'api'，当前仅支持 api）
  *   --skip-install       跳过 npm install
- *   --adapter <name>     指定默认 adapter（hono|fastify|express|koa|native，默认 hono）
+ *   --adapter <name>     指定默认 adapter（hono|fastify|express|koa|native，默认 native）
  *   --force              目标目录存在时强制覆盖（不询问）
  *   -h, --help           显示帮助信息
  *
@@ -204,7 +204,7 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
         js: { type: "boolean", default: false },
         template: { type: "string", default: "api" },
         "skip-install": { type: "boolean", default: false },
-        adapter: { type: "string", default: "hono" },
+        adapter: { type: "string", default: "native" },
         force: { type: "boolean", default: false },
       },
       allowPositionals: true,
@@ -792,7 +792,7 @@ function printCreateHelp(): void {
 
   Options:
     --js                  Create a JavaScript project (default: TypeScript)
-    --adapter <name>      Default adapter (hono|fastify|express|koa|native, default: hono)
+    --adapter <name>      Default adapter (hono|fastify|express|koa|native, default: native)
     --template <name>     Project template (default: api)
     --skip-install        Skip npm install after project creation
     --force               Overwrite existing directory without asking

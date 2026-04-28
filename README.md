@@ -17,7 +17,7 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🧩 插件系统** — 拓扑排序、依赖声明、生命周期钩子，轻松扩展框架能力
 - **💉 服务自动注入** — `src/services/` 下的 class 自动实例化并挂载到 `app.services`
 - **🛡️ 参数校验** — 集成 [schema-dsl](https://www.npmjs.com/package/schema-dsl)，声明式校验 + i18n 错误消息
-- **📖 OpenAPI 文档** — 路由元信息自动收集，生成 OpenAPI 3.1 JSON
+- **📖 OpenAPI 文档** — 路由元信息自动收集，生成 OpenAPI 3.0.3 JSON
 - **🔥 开发模式热重载** — 三层重载策略（Soft Reload + Cold Restart），毫秒级反馈
 - **🏗️ 内置中间件** — requestId、CORS、bodyParser、rateLimit、accessLog、responseWrapper 开箱即用
 - **⚡ 路由缓存** — 声明式 `cache: 60`，LRU 内存存储，标签失效，Vary headers，条件缓存
@@ -236,17 +236,23 @@ curl http://localhost:3000/
 
 VextJS 提供内置 CLI，通过 `npx vext` 或 `package.json` scripts 调用。
 
-### `vext start` — 生产模式
+### `vext start` — 启动编译产物
 
 ```bash
-vext start                    # 使用默认配置启动
-vext start --port 8080        # 指定端口
-vext start --host 127.0.0.1   # 指定监听地址
+vext start                          # 使用默认配置启动
+vext start --port 8080              # 指定端口
+vext start --host 127.0.0.1         # 指定监听地址
+NODE_ENV=production vext start      # 加载 production 配置
+NODE_ENV=sg-sit vext start          # 加载 sg-sit 配置（需存在 src/config/sg-sit.ts）
 ```
 
 启动流程：检测项目结构 → 加载配置 → 注册插件/中间件/服务/路由 → 启动 HTTP 服务器。
 
 如果存在 `dist/` 编译产物，自动使用编译后的 JS 运行；TypeScript 项目无 `dist/` 时自动通过 `tsx` 加载。
+
+环境配置文件通过运行时 `NODE_ENV` 选择：`src/config/{NODE_ENV}.ts`。
+
+> ⚠️ `vext build` 当前会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`。因此不要依赖 build 后源码里的 `process.env.NODE_ENV` 条件分支做运行时环境切换；环境差异应优先写入 `src/config/<env>.ts`、bootstrap provider 或其他显式业务环境变量。
 
 ### `vext dev` — 开发模式
 
@@ -620,6 +626,35 @@ export default {
 };
 ```
 
+除了 `development` / `production` / `test` 之外，Vext 也支持任意环境名，例如：
+
+```text
+src/config/sg-sit.js
+src/config/us-uat.js
+src/config/us-prod.js
+```
+
+启动时只要设置对应的 `NODE_ENV`，Vext 就会自动加载匹配文件：
+
+```bash
+NODE_ENV=sg-sit vext start
+```
+
+如果你希望在 `package.json` scripts 中跨平台设置环境变量，推荐安装 `cross-env`：
+
+```bash
+npm i -D cross-env
+```
+
+```json
+{
+  "scripts": {
+    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start",
+    "start:us-uat": "cross-env NODE_ENV=us-uat vext start"
+  }
+}
+```
+
 CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件和 `bootstrap provider patch` 中的值。
 
 ---
@@ -717,7 +752,7 @@ export default {
 
 ## 📖 OpenAPI 文档
 
-启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.1 文档，并提供交互式文档页面。
+启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.0.3 文档，并提供交互式文档页面。
 
 ### 文档端点
 
@@ -885,7 +920,7 @@ HTTP 响应 → { code: 0, data: {...} }
 
 | 变量                   | 说明                                                 | 默认值                                      |
 | ---------------------- | ---------------------------------------------------- | ------------------------------------------- |
-| `NODE_ENV`             | 运行环境                                             | `production`（start）/ `development`（dev） |
+| `NODE_ENV`             | 运行时环境名；用于匹配 `src/config/{NODE_ENV}.ts`    | `production`（start 默认）/ `development`（dev 默认） |
 | `VEXT_PORT`            | 覆盖监听端口                                         | —                                           |
 | `VEXT_HOST`            | 覆盖监听地址                                         | —                                           |
 | `VEXT_PORT_CONFLICT`   | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error`                                     |
@@ -893,6 +928,8 @@ HTTP 响应 → { code: 0, data: {...} }
 | `VEXT_DEV_POLL`        | 强制轮询模式（`1` / `0`）                            | 自动检测                                    |
 | `VEXT_DEV_NO_HOT`      | 禁用 Soft Reload                                     | —                                           |
 | `VEXT_DEV_DEBOUNCE`    | 防抖间隔（毫秒）                                     | `0`（不开启）                               |
+
+> 如果项目需要在 `package.json` scripts 中跨平台设置 `NODE_ENV`，推荐使用 `cross-env`；Vext 本身不内置该工具。
 
 ---
 
@@ -905,7 +942,7 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] 服务自动注入
 - [x] 内置中间件（requestId / CORS / bodyParser / rateLimit / accessLog）
 - [x] 参数校验（schema-dsl 集成）
-- [x] OpenAPI 3.1 文档生成
+- [x] OpenAPI 3.0.3 文档生成
 - [x] CLI（start / dev / build / stop / reload / status）
 - [x] 开发模式热重载（Soft Reload + Cold Restart）
 - [x] 测试工具（createTestApp）

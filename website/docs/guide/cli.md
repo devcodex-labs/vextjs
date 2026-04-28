@@ -272,8 +272,11 @@ vext start --port 8080
 # 端口冲突时自动切到下一个可用端口
 vext start --port-conflict next
 
-# 使用环境变量
+# 加载 production 配置
 PORT=8080 NODE_ENV=production vext start
+
+# 加载自定义环境配置（需存在 src/config/sg-sit.ts）
+NODE_ENV=sg-sit vext start
 ```
 
 ### 默认命令
@@ -322,15 +325,33 @@ Cluster 模式下，Master 会把本轮 provider patch 传递给 Worker 复用�
 
 ### package.json 脚本
 
+推荐在跨平台项目中使用 `cross-env` 设置环境变量：
+
+```bash
+npm i -D cross-env
+```
+
 ```json
 {
   "scripts": {
-    "start": "vext start",
     "build": "vext build",
-    "prestart": "vext build"
+    "start": "cross-env NODE_ENV=production vext start",
+    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start",
+    "start:us-uat": "cross-env NODE_ENV=us-uat vext start"
   }
 }
 ```
+
+Vext 本身不内置 `cross-env`；它只是推荐的脚本层兼容工具，用于在 Windows、macOS、Linux 下统一设置 `NODE_ENV`。
+
+:::tip 环境文件选择
+当前 `vext start` 没有 `--config <file>` 这样的参数。环境配置文件的选择机制是：
+
+- 读取运行时 `NODE_ENV`
+- 匹配 `src/config/{NODE_ENV}.ts`（build 后对应 `dist/config/{NODE_ENV}.js`）
+
+如果你需要 `sg-sit.ts`、`us-uat.ts` 这类自定义环境，只需在启动时设置对应的 `NODE_ENV`。
+:::
 
 ## `vext stop` — 停止服务
 
@@ -459,7 +480,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.2.4
+# 输出: vextjs v0.3.2
 
 # 查看帮助
 vext --help

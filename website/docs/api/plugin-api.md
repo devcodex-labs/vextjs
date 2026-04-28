@@ -56,6 +56,8 @@ interface VextPlugin {
   readonly name: string;
   readonly dependencies?: string[];
   setup(app: VextApp): Promise<void> | void;
+  onReady?(app: VextApp): Promise<void> | void;
+  onClose?(app: VextApp): Promise<void> | void;
 }
 ```
 
@@ -129,6 +131,7 @@ setup(app: VextApp): Promise<void> | void;
 - `plugin-loader` 为每个 `setup()` 设置**超时保护**（默认 30 秒），超时后抛出错误
 - 执行顺序由 `dependencies` 拓扑排序决定
 - `setup()` 执行时 `app.services` 尚未注入（`service-loader` 在 `plugin-loader` 之后执行），不能访问服务
+- 如果插件对象声明了 `onReady(app)` / `onClose(app)`，`plugin-loader` 会在 `setup()` 成功后自动注册这两个生命周期钩子
 
 ```typescript
 export default definePlugin({
@@ -159,6 +162,28 @@ export default definePlugin({
   },
 });
 ```
+
+### `onReady(app)` / `onClose(app)`
+
+插件生命周期钩子为可选字段，等价于在 `setup()` 中手动调用 `app.onReady()` / `app.onClose()`，但语义更明确。
+
+```typescript
+export default definePlugin({
+  name: "warmup",
+  setup(app) {
+    app.extend("cache", new Map());
+  },
+  async onReady(app) {
+    app.logger.info("warmup plugin is ready");
+  },
+  async onClose(app) {
+    app.logger.info("warmup plugin closed");
+  },
+});
+```
+
+- `onReady(app)`：HTTP 开始监听后执行，适合预热缓存、检查外部依赖。
+- `onClose(app)`：优雅关闭时执行；多个关闭钩子按 LIFO 顺序执行。
 
 ---
 

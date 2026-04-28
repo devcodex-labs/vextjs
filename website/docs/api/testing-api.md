@@ -160,7 +160,7 @@ testApp = await createTestApp({
 ```
 
 :::tip
-`setupPlugins` 和 `plugins: true` 可以同时使用。此时先执行自动扫描的插件，再执行 `setupPlugins`。但通常建议只使用其中一种方式。
+`setupPlugins` 用于替代自动扫描：当传入 `setupPlugins` 时，测试工具只执行该函数，不再读取 `plugins: true` 触发的文件系统扫描。若需要真实插件，请使用 `plugins: true`；若需要精确控制测试依赖，请只使用 `setupPlugins`。
 :::
 
 ---

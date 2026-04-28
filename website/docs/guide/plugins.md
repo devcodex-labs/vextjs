@@ -43,6 +43,12 @@ interface VextPlugin {
 
   /** 插件初始化函数 */
   setup(app: VextApp): Promise<void> | void;
+
+  /** HTTP 开始监听后执行的就绪钩子（可选） */
+  onReady?(app: VextApp): Promise<void> | void;
+
+  /** 优雅关闭时执行的清理钩子（可选，按 LIFO 顺序） */
+  onClose?(app: VextApp): Promise<void> | void;
 }
 ```
 
@@ -70,6 +76,13 @@ export default definePlugin({
 ### `setup()` — 初始化函数
 
 插件的核心逻辑。在 `bootstrap` 阶段由 `plugin-loader` 调用，支持异步操作（如连接数据库）。每个 `setup()` 有超时保护（默认 30 秒），超时后自动抛出错误。
+
+### `onReady()` / `onClose()` — 生命周期钩子
+
+插件也可以直接声明 `onReady(app)` 与 `onClose(app)`。`plugin-loader` 会在 `setup()` 完成后把它们注册到应用生命周期中：
+
+- `onReady(app)`：HTTP 开始监听后执行，适合预热缓存、检查外部依赖、打印启动信息。
+- `onClose(app)`：优雅关闭时执行，所有关闭钩子按后注册先执行（LIFO）顺序清理资源。
 
 ## 插件能力
 

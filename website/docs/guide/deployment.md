@@ -56,7 +56,7 @@ src/                          dist/
 
 `vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，编译速度极快。典型项目（50+ 源文件）的编译时间在 **1 秒以内**。
 
-编译时会自动注入 `process.env.NODE_ENV = "production"`，确保生产环境配置正确加载。
+编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置文件，仍由启动时的 `NODE_ENV` 决定。
 
 ## 启动生产服务
 
@@ -65,6 +65,9 @@ src/                          dist/
 ```bash
 # 方式一：使用 vext start（推荐）
 NODE_ENV=production vext start
+
+# 也可以加载自定义环境配置（需存在 src/config/sg-sit.ts）
+NODE_ENV=sg-sit vext start
 
 # 方式二：直接 node 运行
 NODE_ENV=production node dist/index.js

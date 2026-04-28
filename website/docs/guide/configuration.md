@@ -25,6 +25,32 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 
 环境文件通过 `NODE_ENV` 环境变量自动匹配。未设置 `NODE_ENV` 时默认为 `development`。
 
+`NODE_ENV` 不限于 `development` / `production` / `test`，也可以是任意自定义环境名，例如：
+
+- `src/config/sg-sit.ts`
+- `src/config/us-uat.ts`
+- `src/config/us-prod.ts`
+
+启动时只要设置：
+
+```bash
+NODE_ENV=sg-sit vext start
+```
+
+Vext 就会按同一套合并链路加载：`default -> sg-sit -> local -> bootstrap provider patch -> CLI override`。
+
+:::warning Build 与 Runtime 的环境语义
+`vext build` 当前会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`。这不会改变 `vext start` 在运行时按 `NODE_ENV` 选择配置文件的行为，但会影响 build 后用户源码里的环境分支判断。
+
+因此，推荐把环境差异放进：
+
+- `src/config/<env>.ts`
+- `src/config/bootstrap.ts`
+- 其他显式业务环境变量
+
+而不是依赖 build 后源码中的 `process.env.NODE_ENV` 条件分支。
+:::
+
 ### 合并规则
 
 - **对象字段**：深度合并（deep merge），环境文件只需声明需要覆盖的字段
@@ -45,7 +71,6 @@ export default defineBootstrapConfig({
     {
       name: "remote-config",
       timeoutMs: 10_000,
-      required: env === "production",
       async load({ env, baseConfig, signal }) {
         const response = await fetch(`https://config.example.com/${env}`, {
           signal,

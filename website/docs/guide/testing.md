@@ -46,23 +46,26 @@ interface CreateTestAppOptions {
   /** 自定义配置（覆盖 default.ts） */
   config?: Partial<VextConfig>;
 
-  /** 是否加载 src/plugins/ 目录中的插件（默认 true） */
-  loadPlugins?: boolean;
+  /** 是否加载 src/plugins/ 目录中的插件（默认 false） */
+  plugins?: boolean;
 
-  /** 自定义插件 setup 函数（替代或补充文件系统扫描） */
+  /** 自定义插件 setup 函数（替代文件系统扫描） */
   setupPlugins?: (app: VextApp) => Promise<void> | void;
 
   /** 是否加载 src/services/ 目录中的服务（默认 true） */
-  loadServices?: boolean;
+  services?: boolean;
 
   /** 模拟服务对象（替代自动扫描的服务） */
-  mockServices?: Record<string, unknown>;
+  mockServices?: Partial<VextServices>;
 
   /** 是否加载 src/routes/ 目录中的路由（默认 true） */
-  loadRoutes?: boolean;
+  routes?: boolean;
 
   /** 是否加载 src/middlewares/ 目录中的中间件（默认 true） */
-  loadMiddlewares?: boolean;
+  middlewares?: boolean;
+
+  /** 项目根目录（默认 process.cwd()） */
+  rootDir?: string;
 }
 ```
 
@@ -83,7 +86,7 @@ const app = await createTestApp({
 
 ```typescript
 const app = await createTestApp({
-  loadPlugins: false, // 不加载 src/plugins/ 下的插件
+  plugins: false, // 默认值：不加载 src/plugins/ 下的插件
 });
 ```
 
@@ -91,7 +94,7 @@ const app = await createTestApp({
 
 ```typescript
 const app = await createTestApp({
-  loadServices: false, // 不加载真实的 service
+  services: false, // 不加载真实的 service
   mockServices: {
     user: {
       findAll: async () => [{ id: "1", name: "Alice" }],
@@ -106,7 +109,6 @@ const app = await createTestApp({
 
 ```typescript
 const app = await createTestApp({
-  loadPlugins: false,
   setupPlugins: async (app) => {
     // 注入测试用的模拟对象
     app.extend("cache", new Map());
@@ -429,7 +431,7 @@ describe("Users API with mock services", () => {
 
   beforeAll(async () => {
     app = await createTestApp({
-      loadServices: false,
+      services: false,
       mockServices: {
         user: mockUserService,
       },
@@ -823,5 +825,5 @@ const app = await createTestApp({
 
 - 了解 [路由](/guide/routing) 如何定义可测试的 API
 - 学习 [服务层](/guide/services) 的单元测试模式
-- 查看 [CLI 命令](/guide/cli) 中的 `vext test` 相关说明
+- 查看 [CLI 命令](/guide/cli) 了解 `dev` / `build` / `start` 等运行命令
 - 探索 [中间件](/guide/middleware) 的测试技巧

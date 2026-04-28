@@ -109,7 +109,7 @@ export default {
 ### `VextConfig`
 
 | 字段             | 类型                                                    | 默认值      | 说明               |
-| ---------------- | ------------------------------------------------------- | ----------- | ------------------ | --- | ----------- | --------------------------------------------- | ----------- | ------------ | --- | ----------- | --------------------------------------------- | ------ | ------------ |
+| ---------------- | ------------------------------------------------------- | ----------- | ------------------ |
 | `port`           | `number`                                                | `3000`      | HTTP 监听端口      |
 | `host`           | `string`                                                | `'0.0.0.0'` | HTTP 监听地址      |
 | `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`  | 底层适配器         |
@@ -121,7 +121,9 @@ export default {
 | `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置           |
 | `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置       |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置           |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置      |     | `multipart` | [`VextMultipartConfig`](#vextmultipartconfig) | `undefined` | 文件上传配置 |     | `accessLog` | [`VextAccessLogConfig`](#vextaccesslogconfig) | 见下方 | 访问日志配置 |
+| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置      |
+| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置       |
+| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方      | 访问日志配置       |
 | `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置   |
 | `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置     |
 | `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置 |

@@ -121,6 +121,12 @@ export default definePlugin({
 });
 ```
 
+### 🧱 模块系统与装饰器策略
+
+VextJS 使用 ESM + 约定式目录作为模块系统：`src/config/`、`src/plugins/`、`src/middlewares/`、`src/services/`、`src/routes/` 会在启动时自动扫描，并按照配置 → 插件 → 中间件定义 → 服务 → 路由的顺序加载。
+
+VextJS 当前不提供 `@Controller` / `@Get` / `@Inject` / `@Service` 等装饰器 API，也不依赖 `reflect-metadata`。路由使用 `defineRoutes()`，插件使用 `definePlugin()`，服务通过 `new ServiceClass(app)` 构造函数注入 `app`。如果你从 NestJS 等装饰器框架迁移，请把控制器装饰器迁移为 `src/routes/*.ts` 文件路由，把构造器依赖注入迁移为 `app.services` 延迟访问。
+
 ### 🔥 开发体验
 
 - **`vext dev`** — 文件监听 + 智能热重载（Soft Reload Tier 1/2 + Cold Restart Tier 3）

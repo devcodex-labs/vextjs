@@ -173,8 +173,9 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.log(`[vextjs]    time:    ${result.elapsed}ms`);
     console.log(`[vextjs]    output:  ${result.outDir}/`);
     console.log("");
-    console.log("[vextjs] To start in production:");
-    console.log("[vextjs]   NODE_ENV=production vext start");
+    console.log("[vextjs] To start compiled output:");
+    console.log("[vextjs]   NODE_ENV=<env> vext start");
+    console.log("[vextjs]   e.g. NODE_ENV=production vext start");
   } catch (err) {
     console.error("[vextjs] build failed:");
     console.error(err);
@@ -297,6 +298,7 @@ function printBuildHelp(): void {
     $ vext build --no-sourcemap
 
   After building, start with:
+    $ NODE_ENV=<env> vext start
     $ NODE_ENV=production vext start
 `);
 }

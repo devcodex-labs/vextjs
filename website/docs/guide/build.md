@@ -1,6 +1,6 @@
 # 构建 (vext build)
 
-`vext build` 将 TypeScript/JavaScript 源码编译为生产级 JavaScript，输出到 `dist/` 目录。基于 [esbuild](https://esbuild.github.io/) 实现，编译速度极快——典型项目（50+ 源文件）的编译时间在 **1 秒以内**。
+`vext build` 将 TypeScript/JavaScript 源码编译为可部署的 JavaScript 产物，输出到 `dist/` 目录。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，编译速度极快——典型项目（50+ 源文件）的编译时间在 **1 秒以内**。
 
 ## 快速开始
 
@@ -13,6 +13,9 @@ NODE_ENV=production node dist/index.js
 
 # 或使用 vext start（自动检测 dist/ 目录）
 NODE_ENV=production vext start
+
+# 加载自定义环境配置（需存在 src/config/sg-sit.ts）
+NODE_ENV=sg-sit vext start
 ```
 
 ## 编译策略
@@ -82,7 +85,35 @@ define: {
 }
 ```
 
-确保生产环境配置文件（`config/production.ts`）被正确加载。
+这会让 build 后**用户源码中的** `process.env.NODE_ENV` 分支按 production 语义被静态折叠。
+
+注意，这个注入并不等于“运行时固定加载 `config/production.ts`”。运行时实际加载哪个配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定，例如：
+
+```bash
+NODE_ENV=sg-sit vext start
+```
+
+会尝试加载：
+
+```text
+dist/config/sg-sit.js
+```
+
+因此，当前 `vext build` 的推荐用法是：
+
+- 用它生成 production-target artifact
+- 用 `vext start` 的 `NODE_ENV` 选择环境配置文件
+- 不要依赖 build 后用户源码中的 `process.env.NODE_ENV` 条件分支做 sit/uat/prod 切换
+
+如果你希望在 `package.json` scripts 中跨平台设置 `NODE_ENV`，推荐使用 `cross-env`：
+
+```json
+{
+  "scripts": {
+    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start"
+  }
+}
+```
 
 ## 文件扫描规则
 
