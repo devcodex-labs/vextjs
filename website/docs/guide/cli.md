@@ -77,6 +77,7 @@ my-app/
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 默认配置（port: 3000）
+│   │   ├── bootstrap.ts      # 启动期远程配置 provider（可选，按需新增）
 │   │   └── production.ts     # 生产环境覆盖（port: 3001）
 │   ├── routes/
 │   │   └── index.ts          # 示例路由
@@ -96,6 +97,8 @@ npm run dev
 
 访问 `http://localhost:3000`，你应该能看到框架的 JSON 响应。
 
+如需在配置冻结前拉取远程配置（例如 Nacos / 启动期数据库配置），可额外创建 `src/config/bootstrap.ts` 并通过 `defineBootstrapConfig()` 注册 provider。该文件不是脚手架强制生成项，但已是框架正式约定路径。
+
 ## `vext dev` — 开发模式
 
 以开发模式启动项目，支持文件监听和智能热重载。
@@ -108,18 +111,19 @@ vext dev [options]
 
 ### 选项
 
-| 选项                   | 说明                                      | 默认值         |
-| ---------------------- | ----------------------------------------- | -------------- |
-| `--port <number>`      | 指定端口                                  | 配置文件中的值 |
-| `--host <address>`     | 指定监听地址                              | 配置文件中的值 |
-| `--debounce <ms>`      | 防抖间隔（毫秒，0 = 不开启）              | `0`            |
-| `--poll`               | 强制轮询模式（Docker / NFS 环境）         | `false`        |
-| `--poll-interval <ms>` | 轮询间隔（毫秒，仅 `--poll` 时有效）      | `1000`         |
-| `--no-hot`             | 禁用 Soft Reload，所有变更走 Cold Restart | —              |
-| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error` |
-| `--verbose-lifecycle`  | 输出详细生命周期日志与完整 watcher 变更列表 | —            |
-| `--clear`              | 每次重载后清空控制台                      | —              |
-| `-h, --help`           | 显示帮助                                  | —              |
+| 选项                         | 说明                                        | 默认值         |
+| ---------------------------- | ------------------------------------------- | -------------- |
+| `--port <number>`            | 指定端口                                    | 配置文件中的值 |
+| `--host <address>`           | 指定监听地址                                | 配置文件中的值 |
+| `--debounce <ms>`            | 防抖间隔（毫秒，0 = 不开启）                | `0`            |
+| `--poll`                     | 强制轮询模式（Docker / NFS 环境）           | `false`        |
+| `--poll-interval <ms>`       | 轮询间隔（毫秒，仅 `--poll` 时有效）        | `1000`         |
+| `--no-hot`                   | 禁用 Soft Reload，所有变更走 Cold Restart   | —              |
+| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`）    | `error`        |
+| `--verbose-lifecycle`        | 输出详细生命周期日志与完整 watcher 变更列表 | —              |
+| `--clear`                    | 每次重载后清空控制台                        | —              |
+| `-h, --help`                 | 显示帮助                                    | —              |
+
 #### 端口冲突策略
 
 - `error`：直接失败（默认）
@@ -140,7 +144,6 @@ vext start --port-conflict next
 vext dev --verbose-lifecycle
 VEXT_VERBOSE_LIFECYCLE=1 vext start
 ```
-
 
 ### 示例
 
@@ -248,13 +251,13 @@ vext start [options]
 
 ### 选项
 
-| 选项               | 说明         | 默认值         |
-| ------------------ | ------------ | -------------- |
-| `--port <number>`  | 指定端口     | 配置文件中的值 |
-| `--host <address>` | 指定监听地址 | 配置文件中的值 |
-| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error` |
-| `--verbose-lifecycle` | 输出详细生命周期日志 | — |
-| `-h, --help`       | 显示帮助     | —              |
+| 选项                         | 说明                                     | 默认值         |
+| ---------------------------- | ---------------------------------------- | -------------- |
+| `--port <number>`            | 指定端口                                 | 配置文件中的值 |
+| `--host <address>`           | 指定监听地址                             | 配置文件中的值 |
+| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error`        |
+| `--verbose-lifecycle`        | 输出详细生命周期日志                     | —              |
+| `-h, --help`                 | 显示帮助                                 | —              |
 
 ### 示例
 

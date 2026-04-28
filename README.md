@@ -129,7 +129,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.3.1"
+    "vextjs": "^0.3.2"
   }
 }
 ```
@@ -151,6 +151,51 @@ export default {
 ```
 
 > 💡 只需声明你关心的字段，其他字段（`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等）由框架自动补全默认值。
+
+### 3.1 可选：启动期远程配置（`src/config/bootstrap.js`）
+
+当数据库、密钥、Nacos 远程配置等内容**必须在配置冻结前生效**时，可新增 `src/config/bootstrap.js`：
+
+```js
+// src/config/bootstrap.js
+import { defineBootstrapConfig } from "vextjs";
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "remote-config",
+      async load({ env, signal }) {
+        const response = await fetch(`https://config.example.com/${env}.json`, {
+          signal,
+        });
+        const remote = await response.json();
+        return {
+          database: remote.database,
+        };
+      },
+    },
+  ],
+});
+```
+
+配置优先级：
+
+```text
+默认值 → default.js → {NODE_ENV}.js → local.js → bootstrap provider patch → CLI override
+```
+
+适合场景：
+
+- 启动期数据库配置
+- 远程配置中心 patch
+- 需要在内置插件初始化前可见的基础设施配置
+
+不适合场景：
+
+- APM / OpenTelemetry SDK 初始化
+- monkey patch / polyfill
+
+这类“进程级提早执行”能力应继续使用 `preload`。
 
 ### 4. 编写路由
 
@@ -838,16 +883,16 @@ HTTP 响应 → { code: 0, data: {...} }
 
 ## 📋 环境变量
 
-| 变量                | 说明                      | 默认值                                      |
-| ------------------- | ------------------------- | ------------------------------------------- |
-| `NODE_ENV`          | 运行环境                  | `production`（start）/ `development`（dev） |
-| `VEXT_PORT`         | 覆盖监听端口              | —                                           |
-| `VEXT_HOST`         | 覆盖监听地址              | —                                           |
-| `VEXT_PORT_CONFLICT` | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error` |
-| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`） | `concise` |
-| `VEXT_DEV_POLL`     | 强制轮询模式（`1` / `0`） | 自动检测                                    |
-| `VEXT_DEV_NO_HOT`   | 禁用 Soft Reload          | —                                           |
-| `VEXT_DEV_DEBOUNCE` | 防抖间隔（毫秒）          | `0`（不开启）                               |
+| 变量                   | 说明                                                 | 默认值                                      |
+| ---------------------- | ---------------------------------------------------- | ------------------------------------------- |
+| `NODE_ENV`             | 运行环境                                             | `production`（start）/ `development`（dev） |
+| `VEXT_PORT`            | 覆盖监听端口                                         | —                                           |
+| `VEXT_HOST`            | 覆盖监听地址                                         | —                                           |
+| `VEXT_PORT_CONFLICT`   | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error`                                     |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`）            | `concise`                                   |
+| `VEXT_DEV_POLL`        | 强制轮询模式（`1` / `0`）                            | 自动检测                                    |
+| `VEXT_DEV_NO_HOT`      | 禁用 Soft Reload                                     | —                                           |
+| `VEXT_DEV_DEBOUNCE`    | 防抖间隔（毫秒）                                     | `0`（不开启）                               |
 
 ---
 

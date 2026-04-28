@@ -1,6 +1,6 @@
 # 配置
 
-VextJS 采用 **三层配置合并** 机制，支持按环境覆盖配置，同时提供丰富的内置配置项覆盖框架行为。
+VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同时提供丰富的内置配置项覆盖框架行为。
 
 ## 配置加载机制
 
@@ -44,6 +44,8 @@ export default defineBootstrapConfig({
   providers: [
     {
       name: "remote-config",
+      timeoutMs: 10_000,
+      required: env === "production",
       async load({ env, baseConfig, signal }) {
         const response = await fetch(`https://config.example.com/${env}`, {
           signal,
@@ -62,12 +64,23 @@ export default defineBootstrapConfig({
 });
 ```
 
+provider 上下文字段：
+
+| 字段                    | 说明                                                             |
+| ----------------------- | ---------------------------------------------------------------- |
+| `env`                   | 当前环境（如 `development` / `production` / `test`）             |
+| `baseConfig`            | `default/env/local` 合并后的只读配置，可用于按现有配置决定 patch |
+| `signal`                | 超时或取消时会 abort 的 `AbortSignal`                            |
+| `rootDir` / `configDir` | 当前项目与配置目录路径                                           |
+| `command` / `isBuilt`   | 当前启动命令与是否走编译产物                                     |
+
 约束：
 
 - provider 必须返回 **plain object patch** 或 `null`
 - patch 只支持 JSON-like 结构；**不支持**函数、类实例、adapter factory
 - 默认优先级：`local < provider < CLI`
 - 未声明 `required` 时：`production` 默认 fail-fast，`development / test` 默认 warning 后继续
+- Cluster 模式下，Master 会将本轮 provider patch 传递给 Worker 复用，避免同一启动周期出现配置漂移
 
 ### 配置文件格式
 
@@ -218,13 +231,13 @@ export default {
 
 ### CORS 配置 (`cors`)
 
-| 配置项             | 类型       | 默认值                                                   | 说明             |
-| ------------------ | ---------- | -------------------------------------------------------- | ---------------- |
+| 配置项             | 类型       | 默认值                                                   | 说明                 |
+| ------------------ | ---------- | -------------------------------------------------------- | -------------------- |
 | `cors.enabled`     | `boolean`  | `true`                                                   | 是否启用 CORS 中间件 |
-| `cors.origins`     | `string[]` | `['*']`                                                  | 允许的来源列表   |
-| `cors.methods`     | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | 允许的 HTTP 方法 |
-| `cors.headers`     | `string[]` | `['Content-Type','Authorization','X-Request-Id']`        | 允许的请求头     |
-| `cors.credentials` | `boolean`  | `false`                                                  | 是否允许携带凭证 |
+| `cors.origins`     | `string[]` | `['*']`                                                  | 允许的来源列表       |
+| `cors.methods`     | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | 允许的 HTTP 方法     |
+| `cors.headers`     | `string[]` | `['Content-Type','Authorization','X-Request-Id']`        | 允许的请求头         |
+| `cors.credentials` | `boolean`  | `false`                                                  | 是否允许携带凭证     |
 
 ```typescript
 export default {
@@ -306,13 +319,13 @@ export default {
 
 ### 日志配置 (`logger`)
 
-| 配置项                    | 类型      | 默认值                     | 说明                                                                                             |
-| ------------------------- | --------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `logger.level`            | `string`  | `'info'`                   | 日志级别                                                                                         |
-| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'` | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                           |
-| `logger.pretty`           | `boolean` | 开发环境 `true`            | 是否使用 pino-pretty 彩色格式化输出；生产环境默认关闭（输出 JSON）                               |
-| `logger.prettySingleLine` | `boolean` | `true`                     | pino-pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 恢复多行展开格式           |
-| `logger.prettyIgnore`     | `string`  | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
+| 配置项                    | 类型                     | 默认值                     | 说明                                                                                             |
+| ------------------------- | ------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `logger.level`            | `string`                 | `'info'`                   | 日志级别                                                                                         |
+| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'`                | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                           |
+| `logger.pretty`           | `boolean`                | 开发环境 `true`            | 是否使用 pino-pretty 彩色格式化输出；生产环境默认关闭（输出 JSON）                               |
+| `logger.prettySingleLine` | `boolean`                | `true`                     | pino-pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 恢复多行展开格式           |
+| `logger.prettyIgnore`     | `string`                 | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
 
 支持的日志级别（从低到高）：`'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
 
@@ -348,13 +361,13 @@ export default {
 
 ### 响应配置 (`response`)
 
-| 配置项                           | 类型      | 默认值 | 说明                                                                        |
-| -------------------------------- | --------- | ------ | --------------------------------------------------------------------------- |
-| `response.wrap`                  | `boolean` | `true` | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
-| `response.hideInternalErrors`    | `boolean` | `true` | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace）               |
+| 配置项                             | 类型      | 默认值  | 说明                                                                        |
+| ---------------------------------- | --------- | ------- | --------------------------------------------------------------------------- |
+| `response.wrap`                    | `boolean` | `true`  | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
+| `response.hideInternalErrors`      | `boolean` | `true`  | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace）               |
 | `response.logErrors.unknownErrors` | `boolean` | `true`  | 是否记录未知 500 错误（含完整 err 对象和 stack trace）                      |
-| `response.logErrors.http5xx`     | `boolean` | `true`  | 是否记录 HttpError 5xx（error 级别）                                        |
-| `response.logErrors.http4xx`     | `boolean` | `false` | 是否记录 HttpError 4xx（warn 级别，高流量场景建议关闭以减少日志噪音）       |
+| `response.logErrors.http5xx`       | `boolean` | `true`  | 是否记录 HttpError 5xx（error 级别）                                        |
+| `response.logErrors.http4xx`       | `boolean` | `false` | 是否记录 HttpError 4xx（warn 级别，高流量场景建议关闭以减少日志噪音）       |
 
 ```typescript
 export default {
@@ -363,8 +376,8 @@ export default {
     hideInternalErrors: true,
     logErrors: {
       unknownErrors: true, // 未知错误必须记录
-      http5xx: true,       // 5xx 是服务端责任
-      http4xx: false,      // 4xx 默认不记录（高流量场景避免噪音）
+      http5xx: true, // 5xx 是服务端责任
+      http4xx: false, // 4xx 默认不记录（高流量场景避免噪音）
     },
   },
 };
@@ -402,20 +415,20 @@ export default {
 
 ### Multipart / 文件上传配置 (`multipart`)
 
-| 配置项                       | 类型       | 默认值      | 说明                     |
-| ------------------------------ | ---------- | ----------- | ------------------------ |
-| `multipart.enabled`            | `boolean`  | `false`     | 是否启用内置 multipart 解析（开启后自动填充 `req.files`） |
-| `multipart.maxFileSize`        | `number`   | `10485760`  | 单个文件最大大小（字节，默认 10MB）   |
-| `multipart.maxFiles`           | `number`   | `10`        | 单次请求最多文件数     |
-| `multipart.allowedMimeTypes`   | `string[]` | `undefined` | 允许的 MIME 类型白名单（不设置则不限制） |
+| 配置项                       | 类型       | 默认值      | 说明                                                      |
+| ---------------------------- | ---------- | ----------- | --------------------------------------------------------- |
+| `multipart.enabled`          | `boolean`  | `false`     | 是否启用内置 multipart 解析（开启后自动填充 `req.files`） |
+| `multipart.maxFileSize`      | `number`   | `10485760`  | 单个文件最大大小（字节，默认 10MB）                       |
+| `multipart.maxFiles`         | `number`   | `10`        | 单次请求最多文件数                                        |
+| `multipart.allowedMimeTypes` | `string[]` | `undefined` | 允许的 MIME 类型白名单（不设置则不限制）                  |
 
 ```typescript
 export default {
   multipart: {
-    enabled: true,                  // 开启内置解析
-    maxFileSize: 10 * 1024 * 1024,  // 10MB
+    enabled: true, // 开启内置解析
+    maxFileSize: 10 * 1024 * 1024, // 10MB
     maxFiles: 5,
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+    allowedMimeTypes: ["image/jpeg", "image/png", "application/pdf"],
   },
 };
 ```
@@ -562,17 +575,17 @@ export default {
 
 ### Dev 模式配置 (`dev`)
 
-| 配置项                        | 类型                | 默认值   | 说明                                                      |
-| ----------------------------- | ------------------- | -------- | --------------------------------------------------------- |
-| `dev.errorOverlay.enabled`    | `boolean`           | `true`   | 是否启用 Dev 错误覆盖层（浏览器访问出错路由时显示 HTML 错误页） |
-| `dev.errorOverlay.theme`      | `'dark' \| 'light'` | `'dark'` | 错误覆盖层主题                                            |
-| `dev.errorOverlay.maxFrames`  | `number`            | `25`     | 最多显示的堆栈帧数                                        |
+| 配置项                       | 类型                | 默认值   | 说明                                                            |
+| ---------------------------- | ------------------- | -------- | --------------------------------------------------------------- |
+| `dev.errorOverlay.enabled`   | `boolean`           | `true`   | 是否启用 Dev 错误覆盖层（浏览器访问出错路由时显示 HTML 错误页） |
+| `dev.errorOverlay.theme`     | `'dark' \| 'light'` | `'dark'` | 错误覆盖层主题                                                  |
+| `dev.errorOverlay.maxFrames` | `number`            | `25`     | 最多显示的堆栈帧数                                              |
 
 ```typescript
 export default {
   dev: {
     errorOverlay: {
-      enabled: true,    // 设为 false 可禁用 HTML 错误覆盖层
+      enabled: true, // 设为 false 可禁用 HTML 错误覆盖层
       theme: "dark",
       maxFrames: 25,
     },
@@ -584,6 +597,7 @@ export default {
 `dev` 配置项仅在 `vext dev` 开发模式下读取，生产模式（`vext start`）自动忽略所有字段。
 
 Dev 错误覆盖层基于 **Accept 内容协商**，而非 HTTP 方法：
+
 - `Accept: text/html`（浏览器地址栏 GET、HTML 表单 POST）→ 返回 HTML 错误页
 - `Accept: application/json`（前端 fetch / axios / curl）→ 始终返回 JSON
 
@@ -701,15 +715,15 @@ declare module "vextjs" {
 
 除了配置文件，部分设置也可以通过环境变量控制：
 
-| 环境变量       | 说明                                                              |
-| -------------- | ----------------------------------------------------------------- |
-| `NODE_ENV`              | 决定加载哪个环境配置文件（`development` / `production` / `test`） |
-| `PORT`                  | 可在 `default.ts` 中引用 `process.env.PORT`                       |
-| `VEXT_PORT`             | CLI `--port` 的内部传递变量，优先级高于 provider patch             |
-| `VEXT_HOST`             | CLI `--host` 的内部传递变量，优先级高于 provider patch             |
-| `VEXT_PORT_CONFLICT`    | 端口冲突策略：`error` / `prompt` / `kill` / `next`                 |
-| `VEXT_LIFECYCLE_LEVEL`  | 生命周期日志级别：`concise` / `verbose`                            |
-| `VEXT_CLUSTER`          | 设为 `1` 时启用 Cluster 模式                                      |
+| 环境变量               | 说明                                                              |
+| ---------------------- | ----------------------------------------------------------------- |
+| `NODE_ENV`             | 决定加载哪个环境配置文件（`development` / `production` / `test`） |
+| `PORT`                 | 可在 `default.ts` 中引用 `process.env.PORT`                       |
+| `VEXT_PORT`            | CLI `--port` 的内部传递变量，优先级高于 provider patch            |
+| `VEXT_HOST`            | CLI `--host` 的内部传递变量，优先级高于 provider patch            |
+| `VEXT_PORT_CONFLICT`   | 端口冲突策略：`error` / `prompt` / `kill` / `next`                |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别：`concise` / `verbose`                           |
+| `VEXT_CLUSTER`         | 设为 `1` 时启用 Cluster 模式                                      |
 
 ```typescript
 // src/config/default.ts — 使用环境变量

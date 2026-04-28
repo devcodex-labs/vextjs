@@ -49,7 +49,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.3.1"
+    "vextjs": "^0.3.2"
   }
 }
 ```
@@ -95,6 +95,31 @@ export default {
   port: 3000,
 };
 ```
+
+### 4.1 可选：添加 `src/config/bootstrap.ts`
+
+如果某些配置必须在启动期从远端读取，并且要在 `config` 冻结前参与合并，可以新增 `src/config/bootstrap.ts`：
+
+```typescript
+import { defineBootstrapConfig } from "vextjs";
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "remote-config",
+      async load({ env, signal }) {
+        const response = await fetch(`https://config.example.com/${env}.json`, {
+          signal,
+        });
+        return await response.json();
+      },
+    },
+  ],
+});
+```
+
+适合：数据库、Nacos 启动期配置、密钥 patch。  
+不适合：APM / OpenTelemetry 这类需要更早执行的 `preload` 场景。
 
 ### 5. 编写路由
 
@@ -207,6 +232,8 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，
 | `src/routes/admin/settings.ts` | `/admin/settings` |
 
 :::
+
+`src/config/bootstrap.ts` 同样是约定路径：存在时会在 `default/env/local` 合并后、CLI override 前执行，并将 provider 返回的 patch 纳入最终配置链路。
 
 ## 访问 OpenAPI 文档
 

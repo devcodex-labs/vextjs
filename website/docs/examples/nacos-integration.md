@@ -9,15 +9,13 @@ VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/
 
 - **服务注册/发现、运行期动态开关**：直接使用官方插件 `vextjs-nacos`
 - **启动期数据库/密钥/基础设施配置**：使用 `src/config/bootstrap.ts` 拉取 Nacos 配置并返回 patch
-
-本文档保留"手动集成"章节，仅供官方插件无法覆盖的高级定制场景参考。
-:::
+  :::
 
 ## 前置条件
 
 - Nacos Server 2.x（已实测 nacos@2.6.1）
 - Node.js >= 18
-- VextJS >= 0.2.0（使用 `src/config/bootstrap.ts` 推荐 VextJS >= 0.3.1）
+- VextJS >= 0.3.2
 
 ## 一、推荐：使用 `vextjs-nacos` 官方插件
 
@@ -27,7 +25,7 @@ VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/
 npm install vextjs-nacos
 ```
 
-### 2. 配置（vext.config.ts / src/config/default.ts）
+### 2. 配置（`src/config/default.ts`）
 
 ```typescript
 export default {
@@ -55,18 +53,30 @@ export default {
       dataId: "order-service",
       group: "DEFAULT_GROUP",
     },
+
+    // 多配置按顺序深合并（后者优先）
+    configs: [
+      { dataId: "order-service-base", group: "DEFAULT_GROUP" },
+      { dataId: "order-service-prod", group: "DEFAULT_GROUP" },
+    ],
   },
 };
 ```
+
+说明：
+
+- `config` 适合单配置场景
+- `configs` 适合基础配置 + 环境覆盖配置拆分
+- 当两者同时存在时，会按 `config -> configs[0] -> configs[1] ...` 顺序合并，后者优先
 
 ### 3. 注册插件（src/plugins/nacos.ts）
 
 ```typescript
 import { nacosPlugin } from "vextjs-nacos";
-export default nacosPlugin();   // 自动读取 vext.config.ts 中的 nacos 配置
+export default nacosPlugin(); // 自动读取 app.config.nacos
 ```
 
-也支持显式传参（覆盖 vext.config.ts）：
+也支持显式传参（覆盖 `app.config.nacos`）：
 
 ```typescript
 import { nacosPlugin } from "vextjs-nacos";
@@ -96,7 +106,13 @@ export default definePlugin({
     const inner = nacosPlugin({
       // 只覆盖 service.port，其余字段继承 app.config.nacos
       ...(nacosConfig.service
-        ? { service: { ...nacosConfig.service, ip:"xxxx",port: app.config.port } }
+        ? {
+            service: {
+              ...nacosConfig.service,
+              ip: process.env.SERVICE_IP ?? "127.0.0.1",
+              port: app.config.port,
+            },
+          }
         : {}),
     });
 
@@ -105,7 +121,7 @@ export default definePlugin({
 });
 ```
 
-这样 `config/默认.ts` 里 `service.port` 仅作类型占位，实际注册端口由 `app.config.port` 决定，
+这样 `config/default.ts` 里 `service.port` 仅作类型占位，实际注册端口由 `app.config.port` 决定，
 各环境只需在对应 config 文件设置 `port: 10019`，nacos 自动跟随。
 
 ### 3.1 启动期远程配置推荐走 `src/config/bootstrap.ts`
@@ -117,7 +133,21 @@ export default definePlugin({
 import { defineBootstrapConfig } from "vextjs";
 import { NacosConfigClient } from "nacos";
 
-async function loadConfigFromNacos({ env, signal }: { env: string; signal: AbortSignal }) {
+async function loadOneConfig(
+  client: NacosConfigClient,
+  params: { dataId: string; group: string },
+) {
+  const raw = await client.getConfig(params.dataId, params.group);
+  return raw ? JSON.parse(raw) : {};
+}
+
+async function loadConfigFromNacos({
+  env,
+  signal,
+}: {
+  env: string;
+  signal: AbortSignal;
+}) {
   const client = new NacosConfigClient({
     serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
     namespace: process.env.NACOS_NAMESPACE ?? "public",
@@ -126,9 +156,25 @@ async function loadConfigFromNacos({ env, signal }: { env: string; signal: Abort
   });
 
   signal.throwIfAborted();
-  const raw = await client.getConfig(`order-service-${env}.json`, "DEFAULT_GROUP");
+  const [base, database] = await Promise.all([
+    loadOneConfig(client, {
+      dataId: `order-service-${env}.json`,
+      group: "DEFAULT_GROUP",
+    }),
+    loadOneConfig(client, {
+      dataId: `order-service-database-${env}.json`,
+      group: "DEFAULT_GROUP",
+    }),
+  ]);
   client.close();
-  return raw ? JSON.parse(raw) : {};
+
+  return {
+    ...base,
+    database: {
+      ...(base.database ?? {}),
+      ...(database.database ?? database),
+    },
+  };
 }
 
 export default defineBootstrapConfig({
@@ -184,7 +230,9 @@ export class UserService {
     if (!response.ok) {
       // ⚠️ Service 层不应直接处理 HTTP 状态码（架构约束 #3）
       // 抛业务异常，由路由层/中间件统一转换为 HTTP 响应
-      throw new Error(`Fetch user failed: ${userId} (status ${response.status})`);
+      throw new Error(
+        `Fetch user failed: ${userId} (status ${response.status})`,
+      );
     }
     return response.json();
   }
@@ -200,166 +248,65 @@ export class UserService {
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get("/features/:key", {
-    validate: { param: { key: "string!" } },
-  }, async (req, res) => {
-    const { key } = req.valid("param");
-    const features = (app.remoteConfig?.features ?? {}) as Record<string, boolean>;
-    res.json({ feature: key, enabled: features[key] ?? false });
-  });
+  app.get(
+    "/features/:key",
+    {
+      validate: { param: { key: "string!" } },
+    },
+    async (req, res) => {
+      const { key } = req.valid("param");
+      const features = (app.remoteConfig?.features ?? {}) as Record<
+        string,
+        boolean
+      >;
+      res.json({ feature: key, enabled: features[key] ?? false });
+    },
+  );
 });
 ```
 
 > Nacos 配置内容须为合法 JSON。配置变更时，`app.remoteConfig` 会自动更新（无需重启服务）。
 
-### 6. 多环境部署（namespace 隔离）
+#### 多配置运行期示例
 
-```bash
-# 开发
-NACOS_SERVER_ADDR=dev-nacos:8848 NACOS_NAMESPACE=dev node dist/index.js
-
-# 生产
-NACOS_SERVER_ADDR=prod-nacos:8848 NACOS_NAMESPACE=prod node dist/index.js
+```typescript
+// src/config/default.ts
+export default {
+  nacos: {
+    serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
+    namespace: process.env.NACOS_NAMESPACE ?? "public",
+    configs: [
+      { dataId: "features-base.json", group: "DEFAULT_GROUP" },
+      {
+        dataId: `features-${process.env.NODE_ENV ?? "development"}.json`,
+        group: "DEFAULT_GROUP",
+      },
+    ],
+  },
+};
 ```
+
+这种方式适合：
+
+- 基础开关 + 环境覆盖
+- 通用服务配置 + 租户/区域增量配置
+- 运行期灰度参数分层维护
 
 ---
 
-## 二、手动集成（高级定制场景）
+## 二、不建议手动集成的原因
 
-> ⚠️ 仅当推荐插件无法满足特殊需求时使用。手动集成需要注意以下 Nacos SDK 行为细节，否则容易踩坑。
+对于大多数项目，直接使用官方插件 + `src/config/bootstrap.ts` 已经足够。手动集成大段 SDK 细节通常没有必要，原因包括：
 
-### 已知 Nacos SDK 陷阱（基于 nacos@2.6.1 实证）
+- 容易踩到 Nacos SDK 参数与字段细节（如 `serverAddr` / `serverList`、`selectInstances` 参数顺序）
+- 需要自行维护 `app.nacos` / `app.remoteConfig` 类型增强
+- 需要自行处理关闭顺序、订阅清理和运行期更新合并逻辑
 
-| 项 | 错误用法 | 正确用法 |
-|----|---------|---------|
-| `selectInstances` 参数 | `selectInstances(name, group, true)` 把 `true` 当 `clusters` | `selectInstances(name, group, undefined, true)` — 第3参 clusters，第4参 healthy |
-| `NacosNamingClient.close()` | 调用 `naming.close()` 抛 `TypeError` | SDK 无此方法，仅 `deregisterInstance()` 即可 |
-| `NacosConfigClient.ready()` | 等待 `await configClient.ready()` 抛错 | SDK 无此方法，构造后直接使用 |
-| serverAddr 字段 | NamingClient 也用 `serverAddr` | NamingClient 用 `serverList`，ConfigClient 用 `serverAddr` |
-| logger 字段 | 省略 logger 参数 | NamingClient `logger` 必填（`typeof console`）|
-| Instance metadata | 直接传 `Instance` 类型 | nacos `Instance` 类型不完整，传入时需 `as any` 局部断言 |
+推荐决策：
 
-### 手动插件实现（已修正所有上述问题）
-
-```typescript
-// src/plugins/nacos.ts
-import { definePlugin } from "vextjs";
-import { NacosNamingClient, NacosConfigClient } from "nacos";
-
-export default definePlugin({
-  name: "nacos",
-
-  async setup(app) {
-    const cfg = app.config.nacos;
-    if (!cfg?.serverAddr) {
-      app.logger.warn("[nacos] serverAddr missing, skipping");
-      return;
-    }
-    const namespace = cfg.namespace ?? "public";
-
-    // logger 桥接（一元 string 签名）
-    const logger = {
-      info:  (m: string) => app.logger.debug({ source: "nacos" }, m),
-      warn:  (m: string) => app.logger.warn({ source: "nacos" }, m),
-      error: (m: string) => app.logger.error({ source: "nacos" }, m),
-      debug: (m: string) => app.logger.debug({ source: "nacos" }, m),
-      log:   (m: string) => app.logger.debug({ source: "nacos" }, m),
-    };
-
-    // ── 配置中心（先注册 onClose → LIFO 后执行）─────
-    if (cfg.config) {
-      const configClient = new NacosConfigClient({
-        serverAddr: cfg.serverAddr,    // ⚠️ ConfigClient 字段名 serverAddr
-        namespace,
-        username: cfg.username,
-        password: cfg.password,
-      });
-      // ❌ 不要 await configClient.ready()（SDK 无此方法）
-
-      const { dataId, group: cGroup = "DEFAULT_GROUP" } = cfg.config;
-      const raw = await configClient.getConfig(dataId, cGroup);
-      if (raw) {
-        try { app.extend("remoteConfig", JSON.parse(raw)); }
-        catch { app.logger.warn(`[nacos] Config parse failed: ${dataId}`); }
-      }
-      configClient.subscribe({ dataId, group: cGroup }, (content: unknown) => {
-        if (typeof content !== "string") return;
-        try { app.extend("remoteConfig", JSON.parse(content)); }
-        catch { app.logger.warn(`[nacos] Updated config parse failed: ${dataId}`); }
-      });
-      app.onClose(() => configClient.close());
-    }
-
-    // ── 服务注册与发现（后注册 onClose → LIFO 先执行：先停流量）──
-    if (cfg.service) {
-      const { name, group, ip, port, metadata } = cfg.service;
-      const groupName = group ?? "DEFAULT_GROUP";
-
-      const namingClient = new NacosNamingClient({
-        logger: logger as unknown as typeof console,  // SDK 类型要求 typeof console
-        serverList: cfg.serverAddr,    // ⚠️ NamingClient 字段名 serverList
-        namespace,
-        username: cfg.username,
-        password: cfg.password,
-      });
-      await namingClient.ready();
-
-      // nacos Instance 类型不含 metadata 字段，as any 局部断言
-      await namingClient.registerInstance(
-        name, { ip, port, metadata } as any, groupName,
-      );
-
-      app.extend("nacos", {
-        naming: namingClient,
-        async discover(serviceName: string, g = "DEFAULT_GROUP") {
-          const instances = await namingClient.selectInstances(
-            serviceName, g,
-            undefined,  // clusters: 不传（不要写 true！）
-            true,       // healthy: 仅健康实例
-          );
-          if (!instances?.length) throw new Error(`No healthy instance: ${serviceName}`);
-          const inst = instances[Math.floor(Math.random() * instances.length)];
-          return `http://${inst.ip}:${inst.port}`;
-        },
-      });
-
-      app.onClose(async () => {
-        await namingClient.deregisterInstance(
-          name, { ip, port } as any, groupName,
-        );
-        // ❌ 不要 namingClient.close()（SDK 无此方法）
-      });
-    }
-  },
-});
-```
-
-### 类型声明（手动集成需自行声明）
-
-```typescript
-// src/types/nacos.d.ts
-import type { NacosNamingClient } from "nacos";
-
-declare module "vextjs" {
-  interface VextApp {
-    nacos?: {
-      naming: NacosNamingClient;
-      discover(serviceName: string, group?: string): Promise<string>;
-    };
-    remoteConfig?: Record<string, unknown>;
-  }
-  interface VextConfig {
-    nacos?: {
-      serverAddr: string;
-      namespace?: string;
-      username?: string;
-      password?: string;
-      service?: { name: string; group?: string; ip: string; port: number; metadata?: Record<string, string> };
-      config?: { dataId: string; group?: string };
-    };
-  }
-}
-```
+- **普通业务接入**：`vextjs-nacos`
+- **启动期数据库 / 密钥 / 基础设施 patch**：`src/config/bootstrap.ts`
+- **仅在官方插件确实无法覆盖时**，再回到 SDK 级手动实现
 
 > 使用 `vextjs-nacos` 时，类型声明已通过 `declare module` 内置在包中，**无需手动声明**。
 
@@ -374,7 +321,11 @@ declare module "vextjs" {
 ```typescript
 const cache = new Map<string, { url: string; expireAt: number }>();
 
-async function cachedDiscover(app: any, name: string, ttl = 30_000): Promise<string> {
+async function cachedDiscover(
+  app: any,
+  name: string,
+  ttl = 30_000,
+): Promise<string> {
   const c = cache.get(name);
   if (c && c.expireAt > Date.now()) return c.url;
   const url = await app.nacos!.discover(name);
@@ -396,12 +347,16 @@ export default defineRoutes((app) => {
     if (app.nacos) {
       try {
         const instances = await app.nacos.naming.selectInstances(
-          app.config.nacos!.service!.name, "DEFAULT_GROUP",
-          undefined, true,
+          app.config.nacos!.service!.name,
+          "DEFAULT_GROUP",
+          undefined,
+          true,
         );
         checks.nacos = "connected";
         checks.instances = instances.length;
-      } catch { checks.nacos = "disconnected"; }
+      } catch {
+        checks.nacos = "disconnected";
+      }
     }
     res.json(checks);
   });
@@ -430,4 +385,3 @@ export default defineRoutes((app) => {
 - 🔭 [OpenTelemetry 接入示例](/examples/opentelemetry) — 完整可观测性
 - 🔌 [插件系统](/guide/plugins) — `definePlugin()` 自定义插件
 - 🌐 [app.fetch](/guide/fetch) — 内置 HTTP 客户端（超时/重试/requestId 传播）
-

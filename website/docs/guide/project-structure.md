@@ -9,6 +9,7 @@ my-app/
 ├── src/
 │   ├── config/                # 配置文件（必须）
 │   │   ├── default.ts         # 默认配置（必须存在）
+│   │   ├── bootstrap.ts       # 启动期 provider（可选）
 │   │   ├── development.ts     # 开发环境覆盖（可选）
 │   │   ├── production.ts      # 生产环境覆盖（可选）
 │   │   └── local.ts           # 本地覆盖，不提交到 Git（可选）
@@ -53,12 +54,13 @@ my-app/
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts
+框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
 | 文件             | 用途                                | 是否必须 |
 | ---------------- | ----------------------------------- | -------- |
 | `default.ts`     | 所有环境的基础配置                  | ✅ 必须  |
+| `bootstrap.ts`   | 启动期远程配置 provider 注册入口    | 可选     |
 | `development.ts` | 开发环境覆盖                        | 可选     |
 | `production.ts`  | 生产环境覆盖                        | 可选     |
 | `test.ts`        | 测试环境覆盖                        | 可选     |
@@ -85,8 +87,36 @@ export default {
 ```
 
 :::tip 合并策略
-配置采用深度合并（deep merge），你只需在环境文件中声明需要覆盖的字段。`middlewares` 数组使用智能 patch 策略（按 `name` 匹配并覆盖），而非简单的数组替换。
+配置采用深度合并（deep merge），你只需在环境文件中声明需要覆盖的字段。`middlewares` 数组使用智能 patch 策略（按 `name` 匹配并覆盖），而非简单的数组替换。`bootstrap.ts` 返回的 provider patch 会在 `local.ts` 之后、CLI override 之前参与同一套 merge / validate / freeze 流程。
 :::
+
+#### `bootstrap.ts` 做什么？
+
+当配置必须在应用启动前从远端拉取时，可新增 `src/config/bootstrap.ts`：
+
+```typescript
+import { defineBootstrapConfig } from "vextjs";
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "remote-config",
+      async load({ env, signal }) {
+        const response = await fetch(`https://config.example.com/${env}.json`, {
+          signal,
+        });
+        return await response.json();
+      },
+    },
+  ],
+});
+```
+
+常见用途：
+
+- 数据库连接信息
+- Nacos / 配置中心启动期 patch
+- 需要在内置插件初始化前就可见的基础设施配置
 
 ### `src/routes/` — 路由目录
 

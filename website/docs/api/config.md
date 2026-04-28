@@ -4,7 +4,7 @@
 
 ## 配置加载机制
 
-VextJS 使用**三层配置合并**策略，按优先级从低到高：
+VextJS 使用**多层配置合并**策略，按优先级从低到高：
 
 ```
 DEFAULT_CONFIG（框架内置默认值）
@@ -12,9 +12,62 @@ DEFAULT_CONFIG（框架内置默认值）
 src/config/default.ts（项目默认配置）
   ↓ 深度合并
 src/config/${NODE_ENV}.ts（环境配置，如 production.ts）
+  ↓ 深度合并
+src/config/local.ts（本地覆盖，可选）
+  ↓ provider patch
+src/config/bootstrap.ts（启动期远程配置，可选）
+  ↓ CLI override
+vext start/dev --port --host ...
 ```
 
-合并后的配置通过 `Object.freeze()` 深度冻结，运行时不可修改。
+合并后的配置通过 `deepFreeze()` 深冻结，运行时不可修改。
+
+### 配置文件清单
+
+| 文件                        | 用途                       | 是否必须 |
+| --------------------------- | -------------------------- | :------: |
+| `src/config/default.ts`     | 所有环境的基础配置         |    ✅    |
+| `src/config/development.ts` | 开发环境覆盖               |   可选   |
+| `src/config/production.ts`  | 生产环境覆盖               |   可选   |
+| `src/config/test.ts`        | 测试环境覆盖               |   可选   |
+| `src/config/local.ts`       | 本地覆盖（通常不提交 Git） |   可选   |
+| `src/config/bootstrap.ts`   | 启动期 provider 注册入口   |   可选   |
+
+### `src/config/bootstrap.ts`
+
+当数据库、密钥或配置中心 patch 需要在配置冻结前完成注入时，可新增：
+
+```typescript
+import { defineBootstrapConfig } from "vextjs";
+
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: "remote-config",
+      timeoutMs: 10_000,
+      async load({ env, signal, baseConfig }) {
+        const response = await fetch(`https://config.example.com/${env}.json`, {
+          signal,
+        });
+        const remote = await response.json();
+        return {
+          database: remote.database,
+          logger: {
+            lifecycleLevel: baseConfig.logger?.lifecycleLevel ?? "concise",
+          },
+        };
+      },
+    },
+  ],
+});
+```
+
+约束：
+
+- provider 必须返回 plain object patch 或 `null`
+- patch 只支持 JSON-like 结构
+- `required` 未声明时：`production` 默认 fail-fast，`development / test` 默认 warning 后继续
+- Cluster 模式下，同一启动周期会复用同一份 provider patch，避免 Master / Worker 看到不同结果
 
 ### 配置文件示例
 
@@ -56,7 +109,7 @@ export default {
 ### `VextConfig`
 
 | 字段             | 类型                                                    | 默认值      | 说明               |
-| ---------------- | ------------------------------------------------------- | ----------- | ------------------ |
+| ---------------- | ------------------------------------------------------- | ----------- | ------------------ | --- | ----------- | --------------------------------------------- | ----------- | ------------ | --- | ----------- | --------------------------------------------- | ------ | ------------ |
 | `port`           | `number`                                                | `3000`      | HTTP 监听端口      |
 | `host`           | `string`                                                | `'0.0.0.0'` | HTTP 监听地址      |
 | `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`  | 底层适配器         |
@@ -68,7 +121,7 @@ export default {
 | `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置           |
 | `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置       |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置           |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置      || `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置      || `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方      | 访问日志配置       |
+| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置      |     | `multipart` | [`VextMultipartConfig`](#vextmultipartconfig) | `undefined` | 文件上传配置 |     | `accessLog` | [`VextAccessLogConfig`](#vextaccesslogconfig) | 见下方 | 访问日志配置 |
 | `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置   |
 | `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置     |
 | `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置 |
@@ -397,20 +450,25 @@ export default {
 
 Multipart / 文件上传全局配置。
 
-| 字段               | 类型       | 默认值      | 说明                     |
-| ---------------- | ---------- | ----------- | ------------------------ |
-| `enabled`        | `boolean`  | `false`     | 是否启用内置 multipart 解析。设为 `true` 后 body-parser 自动填充 `req.files`，无需插件 |
-| `maxFileSize`    | `number`   | `10485760`  | 单个文件最大大小（字节，默认 10MB）   |
-| `maxFiles`       | `number`   | `10`        | 单次请求最多文件数     |
-| `allowedMimeTypes` | `string[]` | `undefined` | 允许的 MIME 类型白名单（不设置则不限制） |
+| 字段               | 类型       | 默认值      | 说明                                                                                   |
+| ------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------- |
+| `enabled`          | `boolean`  | `false`     | 是否启用内置 multipart 解析。设为 `true` 后 body-parser 自动填充 `req.files`，无需插件 |
+| `maxFileSize`      | `number`   | `10485760`  | 单个文件最大大小（字节，默认 10MB）                                                    |
+| `maxFiles`         | `number`   | `10`        | 单次请求最多文件数                                                                     |
+| `allowedMimeTypes` | `string[]` | `undefined` | 允许的 MIME 类型白名单（不设置则不限制）                                               |
 
 ```typescript
 export default {
   multipart: {
-    enabled: true,                  // 开启内置解析
-    maxFileSize: 10 * 1024 * 1024,  // 10MB
+    enabled: true, // 开启内置解析
+    maxFileSize: 10 * 1024 * 1024, // 10MB
     maxFiles: 5,
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'],
+    allowedMimeTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "application/pdf",
+    ],
   },
 };
 ```
