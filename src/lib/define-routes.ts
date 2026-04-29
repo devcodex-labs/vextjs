@@ -204,8 +204,14 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
 /**
  * 执行路由收集（由 router-loader 调用）
  *
- * 将真正的 app 引用混入 collector，然后执行 factory 回调。
+ * 将真正的 app 属性混入 collector，然后执行 factory 回调。
  * 执行后 routeDefinition.routes 就包含了所有收集到的路由记录。
+ *
+ * ⚠️ 注意：这里是“按执行时刻把属性值复制到 collector”，不是给 factory 提供一个
+ * 与根 app 保持实时同步的代理对象。因此对 `config`、`services`、`logger`、`throw`
+ * 这类稳定引用通常没问题；但若某字段会在运行期被 `app.extend()` 替换成新对象引用
+ * （例如 `remoteConfig`），闭包 `app` 中捕获的旧引用不会自动刷新。此类场景应在
+ * handler 中优先使用 `req.app`，或在 service 中通过 `this.app` 读取真实运行期 app。
  *
  * @param routeDefinition defineRoutes 返回的路由定义对象
  * @param app             真正的 VextApp 实例
@@ -230,7 +236,9 @@ export function executeRouteFactory(
   routeDefinition.routes.length = 0;
 
   // 将 app 的属性混入 collector，使 factory 回调中能通过 app 访问
-  // services / config / throw / logger 等能力
+  // services / config / throw / logger 等能力。
+  // 这里是属性值复制，不是 live proxy；后续若根 app 某个字段被整体替换为新引用，
+  // 闭包 app 中的旧引用不会自动更新。
   const collector = def._collector;
 
   // 混入 app 的非 HTTP 方法属性

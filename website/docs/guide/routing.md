@@ -582,10 +582,17 @@ export default defineRoutes((app) => {
 :::tip req.app 与闭包 app
 路由 handler 中可以通过两种方式访问 `app`：
 
-- **闭包 `app`**（推荐）：`defineRoutes((app) => ...)` 中的 `app` 参数
-- **`req.app`**：请求对象上的 `app` 引用
+- **闭包 `app`**：`defineRoutes((app) => ...)` 中的 `app` 参数
+- **`req.app`**：请求对象上的真实运行期 `app` 引用
 
-两者指向同一个 `VextApp` 实例。闭包方式更简洁，`req.app` 主要用于中间件中（中间件没有 `defineRoutes` 闭包）。
+对于 `config`、`services`、`logger`、`throw` 这类稳定引用，两者通常表现一致，闭包 `app` 写法也更简洁。
+
+但要注意：`defineRoutes()` 内部会先把根 `app` 的属性拷贝到 collector，再把这个 collector 传给路由工厂；如果某个字段会在运行期被 `app.extend()` **替换为新对象引用**（例如 Nacos 场景中的 `app.remoteConfig`），闭包 `app` 里捕获的旧引用不会自动刷新，此时应改为读取 `req.app`，或在 service 中通过 `this.app` 读取。
+
+简言之：
+
+- **静态/稳定字段** → 闭包 `app` 可继续使用
+- **运行期动态替换字段** → 优先使用 `req.app`
 :::
 
 ## 错误处理

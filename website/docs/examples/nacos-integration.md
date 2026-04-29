@@ -243,7 +243,7 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const { key } = req.valid("param");
-      const features = (app.remoteConfig?.features ?? {}) as Record<
+      const features = (req.app.remoteConfig?.features ?? {}) as Record<
         string,
         boolean
       >;
@@ -254,6 +254,8 @@ export default defineRoutes((app) => {
 ```
 
 > Nacos 配置内容须为合法 JSON。配置变更时，`app.remoteConfig` 会自动更新（无需重启服务）。
+>
+> 在路由 handler 中若要读取这类**运行期可能被 `app.extend()` 替换引用**的字段，建议优先使用 `req.app.remoteConfig`，而不是闭包 `app.remoteConfig`。原因是 `defineRoutes()` 传入的闭包 `app` 来自 collector 拷贝；当插件后续用 `app.extend("remoteConfig", nextValue)` 替换为新对象时，闭包里捕获的旧引用不会自动刷新。
 
 #### 多配置运行期示例
 
