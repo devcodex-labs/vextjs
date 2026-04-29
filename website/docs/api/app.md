@@ -343,7 +343,7 @@ app.throw("user.not_found");
 config: Readonly<VextConfig>;
 ```
 
-由 `loadConfig()` 加载 `default → env → local` 三层合并并 `Object.freeze()` 深度冻结。
+由 `loadConfig()` 加载 `default → env → local → bootstrap provider patch → CLI override` 配置链并深度冻结。
 
 ```typescript
 app.get("/info", async (_req, res) => {
@@ -930,7 +930,7 @@ async shutdown(
 import { DEFAULT_CONFIG } from "vextjs";
 ```
 
-完整内容参见 [配置项 — DEFAULT_CONFIG](/api/config#default_config)。
+完整内容参见 [配置 API — DEFAULT_CONFIG](/api/config)。
 
 ---
 

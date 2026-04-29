@@ -135,25 +135,14 @@ import { createNacosBootstrapProvider } from "vextjs-nacos";
 // src/config/bootstrap.ts
 export default defineBootstrapConfig({
   providers: [
-    {
+    createNacosBootstrapProvider({
       name: "nacos-config",
-      async load() {
-        const provider = createNacosBootstrapProvider({
-          name: "admin-nacos-bootstrap",
-          serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
-          namespace: process.env.NACOS_NAMESPACE ?? "public",
-          username: process.env.NACOS_USERNAME,
-          password: process.env.NACOS_PASSWORD,
-          configs: [
-            { dataId: "config.json", group: "db-config" }
-          ],
-        });
-
-        return {
-          remoteConfig:await provider.load()
-        };
-      },
-    },
+      serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
+      namespace: process.env.NACOS_NAMESPACE ?? "public",
+      username: process.env.NACOS_USERNAME,
+      password: process.env.NACOS_PASSWORD,
+      configs: [{ dataId: "config.json", group: "db-config" }],
+    }),
   ],
 });
 ```

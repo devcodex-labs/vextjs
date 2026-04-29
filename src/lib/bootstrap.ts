@@ -129,7 +129,7 @@ async function resolveStartupConfig(
  * @see 09-cli.md §5（bootstrap.ts 框架内部启动文件）
  * @see IMPLEMENTATION-PLAN.md 任务 1.15
  */
-export async function bootstrap(rootDir: string): Promise<BootstrapResult> {
+export async function bootstrap(rootDir = process.cwd()): Promise<BootstrapResult> {
   // 资源引用（用于错误边界清理）
   let internals: AppInternals | null = null;
   let serverHandle: VextServerHandle | null = null;

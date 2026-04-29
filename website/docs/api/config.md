@@ -536,7 +536,7 @@ OpenAPI 文档自动生成配置。
 | `scalar.layout`        | `string`                     | `'modern'`          | 布局模式：`'modern'`（三栏） \| `'classic'`（双栏）                                                                                                             |
 | `scalar.favicon`       | `string`                     | `undefined`         | 文档页面 favicon URL（如 `'/favicon.svg'`）                                                                                                                     |
 | `scalar.sources`       | `array`                      | `undefined`         | 多 OpenAPI 文档源（[详见指南](/guide/openapi#导入外部-openapi)）。每项含 `title`、`url` 或 `content`、`slug`                                                    |
-| `scalar.cdnUrl`        | `string`                     | jsDelivr CDN        | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#自定义-cdn--本地资产)）。适用于内网/离线/版本锁定                                                          |
+| `scalar.cdnUrl`        | `string`                     | jsDelivr CDN        | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#使用自定义地址覆盖本地服务)）。适用于内网/离线/版本锁定                                                   |
 | `scalar.showSidebar`   | `boolean`                    | `true`              | 是否显示侧边栏                                                                                                                                                  |
 | `scalar.hideModels`    | `boolean`                    | `false`             | 是否隐藏 Models/Schemas 面板                                                                                                                                    |
 | `scalar.hiddenClients` | `string[]`                   | `undefined`         | 隐藏的客户端语言列表（如 `['php', 'ruby']`）                                                                                                                    |
@@ -801,19 +801,21 @@ export default config;
 
 ## loadConfig
 
-配置加载函数，执行三层合并。
+配置加载函数，接收配置目录路径并执行完整配置链合并。
 
 ```typescript
 import { loadConfig } from "vextjs";
+import { join } from "node:path";
 
-const config = await loadConfig({
+const config = await loadConfig(join(process.cwd(), "src/config"), {
   rootDir: process.cwd(),
-  env: process.env.NODE_ENV ?? "development",
+  command: "start",
+  isBuilt: false,
 });
 // config: VextConfig（已合并、已冻结）
 ```
 
-通常不需要手动调用，`bootstrap()` 内部会自动调用 `loadConfig()`。
+通常不需要手动调用，`bootstrap()` 内部会自动调用 `loadConfig()`。合并顺序为：`DEFAULT_CONFIG < default < env < local < bootstrap provider patch < CLI override`。
 
 ---
 

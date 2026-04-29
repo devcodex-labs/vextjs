@@ -442,9 +442,15 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
       return; // 命中缓存，不调用 next()
     }
 
-    await next();
+    const originalJson = res.json.bind(res);
+    res.json = (data, status) => {
+      if (res.statusCode < 400) {
+        void req.app.cache?.set(cacheKey, JSON.stringify(data), options.ttl);
+      }
+      originalJson(data, status);
+    };
 
-    // TODO: 将响应写入缓存（需要拦截 res.json）
+    await next();
   };
 });
 ```
