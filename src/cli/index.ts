@@ -7,6 +7,7 @@ import { createCommand } from "./create.js";
 import { stopCommand } from "./stop.js";
 import { reloadCommand } from "./reload.js";
 import { statusCommand } from "./status.js";
+import { doctorCommand } from "./doctor.js";
 import { typegenCommand } from "./typegen.js";
 
 /**
@@ -50,6 +51,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   stop: stopCommand,
   reload: reloadCommand,
   status: statusCommand,
+  doctor: doctorCommand,
   typegen: typegenCommand,
 };
 
@@ -148,6 +150,7 @@ function printHelp(): void {
     stop                  Stop the running server (cluster mode)
     reload                Trigger zero-downtime rolling restart (cluster mode)
     status                Show server status (cluster mode)
+    doctor                Preview static diagnostics (experimental)
     typegen               Generate declarations and run tooling diagnostics (experimental)
 
   Global options:
@@ -160,6 +163,7 @@ function printHelp(): void {
     vext stop --help      Show stop command options
     vext reload --help    Show reload command options
     vext status --help    Show status command options
+    vext doctor --help    Show doctor command options
     vext typegen --help   Show typegen command options
 
   Examples:

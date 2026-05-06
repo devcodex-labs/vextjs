@@ -1,3 +1,5 @@
+/// <reference path="../types/vextjs.d.ts" />
+
 import { definePlugin } from "vextjs";
 
 export default definePlugin({

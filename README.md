@@ -24,7 +24,7 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🌐 i18n 支持** — `src/locales/` 语言包自动加载，校验错误消息多语言
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
-- **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断
+- **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断；`vext doctor routes` 已进入 Phase 2 预览
 - **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
 
 ---
@@ -289,6 +289,35 @@ vext dev --clear              # 每次重载后清空控制台
 ```bash
 vext build                    # TypeScript 编译为 JavaScript
 ```
+
+### `vext typegen` / `vext doctor routes` — 工程辅助命令（experimental）
+
+Phase 1 / Phase 2 新增的静态工具链能力保持在 **tooling-only** 边界：不会进入 `start / dev / build` 的默认 runtime 主路径。
+
+```bash
+# 生成 app.services / app.extend() 声明，并执行 tooling 层 service 依赖诊断
+vext typegen
+
+# 仅校验 generated 产物是否需要更新，不写文件
+vext typegen --check
+
+# 扫描静态路由信息，并将诊断结果写入 inspect + manifest
+vext doctor routes --write-inspect --write-manifest
+```
+
+当前产物约定：
+
+- `src/types/generated/services.generated.d.ts`
+- `src/types/generated/app-extensions.generated.d.ts`
+- `.vext/inspect/routes.json`
+- `.vext/inspect/routes.manifest.json`
+
+说明：
+
+- `vext typegen` 面向 `services` / `plugins`，解决声明生成与依赖诊断问题；
+- `vext doctor routes` 面向静态路由治理，当前 `doctor all` 仍等价于 `routes`；
+- `routes.json` 是诊断 / inspect 产物，`routes.manifest.json` 是给编辑器、CI、可视化等下游工具消费的稳定契约层；
+- 当前 manifest 首批范围固定为 **routes-only**，`services / extensions manifest` 留待下一批扩展。
 
 ---
 
@@ -944,7 +973,7 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] 内置中间件（requestId / CORS / bodyParser / rateLimit / accessLog）
 - [x] 参数校验（schema-dsl 集成）
 - [x] OpenAPI 3.0.3 文档生成
-- [x] CLI（start / dev / build / stop / reload / status）
+- [x] CLI（start / dev / build / stop / reload / status / typegen / doctor）
 - [x] 开发模式热重载（Soft Reload + Cold Restart）
 - [x] 测试工具（createTestApp）
 - [x] Cluster 多进程（Master/Worker + Rolling Restart）

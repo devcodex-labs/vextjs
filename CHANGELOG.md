@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | — | — |
+| [Unreleased] | — | Preview | Experimental tooling preview：`vext typegen`、`vext doctor routes`、`.vext/inspect/routes.json` 与 routes-only `routes.manifest.json` 已在 `vext-test` 完成真实验证，当前继续收口文档与提交边界 |
 | [0.3.2] | 2026-04-28 | Patch | 启动体验与远程配置优化：新增 bootstrap config provider、端口冲突策略、生命周期日志分层，并补齐 lint、测试与文档验证 [查看](./changelogs/v0.3.2.md) |
 | [0.3.1] | 2026-04-27 | Patch | Plugin Loader ESM-only 兼容修复：支持 import-only 根包与 `pkg/subpath`，修复 `vextjs-nacos` 在 dev CJS 插件中的加载失败 [查看](./changelogs/v0.3.1.md) |
 | [0.3.0] | 2026-04-26 | Minor | MonSQLize 链式访问 API：`app.db.pool(name)` / `app.db.use(db)` + Depth-2 目录路由 + 双键回落策略 + VextModelDefinition `key` 别名双注册 + **⚠️ Breaking: `db()` 已移除** [查看](./changelogs/v0.3.0.md) |

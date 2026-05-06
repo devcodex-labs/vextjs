@@ -29,6 +29,8 @@ npm run build  # → vext build
 | `vext create <name>` | 创建新项目   | 项目初始化       |
 | `vext dev`           | 开发模式启动 | 日常开发         |
 | `vext build`         | 构建项目     | 部署前构建       |
+| `vext typegen`       | 生成声明 + service AST 诊断（experimental） | TS/JS 项目工程辅助 |
+| `vext doctor routes` | 静态路由诊断 + inspect / manifest（experimental） | OpenAPI / 路由治理 |
 | `vext start`         | 生产模式启动 | 生产部署         |
 | `vext stop`          | 停止服务     | Cluster 模式管理 |
 | `vext reload`        | 滚动重启     | 零停机更新       |
@@ -238,6 +240,99 @@ vext build && vext start
 - **`vext dev`**：直接从 `src/` 加载 `.ts` 文件，通过 esbuild 即时编译，支持热重载
 - **`vext build`**：将 `src/` 编译到 `dist/`，生产模式从 `dist/` 加载
   :::
+
+## `vext typegen` — 生成声明并执行 service 依赖诊断（experimental）
+
+为 `app.services` 与插件里的 `app.extend()` 提供 generated 声明，同时执行 tooling-only 的 service 依赖 AST 检查。
+
+### 用法
+
+```bash
+vext typegen [options]
+```
+
+### 选项
+
+| 选项               | 说明                                   | 默认值 |
+| ------------------ | -------------------------------------- | ------ |
+| `--services`       | 仅生成 `services.generated.d.ts`       | `false` |
+| `--app-extensions` | 仅生成 `app-extensions.generated.d.ts` | `false` |
+| `--check`          | 只校验 generated 结果，不写文件        | `false` |
+| `--json`           | 输出机器可读 JSON                      | `false` |
+| `--root <path>`    | 指定项目根目录                         | 当前目录 |
+| `-C <path>`        | `--root` 别名                          | — |
+| `--verbose`        | 预留给后续详细日志                     | `false` |
+| `-h, --help`       | 显示帮助                               | — |
+
+### 产物
+
+```text
+src/types/generated/services.generated.d.ts
+src/types/generated/app-extensions.generated.d.ts
+```
+
+### 示例
+
+```bash
+vext typegen
+vext typegen --check
+vext typegen --services --root ./examples/hello-world
+```
+
+### 适用边界
+
+- `typegen` 属于 **tooling-only** 能力，不会进入 `start / dev / build` 的默认 runtime 主路径；
+- TS 项目优先输出高质量类型，JS 项目允许退化到 `import(...).default` / `unknown`，但命令本身仍可用；
+- 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。
+
+## `vext doctor routes` — 静态路由诊断（experimental）
+
+扫描 `src/routes/` 中的静态路由元数据，输出重复路由、缺失 `docs.summary`、自动推断 `operationId` 等诊断，并可将结果落盘到 inspect / manifest 产物中。
+
+### 用法
+
+```bash
+vext doctor <target> [options]
+```
+
+### Targets
+
+| Target | 说明 |
+| ------ | ---- |
+| `routes` | 扫描静态路由元数据与 OpenAPI 相关字段 |
+| `all` | 当前仍是 `routes` 的别名，用于保留后续扩展位 |
+
+### 选项
+
+| 选项               | 说明 | 默认值 |
+| ------------------ | ---- | ------ |
+| `--json`           | 输出机器可读 JSON | `false` |
+| `--write-inspect`  | 写入 `.vext/inspect/routes.json` | `false` |
+| `--write-manifest` | 写入 `.vext/inspect/routes.manifest.json` | `false` |
+| `--root <path>`    | 指定项目根目录 | 当前目录 |
+| `-C <path>`        | `--root` 别名 | — |
+| `-h, --help`       | 显示帮助 | — |
+
+### 产物定位
+
+| 产物 | 定位 | 适用对象 |
+| ---- | ---- | -------- |
+| `.vext/inspect/routes.json` | inspect / 诊断中间层，包含诊断明细与调试字段 | `doctor`、debug、深度分析 |
+| `.vext/inspect/routes.manifest.json` | 稳定消费层，字段收敛为 routes-only manifest | 编辑器、CI、可视化、后续 codemod |
+
+### 示例
+
+```bash
+vext doctor routes
+vext doctor routes --write-inspect
+vext doctor routes --write-inspect --write-manifest --json
+```
+
+### 当前边界
+
+- 当前 manifest 首批范围固定为 **routes-only**；
+- `docs.operationId` 缺失时，doctor 会按 runtime 行为给出 `auto-operation-id` 信息提示，而不是误报 warning；
+- `services / extensions manifest` 还未进入当前批次，后续会在独立子任务中继续扩展。
 
 ## `vext start` — 生产模式启动
 

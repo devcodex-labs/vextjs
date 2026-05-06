@@ -1,0 +1,90 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { buildRouteIndex } from "../../../src/tooling/project-index/scan-routes.js";
+
+async function writeProjectFile(
+  rootDir: string,
+  relativePath: string,
+  content: string,
+): Promise<void> {
+  const fullPath = join(rootDir, relativePath);
+  await mkdir(dirname(fullPath), { recursive: true });
+  await writeFile(fullPath, content, "utf-8");
+}
+
+describe("buildRouteIndex", () => {
+  let projectRoot: string;
+
+  afterEach(async () => {
+    if (projectRoot) {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts normalized route paths and docs metadata from defineRoutes files", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-index-"));
+
+    await writeProjectFile(
+      projectRoot,
+      "package.json",
+      JSON.stringify({ name: "route-index", type: "module" }, null, 2),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "tsconfig.json",
+      JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+          },
+          include: ["src/**/*.ts", "src/**/*.d.ts"],
+        },
+        null,
+        2,
+      ),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/config/default.ts",
+      "export default { port: 3000 }\n",
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/api/v2/index.ts",
+      `import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/health", {
+    docs: {
+      summary: "Health check",
+      operationId: "getApiV2Health",
+      tags: ["system", "health"],
+    },
+  }, async (_req, res) => {
+    res.json({ ok: true });
+  });
+});
+`,
+    );
+
+    const routeEntries = await buildRouteIndex(projectRoot);
+
+    expect(routeEntries).toHaveLength(1);
+    expect(routeEntries[0]).toMatchObject({
+      fileRelativePath: "src/routes/api/v2/index.ts",
+      method: "GET",
+      prefix: "/api/v2",
+      path: "/api/v2/health",
+      docsSummary: "Health check",
+      hasDocsSummary: true,
+      operationId: "getApiV2Health",
+      tags: ["system", "health"],
+      hidden: false,
+    });
+  });
+});
+
