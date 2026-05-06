@@ -259,6 +259,7 @@ vext typegen [options]
 | `--app-extensions` | 仅生成 `app-extensions.generated.d.ts` | `false` |
 | `--check`          | 只校验 generated 结果，不写文件        | `false` |
 | `--json`           | 输出机器可读 JSON                      | `false` |
+| `--write-manifest` | 写入 `.vext/inspect/services.manifest.json` | `false` |
 | `--root <path>`    | 指定项目根目录                         | 当前目录 |
 | `-C <path>`        | `--root` 别名                          | — |
 | `--verbose`        | 预留给后续详细日志                     | `false` |
@@ -269,6 +270,7 @@ vext typegen [options]
 ```text
 src/types/generated/services.generated.d.ts
 src/types/generated/app-extensions.generated.d.ts
+.vext/inspect/services.manifest.json
 ```
 
 ### 示例
@@ -276,6 +278,7 @@ src/types/generated/app-extensions.generated.d.ts
 ```bash
 vext typegen
 vext typegen --check
+vext typegen --write-manifest
 vext typegen --services --root ./examples/hello-world
 ```
 
@@ -283,6 +286,7 @@ vext typegen --services --root ./examples/hello-world
 
 - `typegen` 属于 **tooling-only** 能力，不会进入 `start / dev / build` 的默认 runtime 主路径；
 - TS 项目优先输出高质量类型，JS 项目允许退化到 `import(...).default` / `unknown`，但命令本身仍可用；
+- `--write-manifest` 会把 service 索引、`app.extend()` 聚合结果与服务依赖图摘要写入 `.vext/inspect/services.manifest.json`；
 - 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。
 
 ## `vext doctor routes` — 静态路由诊断（experimental）
@@ -330,9 +334,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ### 当前边界
 
-- 当前 manifest 首批范围固定为 **routes-only**；
+- 当前 route manifest 与 services manifest 仍分层维护，不合并为单一总 manifest；
 - `docs.operationId` 缺失时，doctor 会按 runtime 行为给出 `auto-operation-id` 信息提示，而不是误报 warning；
-- `services / extensions manifest` 还未进入当前批次，后续会在独立子任务中继续扩展。
+- 路由侧仍由 `doctor routes --write-manifest` 负责；service 侧则由 `typegen --write-manifest` 负责。
 
 ## `vext start` — 生产模式启动
 

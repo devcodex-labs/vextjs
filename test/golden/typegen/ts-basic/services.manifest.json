@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "kind": "services-manifest",
+  "target": "services",
+  "serviceCount": 2,
+  "appExtensionCount": 2,
+  "summary": {
+    "topLevelServices": 2,
+    "nestedServices": 1,
+    "dependencyEdges": 0,
+    "dependencyCycles": 0,
+    "conflictingAppExtensions": 0,
+    "lowConfidenceAppExtensions": 0
+  },
+  "services": [
+    {
+      "serviceKey": "payment.stripe",
+      "keySegments": [
+        "payment",
+        "stripe"
+      ],
+      "fileRelativePath": "src/services/payment/stripe.ts",
+      "importPath": "../../services/payment/stripe.js"
+    },
+    {
+      "serviceKey": "userProfile",
+      "keySegments": [
+        "userProfile"
+      ],
+      "fileRelativePath": "src/services/user-profile.ts",
+      "importPath": "../../services/user-profile.js"
+    }
+  ],
+  "appExtensions": [
+    {
+      "propertyKey": "mailer",
+      "inferredTypeText": "{ send(to: string, subject: string, body: string): Promise<void>; }",
+      "pluginRelativePaths": [
+        "src/plugins/mailer.ts"
+      ],
+      "sourceKinds": [
+        "setup"
+      ],
+      "confidence": "high",
+      "conflict": false
+    },
+    {
+      "propertyKey": "readyState",
+      "inferredTypeText": "{ value: boolean; }",
+      "pluginRelativePaths": [
+        "src/plugins/mailer.ts"
+      ],
+      "sourceKinds": [
+        "onReady"
+      ],
+      "confidence": "high",
+      "conflict": false
+    }
+  ],
+  "dependencies": {
+    "edges": [],
+    "cycles": []
+  }
+}
+

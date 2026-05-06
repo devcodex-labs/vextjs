@@ -7,6 +7,7 @@ interface TypegenOptions {
   checkOnly: boolean;
   json: boolean;
   verbose: boolean;
+  writeManifest: boolean;
   help: boolean;
 }
 
@@ -30,6 +31,7 @@ export async function typegenCommand(args: string[] = []): Promise<void> {
     generateServices,
     generateAppExtensions,
     checkOnly: options.checkOnly,
+    writeManifest: options.writeManifest,
   });
 
   if (options.json) {
@@ -37,6 +39,10 @@ export async function typegenCommand(args: string[] = []): Promise<void> {
   } else {
     for (const file of result.files) {
       console.log(`[vext typegen] ${file.status}: ${file.filePath}`);
+    }
+
+    if (result.manifest) {
+      console.log(`[vext typegen] ${result.manifest.status}: ${result.manifest.filePath}`);
     }
 
     for (const warning of result.warnings) {
@@ -64,6 +70,7 @@ function parseTypegenArgs(args: string[]): TypegenOptions {
     checkOnly: false,
     json: false,
     verbose: false,
+    writeManifest: false,
     help: false,
   };
 
@@ -80,6 +87,8 @@ function parseTypegenArgs(args: string[]): TypegenOptions {
       options.json = true;
     } else if (arg === "--verbose") {
       options.verbose = true;
+    } else if (arg === "--write-manifest") {
+      options.writeManifest = true;
     } else if ((arg === "--root" || arg === "-C") && i + 1 < args.length) {
       options.rootDir = args[++i]!;
     } else if (arg === "--help" || arg === "-h") {
@@ -103,6 +112,7 @@ function printTypegenHelp(): void {
     --app-extensions    Only generate app.extend declarations
     --check             Validate generated output without writing files
     --json              Print machine-readable JSON output
+    --write-manifest    Write .vext/inspect/services.manifest.json
     --root <path>       Project root directory (default: current working directory)
     -C <path>           Alias of --root
     --verbose           Reserved for future verbose logging
@@ -111,10 +121,12 @@ function printTypegenHelp(): void {
   Generated files:
     src/types/generated/services.generated.d.ts
     src/types/generated/app-extensions.generated.d.ts
+    .vext/inspect/services.manifest.json  (optional)
 
   Examples:
     $ vext typegen
     $ vext typegen --check
+    $ vext typegen --write-manifest
     $ vext typegen --services --root ./examples/hello-world
 `);
 }

@@ -9,12 +9,14 @@ import {
   generateAppExtensionsDts,
   type AppExtensionsGenerationResult,
 } from "./generate-app-extensions-dts.js";
+import { writeServiceManifestFile } from "./write-service-manifest.js";
 
 export interface RunTypegenOptions {
   rootDir: string;
   generateServices: boolean;
   generateAppExtensions: boolean;
   checkOnly?: boolean;
+  writeManifest?: boolean;
 }
 
 export interface TypegenResult {
@@ -22,6 +24,7 @@ export interface TypegenResult {
   files: GeneratedFileResult[];
   diagnostics: ServiceDependencyDiagnostic[];
   warnings: string[];
+  manifest?: GeneratedFileResult;
 }
 
 export async function runTypegen(
@@ -32,6 +35,7 @@ export async function runTypegen(
     generateServices,
     generateAppExtensions,
     checkOnly = false,
+    writeManifest = false,
   } = options;
 
   const index = await buildProjectIndex(rootDir);
@@ -50,13 +54,28 @@ export async function runTypegen(
   }
 
   const serviceDeps = await analyzeServiceDependencies(rootDir);
+  const manifest = writeManifest
+    ? await writeServiceManifestFile(
+        rootDir,
+        index.serviceEntries,
+        index.appExtensions,
+        serviceDeps,
+        { checkOnly },
+      )
+    : undefined;
   const staleFiles = files.filter((file) => file.status === "stale");
+  const staleManifest = manifest?.status === "stale";
   const hasErrors =
     staleFiles.length > 0 ||
+    staleManifest ||
     serviceDeps.diagnostics.some((diagnostic) => diagnostic.level === "error");
 
   for (const staleFile of staleFiles) {
     warnings.push(`Generated file is stale: ${staleFile.filePath}`);
+  }
+
+  if (staleManifest && manifest) {
+    warnings.push(`Generated file is stale: ${manifest.filePath}`);
   }
 
   return {
@@ -64,6 +83,7 @@ export async function runTypegen(
     files,
     diagnostics: serviceDeps.diagnostics,
     warnings,
+    manifest,
   };
 }
 

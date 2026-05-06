@@ -301,6 +301,9 @@ vext typegen
 # 仅校验 generated 产物是否需要更新，不写文件
 vext typegen --check
 
+# 输出服务索引 / app.extend / 依赖图的稳定 manifest
+vext typegen --write-manifest
+
 # 扫描静态路由信息，并将诊断结果写入 inspect + manifest
 vext doctor routes --write-inspect --write-manifest
 ```
@@ -309,15 +312,17 @@ vext doctor routes --write-inspect --write-manifest
 
 - `src/types/generated/services.generated.d.ts`
 - `src/types/generated/app-extensions.generated.d.ts`
+- `.vext/inspect/services.manifest.json`
 - `.vext/inspect/routes.json`
 - `.vext/inspect/routes.manifest.json`
 
 说明：
 
 - `vext typegen` 面向 `services` / `plugins`，解决声明生成与依赖诊断问题；
+- `vext typegen --write-manifest` 会额外生成 `services.manifest.json`，把 service 索引、`app.extend()` 聚合结果与依赖图摘要固化为稳定消费层；
 - `vext doctor routes` 面向静态路由治理，当前 `doctor all` 仍等价于 `routes`；
 - `routes.json` 是诊断 / inspect 产物，`routes.manifest.json` 是给编辑器、CI、可视化等下游工具消费的稳定契约层；
-- 当前 manifest 首批范围固定为 **routes-only**，`services / extensions manifest` 留待下一批扩展。
+- `services.manifest.json` 当前聚焦 service 索引、`app.extend()` 聚合信息与服务依赖图；routes 与 services 仍保持分层产物，避免过早合并成单一总 manifest。
 
 ---
 

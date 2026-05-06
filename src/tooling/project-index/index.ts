@@ -11,8 +11,8 @@ type TsMorphModule = typeof import("ts-morph");
 type SourceFile = import("ts-morph").SourceFile;
 type Expression = import("ts-morph").Expression;
 
-type ExtensionSourceKind = "setup" | "onReady" | "onClose";
-type InferenceConfidence = "high" | "medium" | "low";
+export type ExtensionSourceKind = "setup" | "onReady" | "onClose";
+export type InferenceConfidence = "high" | "medium" | "low";
 
 export interface ServiceIndexEntry {
   filePath: string;

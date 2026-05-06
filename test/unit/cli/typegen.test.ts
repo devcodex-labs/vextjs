@@ -38,7 +38,7 @@ describe("typegenCommand", () => {
   it("matches golden outputs for the TypeScript fixture and ignores app.extend outside plugin lifecycles", async () => {
     projectRoot = await copyFixtureToTemp("ts-basic");
 
-    await typegenCommand(["--root", projectRoot]);
+    await typegenCommand(["--root", projectRoot, "--write-manifest"]);
 
     const servicesGenerated = await readNormalized(
       join(projectRoot, "src/types/generated/services.generated.d.ts"),
@@ -52,9 +52,16 @@ describe("typegenCommand", () => {
     const expectedAppExtensions = await readNormalized(
       join(GOLDEN_DIR, "ts-basic", "app-extensions.generated.d.ts"),
     );
+    const servicesManifest = await readNormalized(
+      join(projectRoot, ".vext/inspect/services.manifest.json"),
+    );
+    const expectedServicesManifest = await readNormalized(
+      join(GOLDEN_DIR, "ts-basic", "services.manifest.json"),
+    );
 
     expect(servicesGenerated).toBe(expectedServices);
     expect(appExtensionsGenerated).toBe(expectedAppExtensions);
+    expect(servicesManifest).toBe(expectedServicesManifest);
     expect(appExtensionsGenerated).not.toContain("ignoredOutsideLifecycle");
   });
 

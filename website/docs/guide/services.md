@@ -532,6 +532,14 @@ vext typegen
 
 该命令会在 `src/types/generated/services.generated.d.ts` 中自动生成 `VextServices` 扩展声明，并顺带执行一轮 tooling 层 service 依赖 AST 检查。
 
+如果你还想把 service 索引、`app.extend()` 聚合结果与依赖图摘要提供给编辑器、CI 或其他工具链消费，可以额外执行：
+
+```bash
+vext typegen --write-manifest
+```
+
+对应产物会写入：`.vext/inspect/services.manifest.json`。
+
 如果你需要手写或补充少量高级声明，仍可保留自定义 `.d.ts` 文件；generated 文件与手写文件是隔离的，不会互相覆盖。
 
 ```typescript
