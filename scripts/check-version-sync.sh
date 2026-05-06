@@ -12,7 +12,7 @@
 #   0 - all versions consistent
 #   1 - one or more mismatches found
 #
-# @see profile/04-发布检查清单.md
+# @see .devcodex/profile/05-发布规范.md
 # ─────────────────────────────────────────────────────────────
 
 set -eo pipefail
@@ -27,10 +27,24 @@ cd "$PROJECT_ROOT"
 
 # ── read version from package.json ───────────────────────────
 
-VERSION=$(node -p "require('./package.json').version")
+read_version() {
+  if command -v node >/dev/null 2>&1; then
+    node -p "require('./package.json').version"
+    return 0
+  fi
+
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "(Get-Content package.json -Raw | ConvertFrom-Json).version" | tr -d '\r'
+    return 0
+  fi
+
+  return 1
+}
+
+VERSION=$(read_version || true)
 
 if [ -z "$VERSION" ]; then
-  echo "ERROR: could not read version from package.json"
+  echo "ERROR: could not read version from package.json (node / powershell fallback unavailable)"
   exit 1
 fi
 
@@ -102,7 +116,7 @@ echo "────────────────────────�
 if [ "$ERRORS" -gt 0 ]; then
   echo ""
   echo "ERROR: ${ERRORS} version mismatch(es) found."
-  echo "       See profile/04-发布检查清单.md for the full sync checklist."
+  echo "       See .devcodex/profile/05-发布规范.md for the full sync checklist."
   echo ""
   exit 1
 else

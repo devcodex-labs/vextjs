@@ -63,6 +63,7 @@ async function createClusterFixture(port: number): Promise<string> {
   const rootDir = trackTempDir(
     await mkdtemp(join(tmpdir(), "vext-cluster-provider-")),
   );
+  const pidFile = join(rootDir, ".vext-cluster-provider.pid");
 
   await mkdir(join(rootDir, "src", "config"), { recursive: true });
   await mkdir(join(rootDir, "src", "plugins"), { recursive: true });
@@ -103,6 +104,7 @@ async function createClusterFixture(port: number): Promise<string> {
     enabled: true,
     workers: 1,
     autoRestart: false,
+    pidFile: ${JSON.stringify(pidFile)},
     healthCheck: {
       enabled: false,
     },
