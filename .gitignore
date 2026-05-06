@@ -3,6 +3,8 @@ logs
 # DevCodex AI 工作目录（整个目录不提交）
 .devcodex/
 *.log
+pack-report-*.json
+test-int-report-*.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
