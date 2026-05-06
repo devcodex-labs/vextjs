@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | Preview | Experimental tooling preview：`vext typegen --write-manifest` 已新增 `.vext/inspect/services.manifest.json`，并与 `vext doctor routes` 的 routes inspect / manifest 一起在 `vext-test` 做真实验证；当前继续朝 `0.3.3` 收口 |
+| [Unreleased] | — | — | — |
+| [0.3.3] | 2026-05-06 | Patch | ts-morph 开发辅助能力二期收口：新增 `services.manifest.json`，并完成 `typegen + doctor routes + inspect/manifest` 双轨稳定消费层 [查看](./changelogs/v0.3.3.md) |
 | [0.3.2] | 2026-04-28 | Patch | 启动体验与远程配置优化：新增 bootstrap config provider、端口冲突策略、生命周期日志分层，并补齐 lint、测试与文档验证 [查看](./changelogs/v0.3.2.md) |
 | [0.3.1] | 2026-04-27 | Patch | Plugin Loader ESM-only 兼容修复：支持 import-only 根包与 `pkg/subpath`，修复 `vextjs-nacos` 在 dev CJS 插件中的加载失败 [查看](./changelogs/v0.3.1.md) |
 | [0.3.0] | 2026-04-26 | Minor | MonSQLize 链式访问 API：`app.db.pool(name)` / `app.db.use(db)` + Depth-2 目录路由 + 双键回落策略 + VextModelDefinition `key` 别名双注册 + **⚠️ Breaking: `db()` 已移除** [查看](./changelogs/v0.3.0.md) |
@@ -50,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/vextjs/vext/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/vextjs/vext/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/vextjs/vext/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/vextjs/vext/compare/v0.2.11...v0.3.0

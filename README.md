@@ -130,7 +130,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.3.2"
+    "vextjs": "^0.3.3"
   }
 }
 ```
