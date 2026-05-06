@@ -117,6 +117,14 @@ await (app as any).mailer.send("user@example.com", "Welcome", "Hello!");
 :::tip 类型提示
 配合 `declare module` 获得完整的类型支持：
 
+如果你希望自动生成这类扩展声明，可运行：
+
+```bash
+vext typegen
+```
+
+命令会扫描 `src/plugins/` 中 `definePlugin()` 的 `setup` / `onReady` / `onClose` 生命周期内的 `app.extend("...")` 调用，并将结果写入 `src/types/generated/app-extensions.generated.d.ts`。
+
 ```typescript
 // src/types/extensions.d.ts
 declare module "vextjs" {

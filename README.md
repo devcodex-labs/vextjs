@@ -24,6 +24,7 @@ VextJS 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🌐 i18n 支持** — `src/locales/` 语言包自动加载，校验错误消息多语言
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
+- **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断
 - **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
 
 ---

@@ -524,6 +524,16 @@ export default class UserService extends BaseService {
 
 为 `app.services` 添加类型声明，获得完整的 IDE 支持：
 
+推荐优先使用框架提供的生成命令：
+
+```bash
+vext typegen
+```
+
+该命令会在 `src/types/generated/services.generated.d.ts` 中自动生成 `VextServices` 扩展声明，并顺带执行一轮 tooling 层 service 依赖 AST 检查。
+
+如果你需要手写或补充少量高级声明，仍可保留自定义 `.d.ts` 文件；generated 文件与手写文件是隔离的，不会互相覆盖。
+
 ```typescript
 // src/types/services.d.ts
 import type UserService from "../services/user.js";

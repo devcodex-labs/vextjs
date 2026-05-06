@@ -7,6 +7,7 @@ import { createCommand } from "./create.js";
 import { stopCommand } from "./stop.js";
 import { reloadCommand } from "./reload.js";
 import { statusCommand } from "./status.js";
+import { typegenCommand } from "./typegen.js";
 
 /**
  * vext CLI — 框架命令行入口（Phase 1）
@@ -49,6 +50,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   stop: stopCommand,
   reload: reloadCommand,
   status: statusCommand,
+  typegen: typegenCommand,
 };
 
 // ── 未实现命令占位 ──────────────────────────────────────────
@@ -146,6 +148,7 @@ function printHelp(): void {
     stop                  Stop the running server (cluster mode)
     reload                Trigger zero-downtime rolling restart (cluster mode)
     status                Show server status (cluster mode)
+    typegen               Generate declarations and run tooling diagnostics (experimental)
 
   Global options:
     -h, --help            Show this help message
@@ -157,6 +160,7 @@ function printHelp(): void {
     vext stop --help      Show stop command options
     vext reload --help    Show reload command options
     vext status --help    Show status command options
+    vext typegen --help   Show typegen command options
 
   Examples:
     $ vext create my-app

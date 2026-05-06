@@ -1,7 +1,12 @@
 import { readdir, stat, readFile, writeFile, unlink } from "node:fs/promises";
-import { join, extname, sep, relative } from "node:path";
+import { join, extname, sep } from "node:path";
 import type { VextApp, VextLogger } from "../types/app.js";
 import { resolveModuleDefault } from "./interop.js";
+import {
+  SUPPORTED_SERVICE_EXTENSIONS,
+  shouldExcludeServiceFileName,
+  filePathToServiceKeys,
+} from "../shared/service-paths.js";
 
 /**
  * service-loader.ts — 服务层自动加载器
@@ -161,23 +166,6 @@ export async function loadServices(
 /**
  * 支持的 service 文件扩展名
  */
-const SUPPORTED_EXTENSIONS = new Set([".ts", ".js", ".mjs", ".cjs"]);
-
-/**
- * 应排除的文件
- */
-function shouldExclude(filename: string): boolean {
-  // 排除 _ 开头的文件（约定：辅助/私有文件，不作为 service 加载）
-  if (filename.startsWith("_")) return true;
-  // 排除测试文件
-  if (filename.includes(".test.") || filename.includes(".spec.")) return true;
-  // 排除类型声明文件
-  if (filename.endsWith(".d.ts")) return true;
-  // 排除 loadServiceFile 生成的 esbuild 临时编译产物（.__vext_compiled__<ts>.mjs）
-  if (filename.includes(".__vext_compiled__")) return true;
-  return false;
-}
-
 /**
  * 递归扫描 services/ 目录下的所有 service 文件
  *
@@ -200,8 +188,8 @@ async function scanServiceFiles(dir: string): Promise<string[]> {
       files.push(...subFiles);
     } else if (entry.isFile()) {
       const ext = extname(entry.name);
-      if (!SUPPORTED_EXTENSIONS.has(ext)) continue;
-      if (shouldExclude(entry.name)) continue;
+      if (!SUPPORTED_SERVICE_EXTENSIONS.has(ext)) continue;
+      if (shouldExcludeServiceFileName(entry.name)) continue;
 
       files.push(fullPath);
     }
@@ -212,48 +200,6 @@ async function scanServiceFiles(dir: string): Promise<string[]> {
 
 // ── 路径映射 ──────────────────────────────────────────────────
 
-/**
- * filePathToServiceKeys — 文件路径 → service key 数组
- *
- * 转换规则：
- *   1. 取相对路径（去掉 servicesDir 前缀）
- *   2. 统一路径分隔符为 /
- *   3. 去掉扩展名
- *   4. 按 / 拆分为段
- *   5. 每段做 kebab-case → camelCase 转换（如 user-profile → userProfile）
- *
- * 示例：
- *   payment/stripe.ts   → ['payment', 'stripe']
- *   user-profile.ts     → ['userProfile']
- *   user.ts             → ['user']
- *   payment/alipay.ts   → ['payment', 'alipay']
- *
- * @param filePath    service 文件的绝对路径
- * @param servicesDir services/ 目录的绝对路径
- * @returns service key 数组（用于 setNestedKey）
- */
-function filePathToServiceKeys(
-  filePath: string,
-  servicesDir: string,
-): string[] {
-  // 1. 取相对路径
-  let rel = relative(servicesDir, filePath);
-
-  // 2. 统一路径分隔符为 /（Windows 兼容）
-  rel = rel.split(sep).join("/");
-
-  // 3. 去掉扩展名
-  const ext = extname(rel);
-  rel = rel.slice(0, -ext.length);
-
-  // 4. 按 / 拆分为段
-  const segments = rel.split("/");
-
-  // 5. 每段做 kebab-case → camelCase 转换
-  return segments.map((seg) =>
-    seg.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()),
-  );
-}
 
 // ── 嵌套 key 设置 ────────────────────────────────────────────
 
