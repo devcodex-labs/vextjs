@@ -2,6 +2,20 @@
 
 本指南介绍如何将 VextJS 应用部署到生产环境，涵盖构建、Docker 容器化、Nginx 反向代理、PM2 进程管理、日志收集和健康检查等实践。
 
+## 文档站发布到组织主页
+
+如果你希望在 `vext` 仓库构建文档后，直接通过 `https://vextjs.github.io` 访问站点，而不是 `https://vextjs.github.io/vext`，当前仓库已支持双模式发布：
+
+1. 在 `vext` 仓库的 GitHub Secrets 中新增 `VEXTJS_GH_PAGES_TOKEN`
+   - 推荐使用 Fine-grained PAT
+   - 至少授予 `vextjs/vextjs.github.io` 仓库 `Contents: Read and write`
+2. 确保 `vextjs.github.io` 仓库的 GitHub Pages 来源为 `main` / `root`
+3. 保持 `.github/workflows/docs.yml` 使用当前默认逻辑：
+   - **存在** `VEXTJS_GH_PAGES_TOKEN` → 文档构建后发布到 `vextjs/vextjs.github.io` 根目录，访问地址为 `https://vextjs.github.io`
+   - **不存在** `VEXTJS_GH_PAGES_TOKEN` → 回退到当前仓库 Pages，访问地址为 `https://vextjs.github.io/vext`
+
+实现细节：工作流会自动切换构建参数；根域名模式下使用 `VEXT_DOCS_BASE=/`，回退模式下使用 `VEXT_DOCS_BASE=/vext/`。
+
 ## 构建生产产物
 
 ### vext build

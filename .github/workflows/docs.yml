@@ -7,10 +7,15 @@
 #
 # 流水线结构：
 #   1. build  — 在 website/ 目录安装依赖并执行 rspress build
-#   2. deploy — 将 website/dist/ 部署到 GitHub Pages
+#   2. deploy — 默认部署到当前仓库 GitHub Pages；若配置组织主页令牌则发布到 vextjs.github.io
 #
-# 首次使用前需在仓库 Settings → Pages 中将 Source 设置为
-# "GitHub Actions"（而非 branch 部署）
+# 组织主页模式：
+#   - 在当前仓库配置 secret `VEXTJS_GH_PAGES_TOKEN`
+#   - token 需对 `vextjs/vextjs.github.io` 具备 Contents: Read and write
+#   - `vextjs.github.io` 仓库的 Pages 来源设置为 main / root
+#
+# 当前仓库 Pages 模式（回退）：
+#   - 当前仓库 Settings → Pages 中将 Source 设置为 "GitHub Actions"
 #
 # @see website/package.json §scripts
 # @see https://rspress.dev/guide/start/deploy
@@ -47,12 +52,28 @@ jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
+    outputs:
+      deploy_mode: ${{ steps.target.outputs.mode }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 获取完整提交历史，rspress lastUpdated 功能需要
+
+      - name: Resolve deployment target
+        id: target
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.VEXTJS_GH_PAGES_TOKEN }}" ]; then
+            echo "mode=external" >> "$GITHUB_OUTPUT"
+            echo "docs_base=/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://vextjs.github.io" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=pages" >> "$GITHUB_OUTPUT"
+            echo "docs_base=/vext/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://vextjs.github.io/vext" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -62,6 +83,7 @@ jobs:
           cache-dependency-path: website/package-lock.json
 
       - name: Setup GitHub Pages
+        if: steps.target.outputs.mode == 'pages'
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
@@ -73,19 +95,29 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          VEXT_DOCS_BASE: ${{ steps.target.outputs.docs_base }}
+          VEXT_DOCS_SITE_URL: ${{ steps.target.outputs.site_url }}
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-dist
+          path: website/dist
 
       - name: Upload artifact
+        if: steps.target.outputs.mode == 'pages'
         uses: actions/upload-pages-artifact@v3
         with:
           path: website/dist
 
   # ────────────────────────────────────────────────────────────
-  # 2. 部署到 GitHub Pages
+  # 2a. 部署到当前仓库 GitHub Pages
   # ────────────────────────────────────────────────────────────
-  deploy:
+  deploy-pages:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     needs: build
+    if: needs.build.outputs.deploy_mode == 'pages'
 
     environment:
       name: github-pages
@@ -99,3 +131,35 @@ jobs:
       - name: Print deployment URL
         run: |
           echo "✅ 文档站已部署至: ${{ steps.deployment.outputs.page_url }}"
+
+  # ────────────────────────────────────────────────────────────
+  # 2b. 部署到 vextjs.github.io 组织主页仓库
+  # ────────────────────────────────────────────────────────────
+  deploy-org-site:
+    name: Deploy to vextjs.github.io
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.outputs.deploy_mode == 'external'
+
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-dist
+          path: docs-dist
+
+      - name: Publish to organization site repository
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.VEXTJS_GH_PAGES_TOKEN }}
+          external_repository: vextjs/vextjs.github.io
+          publish_branch: main
+          publish_dir: ./docs-dist
+          enable_jekyll: false
+          keep_files: false
+          commit_message: "docs: publish from vext@${{ github.sha }}"
+
+      - name: Print deployment URL
+        run: |
+          echo "✅ 文档站已部署至: https://vextjs.github.io"
+

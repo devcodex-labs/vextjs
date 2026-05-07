@@ -2,9 +2,31 @@ import * as path from "node:path";
 import { defineConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
 
+const DEFAULT_DOCS_BASE = "/vext/";
+const DEFAULT_DOCS_SITE_URL = "https://vextjs.github.io/vext";
+
+function normalizeDocsBase(value?: string) {
+  const raw = value?.trim() || DEFAULT_DOCS_BASE;
+  if (raw === "/") {
+    return "/";
+  }
+
+  const trimmed = raw.replace(/^\/+|\/+$/g, "");
+  return trimmed ? `/${trimmed}/` : "/";
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/g, "");
+}
+
+const docsBase = normalizeDocsBase(process.env.VEXT_DOCS_BASE);
+const docsSiteUrl = trimTrailingSlash(
+  process.env.VEXT_DOCS_SITE_URL || DEFAULT_DOCS_SITE_URL,
+);
+
 export default defineConfig({
   root: path.join(__dirname, "docs"),
-  base: "/vext/",
+  base: docsBase,
   title: "VextJS",
   icon: "/favicon.svg",
   description:
@@ -21,7 +43,7 @@ export default defineConfig({
   ],
   plugins: [
     pluginSitemap({
-      siteUrl: "https://vextjs.github.io/vext",
+      siteUrl: docsSiteUrl,
     }),
   ],
   search: {

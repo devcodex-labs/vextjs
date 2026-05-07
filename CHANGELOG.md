@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | — | — |
+| [Unreleased] | — | — | 文档站发布链路增强：`vext` 支持按 Secret 自动切换到 `vextjs.github.io` 组织主页根域名部署 |
 | [0.3.3] | 2026-05-06 | Patch | ts-morph 开发辅助能力二期收口：新增 `services.manifest.json`，并完成 `typegen + doctor routes + inspect/manifest` 双轨稳定消费层 [查看](./changelogs/v0.3.3.md) |
 | [0.3.2] | 2026-04-28 | Patch | 启动体验与远程配置优化：新增 bootstrap config provider、端口冲突策略、生命周期日志分层，并补齐 lint、测试与文档验证 [查看](./changelogs/v0.3.2.md) |
 | [0.3.1] | 2026-04-27 | Patch | Plugin Loader ESM-only 兼容修复：支持 import-only 根包与 `pkg/subpath`，修复 `vextjs-nacos` 在 dev CJS 插件中的加载失败 [查看](./changelogs/v0.3.1.md) |
