@@ -98,6 +98,16 @@ jobs:
           VEXT_DOCS_BASE: ${{ steps.target.outputs.docs_base }}
           VEXT_DOCS_SITE_URL: ${{ steps.target.outputs.site_url }}
 
+      - name: Rewrite robots sitemap URL
+        shell: bash
+        run: |
+          cat > website/dist/robots.txt <<EOF
+          User-agent: *
+          Allow: /
+
+          Sitemap: ${{ steps.target.outputs.site_url }}/sitemap.xml
+          EOF
+
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
