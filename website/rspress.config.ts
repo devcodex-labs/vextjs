@@ -30,7 +30,7 @@ export default defineConfig({
   title: "VextJS",
   icon: "/favicon.svg",
   description:
-    "一个现代化的 Node.js Web 框架，开箱即用，专为构建高性能 RESTful API 而设计。",
+    "vextjs 是一个现代化的全栈框架，旨在提高开发效率。它提供开箱即用的功能和默认配置，使开发人员能够快速启动项目，使其成为构建高性能 RESTful API 的理想选择。",
   outDir: "dist",
   head: [
     [
