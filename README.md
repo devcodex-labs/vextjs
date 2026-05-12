@@ -8,7 +8,6 @@
 
 vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路由、服务自动注入、参数校验、OpenAPI 文档自动生成等企业级特性，让你专注于业务逻辑。
 
-> 📚 文档站默认支持两种发布模式：未配置组织主页令牌时使用 `https://vextjs.github.io/vext`；当在 `vext` 仓库配置 `VEXTJS_GH_PAGES_TOKEN` 后，可直接从本仓库构建并发布到 `https://vextjs.github.io`。
 
 ---
 
