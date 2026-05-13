@@ -12,7 +12,7 @@
  */
 
 import type { MonSQLize } from "monsqlize";
-import type { VextApp } from "../../../types/app.js";
+import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeConnection } from "./types.js";
 
 /**
@@ -22,13 +22,13 @@ import type { MonSQLizeConnection } from "./types.js";
  * 返回增强的连接对象（MonSQLizeConnection）。
  *
  * @param monsqlize MonSQLize 实例（已配置，未连接）
- * @param app       VextApp 实例（用于日志输出）
+ * @param app       插件上下文（用于日志输出）
  * @returns 增强的连接对象
  * @throws 连接失败时抛出原始错误（Fail Fast）
  */
 export async function createConnection(
   monsqlize: MonSQLize,
-  app: VextApp,
+  app: VextPluginContext,
 ): Promise<MonSQLizeConnection> {
   // ── 连接数据库（Fail Fast：失败则启动终止）──────────────
   await monsqlize.connect();
@@ -108,7 +108,7 @@ export async function createConnection(
       if (!client) {
         throw new Error(
           "[monsqlize] MongoDB client is not available. " +
-            "Ensure the database connection is established before accessing the client.",
+          "Ensure the database connection is established before accessing the client.",
         );
       }
       return client;

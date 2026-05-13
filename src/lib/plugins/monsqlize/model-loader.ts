@@ -25,7 +25,7 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import type { MonSQLize } from "monsqlize";
-import type { VextApp } from "../../../types/app.js";
+import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 
 /**
@@ -55,13 +55,13 @@ async function getModelClass(): Promise<{
  *
  * @param monsqlize    MonSQLize 实例（已连接）
  * @param modelsConfig Model 配置（来自 app.config.database.models）
- * @param app          VextApp 实例（用于日志）
+ * @param app          插件上下文（用于日志）
  * @param srcDir       src/ 目录的绝对路径（用于定位 models/ 目录）
  */
 export async function loadModels(
   monsqlize: MonSQLize,
   modelsConfig: MonSQLizeDatabaseConfig["models"] | undefined,
-  app: VextApp,
+  app: VextPluginContext,
   srcDir: string,
 ): Promise<void> {
   const config = {
@@ -115,13 +115,13 @@ export async function loadModels(
  *
  * @param monsqlize     MonSQLize 实例
  * @param packageName   共享包名（如 '@project/models'）
- * @param app           VextApp 实例
+ * @param app           插件上下文
  * @returns 加载的 Model 数量
  */
 async function loadSharedModels(
   monsqlize: MonSQLize,
   packageName: string,
-  app: VextApp,
+  app: VextPluginContext,
 ): Promise<number> {
   let count = 0;
 
@@ -166,7 +166,7 @@ async function loadSharedModels(
     } else {
       app.logger.warn(
         `[monsqlize] shared package "${packageName}" has no valid export ` +
-          "(expected default object or registerModels function)",
+        "(expected default object or registerModels function)",
       );
     }
 
@@ -174,8 +174,8 @@ async function loadSharedModels(
   } catch (err) {
     throw new Error(
       `[monsqlize] Failed to load shared model package "${packageName}":\n` +
-        `  ${(err as Error).message}\n` +
-        `  Make sure the package is installed: npm install ${packageName}`,
+      `  ${(err as Error).message}\n` +
+      `  Make sure the package is installed: npm install ${packageName}`,
     );
   }
 
@@ -190,13 +190,13 @@ async function loadSharedModels(
  *
  * @param monsqlize  MonSQLize 实例
  * @param modelsDir  models/ 目录绝对路径
- * @param app        VextApp 实例
+ * @param app        插件上下文
  * @returns 加载的 Model 数量
  */
 async function loadLocalModels(
   monsqlize: MonSQLize,
   modelsDir: string,
-  app: VextApp,
+  app: VextPluginContext,
 ): Promise<number> {
   let count = 0;
 

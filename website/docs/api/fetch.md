@@ -270,14 +270,19 @@ export default {
 
 ## 替换实现
 
-通过 `app.setFetch()` 替换内置实现：
+当前版本未暴露 `app.setFetch()` 公共 API，因此这里不支持直接替换内置实现。
+
+如果你需要不同的 HTTP 客户端策略，推荐保留 `app.fetch` 作为框架默认实现，再通过插件额外挂载自定义客户端：
 
 ```typescript
-app.setFetch(customFetchImplementation);
+app.extend("customFetch", app.fetch.create({
+  baseURL: "https://api.example.com",
+  timeout: 5000,
+}));
 ```
 
 :::warning
-替换后将失去内置的 requestId 传播、超时、重试等能力。
+如果完全绕过 `app.fetch`，requestId 传播、超时、重试和结构化日志能力都需要自行补齐。
 :::
 
 ---

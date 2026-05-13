@@ -1,5 +1,42 @@
 import type { VextApp } from "./app.js";
 
+type VextPluginContextKeys =
+  | "logger"
+  | "throw"
+  | "config"
+  | "services"
+  | "adapter"
+  | "extend"
+  | "setValidator"
+  | "getValidator"
+  | "setThrow"
+  | "setLogger"
+  | "setRateLimiter"
+  | "setRequestIdGenerator"
+  | "onClose"
+  | "onReady"
+  | "use"
+  | "cache"
+  | "fetch";
+
+/**
+ * VextPluginContext — 插件生命周期中可见的应用上下文
+ *
+ * 与完整 VextApp 的区别：
+ *   - 不暴露 app.get/post/... 路由注册方法；路由应通过 defineRoutes() 定义
+ *   - 仍保留插件初始化真正需要的能力（config/logger/extend/use/onClose/...）
+ *   - 保留字符串索引签名，便于通过 app.extend() 做插件间协作
+ *
+ * 设计动机：
+ *   linked workspace 下，不同仓库可能各自解析到一份 vextjs 类型副本。
+ *   若插件接口暴露完整 VextApp，HTTP 路由方法会把 RouteOptions/VextHandler/VextRequest
+ *   这条递归类型链一起带入比较，容易放大跨副本的结构不兼容。
+ *   插件上下文去掉路由注册方法后，既更贴合实际使用面，也能降低此类冲突概率。
+ */
+export interface VextPluginContext extends Pick<VextApp, VextPluginContextKeys> {
+  [key: string]: unknown;
+}
+
 /**
  * VextPlugin — 框架插件接口
  *
@@ -62,7 +99,7 @@ export interface VextPlugin {
    *
    * @param app 应用实例（此时 app.use() 可用，app.services 尚未注入）
    */
-  setup(app: VextApp): Promise<void> | void;
+  setup(app: VextPluginContext): Promise<void> | void;
 
   /**
    * 就绪钩子（可选）— HTTP 监听后执行
@@ -85,7 +122,7 @@ export interface VextPlugin {
    *   },
    * })
    */
-  onReady?(app: VextApp): Promise<void> | void;
+  onReady?(app: VextPluginContext): Promise<void> | void;
 
   /**
    * 关闭钩子（可选）— 优雅关闭时执行（LIFO 顺序）
@@ -108,7 +145,7 @@ export interface VextPlugin {
    *   },
    * })
    */
-  onClose?(app: VextApp): Promise<void> | void;
+  onClose?(app: VextPluginContext): Promise<void> | void;
 }
 
 /**

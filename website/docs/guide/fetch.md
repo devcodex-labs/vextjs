@@ -529,7 +529,9 @@ const response = await app.fetch.get("https://api.example.com/data", {
 
 ## 替换 fetch 实现
 
-如果你需要使用 axios 或其他 HTTP 客户端替代内置 `app.fetch`，可以通过 `app.setFetch()` 替换：
+当前版本未暴露 `app.setFetch()` 公共 API，因此不支持在插件里直接替换框架内置 `app.fetch`。
+
+如果你需要使用 axios 或其他 HTTP 客户端，推荐在插件里通过 `app.extend()` 挂载独立客户端，而不是覆盖内置实现：
 
 ```typescript
 import { definePlugin } from "vextjs";
@@ -539,14 +541,16 @@ export default definePlugin({
   name: "axios-fetch",
 
   setup(app) {
-    // 自定义 fetch 实现需符合 VextFetch 接口
-    app.setFetch(customFetchImplementation);
+    app.extend("axios", axios.create({
+      baseURL: process.env.API_BASE_URL,
+      timeout: 5000,
+    }));
   },
 });
 ```
 
 :::warning
-替换后将失去内置的 requestId 传播、超时、重试等能力，需要自行实现。大多数场景下推荐直接使用内置 `app.fetch`。
+如果你绕过内置 `app.fetch`，requestId 传播、超时、重试与结构化日志都需要自行实现。大多数场景下推荐直接使用内置 `app.fetch`，或基于 `app.fetch.create()` 挂载专用客户端。
 :::
 
 ## 完整示例：微服务间调用

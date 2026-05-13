@@ -27,7 +27,7 @@ import type { VextLogger } from "../types/app.js";
  * 超时配置优先级：
  *   单次请求 init.timeout > create() 的 options.timeout > config.fetch.timeout
  *
- * 可替换：通过 app.setFetch() 替换为 axios 等自定义实现。
+ * 当前版本未暴露 app.setFetch() 公共 API；自定义实现需在框架内部注入。
  *
  * @module lib/fetch
  * @see IMPLEMENTATION-PLAN.md 任务 1.8b

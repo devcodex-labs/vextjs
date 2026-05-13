@@ -20,7 +20,7 @@
  * @see 13-monsqlize-plugin.md §2.3（插件核心实现）
  */
 
-import type { VextApp } from "../../../types/app.js";
+import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 import { createConnection } from "./connection.js";
 import { loadModels } from "./model-loader.js";
@@ -30,12 +30,12 @@ import { loadModels } from "./model-loader.js";
  *
  * 由内置插件的 setup() 调用，完成 MonSQLize 的完整初始化流程。
  *
- * @param app     VextApp 实例（config.database 已可用）
+ * @param app     插件上下文（config.database 已可用）
  * @param srcDir  src/ 目录的绝对路径（用于定位 models/ 目录）
  * @throws 配置缺失或连接失败时抛出错误（Fail Fast）
  */
 export async function setupMonSQLize(
-  app: VextApp,
+  app: VextPluginContext,
   srcDir: string,
 ): Promise<void> {
   let config = (app.config as { database?: MonSQLizeDatabaseConfig })
@@ -45,12 +45,12 @@ export async function setupMonSQLize(
   if (!config) {
     throw new Error(
       '[monsqlize] Missing "database" configuration.\n' +
-        "  Add database config to src/config/default.ts:\n" +
-        "  export default {\n" +
-        "    database: {\n" +
-        '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
-        "    }\n" +
-        "  }",
+      "  Add database config to src/config/default.ts:\n" +
+      "  export default {\n" +
+      "    database: {\n" +
+      '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
+      "    }\n" +
+      "  }",
     );
   }
 
@@ -98,7 +98,7 @@ export async function setupMonSQLize(
         } catch (err) {
           throw new Error(
             `[monsqlize] Failed to start MongoMemoryServer for pool '${pool.name}': ${(err as Error).message}\n` +
-              "  Make sure mongodb-memory-server is installed.",
+            "  Make sure mongodb-memory-server is installed.",
           );
         }
       }
@@ -118,8 +118,8 @@ export async function setupMonSQLize(
   } catch (err) {
     throw new Error(
       "[monsqlize] Failed to import 'monsqlize' package.\n" +
-        `  ${(err as Error).message}\n` +
-        "  Make sure monsqlize is installed: npm install monsqlize",
+      `  ${(err as Error).message}\n` +
+      "  Make sure monsqlize is installed: npm install monsqlize",
     );
   }
 
@@ -176,12 +176,12 @@ export async function setupMonSQLize(
  *   - VextConfig.database.logger='app'  → 桥接到 app.logger
  *
  * @param config  用户的 database 配置
- * @param app     VextApp 实例（提供 logger 桥接）
+ * @param app     插件上下文（提供 logger 桥接）
  * @returns MonSQLize 构造函数配置对象
  */
 function buildMonSQLizeConfig(
   config: MonSQLizeDatabaseConfig,
-  app: VextApp,
+  app: VextPluginContext,
 ): Record<string, unknown> {
   // ── 映射 config.config（vext 用户配置 → MonSQLize 配置）────
   // vext 类型定义使用 `url` 字段，MonSQLize 期望 `uri` 字段。

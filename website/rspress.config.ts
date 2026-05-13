@@ -72,7 +72,7 @@ export default defineConfig({
         activeMatch: "/benchmark",
       },
       {
-        text: "v0.3.3",
+        text: "v0.3.4",
         items: [
           {
             text: "更新日志",

@@ -54,7 +54,7 @@ export type {
 } from "./app.js";
 
 // ── 插件类型 ────────────────────────────────────────────────
-export type { VextPlugin } from "./plugin.js";
+export type { VextPlugin, VextPluginContext } from "./plugin.js";
 export { definePlugin } from "./plugin.js";
 
 // ── 路由类型 ────────────────────────────────────────────────

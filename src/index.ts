@@ -60,6 +60,7 @@ export type {
 
   // 插件类型
   VextPlugin,
+  VextPluginContext,
 
   // 路由类型
   RouteDefinition,

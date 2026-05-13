@@ -26,7 +26,7 @@ export interface VextServices {
 /**
  * VextLogger — 框架日志接口
  *
- * 内置实现基于 pino，插件可通过覆盖 app.logger 替换实现。
+ * 内置实现基于 pino，插件可通过 app.setLogger() 包装或替换实现。
  * 所有日志方法自动携带 requestId（通过 child logger 实现）。
  */
 export interface VextLogger {
@@ -1123,6 +1123,18 @@ export interface VextApp {
   getValidator(): VextValidator;
 
   /**
+   * 包装或替换 app.throw 的实现（插件专用）
+   *
+   * 常见用途：
+   *   - 对默认错误做统一映射
+   *   - 在抛错前注入自定义日志或监控埋点
+   *   - 对接业务错误码体系
+   *
+   * @param wrapper 接收原始 throw 实现，返回新的 throw 实现
+   */
+  setThrow(wrapper: (original: VextApp["throw"]) => VextApp["throw"]): void;
+
+  /**
    * 包装或替换 app.logger 的实现（插件专用）
    *
    * 与 setThrow 模式一致：接收原始实现，返回新实现。
@@ -1235,7 +1247,7 @@ export interface VextApp {
    *
    * 自动传播 requestId，结构化日志记录请求/响应。
    * 支持 timeout / retry / retryDelay / propagateRequestId 等扩展选项。
-   * 插件可通过 app.setFetch() 替换实现。
+    * 当前版本未暴露 app.setFetch() 公共 API；如需替换需在框架内部注入。
    *
    * @see 06d-fetch.md
    */
