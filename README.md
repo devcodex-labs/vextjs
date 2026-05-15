@@ -26,7 +26,21 @@ vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
 - **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断；`vext doctor routes` 已进入 Phase 2 预览
+- **🛰️ Preload 生态集成** — 自动扫描依赖包声明的 `vext.preload`，适合 OpenTelemetry / APM / polyfill 这类必须早于应用代码执行的能力
 - **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
+
+---
+
+## 🧭 快速导航
+
+如果你是第一次接触 VextJS，推荐按下面顺序阅读：
+
+1. **5 分钟跑起来** → 直接看 [🚀 快速开始](#-快速开始)
+2. **先判断是启动期配置还是进程级预加载** → 看 [启动期远程配置（bootstrap）](#31-可选启动期远程配置srcconfigbootstrapjs) 与 [OpenTelemetry 零配置接入](#32-可选零配置接入-opentelemetrypreload-型生态)
+3. **想接 OpenTelemetry** → 继续看下方的 [OpenTelemetry 零配置接入速查](#-vextjs--opentelemetry-零配置接入速查)
+4. **想了解命令行能力** → 继续往下看 `CLI 命令` 章节
+5. **想看配置与环境切换** → 继续往下看 `配置` 与 `环境变量` 章节
+6. **想系统化学习** → 官网文档：<https://vextjs.github.io/vext/>
 
 ---
 
@@ -131,7 +145,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.3.4"
+    "vextjs": "^0.3.5"
   }
 }
 ```
@@ -198,6 +212,97 @@ export default defineBootstrapConfig({
 - monkey patch / polyfill
 
 这类“进程级提早执行”能力应继续使用 `preload`。
+
+### 3.2 可选：零配置接入 OpenTelemetry（preload 型生态）
+
+如果你希望在 Vext 应用里直接启用 Trace / Metrics / Logs，可安装 `vextjs-opentelemetry`：
+
+```bash
+npm install vextjs-opentelemetry
+```
+
+```json
+{
+  "vext": {
+    "otel": {
+      "serviceName": "my-app",
+      "endpoint": "http://otel-collector.internal:4318",
+      "sampling": { "ratio": 1 }
+    }
+  }
+}
+```
+
+```js
+// src/plugins/otel.js
+import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+
+export default opentelemetryPlugin({
+  serviceName: "my-app",
+  tracing: {
+    ignorePaths: ["/health", "/_otel/status"],
+  },
+  logs: {
+    bridgeAppLogger: true,
+  },
+});
+```
+
+然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload` 并在应用代码前注入 OTel SDK 初始化脚本，无需手动加 `node --import ...`。
+
+更多说明：
+
+- preload 机制：<https://vextjs.github.io/vext/guide/preload>
+- VextJS OpenTelemetry 完整接入：<https://vextjs.github.io/vext/examples/opentelemetry>
+
+---
+
+## 🛰️ VextJS + OpenTelemetry 零配置接入速查
+
+### 双入口配置优先级（VextJS 专用）
+
+`vextjs-opentelemetry` 在 VextJS 里有两个正式入口，但职责不同：
+
+| 入口 | 生效阶段 | 适合放什么 | 不适合放什么 |
+| ---- | -------- | ---------- | ------------ |
+| `package.json` → `vext.otel` | **preload / 进程启动前** | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 这类“SDK 一开始就要知道”的默认导出配置 | `ignorePaths`、`capture`、日志桥接、请求级逻辑 |
+| `src/plugins/otel.js` → `opentelemetryPlugin()` | **plugin setup + request** | `tracing`、`metrics`、`lifecycle`、`logs.bridgeAppLogger`，以及 setup 阶段对 exporter 的补充 / 覆盖 | 指望它回写 preload 阶段已经启动好的 SDK Resource |
+
+> ✅ 推荐做法：把“导出到哪里、用什么协议、服务名是什么”优先收敛到 `package.json vext.otel`；把“请求要采什么、日志怎么桥接、哪些路径忽略”放进 `opentelemetryPlugin()`。
+
+### `endpoint` / `protocol` 对照
+
+| 目标 | 推荐配置 | `protocol` | 结果 |
+| ---- | -------- | ---------- | ---- |
+| 完全不上报 | 不写 `endpoint`，或显式写 `"none"` | — | SDK 可保持安全 noop / 不导出任何数据 |
+| 本地文件调试 | `"./otel-data"` | — | 按 `pid` 写入 `traces.*.jsonl` / `metrics.*.jsonl` / `logs.*.jsonl` |
+| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报 |
+| OTLP gRPC Collector | `"otel-collector.internal:4317"` | `"grpc"` | 通过 gRPC h2c 上报 |
+
+> 💡 如果你同时在 `package.json vext.otel` 和 `opentelemetryPlugin()` 里都写了 `endpoint / protocol / headers`，建议保持一致，避免 `/_otel/status`、启动日志和最终实际导出目标出现认知偏差。
+
+### 快速排查
+
+- **`/_otel/status` 显示 `sdk: "noop"`**
+  - 确认是通过 `vext dev` / `vext start` 启动，而不是直接 `node dist/server.js`
+  - 确认 `vextjs-opentelemetry` 在 `dependencies` 中
+  - 若必须自定义 Node 启动命令，请手动补 `--import vextjs-opentelemetry/instrumentation`
+- **`exportTarget` 不是你期望的地址**
+  - 先检查 `package.json vext.otel`
+  - 再检查 `src/plugins/otel.js` 是否又追加了不同的 `endpoint / protocol / headers`
+- **日志里没有 `trace_id`**
+  - 先确认 `/_otel/status` 已是 `initialized`
+  - 再确认插件已正常加载；如果希望 `app.logger` 也桥接到 OTel Logs，开启 `logs.bridgeAppLogger: true`
+- **后端一直收不到数据**
+  - 先用 `./otel-data` 本地文件模式确认数据是否已生成
+  - 再检查 Collector 地址、端口、协议是否匹配，并预留一点批量导出延迟
+
+### 安全与隐私提醒
+
+- `capture.headers`、`capture.body` **只建议白名单采集**，不要把 `authorization`、`cookie`、密码、手机号、邮箱等敏感字段直接打进遥测
+- `/_otel/status` 适合排障，但生产环境建议只开放给内网或经网关限制访问
+- `headers` 中若需要放 API Key / Token，优先通过环境变量或部署平台 Secret 注入；不要把真实密钥硬编码进仓库里的 `package.json`
+- `package.json vext.otel` 更适合放“默认导出目标与服务名”这类非敏感配置；真正的敏感凭证请交给运行时注入
 
 ### 4. 编写路由
 
@@ -877,7 +982,7 @@ describe("User API", () => {
 
 在 `src/locales/` 下放置语言文件，框架自动加载并注册到 schema-dsl 校验器。
 
-```json
+```jsonc
 // src/locales/zh-CN.json
 {
   "validation.required": "{field} 不能为空",
@@ -886,7 +991,7 @@ describe("User API", () => {
 }
 ```
 
-```json
+```jsonc
 // src/locales/en.json
 {
   "validation.required": "{field} is required",
