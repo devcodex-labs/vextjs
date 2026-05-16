@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
-| [0.3.5] | 2026-05-15 | Patch | 在文档口径收口基础上，补充项目级 `preload/` 目录、TS preload 启动前编译、`dev` 冷重启联动、`vext-test` 真实验证与完整发布收口 [查看](./changelogs/v0.3.5.md) |
+| [0.3.6] | 2026-05-16 | Patch | 项目级 `preload/` 目录正式落地：补齐 TS preload、`build` / built 模式联动、`fs.watch` 动态监听与消费者验收闭环 [查看](./changelogs/v0.3.6.md) |
+| [0.3.5] | 2026-05-15 | Patch | README 与 OpenTelemetry 文档对齐当前 preload / exporter / capture 模型，并完成一轮发版前全链路验证 [查看](./changelogs/v0.3.5.md) |
 | [0.3.4] | 2026-05-13 | Patch | 插件类型边界收口：新增 `VextPluginContext`，修复 linked workspace 下的重复类型冲突，并补齐 typegen/文档/验证链路 [查看](./changelogs/v0.3.4.md) |
 | [0.3.3] | 2026-05-06 | Patch | ts-morph 开发辅助能力二期收口：新增 `services.manifest.json`，并完成 `typegen + doctor routes + inspect/manifest` 双轨稳定消费层 [查看](./changelogs/v0.3.3.md) |
 | [0.3.2] | 2026-04-28 | Patch | 启动体验与远程配置优化：新增 bootstrap config provider、端口冲突策略、生命周期日志分层，并补齐 lint、测试与文档验证 [查看](./changelogs/v0.3.2.md) |
@@ -53,7 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/vextjs/vext/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/vextjs/vext/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/vextjs/vext/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/vextjs/vext/compare/v0.3.2...v0.3.3
