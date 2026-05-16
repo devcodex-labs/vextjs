@@ -410,9 +410,21 @@ VEXT_CLUSTER=1 vext start
 
 ### 预加载（Preload）自动注入
 
-`vext start` 和 `vext dev` 会自动扫描已安装依赖包中声明了 `vext.preload` 的包，
-在子进程启动前通过 `--import` 注入预加载脚本。例如 `vextjs-opentelemetry` 利用此机制
-在应用代码加载前自动初始化 OpenTelemetry SDK。
+`vext start` 和 `vext dev` 会自动解析两类 preload 来源：
+
+1. 已安装依赖包中声明的 `vext.preload`
+2. 应用项目根目录中的 `preload/`
+
+在子进程启动前，这些脚本会统一通过 `--import` 注入。例如 `vextjs-opentelemetry` 可利用包级 `vext.preload` 在应用代码加载前自动初始化 OpenTelemetry SDK；应用项目本身也可以直接在根目录 `preload/` 中放置脚本做启动前环境桥接。
+
+首期项目级 preload 规则：
+
+- 目录固定为项目根 `preload/`
+- 非递归扫描
+- 项目级 preload 先执行，包级 preload 后执行
+- `.mjs` / `.js` 直接注入
+- `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
+- `vext dev` 下若 `preload/` 里的文件发生变化，会触发 cold restart
 
 详见 [预加载 (Preload)](/guide/preload)。
 

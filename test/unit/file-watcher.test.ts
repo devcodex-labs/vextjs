@@ -31,6 +31,7 @@ function createTempProject(): string {
   fs.mkdirSync(path.join(srcDir, "services"), { recursive: true });
   fs.mkdirSync(path.join(srcDir, "config"), { recursive: true });
   fs.mkdirSync(path.join(srcDir, "plugins"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, "preload"), { recursive: true });
 
   // src/routes/user.ts
   fs.writeFileSync(
@@ -73,6 +74,10 @@ function createTempProject(): string {
   );
   fs.writeFileSync(path.join(tmpDir, ".env"), "PORT=3000\n");
   fs.writeFileSync(path.join(tmpDir, ".env.local"), "SECRET=abc\n");
+  fs.writeFileSync(
+    path.join(tmpDir, "preload", "01-env.ts"),
+    "export const preloadFlag = 'init';\n",
+  );
 
   return tmpDir;
 }
@@ -140,6 +145,11 @@ describe("change-classifier", () => {
 
     it("tsconfig.json 应分类为 cold", () => {
       const result = classifyChange("tsconfig.json");
+      expect(result.action).toBe("cold");
+    });
+
+    it("preload/ 下的项目级 preload 文件应分类为 cold", () => {
+      const result = classifyChange("preload/01-env.ts");
       expect(result.action).toBe("cold");
     });
 
@@ -606,6 +616,79 @@ describe("VextFileWatcher", () => {
       }
     });
 
+    it("修改 preload/ 文件应触发 cold 事件", async () => {
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          resolve(event);
+        });
+      });
+
+      await sleep(100);
+
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "01-env.ts"),
+        "export const preloadFlag = 'updated';\n",
+      );
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.some((f) => f.path.includes("preload/01-env.ts"))).toBe(
+          true,
+        );
+      }
+    });
+
+    it("fs.watch 模式下动态创建 preload/ 目录后应监听其中新增文件", async () => {
+      fs.rmSync(path.join(projectRoot, "preload"), { recursive: true, force: true });
+
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasDynamicPreload = event.files.some((f) =>
+            f.path.includes("preload/01-late.ts"),
+          );
+          if (hasDynamicPreload) {
+            resolve(event);
+          }
+        });
+      });
+
+      await sleep(100);
+
+      fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "01-late.ts"),
+        "export const preloadFlag = 'late';\n",
+      );
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      if (event) {
+        expect(event.action).toBe("cold");
+        const lateFile = event.files.find((f) => f.path.includes("preload/01-late.ts"));
+        expect(lateFile?.type).toBe("add");
+      }
+    });
+
     it("新增 src/ 下的文件应触发事件且 type 包含 add", async () => {
       watcher = new VextFileWatcher({
         root: projectRoot,
@@ -658,7 +741,6 @@ describe("VextFileWatcher", () => {
       await sleep(100);
 
       // 创建 node_modules 并写入文件
-      const nmDir = path.join(projectRoot, "src", "node_modules");
       // 这不会触发因为 node_modules 在 src 内部不太常见
       // 但 classifyChange 会将 node_modules/ 路径忽略
       // 实际上 fs.watch 是监听 src/，文件路径会是 src/node_modules/...
@@ -710,6 +792,43 @@ describe("VextFileWatcher", () => {
         expect(event.files.some((f) => f.path.includes("routes/user.ts"))).toBe(
           true,
         );
+      }
+    });
+
+    it("polling 模式下修改 preload/ 文件应触发 cold 事件", async () => {
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        usePolling: true,
+        pollInterval: 200,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      await sleep(600);
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasPreload = event.files.some((f) =>
+            f.path.includes("preload/01-env.ts"),
+          );
+          if (hasPreload) {
+            resolve(event);
+          }
+        });
+      });
+
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "01-env.ts"),
+        "export const preloadFlag = 'polling-updated';\n",
+      );
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      if (event) {
+        expect(event.action).toBe("cold");
       }
     });
 

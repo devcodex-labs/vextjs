@@ -141,7 +141,7 @@ export class ColdRestarter {
   private readonly readyTimeout: number;
   private readonly env: Record<string, string>;
   private readonly cwd: string | undefined;
-  private readonly extraExecArgv: string[];
+  private extraExecArgv: string[];
   private events: ColdRestarterEvents = {};
 
   constructor(options: ColdRestarterOptions) {
@@ -163,6 +163,16 @@ export class ColdRestarter {
    */
   setEvents(events: ColdRestarterEvents): void {
     this.events = events;
+  }
+
+  /**
+   * 更新冷重启子进程的额外 Node.js 运行参数
+   *
+   * 主要用于 dev 模式在项目级 preload 发生变化后，
+   * 重新计算 `--import file:///...` 列表并在下一次 cold restart 中生效。
+   */
+  setExtraExecArgv(extraExecArgv: string[]): void {
+    this.extraExecArgv = [...extraExecArgv];
   }
 
   /**

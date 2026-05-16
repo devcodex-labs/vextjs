@@ -828,7 +828,7 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 注入到 Worker 进程的 execArgv，使 Worker 继承预加载能力。
   //
   const { resolvePreloads } = await import("../cli/utils/preload.js");
-  const preloads = resolvePreloads(rootDir);
+  const preloads = await resolvePreloads(rootDir);
   for (const fileUrl of preloads) {
     execArgv.push("--import", fileUrl);
   }

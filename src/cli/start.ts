@@ -142,7 +142,7 @@ export async function startCommand(args: string[] = []): Promise<void> {
   // --import <file:///...> 形式追加到 execArgv。
   // 无预加载包时返回 []，不追加任何参数，行为与旧版完全一致。
   //
-  const preloads = resolvePreloads(project.rootDir);
+  const preloads = await resolvePreloads(project.rootDir);
   for (const fileUrl of preloads) {
     execArgv.push("--import", fileUrl);
   }

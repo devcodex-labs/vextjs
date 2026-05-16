@@ -373,6 +373,31 @@ describe("BuildCompiler", () => {
       ).toBe(true);
     });
 
+    it("应将项目根 preload/ 自动编译并写入 dist/preload/", async () => {
+      fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "01-env.ts"),
+        "process.env.APP_PORT = '3011';\n",
+      );
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "02-hook.mjs"),
+        "export const ready = true;\n",
+      );
+
+      const compiler = createCompiler(projectRoot);
+      await compiler.build();
+
+      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"))).toBe(
+        true,
+      );
+      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "02-hook.mjs"))).toBe(
+        true,
+      );
+      expect(
+        fs.readFileSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"), "utf-8"),
+      ).toContain("APP_PORT");
+    });
+
     it("sourcemap: false 应不生成 .js.map 文件", async () => {
       const compiler = createCompiler(projectRoot, { sourcemap: false });
       await compiler.build();
@@ -849,6 +874,26 @@ describe("BuildCompiler", () => {
       expect(content1).toContain("1.0.0");
       expect(content2).toContain("2.0.0");
     });
+
+    it("重新编译时应清理 dist/preload 中已删除的项目级 preload 产物", async () => {
+      fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectRoot, "preload", "01-env.ts"),
+        "process.env.APP_STAGE = 'dev';\n",
+      );
+
+      const compiler = createCompiler(projectRoot);
+      await compiler.build();
+
+      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"))).toBe(
+        true,
+      );
+
+      fs.rmSync(path.join(projectRoot, "preload"), { recursive: true, force: true });
+      await compiler.build();
+
+      expect(fs.existsSync(path.join(projectRoot, "dist", "preload"))).toBe(false);
+    });
   });
 });
 
@@ -1000,18 +1045,15 @@ describe("BuildResult 接口", () => {
 
   it("成功编译时所有字段应正确填充", async () => {
     const compiler = createCompiler(projectRoot);
-    const result = await compiler.build();
+    const result: BuildResult = await compiler.build();
 
-    // 类型断言：验证所有必要字段存在
-    const r: BuildResult = result;
-
-    expect(typeof r.success).toBe("boolean");
-    expect(typeof r.fileCount).toBe("number");
-    expect(typeof r.totalFiles).toBe("number");
-    expect(typeof r.elapsed).toBe("number");
-    expect(typeof r.outDir).toBe("string");
-    expect(Array.isArray(r.warnings)).toBe(true);
-    expect(Array.isArray(r.errors)).toBe(true);
+    expect(typeof result.success).toBe("boolean");
+    expect(typeof result.fileCount).toBe("number");
+    expect(typeof result.totalFiles).toBe("number");
+    expect(typeof result.elapsed).toBe("number");
+    expect(typeof result.outDir).toBe("string");
+    expect(Array.isArray(result.warnings)).toBe(true);
+    expect(Array.isArray(result.errors)).toBe(true);
   });
 });
 

@@ -10,7 +10,7 @@ import type { ClassifierOptions } from "./change-classifier.js";
  *
  * 热重载的入口组件，负责：
  *
- *   1. **监听** `src/` 目录和根目录配置文件的变更
+ *   1. **监听** `src/` 目录、项目根 `preload/` 目录和根目录配置文件的变更
  *   2. **分类** 变更文件为 `cold`（冷重启）、`soft`（热替换）或 `ignore`（忽略）
  *   3. **识别变更类型**（`modify` / `add` / `delete`）— 决定走 Tier 1 还是 Tier 2 编译路径
  *   4. **防抖合并** 100ms 窗口内的多个变更为一次 reload 事件
@@ -117,6 +117,9 @@ export class VextFileWatcher extends EventEmitter {
    */
   private watchers: Closeable[] = [];
 
+  /** 当前挂载的项目级 preload 目录 watcher（如存在） */
+  private preloadWatcher: Closeable | null = null;
+
   /**
    * 防抖期间暂存的变更集合
    *
@@ -178,7 +181,8 @@ export class VextFileWatcher extends EventEmitter {
    *      - polling = true → 使用 setInterval 定期扫描
    *
    * 监听目标：
-   *   - src/ 目录（递归，所有源码文件变更）
+     *   - src/ 目录（递归，所有源码文件变更）
+     *   - preload/ 目录（非递归，项目级 preload 文件变更）
    *   - 根目录配置文件（package.json, tsconfig.json）
    *   - .env 文件（.env, .env.local, .env.production 等）
    */
@@ -247,6 +251,41 @@ export class VextFileWatcher extends EventEmitter {
       // src/ 目录不存在时静默跳过
     }
 
+    // ── preload/ 目录监听（项目级 preload，非递归）─────────
+    this.attachPreloadWatcher(root);
+
+    // ── 项目根目录监听（补足 preload/ 动态创建/删除）───────
+    try {
+      const watcher = watch(
+        root,
+        {
+          recursive: false,
+          persistent: true,
+        },
+        (_eventType, filename) => {
+          if (!filename) return;
+
+          const normalized = String(filename).replace(/\\/g, "/");
+          if (!normalized.startsWith("preload")) return;
+
+          void this.reconcilePreloadWatcher(root);
+        },
+      );
+
+      watcher.on("error", (err) => {
+        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
+          console.warn(
+            "[vext dev] inotify limit reached, falling back to polling",
+          );
+          this.restartWithPolling();
+        }
+      });
+
+      this.watchers.push(watcher);
+    } catch {
+      // 根目录监听失败时静默跳过
+    }
+
     // ── 根目录配置文件单独监听 ──────────────────────────
     //
     // 配置文件变更触发 Cold Restart，需要在 src/ 外单独监听。
@@ -308,6 +347,7 @@ export class VextFileWatcher extends EventEmitter {
 
     this.pendingChanges.clear();
     this.knownFiles.clear();
+    this.preloadWatcher = null;
   }
 
   // ── 内部方法 ──────────────────────────────────────────────
@@ -390,10 +430,87 @@ export class VextFileWatcher extends EventEmitter {
   private async initKnownFiles(root: string): Promise<void> {
     this.knownFiles.clear();
     const srcDir = join(root, "src");
-    const files = await this.walkDirectory(srcDir);
+    const files = [
+      ...(await this.walkDirectory(srcDir)),
+      ...(await this.listPreloadFiles(root)),
+    ];
     for (const file of files) {
       const rel = relative(root, file).replace(/\\/g, "/");
       this.knownFiles.add(rel);
+    }
+  }
+
+  private attachPreloadWatcher(root: string): void {
+    if (this.preloadWatcher) return;
+
+    const preloadDir = join(root, "preload");
+
+    try {
+      const watcher = watch(
+        preloadDir,
+        {
+          recursive: false,
+          persistent: true,
+        },
+        (eventType, filename) => {
+          if (!filename) return;
+
+          const relativePath = relative(root, join(preloadDir, filename));
+          const normalizedPath = relativePath.replace(/\\/g, "/");
+
+          const changeType = this.detectChangeType(
+            eventType,
+            normalizedPath,
+            join(preloadDir, filename),
+          );
+
+          this.onFileChange(normalizedPath, changeType);
+        },
+      );
+
+      watcher.on("error", (err) => {
+        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
+          console.warn(
+            "[vext dev] inotify limit reached, falling back to polling",
+          );
+          this.restartWithPolling();
+        }
+      });
+
+      this.preloadWatcher = watcher;
+      this.watchers.push(watcher);
+    } catch {
+      // preload/ 目录不存在时静默跳过
+    }
+  }
+
+  private async reconcilePreloadWatcher(root: string): Promise<void> {
+    const preloadDir = join(root, "preload");
+
+    if (!existsSync(preloadDir)) {
+      for (const filePath of [...this.knownFiles]) {
+        if (!filePath.startsWith("preload/")) continue;
+        this.knownFiles.delete(filePath);
+        this.onFileChange(filePath, "delete");
+      }
+
+      if (this.preloadWatcher) {
+        this.preloadWatcher.close();
+        this.preloadWatcher = null;
+      }
+      return;
+    }
+
+    if (!this.preloadWatcher) {
+      this.attachPreloadWatcher(root);
+    }
+
+    const currentFiles = await this.listPreloadFiles(root);
+    for (const file of currentFiles) {
+      const relativePath = relative(root, file).replace(/\\/g, "/");
+      if (this.knownFiles.has(relativePath)) continue;
+      this.knownFiles.add(relativePath);
+      this.onFileChange(relativePath, "add");
     }
   }
 
@@ -505,7 +622,10 @@ export class VextFileWatcher extends EventEmitter {
 
     const poll = async () => {
       const srcDir = join(root, "src");
-      const files = await this.walkDirectory(srcDir);
+      const files = [
+        ...(await this.walkDirectory(srcDir)),
+        ...(await this.listPreloadFiles(root)),
+      ];
       const currentPaths = new Set<string>();
 
       for (const file of files) {
@@ -572,9 +692,9 @@ export class VextFileWatcher extends EventEmitter {
 
     // 初始扫描（建立基线）
     const srcDir = join(root, "src");
-    this.walkDirectory(srcDir)
-      .then((files) => {
-        for (const file of files) {
+    Promise.all([this.walkDirectory(srcDir), this.listPreloadFiles(root)])
+      .then(([srcFiles, preloadFiles]) => {
+        for (const file of [...srcFiles, ...preloadFiles]) {
           const relativePath = relative(root, file).replace(/\\/g, "/");
           try {
             const stat = statSync(file);
@@ -644,6 +764,30 @@ export class VextFileWatcher extends EventEmitter {
     } catch {
       // 目录不存在或无权限
     }
+    return results;
+  }
+
+  /**
+   * listPreloadFiles — 列出项目根 preload/ 目录中的一级文件
+   *
+   * 仅收集项目级 preload 支持的候选文件类型，且不递归子目录。
+   */
+  private async listPreloadFiles(root: string): Promise<string[]> {
+    const preloadDir = join(root, "preload");
+    const results: string[] = [];
+
+    try {
+      const entries = await readdir(preloadDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (/\.(ts|mts|js|mjs)$/.test(entry.name)) {
+          results.push(join(preloadDir, entry.name));
+        }
+      }
+    } catch {
+      // preload/ 目录不存在或无权限
+    }
+
     return results;
   }
 }

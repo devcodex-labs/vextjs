@@ -26,7 +26,7 @@ vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
 - **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断；`vext doctor routes` 已进入 Phase 2 预览
-- **🛰️ Preload 生态集成** — 自动扫描依赖包声明的 `vext.preload`，适合 OpenTelemetry / APM / polyfill 这类必须早于应用代码执行的能力
+- **🛰️ Preload 生态集成** — 同时支持依赖包 `vext.preload` 与项目根 `preload/` 目录；适合 OpenTelemetry / APM / polyfill / 启动前环境桥接这类必须早于应用代码执行的能力
 - **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
 
 ---
@@ -248,7 +248,20 @@ export default opentelemetryPlugin({
 });
 ```
 
-然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload` 并在应用代码前注入 OTel SDK 初始化脚本，无需手动加 `node --import ...`。
+然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload`，也会识别项目根 `preload/` 目录，并在应用代码前注入对应脚本，无需手动加 `node --import ...`。
+
+如果你是应用项目而不是插件包，现在也可以直接在项目根创建：
+
+```text
+preload/
+├── 01-bootstrap-port.ts
+└── 02-bootstrap-verbose.mjs
+```
+
+- `.mjs` / `.js` 会直接作为 ESM preload 注入
+- `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
+- `vext dev` 下修改 `preload/` 中的文件会触发 cold restart，确保结果与手动重启一致
+- `vext build` 会把项目根 `preload/` 编译到 `dist/preload/*.mjs`，便于生产部署只携带 `dist/`
 
 更多说明：
 

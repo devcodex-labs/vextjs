@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     restart = vi.fn(async () => undefined);
     sendToChild = vi.fn();
     kill = vi.fn(async () => undefined);
+    setExtraExecArgv = vi.fn();
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -196,7 +197,7 @@ describe("cli interaction: start/dev", () => {
     });
     mocks.hasDistBuild.mockReturnValue(false);
     mocks.resolveEntryFile.mockReturnValue("E:/Worker/vext-fixture/node_modules/vextjs/dist/lib/bootstrap.js");
-    mocks.resolvePreloads.mockReturnValue([]);
+    mocks.resolvePreloads.mockResolvedValue([]);
     mocks.shouldUsePolling.mockReturnValue(false);
 
     readline = {

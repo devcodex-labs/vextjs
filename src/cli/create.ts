@@ -824,6 +824,6 @@ function printSuccess(options: CreateOptions): void {
     npm run dev      Start development server (with hot reload)
     npm start        Start production server${options.language === "ts" ? "\n    npm run build    Build for production" : ""}
 
-  📖 Documentation: https://github.com/vextjs/vext
+  📖 Documentation: https://vextjs.github.io
 `);
 }

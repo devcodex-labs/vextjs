@@ -129,6 +129,9 @@ const BUILD_EXTRA_IGNORE = [
   "**/config/test.{ts,js,mts,mjs,cts,cjs}",
 ];
 
+const PROJECT_PRELOAD_DIR = "preload";
+const PROJECT_PRELOAD_PATTERN = /\.(ts|mts|js|mjs)$/i;
+
 // ── BuildCompiler 类 ────────────────────────────────────────
 
 export class BuildCompiler {
@@ -188,6 +191,7 @@ export class BuildCompiler {
 
     // ── 3. 执行编译 ────────────────────────────────────────
     let result: esbuild.BuildResult;
+    const warnings: esbuild.Message[] = [];
 
     try {
       result = await esbuild.build({
@@ -248,6 +252,33 @@ export class BuildCompiler {
       '{"type":"commonjs"}\n',
     );
 
+    warnings.push(...result.warnings);
+
+    let preloadBuildCount = 0;
+    try {
+      const preloadBuild = await this.buildProjectPreloads(
+        hasTsconfig ? tsconfigPath : undefined,
+        sourcemap,
+      );
+      preloadBuildCount = preloadBuild.fileCount;
+      warnings.push(...preloadBuild.warnings);
+    } catch (err) {
+      if (isBuildFailure(err)) {
+        const elapsed = Date.now() - startTime;
+        return {
+          success: false,
+          fileCount: 0,
+          totalFiles: entryPoints.length,
+          elapsed,
+          outDir,
+          warnings,
+          errors: err.errors ?? [],
+          metafile: result.metafile,
+        };
+      }
+      throw err;
+    }
+
     // ── 5. 统计编译结果 ────────────────────────────────────
     const elapsed = Date.now() - startTime;
     const outputFiles = Object.keys(result.metafile?.outputs ?? {});
@@ -255,14 +286,62 @@ export class BuildCompiler {
 
     return {
       success: result.errors.length === 0,
-      fileCount: jsFiles.length,
-      totalFiles: entryPoints.length,
+      fileCount: jsFiles.length + preloadBuildCount,
+      totalFiles: entryPoints.length + preloadBuildCount,
       elapsed,
       outDir,
-      warnings: result.warnings,
+      warnings,
       errors: result.errors,
       metafile: result.metafile,
     };
+  }
+
+  private async buildProjectPreloads(
+    tsconfigPath: string | undefined,
+    sourcemap: boolean,
+  ): Promise<{ fileCount: number; warnings: esbuild.Message[] }> {
+    const sourceDir = path.join(this.options.rootDir, PROJECT_PRELOAD_DIR);
+    const outPreloadDir = path.join(this.options.outDir, PROJECT_PRELOAD_DIR);
+
+    fs.rmSync(outPreloadDir, { recursive: true, force: true });
+
+    if (!fs.existsSync(sourceDir)) {
+      return { fileCount: 0, warnings: [] };
+    }
+
+    const entries = await fs.promises.readdir(sourceDir, { withFileTypes: true });
+    const sortedEntries = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+    const warnings: esbuild.Message[] = [];
+    let fileCount = 0;
+
+    for (const entry of sortedEntries) {
+      if (!entry.isFile()) continue;
+      if (!PROJECT_PRELOAD_PATTERN.test(entry.name)) continue;
+
+      const sourcePath = path.join(sourceDir, entry.name);
+      const outputName = entry.name.replace(/\.(ts|mts|js|mjs)$/i, ".mjs");
+      const outfile = path.join(outPreloadDir, outputName);
+
+      await fs.promises.mkdir(path.dirname(outfile), { recursive: true });
+      const preloadResult = await esbuild.build({
+        entryPoints: [sourcePath],
+        bundle: true,
+        packages: "external",
+        format: "esm",
+        platform: "node",
+        target: "node18",
+        write: true,
+        outfile,
+        sourcemap: sourcemap ? "external" : false,
+        logLevel: "silent",
+        ...(tsconfigPath ? { tsconfig: tsconfigPath } : {}),
+      });
+
+      warnings.push(...preloadResult.warnings);
+      fileCount += 1;
+    }
+
+    return { fileCount, warnings };
   }
 
   /**

@@ -1,6 +1,11 @@
 # 预加载（Preload）
 
-VextJS 提供了 **预加载（Preload）** 机制，允许 npm 包声明需要在 Node.js 模块加载之前执行的脚本。`vext start` / `vext dev` 会自动发现这些声明，并通过 `--import` 参数注入到子进程中。
+VextJS 提供了 **预加载（Preload）** 机制，允许以下两类来源在 Node.js 模块加载之前执行脚本：
+
+1. **依赖包声明**：npm 包在 `package.json` 中声明 `vext.preload`
+2. **项目级目录**：应用项目根目录下的 `preload/`
+
+`vext start` / `vext dev` 会自动发现这些声明，并通过 `--import` 参数注入到子进程中。
 
 ## 为什么需要预加载？
 
@@ -8,18 +13,27 @@ VextJS 提供了 **预加载（Preload）** 机制，允许 npm 包声明需要�
 
 Node.js 的 `--import` 参数正是为此设计：它确保指定脚本在**任何**用户代码执行前运行。
 
-手动添加 `--import` 需要修改启动脚本，增加了配置负担。VextJS 的 preload 机制将这一步**自动化**——npm 包只需在 `package.json` 中声明，CLI 自动完成注入。
+手动添加 `--import` 需要修改启动脚本，增加了配置负担。VextJS 的 preload 机制将这一步**自动化**：
+
+- 插件包只需在 `package.json` 中声明 `vext.preload`
+- 应用项目只需在项目根创建 `preload/` 目录
+
+CLI 会自动完成注入。
+
+> 从 `v0.3.5` 开始，应用项目无需再为了 preload 去包装一个本地 npm 包。只要在项目根创建 `preload/` 目录即可。
 
 ## 工作原理
 
-```
+```text
 vext start / vext dev
+  ↓
+扫描项目根 preload/ 目录
   ↓
 读取项目 package.json 的 dependencies + devDependencies
   ↓
 遍历已安装依赖的 package.json，查找 "vext.preload" 字段
   ↓
-收集所有 preload 脚本路径，转换为 file:/// URL
+项目级 preload 与包级 preload 合并、去重并转换为 file:/// URL
   ↓
 以 --import <url> 参数注入到子进程 execArgv
   ↓
@@ -36,16 +50,83 @@ sequenceDiagram
     participant Script as preload 脚本
     participant App as 应用代码
 
-    CLI->>PR: 扫描直接依赖
+    CLI->>PR: 扫描项目根 preload/ + 直接依赖
     PR-->>CLI: [file:///...preload.js]
     CLI->>Child: fork({ execArgv: ["--import", "file:///..."] })
     Child->>Script: 最先执行（--import 机制）
-    Script->>Script: SDK 初始化 / monkey-patch 等
+    Script->>Script: SDK 初始化 / 环境桥接 / monkey-patch 等
     Child->>App: 加载应用代码
-    Note over App: 此时 SDK 已就绪，patch 已生效
+    Note over App: 此时 preload 已就绪
 ```
 
 ## 声明 preload
+
+### 方式 A：项目级 `preload/` 目录
+
+在应用项目根目录创建：
+
+```text
+preload/
+├── 01-bootstrap-port.ts
+├── 02-bootstrap-verbose.mjs
+└── 03-polyfill.js
+```
+
+首期规则：
+
+| 规则 | 说明 |
+|------|------|
+| 目录位置 | 固定为项目根 `preload/` |
+| 扫描范围 | **非递归**，只扫描当前目录一级文件 |
+| 文件顺序 | 按文件名升序注入 |
+| 项目级 vs 包级 | **项目级 preload 先执行**，包级 `vext.preload` 后执行 |
+| 去重 | 按绝对路径去重 |
+
+#### 支持的文件类型
+
+| 类型 | 处理方式 | 推荐度 |
+|------|----------|:------:|
+| `.mjs` | 直接注入 | ✅ 推荐 |
+| `.js` | 在 ESM 项目下直接注入 | ✅ 可用 |
+| `.ts` | 启动前编译到 `.vext/preload/*.mjs` 再注入 | ✅ 可用 |
+| `.mts` | 启动前编译到 `.vext/preload/*.mjs` 再注入 | ✅ 推荐 |
+
+> 推荐优先使用 `.mjs` / `.mts`，语义最清晰。
+
+#### TypeScript preload 的工作方式
+
+如果项目级 `preload/` 目录中包含 `.ts` / `.mts` 文件，CLI 会在启动前使用 `esbuild` 将其编译到：
+
+```text
+.vext/preload/*.mjs
+```
+
+例如：
+
+```text
+preload/01-bootstrap-port.ts
+→ .vext/preload/01-bootstrap-port.__compiled__.mjs
+→ --import file:///.../.vext/preload/01-bootstrap-port.__compiled__.mjs
+```
+
+这样做的目的，是在不改造 `vext build` 主编译链的前提下，同时保证：
+
+- `vext dev`
+- `vext start`
+- Cluster worker
+
+三条链路的 preload 行为一致。
+
+#### `vext dev` 下的行为
+
+项目级 preload 属于**启动前执行逻辑**。因此当 `preload/` 里的文件发生新增 / 修改 / 删除时：
+
+- `vext dev` 会监听该目录
+- 并统一触发 **cold restart**
+
+这能确保结果与手动重启一致，避免“preload 已改但开发服务器仍沿用旧注入结果”。
+
+### 方式 B：依赖包 `vext.preload`
 
 在 npm 包的 `package.json` 中添加 `vext.preload` 字段：
 
@@ -58,7 +139,7 @@ sequenceDiagram
 }
 ```
 
-### 字段格式
+#### 字段格式
 
 | 格式 | 示例 | 说明 |
 |------|------|------|
@@ -67,7 +148,7 @@ sequenceDiagram
 
 路径相对于包根目录（`node_modules/<package>/`），由 CLI 自动解析为绝对路径。
 
-### 真实示例
+#### 真实示例
 
 `vextjs-opentelemetry` 已内置此声明：
 
@@ -89,7 +170,7 @@ sequenceDiagram
 | **OpenTelemetry SDK** | 必须在模块加载前初始化，才能 monkey-patch HTTP/DB 客户端 |
 | **APM 工具** | Datadog、New Relic 等 APM agent 同理 |
 | **全局 polyfill** | 需要在所有代码执行前注入的全局补丁 |
-| **进程级配置** | 例如设置全局环境变量、注册自定义 loader |
+| **进程级配置桥接** | 例如设置环境变量，让 bootstrap provider 在配置阶段读取 |
 
 ## preload 与 bootstrap config provider 的边界
 
@@ -98,15 +179,16 @@ sequenceDiagram
 | 能力 | preload | bootstrap config provider |
 |------|---------|---------------------------|
 | 执行时机 | Node.js 模块加载前（`--import`） | 配置 merge / validate / freeze 之前 |
-| 主要职责 | SDK 初始化、monkey patch、全局 polyfill | 返回结构化配置补丁 |
+| 主要职责 | SDK 初始化、环境桥接、monkey patch、全局 polyfill | 返回结构化配置补丁 |
 | 是否参与配置优先级链 | ❌ | ✅ |
 | 是否适合作为远程数据库配置主路径 | ❌ | ✅ |
 
 推荐做法：
 
 - **APM / OpenTelemetry / monkey patch** → 用 `preload`
-- **远程配置中心 / 启动期数据库配置** → 用 `bootstrap config provider`
-- 两者可以配合：preload 先准备 SDK 或 token cache，provider 再读取共享状态产出 patch
+- **启动前桥接环境变量给 bootstrap provider** → 也可以用 `preload`
+- **远程配置中心 / 启动期数据库配置主链** → 用 `bootstrap config provider`
+- 两者可以配合：preload 先准备 SDK、token cache 或环境变量，provider 再读取这些状态产出 patch
 
 ## 三种启动模式
 
@@ -114,7 +196,7 @@ sequenceDiagram
 |------|:-:|------|
 | `vext start` / `vext dev` | ✅ | CLI 自动发现并注入 `--import` |
 | `node --import <path> dist/server.js` | ✅ | 手动添加 `--import`，效果相同 |
-| `node dist/server.js`（无 --import）| ❌ | preload 脚本不会执行 |
+| `node dist/server.js`（无 --import） | ❌ | preload 脚本不会执行 |
 
 > 推荐使用 `vext start` / `vext dev`，享受自动注入的便利。
 
@@ -130,36 +212,66 @@ VEXT_CLUSTER=1 vext start   # 每个 Worker 自动加载 preload 脚本
 
 ### 安全行为
 
+- **项目级目录为受控单目录**：仅识别项目根 `preload/`，不递归扫描任意目录
 - **仅扫描直接依赖**：CLI 只读取项目 `package.json` 的 `dependencies` + `devDependencies`，不递归扫描子依赖
 - **文件不存在时跳过**：`vext.preload` 指向的文件不存在时，CLI 输出 warning 并跳过，不阻断启动
 - **解析失败时降级**：依赖包 `package.json` 解析失败时静默跳过
-- **无 preload 包时无影响**：没有任何包声明 `vext.preload` 时，CLI 行为与之前完全一致
+- **项目级 TS preload 编译失败时 fail-fast**：避免把明显不可执行的 TS preload 带进运行阶段
+- **无 preload 声明时无影响**：没有项目级目录、也没有包级 preload 声明时，CLI 行为与之前完全一致
 
-### 与手动 --import 共存
+### 与手动 `--import` 共存
 
 CLI 注入的 `--import` 与用户手动添加的 `--import` 不冲突。如果同一脚本被注入两次，SDK 内部通常有全局注册保护，不会重复初始化。
 
-### 开发 preload 脚本的要求
+### 开发 preload 脚本的建议
 
-- 脚本必须是 ESM 格式（`--import` 要求）
 - 脚本应快速执行，避免阻塞应用启动
-- 错误应自行处理（try/catch），不应抛出未捕获异常导致进程退出
+- 如果是 `.js` / `.ts`，请确保项目采用 ESM 语义（`"type": "module"`）
+- 错误应自行处理；若是 TS preload，语法编译错误会直接中断启动
+
+### 部署边界
+
+如果你使用的是**项目级 `preload/`**：
+
+- `vext build` 会把项目根 `preload/` 编译到 `dist/preload/`
+- `.ts` / `.mts` / `.js` / `.mjs` 都会统一输出为可直接 `--import` 的 `.mjs` 文件
+- 因此生产部署时，通常只需要一起携带：
+  - 项目根 `package.json`
+  - `dist/`（其中已包含 `dist/preload/`，如被使用）
+
+`vext start` 会优先读取项目根 `preload/`；若根目录不存在该目录，则自动回退读取 `dist/preload/`。
 
 ## 编写自定义 preload
+
+### 编写项目级 preload
+
+```ts
+// preload/01-bootstrap-port.ts
+process.env.APP_BOOTSTRAP_PORT = "3011";
+```
+
+```js
+// preload/02-sdk.mjs
+try {
+  const { init } = await import("../src/sdk.js");
+  await init();
+} catch (err) {
+  console.warn("[app preload] init failed:", err.message);
+}
+```
+
+### 编写包级 preload
 
 如果你正在开发一个需要 preload 的 vext 插件包：
 
 ```typescript
 // src/instrumentation.ts — preload 入口
 try {
-  // 在此执行需要在模块加载前完成的初始化
   console.log("[my-plugin] preload script executed");
-  
-  // 例如：初始化 APM SDK
+
   const { init } = await import("./sdk.js");
   await init();
 } catch (err) {
-  // 错误不应阻断应用启动
   console.warn("[my-plugin] preload failed:", (err as Error).message);
 }
 
@@ -184,4 +296,3 @@ export {};
 - 查看 [OpenTelemetry 可观测性](/examples/opentelemetry) 了解 preload 的典型应用
 - 了解 [插件](/guide/plugins) 系统的完整能力
 - 探索 [Cluster 多进程](/guide/cluster) 模式下的 preload 行为
-

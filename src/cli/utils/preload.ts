@@ -1,20 +1,31 @@
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { mkdir, readdir } from "node:fs/promises";
+import { basename, extname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const PROJECT_PRELOAD_DIR = "preload";
+const DIST_PRELOAD_DIR = "dist/preload";
+const PRELOAD_CACHE_DIR = ".vext/preload";
+
+const PROJECT_PRELOAD_EXTENSIONS = new Set([".mjs", ".js", ".ts", ".mts"]);
+const JS_PRELOAD_EXTENSIONS = new Set([".mjs", ".js"]);
+const TS_PRELOAD_EXTENSIONS = new Set([".ts", ".mts"]);
 
 /**
- * resolvePreloads — 扫描直接依赖的 vext.preload 字段
+ * resolvePreloads — 解析项目级 + 包级 preload 列表
  *
- * 读取 <rootDir>/package.json 的 dependencies + devDependencies，
- * 遍历各依赖包的 package.json，收集 pkg.vext?.preload 字段，
- * 转换为 file:/// URL 数组（供 --import 使用）。
+ * 解析顺序：
+ *   1. 项目根 preload/ 目录（项目级 preload）
+ *   2. package.json 直接依赖中的 vext.preload（包级 preload）
+ *   3. 合并后按绝对路径去重
  *
  * 关键行为：
- *   - vext.preload 支持字符串或字符串数组
+ *   - 项目级 preload 支持 .mjs / .js / .ts / .mts
+ *   - .ts / .mts 会在启动前编译到 .vext/preload/*.mjs 再注入
+ *   - 包级 vext.preload 支持字符串或字符串数组
  *   - 路径基于 node_modules/<dep>/ 解析为绝对路径，再转 file:// URL
- *   - 任何包解析失败只 warn，不阻断启动
- *   - 预加载文件不存在时 warn 并跳过
- *   - 无依赖或无 preload 包时返回 []
+ *   - 包级 preload 解析失败只 warn，不阻断启动
+ *   - 项目级 TS preload 编译失败视为启动前错误，直接抛出
  *
  * 使用示例（vextjs-opentelemetry/package.json）：
  *   { "vext": { "preload": "./dist/instrumentation.js" } }
@@ -24,7 +35,80 @@ import { pathToFileURL } from "node:url";
  *
  * @see 技术方案 §2.1 resolvePreloads 工具函数设计
  */
-export function resolvePreloads(rootDir: string): string[] {
+export async function resolvePreloads(rootDir: string): Promise<string[]> {
+  const projectPreloads = await resolveProjectPreloads(rootDir);
+  const packagePreloads = resolvePackagePreloads(rootDir);
+
+  const merged = [...projectPreloads, ...packagePreloads];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const fileUrl of merged) {
+    const dedupeKey = fileURLToPath(fileUrl);
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    result.push(fileUrl);
+  }
+
+  return result;
+}
+
+async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
+  const preloadDir = resolveProjectPreloadDir(rootDir);
+  if (!preloadDir) {
+    return [];
+  }
+
+  const entries = await readdir(preloadDir, { withFileTypes: true });
+  const sortedEntries = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+  const preloads: string[] = [];
+
+  for (const entry of sortedEntries) {
+    const fullPath = join(preloadDir, entry.name);
+
+    if (!entry.isFile()) {
+      console.warn(
+        `[vextjs] preload: unsupported project preload entry: ${fullPath} (not a regular file), skipping`,
+      );
+      continue;
+    }
+
+    const extension = extname(entry.name).toLowerCase();
+    if (!PROJECT_PRELOAD_EXTENSIONS.has(extension)) {
+      console.warn(
+        `[vextjs] preload: unsupported project preload extension: ${fullPath}, skipping`,
+      );
+      continue;
+    }
+
+    if (JS_PRELOAD_EXTENSIONS.has(extension)) {
+      preloads.push(pathToFileURL(fullPath).href);
+      continue;
+    }
+
+    if (TS_PRELOAD_EXTENSIONS.has(extension)) {
+      preloads.push(await compileProjectTypeScriptPreload(rootDir, fullPath));
+    }
+  }
+
+  return preloads;
+}
+
+function resolveProjectPreloadDir(rootDir: string): string | null {
+  const projectPreloadDir = join(rootDir, PROJECT_PRELOAD_DIR);
+  if (existsSync(projectPreloadDir)) {
+    return projectPreloadDir;
+  }
+
+  const distPreloadDir = join(rootDir, DIST_PRELOAD_DIR);
+  if (existsSync(distPreloadDir)) {
+    return distPreloadDir;
+  }
+
+  return null;
+}
+
+function resolvePackagePreloads(rootDir: string): string[] {
   // ── 1. 读取项目 package.json ──────────────────────────
   const pkgPath = join(rootDir, "package.json");
   if (!existsSync(pkgPath)) {
@@ -101,5 +185,41 @@ export function resolvePreloads(rootDir: string): string[] {
   }
 
   return preloads;
+}
+
+async function compileProjectTypeScriptPreload(
+  rootDir: string,
+  filePath: string,
+): Promise<string> {
+  const { build } = await import("esbuild");
+  const cacheDir = join(rootDir, PRELOAD_CACHE_DIR);
+  await mkdir(cacheDir, { recursive: true });
+
+  const filename = basename(filePath).replace(/\.(mts|ts)$/i, "");
+  const compiledFile = join(cacheDir, `${filename}.__compiled__.mjs`);
+  const tsconfigPath = join(rootDir, "tsconfig.json");
+
+  try {
+    await build({
+      entryPoints: [filePath],
+      bundle: true,
+      packages: "external",
+      format: "esm",
+      platform: "node",
+      target: "node18",
+      write: true,
+      outfile: compiledFile,
+      logLevel: "silent",
+      ...(existsSync(tsconfigPath) ? { tsconfig: tsconfigPath } : {}),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
+    throw new Error(
+      `[vextjs] preload: failed to compile TypeScript preload ${filePath}\n${message}`,
+    );
+  }
+
+  return pathToFileURL(resolve(compiledFile)).href;
 }
 

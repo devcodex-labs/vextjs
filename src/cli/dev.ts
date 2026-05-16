@@ -230,7 +230,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   // 生成 ["--import", "file:///..."] 格式的 execArgv 追加列表。
   // Cold Restart 时 extraExecArgv 自动复用，无需重新计算。
   //
-  const preloads = resolvePreloads(project.rootDir);
+  const preloads = await resolvePreloads(project.rootDir);
   const preloadExecArgv = preloads.flatMap((p) => ["--import", p]);
 
   const restarterOptions: ColdRestarterOptions = {
@@ -241,6 +241,13 @@ export async function devCommand(args: string[] = []): Promise<void> {
   };
 
   const restarter = new ColdRestarter(restarterOptions);
+
+  const refreshPreloads = async (): Promise<void> => {
+    const latestPreloads = await resolvePreloads(project.rootDir);
+    restarter.setExtraExecArgv(
+      latestPreloads.flatMap((p) => ["--import", p]),
+    );
+  };
 
   // 监听子进程事件
   restarter.setEvents({
@@ -255,12 +262,14 @@ export async function devCommand(args: string[] = []): Promise<void> {
           ((msg as Record<string, unknown>).reason as string) ||
           "child request";
         console.log(`\n[vext dev] child requested cold restart: ${reason}`);
-        restarter.restart(reason).catch((err: unknown) => {
-          console.error(
-            "[vext dev] restart failed:",
-            err instanceof Error ? err.message : err,
-          );
-        });
+        refreshPreloads()
+          .then(() => restarter.restart(reason))
+          .catch((err: unknown) => {
+            console.error(
+              "[vext dev] restart failed:",
+              err instanceof Error ? err.message : err,
+            );
+          });
         return;
       }
 
@@ -321,6 +330,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   console.log("[vext dev] starting initial compilation + server...");
 
   try {
+    await refreshPreloads();
     await restarter.restart("initial start");
     console.log("[vext dev] server ready\n");
   } catch (err) {
@@ -361,6 +371,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
         "[vext dev] config/plugin change detected \u2192 cold restart (Tier 3)...",
       );
       try {
+        await refreshPreloads();
         await restarter.restart(event.files.map((f) => f.path).join(", "));
         console.log("[vext dev] cold restart complete\n");
       } catch (err) {
@@ -387,6 +398,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
           `[${hasStructural ? "structural" : "code"}]...`,
       );
       try {
+        await refreshPreloads();
         await restarter.restart(event.files.map((f) => f.path).join(", "));
         console.log("[vext dev] cold restart complete\n");
       } catch (err) {
@@ -474,12 +486,14 @@ export async function devCommand(args: string[] = []): Promise<void> {
         case "r":
           if (promptActive) break;
           console.log("\n[vext dev] manual cold restart...");
-          restarter.restart("manual").catch((err: unknown) => {
-            console.error(
-              "[vext dev] restart failed:",
-              err instanceof Error ? err.message : err,
-            );
-          });
+          refreshPreloads()
+            .then(() => restarter.restart("manual"))
+            .catch((err: unknown) => {
+              console.error(
+                "[vext dev] restart failed:",
+                err instanceof Error ? err.message : err,
+              );
+            });
           break;
 
         case "c":
