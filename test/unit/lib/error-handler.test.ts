@@ -8,7 +8,7 @@
  *
  * 测试覆盖：
  *   - 向后兼容：不传 logger 时不报错
- *   - 未知错误（500）→ logger.error 含 err 对象（R1）
+ *   - 未知错误（500）→ logger.error 直接接收 Error（R1）
  *   - logErrors.unknownErrors: false → 不记录
  *   - VextValidationError → logger 不被调用
  *   - HttpError 5xx → logger.error（R2）
@@ -76,7 +76,7 @@ describe("createErrorHandler — logger 日志行为", () => {
   // ── 未知错误（500）日志 ───────────────────────────────────
 
   describe("未知错误（500）日志", () => {
-    it("未知错误 → logger.error 被调用，第一参数含 err 对象（R1）", () => {
+    it("未知错误 → logger.error 被调用，第一参数为 Error 对象（R1）", () => {
       const logger = createMockLogger();
       const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
       const req = createMockReq();
@@ -87,7 +87,7 @@ describe("createErrorHandler — logger 日志行为", () => {
 
       expect(logger.error).toHaveBeenCalledTimes(1);
       const [firstArg, secondArg] = logger.error.mock.calls[0]!;
-      expect(firstArg).toEqual(expect.objectContaining({ err }));
+      expect(firstArg).toBe(err);
       expect(secondArg).toContain("[uncaught]");
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -132,11 +132,13 @@ describe("createErrorHandler — logger 日志行为", () => {
       const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
       const req = createMockReq();
       const res = createMockRes();
+      const err = new HttpError(500, "Service Unavailable");
 
-      handler(new HttpError(500, "Service Unavailable"), req as any, res as any);
+      handler(err, req as any, res as any);
 
       expect(logger.error).toHaveBeenCalledTimes(1);
-      const msg = logger.error.mock.calls[0]![0] as string;
+      const [firstArg, msg] = logger.error.mock.calls[0]!;
+      expect(firstArg).toBe(err);
       expect(msg).toContain("500");
       expect(msg).toContain("Service Unavailable");
       expect(msg).toContain("[http-error]");
@@ -182,11 +184,13 @@ describe("createErrorHandler — logger 日志行为", () => {
       );
       const req = createMockReq();
       const res = createMockRes();
+      const err = new HttpError(404, "Not Found");
 
-      handler(new HttpError(404, "Not Found"), req as any, res as any);
+      handler(err, req as any, res as any);
 
       expect(logger.warn).toHaveBeenCalledTimes(1);
-      const msg = logger.warn.mock.calls[0]![0] as string;
+      const [firstArg, msg] = logger.warn.mock.calls[0]!;
+      expect(firstArg).toBe(err);
       expect(msg).toContain("404");
       expect(msg).toContain("Not Found");
       expect(logger.error).not.toHaveBeenCalled();
@@ -255,8 +259,8 @@ describe("createErrorHandler — logger 日志行为", () => {
 
       expect(logger.error).toHaveBeenCalledTimes(1);
       const [firstArg, secondArg] = logger.error.mock.calls[0]!;
-      expect(firstArg.err).toBeInstanceOf(Error);
-      expect(firstArg.err.message).toBe("string error");
+      expect(firstArg).toBeInstanceOf(Error);
+      expect((firstArg as Error).message).toBe("string error");
       expect(secondArg).toContain("[uncaught]");
       // 响应仍正常
       expect(res.rawJson).toHaveBeenCalledWith(

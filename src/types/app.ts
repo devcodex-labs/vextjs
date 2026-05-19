@@ -27,19 +27,20 @@ export interface VextServices {
  * VextLogger — 框架日志接口
  *
  * 内置实现基于 pino，插件可通过 app.setLogger() 包装或替换实现。
+ * 首参数除结构化对象外，也支持直接传入 Error，以保留 pino 的错误序列化能力。
  * 所有日志方法自动携带 requestId（通过 child logger 实现）。
  */
 export interface VextLogger {
   info(msg: string, ...args: unknown[]): void;
-  info(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  info(obj: object, msg?: string, ...args: unknown[]): void;
   warn(msg: string, ...args: unknown[]): void;
-  warn(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  warn(obj: object, msg?: string, ...args: unknown[]): void;
   error(msg: string, ...args: unknown[]): void;
-  error(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  error(obj: object, msg?: string, ...args: unknown[]): void;
   debug(msg: string, ...args: unknown[]): void;
-  debug(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  debug(obj: object, msg?: string, ...args: unknown[]): void;
   fatal(msg: string, ...args: unknown[]): void;
-  fatal(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  fatal(obj: object, msg?: string, ...args: unknown[]): void;
 
   /**
    * 创建子 logger（携带额外上下文字段）

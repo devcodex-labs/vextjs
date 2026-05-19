@@ -60,9 +60,9 @@ export type DevOverlayFn = (err: unknown) => string;
  *
  * 日志记录（可选 logger 参数）：
  *   当 logger 传入时，error-handler 负责在响应格式决策之前记录日志：
- *     - 未知错误（500）：logger.error({ err }, '[uncaught] ...')（含 stack trace）
- *     - HttpError 5xx：logger.error('[http-error] status message')
- *     - HttpError 4xx：logger.warn(...)（需 logErrors.http4xx = true 开启）
+ *     - 未知错误（500）：logger.error(err, '[uncaught] ...')（保留 stack trace）
+ *     - HttpError 5xx：logger.error(err, '[http-error] status message')
+ *     - HttpError 4xx：logger.warn(err, '[http-error] ...')（需 logErrors.http4xx = true 开启）
  *     - VextValidationError：不记录（客户端输入问题）
  *   日志记录先于 devOverlay 判断，确保无论响应格式如何日志都可见。
  *   不传 logger 时行为与原来完全一致（向后兼容）。
@@ -110,19 +110,19 @@ export function createErrorHandler(
         } else if (
           errObj.name === "HttpError" &&
           typeof (errObj as unknown as Record<string, unknown>).status ===
-            "number"
+          "number"
         ) {
           const status = (errObj as unknown as Record<string, unknown>)
             .status as number;
           if (status >= 500 && logErrors?.http5xx !== false) {
-            logger.error(`[http-error] ${status} ${errObj.message}`);
+            logger.error(errObj, `[http-error] ${status} ${errObj.message}`);
           } else if (status < 500 && logErrors?.http4xx === true) {
-            logger.warn(`[http-error] ${status} ${errObj.message}`);
+            logger.warn(errObj, `[http-error] ${status} ${errObj.message}`);
           }
         } else {
           // 未知错误（运行时异常、第三方库异常等）
           if (logErrors?.unknownErrors !== false) {
-            logger.error({ err: errObj }, `[uncaught] ${errObj.message}`);
+            logger.error(errObj, `[uncaught] ${errObj.message}`);
           }
         }
       } catch {
@@ -148,7 +148,7 @@ export function createErrorHandler(
         } else if (
           errObj.name === "HttpError" &&
           typeof (errObj as unknown as Record<string, unknown>).status ===
-            "number"
+          "number"
         ) {
           statusCode = (errObj as unknown as Record<string, unknown>)
             .status as number;

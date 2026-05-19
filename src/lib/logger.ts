@@ -30,7 +30,7 @@ import type { VextLogger, VextLoggerConfig } from "../types/app.js";
 /**
  * 将 pino Logger 实例包装为 VextLogger 接口
  *
- * pino 的方法签名与 VextLogger 完全兼容（msg + ...args 或 obj + msg + ...args），
+ * pino 的方法签名与 VextLogger 完全兼容（msg / obj / Error + ...args），
  * 此函数只做接口适配，不做额外处理。
  *
  * @param pinoInstance pino Logger 实例
@@ -175,7 +175,7 @@ export function createLogger(
             mixinResult !== null &&
             typeof mixinResult === "object" &&
             typeof (mixinResult as Record<string, unknown>)["then"] ===
-              "function"
+            "function"
           ) {
             if (!_mixinWarnEmitted) {
               _mixinWarnEmitted = true;
