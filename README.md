@@ -385,6 +385,12 @@ vext dev --no-hot             # 禁用 Soft Reload，所有变更走 Cold Restar
 vext dev --clear              # 每次重载后清空控制台
 ```
 
+在 `0.3.7` 起，`vext dev` 会在 initial start、文件变更、手动 reload / restart、以及子进程请求 cold restart 前统一执行一次 **dev preflight**：
+
+- 先自动执行一轮 `typegen`，保持 `src/types/generated/*.generated.d.ts` 与当前 `services` / `plugins` 定义同步；
+- 对 TypeScript 项目追加一轮基于 `tsconfig.json` 的语义诊断；
+- 若存在 blocking issue，则不会进入新一轮 reload / restart，而是保留当前可运行版本并直接打印诊断信息。
+
 **三层重载策略：**
 
 | Tier | 触发条件                  | 动作                                       | 速度      |
@@ -411,7 +417,7 @@ vext build                    # TypeScript 编译为 JavaScript
 
 ### `vext typegen` / `vext doctor routes` — 工程辅助命令（experimental）
 
-Phase 1 / Phase 2 新增的静态工具链能力保持在 **tooling-only** 边界：不会进入 `start / dev / build` 的默认 runtime 主路径。
+Phase 1 / Phase 2 新增的静态工具链能力整体仍保持 **tooling-only** 边界：不会进入 `start` / `build` 的默认 runtime 主路径；但从 `0.3.7` 起，`vext dev` 会在 preflight 中自动执行基础 `typegen`，用于在开发态同步 generated 声明并阻断明显的 TypeScript 语义错误。
 
 ```bash
 # 生成 app.services / app.extend() 声明，并执行 tooling 层 service 依赖诊断
@@ -438,6 +444,7 @@ vext doctor routes --write-inspect --write-manifest
 说明：
 
 - `vext typegen` 面向 `services` / `plugins`，解决声明生成与依赖诊断问题；
+- `vext dev` 会自动执行基础 `typegen`（生成 services/app-extensions 两类声明），但如果你需要 `--check` / `--write-manifest` 等更强控制，仍应显式调用 `vext typegen`；
 - `vext typegen --write-manifest` 会额外生成 `services.manifest.json`，把 service 索引、`app.extend()` 聚合结果与依赖图摘要固化为稳定消费层；
 - `vext doctor routes` 面向静态路由治理，当前 `doctor all` 仍等价于 `routes`；
 - `routes.json` 是诊断 / inspect 产物，`routes.manifest.json` 是给编辑器、CI、可视化等下游工具消费的稳定契约层；

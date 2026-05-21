@@ -5,8 +5,8 @@ let cachedTsMorphModule: Promise<TsMorphModule> | null = null;
 /**
  * loadTsMorph — 懒加载 ts-morph
  *
- * 仅在 `vext typegen` / 后续 `doctor` 等开发辅助命令执行时加载，
- * 避免污染 `start / dev / build` 的默认运行路径。
+ * 仅在 `vext typegen`、`vext dev` preflight、`doctor` 等开发辅助路径执行时加载，
+ * 避免污染生产运行态路径。
  */
 export function loadTsMorph(): Promise<TsMorphModule> {
   if (cachedTsMorphModule == null) {
@@ -15,4 +15,3 @@ export function loadTsMorph(): Promise<TsMorphModule> {
 
   return cachedTsMorphModule;
 }
-

@@ -284,7 +284,8 @@ vext typegen --services --root ./examples/hello-world
 
 ### 适用边界
 
-- `typegen` 属于 **tooling-only** 能力，不会进入 `start / dev / build` 的默认 runtime 主路径；
+- `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `start / build` 的默认 runtime 主路径；
+- 从 `0.3.7` 起，`vext dev` 会在 preflight 中自动执行基础 `typegen`，用来同步 generated 声明并在开发期更早暴露明显问题；
 - TS 项目优先输出高质量类型，JS 项目允许退化到 `import(...).default` / `unknown`，但命令本身仍可用；
 - `--write-manifest` 会把 service 索引、`app.extend()` 聚合结果与服务依赖图摘要写入 `.vext/inspect/services.manifest.json`；
 - 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。

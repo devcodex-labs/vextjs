@@ -795,10 +795,14 @@ export async function devBootstrap(
           .files as FileChangeInfo[];
         if (Array.isArray(files) && files.length > 0) {
           softReloader!.reload(files).catch((err: unknown) => {
+            const error = err instanceof Error ? err : new Error(String(err));
             app.logger.error(
               "[hot-reload] unexpected error in reload:",
-              err instanceof Error ? err.message : err,
+              error.message,
             );
+            if (error.stack) {
+              app.logger.error(error.stack);
+            }
           });
         }
       } else if (msgType === "shutdown") {

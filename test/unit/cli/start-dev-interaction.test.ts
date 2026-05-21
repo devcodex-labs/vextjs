@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const hasDistBuild = vi.fn();
   const resolveEntryFile = vi.fn();
   const resolvePreloads = vi.fn();
+  const runDevPreflight = vi.fn();
   const shouldUsePolling = vi.fn();
   const classifyChange = vi.fn(() => ({ action: "soft" }));
   const fork = vi.fn();
@@ -60,6 +61,7 @@ const mocks = vi.hoisted(() => {
     hasDistBuild,
     resolveEntryFile,
     resolvePreloads,
+    runDevPreflight,
     shouldUsePolling,
     classifyChange,
     fork,
@@ -86,6 +88,10 @@ vi.mock("../../../src/cli/utils/detect-project.js", () => ({
 
 vi.mock("../../../src/cli/utils/preload.js", () => ({
   resolvePreloads: mocks.resolvePreloads,
+}));
+
+vi.mock("../../../src/cli/utils/dev-preflight.js", () => ({
+  runDevPreflight: mocks.runDevPreflight,
 }));
 
 vi.mock("../../../src/lib/dev/cold-restarter.js", () => ({
@@ -198,6 +204,11 @@ describe("cli interaction: start/dev", () => {
     mocks.hasDistBuild.mockReturnValue(false);
     mocks.resolveEntryFile.mockReturnValue("E:/Worker/vext-fixture/node_modules/vextjs/dist/lib/bootstrap.js");
     mocks.resolvePreloads.mockResolvedValue([]);
+    mocks.runDevPreflight.mockResolvedValue({
+      ok: true,
+      typegenOk: true,
+      tsOk: true,
+    });
     mocks.shouldUsePolling.mockReturnValue(false);
 
     readline = {
@@ -340,5 +351,47 @@ describe("cli interaction: start/dev", () => {
     expect(processOnSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
     expect(processOnSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
   });
-});
 
+  it("devCommand should skip initial start when preflight fails", async () => {
+    mocks.runDevPreflight.mockResolvedValueOnce({
+      ok: false,
+      typegenOk: true,
+      tsOk: false,
+    });
+
+    await devCommand([]);
+
+    const restarter = mocks.restarterInstances[0]!;
+    expect(restarter.restart).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("initial checks failed"),
+    );
+  });
+
+  it("devCommand should skip reload when preflight fails on file change", async () => {
+    mocks.runDevPreflight
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        typegenOk: false,
+        tsOk: true,
+      });
+
+    await devCommand([]);
+    const watcher = mocks.watcherInstances[0]!;
+    const restarter = mocks.restarterInstances[0]!;
+
+    await watcher.handlers.get("change")?.({
+      files: [{ path: "src/services/example.ts", type: "modify" }],
+      action: "soft",
+    });
+
+    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reload" }),
+    );
+  });
+});

@@ -227,6 +227,11 @@ describe("change-classifier", () => {
       const result = classifyChange("docs/api.md");
       expect(result.action).toBe("ignore");
     });
+
+    it("src/types/generated/ 下的文件应分类为 ignore", () => {
+      const result = classifyChange("src/types/generated/services.generated.d.ts");
+      expect(result.action).toBe("ignore");
+    });
   });
 
   // ── classifyChange — soft（源码文件）────────────────────

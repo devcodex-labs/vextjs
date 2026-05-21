@@ -259,7 +259,6 @@ describe("vext create", () => {
           "src/middlewares",
           "src/plugins",
           "src/config",
-          "src/types",
         ]),
       );
     });
@@ -281,7 +280,6 @@ describe("vext create", () => {
           "src/config/production.ts",
           "src/routes/index.ts",
           "src/services/example.ts",
-          "src/types/services.d.ts",
         ]),
       );
     });
@@ -468,6 +466,7 @@ describe("vext create", () => {
         const tsconfig = JSON.parse(files["tsconfig.json"]);
 
         expect(tsconfig.include).toContain("src/**/*.ts");
+        expect(tsconfig.include).toContain("src/**/*.d.ts");
       });
 
       it("tsconfig exclude 排除 node_modules 和 dist", async () => {
@@ -692,25 +691,12 @@ describe("vext create", () => {
       });
     });
 
-    describe("src/types/services.d.ts", () => {
-      it("TS 模式声明 VextServices 扩展", async () => {
+    describe("generated type workflow", () => {
+      it("TS 模式不预生成静态 src/types/services.d.ts", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
-        const content = files["src/types/services.d.ts"];
-
-        expect(content).toContain("declare module 'vextjs'");
-        expect(content).toContain("interface VextServices");
-        expect(content).toContain("example: ExampleService");
-      });
-
-      it("TS 模式导入 ExampleService", async () => {
-        await createCommand(["test-app", "--skip-install"]);
-
-        const files = getWrittenFiles();
-        const content = files["src/types/services.d.ts"];
-
-        expect(content).toContain("import type ExampleService");
+        expect(files["src/types/services.d.ts"]).toBeUndefined();
       });
     });
   });
@@ -1005,10 +991,10 @@ describe("vext create", () => {
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + README.md + tsconfig.json +
       //           config/default.ts + config/development.ts + config/production.ts +
-      //           routes/index.ts + services/example.ts + types/services.d.ts = 10
+      //           routes/index.ts + services/example.ts = 9
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 12
-      expect(Object.keys(files).length).toBe(12);
+      // 总计 11
+      expect(Object.keys(files).length).toBe(11);
     });
 
     it("JS 模式生成正确的文件数量", async () => {
@@ -1020,7 +1006,7 @@ describe("vext create", () => {
       //           routes/index.js + services/example.js = 8
       // 占位 README：middlewares/README.md + plugins/README.md = 2
       // 总计 10
-      // 不含：tsconfig.json + types/services.d.ts
+      // 不含：tsconfig.json
       expect(Object.keys(files).length).toBe(10);
     });
   });
@@ -1153,7 +1139,7 @@ describe("vext create", () => {
 
       // TS 模式
       expect(files["tsconfig.json"]).toBeDefined();
-      expect(files["src/types/services.d.ts"]).toBeDefined();
+      expect(files["src/types/services.d.ts"]).toBeUndefined();
 
       // Koa adapter
       expect(pkg.dependencies.koa).toBeDefined();

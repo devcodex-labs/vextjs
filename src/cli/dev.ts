@@ -1,6 +1,7 @@
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { detectProject } from "./utils/detect-project.js";
+import { runDevPreflight } from "./utils/dev-preflight.js";
 import { resolvePreloads } from "./utils/preload.js";
 import { ColdRestarter } from "../lib/dev/cold-restarter.js";
 import type { ColdRestarterOptions } from "../lib/dev/cold-restarter.js";
@@ -249,6 +250,22 @@ export async function devCommand(args: string[] = []): Promise<void> {
     );
   };
 
+  const runPreflight = async (reason: string): Promise<boolean> => {
+    const result = await runDevPreflight({
+      rootDir: project.rootDir,
+      language: project.language,
+      reason,
+    });
+
+    if (result.ok) {
+      return true;
+    }
+
+    console.error(`[vext dev] blocking diagnostics found during ${reason}.`);
+    console.error("[vext dev] fix the reported issues and save again\n");
+    return false;
+  };
+
   // 监听子进程事件
   restarter.setEvents({
     onChildMessage: (msg: unknown) => {
@@ -262,8 +279,13 @@ export async function devCommand(args: string[] = []): Promise<void> {
           ((msg as Record<string, unknown>).reason as string) ||
           "child request";
         console.log(`\n[vext dev] child requested cold restart: ${reason}`);
-        refreshPreloads()
-          .then(() => restarter.restart(reason))
+        runPreflight(`child requested cold restart: ${reason}`)
+          .then((ok) => {
+            if (!ok) {
+              return;
+            }
+            return refreshPreloads().then(() => restarter.restart(reason));
+          })
           .catch((err: unknown) => {
             console.error(
               "[vext dev] restart failed:",
@@ -330,9 +352,13 @@ export async function devCommand(args: string[] = []): Promise<void> {
   console.log("[vext dev] starting initial compilation + server...");
 
   try {
-    await refreshPreloads();
-    await restarter.restart("initial start");
-    console.log("[vext dev] server ready\n");
+    if (!(await runPreflight("initial start"))) {
+      console.error("[vext dev] initial checks failed. Waiting for changes...\n");
+    } else {
+      await refreshPreloads();
+      await restarter.restart("initial start");
+      console.log("[vext dev] server ready\n");
+    }
   } catch (err) {
     console.error(
       "[vext dev] initial start failed:",
@@ -358,6 +384,12 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
     if (options.clear) {
       console.clear();
+    }
+
+    const preflightReason =
+      event.action === "cold" ? "cold restart preflight" : "soft reload preflight";
+    if (!(await runPreflight(preflightReason))) {
+      return;
     }
 
     // ── Tier 3: 配置/插件变更 → Cold Restart ─────────
@@ -486,8 +518,13 @@ export async function devCommand(args: string[] = []): Promise<void> {
         case "r":
           if (promptActive) break;
           console.log("\n[vext dev] manual cold restart...");
-          refreshPreloads()
-            .then(() => restarter.restart("manual"))
+          runPreflight("manual cold restart")
+            .then((ok) => {
+              if (!ok) {
+                return;
+              }
+              return refreshPreloads().then(() => restarter.restart("manual"));
+            })
             .catch((err: unknown) => {
               console.error(
                 "[vext dev] restart failed:",
@@ -505,10 +542,22 @@ export async function devCommand(args: string[] = []): Promise<void> {
           if (promptActive) break;
           // 手动触发 soft reload（全文件）
           console.log("\n[vext dev] manual soft reload (all sources)...");
-          restarter.sendToChild({
-            type: "reload",
-            files: [{ path: "src/", type: "modify" as const }],
-          });
+          runPreflight("manual soft reload")
+            .then((ok) => {
+              if (!ok) {
+                return;
+              }
+              restarter.sendToChild({
+                type: "reload",
+                files: [{ path: "src/", type: "modify" as const }],
+              });
+            })
+            .catch((err: unknown) => {
+              console.error(
+                "[vext dev] reload failed:",
+                err instanceof Error ? err.message : err,
+              );
+            });
           break;
 
         case "?":

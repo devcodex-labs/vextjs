@@ -2,6 +2,12 @@
 
 VextJS 内置智能热重载机制，通过 `vext dev` 命令启动开发模式。框架会监听文件变更，根据变更类型自动选择最优的重载策略，从毫秒级的热替换到完整的进程重启，覆盖所有开发场景。
 
+从 `0.3.7` 起，`vext dev` 在每次 initial start、文件变更、手动 reload / restart、以及子进程请求 cold restart 前，都会先执行一次 **dev preflight**：
+
+- 自动运行基础 `typegen`，同步 `src/types/generated/*.generated.d.ts`
+- 对 TypeScript 项目执行一轮语义诊断
+- 如果发现 blocking issue，则跳过本轮 reload / restart，保留当前可运行版本
+
 ## 快速开始
 
 ```bash
@@ -306,14 +312,15 @@ src/
 
 ## TypeScript 支持
 
-`vext dev` 使用 esbuild 进行即时编译，特点如下：
+`vext dev` 使用 esbuild 进行即时编译，并叠加一层开发期 preflight，特点如下：
 
 - **极速编译** — esbuild 编译速度比 tsc 快 10-100 倍
-- **类型擦除** — esbuild 只做语法转换，不做类型检查
+- **开发期诊断前置** — reload / restart 前会做一轮 TypeScript 语义诊断（仅 TS 项目）
+- **自动 generated 声明同步** — preflight 会先更新 `services.generated.d.ts` / `app-extensions.generated.d.ts`
 - **零配置** — 自动读取 `tsconfig.json` 中的编译选项
 
 :::warning 类型检查
-`vext dev` 不会在热重载时执行类型检查（为了速度）。建议：
+`vext dev` 不会执行完整的 `tsc --noEmit` 式全链路构建校验，但会在进入新一轮 reload / restart 前执行一轮轻量语义诊断。建议仍然保留：
 
 - 开发时依赖 IDE（VS Code / WebStorm）的实时类型检查
 - 提交前运行 `npm run typecheck`（`tsc --noEmit`）进行完整类型检查
@@ -325,7 +332,7 @@ src/
 ### 修改后没有触发重载？
 
 1. **检查文件是否在 `src/` 目录下** — 只有 `src/` 目录下的文件变更才会触发重载
-2. **检查是否是被忽略的文件** — `*.test.ts`、`*.d.ts`、以 `.` 开头的文件不会触发
+2. **检查是否是被忽略的文件** — `*.test.ts`、`src/types/generated/**`、以 `.` 开头的文件不会触发
 3. **检查终端输出** — 是否有错误信息（如语法错误导致编译失败）
 
 ### 热重载后行为不符合预期？
@@ -389,7 +396,7 @@ vext reload  # 滚动重启 Worker
 
 ### 2. 配合 IDE 实时类型检查
 
-由于 `vext dev` 不做类型检查，建议开启 IDE 的实时类型检查（VS Code 默认开启）。这样修改代码时能立即发现类型错误，同时保持热重载的极速体验。
+虽然 `vext dev` 现在会在 reload / restart 前做一轮语义诊断，但 IDE 的实时类型检查仍然是最快的反馈来源。推荐同时开启 IDE 提示和 `npm run typecheck`，把 preflight 作为开发态最后一道阻断。
 
 ### 3. 开发环境简化配置
 

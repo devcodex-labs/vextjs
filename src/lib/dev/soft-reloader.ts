@@ -635,9 +635,14 @@ export class SoftReloader {
 
       const elapsed = performance.now() - startTime;
 
+      const error = err instanceof Error ? err : new Error(String(err));
+
       this.logger.error(
-        `[hot-reload] [FAIL] failed after ${elapsed.toFixed(0)}ms: ${(err as Error).message}`,
+        `[hot-reload] [FAIL] failed after ${elapsed.toFixed(0)}ms: ${error.message}`,
       );
+      if (error.stack) {
+        this.logger.error(error.stack);
+      }
       this.logger.error(
         "[hot-reload] keeping previous version active. Fix the error and save again.",
       );
@@ -658,7 +663,7 @@ export class SoftReloader {
         swapTime: 0,
         tier,
         evictedModules: 0,
-        error: (err as Error).message,
+        error: error.message,
       };
     }
   }

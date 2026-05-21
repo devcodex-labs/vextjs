@@ -98,6 +98,7 @@ const IGNORE_PATTERNS: RegExp[] = [
   /^build\//,
   /^\.vext\//,
   /^\.git\//,
+  /^src\/types\/generated\//,
   /^tests?\//,
   /\.(md|txt|log|lock)$/,
   /^plans\//,

@@ -321,7 +321,6 @@ async function generateProject(
     "src/middlewares",
     "src/plugins",
     "src/config",
-    ...(language === "ts" ? ["src/types"] : []),
   ];
 
   for (const dir of dirs) {
@@ -413,11 +412,6 @@ function getTemplateFiles(
 
   // ── src/services/example ──────────────────────────────
   files[`src/services/example.${ext}`] = generateExampleService(isTs);
-
-  // ── src/types/services.d.ts（TS 项目专用）─────────────
-  if (isTs) {
-    files["src/types/services.d.ts"] = generateServicesDeclaration();
-  }
 
   return files;
 }
@@ -571,9 +565,9 @@ function generateTsconfig(): string {
       skipLibCheck: true,
       resolveJsonModule: true,
     },
-    include: ["src/**/*.ts"],
-    exclude: ["node_modules", "dist"],
-  };
+      include: ["src/**/*.ts", "src/**/*.d.ts"],
+      exclude: ["node_modules", "dist"],
+    };
 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
@@ -744,36 +738,6 @@ export default class ExampleService {
   async greeting(name) {
     this.app.logger.info('Generating greeting', { name })
     return { message: \`Hello, \${name}! Welcome to vext.\` }
-  }
-}
-`;
-}
-
-function generateServicesDeclaration(): string {
-  return `import type ExampleService from '../services/example.js'
-
-/**
- * VextServices 类型扩展
- *
- * 通过 TypeScript 的 declare module 机制，
- * 为 app.services 提供完整的类型提示。
- *
- * 添加新 service 时，在此文件中同步声明：
- *   1. import 你的 Service 类
- *   2. 在 VextServices 接口中添加对应的 key
- *
- * @example
- * import type UserService from '../services/user.js'
- *
- * declare module 'vextjs' {
- *   interface VextServices {
- *     user: UserService
- *   }
- * }
- */
-declare module 'vextjs' {
-  interface VextServices {
-    example: ExampleService
   }
 }
 `;
