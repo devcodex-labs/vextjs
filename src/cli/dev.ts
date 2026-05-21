@@ -379,6 +379,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   });
 
   watcher.on("change", async (event: FileChangeEvent) => {
+    try {
     // ── 打印变更详情 ──────────────────────────────────
     printFileChanges(event.files, lifecycleLevel);
 
@@ -462,6 +463,16 @@ export async function devCommand(args: string[] = []): Promise<void> {
       type: "reload",
       files: event.files,
     });
+    } catch (err) {
+      console.error(
+        "[vext dev] unexpected error in file watcher handler:",
+        err instanceof Error ? err.message : err,
+      );
+      if (err instanceof Error && err.stack) {
+        console.error(err.stack);
+      }
+      console.error("[vext dev] fix the error and save again to retry\n");
+    }
   });
 
   await watcher.start();
