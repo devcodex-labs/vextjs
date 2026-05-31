@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, win32 } from "node:path";
 
 import { loadTsMorph } from "../../tooling/shared/lazy-ts-morph.js";
 import { runTypegen } from "../../tooling/typegen/index.js";
@@ -123,5 +123,14 @@ async function runTypeScriptDiagnostics(
 }
 
 function toRelativePath(rootDir: string, filePath: string): string {
-  return relative(rootDir, filePath).replace(/\\/g, "/");
+  const pathRelative =
+    isWindowsAbsolutePath(rootDir) && isWindowsAbsolutePath(filePath)
+      ? win32.relative(rootDir, filePath)
+      : relative(rootDir, filePath);
+
+  return pathRelative.replace(/\\/g, "/");
+}
+
+function isWindowsAbsolutePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(value);
 }
