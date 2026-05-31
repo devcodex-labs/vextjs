@@ -323,9 +323,8 @@ function registerRouteDefinition(
 
     // ── 4. 将 handler 包装为 VextMiddleware ─────────────
     // handler 是执行链的最后一环，不调用 next()
-    const handlerMiddleware: VextMiddleware = async (req, res, _next) => {
-      await route.handler(req, res);
-    };
+    const handlerMiddleware: VextMiddleware = (req, res, _next) =>
+      route.handler(req, res);
 
     // ── 5. 组装执行链 ──────────────────────────────────
     const chain: VextMiddleware[] = [...routeMiddlewares];

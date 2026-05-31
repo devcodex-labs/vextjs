@@ -123,6 +123,26 @@ async function executeChain(
     return;
   }
 
+  if (len === 3) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, _noop);
+      });
+    });
+    return;
+  }
+
+  if (len === 4) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, async () => {
+          await chain[3]!(req, res, _noop);
+        });
+      });
+    });
+    return;
+  }
+
   // ── 标准洋葱模型递归（3+ 中间件）─────────────────────
   async function dispatch(i: number): Promise<void> {
     if (i >= len) return;

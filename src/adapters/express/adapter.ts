@@ -65,6 +65,38 @@ async function executeChain(
 ): Promise<void> {
   const len = chain.length;
 
+  if (len === 1) {
+    await chain[0]!(req, res, _noop);
+    return;
+  }
+
+  if (len === 2) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, _noop);
+    });
+    return;
+  }
+
+  if (len === 3) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, _noop);
+      });
+    });
+    return;
+  }
+
+  if (len === 4) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, async () => {
+          await chain[3]!(req, res, _noop);
+        });
+      });
+    });
+    return;
+  }
+
   async function dispatch(i: number): Promise<void> {
     if (i >= len) return;
     const middleware = chain[i]!;
@@ -73,6 +105,8 @@ async function executeChain(
 
   await dispatch(0);
 }
+
+const _noop = async (): Promise<void> => {};
 
 /**
  * 从 Express 请求流中收集原始请求体为 Buffer

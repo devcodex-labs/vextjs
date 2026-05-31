@@ -61,6 +61,7 @@ interface RouteEntry {
   pattern: string;
   segments: RouteSegment[];
   chain: VextMiddleware[];
+  fullChain: VextMiddleware[] | null;
   routeOptions: RouteOptions;
 }
 
@@ -182,6 +183,38 @@ async function executeChain(
 ): Promise<void> {
   const len = chain.length;
 
+  if (len === 1) {
+    await chain[0]!(req, res, _noop);
+    return;
+  }
+
+  if (len === 2) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, _noop);
+    });
+    return;
+  }
+
+  if (len === 3) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, _noop);
+      });
+    });
+    return;
+  }
+
+  if (len === 4) {
+    await chain[0]!(req, res, async () => {
+      await chain[1]!(req, res, async () => {
+        await chain[2]!(req, res, async () => {
+          await chain[3]!(req, res, _noop);
+        });
+      });
+    });
+    return;
+  }
+
   async function dispatch(i: number): Promise<void> {
     if (i >= len) return;
     const middleware = chain[i]!;
@@ -190,6 +223,8 @@ async function executeChain(
 
   await dispatch(0);
 }
+
+const _noop = async (): Promise<void> => {};
 
 /**
  * 从 Node.js 请求流中收集原始请求体为 Buffer
@@ -314,8 +349,6 @@ export function createKoaAdapter(
 
   /** 路由表（通过 registerRoute 注册） */
   const routes: RouteEntry[] = [];
-  /** 每条路由的预组装中间件链缓存（key = routes 数组 index） */
-  const prebuiltChains: Map<number, VextMiddleware[]> = new Map();
 
   /** 是否已挂载 Koa 主中间件（只挂载一次） */
   let _middlewareRegistered = false;
@@ -407,11 +440,10 @@ export function createKoaAdapter(
             try {
               // 全局中间件 + 路由级链
               // 🆕 预组装中间件链（首次请求时组装，后续复用）
-              const routeIdx = routes.indexOf(matched!.entry);
-              let fullChain = prebuiltChains.get(routeIdx);
+              let fullChain = matched!.entry.fullChain;
               if (!fullChain) {
                 fullChain = globalMiddlewares.concat(matched!.entry.chain);
-                prebuiltChains.set(routeIdx, fullChain);
+                matched!.entry.fullChain = fullChain;
               }
               await executeChain(fullChain, req, res);
             } catch (err) {
@@ -589,6 +621,7 @@ export function createKoaAdapter(
         pattern: path,
         segments,
         chain,
+        fullChain: null,
       routeOptions,
     });
     },
