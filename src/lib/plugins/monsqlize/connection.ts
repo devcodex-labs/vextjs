@@ -28,7 +28,7 @@ import type { MonSQLizeConnection } from "./types.js";
  */
 export async function createConnection(
   monsqlize: MonSQLize,
-  app: VextPluginContext,
+  _app: VextPluginContext,
 ): Promise<MonSQLizeConnection> {
   // ── 连接数据库（Fail Fast：失败则启动终止）──────────────
   await monsqlize.connect();

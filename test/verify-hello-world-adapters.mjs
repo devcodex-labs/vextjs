@@ -41,7 +41,7 @@ const CONFIG_FILE = join(HELLO_WORLD_DIR, "src", "config", "default.js");
 
 // ── 配置 ──────────────────────────────────────────────
 
-const ADAPTERS = ["hono", "fastify", "express", "koa"];
+const ADAPTERS = ["native", "hono", "fastify", "express", "koa"];
 const PROD_BASE_PORT = 19900;
 const DEV_BASE_PORT = 19950;
 const REQUEST_TIMEOUT = 8000;
@@ -111,7 +111,7 @@ export default {
   host: "127.0.0.1",
 
   // ── Adapter 配置 ──────────────────────────────────────
-  // 内置 adapter: "hono"（默认） | "fastify" | "express" | "koa"
+  // 内置 adapter: "native"（默认） | "hono" | "fastify" | "express" | "koa"
   // 也可传入工厂函数（第三方 adapter）:
   //   import { fastifyAdapter } from 'vextjs/adapters/fastify'
   //   adapter: fastifyAdapter({ logger: true })

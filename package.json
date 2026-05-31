@@ -1,7 +1,7 @@
 {
   "name": "vextjs",
-  "version": "0.3.7",
-  "description": "VextJS is a modern Node.js web framework with adapter architecture, plugin system, and out-of-the-box features for building high-performance RESTful APIs.",
+  "version": "0.3.8",
+  "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,22 +18,27 @@
     },
     "./adapters/hono": {
       "types": "./dist/adapters/hono/index.d.ts",
+      "require": "./dist/adapters/hono/index.cjs",
       "import": "./dist/adapters/hono/index.js"
     },
     "./adapters/fastify": {
       "types": "./dist/adapters/fastify/index.d.ts",
+      "require": "./dist/adapters/fastify/index.cjs",
       "import": "./dist/adapters/fastify/index.js"
     },
     "./adapters/express": {
       "types": "./dist/adapters/express/index.d.ts",
+      "require": "./dist/adapters/express/index.cjs",
       "import": "./dist/adapters/express/index.js"
     },
     "./adapters/koa": {
       "types": "./dist/adapters/koa/index.d.ts",
+      "require": "./dist/adapters/koa/index.cjs",
       "import": "./dist/adapters/koa/index.js"
     },
     "./adapters/native": {
       "types": "./dist/adapters/native/index.d.ts",
+      "require": "./dist/adapters/native/index.cjs",
       "import": "./dist/adapters/native/index.js"
     }
   },
@@ -48,7 +53,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && node scripts/build-cjs.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc && node scripts/build-cjs.mjs",
     "build:esm": "tsc",
     "build:cjs": "node scripts/build-cjs.mjs",
     "dev": "tsc --watch",
@@ -65,7 +71,9 @@
     "ci:local:quick": "bash scripts/ci-local.sh --quick",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run build:esm && npm run build:cjs"
+    "prepublishOnly": "npm run build",
+    "verify:exports": "node test/verify-package-exports.mjs",
+    "verify:adapters": "node test/verify-adapters-startup.mjs"
   },
   "keywords": [
     "vext",

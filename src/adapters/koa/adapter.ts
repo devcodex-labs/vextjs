@@ -14,6 +14,8 @@ import type {
 } from "../../types/middleware.js";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
+import { createPayloadTooLargeError, isPayloadTooLargeError, resolveAdapterBodyLimitBytes, resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 
 /**
  * Koa Adapter 选项
@@ -59,6 +61,7 @@ interface RouteEntry {
   pattern: string;
   segments: RouteSegment[];
   chain: VextMiddleware[];
+  routeOptions: RouteOptions;
 }
 
 /**
@@ -200,7 +203,7 @@ async function executeChain(
  * @param ctx Koa Context（内部使用 ctx.req 即 Node.js IncomingMessage）
  * @returns 原始请求体 Buffer
  */
-function collectRawBody(ctx: KoaContext): Promise<Buffer> {
+function collectRawBody(ctx: KoaContext, maxBytes?: number): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const method = (ctx.method ?? "GET").toUpperCase();
     // GET 和 HEAD 请求不应有 body
@@ -210,13 +213,27 @@ function collectRawBody(ctx: KoaContext): Promise<Buffer> {
     }
 
     const chunks: Buffer[] = [];
+    let total = 0;
+    let settled = false;
     ctx.req.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
+      if (settled) return;
+      const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += bufferChunk.byteLength;
+      if (maxBytes !== undefined && total > maxBytes) {
+        settled = true;
+        reject(createPayloadTooLargeError(maxBytes));
+        return;
+      }
+      chunks.push(bufferChunk);
     });
     ctx.req.on("end", () => {
+      if (settled) return;
+      settled = true;
       resolve(Buffer.concat(chunks));
     });
     ctx.req.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       reject(err);
     });
   });
@@ -351,8 +368,31 @@ export function createKoaAdapter(
         // ── 匹配成功：执行中间件链 ─────────────────────────
         try {
           // 收集原始请求体
-          const rawBody = await collectRawBody(ctx);
-          const req = createVextRequest(ctx, vextApp, matched.params, rawBody);
+          const routeBodyParser = resolveRouteBodyParserConfig(matched.entry.routeOptions);
+      const maxBodyBytes = resolveAdapterBodyLimitBytes({
+        globalBodyParser: vextApp.config.bodyParser,
+        routeBodyParser,
+        multipart: vextApp.config.multipart,
+        adapterBodyLimit: options.bodyLimit,
+      });
+      let rawBody: Buffer;
+      try {
+        rawBody = await collectRawBody(ctx, maxBodyBytes);
+      } catch (error) {
+        if (isPayloadTooLargeError(error)) {
+          ctx.status = 413;
+          ctx.body = {
+            error: "Payload Too Large",
+            message: `Request body exceeds maximum size of ${maxBodyBytes} bytes`,
+          };
+          return;
+        }
+        throw error;
+      }
+      const req = createVextRequest(ctx, vextApp, matched.params, rawBody);
+      if (routeBodyParser) {
+        (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+      }
           // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
           // matched.entry.pattern 在 registerRoute 时写入 RouteEntry，直接读取即可
           req.route = matched.entry.pattern;
@@ -540,7 +580,7 @@ export function createKoaAdapter(
     //
     // 路由路径参数格式：vext 使用 :param，内置路由匹配器也使用 :param，无需转换。
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
       const upperMethod = method.toUpperCase();
       const segments = parsePattern(path);
 
@@ -549,7 +589,8 @@ export function createKoaAdapter(
         pattern: path,
         segments,
         chain,
-      });
+      routeOptions,
+    });
     },
 
     // ── registerErrorHandler ────────────────────────────────

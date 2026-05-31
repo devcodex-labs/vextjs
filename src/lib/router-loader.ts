@@ -17,6 +17,7 @@ import {
 } from "./middlewares/route-cache.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
+import { pathToFileURL } from "node:url";
 
 /**
  * router-loader.ts — 路由自动加载器（Phase 1 升级版）
@@ -302,6 +303,7 @@ function registerRouteDefinition(
       const routeMultipartMW = createRouteMultipartMiddleware(
         route.options.multipart as import('../types/app.js').MultipartRouteConfig,
         app.config.multipart,
+        app.config.bodyParser,
       )
       routeMiddlewares.unshift(routeMultipartMW)
     }
@@ -335,7 +337,7 @@ function registerRouteDefinition(
     chain.push(handlerMiddleware);
 
     // ── 6. 注册到 adapter ──────────────────────────────────
-    app.adapter.registerRoute(route.method, fullPath, chain);
+    app.adapter.registerRoute(route.method, fullPath, chain, route.options ?? {});
 
     // ── 7. 🆕 收集路由元信息（用于 OpenAPI 文档生成）────────
     if (collector) {
@@ -721,13 +723,5 @@ async function directoryExists(dirPath: string): Promise<boolean> {
  * @returns file:// URL 字符串
  */
 function pathToFileUrl(filePath: string): string {
-  // 统一使用 / 分隔符
-  let normalized = filePath.split(sep).join("/");
-
-  // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
-  if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = `/${normalized}`;
-  }
-
-  return `file://${normalized}`;
+  return pathToFileURL(filePath).href;
 }

@@ -1,6 +1,7 @@
 import type Koa from "koa";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 
 /**
  * Koa Context → VextRequest 转换
@@ -79,8 +80,11 @@ export function createVextRequest(
   //
   let _rawBodyCache: string | undefined;
 
-  function getRawBody(): Promise<string> {
-    if (_rawBodyCache !== undefined) return Promise.resolve(_rawBodyCache);
+  function getRawBody(maxBytes?: number): Promise<string> {
+    if (_rawBodyCache !== undefined) {
+      assertBodySize(Buffer.byteLength(_rawBodyCache, "utf-8"), maxBytes);
+      return Promise.resolve(_rawBodyCache);
+    }
 
     if (rawBody === undefined || rawBody === null) {
       _rawBodyCache = "";
@@ -88,12 +92,14 @@ export function createVextRequest(
     }
 
     if (Buffer.isBuffer(rawBody)) {
+      assertBodySize(rawBody.byteLength, maxBytes);
       _rawBodyCache = rawBody.toString("utf-8");
       return Promise.resolve(_rawBodyCache);
     }
 
     // 兜底：如果 rawBody 已经是 string（理论上不会发生）
     if (typeof rawBody === "string") {
+      assertBodySize(Buffer.byteLength(rawBody, "utf-8"), maxBytes);
       _rawBodyCache = rawBody;
       return Promise.resolve(_rawBodyCache);
     }
@@ -102,9 +108,12 @@ export function createVextRequest(
     return Promise.resolve(_rawBodyCache);
   }
 
-  function getRawBodyBuffer(): Promise<Buffer> {
+  function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
     if (rawBody === undefined || rawBody === null) return Promise.resolve(Buffer.alloc(0));
-    if (Buffer.isBuffer(rawBody)) return Promise.resolve(rawBody);
+    if (Buffer.isBuffer(rawBody)) {
+      assertBodySize(rawBody.byteLength, maxBytes);
+      return Promise.resolve(rawBody);
+    }
     return Promise.resolve(Buffer.alloc(0));
   }
 

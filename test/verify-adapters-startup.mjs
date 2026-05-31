@@ -1,7 +1,7 @@
 /**
  * Adapter 启动验证脚本
  *
- * 验证 Hono / Fastify / Express / Koa 四个 adapter 能否正常：
+ * 验证 Hono / Fastify / Express / Koa / Native 五个 adapter 能否正常：
  *   1. 通过 bootstrap 启动（生产模式模拟）
  *   2. 响应 GET / 请求（返回正确的 JSON 格式）
  *   3. 响应 GET /health 请求
@@ -36,7 +36,7 @@ const ROOT = join(__dirname, "..");
 
 // ── 配置 ──────────────────────────────────────────────
 
-const ADAPTERS = ["hono", "fastify", "express", "koa"];
+const ADAPTERS = ["hono", "fastify", "express", "koa", "native"];
 const BASE_PORT = 17700;
 const REQUEST_TIMEOUT = 5000;
 const SHUTDOWN_WAIT = 500;
@@ -98,6 +98,13 @@ function setupTempProject(adapterName, port) {
   response: {
     hideInternalErrors: false,
   },
+  bodyParser: {
+    maxBodySize: "1mb",
+  },
+  multipart: {
+    enabled: true,
+    maxFileSize: 1024,
+  },
 };
 `,
   );
@@ -124,6 +131,29 @@ export default defineRoutes((app) => {
   app.post("/body-test", {}, async (req, res) => {
     const body = req.body;
     res.json({ received: body, adapter: "${adapterName}" });
+  });
+
+  app.post("/body-limit", { bodyParser: { maxBodySize: "32b" } }, async (req, res) => {
+    res.json({ adapter: "${adapterName}", received: req.body });
+  });
+
+  app.post("/body-limit-override", { override: { maxBodySize: "32b" } }, async (req, res) => {
+    res.json({ adapter: "${adapterName}", received: req.body });
+  });
+
+  app.post("/body-parser-disabled", { bodyParser: { enabled: false } }, async (req, res) => {
+    res.json({
+      adapter: "${adapterName}",
+      bodyType: typeof req.body,
+      hasBody: req.body !== undefined,
+    });
+  });
+
+  app.post("/multipart-limit", {
+    bodyParser: { maxBodySize: "64b" },
+    multipart: { enabled: true, maxFileSize: 1024 },
+  }, async (req, res) => {
+    res.json({ adapter: "${adapterName}", files: req.files?.length ?? 0 });
   });
 });
 `,
@@ -283,6 +313,84 @@ const TEST_CASES = [
         `两次请求的 requestId 应不同，实际都是 "${json1.requestId}"`,
       );
       return { id1: json1.requestId, id2: json2.requestId };
+    },
+  },
+  {
+    name: "POST /body-limit — route-level body size limit",
+    run: async (baseUrl, adapterName) => {
+      const res = await fetch(`${baseUrl}/body-limit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "x".repeat(128) }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+
+      const json = await res.json();
+      assert(res.status === 413, `${adapterName} route-level body limit expected 413, got ${res.status}`);
+      assert(
+        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
+        `${adapterName} route-level body limit returned unexpected payload: ${JSON.stringify(json)}`
+      );
+      return json;
+    },
+  },
+  {
+    name: "POST /body-limit-override — override.maxBodySize alias",
+    run: async (baseUrl, adapterName) => {
+      const res = await fetch(`${baseUrl}/body-limit-override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "x".repeat(128) }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+
+      const json = await res.json();
+      assert(res.status === 413, `${adapterName} override.maxBodySize expected 413, got ${res.status}`);
+      assert(
+        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
+        `${adapterName} override.maxBodySize returned unexpected payload: ${JSON.stringify(json)}`
+      );
+      return json;
+    },
+  },
+  {
+    name: "POST /body-parser-disabled — route-level body parser disabled",
+    run: async (baseUrl, adapterName) => {
+      const res = await fetch(`${baseUrl}/body-parser-disabled`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "x".repeat(32) }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+
+      const json = await res.json();
+      assert(res.status === 200, `${adapterName} bodyParser.enabled=false expected 200, got ${res.status}`);
+      assert(
+        json.data?.bodyType === "undefined" && json.data?.hasBody === false,
+        `${adapterName} bodyParser.enabled=false should leave req.body undefined, got ${JSON.stringify(json)}`
+      );
+      return json;
+    },
+  },
+  {
+    name: "POST /multipart-limit — multipart obeys total maxBodySize",
+    run: async (baseUrl, adapterName) => {
+      const form = new FormData();
+      form.append("file", new Blob(["x".repeat(128)], { type: "text/plain" }), "large.txt");
+
+      const res = await fetch(`${baseUrl}/multipart-limit`, {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+
+      const json = await res.json();
+      assert(res.status === 413, `${adapterName} multipart total body limit expected 413, got ${res.status}`);
+      assert(
+        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
+        `${adapterName} multipart total body limit returned unexpected payload: ${JSON.stringify(json)}`
+      );
+      return json;
     },
   },
 ];

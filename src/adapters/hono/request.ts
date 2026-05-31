@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import { assertBodySize, createPayloadTooLargeError } from "../../lib/middlewares/body-parser.js";
 
 /**
  * HonoContext → VextRequest 转换
@@ -44,16 +45,43 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   let _rawBufferCache: Buffer | undefined;
   let _rawStringCache: string | undefined;
 
-  async function getRawBodyBuffer(): Promise<Buffer> {
-    if (_rawBufferCache !== undefined) return _rawBufferCache;
+  async function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
+    if (_rawBufferCache !== undefined) {
+      assertBodySize(_rawBufferCache.byteLength, maxBytes);
+      return _rawBufferCache;
+    }
+
+    const body = c.req.raw.body;
+    if (body) {
+      const reader = body.getReader();
+      const chunks: Buffer[] = [];
+      let total = 0;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = Buffer.from(value);
+        total += chunk.byteLength;
+        if (maxBytes !== undefined && total > maxBytes) {
+          throw createPayloadTooLargeError(maxBytes);
+        }
+        chunks.push(chunk);
+      }
+      _rawBufferCache = Buffer.concat(chunks);
+      return _rawBufferCache;
+    }
+
     const ab = await c.req.arrayBuffer();
     _rawBufferCache = Buffer.from(ab);
+    assertBodySize(_rawBufferCache.byteLength, maxBytes);
     return _rawBufferCache;
   }
 
-  async function getRawBody(): Promise<string> {
-    if (_rawStringCache !== undefined) return _rawStringCache;
-    const buf = await getRawBodyBuffer();
+  async function getRawBody(maxBytes?: number): Promise<string> {
+    if (_rawStringCache !== undefined) {
+      assertBodySize(Buffer.byteLength(_rawStringCache, "utf-8"), maxBytes);
+      return _rawStringCache;
+    }
+    const buf = await getRawBodyBuffer(maxBytes);
     _rawStringCache = buf.toString("utf-8");
     return _rawStringCache;
   }

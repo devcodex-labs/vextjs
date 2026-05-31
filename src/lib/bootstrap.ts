@@ -782,6 +782,36 @@ async function detectAndStart(rootDir: string): Promise<void> {
  *
  * @param rootDir 用户项目根目录
  */
+export function applyClusterWorkerEnv(args: {
+  rootDir: string;
+  workerCount: number;
+  providerPatch?: unknown;
+  port: number;
+  host?: string;
+  isBuilt: boolean;
+  clusterConfig?: Record<string, unknown>;
+}): void {
+  process.env.VEXT_ROOT = args.rootDir;
+  process.env.VEXT_WORKER_COUNT = String(args.workerCount);
+  process.env[CLUSTER_BOOTSTRAP_PATCH_ENV] = JSON.stringify(
+    args.providerPatch ?? {},
+  );
+  process.env.VEXT_PORT = String(args.port);
+
+  if (args.clusterConfig?.memoryThreshold !== undefined) {
+    process.env.VEXT_MEMORY_THRESHOLD = String(args.clusterConfig.memoryThreshold);
+  } else {
+    delete process.env.VEXT_MEMORY_THRESHOLD;
+  }
+
+  if (args.host) {
+    process.env.VEXT_HOST = args.host;
+  }
+  if (args.isBuilt) {
+    process.env.VEXT_BUILT = "1";
+  }
+}
+
 async function startClusterMaster(rootDir: string): Promise<void> {
   const isBuilt = process.env.VEXT_BUILT === "1";
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
@@ -841,18 +871,15 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 设置 Worker 继承的环境变量
   // cluster.fork(env) 会在 forkWorker 中设置，
   // 这里通过 process.env 设置 Worker 继承的全局变量
-  process.env.VEXT_ROOT = rootDir;
-  process.env.VEXT_WORKER_COUNT = String(workerCount);
-  process.env[CLUSTER_BOOTSTRAP_PATCH_ENV] = JSON.stringify(
-    configMeta.providerPatch ?? {},
-  );
-  process.env.VEXT_PORT = String(config.port);
-  if (config.host) {
-    process.env.VEXT_HOST = config.host;
-  }
-  if (isBuilt) {
-    process.env.VEXT_BUILT = "1";
-  }
+  applyClusterWorkerEnv({
+    rootDir,
+    workerCount,
+    providerPatch: configMeta.providerPatch,
+    port: config.port,
+    host: config.host,
+    isBuilt,
+    clusterConfig,
+  });
 
   // 传递 CLI 覆盖参数（--port / --host）
   // 这些已经在 process.env 中（由 cli/start.ts 设置）

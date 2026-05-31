@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.3.8] | 2026-05-31 | Patch | 发布前收口：补齐 adapter/body-limit/cluster 验证闭环，移除 npm 包 sourcemap 产物，并同步 vext-test 外部消费者验证 [查看](./changelogs/v0.3.8.md) |
 | [0.3.7] | 2026-05-21 | Patch | `vext dev` 补齐 preflight 诊断与 typegen 自动生成：阻断 TS 错误热重载、补全 reload 堆栈，并移除脚手架静态 services 类型声明 [查看](./changelogs/v0.3.7.md) |
 | [0.3.6] | 2026-05-16 | Patch | 项目级 `preload/` 目录正式落地：补齐 TS preload、`build` / built 模式联动、`fs.watch` 动态监听与消费者验收闭环 [查看](./changelogs/v0.3.6.md) |
 | [0.3.5] | 2026-05-15 | Patch | README 与 OpenTelemetry 文档对齐当前 preload / exporter / capture 模型，并完成一轮发版前全链路验证 [查看](./changelogs/v0.3.5.md) |
@@ -55,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.7...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.8...HEAD
+[0.3.8]: https://github.com/vextjs/vext/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/vextjs/vext/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/vextjs/vext/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/vextjs/vext/compare/v0.3.4...v0.3.5

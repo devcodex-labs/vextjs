@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import { assertBodySize, createPayloadTooLargeError } from "../../lib/middlewares/body-parser.js";
 
 /**
  * 预解析的 URL 信息（由 adapter.ts handleRequest 传入，避免重复解析）
@@ -93,8 +94,13 @@ export function createVextRequest(
   let _rawBufferPromise: Promise<Buffer> | undefined;
   let _rawStringPromise: Promise<string> | undefined;
 
-  function getRawBodyBuffer(): Promise<Buffer> {
-    if (_rawBufferPromise !== undefined) return _rawBufferPromise;
+  function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
+    if (_rawBufferPromise !== undefined) {
+      return _rawBufferPromise.then((buf) => {
+        assertBodySize(buf.byteLength, maxBytes);
+        return buf;
+      });
+    }
 
     _rawBufferPromise = new Promise<Buffer>((resolve, reject) => {
       // 对于无 body 方法，快速返回空 Buffer
@@ -105,26 +111,50 @@ export function createVextRequest(
       }
 
       const chunks: Buffer[] = [];
+      let total = 0;
+      let settled = false;
 
       incoming.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
+        if (settled) return;
+        const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        total += bufferChunk.byteLength;
+        if (maxBytes !== undefined && total > maxBytes) {
+          settled = true;
+          reject(createPayloadTooLargeError(maxBytes));
+          return;
+        }
+        chunks.push(bufferChunk);
       });
 
       incoming.on("end", () => {
-        resolve(chunks.length > 0 ? Buffer.concat(chunks) : Buffer.alloc(0));
+        if (settled) return;
+        settled = true;
+        const buffer = chunks.length > 0 ? Buffer.concat(chunks) : Buffer.alloc(0);
+        assertBodySize(buffer.byteLength, maxBytes);
+        resolve(buffer);
       });
 
       incoming.on("error", (err) => {
+        if (settled) return;
+        settled = true;
         reject(err);
       });
     });
 
-    return _rawBufferPromise;
+    return _rawBufferPromise.then((buf) => {
+      assertBodySize(buf.byteLength, maxBytes);
+      return buf;
+    });
   }
 
-  function getRawBody(): Promise<string> {
-    if (_rawStringPromise !== undefined) return _rawStringPromise;
-    _rawStringPromise = getRawBodyBuffer().then((buf) => buf.toString("utf-8"));
+  function getRawBody(maxBytes?: number): Promise<string> {
+    if (_rawStringPromise !== undefined) {
+      return _rawStringPromise.then((raw) => {
+        assertBodySize(Buffer.byteLength(raw, "utf-8"), maxBytes);
+        return raw;
+      });
+    }
+    _rawStringPromise = getRawBodyBuffer(maxBytes).then((buf) => buf.toString("utf-8"));
     return _rawStringPromise;
   }
 

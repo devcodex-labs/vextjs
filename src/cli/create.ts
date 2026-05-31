@@ -312,7 +312,6 @@ async function generateProject(
   options: CreateOptions,
   vextVersion: string,
 ): Promise<void> {
-  const { language } = options;
 
   // ── 1. 创建目录结构 ────────────────────────────────────
   const dirs = [

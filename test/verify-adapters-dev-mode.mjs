@@ -1,7 +1,7 @@
 /**
  * Adapter 开发模式验证脚本
  *
- * 验证 Hono / Fastify / Express / Koa 四个 adapter 在 dev 模式下能否正常：
+ * 验证 Hono / Fastify / Express / Koa / Native 五个 adapter 在 dev 模式下能否正常：
  *   1. 通过 devBootstrap 启动（开发模式）
  *   2. 响应 GET / 请求（返回正确的 JSON 格式）
  *   3. 响应 GET /health 请求
@@ -38,7 +38,7 @@ const ROOT = join(__dirname, "..");
 
 // ── 配置 ──────────────────────────────────────────────
 
-const ADAPTERS = ["hono", "fastify", "express", "koa"];
+const ADAPTERS = ["hono", "fastify", "express", "koa", "native"];
 const BASE_PORT = 18800;
 const REQUEST_TIMEOUT = 5000;
 const SHUTDOWN_WAIT = 500;

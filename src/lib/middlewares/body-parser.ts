@@ -38,6 +38,72 @@ export function parseBytes(value: string | number): number {
   return Math.floor(num * multipliers[unit]!);
 }
 
+export class PayloadTooLargeError extends Error {
+  readonly status = 413;
+
+  constructor(readonly maxBytes: number) {
+    super("Payload Too Large");
+    this.name = "PayloadTooLargeError";
+  }
+}
+
+export function createPayloadTooLargeError(maxBytes: number): PayloadTooLargeError {
+  return new PayloadTooLargeError(maxBytes);
+}
+
+export function isPayloadTooLargeError(err: unknown): err is PayloadTooLargeError {
+  return err instanceof PayloadTooLargeError || (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { status?: unknown }).status === 413 &&
+    (err as { message?: unknown }).message === "Payload Too Large"
+  );
+}
+
+export function assertBodySize(size: number, maxBytes?: number): void {
+  if (maxBytes !== undefined && size > maxBytes) {
+    throw createPayloadTooLargeError(maxBytes);
+  }
+}
+
+export function resolveBodyParserMaxBytes(
+  globalConfig: VextBodyParserConfig,
+  routeConfig?: VextBodyParserConfig,
+): number {
+  return parseBytes(routeConfig?.maxBodySize ?? globalConfig.maxBodySize ?? "1mb");
+}
+
+export function resolveRouteBodyParserConfig(routeOptions?: {
+  bodyParser?: VextBodyParserConfig;
+  override?: { maxBodySize?: string | number };
+}): VextBodyParserConfig | undefined {
+  if (routeOptions?.bodyParser) return routeOptions.bodyParser;
+  if (routeOptions?.override?.maxBodySize !== undefined) {
+    return { maxBodySize: routeOptions.override.maxBodySize };
+  }
+  return undefined;
+}
+
+export function resolveAdapterBodyLimitBytes(args: {
+  globalBodyParser?: VextBodyParserConfig;
+  routeBodyParser?: VextBodyParserConfig;
+  multipart?: VextMultipartConfig;
+  adapterBodyLimit?: string | number;
+}): number {
+  const bodyParserLimit = parseBytes(
+    args.routeBodyParser?.maxBodySize ?? args.globalBodyParser?.maxBodySize ?? "1mb",
+  );
+  const adapterLimit =
+    args.adapterBodyLimit !== undefined ? parseBytes(args.adapterBodyLimit) : undefined;
+
+  // multipart.maxFileSize is a per-file validation limit. It must not widen the
+  // request-body read boundary, otherwise a small route-level maxBodySize would
+  // only fail after the adapter has already accepted a larger body.
+  return adapterLimit === undefined
+    ? bodyParserLimit
+    : Math.min(bodyParserLimit, adapterLimit);
+}
+
 /**
  * parseMultipart — 内置 multipart/form-data 解析器
  *
@@ -57,8 +123,10 @@ async function parseMultipart(
   req: VextRequest,
   contentType: string,
   config: VextMultipartConfig,
+  maxBodyBytes: number,
 ): Promise<ParsedFile[]> {
-  const rawBuffer = await req._getRawBodyBuffer()
+  const rawBuffer = await req._getRawBodyBuffer(maxBodyBytes)
+  assertBodySize(rawBuffer.byteLength, maxBodyBytes)
   const dummyRequest = new Request('http://localhost', {
     method: 'POST',
     body: rawBuffer,
@@ -163,7 +231,6 @@ export function createBodyParserMiddleware(
   config: VextBodyParserConfig,
   multipartConfig?: VextMultipartConfig,
 ): VextMiddleware {
-  const maxBytes = parseBytes(config.maxBodySize ?? "1mb");
 
   return async (req, res, next) => {
     // ── 无 body 方法直接跳过 ────────────────────────────
@@ -180,6 +247,16 @@ export function createBodyParserMiddleware(
       await next();
       return;
     }
+    const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser;
+    const effectiveConfig = routeBodyParser ? { ...config, ...routeBodyParser } : config;
+
+    if (effectiveConfig.enabled === false) {
+      await next();
+      return;
+    }
+
+    const maxBytes = resolveBodyParserMaxBytes(config, routeBodyParser);
+
 
     // ── 仅处理 JSON 和 URL-encoded ─────────────────────
     const isJson = contentType.includes("application/json");
@@ -191,7 +268,7 @@ export function createBodyParserMiddleware(
     if (contentType.startsWith('multipart/form-data')) {
       if (multipartConfig?.enabled) {
         try {
-          req.files = await parseMultipart(req, contentType, multipartConfig)
+          req.files = await parseMultipart(req, contentType, multipartConfig, maxBytes)
         } catch (err: unknown) {
           const httpErr = err as { status?: number; message?: string }
           res.rawJson(
@@ -222,10 +299,24 @@ export function createBodyParserMiddleware(
     // 直接调用，无需类型转换。
     //
     let rawBody: string;
+    let rawBuffer: Buffer;
 
     try {
-      rawBody = await req._getRawBody();
-    } catch {
+      rawBuffer = await req._getRawBodyBuffer(maxBytes);
+      rawBody = rawBuffer.toString("utf-8");
+    } catch (err) {
+      if (isPayloadTooLargeError(err)) {
+        res.rawJson(
+          {
+            code: 413,
+            message: "Payload Too Large",
+            requestId: req.requestId,
+          },
+          413,
+        );
+        return;
+      }
+
       // 读取失败（客户端可能已断开）
       res.rawJson(
         { code: 400, message: "Bad Request: unable to read request body" },
@@ -234,12 +325,7 @@ export function createBodyParserMiddleware(
       return;
     }
 
-    // ── 检查体积限制 ────────────────────────────────────
-    //
-    // 使用 Buffer.byteLength 而非 string.length，
-    // 因为多字节字符（中文等）的字节数 > 字符数。
-    //
-    const bodyBytes = Buffer.byteLength(rawBody, "utf-8");
+    const bodyBytes = rawBuffer.byteLength;
 
     if (bodyBytes > maxBytes) {
       res.rawJson(
@@ -306,6 +392,7 @@ export function createBodyParserMiddleware(
 export function createRouteMultipartMiddleware(
   routeConfig: MultipartRouteConfig,
   globalConfig?: VextMultipartConfig,
+  globalBodyParser?: VextBodyParserConfig,
 ): VextMiddleware {
   const mergedConfig: VextMultipartConfig = {
     enabled: true,
@@ -341,7 +428,9 @@ export function createRouteMultipartMiddleware(
         }
       } else {
         // 全局未解析 → 路由级解析
-        req.files = await parseMultipart(req, contentType, mergedConfig)
+        const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser
+        const maxBodyBytes = resolveBodyParserMaxBytes(globalBodyParser ?? {}, routeBodyParser)
+        req.files = await parseMultipart(req, contentType, mergedConfig, maxBodyBytes)
       }
     } catch (err: unknown) {
       const httpErr = err as { status?: number; message?: string }

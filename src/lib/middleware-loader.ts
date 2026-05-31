@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
-import { join, basename, sep } from "node:path";
+import { join, basename } from "node:path";
 import { isMiddleware, isMiddlewareFactory } from "./define-middleware.js";
 import { resolveModuleDefault } from "./interop.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextLogger } from "../types/app.js";
+import { pathToFileURL } from "node:url";
 
 /**
  * middleware-loader.ts — 路由级中间件白名单加载器
@@ -362,12 +363,5 @@ async function importMiddlewareFile(
  * dynamic import 在 Windows 上需要 file:// 协议前缀才能正确加载。
  */
 function pathToFileUrl(filePath: string): string {
-  let normalized = filePath.split(sep).join("/");
-
-  // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
-  if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = `/${normalized}`;
-  }
-
-  return `file://${normalized}`;
+  return pathToFileURL(filePath).href;
 }

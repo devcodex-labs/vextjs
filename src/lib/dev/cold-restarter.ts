@@ -188,7 +188,7 @@ export class ColdRestarter {
    * @param reason 重启原因（用于日志输出，如 "initial start" 或文件路径）
    * @throws 子进程启动超时或退出非零码时抛出错误
    */
-  async restart(reason: string): Promise<void> {
+  async restart(_reason: string): Promise<void> {
     if (this.isRestarting) {
       // 已经在重启中，合并（不重复执行）
       return;

@@ -17,12 +17,13 @@
  * @see 12c-lifecycle.md（进程生命周期管理）
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   ClusterMaster,
   DEFAULT_CLUSTER_CONFIG,
   type ClusterMasterConfig,
 } from "../../../src/lib/cluster/master.js";
+import { applyClusterWorkerEnv } from "../../../src/lib/bootstrap.js";
 import { EventEmitter } from "node:events";
 
 // ── DEFAULT_CLUSTER_CONFIG ──────────────────────────────────
@@ -107,6 +108,69 @@ describe("DEFAULT_CLUSTER_CONFIG", () => {
       expect(DEFAULT_CLUSTER_CONFIG).toHaveProperty(key);
       expect(DEFAULT_CLUSTER_CONFIG[key]).not.toBeUndefined();
     }
+  });
+});
+
+// ── Worker 环境变量传递 ────────────────────────────────────
+
+describe("cluster worker environment", () => {
+  const trackedEnvKeys = [
+    "VEXT_ROOT",
+    "VEXT_WORKER_COUNT",
+    "VEXT_PORT",
+    "VEXT_HOST",
+    "VEXT_BUILT",
+    "VEXT_MEMORY_THRESHOLD",
+  ];
+  let envSnapshot: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    envSnapshot = Object.fromEntries(
+      trackedEnvKeys.map((key) => [key, process.env[key]]),
+    );
+  });
+
+  afterEach(() => {
+    for (const key of trackedEnvKeys) {
+      const value = envSnapshot[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  it("should propagate memoryThreshold to worker env", () => {
+    applyClusterWorkerEnv({
+      rootDir: "/tmp/vext-app",
+      workerCount: 2,
+      port: 3100,
+      host: "127.0.0.1",
+      isBuilt: true,
+      clusterConfig: { memoryThreshold: 256 },
+    });
+
+    expect(process.env.VEXT_ROOT).toBe("/tmp/vext-app");
+    expect(process.env.VEXT_WORKER_COUNT).toBe("2");
+    expect(process.env.VEXT_PORT).toBe("3100");
+    expect(process.env.VEXT_HOST).toBe("127.0.0.1");
+    expect(process.env.VEXT_BUILT).toBe("1");
+    expect(process.env.VEXT_MEMORY_THRESHOLD).toBe("256");
+  });
+
+  it("should clear stale memoryThreshold when cluster config omits it", () => {
+    process.env.VEXT_MEMORY_THRESHOLD = "512";
+
+    applyClusterWorkerEnv({
+      rootDir: "/tmp/vext-app",
+      workerCount: 1,
+      port: 3200,
+      isBuilt: false,
+      clusterConfig: {},
+    });
+
+    expect(process.env.VEXT_MEMORY_THRESHOLD).toBeUndefined();
   });
 });
 

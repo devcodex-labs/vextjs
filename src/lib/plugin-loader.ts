@@ -1,10 +1,11 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
-import { join, extname, sep, dirname } from "node:path";
+import { join, extname, dirname } from "node:path";
 import { createRequire } from "node:module";
 import type { VextApp } from "../types/app.js";
 import type { VextPlugin } from "../types/plugin.js";
 import { resolveModuleDefault } from "./interop.js";
+import { pathToFileURL } from "node:url";
 
 // ── ESM-only 包兼容层 ─────────────────────────────────────────
 //
@@ -220,7 +221,7 @@ async function _preloadEsmDeps(compiledFilePath: string): Promise<void> {
   }
 
   // 提取所有 require('pkg') / require("pkg") 中的外部包名（排除相对路径）
-  const requireRegex = /require\(["']([^./][^"']*?)["']\)/g;
+  const requireRegex = /require\s*\(\s*["']([^./][^"']*?)["']\s*\)/g;
   const candidates = new Set<string>();
   for (const m of content.matchAll(requireRegex)) {
     candidates.add(m[1]!);
@@ -437,7 +438,7 @@ async function scanPluginFiles(dir: string): Promise<string[]> {
  */
 async function loadPluginFile(
   filePath: string,
-  pluginsDir: string,
+  _pluginsDir: string,
 ): Promise<VextPlugin> {
   try {
     // ESM-only 兼容：预加载此插件依赖的 ESM-only 包，注入 Module._load 缓存
@@ -525,7 +526,7 @@ async function loadPluginFile(
  */
 function topoSort(
   plugins: Array<{ plugin: VextPlugin; sourceFile: string }>,
-  nameMap: Map<string, string>,
+  _nameMap: Map<string, string>,
 ): Array<{ plugin: VextPlugin; sourceFile: string }> {
   // 按名称建索引
   const byName = new Map<string, { plugin: VextPlugin; sourceFile: string }>();
@@ -781,14 +782,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
  * dynamic import 在 Windows 上需要 file:// 协议前缀才能正确加载。
  */
 function pathToFileUrl(filePath: string): string {
-  let normalized = filePath.split(sep).join("/");
-
-  // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
-  if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = `/${normalized}`;
-  }
-
-  return `file://${normalized}`;
+  return pathToFileURL(filePath).href;
 }
 
 /**

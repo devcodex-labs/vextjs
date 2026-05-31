@@ -12,11 +12,16 @@
  *   Node.js 18/20 无法 `require()` ESM 模块（ERR_REQUIRE_ESM）。
  *
  *   此脚本生成 CJS 入口文件，配合 package.json exports 的 `"require"` 条件，
- *   使 `require('vextjs')` 和 `require('vextjs/testing')` 正常工作。
+ *   使 `require('vextjs')`、`require('vextjs/testing')` 和 adapter 子路径正常工作。
  *
  * 生成文件：
- *   - dist/index.cjs          — 主入口 CJS bundle
- *   - dist/testing/index.cjs  — 测试工具 CJS bundle
+ *   - dist/index.cjs                  — 主入口 CJS bundle
+ *   - dist/testing/index.cjs          — 测试工具 CJS bundle
+ *   - dist/adapters/hono/index.cjs    — Hono adapter CJS bundle
+ *   - dist/adapters/fastify/index.cjs — Fastify adapter CJS bundle
+ *   - dist/adapters/express/index.cjs — Express adapter CJS bundle
+ *   - dist/adapters/koa/index.cjs     — Koa adapter CJS bundle
+ *   - dist/adapters/native/index.cjs  — Native adapter CJS bundle
  *
  * 运行方式：
  *   node scripts/build-cjs.mjs
@@ -83,16 +88,13 @@ const externalDeps = [
  * 每个条目对应一个需要生成 CJS bundle 的 ESM 入口。
  */
 const entries = [
-  {
-    name: "main",
-    input: "dist/index.js",
-    output: "dist/index.cjs",
-  },
-  {
-    name: "testing",
-    input: "dist/testing/index.js",
-    output: "dist/testing/index.cjs",
-  },
+  { name: "main", input: "dist/index.js", output: "dist/index.cjs" },
+  { name: "testing", input: "dist/testing/index.js", output: "dist/testing/index.cjs" },
+  { name: "adapter:hono", input: "dist/adapters/hono/index.js", output: "dist/adapters/hono/index.cjs" },
+  { name: "adapter:fastify", input: "dist/adapters/fastify/index.js", output: "dist/adapters/fastify/index.cjs" },
+  { name: "adapter:express", input: "dist/adapters/express/index.js", output: "dist/adapters/express/index.cjs" },
+  { name: "adapter:koa", input: "dist/adapters/koa/index.js", output: "dist/adapters/koa/index.cjs" },
+  { name: "adapter:native", input: "dist/adapters/native/index.js", output: "dist/adapters/native/index.cjs" },
 ];
 
 async function buildCjs() {

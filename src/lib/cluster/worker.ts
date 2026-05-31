@@ -364,6 +364,7 @@ function startMetricsReporter(app: VextApp): ReturnType<typeof setInterval> {
       activeRequests: 0,
       totalRequests: 0,
       avgResponseTime: 0,
+      metricsUnavailable: true,
     };
 
     sendToMaster({

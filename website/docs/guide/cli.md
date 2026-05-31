@@ -592,7 +592,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.6
+# 输出: vextjs v0.3.8
 
 # 查看帮助
 vext --help

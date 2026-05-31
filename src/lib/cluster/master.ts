@@ -150,6 +150,7 @@ export const DEFAULT_CLUSTER_CONFIG: ClusterMasterConfig = {
 export class ClusterMaster extends EventEmitter {
   /** Worker 元数据表（key = cluster.Worker.id） */
   private workers = new Map<number, WorkerMeta>();
+  private nextWorkerId = 1;
 
   /** 窗口内的重启时间戳（用于频率保护） */
   private restartTimestamps: number[] = [];
@@ -515,7 +516,7 @@ export class ClusterMaster extends EventEmitter {
    * @throws Worker 在 readyTimeout 内未就绪或在就绪前退出
    */
   private async forkWorker(): Promise<ClusterWorker> {
-    const nextId = this.workers.size + 1;
+    const nextId = this.nextWorkerId++;
 
     const worker = cluster.fork({
       VEXT_WORKER_ID: String(nextId),

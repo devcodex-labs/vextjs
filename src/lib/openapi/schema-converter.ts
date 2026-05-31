@@ -26,7 +26,6 @@
  */
 
 import { schemaAdapter } from "../schema-adapter.js";
-import type { JSONSchema as SchemaDslJSONSchema } from "../schema-adapter.js";
 import type { JsonSchema, ConvertResult } from "./types.js";
 
 // 注意：schema-dsl v1.2.5+ 的 DslBuilder.toJsonSchema() 已内置内部标记清理，
@@ -343,7 +342,7 @@ export class SchemaConverter {
    * @param dsl    不含后缀的 DSL 字符串
    * @returns 示例值
    */
-  private inferExample(schema: JsonSchema, dsl: string): unknown {
+  private inferExample(schema: JsonSchema, _dsl: string): unknown {
     // 如果有 enum，使用第一个值作为示例
     if (schema.enum && schema.enum.length > 0) {
       return schema.enum[0];

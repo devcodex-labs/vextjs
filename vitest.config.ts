@@ -54,7 +54,7 @@ export default defineConfig({
       ],
 
       // 不在未覆盖的文件上标红（避免干扰）
-      all: false,
+      all: true,
     },
   },
 });

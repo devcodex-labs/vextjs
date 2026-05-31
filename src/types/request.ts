@@ -207,7 +207,7 @@ export interface VextRequest {
    *
    * @internal 由各 adapter 注入实现
    */
-  _getRawBody(): Promise<string>
+  _getRawBody(maxBytes?: number): Promise<string>
 
   /**
    * 获取原始请求体 Buffer（插件使用）
@@ -223,7 +223,7 @@ export interface VextRequest {
    *
    * @internal 由各 adapter 注入实现
    */
-  _getRawBodyBuffer(): Promise<Buffer>
+  _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>
 
   // ── 中间件 / 插件扩展字段 ────────────────────────────────
 

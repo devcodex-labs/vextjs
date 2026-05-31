@@ -13,6 +13,8 @@ import type {
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import { requestContext } from "../../lib/request-context.js";
+import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
+import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 
 /**
  * 中间件链执行器（洋葱模型）
@@ -93,7 +95,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       globalMiddlewares.push(middleware);
     },
 
-    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
       // 使用 hono.on() 以支持所有 HTTP 方法（包括 HEAD / OPTIONS）
       // hono.on() 接受方法字符串数组和路径
       const upperMethod = method.toUpperCase();
@@ -108,6 +110,10 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
       hono.on(upperMethod, path, async (c) => {
         const req = createVextRequest(c, app);
+        const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
+        if (routeBodyParser) {
+          (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+        }
         // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
         // path 是 registerRoute 的参数，在此 closure 中直接可访问
         req.route = path;

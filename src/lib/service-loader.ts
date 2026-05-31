@@ -1,7 +1,8 @@
 import { readdir, stat, readFile, writeFile, unlink } from "node:fs/promises";
-import { join, extname, sep } from "node:path";
+import { join, extname } from "node:path";
 import type { VextApp, VextLogger } from "../types/app.js";
 import { resolveModuleDefault } from "./interop.js";
+import { pathToFileURL } from "node:url";
 import {
   SUPPORTED_SERVICE_EXTENSIONS,
   shouldExcludeServiceFileName,
@@ -545,14 +546,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
  * dynamic import 在 Windows 上需要 file:// 协议前缀才能正确加载。
  */
 function pathToFileUrl(filePath: string): string {
-  let normalized = filePath.split(sep).join("/");
-
-  // Windows 路径（如 C:/Users/...）需要额外的 / 前缀
-  if (/^[a-zA-Z]:/.test(normalized)) {
-    normalized = `/${normalized}`;
-  }
-
-  return `file://${normalized}`;
+  return pathToFileURL(filePath).href;
 }
 
 /**

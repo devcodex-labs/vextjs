@@ -1,6 +1,7 @@
 import type { FastifyRequest } from "fastify";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 
 /**
  * Fastify Request → VextRequest 转换
@@ -62,8 +63,11 @@ export function createVextRequest(
   //
   let _rawBodyCache: string | undefined;
 
-  function getRawBody(): Promise<string> {
-    if (_rawBodyCache !== undefined) return Promise.resolve(_rawBodyCache);
+  function getRawBody(maxBytes?: number): Promise<string> {
+    if (_rawBodyCache !== undefined) {
+      assertBodySize(Buffer.byteLength(_rawBodyCache, "utf-8"), maxBytes);
+      return Promise.resolve(_rawBodyCache);
+    }
 
     // Fastify content-type parser 已将 body 解析为 Buffer
     // 对于 GET/HEAD 等无 body 方法，request.body 为 undefined
@@ -75,12 +79,14 @@ export function createVextRequest(
     }
 
     if (Buffer.isBuffer(body)) {
+      assertBodySize(body.byteLength, maxBytes);
       _rawBodyCache = body.toString("utf-8");
       return Promise.resolve(_rawBodyCache);
     }
 
     // 兜底：如果 body 已经是 string（理论上不会发生，但防御性编码）
     if (typeof body === "string") {
+      assertBodySize(Buffer.byteLength(body, "utf-8"), maxBytes);
       _rawBodyCache = body;
       return Promise.resolve(_rawBodyCache);
     }
@@ -90,10 +96,13 @@ export function createVextRequest(
     return Promise.resolve(_rawBodyCache);
   }
 
-  function getRawBodyBuffer(): Promise<Buffer> {
+  function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
     const body = request.body;
     if (body === undefined || body === null) return Promise.resolve(Buffer.alloc(0));
-    if (Buffer.isBuffer(body)) return Promise.resolve(body);
+    if (Buffer.isBuffer(body)) {
+      assertBodySize(body.byteLength, maxBytes);
+      return Promise.resolve(body);
+    }
     return Promise.resolve(Buffer.alloc(0));
   }
 

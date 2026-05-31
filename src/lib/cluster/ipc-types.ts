@@ -169,6 +169,8 @@ export interface WorkerMetrics {
   totalRequests: number;
   /** 平均响应时间（毫秒） */
   avgResponseTime: number;
+  /** true 表示当前 worker 无请求指标提供者，数值为兼容性占位。 */
+  metricsUnavailable?: boolean;
 }
 
 /**

@@ -476,7 +476,7 @@ export default {
 ```
 
 :::tip Fastify 联动
-配置 `multipart.maxFileSize` 后，Fastify adapter 会自动将 `bodyLimit` 设置为 `max(maxFileSize, 1MB)`，无需单独配置 adapter 的 `bodyLimit`。
+`multipart.maxFileSize` 只限制单个文件大小；总请求体读取上限由 `bodyParser.maxBodySize` 控制。使用 Fastify 时，如额外传入 `fastifyAdapter({ bodyLimit })`，实际读取边界会取 adapter `bodyLimit` 与 body-parser 总体上限中的较小值。
 :::
 
 ---

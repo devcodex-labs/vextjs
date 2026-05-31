@@ -5,11 +5,11 @@
  * 启动成功后通过 IPC 向父进程发送 { type: "ready", port } 消息。
  *
  * 环境变量：
- *   BENCH_ADAPTER  — adapter 名称（hono / fastify / express / koa）
+ *   BENCH_ADAPTER  — adapter 名称（native / hono / fastify / express / koa）
  *   PORT           — 监听端口
  *
  * 用法（由 run-benchmark.mjs 通过 fork 调用）：
- *   BENCH_ADAPTER=hono PORT=19200 node test/benchmark/servers/vext-start.mjs
+ *   BENCH_ADAPTER=native PORT=19200 node test/benchmark/servers/vext-start.mjs
  */
 
 import { join, dirname } from "node:path";
@@ -22,7 +22,7 @@ const __dirname = dirname(__filename);
 // vext 项目根目录（test/benchmark/servers/ → 上三层到 vext/）
 const vextRoot = join(__dirname, "..", "..", "..");
 
-const adapter = process.env.BENCH_ADAPTER || "hono";
+const adapter = process.env.BENCH_ADAPTER || "native";
 const port = parseInt(process.env.PORT || "3000", 10);
 
 // vext-app 项目根目录

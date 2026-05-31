@@ -572,7 +572,7 @@ export default defineRoutes((app) => {
 | `size` | `number` | 文件大小（字节） |
 
 :::tip Fastify 用户
-Fastify adapter 会自动将 `bodyLimit` 与 `multipart.maxFileSize` 联动（取较大值），确保大文件不被 Fastify 层提前以 413 拒绝。
+`multipart.maxFileSize` 只限制单个文件大小；总请求体读取上限由 `bodyParser.maxBodySize` 控制。使用 Fastify 时，如额外配置 adapter `bodyLimit`，实际读取边界会取 adapter `bodyLimit` 与 body-parser 总体上限中的较小值。
 :::
 
 ### 自定义解析（高级）
@@ -643,7 +643,7 @@ export default definePlugin({
 ```
 
 :::tip 文件大小限制
-通过 `app.config.multipart.maxFileSize`（字节）控制最大文件大小。Fastify adapter 会自动将此值与 `bodyLimit` 联动，确保底层框架也接受足够大的请求体。
+通过 `app.config.multipart.maxFileSize`（字节）控制单个文件大小；通过 `app.config.bodyParser.maxBodySize` 控制总请求体大小。二者语义独立，Fastify adapter 不会用 `maxFileSize` 扩大总请求体读取上限。
 :::
 
 ## 插件 vs 中间件 vs 服务

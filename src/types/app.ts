@@ -772,6 +772,11 @@ export interface VextClusterConfig {
   /** 重启间隔上限（毫秒）@default 30000 */
   restartMaxDelay: number;
 
+  /** Worker 内存阈值（字节），超过后由 worker 触发诊断/退出。 */
+  memoryThreshold?: number;
+
+
+
   /** 健康检查配置 */
   healthCheck: {
     /** 是否启用健康检查 @default true */
@@ -1403,6 +1408,9 @@ export interface RouteOptions {
    *
    * 第一期类型定稳但暂不实现。
    */
+  /** 路由级 body 解析配置；优先级高于全局 bodyParser。 */
+  bodyParser?: VextBodyParserConfig;
+
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
     timeout?: number;

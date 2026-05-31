@@ -2,7 +2,7 @@
  * vext 基准测试项目配置
  *
  * adapter 通过 BENCH_ADAPTER 环境变量动态切换，
- * 支持 hono / fastify / express / koa 四种 adapter。
+ * 支持 native / hono / fastify / express / koa 五种 adapter。
  *
  * 端口通过 PORT 环境变量指定。
  *
@@ -12,7 +12,7 @@
  *   - 日志设为 silent 避免 I/O 干扰性能测量
  */
 
-const adapter = process.env.BENCH_ADAPTER || "hono";
+const adapter = process.env.BENCH_ADAPTER || "native";
 const port = parseInt(process.env.PORT || "3000", 10);
 
 export default {

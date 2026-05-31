@@ -18,6 +18,8 @@ import type {
 } from "../../types/middleware.js";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
+import { createPayloadTooLargeError, isPayloadTooLargeError, resolveAdapterBodyLimitBytes, resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 
 /**
  * Express Adapter 选项
@@ -85,7 +87,7 @@ async function executeChain(
  * @param req Express Request（Node.js IncomingMessage）
  * @returns 原始请求体 Buffer
  */
-function collectRawBody(req: ExpressRequest): Promise<Buffer> {
+function collectRawBody(req: ExpressRequest, maxBytes?: number): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const method = (req.method ?? "GET").toUpperCase();
     // GET 和 HEAD 请求不应有 body
@@ -95,13 +97,27 @@ function collectRawBody(req: ExpressRequest): Promise<Buffer> {
     }
 
     const chunks: Buffer[] = [];
+    let total = 0;
+    let settled = false;
     req.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
+      if (settled) return;
+      const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += bufferChunk.byteLength;
+      if (maxBytes !== undefined && total > maxBytes) {
+        settled = true;
+        reject(createPayloadTooLargeError(maxBytes));
+        return;
+      }
+      chunks.push(bufferChunk);
     });
     req.on("end", () => {
+      if (settled) return;
+      settled = true;
       resolve(Buffer.concat(chunks));
     });
     req.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       reject(err);
     });
   });
@@ -218,8 +234,30 @@ export function createExpressAdapter(
           return;
         }
 
-        const rawBody = await collectRawBody(expressReq);
+        const routeBodyParser = undefined;
+        const maxBodyBytes = resolveAdapterBodyLimitBytes({
+          globalBodyParser: app.config.bodyParser,
+          routeBodyParser,
+          multipart: app.config.multipart,
+          adapterBodyLimit: options.bodyLimit,
+        });
+        let rawBody: Buffer;
+        try {
+          rawBody = await collectRawBody(expressReq, maxBodyBytes);
+        } catch (error) {
+          if (isPayloadTooLargeError(error)) {
+            expressRes.status(413).json({
+              error: "Payload Too Large",
+              message: `Request body exceeds maximum size of ${maxBodyBytes} bytes`,
+            });
+            return;
+          }
+          throw error;
+        }
         const req = createVextRequest(expressReq, app, rawBody);
+        if (routeBodyParser) {
+          (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+        }
 
         // notFound 不经过中间件链，requestId 中间件不会执行。
         // 内联生成 requestId，确保 404 响应也有有效的 requestId
@@ -338,7 +376,7 @@ export function createExpressAdapter(
     //   - errorHandler 自身也可能抛出异常（如 logger 写入失败），
     //     此时发送最低限度的 500 JSON 响应
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
       // 🆕 性能优化：延迟预组装中间件链
       // 注册路由时 globalMiddlewares 尚未完成收集（bootstrap 步骤⑥在步骤⑤之后），
       // 因此在首次请求时组装并缓存，后续请求直接复用。
@@ -366,8 +404,30 @@ export function createExpressAdapter(
         ) => {
           try {
             // 手动收集原始请求体（避免与 Express body-parser 冲突）
-            const rawBody = await collectRawBody(expressReq);
+            const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
+            const maxBodyBytes = resolveAdapterBodyLimitBytes({
+              globalBodyParser: app.config.bodyParser,
+              routeBodyParser,
+              multipart: app.config.multipart,
+              adapterBodyLimit: options.bodyLimit,
+            });
+            let rawBody: Buffer;
+            try {
+              rawBody = await collectRawBody(expressReq, maxBodyBytes);
+            } catch (error) {
+              if (isPayloadTooLargeError(error)) {
+                expressRes.status(413).json({
+                  error: "Payload Too Large",
+                  message: `Request body exceeds maximum size of ${maxBodyBytes} bytes`,
+                });
+                return;
+              }
+              throw error;
+            }
             const req = createVextRequest(expressReq, app, rawBody);
+            if (routeBodyParser) {
+              (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+            }
             // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
             // expressPath 是 registerRoute 的参数，在此 closure 中直接可访问
             req.route = expressPath;

@@ -13,6 +13,8 @@ import type {
 } from "../../types/middleware.js";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
+import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 
 /**
  * Native Adapter 选项
@@ -67,6 +69,7 @@ interface RouteStore {
    * 因此通过 store 传递（D2 架构决策）。
    */
   routePath: string;
+  routeOptions: RouteOptions;
 }
 
 /**
@@ -260,6 +263,10 @@ export function createNativeAdapter(
     // ── 构造 VextRequest / VextResponse ──────────────────
     // P2 优化：传递预解析的 URL 信息，createVextRequest 不再重复 indexOf('?')
     const req = createVextRequest(nodeReq, app, routeParams, parsedUrl);
+    const routeBodyParser = resolveRouteBodyParserConfig(store.routeOptions);
+    if (routeBodyParser) {
+      (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+    }
     // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
     req.route = store.routePath;
     const res = createVextResponse(nodeRes, () => req.requestId);
@@ -446,7 +453,7 @@ export function createNativeAdapter(
     //   通过 router.on(method, path, { store: ... }) 将自定义数据关联到路由。
     //   router.find() 匹配后返回 store，避免闭包捕获开销。
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
       // find-my-way 使用大写方法名（GET / POST / PUT / PATCH / DELETE / HEAD / OPTIONS）
       const fmwMethod = method.toUpperCase() as Router.HTTPMethod;
 
@@ -461,6 +468,7 @@ export function createNativeAdapter(
         routeChain: chain,
         parsedUrl: null, // handleRequest 在 lookup 前设置
         routePath: fmwPath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
+        routeOptions,
       };
 
       // P3 优化：注册 onRouteMatch 为 handler，lookup() 直接调用它
