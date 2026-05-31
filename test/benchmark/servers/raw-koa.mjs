@@ -10,47 +10,17 @@
  *   PORT=3000 node test/benchmark/servers/raw-koa.mjs
  *
  * 说明：
- *   Koa 原生不包含路由功能，这里使用手写轻量路由匹配，
- *   与 vext 的 Koa Adapter 内置路由匹配器保持一致的对比条件。
+ *   Koa 原生不包含路由功能，这里使用 Koa 生态路由器 @koa/router，
+ *   与 vext 的 Koa Adapter 保持一致的宿主路由口径。
  */
 
 import Koa from "koa";
+import Router from "@koa/router";
 import { createServer } from "node:http";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const app = new Koa();
-
-// ── 简易路由匹配器 ──────────────────────────────────────────
-// 支持静态路径 + :param 参数 + 方法匹配
-
-const routes = [];
-
-function addRoute(method, pattern, handler) {
-  const keys = [];
-  const regexStr = pattern
-    .replace(/:([a-zA-Z_]\w*)/g, (_match, key) => {
-      keys.push(key);
-      return "([^/]+)";
-    })
-    .replace(/\//g, "\\/");
-  const regex = new RegExp(`^${regexStr}$`);
-  routes.push({ method: method.toUpperCase(), regex, keys, handler });
-}
-
-function matchRoute(method, path) {
-  for (const route of routes) {
-    if (route.method !== method.toUpperCase()) continue;
-    const match = path.match(route.regex);
-    if (match) {
-      const params = {};
-      route.keys.forEach((key, i) => {
-        params[key] = match[i + 1];
-      });
-      return { handler: route.handler, params };
-    }
-  }
-  return null;
-}
+const router = new Router();
 
 // ── 场景 3: 3 层中间件链（仅对 /chain 路径生效） ────────────
 // 模拟 vext 洋葱模型：每层中间件在请求前后各做一次操作
@@ -92,21 +62,22 @@ app.use(async (ctx, next) => {
 // ── 路由定义 ─────────────────────────────────────────────────
 
 // 场景 1: 纯 JSON 响应
-addRoute("GET", "/json", (ctx) => {
+router.get("/json", (ctx) => {
   ctx.status = 200;
   ctx.type = "application/json";
   ctx.body = JSON.stringify({ message: "Hello World" });
 });
 
 // 场景 2: 路由参数解析
-addRoute("GET", "/users/:id", (ctx, params) => {
+router.get("/users/:id", (ctx) => {
+  const { id } = ctx.params;
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.body = JSON.stringify({ id: params.id, name: `User ${params.id}` });
+  ctx.body = JSON.stringify({ id, name: `User ${id}` });
 });
 
 // 场景 3: chain 路由处理器
-addRoute("GET", "/chain", (ctx) => {
+router.get("/chain", (ctx) => {
   ctx.status = 200;
   ctx.type = "application/json";
   ctx.body = JSON.stringify({
@@ -117,22 +88,19 @@ addRoute("GET", "/chain", (ctx) => {
 });
 
 // 健康检查
-addRoute("GET", "/health", (ctx) => {
+router.get("/health", (ctx) => {
   ctx.status = 200;
   ctx.type = "application/json";
   ctx.body = JSON.stringify({ status: "ok" });
 });
 
 // ── 路由分发中间件 ───────────────────────────────────────────
+app.use(router.routes());
+// 不挂载 allowedMethods()，保持 wrong-method => 404 的 benchmark 口径。
 app.use(async (ctx) => {
-  const matched = matchRoute(ctx.method, ctx.path);
-  if (matched) {
-    matched.handler(ctx, matched.params);
-  } else {
-    ctx.status = 404;
-    ctx.type = "application/json";
-    ctx.body = JSON.stringify({ code: 404, message: "Not Found" });
-  }
+  ctx.status = 404;
+  ctx.type = "application/json";
+  ctx.body = JSON.stringify({ code: 404, message: "Not Found" });
 });
 
 // ── 启动服务器 ───────────────────────────────────────────────

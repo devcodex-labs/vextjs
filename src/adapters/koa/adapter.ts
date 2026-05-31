@@ -1,4 +1,5 @@
 import Koa from "koa";
+import Router from "@koa/router";
 import type { Context as KoaContext } from "koa";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -36,130 +37,20 @@ export interface KoaAdapterOptions {
   bodyLimit?: string;
 }
 
-// ── 简易路由匹配器 ──────────────────────────────────────────
+// ── Koa 路由器说明 ──────────────────────────────────────────
 //
-// Koa 原生不包含路由功能（与 Express / Fastify 不同），
-// 需要自行实现或引入 koa-router。
-//
-// 为避免引入额外依赖，adapter 内置一个轻量级路由匹配器。
-// 支持：
-//   - 静态路径：/users, /api/v1/health
-//   - 参数路径：/users/:id, /posts/:postId/comments/:commentId
-//   - 通配符：/files/*path（捕获剩余路径段）
-//
-// 不支持（暂不需要）：
-//   - 正则路由
-//   - 可选参数（:id?）
-//   - 嵌套路由器
-//
+// Koa core 不内置路由功能。vext Koa adapter 使用 Koa 生态路由器
+// @koa/router 承载 method/path 匹配，adapter 仍负责 VextRequest /
+// VextResponse 桥接、body parser、route options 与中间件链执行。
 
 /**
  * 路由条目
  */
 interface RouteEntry {
-  method: string;
   pattern: string;
-  segments: RouteSegment[];
   chain: VextMiddleware[];
   fullChain: VextMiddleware[] | null;
   routeOptions: RouteOptions;
-}
-
-/**
- * 路由段类型
- */
-type RouteSegment =
-  | { type: "static"; value: string }
-  | { type: "param"; name: string }
-  | { type: "wildcard"; name: string };
-
-/**
- * 路由匹配结果
- */
-interface RouteMatch {
-  entry: RouteEntry;
-  params: Record<string, string>;
-}
-
-/**
- * 解析路由模式为段数组
- *
- * @example
- * parsePattern('/users/:id/posts')
- * → [
- *     { type: 'static', value: 'users' },
- *     { type: 'param', name: 'id' },
- *     { type: 'static', value: 'posts' },
- *   ]
- *
- * @example
- * parsePattern('/files/*path')
- * → [
- *     { type: 'static', value: 'files' },
- *     { type: 'wildcard', name: 'path' },
- *   ]
- */
-function parsePattern(pattern: string): RouteSegment[] {
-  // 去除首尾斜杠，按 / 分割
-  const raw = pattern.replace(/^\/+|\/+$/g, "");
-  if (raw === "") return [];
-
-  const parts = raw.split("/");
-  const segments: RouteSegment[] = [];
-
-  for (const part of parts) {
-    if (part.startsWith(":")) {
-      segments.push({ type: "param", name: part.slice(1) });
-    } else if (part.startsWith("*")) {
-      // 通配符：*name 或 * → 捕获剩余路径
-      const name = part.slice(1) || "wild";
-      segments.push({ type: "wildcard", name });
-    } else {
-      segments.push({ type: "static", value: part });
-    }
-  }
-
-  return segments;
-}
-
-/**
- * 尝试将请求路径与路由段数组匹配
- *
- * @param segments     路由段数组
- * @param pathSegments 请求路径按 / 分割的部分
- * @returns 匹配成功返回参数对象，失败返回 null
- */
-function matchSegments(
-  segments: RouteSegment[],
-  pathSegments: string[],
-): Record<string, string> | null {
-  const params: Record<string, string> = {};
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]!;
-
-    if (seg.type === "wildcard") {
-      // 通配符：捕获当前位置到末尾的所有段
-      params[seg.name] = pathSegments.slice(i).join("/");
-      return params;
-    }
-
-    // 非通配符段要求路径段存在
-    if (i >= pathSegments.length) return null;
-
-    const pathPart = pathSegments[i]!;
-
-    if (seg.type === "static") {
-      if (pathPart !== seg.value) return null;
-    } else if (seg.type === "param") {
-      params[seg.name] = pathPart;
-    }
-  }
-
-  // 段数组已耗尽，路径段也必须耗尽（除非有 trailing segments）
-  if (pathSegments.length !== segments.length) return null;
-
-  return params;
 }
 
 /**
@@ -275,6 +166,25 @@ function collectRawBody(ctx: KoaContext, maxBytes?: number): Promise<Buffer> {
 }
 
 /**
+ * 将 vext 路径语法中用于捕获剩余路径的 `*name` 转为 @koa/router
+ * 使用的 path-to-regexp 语法。
+ */
+function toKoaRoutePath(path: string): string {
+  if (path === "*") {
+    return "/:wild(.*)";
+  }
+
+  return path
+    .replace(/\/\*([A-Za-z_]\w*)/g, "/:$1(.*)")
+    .replace(/\/\*(?=\/|$)/g, "/:wild(.*)");
+}
+
+function getKoaParams(ctx: KoaContext): Record<string, string> {
+  return ((ctx as KoaContext & { params?: Record<string, string> }).params ??
+    {}) as Record<string, string>;
+}
+
+/**
  * createKoaAdapter — 创建基于 Koa 的 VextAdapter 实例
  *
  * 将 Koa 作为底层 HTTP 框架，实现 VextAdapter 接口。
@@ -282,7 +192,7 @@ function collectRawBody(ctx: KoaContext, maxBytes?: number): Promise<Buffer> {
  * 用于验证 Adapter 抽象层的完备性和通用性。
  *
  * 架构说明：
- *   - Koa 不内置路由功能，adapter 使用内置的轻量级路由匹配器
+ *   - Koa 不内置路由功能，adapter 使用 @koa/router 承载宿主生态路由
  *   - 不使用 Koa 自带的中间件机制（ctx.body / ctx.status 赋值模式）
  *   - 中间件链执行由 vext 自己的 executeChain 实现（洋葱模型）
  *   - 请求 / 响应对象在 Koa middleware 内转换为 VextRequest / VextResponse
@@ -292,7 +202,7 @@ function collectRawBody(ctx: KoaContext, maxBytes?: number): Promise<Buffer> {
  *
  * 与其他 Adapter 的核心差异：
  *   - Koa 不内置路由（Express 有 app.get/post/...，Fastify 有 fastify.get/post/...），
- *     需要自行实现路由匹配逻辑
+ *     通过 @koa/router 提供 Koa 生态路由能力
  *   - Koa 的响应模型是赋值式（ctx.body = ..., ctx.status = ...），
  *     而非 Express/Fastify 的命令式（res.send/reply.send）。
  *     为保持跨 Adapter 一致性，vext 使用 ctx.res（Node.js 原生 ServerResponse）
@@ -329,6 +239,7 @@ export function createKoaAdapter(
   //   - 不注册任何 Koa body-parser 中间件
   //
   const koaApp = new Koa();
+  const router = new Router();
 
   // 禁用 Koa 的 proxy 模式（vext 有独立的 trustProxy 逻辑）
   koaApp.proxy = false;
@@ -347,67 +258,22 @@ export function createKoaAdapter(
   /** 404 处理函数（通过 registerNotFound 注册） */
   let notFoundHandler: VextMiddleware | null = null;
 
-  /** 路由表（通过 registerRoute 注册） */
-  const routes: RouteEntry[] = [];
-
   /** 是否已挂载 Koa 主中间件（只挂载一次） */
   let _middlewareRegistered = false;
 
-  /**
-   * 将路由匹配 + 中间件链执行 + 404 + 错误处理注册为 Koa 中间件
-   *
-   * Koa 的中间件模型是单一入口：所有请求都经过 app.use() 注册的中间件链。
-   * 路由匹配不是 Koa 内置功能，需要在中间件中手动实现。
-   *
-   * 此方法在 listen() / buildHandler() 时调用，确保所有路由已注册完毕后
-   * 再挂载主中间件。
-   */
-  function registerKoaMiddleware(): void {
-    if (_middlewareRegistered) return;
-    _middlewareRegistered = true;
-
-    // 注册 Koa 主中间件：路由匹配 + 执行 + 404 + 错误处理
-    koaApp.use(async (ctx: KoaContext) => {
-      // ── 路由匹配 ─────────────────────────────────────────
-      const method = ctx.method.toUpperCase();
-      const urlPath = ctx.url.split("?")[0] ?? "/";
-      const pathSegments = urlPath
-        .replace(/^\/+|\/+$/g, "")
-        .split("/")
-        .filter(Boolean);
-
-      // 空路径 "/" → pathSegments 为空数组
-      // 需要特殊处理：只有 segments 长度为 0 的路由才匹配
-
-      let matched: RouteMatch | null = null;
-
-      for (const entry of routes) {
-        // 方法匹配（HEAD 请求也匹配 GET 路由——HTTP 规范）
-        if (
-          entry.method !== method &&
-          !(method === "HEAD" && entry.method === "GET")
-        ) {
-          continue;
-        }
-
-        const params = matchSegments(entry.segments, pathSegments);
-        if (params !== null) {
-          matched = { entry, params };
-          break;
-        }
-      }
-
-      if (matched) {
-        // ── 匹配成功：执行中间件链 ─────────────────────────
-        try {
-          // 收集原始请求体
-          const routeBodyParser = resolveRouteBodyParserConfig(matched.entry.routeOptions);
+  async function handleMatchedRoute(
+    ctx: KoaContext,
+    entry: RouteEntry,
+  ): Promise<void> {
+    try {
+      const routeBodyParser = resolveRouteBodyParserConfig(entry.routeOptions);
       const maxBodyBytes = resolveAdapterBodyLimitBytes({
         globalBodyParser: vextApp.config.bodyParser,
         routeBodyParser,
         multipart: vextApp.config.multipart,
         adapterBodyLimit: options.bodyLimit,
       });
+
       let rawBody: Buffer;
       try {
         rawBody = await collectRawBody(ctx, maxBodyBytes);
@@ -422,123 +288,58 @@ export function createKoaAdapter(
         }
         throw error;
       }
-      const req = createVextRequest(ctx, vextApp, matched.params, rawBody);
+
+      const req = createVextRequest(ctx, vextApp, getKoaParams(ctx), rawBody);
       if (routeBodyParser) {
-        (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+        (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser =
+          routeBodyParser;
       }
-          // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
-          // matched.entry.pattern 在 registerRoute 时写入 RouteEntry，直接读取即可
-          req.route = matched.entry.pattern;
-          const res = createVextResponse(ctx, () => req.requestId);
+      req.route = entry.pattern;
+      const res = createVextResponse(ctx, () => req.requestId);
 
-          // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
-          //
-          // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
-          // 直接执行中间件链，预估 +3-8% RPS。
-          //
-          const runChain = async () => {
-            try {
-              // 全局中间件 + 路由级链
-              // 🆕 预组装中间件链（首次请求时组装，后续复用）
-              let fullChain = matched!.entry.fullChain;
-              if (!fullChain) {
-                fullChain = globalMiddlewares.concat(matched!.entry.chain);
-                matched!.entry.fullChain = fullChain;
-              }
-              await executeChain(fullChain, req, res);
-            } catch (err) {
-              if (errorHandler) {
-                try {
-                  errorHandler(err, req, res);
-                } catch (handlerError) {
-                  try {
-                    res.rawJson(
-                      { code: 500, message: "Internal Server Error" },
-                      500,
-                    );
-                  } catch {
-                    // 完全放弃，Koa 的 onerror 兜底
-                    throw handlerError;
-                  }
-                }
-              } else {
-                throw err;
-              }
-            }
-          };
-
-          if (alsEnabled) {
-            await requestContext.run(
-              { requestId: "", locale: undefined },
-              runChain,
-            );
-          } else {
-            await runChain();
+      const runChain = async () => {
+        try {
+          let fullChain = entry.fullChain;
+          if (!fullChain) {
+            fullChain = globalMiddlewares.concat(entry.chain);
+            entry.fullChain = fullChain;
           }
-
-          // 标记 Koa 的 respond 为 false，阻止 Koa 再次写入响应
-          // 因为 VextResponse 已通过 ctx.res（Node.js 原生 ServerResponse）
-          // 直接发送了响应，Koa 不应再干预
-          ctx.respond = false;
+          await executeChain(fullChain, req, res);
         } catch (err) {
-          // 初始化错误（如 rawBody 收集失败）
-          // 尝试通过 errorHandler 处理
           if (errorHandler) {
             try {
-              const req = createVextRequest(ctx, vextApp, {});
-
-              if (!req.requestId) {
-                const headerName =
-                  vextApp.config.requestId?.header ?? "x-request-id";
-                req.requestId =
-                  (req.headers[headerName] as string) || crypto.randomUUID();
-              }
-
-              const res = createVextResponse(ctx, () => req.requestId);
               errorHandler(err, req, res);
-              ctx.respond = false;
-            } catch {
-              // 最后兜底
-              if (!ctx.res.headersSent) {
-                ctx.res.statusCode = 500;
-                ctx.res.setHeader(
-                  "Content-Type",
-                  "application/json; charset=utf-8",
+            } catch (handlerError) {
+              try {
+                res.rawJson(
+                  { code: 500, message: "Internal Server Error" },
+                  500,
                 );
-                ctx.res.end(
-                  JSON.stringify({
-                    code: 500,
-                    message: "Internal Server Error",
-                  }),
-                );
+              } catch {
+                throw handlerError;
               }
-              ctx.respond = false;
             }
           } else {
-            if (!ctx.res.headersSent) {
-              ctx.res.statusCode = 500;
-              ctx.res.setHeader(
-                "Content-Type",
-                "application/json; charset=utf-8",
-              );
-              ctx.res.end(
-                JSON.stringify({
-                  code: 500,
-                  message: "Internal Server Error",
-                }),
-              );
-            }
-            ctx.respond = false;
+            throw err;
           }
         }
-      } else {
-        // ── 未匹配：执行 404 handler ───────────────────────
-        if (notFoundHandler) {
-          const rawBody = await collectRawBody(ctx);
-          const req = createVextRequest(ctx, vextApp, {}, rawBody);
+      };
 
-          // notFound 不经过中间件链，requestId 中间件不会执行。
-          // 内联生成 requestId，确保 404 响应也有有效的 requestId
+      if (alsEnabled) {
+        await requestContext.run(
+          { requestId: "", locale: undefined },
+          runChain,
+        );
+      } else {
+        await runChain();
+      }
+
+      ctx.respond = false;
+    } catch (err) {
+      if (errorHandler) {
+        try {
+          const req = createVextRequest(ctx, vextApp, {});
+
           if (!req.requestId) {
             const headerName =
               vextApp.config.requestId?.header ?? "x-request-id";
@@ -547,32 +348,83 @@ export function createKoaAdapter(
           }
 
           const res = createVextResponse(ctx, () => req.requestId);
-
-          // 🆕 5.7: ALS 可配置跳过
-          const runNotFound = async () => {
-            const noop = async (): Promise<void> => {};
-            await notFoundHandler!(req, res, noop);
-          };
-
-          if (alsEnabled) {
-            await requestContext.run(
-              { requestId: req.requestId, locale: undefined },
-              runNotFound,
-            );
-          } else {
-            await runNotFound();
-          }
-
+          errorHandler(err, req, res);
           ctx.respond = false;
-        } else {
-          // 默认 404 响应
-          ctx.res.statusCode = 404;
-          ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
-          ctx.res.end(JSON.stringify({ code: 404, message: "Not Found" }));
-          ctx.respond = false;
+        } catch {
+          sendDefaultError(ctx);
         }
+      } else {
+        sendDefaultError(ctx);
       }
-    });
+    }
+  }
+
+  async function handleNotFound(ctx: KoaContext): Promise<void> {
+    if (notFoundHandler) {
+      const rawBody = await collectRawBody(ctx);
+      const req = createVextRequest(ctx, vextApp, {}, rawBody);
+
+      if (!req.requestId) {
+        const headerName = vextApp.config.requestId?.header ?? "x-request-id";
+        req.requestId =
+          (req.headers[headerName] as string) || crypto.randomUUID();
+      }
+
+      const res = createVextResponse(ctx, () => req.requestId);
+
+      const runNotFound = async () => {
+        const noop = async (): Promise<void> => {};
+        await notFoundHandler!(req, res, noop);
+      };
+
+      if (alsEnabled) {
+        await requestContext.run(
+          { requestId: req.requestId, locale: undefined },
+          runNotFound,
+        );
+      } else {
+        await runNotFound();
+      }
+
+      ctx.respond = false;
+    } else {
+      ctx.res.statusCode = 404;
+      ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
+      ctx.res.end(JSON.stringify({ code: 404, message: "Not Found" }));
+      ctx.respond = false;
+    }
+  }
+
+  function sendDefaultError(ctx: KoaContext): void {
+    if (!ctx.res.headersSent) {
+      ctx.res.statusCode = 500;
+      ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
+      ctx.res.end(
+        JSON.stringify({
+          code: 500,
+          message: "Internal Server Error",
+        }),
+      );
+    }
+    ctx.respond = false;
+  }
+
+  /**
+   * 将路由匹配 + 中间件链执行 + 404 + 错误处理注册为 Koa 中间件
+   *
+   * Koa 的中间件模型是单一入口：所有请求都经过 app.use() 注册的中间件链。
+   * 路由匹配不是 Koa 内置功能，需要在中间件中手动实现。
+   *
+   * 此方法在 listen() / buildHandler() 时调用，确保所有路由已注册完毕后
+   * 再挂载主中间件。
+   */
+  function registerKoaMiddleware(): void {
+    if (_middlewareRegistered) return;
+    _middlewareRegistered = true;
+
+    // 不挂载 router.allowedMethods()，保持 vext 现有 wrong-method => 404 语义。
+    koaApp.use(router.routes());
+    koaApp.use(handleNotFound);
   }
 
   // ── 注册 Koa 全局错误处理 ────────────────────────────────
@@ -604,26 +456,37 @@ export function createKoaAdapter(
 
     // ── registerRoute ───────────────────────────────────────
     //
-    // 为每条路由注册到内部路由表。
-    //
-    // 与 Express / Fastify 不同，Koa 没有内置路由 API。
-    // adapter 将路由信息存储到内部 routes 数组，
-    // 在 Koa 主中间件中进行匹配。
-    //
-    // 路由路径参数格式：vext 使用 :param，内置路由匹配器也使用 :param，无需转换。
+    // 为每条路由注册到 @koa/router。
     //
     registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
       const upperMethod = method.toUpperCase();
-      const segments = parsePattern(path);
-
-      routes.push({
-        method: upperMethod,
+      const entry: RouteEntry = {
         pattern: path,
-        segments,
         chain,
         fullChain: null,
-      routeOptions,
-    });
+        routeOptions,
+      };
+      const routePath = toKoaRoutePath(path);
+      const routeHandler = async (ctx: KoaContext) => {
+        await handleMatchedRoute(ctx, entry);
+      };
+
+      if (upperMethod === "ANY" || upperMethod === "ALL") {
+        router.all(routePath, routeHandler);
+        return;
+      }
+
+      const methodName = upperMethod.toLowerCase();
+      const register = (router as unknown as Record<string, unknown>)[
+        methodName
+      ];
+
+      if (typeof register === "function") {
+        register.call(router, routePath, routeHandler);
+        return;
+      }
+
+      router.register(routePath, [upperMethod], routeHandler);
     },
 
     // ── registerErrorHandler ────────────────────────────────

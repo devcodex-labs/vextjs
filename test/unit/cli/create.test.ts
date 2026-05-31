@@ -768,12 +768,13 @@ describe("vext create", () => {
       // 这是可接受的行为，用户可以手动删除
     });
 
-    it("--adapter koa 添加 koa 依赖和 @types/koa", async () => {
+    it("--adapter koa 添加 koa、@koa/router 依赖和 @types/koa", async () => {
       await createCommand(["test-app", "--adapter", "koa", "--skip-install"]);
 
       const files = getWrittenFiles();
       const pkg = JSON.parse(files["package.json"]);
 
+      expect(pkg.dependencies["@koa/router"]).toBeDefined();
       expect(pkg.dependencies.koa).toBeDefined();
       expect(pkg.devDependencies["@types/koa"]).toBeDefined();
       expect(files["src/config/default.ts"]).toContain("adapter: 'koa'");
@@ -1143,6 +1144,7 @@ describe("vext create", () => {
 
       // Koa adapter
       expect(pkg.dependencies.koa).toBeDefined();
+      expect(pkg.dependencies["@koa/router"]).toBeDefined();
       expect(pkg.devDependencies["@types/koa"]).toBeDefined();
       expect(files["src/config/default.ts"]).toContain("adapter: 'koa'");
     });

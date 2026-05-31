@@ -14,6 +14,7 @@ const BUILT_IN_ADAPTER_NAMES = ["native", "hono", "fastify", "express", "koa"];
  *
  * native adapter 是默认 adapter，零外部 HTTP 框架依赖（仅需 find-my-way + Node.js 内置 http）。
  * 其他 adapter（hono / fastify / express / koa）需要用户额外安装对应框架包。
+ * koa adapter 内部使用 @koa/router 作为 Koa 生态路由器。
  *
  * @param name 内置 adapter 名称
  * @param app  应用实例（传给 adapter 工厂函数）
@@ -75,8 +76,8 @@ async function loadBuiltInAdapter(
         return createKoaAdapter({}, app);
       } catch {
         throw new Error(
-          `[vextjs] Adapter "koa" requires the "koa" package.\n` +
-            `         Install it with: npm install koa`,
+          `[vextjs] Adapter "koa" requires "koa" and "@koa/router" packages.\n` +
+            `         Install them with: npm install koa @koa/router`,
         );
       }
     }

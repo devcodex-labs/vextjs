@@ -75,6 +75,7 @@ const ADAPTER_DEPS: Record<string, Record<string, string>> = {
     express: "^5.0.0",
   },
   koa: {
+    "@koa/router": "^13.1.1",
     koa: "^3.0.0",
   },
   native: {},
