@@ -8,7 +8,6 @@
 
 vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路由、服务自动注入、参数校验、OpenAPI 文档自动生成等企业级特性，让你专注于业务逻辑。
 
-
 ---
 
 ## ✨ 特性
@@ -50,7 +49,7 @@ vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 npm install vextjs
 ```
 
-> 默认使用 **Native Adapter**（基于 Node.js `http.createServer` + [`find-my-way`](https://github.com/delvedor/find-my-way) radix trie），零外部 HTTP 框架依赖，性能最优。
+> 默认使用 **Native Adapter**（基于 Node.js `http.createServer` + [`route-core`](https://github.com/vextjs/route-core) 轻量路由核心），零外部 HTTP 框架依赖，性能最优。
 
 如需使用其他 adapter，请额外安装对应框架包：
 
@@ -105,7 +104,7 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 
 > **测试环境**: Node.js v24.14.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i7-9700, 32GB RAM，2026-03-23）
 >
-> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie 路由，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **26.1%**（JSON）/ **39.5%**（中间件链），比 Vext-Hono 快 **135%**，比 Vext-Express 快 **18.9%**（Express v5 + Node.js v24 性能大幅提升）。所有数据经 5 轮中位数验证，绝大多数 CV（变异系数）< 3.5%。
+> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 路由核心，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **26.1%**（JSON）/ **39.5%**（中间件链），比 Vext-Hono 快 **135%**，比 Vext-Express 快 **18.9%**（Express v5 + Node.js v24 性能大幅提升）。所有数据经 5 轮中位数验证，绝大多数 CV（变异系数）< 3.5%。
 
 ### Adapter 选择指南
 
@@ -145,7 +144,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.3.8"
+    "vextjs": "^0.3.9"
   }
 }
 ```
@@ -276,21 +275,21 @@ preload/
 
 `vextjs-opentelemetry` 在 VextJS 里有两个正式入口，但职责不同：
 
-| 入口 | 生效阶段 | 适合放什么 | 不适合放什么 |
-| ---- | -------- | ---------- | ------------ |
-| `package.json` → `vext.otel` | **preload / 进程启动前** | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 这类“SDK 一开始就要知道”的默认导出配置 | `ignorePaths`、`capture`、日志桥接、请求级逻辑 |
+| 入口                                            | 生效阶段                   | 适合放什么                                                                                          | 不适合放什么                                     |
+| ----------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `package.json` → `vext.otel`                    | **preload / 进程启动前**   | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 这类“SDK 一开始就要知道”的默认导出配置 | `ignorePaths`、`capture`、日志桥接、请求级逻辑   |
 | `src/plugins/otel.js` → `opentelemetryPlugin()` | **plugin setup + request** | `tracing`、`metrics`、`lifecycle`、`logs.bridgeAppLogger`，以及 setup 阶段对 exporter 的补充 / 覆盖 | 指望它回写 preload 阶段已经启动好的 SDK Resource |
 
 > ✅ 推荐做法：把“导出到哪里、用什么协议、服务名是什么”优先收敛到 `package.json vext.otel`；把“请求要采什么、日志怎么桥接、哪些路径忽略”放进 `opentelemetryPlugin()`。
 
 ### `endpoint` / `protocol` 对照
 
-| 目标 | 推荐配置 | `protocol` | 结果 |
-| ---- | -------- | ---------- | ---- |
-| 完全不上报 | 不写 `endpoint`，或显式写 `"none"` | — | SDK 可保持安全 noop / 不导出任何数据 |
-| 本地文件调试 | `"./otel-data"` | — | 按 `pid` 写入 `traces.*.jsonl` / `metrics.*.jsonl` / `logs.*.jsonl` |
-| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报 |
-| OTLP gRPC Collector | `"otel-collector.internal:4317"` | `"grpc"` | 通过 gRPC h2c 上报 |
+| 目标                | 推荐配置                                | `protocol`       | 结果                                                                |
+| ------------------- | --------------------------------------- | ---------------- | ------------------------------------------------------------------- |
+| 完全不上报          | 不写 `endpoint`，或显式写 `"none"`      | —                | SDK 可保持安全 noop / 不导出任何数据                                |
+| 本地文件调试        | `"./otel-data"`                         | —                | 按 `pid` 写入 `traces.*.jsonl` / `metrics.*.jsonl` / `logs.*.jsonl` |
+| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报                                                 |
+| OTLP gRPC Collector | `"otel-collector.internal:4317"`        | `"grpc"`         | 通过 gRPC h2c 上报                                                  |
 
 > 💡 如果你同时在 `package.json vext.otel` 和 `opentelemetryPlugin()` 里都写了 `endpoint / protocol / headers`，建议保持一致，避免 `/_otel/status`、启动日志和最终实际导出目标出现认知偏差。
 
@@ -1007,7 +1006,7 @@ describe("User API", () => {
 {
   "validation.required": "{field} 不能为空",
   "validation.string.min": "{field} 长度不能少于 {min} 个字符",
-  "validation.email": "{field} 格式不正确"
+  "validation.email": "{field} 格式不正确",
 }
 ```
 
@@ -1016,7 +1015,7 @@ describe("User API", () => {
 {
   "validation.required": "{field} is required",
   "validation.string.min": "{field} must be at least {min} characters",
-  "validation.email": "{field} is not a valid email"
+  "validation.email": "{field} is not a valid email",
 }
 ```
 
@@ -1079,16 +1078,16 @@ HTTP 响应 → { code: 0, data: {...} }
 
 ## 📋 环境变量
 
-| 变量                   | 说明                                                 | 默认值                                      |
-| ---------------------- | ---------------------------------------------------- | ------------------------------------------- |
+| 变量                   | 说明                                                 | 默认值                                                |
+| ---------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
 | `NODE_ENV`             | 运行时环境名；用于匹配 `src/config/{NODE_ENV}.ts`    | `production`（start 默认）/ `development`（dev 默认） |
-| `VEXT_PORT`            | 覆盖监听端口                                         | —                                           |
-| `VEXT_HOST`            | 覆盖监听地址                                         | —                                           |
-| `VEXT_PORT_CONFLICT`   | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error`                                     |
-| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`）            | `concise`                                   |
-| `VEXT_DEV_POLL`        | 强制轮询模式（`1` / `0`）                            | 自动检测                                    |
-| `VEXT_DEV_NO_HOT`      | 禁用 Soft Reload                                     | —                                           |
-| `VEXT_DEV_DEBOUNCE`    | 防抖间隔（毫秒）                                     | `0`（不开启）                               |
+| `VEXT_PORT`            | 覆盖监听端口                                         | —                                                     |
+| `VEXT_HOST`            | 覆盖监听地址                                         | —                                                     |
+| `VEXT_PORT_CONFLICT`   | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error`                                               |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`）            | `concise`                                             |
+| `VEXT_DEV_POLL`        | 强制轮询模式（`1` / `0`）                            | 自动检测                                              |
+| `VEXT_DEV_NO_HOT`      | 禁用 Soft Reload                                     | —                                                     |
+| `VEXT_DEV_DEBOUNCE`    | 防抖间隔（毫秒）                                     | `0`（不开启）                                         |
 
 > 如果项目需要在 `package.json` scripts 中跨平台设置 `NODE_ENV`，推荐使用 `cross-env`；Vext 本身不内置该工具。
 
@@ -1097,7 +1096,7 @@ HTTP 响应 → { code: 0, data: {...} }
 ## 🗺️ 路线图
 
 - [x] Adapter 架构（Native 默认 + Hono / Fastify / Express / Koa 可选）
-- [x] Native Adapter（零外部依赖，`http.createServer` + `find-my-way` radix trie）
+- [x] Native Adapter（零外部 HTTP 框架依赖，`http.createServer` + `route-core` 轻量路由核心）
 - [x] 约定式路由 + 三段式语法
 - [x] 插件系统（拓扑排序 + 生命周期）
 - [x] 服务自动注入

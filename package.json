@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
   "type": "module",
   "main": "./dist/index.js",
@@ -43,7 +43,7 @@
     }
   },
   "bin": {
-    "vext": "./dist/cli/index.js"
+    "vext": "dist/cli/index.js"
   },
   "files": [
     "dist",
@@ -70,8 +70,11 @@
     "ci:local": "bash scripts/ci-local.sh",
     "ci:local:quick": "bash scripts/ci-local.sh --quick",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:changed": "node scripts/format-check.mjs --write",
+    "format:check": "node scripts/format-check.mjs",
+    "format:check:all": "prettier --check .",
     "prepublishOnly": "npm run build",
+    "test:audit": "npm run verify:exports && npm run verify:adapters",
     "verify:exports": "node test/verify-package-exports.mjs",
     "verify:adapters": "node test/verify-adapters-startup.mjs"
   },
@@ -95,7 +98,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vextjs/vext.git"
+    "url": "git+https://github.com/vextjs/vext.git"
   },
   "bugs": {
     "url": "https://github.com/vextjs/vext/issues"
@@ -108,11 +111,11 @@
     "@koa/router": "^13.1.1",
     "esbuild": "^0.27.3",
     "fast-glob": "^3.3.3",
-    "find-my-way": "^9.5.0",
     "flex-rate-limit": "1.0.3",
     "monsqlize": "^1.3.0",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
+    "route-core": "^0.0.4",
     "schema-dsl": "^1.2.5",
     "ts-morph": "^28.0.0"
   },

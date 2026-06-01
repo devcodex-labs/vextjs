@@ -15,7 +15,7 @@
  *   --connections <number>   并发连接数（默认 50）
  *   --pipelining <number>    HTTP 流水线（默认 10）
  *   --warmup <seconds>       预热时间（默认 3）
- *   --scenario <name>        仅运行指定场景（json / params / chain / all）
+ *   --scenario <name>        仅运行指定场景（json / params / chain / middleware-chain / all）
  *   --framework <names>      仅运行指定框架，逗号分隔（hono,fastify,express,koa）
  *   --output <path>          报告输出路径（默认 stdout + test/benchmark/RESULTS.md）
  */
@@ -56,9 +56,16 @@ const SCENARIOS = [
   },
   {
     name: "chain",
-    title: "中间件链",
-    description: "GET /chain → 3 层中间件 + JSON 响应",
+    title: "处理器业务链",
+    description: "GET /chain → 3 层 handler 内联业务逻辑 + JSON 响应",
     path: "/chain",
+  },
+  {
+    name: "middleware-chain",
+    title: "真实中间件链",
+    description:
+      "GET /middleware-chain → 3 层 route-level middleware + JSON 响应",
+    path: "/middleware-chain",
   },
 ];
 
@@ -767,6 +774,12 @@ function generateReport(allResults, opts, os) {
   md += `> **平台**: ${process.platform} ${process.arch}\n`;
   md += `> **参数**: duration=${opts.duration}s, connections=${opts.connections}, pipelining=${opts.pipelining}, rounds=${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""}\n\n`;
   md += `---\n\n`;
+
+  md += `## Benchmark 口径说明\n\n`;
+  md += `- 当前 benchmark app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext，用于测量 adapter/router core 开销。\n`;
+  md += `- \`chain\` 是历史兼容场景，表示 handler 内联业务逻辑链，不代表真实 vext middleware chain。\n`;
+  md += `- \`middleware-chain\` 才表示 route-level middleware chain，会进入 adapter 的中间件链执行器。\n`;
+  md += `- 本报告不等同于默认 runtime 配置性能；如需默认配置性能，应单独增加 default-runtime benchmark。\n\n`;
 
   // ── 总结表格 ────────────────────────────────────────────
   md += `## 📊 总结\n\n`;

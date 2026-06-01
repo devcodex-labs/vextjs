@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 // ── RouteDefinition 基础设施（与 E2E helpers 保持一致） ──────
 function createCollector(routes) {
   function makeMethod(method) {
@@ -39,8 +41,6 @@ function makeRouteDefinition(routes, collector, factory) {
     register(adapter, prefix, middlewareDefs, globalMiddlewares) {
       for (const route of routes) {
         const fullPath = normalizePath(prefix, route.path);
-
-        // 组装路由级中间件链 + handler
         const routeMiddlewares = route.options._inlineMiddlewares || [];
         const handlerMiddleware = async (req, res, _next) => {
           await route.handler(req, res);
@@ -55,41 +55,44 @@ function makeRouteDefinition(routes, collector, factory) {
 }
 
 // ── 路由定义 ─────────────────────────────────────────────────
-// GET /chain → 3 层 handler 内联业务逻辑
-//
-// 历史兼容场景：将 3 层逻辑（计时 / requestId / 鉴权模拟）内联到 handler 中。
-// 它用于测量 handler 内部业务逻辑开销，不代表真实 vext middleware chain。
-//
-// 如需测量真实 route-level middleware chain，请使用 /middleware-chain。
+// GET /middleware-chain → 3 层 route-level middleware + JSON 响应
 
 const routes = [];
 const collector = createCollector(routes);
 
+const timerMiddleware = async (_req, res, next) => {
+  const startTime = Date.now();
+  res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
+  await next();
+};
+
+const requestIdMiddleware = async (_req, res, next) => {
+  res.setHeader("X-Bench-Request-Id", crypto.randomUUID());
+  await next();
+};
+
+const authMiddleware = async (req, _res, next) => {
+  req.headers.authorization;
+  await next();
+};
+
 function factory(app) {
-  collector.get("/", {}, async (req, res) => {
-    // ── 中间件 1 模拟：请求计时 ──────────────────────────
-    const startTime = Date.now();
-
-    // ── 中间件 2 模拟：请求 ID 生成 ──────────────────────
-    const benchRequestId = crypto.randomUUID();
-
-    // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────
-    const authHeader = req.headers.authorization;
-    const authenticated = true;
-
-    // ── handler 逻辑 ─────────────────────────────────────
-    const elapsed = Date.now() - startTime;
-
-    // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
-    res.setHeader("X-Response-Time", `${elapsed}ms`);
-    res.setHeader("X-Bench-Request-Id", benchRequestId);
-
-    res.json({
-      message: "Chain complete",
-      requestId: benchRequestId,
-      authenticated,
-    });
-  });
+  collector.get(
+    "/",
+    {
+      _inlineMiddlewares: [
+        timerMiddleware,
+        requestIdMiddleware,
+        authMiddleware,
+      ],
+    },
+    async (req, res) => {
+      res.json({
+        message: "Middleware chain complete",
+        authenticated: true,
+      });
+    },
+  );
 }
 
 export default makeRouteDefinition(routes, collector, factory);

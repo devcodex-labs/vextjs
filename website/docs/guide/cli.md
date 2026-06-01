@@ -24,17 +24,17 @@ npm run build  # → vext build
 
 ## 命令概览
 
-| 命令                 | 说明         | 常用场景         |
-| -------------------- | ------------ | ---------------- |
-| `vext create <name>` | 创建新项目   | 项目初始化       |
-| `vext dev`           | 开发模式启动 | 日常开发         |
-| `vext build`         | 构建项目     | 部署前构建       |
-| `vext typegen`       | 生成声明 + service AST 诊断（experimental） | TS/JS 项目工程辅助 |
+| 命令                 | 说明                                              | 常用场景           |
+| -------------------- | ------------------------------------------------- | ------------------ |
+| `vext create <name>` | 创建新项目                                        | 项目初始化         |
+| `vext dev`           | 开发模式启动                                      | 日常开发           |
+| `vext build`         | 构建项目                                          | 部署前构建         |
+| `vext typegen`       | 生成声明 + service AST 诊断（experimental）       | TS/JS 项目工程辅助 |
 | `vext doctor routes` | 静态路由诊断 + inspect / manifest（experimental） | OpenAPI / 路由治理 |
-| `vext start`         | 生产模式启动 | 生产部署         |
-| `vext stop`          | 停止服务     | Cluster 模式管理 |
-| `vext reload`        | 滚动重启     | 零停机更新       |
-| `vext status`        | 查看运行状态 | Cluster 状态监控 |
+| `vext start`         | 生产模式启动                                      | 生产部署           |
+| `vext stop`          | 停止服务                                          | Cluster 模式管理   |
+| `vext reload`        | 滚动重启                                          | 零停机更新         |
+| `vext status`        | 查看运行状态                                      | Cluster 状态监控   |
 
 ## `vext create` — 创建项目
 
@@ -253,17 +253,17 @@ vext typegen [options]
 
 ### 选项
 
-| 选项               | 说明                                   | 默认值 |
-| ------------------ | -------------------------------------- | ------ |
-| `--services`       | 仅生成 `services.generated.d.ts`       | `false` |
-| `--app-extensions` | 仅生成 `app-extensions.generated.d.ts` | `false` |
-| `--check`          | 只校验 generated 结果，不写文件        | `false` |
-| `--json`           | 输出机器可读 JSON                      | `false` |
-| `--write-manifest` | 写入 `.vext/inspect/services.manifest.json` | `false` |
-| `--root <path>`    | 指定项目根目录                         | 当前目录 |
-| `-C <path>`        | `--root` 别名                          | — |
-| `--verbose`        | 预留给后续详细日志                     | `false` |
-| `-h, --help`       | 显示帮助                               | — |
+| 选项               | 说明                                        | 默认值   |
+| ------------------ | ------------------------------------------- | -------- |
+| `--services`       | 仅生成 `services.generated.d.ts`            | `false`  |
+| `--app-extensions` | 仅生成 `app-extensions.generated.d.ts`      | `false`  |
+| `--check`          | 只校验 generated 结果，不写文件             | `false`  |
+| `--json`           | 输出机器可读 JSON                           | `false`  |
+| `--write-manifest` | 写入 `.vext/inspect/services.manifest.json` | `false`  |
+| `--root <path>`    | 指定项目根目录                              | 当前目录 |
+| `-C <path>`        | `--root` 别名                               | —        |
+| `--verbose`        | 预留给后续详细日志                          | `false`  |
+| `-h, --help`       | 显示帮助                                    | —        |
 
 ### 产物
 
@@ -302,28 +302,28 @@ vext doctor <target> [options]
 
 ### Targets
 
-| Target | 说明 |
-| ------ | ---- |
-| `routes` | 扫描静态路由元数据与 OpenAPI 相关字段 |
-| `all` | 当前仍是 `routes` 的别名，用于保留后续扩展位 |
+| Target   | 说明                                         |
+| -------- | -------------------------------------------- |
+| `routes` | 扫描静态路由元数据与 OpenAPI 相关字段        |
+| `all`    | 当前仍是 `routes` 的别名，用于保留后续扩展位 |
 
 ### 选项
 
-| 选项               | 说明 | 默认值 |
-| ------------------ | ---- | ------ |
-| `--json`           | 输出机器可读 JSON | `false` |
-| `--write-inspect`  | 写入 `.vext/inspect/routes.json` | `false` |
-| `--write-manifest` | 写入 `.vext/inspect/routes.manifest.json` | `false` |
-| `--root <path>`    | 指定项目根目录 | 当前目录 |
-| `-C <path>`        | `--root` 别名 | — |
-| `-h, --help`       | 显示帮助 | — |
+| 选项               | 说明                                      | 默认值   |
+| ------------------ | ----------------------------------------- | -------- |
+| `--json`           | 输出机器可读 JSON                         | `false`  |
+| `--write-inspect`  | 写入 `.vext/inspect/routes.json`          | `false`  |
+| `--write-manifest` | 写入 `.vext/inspect/routes.manifest.json` | `false`  |
+| `--root <path>`    | 指定项目根目录                            | 当前目录 |
+| `-C <path>`        | `--root` 别名                             | —        |
+| `-h, --help`       | 显示帮助                                  | —        |
 
 ### 产物定位
 
-| 产物 | 定位 | 适用对象 |
-| ---- | ---- | -------- |
-| `.vext/inspect/routes.json` | inspect / 诊断中间层，包含诊断明细与调试字段 | `doctor`、debug、深度分析 |
-| `.vext/inspect/routes.manifest.json` | 稳定消费层，字段收敛为 routes-only manifest | 编辑器、CI、可视化、后续 codemod |
+| 产物                                 | 定位                                         | 适用对象                         |
+| ------------------------------------ | -------------------------------------------- | -------------------------------- |
+| `.vext/inspect/routes.json`          | inspect / 诊断中间层，包含诊断明细与调试字段 | `doctor`、debug、深度分析        |
+| `.vext/inspect/routes.manifest.json` | 稳定消费层，字段收敛为 routes-only manifest  | 编辑器、CI、可视化、后续 codemod |
 
 ### 示例
 
@@ -592,7 +592,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.8
+# 输出: vextjs v0.3.9
 
 # 查看帮助
 vext --help

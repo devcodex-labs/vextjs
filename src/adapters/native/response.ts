@@ -1,5 +1,8 @@
 import type { ServerResponse } from "node:http";
+import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+
+type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
 /**
  * Native ServerResponse → VextResponse 转换（F5 优化：class 实例化）
@@ -19,9 +22,9 @@ import type { VextResponse } from "../../types/response.js";
  *
  * 核心设计（与其他 Adapter 的 response.ts 逻辑对齐）：
  *
- *   1. 延迟绑定 requestId（getRequestId getter）
+ *   1. 延迟绑定 requestId（request 对象引用或 getRequestId getter）
  *      requestId 在 createVextResponse 调用时尚未生成（requestId 中间件还没执行），
- *      传入 getter 函数确保 json() 实际调用时才取值（此时 requestId 必然已由中间件生成）。
+ *      通过 request 对象引用确保 json() 实际调用时才取值（此时 requestId 必然已由中间件生成）。
  *
  *   2. 内建出口包装（_wrapEnabled 标志）
  *      response-wrapper 中间件通过 _enableWrap() 开启包装标志。
@@ -51,14 +54,14 @@ import type { VextResponse } from "../../types/response.js";
  *     零中间层，最短调用路径
  *
  * 时序保证：
- *   createVextResponse(serverResponse, () => req.requestId)
+ *   createVextResponse(serverResponse, req)
  *     ↓ executeChain 开始
  *   [requestIdMiddleware]        → req.requestId = 'a1b2c3d4...'
  *   [responseWrapperMiddleware]  → res._enableWrap()
  *     ↓
  *   [handler] res.status(201).json(data)
  *     → _wrapEnabled = true
- *     → getRequestId() → 'a1b2c3d4...'（已设置）
+ *     → req.requestId → 'a1b2c3d4...'（已设置）
  *     → serverResponse.end(JSON.stringify({ code: 0, data, requestId }))
  *     → HTTP 201 ✅
  *
@@ -86,8 +89,8 @@ class NativeVextResponse implements VextResponse {
   /** Node.js 原始 ServerResponse */
   private _serverResponse: ServerResponse;
 
-  /** 延迟获取 requestId 的 getter 函数 */
-  private _getRequestId: () => string;
+  /** 延迟获取 requestId 的来源；Native adapter 传入 request 对象，避免每请求 getter 闭包 */
+  private _requestIdSource: RequestIdSource;
 
   /** 当前 HTTP 状态码（默认 200，可通过 status() 修改） */
   private _status: number = 200;
@@ -104,12 +107,26 @@ class NativeVextResponse implements VextResponse {
   /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
   _onSend?: (data: unknown, statusCode: number) => void;
 
-  constructor(serverResponse: ServerResponse, getRequestId: () => string) {
+  constructor(
+    serverResponse: ServerResponse,
+    requestIdSource: RequestIdSource,
+  ) {
     this._serverResponse = serverResponse;
-    this._getRequestId = getRequestId;
+    this._requestIdSource = requestIdSource;
   }
 
   // ── 内部辅助方法（原型上共享）──────────────────────────
+
+  /**
+   * 延迟读取 requestId。
+   *
+   * Native adapter 热路径传入 VextRequest 对象，避免每请求创建 `() => req.requestId`
+   * 闭包；保留函数来源兼容内部测试或未来调用方。
+   */
+  private _resolveRequestId(): string {
+    const source = this._requestIdSource;
+    return typeof source === "function" ? source() : source.requestId;
+  }
 
   /**
    * 将累积的响应头设置到 ServerResponse 上
@@ -224,7 +241,7 @@ class NativeVextResponse implements VextResponse {
         JSON.stringify({
           code: 0,
           data,
-          requestId: this._getRequestId(),
+          requestId: this._resolveRequestId(),
         }),
         finalStatus,
       );
@@ -386,12 +403,12 @@ class NativeVextResponse implements VextResponse {
  * 方法通过原型链共享，避免闭包工厂模式下每请求创建 N 个函数对象。
  *
  * @param serverResponse   Node.js ServerResponse 原始响应对象
- * @param getRequestId     延迟获取 requestId 的 getter 函数
+ * @param requestIdSource  延迟获取 requestId 的来源；优先传入 VextRequest 对象以减少闭包分配
  * @returns VextResponse 实例（含内部方法 _enableWrap）
  */
 export function createVextResponse(
   serverResponse: ServerResponse,
-  getRequestId: () => string,
+  requestIdSource: RequestIdSource,
 ): VextResponse {
-  return new NativeVextResponse(serverResponse, getRequestId);
+  return new NativeVextResponse(serverResponse, requestIdSource);
 }

@@ -189,7 +189,7 @@ middlewares: [
 
 ## 使用 Adapter
 
-默认使用 Native Adapter（`http.createServer` + `find-my-way`）。要切换其他 Adapter，在配置中指定 `adapter` 字段：
+默认使用 Native Adapter（`http.createServer` + `route-core`）。要切换其他 Adapter，在配置中指定 `adapter` 字段：
 
 ```typescript
 // src/config/default.ts — 使用 Hono Adapter

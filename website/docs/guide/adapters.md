@@ -24,13 +24,13 @@ Adapter 负责：
 
 VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
-| Adapter            | 底层框架                            | 特点                      | 适用场景          | 额外依赖                   |
-| ------------------ | ----------------------------------- | ------------------------- | ----------------- | -------------------------- |
-| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高      | 追求极致性能      | 无                         |
-| **Hono**           | Hono                                | Web Standards API，轻量   | 全栈 / 边缘运行时 | `hono` `@hono/node-server` |
-| **Fastify**        | Fastify                             | 生态丰富，JSON 序列化优化 | 大型项目          | `fastify`                  |
-| **Express**        | Express v5                          | 最大中间件生态            | 迁移项目          | `express`                  |
-| **Koa**            | Koa v3                              | 轻量优雅                  | 中小型项目        | `koa`                      |
+| Adapter            | 底层框架                           | 特点                           | 适用场景          | 额外依赖                   |
+| ------------------ | ---------------------------------- | ------------------------------ | ----------------- | -------------------------- |
+| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能      | 无                         |
+| **Hono**           | Hono                               | Web Standards API，轻量        | 全栈 / 边缘运行时 | `hono` `@hono/node-server` |
+| **Fastify**        | Fastify                            | 生态丰富，JSON 序列化优化      | 大型项目          | `fastify`                  |
+| **Express**        | Express v5                         | 最大中间件生态                 | 迁移项目          | `express`                  |
+| **Koa**            | Koa v3                             | 轻量优雅                       | 中小型项目        | `koa`                      |
 
 ### 性能对比
 
@@ -73,7 +73,7 @@ export default {
 };
 ```
 
-Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `find-my-way` 做路由匹配，性能最优且零外部框架依赖。
+Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `route-core` 做路由匹配，性能最优且零外部 HTTP 框架依赖。
 
 ### Hono Adapter
 

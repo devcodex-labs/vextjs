@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
 import crypto from "node:crypto";
-import Router from "find-my-way";
+import { createRouter } from "route-core";
+import type { PreparedMethod } from "route-core";
 import { createVextRequest, type ParsedUrl } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
@@ -25,7 +26,7 @@ import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.
  * 所有选项均可选，默认值已为 vext 场景优化。
  *
  * Native Adapter 不依赖任何第三方 HTTP 框架（无 Fastify / Express / Koa / Hono），
- * 直接使用 Node.js 原生 http.createServer + find-my-way（trie 路由库）。
+ * 直接使用 Node.js 原生 http.createServer + route-core（轻量路由核心）。
  * 这是 vext 的最高性能适配器选项。
  */
 export interface NativeAdapterOptions {
@@ -50,7 +51,7 @@ export interface NativeAdapterOptions {
 
 // ── 路由处理器存储类型 ──────────────────────────────────────────
 //
-// find-my-way 的 store 概念：每条路由匹配后返回 handler + params。
+// route-core 只保存 numeric storeId；Native adapter 自己维护 store 表。
 // 我们将预组装的完整中间件链存储在 store 中，避免每请求重新组装。
 //
 
@@ -59,17 +60,14 @@ interface RouteStore {
   chain: VextMiddleware[] | null;
   /** 路由级中间件链（registerRoute 传入的 chain） */
   routeChain: VextMiddleware[];
-  /** 预解析的 URL 信息（由 handleRequest 在 lookup 前设置，供 handler 传给 createVextRequest） */
-  parsedUrl: ParsedUrl | null;
   /**
    * 路由模板字符串（如 `/users/:id`）
    *
-   * 在 registerRoute 时写入，onRouteMatch 读取后赋值到 req.route。
-   * find-my-way 的 onRouteMatch 是独立函数，无法直接访问 registerRoute closure，
-   * 因此通过 store 传递（D2 架构决策）。
+   * route-core 在命中时返回 routePath；store 中保留注册时模板用于调试与兜底。
    */
   routePath: string;
-  routeOptions: RouteOptions;
+  /** 预解析的路由级 bodyParser 配置；注册时计算，避免热路径每请求解析 */
+  routeBodyParser?: VextBodyParserConfig;
 }
 
 /**
@@ -157,14 +155,14 @@ async function executeChain(
 const _noop = async (): Promise<void> => {};
 
 /**
- * createNativeAdapter — 创建基于 http.createServer + find-my-way 的 VextAdapter 实例
+ * createNativeAdapter — 创建基于 http.createServer + route-core 的 VextAdapter 实例
  *
- * 将 Node.js 原生 HTTP 服务器作为底层，配合 find-my-way radix trie 路由器，
+ * 将 Node.js 原生 HTTP 服务器作为底层，配合 route-core 路由核心，
  * 实现 VextAdapter 接口。这是 vext 的第五个 adapter 实现，
  * 也是唯一不依赖第三方 HTTP 框架的实现。
  *
  * 架构说明：
- *   - 路由匹配：find-my-way radix trie（与 Fastify 内部使用的同一库）
+ *   - 路由匹配：route-core（只负责 method/path 匹配与 params 提取）
  *   - HTTP 层：Node.js 原生 http.createServer，零框架开销
  *   - 中间件链执行：vext 自己的 executeChain（洋葱模型）
  *   - 请求/响应对象：直接从 IncomingMessage / ServerResponse 构造 VextRequest / VextResponse
@@ -176,7 +174,7 @@ const _noop = async (): Promise<void> => {};
  *   - 响应对象直接操作 ServerResponse，无框架 reply / ctx 层
  *   - Body 读取：直接从 IncomingMessage 数据流读取 Buffer → string
  *   - JSON 序列化：直接 serverResponse.end(JSON.stringify(...))
- *   - 路由匹配：find-my-way 的 lookup 方法直接在 http handler 中调用
+ *   - 路由匹配：route-core prepared lookup 直接在 http handler 中调用
  *
  * 性能预期：
  *   相比 Fastify Adapter，Native Adapter 省去了：
@@ -206,26 +204,23 @@ export function createNativeAdapter(
   options: NativeAdapterOptions,
   app: VextApp,
 ): VextAdapter {
-  // ── 创建 find-my-way 路由器 ────────────────────────────────
+  // ── 创建 route-core 路由器 ────────────────────────────────
   //
-  // find-my-way 是 Fastify 内部使用的 radix trie 路由库，
-  // 路由匹配性能极高（O(path_length)），支持参数路由和通配符。
+  // route-core 只负责路由注册与匹配，handler / middleware / request lifecycle
+  // 均继续由 Native adapter 自己持有，避免把框架生命周期交给路由核心。
   //
   // 关键配置：
   //   - ignoreTrailingSlash: true — /users 和 /users/ 等价
   //   - caseSensitive: false — /Users 和 /users 等价
   //   - maxParamLength: 500 — 路由参数最大长度
-  //   - defaultRoute: 由 registerNotFound 设置
   //
-  const router = Router({
+  const router = createRouter({
     ignoreTrailingSlash: options.ignoreTrailingSlash ?? true,
     caseSensitive: options.caseSensitive ?? false,
     maxParamLength: options.maxParamLength ?? 500,
-    defaultRoute: (nodeReq: IncomingMessage, nodeRes: ServerResponse) => {
-      // P3 优化：lookup() 未匹配时走 defaultRoute（替代 find() === null 判断）
-      handleNotFound(nodeReq, nodeRes);
-    },
   });
+  const routeStores: RouteStore[] = [];
+  const preparedMethods = new Map<string, PreparedMethod>();
 
   // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
   const alsEnabled = app.config.requestContext?.enabled !== false;
@@ -242,6 +237,35 @@ export function createNativeAdapter(
   let notFoundHandler: VextMiddleware | null = null;
 
   /**
+   * 执行已匹配路由的中间件链。
+   *
+   * P4 优化：从 onRouteMatch 的每请求 async 闭包中提取为 adapter 级函数。
+   * 当 requestContext.enabled === false 时，热路径可直接调用本函数，
+   * 避免每请求创建 runChain 闭包。
+   */
+  async function runMatchedChain(
+    chain: VextMiddleware[],
+    req: VextRequest,
+    res: VextResponse,
+    nodeRes: ServerResponse,
+  ): Promise<void> {
+    try {
+      await executeChain(chain, req, res);
+    } catch (err) {
+      if (errorHandler) {
+        // errorHandler 自身抛异常的边界保护
+        try {
+          errorHandler(err, req, res);
+        } catch (_handlerError) {
+          sendFallbackError(nodeRes);
+        }
+      } else {
+        sendFallbackError(nodeRes);
+      }
+    }
+  }
+
+  /**
    * 处理请求的核心函数
    *
    * 由 listen() 和 buildHandler() 共用。
@@ -249,47 +273,45 @@ export function createNativeAdapter(
    * 执行路由匹配 → 中间件链 → 错误处理 → 404 兜底的完整流程。
    *
    * 设计说明：
-   *   - 使用 find-my-way 的 find() 方法手动查找路由（而非 lookup()），
-   *     因为 find() 返回路由信息和参数，允许我们自行控制后续流程。
-   *   - 如果路由未匹配，执行 notFoundHandler。
+   *   - 使用 route-core prepared lookup，命中时通过 storeId 找回 RouteStore。
+   *   - 如果路由未匹配或参数解码失败，执行 notFoundHandler。
    *   - 如果中间件链执行抛出异常，执行 errorHandler。
    *   - 如果 errorHandler 自身也抛出异常，发送最低限度的 500 JSON 响应。
    */
   /**
    * 处理匹配到路由的请求
    *
-   * P3 优化：作为 find-my-way lookup() 的 handler 回调直接调用，
-   * 避免 find() 返回中间对象 { handler, params, store } 的每请求分配。
+   * P3 优化：作为 route-core lookupPrepared() 的 handler 回调直接调用，
+   * 避免 find() 返回中间对象 { storeId, params, routePath } 的每请求分配。
    *
    * @param nodeReq   原始 IncomingMessage（由 lookup 传入）
    * @param nodeRes   原始 ServerResponse（由 lookup 传入）
-   * @param params    路由参数（由 lookup 解析后传入）
+   * @param params    路由参数（由 route-core 解析后传入）
+   * @param routePath 命中的路由模板
    * @param store     路由关联的 store 数据（含预组装的中间件链）
+   * @param parsedUrl 由 handleRequest 一次性解析的 URL 信息
    */
   function onRouteMatch(
     nodeReq: IncomingMessage,
     nodeRes: ServerResponse,
-    params: Record<string, string | undefined>,
+    params: Record<string, string> | null,
+    routePath: string,
     store: RouteStore,
+    parsedUrl: ParsedUrl,
   ): void {
-    const routeParams = (params ?? {}) as Record<string, string>;
-
-    // ── 使用 store 中缓存的预解析 URL 信息 ──────────────
-    // P2 优化：handleRequest 在 lookup 前已解析并存入 store.parsedUrl
-    const parsedUrl = store.parsedUrl!;
-    // 立即清除引用，防止跨请求泄漏
-    store.parsedUrl = null;
+    const routeParams = params ?? {};
 
     // ── 构造 VextRequest / VextResponse ──────────────────
     // P2 优化：传递预解析的 URL 信息，createVextRequest 不再重复 indexOf('?')
     const req = createVextRequest(nodeReq, app, routeParams, parsedUrl);
-    const routeBodyParser = resolveRouteBodyParserConfig(store.routeOptions);
+    const routeBodyParser = store.routeBodyParser;
     if (routeBodyParser) {
-      (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+      (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser =
+        routeBodyParser;
     }
     // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
-    req.route = store.routePath;
-    const res = createVextResponse(nodeRes, () => req.requestId);
+    req.route = routePath || store.routePath;
+    const res = createVextResponse(nodeRes, req);
 
     // ── 预组装中间件链（首次请求时构建，后续复用）──────────
     //
@@ -300,6 +322,7 @@ export function createNativeAdapter(
     if (store.chain === null) {
       store.chain = globalMiddlewares.concat(store.routeChain);
     }
+    const chain = store.chain;
 
     // ── 在 AsyncLocalStorage 请求上下文中执行整个中间件链 ──
     //
@@ -308,27 +331,12 @@ export function createNativeAdapter(
     // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
     // 直接执行中间件链，预估 +3-8% RPS。
     //
-    const runChain = async () => {
-      try {
-        await executeChain(store.chain!, req, res);
-      } catch (err) {
-        if (errorHandler) {
-          // errorHandler 自身抛异常的边界保护
-          try {
-            errorHandler(err, req, res);
-          } catch (_handlerError) {
-            sendFallbackError(nodeRes);
-          }
-        } else {
-          sendFallbackError(nodeRes);
-        }
-      }
-    };
-
     if (alsEnabled) {
-      requestContext.run({ requestId: "", locale: undefined }, runChain);
+      requestContext.run({ requestId: "", locale: undefined }, () => {
+        void runMatchedChain(chain, req, res, nodeRes);
+      });
     } else {
-      runChain();
+      void runMatchedChain(chain, req, res, nodeRes);
     }
   }
 
@@ -338,9 +346,8 @@ export function createNativeAdapter(
    * 由 listen() 和 buildHandler() 共用。
    * 接收原始 Node.js IncomingMessage / ServerResponse。
    *
-   * P2 优化：预解析 URL（indexOf('?') 仅执行一次），结果通过 _pendingParsedUrl 传递。
-   * P3 优化：使用 router.lookup() 替代 router.find()，
-   *   lookup() 直接调用注册的 handler（onRouteMatch），不分配中间对象。
+   * P2 优化：预解析 URL（indexOf('?') 仅执行一次）。
+   * P3 优化：使用 route-core prepared lookup，命中时直接回调 adapter handler。
    */
   function handleRequest(
     nodeReq: IncomingMessage,
@@ -352,16 +359,44 @@ export function createNativeAdapter(
     const pathname = qIdx === -1 ? url : url.slice(0, qIdx);
     const queryString = qIdx === -1 ? "" : url.slice(qIdx + 1);
 
-    // 将预解析结果存入模块级临时变量，供 onRouteMatch 中取出
-    _pendingParsedUrl = { rawUrl: url, path: pathname, queryString };
+    const parsedUrl = { rawUrl: url, path: pathname, queryString };
+    const preparedPathname = router.preparePathname(pathname);
+    if (!preparedPathname) {
+      handleNotFound(nodeReq, nodeRes, parsedUrl);
+      return;
+    }
 
-    // P3 优化：使用 lookup() 替代 find()
-    // lookup() 直接调用注册的 handler（不分配中间对象），未匹配时走 defaultRoute
-    router.lookup(nodeReq, nodeRes);
+    const methodHandle = getPreparedMethod(nodeReq.method ?? "GET");
+    const matched = methodHandle.lookup(
+      preparedPathname,
+      (storeId, params, routePath) => {
+        const store = routeStores[storeId];
+        if (!store) {
+          return;
+        }
+        onRouteMatch(nodeReq, nodeRes, params, routePath, store, parsedUrl);
+      },
+    );
+
+    if (!matched) {
+      handleNotFound(nodeReq, nodeRes, parsedUrl);
+    }
   }
 
-  /** 模块级临时变量：在 handleRequest → lookup → onRouteMatch 之间传递预解析 URL */
-  let _pendingParsedUrl: ParsedUrl | null = null;
+  function normalizeRouteMethod(method: string): string {
+    const normalized = method.toUpperCase();
+    return normalized === "ALL" ? "ANY" : normalized;
+  }
+
+  function getPreparedMethod(method: string): PreparedMethod {
+    const normalized = normalizeRouteMethod(method);
+    let methodHandle = preparedMethods.get(normalized);
+    if (!methodHandle) {
+      methodHandle = router.prepareMethod(normalized);
+      preparedMethods.set(normalized, methodHandle);
+    }
+    return methodHandle;
+  }
 
   /**
    * 处理 404 未匹配请求
@@ -373,6 +408,7 @@ export function createNativeAdapter(
   function handleNotFound(
     nodeReq: IncomingMessage,
     nodeRes: ServerResponse,
+    parsedUrl?: ParsedUrl,
   ): void {
     if (!notFoundHandler) {
       // 无 notFound handler（理论上 bootstrap 一定会注册），发送默认 404
@@ -384,16 +420,11 @@ export function createNativeAdapter(
       return;
     }
 
-    // P2 优化：使用 handleRequest 中已预解析的 URL 信息
-    const parsedUrl = _pendingParsedUrl ?? {
-      rawUrl: nodeReq.url ?? "/",
-      path: nodeReq.url ?? "/",
-      queryString: "",
-    };
-    _pendingParsedUrl = null;
+    // P2 优化：优先使用 handleRequest 中已预解析的 URL 信息
+    const requestUrl = parsedUrl ?? parseUrl(nodeReq.url ?? "/");
 
-    const req = createVextRequest(nodeReq, app, {}, parsedUrl);
-    const res = createVextResponse(nodeRes, () => req.requestId);
+    const req = createVextRequest(nodeReq, app, {}, requestUrl);
+    const res = createVextResponse(nodeRes, req);
 
     // 内联生成 requestId（notFound 不走中间件链）
     if (!req.requestId) {
@@ -420,6 +451,15 @@ export function createNativeAdapter(
     } else {
       runNotFound();
     }
+  }
+
+  function parseUrl(url: string): ParsedUrl {
+    const qIdx = url.indexOf("?");
+    return {
+      rawUrl: url,
+      path: qIdx === -1 ? url : url.slice(0, qIdx),
+      queryString: qIdx === -1 ? "" : url.slice(qIdx + 1),
+    };
   }
 
   /**
@@ -462,53 +502,48 @@ export function createNativeAdapter(
 
     // ── registerRoute ───────────────────────────────────────
     //
-    // 为每条路由注册到 find-my-way 路由器。
+    // 为每条路由注册到 route-core 路由器。
     //
     // 流程：
-    //   1. 将 vext 路径格式转为 find-my-way 格式（两者都使用 :param 格式，基本兼容）
-    //   2. 将路由级中间件链存储在 find-my-way 的 store 中
+    //   1. 将 vext 路径注册进 route-core，并得到 numeric storeId
+    //   2. 将路由级中间件链存储在 Native adapter 的 routeStores 中
     //   3. 预组装中间件链在首次请求时完成（延迟到 globalMiddlewares 收集完毕后）
     //
-    // find-my-way 的 store 概念：
-    //   通过 router.on(method, path, { store: ... }) 将自定义数据关联到路由。
-    //   router.find() 匹配后返回 store，避免闭包捕获开销。
+    // route-core 的 storeId 模型：
+    //   router.add(method, path, storeId) 只保存数字 ID；
+    //   lookup 命中后由 adapter 通过 routeStores[storeId] 找回 route metadata。
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
-      // find-my-way 使用大写方法名（GET / POST / PUT / PATCH / DELETE / HEAD / OPTIONS）
-      const fmwMethod = method.toUpperCase() as Router.HTTPMethod;
-
-      // vext 路由参数格式（:param）与 find-my-way 格式一致，无需转换
-      // 通配符 *path 在 find-my-way 中也支持，无需转换
-      const fmwPath = path;
+    registerRoute(
+      method: string,
+      path: string,
+      chain: VextMiddleware[],
+      routeOptions: RouteOptions = {},
+    ): void {
+      const routeMethod = normalizeRouteMethod(method);
+      const routePath = path;
+      const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
 
       // 创建 store 对象，存储路由级中间件链
       // chain 在首次请求时与 globalMiddlewares 合并并缓存
       const store: RouteStore = {
         chain: null, // 延迟组装
         routeChain: chain,
-        parsedUrl: null, // handleRequest 在 lookup 前设置
-        routePath: fmwPath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
-        routeOptions,
+        routePath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
+        routeBodyParser,
       };
+      const storeId = routeStores.length;
+      routeStores.push(store);
 
-      // P3 优化：注册 onRouteMatch 为 handler，lookup() 直接调用它
-      // 避免 find() 返回中间对象 { handler, params, store } 的每请求分配
-      router.on(
-        fmwMethod,
-        fmwPath,
-        (
-          nodeReq: IncomingMessage,
-          nodeRes: ServerResponse,
-          params: Record<string, string | undefined>,
-          routeStore: RouteStore,
-        ) => {
-          // 从模块级临时变量取出预解析 URL 并存入 store
-          routeStore.parsedUrl = _pendingParsedUrl;
-          _pendingParsedUrl = null;
-          onRouteMatch(nodeReq, nodeRes, params, routeStore);
-        },
-        store,
-      );
+      try {
+        router.add(routeMethod, routePath, storeId);
+      } catch (err) {
+        routeStores.pop();
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `[vextjs] Failed to register route: ${routeMethod} ${routePath}\n` +
+            `         ${message}`,
+        );
+      }
     },
 
     // ── registerErrorHandler ────────────────────────────────
@@ -527,8 +562,7 @@ export function createNativeAdapter(
     //
     // 注册 404 兜底处理函数。
     //
-    // 当 find-my-way 的 find() 返回 null（无匹配路由）时，
-    // 由 handleRequest 调用此处理函数。
+    // 当 route-core lookup 未命中时，由 handleRequest 调用此处理函数。
     //
     registerNotFound(handler: VextMiddleware): void {
       notFoundHandler = handler;
@@ -592,7 +626,7 @@ export function createNativeAdapter(
     // 构建完整的请求处理函数（不启动 server）。
     //
     // 返回的 handler 接受原始 Node.js req/res，内部完成：
-    //   - 路由匹配（find-my-way find()）
+    //   - 路由匹配（route-core prepared lookup）
     //   - 请求/响应对象转换（IncomingMessage → VextRequest / ServerResponse → VextResponse）
     //   - 中间件链执行（executeChain）
     //   - 错误处理 + 404 兜底

@@ -160,7 +160,7 @@ Run-Step "E2E Tests" -SkipInQuick {
 # ── 6. Format Check ──────────────────────────────────────────
 
 Run-Step "Prettier Format Check" {
-    npx prettier --check .
+    npm run format:check
 }
 
 # ── 7. Docs Build ────────────────────────────────────────────

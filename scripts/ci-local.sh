@@ -20,7 +20,7 @@
 #   2. unit-tests         → vitest run test/unit
 #   3. integration-tests  → npm run build + vitest run test/integration
 #   4. e2e-tests          → vitest run test/e2e
-#   5. format-check       → prettier --check .
+#   5. format-check       → npm run format:check
 #   6. docs-build         → cd website && npm run build
 #
 # @see .github/workflows/ci.yml
@@ -185,7 +185,7 @@ fi
 # ── 5. Format Check ────────────────────────────────────────
 
 step_start "Prettier Format Check"
-if npx prettier --check .; then
+if npm run format:check; then
   step_pass
 else
   step_fail
@@ -232,4 +232,3 @@ else
   echo -e "${GREEN}${BOLD}✅ 本地 CI 全部通过 — 可以安全 push${NC}"
   exit 0
 fi
-

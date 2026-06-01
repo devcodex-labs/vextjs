@@ -29,7 +29,7 @@
 | Koa           |     22,488 |    29.4% | `koa`                      |
 | Hono          |     15,684 |    24.2% | `hono` `@hono/node-server` |
 
-> Native adapter 使用 Node.js 内置 `http.createServer` + `find-my-way` radix trie，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Vext-Native 领先 Vext-Fastify **26~51%**；中间件链场景 Vext-Native 反超裸跑 Native **+11.9%**。
+> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量路由核心，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Benchmark 需区分 `chain`（handler 内联业务链）与 `middleware-chain`（真实 route-level middleware chain），避免把 core-mode 数据误读为默认运行时性能。
 > 测试环境：Node.js v24.14.0, Windows x64, i7-9700, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数，2026-03-23)。
 > 绝大多数场景 CV（变异系数）< 3.5%，数据高度可信。
 
@@ -43,7 +43,9 @@
 
 ### 对比维度
 
-- **Raw（裸跑）**：直接使用框架原生 API，无 vext 封装（Native 裸跑 = `http.createServer` + `find-my-way`）
+- **Raw（裸跑）**：直接使用框架原生 API，无 vext 封装（Native 裸跑 = `http.createServer` + `route-core`）
+- **chain**：历史兼容场景，测 handler 内联业务逻辑链。
+- **middleware-chain**：真实 route-level middleware chain，测 adapter 中间件链执行器。
 - **Vext（封装）**：通过 vext bootstrap 使用对应 adapter，关闭非必要中间件
 
 ## 🚀 使用方法
@@ -127,7 +129,7 @@ test/benchmark/
 ├── run-benchmark.mjs                  # 主基准测试脚本
 ├── RESULTS.md                         # 运行后自动生成的报告
 └── servers/
-    ├── raw-native.mjs                 # Native 裸跑服务器（http.createServer + find-my-way）
+    ├── raw-native.mjs                 # Native 裸跑服务器（http.createServer + route-core）
     ├── raw-hono.mjs                   # Hono 裸跑服务器
     ├── raw-fastify.mjs                # Fastify 裸跑服务器
     ├── raw-express.mjs                # Express 裸跑服务器
@@ -146,7 +148,7 @@ test/benchmark/
 
 ## 🔧 工作原理
 
-1. **裸跑服务器**：每个框架都有一个独立的裸跑服务器文件，实现相同的 3 个路由场景，使用框架原生 API（Native 裸跑使用 `http.createServer` + `find-my-way`）
+1. **裸跑服务器**：每个框架都有一个独立的裸跑服务器文件，实现相同路由场景，使用框架原生 API（Native 裸跑使用 `http.createServer` + `route-core`）
 2. **vext 服务器**：所有框架共用同一套 vext-app 路由代码，仅通过 `BENCH_ADAPTER` 环境变量切换底层 adapter（默认 `native`）
 3. **子进程隔离**：所有服务器（裸跑和 vext）均在独立子进程中启动，避免状态污染和端口冲突
 4. **压测工具**：使用 [autocannon](https://github.com/mcollina/autocannon) 进行 HTTP 压测

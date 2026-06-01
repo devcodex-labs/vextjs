@@ -51,9 +51,9 @@ const externalDeps = [
   "pino-pretty",
   "esbuild",
   "fast-glob",
-  "find-my-way",
   "flex-rate-limit",
   "monsqlize",
+  "route-core",
   "schema-dsl",
   // 可选的 peer 依赖（adapter 框架）
   "hono",
@@ -89,12 +89,36 @@ const externalDeps = [
  */
 const entries = [
   { name: "main", input: "dist/index.js", output: "dist/index.cjs" },
-  { name: "testing", input: "dist/testing/index.js", output: "dist/testing/index.cjs" },
-  { name: "adapter:hono", input: "dist/adapters/hono/index.js", output: "dist/adapters/hono/index.cjs" },
-  { name: "adapter:fastify", input: "dist/adapters/fastify/index.js", output: "dist/adapters/fastify/index.cjs" },
-  { name: "adapter:express", input: "dist/adapters/express/index.js", output: "dist/adapters/express/index.cjs" },
-  { name: "adapter:koa", input: "dist/adapters/koa/index.js", output: "dist/adapters/koa/index.cjs" },
-  { name: "adapter:native", input: "dist/adapters/native/index.js", output: "dist/adapters/native/index.cjs" },
+  {
+    name: "testing",
+    input: "dist/testing/index.js",
+    output: "dist/testing/index.cjs",
+  },
+  {
+    name: "adapter:hono",
+    input: "dist/adapters/hono/index.js",
+    output: "dist/adapters/hono/index.cjs",
+  },
+  {
+    name: "adapter:fastify",
+    input: "dist/adapters/fastify/index.js",
+    output: "dist/adapters/fastify/index.cjs",
+  },
+  {
+    name: "adapter:express",
+    input: "dist/adapters/express/index.js",
+    output: "dist/adapters/express/index.cjs",
+  },
+  {
+    name: "adapter:koa",
+    input: "dist/adapters/koa/index.js",
+    output: "dist/adapters/koa/index.cjs",
+  },
+  {
+    name: "adapter:native",
+    input: "dist/adapters/native/index.js",
+    output: "dist/adapters/native/index.cjs",
+  },
 ];
 
 async function buildCjs() {
@@ -149,7 +173,7 @@ async function buildCjs() {
       // 注入 import.meta.url 的 CJS 等价物 + 标记文件为自动生成
       banner: {
         js:
-          '/* Auto-generated CJS entry by build-cjs.mjs — DO NOT EDIT */\n' +
+          "/* Auto-generated CJS entry by build-cjs.mjs — DO NOT EDIT */\n" +
           'const __vext_esm_url = require("node:url").pathToFileURL(__filename).href;',
       },
     });

@@ -1839,7 +1839,139 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
     });
   });
 
-  // ── 12. 并发请求隔离 ──────────────────────────────────────
+  // ── 12. route-core 兼容矩阵 ───────────────────────────────
+
+  describe("route-core 兼容矩阵", () => {
+    beforeEach(() => {
+      adapter.registerNotFound(async (_req, res) => {
+        res.rawJson({ code: 404, message: "Not Found" }, 404);
+      });
+    });
+
+    it("应支持 mixed segment、regex、optional param 与 wildcard 路由", async () => {
+      adapter.registerRoute("GET", "/assets/:name.:ext", [
+        async (req, res) => {
+          res.json({ name: req.params.name, ext: req.params.ext });
+        },
+      ]);
+
+      adapter.registerRoute("GET", "/reports/:id(^\\d+)", [
+        async (req, res) => {
+          res.json({ id: req.params.id });
+        },
+      ]);
+
+      adapter.registerRoute("GET", "/optional/:id?", [
+        async (req, res) => {
+          res.json({ id: req.params.id ?? null });
+        },
+      ]);
+
+      adapter.registerRoute("GET", "/files/*path", [
+        async (req, res) => {
+          res.json({ path: req.params.path });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const mixed = await httpRequest({
+        port: handle.port,
+        path: "/assets/app.js",
+      });
+      expect(mixed.status).toBe(200);
+      expect(JSON.parse(mixed.body)).toEqual({ name: "app", ext: "js" });
+
+      const regexHit = await httpRequest({
+        port: handle.port,
+        path: "/reports/123",
+      });
+      expect(regexHit.status).toBe(200);
+      expect(JSON.parse(regexHit.body)).toEqual({ id: "123" });
+
+      const regexMiss = await httpRequest({
+        port: handle.port,
+        path: "/reports/abc",
+      });
+      expect(regexMiss.status).toBe(404);
+
+      const optionalOmitted = await httpRequest({
+        port: handle.port,
+        path: "/optional",
+      });
+      expect(optionalOmitted.status).toBe(200);
+      expect(JSON.parse(optionalOmitted.body)).toEqual({ id: null });
+
+      const optionalPresent = await httpRequest({
+        port: handle.port,
+        path: "/optional/42",
+      });
+      expect(optionalPresent.status).toBe(200);
+      expect(JSON.parse(optionalPresent.body)).toEqual({ id: "42" });
+
+      const wildcard = await httpRequest({
+        port: handle.port,
+        path: "/files/a/b/c",
+      });
+      expect(wildcard.status).toBe(200);
+      expect(JSON.parse(wildcard.body)).toEqual({ path: "a/b/c" });
+    });
+
+    it("应将 ALL 注册映射为 route-core ANY fallback", async () => {
+      adapter.registerRoute("ALL", "/any-method", [
+        async (req, res) => {
+          res.json({ method: req.method });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const response = await httpRequest({
+        port: handle.port,
+        method: "PATCH",
+        path: "/any-method",
+      });
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ method: "PATCH" });
+    });
+
+    it("wrong method 仍应保持 404，不自动升级为 405", async () => {
+      adapter.registerRoute("GET", "/only-get", [
+        async (_req, res) => {
+          res.json({ ok: true });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const response = await httpRequest({
+        port: handle.port,
+        method: "POST",
+        path: "/only-get",
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it("route-core 注册错误应包装为可定位的 vext 启动期错误", () => {
+      adapter.registerRoute("GET", "/conflict/:id", [
+        async (_req, res) => {
+          res.json({ ok: true });
+        },
+      ]);
+
+      expect(() => {
+        adapter.registerRoute("GET", "/conflict/:name", [
+          async (_req, res) => {
+            res.json({ ok: true });
+          },
+        ]);
+      }).toThrow(/\[vextjs\] Failed to register route: GET \/conflict\/:name/);
+    });
+  });
+
+  // ── 13. 并发请求隔离 ──────────────────────────────────────
 
   describe("并发请求隔离", () => {
     it("多个并发请求不应互相干扰", async () => {

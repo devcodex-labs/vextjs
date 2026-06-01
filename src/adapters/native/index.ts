@@ -10,7 +10,7 @@ import type { VextApp } from "../../types/app.js";
  * 是 VextAdapter 接口的第五个实现（Hono → Fastify → Express → Koa → Native），
  * 也是唯一不依赖第三方 HTTP 框架的实现。
  *
- * 基于 Node.js 原生 http.createServer + find-my-way（radix trie 路由库），
+ * 基于 Node.js 原生 http.createServer + route-core（轻量路由核心），
  * 跳过所有第三方框架的初始化、对象包装、中间件管道等开销，
  * 是 vext 的最高性能适配器选项。
  *

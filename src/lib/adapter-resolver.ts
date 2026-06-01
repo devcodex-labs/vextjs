@@ -12,7 +12,7 @@ const BUILT_IN_ADAPTER_NAMES = ["native", "hono", "fastify", "express", "koa"];
  * 使用动态 import() 按需加载对应框架的 adapter，
  * 避免在用户只使用一个 adapter 时强制安装所有框架依赖。
  *
- * native adapter 是默认 adapter，零外部 HTTP 框架依赖（仅需 find-my-way + Node.js 内置 http）。
+ * native adapter 是默认 adapter，零外部 HTTP 框架依赖（仅需 route-core + Node.js 内置 http）。
  * 其他 adapter（hono / fastify / express / koa）需要用户额外安装对应框架包。
  * koa adapter 内部使用 @koa/router 作为 Koa 生态路由器。
  *

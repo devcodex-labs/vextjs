@@ -612,11 +612,10 @@ describe("Cluster Integration Tests", () => {
         );
         expect(throttleEvents).toBeGreaterThanOrEqual(1);
 
-        // 验证输出包含频率超限日志
-        const hasThrottleLog = proc.lines.some((l) =>
-          l.includes("restart rate exceeded"),
-        );
-        expect(hasThrottleLog).toBe(true);
+        // stderr/stdout are collected from separate streams, so wait for the
+        // throttle log explicitly instead of assuming it has arrived when the
+        // stdout event line is observed.
+        await proc.waitForOutput("restart rate exceeded", 5_000);
       },
       TEST_TIMEOUT,
     );

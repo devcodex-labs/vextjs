@@ -97,7 +97,7 @@ export default {
 ```
 
 :::tip
-`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `find-my-way`），零外部框架依赖，性能最高。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，**业务代码无需任何改动**。
+`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `route-core`），零外部 HTTP 框架依赖，性能最高。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，**业务代码无需任何改动**。
 :::
 
 ## 4. 路由

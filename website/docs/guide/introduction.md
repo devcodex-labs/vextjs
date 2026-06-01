@@ -26,13 +26,13 @@ export default defineRoutes((app) => {
 
 VextJS 的底层 HTTP 处理层是可替换的。内置 5 种 Adapter：
 
-| Adapter            | 底层框架                            | 特点                 | 适用场景          |
-| ------------------ | ----------------------------------- | -------------------- | ----------------- |
-| **Native**（默认） | `http.createServer` + `find-my-way` | 零框架依赖，性能最高 | 追求极致性能      |
-| **Hono**           | Hono                                | Web Standards API    | 全栈 / 边缘运行时 |
-| **Fastify**        | Fastify                             | 生态丰富，序列化优化 | 大型项目          |
-| **Express**        | Express                             | 最大中间件生态       | 迁移项目          |
-| **Koa**            | Koa                                 | 轻量优雅             | 中小型项目        |
+| Adapter            | 底层框架                           | 特点                           | 适用场景          |
+| ------------------ | ---------------------------------- | ------------------------------ | ----------------- |
+| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能      |
+| **Hono**           | Hono                               | Web Standards API              | 全栈 / 边缘运行时 |
+| **Fastify**        | Fastify                            | 生态丰富，序列化优化           | 大型项目          |
+| **Express**        | Express                            | 最大中间件生态                 | 迁移项目          |
+| **Koa**            | Koa                                | 轻量优雅                       | 中小型项目        |
 
 切换 Adapter 仅需修改一行配置，**业务代码零改动**：
 

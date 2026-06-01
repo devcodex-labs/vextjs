@@ -17,7 +17,7 @@ features:
   - title: 🔌 Adapter 架构
     details: 底层 HTTP 框架可替换 — 内置 Native、Hono、Fastify、Express、Koa 五种 Adapter，切换仅需一行配置，业务代码零改动。
   - title: ⚡ 极致性能
-    details: Native Adapter 基于 http.createServer + find-my-way trie 路由，零框架依赖，JSON 场景可达 36,000+ RPS，框架开销约 18%。详见 [性能基准](/benchmark)。
+    details: Native Adapter 基于 http.createServer + route-core 路由核心，零外部 HTTP 框架依赖，JSON 场景可达 36,000+ RPS，框架开销约 18%。详见 [性能基准](/benchmark)。
   - title: 🛡️ 参数校验
     details: 集成 schema-dsl 声明式校验，在路由 options 中定义 body / query / params 规则，自动验证 + OpenAPI 文档生成，一处定义多处受益。
   - title: 🧩 插件系统

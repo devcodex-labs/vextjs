@@ -1,7 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
-import { assertBodySize, createPayloadTooLargeError } from "../../lib/middlewares/body-parser.js";
+import {
+  assertBodySize,
+  createPayloadTooLargeError,
+} from "../../lib/middlewares/body-parser.js";
 
 /**
  * 预解析的 URL 信息（由 adapter.ts handleRequest 传入，避免重复解析）
@@ -28,7 +31,7 @@ export interface ParsedUrl {
  * 转换要点：
  *   - query: 懒解析（首次访问时从 URL 解析，结果缓存）
  *   - body: 由 body-parser 中间件后续填充（初始 undefined）
- *   - params: 由 find-my-way 路由匹配后外部注入
+ *   - params: 由 route-core 路由匹配后外部注入
  *   - headers: 直接使用 IncomingMessage.headers（key 全小写，Node.js 保证）
  *   - requestId: 由 requestId 中间件后续填充（初始空字符串）
  *   - ip: 根据 trustProxy 配置决定从 X-Forwarded-For 或 socket 读取
@@ -51,7 +54,7 @@ export interface ParsedUrl {
  *
  * @param incoming   Node.js IncomingMessage 原始请求对象
  * @param app        VextApp 实例
- * @param params     路由参数（由 find-my-way 匹配结果提供）
+ * @param params     路由参数（由 route-core 匹配结果提供）
  * @param parsedUrl  预解析的 URL 信息（由 handleRequest 传入，避免重复 indexOf('?')）
  * @returns VextRequest 实例（含 _getRawBody 内部方法供 body-parser 使用）
  *
@@ -129,7 +132,8 @@ export function createVextRequest(
       incoming.on("end", () => {
         if (settled) return;
         settled = true;
-        const buffer = chunks.length > 0 ? Buffer.concat(chunks) : Buffer.alloc(0);
+        const buffer =
+          chunks.length > 0 ? Buffer.concat(chunks) : Buffer.alloc(0);
         assertBodySize(buffer.byteLength, maxBytes);
         resolve(buffer);
       });
@@ -154,7 +158,9 @@ export function createVextRequest(
         return raw;
       });
     }
-    _rawStringPromise = getRawBodyBuffer(maxBytes).then((buf) => buf.toString("utf-8"));
+    _rawStringPromise = getRawBodyBuffer(maxBytes).then((buf) =>
+      buf.toString("utf-8"),
+    );
     return _rawStringPromise;
   }
 
