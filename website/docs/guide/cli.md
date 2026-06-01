@@ -53,6 +53,7 @@ npx vextjs create <project-name> [options]
 | `--adapter <name>` | 指定 Adapter（native / hono / fastify / express / koa） | `native` |
 | `--js`             | 创建 JavaScript 项目（而非 TypeScript）                 | `false`  |
 | `--skip-install`   | 跳过 `npm install`                                      | `false`  |
+| `--force`          | 目标目录存在且非空时强制覆盖                            | `false`  |
 | `-h, --help`       | 显示帮助                                                | —        |
 
 ### 示例
@@ -76,15 +77,28 @@ npx vextjs create my-app --skip-install
 
 ```
 my-app/
+├── preload/
+│   └── README.md             # 项目级 preload 脚本占位说明
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 默认配置（port: 3000）
-│   │   ├── bootstrap.ts      # 启动期远程配置 provider（可选，按需新增）
-│   │   └── production.ts     # 生产环境覆盖（port: 3001）
+│   │   ├── development.ts    # 开发环境覆盖
+│   │   ├── production.ts     # 生产环境覆盖（port: 3001）
+│   │   ├── local.example.ts  # 复制为 local.ts 后启用本地覆盖
+│   │   └── bootstrap.example.ts # 复制为 bootstrap.ts 后启用启动期 provider
 │   ├── routes/
 │   │   └── index.ts          # 示例路由
-│   └── services/
-│       └── example.ts        # 示例服务
+│   ├── services/
+│   │   └── example.ts        # 示例服务
+│   ├── middlewares/
+│   │   └── README.md         # 自定义中间件占位说明
+│   ├── plugins/
+│   │   └── README.md         # 自定义插件占位说明
+│   ├── locales/
+│   │   └── README.md         # i18n 语言包占位说明
+│   └── types/
+│       └── generated/
+│           └── .gitkeep      # typegen 输出目录占位（TS 项目）
 ├── package.json
 ├── tsconfig.json
 └── .gitignore
@@ -99,7 +113,7 @@ npm run dev
 
 访问 `http://localhost:3000`，你应该能看到框架的 JSON 响应。
 
-如需在配置冻结前拉取远程配置（例如 Nacos / 启动期数据库配置），可额外创建 `src/config/bootstrap.ts` 并通过 `defineBootstrapConfig()` 注册 provider。该文件不是脚手架强制生成项，但已是框架正式约定路径。
+如需在配置冻结前拉取远程配置（例如 Nacos / 启动期数据库配置），可将 `src/config/bootstrap.example.ts` 复制为 `src/config/bootstrap.ts` 并通过 `defineBootstrapConfig()` 注册 provider。需要本地覆盖时，可将 `src/config/local.example.ts` 复制为 `src/config/local.ts`，该文件默认被 `.gitignore` 排除。
 
 ## `vext dev` — 开发模式
 
@@ -592,7 +606,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.9
+# 输出: vextjs v0.3.11
 
 # 查看帮助
 vext --help

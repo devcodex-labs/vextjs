@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
   "type": "module",
   "main": "./dist/index.js",

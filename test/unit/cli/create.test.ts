@@ -259,6 +259,9 @@ describe("vext create", () => {
           "src/middlewares",
           "src/plugins",
           "src/config",
+          "src/locales",
+          "preload",
+          "src/types/generated",
         ]),
       );
     });
@@ -278,8 +281,13 @@ describe("vext create", () => {
           "src/config/default.ts",
           "src/config/development.ts",
           "src/config/production.ts",
+          "src/config/local.example.ts",
+          "src/config/bootstrap.example.ts",
           "src/routes/index.ts",
           "src/services/example.ts",
+          "src/locales/README.md",
+          "preload/README.md",
+          "src/types/generated/.gitkeep",
         ]),
       );
     });
@@ -294,6 +302,12 @@ describe("vext create", () => {
 
       expect(files["src/plugins/README.md"]).toBeDefined();
       expect(files["src/plugins/README.md"]).toContain("plugins");
+
+      expect(files["src/locales/README.md"]).toBeDefined();
+      expect(files["src/locales/README.md"]).toContain("language packs");
+
+      expect(files["preload/README.md"]).toBeDefined();
+      expect(files["preload/README.md"]).toContain("preload scripts");
     });
   });
 
@@ -310,13 +324,14 @@ describe("vext create", () => {
 
       expect(fileNames).not.toContain("tsconfig.json");
       expect(fileNames).not.toContain("src/types/services.d.ts");
+      expect(fileNames).not.toContain("src/types/generated/.gitkeep");
     });
 
     it("JS 模式不创建 src/types 目录", async () => {
       await createCommand(["test-app", "--js", "--skip-install"]);
 
       const dirs = getCreatedDirs();
-      const hasTypesDir = dirs.some((d: string) => d.endsWith("src/types"));
+      const hasTypesDir = dirs.some((d: string) => d.includes("src/types"));
       expect(hasTypesDir).toBe(false);
     });
 
@@ -331,8 +346,12 @@ describe("vext create", () => {
           "src/config/default.js",
           "src/config/development.js",
           "src/config/production.js",
+          "src/config/local.example.js",
+          "src/config/bootstrap.example.js",
           "src/routes/index.js",
           "src/services/example.js",
+          "src/locales/README.md",
+          "preload/README.md",
         ]),
       );
 
@@ -544,6 +563,26 @@ describe("vext create", () => {
         expect(files["README.md"]).toContain("npm run dev");
         expect(files["README.md"]).toContain("npm start");
       });
+
+      it("TS 模式 README 指向 .ts 配置约定", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["README.md"]).toContain("src/config/default.ts");
+        expect(files["README.md"]).toContain("src/config/local.example.ts");
+        expect(files["README.md"]).toContain("src/config/bootstrap.example.ts");
+      });
+
+      it("JS 模式 README 指向 .js 配置约定", async () => {
+        await createCommand(["test-app", "--js", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["README.md"]).toContain("src/config/default.js");
+        expect(files["README.md"]).toContain("src/config/local.example.js");
+        expect(files["README.md"]).toContain("src/config/bootstrap.example.js");
+        expect(files["README.md"]).not.toContain("src/config/default.ts");
+        expect(files["README.md"]).not.toContain("types/generated");
+      });
     });
 
     describe("src/config/default", () => {
@@ -697,6 +736,13 @@ describe("vext create", () => {
 
         const files = getWrittenFiles();
         expect(files["src/types/services.d.ts"]).toBeUndefined();
+      });
+
+      it("TS 模式创建 generated type 输出目录占位", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/types/generated/.gitkeep"]).toBe("");
       });
     });
   });
@@ -991,11 +1037,11 @@ describe("vext create", () => {
 
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + README.md + tsconfig.json +
-      //           config/default.ts + config/development.ts + config/production.ts +
-      //           routes/index.ts + services/example.ts = 9
+      //           5 config files + routes/index.ts + services/example.ts +
+      //           locales/README.md + preload/README.md + generated/.gitkeep = 14
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 11
-      expect(Object.keys(files).length).toBe(11);
+      // 总计 16
+      expect(Object.keys(files).length).toBe(16);
     });
 
     it("JS 模式生成正确的文件数量", async () => {
@@ -1003,12 +1049,12 @@ describe("vext create", () => {
 
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + README.md +
-      //           config/default.js + config/development.js + config/production.js +
-      //           routes/index.js + services/example.js = 8
+      //           5 config files + routes/index.js + services/example.js +
+      //           locales/README.md + preload/README.md = 12
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 10
+      // 总计 14
       // 不含：tsconfig.json
-      expect(Object.keys(files).length).toBe(10);
+      expect(Object.keys(files).length).toBe(14);
     });
   });
 
@@ -1119,9 +1165,11 @@ describe("vext create", () => {
 
       // JS 模式
       expect(files["tsconfig.json"]).toBeUndefined();
+      expect(files["src/types/generated/.gitkeep"]).toBeUndefined();
       expect(
         Object.keys(files).some((f: string) => f === "src/routes/index.js"),
       ).toBe(true);
+      expect(files["src/config/local.example.js"]).toBeDefined();
 
       // native adapter
       expect(pkg.dependencies.hono).toBeUndefined();

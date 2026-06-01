@@ -49,7 +49,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.3.9"
+    "vextjs": "^0.3.11"
   }
 }
 ```
@@ -61,7 +61,7 @@ VextJS 要求 `"type": "module"`，项目使用 ESM 模块格式。
 ### 3. 创建目录结构
 
 ```bash
-mkdir -p src/config src/routes src/services
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated preload
 ```
 
 ### 4. 编写配置
@@ -210,19 +210,31 @@ my-app/
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 默认配置
-│   │   ├── bootstrap.ts      # 启动期远程配置 provider（可选）
+│   │   ├── bootstrap.example.ts # 启动期远程配置 provider 示例
 │   │   ├── development.ts    # 开发环境覆盖（可选）
-│   │   └── production.ts     # 生产环境覆盖（可选）
+│   │   ├── production.ts     # 生产环境覆盖（可选）
+│   │   └── local.example.ts  # 本地覆盖示例，复制为 local.ts 后使用
 │   ├── routes/
 │   │   └── index.ts          # 路由定义
-│   └── services/
-│       └── example.ts        # 服务层
+│   ├── services/
+│   │   └── example.ts        # 服务层
+│   ├── middlewares/
+│   │   └── README.md         # 自定义中间件占位说明
+│   ├── plugins/
+│   │   └── README.md         # 自定义插件占位说明
+│   ├── locales/
+│   │   └── README.md         # i18n 语言包占位说明
+│   └── types/
+│       └── generated/
+│           └── .gitkeep      # typegen 输出目录占位（TS 项目）
+├── preload/
+│   └── README.md             # 进程级 preload 脚本占位说明
 ├── package.json
 └── tsconfig.json              # TypeScript 配置（TS 项目）
 ```
 
 :::info 约定
-VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
+VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
 
 | 文件路径                       | URL 前缀          |
 | ------------------------------ | ----------------- |
@@ -233,7 +245,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/` 目录，
 
 :::
 
-`src/config/bootstrap.ts` 同样是约定路径：存在时会在 `default/env/local` 合并后、CLI override 前执行，并将 provider 返回的 patch 纳入最终配置链路。
+`src/config/local.example.ts` 和 `src/config/bootstrap.example.ts` 是脚手架生成的示例文件。需要启用本地覆盖或启动期 provider 时，将它们分别复制为 `local.ts` / `bootstrap.ts`。`src/config/bootstrap.ts` 存在时会在 `default/env/local` 合并后、CLI override 前执行，并将 provider 返回的 patch 纳入最终配置链路。
 
 ## 访问 OpenAPI 文档
 

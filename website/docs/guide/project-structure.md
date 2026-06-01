@@ -6,13 +6,19 @@ VextJS 遵循 **约定优于配置** 的设计理念，通过固定的目录结�
 
 ```bash
 my-app/
+├── preload/                   # 项目级 preload 脚本（可选）
+│   ├── 01-otel.ts             # 进程启动前执行
+│   └── README.md              # 脚手架占位说明
+│
 ├── src/
 │   ├── config/                # 配置文件（必须）
 │   │   ├── default.ts         # 默认配置（必须存在）
 │   │   ├── bootstrap.ts       # 启动期 provider（可选）
+│   │   ├── bootstrap.example.ts # 脚手架生成的 provider 示例
 │   │   ├── development.ts     # 开发环境覆盖（可选）
 │   │   ├── production.ts      # 生产环境覆盖（可选）
-│   │   └── local.ts           # 本地覆盖，不提交到 Git（可选）
+│   │   ├── local.ts           # 本地覆盖，不提交到 Git（可选）
+│   │   └── local.example.ts   # 脚手架生成的本地覆盖示例
 │   │
 │   ├── routes/                # 路由定义（约定式，自动扫描）
 │   │   ├── index.ts           # → /
@@ -38,9 +44,14 @@ my-app/
 │   │   ├── redis.ts           # 自定义插件
 │   │   └── sentry.ts          # 自定义插件
 │   │
-│   └── locales/               # 国际化语言包（可选）
-│       ├── zh-CN.ts           # 中文语言包
-│       └── en-US.ts           # 英文语言包
+│   ├── locales/               # 国际化语言包（可选）
+│   │   ├── zh-CN.ts           # 中文语言包
+│   │   └── en-US.ts           # 英文语言包
+│   │
+│   └── types/
+│       └── generated/         # typegen 输出目录（TS 项目）
+│           ├── services.generated.d.ts
+│           └── app-extensions.generated.d.ts
 │
 ├── dist/                      # 构建产物（vext build 生成）
 ├── package.json
@@ -57,16 +68,22 @@ my-app/
 框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
-| 文件             | 用途                                | 是否必须 |
-| ---------------- | ----------------------------------- | -------- |
-| `default.ts`     | 所有环境的基础配置                  | ✅ 必须  |
-| `bootstrap.ts`   | 启动期远程配置 provider 注册入口    | 可选     |
-| `development.ts` | 开发环境覆盖                        | 可选     |
-| `production.ts`  | 生产环境覆盖                        | 可选     |
-| `test.ts`        | 测试环境覆盖                        | 可选     |
-| `local.ts`       | 本地开发覆盖（应加入 `.gitignore`） | 可选     |
+| 文件                   | 用途                                                     | 是否必须 |
+| ---------------------- | -------------------------------------------------------- | -------- |
+| `default.ts`           | 所有环境的基础配置                                       | ✅ 必须  |
+| `bootstrap.ts`         | 启动期远程配置 provider 注册入口                         | 可选     |
+| `bootstrap.example.ts` | 脚手架生成的 provider 示例，复制为 `bootstrap.ts` 后启用 | 示例     |
+| `development.ts`       | 开发环境覆盖                                             | 可选     |
+| `production.ts`        | 生产环境覆盖                                             | 可选     |
+| `test.ts`              | 测试环境覆盖                                             | 可选     |
+| `local.ts`             | 本地开发覆盖（应加入 `.gitignore`）                      | 可选     |
+| `local.example.ts`     | 脚手架生成的本地覆盖示例，复制为 `local.ts` 后启用       | 示例     |
 
 环境文件通过 `NODE_ENV` 环境变量自动匹配。例如 `NODE_ENV=production` 时加载 `production.ts`。
+
+:::info 脚手架约定
+`vext create` 默认生成 `local.example.ts` / `bootstrap.example.ts`，而不是直接生成 `local.ts` / `bootstrap.ts`。这样既能告诉用户约定路径，也能避免把本地覆盖或远程配置入口误提交到仓库。
+:::
 
 ```typescript
 // src/config/default.ts

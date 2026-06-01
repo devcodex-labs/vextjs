@@ -313,15 +313,21 @@ async function generateProject(
   options: CreateOptions,
   vextVersion: string,
 ): Promise<void> {
-
   // ── 1. 创建目录结构 ────────────────────────────────────
+  const isTs = options.language === "ts";
   const dirs = [
     "src/routes",
     "src/services",
     "src/middlewares",
     "src/plugins",
     "src/config",
+    "src/locales",
+    "preload",
   ];
+
+  if (isTs) {
+    dirs.push("src/types/generated");
+  }
 
   for (const dir of dirs) {
     fs.mkdirSync(path.join(targetDir, dir), { recursive: true });
@@ -391,7 +397,7 @@ function getTemplateFiles(
   files[".gitignore"] = generateGitignore();
 
   // ── README.md ─────────────────────────────────────────
-  files["README.md"] = generateReadme(name, adapter);
+  files["README.md"] = generateReadme(name, adapter, ext, isTs);
 
   // ── tsconfig.json（TS 项目专用）────────────────────────
   if (isTs) {
@@ -407,11 +413,26 @@ function getTemplateFiles(
   // ── src/config/production ─────────────────────────────
   files[`src/config/production.${ext}`] = generateProductionConfig(isTs);
 
+  // ── src/config/local.example ──────────────────────────
+  files[`src/config/local.example.${ext}`] = generateLocalExampleConfig(isTs);
+
+  // ── src/config/bootstrap.example ──────────────────────
+  files[`src/config/bootstrap.example.${ext}`] =
+    generateBootstrapExampleConfig(isTs);
+
   // ── src/routes/index ──────────────────────────────────
   files[`src/routes/index.${ext}`] = generateIndexRoute(isTs);
 
   // ── src/services/example ──────────────────────────────
   files[`src/services/example.${ext}`] = generateExampleService(isTs);
+
+  // ── optional convention directories ───────────────────
+  files["src/locales/README.md"] = generateLocalesReadme();
+  files["preload/README.md"] = generatePreloadReadme();
+
+  if (isTs) {
+    files["src/types/generated/.gitkeep"] = "";
+  }
 
   return files;
 }
@@ -506,7 +527,17 @@ coverage/
 `;
 }
 
-function generateReadme(name: string, adapter: string): string {
+function generateReadme(
+  name: string,
+  adapter: string,
+  ext: string,
+  isTs: boolean,
+): string {
+  const optionalStructureLines = isTs
+    ? `├── locales/         # Optional i18n language packs
+└── types/generated/ # Generated TypeScript declarations`
+    : `└── locales/         # Optional i18n language packs`;
+
   return `# ${name}
 
 A [vext](https://github.com/vextjs/vext) project.
@@ -525,11 +556,14 @@ npm start
 
 \`\`\`
 src/
-├── config/          # Configuration files (default, development, production)
+├── config/          # Configuration files and examples
 ├── routes/          # Route definitions
 ├── services/        # Business logic services
-├── middlewares/      # Custom middlewares
-└── plugins/         # Custom plugins
+├── middlewares/     # Custom middlewares
+├── plugins/         # Custom plugins
+${optionalStructureLines}
+
+preload/             # Optional process-level preload scripts
 \`\`\`
 
 ## Configuration
@@ -537,12 +571,97 @@ src/
 - **Adapter**: \`${adapter}\`
 - **Port**: \`3000\` (default)
 
-Edit \`src/config/default.ts\` to customize your configuration.
+Edit \`src/config/default.${ext}\` to customize shared configuration.
+Copy \`src/config/local.example.${ext}\` to \`src/config/local.${ext}\` for local-only overrides.
+Copy \`src/config/bootstrap.example.${ext}\` to \`src/config/bootstrap.${ext}\` when you need startup-time config providers.
 
 ## Learn More
 
 - [vext Documentation](https://github.com/vextjs/vext)
 - [API Reference](https://github.com/vextjs/vext#api)
+`;
+}
+
+function generateLocalExampleConfig(isTs: boolean): string {
+  if (isTs) {
+    return `import type { VextUserConfig } from 'vextjs'
+
+// Copy this file to local.ts for machine-specific overrides.
+// Do not commit local.ts; it may reference private infrastructure.
+const config: Partial<VextUserConfig> = {
+  logger: {
+    level: 'debug',
+    pretty: true,
+  },
+}
+
+export default config
+`;
+  }
+
+  return `/** @type {Partial<import('vextjs').VextUserConfig>} */
+// Copy this file to local.js for machine-specific overrides.
+// Do not commit local.js; it may reference private infrastructure.
+const config = {
+  logger: {
+    level: 'debug',
+    pretty: true,
+  },
+}
+
+export default config
+`;
+}
+
+function generateBootstrapExampleConfig(isTs: boolean): string {
+  if (isTs) {
+    return `import { defineBootstrapConfig } from 'vextjs'
+
+// Copy this file to bootstrap.ts when startup-time config must be loaded
+// before the final app config is validated and frozen.
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: 'example-provider',
+      async load() {
+        return null
+      },
+    },
+  ],
+})
+`;
+  }
+
+  return `import { defineBootstrapConfig } from 'vextjs'
+
+// Copy this file to bootstrap.js when startup-time config must be loaded
+// before the final app config is validated and frozen.
+export default defineBootstrapConfig({
+  providers: [
+    {
+      name: 'example-provider',
+      async load() {
+        return null
+      },
+    },
+  ],
+})
+`;
+}
+
+function generateLocalesReadme(): string {
+  return `# locales
+
+Place optional i18n language packs here, for example \`en-US.ts\` or \`zh-CN.ts\`.
+vext loads this directory automatically when locale support is enabled.
+`;
+}
+
+function generatePreloadReadme(): string {
+  return `# preload
+
+Place optional process-level preload scripts here.
+Use this directory for OpenTelemetry, APM, polyfills, or startup bridges that must run before application code.
 `;
 }
 
@@ -565,9 +684,9 @@ function generateTsconfig(): string {
       skipLibCheck: true,
       resolveJsonModule: true,
     },
-      include: ["src/**/*.ts", "src/**/*.d.ts"],
-      exclude: ["node_modules", "dist"],
-    };
+    include: ["src/**/*.ts", "src/**/*.d.ts"],
+    exclude: ["node_modules", "dist"],
+  };
 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
