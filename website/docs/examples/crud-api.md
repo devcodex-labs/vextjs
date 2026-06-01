@@ -495,7 +495,7 @@ export default defineRoutes((app) => {
               updatedAt: "2026-03-05T00:00:00.000Z",
             },
           },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
           409: { description: "邮箱已注册" },
         },
@@ -536,7 +536,7 @@ export default defineRoutes((app) => {
         tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
           404: { description: "用户不存在" },
           409: { description: "邮箱已被其他用户使用" },
@@ -650,12 +650,12 @@ describe("用户 CRUD", () => {
       expect(res.body.data.items[0].name).toBe("Alice");
     });
 
-    it("分页参数校验失败应返回 400", async () => {
+    it("分页参数校验失败应返回 422", async () => {
       const res = await testApp.request
         .get("/users/list")
         .query({ page: 0, limit: 10 }); // page 最小值为 1
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 
@@ -725,7 +725,7 @@ describe("用户 CRUD", () => {
       expect(res.body.code).toBe(10001);
     });
 
-    it("name 为空应返回 400", async () => {
+    it("name 为空应返回 422", async () => {
       const res = await testApp.request
         .post("/users")
         .set("Authorization", `Bearer ${AUTH_TOKEN}`)
@@ -734,11 +734,11 @@ describe("用户 CRUD", () => {
           email: "new@example.com",
         });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(res.body.errors).toBeDefined();
     });
 
-    it("email 格式无效应返回 400", async () => {
+    it("email 格式无效应返回 422", async () => {
       const res = await testApp.request
         .post("/users")
         .set("Authorization", `Bearer ${AUTH_TOKEN}`)
@@ -747,7 +747,7 @@ describe("用户 CRUD", () => {
           email: "not-an-email",
         });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
     });
   });
 
@@ -900,7 +900,7 @@ curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
   -d '{"name":"","email":"invalid"}'
-# → 400 {"code":-1,"message":"Validation failed","errors":[...],"requestId":"..."}
+# → 422 {"code":422,"message":"Validation failed","errors":[...],"requestId":"..."}
 ```
 
 ## 10. 关键概念总结

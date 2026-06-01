@@ -1,13 +1,15 @@
 # 性能基准测试
 
-本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。所有测试均在相同硬件环境下运行，以确保公平比较。
+本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。当前版本的可复现基准以仓库内 `test/benchmark/run-benchmark.mjs` 为准；页面中的历史 benchmark 仓库数据仅用于趋势参考。
 
 ## 对比口径说明（请先阅读）
 
-这些数据衡量的是**相同场景、相同压测参数、尽量相同功能负载**下的吞吐量对比，而不是“默认开箱全功能配置”的直接对比。
+当前 repo-local benchmark 衡量的是**相同场景、相同压测参数、尽量相同功能负载**下的吞吐量对比，而不是“默认开箱全功能配置”的直接对比。
 
 - **Raw（裸跑）**：直接使用底层框架原生 API 实现同一测试场景
 - **Vext**：通过 Vext 启动相同场景，但为了与 Raw 公平对比，会关闭非必要默认能力，只保留 adapter / 路由层核心开销
+- **chain**：历史兼容场景，表示 handler 内联业务逻辑链
+- **middleware-chain**：真实 route-level middleware chain，会进入 adapter 的中间件链执行器
 
 当前 benchmark 中，Vext 侧会关闭或收紧以下非核心默认能力：
 
@@ -115,7 +117,7 @@ serve({ fetch: app.fetch, port: 3000 });
 | NestJS (Express)    |    16,821     |  5.5 ms  | 11.2 ms  | 19.8 ms  | 3.1 MB/s  |
 | NestJS (Fastify)    |    79,234     |  1.2 ms  |  2.3 ms  |  4.1 ms  | 14.7 MB/s |
 
-> 数据来源：[benchmark 仓库](https://github.com/vextjs/benchmarks)，2026-01-15 测试
+> 历史数据来源：[benchmark 仓库](https://github.com/vextjs/benchmarks)，2026-01-15 测试。当前版本复现实测请优先运行本仓库 `test/benchmark/run-benchmark.mjs`。
 
 ---
 
@@ -207,14 +209,14 @@ POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌
 
 VextJS 支持多种底层 HTTP Adapter，性能差异主要来源于底层 HTTP 实现：
 
-| Adapter          | 请求/秒 (Hello World) | 特性                                              | 适用场景              |
-| ---------------- | :-------------------: | ------------------------------------------------- | --------------------- |
-| `native`（默认） |        ~98,000        | 零外部 HTTP 框架依赖，Node 原生 http + route-core | 推荐，性能最高        |
-| `fastify`        |        ~87,000        | 高性能 + 生态丰富                                 | 需要 Fastify 插件生态 |
-| `hono`           |        ~72,000        | Web Standards API，超轻量                         | 全栈 / 边缘运行时     |
-| `express`        |        ~18,000        | 最大中间件生态                                    | 迁移现有 Express 项目 |
-| `koa`            |        ~24,000        | 轻量优雅                                          | 中小型项目            |
-| `node-cluster`   |      ~340,000\*       | 多进程，线性扩展                                  | 多核 CPU 服务器       |
+| Adapter          | 请求/秒 (Hello World，历史) | 特性                                              | 适用场景              |
+| ---------------- | :-------------------------: | ------------------------------------------------- | --------------------- |
+| `native`（默认） |           ~98,000           | 零外部 HTTP 框架依赖，Node 原生 http + route-core | 推荐，性能最高        |
+| `fastify`        |           ~87,000           | 高性能 + 生态丰富                                 | 需要 Fastify 插件生态 |
+| `hono`           |           ~72,000           | Web Standards API，超轻量                         | 全栈 / 边缘运行时     |
+| `express`        |           ~18,000           | 最大中间件生态                                    | 迁移现有 Express 项目 |
+| `koa`            |           ~24,000           | 轻量优雅                                          | 中小型项目            |
+| `node-cluster`   |         ~340,000\*          | 多进程，线性扩展                                  | 多核 CPU 服务器       |
 
 > `*` Cluster 数据为 8 核 worker 合计吞吐量（单进程 ×8 近线性扩展）。
 > 注：uWS（uWebSockets.js）adapter 尚未内置，列为未来规划（roadmap）。
@@ -281,31 +283,24 @@ Express     ████████                                  18,934 req
 
 ## 如何自行运行基准测试
 
-### 克隆基准仓库
+### 运行当前仓库内基准
 
 ```bash
-git clone https://github.com/vextjs/benchmarks
-cd benchmarks
-pnpm install
-```
-
-### 运行所有基准
-
-```bash
-pnpm run bench
+npm install
+node test/benchmark/run-benchmark.mjs --scenario all --rounds 5
 ```
 
 ### 运行单个框架
 
 ```bash
 # 仅测试 VextJS (Native)
-pnpm run bench:vext-native
+node test/benchmark/run-benchmark.mjs --framework native --scenario all --rounds 5
 
 # 仅测试 VextJS (Fastify)
-pnpm run bench:vext-fastify
+node test/benchmark/run-benchmark.mjs --framework fastify --scenario all --rounds 5
 
-# 仅测试 Express
-pnpm run bench:express
+# 仅测试真实 route-level middleware chain
+node test/benchmark/run-benchmark.mjs --scenario middleware-chain --rounds 5
 ```
 
 ### 使用 autocannon 手动测试
@@ -339,7 +334,7 @@ export default {
 
 ## 结论
 
-- **最高吞吐量**: VextJS + Native Adapter，在 Hello World 场景下达到约 **98,000 req/s**，开启 Cluster 模式可突破 **700,000 req/s**（8 核）
+- **历史最高吞吐量**: VextJS + Native Adapter，在 2026-01-15 历史 Hello World 场景下达到约 **98,000 req/s**，开启 Cluster 模式可突破 **700,000 req/s**（8 核）
 - **最低内存**: VextJS + Native Adapter，空载仅 **18 MB**，适合资源受限环境
 - **最快启动**: VextJS + Native Adapter，冷启动约 **42 ms**，热重载约 **180 ms**
 - **校验性能**: 内置 schema-dsl 基于 ajv 编译，校验开销极低，接近原生 ajv 性能

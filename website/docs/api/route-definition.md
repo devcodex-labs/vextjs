@@ -172,7 +172,10 @@ interface RouteOptions {
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
   multipart?: {
-    files?: Record<string, string | { description?: string; required?: boolean }>;
+    files?: Record<
+      string,
+      string | { description?: string; required?: boolean }
+    >;
   };
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
@@ -219,7 +222,7 @@ app.put(
 
 ## validate
 
-声明式参数校验，基于 `schema-dsl` DSL 语法。框架自动在 handler 执行前进行校验，校验失败返回 `400` 错误。
+声明式参数校验，基于 `schema-dsl` DSL 语法。框架自动在 handler 执行前进行校验，校验失败返回 `422` 错误。
 
 ### 校验位置
 
@@ -312,11 +315,11 @@ const body = req.valid<CreateUserBody>("body");
 
 ### 校验失败响应
 
-校验失败时框架自动返回 `400` 状态码：
+校验失败时框架自动返回 `422` 状态码：
 
 ```json
 {
-  "code": -1,
+  "code": 422,
   "message": "Validation failed",
   "errors": [
     { "field": "email", "message": "must be a valid email address" },
@@ -481,7 +484,7 @@ app.post(
             createdAt: "2026-01-01T00:00:00Z",
           },
         },
-        400: { description: "请求参数校验失败" },
+        422: { description: "请求参数校验失败" },
         401: { description: "未认证" },
         409: { description: "邮箱已注册" },
       },
@@ -632,29 +635,29 @@ docs: {
 
 ```typescript
 app.post(
-  '/upload/avatar',
+  "/upload/avatar",
   {
-    middlewares: ['upload'],
+    middlewares: ["upload"],
     multipart: {
       files: {
-        avatar: { description: '头像图片（JPEG/PNG）', required: true },
-        thumbnail: '可选缩略图',
+        avatar: { description: "头像图片（JPEG/PNG）", required: true },
+        thumbnail: "可选缩略图",
       },
     },
-    docs: { summary: '上传头像', tags: ['用户'] },
+    docs: { summary: "上传头像", tags: ["用户"] },
   },
   async (req, res) => {
-    const file = req.files?.find(f => f.fieldname === 'avatar');
+    const file = req.files?.find((f) => f.fieldname === "avatar");
     res.json({ filename: file?.filename, size: file?.size });
   },
 );
 ```
 
-| 子字段        | 类型                               | 说明                                         |
-| ------------- | ---------------------------------- | -------------------------------------------- |
-| `files`       | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多 |
-| `files[].description` | `string`                 | 字段说明（用于 OpenAPI 文档）                |
-| `files[].required`    | `boolean`                | 是否必传（默认 `false`）                     |
+| 子字段                | 类型                               | 说明                                         |
+| --------------------- | ---------------------------------- | -------------------------------------------- |
+| `files`               | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多 |
+| `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                |
+| `files[].required`    | `boolean`                          | 是否必传（默认 `false`）                     |
 
 :::warning 注意
 `multipart.files` 与 `validate.body` 互斥，同时配置时 `multipart.files` 优先生效于 OpenAPI 文档生成。

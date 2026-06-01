@@ -384,7 +384,7 @@ export default defineRoutes((app) => {
               profile: { bio: "Hello!" },
             },
           },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
           409: { description: "邮箱已注册" },
         },
@@ -422,7 +422,7 @@ export default defineRoutes((app) => {
         tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
-          400: { description: "参数校验失败（或未提供任何字段）" },
+          422: { description: "参数校验失败（或未提供任何字段）" },
           401: { description: "未认证" },
           404: { description: "用户不存在" },
           409: { description: "邮箱已被其他用户使用" },
@@ -483,7 +483,7 @@ export default defineRoutes((app) => {
         tags: ["用户"],
         responses: {
           200: { description: "批量删除结果" },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
         },
       },
@@ -710,7 +710,7 @@ curl -X POST http://localhost:3000/users \
     "email": "eve@example.com",
     "profile": { "avatar": "not-a-url" }
   }'
-# → 400 {"errors":[{"field":"profile.avatar","message":"头像必须为有效 URL"}]}
+# → 422 {"errors":[{"field":"profile.avatar","message":"头像必须为有效 URL"}]}
 
 # ❌ 数组长度校验 — 超过 10 个标签
 curl -X POST http://localhost:3000/users \
@@ -721,14 +721,14 @@ curl -X POST http://localhost:3000/users \
     "email": "eve@example.com",
     "tags": ["1","2","3","4","5","6","7","8","9","10","11"]
   }'
-# → 400 {"errors":[{"field":"tags","message":"最多 10 个标签"}]}
+# → 422 {"errors":[{"field":"tags","message":"最多 10 个标签"}]}
 
 # ❌ refine 校验 — 更新时未提供任何字段
 curl -X PUT http://localhost:3000/users/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
   -d '{}'
-# → 400 {"errors":[{"field":"","message":"至少需要提供一个要更新的字段"}]}
+# → 422 {"errors":[{"field":"","message":"至少需要提供一个要更新的字段"}]}
 
 # ❌ omit 校验 — 更新时尝试修改角色（被 omit 移除）
 curl -X PUT http://localhost:3000/users/1 \
@@ -742,7 +742,7 @@ curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
   -d '{"name":"Frank","email":"frank@example.com","role":"superadmin"}'
-# → 400 {"errors":[{"field":"role","message":"角色必须为 admin、user 或 editor"}]}
+# → 422 {"errors":[{"field":"role","message":"角色必须为 admin、user 或 editor"}]}
 
 # ✅ 查询参数自动类型转换（z.coerce.number）
 curl "http://localhost:3000/users/list?page=2&limit=5"

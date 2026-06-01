@@ -517,15 +517,15 @@ VextJS 内置 `multipart/form-data` 解析，基于 Node.js 18+ 原生 `Request.
 ### 开启内置解析
 
 ```typescript
-// vext.config.ts
-export default defineConfig({
+// src/config/default.ts
+export default {
   multipart: {
-    enabled: true,          // 开启内置解析
-    maxFileSize: 10 * 1024 * 1024,  // 单文件上限 10MB（默认）
-    maxFiles: 10,           // 单次最多文件数（默认）
+    enabled: true, // 开启内置解析
+    maxFileSize: 10 * 1024 * 1024, // 单文件上限 10MB（默认）
+    maxFiles: 10, // 单次最多文件数（默认）
     // allowedMimeTypes: ['image/jpeg', 'image/png'],  // 可选：MIME 白名单
   },
-});
+};
 ```
 
 开启后，所有 `multipart/form-data` 请求体将由 body-parser 自动解析，结果填充到 `req.files`（类型 `ParsedFile[]`）。未开启时对性能零影响。
@@ -535,41 +535,48 @@ export default defineConfig({
 ```typescript
 // src/routes/upload.ts
 export default defineRoutes((app) => {
-  app.post('/upload', {
-    multipart: {
-      files: { avatar: '用户头像', resume: { description: '简历文件', required: true } },
+  app.post(
+    "/upload",
+    {
+      multipart: {
+        files: {
+          avatar: "用户头像",
+          resume: { description: "简历文件", required: true },
+        },
+      },
     },
-  }, async (req, res) => {
-    const avatarFile = req.files?.find(f => f.fieldname === 'avatar');
-    if (!avatarFile) {
-      res.json({ code: 400, message: '未上传文件' }, 400);
-      return;
-    }
+    async (req, res) => {
+      const avatarFile = req.files?.find((f) => f.fieldname === "avatar");
+      if (!avatarFile) {
+        res.json({ code: 400, message: "未上传文件" }, 400);
+        return;
+      }
 
-    // 校验文件类型
-    if (!avatarFile.mimetype.startsWith('image/')) {
-      res.json({ code: 400, message: '仅支持图片格式' }, 400);
-      return;
-    }
+      // 校验文件类型
+      if (!avatarFile.mimetype.startsWith("image/")) {
+        res.json({ code: 400, message: "仅支持图片格式" }, 400);
+        return;
+      }
 
-    // 保存文件（avatarFile.buffer 保证二进制完整）
-    const filename = `${Date.now()}-${avatarFile.filename}`;
-    await fs.writeFile(`./uploads/${filename}`, avatarFile.buffer);
+      // 保存文件（avatarFile.buffer 保证二进制完整）
+      const filename = `${Date.now()}-${avatarFile.filename}`;
+      await fs.writeFile(`./uploads/${filename}`, avatarFile.buffer);
 
-    res.json({ filename, size: avatarFile.size });
-  });
+      res.json({ filename, size: avatarFile.size });
+    },
+  );
 });
 ```
 
 ### ParsedFile 结构
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
+| 字段        | 类型     | 说明                                              |
+| ----------- | -------- | ------------------------------------------------- |
 | `fieldname` | `string` | 表单字段名（`<input name="avatar">` 的 `avatar`） |
-| `filename` | `string` | 客户端原始文件名 |
-| `mimetype` | `string` | MIME 类型（如 `image/jpeg`） |
-| `buffer` | `Buffer` | 文件完整二进制内容 |
-| `size` | `number` | 文件大小（字节） |
+| `filename`  | `string` | 客户端原始文件名                                  |
+| `mimetype`  | `string` | MIME 类型（如 `image/jpeg`）                      |
+| `buffer`    | `Buffer` | 文件完整二进制内容                                |
+| `size`      | `number` | 文件大小（字节）                                  |
 
 :::tip Fastify 用户
 `multipart.maxFileSize` 只限制单个文件大小；总请求体读取上限由 `bodyParser.maxBodySize` 控制。使用 Fastify 时，如额外配置 adapter `bodyLimit`，实际读取边界会取 adapter `bodyLimit` 与 body-parser 总体上限中的较小值。
@@ -588,17 +595,17 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/plugins/upload-custom.ts
-import { definePlugin } from 'vextjs';
-import type { ParsedFile } from 'vextjs';
-import busboy from 'busboy';
+import { definePlugin } from "vextjs";
+import type { ParsedFile } from "vextjs";
+import busboy from "busboy";
 
 export default definePlugin({
-  name: 'upload-custom',
+  name: "upload-custom",
 
   setup(app) {
     app.use(async (req, _res, next) => {
-      const ct = req.headers['content-type'] ?? '';
-      if (!ct.startsWith('multipart/form-data')) {
+      const ct = req.headers["content-type"] ?? "";
+      if (!ct.startsWith("multipart/form-data")) {
         await next();
         return;
       }
@@ -612,13 +619,13 @@ export default definePlugin({
       const rawBuffer = await req._getRawBodyBuffer();
 
       req.files = await new Promise<ParsedFile[]>((resolve, reject) => {
-        const bb = busboy({ headers: { 'content-type': ct } });
+        const bb = busboy({ headers: { "content-type": ct } });
         const collected: ParsedFile[] = [];
 
-        bb.on('file', (fieldname, stream, info) => {
+        bb.on("file", (fieldname, stream, info) => {
           const chunks: Buffer[] = [];
-          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-          stream.on('end', () => {
+          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stream.on("end", () => {
             const buffer = Buffer.concat(chunks);
             collected.push({
               fieldname,
@@ -630,8 +637,8 @@ export default definePlugin({
           });
         });
 
-        bb.on('finish', () => resolve(collected));
-        bb.on('error', reject);
+        bb.on("finish", () => resolve(collected));
+        bb.on("error", reject);
         bb.write(rawBuffer);
         bb.end();
       });

@@ -4,7 +4,7 @@
  * 场景：
  *   1. GET /json         → 纯 JSON 响应
  *   2. GET /users/:id    → 路由参数解析
- *   3. GET /chain        → 3 层中间件链 + JSON 响应
+ *   3. GET /chain        → 3 层 handler 内联业务链 + JSON 响应
  *
  * 用法：
  *   PORT=3000 node test/benchmark/servers/raw-koa.mjs
@@ -22,7 +22,7 @@ const port = parseInt(process.env.PORT || "3000", 10);
 const app = new Koa();
 const router = new Router();
 
-// ── 场景 3: 3 层中间件链（仅对 /chain 路径生效） ────────────
+// ── 场景 3: 3 层 handler 内联业务链（仅对 /chain 路径生效） ────────────
 // 模拟 vext 洋葱模型：每层中间件在请求前后各做一次操作
 
 // 中间件 1: 请求计时

@@ -50,7 +50,7 @@ export default {
 
 ### ⚡ 极致性能
 
-基准测试（JSON 响应场景，5 轮中位数）：
+历史基准快照（JSON 响应场景，5 轮中位数）：
 
 | 框架    | Raw RPS | Vext RPS | 框架开销 |
 | ------- | ------: | -------: | -------: |
@@ -61,7 +61,7 @@ export default {
 
 > Vext 的开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
 
-> ⚠️ **测试环境说明**：上表数据基于 Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数，2026-03-23）测得，实际性能因 CPU、操作系统、并发连接数等因素存在差异。完整基准测试数据（含测试环境规格、多场景对比、Cluster 扩展性）请参见 [性能基准测试](/benchmark)。
+> ⚠️ **测试环境说明**：上表为 2026-03-23 历史快照，基于 Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数）测得。当前版本复现实测以仓库内 `test/benchmark/run-benchmark.mjs` 为准，并区分 `chain` 与 `middleware-chain`。完整口径请参见 [性能基准测试](/benchmark)。
 
 ### 🛡️ 声明式参数校验
 

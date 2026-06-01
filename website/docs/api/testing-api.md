@@ -777,7 +777,7 @@ describe("用户 CRUD", () => {
     expect(res.body.message).toBe("用户不存在");
   });
 
-  it("参数校验失败应返回 400", async () => {
+  it("参数校验失败应返回 422", async () => {
     const res = await testApp.request
       .post("/users")
       .set("Authorization", "Bearer test-admin-token")
@@ -786,7 +786,7 @@ describe("用户 CRUD", () => {
         email: "invalid-email", // 不满足 email 格式
       });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(res.body.errors).toBeDefined();
     expect(res.body.errors.length).toBeGreaterThan(0);
   });
@@ -1041,7 +1041,7 @@ describe("错误处理", () => {
       .set("Authorization", "Bearer valid-token")
       .send({}); // 缺少必填字段
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(res.body.errors).toBeDefined();
     expect(Array.isArray(res.body.errors)).toBe(true);
 

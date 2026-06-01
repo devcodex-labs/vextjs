@@ -1115,6 +1115,28 @@ describe("OpenAPIGenerator", () => {
       );
     });
 
+    it("validate 路由自动追加 422 校验失败响应", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          validate: { body: { name: "string!" } },
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post!;
+      expect(op.responses["422"]).toMatchObject({
+        description: "Validation error",
+        content: {
+          "application/json": {
+            example: {
+              code: 422,
+              message: "Validation failed",
+            },
+          },
+        },
+      });
+      expect(op.responses["400"]).toBeUndefined();
+    });
+
     it("响应示例自动包装（2xx）", () => {
       const doc = generate([
         createRoute("GET", "/users", {

@@ -634,15 +634,15 @@ VextJS 提供以下内置中间件，由 `bootstrap` 自动注册，无需手动
   → requestId      ← 生成/透传 requestId
   → cors           ← CORS 预检
   → bodyParser     ← 解析请求体
-  → accessLog      ← 记录请求开始时间
   → rateLimit      ← 速率限制检查
   → responseWrapper ← 开启出口包装
+  → accessLog      ← 记录请求开始时间
   → [全局中间件]    ← 插件通过 app.use() 注册的
   → [路由中间件]    ← 路由 options.middlewares 引用的
   → [validate]     ← 参数校验
   → handler        ← 路由处理函数
-  ← responseWrapper ← 包装响应
   ← accessLog      ← 记录耗时和状态码
+  ← responseWrapper ← 包装响应
   ← errorHandler   ← 捕获未处理错误
 响应返回
 ```

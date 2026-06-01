@@ -4,7 +4,7 @@
  * 场景：
  *   1. GET /json         → 纯 JSON 响应
  *   2. GET /users/:id    → 路由参数解析
- *   3. GET /chain        → 3 层中间件链 + JSON 响应
+ *   3. GET /chain        → 3 层 handler 内联业务链 + JSON 响应
  *
  * 用法：
  *   PORT=3000 node test/benchmark/servers/raw-fastify.mjs
@@ -36,7 +36,7 @@ fastify.get("/users/:id", async (request, reply) => {
   return reply.send({ id, name: `User ${id}` });
 });
 
-// ── 场景 3: 3 层中间件链 ────────────────────────────────────
+// ── 场景 3: 3 层 handler 内联业务链 ────────────────────────────────────
 // 使用 Fastify 的 hook 系统模拟洋葱模型中间件
 //
 // Fastify 没有 Koa/Express 那样的 next() 洋葱模型，

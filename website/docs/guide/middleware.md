@@ -208,8 +208,8 @@ VextJS 内置了多个全局中间件，在所有路由之前自动执行。执�
 2. cors           — CORS 跨域处理
 3. bodyParser     — 请求体解析（JSON / URL-encoded）
 4. rateLimit      — 全局速率限制
-5. accessLog      — 访问日志记录
-6. responseWrapper — 开启响应包装（{ code, data, requestId }）
+5. responseWrapper — 开启响应包装（{ code, data, requestId }）
+6. accessLog      — 访问日志记录
   ↓
 7. [路由级中间件]   — 按 options.middlewares 声明顺序
   ↓

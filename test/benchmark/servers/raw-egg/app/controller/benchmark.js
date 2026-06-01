@@ -40,7 +40,7 @@ class BenchmarkController extends Controller {
   }
 
   /**
-   * 场景 3: 3 层中间件链 + JSON 响应
+   * 场景 3: 3 层 handler 内联业务链 + JSON 响应
    *
    * GET /chain → { message: "Chain complete", requestId: "...", authenticated: true }
    *

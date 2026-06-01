@@ -28,7 +28,7 @@ createApp(config)
   → mount app.fetch           // 挂载内置 HTTP 客户端（requestId 传播 + 结构化日志）
   → router-loader             // 加载路由文件，注册路由
   → lockUse()                 // 禁止 app.use()
-  → 注册内置中间件            // requestId / cors / bodyParser / responseWrapper / accessLog / errorHandler
+  → 注册内置中间件            // requestId / cors / bodyParser / rateLimit / responseWrapper / accessLog / errorHandler
   → adapter.listen()          // HTTP 开始监听
   → onReady 钩子              // 就绪回调执行
   → 运行中...
@@ -74,22 +74,22 @@ interface BootstrapResult {
 
 `bootstrap()` 内部执行以下步骤（按顺序）：
 
-| 步骤 | 操作                | 说明                                                        |
-| ---- | ------------------- | ----------------------------------------------------------- |
-| ①    | `loadConfig()`      | 三层配置合并（default → env → local）                       |
-| ②    | `createApp(config)` | 创建 app 实例                                               |
-| ③    | `resolveAdapter()`  | 解析并实例化底层适配器                                      |
-| ④    | `loadPlugins()`     | 扫描 `src/plugins/`，按拓扑排序执行 `setup()`               |
-| ⑤    | `loadMiddlewares()` | 扫描 `src/middlewares/`，注册中间件定义                     |
-| ⑥    | `loadServices()`    | 扫描 `src/services/`，注入到 `app.services`                 |
-| ⑥+   | 挂载 `app.fetch`    | 封装 Node.js fetch，自动传播 requestId + 结构化日志         |
-| ⑦    | `loadRoutes()`      | 扫描 `src/routes/`，注册路由到 adapter                      |
-| ⑧    | `lockUse()`         | 锁定 `app.use()`，禁止后续注册全局中间件                    |
-| ⑨    | 注册内置中间件      | requestId → cors → bodyParser → accessLog → responseWrapper |
-| ⑩    | 注册错误处理        | errorHandler + 404 兜底                                     |
-| ⑪    | `adapter.listen()`  | HTTP 开始监听                                               |
-| ⑫    | `setupShutdown()`   | 注册信号处理（SIGTERM / SIGINT）                            |
-| ⑬    | `runReady()`        | 执行所有 `onReady` 钩子                                     |
+| 步骤 | 操作                | 说明                                                                    |
+| ---- | ------------------- | ----------------------------------------------------------------------- |
+| ①    | `loadConfig()`      | 三层配置合并（default → env → local）                                   |
+| ②    | `createApp(config)` | 创建 app 实例                                                           |
+| ③    | `resolveAdapter()`  | 解析并实例化底层适配器                                                  |
+| ④    | `loadPlugins()`     | 扫描 `src/plugins/`，按拓扑排序执行 `setup()`                           |
+| ⑤    | `loadMiddlewares()` | 扫描 `src/middlewares/`，注册中间件定义                                 |
+| ⑥    | `loadServices()`    | 扫描 `src/services/`，注入到 `app.services`                             |
+| ⑥+   | 挂载 `app.fetch`    | 封装 Node.js fetch，自动传播 requestId + 结构化日志                     |
+| ⑦    | `loadRoutes()`      | 扫描 `src/routes/`，注册路由到 adapter                                  |
+| ⑧    | `lockUse()`         | 锁定 `app.use()`，禁止后续注册全局中间件                                |
+| ⑨    | 注册内置中间件      | requestId → cors → bodyParser → rateLimit → responseWrapper → accessLog |
+| ⑩    | 注册错误处理        | errorHandler + 404 兜底                                                 |
+| ⑪    | `adapter.listen()`  | HTTP 开始监听                                                           |
+| ⑫    | `setupShutdown()`   | 注册信号处理（SIGTERM / SIGINT）                                        |
+| ⑬    | `runReady()`        | 执行所有 `onReady` 钩子                                                 |
 
 ### 典型入口文件
 
@@ -941,7 +941,12 @@ import { DEFAULT_CONFIG } from "vextjs";
 ```typescript
 import { setupShutdown } from "vextjs";
 
-setupShutdown(app, serverHandle, internals);
+setupShutdown({
+  internals,
+  serverHandle,
+  logger: app.logger,
+  testMode: app.config._testMode,
+});
 ```
 
 注册 `SIGTERM` 和 `SIGINT` 信号处理器，收到信号时触发 `internals.shutdown()`。

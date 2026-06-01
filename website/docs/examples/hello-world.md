@@ -254,11 +254,11 @@ curl -X POST http://localhost:3000/greet \
   -d '{"name":"Alice","language":"en"}'
 # → {"code":0,"data":{"greeting":"Hello, Alice!","language":"en"},"requestId":"..."}
 
-# 参数校验测试（name 为空触发 400）
+# 参数校验测试（name 为空触发 422）
 curl -X POST http://localhost:3000/greet \
   -H "Content-Type: application/json" \
   -d '{"name":""}'
-# → {"code":-1,"message":"Validation failed","errors":[...],"requestId":"..."}
+# → 422 {"code":422,"message":"Validation failed","errors":[...],"requestId":"..."}
 ```
 
 ## 8. 响应格式说明
@@ -279,7 +279,7 @@ VextJS 默认启用**出口包装**（`config.response.wrap: true`），所有 `
 
 ```json
 {
-  "code": -1,
+  "code": 422,
   "message": "Validation failed",
   "errors": [{ "field": "name", "message": "length must be between 1 and 50" }],
   "requestId": "550e8400-e29b-41d4-a716-446655440000"

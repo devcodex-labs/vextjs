@@ -34,7 +34,7 @@ VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
 ### 性能对比
 
-基准测试（JSON 响应场景，5 轮中位数）：
+历史基准快照（JSON 响应场景，5 轮中位数）：
 
 | Adapter | Raw RPS | Vext RPS | 框架开销 |
 | ------- | ------: | -------: | -------: |
@@ -46,7 +46,7 @@ VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
 > Vext 开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
 >
-> **测试环境**：Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数，2026-03-23）
+> **测试环境**：Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数，2026-03-23）。当前版本复现实测以仓库内 benchmark 为准，并区分 `chain` 与 `middleware-chain`。
 
 ## 使用方法
 
@@ -91,7 +91,7 @@ export default {
 };
 ```
 
-**高级用法（工厂函数，可传入选项）：**
+**高级用法（工厂函数）：**
 
 ```typescript
 // src/config/default.ts

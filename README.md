@@ -80,17 +80,17 @@ export default {
 
 ## ⚡ 性能
 
-VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试数据（5 轮取中位数）：
+VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为 2026-03-23 历史基准快照（5 轮取中位数），当前版本发布门禁以仓库内 `test/benchmark/run-benchmark.mjs` 生成结果为准：
 
 ### Native vs Fastify（核心对比）
 
-| 场景          | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
-| ------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
-| **JSON 响应** |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
-| **路由参数**  |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
-| **中间件链**  |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
+| 场景                      | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
+| ------------------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
+| **JSON 响应**             |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
+| **路由参数**              |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
+| **处理器业务链（chain）** |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
 
-> Vext-Native 在所有场景领先 Vext-Fastify **26~51%**（中间件链场景 Vext-Native 甚至超越裸跑 Native +11.9%）。
+> 在该历史快照中，Vext-Native 在所有场景领先 Vext-Fastify **26~51%**。当前 benchmark 已区分 `chain`（handler 内联业务链）与 `middleware-chain`（真实 route-level middleware chain），避免把 core-mode 数据误读为默认运行时性能。
 
 ### 全 Adapter 性能概览（JSON 场景）
 
@@ -104,7 +104,7 @@ VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试�
 
 > **测试环境**: Node.js v24.14.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i7-9700, 32GB RAM，2026-03-23）
 >
-> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 路由核心，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **26.1%**（JSON）/ **39.5%**（中间件链），比 Vext-Hono 快 **135%**，比 Vext-Express 快 **18.9%**（Express v5 + Node.js v24 性能大幅提升）。所有数据经 5 轮中位数验证，绝大多数 CV（变异系数）< 3.5%。
+> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 路由核心，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。上表为历史快照；复现实测请运行仓库内 benchmark，并同时查看 `json` / `params` / `chain` / `middleware-chain` 四个场景。
 
 ### Adapter 选择指南
 
@@ -848,7 +848,7 @@ app.post(
 );
 ```
 
-校验失败时自动返回 `400` 错误，包含详细的字段错误信息。支持 i18n 多语言错误消息。
+校验失败时自动返回 `422` 错误，包含详细的字段错误信息。支持 i18n 多语言错误消息。
 
 ---
 
@@ -963,7 +963,7 @@ app.get(
       tags: ["Users"],
     },
     validate: {
-      params: { id: "string" },
+      param: { id: "string" },
     },
   },
   handler,
@@ -1109,7 +1109,7 @@ HTTP 响应 → { code: 0, data: {...} }
 - [x] Cluster 多进程（Master/Worker + Rolling Restart）
 - [x] 性能基准测试（autocannon 自动化 + 多轮取中位数）
 - [x] AsyncLocalStorage 可配置跳过
-- [x] Native Adapter 性能优化（Overhead 降至 ~18%，领先 Fastify 26~51%）
+- [x] Native Adapter 性能优化（当前性能口径以仓库内 benchmark 四场景结果为准）
 - [x] `vext create` 项目脚手架
 - [x] 文档站（rspress）
 - [x] 路由级响应缓存（LRU 内存存储，标签失效，Vary headers）

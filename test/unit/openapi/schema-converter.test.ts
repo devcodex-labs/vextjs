@@ -868,7 +868,7 @@ describe("SchemaConverter", () => {
 
     it("路径参数转换", () => {
       const c = createConverter();
-      // 模拟 validate.params 对象
+      // 模拟旧用法 validate.params 对象
       const paramsDsl = { id: "objectId!" };
       const id = c.convertDSLString(paramsDsl.id);
       expect(id.schema.pattern).toBe("^[0-9a-fA-F]{24}$");

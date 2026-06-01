@@ -5,7 +5,7 @@
  *
  * 核心职责：
  *   1. 遍历路由元信息，为每条路由构建 Operation 对象
- *   2. 将 validate.params / query → parameters
+ *   2. 将 validate.param / query → parameters
  *   3. 将 validate.body → requestBody
  *   4. 将 docs.responses → responses（成功响应自动包装为 { code, data, requestId }）
  *   5. 从 middlewares 推断 security（auth → bearerAuth）
@@ -168,7 +168,7 @@ export class OpenAPIGenerator {
    *
    * 依次处理：
    *   1. summary / operationId / tags / deprecated / description
-   *   2. 路径参数（validate.params → parameters[in=path]）
+   *   2. 路径参数（validate.param → parameters[in=path]）
    *   3. 查询参数（validate.query → parameters[in=query]）
    *   4. 请求体（validate.body → requestBody，仅 POST/PUT/PATCH）
    *   5. 响应（docs.responses → responses，成功响应自动包装）
@@ -200,9 +200,7 @@ export class OpenAPIGenerator {
     }
 
     // ── 路径参数（params / param） ──────────────────────────
-    // validate.params 或 validate.param 中的每个字段都是路径参数（required = true）
-    // 注意：vext 内部类型定义使用 `param`（单数），但设计文档使用 `params`（复数），
-    // 此处两者均支持，优先使用 params（设计文档标准），降级使用 param（现有代码兼容）。
+    // validate.param 是当前公开契约；validate.params 仅作为旧文档/旧用法兼容。
     const validateParams =
       (options.validate as Record<string, unknown>)?.params ??
       options.validate?.param;
@@ -335,9 +333,9 @@ export class OpenAPIGenerator {
           if ((config as Record<string, unknown>).examples) {
             const examples = (config as Record<string, unknown>)
               .examples as Record<
-                string,
-                { summary?: string; description?: string; value: unknown }
-              >;
+              string,
+              { summary?: string; description?: string; value: unknown }
+            >;
             contentEntry.examples = {};
             for (const [name, ex] of Object.entries(examples)) {
               contentEntry.examples![name] = {
@@ -369,7 +367,7 @@ export class OpenAPIGenerator {
         options.validate?.body &&
         typeof options.validate.body === "object" &&
         Object.keys(options.validate.body as Record<string, unknown>).length >
-        0;
+          0;
 
       if (isWriteMethod && hasBody) {
         const bodySchema = this.converter.convertValidateObject(
@@ -431,14 +429,14 @@ export class OpenAPIGenerator {
     }
 
     // ── 通用错误响应（所有路由自动追加 4xx/5xx 引用）─────────
-    if (!operation.responses["400"] && options.validate) {
-      operation.responses["400"] = {
+    if (!operation.responses["422"] && options.validate) {
+      operation.responses["422"] = {
         description: "Validation error",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/ErrorResponse" },
             example: {
-              code: 400,
+              code: 422,
               message: "Validation failed",
               requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             },

@@ -832,7 +832,7 @@ export default defineRoutes((app) => {
         tags: ["用户"],
         responses: {
           201: { description: "创建成功" },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
           409: { description: "邮箱已注册" },
         },
@@ -866,7 +866,7 @@ export default defineRoutes((app) => {
         tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
-          400: { description: "参数校验失败" },
+          422: { description: "参数校验失败" },
           401: { description: "未认证" },
           404: { description: "用户不存在" },
           409: { description: "邮箱已被占用" },

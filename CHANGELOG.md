@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.3.10] | 2026-06-01 | Patch | 文档与 runtime 契约同步：统一 validation `422`、补齐 `honoAdapter()` 导出，并校准 benchmark/middleware/config 文档口径 [查看](./changelogs/v0.3.10.md) |
 | [0.3.9] | 2026-06-01 | Patch | Native adapter 接入 route-core 后继续收口 benchmark 口径与 params 热路径性能，并补充 release format gate 策略 [查看](./changelogs/v0.3.9.md) |
 | [0.3.8] | 2026-05-31 | Patch | 发布前收口：补齐 adapter/body-limit/cluster 验证闭环，移除 npm 包 sourcemap 产物，并同步 vext-test 外部消费者验证 [查看](./changelogs/v0.3.8.md) |
 | [0.3.7] | 2026-05-21 | Patch | `vext dev` 补齐 preflight 诊断与 typegen 自动生成：阻断 TS 错误热重载、补全 reload 堆栈，并移除脚手架静态 services 类型声明 [查看](./changelogs/v0.3.7.md) |
@@ -57,7 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.9...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.10...HEAD
+[0.3.10]: https://github.com/vextjs/vext/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/vextjs/vext/compare/v0.3.8...v0.3.9
 [0.3.8]: https://github.com/vextjs/vext/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/vextjs/vext/compare/v0.3.6...v0.3.7
