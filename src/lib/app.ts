@@ -202,6 +202,7 @@ export function createApp(config: VextConfig): {
 
     setRateLimiter(limiter: VextRateLimiter) {
       _rateLimiter = limiter;
+      (app as Record<string, unknown>)._rateLimiterOverridden = true;
     },
 
     setRequestIdGenerator(generate: () => string) {

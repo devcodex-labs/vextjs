@@ -16,7 +16,12 @@ import type {
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
-import { createPayloadTooLargeError, isPayloadTooLargeError, resolveAdapterBodyLimitBytes, resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
+import {
+  createPayloadTooLargeError,
+  isPayloadTooLargeError,
+  resolveAdapterBodyLimitBytes,
+  resolveRouteBodyParserConfig,
+} from "../../lib/middlewares/body-parser.js";
 
 /**
  * Koa Adapter 选项
@@ -290,6 +295,8 @@ export function createKoaAdapter(
       }
 
       const req = createVextRequest(ctx, vextApp, getKoaParams(ctx), rawBody);
+      (req as { _routeOptions?: RouteOptions })._routeOptions =
+        entry.routeOptions;
       if (routeBodyParser) {
         (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser =
           routeBodyParser;
@@ -458,7 +465,12 @@ export function createKoaAdapter(
     //
     // 为每条路由注册到 @koa/router。
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
+    registerRoute(
+      method: string,
+      path: string,
+      chain: VextMiddleware[],
+      routeOptions: RouteOptions = {},
+    ): void {
       const upperMethod = method.toUpperCase();
       const entry: RouteEntry = {
         pattern: path,

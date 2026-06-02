@@ -14,7 +14,10 @@ import type {
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
-import { resolveAdapterBodyLimitBytes, resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
+import {
+  resolveAdapterBodyLimitBytes,
+  resolveRouteBodyParserConfig,
+} from "../../lib/middlewares/body-parser.js";
 
 /**
  * Fastify Adapter 选项
@@ -261,7 +264,12 @@ export function createFastifyAdapter(
     //   - errorHandler 自身也可能抛出异常（如 logger 写入失败），
     //     此时发送最低限度的 500 JSON 响应
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
+    registerRoute(
+      method: string,
+      path: string,
+      chain: VextMiddleware[],
+      routeOptions: RouteOptions = {},
+    ): void {
       // 🆕 性能优化：延迟预组装中间件链
       // 注册路由时 globalMiddlewares 尚未完成收集（bootstrap 步骤⑥在步骤⑤之后），
       // 因此在首次请求时组装并缓存，后续请求直接复用。
@@ -293,8 +301,12 @@ export function createFastifyAdapter(
         { bodyLimit: routeBodyLimit },
         async (request: FastifyRequest, reply: FastifyReply) => {
           const req = createVextRequest(request, app);
+          (req as { _routeOptions?: RouteOptions })._routeOptions =
+            routeOptions;
           if (routeBodyParser) {
-            (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+            (
+              req as { _routeBodyParser?: VextBodyParserConfig }
+            )._routeBodyParser = routeBodyParser;
           }
           // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
           // fastifyPath 是 registerRoute 的参数，在此 closure 中直接可访问
@@ -381,7 +393,11 @@ export function createFastifyAdapter(
           const statusCode = (error as { statusCode?: unknown }).statusCode;
           if (statusCode === 413) {
             res.rawJson(
-              { code: 413, message: "Payload Too Large", requestId: req.requestId },
+              {
+                code: 413,
+                message: "Payload Too Large",
+                requestId: req.requestId,
+              },
               413,
             );
             return;
@@ -426,7 +442,7 @@ export function createFastifyAdapter(
 
           // 🆕 5.7: ALS 可配置跳过
           const runNotFound = async () => {
-            const noop = async (): Promise<void> => { };
+            const noop = async (): Promise<void> => {};
             await handler(req, res, noop);
           };
 

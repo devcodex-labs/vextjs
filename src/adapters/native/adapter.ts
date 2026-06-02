@@ -68,6 +68,8 @@ interface RouteStore {
   routePath: string;
   /** 预解析的路由级 bodyParser 配置；注册时计算，避免热路径每请求解析 */
   routeBodyParser?: VextBodyParserConfig;
+  /** 原始路由 options，供全局中间件读取 route-level override */
+  routeOptions: RouteOptions;
 }
 
 /**
@@ -304,6 +306,8 @@ export function createNativeAdapter(
     // ── 构造 VextRequest / VextResponse ──────────────────
     // P2 优化：传递预解析的 URL 信息，createVextRequest 不再重复 indexOf('?')
     const req = createVextRequest(nodeReq, app, routeParams, parsedUrl);
+    (req as { _routeOptions?: RouteOptions })._routeOptions =
+      store.routeOptions;
     const routeBodyParser = store.routeBodyParser;
     if (routeBodyParser) {
       (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser =
@@ -530,6 +534,7 @@ export function createNativeAdapter(
         routeChain: chain,
         routePath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
         routeBodyParser,
+        routeOptions,
       };
       const storeId = routeStores.length;
       routeStores.push(store);

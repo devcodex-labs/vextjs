@@ -1,6 +1,10 @@
 import { RateLimiter } from "flex-rate-limit";
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextRateLimitConfig, VextRateLimiter } from "../../types/app.js";
+import type {
+  RouteOptions,
+  VextRateLimitConfig,
+  VextRateLimiter,
+} from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
 
 /**
@@ -44,31 +48,42 @@ export function createRateLimitMiddleware(
   config: VextRateLimitConfig,
   getRateLimiter: () => VextRateLimiter | null,
 ): VextMiddleware {
-  const enabled = config.enabled ?? true;
-  const max = config.max ?? 100;
-  const windowSec = config.window ?? 60;
-  const message = config.message ?? "Too Many Requests";
-  const keyBy = config.keyBy ?? "ip";
-
-  // ── 创建内置 flex-rate-limit 实例 ─────────────────────────
+  // ── 创建内置 flex-rate-limit 实例池 ───────────────────────
   //
   // 使用 sliding-window 算法（默认）+ 内存存储（默认）。
-  // 仅在 enabled 且无自定义 limiter 时使用。
+  // route-level override 可修改 max/window，因此按配置缓存实例。
   //
-  const builtinLimiter = new RateLimiter({
-    windowMs: windowSec * 1000,
-    max,
-    algorithm: "sliding-window",
-    store: "memory",
-    headers: false, // 我们自己写响应头，不依赖 flex-rate-limit 的中间件行为
-  });
+  const builtinLimiters = new Map<string, RateLimiter>();
+
+  const getBuiltinLimiter = (max: number, windowSec: number): RateLimiter => {
+    const limiterKey = `${max}:${windowSec}`;
+    let limiter = builtinLimiters.get(limiterKey);
+    if (!limiter) {
+      limiter = new RateLimiter({
+        windowMs: windowSec * 1000,
+        max,
+        algorithm: "sliding-window",
+        store: "memory",
+        headers: false, // 我们自己写响应头，不依赖 flex-rate-limit 的中间件行为
+      });
+      builtinLimiters.set(limiterKey, limiter);
+    }
+    return limiter;
+  };
 
   return async (req, res, next) => {
+    const effectiveConfig = resolveEffectiveConfig(config, req);
+
     // ── 未启用直接跳过 ──────────────────────────────────
-    if (!enabled) {
+    if (!effectiveConfig) {
       await next();
       return;
     }
+
+    const max = effectiveConfig.max;
+    const windowSec = effectiveConfig.window;
+    const message = effectiveConfig.message;
+    const keyBy = effectiveConfig.keyBy;
 
     // ── 生成限流 key ────────────────────────────────────
     const key = resolveKey(req, keyBy);
@@ -87,6 +102,7 @@ export function createRateLimitMiddleware(
       resetAt = result.resetAt;
     } else {
       // ── 使用内置 flex-rate-limit ──────────────────────
+      const builtinLimiter = getBuiltinLimiter(max, windowSec);
       const result = await builtinLimiter.check(key, { req });
       allowed = result.allowed;
       remaining = Math.max(0, result.remaining);
@@ -118,6 +134,40 @@ export function createRateLimitMiddleware(
 
     // ── 通过，继续中间件链 ──────────────────────────────
     await next();
+  };
+}
+
+function resolveEffectiveConfig(
+  config: VextRateLimitConfig,
+  req: VextRequest,
+): Required<
+  Pick<VextRateLimitConfig, "enabled" | "max" | "window" | "message" | "keyBy">
+> | null {
+  const routeOptions = (req as Record<string, unknown>)._routeOptions as
+    | RouteOptions
+    | undefined;
+  const routeOverride = routeOptions?.override?.rateLimit;
+
+  if (routeOverride === false) {
+    return null;
+  }
+
+  const merged =
+    routeOverride && typeof routeOverride === "object"
+      ? { ...config, ...routeOverride }
+      : config;
+
+  const enabled = merged.enabled ?? true;
+  if (!enabled) {
+    return null;
+  }
+
+  return {
+    enabled,
+    max: merged.max ?? 100,
+    window: merged.window ?? 60,
+    message: merged.message ?? "Too Many Requests",
+    keyBy: merged.keyBy ?? "ip",
   };
 }
 

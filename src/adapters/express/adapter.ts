@@ -19,7 +19,12 @@ import type {
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
-import { createPayloadTooLargeError, isPayloadTooLargeError, resolveAdapterBodyLimitBytes, resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
+import {
+  createPayloadTooLargeError,
+  isPayloadTooLargeError,
+  resolveAdapterBodyLimitBytes,
+  resolveRouteBodyParserConfig,
+} from "../../lib/middlewares/body-parser.js";
 
 /**
  * Express Adapter 选项
@@ -121,7 +126,10 @@ const _noop = async (): Promise<void> => {};
  * @param req Express Request（Node.js IncomingMessage）
  * @returns 原始请求体 Buffer
  */
-function collectRawBody(req: ExpressRequest, maxBytes?: number): Promise<Buffer> {
+function collectRawBody(
+  req: ExpressRequest,
+  maxBytes?: number,
+): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const method = (req.method ?? "GET").toUpperCase();
     // GET 和 HEAD 请求不应有 body
@@ -290,7 +298,9 @@ export function createExpressAdapter(
         }
         const req = createVextRequest(expressReq, app, rawBody);
         if (routeBodyParser) {
-          (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+          (
+            req as { _routeBodyParser?: VextBodyParserConfig }
+          )._routeBodyParser = routeBodyParser;
         }
 
         // notFound 不经过中间件链，requestId 中间件不会执行。
@@ -410,7 +420,12 @@ export function createExpressAdapter(
     //   - errorHandler 自身也可能抛出异常（如 logger 写入失败），
     //     此时发送最低限度的 500 JSON 响应
     //
-    registerRoute(method: string, path: string, chain: VextMiddleware[], routeOptions: RouteOptions = {}): void {
+    registerRoute(
+      method: string,
+      path: string,
+      chain: VextMiddleware[],
+      routeOptions: RouteOptions = {},
+    ): void {
       // 🆕 性能优化：延迟预组装中间件链
       // 注册路由时 globalMiddlewares 尚未完成收集（bootstrap 步骤⑥在步骤⑤之后），
       // 因此在首次请求时组装并缓存，后续请求直接复用。
@@ -459,8 +474,12 @@ export function createExpressAdapter(
               throw error;
             }
             const req = createVextRequest(expressReq, app, rawBody);
+            (req as { _routeOptions?: RouteOptions })._routeOptions =
+              routeOptions;
             if (routeBodyParser) {
-              (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser = routeBodyParser;
+              (
+                req as { _routeBodyParser?: VextBodyParserConfig }
+              )._routeBodyParser = routeBodyParser;
             }
             // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
             // expressPath 是 registerRoute 的参数，在此 closure 中直接可访问

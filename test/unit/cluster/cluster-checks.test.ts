@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { checkClusterCompatibility } from "../../../src/lib/cluster/cluster-checks.js";
+import { createApp, DEFAULT_CONFIG } from "../../../src/lib/app.js";
 import type { VextApp } from "../../../src/types/app.js";
 
 // ── Mock 工厂 ────────────────────────────────────────────────
@@ -294,6 +295,24 @@ describe("checkClusterCompatibility", () => {
   // ── _rateLimiterOverridden 标记 ──────────────────────
 
   describe("_rateLimiterOverridden flag", () => {
+    it("should be set when app.setRateLimiter() is called on a real app", () => {
+      const { app } = createApp(DEFAULT_CONFIG);
+
+      app.setRateLimiter({
+        async check() {
+          return {
+            allowed: true,
+            remaining: 1,
+            resetAt: Math.ceil(Date.now() / 1000) + 60,
+          };
+        },
+      });
+
+      expect((app as Record<string, unknown>)._rateLimiterOverridden).toBe(
+        true,
+      );
+    });
+
     it("should check _rateLimiterOverridden on app object", () => {
       const app = createMockApp({ rateLimiterOverridden: false });
       const results = checkClusterCompatibility(app, 4);
