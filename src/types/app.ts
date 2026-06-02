@@ -1,6 +1,19 @@
 import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware } from "./middleware.js";
 import type { VextFetch } from "../lib/fetch.js";
+import type { DslBuilder } from "../lib/schema-adapter.js";
+
+declare global {
+  interface String {
+    /**
+     * 为 schema-dsl 字符串字段追加业务描述。
+     *
+     * 主要用于 `RouteOptions.validate` 和 `docs.responses[].schema` 的 OpenAPI 输出：
+     * `"string:1-50!".description("用户名")`。
+     */
+    description(description: string): DslBuilder;
+  }
+}
 
 /**
  * VextServices — 服务集合类型
@@ -1273,6 +1286,19 @@ export interface VextApp {
 export type VextMiddlewareRef = string | { name: string; options?: unknown };
 
 /**
+ * VextSchemaField — 路由校验和 OpenAPI 响应 schema 的字段定义。
+ *
+ * 支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。
+ * DslBuilder 主要用于字段级业务描述：
+ * `"string:1-50!".description("用户名")`。
+ */
+export type VextSchemaField =
+  | string
+  | DslBuilder
+  | VextSchemaField[]
+  | { [key: string]: VextSchemaField };
+
+/**
  * OpenAPI 文档配置（路由级）
  *
  * 在路由 options.docs 中声明，控制 OpenAPI 文档生成行为。
@@ -1324,9 +1350,9 @@ export interface RouteDocsConfig {
       /** 响应描述 */
       description?: string;
       /**
-       * 响应体 schema（schema-dsl 字符串对象 或 引用字符串）
+       * 响应体 schema（schema-dsl 字符串对象、字段级 DslBuilder 或引用字符串）
        */
-      schema?: Record<string, unknown> | string;
+      schema?: Record<string, VextSchemaField> | string;
       /** Content-Type @default 'application/json' */
       contentType?: string;
       /** 响应示例 */
@@ -1373,10 +1399,10 @@ export interface RouteOptions {
    * 校验顺序：param → query → header → body
    */
   validate?: {
-    query?: Record<string, unknown>;
-    body?: Record<string, unknown>;
-    param?: Record<string, unknown>;
-    header?: Record<string, unknown>;
+    query?: Record<string, VextSchemaField>;
+    body?: Record<string, VextSchemaField>;
+    param?: Record<string, VextSchemaField>;
+    header?: Record<string, VextSchemaField>;
   };
 
   /**

@@ -24,6 +24,7 @@
 
 import { describe, it, expect } from "vitest";
 import { SchemaConverter } from "../../src/lib/openapi/schema-converter.js";
+import type { JsonSchema } from "../../src/lib/openapi/types.js";
 import { dsl } from "schema-dsl";
 
 // ── 辅助函数 ────────────────────────────────────────────────
@@ -83,6 +84,15 @@ function expectNoInternalMarkers(
       false,
     );
   }
+}
+
+function expectSchemaProperty(
+  properties: Record<string, JsonSchema>,
+  fieldName: string,
+): JsonSchema {
+  const schema = properties[fieldName];
+  expect(schema, `${fieldName} 应存在`).toBeDefined();
+  return schema!;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -342,35 +352,42 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       const props = result.schema.properties!;
 
       // name: string:1-50!
-      expect(props.name.type).toBe("string");
-      expect(props.name.minLength).toBe(1);
-      expect(props.name.maxLength).toBe(50);
-      expectEnriched(props.name as Record<string, unknown>, "name");
-      expectNoInternalMarkers(props.name as Record<string, unknown>, "name");
+      const name = expectSchemaProperty(props, "name");
+      expect(name.type).toBe("string");
+      expect(name.minLength).toBe(1);
+      expect(name.maxLength).toBe(50);
+      expectEnriched(name as Record<string, unknown>, "name");
+      expectNoInternalMarkers(name as Record<string, unknown>, "name");
 
       // email: email!
-      expect(props.email.type).toBe("string");
-      expect(props.email.format).toBe("email");
+      const email = expectSchemaProperty(props, "email");
+      expect(email.type).toBe("string");
+      expect(email.format).toBe("email");
 
       // role: enum:admin,user,guest! — BUG-021 关键验证
-      expect(props.role.type).toBe("string");
-      expect(props.role.enum).toEqual(["admin", "user", "guest"]);
-      expectNoInternalMarkers(props.role as Record<string, unknown>, "role");
+      const role = expectSchemaProperty(props, "role");
+      expect(role.type).toBe("string");
+      expect(role.enum).toEqual(["admin", "user", "guest"]);
+      expectNoInternalMarkers(role as Record<string, unknown>, "role");
 
       // age: integer:0-150?
-      expect(props.age.type).toBe("integer");
-      expect(props.age.nullable).toBe(true);
-      expect(props.age.minimum).toBe(0);
-      expect(props.age.maximum).toBe(150);
+      const age = expectSchemaProperty(props, "age");
+      expect(age.type).toBe("integer");
+      expect(age.nullable).toBe(true);
+      expect(age.minimum).toBe(0);
+      expect(age.maximum).toBe(150);
 
       // profile: 嵌套对象
-      expect(props.profile.type).toBe("object");
-      const profileProps = props.profile.properties!;
-      expect(profileProps.avatar.type).toBe("string");
-      expect(profileProps.avatar.format).toBe("uri");
-      expect(profileProps.avatar.nullable).toBe(true);
-      expect(profileProps.bio.type).toBe("string");
-      expect(profileProps.bio.nullable).toBe(true);
+      const profile = expectSchemaProperty(props, "profile");
+      expect(profile.type).toBe("object");
+      const profileProps = profile.properties!;
+      const avatar = expectSchemaProperty(profileProps, "avatar");
+      const bio = expectSchemaProperty(profileProps, "bio");
+      expect(avatar.type).toBe("string");
+      expect(avatar.format).toBe("uri");
+      expect(avatar.nullable).toBe(true);
+      expect(bio.type).toBe("string");
+      expect(bio.nullable).toBe(true);
     });
 
     it("对象数组 — items 正确转换", () => {
@@ -385,21 +402,27 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
         ],
       });
 
-      const itemsField = result.schema.properties!.items;
+      const itemsField = expectSchemaProperty(
+        result.schema.properties!,
+        "items",
+      );
       expect(itemsField.type).toBe("array");
       expect(itemsField.items).toBeDefined();
       expect(itemsField.items!.type).toBe("object");
 
       const itemProps = itemsField.items!.properties!;
-      expect(itemProps.productId.type).toBe("string");
-      expect(itemProps.productId.pattern).toBeDefined(); // objectId pattern
+      const productId = expectSchemaProperty(itemProps, "productId");
+      const itemName = expectSchemaProperty(itemProps, "name");
+      const quantity = expectSchemaProperty(itemProps, "quantity");
+      expect(productId.type).toBe("string");
+      expect(productId.pattern).toBeDefined(); // objectId pattern
 
-      expect(itemProps.name.type).toBe("string");
-      expect(itemProps.name.minLength).toBe(1);
-      expect(itemProps.name.maxLength).toBe(100);
+      expect(itemName.type).toBe("string");
+      expect(itemName.minLength).toBe(1);
+      expect(itemName.maxLength).toBe(100);
 
-      expect(itemProps.quantity.type).toBe("integer");
-      expect(itemProps.quantity.minimum).toBe(1);
+      expect(quantity.type).toBe("integer");
+      expect(quantity.minimum).toBe(1);
 
       // 数组内对象的 required
       expect(itemsField.items!.required).toContain("productId");
@@ -424,6 +447,45 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
         expectEnriched(schema as Record<string, unknown>, key);
         expectNoInternalMarkers(schema as Record<string, unknown>, key);
       }
+    });
+
+    it("字段级 DslBuilder 业务 description 贯穿转换管道", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        content: "string:1-20000!".description(
+          "待翻译文本，长度 1-20000 个字符",
+        ),
+        targetLanguages: [
+          {
+            code: dsl("string:1-64!").description("目标语言代码"),
+          },
+        ],
+        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+      });
+
+      const props = result.schema.properties!;
+      const content = expectSchemaProperty(props, "content");
+      const format = expectSchemaProperty(props, "format");
+      const targetLanguages = expectSchemaProperty(props, "targetLanguages");
+      const targetLanguageCode = expectSchemaProperty(
+        targetLanguages.items!.properties!,
+        "code",
+      );
+
+      expect(content.description).toBe("待翻译文本，长度 1-20000 个字符");
+      expect(content.minLength).toBe(1);
+      expect(content.maxLength).toBe(20000);
+      expect(format.enum).toEqual(["plain_text", "preserve_line_breaks"]);
+      expect(format.description).toBe("输出格式");
+      expect(targetLanguageCode.description).toBe("目标语言代码");
+      expect(result.required).toEqual(["content"]);
+
+      expectNoInternalMarkers(content as Record<string, unknown>, "content");
+      expectNoInternalMarkers(format as Record<string, unknown>, "format");
+      expectNoInternalMarkers(
+        targetLanguageCode as Record<string, unknown>,
+        "targetLanguages.code",
+      );
     });
   });
 
@@ -499,8 +561,10 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       expect(result.required).toContain("email");
 
       const props = result.properties!;
-      expect(props.role.enum).toEqual(["admin", "user", "guest"]);
-      expect(props.createdAt.format).toBe("date-time");
+      const role = expectSchemaProperty(props, "role");
+      const createdAt = expectSchemaProperty(props, "createdAt");
+      expect(role.enum).toEqual(["admin", "user", "guest"]);
+      expect(createdAt.format).toBe("date-time");
 
       // 每个字段都应有 description
       for (const [key, schema] of Object.entries(props)) {
@@ -527,18 +591,20 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       const props = result.properties!;
 
       // list 应为数组
-      expect(props.list.type).toBe("array");
-      expect(props.list.items).toBeDefined();
-      expect(props.list.items!.properties!.status.enum).toEqual([
-        "active",
-        "inactive",
-      ]);
+      const list = expectSchemaProperty(props, "list");
+      expect(list.type).toBe("array");
+      expect(list.items).toBeDefined();
+      const status = expectSchemaProperty(list.items!.properties!, "status");
+      expect(status.enum).toEqual(["active", "inactive"]);
 
       // total / page / limit
-      expect(props.total.type).toBe("integer");
-      expect(props.page.type).toBe("integer");
-      expect(props.limit.type).toBe("integer");
-      expect(props.limit.maximum).toBe(100);
+      const total = expectSchemaProperty(props, "total");
+      const page = expectSchemaProperty(props, "page");
+      const limit = expectSchemaProperty(props, "limit");
+      expect(total.type).toBe("integer");
+      expect(page.type).toBe("integer");
+      expect(limit.type).toBe("integer");
+      expect(limit.maximum).toBe(100);
     });
   });
 
@@ -562,28 +628,31 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       // 类型和约束应一致
       const dslProps = dslSchema.properties!;
       const vextProps = converterResult.schema.properties!;
+      const vextUsername = expectSchemaProperty(vextProps, "username");
+      const vextEmail = expectSchemaProperty(vextProps, "email");
+      const vextAge = expectSchemaProperty(vextProps, "age");
 
       // username
-      expect(vextProps.username.type).toBe(
+      expect(vextUsername.type).toBe(
         (dslProps.username as Record<string, unknown>).type,
       );
-      expect(vextProps.username.minLength).toBe(
+      expect(vextUsername.minLength).toBe(
         (dslProps.username as Record<string, unknown>).minLength,
       );
-      expect(vextProps.username.maxLength).toBe(
+      expect(vextUsername.maxLength).toBe(
         (dslProps.username as Record<string, unknown>).maxLength,
       );
 
       // email
-      expect(vextProps.email.type).toBe(
+      expect(vextEmail.type).toBe(
         (dslProps.email as Record<string, unknown>).type,
       );
-      expect(vextProps.email.format).toBe(
+      expect(vextEmail.format).toBe(
         (dslProps.email as Record<string, unknown>).format,
       );
 
       // age
-      expect(vextProps.age.type).toBe(
+      expect(vextAge.type).toBe(
         (dslProps.age as Record<string, unknown>).type,
       );
 
@@ -630,12 +699,14 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
 
       const r1 = c.convertValidateObject({ a: "string:1-10!" });
       const r2 = c.convertValidateObject({ b: "email!" });
+      const r1a = expectSchemaProperty(r1.schema.properties!, "a");
+      const r2b = expectSchemaProperty(r2.schema.properties!, "b");
 
-      expect(r1.schema.properties!.a.type).toBe("string");
+      expect(r1a.type).toBe("string");
       expect(r1.required).toEqual(["a"]);
 
-      expect(r2.schema.properties!.b.type).toBe("string");
-      expect(r2.schema.properties!.b.format).toBe("email");
+      expect(r2b.type).toBe("string");
+      expect(r2b.format).toBe("email");
       expect(r2.required).toEqual(["b"]);
 
       // r1 不应被 r2 污染
@@ -653,13 +724,13 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
 
       const r1 = c1.convertValidateObject(definition);
       const r2 = c2.convertValidateObject(definition);
+      const r1Name = expectSchemaProperty(r1.schema.properties!, "name");
+      const r2Name = expectSchemaProperty(r2.schema.properties!, "name");
+      const r1Role = expectSchemaProperty(r1.schema.properties!, "role");
+      const r2Role = expectSchemaProperty(r2.schema.properties!, "role");
 
-      expect(r1.schema.properties!.name.type).toBe(
-        r2.schema.properties!.name.type,
-      );
-      expect(r1.schema.properties!.role.enum).toEqual(
-        r2.schema.properties!.role.enum,
-      );
+      expect(r1Name.type).toBe(r2Name.type);
+      expect(r1Role.enum).toEqual(r2Role.enum);
       expect(r1.required).toEqual(r2.required);
     });
   });
@@ -705,13 +776,13 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
         },
       });
 
-      const l1 = result.schema.properties!.level1;
+      const l1 = expectSchemaProperty(result.schema.properties!, "level1");
       expect(l1.type).toBe("object");
 
-      const l2 = l1.properties!.level2;
+      const l2 = expectSchemaProperty(l1.properties!, "level2");
       expect(l2.type).toBe("object");
 
-      const l3 = l2.properties!.level3;
+      const l3 = expectSchemaProperty(l2.properties!, "level3");
       expect(l3.type).toBe("string");
       expect(l3.minLength).toBe(1);
       expect(l3.maxLength).toBe(10);

@@ -164,10 +164,10 @@ app.get("/files/*", async (req, res) => {
 ```typescript
 interface RouteOptions {
   validate?: {
-    query?: Record<string, unknown>;
-    body?: Record<string, unknown>;
-    param?: Record<string, unknown>;
-    header?: Record<string, unknown>;
+    query?: Record<string, VextSchemaField>;
+    body?: Record<string, VextSchemaField>;
+    param?: Record<string, VextSchemaField>;
+    header?: Record<string, VextSchemaField>;
   };
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
@@ -223,6 +223,27 @@ app.put(
 ## validate
 
 声明式参数校验，基于 `schema-dsl` DSL 语法。框架自动在 handler 执行前进行校验，校验失败返回 `422` 错误。
+
+字段类型为 `VextSchemaField`，支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。字段级 DslBuilder 常用于给 OpenAPI 文档补充业务描述：
+
+```typescript
+app.post(
+  "/translate",
+  {
+    validate: {
+      body: {
+        content: "string:1-20000!".description(
+          "待翻译文本，长度 1-20000 个字符",
+        ),
+        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+      },
+    },
+  },
+  handler,
+);
+```
+
+这些 description 会进入 OpenAPI schema，同时保留必填、枚举和长度等约束。
 
 ### 校验位置
 

@@ -1,10 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { SchemaConverter } from "../../../src/lib/openapi/schema-converter.js";
+import { dsl } from "schema-dsl";
 
 // ── 测试辅助 ────────────────────────────────────────────────
 
 function createConverter(): SchemaConverter {
   return new SchemaConverter();
+}
+
+function expectNoDslInternalFields(value: Record<string, unknown>) {
+  expect(value._baseSchema).toBeUndefined();
+  expect(value._description).toBeUndefined();
+  expect(value._required).toBeUndefined();
+  expect(value._optional).toBeUndefined();
+  expect(value._customMessages).toBeUndefined();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -472,6 +481,79 @@ describe("SchemaConverter", () => {
       expect(result.schema.required).toBeUndefined();
       expect(result.required).toEqual([]);
     });
+
+    it("String 扩展 DslBuilder 字段保留业务 description", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        content: "string:1-20000!".description(
+          "待翻译文本，长度 1-20000 个字符",
+        ),
+        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+      });
+
+      const props = result.schema.properties!;
+      expect(props.content).toMatchObject({
+        type: "string",
+        minLength: 1,
+        maxLength: 20000,
+        description: "待翻译文本，长度 1-20000 个字符",
+      });
+      expect(props.format).toMatchObject({
+        type: "string",
+        enum: ["plain_text", "preserve_line_breaks"],
+        description: "输出格式",
+      });
+      expect(result.required).toEqual(["content"]);
+      expectNoDslInternalFields(props.content as Record<string, unknown>);
+      expectNoDslInternalFields(props.format as Record<string, unknown>);
+    });
+
+    it("dsl() DslBuilder 字段保留业务 description", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        sourceLanguage: dsl("string:1-64").description("源语言代码"),
+        targetLanguage: dsl("string:1-64!").description("目标语言代码"),
+      });
+
+      const props = result.schema.properties!;
+      expect(props.sourceLanguage.description).toBe("源语言代码");
+      expect(props.targetLanguage.description).toBe("目标语言代码");
+      expect(result.required).toEqual(["targetLanguage"]);
+      expectNoDslInternalFields(
+        props.targetLanguage as Record<string, unknown>,
+      );
+    });
+
+    it("DslBuilder 可选标记 ? 保留 nullable，普通非必填不标记 nullable", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        nullableLanguage: dsl("string:1-64?").description("可空语言代码"),
+        sourceLanguage: dsl("string:1-64").description("源语言代码"),
+      });
+
+      const props = result.schema.properties!;
+      expect(props.nullableLanguage).toMatchObject({
+        type: "string",
+        minLength: 1,
+        maxLength: 64,
+        nullable: true,
+        description: "可空语言代码",
+      });
+      expect(props.sourceLanguage.nullable).toBeUndefined();
+      expect(result.required).toEqual([]);
+    });
+
+    it("DslBuilder 未设置 description 时仍生成兜底描述", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        name: dsl("string:1-50!"),
+      });
+
+      const name = result.schema.properties!.name;
+      expect(name.description).toBe("Required. String, 1-50 chars.");
+      expect(name.example).toBe("example");
+      expect(result.required).toEqual(["name"]);
+    });
   });
 
   // ── convertValidateObject：嵌套对象 ───────────────────────
@@ -554,6 +636,19 @@ describe("SchemaConverter", () => {
         maxLength: 5,
       });
     });
+
+    it("嵌套对象内支持 DslBuilder description", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        translation: {
+          content: "string:1-20000!".description("待翻译文本"),
+        },
+      });
+
+      const content = result.schema.properties!.translation.properties!.content;
+      expect(content.description).toBe("待翻译文本");
+      expectNoDslInternalFields(content as Record<string, unknown>);
+    });
   });
 
   // ── convertValidateObject：数组类型 ───────────────────────
@@ -623,6 +718,25 @@ describe("SchemaConverter", () => {
         type: "integer",
         minimum: 1,
       });
+    });
+
+    it("对象数组内支持 DslBuilder description", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        targetLanguages: [
+          {
+            code: "string:1-64!".description("目标语言代码"),
+          },
+        ],
+      });
+
+      const code =
+        result.schema.properties!.targetLanguages.items!.properties!.code;
+      expect(code.description).toBe("目标语言代码");
+      expect(result.schema.properties!.targetLanguages.items!.required).toEqual(
+        ["code"],
+      );
+      expectNoDslInternalFields(code as Record<string, unknown>);
     });
   });
 
@@ -708,6 +822,18 @@ describe("SchemaConverter", () => {
       expect(result.properties!.createdAt.format).toBe("date");
       // response schema 中的 required 也应正确收集
       expect(result.required).toEqual(["id", "name", "email"]);
+    });
+
+    it("response schema 支持 DslBuilder description", () => {
+      const c = createConverter();
+      const result = c.convertResponseSchema({
+        translatedText: "string!".description("翻译后的文本"),
+      });
+
+      const translatedText = result.properties!.translatedText;
+      expect(translatedText.description).toBe("翻译后的文本");
+      expect(result.required).toEqual(["translatedText"]);
+      expectNoDslInternalFields(translatedText as Record<string, unknown>);
     });
 
     it("嵌套 response schema", () => {

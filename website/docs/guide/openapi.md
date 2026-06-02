@@ -530,6 +530,52 @@ app.post(
 }
 ```
 
+字段级业务描述可以直接写在 DSL 上，生成器会把它输出为 OpenAPI schema 的 `description`：
+
+```typescript
+app.post(
+  "/translate",
+  {
+    validate: {
+      body: {
+        content: "string:1-20000!".description(
+          "待翻译文本，长度 1-20000 个字符",
+        ),
+        targetLanguages: [
+          {
+            code: "string:1-64!".description("目标语言代码"),
+          },
+        ],
+        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+      },
+    },
+  },
+  handler,
+);
+```
+
+生成的 requestBody schema 中会包含：
+
+```json
+{
+  "type": "object",
+  "required": ["content"],
+  "properties": {
+    "content": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000,
+      "description": "待翻译文本，长度 1-20000 个字符"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["plain_text", "preserve_line_breaks"],
+      "description": "输出格式"
+    }
+  }
+}
+```
+
 ### 文件上传路由（multipart/form-data）
 
 使用 `RouteOptions.multipart.files` 声明文件上传路由，生成器自动输出 `multipart/form-data` requestBody。

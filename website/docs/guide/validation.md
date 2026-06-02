@@ -369,6 +369,33 @@ app.get(
 
 访问 `/docs` 即可在 Scalar 文档中查看自动生成的参数文档和内置的 "Try it out" 功能。
 
+如果希望 OpenAPI 文档展示字段的业务含义，可以在字段 DSL 后追加 `.description()`：
+
+```typescript
+app.post(
+  "/translate",
+  {
+    validate: {
+      body: {
+        content: "string:1-20000!".description(
+          "待翻译文本，长度 1-20000 个字符",
+        ),
+        targetLanguages: [
+          {
+            code: "string:1-64!".description("目标语言代码"),
+          },
+        ],
+        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+      },
+    },
+    docs: { summary: "执行文本翻译" },
+  },
+  handler,
+);
+```
+
+生成的 OpenAPI schema 会保留这些 description，同时继续保留 `required`、`enum`、`minLength`、`maxLength` 等约束。没有手写 description 的字段仍会使用框架生成的兜底描述。
+
 ## 高级用法
 
 ### 多位置组合校验

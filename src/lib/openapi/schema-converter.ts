@@ -26,6 +26,7 @@
  */
 
 import { schemaAdapter } from "../schema-adapter.js";
+import type { DslBuilder } from "../schema-adapter.js";
 import type { JsonSchema, ConvertResult } from "./types.js";
 
 // 注意：schema-dsl v1.2.5+ 的 DslBuilder.toJsonSchema() 已内置内部标记清理，
@@ -88,6 +89,11 @@ export class SchemaConverter {
       if (typeof value === "string") {
         // ── 字符串 DSL：'string:1-50!' / 'email!' / 'number:1-100' ──
         const { schema, isRequired } = this.convertDSLString(value);
+        properties[key] = schema;
+        if (isRequired) required.push(key);
+      } else if (schemaAdapter.isDslBuilder(value)) {
+        // ── 字段级 DslBuilder：'string!'.description('业务含义') ──
+        const { schema, isRequired } = this.convertDSLBuilder(value);
         properties[key] = schema;
         if (isRequired) required.push(key);
       } else if (Array.isArray(value)) {
@@ -186,6 +192,39 @@ export class SchemaConverter {
 
     if (schema.example === undefined) {
       schema.example = this.inferExample(schema, cleanDsl);
+    }
+
+    return { schema, isRequired };
+  }
+
+  /**
+   * 转换字段级 DslBuilder。
+   *
+   * 支持 schema-dsl 的 String 扩展写法：
+   * `"string:1-50!".description("用户名")`，以及 `dsl("string!").description(...)`。
+   */
+  convertDSLBuilder(builder: DslBuilder): {
+    schema: JsonSchema;
+    isRequired: boolean;
+  } {
+    const schema = schemaAdapter.toJsonSchema(builder) as JsonSchema;
+    const isRequired = schemaAdapter.isFieldRequired(builder);
+    const isNullable = schemaAdapter.isFieldOptional(builder) && !isRequired;
+
+    if (isNullable) {
+      schema.nullable = true;
+    }
+
+    if (!schema.description) {
+      schema.description = this.buildSchemaDescription(
+        schema,
+        isRequired,
+        isNullable,
+      );
+    }
+
+    if (schema.example === undefined) {
+      schema.example = this.inferExample(schema, "");
     }
 
     return { schema, isRequired };
@@ -303,6 +342,72 @@ export class SchemaConverter {
       parts.push(`${this.humanTypeName(dsl)}.`);
     }
 
+    return parts.join(" ");
+  }
+
+  /**
+   * 根据 JSON Schema 生成人类可读的兜底 description。
+   *
+   * DslBuilder 可能没有原始 DSL 字符串可用，因此从 toJsonSchema() 输出反推
+   * 约束说明；用户调用 .description() 时会优先保留业务描述。
+   */
+  private buildSchemaDescription(
+    schema: JsonSchema,
+    required: boolean,
+    nullable: boolean,
+  ): string {
+    const parts: string[] = [];
+
+    if (required) {
+      parts.push("Required.");
+    } else if (nullable) {
+      parts.push("Optional (nullable).");
+    } else {
+      parts.push("Optional.");
+    }
+
+    if (schema.enum && schema.enum.length > 0) {
+      parts.push(`Enum: ${schema.enum.join(", ")}.`);
+      return parts.join(" ");
+    }
+
+    const typeName = this.humanTypeName(schema.type ?? "any");
+
+    if (schema.type === "string") {
+      const hasMin = schema.minLength !== undefined;
+      const hasMax = schema.maxLength !== undefined;
+
+      if (hasMin && hasMax) {
+        parts.push(
+          `${typeName}, ${schema.minLength}-${schema.maxLength} chars.`,
+        );
+      } else if (hasMin) {
+        parts.push(`${typeName}, min ${schema.minLength} chars.`);
+      } else if (hasMax) {
+        parts.push(`${typeName}, max ${schema.maxLength} chars.`);
+      } else {
+        parts.push(`${typeName}.`);
+      }
+      return parts.join(" ");
+    }
+
+    if (schema.type === "number" || schema.type === "integer") {
+      const hasMin = schema.minimum !== undefined;
+      const hasMax = schema.maximum !== undefined;
+
+      if (hasMin && hasMax) {
+        parts.push(`${typeName}, range ${schema.minimum}-${schema.maximum}.`);
+      } else if (hasMin) {
+        parts.push(`${typeName}, min ${schema.minimum}.`);
+      } else if (hasMax) {
+        parts.push(`${typeName}, max ${schema.maximum}.`);
+      } else {
+        parts.push(`${typeName}.`);
+      }
+      return parts.join(" ");
+    }
+
+    parts.push(`${typeName}.`);
     return parts.join(" ");
   }
 

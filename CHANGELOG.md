@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.3.12] | 2026-06-02 | Patch | OpenAPI schema fields now support business descriptions via schema-dsl `.description()` [查看](./changelogs/v0.3.12.md) |
 | [0.3.11] | 2026-06-01 | Patch | 补齐 `vext create` 规范目录骨架，并将根 README 切换为英文主版本 [查看](./changelogs/v0.3.11.md) |
 | [0.3.10] | 2026-06-01 | Patch | 文档与 runtime 契约同步：统一 validation `422`、补齐 `honoAdapter()` 导出，并校准 benchmark/middleware/config 文档口径 [查看](./changelogs/v0.3.10.md) |
 | [0.3.9] | 2026-06-01 | Patch | Native adapter 接入 route-core 后继续收口 benchmark 口径与 params 热路径性能，并补充 release format gate 策略 [查看](./changelogs/v0.3.9.md) |
@@ -59,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.11...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.12...HEAD
+[0.3.12]: https://github.com/vextjs/vext/compare/v0.3.11...v0.3.12
 [0.3.11]: https://github.com/vextjs/vext/compare/v0.3.10...v0.3.11
 [0.3.10]: https://github.com/vextjs/vext/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/vextjs/vext/compare/v0.3.8...v0.3.9

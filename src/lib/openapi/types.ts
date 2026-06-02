@@ -13,7 +13,7 @@
  *             单端点 /docs 同时提供文档阅读 + Try it out 交互式测试
  */
 
-import type { RouteOptions } from "../../types/app.js";
+import type { RouteOptions, VextSchemaField } from "../../types/app.js";
 
 // ── 路由元信息收集 ──────────────────────────────────────────
 
@@ -511,7 +511,7 @@ export interface ResponseConfig {
    *   2. JSON Schema 对象
    *   3. 引用字符串（如 '#/components/schemas/User'）
    */
-  schema?: Record<string, unknown> | string;
+  schema?: Record<string, VextSchemaField> | string;
 
   /** 响应头 */
   headers?: Record<

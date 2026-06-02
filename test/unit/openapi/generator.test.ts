@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { OpenAPIGenerator } from "../../../src/lib/openapi/generator.js";
 import { RouteMetadataCollector } from "../../../src/lib/openapi/collector.js";
+import { dsl } from "schema-dsl";
 import type {
   RouteMetadata,
   OpenAPIDocument,
@@ -776,6 +777,42 @@ describe("OpenAPIGenerator", () => {
       expect(schema.properties!.email.format).toBe("email");
       expect(schema.properties!.password.minLength).toBe(8);
       expect(schema.required).toEqual(["name", "email", "password"]);
+    });
+
+    it("validate.body 支持 DslBuilder 字段业务 description", () => {
+      const doc = generate([
+        createRoute("POST", "/translate", {
+          validate: {
+            body: {
+              content: "string:1-20000!".description(
+                "待翻译文本，长度 1-20000 个字符",
+              ),
+              targetLanguages: [
+                {
+                  code: dsl("string:1-64!").description("目标语言代码"),
+                },
+              ],
+              format: "enum:plain_text,preserve_line_breaks".description(
+                "输出格式",
+              ),
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/translate"].post!.requestBody!.content["application/json"]
+          .schema;
+      const props = schema.properties!;
+
+      expect(props.content.description).toBe("待翻译文本，长度 1-20000 个字符");
+      expect(props.format.description).toBe("输出格式");
+      expect(props.targetLanguages.items!.properties!.code.description).toBe(
+        "目标语言代码",
+      );
+      expect(schema.required).toEqual(["content"]);
+      expect(props.content._baseSchema).toBeUndefined();
+      expect(props.format._description).toBeUndefined();
     });
 
     it("PUT 请求 validate.body → requestBody", () => {

@@ -89,6 +89,44 @@ function compileField(definition: string): DslBuilder {
 }
 
 /**
+ * 判断值是否为 schema-dsl DslBuilder。
+ *
+ * OpenAPI 生成器需要识别 `"string!".description("...")` 这类字段级 builder，
+ * 但不应直接依赖 schema-dsl 的私有字段结构。
+ */
+function isDslBuilder(value: unknown): value is DslBuilder {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { toJsonSchema?: unknown }).toJsonSchema === "function" &&
+    typeof (value as { toSchema?: unknown }).toSchema === "function"
+  );
+}
+
+/**
+ * 将 DslBuilder 转为纯净 JSON Schema。
+ */
+function toJsonSchema(builder: DslBuilder): JSONSchema {
+  return builder.toJsonSchema();
+}
+
+/**
+ * 判断字段是否必填。
+ */
+function isFieldRequired(builder: DslBuilder): boolean {
+  // schema-dsl 的 toJsonSchema() 会清理内部状态；OpenAPI 仍需读取字段级标记。
+  return (builder as DslBuilder & { _required?: boolean })._required === true;
+}
+
+/**
+ * 判断字段是否显式使用 `?` 标记为 nullable。
+ */
+function isFieldOptional(builder: DslBuilder): boolean {
+  // `_optional` 只存在于 builder 实例本体，用于区分 `string?` 与普通 `string`。
+  return (builder as DslBuilder & { _optional?: boolean })._optional === true;
+}
+
+/**
  * 同步校验数据
  *
  * 封装 `validate()` 顶层函数。
@@ -218,6 +256,18 @@ export const schemaAdapter = {
 
   /** 编译单个字段 DSL 字符串为 DslBuilder */
   compileField,
+
+  /** 判断值是否为 schema-dsl DslBuilder */
+  isDslBuilder,
+
+  /** 将 DslBuilder 转为纯净 JSON Schema */
+  toJsonSchema,
+
+  /** 判断 DslBuilder 字段是否必填 */
+  isFieldRequired,
+
+  /** 判断 DslBuilder 字段是否显式使用 `?` 标记 */
+  isFieldOptional,
 
   /** 同步校验数据 */
   validate,
