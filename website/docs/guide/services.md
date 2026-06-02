@@ -233,7 +233,7 @@ export default class OrderService {
 }
 ```
 
-:::warning 避免循环依赖
+::::warning 避免循环依赖
 `service-loader` 内置循环依赖检测。如果 `ServiceA` 和 `ServiceB` 相互依赖，框架会在启动时报错。
 
 **✅ 正确做法** — 在方法中延迟访问：
@@ -262,7 +262,7 @@ export default class OrderService {
 }
 ```
 
-:::
+::::
 
 ## 使用插件提供的能力
 
@@ -303,7 +303,7 @@ export default class UserService {
 }
 ```
 
-:::tip 类型提示
+::::tip 类型提示
 使用 `declare module` 扩展 `VextApp` 接口可获得完整的类型提示：
 
 ```typescript
@@ -319,7 +319,7 @@ declare module "vextjs" {
 ```
 
 扩展后 `this.app.cache` 即可获得 IDE 自动补全。
-:::
+::::
 
 ## 使用 `app.throw()` 抛出错误
 
@@ -356,6 +356,52 @@ export default class UserService {
   }
 }
 ```
+
+## 在服务中校验非 HTTP 输入
+
+路由入口参数优先通过 `RouteOptions.validate` 声明，并在 handler 中使用 `req.valid()` 读取校验后的数据。对于 service 直接处理的非 HTTP 输入，例如定时任务、消息队列、外部回调或其他 service 调用，可以通过 `this.app.getValidator()` 复用当前全局校验引擎。
+
+`getValidator()` 默认返回基于 schema-dsl 的 validator；如果插件通过 `app.setValidator()` 替换为 Zod、Yup 等实现，service 中获取到的也是替换后的 validator。
+
+```typescript
+import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
+
+const createUserSchema = {
+  name: "string:1-50!",
+  email: "email!",
+};
+
+export default class UserService {
+  private validateCreateUser: ReturnType<VextValidator["compile"]>;
+
+  constructor(private app: VextApp) {
+    const validator = app.getValidator();
+    this.validateCreateUser = validator.compile(createUserSchema);
+  }
+
+  async createFromJob(input: unknown) {
+    const result = this.validateCreateUser(input);
+
+    if (!result.valid) {
+      throw new VextValidationError(result.errors ?? []);
+    }
+
+    const data = result.data as { name: string; email: string };
+    return this.create(data);
+  }
+
+  async create(data: { name: string; email: string }) {
+    // 创建逻辑...
+    return { id: crypto.randomUUID(), ...data };
+  }
+}
+```
+
+::::tip
+
+不要在 service 中直接 `import "schema-dsl"`。直接引用 schema-dsl 会绕过 `app.setValidator()` 的全局替换能力，导致 service 校验与路由校验使用不同引擎。
+
+::::
 
 ## 使用 `app.logger` 记录日志
 

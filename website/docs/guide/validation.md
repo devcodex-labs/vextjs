@@ -77,9 +77,9 @@ app.put(
 );
 ```
 
-:::tip 注意
+::::tip 注意
 `validate` 中使用单数 `param`（与路径参数概念对应），但底层数据源是 `req.params`（复数）。框架内部已做正确映射，你无需关心。
-:::
+::::
 
 ## DSL 语法详解
 
@@ -235,17 +235,24 @@ app.post(
 
 ### 边界行为
 
-:::warning 注意事项
+::::warning 注意事项
+
 `req.valid(location)` 有以下边界行为需要了解：
 
-1. **未配置 `validate` 时调用**：如果路由未配置 `validate` 字段，调用 `req.valid('body')` 将返回 `undefined`。框架不会抛出错误，但你将无法获取经过校验和类型转换的数据。
+1. **未配置 `validate` 时调用**
 
-2. **location 未在 validate 中声明**：如果 `validate` 中只声明了 `body`，但调用了 `req.valid('query')`，同样返回 `undefined`。只有在 `validate` 中明确声明过的位置才会有校验后的数据。
+   如果路由未配置 `validate` 字段，调用 `req.valid("body")` 将返回 `undefined`。框架不会抛出错误，但你将无法获取经过校验和类型转换的数据。
 
-3. **校验失败时不会到达 handler**：当校验失败时，框架会在 handler 执行之前自动返回 422 错误响应，因此在 handler 内部调用 `req.valid()` 时数据一定是已通过校验的。
+2. **location 未在 `validate` 中声明**
+
+   如果 `validate` 中只声明了 `body`，但调用了 `req.valid("query")`，同样返回 `undefined`。只有在 `validate` 中明确声明过的位置才会有校验后的数据。
+
+3. **校验失败时不会到达 handler**
+
+   当校验失败时，框架会在 handler 执行之前自动返回 422 错误响应，因此在 handler 内部调用 `req.valid()` 时数据一定是已通过校验的。
 
 ```typescript
-// ⚠️ 边界情况示例
+// 边界情况示例
 app.get(
   "/items",
   {
@@ -255,22 +262,22 @@ app.get(
     },
   },
   async (req, res) => {
-    const query = req.valid("query"); // ✅ { page: number } — 已校验
-    const body = req.valid("body"); // ⚠️ undefined — 未在 validate 中声明
-    const param = req.valid("param"); // ⚠️ undefined — 未在 validate 中声明
+    const query = req.valid("query"); // { page: number }，已校验
+    const body = req.valid("body"); // undefined，未在 validate 中声明
+    const param = req.valid("param"); // undefined，未在 validate 中声明
     res.json({ query });
   },
 );
 
-// ⚠️ 未配置 validate 的路由
+// 未配置 validate 的路由
 app.get("/health", async (req, res) => {
-  const body = req.valid("body"); // ⚠️ undefined — 路由未配置 validate
+  const body = req.valid("body"); // undefined，路由未配置 validate
   res.json({ status: "ok" });
 });
 ```
 
 **最佳实践**：始终确保 `req.valid(location)` 的 `location` 与 `validate` 中声明的位置一致。
-:::
+::::
 
 ### 泛型类型提示
 
@@ -452,6 +459,48 @@ app.get(
 );
 ```
 
+## 在服务层复用校验引擎
+
+路由入口参数优先使用 `RouteOptions.validate` + `req.valid()`。如果 service 还需要校验非 HTTP 输入，例如定时任务、消息队列、外部回调或内部 DTO，可以通过 `this.app.getValidator()` 获取当前全局校验引擎。
+
+`getValidator()` 返回的是当前 validator：默认由 schema-dsl 实现；如果插件通过 `app.setValidator()` 替换为 Zod、Yup 等实现，service 中拿到的也是替换后的 validator。
+
+```typescript
+import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
+
+const createUserSchema = {
+  name: "string:1-50!",
+  email: "email!",
+};
+
+export default class UserService {
+  private validateCreateUser: ReturnType<VextValidator["compile"]>;
+
+  constructor(private app: VextApp) {
+    const validator = app.getValidator();
+    this.validateCreateUser = validator.compile(createUserSchema);
+  }
+
+  async create(input: unknown) {
+    const result = this.validateCreateUser(input);
+
+    if (!result.valid) {
+      throw new VextValidationError(result.errors ?? []);
+    }
+
+    const data = result.data as { name: string; email: string };
+    // 继续执行业务逻辑...
+    return data;
+  }
+}
+```
+
+::::tip
+
+不要在业务 service 中直接 `import "schema-dsl"`。直接依赖 schema-dsl 会绕过 `app.setValidator()` 的全局替换能力，也会让路由校验和 service 校验使用不同引擎。
+
+::::
+
 ## 替换校验引擎
 
 VextJS 默认使用 schema-dsl 作为校验引擎。如果你更喜欢 Zod、Yup 等第三方校验库，可以通过插件替换内置校验引擎。
@@ -468,29 +517,41 @@ export default definePlugin({
   name: "zod-validator",
 
   setup(app) {
+    const originalValidator = app.getValidator();
+
     const zodValidator: VextValidator = {
-      validate(schema, data) {
-        // 当 schema 是 Zod schema 时使用 Zod 校验
+      compile(schema) {
+        const toVextResult = (result: ReturnType<z.ZodType["safeParse"]>) =>
+          result.success
+            ? { valid: true, data: result.data }
+            : {
+                valid: false,
+                errors: result.error.issues.map((issue) => ({
+                  field: issue.path.join("."),
+                  message: issue.message,
+                })),
+              };
+
+        // 当整个 location schema 是 Zod schema 时使用 Zod 校验
         if (schema instanceof z.ZodType) {
-          const result = schema.safeParse(data);
-          if (!result.success) {
-            return {
-              valid: false,
-              errors: result.error.issues.map((issue) => ({
-                field: issue.path.join("."),
-                message: issue.message,
-              })),
-            };
-          }
-          return { valid: true, data: result.data };
+          return (data) => toVextResult(schema.safeParse(data));
         }
-        // 否则退回默认行为
-        return { valid: true, data };
-      },
-      toJSONSchema(schema) {
-        // 转换为 JSON Schema 供 OpenAPI 使用
-        // 可使用 zod-to-json-schema 库
-        return {};
+
+        // 当前 RouteOptions.validate 类型也支持字段级 Zod schema
+        const zodShape: Record<string, z.ZodType> = {};
+        for (const [key, value] of Object.entries(schema)) {
+          if (value instanceof z.ZodType) {
+            zodShape[key] = value;
+          }
+        }
+
+        if (Object.keys(zodShape).length > 0) {
+          const zodSchema = z.object(zodShape);
+          return (data) => toVextResult(zodSchema.safeParse(data));
+        }
+
+        // 否则退回默认 schema-dsl 行为
+        return originalValidator.compile(schema);
       },
     };
 
@@ -500,7 +561,7 @@ export default definePlugin({
 });
 ```
 
-替换后，路由中的 `validate` 可以传入 Zod schema 对象而非 DSL 字符串。
+替换后，路由中的 `validate` 可以传入字段级 Zod schema 对象而非 DSL 字符串。
 
 ## 常见模式
 

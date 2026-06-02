@@ -589,22 +589,38 @@ import { z } from "zod";
 export default definePlugin({
   name: "zod-validator",
   setup(app) {
+    const originalValidator = app.getValidator();
+
     app.setValidator({
       compile(schema) {
-        const zodSchema = z.object(schema);
-        return (data) => {
-          const result = zodSchema.safeParse(data);
-          if (result.success) {
-            return { valid: true, data: result.data };
+        const toVextResult = (result: ReturnType<z.ZodType["safeParse"]>) =>
+          result.success
+            ? { valid: true, data: result.data }
+            : {
+                valid: false,
+                errors: result.error.issues.map((issue) => ({
+                  field: issue.path.join("."),
+                  message: issue.message,
+                })),
+              };
+
+        if (schema instanceof z.ZodType) {
+          return (data) => toVextResult(schema.safeParse(data));
+        }
+
+        const zodShape: Record<string, z.ZodType> = {};
+        for (const [key, value] of Object.entries(schema)) {
+          if (value instanceof z.ZodType) {
+            zodShape[key] = value;
           }
-          return {
-            valid: false,
-            errors: result.error.issues.map((issue) => ({
-              field: issue.path.join("."),
-              message: issue.message,
-            })),
-          };
-        };
+        }
+
+        if (Object.keys(zodShape).length > 0) {
+          const zodSchema = z.object(zodShape);
+          return (data) => toVextResult(zodSchema.safeParse(data));
+        }
+
+        return originalValidator.compile(schema);
       },
     });
   },
@@ -615,17 +631,44 @@ export default definePlugin({
 
 #### `app.getValidator()`
 
-获取当前校验引擎实例。
+获取当前全局校验引擎实例。
 
 ```typescript
 getValidator(): VextValidator;
 ```
+
+默认 validator 基于 schema-dsl 实现。插件可以通过 `app.setValidator()` 将其替换为 Zod、Yup 等实现，因此 `getValidator()` 不等同于固定的 schema-dsl，而是始终返回当前生效的 validator。
 
 ```typescript
 const validator = app.getValidator();
 const validate = validator.compile({ name: "string:1-50" });
 const result = validate({ name: "Alice" });
 // { valid: true, data: { name: 'Alice' } }
+```
+
+service 中处理非 HTTP 输入时也可以复用它：
+
+```typescript
+import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
+
+export default class UserService {
+  private validateCreateUser: ReturnType<VextValidator["compile"]>;
+
+  constructor(private app: VextApp) {
+    this.validateCreateUser = app.getValidator().compile({
+      name: "string:1-50!",
+      email: "email!",
+    });
+  }
+
+  async createFromMessage(input: unknown) {
+    const result = this.validateCreateUser(input);
+    if (!result.valid) {
+      throw new VextValidationError(result.errors ?? []);
+    }
+    return result.data;
+  }
+}
 ```
 
 ---

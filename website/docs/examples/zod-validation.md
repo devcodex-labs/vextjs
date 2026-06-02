@@ -52,17 +52,17 @@ pnpm add zod
 ```typescript
 // src/plugins/zod-validator.ts
 import { definePlugin } from "vextjs";
-import { ZodType, ZodError } from "zod";
+import { z, ZodType } from "zod";
 
 /**
  * Zod 校验插件
  *
- * 替换内置 schema-dsl 校验引擎，使路由 validate 配置支持 Zod schema。
+ * 替换内置 schema-dsl 校验引擎，使路由 validate 配置支持字段级 Zod schema。
  *
  * 使用方式：
  *   validate: {
- *     body: userCreateSchema,   // 直接传入 Zod schema 对象
- *     query: paginationSchema,
+ *     body: userCreateSchema.shape,   // 字段级 Zod schema 对象
+ *     query: paginationSchema.shape,
  *   }
  *
  * 校验流程：
@@ -114,7 +114,7 @@ export default definePlugin({
         //
         // 支持 validate: { body: { name: z.string(), age: z.number() } }
         // 这种「对象字段为 Zod」的混合模式。
-        // 但更推荐直接传入完整的 z.object({...}) 作为 schema。
+        // 这种写法与 RouteOptions.validate 的公开类型保持一致。
 
         const hasZodFields = Object.values(schema).some(
           (v) => v instanceof ZodType,
@@ -122,7 +122,6 @@ export default definePlugin({
 
         if (hasZodFields) {
           // 将散落的 Zod 字段收集为 z.object
-          const { z } = require("zod");
           const shape: Record<string, ZodType> = {};
 
           for (const [key, value] of Object.entries(schema)) {
@@ -889,8 +888,8 @@ app.post(
   "/users",
   {
     validate: {
-      body: createUserBody, // ← Zod schema
-      query: paginationQuery, // ← Zod schema
+      body: createUserBody.shape, // ← 字段级 Zod schema
+      query: paginationQuery.shape, // ← 字段级 Zod schema
     },
   },
   handler,
@@ -910,7 +909,7 @@ app.get(
 );
 ```
 
-插件内部会自动检测 schema 类型，Zod 实例走 Zod 校验路径，普通对象走 schema-dsl 路径。
+插件内部会自动检测 schema 类型：字段值为 Zod 实例时走 Zod 校验路径，普通 schema-dsl 对象走默认校验路径。
 
 ## 关键对比
 

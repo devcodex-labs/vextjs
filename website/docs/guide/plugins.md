@@ -214,19 +214,47 @@ export default definePlugin({
 ```typescript
 import { definePlugin } from "vextjs";
 import type { VextValidator } from "vextjs";
+import { z } from "zod";
 
 export default definePlugin({
   name: "zod-validator",
 
   setup(app) {
+    const originalValidator = app.getValidator();
+
     const zodValidator: VextValidator = {
-      validate(schema, data) {
-        // Zod 校验逻辑...
-        return { valid: true, data };
-      },
-      toJSONSchema(schema) {
-        // 转换为 JSON Schema（供 OpenAPI 使用）
-        return {};
+      compile(schema) {
+        const toVextResult = (result: ReturnType<z.ZodType["safeParse"]>) =>
+          result.success
+            ? { valid: true, data: result.data }
+            : {
+                valid: false,
+                errors: result.error.issues.map((issue) => ({
+                  field: issue.path.join("."),
+                  message: issue.message,
+                })),
+              };
+
+        // 如果整个 location schema 是 Zod schema，直接执行 safeParse
+        if (schema instanceof z.ZodType) {
+          return (data) => toVextResult(schema.safeParse(data));
+        }
+
+        // 如果 schema 对象的字段是 Zod schema，将其组合为 z.object
+        const zodShape: Record<string, z.ZodType> = {};
+        for (const [key, value] of Object.entries(schema)) {
+          if (value instanceof z.ZodType) {
+            zodShape[key] = value;
+          }
+        }
+
+        if (Object.keys(zodShape).length > 0) {
+          const zodSchema = z.object(zodShape);
+          return (data) => toVextResult(zodSchema.safeParse(data));
+        }
+
+        // 非 Zod schema 回退到默认 schema-dsl validator
+        return originalValidator.compile(schema);
       },
     };
 
