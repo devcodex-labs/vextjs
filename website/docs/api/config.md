@@ -171,7 +171,7 @@ export default {
   middlewares: [
     { name: "auth" },
     { name: "admin", options: { role: "admin" } },
-    { name: "cache", options: { ttl: 60 } },
+    { name: "client-cache", options: { maxAge: 60 } },
   ],
 };
 ```
@@ -193,7 +193,7 @@ export default {
 | `methods`     | `string[]` | `['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']` | 允许的 HTTP 方法       |
 | `headers`     | `string[]` | `['Content-Type', 'Authorization', 'X-Request-Id']`            | 允许的请求头           |
 | `credentials` | `boolean`  | `false`                                                        | 是否允许携带凭证       |
-| `maxAge`      | `number`   | `undefined`                                                    | 预检请求缓存时间（秒） |
+| `maxAge`      | `number`   | `undefined`                                                    | CORS 预检结果缓存时间（秒） |
 
 ```typescript
 export default {
@@ -536,7 +536,7 @@ OpenAPI 文档自动生成配置。
 | `scalar.layout`        | `string`                     | `'modern'`          | 布局模式：`'modern'`（三栏） \| `'classic'`（双栏）                                                                                                             |
 | `scalar.favicon`       | `string`                     | `undefined`         | 文档页面 favicon URL（如 `'/favicon.svg'`）                                                                                                                     |
 | `scalar.sources`       | `array`                      | `undefined`         | 多 OpenAPI 文档源（[详见指南](/guide/openapi#导入外部-openapi)）。每项含 `title`、`url` 或 `content`、`slug`                                                    |
-| `scalar.cdnUrl`        | `string`                     | jsDelivr CDN        | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#使用自定义地址覆盖本地服务)）。适用于内网/离线/版本锁定                                                   |
+| `scalar.cdnUrl`        | `string`                     | jsDelivr CDN        | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#使用自定义地址覆盖本地服务)）。适用于内网/离线/版本锁定                                                    |
 | `scalar.showSidebar`   | `boolean`                    | `true`              | 是否显示侧边栏                                                                                                                                                  |
 | `scalar.hideModels`    | `boolean`                    | `false`             | 是否隐藏 Models/Schemas 面板                                                                                                                                    |
 | `scalar.hiddenClients` | `string[]`                   | `undefined`         | 隐藏的客户端语言列表（如 `['php', 'ruby']`）                                                                                                                    |
@@ -698,24 +698,24 @@ VEXT_CLUSTER=1 vext start
 
 路由级响应缓存全局配置。
 
-| 字段         | 类型      | 默认值     | 说明                            |
-| ------------ | --------- | ---------- | ------------------------------- |
-| `enabled`    | `boolean` | `true`     | 是否启用路由缓存                |
-| `defaultTtl` | `number`  | `60`       | 路由未指定 TTL 时的默认值（秒） |
-| `maxEntries` | `number`  | `1000`     | LRU 最大缓存条目数              |
-| `maxMemory`  | `number`  | `52428800` | 最大内存占用 bytes（默认 50MB） |
+| 字段         | 类型      | 默认值     | 说明                                |
+| ------------ | --------- | ---------- | ----------------------------------- |
+| `enabled`    | `boolean` | `true`     | 是否启用路由级响应缓存              |
+| `defaultTtl` | `number`  | `60000`    | 路由未指定 TTL 时的默认值，单位毫秒 |
+| `maxEntries` | `number`  | `1000`     | 底层内存缓存最大条目数              |
+| `maxMemory`  | `number`  | `52428800` | 最大内存占用 bytes（默认 50MB）     |
 
 ```typescript
 export default {
   cache: {
     enabled: true,
-    defaultTtl: 120,
+    defaultTtl: 120_000,
     maxEntries: 2000,
   },
 };
 ```
 
-路由级缓存通过 `RouteOptions.cache` 配置，详见 [路由缓存指南](/guide/cache)。
+路由级响应缓存通过 `RouteOptions.cache` 配置。公开配置单位使用毫秒；响应头中的 `Cache-Control: max-age` 会按 HTTP 标准输出秒。详见 [响应缓存指南](/guide/cache)。
 
 ---
 

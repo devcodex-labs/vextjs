@@ -10,12 +10,11 @@ import type {
   VextValidator,
   VextRateLimiter,
   VextLogger,
-  CacheStore,
 } from "../types/app.js";
 import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextServerHandle } from "../types/adapter.js";
-import { MemoryCacheStore } from "./cache/memory-store.js";
+import { createResponseCache } from "response-cache-kit";
 
 /**
  * 框架内部方法接口（不暴露给用户，仅 bootstrap 使用）
@@ -147,13 +146,19 @@ export function createApp(config: VextConfig): {
   //
   const defaultThrow = createDefaultThrow();
 
-  // ── 创建缓存存储（MemoryCacheStore，Phase 1 路由缓存）──────
+  // ── 创建响应缓存核心（response-cache-kit）────────────────
   //
   // 在 createApp 阶段初始化（与 app.logger / app.throw 同模式），
   // config 在 createApp 参数中已可用，无需等到 bootstrap 阶段。
   //
-  const cacheStore = new MemoryCacheStore({
-    maxEntries: config.cache?.maxEntries ?? 1000,
+  const responseCache = createResponseCache({
+    namespace: "vext-route-cache",
+    ttl: config.cache?.defaultTtl ?? 60_000,
+    cacheHub: {
+      maxEntries: config.cache?.maxEntries ?? 1000,
+      maxMemory: config.cache?.maxMemory,
+      enableStats: true,
+    },
   });
 
   // ── 创建 app 对象 ──────────────────────────────────────────
@@ -181,6 +186,12 @@ export function createApp(config: VextConfig): {
 
     // ── 框架扩展 API ──────────────────────────────────────
     extend<K extends string, V>(key: K, value: V) {
+      if (key in app) {
+        throw new Error(
+          `[vextjs] app.extend("${key}") cannot override an existing app property. ` +
+            "Use a different extension name.",
+        );
+      }
       (app as Record<string, unknown>)[key] = value;
     },
 
@@ -227,23 +238,29 @@ export function createApp(config: VextConfig): {
       globalMiddlewares.push(middleware);
     },
 
-    // ── 缓存管理 API（Phase 1 路由缓存）──────────────────────
+    // ── 缓存管理 API（路由级响应缓存）───────────────────────
     cache: {
       async invalidate(tag: string) {
-        await cacheStore.invalidateByTag(tag);
+        await responseCache.invalidateTag(tag);
       },
       async delete(key: string) {
-        await cacheStore.delete(key);
+        await responseCache.delete(key);
       },
       async clear() {
-        await cacheStore.clear();
+        await responseCache.clear();
       },
       stats() {
-        return cacheStore.stats();
+        const stats = responseCache.stats();
+        return {
+          ...stats,
+          entries: stats.entries ?? 0,
+          hits: stats.hits ?? 0,
+          misses: stats.misses ?? 0,
+          hitRate: stats.hitRate ?? 0,
+        };
       },
-      _getStore(_name?: string): CacheStore {
-        // MVP: 仅支持内置 memory store。Phase 3 按 name 查找自定义 store。
-        return cacheStore;
+      _getResponseCache() {
+        return responseCache;
       },
     },
 

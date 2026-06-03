@@ -4,8 +4,7 @@ import "vextjs";
 
 declare module "vextjs" {
   interface VextApp {
-    cache: { get(key: any): any; };
+    userCache: { get(key: any): any; };
   }
 }
-
 

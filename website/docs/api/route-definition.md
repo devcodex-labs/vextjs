@@ -169,6 +169,7 @@ interface RouteOptions {
     param?: Record<string, VextSchemaField>;
     header?: Record<string, VextSchemaField>;
   };
+  cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
   multipart?: {
@@ -200,7 +201,8 @@ app.put(
         age: "number:0-200?",
       },
     },
-    middlewares: ["auth", { name: "cache", options: { ttl: 0 } }],
+    middlewares: ["auth"],
+    cache: false,
     docs: {
       summary: "更新用户",
       tags: ["用户"],
@@ -404,7 +406,7 @@ export default {
   middlewares: [
     { name: "auth" },
     { name: "role", options: { required: "user" } },
-    { name: "cache", options: { ttl: 300 } },
+    { name: "client-cache", options: { maxAge: 300 } },
   ],
 };
 ```
@@ -433,6 +435,42 @@ registered in config.middlewares whitelist.
 ```
 
 :::
+
+---
+
+## cache
+
+路由级响应缓存配置。响应缓存发生在服务端，会缓存接口响应内容；它不是自定义中间件，也不是浏览器 `Cache-Control` 响应头。
+
+```typescript
+import { route } from "vext";
+
+route({
+  method: "GET",
+  path: "/posts",
+  cache: {
+    ttl: 30_000, // 毫秒
+    methods: ["GET"],
+    headers: ["accept-language"],
+    partitionKey: (req) => req.user?.tenantId ?? "public",
+  },
+  handler: async () => {
+    return await listPosts();
+  },
+});
+```
+
+常用写法：
+
+| 配置 | 说明 |
+|------|------|
+| `cache: false` | 禁用该路由响应缓存 |
+| `cache: 30000` | 启用响应缓存，TTL 为 30000 毫秒 |
+| `cache: { ttl: 30000 }` | 使用完整配置对象 |
+| `headers: ["accept-language"]` | 指定参与缓存 key 的请求头；不建议把所有请求头都纳入 key |
+| `partitionKey` | 生成用户、租户或区域隔离维度，避免不同访问者共享同一缓存响应 |
+
+详见 [响应缓存指南](/guide/cache)。
 
 ---
 

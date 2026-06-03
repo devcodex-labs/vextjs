@@ -140,7 +140,7 @@ export function createVextResponse(
 
       // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
       if (res._onSend) {
-        res._onSend(data, finalStatus);
+        res._onSend(data, finalStatus, { ..._headers });
       }
 
       // 设置 HTTP 状态码和响应头

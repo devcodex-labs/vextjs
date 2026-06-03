@@ -55,8 +55,7 @@ export type {
   // 缓存类型
   RouteCacheOptions,
   VextCacheConfig,
-  CacheStore,
-  CacheEntry,
+  VextCacheStats,
 
   // 插件类型
   VextPlugin,
@@ -137,10 +136,6 @@ export type {
   VextFetchInit,
   VextFetchClientOptions,
 } from "./lib/fetch.js";
-
-// 缓存存储（内置 MemoryCacheStore，可用于自定义 CacheStore 实现参考）
-export { MemoryCacheStore } from "./lib/cache/memory-store.js";
-export type { MemoryCacheStoreOptions } from "./lib/cache/memory-store.js";
 
 // 插件加载器（框架内部 + 高级用法）
 export { loadPlugins } from "./lib/plugin-loader.js";

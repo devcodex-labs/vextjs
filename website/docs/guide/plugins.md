@@ -18,7 +18,7 @@ export default definePlugin({
     const redis = new Redis(app.config.redis?.url ?? "redis://localhost:6379");
 
     // 向 app 挂载自定义能力
-    app.extend("cache", redis);
+    app.extend("redis", redis);
 
     // 注册优雅关闭钩子
     app.onClose(async () => {
@@ -66,8 +66,8 @@ export default definePlugin({
   dependencies: ["redis"], // 确保 redis 插件先初始化
 
   async setup(app) {
-    // 此时 app.cache（由 redis 插件注入）已可用
-    const redis = (app as any).cache;
+    // 此时 app.redis（由 redis 插件注入）已可用
+    const redis = (app as any).redis;
     // ...
   },
 });
@@ -297,9 +297,9 @@ export default definePlugin({
     app.setRateLimiter({
       async check(key: string) {
         // 基于 Redis 的分布式限流
-        const count = await (app as any).cache.incr(`ratelimit:${key}`);
+        const count = await (app as any).redis.incr(`ratelimit:${key}`);
         if (count === 1) {
-          await (app as any).cache.expire(`ratelimit:${key}`, 60);
+          await (app as any).redis.expire(`ratelimit:${key}`, 60);
         }
         return {
           allowed: count <= app.config.rateLimit.max,
@@ -365,14 +365,14 @@ export default definePlugin({
 // plugins/database.ts — 无依赖，最先执行
 definePlugin({ name: 'database', setup: ... });
 
-// plugins/cache.ts — 依赖 database
-definePlugin({ name: 'cache', dependencies: ['database'], setup: ... });
+// plugins/query-cache.ts — 依赖 database
+definePlugin({ name: 'query-cache', dependencies: ['database'], setup: ... });
 
-// plugins/session.ts — 依赖 cache 和 database
-definePlugin({ name: 'session', dependencies: ['cache', 'database'], setup: ... });
+// plugins/session.ts — 依赖 query-cache 和 database
+definePlugin({ name: 'session', dependencies: ['query-cache', 'database'], setup: ... });
 ```
 
-执行顺序：`database` → `cache` → `session`
+执行顺序：`database` → `query-cache` → `session`
 
 如果存在循环依赖（A → B → A），框架会在启动时 Fail Fast 报错。
 

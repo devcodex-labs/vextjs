@@ -97,12 +97,12 @@ app.post(
 import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: "my-cache-plugin",
+  name: "user-cache-plugin",
 
   async setup(app) {
     // 在 app 上注册能力
     const cache = new Map();
-    app.extend("cache", {
+    app.extend("userCache", {
       get: (key: string) => cache.get(key),
       set: (key: string, value: unknown, ttl?: number) => {
         cache.set(key, value);

@@ -358,19 +358,31 @@ function validateConfig(config: Record<string, unknown>): void {
   // ── cluster ───────────────────────────────────────────
   const cluster = config.cluster as Record<string, unknown> | undefined;
   if (cluster !== undefined) {
-    if (typeof cluster !== "object" || cluster === null || Array.isArray(cluster)) {
+    if (
+      typeof cluster !== "object" ||
+      cluster === null ||
+      Array.isArray(cluster)
+    ) {
       throw new Error("[vextjs] config.cluster must be an object.");
     }
 
     const workers = cluster.workers;
     if (workers !== undefined) {
       const validWorkerStrings = ["auto", "auto-1"];
-      if (typeof workers === "string" && !validWorkerStrings.includes(workers)) {
+      if (
+        typeof workers === "string" &&
+        !validWorkerStrings.includes(workers)
+      ) {
         throw new Error(
           `[vextjs] config.cluster.workers must be a positive integer, "auto", or "auto-1", got: "${workers}"`,
         );
-      } else if (typeof workers === "number" && (!Number.isInteger(workers) || workers < 1)) {
-        throw new Error(`[vextjs] config.cluster.workers must be a positive integer, got: ${workers}`);
+      } else if (
+        typeof workers === "number" &&
+        (!Number.isInteger(workers) || workers < 1)
+      ) {
+        throw new Error(
+          `[vextjs] config.cluster.workers must be a positive integer, got: ${workers}`,
+        );
       } else if (typeof workers !== "string" && typeof workers !== "number") {
         throw new Error(
           `[vextjs] config.cluster.workers must be a positive integer, "auto", or "auto-1", got: ${typeof workers}`,
@@ -384,15 +396,30 @@ function validateConfig(config: Record<string, unknown>): void {
 
     for (const field of ["maxRestarts"] as const) {
       const value = cluster[field];
-      if (value !== undefined && (!Number.isInteger(value) || (value as number) < 1)) {
-        throw new Error(`[vextjs] config.cluster.${field} must be a positive integer.`);
+      if (
+        value !== undefined &&
+        (!Number.isInteger(value) || (value as number) < 1)
+      ) {
+        throw new Error(
+          `[vextjs] config.cluster.${field} must be a positive integer.`,
+        );
       }
     }
 
-    for (const field of ["restartWindow", "restartBaseDelay", "restartMaxDelay", "memoryThreshold"] as const) {
+    for (const field of [
+      "restartWindow",
+      "restartBaseDelay",
+      "restartMaxDelay",
+      "memoryThreshold",
+    ] as const) {
       const value = cluster[field];
-      if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
-        throw new Error(`[vextjs] config.cluster.${field} must be a positive number.`);
+      if (
+        value !== undefined &&
+        (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+      ) {
+        throw new Error(
+          `[vextjs] config.cluster.${field} must be a positive number.`,
+        );
       }
     }
 
@@ -403,24 +430,40 @@ function validateConfig(config: Record<string, unknown>): void {
       }
     }
 
-    if (cluster.sticky !== undefined && !["none", "ip"].includes(String(cluster.sticky))) {
+    if (
+      cluster.sticky !== undefined &&
+      !["none", "ip"].includes(String(cluster.sticky))
+    ) {
       throw new Error('[vextjs] config.cluster.sticky must be "none" or "ip".');
     }
 
     for (const sectionName of ["healthCheck", "reload"] as const) {
       const section = cluster[sectionName];
       if (section === undefined) continue;
-      if (typeof section !== "object" || section === null || Array.isArray(section)) {
-        throw new Error(`[vextjs] config.cluster.${sectionName} must be an object.`);
+      if (
+        typeof section !== "object" ||
+        section === null ||
+        Array.isArray(section)
+      ) {
+        throw new Error(
+          `[vextjs] config.cluster.${sectionName} must be an object.`,
+        );
       }
       const typed = section as Record<string, unknown>;
       if (typed.enabled !== undefined && typeof typed.enabled !== "boolean") {
-        throw new Error(`[vextjs] config.cluster.${sectionName}.enabled must be a boolean.`);
+        throw new Error(
+          `[vextjs] config.cluster.${sectionName}.enabled must be a boolean.`,
+        );
       }
       for (const [key, value] of Object.entries(typed)) {
         if (key === "enabled") continue;
-        if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
-          throw new Error(`[vextjs] config.cluster.${sectionName}.${key} must be a positive number.`);
+        if (
+          value !== undefined &&
+          (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+        ) {
+          throw new Error(
+            `[vextjs] config.cluster.${sectionName}.${key} must be a positive number.`,
+          );
         }
       }
     }
@@ -587,7 +630,7 @@ function validateConfig(config: Record<string, unknown>): void {
       (typeof defaultTtl !== "number" || defaultTtl <= 0)
     ) {
       throw new Error(
-        `[vextjs] config.cache.defaultTtl must be a positive number (seconds), got: ${defaultTtl}`,
+        `[vextjs] config.cache.defaultTtl must be a positive number (milliseconds), got: ${defaultTtl}`,
       );
     }
     const maxEntries = cache.maxEntries;

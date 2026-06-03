@@ -1,14 +1,13 @@
 import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: "cache",
+  name: "user-cache",
   setup(app) {
     const cache = {
       get(key) {
         return key;
       },
     };
-    app.extend("cache", cache);
+    app.extend("userCache", cache);
   },
 });
-

@@ -302,7 +302,7 @@ export default definePlugin({
   name: "redis",
   async setup(app) {
     const redis = createRedisClient(app.config.redis);
-    app.extend("cache", redis);
+    app.extend("redis", redis);
     app.onClose(() => redis.quit());
   },
 });

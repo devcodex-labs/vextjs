@@ -153,7 +153,7 @@ testApp = await createTestApp({ plugins: true });
 testApp = await createTestApp({
   setupPlugins: async (app) => {
     // 只注册测试需要的插件
-    app.extend("cache", new MockCache());
+    app.extend("testCache", new MockCache());
     app.extend("db", new MockDatabase());
   },
 });
@@ -983,14 +983,11 @@ describe("Redis 缓存插件", () => {
 
   it("缓存命中时直接返回", async () => {
     const mockCache = new Map();
-    mockCache.set(
-      "cache:/users/1",
-      JSON.stringify({ id: "1", name: "Cached Alice" }),
-    );
+    mockCache.set("user:1", JSON.stringify({ id: "1", name: "Cached Alice" }));
 
     testApp = await createTestApp({
       setupPlugins: async (app) => {
-        app.extend("cache", {
+        app.extend("userCache", {
           get: async (key) => mockCache.get(key) ?? null,
           set: async (key, value, ttl) => mockCache.set(key, value),
           del: async (key) => mockCache.delete(key),
@@ -998,7 +995,7 @@ describe("Redis 缓存插件", () => {
       },
     });
 
-    // 假设路由有缓存中间件，应返回缓存数据
+    // 假设路由 handler 会读取 app.userCache，应返回缓存数据
     const res = await testApp.request.get("/users/1");
     expect(res.status).toBe(200);
   });

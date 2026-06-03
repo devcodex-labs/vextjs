@@ -105,7 +105,11 @@ class NativeVextResponse implements VextResponse {
   private _sent: boolean = false;
 
   /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
-  _onSend?: (data: unknown, statusCode: number) => void;
+  _onSend?: (
+    data: unknown,
+    statusCode: number,
+    headers?: Record<string, string>,
+  ) => void;
 
   constructor(
     serverResponse: ServerResponse,
@@ -226,7 +230,7 @@ class NativeVextResponse implements VextResponse {
 
     // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
     if (this._onSend) {
-      this._onSend(data, finalStatus);
+      this._onSend(data, finalStatus, { ...this._headers });
     }
 
     if (this._wrapEnabled) {

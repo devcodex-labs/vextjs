@@ -63,7 +63,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.12"
+    "vextjs": "^0.3.13"
   }
 }
 ```
@@ -393,9 +393,9 @@ npm install express
 npm install koa @koa/router
 ```
 
-## Route Cache
+## Response Cache
 
-Route cache is enabled at route level:
+Response cache is enabled at route level:
 
 ```ts
 app.get(
@@ -412,7 +412,7 @@ app.get(
 );
 ```
 
-The current runtime uses `MemoryCacheStore`, an in-process LRU store. Cached GET or HEAD responses are written after a successful handler response and served by generated route cache middleware on later requests. Cache keys can be static strings or request-based functions.
+The runtime delegates response caching to `response-cache-kit`, backed by `cache-hub`. Vext captures successful JSON responses from GET or HEAD routes, stores them with millisecond TTLs, and serves later hits before validation and handler execution. Cache keys can be static strings or request-based functions; use `partitionKey` for user or tenant isolation.
 
 ## OpenAPI
 

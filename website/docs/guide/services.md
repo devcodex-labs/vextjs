@@ -269,7 +269,7 @@ export default class OrderService {
 插件通过 `app.extend()` 注入的能力，在服务中通过 `this.app` 访问：
 
 ```typescript
-// 假设 redis 插件已通过 app.extend('cache', redis) 注入
+// 假设 redis 插件已通过 app.extend('redis', redis) 注入
 // src/services/user.ts
 import type { VextApp } from "vextjs";
 
@@ -282,7 +282,7 @@ export default class UserService {
 
   async findById(id: string) {
     // 先查缓存
-    const cached = await (this.app as any).cache.get(`user:${id}`);
+    const cached = await (this.app as any).redis.get(`user:${id}`);
     if (cached) return cached;
 
     // 缓存未命中，查数据库
@@ -290,7 +290,7 @@ export default class UserService {
 
     // 写入缓存
     if (user) {
-      await (this.app as any).cache.set(`user:${id}`, JSON.stringify(user));
+      await (this.app as any).redis.set(`user:${id}`, JSON.stringify(user));
     }
 
     return user;
@@ -310,7 +310,7 @@ export default class UserService {
 // src/types/extensions.d.ts
 declare module "vextjs" {
   interface VextApp {
-    cache: {
+    redis: {
       get(key: string): Promise<string | null>;
       set(key: string, value: string, ttl?: number): Promise<void>;
     };
@@ -318,7 +318,7 @@ declare module "vextjs" {
 }
 ```
 
-扩展后 `this.app.cache` 即可获得 IDE 自动补全。
+扩展后 `this.app.redis` 即可获得 IDE 自动补全。
 ::::
 
 ## 使用 `app.throw()` 抛出错误

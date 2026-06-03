@@ -406,7 +406,7 @@ declare module "vextjs" {
 
 #### `app.cache`
 
-路由缓存管理 API。在 `createApp` 阶段初始化，提供缓存失效、删除、清空、统计等操作。
+路由级响应缓存管理 API。在 `createApp` 阶段初始化，提供标签失效、指定 key 删除、清空、统计等操作。
 
 ```typescript
 cache: {
@@ -438,7 +438,7 @@ app.get("/admin/cache-stats", {}, async (req, res) => {
 });
 ```
 
-详见 [路由缓存指南](/guide/cache)。
+`app.cache` 是 Vext 对 `response-cache-kit` 的控制面包装；业务代码不需要直接操作底层 Store。详见 [响应缓存指南](/guide/cache)。
 
 ---
 
@@ -511,7 +511,7 @@ export default definePlugin({
   name: "redis",
   async setup(app) {
     const redis = new Redis(app.config.redis);
-    app.extend("cache", redis);
+    app.extend("redis", redis);
     app.onClose(() => redis.quit());
   },
 });
@@ -523,12 +523,12 @@ export default definePlugin({
 // types/vext.d.ts
 declare module "vextjs" {
   interface VextApp {
-    cache: import("ioredis").Redis;
+    redis: import("ioredis").Redis;
   }
 }
 
 // 使用时有类型提示
-app.cache.get("key"); // ✅ IDE 知道是 Redis 实例
+app.redis.get("key"); // ✅ IDE 知道是 Redis 实例
 ```
 
 ---
@@ -770,7 +770,7 @@ import { definePlugin } from "vextjs";
 export default definePlugin({
   name: "redis-rate-limit",
   async setup(app) {
-    const redis = app.cache; // 假设 redis 插件已先加载
+    const redis = app.redis; // 假设 redis 插件已先加载
 
     app.setRateLimiter({
       async check(key) {
@@ -896,7 +896,7 @@ app.onClose(() => {
 
 // Redis 连接关闭
 app.onClose(async () => {
-  await app.cache.quit();
+  await app.redis.quit();
 });
 ```
 

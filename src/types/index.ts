@@ -49,8 +49,7 @@ export type {
   VextMiddlewareRef,
   RouteCacheOptions,
   VextCacheConfig,
-  CacheStore,
-  CacheEntry,
+  VextCacheStats,
 } from "./app.js";
 
 // ── 插件类型 ────────────────────────────────────────────────

@@ -63,7 +63,7 @@ export interface VextPluginContext extends Pick<VextApp, VextPluginContextKeys> 
  *   name: 'redis',
  *   async setup(app) {
  *     const redis = new Redis(app.config.redis)
- *     app.extend('cache', redis)
+ *     app.extend('redis', redis)
  *     app.onClose(() => redis.quit())
  *   },
  * })

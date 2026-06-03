@@ -1,16 +1,16 @@
 /**
- * route-cache.ts — 路由级缓存中间件工厂
+ * route-cache.ts — 路由级响应缓存中间件工厂
  *
  * 职责：
  *   1. normalizeCacheOptions：统一 false/number/object → RouteCacheOptions | null
  *   2. defaultCacheKey：默认 key 生成（method:path?sortedQuery|varyHeaders）
- *   3. buildRouteCacheMiddleware：构建路由级缓存中间件
+ *   3. buildRouteCacheMiddleware：构建路由级响应缓存中间件
  *
  * 设计：
  *   - 缓存中间件插入在路由级中间件之后、validate 之前
- *   - HIT：直接 res.json(cached.body) + return（跳过 validate + handler）
- *   - MISS：注册 res._onSend 钩子，handler 执行 res.json() 时捕获原始 data 写入缓存
- *   - 204 不缓存（_onSend 钩子内排除）
+ *   - HIT：直接发送 response-cache-kit 结果（跳过 validate + handler）
+ *   - MISS：注册 res._onSend 钩子，handler 执行 res.json() 时捕获原始 data
+ *   - 204 / 非 JSON 响应不缓存
  *   - 空 key 跳过缓存
  *
  * @module lib/middlewares/route-cache
@@ -18,12 +18,21 @@
  */
 
 import type { VextMiddleware } from "../../types/middleware.js";
-import type {
-  RouteCacheOptions,
-  CacheStore,
-  CacheEntry,
-} from "../../types/app.js";
+import type { RouteCacheOptions } from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
+import {
+  VEXT_CACHEABLE_STATUSES,
+  createResponseCacheHeaders,
+  createVextLegacyKey,
+  normalizeResponseCacheRequest,
+} from "response-cache-kit";
+import type {
+  HeaderBag,
+  ResponseCache,
+  ResponseCacheHandleOptions,
+  ResponseCacheKeyBuilder,
+  ResponseCacheOriginResponse,
+} from "response-cache-kit";
 
 // ── normalizeCacheOptions ──────────────────────────────────────
 
@@ -85,7 +94,10 @@ export function normalizeCacheOptions(
  *   GET /products?limit=10&page=2 → 'GET:/products?limit=10&page=2'
  *   GET /products + zh-CN         → 'GET:/products|accept-language=zh-CN'
  */
-export function defaultCacheKey(req: VextRequest, vary: string[]): string {
+export function defaultCacheKey(
+  req: VextRequest,
+  vary: string[] | "*" = [],
+): string {
   let key = `${req.method}:${req.path}`;
 
   const queryKeys = Object.keys(req.query);
@@ -94,8 +106,9 @@ export function defaultCacheKey(req: VextRequest, vary: string[]): string {
     key += "?" + queryKeys.map((k) => `${k}=${req.query[k]}`).join("&");
   }
 
-  if (vary.length > 0) {
-    for (const h of vary) {
+  const varyHeaders = vary === "*" ? Object.keys(req.headers).sort() : vary;
+  if (varyHeaders.length > 0) {
+    for (const h of varyHeaders) {
       key += `|${h}=${req.headers[h.toLowerCase()] ?? ""}`;
     }
   }
@@ -106,15 +119,15 @@ export function defaultCacheKey(req: VextRequest, vary: string[]): string {
 // ── buildRouteCacheMiddleware ──────────────────────────────────
 
 /**
- * 构建路由级缓存中间件
+ * 构建路由级响应缓存中间件
  *
  * @param cacheOpts 规范化后的缓存配置（null 时返回 null，不构建中间件）
- * @param getStore  延迟获取 CacheStore 的工厂函数（避免在路由注册时 store 尚未就绪）
+ * @param getResponseCache 延迟获取 ResponseCache 实例（避免在路由注册时实例尚未就绪）
  * @returns VextMiddleware | null
  */
 export function buildRouteCacheMiddleware(
   cacheOpts: RouteCacheOptions | null,
-  getStore: () => CacheStore,
+  getResponseCache: () => ResponseCache,
 ): VextMiddleware | null {
   if (!cacheOpts) return null;
 
@@ -124,7 +137,8 @@ export function buildRouteCacheMiddleware(
     condition,
     vary = [],
     cacheControl = true,
-    tags = [],
+    partitionKey,
+    allowAuthorizationCache = false,
   } = cacheOpts;
 
   const cacheMiddleware: VextMiddleware = async (req, res, next) => {
@@ -136,7 +150,12 @@ export function buildRouteCacheMiddleware(
     }
 
     // ── 生成缓存 key ────────────────────────────────────
-    const cacheKey = keyFn ? keyFn(req) : defaultCacheKey(req, vary);
+    const cacheKey =
+      typeof keyFn === "function"
+        ? keyFn(req)
+        : typeof keyFn === "string"
+          ? keyFn
+          : defaultCacheKey(req, vary);
 
     // 空 key 跳过缓存
     if (!cacheKey) {
@@ -144,58 +163,260 @@ export function buildRouteCacheMiddleware(
       return;
     }
 
-    // ── 查找缓存 ────────────────────────────────────────
-    const store = getStore();
-    const result = store.get(cacheKey);
-    const cached: CacheEntry | null =
-      result instanceof Promise ? await result : result;
+    const resolvedPartitionKey = resolvePartitionKey(req, partitionKey);
+    const request = normalizeResponseCacheRequest({
+      method: req.method,
+      url: req.url || req.path,
+      headers: req.headers,
+      partitionKey: resolvedPartitionKey,
+    });
+    const requestAllowsCache = isCacheableRequest(
+      req,
+      resolvedPartitionKey,
+      allowAuthorizationCache,
+    );
+    const handleOptions = createHandleOptions(
+      cacheKey,
+      cacheOpts,
+      keyFn !== undefined,
+    );
+    const responseCache = getResponseCache();
 
-    if (cached) {
-      // ── HIT ───────────────────────────────────────────
-      res.setHeader("X-Cache", "HIT");
-
-      if (cacheControl) {
-        const age = Math.floor((Date.now() - cached.cachedAt) / 1000);
-        const remaining = Math.max(0, ttl - age);
-        res.setHeader("Cache-Control", `public, max-age=${remaining}`);
-      }
-
-      res.json(cached.body, cached.statusCode);
-      return; // 不调用 next → 跳过 validate + handler
-    }
-
-    // ── MISS ──────────────────────────────────────────────
     res.setHeader("X-Cache", "MISS");
 
-    // 注册 _onSend 钩子：handler 执行 res.json() 时捕获原始 data
-    res._onSend = (data: unknown, statusCode: number) => {
-      // 排除 204 和非 2xx 响应
-      if (statusCode === 204 || statusCode < 200 || statusCode >= 300) {
-        return;
+    const origin = createOrigin(req, res, next, {
+      requestAllowsCache,
+      ttl,
+      cacheControl,
+    });
+    const result = await responseCache.handle(request, origin, handleOptions);
+
+    if (
+      result.metadata.state === "hit" ||
+      result.metadata.state === "deduped"
+    ) {
+      const headers = createVextHeaders(result, cacheControl);
+      for (const [name, value] of Object.entries(headers)) {
+        res.setHeader(name, value);
       }
-
-      const entry: CacheEntry = {
-        body: data,
-        statusCode,
-        cachedAt: Date.now(),
-        tags,
-      };
-
-      const setResult = store.set(cacheKey, entry, ttl);
-      // 如果 store.set 返回 Promise（外部存储），不 await（fire-and-forget）
-      if (setResult instanceof Promise) {
-        setResult.catch(() => {
-          // 静默忽略写入失败
-        });
-      }
-    };
-
-    if (cacheControl) {
-      res.setHeader("Cache-Control", `public, max-age=${ttl}`);
+      res.json(result.body, result.status);
     }
-
-    await next();
   };
 
   return cacheMiddleware;
+}
+
+function createHandleOptions(
+  cacheKey: string,
+  cacheOpts: RouteCacheOptions,
+  hasCustomKey: boolean,
+): ResponseCacheHandleOptions {
+  const options: ResponseCacheHandleOptions = {
+    ttl: cacheOpts.ttl,
+    vary: cacheOpts.vary ?? [],
+    tags: cacheOpts.tags ?? [],
+    cacheableStatuses: VEXT_CACHEABLE_STATUSES,
+    allowAuthorizationCache: cacheOpts.allowAuthorizationCache === true,
+    keyBuilder: hasCustomKey
+      ? createVextCustomKeyBuilder(cacheKey)
+      : createVextLegacyKey,
+  };
+
+  return options;
+}
+
+function createVextCustomKeyBuilder(baseKey: string): ResponseCacheKeyBuilder {
+  return (request, context) => {
+    const parts = [baseKey];
+    if (request.partitionKey) {
+      parts.push(`partition=${request.partitionKey}`);
+    }
+
+    const headers = normalizeRequestHeaders(request.headers);
+    for (const rawName of context.vary) {
+      const name = rawName.toLowerCase();
+      const value = headers[name];
+      if (value !== undefined) {
+        parts.push(`${name}=${value}`);
+      }
+    }
+
+    return parts.join("|");
+  };
+}
+
+function createOrigin(
+  req: VextRequest,
+  res: Parameters<VextMiddleware>[1],
+  next: () => Promise<void>,
+  options: {
+    requestAllowsCache: boolean;
+    ttl: number;
+    cacheControl: boolean;
+  },
+): () => Promise<ResponseCacheOriginResponse> {
+  return () =>
+    new Promise<ResponseCacheOriginResponse>((resolve, reject) => {
+      let settled = false;
+      const previousOnSend = res._onSend;
+
+      res._onSend = (data, statusCode, headers = {}) => {
+        previousOnSend?.(data, statusCode, headers);
+
+        const responseHeaders: HeaderBag = { ...headers };
+        if (
+          options.cacheControl &&
+          options.requestAllowsCache &&
+          shouldSetMissCacheControl(statusCode, responseHeaders)
+        ) {
+          const value = `public, max-age=${Math.ceil(options.ttl / 1000)}`;
+          res.setHeader("Cache-Control", value);
+          responseHeaders["Cache-Control"] = value;
+        }
+
+        if (!settled) {
+          settled = true;
+          resolve({ body: data, status: statusCode, headers: responseHeaders });
+        }
+      };
+
+      next()
+        .then(() => {
+          if (!settled) {
+            settled = true;
+            resolve({
+              body: undefined,
+              status: res.statusCode,
+              headers: { "Cache-Control": "no-store" },
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (!settled) {
+            settled = true;
+            reject(error);
+            return;
+          }
+          reject(error);
+        });
+    });
+}
+
+function createVextHeaders(
+  result: Parameters<typeof createResponseCacheHeaders>[0],
+  cacheControl: boolean,
+): HeaderBag {
+  const headers: HeaderBag = {};
+  for (const [name, value] of Object.entries(result.headers)) {
+    const normalized = name.toLowerCase();
+    if (normalized === "x-cache") continue;
+    if (cacheControl && normalized === "cache-control") continue;
+    headers[name] = value;
+  }
+  Object.assign(
+    headers,
+    createResponseCacheHeaders(result, {
+      cacheControl,
+      cacheHeaderName: false,
+    }),
+  );
+  headers["X-Cache"] =
+    result.metadata.state === "hit" || result.metadata.state === "deduped"
+      ? "HIT"
+      : "MISS";
+  const cacheControlValue = headers["Cache-Control"];
+  if (cacheControlValue) {
+    headers["Cache-Control"] = cacheControlValue.replace(
+      "public,max-age",
+      "public, max-age",
+    );
+  }
+  return headers;
+}
+
+function resolvePartitionKey(
+  req: VextRequest,
+  partitionKey: RouteCacheOptions["partitionKey"],
+): string | undefined {
+  if (typeof partitionKey === "function") {
+    const value = partitionKey(req);
+    return value == null || value === "" ? undefined : String(value);
+  }
+  return partitionKey;
+}
+
+function isCacheableRequest(
+  req: VextRequest,
+  partitionKey: string | undefined,
+  allowAuthorizationCache: boolean,
+): boolean {
+  const method = req.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+
+  const cacheControl = req.headers["cache-control"] ?? "";
+  if (hasCacheControlToken(cacheControl, "no-store")) return false;
+  if (hasCacheControlToken(cacheControl, "no-cache")) return false;
+
+  if (req.headers.authorization && !allowAuthorizationCache && !partitionKey) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldSetMissCacheControl(
+  statusCode: number,
+  headers: HeaderBag,
+): boolean {
+  if (!VEXT_CACHEABLE_STATUSES.includes(statusCode)) return false;
+  if (headers["Cache-Control"] || headers["cache-control"]) return false;
+  if (headers["Set-Cookie"] || headers["set-cookie"]) return false;
+  return true;
+}
+
+function hasCacheControlToken(value: string, token: string): boolean {
+  return value
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .includes(token);
+}
+
+function normalizeRequestHeaders(
+  headers: Parameters<ResponseCacheKeyBuilder>[0]["headers"],
+): HeaderBag {
+  const normalized: HeaderBag = {};
+  if (!headers) return normalized;
+
+  if (typeof (headers as { forEach?: unknown }).forEach === "function") {
+    (
+      headers as {
+        forEach(callback: (value: string, key: string) => void): void;
+      }
+    ).forEach((value, key) => {
+      normalized[key.toLowerCase()] = String(value);
+    });
+    return normalized;
+  }
+
+  if (Symbol.iterator in Object(headers)) {
+    for (const [key, value] of headers as Iterable<
+      readonly [string, unknown]
+    >) {
+      if (value !== undefined && value !== null) {
+        normalized[String(key).toLowerCase()] = String(value);
+      }
+    }
+    return normalized;
+  }
+
+  for (const [key, value] of Object.entries(
+    headers as Record<string, unknown>,
+  )) {
+    if (value !== undefined && value !== null) {
+      normalized[key.toLowerCase()] = Array.isArray(value)
+        ? value.join(", ")
+        : String(value);
+    }
+  }
+  return normalized;
 }

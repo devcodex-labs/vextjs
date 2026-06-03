@@ -1,10 +1,10 @@
 /**
- * route-cache 缓存中间件单元测试
+ * route-cache 响应缓存中间件单元测试
  *
  * 测试覆盖：
  *   - normalizeCacheOptions：false / number / object / ttl<=0 / undefined
  *   - defaultCacheKey：静态路径 / 动态参数 / query 排序 / vary headers / 空 query
- *   - 缓存中间件：HIT 返回缓存 / MISS 走 handler / condition 跳过 / 空 key 跳过
+ *   - 响应缓存中间件：HIT 返回缓存 / MISS 走 handler / condition 跳过 / 空 key 跳过
  *   - X-Cache 响应头：HIT / MISS
  *   - Cache-Control 响应头
  *   - 204 不缓存
@@ -19,7 +19,7 @@ import {
   defaultCacheKey,
   buildRouteCacheMiddleware,
 } from "../../src/lib/middlewares/route-cache.js";
-import { MemoryCacheStore } from "../../src/lib/cache/memory-store.js";
+import { createResponseCache } from "response-cache-kit";
 import type { VextRequest } from "../../src/types/request.js";
 import type { VextResponse } from "../../src/types/response.js";
 
@@ -57,13 +57,14 @@ function createMockRes(): VextResponse & {
   const res: any = {
     _jsonCalls: [],
     _headerCalls: [],
+    _headers: {},
     _statusVal: 200,
     _onSend: undefined,
     json(data: unknown, status?: number) {
       // 模拟 _onSend 调用（在 adapter 中的行为）
       const finalStatus = status ?? res._statusVal;
       if (res._onSend) {
-        res._onSend(data, finalStatus);
+        res._onSend(data, finalStatus, { ...res._headers });
       }
       res._jsonCalls.push({ data, status: finalStatus });
     },
@@ -79,6 +80,7 @@ function createMockRes(): VextResponse & {
       return res;
     },
     setHeader(name: string, value: string) {
+      res._headers[name] = value;
       res._headerCalls.push({ name, value });
       return res;
     },
@@ -129,6 +131,286 @@ describe("normalizeCacheOptions", () => {
     const result = normalizeCacheOptions({ ttl: 0 as any, vary: [] }, 120);
     // ttl=0 → will use globalDefaultTtl if ttl is falsy
     expect(result).toEqual({ ttl: 120, vary: [] });
+  });
+});
+
+describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
+  function createMiddleware(options = { ttl: 60_000 }) {
+    const cache = createResponseCache({
+      namespace: "test-vext",
+      ttl: 60_000,
+      cacheHub: { enableStats: true },
+    });
+    const middleware = buildRouteCacheMiddleware(options, () => cache);
+    if (!middleware) throw new Error("middleware not created");
+    return { cache, middleware };
+  }
+
+  it("MISS 调用 handler 并写入 response-cache-kit，下一次 HIT 跳过 handler", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq();
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    const next = vi.fn(async () => {
+      firstRes.json({ value: "origin" }, 200);
+    });
+    const hitNext = vi.fn();
+
+    await middleware(req, firstRes, next);
+    await middleware(req, secondRes, hitNext);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(firstRes._headerCalls).toContainEqual({
+      name: "X-Cache",
+      value: "MISS",
+    });
+    expect(secondRes._headerCalls).toContainEqual({
+      name: "X-Cache",
+      value: "HIT",
+    });
+    expect(secondRes._headers["x-cache"]).toBeUndefined();
+    expect(secondRes._headers["X-Cache"]).toBe("HIT");
+    expect(secondRes._jsonCalls[0]).toEqual({
+      data: { value: "origin" },
+      status: 200,
+    });
+  });
+
+  it("使用毫秒 TTL，并把 Cache-Control max-age 转成秒", async () => {
+    vi.useFakeTimers();
+    try {
+      const { middleware } = createMiddleware({ ttl: 2_000 });
+      const req = createMockReq();
+      const firstRes = createMockRes();
+      const secondRes = createMockRes();
+      const thirdRes = createMockRes();
+      let count = 0;
+      const next = vi.fn(async () => {
+        count++;
+        firstRes.json({ count }, 200);
+      });
+      const secondNext = vi.fn();
+      const thirdNext = vi.fn(async () => {
+        count++;
+        thirdRes.json({ count }, 200);
+      });
+
+      await middleware(req, firstRes, next);
+      await middleware(req, secondRes, secondNext);
+      vi.advanceTimersByTime(2_001);
+      await middleware(req, thirdRes, thirdNext);
+
+      expect(secondNext).not.toHaveBeenCalled();
+      expect(thirdNext).toHaveBeenCalledTimes(1);
+      expect(firstRes._headerCalls).toContainEqual({
+        name: "Cache-Control",
+        value: "public, max-age=2",
+      });
+      expect(secondRes._headerCalls).toContainEqual({
+        name: "Cache-Control",
+        value: "public, max-age=2",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tags 可通过 app.cache.invalidate 对应的 response-cache-kit tag 失效", async () => {
+    const cache = createResponseCache({ namespace: "test-tags" });
+    const middleware = buildRouteCacheMiddleware(
+      { ttl: 60_000, tags: ["products"] },
+      () => cache,
+    )!;
+    const req = createMockReq();
+    let count = 0;
+
+    const missRes = createMockRes();
+    await middleware(req, missRes, async () => {
+      count++;
+      missRes.json({ count }, 200);
+    });
+
+    await cache.invalidateTag("products");
+
+    const nextRes = createMockRes();
+    const next = vi.fn(async () => {
+      count++;
+      nextRes.json({ count }, 200);
+    });
+    await middleware(req, nextRes, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(nextRes._jsonCalls[0]?.data).toEqual({ count: 2 });
+  });
+
+  it("vary='*' 时所有请求头参与缓存隔离", async () => {
+    const { middleware } = createMiddleware({ ttl: 60_000, vary: "*" });
+    let count = 0;
+    const reqZh = createMockReq({
+      headers: { "accept-language": "zh-CN" },
+    });
+    const reqEn = createMockReq({
+      headers: { "accept-language": "en-US" },
+    });
+    const zhRes = createMockRes();
+    const enRes = createMockRes();
+
+    await middleware(reqZh, zhRes, async () => {
+      count++;
+      zhRes.json({ count, lang: "zh" }, 200);
+    });
+    await middleware(reqEn, enRes, async () => {
+      count++;
+      enRes.json({ count, lang: "en" }, 200);
+    });
+
+    expect(count).toBe(2);
+    expect(enRes._headerCalls).toContainEqual({
+      name: "X-Cache",
+      value: "MISS",
+    });
+  });
+
+  it("Authorization 请求默认绕过缓存，配置 partitionKey 后按分区缓存", async () => {
+    const bypass = createMiddleware({ ttl: 60_000 });
+    const authReq = createMockReq({
+      headers: { authorization: "Bearer a" },
+    });
+    let bypassCount = 0;
+    for (const value of [1, 2]) {
+      const res = createMockRes();
+      await bypass.middleware(authReq, res, async () => {
+        bypassCount++;
+        res.json({ value }, 200);
+      });
+    }
+    expect(bypassCount).toBe(2);
+
+    const partitioned = createMiddleware({
+      ttl: 60_000,
+      partitionKey: (req) => req.headers.authorization,
+    });
+    const firstRes = createMockRes();
+    const hitRes = createMockRes();
+    const next = vi.fn(async () => {
+      firstRes.json({ value: "private" }, 200);
+    });
+    const hitNext = vi.fn();
+
+    await partitioned.middleware(authReq, firstRes, next);
+    await partitioned.middleware(authReq, hitRes, hitNext);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(hitRes._headerCalls).toContainEqual({
+      name: "X-Cache",
+      value: "HIT",
+    });
+  });
+
+  it("Set-Cookie / no-store / private 响应不缓存", async () => {
+    const cases = [
+      ["Set-Cookie", "sid=1"],
+      ["Cache-Control", "no-store"],
+      ["Cache-Control", "private"],
+    ] as const;
+
+    for (const [name, value] of cases) {
+      const { middleware } = createMiddleware();
+      const req = createMockReq({ path: `/policy-${name}-${value}` });
+      let count = 0;
+
+      for (let i = 0; i < 2; i++) {
+        const res = createMockRes();
+        await middleware(req, res, async () => {
+          count++;
+          res.setHeader(name, value);
+          res.json({ count }, 200);
+        });
+      }
+
+      expect(count).toBe(2);
+    }
+  });
+
+  it("静态 key 支持 partitionKey 与 vary 继续参与隔离", async () => {
+    const { middleware } = createMiddleware({
+      ttl: 60_000,
+      key: "products:list",
+      vary: ["accept-language"],
+      partitionKey: (req) => req.headers["x-tenant-id"],
+    });
+    let count = 0;
+
+    const tenantAReq = createMockReq({
+      headers: { "x-tenant-id": "tenant-a", "accept-language": "zh-CN" },
+    });
+    const tenantBReq = createMockReq({
+      headers: { "x-tenant-id": "tenant-b", "accept-language": "zh-CN" },
+    });
+    const tenantAEnReq = createMockReq({
+      headers: { "x-tenant-id": "tenant-a", "accept-language": "en-US" },
+    });
+
+    for (const req of [tenantAReq, tenantBReq, tenantAEnReq]) {
+      const res = createMockRes();
+      await middleware(req, res, async () => {
+        count++;
+        res.json({ count }, 200);
+      });
+    }
+
+    const hitRes = createMockRes();
+    const hitNext = vi.fn();
+    await middleware(tenantAReq, hitRes, hitNext);
+
+    expect(count).toBe(3);
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(hitRes._jsonCalls[0]?.data).toEqual({ count: 1 });
+  });
+
+  it("未被 _onSend 捕获的非 JSON 响应不写入缓存，也不补发空 JSON", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq();
+    let count = 0;
+
+    for (let i = 0; i < 2; i++) {
+      const res = createMockRes();
+      await middleware(req, res, async () => {
+        count++;
+      });
+      expect(res._jsonCalls).toHaveLength(0);
+    }
+
+    expect(count).toBe(2);
+  });
+
+  it("并发 MISS 使用 single-flight，只调用一次 handler", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq();
+    let originCalls = 0;
+
+    const tasks = Array.from({ length: 100 }, async () => {
+      const res = createMockRes();
+      await middleware(req, res, async () => {
+        originCalls++;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        res.json({ originCalls }, 200);
+      });
+      return res;
+    });
+
+    const responses = await Promise.all(tasks);
+    const hits = responses.filter((res) =>
+      res._headerCalls.some(
+        (header) => header.name === "X-Cache" && header.value === "HIT",
+      ),
+    );
+
+    expect(originCalls).toBe(1);
+    expect(hits.length).toBe(99);
+    expect(responses.every((res) => res._jsonCalls.length === 1)).toBe(true);
   });
 });
 
@@ -192,557 +474,6 @@ describe("defaultCacheKey", () => {
   it("POST 方法", () => {
     const req = createMockReq({ method: "POST", path: "/data" });
     expect(defaultCacheKey(req, [])).toBe("POST:/data");
-  });
-});
-
-// ── buildRouteCacheMiddleware 测试 ────────────────────────
-
-describe("buildRouteCacheMiddleware", () => {
-  let store: MemoryCacheStore;
-
-  beforeEach(() => {
-    store = new MemoryCacheStore({ maxEntries: 100 });
-  });
-
-  it("cacheOpts 为 null 时返回 null", () => {
-    const middleware = buildRouteCacheMiddleware(null, () => store);
-    expect(middleware).toBeNull();
-  });
-
-  it("MISS 时应调用 next 并设置 X-Cache: MISS", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-    expect(middleware).not.toBeNull();
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn().mockResolvedValue(undefined);
-
-    await middleware(req, res, next);
-
-    expect(next).toHaveBeenCalled();
-    expect(res._headerCalls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "X-Cache", value: "MISS" }),
-      ]),
-    );
-  });
-
-  it("MISS 时应注册 _onSend 钩子", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn().mockResolvedValue(undefined);
-
-    await middleware(req, res, next);
-
-    expect(res._onSend).toBeDefined();
-  });
-
-  it("MISS → handler 调用 json() → 触发 _onSend → 缓存写入", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      // 模拟 handler 调用 res.json()
-      res.json({ products: [1, 2, 3] });
-    });
-
-    await middleware(req, res, next);
-
-    // 缓存应被写入
-    const cached = store.get("GET:/products");
-    expect(cached).not.toBeNull();
-    expect(cached!.body).toEqual({ products: [1, 2, 3] });
-    expect(cached!.statusCode).toBe(200);
-  });
-
-  it("HIT 时应直接返回缓存数据并设置 X-Cache: HIT", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    // 第一次请求：MISS → 写入缓存
-    const req1 = createMockReq();
-    const res1 = createMockRes();
-    const next1 = vi.fn(async () => {
-      res1.json({ products: [1, 2, 3] });
-    });
-    await middleware(req1, res1, next1);
-    expect(next1).toHaveBeenCalled();
-
-    // 第二次请求：HIT
-    const req2 = createMockReq();
-    const res2 = createMockRes();
-    const next2 = vi.fn();
-    await middleware(req2, res2, next2);
-
-    // next 不应被调用（HIT 跳过 handler）
-    expect(next2).not.toHaveBeenCalled();
-    // X-Cache: HIT
-    expect(res2._headerCalls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "X-Cache", value: "HIT" }),
-      ]),
-    );
-    // 应调用 res.json() 返回缓存数据
-    expect(res2._jsonCalls.length).toBe(1);
-    expect(res2._jsonCalls[0]!.data).toEqual({ products: [1, 2, 3] });
-  });
-
-  it("condition 返回 false 时应跳过缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, condition: (req) => !req.query.refresh },
-      () => store,
-    )!;
-
-    const req = createMockReq({ query: { refresh: "1" } });
-    const res = createMockRes();
-    const next = vi.fn().mockResolvedValue(undefined);
-
-    await middleware(req, res, next);
-
-    // 应直接调用 next，不走缓存
-    expect(next).toHaveBeenCalled();
-    // condition=false 时跳过缓存，应设置 X-Cache: MISS（让客户端感知缓存被跳过）
-    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
-      name: "X-Cache",
-      value: "MISS",
-    });
-    // 不应注册 _onSend（跳过缓存，不写入）
-    expect(res._onSend).toBeUndefined();
-  });
-
-  it("自定义 key 函数空字符串时应跳过缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, key: () => "" },
-      () => store,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn().mockResolvedValue(undefined);
-
-    await middleware(req, res, next);
-
-    expect(next).toHaveBeenCalled();
-    expect(res._onSend).toBeUndefined();
-  });
-
-  it("204 响应不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      res.json(null, 204);
-    });
-
-    await middleware(req, res, next);
-
-    const cached = store.get("GET:/products");
-    expect(cached).toBeNull();
-  });
-
-  it("非 2xx 响应不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      res.json({ error: "not found" }, 404);
-    });
-
-    await middleware(req, res, next);
-
-    const cached = store.get("GET:/products");
-    expect(cached).toBeNull();
-  });
-
-  it("Cache-Control 响应头应正确设置", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 120 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      res.json({ data: "test" });
-    });
-
-    await middleware(req, res, next);
-
-    const ccHeader = res._headerCalls.find((h) => h.name === "Cache-Control");
-    expect(ccHeader).toBeDefined();
-    expect(ccHeader!.value).toBe("public, max-age=120");
-  });
-
-  it("cacheControl=false 时不设置 Cache-Control", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, cacheControl: false },
-      () => store,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      res.json({ data: "test" });
-    });
-
-    await middleware(req, res, next);
-
-    const ccHeader = res._headerCalls.find((h) => h.name === "Cache-Control");
-    expect(ccHeader).toBeUndefined();
-  });
-
-  it("HIT 时 Cache-Control 显示剩余时间", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-
-    const middleware = buildRouteCacheMiddleware({ ttl: 120 }, () => store)!;
-
-    // MISS → 写入缓存
-    const req1 = createMockReq();
-    const res1 = createMockRes();
-    await middleware(
-      req1,
-      res1,
-      vi.fn(async () => {
-        res1.json({ data: "cached" });
-      }),
-    );
-
-    // 30 秒后 HIT
-    vi.setSystemTime(now + 30_000);
-    const req2 = createMockReq();
-    const res2 = createMockRes();
-    await middleware(req2, res2, vi.fn());
-
-    const ccHeader = res2._headerCalls.find((h) => h.name === "Cache-Control");
-    expect(ccHeader).toBeDefined();
-    expect(ccHeader!.value).toBe("public, max-age=90"); // 120 - 30
-
-    vi.useRealTimers();
-  });
-
-  it("tags 应传递到缓存条目", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, tags: ["products", "catalog"] },
-      () => store,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json({ data: "test" });
-      }),
-    );
-
-    const cached = store.get("GET:/products");
-    expect(cached).not.toBeNull();
-    expect(cached!.tags).toEqual(["products", "catalog"]);
-
-    // invalidateByTag 应生效
-    store.invalidateByTag("products");
-    expect(store.get("GET:/products")).toBeNull();
-  });
-
-  it("vary headers 应影响缓存 key", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, vary: ["accept-language"] },
-      () => store,
-    )!;
-
-    // 中文请求
-    const req1 = createMockReq({
-      headers: { "accept-language": "zh-CN" },
-    });
-    const res1 = createMockRes();
-    await middleware(
-      req1,
-      res1,
-      vi.fn(async () => {
-        res1.json({ lang: "zh-CN" });
-      }),
-    );
-
-    // 英文请求（不同 key）
-    const req2 = createMockReq({
-      headers: { "accept-language": "en-US" },
-    });
-    const res2 = createMockRes();
-    const next2 = vi.fn(async () => {
-      res2.json({ lang: "en-US" });
-    });
-    await middleware(req2, res2, next2);
-
-    // 英文请求应 MISS（不同 key）
-    expect(next2).toHaveBeenCalled();
-
-    // 中文请求再次访问应 HIT
-    const req3 = createMockReq({
-      headers: { "accept-language": "zh-CN" },
-    });
-    const res3 = createMockRes();
-    const next3 = vi.fn();
-    await middleware(req3, res3, next3);
-
-    expect(next3).not.toHaveBeenCalled();
-    expect(res3._jsonCalls[0]!.data).toEqual({ lang: "zh-CN" });
-  });
-
-  it("自定义 key 函数应被使用", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, key: (req) => `custom:${req.params.id}` },
-      () => store,
-    )!;
-
-    const req = createMockReq({ params: { id: "42" } });
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json({ id: 42 });
-      }),
-    );
-
-    const cached = store.get("custom:42");
-    expect(cached).not.toBeNull();
-    expect(cached!.body).toEqual({ id: 42 });
-  });
-
-  // ── 补充边界场景 ─────────────────────────────────────────
-
-  it("handler 不调用任何发送方法 → 不缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn().mockResolvedValue(undefined);
-
-    await middleware(req, res, next);
-
-    // _onSend 已注册但未触发，不应有缓存
-    const cached = store.get("GET:/products");
-    expect(cached).toBeNull();
-  });
-
-  it("handler 抛出异常应传播错误（不缓存）", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      throw new Error("handler error");
-    });
-
-    await expect(middleware(req, res, next)).rejects.toThrow("handler error");
-
-    // 不应缓存
-    const cached = store.get("GET:/products");
-    expect(cached).toBeNull();
-  });
-
-  it("HIT 返回非 200 状态码（如 201）应正确传递", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    // MISS → 写入 201 缓存
-    const req1 = createMockReq();
-    const res1 = createMockRes();
-    await middleware(
-      req1,
-      res1,
-      vi.fn(async () => {
-        res1.json({ id: 1, created: true }, 201);
-      }),
-    );
-
-    // HIT → 应返回 201
-    const req2 = createMockReq();
-    const res2 = createMockRes();
-    await middleware(req2, res2, vi.fn());
-
-    expect(res2._jsonCalls[0]!.status).toBe(201);
-    expect(res2._jsonCalls[0]!.data).toEqual({ id: 1, created: true });
-  });
-
-  it("异步 CacheStore 应正确处理（get 返回 Promise）", async () => {
-    const asyncStore: any = {
-      get: vi.fn().mockResolvedValue(null),
-      set: vi.fn().mockResolvedValue(undefined),
-      delete: vi.fn(),
-      invalidateByTag: vi.fn(),
-      clear: vi.fn(),
-    };
-
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => asyncStore,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn(async () => {
-      res.json({ async: true });
-    });
-
-    await middleware(req, res, next);
-
-    // async store.get 应被调用
-    expect(asyncStore.get).toHaveBeenCalledWith("GET:/products");
-    // next 应被调用（MISS）
-    expect(next).toHaveBeenCalled();
-  });
-
-  it("异步 CacheStore 的 set 返回 rejected Promise 应静默忽略", async () => {
-    const asyncStore: any = {
-      get: vi.fn().mockReturnValue(null),
-      set: vi.fn().mockRejectedValue(new Error("write failed")),
-      delete: vi.fn(),
-      invalidateByTag: vi.fn(),
-      clear: vi.fn(),
-    };
-
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => asyncStore,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-
-    // 不应抛出异常
-    await expect(
-      middleware(
-        req,
-        res,
-        vi.fn(async () => {
-          res.json({ data: "test" });
-        }),
-      ),
-    ).resolves.not.toThrow();
-  });
-
-  it("异步 CacheStore 的 HIT 路径", async () => {
-    const cachedEntry = {
-      body: { cached: true },
-      statusCode: 200,
-      cachedAt: Date.now(),
-      tags: [],
-    };
-
-    const asyncStore: any = {
-      get: vi.fn().mockResolvedValue(cachedEntry),
-      set: vi.fn(),
-      delete: vi.fn(),
-      invalidateByTag: vi.fn(),
-      clear: vi.fn(),
-    };
-
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60 },
-      () => asyncStore,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    const next = vi.fn();
-
-    await middleware(req, res, next);
-
-    // 应 HIT
-    expect(next).not.toHaveBeenCalled();
-    expect(res._jsonCalls[0]!.data).toEqual({ cached: true });
-    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
-      name: "X-Cache",
-      value: "HIT",
-    });
-  });
-
-  it("多个 vary headers 应全部包含在 key 中", () => {
-    const req = createMockReq({
-      headers: {
-        "accept-language": "zh-CN",
-        "accept-encoding": "gzip",
-      },
-    });
-    const key = defaultCacheKey(req, ["accept-language", "accept-encoding"]);
-    expect(key).toBe(
-      "GET:/products|accept-language=zh-CN|accept-encoding=gzip",
-    );
-  });
-
-  it("1xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json(null, 100);
-      }),
-    );
-
-    expect(store.get("GET:/products")).toBeNull();
-  });
-
-  it("3xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json({ redirect: true }, 301);
-      }),
-    );
-
-    expect(store.get("GET:/products")).toBeNull();
-  });
-
-  it("5xx 状态码不应被缓存", async () => {
-    const middleware = buildRouteCacheMiddleware({ ttl: 60 }, () => store)!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json({ error: "internal" }, 500);
-      }),
-    );
-
-    expect(store.get("GET:/products")).toBeNull();
-  });
-
-  it("condition 返回 true 时应正常走缓存", async () => {
-    const middleware = buildRouteCacheMiddleware(
-      { ttl: 60, condition: () => true },
-      () => store,
-    )!;
-
-    const req = createMockReq();
-    const res = createMockRes();
-    await middleware(
-      req,
-      res,
-      vi.fn(async () => {
-        res.json({ data: "test" });
-      }),
-    );
-
-    // 应注册 _onSend
-    expect(res._headerCalls.find((h) => h.name === "X-Cache")).toEqual({
-      name: "X-Cache",
-      value: "MISS",
-    });
   });
 });
 

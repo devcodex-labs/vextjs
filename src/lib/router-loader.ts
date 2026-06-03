@@ -170,9 +170,9 @@ export async function loadRoutes(
       if (existingFile) {
         throw new Error(
           `[vextjs] Duplicate route: ${routeKey}\n` +
-          `         Already registered by: ${existingFile}\n` +
-          `         Conflict in: ${entry.filePath}\n` +
-          `         Rename the route or use a different path/method.`,
+            `         Already registered by: ${existingFile}\n` +
+            `         Conflict in: ${entry.filePath}\n` +
+            `         Rename the route or use a different path/method.`,
         );
       }
 
@@ -268,23 +268,28 @@ function registerRouteDefinition(
         route.options.cache,
         app.config.cache?.defaultTtl,
       );
-      if (hasAuth && cacheOpts && !cacheOpts.key && !cacheOpts.condition) {
+      if (
+        hasAuth &&
+        cacheOpts &&
+        !cacheOpts.partitionKey &&
+        !cacheOpts.allowAuthorizationCache
+      ) {
         app.logger.warn(
           `[vextjs] ⚠️ Route ${route.method} "${fullPath}" has both cache and auth middleware. ` +
-          `Default cache key does not include user identity. ` +
-          `Consider adding a custom key or condition to prevent data leakage.`,
+            `Authorization requests bypass response cache unless partitionKey or allowAuthorizationCache is configured. ` +
+            `Prefer partitionKey for user or tenant isolation.`,
         );
       }
     }
 
-    // ── 2.6 构建路由缓存中间件 ──────────────────────────
+    // ── 2.6 构建路由级响应缓存中间件 ──────────────────────
     if (app.config.cache?.enabled !== false) {
       const cacheOpts = normalizeCacheOptions(
         route.options?.cache,
         app.config.cache?.defaultTtl,
       );
       const cacheMiddleware = buildRouteCacheMiddleware(cacheOpts, () =>
-        app.cache._getStore(cacheOpts?.store),
+        app.cache._getResponseCache(),
       );
       if (cacheMiddleware) {
         routeMiddlewares.push(cacheMiddleware);
@@ -299,13 +304,17 @@ function registerRouteDefinition(
     //   - 若全局 body-parser 已解析（req.files 不为 undefined）：只做路由级二次校验
     //   - 若全局未解析：用合并配置（路由级覆盖全局默认值）解析 multipart
     //
-    if ((route.options as { multipart?: { enabled?: boolean } })?.multipart?.enabled === true) {
+    if (
+      (route.options as { multipart?: { enabled?: boolean } })?.multipart
+        ?.enabled === true
+    ) {
       const routeMultipartMW = createRouteMultipartMiddleware(
-        route.options.multipart as import('../types/app.js').MultipartRouteConfig,
+        route.options
+          .multipart as import("../types/app.js").MultipartRouteConfig,
         app.config.multipart,
         app.config.bodyParser,
-      )
-      routeMiddlewares.unshift(routeMultipartMW)
+      );
+      routeMiddlewares.unshift(routeMultipartMW);
     }
 
     // ── 3. 构建 validate 中间件（Phase 1 升级）──────────
@@ -316,8 +325,8 @@ function registerRouteDefinition(
     //
     const validateMiddleware = buildValidateMiddleware(
       route.options?.validate as
-      | import("./validate-middleware.js").ValidateConfig
-      | undefined,
+        | import("./validate-middleware.js").ValidateConfig
+        | undefined,
       () => app.getValidator(),
     );
 
@@ -336,7 +345,12 @@ function registerRouteDefinition(
     chain.push(handlerMiddleware);
 
     // ── 6. 注册到 adapter ──────────────────────────────────
-    app.adapter.registerRoute(route.method, fullPath, chain, route.options ?? {});
+    app.adapter.registerRoute(
+      route.method,
+      fullPath,
+      chain,
+      route.options ?? {},
+    );
 
     // ── 7. 🆕 收集路由元信息（用于 OpenAPI 文档生成）────────
     if (collector) {
@@ -417,8 +431,8 @@ async function scanRouteFiles(dir: string): Promise<string[]> {
       if (isTestFile(entry.name)) {
         throw new Error(
           `[vextjs] Unexpected file in routes/: ${entry.name}\n` +
-          `         routes/ should only contain route files.\n` +
-          `         Move test files to test/routes/ instead.`,
+            `         routes/ should only contain route files.\n` +
+            `         Move test files to test/routes/ instead.`,
         );
       }
 
@@ -509,11 +523,11 @@ function detectPrefixConflicts(entries: RouteEntry[]): void {
     if (existing) {
       throw new Error(
         `[vextjs] Route prefix conflict detected:\n` +
-        `         Prefix: "${entry.prefix}"\n` +
-        `         File 1: ${existing}\n` +
-        `         File 2: ${entry.filePath}\n` +
-        `         Two route files cannot map to the same prefix. ` +
-        `Consider merging them into a single file or reorganizing the directory structure.`,
+          `         Prefix: "${entry.prefix}"\n` +
+          `         File 1: ${existing}\n` +
+          `         File 2: ${entry.filePath}\n` +
+          `         Two route files cannot map to the same prefix. ` +
+          `Consider merging them into a single file or reorganizing the directory structure.`,
       );
     }
     prefixMap.set(entry.prefix, entry.filePath);
@@ -581,7 +595,7 @@ async function loadRouteFile(
     if (!routeDefinition) {
       throw new Error(
         `[vextjs] Route file "${filePath}" has no default export.\n` +
-        `         Route files must use: export default defineRoutes((app) => { ... })`,
+          `         Route files must use: export default defineRoutes((app) => { ... })`,
       );
     }
 
@@ -592,7 +606,7 @@ async function loadRouteFile(
     ) {
       throw new Error(
         `[vextjs] Route file "${filePath}" default export is not a valid RouteDefinition.\n` +
-        `         Make sure to use defineRoutes() to create the route definition.`,
+          `         Make sure to use defineRoutes() to create the route definition.`,
       );
     }
 
@@ -609,7 +623,7 @@ async function loadRouteFile(
     // 其他错误（如语法错误、模块找不到），包装后抛出
     throw new Error(
       `[vextjs] Failed to load route file: ${filePath}\n` +
-      `         ${(err as Error).message}`,
+        `         ${(err as Error).message}`,
     );
   }
 }

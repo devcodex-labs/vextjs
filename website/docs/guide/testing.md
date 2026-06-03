@@ -111,7 +111,7 @@ const app = await createTestApp({
 const app = await createTestApp({
   setupPlugins: async (app) => {
     // 注入测试用的模拟对象
-    app.extend("cache", new Map());
+    app.extend("testCache", new Map());
     app.extend("mailer", {
       send: async () => ({ messageId: "test-123" }),
     });

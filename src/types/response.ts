@@ -160,14 +160,18 @@ export interface VextResponse {
   /**
    * 发送前拦截钩子（内部方法）
    *
-   * cache MISS 时由缓存中间件注册，json() 发送前回调以捕获原始 data。
+   * cache MISS 时由响应缓存中间件注册，json() 发送前回调以捕获原始 data。
    * 在包装逻辑（_wrapEnabled）之前调用，缓存的是原始 data 而非包装后的响应体。
    * 当前单钩子设计（覆盖赋值）。
    *
    * @internal
    * @see 15-route-cache.md §4.3（_onSend 钩子设计）
    */
-  _onSend?: (data: unknown, statusCode: number) => void;
+  _onSend?: (
+    data: unknown,
+    statusCode: number,
+    headers?: Record<string, string>,
+  ) => void;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 

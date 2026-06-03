@@ -39,7 +39,7 @@ export default definePlugin({
   name: "redis",
   async setup(app) {
     const redis = new Redis(app.config.redis);
-    app.extend("cache", redis);
+    app.extend("redis", redis);
     app.onClose(() => redis.quit());
   },
 });
@@ -95,8 +95,8 @@ export default definePlugin({
   name: "user-cache",
   dependencies: ["redis", "database"], // 确保 redis 和 database 先初始化
   async setup(app) {
-    // 此时 app.cache（redis 插件挂载）和 app.db（database 插件挂载）已就绪
-    const userCache = new UserCacheService(app.cache, app.db);
+    // 此时 app.redis（redis 插件挂载）和 app.db（database 插件挂载）已就绪
+    const userCache = new UserCacheService(app.redis, app.db);
     app.extend("userCache", userCache);
   },
 });
@@ -171,7 +171,7 @@ export default definePlugin({
 export default definePlugin({
   name: "warmup",
   setup(app) {
-    app.extend("cache", new Map());
+    app.extend("warmupState", new Map());
   },
   async onReady(app) {
     app.logger.info("warmup plugin is ready");
@@ -399,7 +399,7 @@ export default {
   middlewares: [
     { name: "auth" }, // 无配置中间件
     { name: "role", options: { required: "admin" } }, // 工厂中间件 + 配置
-    { name: "cache", options: { ttl: 300 } }, // 工厂中间件 + 配置
+    { name: "client-cache", options: { maxAge: 300 } }, // 工厂中间件 + 配置
   ],
 };
 ```
@@ -421,39 +421,27 @@ app.get(
 
 ### 更多示例
 
-**缓存中间件**：
+**客户端缓存头中间件**：
 
 ```typescript
-// src/middlewares/cache.ts
+// src/middlewares/client-cache.ts
 import { defineMiddlewareFactory } from "vextjs";
 
-interface CacheOptions {
-  ttl: number; // 缓存时间（秒）
-  keyPrefix?: string; // 缓存 key 前缀
+interface ClientCacheOptions {
+  maxAge: number; // Cache-Control max-age，单位秒
 }
 
-export default defineMiddlewareFactory<CacheOptions>((options) => {
+export default defineMiddlewareFactory<ClientCacheOptions>((options) => {
   return async (req, res, next) => {
-    const cacheKey = `${options.keyPrefix ?? "cache"}:${req.path}`;
-    const cached = await req.app.cache?.get(cacheKey);
-
-    if (cached) {
-      res.json(JSON.parse(cached));
-      return; // 命中缓存，不调用 next()
-    }
-
-    const originalJson = res.json.bind(res);
-    res.json = (data, status) => {
-      if (res.statusCode < 400) {
-        void req.app.cache?.set(cacheKey, JSON.stringify(data), options.ttl);
-      }
-      originalJson(data, status);
-    };
-
     await next();
+    res.setHeader("Cache-Control", `public, max-age=${options.maxAge}`);
   };
 });
 ```
+
+:::tip
+路由级响应缓存不需要自定义中间件。请直接使用 route options 的 `cache` 字段；其 TTL 配置单位是毫秒。`app.cache` 是响应缓存控制面，只用于 `invalidate()`、`delete()`、`clear()` 和 `stats()`。
+:::
 
 **限速中间件**：
 
@@ -578,7 +566,7 @@ import { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "vextjs";
 src/middlewares/
   ├── auth.ts           → defineMiddleware(...)      // 认证中间件
   ├── role.ts           → defineMiddlewareFactory(...) // 角色校验（带配置）
-  ├── cache.ts          → defineMiddlewareFactory(...) // 缓存中间件（带配置）
+  ├── client-cache.ts   → defineMiddlewareFactory(...) // 客户端缓存头中间件（带配置）
   └── request-logger.ts → defineMiddleware(...)      // 请求日志
 ```
 
@@ -664,7 +652,7 @@ VextJS 提供以下内置中间件，由 `bootstrap` 自动注册，无需手动
 // types/vext.d.ts
 declare module "vextjs" {
   interface VextApp {
-    cache: import("ioredis").Redis;
+    redis: import("ioredis").Redis;
     db: import("./db").DatabasePool;
   }
 
@@ -735,9 +723,9 @@ export default definePlugin({
   name: "user-cache",
   // 不声明 dependencies，手动检查
   setup(app) {
-    if (app.cache) {
+    if (app.redis) {
       // Redis 可用，启用缓存
-      app.extend("userCache", new CachedUserService(app.cache));
+      app.extend("userCache", new CachedUserService(app.redis));
     } else {
       // Redis 不可用，降级为无缓存模式
       app.logger.warn("Redis 未配置，用户缓存已禁用");
