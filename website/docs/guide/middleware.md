@@ -417,6 +417,33 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
 - `VextValidationError`（参数校验失败）→ 422 响应 + errors 数组
 - 其他异常 → 500 Internal Server Error
 
+### 什么时候用哪种抛错方式
+
+- 需要明确的 HTTP 语义时，优先使用 `app.throw(...)`。例如 `404`、`401`、`409`，或需要附带业务错误码的场景。
+- 需要返回字段级校验详情时，抛出 `VextValidationError`。
+- 发生真正的未预期异常时，可以直接 `throw new Error("...")`，框架会自动捕获并转成 `500`。
+
+```typescript
+// 结构化 HTTP 错误
+req.app.throw(404, "user.not_found");
+
+// 字段级校验错误
+throw new VextValidationError([
+  { field: "email", message: "邮箱格式不正确" },
+]);
+
+// 未预期的运行时错误
+throw new Error("Database connection lost");
+```
+
+要注意，`throw new Error("...")` 并不表示客户端一定会看到完整错误详情。它的用途是让框架捕获“未知异常”：
+
+- 默认情况下，客户端会收到安全的 `500 Internal Server Error`
+- 当 `response.hideInternalErrors = false` 时，JSON 500 响应会附带 `stack`
+- 浏览器在 dev 模式访问出错页面时，还可能看到内置的 HTML error overlay
+
+因此，若你的目标是“返回一个明确的 4xx/5xx HTTP 结果给调用方”，应使用 `app.throw(...)`，而不是依赖普通 `Error`
+
 你**不需要**手动编写错误处理中间件。如果需要自定义错误处理逻辑（如上报到 Sentry），推荐在插件中使用 `app.use()` 注册一个 try-catch 中间件：
 
 ```typescript

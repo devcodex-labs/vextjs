@@ -325,6 +325,10 @@ declare module "vextjs" {
 
 服务层中可以通过 `this.app.throw()` 抛出 HTTP 错误。框架会自动捕获并转化为统一的错误响应，无需在路由层手动 try-catch：
 
+- 需要主动返回 `404`、`409`、`401` 等明确 HTTP 语义时，使用 `this.app.throw(...)`
+- 需要返回字段级校验详情时，抛出 `VextValidationError`
+- 发生未预期异常时，可以直接 `throw new Error("...")`，框架会统一转成 500
+
 ```typescript
 export default class UserService {
   constructor(private app: VextApp) {}
@@ -356,6 +360,8 @@ export default class UserService {
   }
 }
 ```
+
+如果 service 内部直接 `throw new Error("...")`，框架也会捕获它；这条路径表示未知运行时异常，而不是主动设计好的 HTTP 错误响应。默认情况下客户端会收到安全的 `500 Internal Server Error`，开发环境下可通过 `response.hideInternalErrors = false` 额外暴露 `stack` 便于排查。
 
 ## 在服务中校验非 HTTP 输入
 

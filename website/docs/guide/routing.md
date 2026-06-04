@@ -624,6 +624,14 @@ app.throw(400, "balance.insufficient", { balance: 50 }, 20001);
 
 `app.throw()` 会终止当前请求处理流程（函数签名返回 `never`），无需在其后添加 `return`。
 
+如果这里抛出的是未预期异常，也可以直接：
+
+```typescript
+throw new Error("Database connection lost");
+```
+
+框架同样会捕获它，但这条路径表示“未知运行时错误”，最终会返回 `500 Internal Server Error`。开发环境下，当 `response.hideInternalErrors = false` 时，JSON 500 响应会附带 `stack`；若你的目标是主动返回一个明确的 `4xx/5xx` HTTP 结果，仍应优先使用 `app.throw(...)`。
+
 ## 路由加载优先级
 
 当存在可能冲突的路由时，`router-loader` 按以下规则处理：

@@ -343,6 +343,8 @@ export default defineMiddleware(async (req, _res, next) => {
 });
 ```
 
+如果中间件遇到的是“我要主动返回给调用方的 HTTP 错误”，推荐使用 `req.app.throw(...)`。如果是未预期的运行时失败，也可以直接 `throw new Error("...")`，框架会将其转成 500；若需要返回字段级校验详情，则应抛出 `VextValidationError`。
+
 ---
 
 ## defineMiddlewareFactory

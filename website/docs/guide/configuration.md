@@ -440,6 +440,8 @@ export default {
 };
 ```
 
+这里的 `response.hideInternalErrors` 针对的是“未知异常”的 500 路径，例如代码中直接 `throw new Error("...")`。如果你使用 `app.throw(...)` 主动抛出 `404`、`409` 等结构化 HTTP 错误，框架仍会按你指定的状态码和消息返回，不受该配置影响。
+
 启用 `wrap: true` 后，`res.json(data)` 的实际输出：
 
 ```json

@@ -845,6 +845,8 @@ export default defineRoutes((app) => {
 });
 ```
 
+这里如果要主动返回 `404`、`401`、`409` 等明确的 HTTP 错误，应优先使用 `app.throw(...)`。普通 `throw new Error("...")` 也会被框架捕获，但它表示未知运行时异常，最终会进入 500 错误路径；字段级校验失败则应使用 `VextValidationError`。
+
 ---
 
 ## 多路由注册

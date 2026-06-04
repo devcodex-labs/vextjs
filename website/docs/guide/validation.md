@@ -492,6 +492,8 @@ app.get(
 
 `getValidator()` 返回的是当前 validator：默认由 schema-dsl 实现；如果插件通过 `app.setValidator()` 替换为 Zod、Yup 等实现，service 中拿到的也是替换后的 validator。
 
+这里推荐直接抛出 `VextValidationError`，这样框架会返回结构化的 `422` 响应和 `errors` 数组。不要把这类校验失败写成普通 `throw new Error("...")`，否则它会被当作未知异常并进入 500 路径。
+
 ```typescript
 import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
 

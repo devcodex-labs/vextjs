@@ -495,14 +495,16 @@ export default {
 
 ### 隐藏内部错误
 
+`hideInternalErrors` 只影响“未知异常”这条 500 错误路径，例如路由、service、middleware 中直接 `throw new Error("...")` 的场景。它不会改变 `app.throw(...)` 或 `VextValidationError` 这类结构化错误的状态码与响应格式。
+
 `hideInternalErrors: true` 时，500 错误不暴露 stack trace：
 
 ```json
 // hideInternalErrors: true
-{ "code": -1, "message": "Internal Server Error" }
+{ "code": 500, "message": "Internal Server Error" }
 
 // hideInternalErrors: false（仅开发环境使用）
-{ "code": -1, "message": "Cannot read properties of undefined (reading 'id')", "stack": "..." }
+{ "code": 500, "message": "Internal Server Error", "stack": "..." }
 ```
 
 ---

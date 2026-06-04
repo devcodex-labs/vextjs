@@ -896,11 +896,13 @@ export default defineRoutes((app) => {
 
 ```json
 {
-  "code": -1,
+  "code": 404,
   "message": "用户不存在",
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+如果你需要主动返回一个明确的 HTTP 错误，请使用 `app.throw(...)`。如果是未预期的运行时失败，也可以直接 `throw new Error("...")`，框架会把它捕获为 500；当 `response.hideInternalErrors = false` 时，开发环境下的 JSON 500 响应会额外附带 `stack`。
 
 ### 自定义响应头 + 状态码
 

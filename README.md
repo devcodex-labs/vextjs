@@ -302,6 +302,20 @@ app.post(
 
 Validation errors use HTTP `422` by default and can be localized through `src/locales/`.
 
+## Error Handling
+
+VextJS catches exceptions thrown from routes, services, and middleware through a built-in global `error-handler`.
+
+- Use `app.throw(...)` when you want to return a structured HTTP error such as `404`, `409`, or a custom business code.
+- Throw `new VextValidationError(errors)` when you want to return a `422` response with field-level validation details.
+- Throw `new Error("...")` for unexpected runtime failures. VextJS will convert it to a `500 Internal Server Error`.
+
+For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
+
+- In development, you can expose `stack` in JSON by setting `response.hideInternalErrors = false`.
+- Browser requests in dev mode can also render the built-in HTML error overlay with stack frames and source context.
+- In production, keep `hideInternalErrors` enabled so clients receive a safe `500` response instead of internal details.
+
 ## Services
 
 Services live in `src/services/` and are injected into `app.services` by filename:

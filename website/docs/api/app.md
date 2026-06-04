@@ -226,6 +226,12 @@ class UserService {
 
 抛出 HTTP 错误，框架统一转为标准错误响应。支持三种调用形式。
 
+:::info 何时使用 `app.throw()`
+`app.throw()` 适用于“我要主动返回一个明确的 HTTP 错误给调用方”的场景，例如 `401`、`404`、`409` 或附带业务错误码的响应。
+
+如果只是发生了未预期的运行时异常，也可以直接 `throw new Error("...")`，框架同样会捕获，但这类错误会进入未知异常路径并最终转成 `500 Internal Server Error`。若需要返回字段级校验详情，则应抛出 `VextValidationError`。
+:::
+
 **函数签名**：
 
 ```typescript
