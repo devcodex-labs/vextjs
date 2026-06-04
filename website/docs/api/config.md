@@ -108,25 +108,26 @@ export default {
 
 ### `VextConfig`
 
-| 字段             | 类型                                                    | 默认值      | 说明               |
-| ---------------- | ------------------------------------------------------- | ----------- | ------------------ |
-| `port`           | `number`                                                | `3000`      | HTTP 监听端口      |
-| `host`           | `string`                                                | `'0.0.0.0'` | HTTP 监听地址      |
-| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`  | 底层适配器         |
-| `trustProxy`     | `boolean`                                               | `false`     | 是否信任代理       |
-| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`        | 路由级中间件白名单 |
-| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方      | CORS 配置          |
-| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方      | 速率限制配置       |
-| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方      | 请求 ID 配置       |
-| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置           |
-| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置       |
-| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置           |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置      |
-| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置       |
-| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方      | 访问日志配置       |
-| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置   |
-| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置     |
-| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置 |
+| 字段             | 类型                                                    | 默认值      | 说明                       |
+| ---------------- | ------------------------------------------------------- | ----------- | -------------------------- |
+| `port`           | `number`                                                | `3000`      | HTTP 监听端口              |
+| `host`           | `string`                                                | `'0.0.0.0'` | HTTP 监听地址              |
+| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`  | 底层适配器                 |
+| `trustProxy`     | `boolean`                                               | `false`     | 是否信任代理               |
+| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`        | 路由级中间件白名单         |
+| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方      | CORS 配置                  |
+| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方      | 速率限制配置               |
+| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方      | 请求 ID 配置               |
+| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置                   |
+| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置               |
+| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置                   |
+| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置              |
+| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置               |
+| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方      | 访问日志配置               |
+| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置           |
+| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置             |
+| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方      | 内置 HTTP 客户端与代理配置 |
+| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置         |
 
 ---
 
@@ -310,6 +311,59 @@ export default {
 ```typescript
 app.setRequestIdGenerator(() => myCustomId());
 ```
+
+---
+
+## VextFetchConfig
+
+内置 HTTP 客户端与请求代理配置。
+
+| 字段               | 类型                                    | 默认值  | 说明                                      |
+| ------------------ | --------------------------------------- | ------- | ----------------------------------------- |
+| `timeout`          | `number`                                | `10000` | `app.fetch` 与 `app.fetch.proxy` 默认超时 |
+| `retry`            | `number`                                | `0`     | 默认重试次数，表示额外尝试次数            |
+| `retryDelay`       | `number \| (attempt: number) => number` | `1000`  | 默认重试间隔，支持函数形式                |
+| `propagateHeaders` | `string[]`                              | `[]`    | 普通 `app.fetch` 自动透传的请求头白名单   |
+| `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`    | `app.fetch.proxy.<name>()` 的上游目标列表 |
+
+```typescript
+export default {
+  fetch: {
+    timeout: 10_000,
+    retry: 1,
+    retryDelay: 500,
+    propagateHeaders: ["traceparent", "x-tenant-id"],
+    proxy: [
+      {
+        name: "userService",
+        baseURL: "http://user-service:3001/api",
+        forwardHeaders: ["x-tenant-id"],
+        headers: { "x-source": "gateway" },
+        timeout: 5000,
+        retry: 1,
+      },
+    ],
+  },
+};
+```
+
+### VextFetchProxyTargetConfig
+
+| 字段                        | 类型                                    | 必填 | 说明                                                             |
+| --------------------------- | --------------------------------------- | :--: | ---------------------------------------------------------------- |
+| `name`                      | `string`                                |  ✅  | 目标名称，对应 `app.fetch.proxy.<name>()`；不能使用保留名 `then` |
+| `baseURL`                   | `string`                                |  ✅  | 上游基础 URL                                                     |
+| `headers`                   | `Record<string, string>`                |  ❌  | 目标级固定请求头                                                 |
+| `forwardHeaders`            | `string[]`                              |  ❌  | 从当前 `req.headers` 透传的请求头白名单                          |
+| `defaultInjectHeaders`      | `Record<string, string> \| Function`    |  ❌  | 目标级动态注入 headers                                           |
+| `allowAuthorizationForward` | `boolean`                               |  ❌  | 是否允许透传原始 Authorization                                   |
+| `timeout`                   | `number`                                |  ❌  | 目标级超时                                                       |
+| `retry`                     | `number`                                |  ❌  | 目标级重试次数                                                   |
+| `retryDelay`                | `number \| (attempt: number) => number` |  ❌  | 目标级重试间隔                                                   |
+
+代理请求头优先级：`target.headers < forwardHeaders < target.defaultInjectHeaders < options.headers < options.injectHeaders`。`Authorization` 默认不透传，必须同时配置白名单和 `allowAuthorizationForward: true`。
+
+代理 retry 优先级：`options.retry > target.retry > config.fetch.retry > 0`。仅 GET / HEAD / OPTIONS / PUT / DELETE 会在上游 5xx 或网络错误时自动重试；POST / PATCH 默认不重试，超时不重试并返回本地 504。
 
 ---
 

@@ -10,6 +10,7 @@ VextJS is a high-performance Node.js framework for building maintainable backend
 - Automatic service injection through `app.services`.
 - Plugin lifecycle hooks with app extension support.
 - Built-in request context, request id, access logging, body limit, error handling, i18n, and OpenAPI endpoints.
+- Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
 - Route-level response cache with LRU memory storage.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.

@@ -1,5 +1,8 @@
+import { Readable } from "node:stream";
 import { requestContext } from "./request-context.js";
 import type { VextLogger } from "../types/app.js";
+import type { VextRequest } from "../types/request.js";
+import type { VextResponse } from "../types/response.js";
 
 /**
  * fetch.ts — app.fetch 内置 HTTP 客户端
@@ -10,6 +13,7 @@ import type { VextLogger } from "../types/app.js";
  *   3. 超时控制（AbortController + setTimeout）
  *   4. 快捷方法（get/post/put/patch/delete）
  *   5. create() 工厂（baseURL + 默认配置）
+ *   6. proxy() / proxy.<target>() 请求代理能力（仅根 app.fetch 暴露）
  *
  * 挂载位置：app.fetch（与 app.logger / app.throw 同级）
  *
@@ -23,6 +27,7 @@ import type { VextLogger } from "../types/app.js";
  *   - retry:            默认重试次数（仅幂等方法，默认 0）
  *   - retryDelay:       默认重试间隔（毫秒，默认 1000）
  *   - propagateHeaders: 除 x-request-id 外还需自动传播的请求头
+ *   - proxy:            上游代理目标列表（仅根 app.fetch.proxy 使用）
  *
  * 超时配置优先级：
  *   单次请求 init.timeout > create() 的 options.timeout > config.fetch.timeout
@@ -84,37 +89,196 @@ export interface VextFetchClientOptions {
 
   /** 默认重试 */
   retry?: number;
+
+  /** 默认重试间隔（毫秒）或指数退避函数 */
+  retryDelay?: number | ((attempt: number) => number);
 }
 
 /**
- * VextFetch 接口
- *
- * 既是可调用的函数（与原生 fetch 签名一致），
- * 又挂载了快捷方法（get/post/put/patch/delete）和 create() 工厂。
+ * 可写入代理上游的请求头值。
  */
-export interface VextFetch {
+type ProxyHeaderValue = string | number | boolean | null | undefined;
+type ProxyRequestBody =
+  | Exclude<RequestInit["body"], null | undefined>
+  | Buffer
+  | Uint8Array;
+
+/**
+ * 代理动态注入 headers 的上下文。
+ */
+export interface VextFetchProxyHeaderContext {
+  req: VextRequest;
+  target?: VextFetchProxyTargetConfig;
+  options: VextFetchProxyOptions;
+}
+
+/**
+ * 代理 headers 配置。
+ */
+export type VextFetchProxyHeaders =
+  | Record<string, ProxyHeaderValue>
+  | ((
+      ctx: VextFetchProxyHeaderContext,
+    ) =>
+      | Record<string, ProxyHeaderValue>
+      | Promise<Record<string, ProxyHeaderValue>>);
+
+/**
+ * config.fetch.proxy[] 的单个代理目标配置。
+ */
+export interface VextFetchProxyTargetConfig {
+  /** 目标名称，对应 app.fetch.proxy.<name>() */
+  name: string;
+
+  /** 上游基础地址，会与调用时 options.path 拼接 */
+  baseURL: string;
+
+  /** 目标级固定 headers，优先级最低 */
+  headers?: Record<string, string>;
+
+  /** 从当前 req.headers 白名单透传的 header 名称 */
+  forwardHeaders?: string[];
+
+  /** 目标级动态注入 headers，覆盖 headers / forwardHeaders */
+  defaultInjectHeaders?: VextFetchProxyHeaders;
+
+  /** 是否允许从当前请求透传原始 Authorization header */
+  allowAuthorizationForward?: boolean;
+
+  /** 目标级超时（毫秒） */
+  timeout?: number;
+
+  /** 目标级重试次数，表示额外尝试次数 */
+  retry?: number;
+
+  /** 目标级重试间隔（毫秒）或指数退避函数 */
+  retryDelay?: number | ((attempt: number) => number);
+}
+
+/**
+ * app.fetch.proxy 调用选项。
+ */
+export interface VextFetchProxyOptions {
+  /** 命名目标模式下必传：拼接到 target.baseURL 的路径 */
+  path?: string;
+
+  /** 直接 URL 模式下必传：app.fetch.proxy(req, res, { url }) */
+  url?: string;
+
+  /** 默认使用当前 req.method */
+  method?: string;
+
+  /** 默认透传当前 req.query；同名 key 由 options.query 覆盖 */
+  query?: Record<string, ProxyHeaderValue>;
+
+  /** 显式请求体；未传时非 GET/HEAD 会读取当前 req 原始 body Buffer */
+  body?: ProxyRequestBody;
+
+  /** 读取当前 req 原始 body 的最大字节数 */
+  maxBodySize?: number;
+
+  /** 调用级固定 headers，覆盖目标级配置和透传 headers */
+  headers?: Record<string, string>;
+
+  /** 调用级追加 header 透传白名单 */
+  forwardHeaders?: string[];
+
+  /** 调用级动态注入 headers，优先级最高 */
+  injectHeaders?: VextFetchProxyHeaders;
+
+  /** 调用级是否允许透传原始 Authorization header */
+  allowAuthorizationForward?: boolean;
+
+  /** 调用级超时（毫秒） */
+  timeout?: number;
+
+  /** 调用级重试次数，表示额外尝试次数 */
+  retry?: number;
+
+  /** 调用级重试间隔（毫秒）或指数退避函数 */
+  retryDelay?: number | ((attempt: number) => number);
+}
+
+/**
+ * 命名目标代理处理函数。
+ */
+export type VextFetchProxyHandler = (
+  req: VextRequest,
+  res: VextResponse,
+  options: VextFetchProxyOptions,
+) => Promise<void>;
+
+/**
+ * app.fetch.proxy 接口。
+ *
+ * - app.fetch.proxy(req, res, { url })：直接 URL 代理
+ * - app.fetch.proxy.<target>(req, res, { path })：config.fetch.proxy[] 目标代理
+ */
+export type VextFetchProxy = {
+  (
+    req: VextRequest,
+    res: VextResponse,
+    options: VextFetchProxyOptions,
+  ): Promise<void>;
+} & Record<string, VextFetchProxyHandler>;
+
+/**
+ * app.fetch.create() 返回的纯出站 HTTP 客户端。
+ *
+ * 子客户端不暴露 proxy，避免 app.fetch.create().proxy 带来额外心智负担。
+ */
+export interface VextFetchClient {
   (input: string | URL | Request, init?: VextFetchInit): Promise<Response>;
   get(url: string, init?: VextFetchInit): Promise<Response>;
   post(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   put(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   patch(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   delete(url: string, init?: VextFetchInit): Promise<Response>;
-  create(options: VextFetchClientOptions): VextFetch;
+  create(options: VextFetchClientOptions): VextFetchClient;
+}
+
+/**
+ * 根 VextFetch 接口
+ *
+ * 既是可调用的函数（与原生 fetch 签名一致），
+ * 又挂载了快捷方法（get/post/put/patch/delete）、create() 工厂和 proxy。
+ */
+export interface VextFetch extends VextFetchClient {
+  proxy: VextFetchProxy;
+  create(options: VextFetchClientOptions): VextFetchClient;
 }
 
 /**
  * fetch 模块配置（从 VextConfig 中提取）
  */
-interface FetchConfig {
+export interface VextFetchConfig {
   timeout?: number;
   retry?: number;
   retryDelay?: number | ((attempt: number) => number);
   propagateHeaders?: string[];
+  proxy?: VextFetchProxyTargetConfig[];
 }
+
+type FetchConfig = VextFetchConfig;
 
 // ── 幂等方法集合（用于判断是否可重试）─────────────────────────
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
+
+const AUTHORIZATION_HEADER = "authorization";
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+const BODYLESS_STATUS = new Set([204, 304]);
 
 // ── 核心实现 ────────────────────────────────────────────────
 
@@ -137,6 +301,7 @@ export function createVextFetch(
   const globalRetry = fetchConfig.retry ?? 0;
   const globalRetryDelay = fetchConfig.retryDelay ?? 1000;
   const globalPropagateHeaders = fetchConfig.propagateHeaders ?? [];
+  const proxyTargets = fetchConfig.proxy ?? [];
 
   /**
    * 核心 fetch 函数
@@ -362,11 +527,11 @@ export function createVextFetch(
 
   // ── create() 工厂 ────────────────────────────────────────
 
-  vextFetch.create = (options: VextFetchClientOptions): VextFetch => {
+  vextFetch.create = (options: VextFetchClientOptions): VextFetchClient => {
     const childFetchConfig: FetchConfig = {
       timeout: options.timeout ?? globalTimeout,
       retry: options.retry ?? globalRetry,
-      retryDelay: globalRetryDelay,
+      retryDelay: options.retryDelay ?? globalRetryDelay,
       propagateHeaders: globalPropagateHeaders,
     };
 
@@ -377,7 +542,7 @@ export function createVextFetch(
     const baseURL = options.baseURL.replace(/\/+$/, "");
     const defaultHeaders = options.headers ?? {};
 
-    const wrappedFetch: VextFetch = ((
+    const wrappedFetch: VextFetchClient = ((
       input: string | URL | Request,
       init?: VextFetchInit,
     ) => {
@@ -393,7 +558,7 @@ export function createVextFetch(
           ...(init?.headers as Record<string, string> | undefined),
         },
       });
-    }) as VextFetch;
+    }) as VextFetchClient;
 
     // 快捷方法也拼接 baseURL
     wrappedFetch.get = (url: string, init?: VextFetchInit) =>
@@ -441,7 +606,631 @@ export function createVextFetch(
     return wrappedFetch;
   };
 
+  vextFetch.proxy = createFetchProxy({
+    logger,
+    targets: proxyTargets,
+    timeout: globalTimeout,
+    retry: globalRetry,
+    retryDelay: globalRetryDelay,
+  });
+
   return vextFetch as VextFetch;
+}
+
+// ── proxy 实现 ──────────────────────────────────────────────
+
+interface FetchProxyRuntime {
+  logger: VextLogger;
+  targets: VextFetchProxyTargetConfig[];
+  timeout: number;
+  retry: number;
+  retryDelay: number | ((attempt: number) => number);
+}
+
+interface ResolvedProxyRequest {
+  target?: VextFetchProxyTargetConfig;
+  targetName: string;
+  url: string;
+  method: string;
+  headers: Headers;
+  body?: ProxyRequestBody;
+  timeout: number;
+  retry: number;
+  retryDelay: number | ((attempt: number) => number);
+  replayableBody: boolean;
+}
+
+class ProxyLocalError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProxyLocalError";
+  }
+}
+
+class ProxyTimeoutError extends Error {
+  constructor(
+    message: string,
+    readonly timeout: number,
+  ) {
+    super(message);
+    this.name = "ProxyTimeoutError";
+  }
+}
+
+class ProxyClientAbortError extends Error {
+  constructor() {
+    super("Client aborted proxy request");
+    this.name = "ProxyClientAbortError";
+  }
+}
+
+function createFetchProxy(runtime: FetchProxyRuntime): VextFetchProxy {
+  const targetMap = new Map<string, VextFetchProxyTargetConfig>();
+  for (const target of runtime.targets) {
+    targetMap.set(target.name, target);
+  }
+
+  const directProxy = (async (
+    req: VextRequest,
+    res: VextResponse,
+    options: VextFetchProxyOptions,
+  ) => {
+    await handleProxyRequest(runtime, req, res, undefined, options);
+  }) as VextFetchProxy;
+
+  return new Proxy(directProxy, {
+    get(target, prop, receiver) {
+      if (typeof prop !== "string") {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (prop === "then") {
+        return undefined;
+      }
+      const configuredTarget = targetMap.get(prop);
+      if (configuredTarget) {
+        return async (
+          req: VextRequest,
+          res: VextResponse,
+          options: VextFetchProxyOptions,
+        ) => {
+          await handleProxyRequest(
+            runtime,
+            req,
+            res,
+            configuredTarget,
+            options,
+          );
+        };
+      }
+      if (Reflect.has(target, prop)) {
+        return Reflect.get(target, prop, receiver);
+      }
+      return async (req: VextRequest, res: VextResponse) => {
+        writeProxyLocalError(
+          req,
+          res,
+          500,
+          "FETCH_PROXY_TARGET_NOT_FOUND",
+          `[app.fetch.proxy] target "${prop}" is not configured.`,
+        );
+      };
+    },
+  });
+}
+
+async function handleProxyRequest(
+  runtime: FetchProxyRuntime,
+  req: VextRequest,
+  res: VextResponse,
+  target: VextFetchProxyTargetConfig | undefined,
+  options: VextFetchProxyOptions | undefined,
+): Promise<void> {
+  try {
+    const resolved = await resolveProxyRequest(runtime, req, target, options);
+    const response = await fetchProxyWithRetry(runtime, req, resolved);
+    await writeProxyResponse(response, res);
+  } catch (err) {
+    if (err instanceof ProxyClientAbortError) {
+      runtime.logger.debug(
+        {
+          type: "proxy",
+          requestId: req.requestId,
+          event: "client_abort",
+        },
+        "[app.fetch.proxy] client aborted request",
+      );
+      return;
+    }
+
+    if (err instanceof ProxyLocalError) {
+      writeProxyLocalError(req, res, err.status, err.code, err.message);
+      return;
+    }
+
+    if (err instanceof ProxyTimeoutError) {
+      writeProxyLocalError(req, res, 504, "FETCH_PROXY_TIMEOUT", err.message);
+      return;
+    }
+
+    const error = err instanceof Error ? err : new Error(String(err));
+    runtime.logger.error(
+      {
+        type: "proxy",
+        requestId: req.requestId,
+        error: error.message,
+      },
+      `[app.fetch.proxy] upstream request failed: ${error.message}`,
+    );
+    writeProxyLocalError(
+      req,
+      res,
+      502,
+      "FETCH_PROXY_UPSTREAM_ERROR",
+      "Upstream request failed.",
+    );
+  }
+}
+
+async function resolveProxyRequest(
+  runtime: FetchProxyRuntime,
+  req: VextRequest,
+  target: VextFetchProxyTargetConfig | undefined,
+  options: VextFetchProxyOptions | undefined,
+): Promise<ResolvedProxyRequest> {
+  const proxyOptions = options ?? {};
+  const method = (proxyOptions.method ?? req.method ?? "GET").toUpperCase();
+  const url = resolveProxyUrl(target, proxyOptions);
+  applyProxyQuery(url, req.query, proxyOptions.query);
+
+  const headers = await resolveProxyHeaders(req, target, proxyOptions);
+  const body = await resolveProxyBody(req, method, proxyOptions);
+  const retry = normalizeProxyRetry(
+    proxyOptions.retry ?? target?.retry ?? runtime.retry,
+    "retry",
+  );
+  const replayableBody = isReplayableProxyBody(body);
+
+  return {
+    target,
+    targetName: target?.name ?? "direct",
+    url: url.href,
+    method,
+    headers,
+    body,
+    timeout: normalizeProxyTimeout(
+      proxyOptions.timeout ?? target?.timeout ?? runtime.timeout,
+      "timeout",
+    ),
+    retry,
+    retryDelay: normalizeProxyRetryDelay(
+      proxyOptions.retryDelay ?? target?.retryDelay ?? runtime.retryDelay,
+      "retryDelay",
+    ),
+    replayableBody,
+  };
+}
+
+function resolveProxyUrl(
+  target: VextFetchProxyTargetConfig | undefined,
+  options: VextFetchProxyOptions,
+): URL {
+  if (!target) {
+    if (!options.url) {
+      throw new ProxyLocalError(
+        400,
+        "FETCH_PROXY_URL_REQUIRED",
+        "[app.fetch.proxy] options.url is required for direct proxy calls.",
+      );
+    }
+    try {
+      return new URL(options.url);
+    } catch {
+      throw new ProxyLocalError(
+        400,
+        "FETCH_PROXY_INVALID_URL",
+        "[app.fetch.proxy] options.url must be a valid absolute URL.",
+      );
+    }
+  }
+
+  if (!options.path) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_PATH_REQUIRED",
+      `[app.fetch.proxy.${target.name}] options.path is required.`,
+    );
+  }
+
+  const baseURL = target.baseURL.replace(/\/+$/, "");
+  const path = options.path.replace(/^\/+/, "");
+  return new URL(`${baseURL}/${path}`);
+}
+
+function applyProxyQuery(
+  url: URL,
+  reqQuery: Record<string, string>,
+  optionQuery?: Record<string, ProxyHeaderValue>,
+): void {
+  for (const [key, value] of Object.entries(reqQuery)) {
+    if (value !== undefined && value !== null) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  if (!optionQuery) return;
+
+  for (const [key, value] of Object.entries(optionQuery)) {
+    if (value === undefined || value === null) {
+      url.searchParams.delete(key);
+      continue;
+    }
+    url.searchParams.set(key, String(value));
+  }
+}
+
+async function resolveProxyHeaders(
+  req: VextRequest,
+  target: VextFetchProxyTargetConfig | undefined,
+  options: VextFetchProxyOptions,
+): Promise<Headers> {
+  const headers = new Headers();
+  const headerContext: VextFetchProxyHeaderContext = { req, target, options };
+
+  applyStaticHeaders(headers, target?.headers);
+
+  const forwardHeaders = mergeHeaderNames(
+    target?.forwardHeaders,
+    options.forwardHeaders,
+  );
+  const allowAuthorization =
+    target?.allowAuthorizationForward === true ||
+    options.allowAuthorizationForward === true;
+
+  if (forwardHeaders.includes(AUTHORIZATION_HEADER) && !allowAuthorization) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_AUTHORIZATION_FORWARD_FORBIDDEN",
+      "[app.fetch.proxy] forwarding authorization requires allowAuthorizationForward: true.",
+    );
+  }
+
+  for (const headerName of forwardHeaders) {
+    const value = req.headers[headerName];
+    if (value !== undefined) {
+      headers.set(headerName, value);
+    }
+  }
+
+  await applyProxyHeaders(headers, target?.defaultInjectHeaders, headerContext);
+  applyStaticHeaders(headers, options.headers);
+  await applyProxyHeaders(headers, options.injectHeaders, headerContext);
+
+  return headers;
+}
+
+function mergeHeaderNames(...groups: Array<string[] | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const group of groups) {
+    for (const name of group ?? []) {
+      const normalized = name.trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+
+  return result;
+}
+
+function applyStaticHeaders(
+  headers: Headers,
+  source?: Record<string, ProxyHeaderValue>,
+): void {
+  if (!source) return;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (value !== undefined && value !== null) {
+      headers.set(key, String(value));
+    }
+  }
+}
+
+async function applyProxyHeaders(
+  headers: Headers,
+  source: VextFetchProxyHeaders | undefined,
+  ctx: VextFetchProxyHeaderContext,
+): Promise<void> {
+  if (!source) return;
+
+  const resolved = typeof source === "function" ? await source(ctx) : source;
+  applyStaticHeaders(headers, resolved);
+}
+
+async function resolveProxyBody(
+  req: VextRequest,
+  method: string,
+  options: VextFetchProxyOptions,
+): Promise<ProxyRequestBody | undefined> {
+  if (method === "GET" || method === "HEAD") {
+    return undefined;
+  }
+  if (options.body !== undefined) {
+    return options.body;
+  }
+  return req._getRawBodyBuffer(options.maxBodySize);
+}
+
+function normalizeProxyTimeout(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_INVALID_TIMEOUT",
+      `[app.fetch.proxy] ${name} must be a positive number.`,
+    );
+  }
+  return value;
+}
+
+function normalizeProxyRetry(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_INVALID_RETRY",
+      `[app.fetch.proxy] ${name} must be a non-negative integer.`,
+    );
+  }
+  return value;
+}
+
+function normalizeProxyRetryDelay(
+  value: unknown,
+  name: string,
+): number | ((attempt: number) => number) {
+  if (typeof value === "function") {
+    return value as (attempt: number) => number;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_INVALID_RETRY_DELAY",
+      `[app.fetch.proxy] ${name} must be a non-negative number or function.`,
+    );
+  }
+  return value;
+}
+
+function isReplayableProxyBody(body: ProxyRequestBody | undefined): boolean {
+  if (body === undefined || body === null) return true;
+  if (typeof body === "string") return true;
+  if (body instanceof Uint8Array) return true;
+  if (body instanceof URLSearchParams) return true;
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    return true;
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return true;
+  }
+  return false;
+}
+
+async function fetchProxyWithRetry(
+  runtime: FetchProxyRuntime,
+  req: VextRequest,
+  resolved: ResolvedProxyRequest,
+): Promise<Response> {
+  const retryableMethod = IDEMPOTENT_METHODS.has(resolved.method);
+  const maxRetries =
+    retryableMethod && resolved.replayableBody ? resolved.retry : 0;
+  let clientAborted = false;
+  let currentController: AbortController | null = null;
+
+  req.onClose(() => {
+    clientAborted = true;
+    currentController?.abort();
+  });
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      if (clientAborted) {
+        throw new ProxyClientAbortError();
+      }
+      const delay =
+        typeof resolved.retryDelay === "function"
+          ? resolved.retryDelay(attempt)
+          : resolved.retryDelay;
+      await sleep(delay);
+      if (clientAborted) {
+        throw new ProxyClientAbortError();
+      }
+      runtime.logger.debug(
+        {
+          type: "proxy",
+          target: resolved.targetName,
+          method: resolved.method,
+          url: resolved.url,
+          attempt,
+          maxRetries,
+          requestId: req.requestId,
+        },
+        `[app.fetch.proxy] retry ${attempt}/${maxRetries}: ${resolved.method} ${resolved.url}`,
+      );
+    }
+
+    if (clientAborted) {
+      throw new ProxyClientAbortError();
+    }
+
+    let timedOut = false;
+    const controller = new AbortController();
+    currentController = controller;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, resolved.timeout);
+
+    const startTime = performance.now();
+
+    try {
+      const response = await fetch(resolved.url, {
+        method: resolved.method,
+        headers: resolved.headers,
+        body: resolved.body,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      const duration = Math.round(performance.now() - startTime);
+      const level = response.ok
+        ? "debug"
+        : response.status >= 500
+          ? "error"
+          : "warn";
+      runtime.logger[level](
+        {
+          type: "proxy",
+          target: resolved.targetName,
+          method: resolved.method,
+          url: resolved.url,
+          status: response.status,
+          duration,
+          requestId: req.requestId,
+        },
+        `[app.fetch.proxy] ${resolved.method} ${resolved.url} ${response.status} ${duration}ms`,
+      );
+
+      if (
+        response.status >= 500 &&
+        retryableMethod &&
+        resolved.replayableBody &&
+        attempt < maxRetries
+      ) {
+        try {
+          await response.body?.cancel();
+        } catch {
+          // best-effort cleanup only
+        }
+        if (currentController === controller) {
+          currentController = null;
+        }
+        continue;
+      }
+
+      // Keep the controller attached after headers arrive so req.onClose()
+      // can still abort an in-flight streamed response body.
+      return response;
+    } catch (err) {
+      clearTimeout(timer);
+      if (currentController === controller) {
+        currentController = null;
+      }
+
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (isAbortError(error)) {
+        if (clientAborted) {
+          throw new ProxyClientAbortError();
+        }
+        if (timedOut) {
+          throw new ProxyTimeoutError(
+            `[app.fetch.proxy] ${resolved.method} ${resolved.url} timed out after ${resolved.timeout}ms.`,
+            resolved.timeout,
+          );
+        }
+      }
+
+      runtime.logger.error(
+        {
+          type: "proxy",
+          target: resolved.targetName,
+          method: resolved.method,
+          url: resolved.url,
+          error: error.message,
+          requestId: req.requestId,
+        },
+        `[app.fetch.proxy] ${resolved.method} ${resolved.url} ERROR: ${error.message}`,
+      );
+
+      if (retryableMethod && resolved.replayableBody && attempt < maxRetries) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `[app.fetch.proxy] ${resolved.method} ${resolved.url} failed.`,
+  );
+}
+
+async function writeProxyResponse(
+  response: Response,
+  res: VextResponse,
+): Promise<void> {
+  const contentType = response.headers.get("content-type") ?? undefined;
+  const isJson =
+    contentType?.includes("application/json") === true ||
+    contentType?.includes("+json") === true;
+  const isText = contentType?.startsWith("text/") === true;
+
+  res.status(response.status);
+
+  if (BODYLESS_STATUS.has(response.status)) {
+    copyProxyResponseHeaders(response, res, false);
+    res.text("", response.status);
+    return;
+  }
+
+  if (isJson || isText || !response.body) {
+    const body = await response.text();
+    copyProxyResponseHeaders(response, res, false);
+    res.text(body, response.status);
+    return;
+  }
+
+  copyProxyResponseHeaders(response, res, true);
+  const stream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+  res.stream(stream, contentType ?? "application/octet-stream");
+}
+
+function copyProxyResponseHeaders(
+  response: Response,
+  res: VextResponse,
+  keepContentEncoding: boolean,
+): void {
+  response.headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower)) return;
+    if (lower === "content-length") return;
+    if (!keepContentEncoding && lower === "content-encoding") return;
+    res.setHeader(key, value);
+  });
+}
+
+function writeProxyLocalError(
+  req: VextRequest,
+  res: VextResponse,
+  status: number,
+  code: string,
+  message: string,
+): void {
+  res.rawJson(
+    {
+      code,
+      message,
+      requestId: req.requestId,
+    },
+    status,
+  );
+}
+
+function isAbortError(error: Error): boolean {
+  return error.name === "AbortError";
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────

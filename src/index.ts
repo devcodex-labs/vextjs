@@ -134,8 +134,16 @@ export { loadI18n } from "./lib/i18n-loader.js";
 export { createVextFetch } from "./lib/fetch.js";
 export type {
   VextFetch,
+  VextFetchClient,
+  VextFetchConfig,
   VextFetchInit,
   VextFetchClientOptions,
+  VextFetchProxy,
+  VextFetchProxyHandler,
+  VextFetchProxyHeaderContext,
+  VextFetchProxyHeaders,
+  VextFetchProxyOptions,
+  VextFetchProxyTargetConfig,
 } from "./lib/fetch.js";
 
 // 插件加载器（框架内部 + 高级用法）

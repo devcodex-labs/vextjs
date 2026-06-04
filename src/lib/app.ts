@@ -290,6 +290,19 @@ export function createApp(config: VextConfig): {
         create: () => {
           throw new Error("[vextjs] app.fetch not initialized");
         },
+        proxy: new Proxy(
+          async () => {
+            throw new Error("[vextjs] app.fetch.proxy not initialized");
+          },
+          {
+            get(_target, prop) {
+              if (prop === "then") return undefined;
+              return async () => {
+                throw new Error("[vextjs] app.fetch.proxy not initialized");
+              };
+            },
+          },
+        ),
       },
     ) as unknown as VextFetch,
   };

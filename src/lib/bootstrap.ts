@@ -28,7 +28,7 @@ import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
 import { createErrorHandler } from "./middlewares/error-handler.js";
-import { createVextFetch } from "./fetch.js";
+import { createVextFetch, type VextFetchConfig } from "./fetch.js";
 import { setupShutdown } from "./shutdown.js";
 import { RouteMetadataCollector } from "./openapi/collector.js";
 import { OpenAPIGenerator } from "./openapi/generator.js";
@@ -46,7 +46,9 @@ import {
   sendLifecycleLevelToParent,
 } from "./ipc-port-conflict.js";
 
-function getLifecycleLevel(config: Record<string, unknown>): "concise" | "verbose" {
+function getLifecycleLevel(
+  config: Record<string, unknown>,
+): "concise" | "verbose" {
   const logger = config.logger as Record<string, unknown> | undefined;
   return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
 }
@@ -66,13 +68,16 @@ async function resolveStartupConfig(
   });
 
   if (!cluster.isWorker) {
-    const strategy = normalizePortConflictStrategy(process.env.VEXT_PORT_CONFLICT);
+    const strategy = normalizePortConflictStrategy(
+      process.env.VEXT_PORT_CONFLICT,
+    );
     const resolution = await resolvePortConflict({
       host: rawConfig.host as string | undefined,
       port: rawConfig.port as number,
       strategy,
       interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-      requestDecision: (request) => requestPortConflictDecisionFromParent(request),
+      requestDecision: (request) =>
+        requestPortConflictDecisionFromParent(request),
     });
 
     if (resolution.changed) {
@@ -129,7 +134,9 @@ async function resolveStartupConfig(
  * @see 09-cli.md §5（bootstrap.ts 框架内部启动文件）
  * @see IMPLEMENTATION-PLAN.md 任务 1.15
  */
-export async function bootstrap(rootDir = process.cwd()): Promise<BootstrapResult> {
+export async function bootstrap(
+  rootDir = process.cwd(),
+): Promise<BootstrapResult> {
   // 资源引用（用于错误边界清理）
   let internals: AppInternals | null = null;
   let serverHandle: VextServerHandle | null = null;
@@ -257,14 +264,7 @@ export async function bootstrap(rootDir = process.cwd()): Promise<BootstrapResul
     // loadRoutes 之后才赋值，collector.fetch 为 undefined，导致路由中
     // 调用 app.fetch() 时报 "app.fetch is not a function"。
     //
-    const fetchConfig = (config as Record<string, unknown>).fetch as
-      | {
-        timeout?: number;
-        retry?: number;
-        retryDelay?: number;
-        propagateHeaders?: string[];
-      }
-      | undefined;
+    const fetchConfig = config.fetch as VextFetchConfig | undefined;
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
     app.fetch = createVextFetch(
       app.logger,
@@ -312,14 +312,14 @@ export async function bootstrap(rootDir = process.cwd()): Promise<BootstrapResul
           | undefined,
         securitySchemes: (openapiConfig as Record<string, unknown>)
           ?.securitySchemes as Record<
-            string,
-            {
-              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-              scheme?: string;
-              bearerFormat?: string;
-              description?: string;
-            }
-          >,
+          string,
+          {
+            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+            scheme?: string;
+            bearerFormat?: string;
+            description?: string;
+          }
+        >,
         guardSecurityMap: (openapiConfig as Record<string, unknown>)
           ?.guardSecurityMap as Record<string, string> | undefined,
         contact: (openapiConfig as Record<string, unknown>)?.contact as
@@ -432,7 +432,11 @@ export async function bootstrap(rootDir = process.cwd()): Promise<BootstrapResul
     }
 
     // ── 注册错误处理 + 404 兜底 ──────────────────────────
-    const errorHandler = createErrorHandler(config.response ?? {}, undefined, app.logger);
+    const errorHandler = createErrorHandler(
+      config.response ?? {},
+      undefined,
+      app.logger,
+    );
     app.adapter.registerErrorHandler(errorHandler);
 
     const notFoundHandler = createNotFoundHandler();
@@ -799,7 +803,9 @@ export function applyClusterWorkerEnv(args: {
   process.env.VEXT_PORT = String(args.port);
 
   if (args.clusterConfig?.memoryThreshold !== undefined) {
-    process.env.VEXT_MEMORY_THRESHOLD = String(args.clusterConfig.memoryThreshold);
+    process.env.VEXT_MEMORY_THRESHOLD = String(
+      args.clusterConfig.memoryThreshold,
+    );
   } else {
     delete process.env.VEXT_MEMORY_THRESHOLD;
   }

@@ -1,17 +1,18 @@
 # 内置 HTTP 客户端 (app.fetch)
 
-VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 18+ 原生 `fetch` 封装，提供 **requestId 自动传播**、**超时控制**、**自动重试**、**结构化日志** 和 **create() 工厂** 等企业级能力。无需安装任何第三方 HTTP 库即可进行服务间调用。
+VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 18+ 原生 `fetch` 封装，提供 **requestId 自动传播**、**超时控制**、**自动重试**、**结构化日志**、**create() 工厂** 和 **config 驱动代理** 等能力。无需安装任何第三方 HTTP 库即可进行服务间调用。
 
 ## 功能概览
 
-| 能力               | 说明                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------ |
-| **requestId 传播** | 自动从 `requestContext` 读取 `requestId`，注入到出站请求的 `x-request-id` 头，实现跨服务请求追踪 |
-| **超时控制**       | 基于 `AbortController` + `setTimeout`，支持全局默认 + 单次请求覆盖                               |
-| **自动重试**       | 仅对幂等方法（GET/HEAD/OPTIONS/PUT/DELETE）在 5xx 或网络错误时自动重试                           |
-| **结构化日志**     | 出站请求自动记录 method/url/status/duration/requestId，与 `app.logger` 统一                      |
-| **快捷方法**       | `get` / `post` / `put` / `patch` / `delete` 快捷调用                                             |
-| **create() 工厂**  | 创建预配置的子客户端（固定 baseURL + 默认 headers），适合对接多个微服务                          |
+| 能力               | 说明                                                                                                           |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| **requestId 传播** | 自动从 `requestContext` 读取 `requestId`，注入到出站请求的 `x-request-id` 头，实现跨服务请求追踪               |
+| **超时控制**       | 基于 `AbortController` + `setTimeout`，支持全局默认 + 单次请求覆盖                                             |
+| **自动重试**       | 仅对幂等方法（GET/HEAD/OPTIONS/PUT/DELETE）在 5xx 或网络错误时自动重试                                         |
+| **结构化日志**     | 出站请求自动记录 method/url/status/duration/requestId，与 `app.logger` 统一                                    |
+| **快捷方法**       | `get` / `post` / `put` / `patch` / `delete` 快捷调用                                                           |
+| **create() 工厂**  | 创建预配置的子客户端（固定 baseURL + 默认 headers），适合对接多个微服务                                        |
+| **proxy 代理**     | 通过 `config.fetch.proxy[]` 配置上游目标，路由中 `app.fetch.proxy.userService(req, res, options)` 直接透传响应 |
 
 ## 基本用法
 
@@ -93,15 +94,16 @@ const response = await app.fetch.delete(`https://api.example.com/users/${id}`);
 
 ### 方法签名一览
 
-| 方法                                 | 签名                                                                           | 说明                          |
-| ------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------- |
-| `app.fetch(input, init?)`            | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | 通用调用（与原生 fetch 兼容） |
-| `app.fetch.get(url, init?)`          | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | GET 请求                      |
-| `app.fetch.post(url, body?, init?)`  | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | POST 请求，body 自动序列化    |
-| `app.fetch.put(url, body?, init?)`   | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PUT 请求，body 自动序列化     |
-| `app.fetch.patch(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PATCH 请求，body 自动序列化   |
-| `app.fetch.delete(url, init?)`       | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | DELETE 请求                   |
-| `app.fetch.create(options)`          | `(options: VextFetchClientOptions) => VextFetch`                               | 创建子客户端                  |
+| 方法                                      | 签名                                                                           | 说明                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------- |
+| `app.fetch(input, init?)`                 | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | 通用调用（与原生 fetch 兼容） |
+| `app.fetch.get(url, init?)`               | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | GET 请求                      |
+| `app.fetch.post(url, body?, init?)`       | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | POST 请求，body 自动序列化    |
+| `app.fetch.put(url, body?, init?)`        | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PUT 请求，body 自动序列化     |
+| `app.fetch.patch(url, body?, init?)`      | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PATCH 请求，body 自动序列化   |
+| `app.fetch.delete(url, init?)`            | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | DELETE 请求                   |
+| `app.fetch.create(options)`               | `(options: VextFetchClientOptions) => VextFetchClient`                         | 创建子客户端（无 proxy）      |
+| `app.fetch.proxy.<name>(req,res,options)` | `(req, res, options) => Promise<void>`                                         | 配置化请求代理并透传响应      |
 
 ## 配置
 
@@ -123,6 +125,16 @@ export default {
       "tracestate", // W3C Trace Context 附加状态
       // 或 'x-trace-id', 'x-tenant-id' 等自定义头
     ],
+    proxy: [
+      {
+        name: "userService",
+        baseURL: "http://user-service:3001/api",
+        forwardHeaders: ["x-tenant-id", "traceparent"],
+        headers: { "x-source": "gateway" },
+        timeout: 5000,
+        retry: 1,
+      },
+    ],
   },
 };
 ```
@@ -133,6 +145,7 @@ export default {
 | `retry`            | `number`                        | `0`     | 默认重试次数（仅幂等方法生效）               |
 | `retryDelay`       | `number \| (attempt) => number` | `1000`  | 默认重试间隔（毫秒），支持函数形式           |
 | `propagateHeaders` | `string[]`                      | `[]`    | 需要从入站请求自动透传到出站请求的头名称列表 |
+| `proxy`            | `VextFetchProxyTargetConfig[]`  | `[]`    | `app.fetch.proxy.<name>()` 的上游目标列表    |
 
 :::tip propagateHeaders 工作原理
 配置后，`requestId` 中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
@@ -263,6 +276,59 @@ const v2Client = apiClient.create({ baseURL: "https://api.example.com/v2" });
 ```
 
 :::
+
+## app.fetch.proxy 请求代理
+
+`app.fetch.proxy` 适合网关、BFF 或“当前请求转发到内部服务”的场景。它与 `app.fetch.create()` 的定位不同：`create()` 返回标准 `Response` 供业务代码自行处理；`proxy` 接收当前 `req/res`，并把上游响应直接写回客户端。
+
+```typescript
+export default defineRoutes((app) => {
+  app.get("/users/:id", async (req, res) => {
+    await app.fetch.proxy.userService(req, res, {
+      path: `/users/${req.params.id}`,
+      query: { includeProfile: true },
+    });
+  });
+});
+```
+
+上游响应会直接透传：2xx / 3xx / 4xx / 5xx 都不会被包装成 `{ code, data, requestId }`。只有代理本地错误会使用 vext 风格错误响应，例如缺少 `path/url`、目标不存在、禁止透传 Authorization、上游网络错误 502 或超时 504。
+
+### header 合并与 Authorization
+
+请求头优先级为：
+
+```text
+target.headers
+  < forwardHeaders
+  < target.defaultInjectHeaders
+  < options.headers
+  < options.injectHeaders
+```
+
+`forwardHeaders` 从当前 `req.headers` 白名单读取。默认不会透传原始 `Authorization`；只有目标配置或单次调用显式设置 `allowAuthorizationForward: true`，且白名单包含 `authorization`，才会透传。
+
+```typescript
+await app.fetch.proxy.userService(req, res, {
+  path: "/profile",
+  forwardHeaders: ["authorization"],
+  allowAuthorizationForward: true,
+});
+```
+
+### 直接 URL 模式
+
+如果只是临时代理到一个完整 URL，可以不配置目标：
+
+```typescript
+await app.fetch.proxy(req, res, {
+  url: "https://partner.example.com/status",
+});
+```
+
+### proxy 重试规则
+
+代理的 retry 表示“额外尝试次数”，总尝试次数为 `retry + 1`。优先级为 `options.retry > target.retry > config.fetch.retry > 0`，`retryDelay` 同理。只有 GET / HEAD / OPTIONS / PUT / DELETE 这些幂等方法会在上游 5xx 或网络错误时自动重试；POST / PATCH 默认不重试。超时不重试，直接返回本地 504。
 
 ## requestId 自动传播
 
@@ -541,10 +607,13 @@ export default definePlugin({
   name: "axios-fetch",
 
   setup(app) {
-    app.extend("axios", axios.create({
-      baseURL: process.env.API_BASE_URL,
-      timeout: 5000,
-    }));
+    app.extend(
+      "axios",
+      axios.create({
+        baseURL: process.env.API_BASE_URL,
+        timeout: 5000,
+      }),
+    );
   },
 });
 ```

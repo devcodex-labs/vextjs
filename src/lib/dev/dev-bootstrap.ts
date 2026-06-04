@@ -31,7 +31,7 @@ import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createErrorHandler } from "../middlewares/error-handler.js";
 import { renderDevErrorPage } from "./error-overlay.js";
-import { createVextFetch } from "../fetch.js";
+import { createVextFetch, type VextFetchConfig } from "../fetch.js";
 import { RouteMetadataCollector } from "../openapi/collector.js";
 import { OpenAPIGenerator } from "../openapi/generator.js";
 import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
@@ -50,7 +50,9 @@ import {
   sendLifecycleLevelToParent,
 } from "../ipc-port-conflict.js";
 
-function getLifecycleLevel(config: Record<string, unknown>): "concise" | "verbose" {
+function getLifecycleLevel(
+  config: Record<string, unknown>,
+): "concise" | "verbose" {
   const logger = config.logger as Record<string, unknown> | undefined;
   return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
 }
@@ -260,7 +262,8 @@ export async function devBootstrap(
       port: rawConfig.port as number,
       strategy: normalizePortConflictStrategy(process.env.VEXT_PORT_CONFLICT),
       interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-      requestDecision: (request) => requestPortConflictDecisionFromParent(request),
+      requestDecision: (request) =>
+        requestPortConflictDecisionFromParent(request),
     });
 
     if (resolution.changed) {
@@ -374,14 +377,18 @@ export async function devBootstrap(
     // ── fetchConfig 提前提取（步骤 8 的 requestId 中间件需要用到）──
     // 必须在步骤 5 之前定义，因为步骤 8 注册 requestId 中间件时
     // 需要将 propagateHeaders 传入，而 fetchConfig 原本在步骤 8+ 才读取。
-    const fetchConfig = (config as Record<string, unknown>).fetch as
-      | {
-        timeout?: number;
-        retry?: number;
-        retryDelay?: number;
-        propagateHeaders?: string[];
-      }
-      | undefined;
+    const fetchConfig = config.fetch as VextFetchConfig | undefined;
+
+    // ── 步骤 4+: 挂载 app.fetch（必须在 loadRoutes 之前）────
+    //
+    // 路由工厂执行时会复制 app 当前属性到 collector 代理对象。
+    // 若 app.fetch 在 loadRoutes 之后才赋值，路由闭包会捕获未初始化占位对象。
+    const requestIdHeader = config.requestId?.header ?? "x-request-id";
+    app.fetch = createVextFetch(
+      app.logger,
+      fetchConfig ?? {},
+      requestIdHeader,
+    ) as unknown as VextApp["fetch"];
 
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
     const middlewareRegistry = await loadMiddlewares(
@@ -433,14 +440,14 @@ export async function devBootstrap(
           | undefined,
         securitySchemes: (openapiConfig as Record<string, unknown>)
           ?.securitySchemes as Record<
-            string,
-            {
-              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-              scheme?: string;
-              bearerFormat?: string;
-              description?: string;
-            }
-          >,
+          string,
+          {
+            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+            scheme?: string;
+            bearerFormat?: string;
+            description?: string;
+          }
+        >,
         guardSecurityMap: (openapiConfig as Record<string, unknown>)
           ?.guardSecurityMap as Record<string, string> | undefined,
         contact: (openapiConfig as Record<string, unknown>)?.contact as
@@ -501,7 +508,10 @@ export async function devBootstrap(
 
     // 3. body-parser（config.bodyParser.enabled，默认 true）
     if (config.bodyParser?.enabled !== false) {
-      const bodyParserMiddleware = createBodyParserMiddleware(config.bodyParser, config.multipart);
+      const bodyParserMiddleware = createBodyParserMiddleware(
+        config.bodyParser,
+        config.multipart,
+      );
       app.adapter.registerMiddleware(bodyParserMiddleware);
     }
 
@@ -538,35 +548,30 @@ export async function devBootstrap(
     // 🆕 Dev 错误覆盖层：读取 config.dev.errorOverlay 配置，enabled !== false 时注入
     const devOverlayConfig = (config as Record<string, unknown>).dev as
       | {
-        errorOverlay?: {
-          enabled?: boolean;
-          theme?: "dark" | "light";
-          maxFrames?: number;
-        };
-      }
+          errorOverlay?: {
+            enabled?: boolean;
+            theme?: "dark" | "light";
+            maxFrames?: number;
+          };
+        }
       | undefined;
     const overlayEnabled = devOverlayConfig?.errorOverlay?.enabled !== false;
     const overlayOptions = devOverlayConfig?.errorOverlay
       ? {
-        theme: devOverlayConfig.errorOverlay.theme,
-        maxFrames: devOverlayConfig.errorOverlay.maxFrames,
-      }
+          theme: devOverlayConfig.errorOverlay.theme,
+          maxFrames: devOverlayConfig.errorOverlay.maxFrames,
+        }
       : undefined;
     const overlayFn = overlayEnabled
       ? (err: unknown) => renderDevErrorPage(err, projectRoot, overlayOptions)
       : undefined;
-    const errorHandler = createErrorHandler(config.response ?? {}, overlayFn, app.logger);
+    const errorHandler = createErrorHandler(
+      config.response ?? {},
+      overlayFn,
+      app.logger,
+    );
     app.adapter.registerErrorHandler(errorHandler);
     app.adapter.registerNotFound(createNotFoundHandler());
-
-    // ── 步骤 8+: 挂载 app.fetch ──────────────────────────
-    // fetchConfig 已在步骤 5 之前提取，此处直接使用
-    const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    app.fetch = createVextFetch(
-      app.logger,
-      fetchConfig ?? {},
-      requestIdHeader,
-    ) as unknown as VextApp["fetch"];
 
     // ── 步骤 9: 锁定 app.use() ──────────────────────────
     internals.lockUse();
@@ -602,10 +607,10 @@ export async function devBootstrap(
     // 应用与生产模式一致的 server 配置
     const serverConfig = (config as Record<string, unknown>).server as
       | {
-        keepAliveTimeout?: number;
-        headersTimeout?: number;
-        requestTimeout?: number;
-      }
+          keepAliveTimeout?: number;
+          headersTimeout?: number;
+          requestTimeout?: number;
+        }
       | undefined;
 
     if (serverConfig?.keepAliveTimeout) {
@@ -671,46 +676,53 @@ export async function devBootstrap(
     //
     const reloadModelsClosure = hasMonsqlize
       ? (invalidated: Set<string>): Promise<ModelReloadResult> =>
-        reloadModelDefs(app as any, outDir, invalidated)
+          reloadModelDefs(app as any, outDir, invalidated)
       : undefined;
 
     // 🔧 D2/D3 修复（soft reload 侧）：
     // - 每个 creator 仅在对应 enabled 条件满足时注入（undefined 时 route-reloader 自动跳过）
     // - createRequestIdMiddleware 补传 cfg.locale（D3 修复），确保热重载后 store.locale 仍写入
     const builtinMwCreators: BuiltinMiddlewareCreators = {
-      createRequestIdMiddleware: config.requestId?.enabled !== false
-        ? ((cfg: Record<string, unknown>) =>
-          createRequestIdMiddleware(
-            cfg.requestId as any,
-            () => internals!.getRequestIdGenerator(),
-            (fetchConfig?.propagateHeaders ?? []) as string[],
-            cfg.locale as any,  // D3 修复：补传 localeConfig
-          )) as any
-        : undefined,
-      createCorsMiddleware: config.cors?.enabled !== false
-        ? ((cfg: Record<string, unknown>) =>
-          createCorsMiddleware(cfg.cors as any)) as any
-        : undefined,
-      createBodyParserMiddleware: config.bodyParser?.enabled !== false
-        ? ((cfg: Record<string, unknown>) =>
-          createBodyParserMiddleware(cfg.bodyParser as any, cfg.multipart as any)) as any
-        : undefined,
-      createRateLimitMiddleware: config.rateLimit?.enabled !== false
-        ? ((cfg: Record<string, unknown>) =>
-          createRateLimitMiddleware(cfg.rateLimit as any, () =>
-            internals!.getRateLimiter(),
-          )) as any
-        : undefined,
-      responseWrapper: config.response?.wrap !== false
-        ? (responseWrapper as any)
-        : undefined,
-      createAccessLogMiddleware: config.accessLog?.enabled !== false
-        ? ((cfg: Record<string, unknown>) =>
-          createAccessLogMiddleware(
-            (cfg.accessLog ?? {}) as any,
-            app.logger,
-          )) as any
-        : undefined,
+      createRequestIdMiddleware:
+        config.requestId?.enabled !== false
+          ? (((cfg: Record<string, unknown>) =>
+              createRequestIdMiddleware(
+                cfg.requestId as any,
+                () => internals!.getRequestIdGenerator(),
+                (fetchConfig?.propagateHeaders ?? []) as string[],
+                cfg.locale as any, // D3 修复：补传 localeConfig
+              )) as any)
+          : undefined,
+      createCorsMiddleware:
+        config.cors?.enabled !== false
+          ? (((cfg: Record<string, unknown>) =>
+              createCorsMiddleware(cfg.cors as any)) as any)
+          : undefined,
+      createBodyParserMiddleware:
+        config.bodyParser?.enabled !== false
+          ? (((cfg: Record<string, unknown>) =>
+              createBodyParserMiddleware(
+                cfg.bodyParser as any,
+                cfg.multipart as any,
+              )) as any)
+          : undefined,
+      createRateLimitMiddleware:
+        config.rateLimit?.enabled !== false
+          ? (((cfg: Record<string, unknown>) =>
+              createRateLimitMiddleware(cfg.rateLimit as any, () =>
+                internals!.getRateLimiter(),
+              )) as any)
+          : undefined,
+      responseWrapper:
+        config.response?.wrap !== false ? (responseWrapper as any) : undefined,
+      createAccessLogMiddleware:
+        config.accessLog?.enabled !== false
+          ? (((cfg: Record<string, unknown>) =>
+              createAccessLogMiddleware(
+                (cfg.accessLog ?? {}) as any,
+                app.logger,
+              )) as any)
+          : undefined,
     };
 
     softReloader = new SoftReloader({
@@ -728,9 +740,9 @@ export async function devBootstrap(
           // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
           overlayEnabled
             ? (err: unknown) =>
-              renderDevErrorPage(err, projectRoot, overlayOptions)
+                renderDevErrorPage(err, projectRoot, overlayOptions)
             : undefined,
-          app.logger,  // 🆕 soft reload 后重建的错误处理器同样传入 logger
+          app.logger, // 🆕 soft reload 后重建的错误处理器同样传入 logger
         )) as any,
       createNotFoundHandler: createNotFoundHandler as any,
       builtinMiddlewares: builtinMwCreators,

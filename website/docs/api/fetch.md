@@ -73,10 +73,10 @@ app.fetch.delete(url: string, init?: VextFetchInit): Promise<Response>
 创建预配置的子客户端实例。子客户端拥有独立的 `baseURL`、默认 headers、超时和重试配置。
 
 ```typescript
-app.fetch.create(options: VextFetchClientOptions): VextFetch
+app.fetch.create(options: VextFetchClientOptions): VextFetchClient
 ```
 
-子客户端上也挂载了完整的快捷方法（`get` / `post` / `put` / `patch` / `delete`）和 `create()`。
+子客户端上也挂载了完整的快捷方法（`get` / `post` / `put` / `patch` / `delete`）和 `create()`，但**不会暴露 `proxy`**。代理能力只挂在根 `app.fetch.proxy` 上，避免 `app.fetch.create().proxy` 带来额外心智负担。
 
 ```typescript
 const client = app.fetch.create({
@@ -90,6 +90,85 @@ const client = app.fetch.create({
 const response = await client.get("/users/123");
 // 实际请求: GET http://user-service:3001/api/v1/users/123
 ```
+
+---
+
+## app.fetch.proxy
+
+`app.fetch.proxy` 用于在路由 handler 中将当前请求代理到上游服务，并把上游响应直接透传给客户端。它不把 2xx / 3xx / 4xx / 5xx 上游响应包装为 `{ code, data, requestId }`；只有本地参数错误、目标不存在、上游网络错误或超时等代理本地错误才返回 vext 风格错误响应。
+
+### 命名目标代理
+
+命名目标来自 `config.fetch.proxy[]`：
+
+```typescript
+// src/config/default.ts
+export default {
+  fetch: {
+    proxy: [
+      {
+        name: "userService",
+        baseURL: "http://user-service:3001/api",
+        forwardHeaders: ["x-tenant-id", "traceparent"],
+        headers: { "x-source": "gateway" },
+        timeout: 5000,
+        retry: 1,
+      },
+    ],
+  },
+};
+```
+
+`name` 会映射到 `app.fetch.proxy.<name>`，不能使用保留名 `then`。
+
+调用时使用 `app.fetch.proxy.<name>(req, res, options)`：
+
+```typescript
+app.get("/users/:id", async (req, res) => {
+  await app.fetch.proxy.userService(req, res, {
+    path: `/users/${req.params.id}`,
+    query: { includeProfile: true },
+    injectHeaders: { "x-route": "users-proxy" },
+  });
+});
+```
+
+### 直接 URL 代理
+
+不使用命名目标时，可直接调用 `app.fetch.proxy(req, res, { url })`：
+
+```typescript
+app.get("/health/upstream", async (req, res) => {
+  await app.fetch.proxy(req, res, {
+    url: "https://api.example.com/health",
+  });
+});
+```
+
+### header 优先级
+
+代理请求头按以下顺序合并，后者覆盖前者：
+
+```text
+target.headers
+  < forwardHeaders（从当前 req.headers 白名单透传）
+  < target.defaultInjectHeaders
+  < options.headers
+  < options.injectHeaders
+```
+
+`Authorization` 不会默认从当前请求透传。只有当目标配置或本次调用设置 `allowAuthorizationForward: true`，并且 `forwardHeaders` 明确包含 `authorization` 时，才允许透传原始 Authorization。
+
+### retry 合同
+
+代理重试配置优先级：
+
+```text
+options.retry > target.retry > config.fetch.retry > 0
+options.retryDelay > target.retryDelay > config.fetch.retryDelay > 1000
+```
+
+`retry` 表示额外尝试次数，因此总尝试次数为 `retry + 1`。仅 `GET` / `HEAD` / `OPTIONS` / `PUT` / `DELETE` 这些幂等方法会自动重试；`POST` / `PATCH` 默认不重试。可重试条件为上游 5xx 或 DNS / 连接等网络错误；2xx / 3xx / 4xx 不重试，超时不重试并返回本地 504，客户端断开时不再写响应。
 
 ---
 
@@ -162,31 +241,62 @@ interface VextFetchClientOptions {
 
   /** 子客户端默认重试次数 */
   retry?: number;
+
+  /** 子客户端默认重试间隔（毫秒）或指数退避函数 */
+  retryDelay?: number | ((attempt: number) => number);
 }
 ```
 
-| 字段      | 类型                     | 必填 | 说明                                  |
-| --------- | ------------------------ | :--: | ------------------------------------- |
-| `baseURL` | `string`                 |  ✅  | 基础 URL，请求路径自动拼接到此 URL 后 |
-| `headers` | `Record<string, string>` |  ❌  | 默认请求头                            |
-| `timeout` | `number`                 |  ❌  | 覆盖全局超时                          |
-| `retry`   | `number`                 |  ❌  | 覆盖全局重试                          |
+| 字段         | 类型                                    | 必填 | 说明                                  |
+| ------------ | --------------------------------------- | :--: | ------------------------------------- |
+| `baseURL`    | `string`                                |  ✅  | 基础 URL，请求路径自动拼接到此 URL 后 |
+| `headers`    | `Record<string, string>`                |  ❌  | 默认请求头                            |
+| `timeout`    | `number`                                |  ❌  | 覆盖全局超时                          |
+| `retry`      | `number`                                |  ❌  | 覆盖全局重试                          |
+| `retryDelay` | `number \| (attempt: number) => number` |  ❌  | 覆盖全局重试间隔                      |
 
 ### VextFetch
 
-`app.fetch` 和 `create()` 返回值的类型定义。既是可调用函数，又挂载了快捷方法。
+根 `app.fetch` 的类型定义。既是可调用函数，又挂载了快捷方法、`create()` 和 `proxy`。
 
 ```typescript
-interface VextFetch {
+interface VextFetchClient {
   (input: string | URL | Request, init?: VextFetchInit): Promise<Response>;
   get(url: string, init?: VextFetchInit): Promise<Response>;
   post(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   put(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   patch(url: string, body?: unknown, init?: VextFetchInit): Promise<Response>;
   delete(url: string, init?: VextFetchInit): Promise<Response>;
-  create(options: VextFetchClientOptions): VextFetch;
+  create(options: VextFetchClientOptions): VextFetchClient;
+}
+
+interface VextFetch extends VextFetchClient {
+  proxy: VextFetchProxy;
+  create(options: VextFetchClientOptions): VextFetchClient;
 }
 ```
+
+### VextFetchProxyOptions
+
+```typescript
+interface VextFetchProxyOptions {
+  path?: string;
+  url?: string;
+  method?: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
+  body?: RequestInit["body"] | Buffer | Uint8Array;
+  maxBodySize?: number;
+  headers?: Record<string, string>;
+  forwardHeaders?: string[];
+  injectHeaders?: Record<string, string> | ((ctx) => Record<string, string>);
+  allowAuthorizationForward?: boolean;
+  timeout?: number;
+  retry?: number;
+  retryDelay?: number | ((attempt: number) => number);
+}
+```
+
+命名目标模式使用 `path`；直接 URL 模式使用 `url`。未传 `method` 时默认使用当前 `req.method`。未传 `body` 时，非 GET / HEAD 请求会读取当前 `req` 的原始 body Buffer 并转发。
 
 ---
 
@@ -202,6 +312,7 @@ export default {
     retry: 0,
     retryDelay: 1000,
     propagateHeaders: [],
+    proxy: [],
   },
 };
 ```
@@ -212,6 +323,7 @@ export default {
 | `retry`            | `number`                                | `0`     | 全局默认重试次数                                                                          |
 | `retryDelay`       | `number \| (attempt: number) => number` | `1000`  | 全局默认重试间隔（毫秒），支持指数退避函数                                                |
 | `propagateHeaders` | `string[]`                              | `[]`    | 声明需要从入站请求自动捕获并透传到出站请求的头名称列表（如 `traceparent`、`x-tenant-id`） |
+| `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`    | `app.fetch.proxy.<name>()` 的配置化上游目标列表                                           |
 
 :::tip propagateHeaders 工作原理
 配置后，框架在每个请求的 `requestId` 中间件阶段，从入站请求头中读取列表中指定的头，
@@ -226,7 +338,9 @@ export default {
 ### 优先级
 
 ```
-单次请求 init > create() options > 全局 config.fetch
+普通出站请求：单次请求 init > create() options > 全局 config.fetch
+
+代理请求：options > target（config.fetch.proxy[] 单项）> 全局 config.fetch
 ```
 
 ---
@@ -275,10 +389,13 @@ export default {
 如果你需要不同的 HTTP 客户端策略，推荐保留 `app.fetch` 作为框架默认实现，再通过插件额外挂载自定义客户端：
 
 ```typescript
-app.extend("customFetch", app.fetch.create({
-  baseURL: "https://api.example.com",
-  timeout: 5000,
-}));
+app.extend(
+  "customFetch",
+  app.fetch.create({
+    baseURL: "https://api.example.com",
+    timeout: 5000,
+  }),
+);
 ```
 
 :::warning
@@ -290,7 +407,15 @@ app.extend("customFetch", app.fetch.create({
 ## 类型导入
 
 ```typescript
-import type { VextFetch, VextFetchInit, VextFetchClientOptions } from "vextjs";
+import type {
+  VextFetch,
+  VextFetchClient,
+  VextFetchConfig,
+  VextFetchInit,
+  VextFetchClientOptions,
+  VextFetchProxyOptions,
+  VextFetchProxyTargetConfig,
+} from "vextjs";
 ```
 
 ## 下一步

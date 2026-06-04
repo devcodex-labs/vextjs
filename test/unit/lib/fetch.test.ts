@@ -19,6 +19,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createVextFetch } from "../../../src/lib/fetch.js";
 import { requestContext } from "../../../src/lib/request-context.js";
 import type { VextLogger } from "../../../src/types/app.js";
+import type { VextRequest } from "../../../src/types/request.js";
+import type { VextResponse } from "../../../src/types/response.js";
 
 // ── 测试工具 ────────────────────────────────────────────────
 
@@ -64,6 +66,110 @@ function getLastRequestHeaders(fetchMock: ReturnType<typeof vi.fn>): Headers {
   // fetch(input, init) — init.headers
   const init = lastCall?.[1] as RequestInit | undefined;
   return new Headers(init?.headers);
+}
+
+function createProxyRequest(
+  overrides: Partial<VextRequest> & { rawBody?: Buffer } = {},
+): VextRequest {
+  const rawBody = overrides.rawBody ?? Buffer.alloc(0);
+  const closeHandlers: Array<() => void> = [];
+
+  const req: VextRequest = {
+    query: {},
+    body: undefined,
+    params: {},
+    headers: {},
+    method: "GET",
+    url: "/proxy",
+    path: "/proxy",
+    route: "/proxy",
+    app: {} as VextRequest["app"],
+    requestId: "proxy-req-1",
+    ip: "127.0.0.1",
+    protocol: "http",
+    onClose(handler: () => void): void {
+      closeHandlers.push(handler);
+    },
+    valid: vi.fn(),
+    _getRawBody: vi.fn().mockResolvedValue(rawBody.toString("utf-8")),
+    _getRawBodyBuffer: vi.fn().mockResolvedValue(rawBody),
+    ...overrides,
+  };
+  Object.defineProperty(req, "__triggerClose", {
+    value: () => {
+      for (const handler of closeHandlers) {
+        handler();
+      }
+    },
+  });
+
+  return req;
+}
+
+interface MockResponseState {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: unknown;
+  sentBy: string | null;
+}
+
+function createProxyResponse(): {
+  res: VextResponse;
+  state: MockResponseState;
+} {
+  const state: MockResponseState = {
+    statusCode: 200,
+    headers: {},
+    body: undefined,
+    sentBy: null,
+  };
+
+  const res: VextResponse = {
+    get statusCode() {
+      return state.statusCode;
+    },
+    json(data: unknown, status?: number): void {
+      state.statusCode = status ?? state.statusCode;
+      state.body = data;
+      state.sentBy = "json";
+    },
+    rawJson(data: unknown, status?: number): void {
+      state.statusCode = status ?? state.statusCode;
+      state.body = data;
+      state.sentBy = "rawJson";
+    },
+    text(content: string, status?: number): void {
+      state.statusCode = status ?? state.statusCode;
+      state.body = content;
+      state.sentBy = "text";
+    },
+    stream(readable: NodeJS.ReadableStream, contentType?: string): void {
+      state.body = readable;
+      state.headers["content-type"] = contentType ?? "application/octet-stream";
+      state.sentBy = "stream";
+    },
+    download(): void {
+      state.sentBy = "download";
+    },
+    redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
+      state.statusCode = status;
+      state.headers.location = url;
+      state.sentBy = "redirect";
+    },
+    status(code: number): VextResponse {
+      state.statusCode = code;
+      return res;
+    },
+    setHeader(name: string, value: string): VextResponse {
+      state.headers[name.toLowerCase()] = value;
+      return res;
+    },
+    _enableWrap(): void {
+      // proxy tests assert raw passthrough, wrapping is intentionally unused.
+    },
+  };
+
+  return { res, state };
 }
 
 // ── 全局 fetch mock ──────────────────────────────────────────
@@ -640,6 +746,405 @@ describe("create() 子客户端", () => {
     expect(typeof client.patch).toBe("function");
     expect(typeof client.delete).toBe("function");
     expect(typeof client.create).toBe("function");
+  });
+
+  it("create() 返回的子客户端不暴露 proxy", () => {
+    const logger = createMockLogger();
+    const vextFetch = createVextFetch(logger, {}, "x-request-id");
+    const client = vextFetch.create({ baseURL: "https://api.example.com" });
+
+    expect((client as unknown as { proxy?: unknown }).proxy).toBeUndefined();
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// app.fetch.proxy 代理
+// ════════════════════════════════════════════════════════════
+
+describe("app.fetch.proxy 代理", () => {
+  it("按 config.fetch.proxy 目标代理并直接透传上游 JSON 响应", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, name: "Alice" }), {
+        status: 201,
+        headers: {
+          "content-type": "application/json",
+          "x-upstream": "users",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com/api",
+            headers: { "x-target": "base" },
+            forwardHeaders: ["x-tenant-id"],
+            defaultInjectHeaders: { "x-default": "target" },
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({
+      method: "GET",
+      query: { page: "1" },
+      headers: {
+        "x-tenant-id": "tenant-a",
+        authorization: "Bearer raw-token",
+      },
+    });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, {
+      path: "/users",
+      query: { page: 2, keyword: "alice" },
+      headers: { "x-target": "call" },
+      injectHeaders: { "x-inject": "top" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://users.example.com/api/users?page=2&keyword=alice",
+    );
+
+    const headers = getLastRequestHeaders(fetchMock);
+    expect(headers.get("x-tenant-id")).toBe("tenant-a");
+    expect(headers.get("authorization")).toBeNull();
+    expect(headers.get("x-target")).toBe("call");
+    expect(headers.get("x-default")).toBe("target");
+    expect(headers.get("x-inject")).toBe("top");
+
+    expect(state.statusCode).toBe(201);
+    expect(state.headers["content-type"]).toContain("application/json");
+    expect(state.headers["x-upstream"]).toBe("users");
+    expect(state.body).toBe('{"id":1,"name":"Alice"}');
+    expect(state.sentBy).toBe("text");
+  });
+
+  it("支持直接 URL fallback 代理", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("ok", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(logger, {}, "x-request-id");
+    const req = createProxyRequest({ query: { trace: "1" } });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy(req, res, {
+      url: "https://api.example.com/health",
+      query: { trace: null, verbose: true },
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://api.example.com/health?verbose=true",
+    );
+    expect(state.statusCode).toBe(200);
+    expect(state.body).toBe("ok");
+  });
+
+  it("直接 URL fallback 传入非法 URL 时返回本地 400", async () => {
+    const logger = createMockLogger();
+    const vextFetch = createVextFetch(logger, {}, "x-request-id");
+    const req = createProxyRequest();
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy(req, res, { url: "/relative-only" });
+
+    expect(globalFetchMock).not.toHaveBeenCalled();
+    expect(state.statusCode).toBe(400);
+    expect(state.sentBy).toBe("rawJson");
+    expect(state.body).toMatchObject({
+      code: "FETCH_PROXY_INVALID_URL",
+      requestId: "proxy-req-1",
+    });
+  });
+
+  it("未显式允许时禁止透传原始 Authorization header", async () => {
+    const logger = createMockLogger();
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "secureService",
+            baseURL: "https://secure.example.com",
+            forwardHeaders: ["authorization"],
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({
+      headers: { authorization: "Bearer raw-token" },
+    });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.secureService(req, res, { path: "/profile" });
+
+    expect(globalFetchMock).not.toHaveBeenCalled();
+    expect(state.statusCode).toBe(400);
+    expect(state.sentBy).toBe("rawJson");
+    expect(state.body).toMatchObject({
+      code: "FETCH_PROXY_AUTHORIZATION_FORWARD_FORBIDDEN",
+      requestId: "proxy-req-1",
+    });
+  });
+
+  it("GET 上游 5xx 会按 retry 合同重试，最终响应直接透传", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response("ready", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 2,
+        retryDelay: 0,
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(state.statusCode).toBe(200);
+    expect(state.body).toBe("ready");
+  });
+
+  it("客户端在 retry delay 期间断开时不再发起后续重试", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("busy", {
+        status: 503,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 2,
+        retryDelay: () => {
+          (req as unknown as { __triggerClose: () => void }).__triggerClose();
+          return 0;
+        },
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.sentBy).toBeNull();
+    expect(state.body).toBeUndefined();
+  });
+
+  it("POST 上游 5xx 默认不重试", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("failed", {
+        status: 503,
+        headers: { "content-type": "text/plain" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 3,
+        retryDelay: 0,
+        proxy: [
+          {
+            name: "writeService",
+            baseURL: "https://write.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({
+      method: "POST",
+      rawBody: Buffer.from('{"name":"Alice"}'),
+    });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.writeService(req, res, { path: "/users" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.statusCode).toBe(503);
+    expect(state.body).toBe("failed");
+  });
+
+  it("上游超时返回本地 504 且不重试", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockImplementation((_url, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 2,
+        retryDelay: 0,
+        proxy: [
+          {
+            name: "slowService",
+            baseURL: "https://slow.example.com",
+            timeout: 5,
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.slowService(req, res, { path: "/timeout" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.statusCode).toBe(504);
+    expect(state.body).toMatchObject({
+      code: "FETCH_PROXY_TIMEOUT",
+      requestId: "proxy-req-1",
+    });
+  });
+
+  it("204 响应不发送 body 且过滤 hop-by-hop headers", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 204,
+        headers: {
+          "x-upstream": "no-content",
+          connection: "close",
+          "content-length": "12",
+          "transfer-encoding": "chunked",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "emptyService",
+            baseURL: "https://empty.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "DELETE" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.emptyService(req, res, { path: "/items/1" });
+
+    expect(state.statusCode).toBe(204);
+    expect(state.body).toBe("");
+    expect(state.sentBy).toBe("text");
+    expect(state.headers["x-upstream"]).toBe("no-content");
+    expect(state.headers.connection).toBeUndefined();
+    expect(state.headers["content-length"]).toBeUndefined();
+    expect(state.headers["transfer-encoding"]).toBeUndefined();
+  });
+
+  it("stream 响应透传下载头，客户端断开后继续 abort 上游 body", async () => {
+    const logger = createMockLogger();
+    let upstreamSignal: AbortSignal | undefined;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        controller.close();
+      },
+    });
+    const fetchMock = vi.fn().mockImplementation((_url, init?: RequestInit) => {
+      upstreamSignal = init?.signal;
+      return Promise.resolve(
+        new Response(upstreamBody, {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-disposition": 'attachment; filename="demo.bin"',
+            "content-length": "5",
+            "transfer-encoding": "chunked",
+          },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "fileService",
+            baseURL: "https://files.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.fileService(req, res, { path: "/demo.bin" });
+
+    expect(state.statusCode).toBe(200);
+    expect(state.sentBy).toBe("stream");
+    expect(state.headers["content-type"]).toBe("application/octet-stream");
+    expect(state.headers["content-disposition"]).toBe(
+      'attachment; filename="demo.bin"',
+    );
+    expect(state.headers["content-length"]).toBeUndefined();
+    expect(state.headers["transfer-encoding"]).toBeUndefined();
+    expect(upstreamSignal?.aborted).toBe(false);
+
+    (req as unknown as { __triggerClose: () => void }).__triggerClose();
+
+    expect(upstreamSignal?.aborted).toBe(true);
   });
 });
 

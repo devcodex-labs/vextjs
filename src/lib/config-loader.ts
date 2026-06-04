@@ -33,6 +33,8 @@ import {
 
 // ── 常量 ────────────────────────────────────────────────────
 
+const FETCH_PROXY_RESERVED_TARGET_NAMES = new Set(["then"]);
+
 /**
  * 支持的配置文件扩展名（按优先级排序）
  *
@@ -623,6 +625,9 @@ function validateConfig(config: Record<string, unknown>): void {
     }
   }
 
+  // ── fetch ──────────────────────────────────────────────
+  validateFetchConfig(config.fetch, "config.fetch");
+
   // ── cache ──────────────────────────────────────────────
   const cache = config.cache as Record<string, unknown> | undefined;
   if (cache !== undefined) {
@@ -671,6 +676,137 @@ function validateConfig(config: Record<string, unknown>): void {
       );
     }
     validateCacheHubConfig(cache.cacheHub, "config.cache.cacheHub");
+  }
+}
+
+function validateFetchConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const fetchConfig = value as Record<string, unknown>;
+  if (fetchConfig.timeout !== undefined) {
+    validatePositiveNumber(fetchConfig.timeout, `${path}.timeout`);
+  }
+  if (fetchConfig.retry !== undefined) {
+    validateNonNegativeInteger(fetchConfig.retry, `${path}.retry`);
+  }
+  validateRetryDelay(fetchConfig.retryDelay, `${path}.retryDelay`);
+  validateOptionalStringArray(
+    fetchConfig.propagateHeaders,
+    `${path}.propagateHeaders`,
+  );
+
+  const proxy = fetchConfig.proxy;
+  if (proxy === undefined) {
+    return;
+  }
+  if (!Array.isArray(proxy)) {
+    throw new Error(`[vextjs] ${path}.proxy must be an array.`);
+  }
+
+  const names = new Set<string>();
+  proxy.forEach((item, index) => {
+    const itemPath = `${path}.proxy[${index}]`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`[vextjs] ${itemPath} must be an object.`);
+    }
+
+    const target = item as Record<string, unknown>;
+    validateRequiredString(target.name, `${itemPath}.name`);
+    const name = target.name as string;
+    if (FETCH_PROXY_RESERVED_TARGET_NAMES.has(name)) {
+      throw new Error(
+        `[vextjs] ${itemPath}.name "${name}" is reserved and cannot be used.`,
+      );
+    }
+    if (names.has(name)) {
+      throw new Error(`[vextjs] ${itemPath}.name "${name}" is duplicated.`);
+    }
+    names.add(name);
+
+    validateRequiredString(target.baseURL, `${itemPath}.baseURL`);
+    try {
+      new URL(target.baseURL as string);
+    } catch {
+      throw new Error(`[vextjs] ${itemPath}.baseURL must be a valid URL.`);
+    }
+
+    validateStringRecord(target.headers, `${itemPath}.headers`);
+    validateOptionalStringArray(
+      target.forwardHeaders,
+      `${itemPath}.forwardHeaders`,
+    );
+    validateProxyHeaderSource(
+      target.defaultInjectHeaders,
+      `${itemPath}.defaultInjectHeaders`,
+    );
+    if (
+      target.allowAuthorizationForward !== undefined &&
+      typeof target.allowAuthorizationForward !== "boolean"
+    ) {
+      throw new Error(
+        `[vextjs] ${itemPath}.allowAuthorizationForward must be a boolean.`,
+      );
+    }
+    if (target.timeout !== undefined) {
+      validatePositiveNumber(target.timeout, `${itemPath}.timeout`);
+    }
+    if (target.retry !== undefined) {
+      validateNonNegativeInteger(target.retry, `${itemPath}.retry`);
+    }
+    validateRetryDelay(target.retryDelay, `${itemPath}.retryDelay`);
+  });
+}
+
+function validateRetryDelay(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "function") {
+    return;
+  }
+  validateNonNegativeNumber(value, path);
+}
+
+function validateProxyHeaderSource(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "function") {
+    return;
+  }
+  validateStringRecord(value, path);
+}
+
+function validateStringRecord(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item !== "string") {
+      throw new Error(`[vextjs] ${path}.${key} must be a string.`);
+    }
+  }
+}
+
+function validateRequiredString(value: unknown, path: string): void {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`[vextjs] ${path} must be a non-empty string.`);
+  }
+}
+
+function validateOptionalStringArray(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an array of strings.`);
+  }
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new Error(`[vextjs] ${path}[] items must be strings.`);
+    }
   }
 }
 
@@ -870,6 +1006,14 @@ function validatePositiveInteger(value: unknown, path: string): void {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new Error(
       `[vextjs] ${path} must be a positive integer, got: ${value}`,
+    );
+  }
+}
+
+function validateNonNegativeInteger(value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `[vextjs] ${path} must be a non-negative integer, got: ${value}`,
     );
   }
 }

@@ -1,6 +1,6 @@
 import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware } from "./middleware.js";
-import type { VextFetch } from "../lib/fetch.js";
+import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
 import type {
   ResponseCache,
@@ -973,6 +973,14 @@ export interface VextConfig {
    * @see VextRequestContextConfig
    */
   requestContext: VextRequestContextConfig;
+
+  /**
+   * 内置 app.fetch 配置。
+   *
+   * 控制出站 HTTP 客户端的 timeout / retry / header 传播行为，
+   * 以及根 app.fetch.proxy 使用的配置化上游代理目标。
+   */
+  fetch?: VextFetchConfig;
 
   /**
    * Cluster 多进程配置

@@ -588,6 +588,91 @@ describe("validateConfig", () => {
     });
   });
 
+  // ── fetch ───────────────────────────────────────────────
+
+  describe("fetch validation", () => {
+    it("accepts fetch proxy target config", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            timeout: 10_000,
+            retry: 1,
+            retryDelay: (attempt: number) => attempt * 10,
+            propagateHeaders: ["x-trace-id"],
+            proxy: [
+              {
+                name: "userService",
+                baseURL: "https://users.example.com/api",
+                headers: { "x-target": "users" },
+                forwardHeaders: ["x-tenant-id"],
+                defaultInjectHeaders: { "x-default": "value" },
+                allowAuthorizationForward: false,
+                timeout: 2_000,
+                retry: 0,
+                retryDelay: 100,
+              },
+            ],
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects non-array fetch.proxy", () => {
+      expect(() =>
+        _validateConfig({ fetch: { proxy: { name: "userService" } } }),
+      ).toThrow("config.fetch.proxy must be an array");
+    });
+
+    it("rejects duplicated fetch.proxy target names", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [
+              { name: "userService", baseURL: "https://a.example.com" },
+              { name: "userService", baseURL: "https://b.example.com" },
+            ],
+          },
+        }),
+      ).toThrow('config.fetch.proxy[1].name "userService" is duplicated');
+    });
+
+    it("rejects reserved fetch.proxy target names", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [{ name: "then", baseURL: "https://then.example.com" }],
+          },
+        }),
+      ).toThrow('config.fetch.proxy[0].name "then" is reserved');
+    });
+
+    it("rejects invalid fetch.proxy baseURL", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [{ name: "userService", baseURL: "/relative" }],
+          },
+        }),
+      ).toThrow("config.fetch.proxy[0].baseURL must be a valid URL");
+    });
+
+    it("rejects invalid fetch.proxy retry", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [
+              {
+                name: "userService",
+                baseURL: "https://users.example.com",
+                retry: -1,
+              },
+            ],
+          },
+        }),
+      ).toThrow("config.fetch.proxy[0].retry must be a non-negative integer");
+    });
+  });
+
   // ── cache ───────────────────────────────────────────────
 
   describe("cache validation", () => {

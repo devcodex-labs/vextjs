@@ -29,6 +29,7 @@ import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
 import { _deepMerge } from "../lib/config-loader.js";
 import type { VextApp, VextConfig, VextServices } from "../types/app.js";
+import { createVextFetch, type VextFetchConfig } from "../lib/fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 
 import { Readable } from "node:stream";
@@ -320,6 +321,13 @@ export async function createTestApp(
   // ── 2a. resolveAdapter（异步按需加载）─────────────────
   app.adapter = await resolveAdapter(finalConfig, app);
 
+  const fetchCfg = finalConfig.fetch as VextFetchConfig | undefined;
+  app.fetch = createVextFetch(
+    app.logger,
+    fetchCfg ?? {},
+    finalConfig.requestId?.header ?? "x-request-id",
+  ) as VextApp["fetch"];
+
   // ── 3. 插件 ──────────────────────────────────────────
   if (setupPluginsFn) {
     // 用户提供的手动插件注册函数（精确控制依赖）
@@ -372,16 +380,13 @@ export async function createTestApp(
 
   // requestId（config.requestId.enabled，默认 true）
   if (finalConfig.requestId?.enabled !== false) {
-    const fetchCfg = (finalConfig as Record<string, unknown>).fetch as
-      | { propagateHeaders?: string[] }
-      | undefined;
     const requestIdMiddleware = createRequestIdMiddleware(
       finalConfig.requestId,
       () => internals.getRequestIdGenerator(),
       fetchCfg?.propagateHeaders ?? [],
       (finalConfig as Record<string, unknown>).locale as
-      | import("../types/app.js").VextLocaleConfig
-      | undefined,
+        | import("../types/app.js").VextLocaleConfig
+        | undefined,
     );
     app.adapter.registerMiddleware(requestIdMiddleware);
   }
