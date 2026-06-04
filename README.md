@@ -63,7 +63,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.14"
+    "vextjs": "^0.3.15"
   }
 }
 ```
@@ -523,4 +523,4 @@ Use the testing entry for integration tests that need the framework runtime with
 
 ## License
 
-MIT
+Apache-2.0

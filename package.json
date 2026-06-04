@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
   "type": "module",
   "main": "./dist/index.js",
@@ -95,7 +95,7 @@
     "node"
   ],
   "author": "rocky <rockyshi1993@gmail.com>",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vextjs/vext.git"
