@@ -19,7 +19,11 @@ export { HttpError, VextValidationError } from "./errors.js";
 export type { VextValidationFieldError } from "./errors.js";
 
 // ── Adapter 类型 ────────────────────────────────────────────
-export type { VextAdapter, VextServerHandle } from "./adapter.js";
+export type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "./adapter.js";
 
 // ── App / Config / Services 类型 ────────────────────────────
 export type {
@@ -37,6 +41,7 @@ export type {
   VextRequestIdConfig,
   VextLoggerConfig,
   VextShutdownConfig,
+  VextServerConfig,
   VextResponseConfig,
   VextLogErrorsConfig,
   VextOpenAPIConfig,

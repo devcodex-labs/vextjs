@@ -6,7 +6,11 @@ import type { PreparedMethod } from "route-core";
 import { createVextRequest, type ParsedUrl } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
-import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 import type {
   VextMiddleware,
@@ -16,6 +20,10 @@ import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
 import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+} from "../../lib/server-config.js";
 
 /**
  * Native Adapter 选项
@@ -589,8 +597,13 @@ export function createNativeAdapter(
     async listen(
       port: number,
       host: string = "0.0.0.0",
+      options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
-      const server: Server = createServer(handleRequest);
+      const server: Server = createServer(
+        createNodeServerOptions(options?.server),
+        handleRequest,
+      );
+      applyServerConfig(server, options?.server);
 
       return new Promise<VextServerHandle>((resolve, reject) => {
         server.on("error", (err) => {

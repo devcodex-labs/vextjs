@@ -7,7 +7,11 @@ import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
-import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 import type {
   VextMiddleware,
@@ -22,6 +26,10 @@ import {
   resolveAdapterBodyLimitBytes,
   resolveRouteBodyParserConfig,
 } from "../../lib/middlewares/body-parser.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+} from "../../lib/server-config.js";
 
 /**
  * Koa Adapter 选项
@@ -535,12 +543,17 @@ export function createKoaAdapter(
     async listen(
       port: number,
       host: string = "0.0.0.0",
+      options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
       // 挂载 Koa 主中间件（确保所有路由已注册完毕）
       registerKoaMiddleware();
 
       const handler = koaApp.callback();
-      const server = createServer(handler);
+      const server = createServer(
+        createNodeServerOptions(options?.server),
+        handler,
+      );
+      applyServerConfig(server, options?.server);
 
       return new Promise<VextServerHandle>((resolve, reject) => {
         server.on("error", (err) => {

@@ -500,6 +500,7 @@ export const DEFAULT_CONFIG: VextConfig = {
   shutdown: {
     timeout: 10,
   },
+  server: {},
   response: {
     hideInternalErrors: true,
     wrap: true,

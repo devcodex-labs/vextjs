@@ -4,7 +4,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse, createResponseBox } from "./response.js";
-import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 import type {
   VextMiddleware,
@@ -15,6 +19,10 @@ import type { VextResponse } from "../../types/response.js";
 import { requestContext } from "../../lib/request-context.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
 import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+} from "../../lib/server-config.js";
 
 /**
  * 中间件链执行器（洋葱模型）
@@ -260,11 +268,16 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
     async listen(
       port: number,
       host: string = "0.0.0.0",
+      options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
       const requestHandler = this.buildHandler();
 
       return new Promise<VextServerHandle>((resolve, reject) => {
-        const server = createServer(requestHandler);
+        const server = createServer(
+          createNodeServerOptions(options?.server),
+          requestHandler,
+        );
+        applyServerConfig(server, options?.server);
 
         server.on("error", (err) => {
           reject(err);

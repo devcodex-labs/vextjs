@@ -120,6 +120,7 @@ export default {
 | `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方      | 请求 ID 配置               |
 | `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置                   |
 | `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置               |
+| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`        | Node.js HTTP server 配置   |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置                   |
 | `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置              |
 | `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置               |
@@ -424,6 +425,38 @@ export default {
   },
 };
 ```
+
+---
+
+## VextServerConfig
+
+入站 Node.js HTTP server 层配置。适用于内置 Native / Hono / Fastify / Express / Koa adapter，也适用于 `vext dev` 创建的开发 server。未设置字段保持当前 Node.js 默认值。
+
+| 字段                          | 类型     | 默认值         | 说明                                            |
+| ----------------------------- | -------- | -------------- | ----------------------------------------------- |
+| `requestTimeout`              | `number` | Node.js 默认值 | 接收完整请求的最大时间（毫秒），`0` 表示禁用    |
+| `headersTimeout`              | `number` | Node.js 默认值 | 接收完整 HTTP headers 的最大时间（毫秒）        |
+| `keepAliveTimeout`            | `number` | Node.js 默认值 | 响应完成后 keep-alive 空闲等待时间（毫秒）      |
+| `socketTimeout`               | `number` | Node.js 默认值 | socket inactivity timeout（毫秒），`0` 表示禁用 |
+| `maxHeaderSize`               | `number` | Node.js 默认值 | 最大请求头大小（bytes）                         |
+| `maxRequestsPerSocket`        | `number` | Node.js 默认值 | 单 socket 最大请求数，`0` 表示不限              |
+| `connectionsCheckingInterval` | `number` | Node.js 默认值 | 未完成请求超时检查间隔（毫秒）                  |
+
+```typescript
+export default {
+  server: {
+    requestTimeout: 120_000,
+    headersTimeout: 60_000,
+    keepAliveTimeout: 5_000,
+    socketTimeout: 0,
+    maxHeaderSize: 16 * 1024,
+    maxRequestsPerSocket: 0,
+    connectionsCheckingInterval: 30_000,
+  },
+};
+```
+
+`config.server` 只控制入站服务请求。出站 `app.fetch` / `app.fetch.proxy` 的超时由 `config.fetch.timeout`、代理目标 `timeout` 或调用时 options 控制。
 
 ---
 

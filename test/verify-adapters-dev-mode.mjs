@@ -120,6 +120,15 @@ function setupTempProject(adapterName, port) {
   logger: {
     level: "warn",
   },
+  server: {
+    requestTimeout: 120000,
+    headersTimeout: 60000,
+    keepAliveTimeout: 1000,
+    socketTimeout: 0,
+    maxHeaderSize: 16384,
+    maxRequestsPerSocket: 0,
+    connectionsCheckingInterval: 1000,
+  },
   response: {
     hideInternalErrors: false,
   },
@@ -355,6 +364,10 @@ async function testAdapter(adapterName, port) {
     console.log(`│    → 启动成功: http://${actualHost}:${actualPort}`);
     console.log(`│    → adapter.name = "${app.adapter.name}"`);
     console.log(`│    → mode = dev`);
+    assert(
+      app.config.server?.requestTimeout === 120000,
+      `config.server.requestTimeout 未生效: ${app.config.server?.requestTimeout}`,
+    );
 
     // 等一小段时间确保服务完全就绪
     await sleep(300);

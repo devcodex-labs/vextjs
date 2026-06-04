@@ -1,11 +1,16 @@
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse, Server } from "node:http";
 import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
-import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 import type {
   VextMiddleware,
@@ -18,6 +23,13 @@ import {
   resolveAdapterBodyLimitBytes,
   resolveRouteBodyParserConfig,
 } from "../../lib/middlewares/body-parser.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+  hasServerConfig,
+} from "../../lib/server-config.js";
+
+type NodeRequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
 /**
  * Fastify Adapter 选项
@@ -181,11 +193,23 @@ export function createFastifyAdapter(
     multipart: app.config.multipart,
     adapterBodyLimit: options.bodyLimit,
   });
+  const serverConfig = app.config.server;
+  const serverFactory = hasServerConfig(serverConfig)
+    ? (handler: NodeRequestHandler): Server => {
+        const server = createServer(
+          createNodeServerOptions(serverConfig),
+          handler,
+        );
+        applyServerConfig(server, serverConfig);
+        return server;
+      }
+    : undefined;
 
   const fastify: FastifyInstance = Fastify({
     logger: options.logger ?? false,
     pluginTimeout: options.pluginTimeout ?? 10000,
     bodyLimit: defaultBodyLimit,
+    ...(serverFactory ? { serverFactory } : {}),
     // Fastify v5 要求路由器选项通过 routerOptions 传递（FSTDEP022）
     // 直接传 ignoreTrailingSlash / caseSensitive 在 v5 仍可用但会触发 deprecation warning，
     // v6 将彻底移除顶层支持。
@@ -472,10 +496,12 @@ export function createFastifyAdapter(
     async listen(
       port: number,
       host: string = "0.0.0.0",
+      options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
       // 确保所有路由和插件注册完成
       await fastify.ready();
       _ready = true;
+      applyServerConfig(fastify.server, options?.server);
 
       // Fastify listen 返回监听地址字符串（如 http://0.0.0.0:3000）
       await fastify.listen({ port, host });

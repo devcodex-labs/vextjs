@@ -10,7 +10,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
-import type { VextAdapter, VextServerHandle } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterListenOptions,
+  VextServerHandle,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 import type {
   VextMiddleware,
@@ -25,6 +29,10 @@ import {
   resolveAdapterBodyLimitBytes,
   resolveRouteBodyParserConfig,
 } from "../../lib/middlewares/body-parser.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+} from "../../lib/server-config.js";
 
 /**
  * Express Adapter 选项
@@ -580,11 +588,16 @@ export function createExpressAdapter(
     async listen(
       port: number,
       host: string = "0.0.0.0",
+      options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
       // 注册兜底中间件（确保在所有路由之后）
       registerFallbacks();
 
-      const server = createServer(expressApp);
+      const server = createServer(
+        createNodeServerOptions(options?.server),
+        expressApp,
+      );
+      applyServerConfig(server, options?.server);
 
       return new Promise<VextServerHandle>((resolve, reject) => {
         server.on("error", (err) => {

@@ -12,6 +12,10 @@ import type { ModelReloadResult } from "./model-reloader.js";
 import { finalizeConfig, loadRawConfig } from "../config-loader.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
+import {
+  applyServerConfig,
+  createNodeServerOptions,
+} from "../server-config.js";
 import { loadI18n } from "../i18n-loader.js";
 import { schemaAdapter } from "../schema-adapter.js";
 import { loadPlugins } from "../plugin-loader.js";
@@ -602,26 +606,11 @@ export async function devBootstrap(
     //   2. Adapter 可自由重建（每次 soft reload 创建新实例）
     //   3. 请求处理函数通过 HotSwappableHandler 可原子替换
     //
-    server = createServer(hotHandler.handle);
-
-    // 应用与生产模式一致的 server 配置
-    const serverConfig = (config as Record<string, unknown>).server as
-      | {
-          keepAliveTimeout?: number;
-          headersTimeout?: number;
-          requestTimeout?: number;
-        }
-      | undefined;
-
-    if (serverConfig?.keepAliveTimeout) {
-      server.keepAliveTimeout = serverConfig.keepAliveTimeout;
-    }
-    if (serverConfig?.headersTimeout) {
-      server.headersTimeout = serverConfig.headersTimeout;
-    }
-    if (serverConfig?.requestTimeout) {
-      server.requestTimeout = serverConfig.requestTimeout;
-    }
+    server = createServer(
+      createNodeServerOptions(config.server),
+      hotHandler.handle,
+    );
+    applyServerConfig(server, config.server);
 
     // ── 步骤 12: 开始监听 ────────────────────────────────
     const port = config.port ?? 3000;

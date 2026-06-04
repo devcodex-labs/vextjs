@@ -64,7 +64,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.15"
+    "vextjs": "^0.3.16"
   }
 }
 ```
@@ -161,6 +161,11 @@ const config: VextUserConfig = {
     level: "info",
     pretty: true,
   },
+  server: {
+    requestTimeout: 120_000,
+    headersTimeout: 60_000,
+    keepAliveTimeout: 5_000,
+  },
   openapi: {
     enabled: true,
   },
@@ -187,6 +192,8 @@ export default config;
 ```
 
 Use `src/config/local.ts` for machine-specific overrides and keep it out of Git.
+
+Use `config.server` for inbound Node.js HTTP server settings such as request, headers, keep-alive, socket timeout, request header size, max requests per socket, and incomplete-request checking interval. It applies to the built-in Native, Hono, Fastify, Express, Koa adapters and the dev server; omitted fields keep the current Node.js defaults. This is separate from `config.fetch.timeout`, which only controls outbound `app.fetch` calls.
 
 ## Startup Config Providers
 

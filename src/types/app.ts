@@ -451,6 +451,35 @@ export interface VextShutdownConfig {
 }
 
 /**
+ * VextServerConfig — Node.js HTTP server 层配置
+ *
+ * 这些配置只影响服务端入站 HTTP server，不影响 app.fetch 出站请求。
+ * 未设置的字段保持 Node.js / adapter 默认值。
+ */
+export interface VextServerConfig {
+  /** 接收完整请求的最大时间（毫秒）。0 表示禁用该超时。 */
+  requestTimeout?: number;
+
+  /** 接收完整 HTTP headers 的最大时间（毫秒）。0 表示禁用该超时。 */
+  headersTimeout?: number;
+
+  /** 响应完成后等待同一连接新请求的 keep-alive 时间（毫秒）。0 表示禁用。 */
+  keepAliveTimeout?: number;
+
+  /** socket inactivity timeout，对应 Node.js server.timeout（毫秒）。0 表示禁用。 */
+  socketTimeout?: number;
+
+  /** 最大请求头大小（bytes）。 */
+  maxHeaderSize?: number;
+
+  /** 单个 keep-alive socket 可处理的最大请求数。0 表示不限。 */
+  maxRequestsPerSocket?: number;
+
+  /** 检查未完成请求 headers/request timeout 的间隔（毫秒）。 */
+  connectionsCheckingInterval?: number;
+}
+
+/**
  * 错误日志配置
  *
  * 控制 error-handler 在捕获到各类错误时是否向 logger 输出日志。
@@ -947,6 +976,9 @@ export interface VextConfig {
 
   /** 优雅关闭配置 */
   shutdown: VextShutdownConfig;
+
+  /** Node.js HTTP server 层配置 */
+  server: VextServerConfig;
 
   /** 响应配置 */
   response: VextResponseConfig;

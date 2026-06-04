@@ -384,6 +384,38 @@ export default {
 
 收到 `SIGTERM` / `SIGINT` 信号后，框架按注册的逆序执行所有 `onClose` 钩子（如关闭数据库连接），超时后强制退出。
 
+### HTTP Server 配置 (`server`)
+
+`server` 控制入站 Node.js HTTP server 层行为，适用于内置 Native / Hono / Fastify / Express / Koa adapter，也适用于 `vext dev` 创建的开发 server。未配置的字段保持当前 Node.js 默认值。
+
+| 配置项                               | 类型     | 默认值         | 说明                                            |
+| ------------------------------------ | -------- | -------------- | ----------------------------------------------- |
+| `server.requestTimeout`              | `number` | Node.js 默认值 | 接收完整请求的最大时间（毫秒），`0` 表示禁用    |
+| `server.headersTimeout`              | `number` | Node.js 默认值 | 接收完整 HTTP headers 的最大时间（毫秒）        |
+| `server.keepAliveTimeout`            | `number` | Node.js 默认值 | 响应完成后 keep-alive 空闲等待时间（毫秒）      |
+| `server.socketTimeout`               | `number` | Node.js 默认值 | socket inactivity timeout（毫秒），`0` 表示禁用 |
+| `server.maxHeaderSize`               | `number` | Node.js 默认值 | 最大请求头大小（bytes）                         |
+| `server.maxRequestsPerSocket`        | `number` | Node.js 默认值 | 单 socket 最大请求数，`0` 表示不限              |
+| `server.connectionsCheckingInterval` | `number` | Node.js 默认值 | 未完成请求超时检查间隔（毫秒）                  |
+
+```typescript
+export default {
+  server: {
+    requestTimeout: 120_000,
+    headersTimeout: 60_000,
+    keepAliveTimeout: 5_000,
+    socketTimeout: 0,
+    maxHeaderSize: 16 * 1024,
+    maxRequestsPerSocket: 0,
+    connectionsCheckingInterval: 30_000,
+  },
+};
+```
+
+:::tip
+`config.server` 只影响入站服务请求；出站 `app.fetch` / `app.fetch.proxy` 的超时仍由 `config.fetch.timeout` 或调用时 options 控制。
+:::
+
 ### 响应配置 (`response`)
 
 | 配置项                             | 类型      | 默认值  | 说明                                                                        |
@@ -777,7 +809,9 @@ export default {
 - `rateLimit.max` 必须是正整数
 - `rateLimit.window` 必须是正整数
 - `logger.level` 必须是合法的日志级别
-- `shutdown.timeout` 必须是正整数
+- `shutdown.timeout` 必须是非负数（单位：秒）
+- `server.requestTimeout`、`server.headersTimeout`、`server.keepAliveTimeout`、`server.socketTimeout` 必须是非负有限数（单位：毫秒）
+- `server.maxHeaderSize`、`server.connectionsCheckingInterval` 必须是正整数，`server.maxRequestsPerSocket` 必须是非负整数
 - `cluster.workers` 必须是正整数或 `'auto'` / `'auto-1'`
 
 如果校验失败，框架会在启动时立即报错并给出清晰的错误信息，避免配置错误在运行时才暴露。
@@ -830,6 +864,16 @@ export default {
 
   shutdown: {
     timeout: 10, // 单位：秒
+  },
+
+  server: {
+    requestTimeout: 120_000, // 接收完整请求的最大时间，单位：毫秒
+    headersTimeout: 60_000, // 接收完整请求头的最大时间，单位：毫秒
+    keepAliveTimeout: 5_000, // 响应完成后的 keep-alive 空闲等待时间，单位：毫秒
+    socketTimeout: 0, // socket inactivity timeout，0 表示禁用
+    maxHeaderSize: 16 * 1024, // 最大请求头大小，单位：bytes
+    maxRequestsPerSocket: 0, // 单连接请求数上限，0 表示不限
+    connectionsCheckingInterval: 30_000, // 未完成请求超时检查间隔，单位：毫秒
   },
 
   requestContext: {

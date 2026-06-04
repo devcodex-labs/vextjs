@@ -1,5 +1,10 @@
 import type { VextMiddleware, VextErrorMiddleware } from "./middleware.js";
-import type { RouteOptions } from "./app.js";
+import type { RouteOptions, VextServerConfig } from "./app.js";
+
+export interface VextAdapterListenOptions {
+  /** Node.js HTTP server 层配置，由 bootstrap 从 config.server 传入。 */
+  server?: VextServerConfig;
+}
 
 /**
  * VextAdapter — 框架底层适配器接口
@@ -43,7 +48,12 @@ export interface VextAdapter {
    * @param path   完整路径（含前缀，如 /api/v1/users/:id）
    * @param chain  中间件执行链（已组装完毕）
    */
-  registerRoute(method: string, path: string, chain: VextMiddleware[], options?: RouteOptions): void;
+  registerRoute(
+    method: string,
+    path: string,
+    chain: VextMiddleware[],
+    options?: RouteOptions,
+  ): void;
 
   /**
    * 注册全局中间件（在所有路由之前执行）
@@ -86,7 +96,11 @@ export interface VextAdapter {
    * @param host 监听地址（默认 '0.0.0.0'）
    * @returns 包含 close() 的服务器句柄
    */
-  listen(port: number, host?: string): Promise<VextServerHandle>;
+  listen(
+    port: number,
+    host?: string,
+    options?: VextAdapterListenOptions,
+  ): Promise<VextServerHandle>;
 
   /**
    * 构建完整的请求处理函数（不启动 server）

@@ -464,6 +464,71 @@ describe("validateConfig", () => {
     });
   });
 
+  // ── server ──────────────────────────────────────────────
+
+  describe("server validation", () => {
+    it("accepts valid server config", () => {
+      expect(() =>
+        _validateConfig({
+          server: {
+            requestTimeout: 120_000,
+            headersTimeout: 60_000,
+            keepAliveTimeout: 5_000,
+            socketTimeout: 0,
+            maxHeaderSize: 16 * 1024,
+            maxRequestsPerSocket: 0,
+            connectionsCheckingInterval: 30_000,
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("accepts timeout fields set to 0", () => {
+      expect(() =>
+        _validateConfig({
+          server: {
+            requestTimeout: 0,
+            headersTimeout: 0,
+            keepAliveTimeout: 0,
+            socketTimeout: 0,
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects non-object server config", () => {
+      expect(() => _validateConfig({ server: [] })).toThrow(
+        "config.server must be an object",
+      );
+    });
+
+    it("rejects negative timeout fields", () => {
+      expect(() => _validateConfig({ server: { requestTimeout: -1 } })).toThrow(
+        "config.server.requestTimeout",
+      );
+    });
+
+    it("rejects non-finite timeout fields", () => {
+      expect(() =>
+        _validateConfig({
+          server: { headersTimeout: Number.POSITIVE_INFINITY },
+        }),
+      ).toThrow("config.server.headersTimeout");
+    });
+
+    it("rejects invalid integer fields", () => {
+      expect(() => _validateConfig({ server: { maxHeaderSize: 0 } })).toThrow(
+        "config.server.maxHeaderSize",
+      );
+      expect(() =>
+        _validateConfig({ server: { maxRequestsPerSocket: -1 } }),
+      ).toThrow("config.server.maxRequestsPerSocket");
+      expect(() =>
+        _validateConfig({ server: { connectionsCheckingInterval: 0 } }),
+      ).toThrow("config.server.connectionsCheckingInterval");
+    });
+  });
+
   // ── cluster ─────────────────────────────────────────────
 
   describe("cluster validation", () => {

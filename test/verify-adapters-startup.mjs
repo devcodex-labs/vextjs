@@ -95,6 +95,15 @@ function setupTempProject(adapterName, port) {
   logger: {
     level: "warn",
   },
+  server: {
+    requestTimeout: 120000,
+    headersTimeout: 60000,
+    keepAliveTimeout: 1000,
+    socketTimeout: 0,
+    maxHeaderSize: 16384,
+    maxRequestsPerSocket: 0,
+    connectionsCheckingInterval: 1000,
+  },
   response: {
     hideInternalErrors: false,
   },
@@ -326,10 +335,15 @@ const TEST_CASES = [
       });
 
       const json = await res.json();
-      assert(res.status === 413, `${adapterName} route-level body limit expected 413, got ${res.status}`);
       assert(
-        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
-        `${adapterName} route-level body limit returned unexpected payload: ${JSON.stringify(json)}`
+        res.status === 413,
+        `${adapterName} route-level body limit expected 413, got ${res.status}`,
+      );
+      assert(
+        json.code === 413 ||
+          json.error === "Payload Too Large" ||
+          json.message === "Payload Too Large",
+        `${adapterName} route-level body limit returned unexpected payload: ${JSON.stringify(json)}`,
       );
       return json;
     },
@@ -345,10 +359,15 @@ const TEST_CASES = [
       });
 
       const json = await res.json();
-      assert(res.status === 413, `${adapterName} override.maxBodySize expected 413, got ${res.status}`);
       assert(
-        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
-        `${adapterName} override.maxBodySize returned unexpected payload: ${JSON.stringify(json)}`
+        res.status === 413,
+        `${adapterName} override.maxBodySize expected 413, got ${res.status}`,
+      );
+      assert(
+        json.code === 413 ||
+          json.error === "Payload Too Large" ||
+          json.message === "Payload Too Large",
+        `${adapterName} override.maxBodySize returned unexpected payload: ${JSON.stringify(json)}`,
       );
       return json;
     },
@@ -364,10 +383,13 @@ const TEST_CASES = [
       });
 
       const json = await res.json();
-      assert(res.status === 200, `${adapterName} bodyParser.enabled=false expected 200, got ${res.status}`);
+      assert(
+        res.status === 200,
+        `${adapterName} bodyParser.enabled=false expected 200, got ${res.status}`,
+      );
       assert(
         json.data?.bodyType === "undefined" && json.data?.hasBody === false,
-        `${adapterName} bodyParser.enabled=false should leave req.body undefined, got ${JSON.stringify(json)}`
+        `${adapterName} bodyParser.enabled=false should leave req.body undefined, got ${JSON.stringify(json)}`,
       );
       return json;
     },
@@ -376,7 +398,11 @@ const TEST_CASES = [
     name: "POST /multipart-limit — multipart obeys total maxBodySize",
     run: async (baseUrl, adapterName) => {
       const form = new FormData();
-      form.append("file", new Blob(["x".repeat(128)], { type: "text/plain" }), "large.txt");
+      form.append(
+        "file",
+        new Blob(["x".repeat(128)], { type: "text/plain" }),
+        "large.txt",
+      );
 
       const res = await fetch(`${baseUrl}/multipart-limit`, {
         method: "POST",
@@ -385,10 +411,15 @@ const TEST_CASES = [
       });
 
       const json = await res.json();
-      assert(res.status === 413, `${adapterName} multipart total body limit expected 413, got ${res.status}`);
       assert(
-        json.code === 413 || json.error === "Payload Too Large" || json.message === "Payload Too Large",
-        `${adapterName} multipart total body limit returned unexpected payload: ${JSON.stringify(json)}`
+        res.status === 413,
+        `${adapterName} multipart total body limit expected 413, got ${res.status}`,
+      );
+      assert(
+        json.code === 413 ||
+          json.error === "Payload Too Large" ||
+          json.message === "Payload Too Large",
+        `${adapterName} multipart total body limit returned unexpected payload: ${JSON.stringify(json)}`,
       );
       return json;
     },
@@ -422,6 +453,10 @@ async function testAdapter(adapterName, port) {
       `│    → 启动成功: http://${serverHandle.host}:${serverHandle.port}`,
     );
     console.log(`│    → adapter.name = "${app.adapter.name}"`);
+    assert(
+      app.config.server?.requestTimeout === 120000,
+      `config.server.requestTimeout 未生效: ${app.config.server?.requestTimeout}`,
+    );
 
     // 等一小段时间确保服务完全就绪
     await sleep(200);

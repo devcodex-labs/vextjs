@@ -559,6 +559,9 @@ function validateConfig(config: Record<string, unknown>): void {
     }
   }
 
+  // ── server ────────────────────────────────────────────
+  validateServerConfig(config.server, "config.server");
+
   // ── accessLog ─────────────────────────────────────────
   const accessLog = config.accessLog as Record<string, unknown> | undefined;
   if (accessLog !== undefined) {
@@ -810,6 +813,43 @@ function validateOptionalStringArray(value: unknown, path: string): void {
   }
 }
 
+function validateServerConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const server = value as Record<string, unknown>;
+  for (const key of [
+    "requestTimeout",
+    "headersTimeout",
+    "keepAliveTimeout",
+    "socketTimeout",
+  ]) {
+    if (server[key] !== undefined) {
+      validateNonNegativeFiniteNumber(server[key], `${path}.${key}`);
+    }
+  }
+
+  if (server.maxHeaderSize !== undefined) {
+    validatePositiveInteger(server.maxHeaderSize, `${path}.maxHeaderSize`);
+  }
+  if (server.maxRequestsPerSocket !== undefined) {
+    validateNonNegativeInteger(
+      server.maxRequestsPerSocket,
+      `${path}.maxRequestsPerSocket`,
+    );
+  }
+  if (server.connectionsCheckingInterval !== undefined) {
+    validatePositiveInteger(
+      server.connectionsCheckingInterval,
+      `${path}.connectionsCheckingInterval`,
+    );
+  }
+}
+
 function validateCacheHubConfig(value: unknown, path: string): void {
   if (value === undefined) {
     return;
@@ -1030,6 +1070,14 @@ function validateNonNegativeNumber(value: unknown, path: string): void {
   if (typeof value !== "number" || value < 0) {
     throw new Error(
       `[vextjs] ${path} must be a non-negative number, got: ${value}`,
+    );
+  }
+}
+
+function validateNonNegativeFiniteNumber(value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `[vextjs] ${path} must be a non-negative finite number, got: ${value}`,
     );
   }
 }

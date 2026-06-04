@@ -443,7 +443,9 @@ export async function bootstrap(
     app.adapter.registerNotFound(notFoundHandler);
 
     // ── 步骤 ⑦: HTTP 开始监听 ────────────────────────────
-    serverHandle = await app.adapter.listen(config.port, config.host);
+    serverHandle = await app.adapter.listen(config.port, config.host, {
+      server: config.server,
+    });
 
     // ── 步骤 ⑧: 注册信号处理 ────────────────────────────
     // 通过 shutdown 模块注册 SIGTERM / SIGINT 信号处理器
