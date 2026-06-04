@@ -49,6 +49,7 @@ export type {
   VextMiddlewareRef,
   RouteCacheOptions,
   VextCacheConfig,
+  VextResponseCacheHubOptions,
   VextCacheStats,
 } from "./app.js";
 

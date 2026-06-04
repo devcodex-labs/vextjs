@@ -55,6 +55,7 @@ export type {
   // 缓存类型
   RouteCacheOptions,
   VextCacheConfig,
+  VextResponseCacheHubOptions,
   VextCacheStats,
 
   // 插件类型

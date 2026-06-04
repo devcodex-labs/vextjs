@@ -65,19 +65,159 @@ app.get("/realtime", { cache: false }, async (req, res) => {
 
 ### 全局配置 (config.cache)
 
+`config.cache` 控制整个应用的响应缓存运行时。路由是否缓存仍由每条路由的 `RouteOptions.cache` 决定。
+
 ```typescript
 // src/config/default.ts
 export default {
   cache: {
     enabled: true, // 是否启用路由级响应缓存（默认 true）
     defaultTtl: 60_000, // 路由未指定 ttl 时的默认值，单位毫秒
-    maxEntries: 1000, // 最大缓存条目数
-    maxMemory: 50 * 1024 * 1024, // 最大内存占用 bytes
+    maxEntries: 1000, // Memory 快捷配置：最大缓存条目数
+    maxMemory: 50 * 1024 * 1024, // Memory 快捷配置：最大内存占用 bytes
+    cleanupInterval: 30_000, // Memory 快捷配置：周期清理间隔，0 表示只做惰性清理
   },
 };
 ```
 
-响应缓存运行时由 `response-cache-kit` 承接，底层缓存由 `cache-hub` 管理。Vext 只暴露上面的业务配置，不开放自定义 Store 配置。
+响应缓存运行时由 `response-cache-kit` 承接，底层缓存由 `cache-hub` 管理。Vext 不开放自定义 Store；需要调整底层运行时，请配置 `cache.cacheHub`。
+
+#### config.cache 字段
+
+| 字段              | 类型      | 默认值  | 说明                                                                                      |
+| ----------------- | --------- | ------- | ----------------------------------------------------------------------------------------- |
+| `enabled`         | `boolean` | `true`  | 是否启用路由级响应缓存。设为 `false` 后不安装缓存中间件，也不会打开 Redis/MultiLevel 连接 |
+| `defaultTtl`      | `number`  | `60000` | 路由未指定 `ttl` 时的默认 TTL，单位毫秒                                                   |
+| `maxEntries`      | `number`  | `1000`  | Memory 模式快捷配置，`cacheHub` 未配置或为 Memory 时生效                                  |
+| `maxMemory`       | `number`  | —       | Memory 模式快捷配置，最大内存占用 bytes                                                   |
+| `cleanupInterval` | `number`  | `0`     | Memory 模式快捷配置，周期清理间隔；`0` 表示只在访问时惰性清理                             |
+| `cacheHub`        | `object`  | Memory  | 底层运行时配置：Memory、Redis、MultiLevel、lease、distributed                             |
+
+#### Memory cacheHub
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 60_000,
+    cacheHub: {
+      mode: "memory",
+      maxEntries: 1000,
+      maxMemory: 50 * 1024 * 1024,
+      cleanupInterval: 30_000,
+      enableStats: true,
+    },
+  },
+};
+```
+
+| 字段              | 类型       | 默认值     | 说明                       |
+| ----------------- | ---------- | ---------- | -------------------------- |
+| `mode`            | `"memory"` | `"memory"` | 使用进程内 Memory 缓存     |
+| `maxEntries`      | `number`   | `1000`     | 最大条目数                 |
+| `maxMemory`       | `number`   | —          | 最大内存占用 bytes         |
+| `cleanupInterval` | `number`   | `0`        | 周期清理间隔，单位毫秒     |
+| `enableStats`     | `boolean`  | `true`     | 是否记录统计信息           |
+| `enabled`         | `boolean`  | `true`     | 底层 Memory Store 是否启用 |
+
+#### Redis cacheHub
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 2_000,
+    cacheHub: {
+      mode: "redis",
+      url: "redis://localhost:6379",
+      deleteCommand: "unlink",
+      lease: {
+        waitForOwner: 1_000,
+        onTimeout: "fetch",
+      },
+      distributed: {
+        channel: "vext:response-cache",
+      },
+    },
+  },
+};
+```
+
+Redis 模式适合多实例共享响应缓存。业务项目启用 Redis/MultiLevel 时需要安装 `ioredis`：
+
+```bash
+npm install ioredis
+```
+
+| 字段            | 类型                | 默认值                   | 说明                             |
+| --------------- | ------------------- | ------------------------ | -------------------------------- |
+| `mode`          | `"redis"`           | 必填                     | 使用 Redis 存储响应快照          |
+| `url`           | `string`            | `redis://localhost:6379` | Redis URL                        |
+| `client`        | `object`            | —                        | 已有 Redis-like client，高级用法 |
+| `metaKeyPrefix` | `string`            | cache-hub 默认值         | tag 元数据 key 前缀              |
+| `scanCount`     | `number`            | cache-hub 默认值         | SCAN 批量大小                    |
+| `deleteCommand` | `"del" \| "unlink"` | `del`                    | 删除命令；大值建议 `unlink`      |
+| `lease`         | `boolean \| object` | `false`                  | 跨进程同 key 回源协调            |
+| `distributed`   | `boolean \| object` | `false`                  | 分布式 pattern/tag 失效广播      |
+
+#### MultiLevel cacheHub
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 60_000,
+    cacheHub: {
+      mode: "multi-level",
+      memory: {
+        maxEntries: 1000,
+        cleanupInterval: 30_000,
+      },
+      redis: {
+        url: "redis://localhost:6379",
+      },
+      writePolicy: "both",
+      backfillOnRemoteHit: true,
+      remoteTimeout: 50,
+      lease: true,
+    },
+  },
+};
+```
+
+MultiLevel 使用本进程 Memory 作为 L1、Redis 作为 L2，适合希望降低 Redis 读取压力但仍需要跨进程共享缓存的服务。
+
+| 字段                       | 类型                                   | 默认值           | 说明                          |
+| -------------------------- | -------------------------------------- | ---------------- | ----------------------------- |
+| `mode`                     | `"multi-level"`                        | 必填             | 启用 L1 Memory + L2 Redis     |
+| `memory`                   | `object`                               | `{}`             | L1 Memory 配置                |
+| `redis`                    | `object`                               | `{}`             | L2 Redis 配置                 |
+| `writePolicy`              | `"both" \| "local-first-async-remote"` | `both`           | 写入策略                      |
+| `backfillOnRemoteHit`      | `boolean`                              | cache-hub 默认值 | L2 命中后是否回填 L1          |
+| `remoteTimeout`            | `number`                               | cache-hub 默认值 | L2 操作超时毫秒数             |
+| `remoteInvalidationErrors` | `"ignore" \| "throw"`                  | cache-hub 默认值 | L2 失效错误处理               |
+| `lease`                    | `boolean \| object`                    | `false`          | 使用 Redis 层做跨进程回源协调 |
+| `distributed`              | `boolean \| object`                    | `false`          | 分布式失效广播                |
+
+#### lease 与 distributed
+
+`lease` 用于降低多进程缓存击穿：同一个 key 过期后，一个进程获得 lease 并执行 handler，其它进程短暂等待缓存被写入。等待超时默认继续回源，优先保证可用性。
+
+```typescript
+lease: {
+  ttl: 500,
+  waitForOwner: 1_000,
+  pollInterval: 10,
+  onTimeout: "fetch", // 或 "throw"
+}
+```
+
+`distributed` 用于把 `app.cache.invalidate(tag)`、`app.cache.clear()` 这类失效动作广播到其它实例：
+
+```typescript
+distributed: {
+  redisUrl: "redis://localhost:6379",
+  channel: "vext:response-cache",
+  instanceId: "api-1",
+}
+```
 
 ## 缓存行为
 
@@ -142,6 +282,8 @@ await app.cache.clear();
 const stats = app.cache.stats();
 // → { entries: 42, hits: 128, misses: 31, hitRate: 0.805 }
 ```
+
+`app.cache.clear()` 清理当前 vext 响应缓存 namespace。Redis/MultiLevel 模式下它不会执行 Redis 全库清空。
 
 ## Vary Headers
 

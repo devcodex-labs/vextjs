@@ -265,6 +265,14 @@ function deepFreeze<T>(obj: T): T {
     return obj;
   }
 
+  // Redis clients and other class instances may keep mutable internal slots.
+  // Freeze only arrays and plain objects so config files can carry advanced
+  // object references without breaking their runtime behavior.
+  const proto = Object.getPrototypeOf(obj);
+  if (!Array.isArray(obj) && proto !== Object.prototype && proto !== null) {
+    return obj;
+  }
+
   Object.freeze(obj);
 
   for (const value of Object.values(obj as Record<string, unknown>)) {
@@ -653,6 +661,232 @@ function validateConfig(config: Record<string, unknown>): void {
         `[vextjs] config.cache.maxMemory must be a positive number (bytes), got: ${maxMemory}`,
       );
     }
+    const cleanupInterval = cache.cleanupInterval;
+    if (
+      cleanupInterval !== undefined &&
+      (typeof cleanupInterval !== "number" || cleanupInterval < 0)
+    ) {
+      throw new Error(
+        `[vextjs] config.cache.cleanupInterval must be a non-negative number (milliseconds), got: ${cleanupInterval}`,
+      );
+    }
+    validateCacheHubConfig(cache.cacheHub, "config.cache.cacheHub");
+  }
+}
+
+function validateCacheHubConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const cacheHub = value as Record<string, unknown>;
+  const mode = cacheHub.mode ?? "memory";
+  if (!["memory", "redis", "multi-level"].includes(mode as string)) {
+    throw new Error(
+      `[vextjs] ${path}.mode must be "memory", "redis", or "multi-level", got: ${String(mode)}`,
+    );
+  }
+
+  if (mode === "memory") {
+    validateMemoryCacheHubConfig(cacheHub, path);
+    return;
+  }
+
+  if (mode === "redis") {
+    validateRedisTargetConfig(cacheHub, path);
+    validateLeaseConfig(cacheHub.lease, `${path}.lease`);
+    validateDistributedConfig(cacheHub.distributed, `${path}.distributed`);
+    return;
+  }
+
+  validateMultiLevelCacheHubConfig(cacheHub, path);
+}
+
+function validateMemoryCacheHubConfig(
+  value: Record<string, unknown>,
+  path: string,
+): void {
+  if (value.maxEntries !== undefined) {
+    validatePositiveInteger(value.maxEntries, `${path}.maxEntries`);
+  }
+  if (value.maxMemory !== undefined) {
+    validatePositiveNumber(value.maxMemory, `${path}.maxMemory`);
+  }
+  if (value.cleanupInterval !== undefined) {
+    validateNonNegativeNumber(value.cleanupInterval, `${path}.cleanupInterval`);
+  }
+  if (
+    value.enableStats !== undefined &&
+    typeof value.enableStats !== "boolean"
+  ) {
+    throw new Error(`[vextjs] ${path}.enableStats must be a boolean.`);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${path}.enabled must be a boolean.`);
+  }
+}
+
+function validateMultiLevelCacheHubConfig(
+  value: Record<string, unknown>,
+  path: string,
+): void {
+  if (value.memory !== undefined) {
+    if (typeof value.memory !== "object" || value.memory === null) {
+      throw new Error(`[vextjs] ${path}.memory must be an object.`);
+    }
+    validateMemoryCacheHubConfig(
+      value.memory as Record<string, unknown>,
+      `${path}.memory`,
+    );
+  }
+  if (value.redis !== undefined) {
+    if (typeof value.redis !== "object" || value.redis === null) {
+      throw new Error(`[vextjs] ${path}.redis must be an object.`);
+    }
+    validateRedisTargetConfig(
+      value.redis as Record<string, unknown>,
+      `${path}.redis`,
+    );
+  }
+  if (
+    value.writePolicy !== undefined &&
+    !["both", "local-first-async-remote"].includes(value.writePolicy as string)
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.writePolicy must be "both" or "local-first-async-remote".`,
+    );
+  }
+  if (
+    value.backfillOnRemoteHit !== undefined &&
+    typeof value.backfillOnRemoteHit !== "boolean"
+  ) {
+    throw new Error(`[vextjs] ${path}.backfillOnRemoteHit must be a boolean.`);
+  }
+  if (value.remoteTimeout !== undefined) {
+    validatePositiveNumber(value.remoteTimeout, `${path}.remoteTimeout`);
+  }
+  if (
+    value.remoteInvalidationErrors !== undefined &&
+    !["ignore", "throw"].includes(value.remoteInvalidationErrors as string)
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.remoteInvalidationErrors must be "ignore" or "throw".`,
+    );
+  }
+  validateLeaseConfig(value.lease, `${path}.lease`);
+  validateDistributedConfig(value.distributed, `${path}.distributed`);
+}
+
+function validateRedisTargetConfig(
+  value: Record<string, unknown>,
+  path: string,
+): void {
+  validateOptionalString(value.url, `${path}.url`);
+  validateOptionalString(value.metaKeyPrefix, `${path}.metaKeyPrefix`);
+  if (
+    value.client !== undefined &&
+    (typeof value.client !== "object" || value.client === null)
+  ) {
+    throw new Error(`[vextjs] ${path}.client must be an object.`);
+  }
+  if (value.scanCount !== undefined) {
+    validatePositiveInteger(value.scanCount, `${path}.scanCount`);
+  }
+  if (
+    value.deleteCommand !== undefined &&
+    !["del", "unlink"].includes(value.deleteCommand as string)
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.deleteCommand must be "del" or "unlink".`,
+    );
+  }
+}
+
+function validateLeaseConfig(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+  const lease = value as Record<string, unknown>;
+  if (lease.enabled !== undefined && typeof lease.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${path}.enabled must be a boolean.`);
+  }
+  if (lease.ttl !== undefined) {
+    validatePositiveNumber(lease.ttl, `${path}.ttl`);
+  }
+  if (lease.waitForOwner !== undefined) {
+    validatePositiveNumber(lease.waitForOwner, `${path}.waitForOwner`);
+  }
+  if (lease.pollInterval !== undefined) {
+    validatePositiveNumber(lease.pollInterval, `${path}.pollInterval`);
+  }
+  if (
+    lease.onTimeout !== undefined &&
+    !["fetch", "throw"].includes(lease.onTimeout as string)
+  ) {
+    throw new Error(`[vextjs] ${path}.onTimeout must be "fetch" or "throw".`);
+  }
+  validateOptionalString(lease.keyPrefix, `${path}.keyPrefix`);
+  validateOptionalString(lease.ownerId, `${path}.ownerId`);
+}
+
+function validateDistributedConfig(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+  const distributed = value as Record<string, unknown>;
+  if (
+    distributed.enabled !== undefined &&
+    typeof distributed.enabled !== "boolean"
+  ) {
+    throw new Error(`[vextjs] ${path}.enabled must be a boolean.`);
+  }
+  validateOptionalString(distributed.redisUrl, `${path}.redisUrl`);
+  validateOptionalString(distributed.channel, `${path}.channel`);
+  validateOptionalString(distributed.instanceId, `${path}.instanceId`);
+  if (
+    distributed.redis !== undefined &&
+    (typeof distributed.redis !== "object" || distributed.redis === null)
+  ) {
+    throw new Error(`[vextjs] ${path}.redis must be an object.`);
+  }
+}
+
+function validateOptionalString(value: unknown, path: string): void {
+  if (value !== undefined && typeof value !== "string") {
+    throw new Error(`[vextjs] ${path} must be a string.`);
+  }
+}
+
+function validatePositiveInteger(value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `[vextjs] ${path} must be a positive integer, got: ${value}`,
+    );
+  }
+}
+
+function validatePositiveNumber(value: unknown, path: string): void {
+  if (typeof value !== "number" || value <= 0) {
+    throw new Error(
+      `[vextjs] ${path} must be a positive number, got: ${value}`,
+    );
+  }
+}
+
+function validateNonNegativeNumber(value: unknown, path: string): void {
+  if (typeof value !== "number" || value < 0) {
+    throw new Error(
+      `[vextjs] ${path} must be a non-negative number, got: ${value}`,
+    );
   }
 }
 

@@ -2,7 +2,11 @@ import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware } from "./middleware.js";
 import type { VextFetch } from "../lib/fetch.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
-import type { ResponseCache, ResponseCacheStats } from "response-cache-kit";
+import type {
+  ResponseCache,
+  ResponseCacheHubOptions,
+  ResponseCacheStats,
+} from "response-cache-kit";
 
 declare global {
   interface String {
@@ -167,11 +171,23 @@ export interface VextCacheConfig {
   enabled?: boolean;
   /** 默认 TTL 毫秒数（路由未配置 ttl 时回退，默认 60000） */
   defaultTtl?: number;
-  /** 最大缓存条目数（默认 1000） */
+  /** Memory 模式快捷配置：最大缓存条目数（默认 1000） */
   maxEntries?: number;
-  /** 最大内存占用 bytes（默认 50MB） */
+  /** Memory 模式快捷配置：最大内存占用 bytes */
   maxMemory?: number;
+  /** Memory 模式快捷配置：过期条目周期清理间隔，0 表示只做惰性清理 */
+  cleanupInterval?: number;
+  /**
+   * 底层响应缓存运行时配置。
+   *
+   * 不配置时使用 cache-hub Memory；设置 `mode: "redis"` 或
+   * `mode: "multi-level"` 可启用 Redis / 多级缓存、lease 与分布式标签失效。
+   * 该字段只接受 response-cache-kit/cache-hub 配置，不接受自定义 Store。
+   */
+  cacheHub?: ResponseCacheHubOptions;
 }
+
+export type VextResponseCacheHubOptions = ResponseCacheHubOptions;
 
 export interface VextCacheStats extends ResponseCacheStats {
   entries: number;

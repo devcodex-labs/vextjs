@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [0.3.14] | 2026-06-04 | Patch | 响应缓存承接 `response-cache-kit@1.2.0` 的 `cacheHub` 运行时配置，支持 Redis/MultiLevel/lease/distributed 并补齐关闭生命周期 [查看](./changelogs/v0.3.14.md) |
 | [0.3.13] | 2026-06-03 | Patch | 路由级响应缓存运行时接入 `response-cache-kit`，补齐标签失效、租户隔离和并发击穿保护 [查看](./changelogs/v0.3.13.md) |
 | [0.3.12] | 2026-06-02 | Patch | OpenAPI schema fields now support business descriptions via schema-dsl `.description()` [查看](./changelogs/v0.3.12.md) |
 | [0.3.11] | 2026-06-01 | Patch | 补齐 `vext create` 规范目录骨架，并将根 README 切换为英文主版本 [查看](./changelogs/v0.3.11.md) |
@@ -61,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.13...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.14...HEAD
+[0.3.14]: https://github.com/vextjs/vext/compare/v0.3.13...v0.3.14
 [0.3.13]: https://github.com/vextjs/vext/compare/v0.3.12...v0.3.13
 [0.3.12]: https://github.com/vextjs/vext/compare/v0.3.11...v0.3.12
 [0.3.11]: https://github.com/vextjs/vext/compare/v0.3.10...v0.3.11

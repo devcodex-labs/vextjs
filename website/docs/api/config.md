@@ -186,13 +186,13 @@ export default {
 
 跨域资源共享配置。
 
-| 字段          | 类型       | 默认值                                                         | 说明                   |
-| ------------- | ---------- | -------------------------------------------------------------- | ---------------------- |
-| `enabled`     | `boolean`  | `true`                                                         | 是否启用 CORS          |
-| `origins`     | `string[]` | `['*']`                                                        | 允许的来源域名         |
-| `methods`     | `string[]` | `['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']` | 允许的 HTTP 方法       |
-| `headers`     | `string[]` | `['Content-Type', 'Authorization', 'X-Request-Id']`            | 允许的请求头           |
-| `credentials` | `boolean`  | `false`                                                        | 是否允许携带凭证       |
+| 字段          | 类型       | 默认值                                                         | 说明                        |
+| ------------- | ---------- | -------------------------------------------------------------- | --------------------------- |
+| `enabled`     | `boolean`  | `true`                                                         | 是否启用 CORS               |
+| `origins`     | `string[]` | `['*']`                                                        | 允许的来源域名              |
+| `methods`     | `string[]` | `['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']` | 允许的 HTTP 方法            |
+| `headers`     | `string[]` | `['Content-Type', 'Authorization', 'X-Request-Id']`            | 允许的请求头                |
+| `credentials` | `boolean`  | `false`                                                        | 是否允许携带凭证            |
 | `maxAge`      | `number`   | `undefined`                                                    | CORS 预检结果缓存时间（秒） |
 
 ```typescript
@@ -698,12 +698,14 @@ VEXT_CLUSTER=1 vext start
 
 路由级响应缓存全局配置。
 
-| 字段         | 类型      | 默认值     | 说明                                |
-| ------------ | --------- | ---------- | ----------------------------------- |
-| `enabled`    | `boolean` | `true`     | 是否启用路由级响应缓存              |
-| `defaultTtl` | `number`  | `60000`    | 路由未指定 TTL 时的默认值，单位毫秒 |
-| `maxEntries` | `number`  | `1000`     | 底层内存缓存最大条目数              |
-| `maxMemory`  | `number`  | `52428800` | 最大内存占用 bytes（默认 50MB）     |
+| 字段              | 类型      | 默认值  | 说明                                                                                      |
+| ----------------- | --------- | ------- | ----------------------------------------------------------------------------------------- |
+| `enabled`         | `boolean` | `true`  | 是否启用路由级响应缓存。设为 `false` 后不安装缓存中间件，也不会打开 Redis/MultiLevel 连接 |
+| `defaultTtl`      | `number`  | `60000` | 路由未指定 TTL 时的默认值，单位毫秒                                                       |
+| `maxEntries`      | `number`  | `1000`  | Memory 模式快捷配置：最大缓存条目数                                                       |
+| `maxMemory`       | `number`  | —       | Memory 模式快捷配置：最大内存占用 bytes                                                   |
+| `cleanupInterval` | `number`  | `0`     | Memory 模式快捷配置：周期清理间隔，`0` 表示只做惰性清理                                   |
+| `cacheHub`        | `object`  | Memory  | 底层响应缓存运行时配置                                                                    |
 
 ```typescript
 export default {
@@ -715,7 +717,65 @@ export default {
 };
 ```
 
-路由级响应缓存通过 `RouteOptions.cache` 配置。公开配置单位使用毫秒；响应头中的 `Cache-Control: max-age` 会按 HTTP 标准输出秒。详见 [响应缓存指南](/guide/cache)。
+Memory 完整配置：
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 60_000,
+    cacheHub: {
+      mode: "memory",
+      maxEntries: 1000,
+      maxMemory: 50 * 1024 * 1024,
+      cleanupInterval: 30_000,
+      enableStats: true,
+    },
+  },
+};
+```
+
+Redis 配置：
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 2_000,
+    cacheHub: {
+      mode: "redis",
+      url: "redis://localhost:6379",
+      deleteCommand: "unlink",
+      lease: {
+        waitForOwner: 1_000,
+        onTimeout: "fetch",
+      },
+      distributed: {
+        channel: "vext:response-cache",
+      },
+    },
+  },
+};
+```
+
+MultiLevel 配置：
+
+```typescript
+export default {
+  cache: {
+    defaultTtl: 60_000,
+    cacheHub: {
+      mode: "multi-level",
+      memory: { maxEntries: 1000 },
+      redis: { url: "redis://localhost:6379" },
+      writePolicy: "both",
+      backfillOnRemoteHit: true,
+      remoteTimeout: 50,
+      lease: true,
+    },
+  },
+};
+```
+
+`cacheHub` 只接受 `response-cache-kit/cache-hub` 配置，不接受自定义 Store。路由级响应缓存通过 `RouteOptions.cache` 配置。公开配置单位使用毫秒；响应头中的 `Cache-Control: max-age` 会按 HTTP 标准输出秒。详见 [响应缓存指南](/guide/cache)。
 
 ---
 

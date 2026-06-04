@@ -247,6 +247,20 @@ describe("deepFreeze", () => {
     expect(Object.isFrozen(frozen.set)).toBe(false);
   });
 
+  it("skips class instances so runtime clients keep mutable internals", () => {
+    class FakeRedisClient {
+      connected = true;
+    }
+
+    const obj = { cache: { client: new FakeRedisClient() } };
+    const frozen = _deepFreeze(obj);
+
+    expect(Object.isFrozen(frozen.cache)).toBe(true);
+    expect(Object.isFrozen(frozen.cache.client)).toBe(false);
+    frozen.cache.client.connected = false;
+    expect(frozen.cache.client.connected).toBe(false);
+  });
+
   it("handles null and primitives gracefully", () => {
     expect(_deepFreeze(null)).toBeNull();
     expect(_deepFreeze(42)).toBe(42);
@@ -573,6 +587,125 @@ describe("validateConfig", () => {
       );
     });
   });
+
+  // ── cache ───────────────────────────────────────────────
+
+  describe("cache validation", () => {
+    it("accepts Memory cacheHub config", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            defaultTtl: 60_000,
+            maxEntries: 1000,
+            maxMemory: 1024,
+            cleanupInterval: 0,
+            cacheHub: {
+              mode: "memory",
+              enableStats: true,
+              enabled: true,
+              cleanupInterval: 30_000,
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("accepts Redis cacheHub config with lease and distributed invalidation", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            cacheHub: {
+              mode: "redis",
+              url: "redis://localhost:6379",
+              scanCount: 200,
+              deleteCommand: "unlink",
+              lease: {
+                ttl: 500,
+                waitForOwner: 1_000,
+                pollInterval: 10,
+                onTimeout: "fetch",
+              },
+              distributed: {
+                channel: "vext:response-cache",
+                instanceId: "worker-1",
+              },
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("accepts MultiLevel cacheHub config", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            cacheHub: {
+              mode: "multi-level",
+              memory: { maxEntries: 500 },
+              redis: { url: "redis://localhost:6379" },
+              writePolicy: "both",
+              backfillOnRemoteHit: true,
+              remoteTimeout: 50,
+              remoteInvalidationErrors: "ignore",
+              lease: true,
+              distributed: true,
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects invalid cacheHub mode", () => {
+      expect(() =>
+        _validateConfig({ cache: { cacheHub: { mode: "custom-store" } } }),
+      ).toThrow(
+        'config.cache.cacheHub.mode must be "memory", "redis", or "multi-level"',
+      );
+    });
+
+    it("rejects invalid Redis deleteCommand", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            cacheHub: {
+              mode: "redis",
+              deleteCommand: "flushdb",
+            },
+          },
+        }),
+      ).toThrow(
+        'config.cache.cacheHub.deleteCommand must be "del" or "unlink"',
+      );
+    });
+
+    it("rejects null Redis client references", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            cacheHub: {
+              mode: "redis",
+              client: null,
+            },
+          },
+        }),
+      ).toThrow("config.cache.cacheHub.client must be an object");
+    });
+
+    it("rejects invalid lease timeout mode", () => {
+      expect(() =>
+        _validateConfig({
+          cache: {
+            cacheHub: {
+              mode: "redis",
+              lease: { onTimeout: "wait" },
+            },
+          },
+        }),
+      ).toThrow(
+        'config.cache.cacheHub.lease.onTimeout must be "fetch" or "throw"',
+      );
+    });
+  });
 });
 
 // ── VEXT_PORT / VEXT_HOST 环境变量覆盖（BUG-013 防回归）───────
@@ -718,7 +851,9 @@ describe("loadConfig — bootstrap config provider", () => {
   let savedHost: string | undefined;
 
   beforeEach(() => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vext-bootstrap-provider-"));
+    tmpRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vext-bootstrap-provider-"),
+    );
     configDir = path.join(tmpRoot, "config");
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(

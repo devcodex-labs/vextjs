@@ -421,7 +421,7 @@ cache: {
 | ----------------- | ------------------------------------------------ |
 | `invalidate(tag)` | 按标签批量失效所有关联缓存条目                   |
 | `delete(key)`     | 删除指定 key 的缓存                              |
-| `clear()`         | 清空所有缓存条目                                 |
+| `clear()`         | 清空当前 vext 响应缓存 namespace 的所有条目      |
 | `stats()`         | 返回缓存统计（条目数、命中数、未命中数、命中率） |
 
 ```typescript
@@ -438,7 +438,7 @@ app.get("/admin/cache-stats", {}, async (req, res) => {
 });
 ```
 
-`app.cache` 是 Vext 对 `response-cache-kit` 的控制面包装；业务代码不需要直接操作底层 Store。详见 [响应缓存指南](/guide/cache)。
+`app.cache` 是 Vext 对 `response-cache-kit` 的控制面包装；业务代码不需要直接操作底层 Store。Redis/MultiLevel 模式下，`clear()` 不会清空 Redis 全库，只会清理当前 vext 响应缓存 namespace。应用 shutdown 时，Vext 会在用户 `onClose` 钩子执行后关闭响应缓存运行时资源。详见 [响应缓存指南](/guide/cache)。
 
 ---
 

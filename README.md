@@ -63,7 +63,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.13"
+    "vextjs": "^0.3.14"
   }
 }
 ```
@@ -413,6 +413,34 @@ app.get(
 ```
 
 The runtime delegates response caching to `response-cache-kit`, backed by `cache-hub`. Vext captures successful JSON responses from GET or HEAD routes, stores them with millisecond TTLs, and serves later hits before validation and handler execution. Cache keys can be static strings or request-based functions; use `partitionKey` for user or tenant isolation.
+
+Configure the runtime in `config.cache`. The legacy Memory shorthand still works:
+
+```ts
+export default {
+  cache: {
+    defaultTtl: 60_000,
+    maxEntries: 1000,
+    maxMemory: 50 * 1024 * 1024,
+  },
+};
+```
+
+For Redis or multi-level response cache, use the `cacheHub` runtime config:
+
+```ts
+export default {
+  cache: {
+    defaultTtl: 2_000,
+    cacheHub: {
+      mode: "redis",
+      url: "redis://localhost:6379",
+      lease: { waitForOwner: 1_000, onTimeout: "fetch" },
+      distributed: { channel: "vext:response-cache" },
+    },
+  },
+};
+```
 
 ## OpenAPI
 

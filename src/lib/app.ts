@@ -15,6 +15,7 @@ import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextServerHandle } from "../types/adapter.js";
 import { createResponseCache } from "response-cache-kit";
+import { resolveVextResponseCacheOptions } from "./response-cache-config.js";
 
 /**
  * 框架内部方法接口（不暴露给用户，仅 bootstrap 使用）
@@ -152,13 +153,7 @@ export function createApp(config: VextConfig): {
   // config 在 createApp 参数中已可用，无需等到 bootstrap 阶段。
   //
   const responseCache = createResponseCache({
-    namespace: "vext-route-cache",
-    ttl: config.cache?.defaultTtl ?? 60_000,
-    cacheHub: {
-      maxEntries: config.cache?.maxEntries ?? 1000,
-      maxMemory: config.cache?.maxMemory,
-      enableStats: true,
-    },
+    ...resolveVextResponseCacheOptions(config.cache),
   });
 
   // ── 创建 app 对象 ──────────────────────────────────────────
@@ -372,7 +367,17 @@ export function createApp(config: VextConfig): {
       // 执行完后清空，释放 hooks 持有的资源引用
       closeHooks.length = 0;
 
-      // ── 步骤 3：退出进程 ──
+      // ── 步骤 3：关闭响应缓存运行时资源 ──
+      try {
+        await responseCache.close?.();
+      } catch (err) {
+        app.logger.error(
+          { error: (err as Error).message },
+          "[vextjs] response cache close failed",
+        );
+      }
+
+      // ── 步骤 4：退出进程 ──
       //
       // 跳过 process.exit 的场景：
       //   - _testMode: 测试模式，由 createTestApp 控制生命周期
