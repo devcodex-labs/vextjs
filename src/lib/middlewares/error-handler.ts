@@ -1,6 +1,9 @@
 import type { VextErrorMiddleware } from "../../types/middleware.js";
 import type { VextResponseConfig, VextLogger } from "../../types/app.js";
 import { HttpError, VextValidationError } from "../../types/errors.js";
+import type { VextInternalHooks } from "../../types/hooks.js";
+import { sanitizeErrorDetails } from "../error-details.js";
+import { isInternalHooks } from "../hooks.js";
 
 /**
  * DevOverlayFn — Dev 错误覆盖层渲染函数
@@ -76,6 +79,7 @@ export function createErrorHandler(
   responseConfig: VextResponseConfig,
   devOverlay?: DevOverlayFn,
   logger?: VextLogger,
+  hooks?: VextInternalHooks,
 ): VextErrorMiddleware {
   // 是否隐藏内部错误详情（生产环境默认 true）
   // 当 hideInternalErrors = true 时，500 错误不暴露 stack trace，
@@ -84,6 +88,7 @@ export function createErrorHandler(
   const logErrors = responseConfig.logErrors;
 
   return (err: unknown, req, res) => {
+    const activeHooks = isInternalHooks(hooks) ? hooks : undefined;
     // ── Step 0: 错误归一化（统一为 Error 对象，消除后续重复转换）──
     //
     // 非 Error 对象（如 throw "string" / throw null）统一包装为 Error。
@@ -174,15 +179,14 @@ export function createErrorHandler(
     // HTTP 状态码固定为 422 Unprocessable Entity。
     //
     if (err instanceof VextValidationError) {
-      res.rawJson(
-        {
-          code: 422,
-          message: err.message,
-          errors: err.errors, // [{ field: 'email', message: '邮箱格式不正确' }]
-          requestId,
-        },
-        422,
-      );
+      const prepared = prepareErrorResponse(activeHooks, err, requestId, 422, {
+        code: 422,
+        message: err.message,
+        errors: err.errors, // [{ field: 'email', message: '邮箱格式不正确' }]
+        requestId,
+      });
+      res.rawJson(prepared.body, prepared.status);
+      emitErrorAfterResponse(activeHooks, err, prepared.status, requestId);
       return;
     }
 
@@ -198,14 +202,25 @@ export function createErrorHandler(
     // 这样 API 消费方可以通过 code 区分具体的业务错误类型。
     //
     if (err instanceof HttpError) {
-      res.rawJson(
-        {
-          code: err.code ?? err.status, // 有业务码用业务码，否则用 HTTP 状态码
-          message: err.message,
-          requestId,
-        },
+      const body: Record<string, unknown> = {
+        code: err.code ?? err.status, // 有业务码用业务码，否则用 HTTP 状态码
+        message: err.message,
+        requestId,
+      };
+      const details = sanitizeErrorDetails(err.details);
+      if (details !== undefined) {
+        body.details = details;
+      }
+
+      const prepared = prepareErrorResponse(
+        activeHooks,
+        err,
+        requestId,
         err.status,
+        body,
       );
+      res.rawJson(prepared.body, prepared.status);
+      emitErrorAfterResponse(activeHooks, err, prepared.status, requestId);
       return;
     }
 
@@ -233,6 +248,47 @@ export function createErrorHandler(
       body.stack = errObj.stack;
     }
 
-    res.rawJson(body, 500);
+    const prepared = prepareErrorResponse(
+      activeHooks,
+      errObj,
+      requestId,
+      500,
+      body,
+    );
+    res.rawJson(prepared.body, prepared.status);
+    emitErrorAfterResponse(activeHooks, errObj, prepared.status, requestId);
   };
+}
+
+function prepareErrorResponse(
+  hooks: VextInternalHooks | undefined,
+  error: Error,
+  requestId: string,
+  status: number,
+  body: Record<string, unknown>,
+): { status: number; body: Record<string, unknown> } {
+  const patch = hooks?.emitSafeSync("error:beforeResponse", {
+    error,
+    status,
+    body,
+    requestId,
+  });
+
+  return {
+    status: patch?.status ?? status,
+    body: patch?.body ?? body,
+  };
+}
+
+function emitErrorAfterResponse(
+  hooks: VextInternalHooks | undefined,
+  error: Error,
+  status: number,
+  requestId: string,
+): void {
+  hooks?.emitSafeSync("error:afterResponse", {
+    error,
+    status,
+    requestId,
+  });
 }

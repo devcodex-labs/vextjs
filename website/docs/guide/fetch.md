@@ -46,6 +46,33 @@ export default defineRoutes((app) => {
 `app.fetch` 会自动将当前请求的 `requestId` 注入到出站请求的 `x-request-id` 头中。下游服务如果也使用 VextJS，将自动接收并延续这个追踪 ID，实现分布式链路追踪。
 :::
 
+## Fetch Hooks
+
+`app.fetch` 和 `app.fetch.proxy` 会触发出站生命周期 hook，适合统一注入 header、记录第三方调用耗时或上报失败：
+
+```typescript
+import { definePlugin } from "vextjs";
+
+export default definePlugin({
+  name: "fetch-observer",
+  setup(app) {
+    app.hooks.on("fetch:before", ({ headers }) => {
+      headers.set("x-client", "billing-service");
+    });
+
+    app.hooks.on("fetch:error", ({ url, error }) => {
+      app.logger.error({ url, err: error }, "outbound request failed");
+    });
+
+    app.hooks.on("proxy:after", ({ target, status, requestId }) => {
+      app.logger.info({ target, status, requestId }, "proxy response");
+    });
+  },
+});
+```
+
+`fetch:before` 和 `proxy:before` 是可传播 hook，抛错会阻止本次出站请求；`fetch:after/error` 与 `proxy:after/error` 是 safe hook，只记录失败不改变主流程。
+
 ## 快捷方法
 
 除了直接调用 `app.fetch(url, init)` 外，还提供了常用 HTTP 方法的快捷方式：

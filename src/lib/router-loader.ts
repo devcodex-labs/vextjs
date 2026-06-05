@@ -18,6 +18,7 @@ import {
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
+import type { VextInternalHooks, VextRouteHookInfo } from "../types/hooks.js";
 
 /**
  * router-loader.ts — 路由自动加载器（Phase 1 升级版）
@@ -105,6 +106,7 @@ export async function loadRoutes(
   options: LoadRoutesOptions,
   collector?: RouteMetadataCollector | null,
 ): Promise<void> {
+  const hooks = app.hooks as VextInternalHooks;
   // ── 规范化 middlewareDefs（兼容 Phase 0 的 Map 和 Phase 1 的 Registry）──
   const registry = normalizeMiddlewareDefs(options.middlewareDefs);
 
@@ -208,6 +210,19 @@ export async function loadRoutes(
   app.logger.info(
     `[vextjs] ${loadedRouteCount} route(s) loaded from ${routeEntries.length} file(s)`,
   );
+  await hooks.emitSafe("routes:ready", {
+    count: loadedRouteCount,
+    routes: allRouteDefs.flatMap(({ routes, sourceFile }) =>
+      routes.map((route) => ({
+        method: route.method,
+        path: route.path,
+        options:
+          route.options as unknown as import("../types/app.js").RouteOptions,
+        sourceFile,
+      })),
+    ),
+    collector,
+  });
 }
 
 // ── 路由注册（含中间件解析 + validate 构建）──────────────────
@@ -240,9 +255,16 @@ function registerRouteDefinition(
   _globalMiddlewares: VextMiddleware[],
   collector?: RouteMetadataCollector | null,
 ): void {
+  const hooks = app.hooks as VextInternalHooks;
   for (const route of routeDef.routes) {
     // ── 1. 拼接完整路径 ──────────────────────────────────
     const fullPath = normalizePath(prefix, route.path);
+    const routeInfo: VextRouteHookInfo = {
+      method: route.method.toUpperCase(),
+      path: fullPath,
+      options: route.options ?? {},
+      sourceFile: routeDef.sourceFile,
+    };
 
     // ── 2. 解析路由级中间件引用 ─────────────────────────
     const routeMiddlewares: VextMiddleware[] = [];
@@ -288,8 +310,10 @@ function registerRouteDefinition(
         route.options?.cache,
         app.config.cache?.defaultTtl,
       );
-      const cacheMiddleware = buildRouteCacheMiddleware(cacheOpts, () =>
-        app.cache._getResponseCache(),
+      const cacheMiddleware = buildRouteCacheMiddleware(
+        cacheOpts,
+        () => app.cache._getResponseCache(),
+        hooks,
       );
       if (cacheMiddleware) {
         routeMiddlewares.push(cacheMiddleware);
@@ -328,15 +352,56 @@ function registerRouteDefinition(
         | import("./validate-middleware.js").ValidateConfig
         | undefined,
       () => app.getValidator(),
+      hooks,
+      routeInfo,
     );
 
     // ── 4. 将 handler 包装为 VextMiddleware ─────────────
     // handler 是执行链的最后一环，不调用 next()
-    const handlerMiddleware: VextMiddleware = (req, res, _next) =>
-      route.handler(req, res);
+    const handlerMiddleware: VextMiddleware = async (req, res, _next) => {
+      const startedAt = performance.now();
+      await hooks.emit("handler:before", {
+        req,
+        res,
+        route: routeInfo,
+        requestId: req.requestId,
+      });
+      try {
+        await route.handler(req, res);
+        await hooks.emitSafe("handler:after", {
+          req,
+          res,
+          route: routeInfo,
+          requestId: req.requestId,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      } catch (error) {
+        await hooks.emitSafe("handler:error", {
+          req,
+          res,
+          route: routeInfo,
+          error,
+          requestId: req.requestId,
+        });
+        throw error;
+      }
+    };
 
     // ── 5. 组装执行链 ──────────────────────────────────
-    const chain: VextMiddleware[] = [...routeMiddlewares];
+    const routeMatchedMiddleware: VextMiddleware = async (req, _res, next) => {
+      await hooks.emit("route:matched", {
+        req,
+        route: routeInfo,
+        params: req.params,
+        requestId: req.requestId,
+      });
+      await next();
+    };
+
+    const chain: VextMiddleware[] = [
+      routeMatchedMiddleware,
+      ...routeMiddlewares,
+    ];
 
     if (validateMiddleware) {
       chain.push(validateMiddleware);

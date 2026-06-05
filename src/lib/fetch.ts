@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import { requestContext } from "./request-context.js";
 import type { VextLogger } from "../types/app.js";
+import type { VextInternalHooks } from "../types/hooks.js";
 import type { VextRequest } from "../types/request.js";
 import type { VextResponse } from "../types/response.js";
 
@@ -296,6 +297,7 @@ export function createVextFetch(
   logger: VextLogger,
   fetchConfig: FetchConfig = {},
   requestIdHeader: string = "x-request-id",
+  hooks?: VextInternalHooks,
 ): VextFetch {
   const globalTimeout = fetchConfig.timeout ?? 10_000;
   const globalRetry = fetchConfig.retry ?? 0;
@@ -353,6 +355,15 @@ export function createVextFetch(
       ? (init?.retry ?? globalRetry)
       : 0;
     const retryDelay = init?.retryDelay ?? globalRetryDelay;
+    const requestId = store?.requestId;
+
+    await hooks?.emit("fetch:before", {
+      url,
+      method,
+      headers,
+      requestId,
+      init: init as (RequestInit & Record<string, unknown>) | undefined,
+    });
 
     // ── 3. 执行请求（含重试循环）────────────────────────
     let lastError: Error | null = null;
@@ -418,6 +429,13 @@ export function createVextFetch(
 
         // 非幂等方法 或 非服务端错误 → 不重试，直接返回
         if (!IDEMPOTENT_METHODS.has(method) || response.status < 500) {
+          await hooks?.emitSafe("fetch:after", {
+            url,
+            method,
+            response,
+            durationMs: duration,
+            requestId,
+          });
           return response;
         }
 
@@ -430,6 +448,13 @@ export function createVextFetch(
         }
 
         // 最后一次重试也失败了，返回响应（让调用方处理）
+        await hooks?.emitSafe("fetch:after", {
+          url,
+          method,
+          response,
+          durationMs: duration,
+          requestId,
+        });
         return response;
       } catch (err: unknown) {
         clearTimeout(timer);
@@ -452,9 +477,16 @@ export function createVextFetch(
           );
 
           // 超时不重试
-          throw new Error(
+          const timeoutError = new Error(
             `[app.fetch] ${method} ${url} timed out after ${timeout}ms`,
           );
+          await hooks?.emitSafe("fetch:error", {
+            url,
+            method,
+            error: timeoutError,
+            requestId,
+          });
+          throw timeoutError;
         }
 
         logger.error(
@@ -476,12 +508,26 @@ export function createVextFetch(
           continue;
         }
 
+        await hooks?.emitSafe("fetch:error", {
+          url,
+          method,
+          error,
+          requestId,
+        });
         throw error;
       }
     }
 
     // 理论上不应到达此处，但作为防御性编码
-    throw lastError ?? new Error(`[app.fetch] ${method} ${url} failed`);
+    const finalError =
+      lastError ?? new Error(`[app.fetch] ${method} ${url} failed`);
+    await hooks?.emitSafe("fetch:error", {
+      url,
+      method,
+      error: finalError,
+      requestId,
+    });
+    throw finalError;
   }
 
   // ── 快捷方法 ──────────────────────────────────────────────
@@ -536,7 +582,12 @@ export function createVextFetch(
     };
 
     // 创建子 VextFetch（递归使用 createVextFetch）
-    const child = createVextFetch(logger, childFetchConfig, requestIdHeader);
+    const child = createVextFetch(
+      logger,
+      childFetchConfig,
+      requestIdHeader,
+      hooks,
+    );
 
     // 包装：自动拼接 baseURL + 合并默认 headers
     const baseURL = options.baseURL.replace(/\/+$/, "");
@@ -612,6 +663,7 @@ export function createVextFetch(
     timeout: globalTimeout,
     retry: globalRetry,
     retryDelay: globalRetryDelay,
+    hooks,
   });
 
   return vextFetch as VextFetch;
@@ -625,6 +677,7 @@ interface FetchProxyRuntime {
   timeout: number;
   retry: number;
   retryDelay: number | ((attempt: number) => number);
+  hooks?: VextInternalHooks;
 }
 
 interface ResolvedProxyRequest {
@@ -731,9 +784,32 @@ async function handleProxyRequest(
 ): Promise<void> {
   try {
     const resolved = await resolveProxyRequest(runtime, req, target, options);
+    await runtime.hooks?.emit("proxy:before", {
+      req,
+      target: resolved.targetName,
+      url: resolved.url,
+      method: resolved.method,
+      headers: resolved.headers,
+      requestId: req.requestId,
+    });
     const response = await fetchProxyWithRetry(runtime, req, resolved);
+    await runtime.hooks?.emitSafe("proxy:after", {
+      req,
+      target: resolved.targetName,
+      status: response.status,
+      requestId: req.requestId,
+    });
     await writeProxyResponse(response, res);
   } catch (err) {
+    const proxyTarget = target?.name;
+    const proxyError = err instanceof Error ? err : new Error(String(err));
+    await runtime.hooks?.emitSafe("proxy:error", {
+      req,
+      target: proxyTarget,
+      error: proxyError,
+      requestId: req.requestId,
+    });
+
     if (err instanceof ProxyClientAbortError) {
       runtime.logger.debug(
         {

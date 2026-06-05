@@ -20,6 +20,7 @@
 import type { VextMiddleware } from "../../types/middleware.js";
 import type { RouteCacheOptions } from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
+import type { VextInternalHooks } from "../../types/hooks.js";
 import {
   VEXT_CACHEABLE_STATUSES,
   createResponseCacheHeaders,
@@ -128,6 +129,7 @@ export function defaultCacheKey(
 export function buildRouteCacheMiddleware(
   cacheOpts: RouteCacheOptions | null,
   getResponseCache: () => ResponseCache,
+  hooks?: VextInternalHooks,
 ): VextMiddleware | null {
   if (!cacheOpts) return null;
 
@@ -145,6 +147,11 @@ export function buildRouteCacheMiddleware(
     // ── condition 检查 ───────────────────────────────────
     if (condition && !condition(req)) {
       res.setHeader("X-Cache", "MISS");
+      hooks?.emitSafeSync("cache:miss", {
+        req,
+        route: req.route,
+        state: "skipped",
+      });
       await next();
       return;
     }
@@ -159,6 +166,11 @@ export function buildRouteCacheMiddleware(
 
     // 空 key 跳过缓存
     if (!cacheKey) {
+      hooks?.emitSafeSync("cache:miss", {
+        req,
+        route: req.route,
+        state: "skipped",
+      });
       await next();
       return;
     }
@@ -183,18 +195,45 @@ export function buildRouteCacheMiddleware(
     const responseCache = getResponseCache();
 
     res.setHeader("X-Cache", "MISS");
+    hooks?.emitSafeSync("cache:miss", {
+      req,
+      route: req.route,
+      key: cacheKey,
+      state: "miss",
+    });
 
     const origin = createOrigin(req, res, next, {
       requestAllowsCache,
       ttl,
       cacheControl,
+      hooks,
+      cacheKey,
     });
-    const result = await responseCache.handle(request, origin, handleOptions);
+    let result: Awaited<ReturnType<ResponseCache["handle"]>>;
+    try {
+      result = await responseCache.handle(request, origin, handleOptions);
+    } catch (error) {
+      hooks?.emitSafeSync("cache:error", {
+        req,
+        route: req.route,
+        key: cacheKey,
+        state: "error",
+        error,
+      });
+      throw error;
+    }
 
     if (
       result.metadata.state === "hit" ||
       result.metadata.state === "deduped"
     ) {
+      hooks?.emitSafeSync("cache:hit", {
+        req,
+        route: req.route,
+        key: cacheKey,
+        state: result.metadata.state,
+        metadata: result.metadata,
+      });
       const headers = createVextHeaders(result, cacheControl);
       for (const [name, value] of Object.entries(headers)) {
         res.setHeader(name, value);
@@ -253,6 +292,8 @@ function createOrigin(
     requestAllowsCache: boolean;
     ttl: number;
     cacheControl: boolean;
+    hooks?: VextInternalHooks;
+    cacheKey: string;
   },
 ): () => Promise<ResponseCacheOriginResponse> {
   return () =>
@@ -275,6 +316,12 @@ function createOrigin(
         }
 
         if (!settled) {
+          options.hooks?.emitSafeSync("cache:write", {
+            req,
+            route: req.route,
+            key: options.cacheKey,
+            state: "write",
+          });
           settled = true;
           resolve({ body: data, status: statusCode, headers: responseHeaders });
         }

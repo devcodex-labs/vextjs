@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createVextFetch } from "../../../src/lib/fetch.js";
+import { createHookManager } from "../../../src/lib/hooks.js";
 import { requestContext } from "../../../src/lib/request-context.js";
 import type { VextLogger } from "../../../src/types/app.js";
 import type { VextRequest } from "../../../src/types/request.js";
@@ -265,6 +266,58 @@ describe("requestId 自动注入", () => {
       const headers = getLastRequestHeaders(globalFetchMock);
       expect(headers.has("x-request-id")).toBe(false);
     });
+  });
+});
+
+describe("fetch hooks", () => {
+  it("fetch:before can mutate headers and fetch:after observes response", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const after = vi.fn();
+
+    hooks.on("fetch:before", ({ headers }) => {
+      headers.set("x-from-hook", "yes");
+    });
+    hooks.on("fetch:after", after);
+
+    const vextFetch = createVextFetch(logger, {}, "x-request-id", hooks);
+    await vextFetch("https://example.com/api");
+
+    const headers = getLastRequestHeaders(globalFetchMock);
+    expect(headers.get("x-from-hook")).toBe("yes");
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/api",
+        method: "GET",
+        response: expect.any(Response),
+      }),
+    );
+  });
+
+  it("fetch:error observes final fetch failures", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const onError = vi.fn();
+    hooks.on("fetch:error", onError);
+    globalFetchMock.mockRejectedValueOnce(new Error("network down"));
+
+    const vextFetch = createVextFetch(
+      logger,
+      { retry: 0 },
+      "x-request-id",
+      hooks,
+    );
+
+    await expect(vextFetch("https://example.com/api")).rejects.toThrow(
+      "network down",
+    );
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/api",
+        method: "GET",
+        error: expect.any(Error),
+      }),
+    );
   });
 });
 
@@ -824,6 +877,87 @@ describe("app.fetch.proxy 代理", () => {
     expect(state.headers["x-upstream"]).toBe("users");
     expect(state.body).toBe('{"id":1,"name":"Alice"}');
     expect(state.sentBy).toBe("text");
+  });
+
+  it("emits proxy before/after hooks for successful proxy calls", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const before = vi.fn();
+    const after = vi.fn();
+    hooks.on("proxy:before", before);
+    hooks.on("proxy:after", after);
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [{ name: "userService", baseURL: "https://users.example.com" }],
+      },
+      "x-request-id",
+      hooks,
+    );
+    const req = createProxyRequest();
+    const { res } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(before).toHaveBeenCalledWith(
+      expect.objectContaining({
+        req,
+        target: "userService",
+        url: "https://users.example.com/health",
+        method: "GET",
+        requestId: "proxy-req-1",
+      }),
+    );
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({
+        req,
+        target: "userService",
+        status: 200,
+        requestId: "proxy-req-1",
+      }),
+    );
+  });
+
+  it("emits proxy:error for upstream failures", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const onError = vi.fn();
+    hooks.on("proxy:error", onError);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("upstream down")),
+    );
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [{ name: "userService", baseURL: "https://users.example.com" }],
+      },
+      "x-request-id",
+      hooks,
+    );
+    const req = createProxyRequest();
+    const { res } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        req,
+        target: "userService",
+        error: expect.any(Error),
+        requestId: "proxy-req-1",
+      }),
+    );
   });
 
   it("支持直接 URL fallback 代理", async () => {

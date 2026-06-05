@@ -5,6 +5,7 @@ type VextPluginContextKeys =
   | "throw"
   | "config"
   | "services"
+  | "hooks"
   | "adapter"
   | "extend"
   | "setValidator"
@@ -33,7 +34,10 @@ type VextPluginContextKeys =
  *   这条递归类型链一起带入比较，容易放大跨副本的结构不兼容。
  *   插件上下文去掉路由注册方法后，既更贴合实际使用面，也能降低此类冲突概率。
  */
-export interface VextPluginContext extends Pick<VextApp, VextPluginContextKeys> {
+export interface VextPluginContext extends Pick<
+  VextApp,
+  VextPluginContextKeys
+> {
   [key: string]: unknown;
 }
 

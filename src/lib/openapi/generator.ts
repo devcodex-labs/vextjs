@@ -115,6 +115,11 @@ export class OpenAPIGenerator {
           type: "string",
           description: "Request trace ID",
         },
+        details: {
+          type: "object",
+          description: "Optional JSON-safe business error details",
+          additionalProperties: true,
+        },
       },
       required: ["code", "message", "requestId"],
     };

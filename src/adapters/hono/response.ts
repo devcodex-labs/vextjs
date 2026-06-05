@@ -1,5 +1,9 @@
 import type { Context } from "hono";
 import type { VextResponse } from "../../types/response.js";
+import {
+  beginResponseSend,
+  finishResponseSend,
+} from "../../lib/response-hooks.js";
 
 /**
  * 共享 Response 容器
@@ -135,13 +139,26 @@ export function createVextResponse(
     json(data: unknown, status?: number): void {
       if (checkSent("json")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
 
-      // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+      // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
       if (res._onSend) {
         res._onSend(data, finalStatus, { ..._headers });
       }
+
+      const sendState = beginResponseSend(res, {
+        kind: "json",
+        data,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: _wrapEnabled,
+        requestId: getRequestId(),
+      });
+      data = sendState.data;
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
 
       // 设置 HTTP 状态码和响应头
       c.status(finalStatus as any);
@@ -151,6 +168,7 @@ export function createVextResponse(
         // P1-7: 204 No Content 不能有消息体（RFC 9110 §15.3.5）
         if (finalStatus === 204) {
           captureResponse(c.body(null));
+          finishResponseSend(res, sendState);
           return;
         }
 
@@ -162,33 +180,62 @@ export function createVextResponse(
             requestId: getRequestId(),
           }),
         );
+        finishResponseSend(res, sendState);
         return;
       }
 
       // 未包装模式（_enableWrap 未调用时的降级行为）
       if (finalStatus === 204) {
         captureResponse(c.body(null));
+        finishResponseSend(res, sendState);
         return;
       }
 
       captureResponse(c.json(data as object));
+      finishResponseSend(res, sendState);
     },
 
     rawJson(data: unknown, status?: number): void {
       if (checkSent("rawJson")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
+      const sendState = beginResponseSend(res, {
+        kind: "rawJson",
+        data,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      data = sendState.data;
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
       c.status(finalStatus as any);
       applyHeaders();
       captureResponse(c.json(data as object));
+      finishResponseSend(res, sendState);
     },
 
     text(content: string, status?: number): void {
       if (checkSent("text")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
+      const sendState = beginResponseSend(res, {
+        kind: "text",
+        data: content,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      content =
+        typeof sendState.data === "string" ? sendState.data : String(content);
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
       c.status(finalStatus as any);
       // 先设默认 Content-Type: text/plain，再调 applyHeaders()
       // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
@@ -199,6 +246,7 @@ export function createVextResponse(
       c.header("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
       captureResponse(c.body(content));
+      finishResponseSend(res, sendState);
     },
 
     stream(
@@ -207,10 +255,21 @@ export function createVextResponse(
     ): void {
       if (checkSent("stream")) return;
 
+      const sendState = beginResponseSend(res, {
+        kind: "stream",
+        status: _status,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      Object.assign(_headers, sendState.headers);
+
       c.status(_status as any);
       c.header("Content-Type", contentType);
       applyHeaders();
       captureResponse(c.body(readable as any));
+      finishResponseSend(res, sendState);
     },
 
     download(

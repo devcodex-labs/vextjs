@@ -10,6 +10,7 @@
 - 注册全局中间件（`app.use()`）
 - 注册优雅关闭钩子（`app.onClose()`）
 - 注册就绪钩子（`app.onReady()`）
+- 注册运行时生命周期 hook（`app.hooks.on()`）
 - 替换内置实现（`app.setValidator()` / `app.setThrow()` / `app.setRateLimiter()`）
 
 插件文件放在 `src/plugins/` 目录下，`plugin-loader` 在启动时自动扫描加载。
@@ -132,6 +133,7 @@ setup(app: VextApp): Promise<void> | void;
 - 执行顺序由 `dependencies` 拓扑排序决定
 - `setup()` 执行时 `app.services` 尚未注入（`service-loader` 在 `plugin-loader` 之后执行），不能访问服务
 - 如果插件对象声明了 `onReady(app)` / `onClose(app)`，`plugin-loader` 会在 `setup()` 成功后自动注册这两个生命周期钩子
+- `app.hooks.on()` 可用于注册 request/validation/response/fetch/service/plugin/OpenAPI 等运行时 hook，详见 [应用实例 hooks](/api/app#apphooks)
 
 ```typescript
 export default definePlugin({

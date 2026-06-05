@@ -180,6 +180,30 @@ app.post("/pay", async (req, res) => {
 });
 ```
 
+## Service Hooks
+
+Vext 会为加载到 `app.services` 的实例方法安装轻量 wrapper。当没有注册 service hook 时，调用会直接走原方法；注册 hook 后，可观察调用前后和错误：
+
+```typescript
+// src/plugins/service-observer.ts
+import { definePlugin } from "vextjs";
+
+export default definePlugin({
+  name: "service-observer",
+  setup(app) {
+    app.hooks.on("service:beforeCall", ({ service, method }) => {
+      app.logger.debug({ service, method }, "service call start");
+    });
+
+    app.hooks.on("service:error", ({ service, method, error }) => {
+      app.logger.error({ service, method, err: error }, "service call failed");
+    });
+  },
+});
+```
+
+`service:beforeCall`、`service:afterCall` 和 `service:error` 都是同步 hook。不要在这些 handler 中返回 Promise；如需异步上报，建议放入队列或使用不阻塞主调用的日志传输。
+
 ## 服务间调用
 
 服务之间可以相互调用。推荐通过 `this.app.services` 在**方法中**按需访问（延迟访问），而非在构造函数中直接引用：

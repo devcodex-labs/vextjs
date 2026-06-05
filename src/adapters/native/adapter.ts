@@ -324,6 +324,7 @@ export function createNativeAdapter(
     // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
     req.route = routePath || store.routePath;
     const res = createVextResponse(nodeRes, req);
+    res._hooks = app.hooks;
 
     // ── 预组装中间件链（首次请求时构建，后续复用）──────────
     //
@@ -437,6 +438,7 @@ export function createNativeAdapter(
 
     const req = createVextRequest(nodeReq, app, {}, requestUrl);
     const res = createVextResponse(nodeRes, req);
+    res._hooks = app.hooks;
 
     // 内联生成 requestId（notFound 不走中间件链）
     if (!req.requestId) {

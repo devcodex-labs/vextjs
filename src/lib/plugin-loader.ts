@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { createRequire } from "node:module";
 import type { VextApp } from "../types/app.js";
+import type { VextInternalHooks } from "../types/hooks.js";
 import type { VextPlugin } from "../types/plugin.js";
 import { resolveModuleDefault } from "./interop.js";
 import { pathToFileURL } from "node:url";
@@ -67,7 +68,10 @@ function _ensureModuleLoadPatch(): void {
  *
  * @returns 解析后的 package.json 对象，找不到返回 null
  */
-function _findPkgJsonPath(pkgId: string, resolver: ModuleResolver): string | null {
+function _findPkgJsonPath(
+  pkgId: string,
+  resolver: ModuleResolver,
+): string | null {
   try {
     // 方法 1：直接解析 package.json（包允许访问时最快）
     try {
@@ -116,8 +120,7 @@ function _parsePackageRequest(requestId: string): PackageRequest {
 
   return {
     packageId: packageParts.join("/"),
-    exportKey:
-      subpathParts.length === 0 ? "." : `./${subpathParts.join("/")}`,
+    exportKey: subpathParts.length === 0 ? "." : `./${subpathParts.join("/")}`,
   };
 }
 
@@ -241,7 +244,6 @@ async function _preloadEsmDeps(compiledFilePath: string): Promise<void> {
     }
   }
 }
-
 
 /**
  * plugin-loader.ts — 插件自动加载器
@@ -698,8 +700,15 @@ async function executeSetupWithTimeout(
   sourceFile: string,
 ): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const startedAt = performance.now();
+  const hooks = app.hooks as VextInternalHooks;
 
   try {
+    await hooks.emit("plugin:beforeSetup", {
+      plugin: plugin.name,
+      sourceFile,
+    });
+
     await Promise.race([
       // setup 执行
       Promise.resolve(plugin.setup(app)).then((result) => {
@@ -741,12 +750,24 @@ async function executeSetupWithTimeout(
         }, timeoutMs);
       }),
     ]);
+    hooks.emitSafeSync("plugin:afterSetup", {
+      plugin: plugin.name,
+      sourceFile,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
   } catch (err) {
     // 确保异常时也清理定时器
     if (timer !== undefined) {
       clearTimeout(timer);
       timer = undefined;
     }
+
+    hooks.emitSafeSync("plugin:error", {
+      plugin: plugin.name,
+      sourceFile,
+      durationMs: Math.round(performance.now() - startedAt),
+      error: err,
+    });
 
     // 如果是我们自己的超时错误或 vextjs 错误，直接抛出
     if (err instanceof Error && err.message.startsWith("[vextjs]")) {

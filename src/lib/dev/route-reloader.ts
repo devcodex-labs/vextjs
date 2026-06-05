@@ -2,8 +2,11 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { RouteMetadataCollector } from "../openapi/collector.js";
 import { OpenAPIGenerator } from "../openapi/generator.js";
+import { generateOpenAPIDocumentWithHooks } from "../openapi/hook-lifecycle.js";
 import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
 import type { OpenAPIConfig } from "../openapi/types.js";
+import { createRequestHookMiddleware } from "../middlewares/request-hook.js";
+import type { VextInternalHooks } from "../../types/hooks.js";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）
@@ -111,6 +114,7 @@ export interface RouteReloaderApp {
   };
   adapter: RouteReloaderAdapter;
   services: Record<string, unknown>;
+  hooks?: VextInternalHooks;
   cache?: {
     clear(): Promise<void>;
   };
@@ -377,6 +381,13 @@ export async function reloadRoutes(
         ),
       );
     }
+    if (app.hooks) {
+      freshAdapter.registerMiddleware(
+        createRequestHookMiddleware(
+          app.hooks,
+        ) as unknown as RouteReloaderMiddleware,
+      );
+    }
     if (builtinMiddlewares.createCorsMiddleware) {
       freshAdapter.registerMiddleware(
         builtinMiddlewares.createCorsMiddleware(
@@ -524,7 +535,10 @@ export async function reloadRoutes(
           | undefined,
       } as OpenAPIConfig);
 
-      const spec = generator.generate(collector.getRoutes());
+      const routes = collector.getRoutes();
+      const spec = app.hooks
+        ? generateOpenAPIDocumentWithHooks(app as any, generator, routes)
+        : generator.generate(routes);
 
       registerDocEndpoints(app as any, spec, {
         specPath:

@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | — | — |
+| [Unreleased] | — | — | No pending release notes [查看](./changelogs/unreleased.md) |
+| [0.3.17] | 2026-06-05 | Patch | `app.throw` supports JSON-safe `details`; `app.hooks` adds request/validation/response/fetch/service/plugin/OpenAPI lifecycle hooks [查看](./changelogs/v0.3.17.md) |
 | [0.3.16] | 2026-06-04 | Patch | `config.server` adds inbound Node.js HTTP server timeout/header controls [查看](./changelogs/v0.3.16.md) |
 | [0.3.15] | 2026-06-04 | Patch | `app.fetch.proxy` adds config-driven upstream passthrough; package metadata remains Apache-2.0 [查看](./changelogs/v0.3.15.md) |
 | [0.3.14] | 2026-06-04 | Patch | 响应缓存承接 `response-cache-kit@1.2.0` 的 `cacheHub` 运行时配置，支持 Redis/MultiLevel/lease/distributed 并补齐关闭生命周期 [查看](./changelogs/v0.3.14.md) |
@@ -64,7 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.16...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.17...HEAD
+[0.3.17]: https://github.com/vextjs/vext/compare/v0.3.16...v0.3.17
 [0.3.16]: https://github.com/vextjs/vext/compare/v0.3.15...v0.3.16
 [0.3.15]: https://github.com/vextjs/vext/compare/v0.3.14...v0.3.15
 [0.3.14]: https://github.com/vextjs/vext/compare/v0.3.13...v0.3.14

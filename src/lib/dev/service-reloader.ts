@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
+import type { VextInternalHooks } from "../../types/hooks.js";
+import { wrapServiceInstance } from "../service-hooks.js";
 
 // 在 ESM 环境中通过 createRequire 获取 CJS 的 require 函数。
 // service-reloader 需要 require() 加载 .vext/dev/services/ 下的 CJS 编译产物，
@@ -56,6 +58,7 @@ export interface ServiceReloaderApp {
     debug(...args: unknown[]): void;
     error(...args: unknown[]): void;
   };
+  hooks?: VextInternalHooks;
 }
 
 /**
@@ -385,6 +388,10 @@ export async function reloadServices(
         newInstance = Cls;
       }
 
+      if (app.hooks) {
+        newInstance = wrapServiceInstance(app.hooks, dotPath, newInstance);
+      }
+
       // 4.4 挂载到 app.services
       //
       // v2.2: 使用 setNestedValue 正确设置嵌套路径
@@ -394,6 +401,11 @@ export async function reloadServices(
         keys,
         newInstance,
       );
+      app.hooks?.emitSafeSync("service:reloaded", {
+        name: dotPath,
+        instance: newInstance,
+        filePath: file,
+      });
 
       reloadedKeys.push(dotPath);
       app.logger.debug(`[hot-reload] service "${dotPath}" reloaded`);

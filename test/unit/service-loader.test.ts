@@ -30,11 +30,12 @@
  * @see IMPLEMENTATION-PLAN.md 任务 1.20
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadServices } from "../../src/lib/service-loader.js";
+import { createHookManager } from "../../src/lib/hooks.js";
 import type { VextApp, VextConfig } from "../../src/types/app.js";
 
 // ── 测试辅助 ────────────────────────────────────────────────
@@ -95,6 +96,7 @@ function createMockApp(overrides?: Partial<VextApp>): VextApp {
       _testMode: true,
     } as VextConfig,
     services: {} as any,
+    hooks: createHookManager(),
     adapter: null as any,
     get: () => {},
     post: () => {},
@@ -228,6 +230,61 @@ export default class EchoService {
 
       const echoService = (app.services as any).echo;
       expect(echoService.getPort()).toBe(3000);
+    });
+
+    it("wraps service methods with before/after/error hooks", async () => {
+      const servicesDir = join(tmpDir, "services");
+      await writeServiceFile(
+        servicesDir,
+        "user.mjs",
+        `
+export default class UserService {
+  findOne(id) {
+    return { id };
+  }
+
+  fail() {
+    throw new Error("service failed");
+  }
+}
+`,
+      );
+
+      const app = createMockApp();
+      const before = vi.fn();
+      const after = vi.fn();
+      const onError = vi.fn();
+      app.hooks.on("service:beforeCall", before);
+      app.hooks.on("service:afterCall", after);
+      app.hooks.on("service:error", onError);
+
+      await loadServices(app, servicesDir, { checkCircularDeps: false });
+
+      const userService = (app.services as any).user;
+      expect(userService.findOne("u1")).toEqual({ id: "u1" });
+      expect(() => userService.fail()).toThrow("service failed");
+
+      expect(before).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: "user",
+          method: "findOne",
+          args: ["u1"],
+        }),
+      );
+      expect(after).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: "user",
+          method: "findOne",
+          result: { id: "u1" },
+        }),
+      );
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: "user",
+          method: "fail",
+          error: expect.any(Error),
+        }),
+      );
     });
   });
 

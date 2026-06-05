@@ -24,6 +24,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { createErrorHandler } from "../../../src/lib/middlewares/error-handler.js";
+import { createHookManager } from "../../../src/lib/hooks.js";
 import { HttpError, VextValidationError } from "../../../src/types/errors.js";
 
 // ── Mock 工厂 ────────────────────────────────────────────────
@@ -65,10 +66,86 @@ describe("createErrorHandler — logger 日志行为", () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      expect(() => handler(new Error("boom"), req as any, res as any)).not.toThrow();
+      expect(() =>
+        handler(new Error("boom"), req as any, res as any),
+      ).not.toThrow();
       expect(res.rawJson).toHaveBeenCalledWith(
         expect.objectContaining({ code: 500 }),
         500,
+      );
+    });
+  });
+
+  describe("HttpError details 与 error hooks", () => {
+    it("HttpError details should be sanitized into JSON response", () => {
+      const handler = createErrorHandler({ hideInternalErrors: true });
+      const req = createMockReq();
+      const res = createMockRes();
+      const details: Record<string, unknown> = {
+        vendor: "stripe",
+        raw: { code: "card_declined" },
+      };
+      details.self = details;
+
+      handler(
+        new HttpError(402, "Payment rejected", {
+          code: "PAYMENT_REJECTED",
+          details,
+        }),
+        req as any,
+        res as any,
+      );
+
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "PAYMENT_REJECTED",
+          details: {
+            vendor: "stripe",
+            raw: { code: "card_declined" },
+            self: "[Circular]",
+          },
+        }),
+        402,
+      );
+    });
+
+    it("error:beforeResponse can patch body/status and afterResponse observes send", () => {
+      const hooks = createHookManager(createMockLogger() as any);
+      const after = vi.fn();
+      hooks.on("error:beforeResponse", (payload) => {
+        expect(payload.status).toBe(400);
+        return {
+          status: 409,
+          body: {
+            ...payload.body,
+            patched: true,
+          },
+        };
+      });
+      hooks.on("error:afterResponse", after);
+
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        undefined,
+        hooks,
+      );
+      const req = createMockReq();
+      const res = createMockRes();
+      const err = new HttpError(400, "Conflict-ish");
+
+      handler(err, req as any, res as any);
+
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({ patched: true }),
+        409,
+      );
+      expect(after).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: err,
+          status: 409,
+          requestId: "test-req-id",
+        }),
       );
     });
   });
@@ -78,7 +155,11 @@ describe("createErrorHandler — logger 日志行为", () => {
   describe("未知错误（500）日志", () => {
     it("未知错误 → logger.error 被调用，第一参数含 err 对象（R1）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
       const err = new Error("runtime crash");
@@ -110,7 +191,11 @@ describe("createErrorHandler — logger 日志行为", () => {
 
     it("VextValidationError → logger 不被调用（范围外，不记录校验错误）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
       const err = new VextValidationError([
@@ -129,11 +214,19 @@ describe("createErrorHandler — logger 日志行为", () => {
   describe("HttpError 5xx 日志", () => {
     it("HttpError 500 → logger.error 被调用，消息含 status 和 message（R2）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
-      handler(new HttpError(500, "Service Unavailable"), req as any, res as any);
+      handler(
+        new HttpError(500, "Service Unavailable"),
+        req as any,
+        res as any,
+      );
 
       expect(logger.error).toHaveBeenCalledTimes(1);
       const msg = logger.error.mock.calls[0]![0] as string;
@@ -163,7 +256,11 @@ describe("createErrorHandler — logger 日志行为", () => {
   describe("HttpError 4xx 日志", () => {
     it("HttpError 404，默认配置 → logger.warn 不被调用（R3 默认 off）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
@@ -214,7 +311,11 @@ describe("createErrorHandler — logger 日志行为", () => {
     it("devOverlay 触发 + 未知 500 → logger.error 仍被调用（日志先于响应格式）", () => {
       const logger = createMockLogger();
       const overlay = vi.fn(() => "<html>error</html>");
-      const handler = createErrorHandler({ hideInternalErrors: true }, overlay, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        overlay,
+        logger,
+      );
       // Accept 含 text/html → 触发 devOverlay
       const req = createMockReq("text/html,application/xhtml+xml");
       const res = createMockRes();
@@ -230,7 +331,11 @@ describe("createErrorHandler — logger 日志行为", () => {
     it("devOverlay 触发 + HttpError 404 默认配置 → logger.warn 不被调用", () => {
       const logger = createMockLogger();
       const overlay = vi.fn(() => "<html>404</html>");
-      const handler = createErrorHandler({ hideInternalErrors: true }, overlay, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        overlay,
+        logger,
+      );
       const req = createMockReq("text/html,application/xhtml+xml");
       const res = createMockRes();
 
@@ -247,7 +352,11 @@ describe("createErrorHandler — logger 日志行为", () => {
   describe("边界条件 — 非 Error 对象", () => {
     it("throw 'string error' → logger.error 被调用，message 正确（T-M1）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
@@ -267,11 +376,17 @@ describe("createErrorHandler — logger 日志行为", () => {
 
     it("throw null → logger.error 被调用，不崩溃（T-M2a）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
-      expect(() => handler(null as unknown, req as any, res as any)).not.toThrow();
+      expect(() =>
+        handler(null as unknown, req as any, res as any),
+      ).not.toThrow();
       expect(logger.error).toHaveBeenCalledTimes(1);
       expect(res.rawJson).toHaveBeenCalledWith(
         expect.objectContaining({ code: 500 }),
@@ -281,11 +396,17 @@ describe("createErrorHandler — logger 日志行为", () => {
 
     it("throw undefined → logger.error 被调用，不崩溃（T-M2b）", () => {
       const logger = createMockLogger();
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
-      expect(() => handler(undefined as unknown, req as any, res as any)).not.toThrow();
+      expect(() =>
+        handler(undefined as unknown, req as any, res as any),
+      ).not.toThrow();
       expect(logger.error).toHaveBeenCalledTimes(1);
       expect(res.rawJson).toHaveBeenCalledWith(
         expect.objectContaining({ code: 500 }),
@@ -300,7 +421,10 @@ describe("createErrorHandler — logger 日志行为", () => {
     it("http4xx: true + http5xx: false → 4xx 记录 warn，5xx 不记录（T-M3）", () => {
       const logger = createMockLogger();
       const handler = createErrorHandler(
-        { hideInternalErrors: true, logErrors: { http4xx: true, http5xx: false } },
+        {
+          hideInternalErrors: true,
+          logErrors: { http4xx: true, http5xx: false },
+        },
         undefined,
         logger,
       );
@@ -332,12 +456,18 @@ describe("createErrorHandler — logger 日志行为", () => {
       logger.error.mockImplementation(() => {
         throw new Error("logger broken");
       });
-      const handler = createErrorHandler({ hideInternalErrors: true }, undefined, logger);
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
       const req = createMockReq();
       const res = createMockRes();
 
       // 不应抛出
-      expect(() => handler(new Error("boom"), req as any, res as any)).not.toThrow();
+      expect(() =>
+        handler(new Error("boom"), req as any, res as any),
+      ).not.toThrow();
       // 响应仍正常返回
       expect(res.rawJson).toHaveBeenCalledWith(
         expect.objectContaining({ code: 500 }),
@@ -358,7 +488,9 @@ describe("createErrorHandler — logger 日志行为", () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      expect(() => handler(new HttpError(404, "Not Found"), req as any, res as any)).not.toThrow();
+      expect(() =>
+        handler(new HttpError(404, "Not Found"), req as any, res as any),
+      ).not.toThrow();
       expect(res.rawJson).toHaveBeenCalledWith(
         expect.objectContaining({ code: 404 }),
         404,
@@ -366,4 +498,3 @@ describe("createErrorHandler — logger 日志行为", () => {
     });
   });
 });
-

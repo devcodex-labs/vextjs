@@ -1,6 +1,10 @@
 import type { ServerResponse } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import {
+  beginResponseSend,
+  finishResponseSend,
+} from "../../lib/response-hooks.js";
 
 type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
@@ -225,18 +229,32 @@ class NativeVextResponse implements VextResponse {
   json(data: unknown, status?: number): void {
     if (this._checkSent("json")) return;
 
-    const finalStatus = status ?? this._status;
+    let finalStatus = status ?? this._status;
     this._status = finalStatus;
 
-    // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+    // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
     if (this._onSend) {
       this._onSend(data, finalStatus, { ...this._headers });
     }
+
+    const sendState = beginResponseSend(this, {
+      kind: "json",
+      data,
+      status: finalStatus,
+      headers: { ...this._headers },
+      wrapped: this._wrapEnabled,
+      requestId: this._resolveRequestId(),
+    });
+    data = sendState.data;
+    finalStatus = sendState.status;
+    this._status = finalStatus;
+    Object.assign(this._headers, sendState.headers);
 
     if (this._wrapEnabled) {
       // 204 No Content 不能有消息体（RFC 9110 §15.3.5）
       if (finalStatus === 204) {
         this._send204();
+        finishResponseSend(this, sendState);
         return;
       }
 
@@ -249,16 +267,19 @@ class NativeVextResponse implements VextResponse {
         }),
         finalStatus,
       );
+      finishResponseSend(this, sendState);
       return;
     }
 
     // 未包装模式
     if (finalStatus === 204) {
       this._send204();
+      finishResponseSend(this, sendState);
       return;
     }
 
     this._sendJsonString(JSON.stringify(data), finalStatus);
+    finishResponseSend(this, sendState);
   }
 
   /**
@@ -272,10 +293,23 @@ class NativeVextResponse implements VextResponse {
   rawJson(data: unknown, status?: number): void {
     if (this._checkSent("rawJson")) return;
 
-    const finalStatus = status ?? this._status;
+    let finalStatus = status ?? this._status;
     this._status = finalStatus;
+    const sendState = beginResponseSend(this, {
+      kind: "rawJson",
+      data,
+      status: finalStatus,
+      headers: { ...this._headers },
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    data = sendState.data;
+    finalStatus = sendState.status;
+    this._status = finalStatus;
+    Object.assign(this._headers, sendState.headers);
 
     this._sendJsonString(JSON.stringify(data), finalStatus);
+    finishResponseSend(this, sendState);
   }
 
   /**
@@ -284,8 +318,21 @@ class NativeVextResponse implements VextResponse {
   text(content: string, status?: number): void {
     if (this._checkSent("text")) return;
 
-    const finalStatus = status ?? this._status;
+    let finalStatus = status ?? this._status;
     this._status = finalStatus;
+    const sendState = beginResponseSend(this, {
+      kind: "text",
+      data: content,
+      status: finalStatus,
+      headers: { ...this._headers },
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    content =
+      typeof sendState.data === "string" ? sendState.data : String(content);
+    finalStatus = sendState.status;
+    this._status = finalStatus;
+    Object.assign(this._headers, sendState.headers);
 
     const sr = this._serverResponse;
     sr.statusCode = finalStatus;
@@ -295,6 +342,7 @@ class NativeVextResponse implements VextResponse {
     this._applyHeaders();
     sr.setHeader("Content-Length", Buffer.byteLength(content));
     sr.end(content);
+    finishResponseSend(this, sendState);
   }
 
   /**
@@ -309,6 +357,16 @@ class NativeVextResponse implements VextResponse {
   ): void {
     if (this._checkSent("stream")) return;
 
+    const sendState = beginResponseSend(this, {
+      kind: "stream",
+      status: this._status,
+      headers: { ...this._headers },
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    this._status = sendState.status;
+    Object.assign(this._headers, sendState.headers);
+
     const sr = this._serverResponse;
     sr.statusCode = this._status;
     sr.setHeader("Content-Type", contentType);
@@ -316,6 +374,7 @@ class NativeVextResponse implements VextResponse {
 
     // 使用 pipe 自动处理背压（backpressure）
     (readable as NodeJS.ReadableStream).pipe(sr);
+    finishResponseSend(this, sendState);
   }
 
   /**

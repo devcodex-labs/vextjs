@@ -1,5 +1,10 @@
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextRequest } from "../types/request.js";
+import type {
+  VextInternalHooks,
+  VextRouteHookInfo,
+  VextValidationLocationResult,
+} from "../types/hooks.js";
 import { VextValidationError } from "../types/errors.js";
 
 /**
@@ -99,6 +104,8 @@ export function buildValidateMiddleware(
   getValidator: () => {
     compile(schema: Record<string, unknown>): CompiledValidator;
   },
+  hooks?: VextInternalHooks,
+  route?: VextRouteHookInfo,
 ): VextMiddleware | null {
   // 无 validate 配置 → 跳过校验，不插入中间件
   if (!validateConfig) return null;
@@ -128,6 +135,8 @@ export function buildValidateMiddleware(
 
   // ── 返回中间件函数（每次请求执行）─────────────────────────
   return async (req, _res, next) => {
+    const locationResults: VextValidationLocationResult[] = [];
+
     for (const loc of VALIDATE_LOCATIONS) {
       const validate = compiled[loc];
       if (!validate) continue;
@@ -150,6 +159,15 @@ export function buildValidateMiddleware(
           message: e.message ?? "Validation failed",
         }));
 
+        if (hooks && route) {
+          await hooks.emitSafe("validation:error", {
+            req,
+            route,
+            errors,
+            requestId: req.requestId,
+          });
+        }
+
         throw new VextValidationError(errors);
       }
 
@@ -161,6 +179,19 @@ export function buildValidateMiddleware(
       // （如 query 中 '123' → 123），所以存储 result.data 而非原始数据。
       //
       (req as Record<string, unknown>)[`_validated_${loc}`] = result.data;
+      locationResults.push({
+        location: loc,
+        data: result.data,
+      });
+    }
+
+    if (hooks && route) {
+      await hooks.emit("validation:success", {
+        req,
+        route,
+        locationResults,
+        requestId: req.requestId,
+      });
     }
 
     await next();

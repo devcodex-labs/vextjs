@@ -1,5 +1,6 @@
 import { createLogger } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
+import { createHookManager } from "./hooks.js";
 import { schemaAdapter } from "./schema-adapter.js";
 import type { DslDefinition } from "./schema-adapter.js";
 import type { VextAdapter } from "../types/adapter.js";
@@ -155,6 +156,7 @@ export function createApp(config: VextConfig): {
   const responseCache = createResponseCache({
     ...resolveVextResponseCacheOptions(config.cache),
   });
+  const hooks = createHookManager(logger);
 
   // ── 创建 app 对象 ──────────────────────────────────────────
 
@@ -166,6 +168,7 @@ export function createApp(config: VextConfig): {
     // ── 运行时数据（不可覆盖）─────────────────────────────
     config,
     services: {} as VextServices,
+    hooks,
     adapter: null as unknown as VextAdapter, // 稍后由 resolveAdapter 赋值
 
     // ── HTTP 方法占位（defineRoutes 的 collector 才真正使用）──
@@ -320,11 +323,13 @@ export function createApp(config: VextConfig): {
     },
 
     async runReady() {
+      await hooks.emitSafe("app:ready", { app, phase: "before" });
       for (const h of readyHooks) {
         await h();
       }
       // 执行完后清空，释放 hooks 持有的闭包引用
       readyHooks.length = 0;
+      await hooks.emitSafe("app:ready", { app, phase: "after" });
     },
 
     getGlobalMiddlewares() {
@@ -348,6 +353,7 @@ export function createApp(config: VextConfig): {
       _shuttingDown = true;
 
       app.logger.info("[vextjs] starting graceful shutdown...");
+      await hooks.emitSafe("app:close", { app, phase: "before" });
 
       const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
 
@@ -389,6 +395,7 @@ export function createApp(config: VextConfig): {
           "[vextjs] response cache close failed",
         );
       }
+      await hooks.emitSafe("app:close", { app, phase: "after" });
 
       // ── 步骤 4：退出进程 ──
       //

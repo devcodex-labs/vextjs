@@ -194,6 +194,59 @@ describe("createDefaultThrow", () => {
         expect(httpErr.code).toBe(50001); // explicit code wins over locale code
       }
     });
+
+    it("should treat fourth argument object as error details", () => {
+      const params = { provider: "stripe" };
+      const details = {
+        vendorCode: "card_declined",
+        vendorMessage: "declined",
+      };
+
+      mockCreateI18nError.mockReturnValue(
+        createMockI18nError({
+          message: "Payment rejected",
+          originalKey: "payment.rejected",
+          code: "payment.rejected",
+        }) as any,
+      );
+
+      try {
+        throwFn(402, "payment.rejected", params, details);
+      } catch (err) {
+        const httpErr = err as HttpError;
+        expect(httpErr.status).toBe(402);
+        expect(httpErr.message).toBe("Payment rejected");
+        expect(httpErr.code).toBeUndefined();
+        expect(httpErr.details).toEqual(details);
+      }
+    });
+
+    it("should support object style call with code and details", () => {
+      const details = { upstream: { code: "E_LIMIT", retryable: false } };
+
+      mockCreateI18nError.mockReturnValue(
+        createMockI18nError({
+          message: "Upstream rejected",
+          originalKey: "upstream.rejected",
+          code: "upstream.rejected",
+        }) as any,
+      );
+
+      try {
+        throwFn({
+          status: 502,
+          message: "upstream.rejected",
+          params: { provider: "crm" },
+          code: "CRM_REJECTED",
+          details,
+        });
+      } catch (err) {
+        const httpErr = err as HttpError;
+        expect(httpErr.status).toBe(502);
+        expect(httpErr.code).toBe("CRM_REJECTED");
+        expect(httpErr.details).toEqual(details);
+      }
+    });
   });
 
   // ── 快捷方式（第一参数为 string）────────────────────────

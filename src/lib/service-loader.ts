@@ -1,6 +1,7 @@
 import { readdir, stat, readFile, writeFile, unlink } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { VextApp, VextLogger } from "../types/app.js";
+import type { VextInternalHooks } from "../types/hooks.js";
 import { resolveModuleDefault } from "./interop.js";
 import { pathToFileURL } from "node:url";
 import {
@@ -8,6 +9,7 @@ import {
   shouldExcludeServiceFileName,
   filePathToServiceKeys,
 } from "../shared/service-paths.js";
+import { wrapServiceInstance } from "./service-hooks.js";
 
 /**
  * service-loader.ts — 服务层自动加载器
@@ -84,6 +86,7 @@ export async function loadServices(
 ): Promise<void> {
   const { checkCircularDeps = true } = options;
   const lifecycleLevel = app.config.logger?.lifecycleLevel ?? "concise";
+  const hooks = app.hooks as VextInternalHooks;
 
   // ── 1. 检查 services/ 目录是否存在 ────────────────────────
   const dirExists = await directoryExists(servicesDir);
@@ -135,12 +138,18 @@ export async function loadServices(
     }
 
     // 4.4 挂载到 app.services（嵌套 key）
+    instance = wrapServiceInstance(hooks, flatKey, instance);
     setNestedKey(
       app.services as Record<string, unknown>,
       keys,
       instance,
       filePath,
     );
+    hooks.emitSafeSync("service:loaded", {
+      name: flatKey,
+      instance,
+      filePath,
+    });
 
     // 4.5 记录文件映射（供循环依赖检测使用）
     serviceFileMap.set(flatKey, filePath);
@@ -200,7 +209,6 @@ async function scanServiceFiles(dir: string): Promise<string[]> {
 }
 
 // ── 路径映射 ──────────────────────────────────────────────────
-
 
 // ── 嵌套 key 设置 ────────────────────────────────────────────
 

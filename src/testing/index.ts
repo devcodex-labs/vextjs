@@ -27,8 +27,13 @@ import { createCorsMiddleware } from "../lib/middlewares/cors.js";
 import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
+import {
+  createRequestHookMiddleware,
+  emitNotFoundRequestHooks,
+} from "../lib/middlewares/request-hook.js";
 import { _deepMerge } from "../lib/config-loader.js";
 import type { VextApp, VextConfig, VextServices } from "../types/app.js";
+import type { VextInternalHooks } from "../types/hooks.js";
 import { createVextFetch, type VextFetchConfig } from "../lib/fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 
@@ -317,6 +322,7 @@ export async function createTestApp(
 
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
+  const hooks = app.hooks as VextInternalHooks;
 
   // ── 2a. resolveAdapter（异步按需加载）─────────────────
   app.adapter = await resolveAdapter(finalConfig, app);
@@ -326,6 +332,7 @@ export async function createTestApp(
     app.logger,
     fetchCfg ?? {},
     finalConfig.requestId?.header ?? "x-request-id",
+    hooks,
   ) as VextApp["fetch"];
 
   // ── 3. 插件 ──────────────────────────────────────────
@@ -391,6 +398,8 @@ export async function createTestApp(
     app.adapter.registerMiddleware(requestIdMiddleware);
   }
 
+  app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
+
   // cors（config.cors.enabled，默认 true）
   if (finalConfig.cors?.enabled !== false) {
     const corsMiddleware = createCorsMiddleware(finalConfig.cors);
@@ -417,10 +426,15 @@ export async function createTestApp(
   }
 
   // 错误处理 + 404 兜底
-  const errorHandler = createErrorHandler(finalConfig.response ?? {});
+  const errorHandler = createErrorHandler(
+    finalConfig.response ?? {},
+    undefined,
+    app.logger,
+    hooks,
+  );
   app.adapter.registerErrorHandler(errorHandler);
 
-  const notFoundHandler = createNotFoundHandler();
+  const notFoundHandler = createNotFoundHandler(hooks);
   app.adapter.registerNotFound(notFoundHandler);
 
   // ── 8. 构造 TestRequest ──────────────────────────────
@@ -448,8 +462,11 @@ export async function createTestApp(
 /**
  * 创建 404 兜底处理函数（测试环境复用同一实现）
  */
-function createNotFoundHandler(): VextMiddleware {
+function createNotFoundHandler(hooks?: VextInternalHooks): VextMiddleware {
   return async (req, res, _next) => {
+    if (hooks) {
+      await emitNotFoundRequestHooks(hooks, req);
+    }
     res.rawJson(
       {
         code: 404,

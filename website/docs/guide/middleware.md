@@ -427,10 +427,19 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
 // 结构化 HTTP 错误
 req.app.throw(404, "user.not_found");
 
+// 第四参数为对象/数组时作为 details 输出，适合透出三方业务详情
+req.app.throw(
+  502,
+  "payment.failed",
+  { orderId },
+  {
+    provider: "stripe",
+    providerCode: "card_declined",
+  },
+);
+
 // 字段级校验错误
-throw new VextValidationError([
-  { field: "email", message: "邮箱格式不正确" },
-]);
+throw new VextValidationError([{ field: "email", message: "邮箱格式不正确" }]);
 
 // 未预期的运行时错误
 throw new Error("Database connection lost");
@@ -443,6 +452,22 @@ throw new Error("Database connection lost");
 - 浏览器在 dev 模式访问出错页面时，还可能看到内置的 HTML error overlay
 
 因此，若你的目标是“返回一个明确的 4xx/5xx HTTP 结果给调用方”，应使用 `app.throw(...)`，而不是依赖普通 `Error`
+
+如果只想在“路由参数校验通过后”记录请求，可使用 `app.hooks.on("validation:success", ...)`。该 hook 在 `validate` 全部通过后触发，校验失败的请求不会进入它：
+
+```typescript
+export default definePlugin({
+  name: "validated-access-log",
+  setup(app) {
+    app.hooks.on("validation:success", ({ req, route }) => {
+      app.logger.info(
+        { requestId: req.requestId, route: route.path },
+        "validated request",
+      );
+    });
+  },
+});
+```
 
 你**不需要**手动编写错误处理中间件。如果需要自定义错误处理逻辑（如上报到 Sentry），推荐在插件中使用 `app.use()` 注册一个 try-catch 中间件：
 

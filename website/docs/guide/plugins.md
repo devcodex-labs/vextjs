@@ -166,6 +166,28 @@ export default definePlugin({
 `app.use()` 只能在 `setup()` 中调用。路由注册完成后再调用将抛出错误。
 :::
 
+### `app.hooks.on()` — 注册运行时生命周期 hook
+
+插件也可以通过 `app.hooks.on(name, handler)` 观察框架生命周期。它适合做请求审计、出站调用监控、service 调用追踪、响应 header patch、OpenAPI 文档补丁等横切逻辑。
+
+```typescript
+export default definePlugin({
+  name: "runtime-observer",
+
+  setup(app) {
+    app.hooks.on("handler:error", ({ route, error, requestId }) => {
+      app.logger.error({ route: route.path, err: error, requestId });
+    });
+
+    app.hooks.on("response:before", ({ headers }) => ({
+      headers: { ...headers, "x-runtime": "vext" },
+    }));
+  },
+});
+```
+
+`app.hooks` 是框架保留属性，不能用 `app.extend("hooks", ...)` 覆盖。插件 `setup()` 本身也会触发 `plugin:beforeSetup/afterSetup/error`，但一个插件不能观察自己的 `beforeSetup`，只能被此前已加载的插件观察。
+
 ### `app.onClose()` — 优雅关闭钩子
 
 注册优雅关闭钩子。当收到 `SIGTERM` / `SIGINT` 信号时，框架按注册的**逆序**（LIFO）执行所有关闭钩子。

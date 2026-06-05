@@ -29,6 +29,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadRoutes } from "../../src/lib/router-loader.js";
+import { createHookManager } from "../../src/lib/hooks.js";
 import type { VextApp, VextConfig } from "../../src/types/app.js";
 import type { VextAdapter, VextServerHandle } from "../../src/types/adapter.js";
 import type {
@@ -151,6 +152,7 @@ function createMockApp(): VextApp & {
       _testMode: true,
     } as VextConfig,
     services: {} as any,
+    hooks: createHookManager(),
     adapter: mockAdapter,
     get: () => {},
     post: () => {},

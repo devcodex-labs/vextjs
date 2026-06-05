@@ -64,7 +64,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.16"
+    "vextjs": "^0.3.17"
   }
 }
 ```
@@ -310,6 +310,29 @@ VextJS catches exceptions thrown from routes, services, and middleware through a
 - Throw `new VextValidationError(errors)` when you want to return a `422` response with field-level validation details.
 - Throw `new Error("...")` for unexpected runtime failures. VextJS will convert it to a `500 Internal Server Error`.
 
+`app.throw` also supports optional business details for cases such as upstream API errors:
+
+```ts
+app.throw(
+  502,
+  "payment.failed",
+  { orderId },
+  {
+    provider: "stripe",
+    providerCode: "card_declined",
+  },
+);
+
+app.throw({
+  status: 502,
+  message: "payment.failed",
+  code: "PAYMENT_FAILED",
+  details: { provider: "stripe", providerCode: "card_declined" },
+});
+```
+
+`details` is sanitized before it is written to the JSON response, so circular references and unsupported values cannot break error serialization.
+
 For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
 
 - In development, you can expose `stack` in JSON by setting `response.hideInternalErrors = false`.
@@ -385,6 +408,26 @@ export default definePlugin({
 ```
 
 After adding app extensions, run `vext typegen` so TypeScript consumers see the new fields.
+
+## Runtime Hooks
+
+Use `app.hooks.on(name, handler)` to observe or patch framework lifecycle points without replacing core middleware:
+
+```ts
+app.hooks.on("validation:success", ({ req, route }) => {
+  app.logger.info({ requestId: req.requestId, route: route.path }, "validated");
+});
+
+app.hooks.on("response:before", ({ headers }) => ({
+  headers: { ...headers, "x-powered-by": "vext" },
+}));
+
+app.hooks.on("service:beforeCall", ({ service, method }) => {
+  app.logger.debug({ service, method }, "service call");
+});
+```
+
+Available lifecycle families include request/route, validation, handler, response, error, fetch/proxy, service, cache, plugin, routes, OpenAPI, server, ready, and close. `app.hooks` is a reserved app property and cannot be overwritten with `app.extend("hooks", ...)`.
 
 ## Adapters
 

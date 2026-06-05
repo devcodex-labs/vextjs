@@ -16,7 +16,25 @@ export type { VextResponse, VextPublicResponse } from "./response.js";
 
 // ── 错误类型 ────────────────────────────────────────────────
 export { HttpError, VextValidationError } from "./errors.js";
-export type { VextValidationFieldError } from "./errors.js";
+export type {
+  HttpErrorOptions,
+  VextErrorDetails,
+  VextJsonPrimitive,
+  VextJsonValue,
+  VextValidationFieldError,
+} from "./errors.js";
+
+// ── Hook 类型 ───────────────────────────────────────────────
+export type {
+  VextHookHandler,
+  VextHookName,
+  VextHookPayloadMap,
+  VextHookReturn,
+  VextHooks,
+  VextRouteHookInfo,
+  VextResponseBeforePatch,
+  VextResponseKind,
+} from "./hooks.js";
 
 // ── Adapter 类型 ────────────────────────────────────────────
 export type {

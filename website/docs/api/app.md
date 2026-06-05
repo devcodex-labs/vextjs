@@ -222,7 +222,7 @@ class UserService {
 
 ---
 
-#### `app.throw(status, message, paramsOrCode?, code?)`
+#### `app.throw(status, message, paramsOrCode?, codeOrDetails?)`
 
 抛出 HTTP 错误，框架统一转为标准错误响应。支持三种调用形式。
 
@@ -239,12 +239,21 @@ class UserService {
 throw(messageKey: string): never;
 throw(messageKey: string, params: Record<string, unknown>): never;
 
+// 对象式完整入口
+throw(options: {
+  status: number;
+  message: string;
+  params?: Record<string, unknown>;
+  code?: number | string;
+  details?: unknown;
+}): never;
+
 // 标准调用（显式指定 HTTP 状态码）
 throw(
   status: number,
   message: string,
   paramsOrCode?: Record<string, unknown> | number | string,
-  code?: number | string,
+  codeOrDetails?: number | string | Record<string, unknown> | unknown[],
 ): never;
 ```
 
@@ -295,16 +304,37 @@ app.throw(400, "balance.insufficient", { balance: 50 });
 
 // 同时带 i18n 参数和业务码
 app.throw(400, "balance.insufficient", { balance: 50 }, 20001);
+
+// 第四参数为对象或数组时，作为 details 输出
+app.throw(
+  502,
+  "payment.failed",
+  { orderId },
+  {
+    provider: "stripe",
+    providerCode: "card_declined",
+  },
+);
+
+// 同时需要 code + details 时，使用对象式入口
+app.throw({
+  status: 502,
+  message: "payment.failed",
+  code: "PAYMENT_FAILED",
+  details: { provider: "stripe", providerCode: "card_declined" },
+});
 ```
 
 **标准调用参数**：
 
-| 参数           | 类型                                          | 说明                                         |
-| -------------- | --------------------------------------------- | -------------------------------------------- |
-| `status`       | `number`                                      | HTTP 状态码（400/401/403/404/409/500…）      |
-| `message`      | `string`                                      | 错误描述（同时作为 i18n key 查找）           |
-| `paramsOrCode` | `Record<string, unknown> \| number \| string` | i18n 插值参数对象 或 业务错误码              |
-| `code`         | `number \| string`                            | 业务错误码（当第三参数为 params 对象时使用） |
+| 参数            | 类型                                                       | 说明                                                                |
+| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| `status`        | `number`                                                   | HTTP 状态码（400/401/403/404/409/500…）                             |
+| `message`       | `string`                                                   | 错误描述（同时作为 i18n key 查找）                                  |
+| `paramsOrCode`  | `Record<string, unknown> \| number \| string`              | i18n 插值参数对象或业务错误码                                       |
+| `codeOrDetails` | `number \| string \| Record<string, unknown> \| unknown[]` | 第四参数为 number/string 时是业务码；为 object/array 时是 `details` |
+
+`details` 适合放三方接口返回的业务详情，例如上游错误码、原始 message、trace id 或可展示给调用方的字段。框架会在响应前做 JSON-safe 清洗：循环引用会变成 `"[Circular]"`，`Date` 会输出 ISO 字符串，`Error` 只输出 `name/message`，函数和 `undefined` 不会出现在响应中。未知普通 `Error` 不会自动暴露 details，必须通过 `HttpError` 或 `app.throw` 显式传入。
 
 ---
 
@@ -331,6 +361,10 @@ app.throw("user.not_found");
 {
   "code": 10001,
   "message": "邮箱已注册",
+  "details": {
+    "provider": "stripe",
+    "providerCode": "card_declined"
+  },
   "requestId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
@@ -407,6 +441,85 @@ declare module "vextjs" {
   }
 }
 ```
+
+---
+
+#### `app.hooks`
+
+框架生命周期 hook 管理器，用于注册运行期观测、轻量 patch 和跨模块集成逻辑。
+
+```typescript
+hooks: VextHooks;
+
+type Off = () => void;
+
+app.hooks.on(name, handler): Off;
+app.hooks.has(name): boolean;
+```
+
+`app.hooks.on()` 返回注销函数。`app.hooks` 是保留属性，不能通过 `app.extend("hooks", ...)` 覆盖。
+
+```typescript
+const off = app.hooks.on("validation:success", ({ req, route }) => {
+  app.logger.info(
+    { requestId: req.requestId, route: route.path },
+    "validated request",
+  );
+});
+
+app.hooks.on("response:before", ({ headers }) => ({
+  headers: { ...headers, "x-powered-by": "vext" },
+}));
+
+off();
+```
+
+**执行策略**：
+
+| Hook 类型                                                                                                                                                                                    | 策略                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `request:start`、`validation:success`、`handler:before`、`fetch:before`、`proxy:before`、`plugin:beforeSetup`、`server:beforeListen`                                                         | handler 抛错会向上传播，可阻止后续流程     |
+| `response:before`、`error:beforeResponse`、`service:beforeCall`、`service:afterCall`、`service:error`、`openapi:*`                                                                           | 同步生命周期，不允许返回 Promise           |
+| `handler:after`、`handler:error`、`response:after`、`error:afterResponse`、`fetch:after/error`、`proxy:after/error`、`cache:*`、`plugin:afterSetup/error`、`routes:ready`、`app:ready/close` | safe emit，hook 抛错会被记录但不改变主流程 |
+
+**可用 hook**：
+
+| 名称                                                      | 触发点                                                                    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `request:start`                                           | requestId 生成后、进入全局中间件链；404 兜底也会触发，`matched=false`     |
+| `route:matched`                                           | adapter 匹配路由后、执行校验和 handler 前                                 |
+| `route:notFound`                                          | 没有路由匹配，404 响应发送前                                              |
+| `validation:success`                                      | 路由 `validate` 全部通过，`next()` 前                                     |
+| `validation:error`                                        | 路由 `validate` 失败，抛出 `VextValidationError` 前                       |
+| `handler:before`                                          | 业务 handler 调用前                                                       |
+| `handler:after`                                           | 业务 handler 成功返回后                                                   |
+| `handler:error`                                           | 业务 handler 抛错后、进入全局错误处理前                                   |
+| `response:before`                                         | `res.json/rawJson/text/stream` 发送前，可同步 patch `data/status/headers` |
+| `response:after`                                          | 响应发送后                                                                |
+| `error:beforeResponse`                                    | `error-handler` 写 JSON 错误响应前，可同步 patch `body/status`            |
+| `error:afterResponse`                                     | 错误响应发送后                                                            |
+| `fetch:before`                                            | `app.fetch` 出站前，可修改 `Headers`                                      |
+| `fetch:after`                                             | `app.fetch` 返回 `Response` 后                                            |
+| `fetch:error`                                             | `app.fetch` 最终失败时                                                    |
+| `proxy:before`                                            | `app.fetch.proxy` 解析上游请求后、发送前                                  |
+| `proxy:after`                                             | `app.fetch.proxy` 收到上游响应后、透传前                                  |
+| `proxy:error`                                             | `app.fetch.proxy` 本地错误、超时或上游网络失败时                          |
+| `service:loaded`                                          | service 冷启动加载并挂载后                                                |
+| `service:reloaded`                                        | dev soft reload 重新实例化 service 后                                     |
+| `service:beforeCall`                                      | service 方法调用前                                                        |
+| `service:afterCall`                                       | service 方法成功返回后                                                    |
+| `service:error`                                           | service 方法抛错或 reject 后                                              |
+| `cache:hit`、`cache:miss`、`cache:write`、`cache:error`   | 路由级响应缓存读写生命周期                                                |
+| `plugin:beforeSetup`、`plugin:afterSetup`、`plugin:error` | 插件 `setup()` 前后和失败；插件不能观察自己的 `beforeSetup`               |
+| `routes:ready`                                            | 路由扫描和注册完成后                                                      |
+| `openapi:beforeGenerate`、`openapi:afterGenerate`         | OpenAPI 文档生成前后；`afterGenerate` 可同步替换 document                 |
+| `server:beforeListen`                                     | HTTP server 开始监听前                                                    |
+| `app:ready`                                               | `onReady` 执行前后                                                        |
+| `app:close`                                               | `onClose`/shutdown 执行前后                                               |
+
+:::tip
+如果只想记录“参数校验通过后的请求”，使用 `validation:success`。这样校验失败的请求不会进入该 hook，比在普通全局中间件中手动排除 `VextValidationError` 更直接。
+:::
 
 ---
 

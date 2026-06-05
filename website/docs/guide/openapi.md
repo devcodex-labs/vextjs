@@ -81,6 +81,25 @@ export default defineRoutes((app) => {
 | `http://localhost:3000/docs`         | Scalar API Reference 文档界面（含内置 Try it out） |
 | `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                              |
 
+如果需要在生成后追加组织级扩展字段，可使用 OpenAPI hook。`OpenAPIGenerator.generate()` 仍保持同步，`openapi:afterGenerate` 也必须同步返回 patch：
+
+```typescript
+// src/plugins/openapi-extra.ts
+import { definePlugin } from "vextjs";
+
+export default definePlugin({
+  name: "openapi-extra",
+  setup(app) {
+    app.hooks.on("openapi:afterGenerate", ({ document }) => ({
+      document: {
+        ...(document as Record<string, unknown>),
+        "x-service-owner": "platform",
+      },
+    }));
+  },
+});
+```
+
 ## 文档配置
 
 ### 全局配置
@@ -582,17 +601,20 @@ app.post(
 
 ```typescript
 app.post(
-  '/upload/avatar',
+  "/upload/avatar",
   {
-    middlewares: ['upload'],
+    middlewares: ["upload"],
     multipart: {
       files: {
-        avatar: { description: '头像图片（JPEG/PNG，最大 5MB）', required: true },
+        avatar: {
+          description: "头像图片（JPEG/PNG，最大 5MB）",
+          required: true,
+        },
       },
     },
     docs: {
-      summary: '上传头像',
-      tags: ['用户'],
+      summary: "上传头像",
+      tags: ["用户"],
     },
   },
   handler,

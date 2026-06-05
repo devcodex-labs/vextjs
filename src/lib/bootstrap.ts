@@ -28,13 +28,19 @@ import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
 import { createErrorHandler } from "./middlewares/error-handler.js";
+import {
+  createRequestHookMiddleware,
+  emitNotFoundRequestHooks,
+} from "./middlewares/request-hook.js";
 import { createVextFetch, type VextFetchConfig } from "./fetch.js";
 import { setupShutdown } from "./shutdown.js";
 import { RouteMetadataCollector } from "./openapi/collector.js";
 import { OpenAPIGenerator } from "./openapi/generator.js";
+import { generateOpenAPIDocumentWithHooks } from "./openapi/hook-lifecycle.js";
 import { registerDocEndpoints } from "./openapi/doc-endpoints.js";
 import type { VextServerHandle } from "../types/adapter.js";
 import type { VextApp } from "../types/app.js";
+import type { VextInternalHooks } from "../types/hooks.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import { printReadyLog } from "./utils/network.js";
 import {
@@ -171,6 +177,7 @@ export async function bootstrap(
     // 创建 app + internals（logger / throw / validator 已初始化，adapter 延迟解析）
     const result = createApp(config);
     const app = result.app;
+    const hooks = app.hooks as VextInternalHooks;
     internals = result.internals;
 
     // ── 步骤 ①a: resolveAdapter（异步按需加载）─────────────
@@ -232,7 +239,30 @@ export async function bootstrap(
       app.logger.debug(
         "[vextjs] built-in plugin: monsqlize (database config detected)",
       );
-      await monsqlizePlugin.setup(app);
+      const startedAt = performance.now();
+      hooks.emitSafeSync("plugin:beforeSetup", {
+        plugin: monsqlizePlugin.name,
+        sourceFile: "builtin:monsqlize",
+        builtin: true,
+      });
+      try {
+        await monsqlizePlugin.setup(app);
+        hooks.emitSafeSync("plugin:afterSetup", {
+          plugin: monsqlizePlugin.name,
+          sourceFile: "builtin:monsqlize",
+          builtin: true,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      } catch (error) {
+        hooks.emitSafeSync("plugin:error", {
+          plugin: monsqlizePlugin.name,
+          sourceFile: "builtin:monsqlize",
+          builtin: true,
+          durationMs: Math.round(performance.now() - startedAt),
+          error,
+        });
+        throw error;
+      }
       app.logger.info("[vextjs] built-in plugin: monsqlize loaded");
     }
 
@@ -270,6 +300,7 @@ export async function bootstrap(
       app.logger,
       fetchConfig ?? {},
       requestIdHeader,
+      hooks,
     ) as unknown as VextApp["fetch"];
 
     // ── 步骤 ⑤: router-loader ────────────────────────────
@@ -330,7 +361,8 @@ export async function bootstrap(
           | undefined,
       });
 
-      const spec = generator.generate(collector.getRoutes());
+      const routes = collector.getRoutes();
+      const spec = generateOpenAPIDocumentWithHooks(app, generator, routes);
 
       registerDocEndpoints(app, spec, {
         specPath: openapiConfig?.jsonPath ?? "/openapi.json",
@@ -380,6 +412,8 @@ export async function bootstrap(
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
+
+    app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 
     // 2. cors（config.cors.enabled，默认 true）
     if (config.cors?.enabled !== false) {
@@ -436,13 +470,19 @@ export async function bootstrap(
       config.response ?? {},
       undefined,
       app.logger,
+      hooks,
     );
     app.adapter.registerErrorHandler(errorHandler);
 
-    const notFoundHandler = createNotFoundHandler();
+    const notFoundHandler = createNotFoundHandler(hooks);
     app.adapter.registerNotFound(notFoundHandler);
 
     // ── 步骤 ⑦: HTTP 开始监听 ────────────────────────────
+    await hooks.emit("server:beforeListen", {
+      host: config.host ?? "0.0.0.0",
+      port: config.port,
+      adapter: app.adapter,
+    });
     serverHandle = await app.adapter.listen(config.port, config.host, {
       server: config.server,
     });
@@ -606,8 +646,11 @@ export interface BootstrapResult {
  *
  * @returns VextMiddleware（作为 notFound handler 使用）
  */
-function createNotFoundHandler(): VextMiddleware {
+function createNotFoundHandler(hooks?: VextInternalHooks): VextMiddleware {
   return async (req, res, _next) => {
+    if (hooks) {
+      await emitNotFoundRequestHooks(hooks, req);
+    }
     res.rawJson(
       {
         code: 404,

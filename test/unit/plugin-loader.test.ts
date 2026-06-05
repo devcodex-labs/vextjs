@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadPlugins } from "../../src/lib/plugin-loader.js";
+import { createHookManager } from "../../src/lib/hooks.js";
 
 describe("plugin-loader", () => {
   const tempDirs: string[] = [];
@@ -72,6 +73,7 @@ describe("plugin-loader", () => {
         warn: () => {},
         error: () => {},
       },
+      hooks: createHookManager(),
       extend(key: string, value: unknown) {
         extensions[key] = value;
       },
@@ -140,6 +142,7 @@ describe("plugin-loader", () => {
         warn: () => {},
         error: () => {},
       },
+      hooks: createHookManager(),
       extend(key: string, value: unknown) {
         extensions[key] = value;
       },
@@ -151,5 +154,65 @@ describe("plugin-loader", () => {
 
     expect(extensions.esmOnlySubpathValue).toBe(84);
   });
-});
 
+  it("emits plugin setup hooks around user plugin setup", async () => {
+    const projectRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vext-plugin-loader-"),
+    );
+    tempDirs.push(projectRoot);
+
+    const pluginsDir = path.join(projectRoot, "src", "plugins");
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginsDir, "observed.js"),
+      [
+        "export default {",
+        '  name: "observed",',
+        "  setup(app) {",
+        '    app.extend("observed", true);',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const extensions: Record<string, unknown> = {};
+    const hooks = createHookManager();
+    const before = vi.fn();
+    const after = vi.fn();
+    hooks.on("plugin:beforeSetup", before);
+    hooks.on("plugin:afterSetup", after);
+    const app = {
+      config: {},
+      logger: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      hooks,
+      extend(key: string, value: unknown) {
+        extensions[key] = value;
+      },
+      onReady: () => {},
+      onClose: () => {},
+    } as any;
+
+    await loadPlugins(app, pluginsDir, { setupTimeout: 1_000 });
+
+    expect(extensions.observed).toBe(true);
+    expect(before).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plugin: "observed",
+        sourceFile: expect.stringContaining("observed.js"),
+      }),
+    );
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plugin: "observed",
+        sourceFile: expect.stringContaining("observed.js"),
+        durationMs: expect.any(Number),
+      }),
+    );
+  });
+});

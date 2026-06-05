@@ -320,6 +320,7 @@ export function createExpressAdapter(
         }
 
         const res = createVextResponse(expressRes, () => req.requestId);
+        res._hooks = app.hooks;
 
         // 🆕 5.7: ALS 可配置跳过
         const runNotFound = async () => {
@@ -365,6 +366,7 @@ export function createExpressAdapter(
             }
 
             const res = createVextResponse(expressRes, () => req.requestId);
+            res._hooks = app.hooks;
 
             errorHandler(err, req, res);
           } catch {
@@ -496,6 +498,7 @@ export function createExpressAdapter(
             // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
             // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
             const res = createVextResponse(expressRes, () => req.requestId);
+            res._hooks = app.hooks;
 
             // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
             // 确保 app.throw 等内部方法能通过 requestContext.getStore() 访问请求级数据

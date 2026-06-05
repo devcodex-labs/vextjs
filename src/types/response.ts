@@ -19,7 +19,7 @@
  */
 export type VextPublicResponse = Omit<
   VextResponse,
-  "_enableWrap" | "rawJson" | "_onSend"
+  "_enableWrap" | "rawJson" | "_onSend" | "_hooks"
 >;
 
 export interface VextResponse {
@@ -172,6 +172,15 @@ export interface VextResponse {
     statusCode: number,
     headers?: Record<string, string>,
   ) => void;
+
+  /**
+   * Hook Manager 引用（内部方法）
+   *
+   * Adapter 创建响应对象后注入，用于 response:before/after send lifecycle。
+   *
+   * @internal
+   */
+  _hooks?: import("./hooks.js").VextHooks;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 

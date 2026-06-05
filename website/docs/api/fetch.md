@@ -22,6 +22,8 @@ const response: Promise<Response> = app.fetch(
 
 **返回值**: `Promise<Response>` — 标准 Fetch API Response 对象
 
+`app.fetch` 会触发 `fetch:before`、`fetch:after`、`fetch:error` hook；`app.fetch.proxy` 会触发 `proxy:before`、`proxy:after`、`proxy:error` hook。完整 payload 和执行策略见 [应用实例 hooks](/api/app#apphooks)。
+
 ---
 
 ## 快捷方法

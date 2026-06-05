@@ -20,6 +20,10 @@ export type {
   VextPublicResponse,
 
   // 错误类型
+  HttpErrorOptions,
+  VextErrorDetails,
+  VextJsonPrimitive,
+  VextJsonValue,
   VextValidationFieldError,
 
   // Adapter 类型
@@ -62,6 +66,16 @@ export type {
   VextPlugin,
   VextPluginContext,
 
+  // Hook 类型
+  VextHookHandler,
+  VextHookName,
+  VextHookPayloadMap,
+  VextHookReturn,
+  VextHooks,
+  VextRouteHookInfo,
+  VextResponseBeforePatch,
+  VextResponseKind,
+
   // 路由类型
   RouteDefinition,
   RouteCollector,
@@ -97,7 +111,7 @@ export { createLogger } from "./lib/logger.js";
 
 // 默认错误抛出（I18nError 联动）
 export { createDefaultThrow } from "./lib/default-throw.js";
-export type { VextThrowFn } from "./lib/default-throw.js";
+export type { VextThrowFn, VextThrowOptions } from "./lib/default-throw.js";
 
 // 内置中间件工厂函数
 export { createRequestIdMiddleware } from "./lib/middlewares/request-id.js";

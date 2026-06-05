@@ -1,5 +1,9 @@
 import type { Response as ExpressResponse } from "express";
 import type { VextResponse } from "../../types/response.js";
+import {
+  beginResponseSend,
+  finishResponseSend,
+} from "../../lib/response-hooks.js";
 
 /**
  * Express Response → VextResponse 转换
@@ -124,13 +128,26 @@ export function createVextResponse(
     json(data: unknown, status?: number): void {
       if (checkSent("json")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
 
-      // _onSend 钩子：在包装逻辑之前调用，捕获原始 data
+      // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
       if (res._onSend) {
         res._onSend(data, finalStatus, { ..._headers });
       }
+
+      const sendState = beginResponseSend(res, {
+        kind: "json",
+        data,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: _wrapEnabled,
+        requestId: getRequestId(),
+      });
+      data = sendState.data;
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
 
       expressRes.statusCode = finalStatus;
       applyHeaders();
@@ -140,6 +157,7 @@ export function createVextResponse(
         if (finalStatus === 204) {
           expressRes.removeHeader("Content-Type");
           expressRes.end();
+          finishResponseSend(res, sendState);
           return;
         }
 
@@ -152,6 +170,7 @@ export function createVextResponse(
             requestId: getRequestId(),
           }),
         );
+        finishResponseSend(res, sendState);
         return;
       }
 
@@ -159,11 +178,13 @@ export function createVextResponse(
       if (finalStatus === 204) {
         expressRes.removeHeader("Content-Type");
         expressRes.end();
+        finishResponseSend(res, sendState);
         return;
       }
 
       expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
       expressRes.end(JSON.stringify(data));
+      finishResponseSend(res, sendState);
     },
 
     /**
@@ -177,14 +198,28 @@ export function createVextResponse(
     rawJson(data: unknown, status?: number): void {
       if (checkSent("rawJson")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
+
+      const sendState = beginResponseSend(res, {
+        kind: "rawJson",
+        data,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      data = sendState.data;
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
 
       expressRes.statusCode = finalStatus;
       applyHeaders();
 
       expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
       expressRes.end(JSON.stringify(data));
+      finishResponseSend(res, sendState);
     },
 
     /**
@@ -193,8 +228,21 @@ export function createVextResponse(
     text(content: string, status?: number): void {
       if (checkSent("text")) return;
 
-      const finalStatus = status ?? _status;
+      let finalStatus = status ?? _status;
       _status = finalStatus;
+      const sendState = beginResponseSend(res, {
+        kind: "text",
+        data: content,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      content =
+        typeof sendState.data === "string" ? sendState.data : String(content);
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
 
       expressRes.statusCode = finalStatus;
       // 先设默认 Content-Type: text/plain，再调 applyHeaders()
@@ -203,6 +251,7 @@ export function createVextResponse(
       applyHeaders();
 
       expressRes.end(content);
+      finishResponseSend(res, sendState);
     },
 
     /**
@@ -216,11 +265,22 @@ export function createVextResponse(
     ): void {
       if (checkSent("stream")) return;
 
+      const sendState = beginResponseSend(res, {
+        kind: "stream",
+        status: _status,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      Object.assign(_headers, sendState.headers);
+
       expressRes.statusCode = _status;
       expressRes.setHeader("Content-Type", contentType);
       applyHeaders();
 
       readable.pipe(expressRes);
+      finishResponseSend(res, sendState);
     },
 
     /**

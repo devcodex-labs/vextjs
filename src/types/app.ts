@@ -1,5 +1,6 @@
 import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware } from "./middleware.js";
+import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
 import type {
@@ -1140,14 +1141,17 @@ export interface VextApp {
    * @example app.throw(401, '缺少认证令牌', 'UNAUTHORIZED')
    * @example app.throw(400, 'balance.insufficient', { balance: 50 })
    * @example app.throw(400, 'balance.insufficient', { balance: 50 }, 20001)
+   * @example app.throw(502, 'payment.failed', { orderId }, { provider: 'stripe', providerCode: 'card_declined' })
+   * @example app.throw({ status: 502, message: 'payment.failed', code: 'PAYMENT_FAILED', details: { provider: 'stripe' } })
    */
   throw(messageKey: string): never;
   throw(messageKey: string, params: Record<string, unknown>): never;
+  throw(options: import("../lib/default-throw.js").VextThrowOptions): never;
   throw(
     status: number,
     message: string,
     paramsOrCode?: Record<string, unknown> | number | string,
-    code?: number | string,
+    codeOrDetails?: number | string | unknown[] | Record<string, unknown>,
   ): never;
 
   // ── 运行时数据（不可覆盖）─────────────────────────────
@@ -1167,6 +1171,14 @@ export interface VextApp {
    * 因此 handler 中访问 app.services 是安全的。
    */
   services: VextServices;
+
+  /**
+   * 框架生命周期 Hook Manager。
+   *
+   * 用于在插件或业务启动阶段注册 request/route/validation/response/error/fetch/service
+   * 等生命周期钩子。`app.hooks` 是保留属性，不能再通过 app.extend("hooks") 覆盖。
+   */
+  hooks: VextHooks;
 
   /**
    * 底层适配器实例（由 adapter-resolver 解析后挂载）
