@@ -9,9 +9,10 @@ VextJS is a high-performance Node.js framework for building maintainable backend
 - Adapter support for Native Node.js, Hono, Fastify, Express, and Koa.
 - Automatic service injection through `app.services`.
 - Plugin lifecycle hooks with app extension support.
-- Built-in request context, request id, access logging, body limit, error handling, i18n, and OpenAPI endpoints.
+- Runtime `app.hooks` for request, validation, response, error, fetch, service, cache, plugin, OpenAPI, and server lifecycle points.
+- Built-in request context, request id, access logging, body limit, structured error handling with `app.throw` details, i18n, and OpenAPI endpoints.
 - Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
-- Route-level response cache with LRU memory storage.
+- Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.
 - Process-level preload support for OpenTelemetry, APM, polyfills, and startup bridges.
@@ -333,6 +334,8 @@ app.throw({
 
 `details` is sanitized before it is written to the JSON response, so circular references and unsupported values cannot break error serialization.
 
+See the full guide in [Error Handling](https://vextjs.github.io/guide/error-handling) and the API reference in [`app.throw`](https://vextjs.github.io/api/app#appthrowstatus-message-paramsorcode-codeordetails).
+
 For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
 
 - In development, you can expose `stack` in JSON by setting `response.hideInternalErrors = false`.
@@ -428,6 +431,8 @@ app.hooks.on("service:beforeCall", ({ service, method }) => {
 ```
 
 Available lifecycle families include request/route, validation, handler, response, error, fetch/proxy, service, cache, plugin, routes, OpenAPI, server, ready, and close. `app.hooks` is a reserved app property and cannot be overwritten with `app.extend("hooks", ...)`.
+
+See the full guide in [Runtime Hooks](https://vextjs.github.io/guide/hooks) and the API reference in [`app.hooks`](https://vextjs.github.io/api/app#apphooks).
 
 ## Adapters
 

@@ -102,6 +102,8 @@ export default defineConfig({
             { text: "服务层", link: "/guide/services" },
             { text: "中间件", link: "/guide/middleware" },
             { text: "插件", link: "/guide/plugins" },
+            { text: "错误处理", link: "/guide/error-handling" },
+            { text: "运行时 Hooks", link: "/guide/hooks" },
             { text: "参数校验", link: "/guide/validation" },
             { text: "响应缓存", link: "/guide/cache" },
             { text: "配置", link: "/guide/configuration" },
@@ -169,7 +171,7 @@ export default defineConfig({
       },
     ],
     footer: {
-      message: "Released under the MIT License.",
+      message: "Released under the Apache-2.0 License.",
     },
     lastUpdated: true,
   },
