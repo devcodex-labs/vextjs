@@ -280,7 +280,7 @@ export class DevCompiler {
       loader: getLoaderForExtension(ext),
       format: "cjs",
       platform: "node",
-      target: "node18",
+      target: "node20",
       sourcemap: true,
       sourcefile: srcFile, // sourcemap 指回原始源文件
       // v2.2: 使用预解析的 tsconfig（已展平 extends），而非原始文件内容
@@ -489,7 +489,7 @@ export class DevCompiler {
     //
     // extends 可以是：
     //   - 相对路径：'./base.json'、'../shared/tsconfig.json'
-    //   - npm 包路径：'@tsconfig/node18/tsconfig.json'
+    //   - npm 包路径：'@tsconfig/node20/tsconfig.json'
     //
     // 使用 require.resolve 统一处理两种情况：
     //   - 相对路径通过 paths 选项指定基础目录

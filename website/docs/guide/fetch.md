@@ -1,6 +1,6 @@
 # 内置 HTTP 客户端 (app.fetch)
 
-VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 18+ 原生 `fetch` 封装，提供 **requestId 自动传播**、**超时控制**、**自动重试**、**结构化日志**、**create() 工厂** 和 **config 驱动代理** 等能力。无需安装任何第三方 HTTP 库即可进行服务间调用。
+VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 20+ 原生 `fetch` 封装，提供 **requestId 自动传播**、**超时控制**、**自动重试**、**结构化日志**、**create() 工厂** 和 **config 驱动代理** 等能力。无需安装任何第三方 HTTP 库即可进行服务间调用。
 
 ## 功能概览
 

@@ -9,7 +9,7 @@
  * 目的：
  *   vext dev 模式使用 esbuild 将用户代码编译为 CJS（为了 require.cache 热重载），
  *   编译后的用户代码会 `require('vextjs')`。但 vextjs 是 ESM-only 包，
- *   Node.js 18/20 无法 `require()` ESM 模块（ERR_REQUIRE_ESM）。
+ *   Node.js 20 无法 `require()` ESM 模块（ERR_REQUIRE_ESM）。
  *
  *   此脚本生成 CJS 入口文件，配合 package.json exports 的 `"require"` 条件，
  *   使 `require('vextjs')`、`require('vextjs/testing')` 和 adapter 子路径正常工作。
@@ -61,6 +61,9 @@ const externalDeps = [
   "fastify",
   "express",
   "koa",
+  "@koa/router",
+  // 测试辅助依赖（useMemoryServer 路径按需安装，不进入 CJS bundle）
+  "mongodb-memory-server-core",
   // Node.js 内置模块
   "node:*",
   "fs",
@@ -142,7 +145,7 @@ async function buildCjs() {
       // ── 输出格式 ────────────────────────────────────
       format: "cjs",
       platform: "node",
-      target: "node18",
+      target: "node20",
 
       // ── 打包模式 ────────────────────────────────────
       // bundle: true — 将 vextjs 内部的多个 ESM 文件合并为单个 CJS 文件。

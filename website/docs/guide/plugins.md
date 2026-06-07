@@ -562,7 +562,7 @@ VextJS 内置了以下插件：
 
 ## 文件上传
 
-VextJS 内置 `multipart/form-data` 解析，基于 Node.js 18+ 原生 `Request.formData()` API，零外部依赖。只需在配置中开启即可。
+VextJS 内置 `multipart/form-data` 解析，基于 Node.js 20+ 原生 `Request.formData()` API，零外部依赖。只需在配置中开启即可。
 
 ### 开启内置解析
 

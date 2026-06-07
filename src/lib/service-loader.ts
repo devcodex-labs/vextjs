@@ -315,7 +315,7 @@ async function loadServiceFile(
         packages: "external",
         format: "esm",
         platform: "node",
-        target: "node18",
+        target: "node20",
         write: false,
         logLevel: "silent",
       });

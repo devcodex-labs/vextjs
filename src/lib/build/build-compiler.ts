@@ -309,8 +309,12 @@ export class BuildCompiler {
       return { fileCount: 0, warnings: [] };
     }
 
-    const entries = await fs.promises.readdir(sourceDir, { withFileTypes: true });
-    const sortedEntries = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+    const entries = await fs.promises.readdir(sourceDir, {
+      withFileTypes: true,
+    });
+    const sortedEntries = [...entries].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
     const warnings: esbuild.Message[] = [];
     let fileCount = 0;
 
@@ -329,7 +333,7 @@ export class BuildCompiler {
         packages: "external",
         format: "esm",
         platform: "node",
-        target: "node18",
+        target: "node20",
         write: true,
         outfile,
         sourcemap: sourcemap ? "external" : false,

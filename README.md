@@ -460,7 +460,7 @@ Install the matching peer dependency before using a non-native adapter:
 npm install hono @hono/node-server
 npm install fastify
 npm install express
-npm install koa @koa/router
+npm install koa @koa/router@^15.6.0
 ```
 
 ## Response Cache
@@ -588,7 +588,7 @@ Use the testing entry for integration tests that need the framework runtime with
 
 ## Requirements
 
-- Node.js `>=18.0.0`
+- Node.js `>=20.19.0`
 - ESM application packages
 
 ## License

@@ -138,25 +138,25 @@ export default {
 
 ### 完整配置项
 
-| 配置项                | 类型                          | 默认值                  | 说明                                |
-| --------------------- | ----------------------------- | ----------------------- | ----------------------------------- |
-| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                 | 连接类型                            |
-| `config`              | `object`                      | —                       | 连接参数（url / hosts / host 等）   |
-| `maxTimeMS`           | `number`                      | `2000`                  | 全局查询超时（毫秒）                |
-| `findLimit`           | `number`                      | `10`                    | `find` 默认返回条数                 |
-| `findPageMaxLimit`    | `number`                      | `500`                   | 分页最大 limit                      |
-| `slowQueryMs`         | `number`                      | `500`                   | 慢查询阈值（毫秒）                  |
-| `autoConvertObjectId` | `boolean \| object`           | —                       | 自动 ObjectId 转换                  |
-| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }` | 缓存命名空间                        |
-| `cursorSecret`        | `string`                      | —                       | 深分页游标加密密钥                  |
-| `useMemoryServer`     | `boolean`                     | `false`                 | 使用内存数据库（测试用）            |
-| `logger`              | `'app' \| false`              | `'app'`                 | 日志桥接（`'app'` 使用 app.logger） |
-| `cache`               | `object`                      | —                       | 缓存配置（见下方）                  |
-| `models`              | `object`                      | —                       | Model 加载配置（见下方）            |
-| `databaseName`        | `string`                      | URI 自动提取            | 默认数据库名（跨库路由回退值，不填时从 `config.uri` 的路径段提取）|
-| `pools`               | `array`                       | —                       | 多连接池配置                        |
-| `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                      |
-| `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                    |
+| 配置项                | 类型                          | 默认值                  | 说明                                                               |
+| --------------------- | ----------------------------- | ----------------------- | ------------------------------------------------------------------ |
+| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                 | 连接类型                                                           |
+| `config`              | `object`                      | —                       | 连接参数（url / hosts / host 等）                                  |
+| `maxTimeMS`           | `number`                      | `2000`                  | 全局查询超时（毫秒）                                               |
+| `findLimit`           | `number`                      | `10`                    | `find` 默认返回条数                                                |
+| `findPageMaxLimit`    | `number`                      | `500`                   | 分页最大 limit                                                     |
+| `slowQueryMs`         | `number`                      | `500`                   | 慢查询阈值（毫秒）                                                 |
+| `autoConvertObjectId` | `boolean \| object`           | —                       | 自动 ObjectId 转换                                                 |
+| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }` | 缓存命名空间                                                       |
+| `cursorSecret`        | `string`                      | —                       | 深分页游标加密密钥                                                 |
+| `useMemoryServer`     | `boolean`                     | `false`                 | 使用内存数据库（测试用）                                           |
+| `logger`              | `'app' \| false`              | `'app'`                 | 日志桥接（`'app'` 使用 app.logger）                                |
+| `cache`               | `object`                      | —                       | 缓存配置（见下方）                                                 |
+| `models`              | `object`                      | —                       | Model 加载配置（见下方）                                           |
+| `databaseName`        | `string`                      | URI 自动提取            | 默认数据库名（跨库路由回退值，不填时从 `config.uri` 的路径段提取） |
+| `pools`               | `array`                       | —                       | 多连接池配置                                                       |
+| `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                                                     |
+| `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                                                   |
 
 ### 缓存配置
 
@@ -222,7 +222,7 @@ export default {
 // src/config/test.ts — 测试环境使用内存数据库
 export default {
   database: {
-    useMemoryServer: true, // 使用 mongodb-memory-server
+    useMemoryServer: true, // 使用 mongodb-memory-server-core
   },
 };
 ```
@@ -285,7 +285,10 @@ const billing = app.db.use("billing");
 const invoice = await billing.collection("invoices").findOne({ _id: id });
 
 // 也可直接链式调用
-const invoice = await app.db.use("billing").collection("invoices").findOne({ _id: id });
+const invoice = await app.db
+  .use("billing")
+  .collection("invoices")
+  .findOne({ _id: id });
 
 // use().model() 会自动加前缀（dbName + modelName）查找 Model key
 // 例：use('billing').model('Invoice') 内部查找 key = 'BillingInvoice'
@@ -301,11 +304,15 @@ const Invoice = app.db.use("billing").model("Invoice");
 const order = await app.db.pool("cn").collection("orders").findOne({ _id: id });
 
 // cn 池 直接访问 Model（使用完整 key 或别名，数据库由 Model 定义的 connection.database 决定）
-const Invoice = app.db.pool("billing").model("Invoice");         // 别名，内部 key = 'BillingInvoice'
+const Invoice = app.db.pool("billing").model("Invoice"); // 别名，内部 key = 'BillingInvoice'
 const Invoice2 = app.db.pool("billing").model("BillingInvoice"); // 完整 key
 
 // cn 池 + billing 库（collection）
-const invoice = await app.db.pool("cn").use("billing").collection("invoices").findOne({});
+const invoice = await app.db
+  .pool("cn")
+  .use("billing")
+  .collection("invoices")
+  .findOne({});
 
 // cn 池 + billing 库 + Model（传入短名称，前缀逻辑同 use()）
 const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
@@ -313,8 +320,8 @@ const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
 
 // 深度-2 模型目录（models/cn/billing/order.ts）：注册键 = CnBillingOrder
 // pool().use().model() 链式访问会优先匹配 depth-2 键，未注册时自动回落到 depth-1（Db+Name）
-const Order1 = app.db.model("CnBillingOrder");                    // 完整 key
-const Order2 = app.db.pool("cn").use("billing").model("Order");   // 等价短链
+const Order1 = app.db.model("CnBillingOrder"); // 完整 key
+const Order2 = app.db.pool("cn").use("billing").model("Order"); // 等价短链
 // Order1 与 Order2 操作的是同一 collection（cn 池 / billing 库 / orders 集合）
 ```
 
@@ -468,8 +475,8 @@ options: { timestamps: { createdAt: true, updatedAt: false } }
 ```typescript
 // src/models/billing-invoice.ts
 export default {
-  collection: "BillingInvoice",  // MongoDB 实际集合名
-  key: "Invoice",                // 短名别名（可选）
+  collection: "BillingInvoice", // MongoDB 实际集合名
+  key: "Invoice", // 短名别名（可选）
 
   schema: {
     amount: "number!",
@@ -488,17 +495,15 @@ export default {
 注册后，两个 key 均可使用：
 
 ```typescript
-app.db.model("BillingInvoice")  // 按集合名（全路径）
-app.db.model("Invoice")          // 按别名（短名）
+app.db.model("BillingInvoice"); // 按集合名（全路径）
+app.db.model("Invoice"); // 按别名（短名）
 
 // 搭配 pool() 使用
-app.db.pool("billing").model("BillingInvoice")
-app.db.pool("billing").model("Invoice")
+app.db.pool("billing").model("BillingInvoice");
+app.db.pool("billing").model("Invoice");
 ```
 
 > **注意**：如果别名与已注册的其他 Model 冲突，别名注册会被跳过（不覆盖现有注册），仅集合名有效。
-
-
 
 Model 文件放在 `src/models/` 目录下，插件会自动扫描并注册：
 
@@ -525,12 +530,12 @@ src/
 
 **目录深度规则：**
 
-| 目录结构 | 注册键名 | 自动注入 |
-|---------|---------|---------|
-| `models/order.ts` | `Order`（或 `def.collection` / `def.name`）| 无（行为不变）|
-| `models/billing/invoice.ts` | `BillingInvoice` | `connection: { database: 'billing' }` |
-| `models/main/billing/invoice.ts` | `MainBillingInvoice` | `connection: { pool: 'main', database: 'billing' }` |
-| `models/a/b/c/invoice.ts` | ❌ 跳过（超出最大深度 2，输出警告）| — |
+| 目录结构                         | 注册键名                                    | 自动注入                                            |
+| -------------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| `models/order.ts`                | `Order`（或 `def.collection` / `def.name`） | 无（行为不变）                                      |
+| `models/billing/invoice.ts`      | `BillingInvoice`                            | `connection: { database: 'billing' }`               |
+| `models/main/billing/invoice.ts` | `MainBillingInvoice`                        | `connection: { pool: 'main', database: 'billing' }` |
+| `models/a/b/c/invoice.ts`        | ❌ 跳过（超出最大深度 2，输出警告）         | —                                                   |
 
 > 💡 目录深度超过 2 层时，vext 会输出警告日志并跳过该文件。如需更复杂的路由，请在 Model 文件中显式设置 `connection` 字段。
 
@@ -569,7 +574,6 @@ export default {
 **注入优先级：** 若 Model 文件已显式设置 `connection` 或 `name`/`collection`，则优先使用显式值，目录路由不会覆盖。
 
 ### Model 加载配置
-
 
 ```typescript
 export default {
@@ -832,11 +836,13 @@ export default definePlugin({
 
 ### 使用内存数据库
 
-在测试环境中使用 `mongodb-memory-server` 运行内存数据库，无需外部 MongoDB 实例：
+在测试环境中使用 `mongodb-memory-server-core` 运行内存数据库，无需外部 MongoDB 实例：
 
 ```bash
-npm install -D mongodb-memory-server
+npm install -D mongodb-memory-server-core
 ```
+
+Vext 使用 core 包以避免 `mongodb-memory-server` wrapper 在 `npm install` 阶段触发 binary 下载。测试首次启动时仍可能下载 MongoDB binary；建议在 CI 中设置 `MONGOMS_DOWNLOAD_DIR=.cache/mongodb-binaries` 与 `MONGOMS_PREFER_GLOBAL_PATH=false`，并缓存该目录；缓存命中后可用 `MONGOMS_RUNTIME_DOWNLOAD=false` 验证不会再次下载。
 
 ```typescript
 // src/config/test.ts
@@ -1016,12 +1022,12 @@ const logsDb = app.db.pool("cn").use("logs");
 
 ```typescript
 // ❌ v0.2.x 非标准用法
-app.db.use("cn", "billing")
+app.db.use("cn", "billing");
 ```
 
 新用法：
 
 ```typescript
 // ✅ v0.3.0 — 先切换连接池，再切换数据库
-app.db.pool("cn").use("billing")
+app.db.pool("cn").use("billing");
 ```

@@ -78,7 +78,7 @@ export const SOURCE_IGNORE = [
  *   - treeShaking: true — 移除未使用的导出（即使不 bundle 也有效，可去除死代码分支）
  *   - keepNames: true — 保留函数/类名称（错误堆栈可读性、日志中可识别具名函数）
  *   - charset: 'utf8' — 强制 UTF-8 编码（避免 ASCII escape 导致中文乱码）
- *   - target: 'node18' — 与 package.json engines.node >= 18 对齐
+ *   - target: 'node20' — 与 package.json engines.node >= 20.19.0 对齐
  *
  * @param tsconfigPath tsconfig.json 路径（可选，默认 undefined 由 esbuild 自动查找）
  * @returns esbuild 基础配置对象
@@ -102,7 +102,7 @@ export function createBaseEsbuildConfig(
   return {
     // ── 运行时目标 ──────────────────────────────────────
     platform: "node",
-    target: "node18",
+    target: "node20",
 
     // ── 输出格式 ────────────────────────────────────────
     //

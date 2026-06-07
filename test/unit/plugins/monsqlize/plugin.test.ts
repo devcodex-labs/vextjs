@@ -117,9 +117,7 @@ function createMockMonSQLize() {
   const mockScopedModel = vi
     .fn()
     .mockReturnValue({ find: vi.fn(), create: vi.fn() });
-  const mockConnect = vi
-    .fn()
-    .mockResolvedValue({ collection: mockCollection });
+  const mockConnect = vi.fn().mockResolvedValue({ collection: mockCollection });
   const mockClose = vi.fn().mockResolvedValue(undefined);
 
   const instance = {
@@ -366,19 +364,26 @@ describe("resolveModelEntry", () => {
   });
 
   it("depth 1: does not override explicit def.name", () => {
-    const result = resolveModelEntry("billing/invoice.ts", { name: "MyInvoice" });
+    const result = resolveModelEntry("billing/invoice.ts", {
+      name: "MyInvoice",
+    });
     expect(result!.finalDef.name).toBe("MyInvoice");
   });
 
   it("depth 1: does not override explicit def.collection", () => {
-    const result = resolveModelEntry("billing/invoice.ts", { collection: "inv" });
+    const result = resolveModelEntry("billing/invoice.ts", {
+      collection: "inv",
+    });
     expect(result!.finalDef).not.toHaveProperty("name");
   });
 
   it("depth 1: does not override explicit def.connection", () => {
     const def = { connection: { pool: "custom", database: "custom_db" } };
     const result = resolveModelEntry("billing/invoice.ts", def);
-    expect(result!.finalDef.connection).toEqual({ pool: "custom", database: "custom_db" });
+    expect(result!.finalDef.connection).toEqual({
+      pool: "custom",
+      database: "custom_db",
+    });
   });
 
   // ── depth 2：自动注入 pool + database ─────────────────────
@@ -392,7 +397,10 @@ describe("resolveModelEntry", () => {
 
   it("depth 2: injects connection with pool and database", () => {
     const result = resolveModelEntry("main/billing/invoice.ts", {});
-    expect(result!.finalDef.connection).toEqual({ pool: "main", database: "billing" });
+    expect(result!.finalDef.connection).toEqual({
+      pool: "main",
+      database: "billing",
+    });
   });
 
   it("depth 2: injects name = raw filename", () => {
@@ -711,6 +719,8 @@ describe("setupMonSQLize", () => {
 
 describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
   let mockMonSQLizeConstructor: ReturnType<typeof vi.fn>;
+  let mockMongoMemoryServerCreate: ReturnType<typeof vi.fn>;
+  let mockMongoMemoryServerStop: ReturnType<typeof vi.fn>;
   let setupMonSQLize: typeof import("../../../../src/lib/plugins/monsqlize/plugin.js").setupMonSQLize;
 
   beforeEach(async () => {
@@ -718,9 +728,25 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     const mockInstance = createMockMonSQLize().instance;
     mockMonSQLizeConstructor = vi.fn().mockImplementation(() => mockInstance);
+    mockMongoMemoryServerStop = vi.fn().mockResolvedValue(undefined);
+    let memoryServerIndex = 0;
+    mockMongoMemoryServerCreate = vi.fn().mockImplementation(async () => {
+      memoryServerIndex += 1;
+      const uri = `mongodb://127.0.0.1:27017/vext-memory-${memoryServerIndex}`;
+      return {
+        getUri: () => uri,
+        stop: mockMongoMemoryServerStop,
+      };
+    });
 
     vi.doMock("monsqlize", () => ({
       default: mockMonSQLizeConstructor,
+    }));
+
+    vi.doMock("mongodb-memory-server-core", () => ({
+      MongoMemoryServer: {
+        create: mockMongoMemoryServerCreate,
+      },
     }));
 
     vi.doMock("node:fs", async (importOriginal) => {
@@ -1084,21 +1110,36 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
   // ── 内存数据库 ────────────────────────────────────────────
 
-  it("passes useMemoryServer when configured", async () => {
-    const { app } = createMockApp({
+  it("preprocesses useMemoryServer into a concrete URI", async () => {
+    const memoryServerOptions = { binary: { version: "8.2.6" } };
+    const { app, closeHooks } = createMockApp({
       database: {
         config: { uri: "mongodb://localhost/db" },
         useMemoryServer: true,
+        memoryServerOptions,
       },
     });
 
     await setupMonSQLize(app, "/tmp/src");
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
-    // useMemoryServer 必须在 config.config 内部（connectMongo 从中读取），
-    // 而非顶层 passedConfig.useMemoryServer
-    expect(passedConfig.config.useMemoryServer).toBe(true);
+    expect(mockMongoMemoryServerCreate).toHaveBeenCalledWith(
+      memoryServerOptions,
+    );
+    expect(passedConfig.config.uri).toBe(
+      "mongodb://127.0.0.1:27017/vext-memory-1",
+    );
+    expect(passedConfig.config.url).toBeUndefined();
+    expect(passedConfig.config.useMemoryServer).toBeUndefined();
     expect(passedConfig.useMemoryServer).toBeUndefined();
+    expect(passedConfig.memoryServerOptions).toBeUndefined();
+    expect(app.logger.info).toHaveBeenCalledWith(
+      "[monsqlize] root connection using in-memory MongoDB",
+      { uri: "mongodb://127.0.0.1:27017/vext-memory-1" },
+    );
+
+    await closeHooks[0]!();
+    expect(mockMongoMemoryServerStop).toHaveBeenCalledOnce();
   });
 
   it("does not set useMemoryServer when not configured", async () => {
@@ -1834,10 +1875,14 @@ describe("createConnection", () => {
     const conn = await createConnection(mock.instance as any, app);
     conn.pool("cn").use("billing").model("Invoice");
 
-    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(1, "CnBillingInvoice", {
-      pool: "cn",
-      database: "billing",
-    });
+    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(
+      1,
+      "CnBillingInvoice",
+      {
+        pool: "cn",
+        database: "billing",
+      },
+    );
     expect(mock.mockScopedModel).toHaveBeenNthCalledWith(2, "BillingInvoice", {
       pool: "cn",
       database: "billing",

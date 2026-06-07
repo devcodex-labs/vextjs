@@ -1,5 +1,9 @@
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextBodyParserConfig, VextMultipartConfig, MultipartRouteConfig } from "../../types/app.js";
+import type {
+  VextBodyParserConfig,
+  VextMultipartConfig,
+  MultipartRouteConfig,
+} from "../../types/app.js";
 import type { VextRequest, ParsedFile } from "../../types/request.js";
 
 /**
@@ -21,7 +25,7 @@ export function parseBytes(value: string | number): number {
   if (!match) {
     throw new Error(
       `[vextjs] Invalid body size format: "${value}". ` +
-      `Expected format: '1mb', '512kb', '1gb', or a number (bytes).`,
+        `Expected format: '1mb', '512kb', '1gb', or a number (bytes).`,
     );
   }
 
@@ -47,16 +51,21 @@ export class PayloadTooLargeError extends Error {
   }
 }
 
-export function createPayloadTooLargeError(maxBytes: number): PayloadTooLargeError {
+export function createPayloadTooLargeError(
+  maxBytes: number,
+): PayloadTooLargeError {
   return new PayloadTooLargeError(maxBytes);
 }
 
-export function isPayloadTooLargeError(err: unknown): err is PayloadTooLargeError {
-  return err instanceof PayloadTooLargeError || (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { status?: unknown }).status === 413 &&
-    (err as { message?: unknown }).message === "Payload Too Large"
+export function isPayloadTooLargeError(
+  err: unknown,
+): err is PayloadTooLargeError {
+  return (
+    err instanceof PayloadTooLargeError ||
+    (typeof err === "object" &&
+      err !== null &&
+      (err as { status?: unknown }).status === 413 &&
+      (err as { message?: unknown }).message === "Payload Too Large")
   );
 }
 
@@ -70,7 +79,9 @@ export function resolveBodyParserMaxBytes(
   globalConfig: VextBodyParserConfig,
   routeConfig?: VextBodyParserConfig,
 ): number {
-  return parseBytes(routeConfig?.maxBodySize ?? globalConfig.maxBodySize ?? "1mb");
+  return parseBytes(
+    routeConfig?.maxBodySize ?? globalConfig.maxBodySize ?? "1mb",
+  );
 }
 
 export function resolveRouteBodyParserConfig(routeOptions?: {
@@ -91,10 +102,14 @@ export function resolveAdapterBodyLimitBytes(args: {
   adapterBodyLimit?: string | number;
 }): number {
   const bodyParserLimit = parseBytes(
-    args.routeBodyParser?.maxBodySize ?? args.globalBodyParser?.maxBodySize ?? "1mb",
+    args.routeBodyParser?.maxBodySize ??
+      args.globalBodyParser?.maxBodySize ??
+      "1mb",
   );
   const adapterLimit =
-    args.adapterBodyLimit !== undefined ? parseBytes(args.adapterBodyLimit) : undefined;
+    args.adapterBodyLimit !== undefined
+      ? parseBytes(args.adapterBodyLimit)
+      : undefined;
 
   // multipart.maxFileSize is a per-file validation limit. It must not widen the
   // request-body read boundary, otherwise a small route-level maxBodySize would
@@ -107,7 +122,7 @@ export function resolveAdapterBodyLimitBytes(args: {
 /**
  * parseMultipart — 内置 multipart/form-data 解析器
  *
- * 使用 Node.js 18+ Web API（Request.formData()）解析，零外部依赖。
+ * 使用 Node.js 20+ Web API（Request.formData()）解析，零外部依赖。
  *
  * 统一路径（所有 5 个 adapter）：
  *   1. 通过 req._getRawBodyBuffer() 一次性读取原始 Buffer（有缓存，多次调用安全）
@@ -125,15 +140,15 @@ async function parseMultipart(
   config: VextMultipartConfig,
   maxBodyBytes: number,
 ): Promise<ParsedFile[]> {
-  const rawBuffer = await req._getRawBodyBuffer(maxBodyBytes)
-  assertBodySize(rawBuffer.byteLength, maxBodyBytes)
-  const dummyRequest = new Request('http://localhost', {
-    method: 'POST',
+  const rawBuffer = await req._getRawBodyBuffer(maxBodyBytes);
+  assertBodySize(rawBuffer.byteLength, maxBodyBytes);
+  const dummyRequest = new Request("http://localhost", {
+    method: "POST",
     body: rawBuffer,
-    headers: { 'content-type': contentType },
-  })
-  const formData = await dummyRequest.formData()
-  return formDataToFiles(formData, config)
+    headers: { "content-type": contentType },
+  });
+  const formData = await dummyRequest.formData();
+  return formDataToFiles(formData, config);
 }
 
 /**
@@ -146,26 +161,35 @@ async function formDataToFiles(
   formData: FormData,
   config: VextMultipartConfig,
 ): Promise<ParsedFile[]> {
-  const files: ParsedFile[] = []
-  const maxFiles = config.maxFiles ?? 10
-  const maxFileSize = config.maxFileSize ?? 10 * 1024 * 1024
+  const files: ParsedFile[] = [];
+  const maxFiles = config.maxFiles ?? 10;
+  const maxFileSize = config.maxFileSize ?? 10 * 1024 * 1024;
 
   for (const [fieldname, value] of formData.entries()) {
     if (value instanceof File) {
       if (files.length >= maxFiles) {
-        throw { status: 413, message: 'Too many files' }
+        throw { status: 413, message: "Too many files" };
       }
 
-      const buffer = Buffer.from(await value.arrayBuffer())
+      const buffer = Buffer.from(await value.arrayBuffer());
 
       if (buffer.length > maxFileSize) {
-        throw { status: 413, message: `File "${value.name}" exceeds maxFileSize` }
+        throw {
+          status: 413,
+          message: `File "${value.name}" exceeds maxFileSize`,
+        };
       }
 
-      const mimetype = value.type || 'application/octet-stream'
+      const mimetype = value.type || "application/octet-stream";
 
-      if (config.allowedMimeTypes && !config.allowedMimeTypes.includes(mimetype)) {
-        throw { status: 415, message: `MIME type "${mimetype}" is not allowed` }
+      if (
+        config.allowedMimeTypes &&
+        !config.allowedMimeTypes.includes(mimetype)
+      ) {
+        throw {
+          status: 415,
+          message: `MIME type "${mimetype}" is not allowed`,
+        };
       }
 
       files.push({
@@ -174,11 +198,11 @@ async function formDataToFiles(
         mimetype,
         buffer,
         size: buffer.length,
-      })
+      });
     }
   }
 
-  return files
+  return files;
 }
 
 /**
@@ -231,7 +255,6 @@ export function createBodyParserMiddleware(
   config: VextBodyParserConfig,
   multipartConfig?: VextMultipartConfig,
 ): VextMiddleware {
-
   return async (req, res, next) => {
     // ── 无 body 方法直接跳过 ────────────────────────────
     // req.method 已由 createVextRequest 保证大写，无需 toUpperCase()
@@ -247,8 +270,11 @@ export function createBodyParserMiddleware(
       await next();
       return;
     }
-    const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser;
-    const effectiveConfig = routeBodyParser ? { ...config, ...routeBodyParser } : config;
+    const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })
+      ._routeBodyParser;
+    const effectiveConfig = routeBodyParser
+      ? { ...config, ...routeBodyParser }
+      : config;
 
     if (effectiveConfig.enabled === false) {
       await next();
@@ -257,7 +283,6 @@ export function createBodyParserMiddleware(
 
     const maxBytes = resolveBodyParserMaxBytes(config, routeBodyParser);
 
-
     // ── 仅处理 JSON 和 URL-encoded ─────────────────────
     const isJson = contentType.includes("application/json");
     const isUrlEncoded = contentType.includes(
@@ -265,26 +290,31 @@ export function createBodyParserMiddleware(
     );
 
     // ── 内置 multipart 解析（enabled 时自动填充 req.files）──────
-    if (contentType.startsWith('multipart/form-data')) {
+    if (contentType.startsWith("multipart/form-data")) {
       if (multipartConfig?.enabled) {
         try {
-          req.files = await parseMultipart(req, contentType, multipartConfig, maxBytes)
+          req.files = await parseMultipart(
+            req,
+            contentType,
+            multipartConfig,
+            maxBytes,
+          );
         } catch (err: unknown) {
-          const httpErr = err as { status?: number; message?: string }
+          const httpErr = err as { status?: number; message?: string };
           res.rawJson(
             {
               code: httpErr.status ?? 400,
-              message: httpErr.message ?? 'Bad Request: multipart parse error',
+              message: httpErr.message ?? "Bad Request: multipart parse error",
               requestId: req.requestId,
             },
             (httpErr.status ?? 400) as 400 | 413 | 415,
-          )
-          return
+          );
+          return;
         }
       }
       // enabled = false 时跳过（req.files 保持 undefined）
-      await next()
-      return
+      await next();
+      return;
     }
 
     if (!isJson && !isUrlEncoded) {
@@ -398,53 +428,73 @@ export function createRouteMultipartMiddleware(
     enabled: true,
     maxFileSize: routeConfig.maxFileSize ?? globalConfig?.maxFileSize,
     maxFiles: routeConfig.maxFiles ?? globalConfig?.maxFiles,
-    allowedMimeTypes: routeConfig.allowedMimeTypes ?? globalConfig?.allowedMimeTypes,
-  }
+    allowedMimeTypes:
+      routeConfig.allowedMimeTypes ?? globalConfig?.allowedMimeTypes,
+  };
 
   return async (req, res, next) => {
-    const contentType = req.headers['content-type'] ?? ''
-    if (!contentType.startsWith('multipart/form-data')) {
-      await next()
-      return
+    const contentType = req.headers["content-type"] ?? "";
+    if (!contentType.startsWith("multipart/form-data")) {
+      await next();
+      return;
     }
 
     try {
       if (req.files !== undefined) {
         // 全局 body-parser 已解析 → 用路由级配置做二次校验
-        const maxFiles = mergedConfig.maxFiles ?? 10
-        const maxFileSize = mergedConfig.maxFileSize ?? 10 * 1024 * 1024
+        const maxFiles = mergedConfig.maxFiles ?? 10;
+        const maxFileSize = mergedConfig.maxFileSize ?? 10 * 1024 * 1024;
 
         if (req.files.length > maxFiles) {
-          throw { status: 413, message: 'Too many files' }
+          throw { status: 413, message: "Too many files" };
         }
 
         for (const file of req.files) {
           if (file.size > maxFileSize) {
-            throw { status: 413, message: `File "${file.filename}" exceeds maxFileSize` }
+            throw {
+              status: 413,
+              message: `File "${file.filename}" exceeds maxFileSize`,
+            };
           }
-          if (mergedConfig.allowedMimeTypes && !mergedConfig.allowedMimeTypes.includes(file.mimetype)) {
-            throw { status: 415, message: `MIME type "${file.mimetype}" is not allowed` }
+          if (
+            mergedConfig.allowedMimeTypes &&
+            !mergedConfig.allowedMimeTypes.includes(file.mimetype)
+          ) {
+            throw {
+              status: 415,
+              message: `MIME type "${file.mimetype}" is not allowed`,
+            };
           }
         }
       } else {
         // 全局未解析 → 路由级解析
-        const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser
-        const maxBodyBytes = resolveBodyParserMaxBytes(globalBodyParser ?? {}, routeBodyParser)
-        req.files = await parseMultipart(req, contentType, mergedConfig, maxBodyBytes)
+        const routeBodyParser = (
+          req as { _routeBodyParser?: VextBodyParserConfig }
+        )._routeBodyParser;
+        const maxBodyBytes = resolveBodyParserMaxBytes(
+          globalBodyParser ?? {},
+          routeBodyParser,
+        );
+        req.files = await parseMultipart(
+          req,
+          contentType,
+          mergedConfig,
+          maxBodyBytes,
+        );
       }
     } catch (err: unknown) {
-      const httpErr = err as { status?: number; message?: string }
+      const httpErr = err as { status?: number; message?: string };
       res.rawJson(
         {
           code: httpErr.status ?? 400,
-          message: httpErr.message ?? 'Bad Request: multipart parse error',
+          message: httpErr.message ?? "Bad Request: multipart parse error",
           requestId: req.requestId,
         },
         (httpErr.status ?? 400) as 400 | 413 | 415,
-      )
-      return
+      );
+      return;
     }
 
-    await next()
-  }
+    await next();
+  };
 }

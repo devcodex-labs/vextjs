@@ -5,13 +5,13 @@
  *   1. 读取并校验 database 配置
  *   2. 构建 MonSQLize 构造函数配置（buildMonSQLizeConfig）
  *   3. 动态 import monsqlize 包，创建实例
- *   4. 注册 onClose 钩子（安全模式：先注册再执行 I/O）
+ *   4. 注册 onClose 钩子并建立失败路径清理
  *   5. 连接数据库（Fail Fast）
  *   6. 加载 Model 定义（本地 + shared 包）
  *   7. 挂载 app.db（MonSQLizeConnection）+ app.monsqlize（原始实例）
  *
  * 设计原则：
- *   - 先注册 onClose 再执行 I/O（确保连接异常时也能清理）
+ *   - onClose 与 setup 失败路径都清理资源（确保启动异常时不遗留临时实例）
  *   - Fail Fast：配置缺失或连接失败直接抛出，终止启动
  *   - 动态 import monsqlize（避免未安装时框架启动失败）
  *   - 日志桥接：将 MonSQLize 日志桥接到 app.logger
@@ -38,19 +38,18 @@ export async function setupMonSQLize(
   app: VextPluginContext,
   srcDir: string,
 ): Promise<void> {
-  let config = (app.config as { database?: MonSQLizeDatabaseConfig })
-    .database;
+  let config = (app.config as { database?: MonSQLizeDatabaseConfig }).database;
 
   // ── 配置校验 ──────────────────────────────────────────────
   if (!config) {
     throw new Error(
       '[monsqlize] Missing "database" configuration.\n' +
-      "  Add database config to src/config/default.ts:\n" +
-      "  export default {\n" +
-      "    database: {\n" +
-      '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
-      "    }\n" +
-      "  }",
+        "  Add database config to src/config/default.ts:\n" +
+        "  export default {\n" +
+        "    database: {\n" +
+        '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
+        "    }\n" +
+        "  }",
     );
   }
 
@@ -60,12 +59,73 @@ export async function setupMonSQLize(
     );
   }
 
-  // ── 0. 多连接池 useMemoryServer 预处理（仅测试场景）────────
+  // ── 0. useMemoryServer 预处理（仅测试场景）────────────────
+  // vext 在插件层统一使用 mongodb-memory-server-core 启动临时实例，
+  // 避免把 useMemoryServer 透传给上游 monSQLize 后触发 wrapper/fallback。
+  const memoryServersToStop: Array<{ stop: () => Promise<void> }> = [];
+  let memoryServersStopped = false;
+
+  const stopMemoryServers = async (): Promise<void> => {
+    if (memoryServersStopped) {
+      return;
+    }
+    memoryServersStopped = true;
+
+    for (const ms of memoryServersToStop.splice(0)) {
+      try {
+        await ms.stop();
+      } catch (err) {
+        app.logger.warn("[monsqlize] failed to stop memory server", {
+          error: (err as Error).message,
+        });
+      }
+    }
+  };
+
+  if (config.useMemoryServer === true) {
+    try {
+      const { MongoMemoryServer } = await import("mongodb-memory-server-core");
+      const memoryServerOptions = (
+        config as MonSQLizeDatabaseConfig & {
+          memoryServerOptions?: Record<string, unknown>;
+        }
+      ).memoryServerOptions;
+      const server = await MongoMemoryServer.create(memoryServerOptions);
+      const uri = server.getUri();
+      const rootConfig: Record<string, unknown> = {
+        ...config.config,
+        uri,
+      };
+      delete rootConfig.url;
+
+      const clonedConfig: MonSQLizeDatabaseConfig & {
+        memoryServerOptions?: Record<string, unknown>;
+      } = { ...config, config: rootConfig };
+      delete clonedConfig.useMemoryServer;
+      delete clonedConfig.memoryServerOptions;
+      config = clonedConfig;
+
+      memoryServersToStop.push({
+        stop: async () => {
+          await server.stop();
+        },
+      });
+      app.logger.info("[monsqlize] root connection using in-memory MongoDB", {
+        uri,
+      });
+    } catch (err) {
+      await stopMemoryServers();
+      throw new Error(
+        `[monsqlize] Failed to start MongoMemoryServer for root connection: ${(err as Error).message}\n` +
+          "  Make sure mongodb-memory-server-core is installed: npm install -D mongodb-memory-server-core",
+      );
+    }
+  }
+
   // monSQLize 的 PoolConfig 校验器要求 pool 必须有真实 mongodb:// uri，
   // 不接受 useMemoryServer 标志。此处在 vext 层为标记了 useMemoryServer
   // 的 pool 条目预先启动 MongoMemoryServer，并把生成的 URI 写回 config.uri，
   // 同时在 onClose 中停止这些 memory server。
-  const memoryServersToStop: Array<{ stop: () => Promise<void> }> = [];
   if (config.pools && config.pools.length > 0) {
     // 深拷贝 pools（vext 配置可能被冻结，无法原地写入）
     const clonedPools: Array<any> = config.pools.map((p: any) => ({
@@ -78,7 +138,8 @@ export async function setupMonSQLize(
         typeof innerCfg.uri === "string" || typeof innerCfg.url === "string";
       if (innerCfg.useMemoryServer === true && !hasUri) {
         try {
-          const { MongoMemoryServer } = await import("mongodb-memory-server");
+          const { MongoMemoryServer } =
+            await import("mongodb-memory-server-core");
           const server = await MongoMemoryServer.create(
             innerCfg.memoryServerOptions,
           );
@@ -96,9 +157,10 @@ export async function setupMonSQLize(
             { uri },
           );
         } catch (err) {
+          await stopMemoryServers();
           throw new Error(
             `[monsqlize] Failed to start MongoMemoryServer for pool '${pool.name}': ${(err as Error).message}\n` +
-            "  Make sure mongodb-memory-server is installed.",
+              "  Make sure mongodb-memory-server-core is installed: npm install -D mongodb-memory-server-core",
           );
         }
       }
@@ -107,7 +169,13 @@ export async function setupMonSQLize(
   }
 
   // ── 1. 构建 MonSQLize 配置 ────────────────────────────────
-  const monsqlizeConfig = buildMonSQLizeConfig(config, app);
+  let monsqlizeConfig: Record<string, unknown>;
+  try {
+    monsqlizeConfig = buildMonSQLizeConfig(config, app);
+  } catch (err) {
+    await stopMemoryServers();
+    throw err;
+  }
 
   // ── 2. 动态 import + 创建 MonSQLize 实例 ──────────────────
   let MonSQLizeClass: any;
@@ -116,14 +184,21 @@ export async function setupMonSQLize(
     // 兼容 CJS default export 和 ESM named export
     MonSQLizeClass = mod.default ?? mod.MonSQLize ?? mod;
   } catch (err) {
+    await stopMemoryServers();
     throw new Error(
       "[monsqlize] Failed to import 'monsqlize' package.\n" +
-      `  ${(err as Error).message}\n` +
-      "  Make sure monsqlize is installed: npm install monsqlize",
+        `  ${(err as Error).message}\n` +
+        "  Make sure monsqlize is installed: npm install monsqlize",
     );
   }
 
-  const monsqlize = new MonSQLizeClass(monsqlizeConfig);
+  let monsqlize: any;
+  try {
+    monsqlize = new MonSQLizeClass(monsqlizeConfig);
+  } catch (err) {
+    await stopMemoryServers();
+    throw err;
+  }
 
   // ── 3. 先注册 onClose，再执行 I/O（安全模式）──────────────
   //
@@ -139,28 +214,31 @@ export async function setupMonSQLize(
         error: (err as Error).message,
       });
     }
-    // 停止本插件为 pool 启动的 in-memory MongoDB 实例
-    for (const ms of memoryServersToStop) {
-      try {
-        await ms.stop();
-      } catch (err) {
-        app.logger.warn("[monsqlize] failed to stop pool memory server", {
-          error: (err as Error).message,
-        });
-      }
-    }
+    await stopMemoryServers();
   });
 
   // ── 4. 连接数据库（Fail Fast）─────────────────────────────
-  const connection = await createConnection(monsqlize, app);
-  app.logger.info("[monsqlize] connected successfully");
+  try {
+    const connection = await createConnection(monsqlize, app);
+    app.logger.info("[monsqlize] connected successfully");
 
-  // ── 5. 加载 Model 定义 ────────────────────────────────────
-  await loadModels(monsqlize, config.models, app, srcDir);
+    // ── 5. 加载 Model 定义 ────────────────────────────────────
+    await loadModels(monsqlize, config.models, app, srcDir);
 
-  // ── 6. 挂载到 app ─────────────────────────────────────────
-  app.extend("db", connection);
-  app.extend("monsqlize", monsqlize);
+    // ── 6. 挂载到 app ─────────────────────────────────────────
+    app.extend("db", connection);
+    app.extend("monsqlize", monsqlize);
+  } catch (err) {
+    await stopMemoryServers();
+    try {
+      await monsqlize.close();
+    } catch (closeErr) {
+      app.logger.warn("[monsqlize] failed to close after setup error", {
+        error: (closeErr as Error).message,
+      });
+    }
+    throw err;
+  }
 
   app.logger.info("[monsqlize] plugin ready");
 }
@@ -291,15 +369,6 @@ function buildMonSQLizeConfig(
       debug: (msg: string, meta?: unknown) =>
         app.logger.debug(`[monsqlize] ${msg}`, meta as Record<string, unknown>),
     };
-  }
-
-  // ── 内存数据库（测试用）───────────────────────────────────
-  // useMemoryServer 必须放入 mongoConfig（即 result.config），
-  // 因为 connectMongo 从 config 参数内部读取该字段：
-  //   let { uri, useMemoryServer } = config || {}
-  // 而非从顶层 monsqlize 配置读取。
-  if (config.useMemoryServer) {
-    mongoConfig.useMemoryServer = true;
   }
 
   return result;

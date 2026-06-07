@@ -645,7 +645,7 @@ vext --help
 
 ### 如何指定 Node.js 版本？
 
-VextJS 要求 Node.js >= 18.0.0。推荐在项目根目录创建 `.node-version` 或 `.nvmrc` 文件指定版本：
+VextJS 要求 Node.js >= 20.19.0。推荐在项目根目录创建 `.node-version` 或 `.nvmrc` 文件指定版本：
 
 ```bash
 echo "22" > .node-version

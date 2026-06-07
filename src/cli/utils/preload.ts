@@ -60,7 +60,9 @@ async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
   }
 
   const entries = await readdir(preloadDir, { withFileTypes: true });
-  const sortedEntries = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedEntries = [...entries].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
   const preloads: string[] = [];
 
   for (const entry of sortedEntries) {
@@ -117,9 +119,7 @@ function resolvePackagePreloads(rootDir: string): string[] {
 
   let pkg: Record<string, unknown>;
   try {
-    pkg = JSON.parse(
-      readFileSync(pkgPath, "utf-8"),
-    ) as Record<string, unknown>;
+    pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
   } catch {
     console.warn(
       "[vextjs] preload: failed to parse package.json, skipping preload resolution",
@@ -146,9 +146,10 @@ function resolvePackagePreloads(rootDir: string): string[] {
 
     let depPkg: Record<string, unknown>;
     try {
-      depPkg = JSON.parse(
-        readFileSync(depPkgPath, "utf-8"),
-      ) as Record<string, unknown>;
+      depPkg = JSON.parse(readFileSync(depPkgPath, "utf-8")) as Record<
+        string,
+        unknown
+      >;
     } catch {
       console.warn(
         `[vextjs] preload: failed to parse ${depName}/package.json, skipping`,
@@ -206,7 +207,7 @@ async function compileProjectTypeScriptPreload(
       packages: "external",
       format: "esm",
       platform: "node",
-      target: "node18",
+      target: "node20",
       write: true,
       outfile: compiledFile,
       logLevel: "silent",
@@ -214,7 +215,9 @@ async function compileProjectTypeScriptPreload(
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
+      error instanceof Error
+        ? error.message
+        : `Unknown error: ${String(error)}`;
     throw new Error(
       `[vextjs] preload: failed to compile TypeScript preload ${filePath}\n${message}`,
     );
@@ -222,4 +225,3 @@ async function compileProjectTypeScriptPreload(
 
   return pathToFileURL(resolve(compiledFile)).href;
 }
-

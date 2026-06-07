@@ -209,9 +209,9 @@ describe("shared-esbuild-config", () => {
       expect(config.platform).toBe("node");
     });
 
-    it("应设置 target 为 node18", () => {
+    it("应设置 target 为 node20", () => {
       const config = createBaseEsbuildConfig();
-      expect(config.target).toBe("node18");
+      expect(config.target).toBe("node20");
     });
 
     it("应禁用 bundle（逐文件编译）", () => {

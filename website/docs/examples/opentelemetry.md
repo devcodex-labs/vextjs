@@ -82,9 +82,9 @@ curl http://localhost:3000/_otel/status
 
 VextJS 下的 OpenTelemetry 配置分为两个正式入口，但职责不同：
 
-| 入口 | 生效阶段 | 最适合放什么 | 不建议放什么 |
-|------|---------|--------------|--------------|
-| `package.json` → `vext.otel` | preload / 进程启动前 | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 等“SDK 一开始就要知道”的默认导出配置 | `ignorePaths`、`capture`、日志桥接、请求级副作用 |
+| 入口                                            | 生效阶段               | 最适合放什么                                                                                        | 不建议放什么                                     |
+| ----------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `package.json` → `vext.otel`                    | preload / 进程启动前   | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 等“SDK 一开始就要知道”的默认导出配置   | `ignorePaths`、`capture`、日志桥接、请求级副作用 |
 | `src/plugins/otel.ts` → `opentelemetryPlugin()` | plugin setup + request | `tracing`、`metrics`、`lifecycle`、`logs.bridgeAppLogger`，以及 setup 阶段对 exporter 的补充 / 覆盖 | 指望它回写 preload 阶段已经启动好的 SDK Resource |
 
 ### 推荐顺序
@@ -95,25 +95,26 @@ VextJS 下的 OpenTelemetry 配置分为两个正式入口，但职责不同：
 
 ### `endpoint` / `protocol` 速查
 
-| 目标 | 推荐配置 | `protocol` | 结果 |
-|------|----------|------------|------|
-| 不导出任何数据 | 不写 `endpoint`，或显式写 `"none"` | — | SDK 安全 noop / 不上报 |
-| 本地文件调试 | `"./otel-data"` | — | 按 `pid` 写入 `*.jsonl` 文件 |
-| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报 |
-| OTLP gRPC Collector | `"otel-collector.internal:4317"` | `"grpc"` | 通过 gRPC h2c 上报 |
+| 目标                | 推荐配置                                | `protocol`       | 结果                         |
+| ------------------- | --------------------------------------- | ---------------- | ---------------------------- |
+| 不导出任何数据      | 不写 `endpoint`，或显式写 `"none"`      | —                | SDK 安全 noop / 不上报       |
+| 本地文件调试        | `"./otel-data"`                         | —                | 按 `pid` 写入 `*.jsonl` 文件 |
+| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报          |
+| OTLP gRPC Collector | `"otel-collector.internal:4317"`        | `"grpc"`         | 通过 gRPC h2c 上报           |
 
 ---
 
 ## 不配置上报地址会怎样？
 
-| 场景 | endpoint 值 | 行为 |
-|------|------------|------|
-| 未配置任何 endpoint | `"none"` | **SDK 启动但不导出数据**（auto-instrumentation 仍生效，但无遥测输出）|
-| 配置了地址但 Collector 不可达 | 配置值 | SDK 内部 batch 超时后丢弃，控制台无错误 |
-| `enabled: false` | — | 完全 no-op，不初始化 SDK |
+| 场景                          | endpoint 值 | 行为                                                                  |
+| ----------------------------- | ----------- | --------------------------------------------------------------------- |
+| 未配置任何 endpoint           | `"none"`    | **SDK 启动但不导出数据**（auto-instrumentation 仍生效，但无遥测输出） |
+| 配置了地址但 Collector 不可达 | 配置值      | SDK 内部 batch 超时后丢弃，控制台无错误                               |
+| `enabled: false`              | —           | 完全 no-op，不初始化 SDK                                              |
 
 > ✅ **安全默认值**——未配置 endpoint 时不会向任何地址发送数据，也不会写入本地文件。
 > 要启用上报，可以：
+>
 > - 在 `package.json` `vext.otel.*` 中配置（推荐，预加载阶段即生效）
 > - 或在 `opentelemetryPlugin({...})` 中配置（setup 阶段追加/覆盖导出器）
 
@@ -206,7 +207,11 @@ cat ./otel-data/logs.*.jsonl
       "dataPointType": "HISTOGRAM",
       "dataPoints": [
         {
-          "attributes": { "http.method": "GET", "http.route": "/users/:id", "http.status_code": 200 },
+          "attributes": {
+            "http.method": "GET",
+            "http.route": "/users/:id",
+            "http.status_code": 200
+          },
           "count": 5,
           "sum": 225,
           "min": 12,
@@ -219,7 +224,11 @@ cat ./otel-data/logs.*.jsonl
       "dataPointType": "SUM",
       "dataPoints": [
         {
-          "attributes": { "http.method": "GET", "http.route": "/users/:id", "http.status_code": 200 },
+          "attributes": {
+            "http.method": "GET",
+            "http.route": "/users/:id",
+            "http.status_code": 200
+          },
           "value": 5
         }
       ]
@@ -304,15 +313,15 @@ curl http://localhost:3000/_otel/status
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `sdk` | `"initialized"` = SDK 正常 / `"noop"` = SDK 未初始化 |
-| `serviceName` | 当前生效的服务名 |
-| `exportMode` | `"otlp-grpc"` = h2c gRPC / `"otlp-http"` = HTTP OTLP / `"file"` = 本地文件 / `"none"` = 未配置 |
-| `exportTarget` | 当前生效的上报目标（未配置时为 `"none"`） |
-| `protocol` | 当前导出协议（`"http"` / `"grpc"`） |
-| `autoInstrumentation` | 是否启用了自动检测（MongoDB/Redis/MySQL 等） |
-| `samplingRatio` | 当前采样率 |
+| 字段                  | 说明                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `sdk`                 | `"initialized"` = SDK 正常 / `"noop"` = SDK 未初始化                                           |
+| `serviceName`         | 当前生效的服务名                                                                               |
+| `exportMode`          | `"otlp-grpc"` = h2c gRPC / `"otlp-http"` = HTTP OTLP / `"file"` = 本地文件 / `"none"` = 未配置 |
+| `exportTarget`        | 当前生效的上报目标（未配置时为 `"none"`）                                                      |
+| `protocol`            | 当前导出协议（`"http"` / `"grpc"`）                                                            |
+| `autoInstrumentation` | 是否启用了自动检测（MongoDB/Redis/MySQL 等）                                                   |
+| `samplingRatio`       | 当前采样率                                                                                     |
 
 **VextJS**：启动后自动注册，无需手动配置。
 
@@ -326,38 +335,38 @@ curl http://localhost:3000/_otel/status
 
 每个 HTTP 请求产生一条 Span，包含：
 
-| 属性 | 示例值 | 说明 |
-|------|--------|------|
-| `http.method` | `"GET"` | HTTP 方法 |
-| `http.route` | `"/users/:id"` | 路由模板（低基数，安全用于指标聚合） |
-| `http.status_code` | `200` | 响应状态码 |
-| `http.request_id` | `"my-app-a1b2c3d4"` | vext 请求 ID |
-| `vext.service` | `"my-app"` | 服务名称 |
-| `http.url` | `"http://localhost:3000/users/42"` | 完整请求 URL |
-| `net.peer.ip` | `"127.0.0.1"` | 客户端 IP |
+| 属性               | 示例值                             | 说明                                 |
+| ------------------ | ---------------------------------- | ------------------------------------ |
+| `http.method`      | `"GET"`                            | HTTP 方法                            |
+| `http.route`       | `"/users/:id"`                     | 路由模板（低基数，安全用于指标聚合） |
+| `http.status_code` | `200`                              | 响应状态码                           |
+| `http.request_id`  | `"my-app-a1b2c3d4"`                | vext 请求 ID                         |
+| `vext.service`     | `"my-app"`                         | 服务名称                             |
+| `http.url`         | `"http://localhost:3000/users/42"` | 完整请求 URL                         |
+| `net.peer.ip`      | `"127.0.0.1"`                      | 客户端 IP                            |
 
 安装 `@opentelemetry/auto-instrumentations-node` 后，数据库操作、HTTP 外部调用等会自动产生子 Span。
 
 ### Metrics（指标监控）
 
-| 指标名 | 类型 | 标签 | 说明 |
-|--------|------|------|------|
-| `http.server.duration` | Histogram（ms） | method, route, status_code | 请求耗时分布 |
-| `http.server.request.total` | Counter | method, route, status_code | 请求总数 |
-| `http.server.active_requests` | UpDownCounter | method | 当前并发请求数 |
-| `http.server.request.size` | Histogram（bytes） | method, route | 请求体大小分布（Content-Length 存在时记录） |
-| `http.server.response.size` | Histogram（bytes） | method, status_code | 响应体大小分布（Content-Length 存在时记录） |
+| 指标名                        | 类型               | 标签                       | 说明                                        |
+| ----------------------------- | ------------------ | -------------------------- | ------------------------------------------- |
+| `http.server.duration`        | Histogram（ms）    | method, route, status_code | 请求耗时分布                                |
+| `http.server.request.total`   | Counter            | method, route, status_code | 请求总数                                    |
+| `http.server.active_requests` | UpDownCounter      | method                     | 当前并发请求数                              |
+| `http.server.request.size`    | Histogram（bytes） | method, route              | 请求体大小分布（Content-Length 存在时记录） |
+| `http.server.response.size`   | Histogram（bytes） | method, status_code        | 响应体大小分布（Content-Length 存在时记录） |
 
 > **`ignorePaths` 同时抑制 Trace 和 Metrics**——被忽略路径（如 `/health`）不会产生任何 Span 或指标数据，不会在监控面板产生噪声。
 
 **Node.js Runtime 指标**（通过 `@opentelemetry/instrumentation-runtime-node` 自动上报）：
 
-| 指标名 | 说明 |
-|--------|------|
-| `process.cpu.usage` | 进程 CPU 使用率 |
-| `process.memory.usage` | 堆内存使用量（heap_used / rss） |
-| `nodejs.eventloop.lag` | 事件循环延迟 |
-| `nodejs.gc.duration` / `nodejs.gc.count` | GC 耗时和次数 |
+| 指标名                                   | 说明                            |
+| ---------------------------------------- | ------------------------------- |
+| `process.cpu.usage`                      | 进程 CPU 使用率                 |
+| `process.memory.usage`                   | 堆内存使用量（heap_used / rss） |
+| `nodejs.eventloop.lag`                   | 事件循环延迟                    |
+| `nodejs.gc.duration` / `nodejs.gc.count` | GC 耗时和次数                   |
 
 ### Logs（日志关联）
 
@@ -620,12 +629,12 @@ opentelemetryPlugin({
 
 > 以下环境变量由 OpenTelemetry SDK 原生支持，但 VextJS 场景推荐优先通过 `package.json vext.otel` 固化导出配置。
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `OTEL_TRACES_SAMPLER` | `"parentbased_always_on"` | 采样策略 |
-| `OTEL_TRACES_SAMPLER_ARG` | `"1"` | 采样率（如 `0.1` = 10%） |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | 指标导出间隔（毫秒） |
-| `OTEL_LOG_LEVEL` | `"info"` | SDK 日志级别 |
+| 变量                          | 默认值                    | 说明                     |
+| ----------------------------- | ------------------------- | ------------------------ |
+| `OTEL_TRACES_SAMPLER`         | `"parentbased_always_on"` | 采样策略                 |
+| `OTEL_TRACES_SAMPLER_ARG`     | `"1"`                     | 采样率（如 `0.1` = 10%） |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `15000`                   | 指标导出间隔（毫秒）     |
+| `OTEL_LOG_LEVEL`              | `"info"`                  | SDK 日志级别             |
 
 ---
 
@@ -633,20 +642,20 @@ opentelemetryPlugin({
 
 ### 本地开发
 
-| 后端 | 启动方式 | endpoint 配置 |
-|------|---------|---------------|
-| **无（文件导出）** | 不需要 Docker | `package.json vext.otel.endpoint: "./otel-data"` |
-| **Jaeger** | `docker run -d -p 4318:4318 -p 16686:16686 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
-| **Grafana LGTM** | `docker run -d -p 3000:3000 -p 4318:4318 grafana/otel-lgtm` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| 后端               | 启动方式                                                                                            | endpoint 配置                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **无（文件导出）** | 不需要 Docker                                                                                       | `package.json vext.otel.endpoint: "./otel-data"`           |
+| **Jaeger**         | `docker run -d -p 4318:4318 -p 16686:16686 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| **Grafana LGTM**   | `docker run -d -p 3000:3000 -p 4318:4318 grafana/otel-lgtm`                                         | `package.json vext.otel.endpoint: "http://localhost:4318"` |
 
 ### 云厂商
 
-| 厂商 | endpoint | headers |
-|------|----------|---------|
-| **New Relic** | `https://otlp.nr-data.net:4318` | `{ "api-key": "LICENSE_KEY" }` |
+| 厂商              | endpoint                                    | headers                              |
+| ----------------- | ------------------------------------------- | ------------------------------------ |
+| **New Relic**     | `https://otlp.nr-data.net:4318`             | `{ "api-key": "LICENSE_KEY" }`       |
 | **Grafana Cloud** | `https://otlp-gateway-....grafana.net/otlp` | `{ "Authorization": "Basic TOKEN" }` |
-| **Datadog** | `http://dd-agent-host:4318` | — |
-| **阿里云 ARMS** | 参考阿里云 OTLP 接入文档 | 参考文档 |
+| **Datadog**       | `http://dd-agent-host:4318`                 | —                                    |
+| **阿里云 ARMS**   | 参考阿里云 OTLP 接入文档                    | 参考文档                             |
 
 > 云厂商 token 建议通过环境变量注入（K8s Secret），不要硬编码到代码中。
 
@@ -664,20 +673,20 @@ opentelemetryPlugin({
 
 ### 支持的库
 
-| 类别 | 库 | 自动追踪内容 |
-|------|----|------------|
-| **数据库** | MongoDB（`mongodb` / `mongoose`） | 查询操作、集合名、耗时 |
-| | PostgreSQL（`pg`） | SQL 语句、表名、耗时 |
-| | MySQL（`mysql` / `mysql2`） | SQL 语句、表名、耗时 |
-| | Redis（`ioredis` / `redis`） | 命令、key、耗时 |
-| **HTTP** | Node.js `http` / `https` | 外部 HTTP 调用、URL、状态码 |
-| | `undici` / `fetch` | 同上，Node.js 18+ 内置 fetch |
-| **消息队列** | `amqplib`（RabbitMQ） | 队列名、消息发送/消费 |
-| | `kafkajs` | Topic、消息发送/消费 |
-| **缓存** | `memcached` | 操作命令、key |
-| **RPC** | `@grpc/grpc-js` | 方法名、状态码 |
-| **其他** | `dns` | DNS 解析 |
-| | `net` | TCP 连接 |
+| 类别         | 库                                | 自动追踪内容                 |
+| ------------ | --------------------------------- | ---------------------------- |
+| **数据库**   | MongoDB（`mongodb` / `mongoose`） | 查询操作、集合名、耗时       |
+|              | PostgreSQL（`pg`）                | SQL 语句、表名、耗时         |
+|              | MySQL（`mysql` / `mysql2`）       | SQL 语句、表名、耗时         |
+|              | Redis（`ioredis` / `redis`）      | 命令、key、耗时              |
+| **HTTP**     | Node.js `http` / `https`          | 外部 HTTP 调用、URL、状态码  |
+|              | `undici` / `fetch`                | 同上，Node.js 20+ 内置 fetch |
+| **消息队列** | `amqplib`（RabbitMQ）             | 队列名、消息发送/消费        |
+|              | `kafkajs`                         | Topic、消息发送/消费         |
+| **缓存**     | `memcached`                       | 操作命令、key                |
+| **RPC**      | `@grpc/grpc-js`                   | 方法名、状态码               |
+| **其他**     | `dns`                             | DNS 解析                     |
+|              | `net`                             | TCP 连接                     |
 
 > 完整列表见 [@opentelemetry/auto-instrumentations-node](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node)。
 
@@ -750,24 +759,28 @@ import { defineRoutes } from "vextjs";
 export default defineRoutes((app) => {
   app.post("/payments", async (req, res) => {
     // ① 最简：完全不接触 span（仅追踪生命周期）
-    const resultBasic = await req.app.otel!.withSpan(
-      "payment.process",
-      () => processPayment(req.body.id),
+    const resultBasic = await req.app.otel!.withSpan("payment.process", () =>
+      processPayment(req.body.id),
     );
 
     // ② 带静态初始属性
     const resultWithAttrs = await req.app.otel!.withSpan(
       "payment.process",
       () => processPayment(req.body.id),
-      { attributes: { "payment.provider": "stripe", "payment.currency": "USD" } },
+      {
+        attributes: { "payment.provider": "stripe", "payment.currency": "USD" },
+      },
     );
 
     // ③ 动态属性（依赖执行结果时，通过回调参数访问 span）
-    const resultWithDynamicAttrs = await req.app.otel!.withSpan("payment.process", async (span) => {
-      const res = await processPayment(req.body.id);
-      span.setAttribute("payment.result", res.status);
-      return res;
-    });
+    const resultWithDynamicAttrs = await req.app.otel!.withSpan(
+      "payment.process",
+      async (span) => {
+        const res = await processPayment(req.body.id);
+        span.setAttribute("payment.result", res.status);
+        return res;
+      },
+    );
 
     res.json(resultWithDynamicAttrs);
   });
@@ -776,11 +789,11 @@ export default defineRoutes((app) => {
 
 **行为说明**：
 
-| 场景 | 自动行为 |
-|------|---------|
-| 回调正常返回 | `span.end()` 自动调用 |
+| 场景         | 自动行为                                                                        |
+| ------------ | ------------------------------------------------------------------------------- |
+| 回调正常返回 | `span.end()` 自动调用                                                           |
 | 回调抛出异常 | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
-| SDK 未初始化 | Noop span，零 overhead（OTel API 契约保证） |
+| SDK 未初始化 | Noop span，零 overhead（OTel API 契约保证）                                     |
 
 ### 底层 API（自定义 SpanKind / Processor 等高级场景）
 
@@ -791,22 +804,32 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get("/users/:id", { validate: { param: { id: "string" } } }, async (req, res) => {
-    const span = req.app.otel!.tracer.startSpan("db.user.findById", {
-      attributes: { "db.system": "mongodb", "user.id": req.valid("param").id },
-    });
-    try {
-      const user = await app.services.user.findById(req.valid("param").id);
-      span.setStatus({ code: SpanStatusCode.OK });
-      res.json(user);
-    } catch (err) {
-      span.recordException(err as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
-      throw err;
-    } finally {
-      span.end();
-    }
-  });
+  app.get(
+    "/users/:id",
+    { validate: { param: { id: "string" } } },
+    async (req, res) => {
+      const span = req.app.otel!.tracer.startSpan("db.user.findById", {
+        attributes: {
+          "db.system": "mongodb",
+          "user.id": req.valid("param").id,
+        },
+      });
+      try {
+        const user = await app.services.user.findById(req.valid("param").id);
+        span.setStatus({ code: SpanStatusCode.OK });
+        res.json(user);
+      } catch (err) {
+        span.recordException(err as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (err as Error).message,
+        });
+        throw err;
+      } finally {
+        span.end();
+      }
+    },
+  );
 });
 ```
 
@@ -822,7 +845,9 @@ export default definePlugin({
     const meter = app.otel.meter;
     app.extend("businessMetrics", {
       orderCreated: meter.createCounter("business.order.created"),
-      orderAmount: meter.createHistogram("business.order.amount", { unit: "cents" }),
+      orderAmount: meter.createHistogram("business.order.amount", {
+        unit: "cents",
+      }),
     });
   },
 });
@@ -951,23 +976,23 @@ export default {
 
 #### 字段对照表
 
-| 字段 | 来源 | 配置方式 |
-|------|------|---------|
-| `timestamp` | pino 自动 | 无需配置 |
-| `level` | pino 自动 | 无需配置 |
-| `msg` | `logger.info("...")` | 无需配置 |
-| `requestId` | 框架 ALS → mixin 自动 | 无需配置 |
-| `trace_id` | otel 中间件 → ALS → mixin 自动 | 无需配置 |
-| `span_id` | otel 中间件 → ALS → mixin 自动 | 无需配置 |
-| `service_name` | `config.logger.mixin` | 用户 mixin 注入 |
-| `env` | `config.logger.mixin` | 用户 mixin 注入 |
-| `host` | `config.logger.mixin` | 用户 mixin 注入 |
-| `span` | `trace.getActiveSpan().name` | 用户 mixin 注入 |
-| `endpoint` | access log 中的 `req.route` | 自动包含在请求日志 msg 中 |
-| `latency_ms` | access log | 自动包含在请求日志 msg 中 |
-| `user_id` | 业务代码 | `logger.info({ user_id: "..." }, msg)` |
-| `feature.flag` | 业务代码 | `logger.info({ "feature.flag": "..." }, msg)` |
-| `exception.*` | `logger.error(err)` | pino serializer 自动展开 |
+| 字段           | 来源                           | 配置方式                                      |
+| -------------- | ------------------------------ | --------------------------------------------- |
+| `timestamp`    | pino 自动                      | 无需配置                                      |
+| `level`        | pino 自动                      | 无需配置                                      |
+| `msg`          | `logger.info("...")`           | 无需配置                                      |
+| `requestId`    | 框架 ALS → mixin 自动          | 无需配置                                      |
+| `trace_id`     | otel 中间件 → ALS → mixin 自动 | 无需配置                                      |
+| `span_id`      | otel 中间件 → ALS → mixin 自动 | 无需配置                                      |
+| `service_name` | `config.logger.mixin`          | 用户 mixin 注入                               |
+| `env`          | `config.logger.mixin`          | 用户 mixin 注入                               |
+| `host`         | `config.logger.mixin`          | 用户 mixin 注入                               |
+| `span`         | `trace.getActiveSpan().name`   | 用户 mixin 注入                               |
+| `endpoint`     | access log 中的 `req.route`    | 自动包含在请求日志 msg 中                     |
+| `latency_ms`   | access log                     | 自动包含在请求日志 msg 中                     |
+| `user_id`      | 业务代码                       | `logger.info({ user_id: "..." }, msg)`        |
+| `feature.flag` | 业务代码                       | `logger.info({ "feature.flag": "..." }, msg)` |
+| `exception.*`  | `logger.error(err)`            | pino serializer 自动展开                      |
 
 ### B. OTel Logs（LogRecord → Collector）
 
@@ -996,12 +1021,12 @@ GET /users/:id                        (http, 45ms)  ← user.id, tenant.id 在�
 └── HTTP GET https://api.xxx/verify   (http, 28ms)  ← 自动
 ```
 
-| 字段 | 来源 | 出现位置 |
-|------|------|---------|
-| `db.statement` | DB instrumentation 自动 | 数据库子 Span attributes |
-| `db.system` | DB instrumentation 自动 | 数据库子 Span attributes |
-| `cache.system` | Redis/Memcached instrumentation 自动 | 缓存子 Span attributes |
-| `http.url` | HTTP instrumentation 自动 | 外部调用子 Span attributes |
+| 字段           | 来源                                 | 出现位置                   |
+| -------------- | ------------------------------------ | -------------------------- |
+| `db.statement` | DB instrumentation 自动              | 数据库子 Span attributes   |
+| `db.system`    | DB instrumentation 自动              | 数据库子 Span attributes   |
+| `cache.system` | Redis/Memcached instrumentation 自动 | 缓存子 Span attributes     |
+| `http.url`     | HTTP instrumentation 自动            | 外部调用子 Span attributes |
 
 > 通过 `trace_id` 在 Jaeger / Grafana Tempo 中查看完整调用链路即可关联这些深层字段。
 

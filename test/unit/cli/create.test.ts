@@ -820,7 +820,7 @@ describe("vext create", () => {
       const files = getWrittenFiles();
       const pkg = JSON.parse(files["package.json"]);
 
-      expect(pkg.dependencies["@koa/router"]).toBeDefined();
+      expect(pkg.dependencies["@koa/router"]).toBe("^15.6.0");
       expect(pkg.dependencies.koa).toBeDefined();
       expect(pkg.devDependencies["@types/koa"]).toBeDefined();
       expect(files["src/config/default.ts"]).toContain("adapter: 'koa'");
@@ -1192,7 +1192,7 @@ describe("vext create", () => {
 
       // Koa adapter
       expect(pkg.dependencies.koa).toBeDefined();
-      expect(pkg.dependencies["@koa/router"]).toBeDefined();
+      expect(pkg.dependencies["@koa/router"]).toBe("^15.6.0");
       expect(pkg.devDependencies["@types/koa"]).toBeDefined();
       expect(files["src/config/default.ts"]).toContain("adapter: 'koa'");
     });

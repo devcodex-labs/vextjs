@@ -1,7 +1,7 @@
 ﻿/**
  * MonSQLize 插件集成测试
  *
- * 使用 mongodb-memory-server 创建内存 MongoDB 实例，
+ * 使用 mongodb-memory-server-core 创建内存 MongoDB 实例，
  * 验证 MonSQLize 插件在真实数据库环境下的完整生命周期：
  *
  *   1. 插件连接（setupMonSQLize → connect → app.db 可用）
@@ -14,7 +14,7 @@
  * 策略：
  *   - 不通过 createTestApp 启动完整应用，而是直接调用 setupMonSQLize
  *   - 使用最小化 mock app（仅提供 config / logger / extend / onClose）
- *   - mongodb-memory-server 在 beforeAll 启动，afterAll 关闭
+ *   - mongodb-memory-server-core 在 beforeAll 启动，afterAll 关闭
  *   - 每个 describe 块使用独立集合名，避免测试间数据污染
  *
  * @module test/integration/monsqlize/plugin-lifecycle
@@ -31,7 +31,8 @@ import {
   beforeEach,
   afterEach,
 } from "vitest";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { join } from "node:path";
+import { MongoMemoryServer } from "mongodb-memory-server-core";
 import type { VextApp } from "../../../src/types/app.js";
 import { setupMonSQLize } from "../../../src/lib/plugins/monsqlize/plugin.js";
 import { shouldLoadMonSQLize } from "../../../src/lib/plugins/monsqlize/index.js";
@@ -39,9 +40,19 @@ import MonSQLize from "monsqlize";
 import { dsl } from "schema-dsl";
 
 // ── 超时配置 ────────────────────────────────────────────────
-// mongodb-memory-server 首次下载二进制文件可能需要较长时间，
+// mongodb-memory-server-core 首次下载二进制文件可能需要较长时间，
 // 后续运行使用缓存，通常 5-10 秒内启动。
 const MONGO_STARTUP_TIMEOUT = 60_000;
+const MONGO_BINARY_VERSION = "8.2.6";
+const MONGO_BINARY_DOWNLOAD_DIR = join(
+  process.cwd(),
+  ".cache",
+  "mongodb-binaries",
+);
+const ORIGINAL_MONGOMS_VERSION = process.env.MONGOMS_VERSION;
+const ORIGINAL_MONGOMS_DOWNLOAD_DIR = process.env.MONGOMS_DOWNLOAD_DIR;
+const ORIGINAL_MONGOMS_PREFER_GLOBAL_PATH =
+  process.env.MONGOMS_PREFER_GLOBAL_PATH;
 
 // ── 全局 MongoMemoryServer 实例 ─────────────────────────────
 let mongoServer: MongoMemoryServer;
@@ -148,13 +159,37 @@ async function executeCloseHooks(
 describe("MonSQLize 插件集成测试", () => {
   // ── 全局 setup/teardown ──────────────────────────────────
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
+    process.env.MONGOMS_VERSION = MONGO_BINARY_VERSION;
+    process.env.MONGOMS_DOWNLOAD_DIR = MONGO_BINARY_DOWNLOAD_DIR;
+    process.env.MONGOMS_PREFER_GLOBAL_PATH = "false";
+    mongoServer = await MongoMemoryServer.create({
+      binary: {
+        version: MONGO_BINARY_VERSION,
+        downloadDir: MONGO_BINARY_DOWNLOAD_DIR,
+      },
+    });
     mongoUri = mongoServer.getUri();
   }, MONGO_STARTUP_TIMEOUT);
 
   afterAll(async () => {
     if (mongoServer) {
       await mongoServer.stop();
+    }
+    if (ORIGINAL_MONGOMS_VERSION === undefined) {
+      delete process.env.MONGOMS_VERSION;
+    } else {
+      process.env.MONGOMS_VERSION = ORIGINAL_MONGOMS_VERSION;
+    }
+    if (ORIGINAL_MONGOMS_DOWNLOAD_DIR === undefined) {
+      delete process.env.MONGOMS_DOWNLOAD_DIR;
+    } else {
+      process.env.MONGOMS_DOWNLOAD_DIR = ORIGINAL_MONGOMS_DOWNLOAD_DIR;
+    }
+    if (ORIGINAL_MONGOMS_PREFER_GLOBAL_PATH === undefined) {
+      delete process.env.MONGOMS_PREFER_GLOBAL_PATH;
+    } else {
+      process.env.MONGOMS_PREFER_GLOBAL_PATH =
+        ORIGINAL_MONGOMS_PREFER_GLOBAL_PATH;
     }
   });
 
@@ -200,6 +235,31 @@ describe("MonSQLize 插件集成测试", () => {
       expect(readyMsg).toBeDefined();
 
       // 清理
+      await executeCloseHooks(closeHooks);
+    });
+
+    it("root useMemoryServer 使用 core 生成的 URI 覆盖外部 URL", async () => {
+      const { app, closeHooks, extendedProps } = createMockApp({
+        config: { url: "mongodb://127.0.0.1:1/should-not-connect" },
+        useMemoryServer: true,
+        logger: false,
+      });
+
+      await setupMonSQLize(app, "/nonexistent-src-dir");
+
+      expect(extendedProps.has("db")).toBe(true);
+      expect(extendedProps.has("monsqlize")).toBe(true);
+
+      const infoCalls = (app.logger.info as ReturnType<typeof vi.fn>).mock
+        .calls;
+      const memoryServerMsg = infoCalls.find(
+        (call: unknown[]) =>
+          call[0] === "[monsqlize] root connection using in-memory MongoDB" &&
+          typeof (call[1] as { uri?: unknown } | undefined)?.uri === "string" &&
+          (call[1] as { uri: string }).uri.includes("mongodb://"),
+      );
+      expect(memoryServerMsg).toBeDefined();
+
       await executeCloseHooks(closeHooks);
     });
 

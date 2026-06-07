@@ -8,7 +8,7 @@ import type { VextResponse } from "../types/response.js";
 /**
  * fetch.ts — app.fetch 内置 HTTP 客户端
  *
- * 封装 Node.js 18+ 内置 fetch，提供：
+ * 封装 Node.js 20+ 内置 fetch，提供：
  *   1. 自动传播 requestId（从 requestContext AsyncLocalStorage 读取）
  *   2. 结构化日志记录（出站请求 method/url/status/duration）
  *   3. 超时控制（AbortController + setTimeout）
@@ -1334,7 +1334,7 @@ function mergeSignals(
     return AbortSignal.any([userSignal, timeoutSignal]);
   }
 
-  // Node.js 18 手动实现
+  // Node.js 20 手动实现
   const controller = new AbortController();
 
   const onAbort = () => {

@@ -46,11 +46,15 @@ export interface PoolAccessor {
   /** 获取指定池上的 Model 实例 */
   model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
   /** 获取指定池上的原生 Collection */
-  collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+  collection: (
+    name: string,
+  ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
   /** 切换数据库，返回限定池+库的访问器 */
   use: (dbName: string) => {
     model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-    collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+    collection: (
+      name: string,
+    ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
   };
 }
 
@@ -73,7 +77,9 @@ export interface MonSQLizeConnection {
    */
   use: (dbName: string) => {
     model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-    collection: (name: string) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
+    collection: (
+      name: string,
+    ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
   };
 
   /** 切换连接池（R3 新增） */
@@ -339,10 +345,15 @@ export interface MonSQLizeDatabaseConfig {
 
   /**
    * 内存数据库（测试用）
-   * 启用后使用 mongodb-memory-server 创建临时实例
+   * 启用后使用 mongodb-memory-server-core 创建临时实例
    * @default false
    */
   useMemoryServer?: boolean;
+
+  /**
+   * 传给 mongodb-memory-server-core 的启动选项
+   */
+  memoryServerOptions?: Record<string, unknown>;
 
   /**
    * 日志器配置

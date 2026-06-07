@@ -61,7 +61,7 @@ src/                          dist/
 | 选项     | 值               | 说明                                         |
 | -------- | ---------------- | -------------------------------------------- |
 | Format   | `cjs` (CommonJS) | 统一输出 CommonJS，确保 `require.cache` 可控 |
-| Target   | `node18`         | 与 `engines.node >= 18` 对齐                 |
+| Target   | `node20`         | 与 `engines.node >= 20.19.0` 对齐            |
 | Platform | `node`           | Node.js 运行时                               |
 | Charset  | `utf8`           | 强制 UTF-8，避免中文转义                     |
 
@@ -220,7 +220,7 @@ Error: Something went wrong
 两者共享的 esbuild 配置包括：
 
 - `platform: 'node'` — Node.js 运行时
-- `target: 'node18'` — 最低支持 Node.js 18
+- `target: 'node20'` — 最低支持 Node.js 20.19.0
 - `format: 'cjs'` — CommonJS 输出
 - `bundle: false` — 逐文件编译
 - `treeShaking: true` — 死代码消除
