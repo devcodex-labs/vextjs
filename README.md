@@ -65,7 +65,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.18"
+    "vextjs": "^0.3.19"
   }
 }
 ```
