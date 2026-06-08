@@ -39,7 +39,7 @@ function formatBytes(bytes: number): string {
  *   - 洋葱回程时 handler 已执行完毕，res.statusCode 已确定
  *
  * 日志格式（紧凑单行）：
- *   开发模式（pino-pretty）：
+ *   开发模式（pretty）：
  *     [17:53:26.174] INFO: GET / 200 1ms | 127.0.0.1
  *     [17:53:28.120] ERROR: POST /api/pay 500 312ms | 10.0.0.5
  *     [17:53:30.500] WARN: GET /api/reports 200 5231ms | 10.0.0.1 [SLOW]
@@ -48,8 +48,8 @@ function formatBytes(bytes: number): string {
  *     {"level":30,"time":"...","requestId":"...","msg":"GET / 200 1ms | 127.0.0.1"}
  *     {"level":50,"time":"...","requestId":"...","msg":"POST /api/pay 500 312ms | 10.0.0.5"}
  *
- *   requestId 由 pino mixin（AsyncLocalStorage）自动注入，无需在此重复传入。
- *   这样避免了 pino-pretty 在开发模式下将结构化字段展开为多行的问题。
+ *   requestId 由 logger mixin（AsyncLocalStorage）自动注入，无需在此重复传入。
+ *   这样避免了 pretty 模式下将结构化字段展开为多行的问题。
  *
  * @param config Access Log 配置（从 VextConfig.accessLog 提取）
  * @param logger VextLogger 实例（框架 app.logger）
@@ -129,7 +129,7 @@ export function createAccessLogMiddleware(
 
     // ── 构建紧凑单行消息 ─────────────────────────────────
     // 基础格式：METHOD PATH STATUS TIMEms | IP
-    // requestId 由 pino mixin 从 AsyncLocalStorage 自动注入，无需重复传入
+    // requestId 由 logger mixin 从 AsyncLocalStorage 自动注入，无需重复传入
     let msg = `${req.method} ${req.path} ${statusCode} ${responseTime}ms | ${req.ip}`;
 
     // 可选：追加 Content-Length

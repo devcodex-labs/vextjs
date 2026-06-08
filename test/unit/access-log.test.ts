@@ -500,6 +500,23 @@ describe("createAccessLogMiddleware", () => {
       // /health !== /Health，不跳过
       expect(logger.info).toHaveBeenCalledTimes(1);
     });
+
+    it("skipPathPrefixes 匹配时跳过整棵路径树", async () => {
+      const middleware = createAccessLogMiddleware(
+        { skipPathPrefixes: ["/internal", "/_debug"] },
+        logger,
+      );
+      const req = createMockReq({ path: "/internal/health" });
+      const res = createMockRes();
+      const nextFn = vi.fn().mockResolvedValue(undefined);
+
+      await middleware(req, res, nextFn);
+
+      expect(nextFn).toHaveBeenCalledTimes(1);
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    });
   });
 
   // ── HTTP 方法覆盖 ─────────────────────────────────────
@@ -550,6 +567,50 @@ describe("createAccessLogMiddleware", () => {
         expect(msg).toContain(String(code));
       });
     }
+
+    it("warnOn4xx: true 时 4xx 状态码走 logger.warn", async () => {
+      const middleware = createAccessLogMiddleware({ warnOn4xx: true }, logger);
+      const req = createMockReq({ path: "/missing" });
+      const res = createMockRes({ statusCode: 404 });
+
+      await middleware(req, res, createNext());
+
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(getLogMsg(logger.warn)).toContain("404");
+    });
+  });
+
+  // ── 慢请求与响应大小 ────────────────────────────────────
+
+  describe("慢请求与响应大小", () => {
+    it("slowThreshold 命中时提升为 warn 并追加 [SLOW]", async () => {
+      vi.spyOn(Date, "now").mockReturnValueOnce(1000).mockReturnValueOnce(2501);
+
+      const middleware = createAccessLogMiddleware(
+        { slowThreshold: 1000 },
+        logger,
+      );
+
+      await middleware(createMockReq(), createMockRes(), createNext());
+
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(getLogMsg(logger.warn)).toContain("[SLOW]");
+    });
+
+    it("logResponseSize: true 时追加 Content-Length 的可读大小", async () => {
+      const middleware = createAccessLogMiddleware(
+        { logResponseSize: true },
+        logger,
+      );
+      const res = createMockRes({
+        getHeader: vi.fn(() => 2048),
+      });
+
+      await middleware(createMockReq(), res, createNext());
+
+      expect(getLogMsg(logger.info)).toContain("[2.0kB]");
+    });
   });
 
   // ── 组合配置 ──────────────────────────────────────────

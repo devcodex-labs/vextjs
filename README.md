@@ -194,6 +194,8 @@ export default config;
 
 Use `src/config/local.ts` for machine-specific overrides and keep it out of Git.
 
+`app.logger` uses Vext's built-in structured logger by default. It outputs JSON in production, uses an internal pretty formatter in development, and can be wrapped by plugins through `app.setLogger()` for external log bridges.
+
 Use `config.server` for inbound Node.js HTTP server settings such as request, headers, keep-alive, socket timeout, request header size, max requests per socket, and incomplete-request checking interval. It applies to the built-in Native, Hono, Fastify, Express, Koa adapters and the dev server; omitted fields keep the current Node.js defaults. This is separate from `config.fetch.timeout`, which only controls outbound `app.fetch` calls.
 
 ## Startup Config Providers

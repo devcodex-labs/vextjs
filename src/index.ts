@@ -106,7 +106,7 @@ export type {
   BootstrapConfigProvider,
 } from "./lib/bootstrap-config.js";
 
-// 日志（pino 封装）
+// 日志（Vext 内置 logger kernel）
 export { createLogger } from "./lib/logger.js";
 
 // 默认错误抛出（I18nError 联动）

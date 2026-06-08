@@ -344,13 +344,14 @@ export default {
 
 ### 日志配置 (`logger`)
 
-| 配置项                    | 类型                     | 默认值                     | 说明                                                                                             |
-| ------------------------- | ------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `logger.level`            | `string`                 | `'info'`                   | 日志级别                                                                                         |
-| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'`                | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                           |
-| `logger.pretty`           | `boolean`                | 开发环境 `true`            | 是否使用 pino-pretty 彩色格式化输出；生产环境默认关闭（输出 JSON）                               |
-| `logger.prettySingleLine` | `boolean`                | `true`                     | pino-pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 恢复多行展开格式           |
-| `logger.prettyIgnore`     | `string`                 | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
+| 配置项                    | 类型                     | 默认值                     | 说明                                                                                        |
+| ------------------------- | ------------------------ | -------------------------- | ------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`                 | `'info'`                   | 日志级别                                                                                    |
+| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'`                | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                      |
+| `logger.pretty`           | `boolean`                | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式；生产环境默认关闭（输出 JSON）                   |
+| `logger.prettySingleLine` | `boolean`                | `true`                     | pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 使用多行展开格式           |
+| `logger.prettyIgnore`     | `string`                 | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
+| `logger.mixin`            | `function`               | `undefined`                | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖   |
 
 支持的日志级别（从低到高）：`'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
 
@@ -359,14 +360,15 @@ export default {
   logger: {
     level: "info", // 生产环境建议 'warn'
     lifecycleLevel: "concise", // 如需排障可设为 'verbose'
-    pretty: true, // 开发环境开启彩色格式化（生产环境默认关闭）
+    pretty: true, // 开发环境开启可读格式化（生产环境默认关闭）
     // prettySingleLine: true,              // 额外字段压缩到同行（默认）
     // prettyIgnore: 'pid,hostname,requestId',  // 默认隐藏字段
+    // mixin: () => ({ service_name: 'my-app' }), // 自定义结构化字段
   },
 };
 ```
 
-VextJS 内置 [pino](https://github.com/pinojs/pino) 作为日志引擎，`pretty` 模式使用 `pino-pretty` 彩色格式化输出。完整的日志系统说明（Child Logger、存储方案、requestId 注入等）见 [日志文档](/guide/logger)。
+VextJS 内置零 runtime dependency 的 logger kernel，`pretty` 模式使用内置 formatter 输出可读日志。完整的日志系统说明（Child Logger、存储方案、requestId 注入等）见 [日志文档](/guide/logger)。
 
 ### 优雅关闭配置 (`shutdown`)
 
@@ -494,16 +496,26 @@ export default {
 
 ### Access Log 配置 (`accessLog`)
 
-| 配置项              | 类型      | 默认值   | 说明             |
-| ------------------- | --------- | -------- | ---------------- |
-| `accessLog.enabled` | `boolean` | `true`   | 是否启用访问日志 |
-| `accessLog.level`   | `string`  | `'info'` | 日志级别         |
+| 配置项                       | 类型       | 默认值   | 说明                                       |
+| ---------------------------- | ---------- | -------- | ------------------------------------------ |
+| `accessLog.enabled`          | `boolean`  | `true`   | 是否启用访问日志                           |
+| `accessLog.level`            | `string`   | `'info'` | 基础日志级别，仅支持 `'info'` 或 `'debug'` |
+| `accessLog.skipPaths`        | `string[]` | `[]`     | 精确匹配跳过的路径列表                     |
+| `accessLog.skipPathPrefixes` | `string[]` | `[]`     | 前缀匹配跳过的路径列表                     |
+| `accessLog.slowThreshold`    | `number`   | `0`      | 慢请求阈值，`0` 表示不启用                 |
+| `accessLog.warnOn4xx`        | `boolean`  | `false`  | 是否将 4xx 响应提升为 `warn`               |
+| `accessLog.logResponseSize`  | `boolean`  | `false`  | 是否追加响应体大小                         |
 
 ```typescript
 export default {
   accessLog: {
     enabled: true,
     level: "info",
+    skipPaths: ["/health", "/ready"],
+    skipPathPrefixes: ["/internal"],
+    slowThreshold: 1000,
+    warnOn4xx: false,
+    logResponseSize: false,
   },
 };
 ```
@@ -511,7 +523,7 @@ export default {
 启用后，每个请求完成时自动记录：
 
 ```
-INFO  GET /api/users → 200 (12ms)
+GET /api/users 200 12ms | 127.0.0.1
 ```
 
 ### OpenAPI 配置 (`openapi`)
@@ -903,7 +915,8 @@ export default {
   logger: { level: "warn" },
   cors: { origins: ["https://myapp.com"], credentials: true },
   openapi: { enabled: false },
-  accessLog: { level: "warn" },
+  // logger.level: "warn" 会抑制普通 info/debug 访问日志；5xx 仍会提升为 error。
+  accessLog: { level: "info", warnOn4xx: true },
   cluster: {
     enabled: true,
     workers: "auto",

@@ -1,4 +1,4 @@
-import { createLogger } from "./logger.js";
+import { createLogger, getLoggerLifecycle } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { createHookManager } from "./hooks.js";
 import { schemaAdapter } from "./schema-adapter.js";
@@ -104,7 +104,7 @@ export interface AppInternals {
  * 后续由 bootstrap 编排完整的启动流程（plugin → middleware → service → route → listen）。
  *
  * Phase 1 升级说明（相对 Phase 0）：
- *   - logger: Phase 0 的 console 封装 → pino 封装（createLogger），支持 pretty/JSON 双模式 + requestId 自动注入
+ *   - logger: Phase 0 的 console 封装 → 内置结构化 logger，支持 pretty/JSON 双模式 + requestId 自动注入
  *   - throw:  Phase 0 的内联简化实现 → createDefaultThrow()，通过 schema-adapter 防腐层联动 I18nError
  *   - validator: Phase 0 的 pass-through → schema-adapter 封装的 compile + validate
  *
@@ -125,18 +125,19 @@ export function createApp(config: VextConfig): {
   let _locked = false; // 路由注册完成后锁定（步骤⑤之后），禁止 app.use()
   let _shuttingDown = false; // 防止重复触发 shutdown
 
-  // ── 创建 logger（pino 封装，Phase 1 升级）──────────────────
+  // ── 创建 logger（内置结构化 logger，Phase 1 升级）────────────
   //
   // 替换 Phase 0 的 createSimpleLogger（console 封装）。
-  // pino 提供：
+  // 内置 logger 提供：
   //   - 结构化 JSON 日志（生产环境）
-  //   - pretty 彩色输出（开发环境）
-  //   - mixin hook 自动注入 requestId（从 AsyncLocalStorage 读取）
+  //   - pretty 可读输出（开发环境）
+  //   - mixin 自动注入 requestId（从 AsyncLocalStorage 读取）
   //   - child logger（携带 service 名称等额外字段）
   //
   const logger = createLogger(config.logger, {
     requestContextEnabled: config.requestContext?.enabled !== false,
   });
+  const loggerLifecycle = getLoggerLifecycle(logger);
 
   // ── 创建 defaultThrow（I18nError 联动，Phase 1 升级）────────
   //
@@ -396,6 +397,15 @@ export function createApp(config: VextConfig): {
         );
       }
       await hooks.emitSafe("app:close", { app, phase: "after" });
+
+      // 默认 logger 可能持有异步 sink，必须在所有 close hook 和 app:close after 之后收尾。
+      try {
+        await loggerLifecycle?.close();
+      } catch (err) {
+        console.error(
+          `[vextjs] logger close failed: ${(err as Error).message}`,
+        );
+      }
 
       // ── 步骤 4：退出进程 ──
       //

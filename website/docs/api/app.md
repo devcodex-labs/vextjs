@@ -153,7 +153,7 @@ function createApp(config: VextConfig): {
 
 #### `app.logger`
 
-结构化日志实例，基于 `pino` 实现。
+结构化日志实例，基于 Vext 内置 logger kernel 实现。
 
 ```typescript
 logger: VextLogger;

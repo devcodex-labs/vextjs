@@ -370,15 +370,16 @@ export default {
 
 ## VextLoggerConfig
 
-结构化日志配置，基于 `pino` 实现。
+结构化日志配置，基于 Vext 内置 logger kernel 实现。
 
-| 字段               | 类型                                                                       | 默认值                     | 说明                                                                                                                                                                                                           |
-| ------------------ | -------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `level`            | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'`                   | 日志级别                                                                                                                                                                                                       |
-| `pretty`           | `boolean`                                                                  | 开发环境 `true`            | 是否美化输出（彩色格式）                                                                                                                                                                                       |
-| `prettyIgnore`     | `string`                                                                   | `'pid,hostname,requestId'` | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响                                                                               |
-| `prettySingleLine` | `boolean`                                                                  | `true`                     | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响                                                                |
-| `mixin`            | `() => Record<string, unknown>`                                            | `undefined`                | 自定义日志 mixin 函数，返回值与内置 `requestId` 字段合并注入每条日志（用户字段优先）。典型用途：注入 OpenTelemetry `trace_id` / `span_id`，实现日志与链路追踪关联。不配置时行为与之前完全一致（零 overhead）。 |
+| 字段               | 类型                                                                       | 默认值                     | 说明                                                                                                                                                                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `level`            | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'`                   | 日志级别                                                                                                                                                                                                                                                                             |
+| `lifecycleLevel`   | `'concise' \| 'verbose'`                                                   | `'concise'`                | 框架生命周期日志详细程度，控制启动、loader、hot reload、cluster 等系统日志输出                                                                                                                                                                                                       |
+| `pretty`           | `boolean`                                                                  | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式                                                                                                                                                                                                                                           |
+| `prettyIgnore`     | `string`                                                                   | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响                                                                                                                                                          |
+| `prettySingleLine` | `boolean`                                                                  | `true`                     | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响                                                                                                                                           |
+| `mixin`            | `() => Record<string, unknown>`                                            | `undefined`                | 自定义日志 mixin 函数，返回值会与框架内置字段合并注入每条日志。`requestId` 是框架保护字段，不可被用户 mixin 覆盖；`trace_id` / `span_id` 等其他字段按用户 mixin 优先。典型用途：注入 OpenTelemetry `trace_id` / `span_id`，实现日志与链路追踪关联。未配置时不会执行用户 mixin 调用。 |
 
 ```typescript
 export default {
@@ -574,11 +575,15 @@ export default {
 
 访问日志配置，基于洋葱模型 after-middleware 实现。
 
-| 字段        | 类型       | 默认值   | 说明               |
-| ----------- | ---------- | -------- | ------------------ |
-| `enabled`   | `boolean`  | `true`   | 是否启用访问日志   |
-| `level`     | `string`   | `'info'` | 日志级别           |
-| `skipPaths` | `string[]` | `[]`     | 跳过记录的路径列表 |
+| 字段               | 类型       | 默认值   | 说明                                       |
+| ------------------ | ---------- | -------- | ------------------------------------------ |
+| `enabled`          | `boolean`  | `true`   | 是否启用访问日志                           |
+| `level`            | `string`   | `'info'` | 基础日志级别，仅支持 `'info'` 或 `'debug'` |
+| `skipPaths`        | `string[]` | `[]`     | 精确匹配跳过的路径列表                     |
+| `skipPathPrefixes` | `string[]` | `[]`     | 前缀匹配跳过的路径列表                     |
+| `slowThreshold`    | `number`   | `0`      | 慢请求阈值，`0` 表示不启用                 |
+| `warnOn4xx`        | `boolean`  | `false`  | 是否将 4xx 响应提升为 `warn`               |
+| `logResponseSize`  | `boolean`  | `false`  | 是否在消息末尾追加响应体大小               |
 
 ```typescript
 export default {
@@ -586,6 +591,10 @@ export default {
     enabled: true,
     level: "info",
     skipPaths: ["/health", "/readiness", "/metrics"],
+    skipPathPrefixes: ["/internal"],
+    slowThreshold: 1000,
+    warnOn4xx: false,
+    logResponseSize: false,
   },
 };
 ```
@@ -593,10 +602,10 @@ export default {
 访问日志输出示例：
 
 ```
-POST /api/users 201 12ms req-abc-123 192.168.1.1
+POST /api/users 201 12ms | 192.168.1.1
 ```
 
-记录字段包括：HTTP 方法、路径、状态码、响应时间（ms）、请求 ID、客户端 IP。
+消息字段包括 HTTP 方法、路径、状态码、响应时间（ms）和客户端 IP；`requestId` 由 logger 的 AsyncLocalStorage mixin 自动注入到 JSON 记录字段。
 
 ---
 

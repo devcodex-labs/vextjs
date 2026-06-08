@@ -45,8 +45,9 @@ export interface VextServices {
 /**
  * VextLogger — 框架日志接口
  *
- * 内置实现基于 pino，插件可通过 app.setLogger() 包装或替换实现。
- * 所有日志方法自动携带 requestId（通过 child logger 实现）。
+ * 内置实现基于 Vext logger kernel，插件可通过 app.setLogger() 包装公开 logger。
+ * 普通插件不会替换默认 logger kernel。
+ * 所有日志方法自动携带 requestId（通过 AsyncLocalStorage + logger mixin 实现）。
  */
 export interface VextLogger {
   info(msg: string, ...args: unknown[]): void;
@@ -54,10 +55,12 @@ export interface VextLogger {
   warn(msg: string, ...args: unknown[]): void;
   warn(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   error(msg: string, ...args: unknown[]): void;
+  error(err: Error, msg?: string, ...args: unknown[]): void;
   error(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   debug(msg: string, ...args: unknown[]): void;
   debug(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   fatal(msg: string, ...args: unknown[]): void;
+  fatal(err: Error, msg?: string, ...args: unknown[]): void;
   fatal(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
 
   /**
@@ -327,10 +330,10 @@ export interface VextLoggerConfig {
   /** 是否美化输出（默认 development 时启用） */
   pretty?: boolean;
   /**
-   * pino-pretty 模式下忽略的字段列表（逗号分隔）
+   * pretty 模式下忽略的字段列表（逗号分隔）
    *
    * 默认值: `"pid,hostname,requestId"`
-   * - `requestId` 默认被忽略，避免 mixin 注入的 requestId 在开发模式下被 pino-pretty 展开为多行噪音
+   * - `requestId` 默认被忽略，避免 mixin 注入的 requestId 在开发模式下形成多余噪音
    * - 生产模式（JSON 输出）不受影响，requestId 仍然存在于结构化日志中
    *
    * @example
@@ -344,11 +347,11 @@ export interface VextLoggerConfig {
    */
   prettyIgnore?: string;
   /**
-   * pino-pretty 模式下是否将额外字段压缩到消息同一行
+   * pretty 模式下是否将额外字段压缩到消息同一行
    *
    * 默认值: `true`
    * - 启用后，结构化字段以 JSON 内联形式附加在消息末尾（单行输出）
-   * - 禁用后，结构化字段展开为多行缩进格式（pino-pretty 原始行为）
+   * - 禁用后，结构化字段展开为多行缩进格式
    * - 仅影响 pretty 模式（开发环境），生产环境 JSON 输出不受影响
    *
    * @example
@@ -357,7 +360,7 @@ export interface VextLoggerConfig {
    * // [2026-03-05 14:23:05] INFO: Seed data loaded {"count":3,"service":"UserService"}
    * { prettySingleLine: true }
    *
-   * // 多行展开（pino-pretty 原始行为）:
+   * // 多行展开:
    * // [2026-03-05 14:23:05] INFO: Seed data loaded
    * //     count: 3
    * //     service: "UserService"
@@ -1118,7 +1121,7 @@ export interface VextApp {
   // ── 内置模块（插件可覆盖）──────────────────────────────
 
   /**
-   * 结构化日志（内置 pino，插件可替换）
+   * 结构化日志（内置 Vext logger kernel，插件可通过 app.setLogger() 包装）
    * 自动携带 requestId，支持 .child() 创建子 logger
    */
   logger: VextLogger;

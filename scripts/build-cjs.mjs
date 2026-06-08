@@ -47,12 +47,11 @@ const projectRoot = resolve(__dirname, "..");
  */
 const externalDeps = [
   // 生产依赖
-  "pino",
-  "pino-pretty",
   "esbuild",
   "fast-glob",
   "flex-rate-limit",
   "monsqlize",
+  "response-cache-kit",
   "route-core",
   "schema-dsl",
   // 可选的 peer 依赖（adapter 框架）

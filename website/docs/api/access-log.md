@@ -23,7 +23,7 @@ Access Log 采用**紧凑单行格式**，在开发和生产环境下呈现不�
 
 ### 开发模式（Pretty）
 
-当 `logger.pretty` 为 `true`（开发环境默认值）时，pino-pretty 会对日志进行着色和格式化：
+当 `logger.pretty` 为 `true`（开发环境默认值）时，内置 pretty formatter 会对日志进行着色和格式化：
 
 ```
 [17:53:26.174] INFO: GET / 200 1ms | 127.0.0.1
@@ -40,16 +40,16 @@ METHOD PATH STATUS TIMEms | IP
 
 ### 生产模式（JSON）
 
-当 `logger.pretty` 为 `false`（生产环境默认值）时，pino 输出结构化 JSON：
+当 `logger.pretty` 为 `false`（生产环境默认值）时，Vext logger 输出结构化 JSON：
 
 ```json
-{"level":30,"time":1709712806174,"requestId":"req-1","msg":"GET / 200 1ms | 127.0.0.1"}
-{"level":30,"time":1709712806891,"requestId":"req-2","msg":"POST /api/users 201 45ms | 127.0.0.1"}
+{"level":30,"time":"2026-03-06T09:33:26.174Z","requestId":"req-1","msg":"GET / 200 1ms | 127.0.0.1"}
+{"level":30,"time":"2026-03-06T09:33:26.891Z","requestId":"req-2","msg":"POST /api/users 201 45ms | 127.0.0.1"}
 ```
 
 每条日志是一行完整的 JSON 对象，便于 ELK、Loki 等日志收集系统解析。
 
-> **注意**：`requestId` 字段由 pino mixin + AsyncLocalStorage 自动注入（见下文），无需在 access-log 中间件中手动传入。
+> **注意**：`requestId` 字段由 logger mixin + AsyncLocalStorage 自动注入（见下文），无需在 access-log 中间件中手动传入。
 
 ## requestId 自动注入
 
@@ -66,7 +66,7 @@ requestId 中间件：生成 req-N，存入 AsyncLocalStorage
   ↓
 access-log 中间件：调用 logger.info("GET / 200 1ms | 127.0.0.1")
   ↓
-pino mixin：从 AsyncLocalStorage 读取 requestId，自动注入到日志对象
+logger mixin：从 AsyncLocalStorage 读取 requestId，自动注入到日志对象
   ↓
 输出：{"level":30,"requestId":"req-1","msg":"GET / 200 1ms | 127.0.0.1"}
 ```
@@ -112,22 +112,19 @@ export default {
     // 跳过记录的路径列表（精确匹配）
     skipPaths: ["/health", "/ready", "/metrics"],
 
-    // 慢请求阈值（毫秒，默认 3000）
+    // 跳过记录的路径前缀（前缀匹配）
+    skipPathPrefixes: ["/internal"],
+
+    // 慢请求阈值（毫秒，默认 0，表示不启用）
     // 超过此阈值的请求自动提升为 warn 级别
     slowThreshold: 3000,
+
+    // 是否将 4xx 响应提升为 warn（默认 false）
+    warnOn4xx: false,
 
     // 是否记录响应体大小（默认 false）
     // 启用后在日志消息末尾追加 Content-Length
     logResponseSize: false,
-
-    // 是否自动升级错误状态码的日志级别（默认 true）
-    // 5xx → error, 4xx → warn
-    autoLevelUpgrade: true,
-
-    // skipPaths 匹配模式（默认 'exact'）
-    // 'exact': 精确匹配（如 '/health' 只匹配 '/health'）
-    // 'prefix': 前缀匹配（如 '/api/internal' 匹配 '/api/internal/xxx'）
-    skipMode: "exact",
   },
 };
 ```
@@ -153,7 +150,7 @@ export default {
 | -------- | -------- | --------------------- | ------------ |
 | `string` | `'info'` | `'info'` \| `'debug'` | 日志输出级别 |
 
-设为 `'debug'` 后，可以在生产环境通过 `logger.level` 统一控制是否输出访问日志。当 `autoLevelUpgrade` 启用时，此配置作为基础级别，4xx/5xx 请求会自动提升。
+设为 `'debug'` 后，可以在生产环境通过 `logger.level` 统一控制是否输出普通访问日志。5xx 响应始终提升为 `error`；4xx 仅在 `warnOn4xx: true` 时提升为 `warn`。
 
 ### `skipPaths`
 
@@ -161,7 +158,7 @@ export default {
 | ---------- | ------ | ------------------------ |
 | `string[]` | `[]`   | 不记录访问日志的路径列表 |
 
-内部使用 `Set` 实现 O(1) 查找（精确匹配模式）或前缀扫描（前缀匹配模式），不影响性能。
+内部使用 `Set` 实现 O(1) 精确查找。
 
 常见用途：排除健康检查、Kubernetes 探针、Prometheus metrics 等高频路径：
 
@@ -173,29 +170,27 @@ export default {
 };
 ```
 
-### `skipMode`
+### `skipPathPrefixes`
 
-| 类型     | 默认值    | 可选值                  | 说明                 |
-| -------- | --------- | ----------------------- | -------------------- |
-| `string` | `'exact'` | `'exact'` \| `'prefix'` | skipPaths 的匹配方式 |
+| 类型       | 默认值 | 说明                         |
+| ---------- | ------ | ---------------------------- |
+| `string[]` | `[]`   | 不记录访问日志的路径前缀列表 |
 
-- `'exact'`：路径必须完全匹配（如 `'/health'` 只跳过 `/health`，不跳过 `/health/detail`）
-- `'prefix'`：路径前缀匹配（如 `'/api/internal'` 会跳过 `/api/internal`、`/api/internal/status` 等）
+与 `skipPaths` 的精确匹配互补，适用于跳过整棵内部路径树：
 
 ```typescript
 export default {
   accessLog: {
-    skipPaths: ["/api/internal", "/_next"],
-    skipMode: "prefix",
+    skipPathPrefixes: ["/api/internal", "/_next"],
   },
 };
 ```
 
 ### `slowThreshold`
 
-| 类型     | 默认值 | 说明               |
-| -------- | ------ | ------------------ |
-| `number` | `3000` | 慢请求阈值（毫秒） |
+| 类型     | 默认值 | 说明                               |
+| -------- | ------ | ---------------------------------- |
+| `number` | `0`    | 慢请求阈值（毫秒），`0` 表示不启用 |
 
 响应时间超过此阈值的请求，日志级别自动提升为 `warn`，并在消息中追加 `[SLOW]` 标记：
 
@@ -212,22 +207,22 @@ export default {
 启用后，日志消息会在 IP 之后追加 `Content-Length`（如果响应头中存在）：
 
 ```
-[17:53:26.174] INFO: GET /api/users 200 3ms | 127.0.0.1 [1.2KB]
+[17:53:26.174] INFO: GET /api/users 200 3ms | 127.0.0.1 [1.2kB]
 ```
 
-### `autoLevelUpgrade`
+### `warnOn4xx`
 
-| 类型      | 默认值 | 说明                           |
-| --------- | ------ | ------------------------------ |
-| `boolean` | `true` | 是否根据状态码自动提升日志级别 |
+| 类型      | 默认值  | 说明                         |
+| --------- | ------- | ---------------------------- |
+| `boolean` | `false` | 是否将 4xx 响应提升为 `warn` |
 
-启用后的级别映射：
+级别映射：
 
-| 状态码范围      | 日志级别                      | 说明       |
-| --------------- | ----------------------------- | ---------- |
-| 1xx / 2xx / 3xx | 配置的 `level`（默认 `info`） | 正常请求   |
-| 4xx             | `warn`                        | 客户端错误 |
-| 5xx             | `error`                       | 服务端错误 |
+| 状态码范围      | 日志级别                                              | 说明                 |
+| --------------- | ----------------------------------------------------- | -------------------- |
+| 1xx / 2xx / 3xx | 配置的 `level`（默认 `info`）                         | 正常请求             |
+| 4xx             | `warnOn4xx: true` 时为 `warn`，否则使用配置的 `level` | 客户端错误           |
+| 5xx             | `error`                                               | 服务端错误，始终提升 |
 
 ```
 [17:53:27.003] WARN: GET /api/users/999 404 2ms | 192.168.1.10
@@ -243,7 +238,7 @@ Access Log 中间件在内部做了多项性能优化：
 1. **Set 预计算** — `skipPaths` 在初始化时转换为 `Set`，查找复杂度 O(1)
 2. **方法预绑定** — `logger.info.bind(logger)` 在初始化时绑定，避免每次请求的动态查找
 3. **快速跳过** — `enabled: false` 时立即 `return next()`，无任何额外开销
-4. **单行消息** — 使用字符串拼接而非结构化对象，避免 pino-pretty 将字段展开为多行
+4. **单行消息** — 使用字符串拼接而非结构化对象，避免 pretty 模式将字段展开为多行
 
 ## TypeScript 类型
 
@@ -258,31 +253,31 @@ interface VextAccessLogConfig {
   /** 跳过记录的路径列表 */
   skipPaths?: string[];
 
-  /** skipPaths 匹配模式（默认 'exact'） */
-  skipMode?: "exact" | "prefix";
+  /** 跳过记录的路径前缀列表 */
+  skipPathPrefixes?: string[];
 
-  /** 慢请求阈值（毫秒，默认 3000） */
+  /** 慢请求阈值（毫秒，默认 0，表示不启用） */
   slowThreshold?: number;
+
+  /** 是否将 4xx 响应提升为 warn（默认 false） */
+  warnOn4xx?: boolean;
 
   /** 是否记录响应体大小（默认 false） */
   logResponseSize?: boolean;
-
-  /** 是否根据状态码自动提升日志级别（默认 true） */
-  autoLevelUpgrade?: boolean;
 }
 ```
 
 ## 与日志存储的关系
 
-Access Log 的输出走框架统一的 `app.logger`（基于 pino），因此所有在 [日志文档](/guide/logger) 中描述的存储方案都适用：
+Access Log 的输出走框架统一的 `app.logger`（Vext logger），因此所有在 [日志文档](/guide/logger) 中描述的存储方案都适用：
 
-- **pino-roll** — 按大小/时间轮转到 `logs/access.log`
-- **Filebeat → ELK** — 采集 JSON 日志到 Elasticsearch
-- **pino-elasticsearch** — 直连 Elasticsearch
-- **Docker → Loki** — 容器日志驱动
 - **stdout → Cloud** — 云原生日志管道
+- **PM2 / systemd + logrotate** — 单机部署时落盘并轮转
+- **Filebeat / Fluent Bit → ELK** — 采集 JSON 日志到 Elasticsearch
+- **Docker → Loki** — 容器日志驱动或 Agent 推送
+- **app.setLogger 桥接** — 插件层同步转发到外部 SDK
 
-如需将 access log 单独存储到独立文件，可使用 pino 多目标 transport 配合日志级别过滤。
+如需将 access log 单独存储到独立文件，推荐在日志采集层按 `msg`、路径或级别过滤后分流；应用内需要同步转发时可使用 `app.setLogger()` 包装当前 logger。
 
 ## 下一步
 

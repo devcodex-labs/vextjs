@@ -38,7 +38,7 @@ type NodeRequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
  * 控制 Fastify 实例的初始化行为。
  *
  * 所有选项均可选，默认值已为 vext 场景优化：
- *   - logger: false（vext 有自己的 pino logger）
+ *   - logger: false（vext 有自己的 logger）
  *   - pluginTimeout: 10000ms
  *   - bodyLimit: 1MB
  *   - ignoreTrailingSlash: true
@@ -182,7 +182,7 @@ export function createFastifyAdapter(
   // ── 创建 Fastify 实例 ────────────────────────────────────
   //
   // 关键配置：
-  //   - logger: false — vext 有自己的 pino logger，不使用 Fastify 的内置日志
+  //   - logger: false — vext 有自己的 logger，不使用 Fastify 的内置日志
   //   - pluginTimeout — Fastify 内部 register 的超时
   //   - bodyLimit — 请求体大小上限（Fastify 层面的保护，vext body-parser 有独立的检查）
   //   - ignoreTrailingSlash: true — /users 和 /users/ 等价

@@ -972,14 +972,14 @@ export default {
 }
 ```
 
-> `requestId`、`trace_id`、`span_id` 由框架内置 mixin 自动注入，不需要在用户 mixin 中重复配置。
+> `requestId`、以及写入 `requestContext` 的 `traceId` / `spanId` 会由框架内置 provider 自动注入为 `requestId`、`trace_id`、`span_id`；不需要在用户 mixin 中重复配置。
 
 #### 字段对照表
 
 | 字段           | 来源                           | 配置方式                                      |
 | -------------- | ------------------------------ | --------------------------------------------- |
-| `timestamp`    | pino 自动                      | 无需配置                                      |
-| `level`        | pino 自动                      | 无需配置                                      |
+| `timestamp`    | Vext logger 自动               | 无需配置                                      |
+| `level`        | Vext logger 自动               | 无需配置                                      |
 | `msg`          | `logger.info("...")`           | 无需配置                                      |
 | `requestId`    | 框架 ALS → mixin 自动          | 无需配置                                      |
 | `trace_id`     | otel 中间件 → ALS → mixin 自动 | 无需配置                                      |
@@ -992,17 +992,17 @@ export default {
 | `latency_ms`   | access log                     | 自动包含在请求日志 msg 中                     |
 | `user_id`      | 业务代码                       | `logger.info({ user_id: "..." }, msg)`        |
 | `feature.flag` | 业务代码                       | `logger.info({ "feature.flag": "..." }, msg)` |
-| `exception.*`  | `logger.error(err)`            | pino serializer 自动展开                      |
+| `exception.*`  | `logger.error(err)`            | Vext logger serializer 自动展开               |
 
 ### B. OTel Logs（LogRecord → Collector）
 
-由 `@opentelemetry/instrumentation-pino`（auto-instrumentations-node 包含）自动完成：
+Vext 默认 logger 不依赖第三方 logger，因此 logger-specific auto instrumentation 不会自动捕获 `app.logger`。如需输出 OTel Logs，可通过 `vextjs-opentelemetry` 的 `app.setLogger()` 桥接，或自定义插件包装当前 logger：
 
-- **`trace_id` / `span_id`**：自动从 active span 注入到 LogRecord
-- **`severity_text`**：从 pino level 自动映射
+- **`trace_id` / `span_id`**：从 `requestContext` 或 active span 写入 LogRecord
+- **`severity_text`**：从 Vext logger level 映射
 - **`body`**：日志消息内容
 - **`service.name`**：来自 Resource（instrumentation.ts 已配置）
-- **`attributes`**：pino 日志的自定义字段自动映射为 LogRecord attributes
+- **`attributes`**：结构化日志字段映射为 LogRecord attributes
 
 用户 mixin 注入的字段（如 `service_name`、`host`、`span`）会**自动出现在 LogRecord.attributes** 中。
 

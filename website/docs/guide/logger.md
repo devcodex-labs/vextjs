@@ -1,6 +1,6 @@
 # 日志 (Logger)
 
-VextJS 基于 [pino](https://github.com/pinojs/pino) 提供高性能结构化日志，通过 `app.logger` 在框架的任意位置使用。内置 requestId 自动注入、child logger、pretty/JSON 双模式等企业级能力。
+VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、requestId 自动注入和 child logger 等能力。
 
 ## 基本用法
 
@@ -24,7 +24,7 @@ export default defineRoutes((app) => {
 
 ## 日志级别
 
-VextJS 支持 6 个日志级别，按严重程度从低到高排列：
+`app.logger` 公开 5 个常用方法，按严重程度从低到高排列：
 
 | 级别    | 方法                 | 说明     | 典型场景                     |
 | ------- | -------------------- | -------- | ---------------------------- |
@@ -33,6 +33,8 @@ VextJS 支持 6 个日志级别，按严重程度从低到高排列：
 | `warn`  | `app.logger.warn()`  | 警告     | 性能下降、弃用 API、重试     |
 | `error` | `app.logger.error()` | 错误     | 异常、失败的操作             |
 | `fatal` | `app.logger.fatal()` | 致命错误 | 应用无法继续运行             |
+
+`logger.level` 还接受 `trace` 和 `silent` 作为阈值配置：`trace` 会放开所有公开日志方法，`silent` 会关闭全部输出；当前公开 `VextLogger` 契约不提供 `app.logger.trace()` 方法。
 
 ### 配置日志级别
 
@@ -81,7 +83,7 @@ VEXT_VERBOSE_LIFECYCLE=1 vext dev
 
 ## 结构化日志
 
-pino 的核心理念是**结构化日志**——每条日志都是一个 JSON 对象，便于机器解析和查询。
+Vext logger 的核心理念是**结构化日志**——每条日志都是一个 JSON 对象，便于机器解析和查询。
 
 ### 调用签名
 
@@ -111,7 +113,7 @@ app.logger.info({ event: "startup", port: 3000 });
 
 ### Pretty 输出格式
 
-开发环境（默认）下使用 pino-pretty，输出彩色格式化日志。默认启用单行模式（`prettySingleLine: true`），结构化字段以 JSON 形式内联附加在消息末尾：
+开发环境（默认）下使用内置 pretty formatter，输出便于阅读的格式化日志。默认启用单行模式（`prettySingleLine: true`），结构化字段以 JSON 形式内联附加在消息末尾：
 
 ```
 [2026-03-05 14:23:05.123] INFO: 服务启动 {"port":3000,"adapter":"native"}
@@ -119,7 +121,7 @@ app.logger.info({ event: "startup", port: 3000 });
 [2026-03-05 14:23:05.300] INFO: Seed data loaded {"count":3,"service":"UserService"}
 ```
 
-如果设置 `prettySingleLine: false`，则恢复 pino-pretty 的多行展开格式：
+如果设置 `prettySingleLine: false`，则使用多行展开格式：
 
 ```
 [2026-03-05 14:23:05.123] INFO  服务启动
@@ -130,7 +132,7 @@ app.logger.info({ event: "startup", port: 3000 });
     limit: 20
 ```
 
-> **注意**：`requestId` 默认被 pino-pretty 的 `ignore` 列表排除（`prettyIgnore` 配置项），不会在 pretty 模式下输出。这使开发日志更紧凑。`requestId` 仍然存在于生产环境的 JSON 输出中。如需在 pretty 模式下显示 requestId，可通过 `prettyIgnore` 配置项移除它（见下方配置说明）。
+> **注意**：`requestId` 默认被内置 pretty formatter 的 `ignore` 列表排除（`prettyIgnore` 配置项），不会在 pretty 模式下输出。这使开发日志更紧凑。`requestId` 仍然存在于生产环境的 JSON 输出中。如需在 pretty 模式下显示 requestId，可通过 `prettyIgnore` 配置项移除它（见下方配置说明）。
 
 ### 配置 Pretty 模式
 
@@ -161,7 +163,7 @@ export default {
 
 ### 单行 vs 多行格式 {#pretty-single-line}
 
-通过 `prettySingleLine` 配置项可以控制 pino-pretty 在开发模式下的结构化字段展示方式。默认值为 `true`（单行模式）。
+通过 `prettySingleLine` 配置项可以控制内置 pretty formatter 在开发模式下的结构化字段展示方式。默认值为 `true`（单行模式）。
 
 ```typescript
 // src/config/default.ts — 默认行为（单行输出）
@@ -174,7 +176,7 @@ export default {
 };
 ```
 
-如果偏好多行展开格式（pino-pretty 原始行为），可以设置为 `false`：
+如果偏好多行展开格式，可以设置为 `false`：
 
 ```typescript
 // src/config/development.ts — 多行展开
@@ -194,7 +196,7 @@ export default {
 
 ### 自定义 Pretty 忽略字段 {#pretty-ignore}
 
-通过 `prettyIgnore` 配置项可以控制 pino-pretty 在开发模式下隐藏哪些结构化字段。默认值为 `"pid,hostname,requestId"`，即隐藏进程 ID、主机名和请求 ID，避免开发日志中出现不必要的字段噪音。
+通过 `prettyIgnore` 配置项可以控制内置 pretty formatter 在开发模式下隐藏哪些结构化字段。默认值为 `"pid,hostname,requestId"`，即隐藏进程 ID、主机名和请求 ID，避免开发日志中出现不必要的字段噪音。
 
 ```typescript
 // src/config/default.ts — 默认行为（requestId 被隐藏）
@@ -231,74 +233,33 @@ export default {
 
 > **注意**：`prettyIgnore` 仅影响 pretty 模式（开发环境）。生产环境的 JSON 输出始终包含所有字段（包括 `requestId`），确保日志收集系统能完整解析。
 
-### 自定义消息格式 (messageFormat) {#message-format}
+### 自定义 Pretty 输出 {#custom-pretty-output}
 
-pino-pretty 支持 `messageFormat` 模板，可以将结构化字段内联到消息文本中，而非以 JSON 对象形式追加在末尾。这是一个**进阶用法**，适用于需要高度定制开发日志格式的场景。
+VextJS 默认不暴露 `messageFormat` 模板配置。大多数开发场景可以直接用 `prettySingleLine` 和 `prettyIgnore` 控制输出紧凑度：
 
-:::tip 何时使用 messageFormat
-大多数场景下，默认的 `prettySingleLine: true`（JSON 内联）已经足够紧凑。`messageFormat` 适用于以下需求：
+- `prettySingleLine: true`：额外字段以 JSON 内联在消息同一行
+- `prettySingleLine: false`：额外字段多行展开
+- `prettyIgnore`：隐藏开发日志中暂时不关心的结构化字段
 
-- 想让某些关键字段（如 `requestId`、`service`）直接出现在消息文本中
-- 想完全控制日志行的可读格式
-- 配合 `prettyIgnore` 隐藏已内联的字段，避免重复显示
-  :::
-
-#### 基本用法
-
-`messageFormat` 使用 `{fieldName}` 占位符引用结构化字段：
+如果需要把日志同步到外部系统或完全接管格式化逻辑，推荐通过 `app.setLogger()` 在插件中包装当前 logger。这样不会影响框架默认 JSON 字段、requestId 注入和 child logger 行为。
 
 ```typescript
-// src/config/development.ts
-import pino from "pino";
+import { definePlugin } from "vextjs";
 
-// 注意：messageFormat 需要直接配置 pino transport，
-// 框架的 prettySingleLine / prettyIgnore 不影响 messageFormat 行为。
-const logger = pino({
-  level: "debug",
-  transport: {
-    target: "pino-pretty",
-    options: {
-      colorize: true,
-      translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
-      ignore: "pid,hostname",
-      // 将 requestId 和 service 内联到消息中
-      messageFormat: "[{requestId}] [{service}] {msg}",
-    },
+export default definePlugin({
+  name: "custom-log-format",
+  setup(app) {
+    app.setLogger((original) => ({
+      ...original,
+      info(...args: unknown[]) {
+        // 可在这里转发到外部 SDK，或生成额外的人类可读日志。
+        original.info(...args);
+      },
+      child: (bindings) => original.child(bindings),
+    }));
   },
 });
-
-// 输出效果：
-// [2026-03-06 14:23:05] INFO: [req-abc123] [UserService] 查询完成 {"count":42}
 ```
-
-#### 配合 prettyIgnore 避免重复
-
-当字段已通过 `messageFormat` 内联到消息中时，可将其加入 `prettyIgnore` 避免在末尾重复显示：
-
-```typescript
-// messageFormat 内联了 requestId 和 service → 将它们加入 ignore
-export default {
-  logger: {
-    pretty: true,
-    prettyIgnore: "pid,hostname,requestId,service",
-    // 然后在 pino transport 层配置 messageFormat
-    // （需要自定义 pino 实例，框架层不直接暴露 messageFormat 配置）
-  },
-};
-```
-
-#### 条件格式
-
-`messageFormat` 支持条件语法，当字段不存在时跳过对应部分：
-
-```typescript
-// 仅在有 requestId 时显示前缀
-messageFormat: "{requestId} {msg}";
-// 有 requestId 时: "req-abc123 查询完成"
-// 无 requestId 时: " 查询完成"（前面有空格）
-```
-
-> **注意**：`messageFormat` 是 pino-pretty 的原生功能，框架层不直接提供配置项（因为大多数用户只需 `prettySingleLine` + `prettyIgnore` 即可满足需求）。如需使用 `messageFormat`，请参考 [pino-pretty 文档](https://github.com/pinojs/pino-pretty#messageformat) 了解完整语法。
 
 ## requestId 自动注入
 
@@ -309,12 +270,12 @@ messageFormat: "{requestId} {msg}";
 ```
 请求进入 → requestId 中间件生成 ID → 写入 requestContext（AsyncLocalStorage）
                                               ↓
-app.logger.info('xxx')  ←  pino mixin 钩子自动读取 requestId
+app.logger.info('xxx')  ←  logger mixin 自动读取 requestId
                                               ↓
 输出: {"requestId":"abc-123","msg":"xxx"}
 ```
 
-pino 的 `mixin` 钩子在每条日志写入前调用，从 `requestContext`（基于 `AsyncLocalStorage`）中读取当前请求的 `requestId` 并附加到日志字段。这意味着：
+Vext logger 的 `mixin` 在每条日志写入前调用，从 `requestContext`（基于 `AsyncLocalStorage`）中读取当前请求的 `requestId` 并附加到日志字段。这意味着：
 
 - **handler 中的日志**：自动携带 requestId ✅
 - **service 中的日志**：自动携带 requestId ✅
@@ -332,9 +293,9 @@ app.logger.info("处理请求");
 
 ### 性能优化
 
-mixin 钩子在每条日志写入时都会调用。VextJS 做了两项优化：
+Vext logger 的请求字段注入走同步 provider 链路，并在无请求上下文或未配置用户 `mixin` 时直接跳过对应合并步骤。VextJS 做了两项优化：
 
-1. **预分配空对象常量**：非请求上下文（如启动日志）不创建新对象，复用常量减少 GC
+1. **空上下文快速返回**：启动阶段、后台任务等非请求上下文不会生成 `requestId` / `trace_id` / `span_id` 字段
 2. **ALS 禁用检测**：当 AsyncLocalStorage 被禁用时，跳过 `getStore()` 调用
 
 ## Child Logger
@@ -404,27 +365,27 @@ queryLogger.debug("执行查询");
 
 ### 记录 Error 对象
 
-pino 自动序列化 Error 对象（保留 message、stack、name）：
+Vext logger 自动序列化 Error 对象（保留 message、stack、name）：
 
 ```typescript
 try {
   await someOperation();
 } catch (err) {
   app.logger.error({ err }, "操作失败");
-  // pino 会自动序列化 Error:
+  // Vext logger 会自动序列化 Error:
   // {"err":{"type":"Error","message":"xxx","stack":"..."},"msg":"操作失败"}
 }
 ```
 
-:::warning 注意
-将 Error 对象放在第一个参数的 `err` 字段中（pino 的约定），而不是直接传 Error：
+:::tip Error 调用方式
+直传 Error 和 `{ err }` 字段都受支持。需要附加业务上下文时，推荐使用 `{ err, ...context }`：
 
 ```typescript
-// ✅ 正确
-app.logger.error({ err: error }, "操作失败");
-
-// ❌ 避免 — pino 无法正确序列化
+// ✅ 直传 Error
 app.logger.error(error, "操作失败");
+
+// ✅ 添加业务上下文
+app.logger.error({ err: error }, "操作失败");
 ```
 
 :::
@@ -446,7 +407,7 @@ async function processPayment(orderId: string, amount: number) {
 
 ## 扩展 Logger：setLogger()
 
-`app.setLogger(wrapper)` 是插件专用的 API，允许你在不替换原始 pino logger 的情况下，对所有日志方法进行包装——常见用途是将框架日志**同时转发**到外部系统（OTel Logs、Sentry、云日志平台等）。
+`app.setLogger(wrapper)` 是插件专用的 API，允许你在不替换默认 logger kernel 的情况下，对所有日志方法进行包装——常见用途是将框架日志**同时转发**到外部系统（OTel Logs、Sentry、云日志平台等）。
 
 ### 函数签名
 
@@ -454,7 +415,7 @@ async function processPayment(orderId: string, amount: number) {
 setLogger(wrapper: (original: VextLogger) => VextLogger): void;
 ```
 
-`wrapper` 接收当前 logger（原始 pino 实现），返回新的 `VextLogger` 实现。可以在新实现中：
+`wrapper` 接收当前 logger（默认 Vext logger 或上一个 wrapper 的结果），返回新的 `VextLogger` 实现。可以在新实现中：
 
 - 调用外部 SDK 上报日志
 - 过滤或采样某些级别
@@ -494,9 +455,10 @@ export default definePlugin({
       ...original,
       error(...args: unknown[]) {
         // 上报 error 级别日志到 Sentry
-        const msg = typeof args[0] === "string" ? args[0] : String(args[1] ?? "");
+        const msg =
+          typeof args[0] === "string" ? args[0] : String(args[1] ?? "");
         Sentry.captureMessage(msg, "error");
-        // 原始 pino 输出不变
+        // 默认 logger 输出不变
         (original.error as (...a: unknown[]) => void)(...args);
       },
       // child logger 保持原逻辑
@@ -510,31 +472,30 @@ export default definePlugin({
 `setLogger` 采用与 `setThrow` 完全相同的 wrapper 模式：接收原始实现，返回包装后的实现。这意味着：
 
 - 可以多次调用（每次包裹上一次的结果）
-- 原始 pino 功能（requestId 注入、pretty 格式、child logger）完整保留
+- 默认 logger 功能（requestId 注入、pretty 格式、child logger）完整保留
 - 包装函数中抛出的异常不会影响原始 logger
-:::
+  :::
 
 :::warning child logger 不自动桥接
-`child()` 方法继续返回原始 pino child logger，不会重复经过 wrapper 逻辑，避免同一条日志被多次转发到外部系统。如需子 logger 也桥接，请在 child logger 上另行包装。
+`child()` 方法默认返回当前 logger 的 child logger，不会重复经过外层 wrapper 逻辑，避免同一条日志被多次转发到外部系统。如需子 logger 也桥接，请在 child logger 上另行包装。
 :::
 
 ---
 
 ## 日志存储与收集
 
-生产环境中有多种方式将日志持久化存储和收集分析。下面从简到繁介绍各种方案。
+生产环境推荐让 VextJS 输出结构化 JSON 到 stdout/stderr，再由进程管理器、容器平台或日志 Agent 负责持久化、轮转和上报。这样应用进程不需要额外日志 transport 依赖，也能保持日志管线可替换。
 
 ### 方案概览
 
-| 方案                        | 复杂度 | 适用场景              | 说明                                     |
-| --------------------------- | :----: | --------------------- | ---------------------------------------- |
-| **PM2 文件收集**            |   ⭐   | 单机部署              | PM2 自动收集 stdout/stderr 到文件        |
-| **pino-roll 日志轮转**      |  ⭐⭐  | 单机 / 需要自动切割   | pino 内置 transport，按大小/时间自动轮转 |
-| **pino/file 文件输出**      |   ⭐   | 简单文件写入          | pino 内置，直接写入指定文件              |
-| **Filebeat → ELK**          | ⭐⭐⭐ | 中大型项目            | 文件采集 → Elasticsearch → Kibana        |
-| **pino-elasticsearch 直连** | ⭐⭐⭐ | 中大型项目            | 直接写入 Elasticsearch，无需中间件       |
-| **Docker → Loki**           |  ⭐⭐  | 容器化部署            | Docker logging driver 推送到 Loki        |
-| **stdout → Cloud 原生**     |   ⭐   | K8s / Cloud Run / ECS | 平台自动采集 stdout                      |
+| 方案                       | 复杂度 | 适用场景              | 说明                                |
+| -------------------------- | :----: | --------------------- | ----------------------------------- |
+| **stdout → Cloud 原生**    |   ⭐   | K8s / Cloud Run / ECS | 平台自动采集 stdout                 |
+| **PM2 / systemd 文件收集** |   ⭐   | 单机部署              | 进程管理器收集 stdout/stderr 到文件 |
+| **logrotate**              |  ⭐⭐  | 单机 / 需要自动切割   | 系统级日志轮转，应用无需感知        |
+| **Filebeat → ELK**         | ⭐⭐⭐ | 中大型项目            | 文件采集 → Elasticsearch → Kibana   |
+| **Docker → Loki**          |  ⭐⭐  | 容器化部署            | Docker logging driver 或 Agent 推送 |
+| **app.setLogger 桥接**     | ⭐⭐⭐ | 需要 SDK 直连         | 插件包装 logger，同步转发到外部 SDK |
 
 ### 推荐日志目录结构
 
@@ -556,161 +517,60 @@ project/
 
 ---
 
-### 方案一：pino/file 简单文件输出
+### 方案一：stdout → Cloud 原生
 
-最基础的文件写入方案，适合小型项目或开发环境：
+在 Kubernetes / AWS ECS / Google Cloud Run 等平台中，直接输出到 stdout，由平台自动采集：
 
-```typescript
-import pino from "pino";
-
-const transport = pino.transport({
-  target: "pino/file",
-  options: {
-    destination: "./logs/app.log",
-    mkdir: true, // 自动创建 logs/ 目录
-  },
-});
-
-// 在 VextJS 中，可以通过插件在 logger 创建后替换
-// 或在 src/index.ts 启动前配置
+```bash
+# 不需要额外配置，JSON 日志直接输出到 stdout
+NODE_ENV=production node dist/index.js
 ```
 
-缺点：文件会无限增长，没有自动轮转。适合搭配外部轮转工具（如 `logrotate`）使用。
+| 平台                     | 日志采集方式                                          |
+| ------------------------ | ----------------------------------------------------- |
+| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
+| **AWS ECS**              | stdout → CloudWatch Logs                              |
+| **Google Cloud Run**     | stdout → Cloud Logging                                |
+| **Azure Container Apps** | stdout → Azure Monitor                                |
+
+这是最简单也最推荐的云原生方案——**不做任何日志配置**，让平台处理一切。
 
 ---
 
-### 方案二：pino-roll 日志轮转（推荐单机方案）
+### 方案二：PM2 / systemd 文件收集
 
-[pino-roll](https://github.com/feugy/pino-roll) 是 pino 官方推荐的日志轮转 transport，支持按文件大小和时间间隔自动切割。
+单机部署时，可以让进程管理器把 stdout/stderr 写入文件，再配合 `logrotate` 轮转。
 
-#### 安装
+#### PM2 示例
 
-```bash
-npm install pino-roll
-```
-
-#### 按文件大小轮转
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    target: "pino-roll",
-    options: {
-      file: "./logs/app.log", // 日志文件路径
-      size: "10m", // 单个文件最大 10MB
-      limit: {
-        count: 10, // 最多保留 10 个历史文件
-      },
-      mkdir: true, // 自动创建目录
+```javascript
+// ecosystem.config.cjs
+module.exports = {
+  apps: [
+    {
+      name: "myapp",
+      script: "dist/index.js",
+      env: { NODE_ENV: "production" },
+      error_file: "/var/log/myapp/error.log",
+      out_file: "/var/log/myapp/app.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
+      merge_logs: true,
     },
-  }),
-);
+  ],
+};
 ```
 
-轮转后的文件命名：`app.1.log`、`app.2.log`、...
+#### systemd 示例
 
-#### 按时间间隔轮转
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    target: "pino-roll",
-    options: {
-      file: "./logs/app.log",
-      frequency: "daily", // 每天轮转一次（也支持 'hourly'）
-      dateFormat: "yyyy-MM-dd", // 历史文件名中的日期格式
-      limit: {
-        count: 30, // 保留最近 30 天
-      },
-      mkdir: true,
-    },
-  }),
-);
-```
-
-轮转后的文件命名：`app.2026-03-05.log`、`app.2026-03-04.log`、...
-
-#### 同时按大小 + 时间轮转
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    target: "pino-roll",
-    options: {
-      file: "./logs/app.log",
-      frequency: "daily",
-      size: "50m", // 单日内超过 50MB 也会切割
-      dateFormat: "yyyy-MM-dd",
-      limit: {
-        count: 30,
-      },
-      mkdir: true,
-    },
-  }),
-);
-```
-
-#### 多目标：控制台 + 文件轮转
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    targets: [
-      // 控制台 pretty 输出（开发体验）
-      {
-        target: "pino-pretty",
-        options: { colorize: true, translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l" },
-        level: "debug",
-      },
-      // 文件轮转（所有级别）
-      {
-        target: "pino-roll",
-        options: {
-          file: "./logs/app.log",
-          size: "10m",
-          limit: { count: 10 },
-          mkdir: true,
-        },
-        level: "info",
-      },
-      // 错误日志单独文件
-      {
-        target: "pino-roll",
-        options: {
-          file: "./logs/error.log",
-          size: "10m",
-          limit: { count: 20 },
-          mkdir: true,
-        },
-        level: "error",
-      },
-    ],
-  }),
-);
+```ini
+# /etc/systemd/system/myapp.service
+[Service]
+ExecStart=/usr/bin/node /srv/myapp/dist/index.js
+WorkingDirectory=/srv/myapp
+Environment=NODE_ENV=production
+StandardOutput=append:/var/log/myapp/app.log
+StandardError=append:/var/log/myapp/error.log
+Restart=always
 ```
 
 ---
@@ -750,32 +610,13 @@ const logger = pino(
 
 ```
 VextJS (JSON stdout)
-  → PM2 (写入文件)
-    → Filebeat (采集文件)
+  → PM2 / systemd / container runtime (写入或暴露日志流)
+    → Filebeat / Fluent Bit (采集)
       → Elasticsearch (存储 + 索引)
         → Kibana (可视化 + 查询)
 ```
 
-#### 步骤 1：PM2 输出到文件
-
-```javascript
-// ecosystem.config.cjs
-module.exports = {
-  apps: [
-    {
-      name: "myapp",
-      script: "dist/index.js",
-      env: { NODE_ENV: "production" },
-      error_file: "/var/log/myapp/error.log",
-      out_file: "/var/log/myapp/app.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
-      merge_logs: true,
-    },
-  ],
-};
-```
-
-#### 步骤 2：Filebeat 采集
+#### Filebeat 采集
 
 ```yaml
 # /etc/filebeat/filebeat.yml
@@ -818,104 +659,22 @@ setup.template.settings:
   index.number_of_replicas: 0
 ```
 
-#### 步骤 3：Kibana 索引模式
+#### Kibana 索引模式
 
 1. 打开 Kibana → Stack Management → Index Patterns
 2. 创建索引模式：`myapp-*`
-3. 时间字段选择 `time`（pino 的 ISO 时间戳）
+3. 时间字段选择 `time`（Vext logger 的 ISO 时间戳）
 4. 在 Discover 中即可搜索日志
 
 常用查询：
 
 - 按 requestId 追踪：`requestId: "abc-123"`
-- 按错误级别过滤：`level: 50`（pino level 50 = error）
+- 按错误级别过滤：`level: 50`（Vext logger level 50 = error）
 - 按服务过滤：`service: "UserService"`
 
 ---
 
-### 方案五：pino-elasticsearch 直连
-
-[pino-elasticsearch](https://github.com/pinojs/pino-elasticsearch) 是 pino 官方的 Elasticsearch transport，无需 Filebeat 中间层，直接从 Node.js 进程写入 ES。
-
-#### 安装
-
-```bash
-npm install pino-elasticsearch
-```
-
-#### 配置
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    target: "pino-elasticsearch",
-    options: {
-      index: "myapp", // 索引名前缀（自动追加日期）
-      node: "http://localhost:9200",
-      esVersion: 8, // Elasticsearch 版本
-      flushBytes: 1000, // 缓冲区达到 1000 字节后批量写入
-      flushInterval: 5000, // 或每 5 秒写入一次
-      auth: {
-        username: process.env.ELASTIC_USER,
-        password: process.env.ELASTIC_PASSWORD,
-      },
-      // 可选：自定义索引名（按天分割）
-      "op.type": "create",
-    },
-  }),
-);
-```
-
-#### 多目标：控制台 + ES
-
-```typescript
-import pino from "pino";
-
-const logger = pino(
-  {
-    level: "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.transport({
-    targets: [
-      {
-        target: "pino-pretty",
-        options: { colorize: true },
-        level: "debug",
-      },
-      {
-        target: "pino-elasticsearch",
-        options: {
-          index: "myapp",
-          node: process.env.ELASTICSEARCH_URL || "http://localhost:9200",
-          esVersion: 8,
-          flushBytes: 1000,
-          flushInterval: 5000,
-        },
-        level: "info",
-      },
-    ],
-  }),
-);
-```
-
-:::tip pino-elasticsearch vs Filebeat
-
-- **pino-elasticsearch**：部署简单，无需额外进程；但如果 ES 不可用，日志会丢失
-- **Filebeat**：先落盘再采集，ES 宕机时日志不丢失；需要额外部署 Filebeat
-
-生产环境推荐 Filebeat 方案（更可靠），开发/测试环境可用 pino-elasticsearch（更简单）。
-:::
-
----
-
-### 方案六：Docker → Loki
+### 方案五：Docker → Loki
 
 容器化部署时，使用 Docker logging driver 直接推送到 Grafana Loki：
 
@@ -940,23 +699,33 @@ services:
 
 ---
 
-### 方案七：stdout → Cloud 原生
+### 方案六：app.setLogger 桥接外部 SDK
 
-在 Kubernetes / AWS ECS / Google Cloud Run 等平台中，直接输出到 stdout，由平台自动采集：
+如果必须在应用内同步调用外部日志 SDK，可以通过 `app.setLogger()` 包装当前 logger。该方式适合插件封装，默认 logger 仍继续输出到 stdout。
 
-```bash
-# 不需要额外配置，JSON 日志直接输出到 stdout
-NODE_ENV=production node dist/index.js
+```typescript
+import { definePlugin } from "vextjs";
+
+export default definePlugin({
+  name: "cloud-logger-bridge",
+  setup(app) {
+    app.setLogger((original) => ({
+      ...original,
+      info(...args: unknown[]) {
+        cloudLogger.write("info", args);
+        original.info(...args);
+      },
+      error(...args: unknown[]) {
+        cloudLogger.write("error", args);
+        original.error(...args);
+      },
+      child: (bindings) => original.child(bindings),
+    }));
+  },
+});
 ```
 
-| 平台                     | 日志采集方式                                          |
-| ------------------------ | ----------------------------------------------------- |
-| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
-| **AWS ECS**              | stdout → CloudWatch Logs                              |
-| **Google Cloud Run**     | stdout → Cloud Logging                                |
-| **Azure Container Apps** | stdout → Azure Monitor                                |
-
-这是最简单也最推荐的云原生方案——**不做任何日志配置**，让平台处理一切。
+这不是默认 logger 的替换机制，而是插件层的转发桥。后续如需官方 OTel Logs、Sentry、Loki/ELK 插件，可以在这个 wrapper 契约上继续扩展。
 
 ## 日志与 OpenTelemetry
 
@@ -984,9 +753,9 @@ export default {
 
 **工作原理**：
 
-- `mixin()` 在每条日志写入前被调用，返回值与内置的 `requestId` 字段合并注入
-- 框架内置 mixin（注入 `requestId`）与用户 mixin 并存，互不覆盖（用户字段优先）
-- 未配置 `mixin` 时，行为与之前完全一致（零 overhead）
+- `mixin()` 在每条日志写入前被调用，返回值会与框架内置字段合并注入
+- `requestId` 是框架保护字段，不可被用户 mixin 覆盖；`trace_id` / `span_id` 等其他字段按用户 mixin 优先
+- 未配置 `mixin` 时，不会执行用户 mixin 调用，默认请求字段注入行为保持不变
 - 框架不依赖 `@opentelemetry/api`，该包由用户在 tracing 初始化时引入
 
 **与 F-03（ALS 自动注入）的关系**：如果你在 tracing 中间件中向 `requestContext` 写入了 `traceId` / `spanId`，框架内置 mixin 会自动将其注入日志——无需配置 `mixin` 选项。`mixin` 配置适用于需要**直接从 OTEL Context API 实时读取**当前活跃 Span 的场景。
@@ -1006,7 +775,7 @@ interface VextLogger {
 }
 ```
 
-`VextLogger` 是对 pino 的接口适配。你可以在类型声明中使用这个接口：
+`VextLogger` 是框架公开的日志接口。你可以在类型声明中使用这个接口：
 
 ```typescript
 import type { VextLogger } from "vextjs";
@@ -1020,14 +789,35 @@ class PaymentService {
 }
 ```
 
+## 与 Pino 的能力差异
+
+Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，并移除默认安装路径中的 logger runtime dependency。它不是 Pino 的完整兼容层，也不会把 Pino 的所有扩展点搬进 core。
+
+| Pino 能力                          | Vext 当前状态                                         | 推荐扩展路径                                       |
+| ---------------------------------- | ----------------------------------------------------- | -------------------------------------------------- |
+| `logger.trace()` 公开方法          | 未暴露；`logger.level: "trace"` 仅作为阈值配置        | 若确有需要，可后续扩展 `VextLogger` 公共契约       |
+| 运行时修改 `logger.level`          | 未暴露可变 level 属性                                 | 通过配置重启；动态采样可用 `app.setLogger()` 包装  |
+| custom levels / level formatter    | 未支持自定义级别或重命名 `level` 字段                 | 外部日志系统侧映射 numeric level                   |
+| `redact` 路径脱敏                  | 未内置路径级 redaction                                | 在业务侧避免输出敏感字段，或用 wrapper/Agent 脱敏  |
+| serializers / stdSerializers       | 仅内置 Error 与 JSON-safe 序列化                      | 业务字段预处理或 wrapper 中处理                    |
+| `messageKey` / `errorKey`          | 固定使用 `msg` / `err` 语义                           | 日志采集侧映射字段                                 |
+| `transport` / multistream / file   | 不内置 worker transport、多目标或文件写入             | stdout → Agent/平台采集，或 `app.setLogger()` 桥接 |
+| pino-pretty 完整选项               | 仅支持内置 pretty、`prettyIgnore`、`prettySingleLine` | 开发期可接外部 formatter 或自定义 wrapper          |
+| browser API                        | 未支持浏览器 logger                                   | Vext 是 Node.js 服务端框架，浏览器侧另选方案       |
+| `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                 | 用 `app.setLogger()` 包装公开方法                  |
+
+这些缺口不会影响 Vext 默认框架日志、access log、requestId/trace 字段注入、child logger、Error 序列化和 stdout-first 收集。后续若需要官方 OTel Logs、Sentry、Loki/ELK 插件，应优先基于 `app.setLogger()` 和外部 Agent 扩展，而不是把 transport 体系内置回 core。
+
 ## 配置参考
 
-| 配置项                    | 类型      | 默认值                      | 说明                                                                                                |
-| ------------------------- | --------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `logger.level`            | `string`  | `'info'`                    | 日志级别：`'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'`                                   |
-| `logger.pretty`           | `boolean` | `NODE_ENV !== 'production'` | 是否使用 pino-pretty 彩色格式化输出                                                                 |
-| `logger.prettyIgnore`     | `string`  | `'pid,hostname,requestId'`  | pino-pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
-| `logger.prettySingleLine` | `boolean` | `true`                      | pino-pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 恢复多行展开格式     |
+| 配置项                    | 类型       | 默认值                      | 说明                                                                                           |
+| ------------------------- | ---------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`   | `'info'`                    | 日志阈值：`'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'`     |
+| `logger.lifecycleLevel`   | `string`   | `'concise'`                 | 框架生命周期日志详细程度：`'concise'` / `'verbose'`                                            |
+| `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | 是否使用内置 pretty formatter 输出可读格式                                                     |
+| `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
+| `logger.prettySingleLine` | `boolean`  | `true`                      | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式     |
+| `logger.mixin`            | `function` | `undefined`                 | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖      |
 
 ## 最佳实践
 

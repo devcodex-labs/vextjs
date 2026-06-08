@@ -376,7 +376,7 @@ async function scheduledTask(app: any) {
 
 | 功能           | 读取的字段  | 说明                                   |
 | -------------- | ----------- | -------------------------------------- |
-| `app.logger`   | `requestId` | 通过 pino mixin 自动注入到每条日志     |
+| `app.logger`   | `requestId` | 通过 logger mixin 自动注入到每条日志   |
 | `app.fetch`    | `requestId` | 自动注入到出站请求的 `x-request-id` 头 |
 | `app.throw()`  | `locale`    | I18nError 根据 locale 翻译错误消息     |
 | 访问日志中间件 | `requestId` | 记录入站请求的 requestId               |
@@ -489,7 +489,7 @@ Client → [Service A: traceparent=00-abc123-...] → app.fetch → [Service B: 
 export default definePlugin({
   name: "otel-log-correlation",
   setup(app) {
-    // OpenTelemetry SDK 自动注入 trace_id 到 pino logger
+    // OpenTelemetry SDK 自动注入 trace_id 到 Vext logger
     // 日志输出：{ requestId: '...', trace_id: 'abc123', msg: '...' }
   },
 });
