@@ -1,6 +1,6 @@
 # 日志 (Logger)
 
-VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、requestId 自动注入和 child logger 等能力。
+VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、requestId 自动注入、child logger、运行时级别控制和极简日志脱敏等能力。
 
 ## 基本用法
 
@@ -24,17 +24,18 @@ export default defineRoutes((app) => {
 
 ## 日志级别
 
-`app.logger` 公开 5 个常用方法，按严重程度从低到高排列：
+`app.logger` 公开 6 个常用方法，按严重程度从低到高排列：
 
 | 级别    | 方法                 | 说明     | 典型场景                     |
 | ------- | -------------------- | -------- | ---------------------------- |
+| `trace` | `app.logger.trace()` | 最细粒度 | 临时排障、非常详细的路径信息 |
 | `debug` | `app.logger.debug()` | 调试信息 | 变量值、SQL 查询、详细流程   |
 | `info`  | `app.logger.info()`  | 一般信息 | 服务启动、请求处理、业务事件 |
 | `warn`  | `app.logger.warn()`  | 警告     | 性能下降、弃用 API、重试     |
 | `error` | `app.logger.error()` | 错误     | 异常、失败的操作             |
 | `fatal` | `app.logger.fatal()` | 致命错误 | 应用无法继续运行             |
 
-`logger.level` 还接受 `trace` 和 `silent` 作为阈值配置：`trace` 会放开所有公开日志方法，`silent` 会关闭全部输出；当前公开 `VextLogger` 契约不提供 `app.logger.trace()` 方法。
+`logger.level` 接受 `trace` 和 `silent` 作为阈值配置：`trace` 会放开所有日志方法，`silent` 会关闭全部输出。
 
 ### 配置日志级别
 
@@ -57,6 +58,22 @@ export default {
 ```
 
 设置某个级别后，**低于该级别的日志不会输出**。例如 `level: 'info'` 时，`debug()` 调用会被静默忽略（零开销）。
+
+### 运行时调整日志级别
+
+默认 logger 支持在运行时调整后续日志阈值，适合线上临时排障：
+
+```typescript
+app.logger.getLevel(); // "info"
+app.logger.setLevel("debug");
+app.logger.debug({ orderId }, "debug detail");
+app.logger.setLevel("warn");
+```
+
+- `setLevel()` 只影响后续日志，不回溯历史日志。
+- 已创建的 child logger 与父 logger 共享当前 runtime level。
+- 不支持 `app.logger.level = "debug"` 这种可写属性兼容；请使用 `setLevel()`。
+- 非法 level 会抛出明确错误，不会静默降级。
 
 ## 生命周期日志分层
 
@@ -232,6 +249,45 @@ export default {
 ```
 
 > **注意**：`prettyIgnore` 仅影响 pretty 模式（开发环境）。生产环境的 JSON 输出始终包含所有字段（包括 `requestId`），确保日志收集系统能完整解析。
+
+## 日志脱敏
+
+默认 logger 提供默认关闭的极简 redaction，用于在写入 stdout 前替换结构化日志字段：
+
+```typescript
+// src/config/production.ts
+export default {
+  logger: {
+    level: "info",
+    redactKeys: ["password", "token"],
+    redactPaths: ["user.email", "headers.authorization", "users.0.secret"],
+    redactValue: "[Redacted]",
+  },
+};
+```
+
+效果：
+
+```typescript
+app.logger.info(
+  {
+    user: { email: "ada@example.com", password: "secret" },
+    headers: { authorization: "Bearer token" },
+  },
+  "login",
+);
+```
+
+输出中的 `user.email`、`password` 和 `headers.authorization` 会被替换为 `"[Redacted]"`。
+
+边界：
+
+- `redactKeys` 是任意层级 exact key 匹配。
+- `redactPaths` 是 dot notation exact path，支持数组数字下标。
+- 脱敏发生在 pretty/JSON 输出前，两种格式保持一致。
+- 脱敏不会修改调用方传入的原始对象。
+- 顶层 `level` 是日志协议字段，不会被 redaction 改写。
+- 不支持 wildcard、glob、regex、bracket notation、remove 或 function censor。
 
 ### 自定义 Pretty 输出 {#custom-pretty-output}
 
@@ -766,11 +822,23 @@ export default {
 
 ```typescript
 interface VextLogger {
+  trace(...args: unknown[]): void;
   info(...args: unknown[]): void;
   warn(...args: unknown[]): void;
   error(...args: unknown[]): void;
   debug(...args: unknown[]): void;
   fatal(...args: unknown[]): void;
+  getLevel():
+    | "trace"
+    | "debug"
+    | "info"
+    | "warn"
+    | "error"
+    | "fatal"
+    | "silent";
+  setLevel(
+    level: "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent",
+  ): void;
   child(bindings: Record<string, unknown>): VextLogger;
 }
 ```
@@ -793,18 +861,18 @@ class PaymentService {
 
 Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，并移除默认安装路径中的 logger runtime dependency。它不是 Pino 的完整兼容层，也不会把 Pino 的所有扩展点搬进 core。
 
-| Pino 能力                          | Vext 当前状态                                         | 推荐扩展路径                                       |
-| ---------------------------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| `logger.trace()` 公开方法          | 未暴露；`logger.level: "trace"` 仅作为阈值配置        | 若确有需要，可后续扩展 `VextLogger` 公共契约       |
-| 运行时修改 `logger.level`          | 未暴露可变 level 属性                                 | 通过配置重启；动态采样可用 `app.setLogger()` 包装  |
-| custom levels / level formatter    | 未支持自定义级别或重命名 `level` 字段                 | 外部日志系统侧映射 numeric level                   |
-| `redact` 路径脱敏                  | 未内置路径级 redaction                                | 在业务侧避免输出敏感字段，或用 wrapper/Agent 脱敏  |
-| serializers / stdSerializers       | 仅内置 Error 与 JSON-safe 序列化                      | 业务字段预处理或 wrapper 中处理                    |
-| `messageKey` / `errorKey`          | 固定使用 `msg` / `err` 语义                           | 日志采集侧映射字段                                 |
-| `transport` / multistream / file   | 不内置 worker transport、多目标或文件写入             | stdout → Agent/平台采集，或 `app.setLogger()` 桥接 |
-| pino-pretty 完整选项               | 仅支持内置 pretty、`prettyIgnore`、`prettySingleLine` | 开发期可接外部 formatter 或自定义 wrapper          |
-| browser API                        | 未支持浏览器 logger                                   | Vext 是 Node.js 服务端框架，浏览器侧另选方案       |
-| `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                 | 用 `app.setLogger()` 包装公开方法                  |
+| Pino 能力                          | Vext 当前状态                                                      | 推荐扩展路径                                              |
+| ---------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------- |
+| `logger.trace()` 公开方法          | 已支持                                                             | N/A                                                       |
+| 运行时修改日志级别                 | 已支持 `getLevel()` / `setLevel()`；不支持可写 `logger.level` 属性 | 如需采样/复杂策略可用 `app.setLogger()` 包装              |
+| custom levels / level formatter    | 未支持自定义级别或重命名 `level` 字段                              | 外部日志系统侧映射 numeric level                          |
+| `redact` 路径脱敏                  | 已支持 exact key/path 子集                                         | wildcard/remove/censor function 可在 wrapper/Agent 侧处理 |
+| serializers / stdSerializers       | 仅内置 Error 与 JSON-safe 序列化                                   | 业务字段预处理或 wrapper 中处理                           |
+| `messageKey` / `errorKey`          | 固定使用 `msg` / `err` 语义                                        | 日志采集侧映射字段                                        |
+| `transport` / multistream / file   | 不内置 worker transport、多目标或文件写入                          | stdout → Agent/平台采集，或 `app.setLogger()` 桥接        |
+| pino-pretty 完整选项               | 仅支持内置 pretty、`prettyIgnore`、`prettySingleLine`              | 开发期可接外部 formatter 或自定义 wrapper                 |
+| browser API                        | 未支持浏览器 logger                                                | Vext 是 Node.js 服务端框架，浏览器侧另选方案              |
+| `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                              | 用 `app.setLogger()` 包装公开方法                         |
 
 这些缺口不会影响 Vext 默认框架日志、access log、requestId/trace 字段注入、child logger、Error 序列化和 stdout-first 收集。后续若需要官方 OTel Logs、Sentry、Loki/ELK 插件，应优先基于 `app.setLogger()` 和外部 Agent 扩展，而不是把 transport 体系内置回 core。
 
@@ -817,6 +885,9 @@ Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，�
 | `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | 是否使用内置 pretty formatter 输出可读格式                                                     |
 | `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
 | `logger.prettySingleLine` | `boolean`  | `true`                      | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式     |
+| `logger.redactKeys`       | `string[]` | `[]`                        | 按任意层级 exact key 脱敏结构化日志字段                                                        |
+| `logger.redactPaths`      | `string[]` | `[]`                        | 按 dot notation exact path 脱敏结构化日志字段                                                  |
+| `logger.redactValue`      | `string`   | `'[Redacted]'`              | 脱敏替换值                                                                                     |
 | `logger.mixin`            | `function` | `undefined`                 | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖      |
 
 ## 最佳实践

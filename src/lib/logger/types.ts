@@ -24,6 +24,17 @@ export interface PrettyFormatterOptions {
   singleLine?: boolean;
 }
 
+export interface LoggerRedactionOptions {
+  keys?: string[];
+  paths?: string[];
+  value?: string;
+}
+
+export interface LevelController {
+  level: LogLevelName;
+  value: number;
+}
+
 export interface LoggerCoreOptions {
   level?: LogLevelName;
   sink: LogSink;
@@ -35,10 +46,12 @@ export interface LoggerCoreOptions {
   hostname?: string;
   contextProvider?: () => LogRecord | void;
   mixin?: () => LogRecord | void;
+  redaction?: LoggerRedactionOptions;
 }
 
 export interface CompiledLoggerCoreOptions {
   level: LogLevelName;
+  levelController: LevelController;
   sink: LogSink;
   bindings: LogRecord;
   timestamp: TimestampMode;
@@ -58,6 +71,8 @@ export interface LoggerLifecycle {
 export interface LoggerCore extends LoggerLifecycle {
   readonly level: LogLevelName;
   child(bindings: LogRecord): LoggerCore;
+  getLevel(): LogLevelName;
+  setLevel(level: LogLevelName): void;
   isLevelEnabled(level: LogLevelName): boolean;
   trace(...args: unknown[]): void;
   debug(...args: unknown[]): void;

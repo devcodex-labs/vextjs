@@ -46,10 +46,15 @@ import type { FileChangeInfo } from "../../src/lib/dev/file-watcher.js";
 
 function createMockLogger() {
   return {
+    trace: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
     error: vi.fn(),
+    fatal: vi.fn(),
+    getLevel: vi.fn(() => "info" as const),
+    setLevel: vi.fn(),
+    child: vi.fn(() => createMockLogger()),
   };
 }
 

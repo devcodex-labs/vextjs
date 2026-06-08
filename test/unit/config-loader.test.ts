@@ -417,6 +417,18 @@ describe("validateConfig", () => {
       ).not.toThrow();
     });
 
+    it("accepts logger redaction config", () => {
+      expect(() =>
+        _validateConfig({
+          logger: {
+            redactKeys: ["password"],
+            redactPaths: ["user.token", "users.0.secret"],
+            redactValue: "***",
+          },
+        }),
+      ).not.toThrow();
+    });
+
     it("rejects invalid log level", () => {
       expect(() => _validateConfig({ logger: { level: "verbose" } })).toThrow(
         "config.logger.level",
@@ -440,6 +452,18 @@ describe("validateConfig", () => {
     it("rejects non-boolean pretty", () => {
       expect(() => _validateConfig({ logger: { pretty: "yes" } })).toThrow(
         "config.logger.pretty must be a boolean",
+      );
+    });
+
+    it("rejects invalid logger redaction config", () => {
+      expect(() =>
+        _validateConfig({ logger: { redactKeys: ["password", 1] } }),
+      ).toThrow("config.logger.redactKeys");
+      expect(() =>
+        _validateConfig({ logger: { redactPaths: "user.token" } }),
+      ).toThrow("config.logger.redactPaths");
+      expect(() => _validateConfig({ logger: { redactValue: false } })).toThrow(
+        "config.logger.redactValue",
       );
     });
   });

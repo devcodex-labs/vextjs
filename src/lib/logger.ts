@@ -17,6 +17,10 @@ type VextLoggerWithLifecycle = VextLogger & {
 
 function wrapCoreAsVextLogger(core: LoggerCore): VextLogger {
   const logger: VextLogger = {
+    trace(...args: unknown[]) {
+      core.trace(...args);
+    },
+
     info(...args: unknown[]) {
       core.info(...args);
     },
@@ -35,6 +39,14 @@ function wrapCoreAsVextLogger(core: LoggerCore): VextLogger {
 
     fatal(...args: unknown[]) {
       core.fatal(...args);
+    },
+
+    getLevel() {
+      return core.getLevel();
+    },
+
+    setLevel(level) {
+      core.setLevel(level);
     },
 
     child(bindings: Record<string, unknown>): VextLogger {
@@ -66,7 +78,7 @@ export function createLogger(
   const prettyIgnoreFields = config.prettyIgnore ?? "pid,hostname,requestId";
   const prettySingleLine = config.prettySingleLine !== false;
   let mixinWarnEmitted = false;
-  let core: LoggerCore | undefined;
+  let core: LoggerCore;
 
   const emitMixinWarning = (
     message: string,
@@ -76,9 +88,6 @@ export function createLogger(
       return;
     }
     mixinWarnEmitted = true;
-    if (!core) {
-      return;
-    }
     if (meta) {
       core.warn(meta, message);
     } else {
@@ -131,6 +140,11 @@ export function createLogger(
         }
       : undefined,
     mixin: userMixin,
+    redaction: {
+      keys: config.redactKeys,
+      paths: config.redactPaths,
+      value: config.redactValue,
+    },
   });
 
   core = createdCore;

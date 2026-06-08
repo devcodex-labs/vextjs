@@ -50,6 +50,8 @@ export interface VextServices {
  * 所有日志方法自动携带 requestId（通过 AsyncLocalStorage + logger mixin 实现）。
  */
 export interface VextLogger {
+  trace(msg: string, ...args: unknown[]): void;
+  trace(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   info(msg: string, ...args: unknown[]): void;
   info(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   warn(msg: string, ...args: unknown[]): void;
@@ -62,6 +64,15 @@ export interface VextLogger {
   fatal(msg: string, ...args: unknown[]): void;
   fatal(err: Error, msg?: string, ...args: unknown[]): void;
   fatal(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+
+  /** 获取当前有效日志级别。 */
+  getLevel(): NonNullable<VextLoggerConfig["level"]>;
+
+  /**
+   * 调整后续日志输出级别。
+   * 已创建的 child logger 与父 logger 共享同一个 runtime level controller。
+   */
+  setLevel(level: NonNullable<VextLoggerConfig["level"]>): void;
 
   /**
    * 创建子 logger（携带额外上下文字段）
@@ -368,6 +379,25 @@ export interface VextLoggerConfig {
    * ```
    */
   prettySingleLine?: boolean;
+
+  /**
+   * 按字段名脱敏任意层级结构化日志字段。
+   *
+   * 仅支持 exact key，不支持 wildcard / glob / regex。
+   * 顶层 `level` 为日志协议保留字段，不会被改写。
+   */
+  redactKeys?: string[];
+
+  /**
+   * 按 dot notation 精确路径脱敏结构化日志字段。
+   *
+   * 支持对象路径和数组数字下标，例如 `user.password`、`users.0.password`。
+   * 不支持 wildcard、bracket notation、remove 或 function censor。
+   */
+  redactPaths?: string[];
+
+  /** 脱敏替换值（默认 `"[Redacted]"`）。 */
+  redactValue?: string;
 
   /**
    * 自定义 mixin 函数（日志字段扩展）
@@ -727,7 +757,7 @@ export interface VextAccessLogConfig {
    * 日志输出级别（默认 'info'）
    *
    * 使用 app.logger 对应级别的方法输出。
-   * 设为 'debug' 可在生产环境通过 logger.level 统一控制是否输出。
+   * 设为 'debug' 可在生产环境通过 logger.level 初始阈值或 app.logger.setLevel() 统一控制是否输出。
    */
   level?: "info" | "debug";
 

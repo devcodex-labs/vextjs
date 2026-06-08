@@ -379,6 +379,9 @@ export default {
 | `pretty`           | `boolean`                                                                  | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式                                                                                                                                                                                                                                           |
 | `prettyIgnore`     | `string`                                                                   | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响                                                                                                                                                          |
 | `prettySingleLine` | `boolean`                                                                  | `true`                     | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响                                                                                                                                           |
+| `redactKeys`       | `string[]`                                                                 | `[]`                       | 按任意层级 exact key 脱敏结构化日志字段。顶层 `level` 为日志协议字段，不会被改写                                                                                                                                                                                                     |
+| `redactPaths`      | `string[]`                                                                 | `[]`                       | 按 dot notation exact path 脱敏结构化日志字段，支持数组数字下标；不支持 wildcard、bracket notation、remove 或 function censor                                                                                                                                                        |
+| `redactValue`      | `string`                                                                   | `'[Redacted]'`             | 脱敏替换值                                                                                                                                                                                                                                                                           |
 | `mixin`            | `() => Record<string, unknown>`                                            | `undefined`                | 自定义日志 mixin 函数，返回值会与框架内置字段合并注入每条日志。`requestId` 是框架保护字段，不可被用户 mixin 覆盖；`trace_id` / `span_id` 等其他字段按用户 mixin 优先。典型用途：注入 OpenTelemetry `trace_id` / `span_id`，实现日志与链路追踪关联。未配置时不会执行用户 mixin 调用。 |
 
 ```typescript
@@ -390,6 +393,9 @@ export default {
     // prettySingleLine: false,                  // 恢复多行展开格式
     // prettyIgnore: 'pid,hostname,requestId',   // 默认值，隐藏 requestId
     // prettyIgnore: 'pid,hostname',             // 如需在 pretty 模式下显示 requestId
+    // redactKeys: ['password', 'token'],
+    // redactPaths: ['user.email', 'headers.authorization'],
+    // redactValue: '[Redacted]',
   },
 };
 ```
@@ -401,6 +407,8 @@ fatal > error > warn > info > debug > trace
 ```
 
 设置某个级别后，只输出该级别及更高级别的日志。设为 `'silent'` 完全静默。
+
+默认 logger 还支持运行时 `app.logger.getLevel()` / `app.logger.setLevel(level)` 调整后续日志阈值；配置对象本身仍会在启动后冻结，不应通过修改 `app.config.logger.level` 动态变更。
 
 ---
 

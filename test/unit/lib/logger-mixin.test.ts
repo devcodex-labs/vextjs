@@ -185,4 +185,31 @@ describe("logger mixin", () => {
     logger.info("trigger");
     expect(called).toBe(true);
   });
+
+  it("redacts mixin and request context fields after merge", async () => {
+    const { logger, records } = createCapturedLogger({
+      redactKeys: ["trace_id"],
+      redactPaths: ["custom.secret"],
+      mixin() {
+        return {
+          trace_id: "user-trace",
+          custom: { secret: "hidden", visible: "shown" },
+        };
+      },
+    });
+
+    await requestContext.run(
+      { requestId: "req-3", traceId: "als-trace", spanId: "span-3" },
+      async () => {
+        logger.info("request log");
+      },
+    );
+
+    expect(records()[0]).toMatchObject({
+      requestId: "req-3",
+      trace_id: "[Redacted]",
+      span_id: "span-3",
+      custom: { secret: "[Redacted]", visible: "shown" },
+    });
+  });
 });

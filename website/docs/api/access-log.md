@@ -106,7 +106,7 @@ export default {
     enabled: true,
 
     // 日志级别（默认 'info'）
-    // 设为 'debug' 可通过 logger.level 统一控制
+    // 设为 'debug' 可通过 logger.level 初始阈值或 app.logger.setLevel() 统一控制
     level: "info",
 
     // 跳过记录的路径列表（精确匹配）
@@ -150,7 +150,7 @@ export default {
 | -------- | -------- | --------------------- | ------------ |
 | `string` | `'info'` | `'info'` \| `'debug'` | 日志输出级别 |
 
-设为 `'debug'` 后，可以在生产环境通过 `logger.level` 统一控制是否输出普通访问日志。5xx 响应始终提升为 `error`；4xx 仅在 `warnOn4xx: true` 时提升为 `warn`。
+设为 `'debug'` 后，可以在生产环境通过 `logger.level` 初始阈值或运行时 `app.logger.setLevel()` 统一控制是否输出普通访问日志。5xx 响应始终提升为 `error`；4xx 仅在 `warnOn4xx: true` 时提升为 `warn`。
 
 ### `skipPaths`
 

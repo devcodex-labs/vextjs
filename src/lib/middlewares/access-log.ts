@@ -23,7 +23,7 @@ function formatBytes(bytes: number): string {
  *
  * 配置项（config.accessLog）：
  *   - enabled:          是否启用（默认 true）；false 时直接跳过，零开销
- *   - level:            日志输出级别（默认 'info'）；可设为 'debug' 由 logger.level 统一控制
+ *   - level:            日志输出级别（默认 'info'）；可设为 'debug' 由 logger.level 初始阈值或 setLevel() 统一控制
  *   - skipPaths:        精确匹配跳过的路径列表（如 ['/health', '/ready']），减少日志噪音
  *   - skipPathPrefixes: 前缀匹配跳过的路径列表（如 ['/internal']），跳过整个路径树
  *   - slowThreshold:    慢请求阈值（毫秒），超过时自动提升为 warn 级别并标记 [SLOW]

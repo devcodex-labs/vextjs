@@ -85,7 +85,11 @@ export function serializeJsonRecord(record: LogRecord): string {
     line += `,"time":${quote(String(record.time))}`;
   }
   if (record.pid !== undefined) {
-    line += `,"pid":${record.pid}`;
+    const pid =
+      typeof record.pid === "number" && Number.isFinite(record.pid)
+        ? String(record.pid)
+        : quote(String(record.pid));
+    line += `,"pid":${pid}`;
   }
   if (record.hostname !== undefined) {
     line += `,"hostname":${quote(String(record.hostname))}`;

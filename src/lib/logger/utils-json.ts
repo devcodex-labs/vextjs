@@ -91,40 +91,44 @@ export function toJsonRecord(
 }
 
 function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
-  switch (typeof value) {
-    case "bigint":
-      return value.toString();
-    case "undefined":
-    case "function":
-    case "symbol":
-      return undefined;
-    case "object":
-      if (value === null) {
-        return null;
-      }
-      if (value instanceof Date) {
-        return value.toISOString();
-      }
-      if (value instanceof Error) {
-        return normalizeError(value);
-      }
-      if (seen.has(value)) {
-        return "[Circular]";
-      }
-      seen.add(value);
-      if (Array.isArray(value)) {
-        const normalizedArray = value.map(
-          (item) => normalizeValue(item, seen) ?? null,
-        );
-        seen.delete(value);
-        return normalizedArray;
-      }
-      const normalizedObject = normalizeObject(value, seen);
-      seen.delete(value);
-      return normalizedObject;
-    default:
-      return value;
+  if (typeof value === "bigint") {
+    return value.toString();
   }
+  if (
+    typeof value === "undefined" ||
+    typeof value === "function" ||
+    typeof value === "symbol"
+  ) {
+    return undefined;
+  }
+  if (typeof value !== "object") {
+    return value;
+  }
+
+  if (value === null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (value instanceof Error) {
+    return normalizeError(value);
+  }
+  if (seen.has(value)) {
+    return "[Circular]";
+  }
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const normalizedArray = value.map(
+      (item) => normalizeValue(item, seen) ?? null,
+    );
+    seen.delete(value);
+    return normalizedArray;
+  }
+  const normalizedObject = normalizeObject(value, seen);
+  seen.delete(value);
+  return normalizedObject;
 }
 
 function normalizeError(error: Error): Record<string, unknown> {
@@ -189,7 +193,7 @@ function serializeArray(values: unknown[], seen: WeakSet<object>): string {
     if (index > 0) {
       line += ",";
     }
-    line += serializeNestedValue(values[index], seen, true) ?? "null";
+    line += serializeNestedValue(values[index], seen, true);
   }
   return `${line}]`;
 }

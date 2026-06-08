@@ -532,6 +532,32 @@ function validateConfig(config: Record<string, unknown>): void {
     if (logger.pretty !== undefined && typeof logger.pretty !== "boolean") {
       throw new Error("[vextjs] config.logger.pretty must be a boolean.");
     }
+    if (logger.redactKeys !== undefined) {
+      if (
+        !Array.isArray(logger.redactKeys) ||
+        logger.redactKeys.some((item) => typeof item !== "string")
+      ) {
+        throw new Error(
+          "[vextjs] config.logger.redactKeys must be an array of strings.",
+        );
+      }
+    }
+    if (logger.redactPaths !== undefined) {
+      if (
+        !Array.isArray(logger.redactPaths) ||
+        logger.redactPaths.some((item) => typeof item !== "string")
+      ) {
+        throw new Error(
+          "[vextjs] config.logger.redactPaths must be an array of strings.",
+        );
+      }
+    }
+    if (
+      logger.redactValue !== undefined &&
+      typeof logger.redactValue !== "string"
+    ) {
+      throw new Error("[vextjs] config.logger.redactValue must be a string.");
+    }
     if (logger.lifecycleLevel !== undefined) {
       const validLifecycleLevels = ["concise", "verbose"];
       if (

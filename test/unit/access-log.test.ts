@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import { createLogger } from "../../src/lib/logger.js";
+import { createMemoryLogSink } from "../../src/lib/logger/sinks/memory.js";
 import { createAccessLogMiddleware } from "../../src/lib/middlewares/access-log.js";
 import type { VextAccessLogConfig } from "../../src/types/app.js";
 
@@ -10,11 +12,14 @@ import type { VextAccessLogConfig } from "../../src/types/app.js";
  */
 function createMockLogger() {
   return {
+    trace: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
     fatal: vi.fn(),
+    getLevel: vi.fn(() => "info" as const),
+    setLevel: vi.fn(),
     child: vi.fn(() => createMockLogger()),
   };
 }
@@ -199,6 +204,26 @@ describe("createAccessLogMiddleware", () => {
       const msg = getLogMsg(logger.info);
       // 验证格式：POST /api/data 201 Nms | 10.0.0.1
       expect(msg).toMatch(/^POST \/api\/data 201 \d+ms \| 10\.0\.0\.1$/);
+    });
+
+    it("default logger redaction applies to access log output", async () => {
+      const sink = createMemoryLogSink();
+      const realLogger = createLogger(
+        { pretty: false, redactPaths: ["msg"] },
+        { sink, requestContextEnabled: false },
+      );
+      const middleware = createAccessLogMiddleware({}, realLogger);
+
+      await middleware(
+        createMockReq({ path: "/private", ip: "10.0.0.1" }),
+        createMockRes(),
+        createNext(),
+      );
+
+      const record = JSON.parse(sink.lines[0]!) as Record<string, unknown>;
+      expect(record.msg).toBe("[Redacted]");
+      expect(sink.lines[0]).not.toContain("/private");
+      expect(sink.lines[0]).not.toContain("10.0.0.1");
     });
   });
 

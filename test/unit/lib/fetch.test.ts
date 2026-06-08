@@ -36,6 +36,8 @@ function createMockLogger(): VextLogger {
     debug: vi.fn(),
     fatal: vi.fn(),
     trace: vi.fn(),
+    getLevel: vi.fn(() => "info"),
+    setLevel: vi.fn(),
     child: vi.fn(function () {
       return createMockLogger();
     }),

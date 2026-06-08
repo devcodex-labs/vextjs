@@ -1,6 +1,16 @@
 import { hostname as getHostname } from "node:os";
-import { isLevelEnabled, levelValue, normalizeLevel } from "./levels.js";
+import {
+  assertLogLevel,
+  isLevelEnabled,
+  levelValue,
+  normalizeLevel,
+} from "./levels.js";
 import { formatPrettyRecord } from "./pretty.js";
+import {
+  compileRedactionOptions,
+  redactRecord,
+  type CompiledRedactionOptions,
+} from "./redaction.js";
 import {
   buildLogRecord,
   normalizeLogArgs,
@@ -14,52 +24,76 @@ import type {
   RuntimeLogLevel,
 } from "./types.js";
 
-const METHODS: RuntimeLogLevel[] = [
-  "trace",
-  "debug",
-  "info",
-  "warn",
-  "error",
-  "fatal",
-];
+type RuntimeCompiledLoggerCoreOptions = Omit<
+  CompiledLoggerCoreOptions,
+  "redaction"
+> & {
+  redaction: CompiledRedactionOptions;
+};
 
 export function createLoggerCore(options: LoggerCoreOptions): LoggerCore {
+  const level = normalizeLevel(options.level);
   return new VextLoggerCore({
     ...options,
-    level: normalizeLevel(options.level),
+    level,
+    levelController: {
+      level,
+      value: levelValue(level),
+    },
     bindings: options.bindings ?? {},
     timestamp: options.timestamp ?? "iso",
     format: options.format ?? "json",
     pid: options.pid ?? process.pid,
     hostname: options.hostname ?? getHostname(),
+    redaction: compileRedactionOptions(options.redaction),
   });
 }
 
 class VextLoggerCore implements LoggerCore {
-  readonly level: CompiledLoggerCoreOptions["level"];
-  private readonly levelValue: number;
   private closed = false;
 
-  constructor(private readonly options: CompiledLoggerCoreOptions) {
-    this.level = options.level;
-    this.levelValue = levelValue(options.level);
+  constructor(private readonly options: RuntimeCompiledLoggerCoreOptions) {}
 
-    for (const method of METHODS) {
-      this[method] = isLevelEnabled(this.levelValue, method)
-        ? (...args: unknown[]) => this.write(method, args)
-        : noop;
-    }
+  get level(): CompiledLoggerCoreOptions["level"] {
+    return this.options.levelController.level;
   }
 
-  trace(..._args: unknown[]): void {}
-  debug(..._args: unknown[]): void {}
-  info(..._args: unknown[]): void {}
-  warn(..._args: unknown[]): void {}
-  error(..._args: unknown[]): void {}
-  fatal(..._args: unknown[]): void {}
+  trace(...args: unknown[]): void {
+    this.write("trace", args);
+  }
+
+  debug(...args: unknown[]): void {
+    this.write("debug", args);
+  }
+
+  info(...args: unknown[]): void {
+    this.write("info", args);
+  }
+
+  warn(...args: unknown[]): void {
+    this.write("warn", args);
+  }
+
+  error(...args: unknown[]): void {
+    this.write("error", args);
+  }
+
+  fatal(...args: unknown[]): void {
+    this.write("fatal", args);
+  }
+
+  getLevel(): CompiledLoggerCoreOptions["level"] {
+    return this.options.levelController.level;
+  }
+
+  setLevel(level: CompiledLoggerCoreOptions["level"]): void {
+    assertLogLevel(level);
+    this.options.levelController.level = level;
+    this.options.levelController.value = levelValue(level);
+  }
 
   isLevelEnabled(level: RuntimeLogLevel | "silent"): boolean {
-    return isLevelEnabled(this.levelValue, level);
+    return isLevelEnabled(this.options.levelController.value, level);
   }
 
   child(bindings: LogRecord): LoggerCore {
@@ -83,7 +117,7 @@ class VextLoggerCore implements LoggerCore {
   }
 
   private write(level: RuntimeLogLevel, args: unknown[]): void {
-    if (this.closed) {
+    if (this.closed || !this.isLevelEnabled(level)) {
       return;
     }
 
@@ -91,14 +125,17 @@ class VextLoggerCore implements LoggerCore {
     const context = this.safeProvider(this.options.contextProvider);
     const mixin = this.safeProvider(this.options.mixin);
     const mergedMixin = protectRequestId(context, mixin);
-    const record = buildLogRecord(level, normalized, {
-      timestamp: this.options.timestamp,
-      pid: this.options.pid,
-      hostname: this.options.hostname,
-      bindings: this.options.bindings,
-      context,
-      mixin: mergedMixin,
-    });
+    const record = redactRecord(
+      buildLogRecord(level, normalized, {
+        timestamp: this.options.timestamp,
+        pid: this.options.pid,
+        hostname: this.options.hostname,
+        bindings: this.options.bindings,
+        context,
+        mixin: mergedMixin,
+      }),
+      this.options.redaction,
+    );
 
     this.options.sink.write(
       this.options.format === "pretty"
@@ -147,5 +184,3 @@ function isPromiseLike(value: unknown): boolean {
     typeof (value as { then?: unknown }).then === "function",
   );
 }
-
-function noop(): void {}

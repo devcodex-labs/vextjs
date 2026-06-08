@@ -351,6 +351,9 @@ export default {
 | `logger.pretty`           | `boolean`                | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式；生产环境默认关闭（输出 JSON）                   |
 | `logger.prettySingleLine` | `boolean`                | `true`                     | pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 使用多行展开格式           |
 | `logger.prettyIgnore`     | `string`                 | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
+| `logger.redactKeys`       | `string[]`               | `[]`                       | 按任意层级 exact key 脱敏结构化日志字段                                                     |
+| `logger.redactPaths`      | `string[]`               | `[]`                       | 按 dot notation exact path 脱敏结构化日志字段                                               |
+| `logger.redactValue`      | `string`                 | `'[Redacted]'`             | 脱敏替换值                                                                                  |
 | `logger.mixin`            | `function`               | `undefined`                | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖   |
 
 支持的日志级别（从低到高）：`'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
@@ -363,12 +366,14 @@ export default {
     pretty: true, // 开发环境开启可读格式化（生产环境默认关闭）
     // prettySingleLine: true,              // 额外字段压缩到同行（默认）
     // prettyIgnore: 'pid,hostname,requestId',  // 默认隐藏字段
+    // redactKeys: ['password', 'token'],    // exact key 脱敏
+    // redactPaths: ['headers.authorization'], // exact path 脱敏
     // mixin: () => ({ service_name: 'my-app' }), // 自定义结构化字段
   },
 };
 ```
 
-VextJS 内置零 runtime dependency 的 logger kernel，`pretty` 模式使用内置 formatter 输出可读日志。完整的日志系统说明（Child Logger、存储方案、requestId 注入等）见 [日志文档](/guide/logger)。
+VextJS 内置零 runtime dependency 的 logger kernel，`pretty` 模式使用内置 formatter 输出可读日志。默认 logger 支持 `trace()`、`getLevel()` / `setLevel()` 和 exact key/path redaction；完整说明见 [日志文档](/guide/logger)。
 
 ### 优雅关闭配置 (`shutdown`)
 
@@ -823,6 +828,7 @@ export default {
 - `rateLimit.max` 必须是正整数
 - `rateLimit.window` 必须是正整数
 - `logger.level` 必须是合法的日志级别
+- `logger.redactKeys` / `logger.redactPaths` 必须是字符串数组，`logger.redactValue` 必须是字符串
 - `shutdown.timeout` 必须是非负数（单位：秒）
 - `server.requestTimeout`、`server.headersTimeout`、`server.keepAliveTimeout`、`server.socketTimeout` 必须是非负有限数（单位：毫秒）
 - `server.maxHeaderSize`、`server.connectionsCheckingInterval` 必须是正整数，`server.maxRequestsPerSocket` 必须是非负整数

@@ -159,13 +159,18 @@ function createApp(config: VextConfig): {
 logger: VextLogger;
 ```
 
-自动携带 `requestId`（通过 AsyncLocalStorage），支持 `.child()` 创建子 logger。
+自动携带 `requestId`（通过 AsyncLocalStorage），支持 `trace()`、运行时 `getLevel()` / `setLevel()` 和 `.child()` 创建子 logger。
 
 ```typescript
 // 基本使用
 app.logger.info("服务器启动成功");
 app.logger.error({ userId: "123" }, "用户查询失败");
 app.logger.debug("调试信息");
+app.logger.trace("详细排障信息");
+
+// 运行时调整后续日志阈值
+app.logger.getLevel(); // "info"
+app.logger.setLevel("debug");
 
 // 结构化日志（对象 + 消息）
 app.logger.info({ event: "user_created", userId: "abc" }, "用户创建成功");
@@ -185,6 +190,7 @@ serviceLogger.info("查询用户列表");
 | `logger.warn(...)`  | warn  | 警告信息               |
 | `logger.info(...)`  | info  | 一般信息（默认级别）   |
 | `logger.debug(...)` | debug | 调试信息               |
+| `logger.trace(...)` | trace | 最细粒度排障信息       |
 
 每个方法支持两种签名：
 
@@ -195,6 +201,15 @@ logger.info(msg: string, ...args: unknown[]): void;
 // 对象 + 消息
 logger.info(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
 ```
+
+**`getLevel()` / `setLevel(level)`**：
+
+```typescript
+getLevel(): "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
+setLevel(level: "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent"): void;
+```
+
+`setLevel()` 只影响后续日志；已创建的 child logger 与父 logger 共享当前 runtime level。默认 logger 不提供可写的 `app.logger.level` 属性。
 
 **`child(bindings)`**：
 

@@ -11,7 +11,9 @@ export const LEVEL_VALUES: Record<LogLevelName, number> = {
 };
 
 export function normalizeLevel(level: LogLevelName | undefined): LogLevelName {
-  return level ?? "info";
+  const normalized = level ?? "info";
+  assertLogLevel(normalized);
+  return normalized;
 }
 
 export function levelValue(level: LogLevelName): number {
@@ -23,4 +25,12 @@ export function isLevelEnabled(
   candidate: LogLevelName,
 ): boolean {
   return LEVEL_VALUES[candidate] >= currentLevelValue;
+}
+
+export function assertLogLevel(level: unknown): asserts level is LogLevelName {
+  if (typeof level !== "string" || !(level in LEVEL_VALUES)) {
+    throw new Error(
+      `[vextjs] logger level must be one of: ${Object.keys(LEVEL_VALUES).join(", ")}, got: "${String(level)}"`,
+    );
+  }
 }
