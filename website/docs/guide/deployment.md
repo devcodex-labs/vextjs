@@ -20,7 +20,7 @@
 
 ### vext build
 
-使用 `vext build` 将 TypeScript 源码编译为生产级 JavaScript：
+使用 `vext build` 刷新 generated / manifest 工具产物，并将 TypeScript 源码编译为生产级 JavaScript：
 
 ```bash
 vext build
@@ -29,6 +29,8 @@ vext build
 编译产物输出到 `dist/` 目录，保持与 `src/` 相同的目录结构：
 
 ```
+
+如果部署流水线需要类型校验，可使用 `vext build --typecheck`。该命令会先刷新 `.vext/types/`、`src/types/generated/index.d.ts` 与 `.vext/manifest/`，再执行 `tsc --noEmit` 和生产编译。
 src/                          dist/
 ├── index.ts            →     ├── index.js        + index.js.map
 ├── config/                   ├── config/
@@ -68,7 +70,7 @@ src/                          dist/
 
 ### 编译底层
 
-`vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，编译速度极快。典型项目（50+ 源文件）的编译时间在 **1 秒以内**。
+`vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快。典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
 
 编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置文件，仍由启动时的 `NODE_ENV` 决定。
 

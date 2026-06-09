@@ -2,12 +2,12 @@
 # vextjs CI — Lint → Typecheck → Unit → Integration → E2E → Coverage
 #
 # 触发条件：push / pull_request（所有分支）
-# Node.js 版本矩阵：18 / 20 / 22
+# Node.js 版本矩阵：20 / 22
 #
 # 流水线结构：
-#   1. lint + typecheck（快速门禁，所有版本）
-#   2. unit tests（无外部依赖，所有版本）
-#   3. integration tests（无外部依赖，使用 mock，所有版本）
+#   1. lint + typecheck（快速门禁，Node 20 / 22）
+#   2. unit tests（无外部依赖，Node 20 / 22）
+#   3. integration tests（无外部依赖，使用 mock，Node 20 / 22）
 #   4. e2e tests（真实 HTTP 服务器，仅 Node 22）
 #   5. coverage report（仅 Node 22，上传 codecov）
 #

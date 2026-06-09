@@ -4,7 +4,6 @@ import "vextjs";
 
 declare module "vextjs" {
   interface VextServices {
-    user: import("../../services/user.js").default;
+    user: import("../../src/services/user.js").default;
   }
 }
-

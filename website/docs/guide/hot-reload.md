@@ -4,7 +4,7 @@ VextJS 内置智能热重载机制，通过 `vext dev` 命令启动开发模式�
 
 从 `0.3.7` 起，`vext dev` 在每次 initial start、文件变更、手动 reload / restart、以及子进程请求 cold restart 前，都会先执行一次 **dev preflight**：
 
-- 自动运行基础 `typegen`，同步 `src/types/generated/*.generated.d.ts`
+- 自动运行基础 `typegen`，同步 `.vext/types/*.generated.d.ts` 和 `src/types/generated/index.d.ts`
 - TypeScript 语义诊断默认在 ready / reload 后异步输出
 - 如果基础 typegen 发现 blocking issue，则跳过本轮 reload / restart；如需让 TypeScript 语义诊断也阻塞，可使用 `--strict-preflight`
 
@@ -248,9 +248,13 @@ Options:
   --poll               强制轮询模式（Docker / NFS 环境）
   --poll-interval <ms> 轮询间隔（毫秒，默认 1000）
   --no-hot             禁用 Soft Reload，所有变更走 Cold Restart
+  --strict-preflight   让 TypeScript 语义诊断重新阻塞启动 / 重载
   --port-conflict <strategy>
                        端口冲突策略：error / prompt / kill / next
   --verbose-lifecycle  输出详细生命周期日志与完整 watcher 变更列表
+  --startup-profile    输出启动阶段耗时摘要
+  --startup-profile-json <path>
+                       将启动阶段耗时写入 JSON 文件
   --clear              每次重载后清空控制台
   -h, --help           显示帮助信息
 ```
@@ -273,6 +277,9 @@ vext dev --port-conflict next
 
 # 排查 loader / hot reload 细节
 vext dev --verbose-lifecycle
+
+# 输出启动耗时摘要并写入 JSON
+vext dev --startup-profile --startup-profile-json .vext/inspect/startup-profile.json
 ```
 
 ## 文件监听规则
@@ -316,7 +323,7 @@ src/
 
 - **极速编译** — esbuild 编译速度比 tsc 快 10-100 倍
 - **开发期诊断分层** — typegen 阻塞 reload / restart，TypeScript 语义诊断默认异步输出；strict 模式可恢复阻塞
-- **自动 generated 声明同步** — preflight 会先更新 `services.generated.d.ts` / `app-extensions.generated.d.ts`
+- **自动 generated 声明同步** — preflight 会先更新 `.vext/types/*.generated.d.ts` 与 `src/types/generated/index.d.ts`
 - **零配置** — 自动读取 `tsconfig.json` 中的编译选项
 
 :::warning 类型检查

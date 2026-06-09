@@ -65,7 +65,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.20"
+    "vextjs": "^0.3.21"
   }
 }
 ```
@@ -99,12 +99,13 @@ my-app/
 |   |   `-- README.md
 |   `-- types/
 |       `-- generated/
-|           `-- .gitkeep
+|           `-- .gitkeep        # vext typegen writes index.d.ts here
 |-- package.json
 `-- tsconfig.json
 ```
 
 JavaScript projects use `.js` files and do not create `src/types/generated/`.
+Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`.
 
 `local.example.ts` and `bootstrap.example.ts` are examples, not active config files. Copy them when you need the feature:
 
@@ -374,7 +375,7 @@ Run type generation after changing services or app extensions:
 npx vext typegen
 ```
 
-Generated declarations are written to `src/types/generated/`.
+Generated declarations are written to `.vext/types/`, with `src/types/generated/index.d.ts` referencing them for TypeScript projects.
 
 ## Middleware
 
@@ -412,7 +413,7 @@ export default definePlugin({
 });
 ```
 
-After adding app extensions, run `vext typegen` so TypeScript consumers see the new fields.
+For precise app extension typing, export `appExtensions = defineAppExtensions<{ ... }>()` with an inline object generic from the plugin file. Legacy `app.extend()` calls are still scanned automatically as a best-effort fallback. After adding app extensions, run `vext typegen` so TypeScript consumers see the new fields.
 
 ## Runtime Hooks
 
@@ -569,7 +570,7 @@ npm run build
 npm start
 ```
 
-`vext build` compiles TypeScript source and project-level preload files. `vext start` runs the production bootstrap path and can read compiled preload files from `dist/preload/` when the root `preload/` directory is not present.
+`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. `vext start` runs the production bootstrap path and can read compiled preload files from `dist/preload/` when the root `preload/` directory is not present.
 
 For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
 

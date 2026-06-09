@@ -78,7 +78,7 @@ export type {
 
 // ── 插件类型 ────────────────────────────────────────────────
 export type { VextPlugin, VextPluginContext } from "./plugin.js";
-export { definePlugin } from "./plugin.js";
+export { definePlugin, defineAppExtensions } from "./plugin.js";
 
 // ── 路由类型 ────────────────────────────────────────────────
 export type { RouteDefinition, RouteCollector, RouteFactory } from "./route.js";

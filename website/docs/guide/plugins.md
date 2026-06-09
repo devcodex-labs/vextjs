@@ -115,15 +115,36 @@ await (app as any).mailer.send("user@example.com", "Welcome", "Hello!");
 ```
 
 :::tip 类型提示
-配合 `declare module` 获得完整的类型支持：
-
-如果你希望自动生成这类扩展声明，可运行：
+如果你希望自动生成插件扩展声明，可在插件文件中导出 `appExtensions = defineAppExtensions<{ ... }>()`，并运行：
 
 ```bash
 vext typegen
 ```
 
-命令会扫描 `src/plugins/` 中 `definePlugin()` 的 `setup` / `onReady` / `onClose` 生命周期内的 `app.extend("...")` 调用，并将结果写入 `src/types/generated/app-extensions.generated.d.ts`。
+当前轻量扫描器优先识别内联对象泛型：
+
+```typescript
+import { defineAppExtensions, definePlugin } from "vextjs";
+
+export const appExtensions = defineAppExtensions<{
+  mailer: {
+    send(to: string, subject: string, body: string): Promise<void>;
+  };
+}>();
+
+export default definePlugin({
+  name: "mailer",
+  setup(app) {
+    app.extend("mailer", {
+      async send(to: string, subject: string, body: string) {
+        app.logger.info({ to, subject }, "Email sent");
+      },
+    });
+  },
+});
+```
+
+命令也会 best-effort 扫描 `definePlugin()` 的 `setup` / `onReady` / `onClose` 生命周期内的 `app.extend("...")` 调用，并将结果写入 `.vext/types/app-extensions.generated.d.ts`，再通过 `src/types/generated/index.d.ts` 接入 TypeScript 项目。复杂类型、导入 type alias 或动态扩展不适合依赖自动扫描，建议使用手写 `declare module`：
 
 ```typescript
 // src/types/extensions.d.ts

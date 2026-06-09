@@ -7,6 +7,7 @@ import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
 import type { OpenAPIConfig } from "../openapi/types.js";
 import { createRequestHookMiddleware } from "../middlewares/request-hook.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
+import { writeDevRouteManifest } from "./route-manifest.js";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）
@@ -471,7 +472,7 @@ export async function reloadRoutes(
     const openapiEnabled =
       openapiCfg != null &&
       (openapiCfg as Record<string, unknown>).enabled !== false;
-    const collector = openapiEnabled ? new RouteMetadataCollector() : null;
+    const collector = new RouteMetadataCollector();
 
     if (existsSync(routesDir)) {
       await loadRoutesFn(
@@ -495,7 +496,17 @@ export async function reloadRoutes(
     // 原有的 /docs 和 /openapi.json 端点不在新 adapter 上，
     // 必须重新生成 spec 并注册端点。
     //
-    if (openapiEnabled && collector) {
+    const routes = collector.getRoutes();
+    await writeDevRouteManifest(projectRootFromOutDir(outDir), routes).catch(
+      (error: unknown) => {
+        app.logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          "[hot-reload] failed to write route manifest",
+        );
+      },
+    );
+
+    if (openapiEnabled) {
       const generator = new OpenAPIGenerator({
         title: (openapiCfg as Record<string, unknown>)?.title as
           | string
@@ -535,12 +546,13 @@ export async function reloadRoutes(
           | undefined,
       } as OpenAPIConfig);
 
-      const routes = collector.getRoutes();
-      const spec = app.hooks
-        ? generateOpenAPIDocumentWithHooks(app as any, generator, routes)
-        : generator.generate(routes);
+      const specProvider = createCachedOpenApiSpecProvider(() =>
+        app.hooks
+          ? generateOpenAPIDocumentWithHooks(app as any, generator, routes)
+          : generator.generate(routes),
+      );
 
-      registerDocEndpoints(app as any, spec, {
+      registerDocEndpoints(app as any, specProvider, {
         specPath:
           ((openapiCfg as Record<string, unknown>)?.jsonPath as string) ??
           "/openapi.json",
@@ -602,6 +614,18 @@ export async function reloadRoutes(
     //
     app.adapter = originalAdapter;
   }
+}
+
+function createCachedOpenApiSpecProvider(generate: () => object): () => object {
+  let cached: object | null = null;
+  return () => {
+    cached ??= generate();
+    return cached;
+  };
+}
+
+function projectRootFromOutDir(outDir: string): string {
+  return path.resolve(outDir, "..", "..");
 }
 
 // ── 简化版重载函数 ──────────────────────────────────────────

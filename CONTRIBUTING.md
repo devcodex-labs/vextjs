@@ -313,7 +313,7 @@ Use the [PR template](/.github/pull_request_template.md) — it includes:
 
 ### Review Process
 
-1. **Automated checks**: CI runs type checking, linting, and full test suite (Node 18/20/22)
+1. **Automated checks**: CI runs type checking, linting, and full test suite (Node 20/22)
 2. **Code review**: At least one maintainer review required
 3. **Merge**: Squash merge to `main` with conventional commit message
 

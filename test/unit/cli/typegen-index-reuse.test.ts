@@ -22,18 +22,18 @@ const mocks = vi.hoisted(() => {
       graph: new Map(),
     })),
     generateServicesDts: vi.fn(async () => ({
-      filePath: "E:/app/src/types/generated/services.generated.d.ts",
+      filePath: "E:/app/.vext/types/services.generated.d.ts",
       status: "unchanged",
     })),
     generateAppExtensionsDts: vi.fn(async () => ({
       file: {
-        filePath: "E:/app/src/types/generated/app-extensions.generated.d.ts",
+        filePath: "E:/app/.vext/types/app-extensions.generated.d.ts",
         status: "unchanged",
       },
       warnings: [],
     })),
     writeServiceManifestFile: vi.fn(async () => ({
-      filePath: "E:/app/.vext/inspect/services.manifest.json",
+      filePath: "E:/app/.vext/manifest/services.json",
       status: "unchanged",
     })),
   };

@@ -22,7 +22,8 @@ export async function typegenCommand(args: string[] = []): Promise<void> {
   const project = detectProject(options.rootDir);
   const { runTypegen } = await import("../tooling/typegen/index.js");
 
-  const generateServices = options.services || (!options.services && !options.appExtensions);
+  const generateServices =
+    options.services || (!options.services && !options.appExtensions);
   const generateAppExtensions =
     options.appExtensions || (!options.services && !options.appExtensions);
 
@@ -42,7 +43,9 @@ export async function typegenCommand(args: string[] = []): Promise<void> {
     }
 
     if (result.manifest) {
-      console.log(`[vext typegen] ${result.manifest.status}: ${result.manifest.filePath}`);
+      console.log(
+        `[vext typegen] ${result.manifest.status}: ${result.manifest.filePath}`,
+      );
     }
 
     for (const warning of result.warnings) {
@@ -112,16 +115,17 @@ function printTypegenHelp(): void {
     --app-extensions    Only generate app.extend declarations
     --check             Validate generated output without writing files
     --json              Print machine-readable JSON output
-    --write-manifest    Write .vext/inspect/services.manifest.json
+    --write-manifest    Write .vext/manifest/services.json
     --root <path>       Project root directory (default: current working directory)
     -C <path>           Alias of --root
     --verbose           Reserved for future verbose logging
     -h, --help          Show this help message
 
   Generated files:
-    src/types/generated/services.generated.d.ts
-    src/types/generated/app-extensions.generated.d.ts
-    .vext/inspect/services.manifest.json  (optional)
+    .vext/types/services.generated.d.ts
+    .vext/types/app-extensions.generated.d.ts
+    src/types/generated/index.d.ts
+    .vext/manifest/services.json  (optional)
 
   Examples:
     $ vext typegen
@@ -130,4 +134,3 @@ function printTypegenHelp(): void {
     $ vext typegen --services --root ./examples/hello-world
 `);
 }
-

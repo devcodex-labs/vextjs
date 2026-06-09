@@ -1,6 +1,6 @@
 # 构建 (vext build)
 
-`vext build` 将 TypeScript/JavaScript 源码编译为可部署的 JavaScript 产物，输出到 `dist/` 目录。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，编译速度极快——典型项目（50+ 源文件）的编译时间在 **1 秒以内**。
+`vext build` 将 TypeScript/JavaScript 源码编译为可部署的 JavaScript 产物，输出到 `dist/` 目录。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快——典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
 
 ## 快速开始
 
@@ -14,6 +14,17 @@ NODE_ENV=production vext start
 # 加载自定义环境配置（需存在 src/config/sg-sit.ts）
 NODE_ENV=sg-sit vext start
 ```
+
+## 构建前置产物刷新
+
+TypeScript 项目执行 `vext build` 时，会先刷新开发工具链需要的 generated 与 manifest 产物，再进入可选类型检查和 esbuild 编译：
+
+1. `vext typegen` 基础刷新：写入 `.vext/types/*.generated.d.ts`、`src/types/generated/index.d.ts` 与 `.vext/manifest/services.json`
+2. `doctor routes --refresh --write-manifest`：重新扫描路由并写入 `.vext/manifest/routes.json`
+3. 如果传入 `--typecheck`，此时再执行 `tsc --noEmit`
+4. 最后由 esbuild 输出 `dist/`
+
+这保证新脚手架或刚清理过 `.vext/` 的项目，也能在 `vext build --typecheck` 中先拿到最新 generated 类型，再进入 TypeScript 校验。
 
 ## 编译策略
 
@@ -52,6 +63,17 @@ src/                          dist/
 | 依赖管理   | 外部依赖由 Node.js 解析      | 需配置 externals    |
 
 ## 编译选项
+
+### CLI 参数
+
+| 参数              | 说明                                            | 默认值  |
+| ----------------- | ----------------------------------------------- | ------- |
+| `--outdir <path>` | 输出目录                                        | `dist`  |
+| `--clean`         | 编译前清理输出目录                              | `false` |
+| `--sourcemap`     | 生成 source map                                 | `true`  |
+| `--no-sourcemap`  | 禁用 source map                                 | —       |
+| `--minify`        | 压缩输出代码                                    | `false` |
+| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
 
 ### 输出格式
 

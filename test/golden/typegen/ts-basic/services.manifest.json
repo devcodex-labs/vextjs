@@ -10,7 +10,7 @@
     "dependencyEdges": 0,
     "dependencyCycles": 0,
     "conflictingAppExtensions": 0,
-    "lowConfidenceAppExtensions": 0
+    "lowConfidenceAppExtensions": 2
   },
   "services": [
     {
@@ -20,7 +20,7 @@
         "stripe"
       ],
       "fileRelativePath": "src/services/payment/stripe.ts",
-      "importPath": "../../services/payment/stripe.js"
+      "importPath": "../../src/services/payment/stripe.js"
     },
     {
       "serviceKey": "userProfile",
@@ -28,7 +28,7 @@
         "userProfile"
       ],
       "fileRelativePath": "src/services/user-profile.ts",
-      "importPath": "../../services/user-profile.js"
+      "importPath": "../../src/services/user-profile.js"
     }
   ],
   "appExtensions": [
@@ -41,7 +41,7 @@
       "sourceKinds": [
         "setup"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "conflict": false
     },
     {
@@ -53,7 +53,7 @@
       "sourceKinds": [
         "onReady"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "conflict": false
     }
   ],
@@ -62,4 +62,3 @@
     "cycles": []
   }
 }
-

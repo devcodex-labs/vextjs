@@ -1,7 +1,10 @@
-import { join } from "node:path";
 import type { AppExtensionIndexEntry } from "../project-index/index.js";
 import { mergeAppExtensions } from "./merge-app-extensions.js";
-import { writeGeneratedFile, type GeneratedFileResult } from "./write-generated-file.js";
+import {
+  writeGeneratedFile,
+  type GeneratedFileResult,
+} from "./write-generated-file.js";
+import { getTypegenGeneratedPaths } from "./generated-paths.js";
 
 export interface AppExtensionsGenerationResult {
   file: GeneratedFileResult;
@@ -13,13 +16,7 @@ export async function generateAppExtensionsDts(
   entries: AppExtensionIndexEntry[],
   options: { checkOnly?: boolean } = {},
 ): Promise<AppExtensionsGenerationResult> {
-  const filePath = join(
-    rootDir,
-    "src",
-    "types",
-    "generated",
-    "app-extensions.generated.d.ts",
-  );
+  const filePath = getTypegenGeneratedPaths(rootDir).appExtensionsDts;
 
   const merged = mergeAppExtensions(entries);
 
@@ -43,4 +40,3 @@ export async function generateAppExtensionsDts(
     warnings: merged.warnings,
   };
 }
-

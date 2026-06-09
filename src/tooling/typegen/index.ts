@@ -10,6 +10,7 @@ import {
   type AppExtensionsGenerationResult,
 } from "./generate-app-extensions-dts.js";
 import { writeServiceManifestFile } from "./write-service-manifest.js";
+import { generateTypegenShim } from "./generate-typegen-shim.js";
 
 export interface RunTypegenOptions {
   rootDir: string;
@@ -55,6 +56,16 @@ export async function runTypegen(
       });
     files.push(appExtensionsResult.file);
     warnings.push(...appExtensionsResult.warnings);
+  }
+
+  if (files.length > 0) {
+    files.push(
+      await generateTypegenShim(
+        rootDir,
+        files.map((file) => file.filePath),
+        { checkOnly },
+      ),
+    );
   }
 
   const serviceDeps = await analyzeServiceDependencies(rootDir, { index });

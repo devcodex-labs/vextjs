@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
   "type": "module",
   "main": "./dist/index.js",
@@ -114,8 +114,7 @@
     "monsqlize": "1.3.0",
     "response-cache-kit": "1.2.0",
     "route-core": "0.0.4",
-    "schema-dsl": "1.2.5",
-    "ts-morph": "28.0.0"
+    "schema-dsl": "1.2.5"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.14.1",

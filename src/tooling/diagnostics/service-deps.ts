@@ -1,9 +1,9 @@
+import { readFile } from "node:fs/promises";
 import {
   buildProjectIndex,
   type ProjectIndex,
   type ServiceIndexEntry,
 } from "../project-index/index.js";
-import { loadTsMorph } from "../shared/lazy-ts-morph.js";
 
 type ServiceDepLevel = "error" | "warn" | "info";
 
@@ -25,14 +25,13 @@ export async function analyzeServiceDependencies(
   options: { index?: ProjectIndex } = {},
 ): Promise<ServiceDependencyReport> {
   const index = options.index ?? (await buildProjectIndex(rootDir));
-  const tsMorph = await loadTsMorph();
   const knownKeys = new Set(
     index.serviceEntries.map((entry) => entry.serviceKey),
   );
   const graph = new Map<string, Set<string>>();
 
   for (const entry of index.serviceEntries) {
-    graph.set(entry.serviceKey, collectDependencies(entry, knownKeys, tsMorph));
+    graph.set(entry.serviceKey, await collectDependencies(entry, knownKeys));
   }
 
   const diagnostics: ServiceDependencyDiagnostic[] = [];
@@ -41,7 +40,7 @@ export async function analyzeServiceDependencies(
   if (diagnostics.length === 0 && index.serviceEntries.length > 0) {
     diagnostics.push({
       level: "info",
-      message: `AST service dependency check passed (${index.serviceEntries.length} service(s))`,
+      message: `Path service dependency check passed (${index.serviceEntries.length} service(s))`,
       sourceFile: index.serviceEntries[0]!.filePath,
     });
   }
@@ -49,18 +48,17 @@ export async function analyzeServiceDependencies(
   return { diagnostics, graph };
 }
 
-function collectDependencies(
+async function collectDependencies(
   entry: ServiceIndexEntry,
   knownKeys: Set<string>,
-  tsMorph: typeof import("ts-morph"),
-): Set<string> {
+): Promise<Set<string>> {
   const deps = new Set<string>();
-  const nodes = entry.sourceFile.getDescendantsOfKind(
-    tsMorph.SyntaxKind.PropertyAccessExpression,
-  );
+  const source = await readFile(entry.filePath, "utf-8");
+  const accessPattern =
+    /(?:\bapp|this\.app)\.services((?:\.[A-Za-z_$][\w$]*)+)/gu;
 
-  for (const node of nodes) {
-    const dep = extractServiceAccessPath(node, tsMorph);
+  for (const match of source.matchAll(accessPattern)) {
+    const dep = (match[1] ?? "").split(".").filter(Boolean).join(".");
     if (!dep || dep === entry.serviceKey || !knownKeys.has(dep)) {
       continue;
     }
@@ -68,39 +66,6 @@ function collectDependencies(
   }
 
   return deps;
-}
-
-function extractServiceAccessPath(
-  node: import("ts-morph").PropertyAccessExpression,
-  tsMorph: typeof import("ts-morph"),
-): string | null {
-  const segments: string[] = [];
-  let current: import("ts-morph").Node = node;
-
-  while (tsMorph.Node.isPropertyAccessExpression(current)) {
-    segments.unshift(current.getName());
-    current = current.getExpression();
-  }
-
-  if (
-    tsMorph.Node.isIdentifier(current) &&
-    current.getText() === "app" &&
-    segments[0] === "services" &&
-    segments.length >= 2
-  ) {
-    return segments.slice(1).join(".");
-  }
-
-  if (
-    tsMorph.Node.isThisExpression(current) &&
-    segments[0] === "app" &&
-    segments[1] === "services" &&
-    segments.length >= 3
-  ) {
-    return segments.slice(2).join(".");
-  }
-
-  return null;
 }
 
 function detectCycles(
@@ -119,7 +84,7 @@ function detectCycles(
       const sourceFile = entryMap.get(node)?.filePath ?? "unknown";
       diagnostics.push({
         level: "error",
-        message: `Circular service dependency detected: ${cycle.join(" → ")}`,
+        message: `Circular service dependency detected: ${cycle.join(" -> ")}`,
         sourceFile,
         serviceKey: node,
         relatedKeys: cycle,

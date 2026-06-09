@@ -10,6 +10,12 @@ import { VextFileWatcher } from "../lib/dev/file-watcher.js";
 import type { FileChangeEvent } from "../lib/dev/file-watcher.js";
 import { classifyChange } from "../lib/dev/change-classifier.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
+import {
+  createStartupProfiler,
+  formatStartupProfile,
+  writeStartupProfileJson,
+  type StartupProfileSnapshot,
+} from "../lib/startup-profiler.js";
 
 /**
  * cli/dev.ts — vext dev 命令实现
@@ -99,6 +105,12 @@ export interface DevCommandOptions {
 
   /** 让 TypeScript 诊断重新阻塞启动 / reload */
   strictPreflight?: boolean;
+
+  /** 输出启动阶段耗时 */
+  startupProfile?: boolean;
+
+  /** 将启动阶段耗时写入 JSON 文件 */
+  startupProfileJson?: string;
 }
 
 async function promptPortConflictDecision(
@@ -188,6 +200,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
     : "concise";
   let promptActive = false;
   let pendingTsDiagnostics: Promise<unknown> | null = null;
+  const startupProfiler = createStartupProfiler({
+    enabled:
+      options.startupProfile === true || Boolean(options.startupProfileJson),
+  });
 
   // ── 1. 检测项目结构 ────────────────────────────────────
   const projectRoot = resolve(options.root || process.cwd());
@@ -234,6 +250,12 @@ export async function devCommand(args: string[] = []): Promise<void> {
   }
   if (options.verboseLifecycle) {
     restarterEnv.VEXT_LIFECYCLE_LEVEL = "verbose";
+  }
+  if (startupProfiler.enabled) {
+    restarterEnv.VEXT_STARTUP_PROFILE = "1";
+  }
+  if (options.startupProfileJson) {
+    restarterEnv.VEXT_STARTUP_PROFILE_JSON = options.startupProfileJson;
   }
 
   // ── 解析预加载模块（vext.preload 字段）──────────────
@@ -294,6 +316,29 @@ export async function devCommand(args: string[] = []): Promise<void> {
   restarter.setEvents({
     onChildMessage: (msg: unknown) => {
       // 子进程可能请求 cold restart（级联检测过大）
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "ready"
+      ) {
+        const startupProfile = (msg as Record<string, unknown>)
+          .startupProfile as StartupProfileSnapshot | undefined;
+        if (startupProfile?.enabled) {
+          const mergedProfile = mergeStartupProfiles(
+            startupProfiler.toJSON(),
+            startupProfile,
+          );
+          console.log(formatStartupProfile(mergedProfile));
+          if (options.startupProfileJson) {
+            writeStartupProfileJson(options.startupProfileJson, mergedProfile);
+            console.log(
+              `[vext dev] startup profile json: ${options.startupProfileJson}`,
+            );
+          }
+        }
+        return;
+      }
+
       if (
         typeof msg === "object" &&
         msg !== null &&
@@ -376,13 +421,19 @@ export async function devCommand(args: string[] = []): Promise<void> {
   console.log("[vext dev] starting initial compilation + server...");
 
   try {
-    if (!(await runPreflight("initial start"))) {
+    if (
+      !(await startupProfiler.time("main.preflight.initial", () =>
+        runPreflight("initial start"),
+      ))
+    ) {
       console.error(
         "[vext dev] initial checks failed. Waiting for changes...\n",
       );
     } else {
       await refreshPreloads();
-      await restarter.restart("initial start");
+      await startupProfiler.time("main.worker.ready", () =>
+        restarter.restart("initial start"),
+      );
       console.log("[vext dev] server ready\n");
     }
   } catch (err) {
@@ -705,6 +756,17 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         options.strictPreflight = true;
         break;
 
+      case "--startup-profile":
+        options.startupProfile = true;
+        break;
+
+      case "--startup-profile-json":
+        if (i + 1 < args.length) {
+          options.startupProfile = true;
+          options.startupProfileJson = args[++i]!;
+        }
+        break;
+
       case "--verbose-lifecycle":
         options.verboseLifecycle = true;
         break;
@@ -786,8 +848,36 @@ function parseDevArgs(args: string[]): DevCommandOptions {
       | "kill"
       | "next";
   }
+  if (
+    options.startupProfile === undefined &&
+    (process.env.VEXT_STARTUP_PROFILE === "1" ||
+      process.env.VEXT_STARTUP_PROFILE === "true")
+  ) {
+    options.startupProfile = true;
+  }
+  if (
+    options.startupProfileJson === undefined &&
+    process.env.VEXT_STARTUP_PROFILE_JSON
+  ) {
+    options.startupProfile = true;
+    options.startupProfileJson = process.env.VEXT_STARTUP_PROFILE_JSON;
+  }
 
   return options;
+}
+
+function mergeStartupProfiles(
+  mainProfile: StartupProfileSnapshot,
+  workerProfile: StartupProfileSnapshot,
+): StartupProfileSnapshot {
+  return {
+    enabled: true,
+    startedAt: mainProfile.startedAt,
+    elapsedMs: Math.max(mainProfile.elapsedMs, workerProfile.elapsedMs),
+    events: [...mainProfile.events, ...workerProfile.events].sort(
+      (a, b) => a.startMs - b.startMs || a.name.localeCompare(b.name),
+    ),
+  };
 }
 
 // ── 输出函数 ────────────────────────────────────────────────
@@ -859,6 +949,9 @@ function printDevHelp(): void {
     --debounce <ms>       Debounce interval in ms (default: 0, disabled)
     --no-hot              Disable soft reload, always cold restart
     --strict-preflight    Block start/reload on TypeScript diagnostics
+    --startup-profile     Print startup phase timings
+    --startup-profile-json <path>
+                           Write startup phase timings to a JSON file
     --port-conflict <error|prompt|kill|next>
                            Configure how port conflicts are handled
     --verbose-lifecycle   Show verbose lifecycle logs
@@ -878,6 +971,10 @@ function printDevHelp(): void {
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload
+    VEXT_STARTUP_PROFILE=1
+                           Print startup phase timings
+    VEXT_STARTUP_PROFILE_JSON=<path>
+                           Write startup phase timings to a JSON file
     VEXT_DEV_STRICT_PREFLIGHT=1
                           Block start/reload on TypeScript diagnostics
     VEXT_DEV_DEBOUNCE=50  Set debounce interval (ms, default: 0)

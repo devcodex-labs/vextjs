@@ -6,6 +6,7 @@ interface DoctorOptions {
   json: boolean;
   writeInspect: boolean;
   writeManifest: boolean;
+  refresh: boolean;
   help: boolean;
 }
 
@@ -24,6 +25,7 @@ export async function doctorCommand(args: string[] = []): Promise<void> {
     target: options.target,
     writeInspect: options.writeInspect,
     writeManifest: options.writeManifest,
+    refresh: options.refresh,
   });
 
   if (options.json) {
@@ -52,7 +54,8 @@ export async function doctorCommand(args: string[] = []): Promise<void> {
       const suggestion = diagnostic.suggestedValue
         ? ` -> suggested: ${diagnostic.suggestedValue}`
         : "";
-      const logger = diagnostic.level === "error" ? console.error : console.warn;
+      const logger =
+        diagnostic.level === "error" ? console.error : console.warn;
       logger(
         `[vext doctor] ${diagnostic.level}/${diagnostic.group}: ${diagnostic.message}${location}${suggestion}`,
       );
@@ -73,6 +76,7 @@ function parseDoctorArgs(args: string[]): DoctorOptions {
     json: false,
     writeInspect: false,
     writeManifest: false,
+    refresh: false,
     help: false,
   };
 
@@ -91,6 +95,8 @@ function parseDoctorArgs(args: string[]): DoctorOptions {
       options.writeInspect = true;
     } else if (arg === "--write-manifest") {
       options.writeManifest = true;
+    } else if (arg === "--refresh") {
+      options.refresh = true;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg.startsWith("--")) {
@@ -116,7 +122,8 @@ function printDoctorHelp(): void {
   Options:
     --json              Print machine-readable JSON output
     --write-inspect     Write .vext/inspect/routes.json for downstream tooling
-    --write-manifest    Write .vext/inspect/routes.manifest.json for stable tooling consumers
+    --write-manifest    Write .vext/manifest/routes.json for stable tooling consumers
+    --refresh           Rebuild route diagnostics instead of reading the cached manifest
     --root <path>       Project root directory (default: current working directory)
     -C <path>           Alias of --root
     -h, --help          Show this help message
@@ -128,4 +135,3 @@ function printDoctorHelp(): void {
     $ vext doctor routes --json --root ./examples/hello-world
   `);
 }
-

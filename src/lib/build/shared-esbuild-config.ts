@@ -44,7 +44,7 @@ export const LOADER_MAP: Record<string, Loader> = {
  * 用于 fast-glob 扫描 src/ 目录下的所有可编译文件。
  * DevCompiler.start() 和 BuildCompiler.build() 均使用此模式。
  */
-export const SOURCE_GLOB = "**/*.{ts,js,mjs,cjs}";
+export const SOURCE_GLOB = "**/*.{ts,mts,cts,js,mjs,cjs}";
 
 /**
  * 入口扫描排除模式

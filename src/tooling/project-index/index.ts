@@ -1,17 +1,17 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import fg from "fast-glob";
-import { loadTsMorph } from "../shared/lazy-ts-morph.js";
 import {
   filePathToServiceKeys,
   toGeneratedImportPath,
 } from "../../shared/service-paths.js";
+import { getTypegenGeneratedPaths } from "../typegen/generated-paths.js";
 
-type TsMorphModule = typeof import("ts-morph");
-type SourceFile = import("ts-morph").SourceFile;
-type Expression = import("ts-morph").Expression;
-
-export type ExtensionSourceKind = "setup" | "onReady" | "onClose";
+export type ExtensionSourceKind =
+  | "setup"
+  | "onReady"
+  | "onClose"
+  | "declaration";
 export type InferenceConfidence = "high" | "medium" | "low";
 
 export interface ServiceIndexEntry {
@@ -19,7 +19,6 @@ export interface ServiceIndexEntry {
   importPath: string;
   serviceKey: string;
   keySegments: string[];
-  sourceFile: SourceFile;
 }
 
 export interface AppExtensionIndexEntry {
@@ -35,7 +34,7 @@ export interface ProjectIndex {
   appExtensions: AppExtensionIndexEntry[];
 }
 
-const SOURCE_PATTERNS = ["**/*.{ts,js,mjs,cjs}"];
+const SOURCE_PATTERNS = ["**/*.{ts,mts,cts,js,mjs,cjs}"];
 const COMMON_IGNORE_PATTERNS = [
   "**/_*/**",
   "**/_*",
@@ -45,50 +44,18 @@ const COMMON_IGNORE_PATTERNS = [
   "**/*.__vext_compiled__*",
 ];
 
-const PORTABLE_SINGLE_IDENTIFIERS = new Set([
-  "string",
-  "number",
-  "boolean",
-  "unknown",
-  "any",
-  "never",
-  "void",
-  "object",
-  "null",
-  "undefined",
-  "bigint",
-  "symbol",
-  "Date",
-  "RegExp",
-  "Error",
-  "Promise",
-  "Array",
-  "ReadonlyArray",
-  "Record",
-  "Map",
-  "Set",
-  "URL",
-  "Uint8Array",
-  "Buffer",
-]);
+const LIFECYCLE_METHODS: Array<Exclude<ExtensionSourceKind, "declaration">> = [
+  "setup",
+  "onReady",
+  "onClose",
+];
 
-export async function buildProjectIndex(rootDir: string): Promise<ProjectIndex> {
+export async function buildProjectIndex(
+  rootDir: string,
+): Promise<ProjectIndex> {
   const servicesDir = join(rootDir, "src", "services");
   const pluginsDir = join(rootDir, "src", "plugins");
-  const servicesGeneratedFile = join(
-    rootDir,
-    "src",
-    "types",
-    "generated",
-    "services.generated.d.ts",
-  );
-  const appExtensionsGeneratedFile = join(
-    rootDir,
-    "src",
-    "types",
-    "generated",
-    "app-extensions.generated.d.ts",
-  );
+  const paths = getTypegenGeneratedPaths(rootDir);
 
   const serviceFiles = existsSync(servicesDir)
     ? await fg(SOURCE_PATTERNS, {
@@ -108,40 +75,20 @@ export async function buildProjectIndex(rootDir: string): Promise<ProjectIndex> 
       })
     : [];
 
-  const allSourceFiles = [...new Set([...serviceFiles, ...pluginFiles])].sort((a, b) =>
-    a.localeCompare(b),
-  );
-
-  const tsMorph = await loadTsMorph();
-  const project = createProject(rootDir, allSourceFiles, tsMorph);
-
   const serviceEntries = serviceFiles
     .map((filePath) => {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) {
-        return null;
-      }
-
       const keySegments = filePathToServiceKeys(filePath, servicesDir);
       return {
         filePath,
-        importPath: toGeneratedImportPath(servicesGeneratedFile, filePath),
+        importPath: toGeneratedImportPath(paths.servicesDts, filePath),
         serviceKey: keySegments.join("."),
         keySegments,
-        sourceFile,
       } satisfies ServiceIndexEntry;
     })
-    .filter((entry): entry is ServiceIndexEntry => entry !== null)
     .sort((a, b) => a.serviceKey.localeCompare(b.serviceKey));
 
   const appExtensions = pluginFiles
-    .flatMap((filePath) => {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) {
-        return [];
-      }
-      return scanAppExtensions(sourceFile, appExtensionsGeneratedFile, tsMorph);
-    })
+    .flatMap((filePath) => scanAppExtensions(filePath, paths.appExtensionsDts))
     .sort((a, b) => a.propertyKey.localeCompare(b.propertyKey));
 
   return {
@@ -150,98 +97,76 @@ export async function buildProjectIndex(rootDir: string): Promise<ProjectIndex> 
   };
 }
 
-function createProject(
-  rootDir: string,
-  sourceFiles: string[],
-  tsMorph: TsMorphModule,
-): import("ts-morph").Project {
-  const tsconfigPath = join(rootDir, "tsconfig.json");
-
-  if (existsSync(tsconfigPath)) {
-    const project = new tsMorph.Project({
-      tsConfigFilePath: tsconfigPath,
-      skipAddingFilesFromTsConfig: false,
-    });
-
-    for (const filePath of sourceFiles) {
-      project.addSourceFileAtPathIfExists(filePath);
-    }
-
-    return project;
-  }
-
-  const project = new tsMorph.Project({
-    compilerOptions: {
-      allowJs: true,
-      checkJs: false,
-      module: tsMorph.ts.ModuleKind.NodeNext,
-      moduleResolution: tsMorph.ts.ModuleResolutionKind.NodeNext,
-      target: tsMorph.ts.ScriptTarget.ES2022,
-      strict: false,
-    },
-    useInMemoryFileSystem: false,
-  });
-
-  for (const filePath of sourceFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  return project;
+function scanAppExtensions(
+  pluginFile: string,
+  generatedFilePath: string,
+): AppExtensionIndexEntry[] {
+  const source = readFileSync(pluginFile, "utf-8");
+  const declared = scanDeclaredAppExtensions(
+    source,
+    pluginFile,
+    generatedFilePath,
+  );
+  const declaredKeys = new Set(declared.map((entry) => entry.propertyKey));
+  const legacy = scanLegacyAppExtendCalls(source, pluginFile).filter(
+    (entry) => !declaredKeys.has(entry.propertyKey),
+  );
+  return [...declared, ...legacy];
 }
 
-function scanAppExtensions(
-  sourceFile: SourceFile,
+function scanDeclaredAppExtensions(
+  source: string,
+  pluginFile: string,
   generatedFilePath: string,
-  tsMorph: TsMorphModule,
 ): AppExtensionIndexEntry[] {
   const entries: AppExtensionIndexEntry[] = [];
-  const pluginDefinitions = sourceFile
-    .getDescendantsOfKind(tsMorph.SyntaxKind.CallExpression)
-    .filter((call) => isDefinePluginCall(call, tsMorph));
+  const declarationPattern =
+    /export\s+const\s+appExtensions\s*=\s*defineAppExtensions\s*<\s*\{([\s\S]*?)\}\s*>\s*\(/gu;
+  const importPath = toGeneratedImportPath(generatedFilePath, pluginFile);
 
-  for (const pluginDefinition of pluginDefinitions) {
-    const pluginOptions = pluginDefinition.getArguments()[0];
-    if (!pluginOptions || !tsMorph.Node.isObjectLiteralExpression(pluginOptions)) {
-      continue;
+  for (const match of source.matchAll(declarationPattern)) {
+    const body = match[1] ?? "";
+    for (const propertyKey of extractObjectTypeKeys(body)) {
+      entries.push({
+        pluginFile,
+        propertyKey,
+        inferredTypeText: `typeof import("${importPath}").appExtensions["${propertyKey}"]`,
+        sourceKind: "declaration",
+        confidence: "high",
+      });
     }
+  }
 
-    for (const member of pluginOptions.getProperties()) {
-      const lifecycleMethod = getLifecycleMethod(member, tsMorph);
-      if (!lifecycleMethod) continue;
+  return entries;
+}
 
-      const { name, paramName, body } = lifecycleMethod;
-      for (const call of body.getDescendantsOfKind(tsMorph.SyntaxKind.CallExpression)) {
-        const expression = call.getExpression();
-        if (!tsMorph.Node.isPropertyAccessExpression(expression)) continue;
-        if (expression.getName() !== "extend") continue;
-        if (expression.getExpression().getText() !== paramName) continue;
+function scanLegacyAppExtendCalls(
+  source: string,
+  pluginFile: string,
+): AppExtensionIndexEntry[] {
+  const entries: AppExtensionIndexEntry[] = [];
 
-        const args = call.getArguments();
-        const keyArg = args[0];
-        const valueArg = args[1];
-        if (!keyArg || !valueArg) continue;
-        if (
-          !tsMorph.Node.isStringLiteral(keyArg) &&
-          !tsMorph.Node.isNoSubstitutionTemplateLiteral(keyArg)
-        ) {
-          continue;
-        }
+  for (const lifecycle of LIFECYCLE_METHODS) {
+    for (const block of findLifecycleBlocks(source, lifecycle)) {
+      const callPattern = new RegExp(
+        `${escapeRegExp(block.paramName)}\\.extend\\s*\\(\\s*([\"'\`])([^\"'\`]+)\\1\\s*,`,
+        "gu",
+      );
 
-        const propertyKey = keyArg.getLiteralText();
-        if (propertyKey.length === 0) continue;
+      for (const match of block.body.matchAll(callPattern)) {
+        const propertyKey = match[2];
+        if (!propertyKey) continue;
 
-        const { typeText, confidence } = inferPortableType(
-          valueArg as Expression,
-          generatedFilePath,
-          tsMorph,
-        );
+        const valueStart = match.index + match[0].length;
+        const valueExpression = readCallArgument(block.body, valueStart);
+        const inferred = inferLegacyValueType(block.body, valueExpression);
 
         entries.push({
-          pluginFile: sourceFile.getFilePath(),
+          pluginFile,
           propertyKey,
-          inferredTypeText: typeText,
-          sourceKind: name,
-          confidence,
+          inferredTypeText: inferred.typeText,
+          sourceKind: lifecycle,
+          confidence: inferred.confidence,
         });
       }
     }
@@ -250,203 +175,305 @@ function scanAppExtensions(
   return entries;
 }
 
-function isDefinePluginCall(
-  call: import("ts-morph").CallExpression,
-  tsMorph: TsMorphModule,
-): boolean {
-  const expression = call.getExpression();
-  return tsMorph.Node.isIdentifier(expression) && expression.getText() === "definePlugin";
-}
-
-function getLifecycleMethod(
-  member: import("ts-morph").ObjectLiteralElementLike,
-  tsMorph: TsMorphModule,
-): {
-  name: ExtensionSourceKind;
-  paramName: string;
-  body: import("ts-morph").Node;
-} | null {
-  if (tsMorph.Node.isMethodDeclaration(member)) {
-    const name = toExtensionSourceKind(member.getName());
-    if (!name) return null;
-
-    const paramName = member.getParameters()[0]?.getName();
-    const body = member.getBody();
-    if (!paramName || !body) return null;
-
-    return { name, paramName, body };
-  }
-
-  if (tsMorph.Node.isPropertyAssignment(member)) {
-    const name = toExtensionSourceKind(member.getName());
-    if (!name) return null;
-
-    const initializer = member.getInitializer();
-    if (
-      !initializer ||
-      (!tsMorph.Node.isArrowFunction(initializer) &&
-        !tsMorph.Node.isFunctionExpression(initializer))
-    ) {
-      return null;
-    }
-
-    const paramName = initializer.getParameters()[0]?.getName();
-    const body = initializer.getBody();
-    if (!paramName || !body) return null;
-
-    return { name, paramName, body };
-  }
-
-  return null;
-}
-
-function inferPortableType(
-  expr: Expression,
-  generatedFilePath: string,
-  tsMorph: TsMorphModule,
-  visited = new Set<number>(),
-): { typeText: string; confidence: InferenceConfidence } {
-  if (visited.has(expr.getPos())) {
-    return { typeText: "unknown", confidence: "low" };
-  }
-  visited.add(expr.getPos());
-
-  const type = expr.getType();
-  const typeText = type.getText(
-    expr,
-    tsMorph.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope |
-      tsMorph.TypeFormatFlags.NoTruncation,
+function findLifecycleBlocks(
+  source: string,
+  lifecycle: Exclude<ExtensionSourceKind, "declaration">,
+): Array<{ paramName: string; body: string }> {
+  const blocks: Array<{ paramName: string; body: string }> = [];
+  const methodPattern = new RegExp(
+    `${lifecycle}\\s*\\(\\s*([A-Za-z_$][\\w$]*)[^)]*\\)\\s*\\{`,
+    "gu",
   );
 
-  if (isPortableTypeText(typeText)) {
-    return { typeText, confidence: "high" };
-  }
-
-  if (tsMorph.Node.isIdentifier(expr)) {
-    const defs = expr.getDefinitionNodes();
-    for (const def of defs) {
-      if (tsMorph.Node.isVariableDeclaration(def)) {
-        const initializer = def.getInitializer();
-        if (initializer) {
-          return inferPortableType(initializer, generatedFilePath, tsMorph, visited);
-        }
-      }
-
-      const imported = typeRefFromImportDefinition(def, tsMorph);
-      if (imported) {
-        return { typeText: imported, confidence: "medium" };
-      }
-
-      const local = typeRefFromDeclaration(def, generatedFilePath, tsMorph);
-      if (local) {
-        return { typeText: local, confidence: "medium" };
-      }
+  for (const match of source.matchAll(methodPattern)) {
+    const openBrace = source.indexOf("{", match.index);
+    const body = readBalanced(source, openBrace, "{", "}");
+    const paramName = match[1];
+    if (paramName && body) {
+      blocks.push({ paramName, body: body.slice(1, -1) });
     }
   }
 
-  if (tsMorph.Node.isNewExpression(expr)) {
-    const callee = expr.getExpression();
-    if (tsMorph.Node.isIdentifier(callee)) {
-      const defs = callee.getDefinitionNodes();
-      for (const def of defs) {
-        const imported = typeRefFromImportDefinition(def, tsMorph);
-        if (imported) {
-          return { typeText: imported, confidence: "medium" };
-        }
+  const propertyPattern = new RegExp(
+    `${lifecycle}\\s*:\\s*(?:async\\s*)?\\(?\\s*([A-Za-z_$][\\w$]*)[^)]*\\)?\\s*=>\\s*\\{`,
+    "gu",
+  );
 
-        const local = typeRefFromDeclaration(def, generatedFilePath, tsMorph);
-        if (local) {
-          return { typeText: local, confidence: "medium" };
-        }
-      }
+  for (const match of source.matchAll(propertyPattern)) {
+    const openBrace = source.indexOf("{", match.index);
+    const body = readBalanced(source, openBrace, "{", "}");
+    const paramName = match[1];
+    if (paramName && body) {
+      blocks.push({ paramName, body: body.slice(1, -1) });
+    }
+  }
+
+  return blocks;
+}
+
+function inferLegacyValueType(
+  lifecycleBody: string,
+  valueExpression: string,
+): { typeText: string; confidence: InferenceConfidence } {
+  const value = valueExpression.trim();
+  if (!value) {
+    return { typeText: "unknown", confidence: "low" };
+  }
+
+  if (value.startsWith("{")) {
+    return {
+      typeText: inferObjectLiteralType(value),
+      confidence: "medium",
+    };
+  }
+
+  if (/^(true|false)$/u.test(value)) {
+    return { typeText: "boolean", confidence: "medium" };
+  }
+  if (/^-?\d+(?:\.\d+)?$/u.test(value)) {
+    return { typeText: "number", confidence: "medium" };
+  }
+  if (/^["'`]/u.test(value)) {
+    return { typeText: "string", confidence: "medium" };
+  }
+
+  const identifier = /^[A-Za-z_$][\w$]*/u.exec(value)?.[0];
+  if (identifier) {
+    const initializer = findConstObjectInitializer(lifecycleBody, identifier);
+    if (initializer) {
+      return {
+        typeText: inferObjectLiteralType(initializer),
+        confidence: "medium",
+      };
     }
   }
 
   return { typeText: "unknown", confidence: "low" };
 }
 
-function isPortableTypeText(typeText: string): boolean {
-  const text = typeText.trim();
-  if (text.length === 0) return false;
+function inferObjectLiteralType(objectLiteral: string): string {
+  const body = objectLiteral.trim().replace(/^\{|\}$/gu, "");
+  const members: string[] = [];
 
-  if (
-    text.startsWith("{") ||
-    text.startsWith("(") ||
-    text.startsWith("[") ||
-    text.startsWith("import(") ||
-    text.includes("=>")
-  ) {
-    return true;
+  const methodPattern =
+    /(?:async\s+)?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?::\s*([^\{]+?))?\s*\{/gu;
+  for (const match of body.matchAll(methodPattern)) {
+    const name = match[1];
+    const params = normalizeParams(match[2] ?? "");
+    const returnType = normalizeReturnType(match[3], match[0]);
+    if (name) {
+      members.push(`${name}(${params}): ${returnType};`);
+    }
   }
 
-  if (text.includes("|") || text.includes("&")) {
-    return text
-      .split(/[|&]/u)
-      .map((part) => part.trim())
-      .every((part) => isPortableTypeText(part));
+  const propertyPattern =
+    /(?:^|,|\n)\s*([A-Za-z_$][\w$]*)\s*:\s*(true|false|-?\d+(?:\.\d+)?|["'`][\s\S]*?["'`])/gu;
+  for (const match of body.matchAll(propertyPattern)) {
+    const name = match[1];
+    const value = match[2] ?? "";
+    if (name && !members.some((item) => item.startsWith(`${name}(`))) {
+      members.push(`${name}: ${inferPrimitiveLiteralType(value)};`);
+    }
   }
 
-  const genericBase = text.split("<")[0]!.trim();
-  if (PORTABLE_SINGLE_IDENTIFIERS.has(genericBase)) {
-    return true;
+  if (members.length === 0) {
+    return "Record<string, unknown>";
   }
 
-  return false;
+  return `{ ${members.join(" ")} }`;
 }
 
-function typeRefFromImportDefinition(
-  node: import("ts-morph").Node,
-  tsMorph: TsMorphModule,
+function normalizeParams(paramsText: string): string {
+  const params = paramsText
+    .split(",")
+    .map((param) => param.trim())
+    .filter(Boolean)
+    .map((param) => {
+      if (param.includes(":")) {
+        return param;
+      }
+      return `${param}: any`;
+    });
+  return params.join(", ");
+}
+
+function normalizeReturnType(
+  explicitReturnType: string | undefined,
+  signatureText: string,
+): string {
+  const cleaned = explicitReturnType?.trim().replace(/,$/u, "");
+  if (cleaned) {
+    return cleaned;
+  }
+  return signatureText.trim().startsWith("async ") ? "Promise<any>" : "any";
+}
+
+function inferPrimitiveLiteralType(value: string): string {
+  if (/^(true|false)$/u.test(value)) return "boolean";
+  if (/^-?\d+(?:\.\d+)?$/u.test(value)) return "number";
+  return "string";
+}
+
+function findConstObjectInitializer(
+  body: string,
+  identifier: string,
 ): string | null {
-  if (tsMorph.Node.isImportSpecifier(node)) {
-    const importDecl = node.getImportDeclaration();
-    const moduleSpecifier = importDecl.getModuleSpecifierValue();
-    const exportedName = node.getNameNode().getText();
-    return `import("${moduleSpecifier}").${exportedName}`;
+  const pattern = new RegExp(
+    `\\bconst\\s+${escapeRegExp(identifier)}\\s*=`,
+    "u",
+  );
+  const match = pattern.exec(body);
+  if (!match) return null;
+
+  const openBrace = body.indexOf("{", match.index + match[0].length);
+  if (openBrace < 0) return null;
+  return readBalanced(body, openBrace, "{", "}");
+}
+
+function extractObjectTypeKeys(body: string): string[] {
+  const keys: string[] = [];
+  let index = 0;
+
+  while (index < body.length) {
+    index = skipTypeWhitespaceAndDelimiters(body, index);
+    if (body.startsWith("readonly", index)) {
+      index = skipTypeWhitespaceAndDelimiters(body, index + "readonly".length);
+    }
+
+    const keyMatch = /^[A-Za-z_$][\w$]*/u.exec(body.slice(index));
+    if (!keyMatch) {
+      index++;
+      continue;
+    }
+
+    const key = keyMatch[0];
+    index += key.length;
+    index = skipTypeWhitespaceAndDelimiters(body, index);
+    if (body[index] === "?") {
+      index++;
+      index = skipTypeWhitespaceAndDelimiters(body, index);
+    }
+
+    if (body[index] === ":") {
+      keys.push(key);
+      index = consumeTypeValue(body, index + 1);
+      continue;
+    }
+
+    index++;
   }
 
-  if (tsMorph.Node.isImportClause(node)) {
-    const importDecl = node.getParentIfKindOrThrow(
-      tsMorph.SyntaxKind.ImportDeclaration,
-    );
-    const moduleSpecifier = importDecl.getModuleSpecifierValue();
-    if (node.getDefaultImport()) {
-      return `import("${moduleSpecifier}").default`;
+  return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
+}
+
+function skipTypeWhitespaceAndDelimiters(body: string, index: number): number {
+  let current = index;
+  while (current < body.length && /[\s;,]/u.test(body[current] ?? "")) {
+    current++;
+  }
+  return current;
+}
+
+function consumeTypeValue(body: string, index: number): number {
+  let current = index;
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  while (current < body.length) {
+    const char = body[current]!;
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      current++;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      current++;
+      continue;
+    }
+
+    if (char === "{" || char === "(" || char === "[" || char === "<") {
+      depth++;
+    } else if (char === "}" || char === ")" || char === "]" || char === ">") {
+      depth = Math.max(0, depth - 1);
+    } else if ((char === ";" || char === ",") && depth === 0) {
+      return current + 1;
+    }
+
+    current++;
+  }
+
+  return current;
+}
+
+function readCallArgument(source: string, startIndex: number): string {
+  let index = startIndex;
+  while (/\s/u.test(source[index] ?? "")) index++;
+
+  if (source[index] === "{") {
+    return readBalanced(source, index, "{", "}") ?? "";
+  }
+  if (source[index] === "(") {
+    return readBalanced(source, index, "(", ")") ?? "";
+  }
+
+  let end = index;
+  while (end < source.length && source[end] !== ")" && source[end] !== "\n") {
+    if (source[end] === ",") break;
+    end++;
+  }
+  return source.slice(index, end);
+}
+
+function readBalanced(
+  source: string,
+  openIndex: number,
+  openChar: "{" | "(" | "[",
+  closeChar: "}" | ")" | "]",
+): string | null {
+  if (openIndex < 0 || source[openIndex] !== openChar) return null;
+
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = openIndex; i < source.length; i++) {
+    const char = source[i]!;
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === openChar) {
+      depth++;
+    } else if (char === closeChar) {
+      depth--;
+      if (depth === 0) {
+        return source.slice(openIndex, i + 1);
+      }
     }
   }
 
   return null;
 }
 
-function typeRefFromDeclaration(
-  node: import("ts-morph").Node,
-  generatedFilePath: string,
-  tsMorph: TsMorphModule,
-): string | null {
-  if (
-    !tsMorph.Node.isClassDeclaration(node) &&
-    !tsMorph.Node.isInterfaceDeclaration(node) &&
-    !tsMorph.Node.isTypeAliasDeclaration(node)
-  ) {
-    return null;
-  }
-
-  const name = node.getName();
-  if (!name) return null;
-
-  const moduleSpecifier = toGeneratedImportPath(
-    generatedFilePath,
-    node.getSourceFile().getFilePath(),
-  );
-  return `import("${moduleSpecifier}").${name}`;
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
-
-function toExtensionSourceKind(
-  name: string | undefined,
-): ExtensionSourceKind | null {
-  if (name === "setup") return "setup";
-  if (name === "onReady") return "onReady";
-  if (name === "onClose") return "onClose";
-  return null;
-}
-

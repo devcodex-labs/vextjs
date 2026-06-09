@@ -606,7 +606,7 @@ export default class UserService extends BaseService {
 vext typegen
 ```
 
-该命令会在 `src/types/generated/services.generated.d.ts` 中自动生成 `VextServices` 扩展声明，并顺带执行一轮 tooling 层 service 依赖 AST 检查。
+该命令会在 `.vext/types/services.generated.d.ts` 中自动生成 `VextServices` 扩展声明，并通过 `src/types/generated/index.d.ts` 接入 TypeScript 项目，同时执行一轮 tooling 层 service 依赖检查。
 
 从 `0.3.7` 起，`vext dev` 也会在 preflight 中自动执行这一步的基础版本，用于保证开发态的 generated 声明与当前 `services` / `plugins` 定义保持同步；如果你需要 `--check`、`--write-manifest` 或独立 CI 控制，仍应显式运行 `vext typegen`。
 
@@ -616,7 +616,7 @@ vext typegen
 vext typegen --write-manifest
 ```
 
-对应产物会写入：`.vext/inspect/services.manifest.json`。
+对应产物会写入：`.vext/manifest/services.json`。
 
 如果你需要手写或补充少量高级声明，仍可保留自定义 `.d.ts` 文件；generated 文件与手写文件是隔离的，不会互相覆盖。
 

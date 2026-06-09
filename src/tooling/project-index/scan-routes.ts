@@ -1,12 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import fg from "fast-glob";
-import { loadTsMorph } from "../shared/lazy-ts-morph.js";
 
-type TsMorphModule = typeof import("ts-morph");
-type SourceFile = import("ts-morph").SourceFile;
-
-const ROUTE_SOURCE_PATTERNS = ["**/*.{ts,js,mjs,cjs}"];
+const ROUTE_SOURCE_PATTERNS = ["**/*.{ts,mts,cts,js,mjs,cjs}"];
 const ROUTE_IGNORE_PATTERNS = [
   "**/_*/**",
   "**/_*",
@@ -15,7 +11,15 @@ const ROUTE_IGNORE_PATTERNS = [
   "**/*.spec.*",
   "**/*.__vext_compiled__*",
 ];
-const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
+const HTTP_METHODS = [
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "head",
+  "options",
+];
 
 export interface RouteIndexEntry {
   filePath: string;
@@ -30,7 +34,9 @@ export interface RouteIndexEntry {
   hidden: boolean;
 }
 
-export async function buildRouteIndex(rootDir: string): Promise<RouteIndexEntry[]> {
+export async function buildRouteIndex(
+  rootDir: string,
+): Promise<RouteIndexEntry[]> {
   const routesDir = join(rootDir, "src", "routes");
   if (!existsSync(routesDir)) {
     return [];
@@ -43,111 +49,47 @@ export async function buildRouteIndex(rootDir: string): Promise<RouteIndexEntry[
     ignore: ROUTE_IGNORE_PATTERNS,
   });
 
-  if (routeFiles.length === 0) {
-    return [];
-  }
-
-  const tsMorph = await loadTsMorph();
-  const project = createRouteProject(rootDir, routeFiles, tsMorph);
-
   return routeFiles
-    .flatMap((filePath) => {
-      const sourceFile = project.getSourceFile(filePath);
-      if (!sourceFile) {
-        return [];
-      }
-      return scanRouteEntries(sourceFile, filePath, rootDir, routesDir, tsMorph);
-    })
-    .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`));
-}
-
-function createRouteProject(
-  rootDir: string,
-  routeFiles: string[],
-  tsMorph: TsMorphModule,
-): import("ts-morph").Project {
-  const tsconfigPath = join(rootDir, "tsconfig.json");
-
-  if (existsSync(tsconfigPath)) {
-    const project = new tsMorph.Project({
-      tsConfigFilePath: tsconfigPath,
-      skipAddingFilesFromTsConfig: false,
-    });
-
-    for (const filePath of routeFiles) {
-      project.addSourceFileAtPathIfExists(filePath);
-    }
-
-    return project;
-  }
-
-  const project = new tsMorph.Project({
-    compilerOptions: {
-      allowJs: true,
-      checkJs: false,
-      module: tsMorph.ts.ModuleKind.NodeNext,
-      moduleResolution: tsMorph.ts.ModuleResolutionKind.NodeNext,
-      target: tsMorph.ts.ScriptTarget.ES2022,
-      strict: false,
-    },
-    useInMemoryFileSystem: false,
-  });
-
-  for (const filePath of routeFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  return project;
+    .flatMap((filePath) => scanRouteEntries(filePath, rootDir, routesDir))
+    .sort((a, b) =>
+      `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),
+    );
 }
 
 function scanRouteEntries(
-  sourceFile: SourceFile,
   filePath: string,
   rootDir: string,
   routesDir: string,
-  tsMorph: TsMorphModule,
 ): RouteIndexEntry[] {
+  const source = readFileSync(filePath, "utf-8");
   const prefix = filePathToRoutePrefix(filePath, routesDir);
   const fileRelativePath = relative(rootDir, filePath).split(sep).join("/");
-  const definitions = sourceFile
-    .getDescendantsOfKind(tsMorph.SyntaxKind.CallExpression)
-    .filter((call) => isDefineRoutesCall(call, tsMorph));
   const entries: RouteIndexEntry[] = [];
 
-  for (const definition of definitions) {
-    const factory = definition.getArguments()[0];
-    if (!factory || (!tsMorph.Node.isArrowFunction(factory) && !tsMorph.Node.isFunctionExpression(factory))) {
-      continue;
-    }
+  for (const block of findDefineRoutesBlocks(source)) {
+    const methodPattern = new RegExp(
+      `${escapeRegExp(block.paramName)}\\.(${HTTP_METHODS.join("|")})\\s*\\(`,
+      "gu",
+    );
 
-    const appParamName = factory.getParameters()[0]?.getName();
-    const body = factory.getBody();
-    if (!appParamName) continue;
+    for (const match of block.body.matchAll(methodPattern)) {
+      const openParen = block.body.indexOf("(", match.index);
+      const callBody = readBalanced(block.body, openParen, "(", ")");
+      if (!callBody) continue;
 
-    for (const call of body.getDescendantsOfKind(tsMorph.SyntaxKind.CallExpression)) {
-      const expression = call.getExpression();
-      if (!tsMorph.Node.isPropertyAccessExpression(expression)) continue;
-      if (expression.getExpression().getText() !== appParamName) continue;
+      const args = splitTopLevelArgs(callBody.slice(1, -1));
+      const routePath = readStringLiteral(args[0] ?? "");
+      if (!routePath) continue;
 
-      const method = expression.getName();
-      if (!HTTP_METHODS.has(method)) continue;
+      const docs = readRouteDocs(args[1]);
+      const method = match[1]!.toUpperCase();
 
-      const [pathArg, optionsArg] = call.getArguments();
-      if (
-        !pathArg ||
-        (!tsMorph.Node.isStringLiteral(pathArg) &&
-          !tsMorph.Node.isNoSubstitutionTemplateLiteral(pathArg))
-      ) {
-        continue;
-      }
-
-      const docs = readRouteDocs(optionsArg, tsMorph);
       entries.push({
         filePath,
         fileRelativePath,
         prefix,
-        method: method.toUpperCase(),
-        path: normalizeRoutePath(prefix, pathArg.getLiteralText()),
+        method,
+        path: normalizeRoutePath(prefix, routePath),
         docsSummary: docs.docsSummary,
         hasDocsSummary: docs.hasDocsSummary,
         operationId: docs.operationId,
@@ -160,18 +102,26 @@ function scanRouteEntries(
   return entries;
 }
 
-function isDefineRoutesCall(
-  call: import("ts-morph").CallExpression,
-  tsMorph: TsMorphModule,
-): boolean {
-  const expression = call.getExpression();
-  return tsMorph.Node.isIdentifier(expression) && expression.getText() === "defineRoutes";
+function findDefineRoutesBlocks(
+  source: string,
+): Array<{ paramName: string; body: string }> {
+  const blocks: Array<{ paramName: string; body: string }> = [];
+  const pattern =
+    /defineRoutes\s*\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)[^)=]*\)?\s*=>\s*\{/gu;
+
+  for (const match of source.matchAll(pattern)) {
+    const openBrace = source.indexOf("{", match.index);
+    const body = readBalanced(source, openBrace, "{", "}");
+    const paramName = match[1];
+    if (body && paramName) {
+      blocks.push({ paramName, body: body.slice(1, -1) });
+    }
+  }
+
+  return blocks;
 }
 
-function readRouteDocs(
-  optionsArg: import("ts-morph").Node | undefined,
-  tsMorph: TsMorphModule,
-): {
+function readRouteDocs(optionsArg: string | undefined): {
   docsSummary: string | null;
   hasDocsSummary: boolean;
   operationId: string | null;
@@ -186,101 +136,145 @@ function readRouteDocs(
     hidden: false,
   };
 
-  if (!optionsArg || !tsMorph.Node.isObjectLiteralExpression(optionsArg)) {
+  const options = optionsArg?.trim();
+  if (!options?.startsWith("{")) {
     return empty;
   }
 
-  const docsProp = optionsArg.getProperty("docs");
-  if (!docsProp || !tsMorph.Node.isPropertyAssignment(docsProp)) {
+  const docsMatch = /\bdocs\s*:/u.exec(options);
+  if (!docsMatch) {
     return empty;
   }
 
-  const docsObject = docsProp.getInitializer();
-  if (!docsObject || !tsMorph.Node.isObjectLiteralExpression(docsObject)) {
+  const docsOpen = options.indexOf("{", docsMatch.index);
+  const docsObject = readBalanced(options, docsOpen, "{", "}");
+  if (!docsObject) {
     return empty;
   }
 
-  const summary = readStringProperty(docsObject, "summary", tsMorph);
-  const operationId = readStringProperty(docsObject, "operationId", tsMorph);
-  const tags = readStringArrayProperty(docsObject, "tags", tsMorph);
-  const hidden = readBooleanProperty(docsObject, "hidden", tsMorph);
+  const summary = readStringProperty(docsObject, "summary");
+  const operationId = readStringProperty(docsObject, "operationId");
 
   return {
     docsSummary: summary,
     hasDocsSummary: Boolean(summary?.trim()),
     operationId,
-    tags,
-    hidden,
+    tags: readStringArrayProperty(docsObject, "tags"),
+    hidden: readBooleanProperty(docsObject, "hidden"),
   };
 }
 
-function readStringProperty(
-  objectLiteral: import("ts-morph").ObjectLiteralExpression,
-  key: string,
-  tsMorph: TsMorphModule,
-): string | null {
-  const prop = objectLiteral.getProperty(key);
-  if (!prop || !tsMorph.Node.isPropertyAssignment(prop)) {
-    return null;
+function readStringProperty(objectLiteral: string, key: string): string | null {
+  const pattern = new RegExp(
+    `\\b${escapeRegExp(key)}\\s*:\\s*([\"'\`])([\\s\\S]*?)\\1`,
+    "u",
+  );
+  return pattern.exec(objectLiteral)?.[2] ?? null;
+}
+
+function readStringArrayProperty(objectLiteral: string, key: string): string[] {
+  const pattern = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*\\[`, "u");
+  const match = pattern.exec(objectLiteral);
+  if (!match) return [];
+
+  const openBracket = objectLiteral.indexOf("[", match.index);
+  const arrayText = readBalanced(objectLiteral, openBracket, "[", "]");
+  if (!arrayText) return [];
+
+  return [...arrayText.matchAll(/(["'`])([\s\S]*?)\1/gu)]
+    .map((item) => item[2])
+    .filter((item): item is string => Boolean(item));
+}
+
+function readBooleanProperty(objectLiteral: string, key: string): boolean {
+  const pattern = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*true\\b`, "u");
+  return pattern.test(objectLiteral);
+}
+
+function splitTopLevelArgs(argsText: string): string[] {
+  const args: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = 0; i < argsText.length; i++) {
+    const char = argsText[i]!;
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "{" || char === "(" || char === "[") depth++;
+    else if (char === "}" || char === ")" || char === "]") depth--;
+    else if (char === "," && depth === 0) {
+      args.push(argsText.slice(start, i).trim());
+      start = i + 1;
+    }
   }
 
-  const initializer = prop.getInitializer();
-  if (!initializer) return null;
+  args.push(argsText.slice(start).trim());
+  return args;
+}
 
-  if (
-    tsMorph.Node.isStringLiteral(initializer) ||
-    tsMorph.Node.isNoSubstitutionTemplateLiteral(initializer)
-  ) {
-    return initializer.getLiteralText();
+function readStringLiteral(value: string): string | null {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+  if (quote !== '"' && quote !== "'" && quote !== "`") {
+    return null;
+  }
+  const end = trimmed.indexOf(quote, 1);
+  if (end < 0) {
+    return null;
+  }
+  return trimmed.slice(1, end);
+}
+
+function readBalanced(
+  source: string,
+  openIndex: number,
+  openChar: "{" | "(" | "[",
+  closeChar: "}" | ")" | "]",
+): string | null {
+  if (openIndex < 0 || source[openIndex] !== openChar) return null;
+
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = openIndex; i < source.length; i++) {
+    const char = source[i]!;
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === openChar) depth++;
+    else if (char === closeChar) {
+      depth--;
+      if (depth === 0) {
+        return source.slice(openIndex, i + 1);
+      }
+    }
   }
 
   return null;
-}
-
-function readStringArrayProperty(
-  objectLiteral: import("ts-morph").ObjectLiteralExpression,
-  key: string,
-  tsMorph: TsMorphModule,
-): string[] {
-  const prop = objectLiteral.getProperty(key);
-  if (!prop || !tsMorph.Node.isPropertyAssignment(prop)) {
-    return [];
-  }
-
-  const initializer = prop.getInitializer();
-  if (!initializer || !tsMorph.Node.isArrayLiteralExpression(initializer)) {
-    return [];
-  }
-
-  return initializer
-    .getElements()
-    .filter(
-      (item): item is import("ts-morph").StringLiteral | import("ts-morph").NoSubstitutionTemplateLiteral =>
-        tsMorph.Node.isStringLiteral(item) || tsMorph.Node.isNoSubstitutionTemplateLiteral(item),
-    )
-    .map((item) => item.getLiteralText())
-    .filter((item) => item.length > 0);
-}
-
-function readBooleanProperty(
-  objectLiteral: import("ts-morph").ObjectLiteralExpression,
-  key: string,
-  tsMorph: TsMorphModule,
-): boolean {
-  const prop = objectLiteral.getProperty(key);
-  if (!prop || !tsMorph.Node.isPropertyAssignment(prop)) {
-    return false;
-  }
-
-  const initializer = prop.getInitializer();
-  if (!initializer) return false;
-  if (initializer.getKind() === tsMorph.SyntaxKind.TrueKeyword) {
-    return true;
-  }
-  if (initializer.getKind() === tsMorph.SyntaxKind.FalseKeyword) {
-    return false;
-  }
-  return false;
 }
 
 function filePathToRoutePrefix(filePath: string, routesDir: string): string {
@@ -310,7 +304,8 @@ function filePathToRoutePrefix(filePath: string, routesDir: string): string {
 }
 
 function normalizeRoutePath(prefix: string, subPath: string): string {
-  const cleanPrefix = prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
+  const cleanPrefix =
+    prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
   const cleanSubPath = subPath.startsWith("/") ? subPath.slice(1) : subPath;
 
   if (!cleanSubPath) {
@@ -329,4 +324,6 @@ function normalizeRoutePath(prefix: string, subPath: string): string {
   return fullPath;
 }
 
-
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}

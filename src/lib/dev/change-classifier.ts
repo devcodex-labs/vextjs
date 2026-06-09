@@ -111,7 +111,7 @@ const IGNORE_PATTERNS: RegExp[] = [
  * src/ 下的代码文件走 soft reload 路径（Tier 1 或 Tier 2 编译）。
  * 只匹配代码文件扩展名，排除 src/ 下的非代码文件（如 README.md）。
  */
-const SOURCE_PATTERN = /^src\/.*\.(ts|js|mjs|cjs)$/;
+const SOURCE_PATTERN = /^src\/.*\.(ts|mts|cts|js|mjs|cjs)$/;
 
 // ── 分类函数 ────────────────────────────────────────────────
 

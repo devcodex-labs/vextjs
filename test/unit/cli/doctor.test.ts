@@ -34,7 +34,9 @@ describe("doctorCommand", () => {
   it("prints help output", async () => {
     await doctorCommand(["--help"]);
 
-    expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining("Usage: vext doctor <target> [options]"));
+    expect(consoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("Usage: vext doctor <target> [options]"),
+    );
   });
 
   it("outputs JSON diagnostics for static route metadata checks", async () => {
@@ -169,7 +171,7 @@ export default defineRoutes((app) => {
     expect(inspectPayload.summary.byCode["auto-operation-id"]).toBe(1);
 
     const manifestPayload = JSON.parse(
-      await readFile(join(projectRoot, ".vext/inspect/routes.manifest.json"), "utf-8"),
+      await readFile(join(projectRoot, ".vext/manifest/routes.json"), "utf-8"),
     );
     expect(manifestPayload.kind).toBe("routes-manifest");
     expect(manifestPayload.summary.inferredOperationIds).toBe(1);
@@ -178,4 +180,3 @@ export default defineRoutes((app) => {
     expect(manifestPayload.routes[0]?.operationIdSource).toBe("inferred");
   });
 });
-

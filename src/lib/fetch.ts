@@ -1317,7 +1317,7 @@ function isAbortError(error: Error): boolean {
  * 任意一个 signal 触发 abort 时，返回的 signal 也触发 abort。
  * 如果 userSignal 为 null，直接返回 timeoutSignal。
  *
- * Node.js 20+ 支持 AbortSignal.any()，但为兼容 Node 18 手动实现。
+ * 优先使用运行时原生 AbortSignal.any()，并保留轻量 fallback。
  *
  * @param userSignal    用户传入的 signal（可为 null）
  * @param timeoutSignal 超时控制的 signal
@@ -1334,7 +1334,7 @@ function mergeSignals(
     return AbortSignal.any([userSignal, timeoutSignal]);
   }
 
-  // Node.js 20 手动实现
+  // Fallback implementation for runtimes without AbortSignal.any().
   const controller = new AbortController();
 
   const onAbort = () => {

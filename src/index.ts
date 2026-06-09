@@ -188,7 +188,7 @@ export {
 } from "./types/middleware.js";
 
 // 插件定义辅助函数
-export { definePlugin } from "./types/plugin.js";
+export { definePlugin, defineAppExtensions } from "./types/plugin.js";
 
 // 内置 MonSQLize 插件（开箱即用）
 export {

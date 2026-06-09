@@ -12,7 +12,9 @@ const FIXTURES_DIR = join(process.cwd(), "test", "fixtures", "typegen");
 const GOLDEN_DIR = join(process.cwd(), "test", "golden", "typegen");
 
 async function copyFixtureToTemp(fixtureName: string): Promise<string> {
-  const tempRoot = await mkdtemp(join(tmpdir(), `vext-typegen-${fixtureName}-`));
+  const tempRoot = await mkdtemp(
+    join(tmpdir(), `vext-typegen-${fixtureName}-`),
+  );
   const projectRoot = join(tempRoot, "project");
   await cp(join(FIXTURES_DIR, fixtureName), projectRoot, { recursive: true });
   return projectRoot;
@@ -41,10 +43,10 @@ describe("typegenCommand", () => {
     await typegenCommand(["--root", projectRoot, "--write-manifest"]);
 
     const servicesGenerated = await readNormalized(
-      join(projectRoot, "src/types/generated/services.generated.d.ts"),
+      join(projectRoot, ".vext/types/services.generated.d.ts"),
     );
     const appExtensionsGenerated = await readNormalized(
-      join(projectRoot, "src/types/generated/app-extensions.generated.d.ts"),
+      join(projectRoot, ".vext/types/app-extensions.generated.d.ts"),
     );
     const expectedServices = await readNormalized(
       join(GOLDEN_DIR, "ts-basic", "services.generated.d.ts"),
@@ -53,7 +55,10 @@ describe("typegenCommand", () => {
       join(GOLDEN_DIR, "ts-basic", "app-extensions.generated.d.ts"),
     );
     const servicesManifest = await readNormalized(
-      join(projectRoot, ".vext/inspect/services.manifest.json"),
+      join(projectRoot, ".vext/manifest/services.json"),
+    );
+    const shimGenerated = await readNormalized(
+      join(projectRoot, "src/types/generated/index.d.ts"),
     );
     const expectedServicesManifest = await readNormalized(
       join(GOLDEN_DIR, "ts-basic", "services.manifest.json"),
@@ -62,6 +67,10 @@ describe("typegenCommand", () => {
     expect(servicesGenerated).toBe(expectedServices);
     expect(appExtensionsGenerated).toBe(expectedAppExtensions);
     expect(servicesManifest).toBe(expectedServicesManifest);
+    expect(shimGenerated).toContain(".vext/types/services.generated.d.ts");
+    expect(shimGenerated).toContain(
+      ".vext/types/app-extensions.generated.d.ts",
+    );
     expect(appExtensionsGenerated).not.toContain("ignoredOutsideLifecycle");
   });
 
@@ -71,10 +80,10 @@ describe("typegenCommand", () => {
     await typegenCommand(["--root", projectRoot]);
 
     const servicesGenerated = await readNormalized(
-      join(projectRoot, "src/types/generated/services.generated.d.ts"),
+      join(projectRoot, ".vext/types/services.generated.d.ts"),
     );
     const appExtensionsGenerated = await readNormalized(
-      join(projectRoot, "src/types/generated/app-extensions.generated.d.ts"),
+      join(projectRoot, ".vext/types/app-extensions.generated.d.ts"),
     );
     const expectedServices = await readNormalized(
       join(GOLDEN_DIR, "js-basic", "services.generated.d.ts"),
@@ -93,7 +102,7 @@ describe("typegenCommand", () => {
     await typegenCommand(["--root", projectRoot, "--app-extensions"]);
 
     const appExtensionsGenerated = await readNormalized(
-      join(projectRoot, "src/types/generated/app-extensions.generated.d.ts"),
+      join(projectRoot, ".vext/types/app-extensions.generated.d.ts"),
     );
     const expectedAppExtensions = await readNormalized(
       join(GOLDEN_DIR, "conflict-case", "app-extensions.generated.d.ts"),
@@ -101,7 +110,9 @@ describe("typegenCommand", () => {
 
     expect(appExtensionsGenerated).toBe(expectedAppExtensions);
     expect(consoleWarn).toHaveBeenCalledWith(
-      expect.stringContaining('Conflicting inferred types for app.extend("shared")'),
+      expect.stringContaining(
+        'Conflicting inferred types for app.extend("shared")',
+      ),
     );
   });
 
@@ -109,18 +120,13 @@ describe("typegenCommand", () => {
     projectRoot = await copyFixtureToTemp("ts-basic");
     const generatedFilePath = join(
       projectRoot,
-      "src/types/generated/services.generated.d.ts",
+      ".vext/types/services.generated.d.ts",
     );
     await mkdir(dirname(generatedFilePath), { recursive: true });
-    await writeFile(
-      generatedFilePath,
-      "// stale file\n",
-      "utf-8",
-    );
+    await writeFile(generatedFilePath, "// stale file\n", "utf-8");
 
     await expect(
       typegenCommand(["--root", projectRoot, "--services", "--check"]),
     ).rejects.toThrow(/typegen found blocking issues/);
   });
 });
-

@@ -31,6 +31,8 @@ import type { DocEndpointsConfig } from "./types.js";
 import { generateScalarHTML } from "./redoc-ui.js";
 import { registerScalarAssets } from "./scalar-assets.js";
 
+export type OpenAPISpecProvider = object | (() => object | Promise<object>);
+
 /**
  * 注册文档端点（统一入口）
  *
@@ -57,7 +59,7 @@ import { registerScalarAssets } from "./scalar-assets.js";
  */
 export function registerDocEndpoints(
   app: VextApp,
-  spec: object,
+  spec: OpenAPISpecProvider,
   config: DocEndpointsConfig,
 ): void {
   const specPath = config.specPath ?? "/openapi.json";
@@ -92,9 +94,10 @@ export function registerDocEndpoints(
   //
   app.adapter.registerRoute("GET", specPath, [
     async (_req, res) => {
+      const resolvedSpec = await resolveOpenAPISpec(spec);
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.rawJson(spec);
+      res.rawJson(resolvedSpec);
     },
   ]);
 
@@ -122,4 +125,11 @@ export function registerDocEndpoints(
   ]);
 
   app.logger.info(`[openapi] docs:     ${docsPath} (Scalar API Reference)`);
+}
+
+async function resolveOpenAPISpec(spec: OpenAPISpecProvider): Promise<object> {
+  if (typeof spec === "function") {
+    return spec();
+  }
+  return spec;
 }

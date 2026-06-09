@@ -59,6 +59,8 @@ import {
   requestPortConflictDecisionFromParent,
   sendLifecycleLevelToParent,
 } from "../ipc-port-conflict.js";
+import { createStartupProfilerFromEnv } from "../startup-profiler.js";
+import { writeDevRouteManifest } from "./route-manifest.js";
 
 function getLifecycleLevel(
   config: Record<string, unknown>,
@@ -233,6 +235,7 @@ export async function devBootstrap(
   const srcDir = path.join(projectRoot, "src");
   const outDir = options.outDir ?? path.join(projectRoot, ".vext", "dev");
   const tsconfig = options.tsconfig ?? path.join(projectRoot, "tsconfig.json");
+  const startupProfiler = createStartupProfilerFromEnv(process.env);
 
   // 资源引用（用于错误边界清理）
   let internals: AppInternals | null = null;
@@ -253,7 +256,9 @@ export async function devBootstrap(
     // 不带 tsx loader，需要直接 require 编译产物。
     //
     compiler = new DevCompiler({ srcDir, outDir, tsconfig });
-    const compileStats = await compiler.start();
+    const compileStats = await startupProfiler.time("worker.compile", () =>
+      compiler!.start(),
+    );
 
     // ── 步骤 1: 加载配置 ─────────────────────────────────
     //
@@ -261,11 +266,13 @@ export async function devBootstrap(
     // dev 子进程不带 tsx loader，无法直接 require TS 文件。
     // compiler.start() 已将 src/config/ 编译为 .vext/dev/config/ 下的 CJS .js
     //
-    const rawConfig = await loadRawConfig(path.join(outDir, "config"), {
-      rootDir: projectRoot,
-      command: "dev",
-      env: process.env,
-    });
+    const rawConfig = await startupProfiler.time("worker.config", () =>
+      loadRawConfig(path.join(outDir, "config"), {
+        rootDir: projectRoot,
+        command: "dev",
+        env: process.env,
+      }),
+    );
 
     const resolution = await resolvePortConflict({
       host: rawConfig.host as string | undefined,
@@ -300,7 +307,9 @@ export async function devBootstrap(
     // ── 步骤 2a: resolveAdapter（异步按需加载）────────────
     // 动态 import() 按需加载用户选择的 adapter 框架包。
     // 默认 native adapter（零外部依赖），其他 adapter 需用户额外安装对应框架。
-    app.adapter = await resolveAdapter(config, app);
+    app.adapter = await startupProfiler.time("worker.adapter", () =>
+      resolveAdapter(config, app),
+    );
 
     app.logger.info("[vext dev] initializing (soft reload mode)...");
     app.logger.info(
@@ -401,7 +410,9 @@ export async function devBootstrap(
     //
     const pluginsDir = path.join(outDir, "plugins");
     if (existsSync(pluginsDir)) {
-      await loadPlugins(app, pluginsDir);
+      await startupProfiler.time("worker.plugins", () =>
+        loadPlugins(app, pluginsDir),
+      );
     }
 
     // ════════════════════════════════════════════════════════
@@ -426,15 +437,21 @@ export async function devBootstrap(
     ) as unknown as VextApp["fetch"];
 
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
-    const middlewareRegistry = await loadMiddlewares(
-      path.join(outDir, "middlewares"),
-      config.middlewares ?? [],
-      app.logger,
-      config.logger?.lifecycleLevel ?? "concise",
+    const middlewareRegistry = await startupProfiler.time(
+      "worker.middlewares",
+      () =>
+        loadMiddlewares(
+          path.join(outDir, "middlewares"),
+          config.middlewares ?? [],
+          app.logger,
+          config.logger?.lifecycleLevel ?? "concise",
+        ),
     );
 
     // ── 步骤 6: 加载服务 ─────────────────────────────────
-    await loadServices(app, path.join(outDir, "services"));
+    await startupProfiler.time("worker.services", () =>
+      loadServices(app, path.join(outDir, "services")),
+    );
 
     // ── 步骤 7: 加载路由 ─────────────────────────────────
     //
@@ -444,16 +461,18 @@ export async function devBootstrap(
     const openapiEnabled =
       openapiConfig?.enabled ?? process.env.NODE_ENV !== "production";
 
-    const collector = openapiEnabled ? new RouteMetadataCollector() : null;
+    const collector = new RouteMetadataCollector();
 
-    await loadRoutes(
-      app,
-      path.join(outDir, "routes"),
-      {
-        middlewareDefs: middlewareRegistry,
-        globalMiddlewares: internals.getGlobalMiddlewares(),
-      },
-      collector,
+    await startupProfiler.time("worker.routes", () =>
+      loadRoutes(
+        app,
+        path.join(outDir, "routes"),
+        {
+          middlewareDefs: middlewareRegistry,
+          globalMiddlewares: internals!.getGlobalMiddlewares(),
+        },
+        collector,
+      ),
     );
 
     // ── 步骤 7+: OpenAPI 文档生成 ────────────────────────
@@ -462,7 +481,12 @@ export async function devBootstrap(
     // 使用 collector 收集到的路由元信息 + config.openapi 配置，
     // 生成 OpenAPI 3.0 spec 并注册 /docs + /openapi.json 端点。
     //
-    if (openapiEnabled && collector) {
+    const collectedRoutes = collector.getRoutes();
+    await startupProfiler.time("worker.routeManifest", () =>
+      writeDevRouteManifest(projectRoot, collectedRoutes),
+    );
+
+    if (openapiEnabled) {
       const generator = new OpenAPIGenerator({
         title: openapiConfig?.title,
         description: openapiConfig?.description,
@@ -493,10 +517,11 @@ export async function devBootstrap(
           | undefined,
       });
 
-      const routes = collector.getRoutes();
-      const spec = generateOpenAPIDocumentWithHooks(app, generator, routes);
+      const specProvider = createCachedOpenApiSpecProvider(() =>
+        generateOpenAPIDocumentWithHooks(app, generator, collectedRoutes),
+      );
 
-      registerDocEndpoints(app, spec, {
+      registerDocEndpoints(app, specProvider, {
         specPath: openapiConfig?.jsonPath ?? "/openapi.json",
         specPublicPath: (openapiConfig as Record<string, unknown>)
           ?.jsonPublicPath as string | undefined,
@@ -508,6 +533,16 @@ export async function devBootstrap(
       });
 
       app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
+      setTimeout(() => {
+        startupProfiler
+          .time("worker.openapiWarm", () => Promise.resolve(specProvider()))
+          .catch((error: unknown) => {
+            app.logger.warn(
+              { error: error instanceof Error ? error.message : String(error) },
+              "[openapi] background warm failed",
+            );
+          });
+      }, 0);
     }
 
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
@@ -657,27 +692,29 @@ export async function devBootstrap(
       adapter: app.adapter,
     });
 
-    const serverHandle = await new Promise<VextServerHandle>(
-      (resolve, reject) => {
-        server!.once("error", reject);
+    const serverHandle = await startupProfiler.time(
+      "worker.listen",
+      () =>
+        new Promise<VextServerHandle>((resolve, reject) => {
+          server!.once("error", reject);
 
-        server!.listen(port, host, () => {
-          server!.removeListener("error", reject);
+          server!.listen(port, host, () => {
+            server!.removeListener("error", reject);
 
-          resolve({
-            port,
-            host,
-            async close() {
-              return new Promise<void>((res, rej) => {
-                server!.close((err) => {
-                  if (err) rej(err);
-                  else res();
+            resolve({
+              port,
+              host,
+              async close() {
+                return new Promise<void>((res, rej) => {
+                  server!.close((err) => {
+                    if (err) rej(err);
+                    else res();
+                  });
                 });
-              });
-            },
+              },
+            });
           });
-        });
-      },
+        }),
     );
 
     // ════════════════════════════════════════════════════════
@@ -861,7 +898,10 @@ export async function devBootstrap(
     // 可以开始接受请求了。
     //
     if (!skipIpc && process.send) {
-      process.send({ type: "ready" });
+      process.send({
+        type: "ready",
+        startupProfile: startupProfiler.toJSON(),
+      });
     }
 
     // ── 步骤 14: 信号处理 ────────────────────────────────
@@ -964,5 +1004,13 @@ function createNotFoundHandler(hooks?: VextInternalHooks): VextMiddleware {
       },
       404,
     );
+  };
+}
+
+function createCachedOpenApiSpecProvider(generate: () => object): () => object {
+  let cached: object | null = null;
+  return () => {
+    cached ??= generate();
+    return cached;
   };
 }

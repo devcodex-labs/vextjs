@@ -49,9 +49,12 @@ my-app/
 │   │   └── en-US.ts           # 英文语言包
 │   │
 │   └── types/
-│       └── generated/         # typegen 输出目录（TS 项目）
-│           ├── services.generated.d.ts
-│           └── app-extensions.generated.d.ts
+│       └── generated/         # typegen reference shim（TS 项目）
+│           └── index.d.ts
+│
+├── .vext/
+│   ├── types/                 # hidden generated declarations
+│   └── manifest/              # tooling manifests
 │
 ├── dist/                      # 构建产物（vext build 生成）
 ├── package.json

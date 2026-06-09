@@ -20,7 +20,7 @@ import { typegenCommand } from "./typegen.js";
  *   vext create  — 项目脚手架（Phase 4 实现 ✅）
  *
  * 命令解析：
- *   使用 Node.js 内置 util.parseArgs（Node 18.3+ / 16.17+），
+ *   使用 Node.js 内置 util.parseArgs，
  *   零依赖实现命令行参数解析。
  *
  * 默认命令：

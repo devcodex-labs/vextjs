@@ -176,3 +176,20 @@ export interface VextPlugin {
 export function definePlugin(plugin: VextPlugin): VextPlugin {
   return plugin;
 }
+
+/**
+ * defineAppExtensions — 声明插件通过 app.extend() 暴露的应用扩展类型
+ *
+ * 该 helper 只用于类型生成约定，不会改变运行时行为。插件可以导出：
+ *
+ * ```ts
+ * export const appExtensions = defineAppExtensions<{
+ *   redis: RedisClient
+ * }>()
+ * ```
+ *
+ * `vext typegen` 会读取这个导出并把类型自动接入 `VextApp`。
+ */
+export function defineAppExtensions<T extends Record<string, unknown>>(): T {
+  return {} as T;
+}

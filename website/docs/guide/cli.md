@@ -29,7 +29,7 @@ npm run build  # → vext build
 | `vext create <name>` | 创建新项目                                        | 项目初始化         |
 | `vext dev`           | 开发模式启动                                      | 日常开发           |
 | `vext build`         | 构建项目                                          | 部署前构建         |
-| `vext typegen`       | 生成声明 + service AST 诊断（experimental）       | TS/JS 项目工程辅助 |
+| `vext typegen`       | 生成声明 + service 依赖诊断（experimental）       | TS/JS 项目工程辅助 |
 | `vext doctor routes` | 静态路由诊断 + inspect / manifest（experimental） | OpenAPI / 路由治理 |
 | `vext start`         | 生产模式启动                                      | 生产部署           |
 | `vext stop`          | 停止服务                                          | Cluster 模式管理   |
@@ -138,6 +138,8 @@ vext dev [options]
 | `--strict-preflight`         | 让 TypeScript 语义诊断重新阻塞启动 / 重载   | —              |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`）    | `error`        |
 | `--verbose-lifecycle`        | 输出详细生命周期日志与完整 watcher 变更列表 | —              |
+| `--startup-profile`          | 输出启动阶段耗时摘要                        | —              |
+| `--startup-profile-json <p>` | 将启动阶段耗时写入 JSON 文件                | —              |
 | `--clear`                    | 每次重载后清空控制台                        | —              |
 | `-h, --help`                 | 显示帮助                                    | —              |
 
@@ -182,6 +184,10 @@ vext dev --poll --poll-interval 2000
 
 # 禁用 Soft Reload（所有变更均走 Cold Restart）
 vext dev --no-hot
+
+# 输出启动阶段耗时
+vext dev --startup-profile
+vext dev --startup-profile-json .vext/inspect/startup-profile.json
 ```
 
 ### 热重载策略
@@ -208,7 +214,7 @@ vext dev --no-hot
 
 ## `vext build` — 构建项目
 
-将 TypeScript 源码编译为 JavaScript，生成生产可用的 `dist/` 目录。
+将 TypeScript 源码编译为 JavaScript，生成生产可用的 `dist/` 目录；构建前会刷新 typegen 与 route manifest 这类工具产物。
 
 ### 用法
 
@@ -218,9 +224,15 @@ vext build [options]
 
 ### 选项
 
-| 选项         | 说明     | 默认值 |
-| ------------ | -------- | ------ |
-| `-h, --help` | 显示帮助 | —      |
+| 选项              | 说明                                            | 默认值  |
+| ----------------- | ----------------------------------------------- | ------- |
+| `--outdir <path>` | 输出目录                                        | `dist`  |
+| `--clean`         | 编译前清理输出目录                              | `false` |
+| `--sourcemap`     | 生成 source map                                 | `true`  |
+| `--no-sourcemap`  | 禁用 source map                                 | —       |
+| `--minify`        | 压缩输出代码                                    | `false` |
+| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
+| `-h, --help`      | 显示帮助                                        | —       |
 
 ### 示例
 
@@ -228,16 +240,27 @@ vext build [options]
 # 构建项目
 vext build
 
+# 刷新 generated / manifest 后执行类型检查，再构建
+vext build --typecheck
+
+# 清理旧 dist 后构建
+vext build --clean
+
+# 指定输出目录
+vext build --outdir build
+
 # 构建后启动
 vext build && vext start
 ```
 
 ### 构建行为
 
+- 先刷新 `.vext/types/*.generated.d.ts`、`src/types/generated/index.d.ts`、`.vext/manifest/services.json` 与 `.vext/manifest/routes.json`
+- `--typecheck` 开启时，在 generated / manifest 刷新后执行 `tsc --noEmit`
 - 使用 esbuild 进行极速编译（TypeScript → JavaScript）
-- 输出目录：`dist/`
+- 输出目录默认为 `dist/`
 - 保持源码目录结构
-- 生成 `.js` 和 `.d.ts` 文件
+- 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
 
 ### package.json 脚本
 
@@ -258,7 +281,7 @@ vext build && vext start
 
 ## `vext typegen` — 生成声明并执行 service 依赖诊断（experimental）
 
-为 `app.services` 与插件里的 `app.extend()` 提供 generated 声明，同时执行 tooling-only 的 service 依赖 AST 检查。
+为 `app.services` 与插件里的 `app.extend()` / `defineAppExtensions<{ ... }>()` 提供 generated 声明，同时执行 tooling-only 的 service 依赖检查。
 
 ### 用法
 
@@ -268,24 +291,25 @@ vext typegen [options]
 
 ### 选项
 
-| 选项               | 说明                                        | 默认值   |
-| ------------------ | ------------------------------------------- | -------- |
-| `--services`       | 仅生成 `services.generated.d.ts`            | `false`  |
-| `--app-extensions` | 仅生成 `app-extensions.generated.d.ts`      | `false`  |
-| `--check`          | 只校验 generated 结果，不写文件             | `false`  |
-| `--json`           | 输出机器可读 JSON                           | `false`  |
-| `--write-manifest` | 写入 `.vext/inspect/services.manifest.json` | `false`  |
-| `--root <path>`    | 指定项目根目录                              | 当前目录 |
-| `-C <path>`        | `--root` 别名                               | —        |
-| `--verbose`        | 预留给后续详细日志                          | `false`  |
-| `-h, --help`       | 显示帮助                                    | —        |
+| 选项               | 说明                                   | 默认值   |
+| ------------------ | -------------------------------------- | -------- |
+| `--services`       | 仅生成 `services.generated.d.ts`       | `false`  |
+| `--app-extensions` | 仅生成 `app-extensions.generated.d.ts` | `false`  |
+| `--check`          | 只校验 generated 结果，不写文件        | `false`  |
+| `--json`           | 输出机器可读 JSON                      | `false`  |
+| `--write-manifest` | 写入 `.vext/manifest/services.json`    | `false`  |
+| `--root <path>`    | 指定项目根目录                         | 当前目录 |
+| `-C <path>`        | `--root` 别名                          | —        |
+| `--verbose`        | 预留给后续详细日志                     | `false`  |
+| `-h, --help`       | 显示帮助                               | —        |
 
 ### 产物
 
 ```text
-src/types/generated/services.generated.d.ts
-src/types/generated/app-extensions.generated.d.ts
-.vext/inspect/services.manifest.json
+.vext/types/services.generated.d.ts
+.vext/types/app-extensions.generated.d.ts
+src/types/generated/index.d.ts
+.vext/manifest/services.json
 ```
 
 ### 示例
@@ -299,11 +323,11 @@ vext typegen --services --root ./examples/hello-world
 
 ### 适用边界
 
-- `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `start / build` 的默认 runtime 主路径；
-- `vext dev` 会在 preflight 中自动执行基础 `typegen`，用来同步 generated 声明并在开发期更早暴露明显问题；
+- `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `vext start` 的 runtime 主路径；
+- `vext dev` 会在 preflight 中自动执行基础 `typegen`，`vext build` 也会在可选 typecheck 与编译前刷新 generated 声明和 manifest；
 - TypeScript 语义诊断默认在 ready / reload 后异步输出；如果希望像旧行为一样阻塞启动或重载，可使用 `--strict-preflight` 或 `VEXT_DEV_STRICT_PREFLIGHT=1`；
 - TS 项目优先输出高质量类型，JS 项目允许退化到 `import(...).default` / `unknown`，但命令本身仍可用；
-- `--write-manifest` 会把 service 索引、`app.extend()` 聚合结果与服务依赖图摘要写入 `.vext/inspect/services.manifest.json`；
+- `--write-manifest` 会把 service 索引、`app.extend()` / `defineAppExtensions<{ ... }>()` 聚合结果与服务依赖图摘要写入 `.vext/manifest/services.json`；
 - 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。
 
 ## `vext doctor routes` — 静态路由诊断（experimental）
@@ -325,21 +349,22 @@ vext doctor <target> [options]
 
 ### 选项
 
-| 选项               | 说明                                      | 默认值   |
-| ------------------ | ----------------------------------------- | -------- |
-| `--json`           | 输出机器可读 JSON                         | `false`  |
-| `--write-inspect`  | 写入 `.vext/inspect/routes.json`          | `false`  |
-| `--write-manifest` | 写入 `.vext/inspect/routes.manifest.json` | `false`  |
-| `--root <path>`    | 指定项目根目录                            | 当前目录 |
-| `-C <path>`        | `--root` 别名                             | —        |
-| `-h, --help`       | 显示帮助                                  | —        |
+| 选项               | 说明                                | 默认值   |
+| ------------------ | ----------------------------------- | -------- |
+| `--json`           | 输出机器可读 JSON                   | `false`  |
+| `--write-inspect`  | 写入 `.vext/inspect/routes.json`    | `false`  |
+| `--write-manifest` | 写入 `.vext/manifest/routes.json`   | `false`  |
+| `--refresh`        | 跳过缓存 manifest，重新扫描路由诊断 | `false`  |
+| `--root <path>`    | 指定项目根目录                      | 当前目录 |
+| `-C <path>`        | `--root` 别名                       | —        |
+| `-h, --help`       | 显示帮助                            | —        |
 
 ### 产物定位
 
-| 产物                                 | 定位                                         | 适用对象                         |
-| ------------------------------------ | -------------------------------------------- | -------------------------------- |
-| `.vext/inspect/routes.json`          | inspect / 诊断中间层，包含诊断明细与调试字段 | `doctor`、debug、深度分析        |
-| `.vext/inspect/routes.manifest.json` | 稳定消费层，字段收敛为 routes-only manifest  | 编辑器、CI、可视化、后续 codemod |
+| 产物                         | 定位                                         | 适用对象                         |
+| ---------------------------- | -------------------------------------------- | -------------------------------- |
+| `.vext/inspect/routes.json`  | inspect / 诊断中间层，包含诊断明细与调试字段 | `doctor`、debug、深度分析        |
+| `.vext/manifest/routes.json` | 稳定消费层，字段收敛为 routes-only manifest  | 编辑器、CI、可视化、后续 codemod |
 
 ### 示例
 
@@ -608,7 +633,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.20
+# 输出: vextjs v0.3.21
 
 # 查看帮助
 vext --help

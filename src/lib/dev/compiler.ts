@@ -74,6 +74,16 @@ export interface CompileStats {
 
   /** 编译耗时（毫秒） */
   elapsed: number;
+
+  /** 是否复用了已有 .vext/dev 输出目录 */
+  cacheHit?: boolean;
+}
+
+interface DevCompileCache {
+  version: 1;
+  entryPoints: string[];
+  files: Record<string, { size: number; mtimeMs: number }>;
+  tsconfig?: { size: number; mtimeMs: number };
 }
 
 // ── DevCompiler 类 ──────────────────────────────────────────
@@ -139,8 +149,15 @@ export class DevCompiler {
   async start(): Promise<CompileStats> {
     const startTime = Date.now();
 
-    // 确保输出目录存在且干净
-    if (fs.existsSync(this.outDir)) {
+    // v2.2: 预解析 tsconfig（展平 extends 链）
+    await this.resolveTsconfig();
+
+    // 扫描源文件
+    const entryPoints = await this.scanEntryPoints();
+    const cacheHit = this.isCompileCacheValid(entryPoints);
+
+    // cache valid 时保留已有输出目录；失效时清理，避免旧产物污染运行时。
+    if (!cacheHit && fs.existsSync(this.outDir)) {
       fs.rmSync(this.outDir, { recursive: true, force: true });
     }
     fs.mkdirSync(this.outDir, { recursive: true });
@@ -155,12 +172,6 @@ export class DevCompiler {
       '{"type":"commonjs"}\n',
     );
 
-    // v2.2: 预解析 tsconfig（展平 extends 链）
-    await this.resolveTsconfig();
-
-    // 扫描源文件
-    const entryPoints = await this.scanEntryPoints();
-
     // 创建 esbuild context
     // 使用 validatedTsconfig（resolveTsconfig 已验证文件存在性）
     const baseConfig = createBaseEsbuildConfig(this.validatedTsconfig);
@@ -174,11 +185,15 @@ export class DevCompiler {
       packages: "external", // 不打包 node_modules（保持 require 外部包）
     });
 
-    // 首次全量编译
-    await this.ctx.rebuild();
+    // 首次全量编译。缓存命中时复用已有 .vext/dev 产物，仅保留
+    // esbuild context 供后续结构变更重建使用。
+    if (!cacheHit) {
+      await this.ctx.rebuild();
+    }
+    this.writeCompileCache(entryPoints);
 
     const elapsed = Date.now() - startTime;
-    return { fileCount: entryPoints.length, elapsed };
+    return { fileCount: entryPoints.length, elapsed, cacheHit };
   }
 
   // ── Tier 2：全量增量重编译 ──────────────────────────────
@@ -249,6 +264,7 @@ export class DevCompiler {
 
     // 全量编译
     await this.ctx.rebuild();
+    this.writeCompileCache(entryPoints);
 
     const elapsed = Date.now() - startTime;
     return { fileCount: entryPoints.length, elapsed };
@@ -407,6 +423,94 @@ export class DevCompiler {
       cwd: this.srcDir,
       ignore: [...SOURCE_IGNORE],
     });
+  }
+
+  private isCompileCacheValid(entryPoints: string[]): boolean {
+    const cache = this.readCompileCache();
+    if (!cache || cache.version !== 1) return false;
+    if (!fs.existsSync(path.join(this.outDir, "package.json"))) return false;
+
+    const sortedEntryPoints = [...entryPoints].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    if (cache.entryPoints.join("\n") !== sortedEntryPoints.join("\n")) {
+      return false;
+    }
+
+    for (const entryPoint of sortedEntryPoints) {
+      const filePath = path.join(this.srcDir, entryPoint);
+      const cached = cache.files[entryPoint];
+      if (!cached || !fs.existsSync(filePath)) return false;
+      const stat = fs.statSync(filePath);
+      if (stat.size !== cached.size || stat.mtimeMs !== cached.mtimeMs) {
+        return false;
+      }
+      const compiledPath = this.resolveCompiled(filePath);
+      if (
+        !fs.existsSync(compiledPath) ||
+        !fs.existsSync(`${compiledPath}.map`)
+      ) {
+        return false;
+      }
+    }
+
+    if (this.tsconfig && fs.existsSync(this.tsconfig)) {
+      const stat = fs.statSync(this.tsconfig);
+      if (
+        !cache.tsconfig ||
+        cache.tsconfig.size !== stat.size ||
+        cache.tsconfig.mtimeMs !== stat.mtimeMs
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private readCompileCache(): DevCompileCache | null {
+    const cachePath = this.getCompileCachePath();
+    if (!fs.existsSync(cachePath)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(cachePath, "utf-8")) as DevCompileCache;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeCompileCache(entryPoints: string[]): void {
+    const sortedEntryPoints = [...entryPoints].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    const files: DevCompileCache["files"] = {};
+    for (const entryPoint of sortedEntryPoints) {
+      const stat = fs.statSync(path.join(this.srcDir, entryPoint));
+      files[entryPoint] = { size: stat.size, mtimeMs: stat.mtimeMs };
+    }
+
+    const cache: DevCompileCache = {
+      version: 1,
+      entryPoints: sortedEntryPoints,
+      files,
+    };
+
+    if (this.tsconfig && fs.existsSync(this.tsconfig)) {
+      const stat = fs.statSync(this.tsconfig);
+      cache.tsconfig = { size: stat.size, mtimeMs: stat.mtimeMs };
+    }
+
+    const cachePath = this.getCompileCachePath();
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf-8");
+  }
+
+  private getCompileCachePath(): string {
+    return path.join(
+      this.getProjectRoot(),
+      ".vext",
+      "cache",
+      "dev-compile.json",
+    );
   }
 
   /**

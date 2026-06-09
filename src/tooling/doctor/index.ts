@@ -1,8 +1,16 @@
-import { buildRouteIndex, type RouteIndexEntry } from "../project-index/scan-routes.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  buildRouteIndex,
+  type RouteIndexEntry,
+} from "../project-index/scan-routes.js";
 import { inferOperationId } from "../../lib/openapi/operation-id.js";
 import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
 import { writeRouteInspectFile } from "./write-route-inspect.js";
-import { writeRouteManifestFile, type RouteManifestPayload } from "./write-route-manifest.js";
+import {
+  writeRouteManifestFile,
+  type RouteManifestPayload,
+} from "./write-route-manifest.js";
 
 export type DoctorTarget = "routes" | "all";
 export type DoctorLevel = "error" | "warn" | "info";
@@ -32,6 +40,7 @@ export interface RunDoctorOptions {
   target?: DoctorTarget;
   writeInspect?: boolean;
   writeManifest?: boolean;
+  refresh?: boolean;
 }
 
 export interface DoctorSummary {
@@ -75,7 +84,11 @@ export async function runDoctor(
   const target = options.target ?? "routes";
   const writeInspect = options.writeInspect ?? false;
   const writeManifest = options.writeManifest ?? false;
-  const routeEntries = await buildRouteIndex(options.rootDir);
+  const routeEntries =
+    options.refresh === true
+      ? await buildRouteIndex(options.rootDir)
+      : (readRouteEntriesFromManifest(options.rootDir) ??
+        (await buildRouteIndex(options.rootDir)));
   const diagnostics = analyzeRoutes(routeEntries);
   const routes = routeEntries.map((entry) => toDoctorRouteRecord(entry));
   const summary = summarizeDiagnostics(diagnostics);
@@ -91,7 +104,10 @@ export async function runDoctor(
       })
     : undefined;
   const manifest = writeManifest
-    ? await writeRouteManifestFile(options.rootDir, buildRouteManifestPayload(routes, diagnostics))
+    ? await writeRouteManifestFile(
+        options.rootDir,
+        buildRouteManifestPayload(routes, diagnostics),
+      )
     : undefined;
 
   return {
@@ -105,6 +121,53 @@ export async function runDoctor(
     inspect,
     manifest,
   };
+}
+
+function readRouteEntriesFromManifest(
+  rootDir: string,
+): RouteIndexEntry[] | null {
+  const manifestPath = join(rootDir, ".vext", "manifest", "routes.json");
+  if (!existsSync(manifestPath)) {
+    return null;
+  }
+
+  const payload = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
+    routes?: Array<{
+      fileRelativePath?: string;
+      prefix?: string;
+      method?: string;
+      path?: string;
+      docsSummary?: string | null;
+      operationId?: string | null;
+      operationIdSource?: "explicit" | "inferred";
+      tags?: string[];
+      hidden?: boolean;
+    }>;
+  };
+
+  return (payload.routes ?? [])
+    .map((route) => {
+      const fileRelativePath = route.fileRelativePath ?? "";
+      const operationId =
+        route.operationIdSource === "explicit"
+          ? (route.operationId ?? null)
+          : null;
+      return {
+        filePath: join(rootDir, fileRelativePath),
+        fileRelativePath,
+        prefix: route.prefix ?? "",
+        method: route.method ?? "GET",
+        path: route.path ?? "/",
+        docsSummary: route.docsSummary ?? null,
+        hasDocsSummary: Boolean(route.docsSummary?.trim()),
+        operationId,
+        tags: route.tags ?? [],
+        hidden: route.hidden ?? false,
+      } satisfies RouteIndexEntry;
+    })
+    .sort((a, b) =>
+      `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),
+    );
 }
 
 function analyzeRoutes(routeEntries: RouteIndexEntry[]): DoctorDiagnostic[] {
@@ -218,7 +281,8 @@ function toDoctorRouteRecord(entry: RouteIndexEntry): DoctorRouteRecord {
     prefix: entry.prefix,
     docsSummary: entry.docsSummary,
     operationId: entry.operationId,
-    effectiveOperationId: entry.operationId ?? inferOperationId(entry.method, entry.path),
+    effectiveOperationId:
+      entry.operationId ?? inferOperationId(entry.method, entry.path),
     operationIdSource: entry.operationId ? "explicit" : "inferred",
     tags: entry.tags,
     hidden: entry.hidden,
@@ -240,8 +304,10 @@ function summarizeDiagnostics(diagnostics: DoctorDiagnostic[]): DoctorSummary {
     if (diagnostic.level === "warn") summary.warnings += 1;
     if (diagnostic.level === "info") summary.infos += 1;
     if (diagnostic.blocking) summary.blocking += 1;
-    summary.byCode[diagnostic.code] = (summary.byCode[diagnostic.code] ?? 0) + 1;
-    summary.byGroup[diagnostic.group] = (summary.byGroup[diagnostic.group] ?? 0) + 1;
+    summary.byCode[diagnostic.code] =
+      (summary.byCode[diagnostic.code] ?? 0) + 1;
+    summary.byGroup[diagnostic.group] =
+      (summary.byGroup[diagnostic.group] ?? 0) + 1;
   }
 
   return summary;
@@ -251,11 +317,21 @@ function buildRouteManifestPayload(
   routes: DoctorRouteRecord[],
   diagnostics: DoctorDiagnostic[],
 ): RouteManifestPayload {
-  const missingDocsSummary = diagnostics.filter((item) => item.code === "missing-docs-summary").length;
-  const missingTags = diagnostics.filter((item) => item.code === "missing-tags").length;
-  const duplicateRoutes = diagnostics.filter((item) => item.code === "duplicate-route").length;
-  const explicitOperationIds = routes.filter((item) => item.operationIdSource === "explicit").length;
-  const inferredOperationIds = routes.filter((item) => item.operationIdSource === "inferred").length;
+  const missingDocsSummary = diagnostics.filter(
+    (item) => item.code === "missing-docs-summary",
+  ).length;
+  const missingTags = diagnostics.filter(
+    (item) => item.code === "missing-tags",
+  ).length;
+  const duplicateRoutes = diagnostics.filter(
+    (item) => item.code === "duplicate-route",
+  ).length;
+  const explicitOperationIds = routes.filter(
+    (item) => item.operationIdSource === "explicit",
+  ).length;
+  const inferredOperationIds = routes.filter(
+    (item) => item.operationIdSource === "inferred",
+  ).length;
   const hiddenRoutes = routes.filter((item) => item.hidden).length;
   const publicRoutes = routes.length - hiddenRoutes;
 
@@ -287,5 +363,3 @@ function buildRouteManifestPayload(
     })),
   };
 }
-
-

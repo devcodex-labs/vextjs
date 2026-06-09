@@ -15,7 +15,7 @@ import { BuildCompiler } from "../lib/build/build-compiler.js";
  *   --clean            编译前清理输出目录（默认 false）
  *   --no-sourcemap     不生成 source map（默认生成）
  *   --minify           代码压缩（默认 false）
- *   --typecheck        编译前执行 TypeScript 类型检查（默认 false）
+ *   --typecheck        工具产物刷新后执行 TypeScript 类型检查（默认 false）
  *   -h, --help         显示帮助信息
  *
  * 用法示例：
@@ -24,7 +24,7 @@ import { BuildCompiler } from "../lib/build/build-compiler.js";
  *   vext build --outdir build     指定输出目录
  *   vext build --no-sourcemap     不生成 source map
  *   vext build --minify           生产优化（压缩代码）
- *   vext build --typecheck        编译前执行类型检查
+ *   vext build --typecheck        生成类型/manifest 后执行类型检查
  *   vext build --clean --minify --typecheck   完整生产构建
  *
  * 环境变量：
@@ -52,7 +52,7 @@ interface BuildCommandOptions {
   /** 代码压缩 */
   minify: boolean;
 
-  /** 编译前执行 TypeScript 类型检查 */
+  /** 工具产物刷新后执行 TypeScript 类型检查 */
   typecheck: boolean;
 }
 
@@ -68,9 +68,10 @@ interface BuildCommandOptions {
  *   2. detectProject() 检测项目结构
  *   3. JavaScript 项目 → 提示无需编译并退出
  *   4. --clean → 清理旧产物
- *   5. --typecheck → 执行 tsc --noEmit
- *   6. BuildCompiler.build() 执行编译
- *   7. 输出编译报告（文件数、耗时、输出目录）
+ *   5. 刷新 typegen 与 route manifest（供类型检查/工具链消费）
+ *   6. --typecheck → 执行 tsc --noEmit
+ *   7. BuildCompiler.build() 执行编译
+ *   8. 输出编译报告（文件数、耗时、输出目录）
  *
  * @param args 命令行参数（如 ['--clean', '--minify']）
  */
@@ -107,6 +108,35 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   if (options.clean && existsSync(outDir)) {
     rmSync(outDir, { recursive: true });
     console.log(`[vextjs] cleaned: ${outDir}`);
+  }
+
+  // ── 工具产物刷新 ────────────────────────────────────────
+  const { runTypegen } = await import("../tooling/typegen/index.js");
+  const typegenResult = await runTypegen({
+    rootDir: project.rootDir,
+    generateServices: true,
+    generateAppExtensions: true,
+    writeManifest: true,
+  });
+  if (!typegenResult.ok) {
+    console.error("[vextjs] typegen reported blocking issues - build aborted");
+    for (const diagnostic of typegenResult.diagnostics) {
+      const logger = diagnostic.level === "error" ? console.error : console.log;
+      logger(`[vextjs] typegen ${diagnostic.level}: ${diagnostic.message}`);
+    }
+    process.exit(1);
+  }
+
+  const { runDoctor } = await import("../tooling/doctor/index.js");
+  const doctorResult = await runDoctor({
+    rootDir: project.rootDir,
+    target: "routes",
+    writeManifest: true,
+    refresh: true,
+  });
+  if (!doctorResult.ok) {
+    console.error("[vextjs] route diagnostics failed - build aborted");
+    process.exit(1);
   }
 
   // ── 类型检查（--typecheck，可选） ─────────────────────────
@@ -198,7 +228,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
  *   --sourcemap        生成 source map（默认 true）
  *   --no-sourcemap     不生成 source map
  *   --minify           代码压缩（默认 false）
- *   --typecheck        类型检查（默认 false）
+ *   --typecheck        工具产物刷新后执行类型检查（默认 false）
  *   -h, --help         显示帮助信息
  *
  * @param args 命令行参数数组
@@ -282,7 +312,7 @@ function printBuildHelp(): void {
     --sourcemap        Generate source maps (default: true)
     --no-sourcemap     Disable source map generation
     --minify           Minify output code
-    --typecheck        Run TypeScript type check before build
+    --typecheck        Run TypeScript type check after generated artifacts refresh
     -h, --help         Show this help message
 
   Environment variables:

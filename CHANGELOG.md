@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | Pending changes [查看](./changelogs/unreleased.md) |
+| [0.3.21] | 2026-06-10 | Patch | Dev fast-ready tooling removes `ts-morph`, moves generated types under `.vext/`, and adds startup profiling / manifest cache paths [查看](./changelogs/v0.3.21.md) |
 | [0.3.20] | 2026-06-09 | Patch | Direct runtime and development dependencies pinned to exact versions for deterministic consumer installs [查看](./changelogs/v0.3.20.md) |
 | [0.3.19] | 2026-06-08 | Patch | Default logger moves to Vext internal zero-runtime-dependency kernel; direct logger package dependencies removed [查看](./changelogs/v0.3.19.md) |
 | [0.3.18] | 2026-06-07 | Patch | Dependency cleanup: Node.js `>=20.19.0`, optional Koa router peer, and controlled MongoDB memory server test binaries [查看](./changelogs/v0.3.18.md) |
@@ -68,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.20...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.21...HEAD
+[0.3.21]: https://github.com/vextjs/vext/compare/v0.3.20...v0.3.21
 [0.3.20]: https://github.com/vextjs/vext/compare/v0.3.19...v0.3.20
 [0.3.19]: https://github.com/vextjs/vext/compare/v0.3.18...v0.3.19
 [0.3.18]: https://github.com/vextjs/vext/compare/v0.3.17...v0.3.18

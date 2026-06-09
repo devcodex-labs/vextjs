@@ -3,28 +3,44 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const existsSync = vi.fn();
   const runTypegen = vi.fn();
-  const loadTsMorph = vi.fn();
+  const spawn = vi.fn();
   const state = {
-    diagnostics: [] as Array<{ getCategory: () => unknown }>,
-    formatted: "formatted diagnostics",
+    tscExitCode: 0,
+    tscOutput: "",
   };
 
-  class MockProject {
-    getPreEmitDiagnostics() {
-      return state.diagnostics;
-    }
-
-    formatDiagnosticsWithColorAndContext() {
-      return state.formatted;
-    }
+  function createEmitter() {
+    const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+    return {
+      on(event: string, listener: (...args: unknown[]) => void) {
+        listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+        return this;
+      },
+      once(event: string, listener: (...args: unknown[]) => void) {
+        const wrapped = (...args: unknown[]) => {
+          listener(...args);
+          listeners.set(
+            event,
+            (listeners.get(event) ?? []).filter((item) => item !== wrapped),
+          );
+        };
+        listeners.set(event, [...(listeners.get(event) ?? []), wrapped]);
+        return this;
+      },
+      emit(event: string, ...args: unknown[]) {
+        for (const listener of listeners.get(event) ?? []) {
+          listener(...args);
+        }
+      },
+    };
   }
 
   return {
     existsSync,
     runTypegen,
-    loadTsMorph,
+    spawn,
     state,
-    MockProject,
+    createEmitter,
   };
 });
 
@@ -32,12 +48,12 @@ vi.mock("node:fs", () => ({
   existsSync: mocks.existsSync,
 }));
 
-vi.mock("../../../src/tooling/typegen/index.js", () => ({
-  runTypegen: mocks.runTypegen,
+vi.mock("node:child_process", () => ({
+  spawn: mocks.spawn,
 }));
 
-vi.mock("../../../src/tooling/shared/lazy-ts-morph.js", () => ({
-  loadTsMorph: mocks.loadTsMorph,
+vi.mock("../../../src/tooling/typegen/index.js", () => ({
+  runTypegen: mocks.runTypegen,
 }));
 
 import { runDevPreflight } from "../../../src/cli/utils/dev-preflight.js";
@@ -56,15 +72,24 @@ describe("runDevPreflight", () => {
       diagnostics: [],
       warnings: [],
     });
-    mocks.state.diagnostics = [];
-    mocks.state.formatted = "formatted diagnostics";
-    mocks.loadTsMorph.mockResolvedValue({
-      Project: mocks.MockProject,
-      ts: {
-        DiagnosticCategory: {
-          Error: "error",
-        },
-      },
+    mocks.state.tscExitCode = 0;
+    mocks.state.tscOutput = "";
+    mocks.spawn.mockImplementation(() => {
+      const child = mocks.createEmitter() as ReturnType<
+        typeof mocks.createEmitter
+      > & {
+        stdout: ReturnType<typeof mocks.createEmitter>;
+        stderr: ReturnType<typeof mocks.createEmitter>;
+      };
+      child.stdout = mocks.createEmitter();
+      child.stderr = mocks.createEmitter();
+      queueMicrotask(() => {
+        if (mocks.state.tscOutput) {
+          child.stdout.emit("data", Buffer.from(mocks.state.tscOutput));
+        }
+        child.emit("close", mocks.state.tscExitCode);
+      });
+      return child;
     });
 
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -81,14 +106,14 @@ describe("runDevPreflight", () => {
       ok: false,
       files: [
         {
-          filePath: "E:\\app\\src\\types\\generated\\services.generated.d.ts",
+          filePath: "E:\\app\\.vext\\types\\services.generated.d.ts",
           status: "written",
         },
       ],
       diagnostics: [{ level: "error", message: "service dependency issue" }],
       warnings: ["manual review suggested"],
       manifest: {
-        filePath: "E:\\app\\.vext\\inspect\\services.manifest.json",
+        filePath: "E:\\app\\.vext\\manifest\\services.json",
         status: "written",
       },
     });
@@ -104,12 +129,12 @@ describe("runDevPreflight", () => {
       typegenOk: false,
       tsOk: true,
     });
-    expect(mocks.loadTsMorph).not.toHaveBeenCalled();
+    expect(mocks.spawn).not.toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      "[vext dev] generated src/types/generated/services.generated.d.ts",
+      "[vext dev] generated .vext/types/services.generated.d.ts",
     );
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      "[vext dev] generated .vext/inspect/services.manifest.json",
+      "[vext dev] generated .vext/manifest/services.json",
     );
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       "[vext dev] typegen warning: manual review suggested",
@@ -136,16 +161,13 @@ describe("runDevPreflight", () => {
       typegenOk: true,
       tsOk: true,
     });
-    expect(mocks.loadTsMorph).not.toHaveBeenCalled();
+    expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
   it("reports formatted TypeScript diagnostics when semantic errors exist", async () => {
-    mocks.state.diagnostics = [
-      { getCategory: () => "error" },
-      { getCategory: () => "warning" },
-    ];
-    mocks.state.formatted =
-      "TS2322: Type 'string' is not assignable to type 'number'.";
+    mocks.state.tscExitCode = 2;
+    mocks.state.tscOutput =
+      "src/index.ts(1,1): error TS2322: Type 'string' is not assignable to type 'number'.";
 
     const result = await runDevPreflight({
       rootDir: "E:\\app",
@@ -158,18 +180,18 @@ describe("runDevPreflight", () => {
       typegenOk: true,
       tsOk: false,
     });
-    expect(mocks.loadTsMorph).toHaveBeenCalledTimes(1);
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[vext dev] TypeScript reported 1 blocking error(s) during soft reload.",
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "TS2322: Type 'string' is not assignable to type 'number'.",
+      "src/index.ts(1,1): error TS2322: Type 'string' is not assignable to type 'number'.",
     );
   });
 
   it("runs TypeScript diagnostics asynchronously without blocking the preflight result", async () => {
-    mocks.state.diagnostics = [{ getCategory: () => "error" }];
-    mocks.state.formatted = "async TS error";
+    mocks.state.tscExitCode = 2;
+    mocks.state.tscOutput = "src/index.ts(1,1): error TS2322: async TS error";
 
     const result = await runDevPreflight({
       rootDir: "E:\\app",
@@ -191,7 +213,9 @@ describe("runDevPreflight", () => {
         "TypeScript reported 1 blocking error(s) after initial start.",
       ),
     );
-    expect(consoleErrorSpy).toHaveBeenCalledWith("async TS error");
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "src/index.ts(1,1): error TS2322: async TS error",
+    );
   });
 
   it("can skip TypeScript diagnostics while keeping typegen blocking", async () => {
@@ -207,7 +231,7 @@ describe("runDevPreflight", () => {
       typegenOk: true,
       tsOk: true,
     });
-    expect(mocks.loadTsMorph).not.toHaveBeenCalled();
+    expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
   it("keeps both failure channels visible when typegen and TypeScript diagnostics fail together", async () => {
@@ -217,11 +241,11 @@ describe("runDevPreflight", () => {
       diagnostics: [],
       warnings: [],
     });
-    mocks.state.diagnostics = [
-      { getCategory: () => "error" },
-      { getCategory: () => "error" },
-    ];
-    mocks.state.formatted = "TS errors present";
+    mocks.state.tscExitCode = 2;
+    mocks.state.tscOutput = [
+      "src/a.ts(1,1): error TS2322: first",
+      "src/b.ts(1,1): error TS2345: second",
+    ].join("\n");
 
     const result = await runDevPreflight({
       rootDir: "E:\\app",
@@ -240,6 +264,6 @@ describe("runDevPreflight", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[vext dev] TypeScript reported 2 blocking error(s) during cold restart preflight.",
     );
-    expect(consoleErrorSpy).toHaveBeenCalledWith("TS errors present");
+    expect(consoleErrorSpy).toHaveBeenCalledWith(mocks.state.tscOutput);
   });
 });

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, relative, win32 } from "node:path";
 
-import { loadTsMorph } from "../../tooling/shared/lazy-ts-morph.js";
 import { runTypegen } from "../../tooling/typegen/index.js";
 
 export type TsDiagnosticsMode = "blocking" | "async" | "skip";
@@ -146,30 +146,69 @@ async function runTypeScriptDiagnostics(
     return { ok: true, errorCount: 0 };
   }
 
-  const tsMorph = await loadTsMorph();
-  const project = new tsMorph.Project({
-    tsConfigFilePath: tsconfigPath,
-    skipAddingFilesFromTsConfig: false,
-  });
-
-  const diagnostics = project
-    .getPreEmitDiagnostics()
-    .filter(
-      (diagnostic) =>
-        diagnostic.getCategory() === tsMorph.ts.DiagnosticCategory.Error,
-    );
-
-  if (diagnostics.length === 0) {
+  const result = await runLocalTsc(rootDir);
+  if (result.exitCode === 0) {
     return { ok: true, errorCount: 0 };
   }
 
+  const formatted = normalizeTscOutput(result.output);
   return {
     ok: false,
-    errorCount: diagnostics.length,
-    formatted: project.formatDiagnosticsWithColorAndContext(diagnostics, {
-      newLineChar: "\n",
-    }),
+    errorCount: countTypeScriptErrors(formatted),
+    formatted,
   };
+}
+
+function runLocalTsc(
+  rootDir: string,
+): Promise<{ exitCode: number | null; output: string }> {
+  return new Promise((resolve) => {
+    const localTsc = join(
+      rootDir,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "tsc.cmd" : "tsc",
+    );
+    const command = existsSync(localTsc)
+      ? localTsc
+      : process.platform === "win32"
+        ? "npx.cmd"
+        : "npx";
+    const args = existsSync(localTsc)
+      ? ["--noEmit", "--pretty", "true"]
+      : ["tsc", "--noEmit", "--pretty", "true"];
+    const child = spawn(command, args, {
+      cwd: rootDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32" && command.endsWith(".cmd"),
+      windowsHide: true,
+    });
+    const chunks: Buffer[] = [];
+
+    child.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.once("error", (error) => {
+      resolve({
+        exitCode: 1,
+        output: error.message,
+      });
+    });
+    child.once("close", (exitCode) => {
+      resolve({
+        exitCode,
+        output: Buffer.concat(chunks).toString("utf-8"),
+      });
+    });
+  });
+}
+
+function normalizeTscOutput(output: string): string {
+  return output.replace(/\r\n/g, "\n").trim();
+}
+
+function countTypeScriptErrors(output: string): number {
+  const matches = output.match(/\berror TS\d+:/gu);
+  return Math.max(1, matches?.length ?? 0);
 }
 
 function toRelativePath(rootDir: string, filePath: string): string {

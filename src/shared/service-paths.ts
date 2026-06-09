@@ -5,6 +5,8 @@ import { dirname, extname, relative, sep } from "node:path";
  */
 export const SUPPORTED_SERVICE_EXTENSIONS = new Set([
   ".ts",
+  ".mts",
+  ".cts",
   ".js",
   ".mjs",
   ".cjs",
@@ -57,8 +59,10 @@ export function toGeneratedImportPath(
   generatedFilePath: string,
   sourceFilePath: string,
 ): string {
-  let rel = relative(dirname(generatedFilePath), sourceFilePath).split(sep).join("/");
-  rel = rel.replace(/\.(ts|js|mjs|cjs)$/u, ".js");
+  let rel = relative(dirname(generatedFilePath), sourceFilePath)
+    .split(sep)
+    .join("/");
+  rel = rel.replace(/\.(ts|mts|cts|js|mjs|cjs)$/u, ".js");
 
   if (!rel.startsWith(".")) {
     rel = `./${rel}`;
@@ -66,4 +70,3 @@ export function toGeneratedImportPath(
 
   return rel;
 }
-

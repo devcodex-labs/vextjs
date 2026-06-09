@@ -34,8 +34,7 @@ export async function writeRouteManifestFile(
   rootDir: string,
   payload: RouteManifestPayload,
 ): Promise<GeneratedFileResult> {
-  const filePath = join(rootDir, ".vext", "inspect", "routes.manifest.json");
+  const filePath = join(rootDir, ".vext", "manifest", "routes.json");
   const content = `${JSON.stringify(payload, null, 2)}\n`;
   return writeGeneratedFile(filePath, content);
 }
-

@@ -473,6 +473,31 @@ describe("DevCompiler", () => {
       expect(stats.fileCount).toBe(4);
       expect(fs.existsSync(path.join(outDir, "index.js"))).toBe(true);
     });
+
+    it("缓存命中时应复用已有产物并跳过首次 rebuild", async () => {
+      compiler = new DevCompiler({
+        srcDir,
+        outDir,
+        tsconfig: path.join(projectRoot, "tsconfig.json"),
+      });
+      await compiler.start();
+      await compiler.dispose();
+
+      const cachedOutput = "exports.version = 'cached-output';\n";
+      fs.writeFileSync(path.join(outDir, "index.js"), cachedOutput);
+
+      compiler = new DevCompiler({
+        srcDir,
+        outDir,
+        tsconfig: path.join(projectRoot, "tsconfig.json"),
+      });
+      const stats = await compiler.start();
+
+      expect(stats.cacheHit).toBe(true);
+      expect(fs.readFileSync(path.join(outDir, "index.js"), "utf-8")).toBe(
+        cachedOutput,
+      );
+    });
   });
 
   // ── compileSingle() — 单文件编译（Tier 1）─────────────

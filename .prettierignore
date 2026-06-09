@@ -8,4 +8,4 @@ website/dist/
 *.tgz
 package-lock.json
 CHANGELOG.md
-
+test/golden/typegen/**

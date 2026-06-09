@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -8,6 +8,10 @@ import {
   type BuildResult,
 } from "../../src/lib/build/build-compiler.js";
 import { parseBuildArgs } from "../../src/cli/build.js";
+
+// Coverage instrumentation on Windows can make real esbuild invocations exceed
+// the global 10s limit even when the compiler behavior is correct.
+vi.setConfig({ testTimeout: 30_000 });
 
 // ── 测试辅助 ────────────────────────────────────────────────
 
@@ -387,14 +391,17 @@ describe("BuildCompiler", () => {
       const compiler = createCompiler(projectRoot);
       await compiler.build();
 
-      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"))).toBe(
-        true,
-      );
-      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "02-hook.mjs"))).toBe(
-        true,
-      );
       expect(
-        fs.readFileSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"), "utf-8"),
+        fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs")),
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(projectRoot, "dist", "preload", "02-hook.mjs")),
+      ).toBe(true);
+      expect(
+        fs.readFileSync(
+          path.join(projectRoot, "dist", "preload", "01-env.mjs"),
+          "utf-8",
+        ),
       ).toContain("APP_PORT");
     });
 
@@ -885,14 +892,19 @@ describe("BuildCompiler", () => {
       const compiler = createCompiler(projectRoot);
       await compiler.build();
 
-      expect(fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs"))).toBe(
-        true,
-      );
+      expect(
+        fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs")),
+      ).toBe(true);
 
-      fs.rmSync(path.join(projectRoot, "preload"), { recursive: true, force: true });
+      fs.rmSync(path.join(projectRoot, "preload"), {
+        recursive: true,
+        force: true,
+      });
       await compiler.build();
 
-      expect(fs.existsSync(path.join(projectRoot, "dist", "preload"))).toBe(false);
+      expect(fs.existsSync(path.join(projectRoot, "dist", "preload"))).toBe(
+        false,
+      );
     });
   });
 });
