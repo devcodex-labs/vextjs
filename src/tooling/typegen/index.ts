@@ -43,17 +43,21 @@ export async function runTypegen(
   const warnings: string[] = [];
 
   if (generateServices) {
-    files.push(await generateServicesDts(rootDir, index.serviceEntries, { checkOnly }));
+    files.push(
+      await generateServicesDts(rootDir, index.serviceEntries, { checkOnly }),
+    );
   }
 
   if (generateAppExtensions) {
     const appExtensionsResult: AppExtensionsGenerationResult =
-      await generateAppExtensionsDts(rootDir, index.appExtensions, { checkOnly });
+      await generateAppExtensionsDts(rootDir, index.appExtensions, {
+        checkOnly,
+      });
     files.push(appExtensionsResult.file);
     warnings.push(...appExtensionsResult.warnings);
   }
 
-  const serviceDeps = await analyzeServiceDependencies(rootDir);
+  const serviceDeps = await analyzeServiceDependencies(rootDir, { index });
   const manifest = writeManifest
     ? await writeServiceManifestFile(
         rootDir,
@@ -86,4 +90,3 @@ export async function runTypegen(
     manifest,
   };
 }
-

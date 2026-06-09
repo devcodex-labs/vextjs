@@ -120,7 +120,7 @@ cp src/config/bootstrap.example.ts src/config/bootstrap.ts
 ```bash
 vext dev              # Development mode with hot reload
 vext build            # Build TypeScript projects
-vext start            # Start the production server
+vext start            # Start the production server from dist/
 vext create <name>    # Create a new project
 vext typegen          # Generate service and app extension types
 vext stop             # Stop cluster workers
@@ -570,6 +570,8 @@ npm start
 ```
 
 `vext build` compiles TypeScript source and project-level preload files. `vext start` runs the production bootstrap path and can read compiled preload files from `dist/preload/` when the root `preload/` directory is not present.
+
+For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
 
 ## Testing Utilities
 

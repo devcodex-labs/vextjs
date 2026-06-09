@@ -77,23 +77,22 @@ src/                          dist/
 ### 直接启动
 
 ```bash
-# 方式一：使用 vext start（推荐）
+# 使用 vext start（推荐）
 NODE_ENV=production vext start
 
 # 也可以加载自定义环境配置（需存在 src/config/sg-sit.ts）
 NODE_ENV=sg-sit vext start
 
-# 方式二：直接 node 运行
-NODE_ENV=production node dist/index.js
-
 # 启用 Source Map 支持（错误堆栈显示 TypeScript 行号）
-NODE_ENV=production node --enable-source-maps dist/index.js
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
 ```
 
-`vext start` 会自动检测 `dist/` 目录是否存在：
+TypeScript 项目部署时，`vext start` 会要求存在有效的 `dist/` 构建产物：
 
-- **存在** → 直接用 `node` 运行 `dist/index.js`（不依赖 tsx）
-- **不存在** → 使用 tsx 运行时编译 `src/index.ts`（开发模式回退）
+- **存在有效构建产物** → 直接用 `node` 运行编译后的代码（不依赖 tsx）
+- **不存在或不完整** → 直接失败并提示先执行 `vext build`
+
+开发期源码启动请使用 `vext dev`，生产 `vext start` 不会回退到 TypeScript 运行时。
 
 ### 环境变量
 
@@ -137,6 +136,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # 复制编译产物
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
 
 # 非 root 用户运行
 RUN addgroup --system --gid 1001 vext && \
@@ -145,6 +145,7 @@ USER vext
 
 # 环境变量
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--enable-source-maps
 ENV PORT=3000
 
 EXPOSE 3000
@@ -154,7 +155,7 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # 启动
-CMD ["node", "--enable-source-maps", "dist/index.js"]
+CMD ["npm", "start"]
 ```
 
 ### .dockerignore
@@ -330,7 +331,8 @@ module.exports = {
   apps: [
     {
       name: "myapp",
-      script: "dist/index.js",
+      script: "node_modules/vextjs/dist/cli/index.js",
+      args: "start",
       node_args: "--enable-source-maps",
 
       // 多实例（或使用 VextJS 内置 Cluster 模式）
@@ -475,7 +477,7 @@ services:
 
 ```bash
 # 不需要额外配置，JSON 日志直接输出到 stdout
-NODE_ENV=production node dist/index.js
+NODE_ENV=production vext start
 ```
 
 ## 健康检查
@@ -726,13 +728,13 @@ JWT_SECRET=local-dev-secret
 
 ```bash
 # 增大内存上限（默认 ~1.5GB）
-node --max-old-space-size=4096 dist/index.js
+NODE_OPTIONS=--max-old-space-size=4096 NODE_ENV=production vext start
 
 # 启用 Source Map（推荐）
-node --enable-source-maps dist/index.js
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
 
 # 组合使用
-node --enable-source-maps --max-old-space-size=4096 dist/index.js
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
 ```
 
 ### Cluster 多进程

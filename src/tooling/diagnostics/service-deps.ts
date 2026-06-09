@@ -1,4 +1,8 @@
-import { buildProjectIndex, type ServiceIndexEntry } from "../project-index/index.js";
+import {
+  buildProjectIndex,
+  type ProjectIndex,
+  type ServiceIndexEntry,
+} from "../project-index/index.js";
 import { loadTsMorph } from "../shared/lazy-ts-morph.js";
 
 type ServiceDepLevel = "error" | "warn" | "info";
@@ -18,10 +22,13 @@ export interface ServiceDependencyReport {
 
 export async function analyzeServiceDependencies(
   rootDir: string,
+  options: { index?: ProjectIndex } = {},
 ): Promise<ServiceDependencyReport> {
-  const index = await buildProjectIndex(rootDir);
+  const index = options.index ?? (await buildProjectIndex(rootDir));
   const tsMorph = await loadTsMorph();
-  const knownKeys = new Set(index.serviceEntries.map((entry) => entry.serviceKey));
+  const knownKeys = new Set(
+    index.serviceEntries.map((entry) => entry.serviceKey),
+  );
   const graph = new Map<string, Set<string>>();
 
   for (const entry of index.serviceEntries) {
@@ -140,4 +147,3 @@ function detectCycles(
     }
   }
 }
-

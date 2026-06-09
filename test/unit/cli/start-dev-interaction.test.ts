@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 const mocks = vi.hoisted(() => {
   const createInterface = vi.fn();
   const detectProject = vi.fn();
-  const hasDistBuild = vi.fn();
+  const inspectDistBuild = vi.fn();
   const resolveEntryFile = vi.fn();
   const resolvePreloads = vi.fn();
   const runDevPreflight = vi.fn();
@@ -31,9 +31,7 @@ const mocks = vi.hoisted(() => {
       restarterInstances.push(this);
     }
 
-    setEvents(
-      events: typeof this.events,
-    ): void {
+    setEvents(events: typeof this.events): void {
       this.events = events;
     }
   }
@@ -58,7 +56,7 @@ const mocks = vi.hoisted(() => {
   return {
     createInterface,
     detectProject,
-    hasDistBuild,
+    inspectDistBuild,
     resolveEntryFile,
     resolvePreloads,
     runDevPreflight,
@@ -82,7 +80,7 @@ vi.mock("node:readline/promises", () => ({
 
 vi.mock("../../../src/cli/utils/detect-project.js", () => ({
   detectProject: mocks.detectProject,
-  hasDistBuild: mocks.hasDistBuild,
+  inspectDistBuild: mocks.inspectDistBuild,
   resolveEntryFile: mocks.resolveEntryFile,
 }));
 
@@ -158,11 +156,10 @@ describe("cli interaction: start/dev", () => {
   let stdinSetEncodingSpy: any;
   let processOnSpy: any;
   let processOnceSpy: any;
+  let processExitSpy: any;
   let originalStdinTTY: boolean | undefined;
   let originalStdoutTTY: boolean | undefined;
-  let originalSetRawMode:
-    | ((mode: boolean) => NodeJS.ReadStream)
-    | undefined;
+  let originalSetRawMode: ((mode: boolean) => NodeJS.ReadStream) | undefined;
   let readline: MockReadline;
 
   beforeEach(() => {
@@ -176,7 +173,8 @@ describe("cli interaction: start/dev", () => {
     setTTY(true);
 
     Object.defineProperty(process.stdin, "setRawMode", {
-      value: originalSetRawMode ?? vi.fn(() => process.stdin as NodeJS.ReadStream),
+      value:
+        originalSetRawMode ?? vi.fn(() => process.stdin as NodeJS.ReadStream),
       configurable: true,
       writable: true,
     });
@@ -188,21 +186,32 @@ describe("cli interaction: start/dev", () => {
     stdinSetRawModeSpy = vi
       .spyOn(process.stdin as NodeJS.ReadStream, "setRawMode")
       .mockImplementation(() => process.stdin as NodeJS.ReadStream);
-    stdinResumeSpy = vi.spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
+    stdinResumeSpy = vi
+      .spyOn(process.stdin, "resume")
+      .mockImplementation(() => process.stdin);
     stdinSetEncodingSpy = vi
       .spyOn(process.stdin, "setEncoding")
       .mockImplementation(() => process.stdin);
 
     processOnSpy = vi.spyOn(process, "on");
     processOnceSpy = vi.spyOn(process, "once");
+    processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit");
+    }) as never);
 
     mocks.detectProject.mockReturnValue({
       rootDir: "E:/Worker/vext-fixture",
       srcDir: "E:/Worker/vext-fixture/src",
       language: "ts",
     });
-    mocks.hasDistBuild.mockReturnValue(false);
-    mocks.resolveEntryFile.mockReturnValue("E:/Worker/vext-fixture/node_modules/vextjs/dist/lib/bootstrap.js");
+    mocks.inspectDistBuild.mockReturnValue({
+      valid: true,
+      hasDistDir: true,
+      missing: [],
+    });
+    mocks.resolveEntryFile.mockReturnValue(
+      "E:/Worker/vext-fixture/node_modules/vextjs/dist/lib/bootstrap.js",
+    );
     mocks.resolvePreloads.mockResolvedValue([]);
     mocks.runDevPreflight.mockResolvedValue({
       ok: true,
@@ -260,8 +269,54 @@ describe("cli interaction: start/dev", () => {
       action: "kill",
     });
     expect(readline.close).toHaveBeenCalledTimes(1);
-    expect(processOnceSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+    expect(processOnceSpy).toHaveBeenCalledWith(
+      "SIGTERM",
+      expect.any(Function),
+    );
     expect(processOnceSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+  });
+
+  it("startCommand should fail fast for TypeScript projects without a valid dist build", async () => {
+    mocks.inspectDistBuild.mockReturnValueOnce({
+      valid: false,
+      hasDistDir: true,
+      missing: ["dist/config/default.js"],
+    });
+
+    await expect(startCommand([])).rejects.toThrow("process.exit");
+
+    expect(mocks.fork).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Cannot run TypeScript project with vext start"),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Run "vext build" first'),
+    );
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("startCommand should allow JavaScript projects without a dist build", async () => {
+    const child = createMockChild();
+    mocks.fork.mockReturnValue(child);
+    mocks.detectProject.mockReturnValueOnce({
+      rootDir: "E:/Worker/vext-js-fixture",
+      srcDir: "E:/Worker/vext-js-fixture/src",
+      language: "js",
+    });
+    mocks.inspectDistBuild.mockReturnValueOnce({
+      valid: false,
+      hasDistDir: false,
+      missing: [],
+    });
+
+    await startCommand([]);
+
+    expect(mocks.fork).toHaveBeenCalledTimes(1);
+    expect(mocks.fork).toHaveBeenCalledWith(
+      expect.any(String),
+      [],
+      expect.objectContaining({ execArgv: [] }),
+    );
   });
 
   it("startCommand should abort automatically when stdio is not interactive", async () => {
@@ -365,6 +420,28 @@ describe("cli interaction: start/dev", () => {
     expect(restarter.restart).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("initial checks failed"),
+    );
+  });
+
+  it("devCommand should request async TypeScript diagnostics by default", async () => {
+    await devCommand([]);
+
+    expect(mocks.runDevPreflight).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "initial start",
+        tsDiagnosticsMode: "async",
+      }),
+    );
+  });
+
+  it("devCommand should request blocking TypeScript diagnostics in strict preflight mode", async () => {
+    await devCommand(["--strict-preflight"]);
+
+    expect(mocks.runDevPreflight).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "initial start",
+        tsDiagnosticsMode: "blocking",
+      }),
     );
   });
 

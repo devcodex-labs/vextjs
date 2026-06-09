@@ -144,7 +144,8 @@ describe("runDevPreflight", () => {
       { getCategory: () => "error" },
       { getCategory: () => "warning" },
     ];
-    mocks.state.formatted = "TS2322: Type 'string' is not assignable to type 'number'.";
+    mocks.state.formatted =
+      "TS2322: Type 'string' is not assignable to type 'number'.";
 
     const result = await runDevPreflight({
       rootDir: "E:\\app",
@@ -164,6 +165,49 @@ describe("runDevPreflight", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "TS2322: Type 'string' is not assignable to type 'number'.",
     );
+  });
+
+  it("runs TypeScript diagnostics asynchronously without blocking the preflight result", async () => {
+    mocks.state.diagnostics = [{ getCategory: () => "error" }];
+    mocks.state.formatted = "async TS error";
+
+    const result = await runDevPreflight({
+      rootDir: "E:\\app",
+      language: "ts",
+      reason: "initial start",
+      tsDiagnosticsMode: "async",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.typegenOk).toBe(true);
+    expect(result.tsOk).toBe(true);
+    expect(result.tsDiagnosticsPending).toBe(true);
+    expect(result.tsDiagnosticsTask).toBeInstanceOf(Promise);
+
+    await result.tsDiagnosticsTask;
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "TypeScript reported 1 blocking error(s) after initial start.",
+      ),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith("async TS error");
+  });
+
+  it("can skip TypeScript diagnostics while keeping typegen blocking", async () => {
+    const result = await runDevPreflight({
+      rootDir: "E:\\app",
+      language: "ts",
+      reason: "soft reload",
+      tsDiagnosticsMode: "skip",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      typegenOk: true,
+      tsOk: true,
+    });
+    expect(mocks.loadTsMorph).not.toHaveBeenCalled();
   });
 
   it("keeps both failure channels visible when typegen and TypeScript diagnostics fail together", async () => {

@@ -579,7 +579,7 @@ project/
 
 ```bash
 # 不需要额外配置，JSON 日志直接输出到 stdout
-NODE_ENV=production node dist/index.js
+NODE_ENV=production vext start
 ```
 
 | 平台                     | 日志采集方式                                          |
@@ -605,7 +605,8 @@ module.exports = {
   apps: [
     {
       name: "myapp",
-      script: "dist/index.js",
+      script: "node_modules/vextjs/dist/cli/index.js",
+      args: "start",
       env: { NODE_ENV: "production" },
       error_file: "/var/log/myapp/error.log",
       out_file: "/var/log/myapp/app.log",
@@ -621,7 +622,7 @@ module.exports = {
 ```ini
 # /etc/systemd/system/myapp.service
 [Service]
-ExecStart=/usr/bin/node /srv/myapp/dist/index.js
+ExecStart=/usr/bin/npm start
 WorkingDirectory=/srv/myapp
 Environment=NODE_ENV=production
 StandardOutput=append:/var/log/myapp/app.log

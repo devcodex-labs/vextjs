@@ -135,6 +135,7 @@ vext dev [options]
 | `--poll`                     | 强制轮询模式（Docker / NFS 环境）           | `false`        |
 | `--poll-interval <ms>`       | 轮询间隔（毫秒，仅 `--poll` 时有效）        | `1000`         |
 | `--no-hot`                   | 禁用 Soft Reload，所有变更走 Cold Restart   | —              |
+| `--strict-preflight`         | 让 TypeScript 语义诊断重新阻塞启动 / 重载   | —              |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`）    | `error`        |
 | `--verbose-lifecycle`        | 输出详细生命周期日志与完整 watcher 变更列表 | —              |
 | `--clear`                    | 每次重载后清空控制台                        | —              |
@@ -299,7 +300,8 @@ vext typegen --services --root ./examples/hello-world
 ### 适用边界
 
 - `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `start / build` 的默认 runtime 主路径；
-- 从 `0.3.7` 起，`vext dev` 会在 preflight 中自动执行基础 `typegen`，用来同步 generated 声明并在开发期更早暴露明显问题；
+- `vext dev` 会在 preflight 中自动执行基础 `typegen`，用来同步 generated 声明并在开发期更早暴露明显问题；
+- TypeScript 语义诊断默认在 ready / reload 后异步输出；如果希望像旧行为一样阻塞启动或重载，可使用 `--strict-preflight` 或 `VEXT_DEV_STRICT_PREFLIGHT=1`；
 - TS 项目优先输出高质量类型，JS 项目允许退化到 `import(...).default` / `unknown`，但命令本身仍可用；
 - `--write-manifest` 会把 service 索引、`app.extend()` 聚合结果与服务依赖图摘要写入 `.vext/inspect/services.manifest.json`；
 - 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。
@@ -355,7 +357,7 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ## `vext start` — 生产模式启动
 
-以生产模式启动项目。从 `dist/` 目录加载编译后的代码，需要先执行 `vext build`。
+以生产模式启动项目。TypeScript 项目从 `dist/` 目录加载编译后的代码，需要先执行 `vext build`；如果缺少有效构建产物，命令会直接失败并提示使用 `vext build` 或开发期改用 `vext dev`。
 
 ### 用法
 

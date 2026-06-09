@@ -782,6 +782,7 @@ if (isDirectRun && !alreadyStarted) {
  */
 async function detectAndStart(rootDir: string): Promise<void> {
   const isBuilt = process.env.VEXT_BUILT === "1";
+  ensureStartBuildReady(rootDir, isBuilt);
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
 
   // ── 1. 预加载配置（仅用于检测 cluster.enabled）──────────
@@ -865,6 +866,7 @@ export function applyClusterWorkerEnv(args: {
 
 async function startClusterMaster(rootDir: string): Promise<void> {
   const isBuilt = process.env.VEXT_BUILT === "1";
+  ensureStartBuildReady(rootDir, isBuilt);
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
 
   // 加载配置
@@ -898,9 +900,6 @@ async function startClusterMaster(rootDir: string): Promise<void> {
 
   // 配置 cluster.setupPrimary — 设置 Worker 进程的执行参数
   const execArgv: string[] = [];
-  if (!isBuilt && existsSync(join(rootDir, "tsconfig.json"))) {
-    execArgv.push("--import", "tsx/esm");
-  }
 
   // ── 注入预加载模块（vext.preload 字段）──────────────
   //
@@ -954,4 +953,15 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   });
 
   await master.start();
+}
+
+function ensureStartBuildReady(rootDir: string, isBuilt: boolean): void {
+  if (isBuilt || !existsSync(join(rootDir, "tsconfig.json"))) {
+    return;
+  }
+
+  throw new Error(
+    "[vextjs] Cannot run TypeScript project with vext start before build. " +
+      'Run "vext build" first, or use "vext dev" during development.',
+  );
 }

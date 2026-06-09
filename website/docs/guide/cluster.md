@@ -425,13 +425,14 @@ COPY package*.json ./
 RUN npm ci --production
 
 COPY dist/ ./dist/
+COPY src/ ./src/
 
 # 使用 SIGTERM 信号（Docker 默认）
 STOPSIGNAL SIGTERM
 
 # 启动 Cluster 模式
 ENV VEXT_CLUSTER=1
-CMD ["node", "dist/lib/bootstrap.js"]
+CMD ["npm", "start"]
 ```
 
 ### 建议

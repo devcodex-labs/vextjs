@@ -997,7 +997,7 @@ const config = await loadConfig(join(process.cwd(), "src/config"), {
 | `VEXT_CLUSTER` | `cluster.enabled` | 设为 `1` 启用集群        |
 
 ```bash
-PORT=8080 NODE_ENV=production node dist/index.js
+PORT=8080 NODE_ENV=production vext start
 ```
 
 ---

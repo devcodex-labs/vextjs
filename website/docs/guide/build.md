@@ -8,10 +8,7 @@
 # 编译生产产物
 vext build
 
-# 运行编译后的产物
-NODE_ENV=production node dist/index.js
-
-# 或使用 vext start（自动检测 dist/ 目录）
+# 运行已构建产物（TypeScript 项目需已生成有效 dist/）
 NODE_ENV=production vext start
 
 # 加载自定义环境配置（需存在 src/config/sg-sit.ts）
@@ -171,7 +168,7 @@ dist/
 在 Node.js 运行时启用 source map，让错误堆栈显示 TypeScript 行号：
 
 ```bash
-node --enable-source-maps dist/index.js
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
 ```
 
 未启用时的错误堆栈：
@@ -258,40 +255,30 @@ vext build
 
 ## 运行编译产物
 
-### 直接运行
-
 ```bash
 # 基本启动
-NODE_ENV=production node dist/index.js
-
-# 启用 source map（推荐）
-NODE_ENV=production node --enable-source-maps dist/index.js
-
-# 增大内存上限
-NODE_ENV=production node --enable-source-maps --max-old-space-size=4096 dist/index.js
-```
-
-### 使用 vext start
-
-`vext start` 会自动检测 `dist/` 目录：
-
-```bash
-# 自动检测 dist/ 并使用 node 运行
 NODE_ENV=production vext start
 
-# 如果 dist/ 不存在，回退到 tsx 运行 src/（开发模式）
-vext start
+# 启用 source map（推荐）
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+
+# 增大内存上限
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
 ```
+
+如果 TypeScript 项目缺少 `dist/` 或关键构建产物，`vext start` 会直接失败并提示先执行 `vext build`。开发期源码启动请使用 `vext dev`。
+
+通用脚手架项目没有固定的 `dist/index.js` 启动入口；直接 `node dist/index.js` 只适用于你自己维护入口文件并显式调用框架启动逻辑的高级场景。
 
 ### VEXT_BUILT 标记
 
-当运行编译后的产物时，框架内部设置 `VEXT_BUILT=1` 环境变量。这影响：
+通过 `vext start` 运行有效 `dist/` 构建产物时，CLI 会设置 `VEXT_BUILT=1` 环境变量。这影响：
 
 - **路径解析**：`src/routes/` → `dist/routes/`
 - **模块加载**：从 `dist/` 目录加载 routes、services、plugins、middlewares
 - **Model 加载**：MonSQLize 从 `dist/models/` 加载 Model 定义
 
-你不需要手动设置这个变量——框架自动处理。
+你不需要手动设置这个变量，使用 `vext start` 时框架会自动处理。
 
 ## 部署清单
 
@@ -308,7 +295,7 @@ npx vext build
 npm ci --omit=dev
 
 # 4. 启动
-NODE_ENV=production node --enable-source-maps dist/index.js
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production npx vext start
 ```
 
 ### Docker 多阶段构建
@@ -329,8 +316,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
 ENV NODE_ENV=production
-CMD ["node", "--enable-source-maps", "dist/index.js"]
+ENV NODE_OPTIONS=--enable-source-maps
+CMD ["npm", "start"]
 ```
 
 ### .gitignore
@@ -367,14 +356,14 @@ Error: Cannot find module './routes/users.js'
 
 ### Source Map 不生效
 
-确保启动时传入了 `--enable-source-maps` 参数：
+确保启动时通过 `NODE_OPTIONS` 传入 `--enable-source-maps` 参数：
 
 ```bash
 # ✅ 正确
-node --enable-source-maps dist/index.js
+NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
 
 # ❌ 参数位置错误
-node dist/index.js --enable-source-maps
+vext start --enable-source-maps
 ```
 
 ## 下一步

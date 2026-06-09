@@ -39,13 +39,21 @@ export interface ProjectInfo {
   /**
    * 框架启动入口文件路径
    *
-   * 指向 vextjs 框架内部的 bootstrap 文件：
-   *   - 未编译时：node_modules/vextjs/dist/lib/bootstrap.js
-   *   - 已编译时（dist/ 存在）：dist/lib/bootstrap.js（由 CLI 决定）
+   * 始终指向 vextjs 框架内部的 bootstrap 文件：
+   * node_modules/vextjs/dist/lib/bootstrap.js
    *
    * CLI 的 vext start 会 fork 此文件作为子进程入口。
    */
   entryFile: string;
+}
+
+/**
+ * 有效构建产物检查结果。
+ */
+export interface DistBuildInspection {
+  valid: boolean;
+  hasDistDir: boolean;
+  missing: string[];
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -152,16 +160,40 @@ export function findProjectRoot(cwd: string): string {
 }
 
 /**
- * hasDistBuild — 检测是否存在 dist/ 编译产物
+ * inspectDistBuild — 检测 dist/ 编译产物是否可用于 vext start
  *
- * 当 dist/ 目录存在时，vext start 应使用编译后的 JS 运行，
- * 无需 tsx 等 TypeScript 运行时支持。
+ * TypeScript 项目不能只凭 dist/ 目录存在就进入生产启动路径；
+ * 至少要有 config/default.js 与 dist/package.json 才能保证配置入口和
+ * CJS 子目录解析规则已由 vext build 写入。
  *
  * @param rootDir 项目根目录
- * @returns 是否存在 dist/ 目录
+ * @returns dist 构建产物检查结果
+ */
+export function inspectDistBuild(rootDir: string): DistBuildInspection {
+  const distDir = path.join(rootDir, "dist");
+  const requiredFiles = [
+    path.join(distDir, "package.json"),
+    path.join(distDir, "config", "default.js"),
+  ];
+  const missing = requiredFiles.filter((file) => !fs.existsSync(file));
+
+  return {
+    valid: fs.existsSync(distDir) && missing.length === 0,
+    hasDistDir: fs.existsSync(distDir),
+    missing: missing.map((file) =>
+      path.relative(rootDir, file).replace(/\\/g, "/"),
+    ),
+  };
+}
+
+/**
+ * hasDistBuild — 检测是否存在有效 dist/ 编译产物
+ *
+ * @param rootDir 项目根目录
+ * @returns 是否存在有效 dist/ 构建产物
  */
 export function hasDistBuild(rootDir: string): boolean {
-  return fs.existsSync(path.join(rootDir, "dist"));
+  return inspectDistBuild(rootDir).valid;
 }
 
 /**

@@ -2,6 +2,7 @@ import { resolve, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { detectProject } from "./utils/detect-project.js";
 import { runDevPreflight } from "./utils/dev-preflight.js";
+import type { TsDiagnosticsMode } from "./utils/dev-preflight.js";
 import { resolvePreloads } from "./utils/preload.js";
 import { ColdRestarter } from "../lib/dev/cold-restarter.js";
 import type { ColdRestarterOptions } from "../lib/dev/cold-restarter.js";
@@ -95,6 +96,9 @@ export interface DevCommandOptions {
 
   /** 端口冲突策略 */
   portConflict?: "error" | "prompt" | "kill" | "next";
+
+  /** 让 TypeScript 诊断重新阻塞启动 / reload */
+  strictPreflight?: boolean;
 }
 
 async function promptPortConflictDecision(
@@ -154,9 +158,14 @@ function printFileChanges(
     return;
   }
 
-  const preview = files.slice(0, 3).map((item) => item.path).join(", ");
+  const preview = files
+    .slice(0, 3)
+    .map((item) => item.path)
+    .join(", ");
   const suffix = files.length > 3 ? `, +${files.length - 3} more` : "";
-  console.log(`\n[vext dev] ${files.length} file(s) changed${preview ? `: ${preview}${suffix}` : ""}`);
+  console.log(
+    `\n[vext dev] ${files.length} file(s) changed${preview ? `: ${preview}${suffix}` : ""}`,
+  );
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -172,11 +181,13 @@ function printFileChanges(
 export async function devCommand(args: string[] = []): Promise<void> {
   const options = parseDevArgs(args);
   const hasLifecycleOverride =
-    options.verboseLifecycle === true || process.env.VEXT_LIFECYCLE_LEVEL === "verbose";
+    options.verboseLifecycle === true ||
+    process.env.VEXT_LIFECYCLE_LEVEL === "verbose";
   let lifecycleLevel: "concise" | "verbose" = hasLifecycleOverride
     ? "verbose"
     : "concise";
   let promptActive = false;
+  let pendingTsDiagnostics: Promise<unknown> | null = null;
 
   // ── 1. 检测项目结构 ────────────────────────────────────
   const projectRoot = resolve(options.root || process.cwd());
@@ -245,17 +256,30 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
   const refreshPreloads = async (): Promise<void> => {
     const latestPreloads = await resolvePreloads(project.rootDir);
-    restarter.setExtraExecArgv(
-      latestPreloads.flatMap((p) => ["--import", p]),
-    );
+    restarter.setExtraExecArgv(latestPreloads.flatMap((p) => ["--import", p]));
   };
 
   const runPreflight = async (reason: string): Promise<boolean> => {
+    const tsDiagnosticsMode: TsDiagnosticsMode = options.strictPreflight
+      ? "blocking"
+      : pendingTsDiagnostics
+        ? "skip"
+        : "async";
     const result = await runDevPreflight({
       rootDir: project.rootDir,
       language: project.language,
       reason,
+      tsDiagnosticsMode,
     });
+
+    if (result.tsDiagnosticsTask) {
+      const task = result.tsDiagnosticsTask.finally(() => {
+        if (pendingTsDiagnostics === task) {
+          pendingTsDiagnostics = null;
+        }
+      });
+      pendingTsDiagnostics = task;
+    }
 
     if (result.ok) {
       return true;
@@ -353,7 +377,9 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
   try {
     if (!(await runPreflight("initial start"))) {
-      console.error("[vext dev] initial checks failed. Waiting for changes...\n");
+      console.error(
+        "[vext dev] initial checks failed. Waiting for changes...\n",
+      );
     } else {
       await refreshPreloads();
       await restarter.restart("initial start");
@@ -380,89 +406,91 @@ export async function devCommand(args: string[] = []): Promise<void> {
 
   watcher.on("change", async (event: FileChangeEvent) => {
     try {
-    // ── 打印变更详情 ──────────────────────────────────
-    printFileChanges(event.files, lifecycleLevel);
+      // ── 打印变更详情 ──────────────────────────────────
+      printFileChanges(event.files, lifecycleLevel);
 
-    if (options.clear) {
-      console.clear();
-    }
-
-    const preflightReason =
-      event.action === "cold" ? "cold restart preflight" : "soft reload preflight";
-    if (!(await runPreflight(preflightReason))) {
-      return;
-    }
-
-    // ── Tier 3: 配置/插件变更 → Cold Restart ─────────
-    //
-    // 配置文件、插件、.env、package.json、tsconfig.json
-    // 的变更影响全局初始化阶段，无法在进程内安全热替换，
-    // 必须执行完整的 kill + fork。
-    //
-    if (event.action === "cold") {
-      console.log(
-        "[vext dev] config/plugin change detected \u2192 cold restart (Tier 3)...",
-      );
-      try {
-        await refreshPreloads();
-        await restarter.restart(event.files.map((f) => f.path).join(", "));
-        console.log("[vext dev] cold restart complete\n");
-      } catch (err) {
-        console.error(
-          "[vext dev] restart failed:",
-          err instanceof Error ? err.message : err,
-        );
-        console.error("[vext dev] fix the error and save to retry\n");
+      if (options.clear) {
+        console.clear();
       }
-      return;
-    }
 
-    // ── --no-hot 降级：soft 变更也走 Cold Restart ────
-    //
-    // 用户通过 --no-hot 或 VEXT_DEV_NO_HOT=1 禁用 soft reload，
-    // 所有变更都走 Cold Restart 路径。
-    //
-    if (options.noHot) {
+      const preflightReason =
+        event.action === "cold"
+          ? "cold restart preflight"
+          : "soft reload preflight";
+      if (!(await runPreflight(preflightReason))) {
+        return;
+      }
+
+      // ── Tier 3: 配置/插件变更 → Cold Restart ─────────
+      //
+      // 配置文件、插件、.env、package.json、tsconfig.json
+      // 的变更影响全局初始化阶段，无法在进程内安全热替换，
+      // 必须执行完整的 kill + fork。
+      //
+      if (event.action === "cold") {
+        console.log(
+          "[vext dev] config/plugin change detected \u2192 cold restart (Tier 3)...",
+        );
+        try {
+          await refreshPreloads();
+          await restarter.restart(event.files.map((f) => f.path).join(", "));
+          console.log("[vext dev] cold restart complete\n");
+        } catch (err) {
+          console.error(
+            "[vext dev] restart failed:",
+            err instanceof Error ? err.message : err,
+          );
+          console.error("[vext dev] fix the error and save to retry\n");
+        }
+        return;
+      }
+
+      // ── --no-hot 降级：soft 变更也走 Cold Restart ────
+      //
+      // 用户通过 --no-hot 或 VEXT_DEV_NO_HOT=1 禁用 soft reload，
+      // 所有变更都走 Cold Restart 路径。
+      //
+      if (options.noHot) {
+        const hasStructural = event.files.some(
+          (f) => f.type === "add" || f.type === "delete",
+        );
+        console.log(
+          `[vext dev] source change detected \u2192 cold restart (--no-hot) ` +
+            `[${hasStructural ? "structural" : "code"}]...`,
+        );
+        try {
+          await refreshPreloads();
+          await restarter.restart(event.files.map((f) => f.path).join(", "));
+          console.log("[vext dev] cold restart complete\n");
+        } catch (err) {
+          console.error(
+            "[vext dev] restart failed:",
+            err instanceof Error ? err.message : err,
+          );
+          console.error("[vext dev] fix the error and save to retry\n");
+        }
+        return;
+      }
+
+      // ── Tier 1/2: 业务代码变更 → IPC Soft Reload ────
+      //
+      // Tier 1 (modify): esbuild.transform() 单文件编译 (~3ms, O(1))
+      // Tier 2 (add/delete): ctx.rebuild() 全量增量编译 (~80ms)
+      //
+      // 通过 IPC 发送 { type: 'reload', files: [...] } 消息
+      // 到子进程，由 SoftReloader 执行完整的热重载流程。
+      //
       const hasStructural = event.files.some(
         (f) => f.type === "add" || f.type === "delete",
       );
+      const tier = hasStructural ? "T2:structural" : "T1:code";
       console.log(
-        `[vext dev] source change detected \u2192 cold restart (--no-hot) ` +
-          `[${hasStructural ? "structural" : "code"}]...`,
+        `[vext dev] source change detected \u2192 soft reload [${tier}]...`,
       );
-      try {
-        await refreshPreloads();
-        await restarter.restart(event.files.map((f) => f.path).join(", "));
-        console.log("[vext dev] cold restart complete\n");
-      } catch (err) {
-        console.error(
-          "[vext dev] restart failed:",
-          err instanceof Error ? err.message : err,
-        );
-        console.error("[vext dev] fix the error and save to retry\n");
-      }
-      return;
-    }
-
-    // ── Tier 1/2: 业务代码变更 → IPC Soft Reload ────
-    //
-    // Tier 1 (modify): esbuild.transform() 单文件编译 (~3ms, O(1))
-    // Tier 2 (add/delete): ctx.rebuild() 全量增量编译 (~80ms)
-    //
-    // 通过 IPC 发送 { type: 'reload', files: [...] } 消息
-    // 到子进程，由 SoftReloader 执行完整的热重载流程。
-    //
-    const hasStructural = event.files.some(
-      (f) => f.type === "add" || f.type === "delete",
-    );
-    const tier = hasStructural ? "T2:structural" : "T1:code";
-    console.log(
-      `[vext dev] source change detected \u2192 soft reload [${tier}]...`,
-    );
-    restarter.sendToChild({
-      type: "reload",
-      files: event.files,
-    });
+      restarter.sendToChild({
+        type: "reload",
+        files: event.files,
+      });
     } catch (err) {
       console.error(
         "[vext dev] unexpected error in file watcher handler:",
@@ -673,6 +701,10 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         options.noHot = true;
         break;
 
+      case "--strict-preflight":
+        options.strictPreflight = true;
+        break;
+
       case "--verbose-lifecycle":
         options.verboseLifecycle = true;
         break;
@@ -725,6 +757,12 @@ function parseDevArgs(args: string[]): DevCommandOptions {
   if (options.noHot === undefined && process.env.VEXT_DEV_NO_HOT === "1") {
     options.noHot = true;
   }
+  if (
+    options.strictPreflight === undefined &&
+    process.env.VEXT_DEV_STRICT_PREFLIGHT === "1"
+  ) {
+    options.strictPreflight = true;
+  }
   if (options.debounce === undefined && process.env.VEXT_DEV_DEBOUNCE) {
     const val = parseInt(process.env.VEXT_DEV_DEBOUNCE, 10);
     if (!Number.isNaN(val) && val >= 0) {
@@ -763,6 +801,7 @@ function printBanner(options: DevCommandOptions): void {
   const mode = options.noHot
     ? "Cold Restart (--no-hot)"
     : "Soft Reload + Cold Restart";
+  const preflight = options.strictPreflight ? "strict" : "async TS";
 
   console.log(`
 \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
@@ -771,6 +810,7 @@ function printBanner(options: DevCommandOptions): void {
 \u2551  Mode: ${mode.padEnd(39)}\u2551
 \u2551  Watch: ${polling.padEnd(38)}\u2551
 \u2551  Debounce: ${String(`${debounce}ms`).padEnd(35)}\u2551
+\u2551  Preflight: ${preflight.padEnd(34)}\u2551
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  \u{1F7E2} T1 (code):   soft reload (transform)    \u2551
 \u2551  \u{1F7E1} T2 (struct): soft reload (rebuild)      \u2551
@@ -818,6 +858,7 @@ function printDevHelp(): void {
     --poll-interval <ms>  Polling interval in ms (default: 1000)
     --debounce <ms>       Debounce interval in ms (default: 0, disabled)
     --no-hot              Disable soft reload, always cold restart
+    --strict-preflight    Block start/reload on TypeScript diagnostics
     --port-conflict <error|prompt|kill|next>
                            Configure how port conflicts are handled
     --verbose-lifecycle   Show verbose lifecycle logs
@@ -837,6 +878,8 @@ function printDevHelp(): void {
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload
+    VEXT_DEV_STRICT_PREFLIGHT=1
+                          Block start/reload on TypeScript diagnostics
     VEXT_DEV_DEBOUNCE=50  Set debounce interval (ms, default: 0)
     VEXT_PORT_CONFLICT=next
     VEXT_VERBOSE_LIFECYCLE=1

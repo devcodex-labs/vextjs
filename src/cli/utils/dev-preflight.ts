@@ -4,16 +4,21 @@ import { join, relative, win32 } from "node:path";
 import { loadTsMorph } from "../../tooling/shared/lazy-ts-morph.js";
 import { runTypegen } from "../../tooling/typegen/index.js";
 
+export type TsDiagnosticsMode = "blocking" | "async" | "skip";
+
 export interface DevPreflightOptions {
   rootDir: string;
   language: "ts" | "js";
   reason: string;
+  tsDiagnosticsMode?: TsDiagnosticsMode;
 }
 
 export interface DevPreflightResult {
   ok: boolean;
   typegenOk: boolean;
   tsOk: boolean;
+  tsDiagnosticsPending?: boolean;
+  tsDiagnosticsTask?: Promise<TsDiagnosticsResult>;
 }
 
 interface TsDiagnosticsResult {
@@ -25,7 +30,7 @@ interface TsDiagnosticsResult {
 export async function runDevPreflight(
   options: DevPreflightOptions,
 ): Promise<DevPreflightResult> {
-  const { rootDir, language, reason } = options;
+  const { rootDir, language, reason, tsDiagnosticsMode = "blocking" } = options;
 
   const typegenResult = await runTypegen({
     rootDir,
@@ -35,29 +40,74 @@ export async function runDevPreflight(
 
   logTypegenResult(rootDir, typegenResult);
 
-  const tsDiagnostics =
-    language === "ts"
-      ? await runTypeScriptDiagnostics(rootDir)
-      : { ok: true, errorCount: 0 };
-
   if (!typegenResult.ok) {
-    console.error(`[vext dev] typegen reported blocking issues during ${reason}.`);
+    console.error(
+      `[vext dev] typegen reported blocking issues during ${reason}.`,
+    );
   }
 
-  if (!tsDiagnostics.ok) {
-    console.error(
-      `[vext dev] TypeScript reported ${tsDiagnostics.errorCount} blocking error(s) during ${reason}.`,
-    );
-    if (tsDiagnostics.formatted) {
-      console.error(tsDiagnostics.formatted);
-    }
+  if (language !== "ts" || tsDiagnosticsMode === "skip") {
+    return {
+      ok: typegenResult.ok,
+      typegenOk: typegenResult.ok,
+      tsOk: true,
+    };
   }
+
+  if (tsDiagnosticsMode === "async") {
+    const tsDiagnosticsTask = runTypeScriptDiagnostics(rootDir)
+      .then((diagnostics) => {
+        logTypeScriptDiagnostics(reason, diagnostics, "async");
+        return diagnostics;
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[vext dev] TypeScript diagnostics failed after ${reason}: ${message}`,
+        );
+        return { ok: false, errorCount: 1 } satisfies TsDiagnosticsResult;
+      });
+
+    return {
+      ok: typegenResult.ok,
+      typegenOk: typegenResult.ok,
+      tsOk: true,
+      tsDiagnosticsPending: true,
+      tsDiagnosticsTask,
+    };
+  }
+
+  const tsDiagnostics = await runTypeScriptDiagnostics(rootDir);
+  logTypeScriptDiagnostics(reason, tsDiagnostics, "blocking");
 
   return {
     ok: typegenResult.ok && tsDiagnostics.ok,
     typegenOk: typegenResult.ok,
     tsOk: tsDiagnostics.ok,
   };
+}
+
+function logTypeScriptDiagnostics(
+  reason: string,
+  diagnostics: TsDiagnosticsResult,
+  mode: TsDiagnosticsMode,
+): void {
+  if (diagnostics.ok) {
+    return;
+  }
+
+  const timing = mode === "async" ? `after ${reason}` : `during ${reason}`;
+  const suffix =
+    mode === "async"
+      ? " Use --strict-preflight or VEXT_DEV_STRICT_PREFLIGHT=1 to block on these checks."
+      : "";
+
+  console.error(
+    `[vext dev] TypeScript reported ${diagnostics.errorCount} blocking error(s) ${timing}.${suffix}`,
+  );
+  if (diagnostics.formatted) {
+    console.error(diagnostics.formatted);
+  }
 }
 
 function logTypegenResult(

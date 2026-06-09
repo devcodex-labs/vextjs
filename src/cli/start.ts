@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import {
   detectProject,
-  hasDistBuild,
+  inspectDistBuild,
   resolveEntryFile,
 } from "./utils/detect-project.js";
 import { resolvePreloads } from "./utils/preload.js";
@@ -20,9 +20,9 @@ import { resolvePreloads } from "./utils/preload.js";
  *   6. 转发 SIGTERM / SIGINT 给子进程（触发优雅关闭）
  *
  * dist/ 检测逻辑：
- *   - dist/ 存在 → 使用 node 直接运行编译后的 JS（无需 tsx）
- *   - dist/ 不存在 + TS 项目 → 使用 --import tsx/esm 运行
- *   - dist/ 不存在 + JS 项目 → 使用 node 直接运行
+ *   - TS 项目 + 有效 dist/ → 使用 node 运行编译后的 JS
+ *   - TS 项目 + 缺失/无效 dist/ → fail-fast，提示先 vext build
+ *   - JS 项目 → 使用 node 直接运行
  *
  * 环境变量：
  *   - VEXT_MODE=start — 告知 bootstrap.ts 是被 CLI fork 的（触发自执行入口）
@@ -111,14 +111,18 @@ export async function startCommand(args: string[] = []): Promise<void> {
   const project = detectProject(rootDir);
 
   // ── 检测 dist/ 编译产物 ──────────────────────────────────
-  const hasDist = hasDistBuild(project.rootDir);
+  const dist = inspectDistBuild(project.rootDir);
+  const hasDist = project.language === "ts" ? dist.valid : false;
   const entryFile = resolveEntryFile(project);
+
+  if (project.language === "ts" && !dist.valid) {
+    printBuildRequiredError(dist);
+    process.exit(1);
+  }
 
   // ── 打印启动信息 ──────────────────────────────────────────
   if (hasDist) {
     console.log("[vextjs] start mode - built (node, from dist/)");
-  } else if (project.language === "ts") {
-    console.log("[vextjs] start mode - TypeScript (tsx)");
   } else {
     console.log("[vextjs] start mode - JavaScript (node)");
   }
@@ -127,14 +131,9 @@ export async function startCommand(args: string[] = []): Promise<void> {
   //
   // execArgv 控制 Node.js 运行时参数（不是应用参数）：
   //   - dist/ 已编译 → 无需额外参数
-  //   - TypeScript 项目 → --import tsx/esm（让 Node.js 能加载 .ts 文件）
   //   - JavaScript 项目 → 无需额外参数
   //
   const execArgv: string[] = [];
-
-  if (!hasDist && project.language === "ts") {
-    execArgv.push("--import", "tsx/esm");
-  }
 
   // ── 注入预加载模块 ────────────────────────────────────
   //
@@ -331,6 +330,22 @@ function parseStartArgs(args: string[]): StartOptions {
   }
 
   return options;
+}
+
+function printBuildRequiredError(dist: {
+  hasDistDir: boolean;
+  missing: string[];
+}): void {
+  const reason = dist.hasDistDir
+    ? `invalid dist/ build, missing: ${dist.missing.join(", ")}`
+    : "dist/ build not found";
+
+  console.error(
+    `[vextjs] Cannot run TypeScript project with vext start: ${reason}.`,
+  );
+  console.error(
+    '[vextjs] Run "vext build" first, or use "vext dev" during development.',
+  );
 }
 
 /**
