@@ -42,13 +42,13 @@ import { dsl } from "schema-dsl";
 // ── 超时配置 ────────────────────────────────────────────────
 // mongodb-memory-server-core 首次下载二进制文件可能需要较长时间，
 // 后续运行使用缓存，通常 5-10 秒内启动。
-const MONGO_STARTUP_TIMEOUT = 60_000;
-const MONGO_BINARY_VERSION = "8.2.6";
-const MONGO_BINARY_DOWNLOAD_DIR = join(
-  process.cwd(),
-  ".cache",
-  "mongodb-binaries",
+const MONGO_STARTUP_TIMEOUT = Number(
+  process.env.VEXT_TEST_MONGO_STARTUP_TIMEOUT_MS ?? 300_000,
 );
+const MONGO_BINARY_VERSION = "8.2.6";
+const MONGO_BINARY_DOWNLOAD_DIR =
+  process.env.MONGOMS_DOWNLOAD_DIR ??
+  join(process.cwd(), ".cache", "mongodb-binaries");
 const ORIGINAL_MONGOMS_VERSION = process.env.MONGOMS_VERSION;
 const ORIGINAL_MONGOMS_DOWNLOAD_DIR = process.env.MONGOMS_DOWNLOAD_DIR;
 const ORIGINAL_MONGOMS_PREFER_GLOBAL_PATH =

@@ -322,6 +322,7 @@ export class ColdRestarter {
   private async safeKill(child: ChildProcess): Promise<void> {
     return new Promise<void>((resolve) => {
       let resolved = false;
+      let exited = false;
       const done = () => {
         if (!resolved) {
           resolved = true;
@@ -331,6 +332,7 @@ export class ColdRestarter {
 
       // 监听退出事件
       child.once("exit", () => {
+        exited = true;
         clearTimeout(timer);
         done();
       });
@@ -352,7 +354,7 @@ export class ColdRestarter {
 
       // 第二步: 超时后 SIGKILL（强制终止）
       const timer = setTimeout(() => {
-        if (!child.killed) {
+        if (!exited) {
           child.kill("SIGKILL");
         }
         // SIGKILL 后 exit 事件通常很快触发，

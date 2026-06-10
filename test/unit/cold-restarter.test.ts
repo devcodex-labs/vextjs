@@ -61,19 +61,19 @@ switch (mode) {
     break;
 
   case 'slow-shutdown':
-    process.send({ type: 'ready' });
     process.on('SIGTERM', () => {
       setTimeout(() => {
         process.exit(0);
       }, 300);
     });
+    process.send({ type: 'ready' });
     break;
 
   case 'ignore-sigterm':
-    process.send({ type: 'ready' });
     process.on('SIGTERM', () => {
       // 故意忽略 SIGTERM — 用于测试 SIGKILL 回退
     });
+    process.send({ type: 'ready' });
     // 保持进程存活
     setInterval(() => {}, 1000);
     break;
