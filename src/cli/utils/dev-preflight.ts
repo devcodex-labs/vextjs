@@ -11,6 +11,7 @@ export interface DevPreflightOptions {
   language: "ts" | "js";
   reason: string;
   tsDiagnosticsMode?: TsDiagnosticsMode;
+  logTypegenDetails?: boolean;
 }
 
 export interface DevPreflightResult {
@@ -30,7 +31,13 @@ interface TsDiagnosticsResult {
 export async function runDevPreflight(
   options: DevPreflightOptions,
 ): Promise<DevPreflightResult> {
-  const { rootDir, language, reason, tsDiagnosticsMode = "blocking" } = options;
+  const {
+    rootDir,
+    language,
+    reason,
+    tsDiagnosticsMode = "blocking",
+    logTypegenDetails = true,
+  } = options;
 
   const typegenResult = await runTypegen({
     rootDir,
@@ -38,7 +45,7 @@ export async function runDevPreflight(
     generateAppExtensions: true,
   });
 
-  logTypegenResult(rootDir, typegenResult);
+  logTypegenResult(rootDir, typegenResult, { logDetails: logTypegenDetails });
 
   if (!typegenResult.ok) {
     console.error(
@@ -113,19 +120,22 @@ function logTypeScriptDiagnostics(
 function logTypegenResult(
   rootDir: string,
   result: Awaited<ReturnType<typeof runTypegen>>,
+  options: { logDetails: boolean },
 ): void {
-  for (const file of result.files) {
-    if (file.status === "written") {
+  if (options.logDetails) {
+    for (const file of result.files) {
+      if (file.status === "written") {
+        console.log(
+          `[vext dev] generated ${toRelativePath(rootDir, file.filePath)}`,
+        );
+      }
+    }
+
+    if (result.manifest?.status === "written") {
       console.log(
-        `[vext dev] generated ${toRelativePath(rootDir, file.filePath)}`,
+        `[vext dev] generated ${toRelativePath(rootDir, result.manifest.filePath)}`,
       );
     }
-  }
-
-  if (result.manifest?.status === "written") {
-    console.log(
-      `[vext dev] generated ${toRelativePath(rootDir, result.manifest.filePath)}`,
-    );
   }
 
   for (const warning of result.warnings) {
@@ -133,6 +143,9 @@ function logTypegenResult(
   }
 
   for (const diagnostic of result.diagnostics) {
+    if (diagnostic.level === "info" && !options.logDetails) {
+      continue;
+    }
     const logger = diagnostic.level === "error" ? console.error : console.log;
     logger(`[vext dev] typegen ${diagnostic.level}: ${diagnostic.message}`);
   }

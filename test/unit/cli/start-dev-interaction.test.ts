@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mocks = vi.hoisted(() => {
   const createInterface = vi.fn();
@@ -161,11 +164,13 @@ describe("cli interaction: start/dev", () => {
   let originalStdoutTTY: boolean | undefined;
   let originalSetRawMode: ((mode: boolean) => NodeJS.ReadStream) | undefined;
   let readline: MockReadline;
+  let tempDirs: string[];
 
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.restarterInstances.length = 0;
     mocks.watcherInstances.length = 0;
+    tempDirs = [];
 
     originalStdinTTY = process.stdin.isTTY;
     originalStdoutTTY = process.stdout.isTTY;
@@ -244,7 +249,34 @@ describe("cli interaction: start/dev", () => {
       writable: true,
     });
     vi.restoreAllMocks();
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
+
+  function createTempProfilePath(): string {
+    const dir = mkdtempSync(join(tmpdir(), "vext-startup-profile-"));
+    tempDirs.push(dir);
+    return join(dir, "startup-profile.json");
+  }
+
+  function createProfile() {
+    return {
+      enabled: true,
+      startedAt: "2026-06-10T00:00:00.000Z",
+      startedAtMs: Date.now(),
+      elapsedMs: 25,
+      events: [
+        {
+          name: "worker.compile",
+          startMs: 1,
+          durationMs: 10,
+          phase: "compile",
+          kind: "event" as const,
+        },
+      ],
+    };
+  }
 
   it("startCommand should prompt on port conflict and send the chosen action back to child", async () => {
     const child = createMockChild();
@@ -316,6 +348,84 @@ describe("cli interaction: start/dev", () => {
       expect.any(String),
       [],
       expect.objectContaining({ execArgv: [] }),
+    );
+  });
+
+  it("startCommand should pass startup profile env and print ready totals from child payload", async () => {
+    const child = createMockChild();
+    mocks.fork.mockReturnValue(child);
+
+    await startCommand(["--startup-profile", "--port", "3302"]);
+    child.emit("message", {
+      type: "ready",
+      server: { host: "127.0.0.1", port: 3302 },
+      startupProfile: {
+        ...createProfile(),
+        events: [
+          {
+            name: "start.routes",
+            startMs: 1,
+            durationMs: 10,
+            kind: "event" as const,
+          },
+        ],
+      },
+    });
+    await flush();
+
+    const forkOptions = mocks.fork.mock.calls[0]?.[2] as
+      | { env?: Record<string, string> }
+      | undefined;
+    expect(forkOptions?.env).toMatchObject({
+      VEXT_START_PARENT_READY_LOG: "1",
+      VEXT_START_STARTUP_PROFILE: "1",
+      VEXT_START_STARTUP_PROFILE_HUMAN: "1",
+      VEXT_PORT: "3302",
+    });
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vextjs] ready on http://127.0.0.1:3302"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("total="),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vextjs] startup summary"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vextjs] startup profile details"),
+    );
+  });
+
+  it("startCommand should keep JSON-only profile human-readable output disabled", async () => {
+    const child = createMockChild();
+    mocks.fork.mockReturnValue(child);
+    const profilePath = createTempProfilePath();
+
+    await startCommand(["--startup-profile-json", profilePath]);
+    child.emit("message", {
+      type: "ready",
+      server: { host: "127.0.0.1", port: 3303 },
+      startupProfile: createProfile(),
+    });
+    await flush();
+
+    const forkOptions = mocks.fork.mock.calls[0]?.[2] as
+      | { env?: Record<string, string> }
+      | undefined;
+    expect(forkOptions?.env).toMatchObject({
+      VEXT_START_PARENT_READY_LOG: "1",
+      VEXT_START_STARTUP_PROFILE: "1",
+      VEXT_STARTUP_PROFILE_JSON: profilePath,
+    });
+    expect(forkOptions?.env?.VEXT_START_STARTUP_PROFILE_HUMAN).toBeUndefined();
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("startup summary"),
+    );
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("startup profile details"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      `[vextjs] startup profile json: ${profilePath}`,
     );
   });
 
@@ -426,10 +536,19 @@ describe("cli interaction: start/dev", () => {
   it("devCommand should request async TypeScript diagnostics by default", async () => {
     await devCommand([]);
 
+    const restarter = mocks.restarterInstances[0]!;
+    expect(restarter.options.env).toMatchObject({
+      VEXT_DEV_PARENT_READY_LOG: "1",
+    });
+    expect(
+      (restarter.options.env as Record<string, string>)
+        .VEXT_DEV_STARTUP_PROFILE,
+    ).toBeUndefined();
     expect(mocks.runDevPreflight).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: "initial start",
         tsDiagnosticsMode: "async",
+        logTypegenDetails: false,
       }),
     );
   });
@@ -442,6 +561,80 @@ describe("cli interaction: start/dev", () => {
         reason: "initial start",
         tsDiagnosticsMode: "blocking",
       }),
+    );
+  });
+
+  it("devCommand should print ready total and profile details only in human profile mode", async () => {
+    await devCommand(["--startup-profile"]);
+    const restarter = mocks.restarterInstances[0]!;
+
+    expect(restarter.options.env).toMatchObject({
+      VEXT_DEV_PARENT_READY_LOG: "1",
+      VEXT_DEV_STARTUP_PROFILE: "1",
+      VEXT_DEV_STARTUP_PROFILE_HUMAN: "1",
+    });
+    expect(mocks.runDevPreflight).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "initial start",
+        logTypegenDetails: true,
+      }),
+    );
+
+    restarter.events.onChildMessage?.({
+      type: "ready",
+      server: { host: "127.0.0.1", port: 3304 },
+      startupProfile: createProfile(),
+    });
+    await flush();
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vext dev] ready on http://127.0.0.1:3304"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("soft reload enabled"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vext dev] startup summary"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vext dev] startup profile details"),
+    );
+  });
+
+  it("devCommand should write JSON-only profile without printing summary or details", async () => {
+    const profilePath = createTempProfilePath();
+
+    await devCommand(["--startup-profile-json", profilePath]);
+    const restarter = mocks.restarterInstances[0]!;
+
+    expect(restarter.options.env).toMatchObject({
+      VEXT_DEV_PARENT_READY_LOG: "1",
+      VEXT_DEV_STARTUP_PROFILE: "1",
+      VEXT_STARTUP_PROFILE_JSON: profilePath,
+    });
+    expect(
+      (restarter.options.env as Record<string, string>)
+        .VEXT_DEV_STARTUP_PROFILE_HUMAN,
+    ).toBeUndefined();
+
+    restarter.events.onChildMessage?.({
+      type: "ready",
+      server: { host: "127.0.0.1", port: 3305 },
+      startupProfile: createProfile(),
+    });
+    await flush();
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[vext dev] ready on http://127.0.0.1:3305"),
+    );
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("startup summary"),
+    );
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("startup profile details"),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      `[vext dev] startup profile json: ${profilePath}`,
     );
   });
 

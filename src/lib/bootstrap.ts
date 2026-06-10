@@ -51,12 +51,18 @@ import {
   requestPortConflictDecisionFromParent,
   sendLifecycleLevelToParent,
 } from "./ipc-port-conflict.js";
+import { quietStartupLogger } from "./startup-logger.js";
+import { createStartupProfilerFromEnv } from "./startup-profiler.js";
 
 function getLifecycleLevel(
   config: Record<string, unknown>,
 ): "concise" | "verbose" {
   const logger = config.logger as Record<string, unknown> | undefined;
   return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
+}
+
+function isEnvFlagEnabled(value: string | undefined): boolean {
+  return value === "1" || value === "true";
 }
 
 async function resolveStartupConfig(
@@ -146,6 +152,8 @@ export async function bootstrap(
   // 资源引用（用于错误边界清理）
   let internals: AppInternals | null = null;
   let serverHandle: VextServerHandle | null = null;
+  let restoreStartupLogger: (() => void) | undefined;
+  const startupProfiler = createStartupProfilerFromEnv(process.env);
 
   try {
     // ── 源码 vs 编译产物目录切换 ──────────────────────────
@@ -164,26 +172,48 @@ export async function bootstrap(
 
     // ── 步骤 0: config-loader ─────────────────────────────
     // default → env → local 三层合并 + deepFreeze
-    const rawConfig = await resolveStartupConfig(
-      rootDir,
-      join(srcDir, "config"),
-      "start",
-      isBuilt,
+    const rawConfig = await startupProfiler.time(
+      "start.config.raw",
+      () =>
+        resolveStartupConfig(rootDir, join(srcDir, "config"), "start", isBuilt),
+      { phase: "config" },
     );
-    const config = finalizeConfig(rawConfig);
-    sendLifecycleLevelToParent(getLifecycleLevel(rawConfig));
+    const config = await startupProfiler.time(
+      "start.config.finalize",
+      () => finalizeConfig(rawConfig),
+      { phase: "config" },
+    );
+    const lifecycleLevel = getLifecycleLevel(rawConfig);
+    sendLifecycleLevelToParent(lifecycleLevel);
 
     // ── 步骤 ①: createApp ─────────────────────────────────
     // 创建 app + internals（logger / throw / validator 已初始化，adapter 延迟解析）
-    const result = createApp(config);
+    const result = await startupProfiler.time(
+      "start.createApp",
+      () => createApp(config),
+      { phase: "config" },
+    );
     const app = result.app;
     const hooks = app.hooks as VextInternalHooks;
     internals = result.internals;
+    const parentReadyLog = isEnvFlagEnabled(
+      process.env.VEXT_START_PARENT_READY_LOG,
+    );
+    restoreStartupLogger = quietStartupLogger(
+      app,
+      parentReadyLog &&
+        lifecycleLevel !== "verbose" &&
+        !isEnvFlagEnabled(process.env.VEXT_START_STARTUP_PROFILE_HUMAN),
+    );
 
     // ── 步骤 ①a: resolveAdapter（异步按需加载）─────────────
     // 动态 import() 按需加载用户选择的 adapter 框架包。
     // 默认 native adapter（零外部依赖），其他 adapter 需用户额外安装对应框架。
-    app.adapter = await resolveAdapter(config, app);
+    app.adapter = await startupProfiler.time(
+      "start.adapter",
+      () => resolveAdapter(config, app),
+      { phase: "config" },
+    );
 
     app.logger.info("[vextjs] initializing...");
 
@@ -196,37 +226,43 @@ export async function bootstrap(
     // 优先尝试 Mode A；若未找到平铺语言文件，则回退 Mode B
     // （schema-dsl 的 dsl.config({ i18n: path }) 支持递归子目录扫描）
     //
-    const localesDir = join(srcDir, "locales");
-    if (existsSync(localesDir)) {
-      const loadedLocales = await loadI18n(localesDir, app.logger);
-      if (loadedLocales.length > 0) {
-        // Mode A: 平铺文件加载成功
-        app.logger.info(
-          `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
-        );
-      } else {
-        // Mode B fallback: 检查是否存在子目录（如 order/, user/）
-        // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
-        try {
-          const entries = readdirSync(localesDir, { withFileTypes: true });
-          const hasSubDirs = entries.some((e) => e.isDirectory());
-          if (hasSubDirs) {
-            schemaAdapter.configure({ i18n: localesDir });
-            const subDirs = entries
-              .filter((e) => e.isDirectory())
-              .map((e) => e.name);
+    await startupProfiler.time(
+      "start.i18n",
+      async () => {
+        const localesDir = join(srcDir, "locales");
+        if (existsSync(localesDir)) {
+          const loadedLocales = await loadI18n(localesDir, app.logger);
+          if (loadedLocales.length > 0) {
+            // Mode A: 平铺文件加载成功
             app.logger.info(
-              `[vextjs] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+              `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
             );
+          } else {
+            // Mode B fallback: 检查是否存在子目录（如 order/, user/）
+            // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
+            try {
+              const entries = readdirSync(localesDir, { withFileTypes: true });
+              const hasSubDirs = entries.some((e) => e.isDirectory());
+              if (hasSubDirs) {
+                schemaAdapter.configure({ i18n: localesDir });
+                const subDirs = entries
+                  .filter((e) => e.isDirectory())
+                  .map((e) => e.name);
+                app.logger.info(
+                  `[vextjs] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+                );
+              }
+            } catch (err) {
+              app.logger.warn(
+                { error: (err as Error).message },
+                "[vextjs] Failed to scan locales subdirectories, i18n may not work",
+              );
+            }
           }
-        } catch (err) {
-          app.logger.warn(
-            { error: (err as Error).message },
-            "[vextjs] Failed to scan locales subdirectories, i18n may not work",
-          );
         }
-      }
-    }
+      },
+      { phase: "i18n" },
+    );
 
     // ── 步骤 ①++: 内置插件（MonSQLize）条件加载 ──────────
     //
@@ -246,7 +282,11 @@ export async function bootstrap(
         builtin: true,
       });
       try {
-        await monsqlizePlugin.setup(app);
+        await startupProfiler.time(
+          "start.builtinPlugin.monsqlize",
+          () => monsqlizePlugin.setup(app),
+          { phase: "database", detail: { builtin: true } },
+        );
         hooks.emitSafeSync("plugin:afterSetup", {
           plugin: monsqlizePlugin.name,
           sourceFile: "builtin:monsqlize",
@@ -269,22 +309,31 @@ export async function bootstrap(
     // ── 步骤 ②: plugin-loader ─────────────────────────────
     // 扫描 src/plugins/，拓扑排序（Kahn 算法），依次执行 setup()
     // 此阶段 app.use() 可用，插件可注册全局中间件
-    await loadPlugins(app, join(srcDir, "plugins"));
+    await loadPlugins(app, join(srcDir, "plugins"), { startupProfiler });
 
     // ── 步骤 ③: middleware-loader ─────────────────────────
     // 按 config.middlewares 白名单从 src/middlewares/ 加载路由级中间件定义
     // 返回 MiddlewareRegistry 供 router-loader 解析路由级中间件引用
-    const middlewareRegistry = await loadMiddlewares(
-      join(srcDir, "middlewares"),
-      config.middlewares ?? [],
-      app.logger,
-      config.logger?.lifecycleLevel ?? "concise",
+    const middlewareRegistry = await startupProfiler.time(
+      "start.middlewares",
+      () =>
+        loadMiddlewares(
+          join(srcDir, "middlewares"),
+          config.middlewares ?? [],
+          app.logger,
+          config.logger?.lifecycleLevel ?? "concise",
+        ),
+      { phase: "middleware" },
     );
 
     // ── 步骤 ④: service-loader ────────────────────────────
     // 扫描 src/services/，实例化（new ServiceClass(app)）注入 app.services
     // 加载完成后执行循环依赖静态检测（正则 + DFS）
-    await loadServices(app, join(srcDir, "services"));
+    await startupProfiler.time(
+      "start.services",
+      () => loadServices(app, join(srcDir, "services")),
+      { phase: "services" },
+    );
 
     // ── 步骤 ④+: 挂载 app.fetch（在 loadRoutes 之前）─────
     //
@@ -296,12 +345,18 @@ export async function bootstrap(
     //
     const fetchConfig = config.fetch as VextFetchConfig | undefined;
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    app.fetch = createVextFetch(
-      app.logger,
-      fetchConfig ?? {},
-      requestIdHeader,
-      hooks,
-    ) as unknown as VextApp["fetch"];
+    await startupProfiler.time(
+      "start.fetch",
+      () => {
+        app.fetch = createVextFetch(
+          app.logger,
+          fetchConfig ?? {},
+          requestIdHeader,
+          hooks,
+        ) as unknown as VextApp["fetch"];
+      },
+      { phase: "fetch" },
+    );
 
     // ── 步骤 ⑤: router-loader ────────────────────────────
     // 扫描 src/routes/，解析路由级中间件引用，注册到 adapter
@@ -314,14 +369,19 @@ export async function bootstrap(
 
     const collector = openapiEnabled ? new RouteMetadataCollector() : null;
 
-    await loadRoutes(
-      app,
-      join(srcDir, "routes"),
-      {
-        middlewareDefs: middlewareRegistry,
-        globalMiddlewares: internals.getGlobalMiddlewares(),
-      },
-      collector,
+    await startupProfiler.time(
+      "start.routes",
+      () =>
+        loadRoutes(
+          app,
+          join(srcDir, "routes"),
+          {
+            middlewareDefs: middlewareRegistry,
+            globalMiddlewares: internals!.getGlobalMiddlewares(),
+          },
+          collector,
+        ),
+      { phase: "routes" },
     );
 
     // ── 步骤 ⑤+: 🆕 OpenAPI 文档生成 ─────────────────────
@@ -330,6 +390,7 @@ export async function bootstrap(
     // 使用 collector 收集到的路由元信息 + config.openapi 配置，
     // 生成 OpenAPI 3.0 spec 并注册 /docs + /openapi.json 端点。
     //
+    const openapiStartedAt = performance.now();
     if (openapiEnabled && collector) {
       const generator = new OpenAPIGenerator({
         title: openapiConfig?.title,
@@ -377,6 +438,11 @@ export async function bootstrap(
 
       app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
     }
+    startupProfiler.mark(
+      "start.openapi",
+      performance.now() - openapiStartedAt,
+      { phase: "openapi", detail: { routes: collector?.getCount() ?? 0 } },
+    );
 
     // ── 步骤 ⑤+: 锁定 app.use() ──────────────────────────
     // 路由注册后立即锁定，后续调用 app.use() 将抛出错误
@@ -398,6 +464,8 @@ export async function bootstrap(
     //
     // 这些中间件通过 adapter.registerMiddleware() 注册，
     // 在所有路由（含路由级中间件）之前执行。
+
+    const builtinMiddlewaresStartedAt = performance.now();
 
     // 1. requestId（config.requestId.enabled，默认 true）
     if (config.requestId?.enabled !== false) {
@@ -476,16 +544,27 @@ export async function bootstrap(
 
     const notFoundHandler = createNotFoundHandler(hooks);
     app.adapter.registerNotFound(notFoundHandler);
+    startupProfiler.mark(
+      "start.builtinMiddlewares",
+      performance.now() - builtinMiddlewaresStartedAt,
+      { phase: "middleware" },
+    );
 
     // ── 步骤 ⑦: HTTP 开始监听 ────────────────────────────
-    await hooks.emit("server:beforeListen", {
-      host: config.host ?? "0.0.0.0",
-      port: config.port,
-      adapter: app.adapter,
-    });
-    serverHandle = await app.adapter.listen(config.port, config.host, {
-      server: config.server,
-    });
+    serverHandle = await startupProfiler.time(
+      "start.listen",
+      async () => {
+        await hooks.emit("server:beforeListen", {
+          host: config.host ?? "0.0.0.0",
+          port: config.port,
+          adapter: app.adapter,
+        });
+        return app.adapter.listen(config.port, config.host, {
+          server: config.server,
+        });
+      },
+      { phase: "listen" },
+    );
 
     // ── 步骤 ⑧: 注册信号处理 ────────────────────────────
     // 通过 shutdown 模块注册 SIGTERM / SIGINT 信号处理器
@@ -569,14 +648,38 @@ export async function bootstrap(
     }
 
     // ── 步骤 ⑨: 执行 onReady 钩子 + 打印启动日志 ─────────
-    await internals.runReady();
-
-    printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
-      prefix: "[vextjs]",
+    await startupProfiler.time("start.onReady", () => internals!.runReady(), {
+      phase: "onReady",
     });
+
+    restoreStartupLogger?.();
+    restoreStartupLogger = undefined;
+
+    if (parentReadyLog && process.send && !cluster.isWorker) {
+      process.send({
+        type: "ready",
+        server: {
+          host: serverHandle.host,
+          port: serverHandle.port,
+        },
+        startupProfile: startupProfiler.toJSON(),
+        detail: {
+          mode: "start",
+          cluster: false,
+        },
+      });
+    }
+
+    if (!parentReadyLog) {
+      printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
+        prefix: "[vextjs]",
+      });
+    }
 
     return { app, serverHandle, internals };
   } catch (err) {
+    restoreStartupLogger?.();
+
     // ── 错误边界：清理已分配的资源 ─────────────────────────
     //
     // 启动过程中任何步骤抛出异常时的清理逻辑：
@@ -865,20 +968,30 @@ export function applyClusterWorkerEnv(args: {
 }
 
 async function startClusterMaster(rootDir: string): Promise<void> {
+  const startupProfiler = createStartupProfilerFromEnv(process.env);
   const isBuilt = process.env.VEXT_BUILT === "1";
   ensureStartBuildReady(rootDir, isBuilt);
   const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
 
   // 加载配置
   const configMeta: LoadConfigMetadata = {};
-  const rawConfig = await resolveStartupConfig(
-    rootDir,
-    join(srcDir, "config"),
-    "start",
-    isBuilt,
-    configMeta,
+  const rawConfig = await startupProfiler.time(
+    "start.config.raw",
+    () =>
+      resolveStartupConfig(
+        rootDir,
+        join(srcDir, "config"),
+        "start",
+        isBuilt,
+        configMeta,
+      ),
+    { phase: "config" },
   );
-  const config = finalizeConfig(rawConfig);
+  const config = await startupProfiler.time(
+    "start.config.finalize",
+    () => finalizeConfig(rawConfig),
+    { phase: "config" },
+  );
   const clusterConfig = (config.cluster ?? {}) as Record<string, unknown>;
 
   // 动态导入 ClusterMaster（避免非 cluster 场景加载 node:cluster 相关模块）
@@ -952,7 +1065,38 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     sticky: (clusterConfig.sticky as "none" | "ip") ?? "none",
   });
 
-  await master.start();
+  await startupProfiler.time("start.listen", () => master.start(), {
+    phase: "listen",
+    detail: { cluster: true, workers: workerCount },
+  });
+
+  const readyWorkers = master.getReadyWorkerCount();
+  const parentReadyLog = isEnvFlagEnabled(
+    process.env.VEXT_START_PARENT_READY_LOG,
+  );
+  if (parentReadyLog && process.send) {
+    process.send({
+      type: "ready",
+      server: {
+        host: config.host ?? "0.0.0.0",
+        port: config.port,
+      },
+      startupProfile: startupProfiler.toJSON(),
+      detail: {
+        mode: "start",
+        cluster: true,
+        workers: readyWorkers,
+        totalWorkers: master.getTargetWorkerCount(),
+      },
+    });
+  }
+
+  if (!parentReadyLog) {
+    printReadyLog(console, config.host ?? "0.0.0.0", config.port, {
+      prefix: "[vextjs]",
+      suffix: `(workers=${readyWorkers}/${master.getTargetWorkerCount()})`,
+    });
+  }
 }
 
 function ensureStartBuildReady(rootDir: string, isBuilt: boolean): void {

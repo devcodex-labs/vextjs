@@ -138,7 +138,7 @@ vext dev [options]
 | `--strict-preflight`         | 让 TypeScript 语义诊断重新阻塞启动 / 重载   | —              |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`）    | `error`        |
 | `--verbose-lifecycle`        | 输出详细生命周期日志与完整 watcher 变更列表 | —              |
-| `--startup-profile`          | 输出启动阶段详细耗时；默认已输出阶段摘要    | —              |
+| `--startup-profile`          | 输出启动阶段摘要与详细耗时                  | —              |
 | `--startup-profile-json <p>` | 将启动阶段耗时写入 JSON 文件                | —              |
 | `--clear`                    | 每次重载后清空控制台                        | —              |
 | `-h, --help`                 | 显示帮助                                    | —              |
@@ -155,9 +155,13 @@ vext dev --port-conflict prompt
 vext start --port-conflict next
 ```
 
-#### 生命周期日志分层
+#### 启动日志分层
 
-默认使用 `concise` 模式，只保留启动摘要、ready、cold restart / hot reload 结果。`vext dev` 的启动摘要按 `main/preflight`、`main/preload`、`pre-worker-bootstrap`、`compile`、`config`、`i18n`、`database`、`plugins`、`middleware`、`services`、`routes`、`openapi`、`listen`、`onReady` 等阶段归类；超过阈值的未命名空窗会以 `gap.*` 形式进入 profile JSON。如需排障细节，可开启：
+默认 `vext dev` 只打印监听地址与总启动耗时，随后在 cold restart / hot reload 时打印必要结果。`vext dev --startup-profile` 才会输出人类可读的启动摘要与详细事件；摘要按 `main/preflight`、`main/preload`、`pre-worker-bootstrap`、`compile`、`config`、`i18n`、`database`、`plugins`、`middleware`、`services`、`routes`、`openapi`、`listen`、`onReady` 等阶段归类；超过阈值的未命名空窗会以 `gap.*` 形式进入 profile JSON。
+
+`--startup-profile-json <path>` 只写 JSON 文件，不会自动打印摘要或 details；如需两者同时输出，可组合 `--startup-profile --startup-profile-json <path>`。
+
+如需生命周期排障细节，可开启：
 
 ```bash
 vext dev --verbose-lifecycle
@@ -185,8 +189,10 @@ vext dev --poll --poll-interval 2000
 # 禁用 Soft Reload（所有变更均走 Cold Restart）
 vext dev --no-hot
 
-# 输出启动阶段详细耗时；默认已输出 summary
+# 输出启动阶段摘要与详细耗时
 vext dev --startup-profile
+
+# 仅写 JSON，不打印 summary/details
 vext dev --startup-profile-json .vext/inspect/startup-profile.json
 ```
 
@@ -397,6 +403,8 @@ vext start [options]
 | `--port <number>`            | 指定端口                                 | 配置文件中的值 |
 | `--host <address>`           | 指定监听地址                             | 配置文件中的值 |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error`        |
+| `--startup-profile`          | 输出生产启动阶段摘要与详细耗时           | —              |
+| `--startup-profile-json <p>` | 将生产启动阶段耗时写入 JSON 文件         | —              |
 | `--verbose-lifecycle`        | 输出详细生命周期日志                     | —              |
 | `-h, --help`                 | 显示帮助                                 | —              |
 
@@ -412,6 +420,10 @@ vext start --port 8080
 
 # 端口冲突时自动切到下一个可用端口
 vext start --port-conflict next
+
+# 排查生产 cold-start 阶段耗时
+vext start --startup-profile
+vext start --startup-profile-json .vext/inspect/start-profile.json
 
 # 加载 production 配置
 PORT=8080 NODE_ENV=production vext start
@@ -633,7 +645,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.21
+# 输出: vextjs v0.3.22
 
 # 查看帮助
 vext --help

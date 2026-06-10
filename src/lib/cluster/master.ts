@@ -8,6 +8,18 @@ import type {
   WorkerMetrics,
 } from "./ipc-types.js";
 
+function isEnvFlagEnabled(value: string | undefined): boolean {
+  return value === "1" || value === "true";
+}
+
+function shouldLogStartupLifecycle(): boolean {
+  return (
+    !isEnvFlagEnabled(process.env.VEXT_START_PARENT_READY_LOG) ||
+    process.env.VEXT_LIFECYCLE_LEVEL === "verbose" ||
+    isEnvFlagEnabled(process.env.VEXT_VERBOSE_LIFECYCLE)
+  );
+}
+
 /**
  * master.ts — Cluster Master 进程主类
  *
@@ -245,9 +257,11 @@ export class ClusterMaster extends EventEmitter {
       cluster.schedulingPolicy = cluster.SCHED_RR;
     }
 
-    console.log(
-      `[cluster] master ${process.pid} starting ${this.workerCount} workers`,
-    );
+    if (shouldLogStartupLifecycle()) {
+      console.log(
+        `[cluster] master ${process.pid} starting ${this.workerCount} workers`,
+      );
+    }
 
     // ── 串行 fork Worker ──────────────────────────────────
     //
@@ -289,7 +303,11 @@ export class ClusterMaster extends EventEmitter {
     }
 
     const readyCount = this.getReadyWorkerCount();
-    console.log(`[cluster] ✅ ${readyCount}/${this.workerCount} workers ready`);
+    if (shouldLogStartupLifecycle()) {
+      console.log(
+        `[cluster] ✅ ${readyCount}/${this.workerCount} workers ready`,
+      );
+    }
   }
 
   /**

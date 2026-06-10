@@ -60,6 +60,7 @@ import {
   requestPortConflictDecisionFromParent,
   sendLifecycleLevelToParent,
 } from "../ipc-port-conflict.js";
+import { quietStartupLogger } from "../startup-logger.js";
 import { createStartupProfilerFromEnv } from "../startup-profiler.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
 
@@ -68,6 +69,10 @@ function getLifecycleLevel(
 ): "concise" | "verbose" {
   const logger = config.logger as Record<string, unknown> | undefined;
   return logger?.lifecycleLevel === "verbose" ? "verbose" : "concise";
+}
+
+function isEnvFlagEnabled(value: string | undefined): boolean {
+  return value === "1" || value === "true";
 }
 
 /**
@@ -244,6 +249,7 @@ export async function devBootstrap(
   let compiler: DevCompiler | null = null;
   let hotHandler: HotSwappableHandler | null = null;
   let softReloader: SoftReloader | null = null;
+  let restoreStartupLogger: (() => void) | undefined;
 
   try {
     // ════════════════════════════════════════════════════════
@@ -297,13 +303,23 @@ export async function devBootstrap(
     }
 
     const config = finalizeConfig(rawConfig);
-    sendLifecycleLevelToParent(getLifecycleLevel(rawConfig));
+    const lifecycleLevel = getLifecycleLevel(rawConfig);
+    sendLifecycleLevelToParent(lifecycleLevel);
 
     // ── 步骤 2: createApp ────────────────────────────────
     const result = createApp(config);
     const app = result.app;
     const hooks = app.hooks as VextInternalHooks;
     internals = result.internals;
+    const parentReadyLog = isEnvFlagEnabled(
+      process.env.VEXT_DEV_PARENT_READY_LOG,
+    );
+    restoreStartupLogger = quietStartupLogger(
+      app,
+      parentReadyLog &&
+        lifecycleLevel !== "verbose" &&
+        !isEnvFlagEnabled(process.env.VEXT_DEV_STARTUP_PROFILE_HUMAN),
+    );
 
     // ── 步骤 2a: resolveAdapter（异步按需加载）────────────
     // 动态 import() 按需加载用户选择的 adapter 框架包。
@@ -962,14 +978,23 @@ export async function devBootstrap(
     if (!skipIpc && process.send) {
       process.send({
         type: "ready",
+        server: {
+          host: serverHandle.host,
+          port: serverHandle.port,
+        },
         startupProfile: startupProfiler.toJSON(),
       });
     }
 
-    printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
-      prefix: "[vext dev]",
-      suffix: "(soft reload enabled)",
-    });
+    restoreStartupLogger();
+    restoreStartupLogger = undefined;
+
+    if (!parentReadyLog) {
+      printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
+        prefix: "[vext dev]",
+        suffix: "(soft reload enabled)",
+      });
+    }
 
     return {
       app,
@@ -982,6 +1007,8 @@ export async function devBootstrap(
       softReloader: softReloader!,
     };
   } catch (err) {
+    restoreStartupLogger?.();
+
     // ── 错误边界：清理已分配的资源 ─────────────────────────
     //
     // 启动过程中任何步骤失败时的清理逻辑。

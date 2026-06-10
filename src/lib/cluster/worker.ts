@@ -48,6 +48,18 @@ const DEFAULT_MEMORY_THRESHOLD = 1024 * 1024 * 1024;
 /** 内存检测间隔（毫秒）— 1 分钟 */
 const MEMORY_CHECK_INTERVAL = 60_000;
 
+function isEnvFlagEnabled(value: string | undefined): boolean {
+  return value === "1" || value === "true";
+}
+
+function shouldLogStartupLifecycle(): boolean {
+  return (
+    !isEnvFlagEnabled(process.env.VEXT_START_PARENT_READY_LOG) ||
+    process.env.VEXT_LIFECYCLE_LEVEL === "verbose" ||
+    isEnvFlagEnabled(process.env.VEXT_VERBOSE_LIFECYCLE)
+  );
+}
+
 // ── Worker 配置 ────────────────────────────────────────────
 
 /**
@@ -193,6 +205,10 @@ export async function workerMain(
       type: "ready",
       pid: process.pid,
       workerId: config.workerId,
+      server: {
+        host: result.serverHandle.host,
+        port: result.serverHandle.port,
+      },
     });
 
     // ── 5. 启动心跳 ──────────────────────────────────────
@@ -207,7 +223,9 @@ export async function workerMain(
     // ── 8. Cluster 兼容性检测 ────────────────────────────
     checkClusterCompatibility(ctx.app, config.workerCount);
 
-    console.log(`[worker:${config.workerId}] ready (pid: ${process.pid})`);
+    if (shouldLogStartupLifecycle()) {
+      console.log(`[worker:${config.workerId}] ready (pid: ${process.pid})`);
+    }
   } catch (err) {
     console.error(`[worker:${config.workerId}] bootstrap failed:`, err);
     cleanupTimers(ctx);

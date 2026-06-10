@@ -12,12 +12,14 @@ import { classifyChange } from "../lib/dev/change-classifier.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
 import {
   createStartupProfiler,
+  formatStartupDuration,
   formatStartupSummary,
   formatStartupProfile,
   mergeStartupProfiles,
   writeStartupProfileJson,
   type StartupProfileSnapshot,
 } from "../lib/startup-profiler.js";
+import { printReadyLog } from "../lib/utils/network.js";
 
 /**
  * cli/dev.ts — vext dev 命令实现
@@ -115,6 +117,15 @@ export interface DevCommandOptions {
   startupProfileJson?: string;
 }
 
+interface DevReadyMessage {
+  type: "ready";
+  server?: {
+    host: string;
+    port: number;
+  };
+  startupProfile?: StartupProfileSnapshot;
+}
+
 async function promptPortConflictDecision(
   host: string | undefined,
   port: number,
@@ -203,15 +214,25 @@ export async function devCommand(args: string[] = []): Promise<void> {
   let promptActive = false;
   let pendingTsDiagnostics: Promise<unknown> | null = null;
   const startupProfiler = createStartupProfiler({
-    enabled: true,
+    enabled:
+      options.startupProfile === true || Boolean(options.startupProfileJson),
   });
+  const commandStartedAt = performance.now();
+  let pendingReadyStartedAt = commandStartedAt;
+  const readyLogger = {
+    info(message: string) {
+      console.log(message);
+    },
+  };
 
   // ── 1. 检测项目结构 ────────────────────────────────────
   const projectRoot = resolve(options.root || process.cwd());
   const project = detectProject(projectRoot);
 
   // ── 2. 打印欢迎信息 ────────────────────────────────────
-  printBanner(options);
+  if (options.startupProfile || options.verboseLifecycle) {
+    printBanner(options);
+  }
 
   // ── 3. 解析 dev-entry 入口路径 ─────────────────────────
   //
@@ -235,6 +256,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   const restarterEnv: Record<string, string> = {
     VEXT_ROOT: project.rootDir,
     VEXT_DEV_MODE: "1",
+    VEXT_DEV_PARENT_READY_LOG: "1",
     NODE_ENV: process.env.NODE_ENV || "development",
   };
 
@@ -252,7 +274,12 @@ export async function devCommand(args: string[] = []): Promise<void> {
   if (options.verboseLifecycle) {
     restarterEnv.VEXT_LIFECYCLE_LEVEL = "verbose";
   }
-  restarterEnv.VEXT_STARTUP_PROFILE = "1";
+  if (startupProfiler.enabled) {
+    restarterEnv.VEXT_DEV_STARTUP_PROFILE = "1";
+  }
+  if (options.startupProfile) {
+    restarterEnv.VEXT_DEV_STARTUP_PROFILE_HUMAN = "1";
+  }
   if (options.startupProfileJson) {
     restarterEnv.VEXT_STARTUP_PROFILE_JSON = options.startupProfileJson;
   }
@@ -307,6 +334,9 @@ export async function devCommand(args: string[] = []): Promise<void> {
       language: project.language,
       reason,
       tsDiagnosticsMode,
+      logTypegenDetails: Boolean(
+        options.startupProfile || options.verboseLifecycle,
+      ),
     });
 
     if (result.tsDiagnosticsTask) {
@@ -336,15 +366,31 @@ export async function devCommand(args: string[] = []): Promise<void> {
         msg !== null &&
         (msg as Record<string, unknown>).type === "ready"
       ) {
-        const startupProfile = (msg as Record<string, unknown>)
-          .startupProfile as StartupProfileSnapshot | undefined;
+        const readyMessage = msg as DevReadyMessage;
+        if (readyMessage.server) {
+          const totalMs = performance.now() - pendingReadyStartedAt;
+          printReadyLog(
+            readyLogger,
+            readyMessage.server.host,
+            readyMessage.server.port,
+            {
+              prefix: "[vext dev]",
+              suffix:
+                `(total=${formatStartupDuration(totalMs)}, ` +
+                "soft reload enabled)",
+            },
+          );
+          console.log("");
+        }
+
+        const startupProfile = readyMessage.startupProfile;
         if (startupProfile?.enabled) {
           const mergedProfile = mergeStartupProfiles(
             startupProfiler.toJSON(),
             startupProfile,
           );
-          console.log(formatStartupSummary(mergedProfile));
           if (options.startupProfile) {
+            console.log(formatStartupSummary(mergedProfile));
             console.log(formatStartupProfile(mergedProfile));
           }
           if (options.startupProfileJson) {
@@ -371,7 +417,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
             if (!ok) {
               return;
             }
-            return refreshPreloads().then(() => restarter.restart(reason));
+            return refreshPreloads().then(() => {
+              pendingReadyStartedAt = performance.now();
+              return restarter.restart(reason);
+            });
           })
           .catch((err: unknown) => {
             console.error(
@@ -436,7 +485,9 @@ export async function devCommand(args: string[] = []): Promise<void> {
   });
 
   // ── 5. 首次启动 ────────────────────────────────────────
-  console.log("[vext dev] starting initial compilation + server...");
+  if (options.startupProfile || options.verboseLifecycle) {
+    console.log("[vext dev] starting initial compilation + server...");
+  }
 
   try {
     if (
@@ -449,10 +500,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
       );
     } else {
       await refreshPreloads();
+      pendingReadyStartedAt = performance.now();
       await startupProfiler.time("main.worker.ready", () =>
         restarter.restart("initial start"),
       );
-      console.log("[vext dev] server ready\n");
     }
   } catch (err) {
     console.error(
@@ -502,6 +553,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
         );
         try {
           await refreshPreloads();
+          pendingReadyStartedAt = performance.now();
           await restarter.restart(event.files.map((f) => f.path).join(", "));
           console.log("[vext dev] cold restart complete\n");
         } catch (err) {
@@ -529,6 +581,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
         );
         try {
           await refreshPreloads();
+          pendingReadyStartedAt = performance.now();
           await restarter.restart(event.files.map((f) => f.path).join(", "));
           console.log("[vext dev] cold restart complete\n");
         } catch (err) {
@@ -631,7 +684,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
               if (!ok) {
                 return;
               }
-              return refreshPreloads().then(() => restarter.restart("manual"));
+              return refreshPreloads().then(() => {
+                pendingReadyStartedAt = performance.now();
+                return restarter.restart("manual");
+              });
             })
             .catch((err: unknown) => {
               console.error(
@@ -866,13 +922,6 @@ function parseDevArgs(args: string[]): DevCommandOptions {
       | "next";
   }
   if (
-    options.startupProfile === undefined &&
-    (process.env.VEXT_STARTUP_PROFILE === "1" ||
-      process.env.VEXT_STARTUP_PROFILE === "true")
-  ) {
-    options.startupProfile = true;
-  }
-  if (
     options.startupProfileJson === undefined &&
     process.env.VEXT_STARTUP_PROFILE_JSON
   ) {
@@ -973,8 +1022,6 @@ function printDevHelp(): void {
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload
-    VEXT_STARTUP_PROFILE=1
-                           Print startup phase timings
     VEXT_STARTUP_PROFILE_JSON=<path>
                            Write startup phase timings to a JSON file
     VEXT_DEV_STRICT_PREFLIGHT=1

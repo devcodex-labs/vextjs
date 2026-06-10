@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createStartupProfiler,
   formatStartupProfile,
+  formatStartupDuration,
   formatStartupSummary,
   mergeStartupProfiles,
 } from "../../src/lib/startup-profiler.js";
@@ -132,5 +133,50 @@ describe("startup-profiler", () => {
     expect(details).toContain("startup profile details");
     expect(details).toContain("main.worker.ready");
     expect(details).toContain("[main/worker]");
+  });
+
+  it("supports start formatter labels and start phase inference", () => {
+    const profile = {
+      enabled: true,
+      startedAt: "2026-06-10T00:00:00.000Z",
+      startedAtMs: 10_000,
+      elapsedMs: 87.6,
+      events: [
+        {
+          name: "start.config.raw",
+          startMs: 0,
+          durationMs: 12,
+          kind: "event" as const,
+        },
+        {
+          name: "start.routes",
+          startMs: 20,
+          durationMs: 30,
+          kind: "event" as const,
+        },
+        {
+          name: "start.listen",
+          startMs: 60,
+          durationMs: 10,
+          kind: "event" as const,
+        },
+      ],
+    };
+
+    const summary = formatStartupSummary(profile, { prefix: "[vextjs]" });
+    expect(summary).toContain("[vextjs] startup summary total=88ms");
+    expect(summary).toContain("config");
+    expect(summary).toContain("routes");
+    expect(summary).toContain("listen");
+
+    const details = formatStartupProfile(profile, { prefix: "[vextjs]" });
+    expect(details).toContain("[vextjs] startup profile details");
+    expect(details).toContain("start.config.raw");
+    expect(details).toContain("[config]");
+  });
+
+  it("formats startup duration for ready suffixes", () => {
+    expect(formatStartupDuration(12.4)).toBe("12ms");
+    expect(formatStartupDuration(12.6)).toBe("13ms");
   });
 });

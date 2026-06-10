@@ -1,5 +1,7 @@
 # VextJS
 
+[Documentation](https://vextjs.github.io)
+
 VextJS is a high-performance Node.js framework for building maintainable backend services. It combines a convention-based project structure, file-system routing, typed services, plugins, middleware, validation, OpenAPI generation, route-level caching, and a CLI workflow that keeps projects productive from the first command.
 
 ## Why VextJS
@@ -65,7 +67,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.21"
+    "vextjs": "^0.3.22"
   }
 }
 ```
@@ -129,7 +131,9 @@ vext reload           # Rolling restart for cluster workers
 vext status           # Inspect cluster status
 ```
 
-`vext dev` prints a concise startup summary by default, grouped by stable phases such as `main/preflight`, `main/preload`, `pre-worker-bootstrap`, `compile`, `database`, `plugins`, `routes`, `openapi`, `listen`, and `onReady`. Use `--startup-profile` for per-event details, or `--startup-profile-json .vext/inspect/startup-profile.json` to write the same phase names and `gap.*` events to JSON.
+`vext dev` prints a minimal ready log by default: listening URL(s) plus total startup time. Add `--startup-profile` to print startup timings grouped by stable phases such as `main/preflight`, `main/preload`, `pre-worker-bootstrap`, `compile`, `database`, `plugins`, `routes`, `openapi`, `listen`, and `onReady`. Use `--startup-profile-json .vext/inspect/startup-profile.json` to write the same phase names and `gap.*` events to JSON without enabling human-readable profile details.
+
+`vext start` keeps production output minimal too: start mode, listening URL(s), and total startup time. Add `--startup-profile` or `--startup-profile-json <path>` when you need cold-start phase timings from the production bootstrap path.
 
 `vext create` options:
 

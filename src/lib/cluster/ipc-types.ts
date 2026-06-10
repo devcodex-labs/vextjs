@@ -32,6 +32,11 @@ export interface WorkerReadyMessage {
   pid: number;
   /** Worker 编号（来自 VEXT_WORKER_ID 环境变量） */
   workerId: string;
+  /** Worker 实际监听地址（可选，保持向后兼容） */
+  server?: {
+    host: string;
+    port: number;
+  };
 }
 
 /**

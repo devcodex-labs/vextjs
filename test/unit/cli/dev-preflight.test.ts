@@ -122,6 +122,7 @@ describe("runDevPreflight", () => {
       rootDir: "E:\\app",
       language: "js",
       reason: "initial start",
+      logTypegenDetails: true,
     });
 
     expect(result).toEqual({
@@ -162,6 +163,48 @@ describe("runDevPreflight", () => {
       tsOk: true,
     });
     expect(mocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("can suppress successful typegen details while keeping warnings and errors visible", async () => {
+    mocks.runTypegen.mockResolvedValueOnce({
+      ok: false,
+      files: [
+        {
+          filePath: "E:\\app\\.vext\\types\\services.generated.d.ts",
+          status: "written",
+        },
+      ],
+      diagnostics: [
+        { level: "info", message: "Path service dependency check passed" },
+        { level: "error", message: "service dependency issue" },
+      ],
+      warnings: ["manual review suggested"],
+      manifest: {
+        filePath: "E:\\app\\.vext\\manifest\\services.json",
+        status: "written",
+      },
+    });
+
+    const result = await runDevPreflight({
+      rootDir: "E:\\app",
+      language: "js",
+      reason: "initial start",
+      logTypegenDetails: false,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("generated"),
+    );
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("typegen info"),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[vext dev] typegen warning: manual review suggested",
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[vext dev] typegen error: service dependency issue",
+    );
   });
 
   it("reports formatted TypeScript diagnostics when semantic errors exist", async () => {

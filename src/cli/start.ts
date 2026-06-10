@@ -7,6 +7,14 @@ import {
   resolveEntryFile,
 } from "./utils/detect-project.js";
 import { resolvePreloads } from "./utils/preload.js";
+import {
+  formatStartupDuration,
+  formatStartupProfile,
+  formatStartupSummary,
+  writeStartupProfileJson,
+  type StartupProfileSnapshot,
+} from "../lib/startup-profiler.js";
+import { printReadyLog } from "../lib/utils/network.js";
 
 /**
  * vext start — 生产模式启动命令（Phase 1）
@@ -50,6 +58,24 @@ interface StartOptions {
   verboseLifecycle?: boolean;
   /** 端口冲突策略 */
   portConflict?: "error" | "prompt" | "kill" | "next";
+  /** 输出启动阶段耗时 */
+  startupProfile?: boolean;
+  /** 将启动阶段耗时写入 JSON 文件 */
+  startupProfileJson?: string;
+}
+
+interface StartReadyMessage {
+  type: "ready";
+  server?: {
+    host: string;
+    port: number;
+  };
+  startupProfile?: StartupProfileSnapshot;
+  detail?: {
+    cluster?: boolean;
+    workers?: number;
+    totalWorkers?: number;
+  };
 }
 
 async function promptPortConflictDecision(
@@ -105,6 +131,12 @@ async function promptPortConflictDecision(
 export async function startCommand(args: string[] = []): Promise<void> {
   // ── 解析命令行参数 ────────────────────────────────────────
   const options = parseStartArgs(args);
+  const commandStartedAt = performance.now();
+  const readyLogger = {
+    info(message: string) {
+      console.log(message);
+    },
+  };
 
   // ── 检测项目结构 ──────────────────────────────────────────
   const rootDir = resolve(process.cwd());
@@ -152,6 +184,7 @@ export async function startCommand(args: string[] = []): Promise<void> {
     NODE_ENV: process.env.NODE_ENV || "production",
     VEXT_MODE: "start",
     VEXT_ROOT: project.rootDir,
+    VEXT_START_PARENT_READY_LOG: "1",
   };
 
   // dist/ 标记（bootstrap 可据此切换 srcDir）
@@ -171,6 +204,15 @@ export async function startCommand(args: string[] = []): Promise<void> {
   }
   if (options.verboseLifecycle) {
     env.VEXT_LIFECYCLE_LEVEL = "verbose";
+  }
+  if (options.startupProfile || options.startupProfileJson) {
+    env.VEXT_START_STARTUP_PROFILE = "1";
+  }
+  if (options.startupProfile) {
+    env.VEXT_START_STARTUP_PROFILE_HUMAN = "1";
+  }
+  if (options.startupProfileJson) {
+    env.VEXT_STARTUP_PROFILE_JSON = options.startupProfileJson;
   }
 
   // ── fork 子进程 ──────────────────────────────────────────
@@ -193,6 +235,47 @@ export async function startCommand(args: string[] = []): Promise<void> {
     }
 
     const payload = msg as Record<string, unknown>;
+    if (payload.type === "ready") {
+      const readyMessage = payload as unknown as StartReadyMessage;
+      if (readyMessage.server) {
+        const totalMs = performance.now() - commandStartedAt;
+        const workerSuffix =
+          readyMessage.detail?.cluster &&
+          readyMessage.detail.workers !== undefined &&
+          readyMessage.detail.totalWorkers !== undefined
+            ? `, workers=${readyMessage.detail.workers}/${readyMessage.detail.totalWorkers}`
+            : "";
+        printReadyLog(
+          readyLogger,
+          readyMessage.server.host,
+          readyMessage.server.port,
+          {
+            prefix: "[vextjs]",
+            suffix: `(total=${formatStartupDuration(totalMs)}${workerSuffix})`,
+          },
+        );
+      }
+
+      const startupProfile = readyMessage.startupProfile;
+      if (startupProfile?.enabled) {
+        if (options.startupProfile) {
+          console.log(
+            formatStartupSummary(startupProfile, { prefix: "[vextjs]" }),
+          );
+          console.log(
+            formatStartupProfile(startupProfile, { prefix: "[vextjs]" }),
+          );
+        }
+        if (options.startupProfileJson) {
+          writeStartupProfileJson(options.startupProfileJson, startupProfile);
+          console.log(
+            `[vextjs] startup profile json: ${options.startupProfileJson}`,
+          );
+        }
+      }
+      return;
+    }
+
     if (payload.type === "port-conflict") {
       const action = await promptPortConflictDecision(
         payload.host as string | undefined,
@@ -298,6 +381,10 @@ function parseStartArgs(args: string[]): StartOptions {
         process.exit(1);
       }
       options.portConflict = strategy;
+    } else if (arg === "--startup-profile") {
+      options.startupProfile = true;
+    } else if (arg === "--startup-profile-json" && i + 1 < args.length) {
+      options.startupProfileJson = args[++i]!;
     } else if (arg === "--verbose-lifecycle") {
       options.verboseLifecycle = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -327,6 +414,13 @@ function parseStartArgs(args: string[]): StartOptions {
     process.env.VEXT_VERBOSE_LIFECYCLE === "1"
   ) {
     options.verboseLifecycle = true;
+  }
+
+  if (
+    options.startupProfileJson === undefined &&
+    process.env.VEXT_STARTUP_PROFILE_JSON
+  ) {
+    options.startupProfileJson = process.env.VEXT_STARTUP_PROFILE_JSON;
   }
 
   return options;
@@ -362,6 +456,9 @@ function printStartHelp(): void {
     --host <string>   Override the listening host
     --port-conflict <error|prompt|kill|next>
                        Configure how port conflicts are handled
+    --startup-profile  Print startup phase timings
+    --startup-profile-json <path>
+                       Write startup phase timings to a JSON file
     --verbose-lifecycle
                        Show verbose lifecycle logs
     -h, --help        Show this help message
@@ -371,10 +468,13 @@ function printStartHelp(): void {
     $ vext start --port 8080
     $ vext start --host 127.0.0.1 --port 3000
     $ vext start --port-conflict prompt
+    $ vext start --startup-profile
 
   Environment variables:
     NODE_ENV          Set the environment (default: production)
     VEXT_CLUSTER=1    Enable cluster mode
+    VEXT_STARTUP_PROFILE_JSON=<path>
+                      Write startup phase timings to a JSON file
     VEXT_PORT_CONFLICT=next
     VEXT_VERBOSE_LIFECYCLE=1
 `);

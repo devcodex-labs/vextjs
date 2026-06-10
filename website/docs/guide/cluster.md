@@ -33,13 +33,8 @@ Cluster 模式下，Master 会先完成配置检测和端口预检；`bootstrap 
 
 ```bash
 $ vext start
-[vextjs] Cluster master started (PID: 12345)
-[vextjs] Spawning 4 workers...
-[vextjs] Worker 1 (PID: 12346) ready
-[vextjs] Worker 2 (PID: 12347) ready
-[vextjs] Worker 3 (PID: 12348) ready
-[vextjs] Worker 4 (PID: 12349) ready
-[vextjs] All 4 workers ready, listening on port 3000
+[vextjs] start mode - built (node, from dist/)
+[vextjs] ready on http://0.0.0.0:3000 (total=1842ms, workers=4/4)
 ```
 
 ## 架构概览

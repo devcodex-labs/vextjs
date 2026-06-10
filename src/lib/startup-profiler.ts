@@ -28,6 +28,10 @@ export interface StartupProfileMergeOptions {
   gapThresholdMs?: number;
 }
 
+export interface StartupProfileFormatOptions {
+  prefix?: string;
+}
+
 export interface StartupProfiler {
   readonly enabled: boolean;
   time<T>(
@@ -50,6 +54,7 @@ export interface StartupProfilerOptions {
 }
 
 const DEFAULT_GAP_THRESHOLD_MS = 200;
+const DEFAULT_FORMAT_PREFIX = "[vext dev]";
 
 const SUMMARY_PHASE_ORDER = [
   "main/preflight",
@@ -133,8 +138,10 @@ export function createStartupProfilerFromEnv(
 ): StartupProfiler {
   return createStartupProfiler({
     enabled:
-      env.VEXT_STARTUP_PROFILE === "1" ||
-      env.VEXT_STARTUP_PROFILE === "true" ||
+      env.VEXT_DEV_STARTUP_PROFILE === "1" ||
+      env.VEXT_DEV_STARTUP_PROFILE === "true" ||
+      env.VEXT_START_STARTUP_PROFILE === "1" ||
+      env.VEXT_START_STARTUP_PROFILE === "true" ||
       Boolean(env.VEXT_STARTUP_PROFILE_JSON),
   });
 }
@@ -180,9 +187,14 @@ export function mergeStartupProfiles(
   };
 }
 
-export function formatStartupSummary(profile: StartupProfileSnapshot): string {
+export function formatStartupSummary(
+  profile: StartupProfileSnapshot,
+  options: StartupProfileFormatOptions = {},
+): string {
+  const prefix = options.prefix ?? DEFAULT_FORMAT_PREFIX;
+
   if (!profile.enabled) {
-    return "[vext dev] startup summary disabled";
+    return `${prefix} startup summary disabled`;
   }
 
   const phaseTotals = new Map<string, number>();
@@ -203,34 +215,39 @@ export function formatStartupSummary(profile: StartupProfileSnapshot): string {
   ];
 
   const lines = [
-    `[vext dev] startup summary total=${formatMs(profile.elapsedMs)}`,
+    `${prefix} startup summary total=${formatMs(profile.elapsedMs)}`,
   ];
   for (const phase of orderedPhases) {
     const durationMs = phaseTotals.get(phase);
     if (durationMs === undefined || durationMs <= 0) continue;
-    lines.push(`[vext dev]   ${phase.padEnd(22)} ${formatMs(durationMs)}`);
+    lines.push(`${prefix}   ${phase.padEnd(22)} ${formatMs(durationMs)}`);
   }
 
   if (lines.length === 1) {
-    lines.push("[vext dev]   no startup events recorded");
+    lines.push(`${prefix}   no startup events recorded`);
   }
 
   return lines.join("\n");
 }
 
-export function formatStartupProfile(profile: StartupProfileSnapshot): string {
+export function formatStartupProfile(
+  profile: StartupProfileSnapshot,
+  options: StartupProfileFormatOptions = {},
+): string {
+  const prefix = options.prefix ?? DEFAULT_FORMAT_PREFIX;
+
   if (!profile.enabled) {
-    return "[vext dev] startup profile disabled";
+    return `${prefix} startup profile disabled`;
   }
 
   const lines = [
-    `[vext dev] startup profile details: total=${formatMs(profile.elapsedMs)}`,
+    `${prefix} startup profile details: total=${formatMs(profile.elapsedMs)}`,
     ...profile.events.map((event) => {
       const phase = event.phase ?? inferPhase(event.name);
       const kind = event.kind && event.kind !== "event" ? ` ${event.kind}` : "";
       const detail = formatDetail(event.detail);
       return (
-        `[vext dev]   ${event.name}: ${formatMs(event.durationMs)} ` +
+        `${prefix}   ${event.name}: ${formatMs(event.durationMs)} ` +
         `@ +${formatMs(event.startMs)} [${phase}${kind}]${detail}`
       );
     }),
@@ -391,6 +408,31 @@ function inferPhase(name: string): string {
     return "listen";
   }
   if (name.startsWith("worker.onReady")) return "onReady";
+  if (
+    name.startsWith("start.config") ||
+    name.startsWith("start.portConflict") ||
+    name.startsWith("start.createApp") ||
+    name.startsWith("start.adapter")
+  ) {
+    return "config";
+  }
+  if (name.startsWith("start.i18n") || name.startsWith("start.schema")) {
+    return "i18n";
+  }
+  if (name.startsWith("start.builtinPlugin.monsqlize")) return "database";
+  if (name.startsWith("start.plugins")) return "plugins";
+  if (name.startsWith("start.fetch")) return "fetch";
+  if (
+    name.startsWith("start.middlewares") ||
+    name.startsWith("start.builtinMiddlewares")
+  ) {
+    return "middleware";
+  }
+  if (name.startsWith("start.services")) return "services";
+  if (name.startsWith("start.routes")) return "routes";
+  if (name.startsWith("start.openapi")) return "openapi";
+  if (name.startsWith("start.listen")) return "listen";
+  if (name.startsWith("start.onReady")) return "onReady";
   return "other";
 }
 
@@ -401,8 +443,12 @@ function toEventNamePart(value: string): string {
     .toLowerCase();
 }
 
-function formatMs(value: number): string {
+export function formatStartupDuration(value: number): string {
   return `${Math.round(value)}ms`;
+}
+
+function formatMs(value: number): string {
+  return formatStartupDuration(value);
 }
 
 function formatDetail(detail: Record<string, unknown> | undefined): string {
