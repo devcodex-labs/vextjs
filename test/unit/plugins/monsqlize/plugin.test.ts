@@ -545,6 +545,40 @@ describe("setupMonSQLize", () => {
       expect(mockMonSQLize.mockConnect).toHaveBeenCalledOnce();
     });
 
+    it("records optional startup profiler events without changing setup", async () => {
+      const { app, extendedProps } = createMockApp({
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
+      });
+      const recorded: string[] = [];
+      const startupProfiler = {
+        enabled: true,
+        async time<T>(name: string, action: () => Promise<T> | T): Promise<T> {
+          recorded.push(name);
+          return await action();
+        },
+        mark: vi.fn(),
+        toJSON: vi.fn(),
+      };
+
+      await setupMonSQLize(app, "/tmp/src", {
+        startupProfiler: startupProfiler as any,
+      });
+
+      expect(mockMonSQLize.mockConnect).toHaveBeenCalledOnce();
+      expect(extendedProps.has("db")).toBe(true);
+      expect(extendedProps.has("monsqlize")).toBe(true);
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          "worker.builtinPlugin.monsqlize.config",
+          "worker.builtinPlugin.monsqlize.import",
+          "worker.builtinPlugin.monsqlize.instance",
+          "worker.builtinPlugin.monsqlize.connect",
+          "worker.builtinPlugin.monsqlize.models",
+          "worker.builtinPlugin.monsqlize.extend",
+        ]),
+      );
+    });
+
     it("extends app with db property", async () => {
       const { app, extendedProps } = createMockApp({
         database: { config: { uri: "mongodb://localhost:27017/testdb" } },

@@ -1,12 +1,13 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
-import { join, extname, dirname } from "node:path";
+import { join, extname, dirname, relative } from "node:path";
 import { createRequire } from "node:module";
 import type { VextApp } from "../types/app.js";
 import type { VextInternalHooks } from "../types/hooks.js";
 import type { VextPlugin } from "../types/plugin.js";
 import { resolveModuleDefault } from "./interop.js";
 import { pathToFileURL } from "node:url";
+import type { StartupProfiler } from "./startup-profiler.js";
 
 // ── ESM-only 包兼容层 ─────────────────────────────────────────
 //
@@ -287,6 +288,14 @@ export interface LoadPluginsOptions {
    * @default 30_000 (30 秒)
    */
   setupTimeout?: number;
+
+  /**
+   * Optional startup profiler used by dev bootstrap diagnostics.
+   *
+   * Omitted in production/testing paths unless the caller explicitly wants
+   * startup timing events.
+   */
+  startupProfiler?: StartupProfiler;
 }
 
 /**
@@ -309,7 +318,7 @@ export async function loadPlugins(
   pluginsDir: string,
   options: LoadPluginsOptions = {},
 ): Promise<void> {
-  const { setupTimeout = 30_000 } = options;
+  const { setupTimeout = 30_000, startupProfiler } = options;
 
   // ── 1. 检查 plugins/ 目录是否存在 ─────────────────────────
   const dirExists = await directoryExists(pluginsDir);
@@ -321,7 +330,12 @@ export async function loadPlugins(
   }
 
   // ── 2. 递归扫描所有插件文件 ────────────────────────────────
-  const pluginFiles = await scanPluginFiles(pluginsDir);
+  const pluginFiles =
+    (await startupProfiler?.time(
+      "worker.plugins.scan",
+      () => scanPluginFiles(pluginsDir),
+      { phase: "plugins", detail: { pluginsDir } },
+    )) ?? (await scanPluginFiles(pluginsDir));
 
   if (pluginFiles.length === 0) {
     app.logger.debug(
@@ -335,7 +349,13 @@ export async function loadPlugins(
   const nameSet = new Map<string, string>(); // name → sourceFile（重复检测）
 
   for (const filePath of pluginFiles) {
-    const plugin = await loadPluginFile(filePath, pluginsDir);
+    const relativeFile = relative(pluginsDir, filePath);
+    const plugin =
+      (await startupProfiler?.time(
+        `worker.plugins.import.${toEventNamePart(relativeFile)}`,
+        () => loadPluginFile(filePath, pluginsDir),
+        { phase: "plugins", detail: { file: relativeFile } },
+      )) ?? (await loadPluginFile(filePath, pluginsDir));
 
     // Fail Fast：插件名称重复
     const existing = nameSet.get(plugin.name);
@@ -353,7 +373,12 @@ export async function loadPlugins(
   }
 
   // ── 4. 拓扑排序（按 dependencies 字段）────────────────────
-  const sorted = topoSort(plugins, nameSet);
+  const sorted =
+    (await startupProfiler?.time(
+      "worker.plugins.toposort",
+      () => topoSort(plugins, nameSet),
+      { phase: "plugins" },
+    )) ?? topoSort(plugins, nameSet);
   const lifecycleLevel = app.config.logger?.lifecycleLevel ?? "concise";
 
   // ── 5. 依次执行 setup（含超时保护）────────────────────────
@@ -362,7 +387,15 @@ export async function loadPlugins(
       app.logger.info(`[plugin] loading: ${plugin.name}`);
     }
 
-    await executeSetupWithTimeout(plugin, app, setupTimeout, sourceFile);
+    if (startupProfiler) {
+      await startupProfiler.time(
+        `worker.plugins.setup.${toEventNamePart(plugin.name)}`,
+        () => executeSetupWithTimeout(plugin, app, setupTimeout, sourceFile),
+        { phase: "plugins", detail: { plugin: plugin.name, sourceFile } },
+      );
+    } else {
+      await executeSetupWithTimeout(plugin, app, setupTimeout, sourceFile);
+    }
 
     if (lifecycleLevel === "verbose") {
       app.logger.info(`[plugin] loaded:  ${plugin.name}`);
@@ -819,4 +852,11 @@ function describeValue(value: unknown): string {
     return `{ ${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", ..." : ""} }`;
   }
   return `${typeof value}: ${String(value).slice(0, 50)}`;
+}
+
+function toEventNamePart(value: string): string {
+  return value
+    .replace(/[\\/]+/g, ".")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

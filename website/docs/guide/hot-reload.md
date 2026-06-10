@@ -252,7 +252,7 @@ Options:
   --port-conflict <strategy>
                        端口冲突策略：error / prompt / kill / next
   --verbose-lifecycle  输出详细生命周期日志与完整 watcher 变更列表
-  --startup-profile    输出启动阶段耗时摘要
+  --startup-profile    输出启动阶段详细耗时；默认已输出阶段摘要
   --startup-profile-json <path>
                        将启动阶段耗时写入 JSON 文件
   --clear              每次重载后清空控制台
@@ -278,7 +278,7 @@ vext dev --port-conflict next
 # 排查 loader / hot reload 细节
 vext dev --verbose-lifecycle
 
-# 输出启动耗时摘要并写入 JSON
+# 输出启动详细耗时并写入 JSON；默认 dev 已输出 summary
 vext dev --startup-profile --startup-profile-json .vext/inspect/startup-profile.json
 ```
 

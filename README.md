@@ -129,6 +129,8 @@ vext reload           # Rolling restart for cluster workers
 vext status           # Inspect cluster status
 ```
 
+`vext dev` prints a concise startup summary by default, grouped by stable phases such as `main/preflight`, `main/preload`, `pre-worker-bootstrap`, `compile`, `database`, `plugins`, `routes`, `openapi`, `listen`, and `onReady`. Use `--startup-profile` for per-event details, or `--startup-profile-json .vext/inspect/startup-profile.json` to write the same phase names and `gap.*` events to JSON.
+
 `vext create` options:
 
 ```bash

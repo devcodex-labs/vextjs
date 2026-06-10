@@ -215,4 +215,78 @@ describe("plugin-loader", () => {
       }),
     );
   });
+
+  it("records optional startup profiler events without changing plugin loading", async () => {
+    const projectRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vext-plugin-loader-"),
+    );
+    tempDirs.push(projectRoot);
+
+    const pluginsDir = path.join(projectRoot, "src", "plugins");
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginsDir, "observed.js"),
+      [
+        "export default {",
+        '  name: "observed",',
+        "  setup(app) {",
+        '    app.extend("observed", true);',
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const extensions: Record<string, unknown> = {};
+    const recorded: Array<{ name: string; phase?: string }> = [];
+    const startupProfiler = {
+      enabled: true,
+      async time<T>(
+        name: string,
+        action: () => Promise<T> | T,
+        options?: { phase?: string },
+      ): Promise<T> {
+        recorded.push({ name, phase: options?.phase });
+        return await action();
+      },
+      mark: vi.fn(),
+      toJSON: vi.fn(),
+    };
+    const app = {
+      config: {},
+      logger: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      hooks: createHookManager(),
+      extend(key: string, value: unknown) {
+        extensions[key] = value;
+      },
+      onReady: () => {},
+      onClose: () => {},
+    } as any;
+
+    await loadPlugins(app, pluginsDir, {
+      setupTimeout: 1_000,
+      startupProfiler: startupProfiler as any,
+    });
+
+    expect(extensions.observed).toBe(true);
+    expect(recorded).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "worker.plugins.scan" }),
+        expect.objectContaining({
+          name: "worker.plugins.import.observed.js",
+          phase: "plugins",
+        }),
+        expect.objectContaining({ name: "worker.plugins.toposort" }),
+        expect.objectContaining({
+          name: "worker.plugins.setup.observed",
+          phase: "plugins",
+        }),
+      ]),
+    );
+  });
 });

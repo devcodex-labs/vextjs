@@ -12,7 +12,9 @@ import { classifyChange } from "../lib/dev/change-classifier.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
 import {
   createStartupProfiler,
+  formatStartupSummary,
   formatStartupProfile,
+  mergeStartupProfiles,
   writeStartupProfileJson,
   type StartupProfileSnapshot,
 } from "../lib/startup-profiler.js";
@@ -201,8 +203,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   let promptActive = false;
   let pendingTsDiagnostics: Promise<unknown> | null = null;
   const startupProfiler = createStartupProfiler({
-    enabled:
-      options.startupProfile === true || Boolean(options.startupProfileJson),
+    enabled: true,
   });
 
   // ── 1. 检测项目结构 ────────────────────────────────────
@@ -251,9 +252,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   if (options.verboseLifecycle) {
     restarterEnv.VEXT_LIFECYCLE_LEVEL = "verbose";
   }
-  if (startupProfiler.enabled) {
-    restarterEnv.VEXT_STARTUP_PROFILE = "1";
-  }
+  restarterEnv.VEXT_STARTUP_PROFILE = "1";
   if (options.startupProfileJson) {
     restarterEnv.VEXT_STARTUP_PROFILE_JSON = options.startupProfileJson;
   }
@@ -264,7 +263,15 @@ export async function devCommand(args: string[] = []): Promise<void> {
   // 生成 ["--import", "file:///..."] 格式的 execArgv 追加列表。
   // Cold Restart 时 extraExecArgv 自动复用，无需重新计算。
   //
-  const preloads = await resolvePreloads(project.rootDir);
+  const preloads = await startupProfiler.time(
+    "main.preloads.resolve.initial",
+    () => resolvePreloads(project.rootDir),
+    { phase: "main/preload" },
+  );
+  startupProfiler.mark("main.preloads.resolved.initial", 0, {
+    phase: "main/preload",
+    detail: { preloads },
+  });
   const preloadExecArgv = preloads.flatMap((p) => ["--import", p]);
 
   const restarterOptions: ColdRestarterOptions = {
@@ -277,7 +284,15 @@ export async function devCommand(args: string[] = []): Promise<void> {
   const restarter = new ColdRestarter(restarterOptions);
 
   const refreshPreloads = async (): Promise<void> => {
-    const latestPreloads = await resolvePreloads(project.rootDir);
+    const latestPreloads = await startupProfiler.time(
+      "main.preloads.resolve.refresh",
+      () => resolvePreloads(project.rootDir),
+      { phase: "main/preload" },
+    );
+    startupProfiler.mark("main.preloads.resolved.refresh", 0, {
+      phase: "main/preload",
+      detail: { preloads: latestPreloads },
+    });
     restarter.setExtraExecArgv(latestPreloads.flatMap((p) => ["--import", p]));
   };
 
@@ -328,7 +343,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
             startupProfiler.toJSON(),
             startupProfile,
           );
-          console.log(formatStartupProfile(mergedProfile));
+          console.log(formatStartupSummary(mergedProfile));
+          if (options.startupProfile) {
+            console.log(formatStartupProfile(mergedProfile));
+          }
           if (options.startupProfileJson) {
             writeStartupProfileJson(options.startupProfileJson, mergedProfile);
             console.log(
@@ -762,7 +780,6 @@ function parseDevArgs(args: string[]): DevCommandOptions {
 
       case "--startup-profile-json":
         if (i + 1 < args.length) {
-          options.startupProfile = true;
           options.startupProfileJson = args[++i]!;
         }
         break;
@@ -859,25 +876,10 @@ function parseDevArgs(args: string[]): DevCommandOptions {
     options.startupProfileJson === undefined &&
     process.env.VEXT_STARTUP_PROFILE_JSON
   ) {
-    options.startupProfile = true;
     options.startupProfileJson = process.env.VEXT_STARTUP_PROFILE_JSON;
   }
 
   return options;
-}
-
-function mergeStartupProfiles(
-  mainProfile: StartupProfileSnapshot,
-  workerProfile: StartupProfileSnapshot,
-): StartupProfileSnapshot {
-  return {
-    enabled: true,
-    startedAt: mainProfile.startedAt,
-    elapsedMs: Math.max(mainProfile.elapsedMs, workerProfile.elapsedMs),
-    events: [...mainProfile.events, ...workerProfile.events].sort(
-      (a, b) => a.startMs - b.startMs || a.name.localeCompare(b.name),
-    ),
-  };
 }
 
 // ── 输出函数 ────────────────────────────────────────────────

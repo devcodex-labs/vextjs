@@ -138,7 +138,7 @@ vext dev [options]
 | `--strict-preflight`         | 让 TypeScript 语义诊断重新阻塞启动 / 重载   | —              |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`）    | `error`        |
 | `--verbose-lifecycle`        | 输出详细生命周期日志与完整 watcher 变更列表 | —              |
-| `--startup-profile`          | 输出启动阶段耗时摘要                        | —              |
+| `--startup-profile`          | 输出启动阶段详细耗时；默认已输出阶段摘要    | —              |
 | `--startup-profile-json <p>` | 将启动阶段耗时写入 JSON 文件                | —              |
 | `--clear`                    | 每次重载后清空控制台                        | —              |
 | `-h, --help`                 | 显示帮助                                    | —              |
@@ -157,7 +157,7 @@ vext start --port-conflict next
 
 #### 生命周期日志分层
 
-默认使用 `concise` 模式，只保留启动摘要、ready、cold restart / hot reload 结果；如需排障细节，可开启：
+默认使用 `concise` 模式，只保留启动摘要、ready、cold restart / hot reload 结果。`vext dev` 的启动摘要按 `main/preflight`、`main/preload`、`pre-worker-bootstrap`、`compile`、`config`、`i18n`、`database`、`plugins`、`middleware`、`services`、`routes`、`openapi`、`listen`、`onReady` 等阶段归类；超过阈值的未命名空窗会以 `gap.*` 形式进入 profile JSON。如需排障细节，可开启：
 
 ```bash
 vext dev --verbose-lifecycle
@@ -185,7 +185,7 @@ vext dev --poll --poll-interval 2000
 # 禁用 Soft Reload（所有变更均走 Cold Restart）
 vext dev --no-hot
 
-# 输出启动阶段耗时
+# 输出启动阶段详细耗时；默认已输出 summary
 vext dev --startup-profile
 vext dev --startup-profile-json .vext/inspect/startup-profile.json
 ```

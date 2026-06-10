@@ -24,6 +24,11 @@ import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 import { createConnection } from "./connection.js";
 import { loadModels } from "./model-loader.js";
+import type { StartupProfiler } from "../../startup-profiler.js";
+
+export interface SetupMonSQLizeOptions {
+  startupProfiler?: StartupProfiler;
+}
 
 /**
  * setupMonSQLize — 插件 setup 入口
@@ -37,6 +42,7 @@ import { loadModels } from "./model-loader.js";
 export async function setupMonSQLize(
   app: VextPluginContext,
   srcDir: string,
+  options: SetupMonSQLizeOptions = {},
 ): Promise<void> {
   let config = (app.config as { database?: MonSQLizeDatabaseConfig }).database;
 
@@ -84,35 +90,46 @@ export async function setupMonSQLize(
 
   if (config.useMemoryServer === true) {
     try {
-      const { MongoMemoryServer } = await import("mongodb-memory-server-core");
-      const memoryServerOptions = (
-        config as MonSQLizeDatabaseConfig & {
-          memoryServerOptions?: Record<string, unknown>;
-        }
-      ).memoryServerOptions;
-      const server = await MongoMemoryServer.create(memoryServerOptions);
-      const uri = server.getUri();
-      const rootConfig: Record<string, unknown> = {
-        ...config.config,
-        uri,
-      };
-      delete rootConfig.url;
+      await timeMonSQLize(
+        options,
+        "worker.builtinPlugin.monsqlize.memory.root",
+        async () => {
+          const { MongoMemoryServer } =
+            await import("mongodb-memory-server-core");
+          const memoryServerOptions = (
+            config as MonSQLizeDatabaseConfig & {
+              memoryServerOptions?: Record<string, unknown>;
+            }
+          ).memoryServerOptions;
+          const server = await MongoMemoryServer.create(memoryServerOptions);
+          const uri = server.getUri();
+          const rootConfig: Record<string, unknown> = {
+            ...config!.config,
+            uri,
+          };
+          delete rootConfig.url;
 
-      const clonedConfig: MonSQLizeDatabaseConfig & {
-        memoryServerOptions?: Record<string, unknown>;
-      } = { ...config, config: rootConfig };
-      delete clonedConfig.useMemoryServer;
-      delete clonedConfig.memoryServerOptions;
-      config = clonedConfig;
+          const clonedConfig: MonSQLizeDatabaseConfig & {
+            memoryServerOptions?: Record<string, unknown>;
+          } = { ...config!, config: rootConfig };
+          delete clonedConfig.useMemoryServer;
+          delete clonedConfig.memoryServerOptions;
+          config = clonedConfig;
 
-      memoryServersToStop.push({
-        stop: async () => {
-          await server.stop();
+          memoryServersToStop.push({
+            stop: async () => {
+              await server.stop();
+            },
+          });
+          app.logger.info(
+            "[monsqlize] root connection using in-memory MongoDB",
+            {
+              uri,
+            },
+          );
         },
-      });
-      app.logger.info("[monsqlize] root connection using in-memory MongoDB", {
-        uri,
-      });
+        { connection: "root" },
+      );
     } catch (err) {
       await stopMemoryServers();
       throw new Error(
@@ -138,23 +155,30 @@ export async function setupMonSQLize(
         typeof innerCfg.uri === "string" || typeof innerCfg.url === "string";
       if (innerCfg.useMemoryServer === true && !hasUri) {
         try {
-          const { MongoMemoryServer } =
-            await import("mongodb-memory-server-core");
-          const server = await MongoMemoryServer.create(
-            innerCfg.memoryServerOptions,
-          );
-          const uri = server.getUri();
-          innerCfg.uri = uri;
-          delete innerCfg.useMemoryServer;
-          delete innerCfg.memoryServerOptions;
-          memoryServersToStop.push({
-            stop: async () => {
-              await server.stop();
+          await timeMonSQLize(
+            options,
+            `worker.builtinPlugin.monsqlize.memory.pool.${toEventNamePart(pool.name)}`,
+            async () => {
+              const { MongoMemoryServer } =
+                await import("mongodb-memory-server-core");
+              const server = await MongoMemoryServer.create(
+                innerCfg.memoryServerOptions,
+              );
+              const uri = server.getUri();
+              innerCfg.uri = uri;
+              delete innerCfg.useMemoryServer;
+              delete innerCfg.memoryServerOptions;
+              memoryServersToStop.push({
+                stop: async () => {
+                  await server.stop();
+                },
+              });
+              app.logger.info(
+                `[monsqlize] pool '${pool.name}' using in-memory MongoDB`,
+                { uri },
+              );
             },
-          });
-          app.logger.info(
-            `[monsqlize] pool '${pool.name}' using in-memory MongoDB`,
-            { uri },
+            { pool: pool.name },
           );
         } catch (err) {
           await stopMemoryServers();
@@ -171,7 +195,11 @@ export async function setupMonSQLize(
   // ── 1. 构建 MonSQLize 配置 ────────────────────────────────
   let monsqlizeConfig: Record<string, unknown>;
   try {
-    monsqlizeConfig = buildMonSQLizeConfig(config, app);
+    monsqlizeConfig = await timeMonSQLize(
+      options,
+      "worker.builtinPlugin.monsqlize.config",
+      () => buildMonSQLizeConfig(config!, app),
+    );
   } catch (err) {
     await stopMemoryServers();
     throw err;
@@ -180,9 +208,15 @@ export async function setupMonSQLize(
   // ── 2. 动态 import + 创建 MonSQLize 实例 ──────────────────
   let MonSQLizeClass: any;
   try {
-    const mod: any = await import("monsqlize");
-    // 兼容 CJS default export 和 ESM named export
-    MonSQLizeClass = mod.default ?? mod.MonSQLize ?? mod;
+    MonSQLizeClass = await timeMonSQLize(
+      options,
+      "worker.builtinPlugin.monsqlize.import",
+      async () => {
+        const mod: any = await import("monsqlize");
+        // 兼容 CJS default export 和 ESM named export
+        return mod.default ?? mod.MonSQLize ?? mod;
+      },
+    );
   } catch (err) {
     await stopMemoryServers();
     throw new Error(
@@ -194,7 +228,11 @@ export async function setupMonSQLize(
 
   let monsqlize: any;
   try {
-    monsqlize = new MonSQLizeClass(monsqlizeConfig);
+    monsqlize = await timeMonSQLize(
+      options,
+      "worker.builtinPlugin.monsqlize.instance",
+      () => new MonSQLizeClass(monsqlizeConfig),
+    );
   } catch (err) {
     await stopMemoryServers();
     throw err;
@@ -219,15 +257,27 @@ export async function setupMonSQLize(
 
   // ── 4. 连接数据库（Fail Fast）─────────────────────────────
   try {
-    const connection = await createConnection(monsqlize, app);
+    const connection = await timeMonSQLize(
+      options,
+      "worker.builtinPlugin.monsqlize.connect",
+      () => createConnection(monsqlize, app),
+    );
     app.logger.info("[monsqlize] connected successfully");
 
     // ── 5. 加载 Model 定义 ────────────────────────────────────
-    await loadModels(monsqlize, config.models, app, srcDir);
+    await timeMonSQLize(options, "worker.builtinPlugin.monsqlize.models", () =>
+      loadModels(monsqlize, config!.models, app, srcDir),
+    );
 
     // ── 6. 挂载到 app ─────────────────────────────────────────
-    app.extend("db", connection);
-    app.extend("monsqlize", monsqlize);
+    await timeMonSQLize(
+      options,
+      "worker.builtinPlugin.monsqlize.extend",
+      () => {
+        app.extend("db", connection);
+        app.extend("monsqlize", monsqlize);
+      },
+    );
   } catch (err) {
     await stopMemoryServers();
     try {
@@ -241,6 +291,21 @@ export async function setupMonSQLize(
   }
 
   app.logger.info("[monsqlize] plugin ready");
+}
+
+function timeMonSQLize<T>(
+  options: SetupMonSQLizeOptions,
+  name: string,
+  action: () => Promise<T> | T,
+  detail?: Record<string, unknown>,
+): Promise<T> {
+  if (options.startupProfiler) {
+    return options.startupProfiler.time(name, action, {
+      phase: "database",
+      detail,
+    });
+  }
+  return Promise.resolve(action());
 }
 
 /**
@@ -372,4 +437,8 @@ function buildMonSQLizeConfig(
   }
 
   return result;
+}
+
+function toEventNamePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 }

@@ -76,8 +76,15 @@ async function inspectPortConflictUnix(
   port: number,
 ): Promise<PortConflictDetails> {
   try {
-    const { stdout } = await execFileAsync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"]);
-    const lines = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const { stdout } = await execFileAsync("lsof", [
+      "-nP",
+      `-iTCP:${port}`,
+      "-sTCP:LISTEN",
+    ]);
+    const lines = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
     const dataLine = lines[1];
     if (dataLine) {
       const cols = dataLine.split(/\s+/);
@@ -206,16 +213,34 @@ export async function findNextAvailablePort(
   host?: string,
   maxAttempts = 50,
 ): Promise<number> {
+  let lastSkippedError: unknown;
   for (let offset = 0; offset < maxAttempts; offset++) {
     const candidate = startPort + offset;
-    if (!(await isPortOccupied(candidate, host))) {
-      return candidate;
+    try {
+      if (!(await isPortOccupied(candidate, host))) {
+        return candidate;
+      }
+    } catch (error) {
+      if (isPortProbeUnavailableError(error)) {
+        lastSkippedError = error;
+        continue;
+      }
+      throw error;
     }
   }
 
+  const reason =
+    lastSkippedError instanceof Error
+      ? ` Last probe error: ${lastSkippedError.message}`
+      : "";
   throw new Error(
-    `[vextjs] Failed to find an available port after ${maxAttempts} attempts from ${startPort}.`,
+    `[vextjs] Failed to find an available port after ${maxAttempts} attempts from ${startPort}.${reason}`,
   );
+}
+
+function isPortProbeUnavailableError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EACCES" || code === "EINVAL";
 }
 
 async function resolvePromptDecision(
@@ -236,17 +261,27 @@ async function resolvePromptDecision(
     });
 
     if (decision === "abort") {
-      throw new Error(`[vextjs] Startup aborted because port ${options.port} is in use.`);
+      throw new Error(
+        `[vextjs] Startup aborted because port ${options.port} is in use.`,
+      );
     }
 
     if (decision === "next") {
-      const nextPort = await findNextAvailablePort(options.port + 1, options.host);
+      const nextPort = await findNextAvailablePort(
+        options.port + 1,
+        options.host,
+      );
       return { port: nextPort, changed: true, action: "next", details };
     }
 
     if (decision === "kill") {
       const killed = await killPortOccupant(options.port, options.host);
-      return { port: options.port, changed: false, action: "kill", details: killed };
+      return {
+        port: options.port,
+        changed: false,
+        action: "kill",
+        details: killed,
+      };
     }
 
     const free = !(await isPortOccupied(options.port, options.host));
@@ -270,12 +305,20 @@ export async function resolvePortConflict(
 
   switch (options.strategy) {
     case "next": {
-      const nextPort = await findNextAvailablePort(options.port + 1, options.host);
+      const nextPort = await findNextAvailablePort(
+        options.port + 1,
+        options.host,
+      );
       return { port: nextPort, changed: true, action: "next", details };
     }
     case "kill": {
       const killed = await killPortOccupant(options.port, options.host);
-      return { port: options.port, changed: false, action: "kill", details: killed };
+      return {
+        port: options.port,
+        changed: false,
+        action: "kill",
+        details: killed,
+      };
     }
     case "prompt":
       return resolvePromptDecision(options, details);
@@ -287,4 +330,3 @@ export async function resolvePortConflict(
       );
   }
 }
-

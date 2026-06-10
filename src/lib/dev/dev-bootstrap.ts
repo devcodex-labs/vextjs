@@ -23,6 +23,7 @@ import {
   createMonSQLizePlugin,
   shouldLoadMonSQLize,
 } from "../plugins/monsqlize/index.js";
+import { setupMonSQLize } from "../plugins/monsqlize/plugin.js";
 import { loadMiddlewares } from "../middleware-loader.js";
 import { loadServices } from "../service-loader.js";
 import { loadRoutes } from "../router-loader.js";
@@ -324,37 +325,43 @@ export async function devBootstrap(
     //   Mode A（平铺文件）：locales/zh-CN.js → loadI18n() 动态 import + 注册
     //   Mode B（子目录）  ：locales/user/zh-CN.js → schema-dsl 递归扫描
     //
-    const localesDir = path.join(outDir, "locales");
-    if (existsSync(localesDir)) {
-      const loadedLocales = await loadI18n(localesDir, app.logger);
-      if (loadedLocales.length > 0) {
-        // Mode A: 平铺文件加载成功
-        app.logger.info(
-          `[vext dev] i18n locales loaded: ${loadedLocales.join(", ")}`,
-        );
-      } else {
-        // Mode B fallback: 检查是否存在子目录（如 user/, auth/）
-        // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
-        try {
-          const entries = readdirSync(localesDir, { withFileTypes: true });
-          const hasSubDirs = entries.some((e) => e.isDirectory());
-          if (hasSubDirs) {
-            schemaAdapter.configure({ i18n: localesDir });
-            const subDirs = entries
-              .filter((e) => e.isDirectory())
-              .map((e) => e.name);
+    await startupProfiler.time(
+      "worker.i18n",
+      async () => {
+        const localesDir = path.join(outDir, "locales");
+        if (existsSync(localesDir)) {
+          const loadedLocales = await loadI18n(localesDir, app.logger);
+          if (loadedLocales.length > 0) {
+            // Mode A: 平铺文件加载成功
             app.logger.info(
-              `[vext dev] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+              `[vext dev] i18n locales loaded: ${loadedLocales.join(", ")}`,
             );
+          } else {
+            // Mode B fallback: 检查是否存在子目录（如 user/, auth/）
+            // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
+            try {
+              const entries = readdirSync(localesDir, { withFileTypes: true });
+              const hasSubDirs = entries.some((e) => e.isDirectory());
+              if (hasSubDirs) {
+                schemaAdapter.configure({ i18n: localesDir });
+                const subDirs = entries
+                  .filter((e) => e.isDirectory())
+                  .map((e) => e.name);
+                app.logger.info(
+                  `[vext dev] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
+                );
+              }
+            } catch (err) {
+              app.logger.warn(
+                { error: (err as Error).message },
+                "[vext dev] Failed to scan locales subdirectories, i18n may not work",
+              );
+            }
           }
-        } catch (err) {
-          app.logger.warn(
-            { error: (err as Error).message },
-            "[vext dev] Failed to scan locales subdirectories, i18n may not work",
-          );
         }
-      }
-    }
+      },
+      { phase: "i18n" },
+    );
 
     // ── 步骤 3.5: 内置插件（MonSQLize）条件加载（P0 修复）──
     //
@@ -383,7 +390,7 @@ export async function devBootstrap(
         builtin: true,
       });
       try {
-        await monsqlizePlugin.setup(app);
+        await setupMonSQLize(app, outDir, { startupProfiler });
         hooks.emitSafeSync("plugin:afterSetup", {
           plugin: monsqlizePlugin.name,
           sourceFile: "builtin:monsqlize",
@@ -410,9 +417,7 @@ export async function devBootstrap(
     //
     const pluginsDir = path.join(outDir, "plugins");
     if (existsSync(pluginsDir)) {
-      await startupProfiler.time("worker.plugins", () =>
-        loadPlugins(app, pluginsDir),
-      );
+      await loadPlugins(app, pluginsDir, { startupProfiler });
     }
 
     // ════════════════════════════════════════════════════════
@@ -429,12 +434,18 @@ export async function devBootstrap(
     // 路由工厂执行时会复制 app 当前属性到 collector 代理对象。
     // 若 app.fetch 在 loadRoutes 之后才赋值，路由闭包会捕获未初始化占位对象。
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    app.fetch = createVextFetch(
-      app.logger,
-      fetchConfig ?? {},
-      requestIdHeader,
-      hooks,
-    ) as unknown as VextApp["fetch"];
+    await startupProfiler.time(
+      "worker.fetch",
+      () => {
+        app.fetch = createVextFetch(
+          app.logger,
+          fetchConfig ?? {},
+          requestIdHeader,
+          hooks,
+        ) as unknown as VextApp["fetch"];
+      },
+      { phase: "fetch" },
+    );
 
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
     const middlewareRegistry = await startupProfiler.time(
@@ -487,62 +498,73 @@ export async function devBootstrap(
     );
 
     if (openapiEnabled) {
-      const generator = new OpenAPIGenerator({
-        title: openapiConfig?.title,
-        description: openapiConfig?.description,
-        version: openapiConfig?.version,
-        servers: (openapiConfig as Record<string, unknown>)?.servers as
-          | Array<{ url: string; description?: string }>
-          | undefined,
-        tags: (openapiConfig as Record<string, unknown>)?.tags as
-          | Array<{ name: string; description?: string }>
-          | undefined,
-        securitySchemes: (openapiConfig as Record<string, unknown>)
-          ?.securitySchemes as Record<
-          string,
-          {
-            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-            scheme?: string;
-            bearerFormat?: string;
-            description?: string;
-          }
-        >,
-        guardSecurityMap: (openapiConfig as Record<string, unknown>)
-          ?.guardSecurityMap as Record<string, string> | undefined,
-        contact: (openapiConfig as Record<string, unknown>)?.contact as
-          | { name?: string; email?: string; url?: string }
-          | undefined,
-        license: (openapiConfig as Record<string, unknown>)?.license as
-          | { name: string; url?: string }
-          | undefined,
-      });
-
-      const specProvider = createCachedOpenApiSpecProvider(() =>
-        generateOpenAPIDocumentWithHooks(app, generator, collectedRoutes),
-      );
-
-      registerDocEndpoints(app, specProvider, {
-        specPath: openapiConfig?.jsonPath ?? "/openapi.json",
-        specPublicPath: (openapiConfig as Record<string, unknown>)
-          ?.jsonPublicPath as string | undefined,
-        docsPath: openapiConfig?.docsPath ?? "/docs",
-        title: openapiConfig?.title,
-        scalar: (openapiConfig as Record<string, unknown>)?.scalar as
-          | Record<string, unknown>
-          | undefined,
-      });
-
-      app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
-      setTimeout(() => {
-        startupProfiler
-          .time("worker.openapiWarm", () => Promise.resolve(specProvider()))
-          .catch((error: unknown) => {
-            app.logger.warn(
-              { error: error instanceof Error ? error.message : String(error) },
-              "[openapi] background warm failed",
-            );
+      await startupProfiler.time(
+        "worker.openapi.register",
+        () => {
+          const generator = new OpenAPIGenerator({
+            title: openapiConfig?.title,
+            description: openapiConfig?.description,
+            version: openapiConfig?.version,
+            servers: (openapiConfig as Record<string, unknown>)?.servers as
+              | Array<{ url: string; description?: string }>
+              | undefined,
+            tags: (openapiConfig as Record<string, unknown>)?.tags as
+              | Array<{ name: string; description?: string }>
+              | undefined,
+            securitySchemes: (openapiConfig as Record<string, unknown>)
+              ?.securitySchemes as Record<
+              string,
+              {
+                type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+                scheme?: string;
+                bearerFormat?: string;
+                description?: string;
+              }
+            >,
+            guardSecurityMap: (openapiConfig as Record<string, unknown>)
+              ?.guardSecurityMap as Record<string, string> | undefined,
+            contact: (openapiConfig as Record<string, unknown>)?.contact as
+              | { name?: string; email?: string; url?: string }
+              | undefined,
+            license: (openapiConfig as Record<string, unknown>)?.license as
+              | { name: string; url?: string }
+              | undefined,
           });
-      }, 0);
+
+          const specProvider = createCachedOpenApiSpecProvider(() =>
+            generateOpenAPIDocumentWithHooks(app, generator, collectedRoutes),
+          );
+
+          registerDocEndpoints(app, specProvider, {
+            specPath: openapiConfig?.jsonPath ?? "/openapi.json",
+            specPublicPath: (openapiConfig as Record<string, unknown>)
+              ?.jsonPublicPath as string | undefined,
+            docsPath: openapiConfig?.docsPath ?? "/docs",
+            title: openapiConfig?.title,
+            scalar: (openapiConfig as Record<string, unknown>)?.scalar as
+              | Record<string, unknown>
+              | undefined,
+          });
+
+          app.logger.info(
+            `[openapi] ${collector.getCount()} route(s) documented`,
+          );
+          setTimeout(() => {
+            startupProfiler
+              .time("worker.openapiWarm", () => Promise.resolve(specProvider()))
+              .catch((error: unknown) => {
+                app.logger.warn(
+                  {
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                  "[openapi] background warm failed",
+                );
+              });
+          }, 0);
+        },
+        { phase: "openapi", detail: { routes: collector.getCount() } },
+      );
     }
 
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
@@ -558,6 +580,7 @@ export async function devBootstrap(
     //
 
     // 1. requestId（config.requestId.enabled，默认 true）
+    const builtinMiddlewaresStartedAt = performance.now();
     if (config.requestId?.enabled !== false) {
       const localeConfig = config.locale as
         | import("../../types/app.js").VextLocaleConfig
@@ -646,6 +669,11 @@ export async function devBootstrap(
     );
     app.adapter.registerErrorHandler(errorHandler);
     app.adapter.registerNotFound(createNotFoundHandler(hooks));
+    startupProfiler.mark(
+      "worker.builtinMiddlewares",
+      performance.now() - builtinMiddlewaresStartedAt,
+      { phase: "middleware" },
+    );
 
     // ── 步骤 9: 锁定 app.use() ──────────────────────────
     internals.lockUse();
@@ -663,7 +691,9 @@ export async function devBootstrap(
     //   Server socket 绑定的是 hotHandler.handle（间接引用），
     //   soft reload 时只替换 currentHandler 引用，不影响 socket。
     //
-    const handler = app.adapter.buildHandler();
+    const handler = await startupProfiler.time("worker.handler", () =>
+      app.adapter.buildHandler(),
+    );
     hotHandler = new HotSwappableHandler(handler);
 
     // ── 步骤 11: 创建 HTTP server ───────────────────────
@@ -676,11 +706,14 @@ export async function devBootstrap(
     //   2. Adapter 可自由重建（每次 soft reload 创建新实例）
     //   3. 请求处理函数通过 HotSwappableHandler 可原子替换
     //
-    server = createServer(
-      createNodeServerOptions(config.server),
-      hotHandler.handle,
-    );
-    applyServerConfig(server, config.server);
+    server = await startupProfiler.time("worker.server.create", () => {
+      const createdServer = createServer(
+        createNodeServerOptions(config.server),
+        hotHandler!.handle,
+      );
+      applyServerConfig(createdServer, config.server);
+      return createdServer;
+    });
 
     // ── 步骤 12: 开始监听 ────────────────────────────────
     const port = config.port ?? 3000;
@@ -892,18 +925,6 @@ export async function devBootstrap(
       }
     });
 
-    // ── 步骤 13: IPC 就绪通知 ────────────────────────────
-    //
-    // 通知主进程（ColdRestarter）子进程已完成初始化，
-    // 可以开始接受请求了。
-    //
-    if (!skipIpc && process.send) {
-      process.send({
-        type: "ready",
-        startupProfile: startupProfiler.toJSON(),
-      });
-    }
-
     // ── 步骤 14: 信号处理 ────────────────────────────────
     //
     // Dev 子进程的信号处理：
@@ -931,7 +952,19 @@ export async function devBootstrap(
     });
 
     // ── 步骤 15: 执行 onReady 钩子 ──────────────────────
-    await internals.runReady();
+    await startupProfiler.time("worker.onReady", () => internals!.runReady());
+
+    // ── 步骤 16: IPC 就绪通知 ────────────────────────────
+    //
+    // 通知主进程（ColdRestarter）子进程已完成初始化。
+    // 放在 onReady 后发送，确保 parent 侧 startup summary 覆盖完整 ready 链路。
+    //
+    if (!skipIpc && process.send) {
+      process.send({
+        type: "ready",
+        startupProfile: startupProfiler.toJSON(),
+      });
+    }
 
     printReadyLog(app.logger, serverHandle.host, serverHandle.port, {
       prefix: "[vext dev]",
