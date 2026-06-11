@@ -23,7 +23,7 @@ Access Log 采用**紧凑单行格式**，在开发和生产环境下呈现不�
 
 ### 开发模式（Pretty）
 
-当 `logger.pretty` 为 `true`（开发环境默认值）时，内置 pretty formatter 会对日志进行着色和格式化：
+当 `logger.pretty` 为 `true`（开发环境默认值）时，内置 pretty formatter 会输出可读格式；若 `logger.prettyColor` 解析为启用，仅 level label 会着色：
 
 ```
 [17:53:26.174] INFO: GET / 200 1ms | 127.0.0.1

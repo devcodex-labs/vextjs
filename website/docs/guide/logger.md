@@ -1,6 +1,6 @@
 # 日志 (Logger)
 
-VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、requestId 自动注入、child logger、运行时级别控制和极简日志脱敏等能力。
+VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、pretty level 彩色输出、requestId 自动注入、child logger、运行时级别控制和极简日志脱敏等能力。
 
 ## 基本用法
 
@@ -151,6 +151,8 @@ app.logger.info({ event: "startup", port: 3000 });
 
 > **注意**：`requestId` 默认被内置 pretty formatter 的 `ignore` 列表排除（`prettyIgnore` 配置项），不会在 pretty 模式下输出。这使开发日志更紧凑。`requestId` 仍然存在于生产环境的 JSON 输出中。如需在 pretty 模式下显示 requestId，可通过 `prettyIgnore` 配置项移除它（见下方配置说明）。
 
+TTY 终端中，pretty formatter 默认会为 `trace` / `debug` / `info` / `warn` / `error` / `fatal` 的 level label 添加固定 ANSI 颜色，便于开发期扫读。颜色只包裹 level label，不影响 message、URL、extras、redaction 替换值或 JSON 输出。
+
 ### 配置 Pretty 模式
 
 ```typescript
@@ -159,6 +161,7 @@ export default {
   logger: {
     level: "debug",
     pretty: true, // 开发环境使用 pretty 格式（默认行为）
+    prettyColor: "auto", // TTY 中自动给 level label 加色
   },
 };
 ```
@@ -177,6 +180,29 @@ export default {
 
 - `NODE_ENV !== 'production'` → `pretty: true`
 - `NODE_ENV === 'production'` → `pretty: false`
+
+### 彩色 Pretty Level {#pretty-color}
+
+`prettyColor` 只影响 pretty 文本输出，支持三种模式：
+
+| 值         | 行为                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"auto"`   | 默认值。TTY 中启用；`FORCE_COLOR=1` 强制启用且优先于 `NO_COLOR`；`FORCE_COLOR=0`、未设置 `FORCE_COLOR` 时的 `NO_COLOR`、`TERM=dumb` 或非 TTY 禁用 |
+| `"always"` | pretty 模式下强制输出 ANSI，常用于本地手动观察或自动化验证                                                                                        |
+| `"never"`  | 禁用 pretty ANSI                                                                                                                                  |
+
+```typescript
+// src/config/development.ts
+export default {
+  logger: {
+    pretty: true,
+    prettyColor: "auto",
+  },
+};
+```
+
+生产 JSON 日志不会输出 ANSI，即使设置了 `prettyColor: "always"`，只要 `pretty: false` 仍然会保持纯 JSON。
+在 `npm run dev`、CI 或重定向日志中需要强制观察颜色时，可使用 `FORCE_COLOR=1`。
 
 ### 单行 vs 多行格式 {#pretty-single-line}
 
@@ -862,18 +888,18 @@ class PaymentService {
 
 Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，并移除默认安装路径中的 logger runtime dependency。它不是 Pino 的完整兼容层，也不会把 Pino 的所有扩展点搬进 core。
 
-| Pino 能力                          | Vext 当前状态                                                      | 推荐扩展路径                                              |
-| ---------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------- |
-| `logger.trace()` 公开方法          | 已支持                                                             | N/A                                                       |
-| 运行时修改日志级别                 | 已支持 `getLevel()` / `setLevel()`；不支持可写 `logger.level` 属性 | 如需采样/复杂策略可用 `app.setLogger()` 包装              |
-| custom levels / level formatter    | 未支持自定义级别或重命名 `level` 字段                              | 外部日志系统侧映射 numeric level                          |
-| `redact` 路径脱敏                  | 已支持 exact key/path 子集                                         | wildcard/remove/censor function 可在 wrapper/Agent 侧处理 |
-| serializers / stdSerializers       | 仅内置 Error 与 JSON-safe 序列化                                   | 业务字段预处理或 wrapper 中处理                           |
-| `messageKey` / `errorKey`          | 固定使用 `msg` / `err` 语义                                        | 日志采集侧映射字段                                        |
-| `transport` / multistream / file   | 不内置 worker transport、多目标或文件写入                          | stdout → Agent/平台采集，或 `app.setLogger()` 桥接        |
-| pino-pretty 完整选项               | 仅支持内置 pretty、`prettyIgnore`、`prettySingleLine`              | 开发期可接外部 formatter 或自定义 wrapper                 |
-| browser API                        | 未支持浏览器 logger                                                | Vext 是 Node.js 服务端框架，浏览器侧另选方案              |
-| `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                              | 用 `app.setLogger()` 包装公开方法                         |
+| Pino 能力                          | Vext 当前状态                                                        | 推荐扩展路径                                              |
+| ---------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------- |
+| `logger.trace()` 公开方法          | 已支持                                                               | N/A                                                       |
+| 运行时修改日志级别                 | 已支持 `getLevel()` / `setLevel()`；不支持可写 `logger.level` 属性   | 如需采样/复杂策略可用 `app.setLogger()` 包装              |
+| custom levels / level formatter    | 未支持自定义级别或重命名 `level` 字段                                | 外部日志系统侧映射 numeric level                          |
+| `redact` 路径脱敏                  | 已支持 exact key/path 子集                                           | wildcard/remove/censor function 可在 wrapper/Agent 侧处理 |
+| serializers / stdSerializers       | 仅内置 Error 与 JSON-safe 序列化                                     | 业务字段预处理或 wrapper 中处理                           |
+| `messageKey` / `errorKey`          | 固定使用 `msg` / `err` 语义                                          | 日志采集侧映射字段                                        |
+| `transport` / multistream / file   | 不内置 worker transport、多目标或文件写入                            | stdout → Agent/平台采集，或 `app.setLogger()` 桥接        |
+| pino-pretty 完整选项               | 仅支持内置 pretty、`prettyColor`、`prettyIgnore`、`prettySingleLine` | 开发期可接外部 formatter 或自定义 wrapper                 |
+| browser API                        | 未支持浏览器 logger                                                  | Vext 是 Node.js 服务端框架，浏览器侧另选方案              |
+| `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                                | 用 `app.setLogger()` 包装公开方法                         |
 
 这些缺口不会影响 Vext 默认框架日志、access log、requestId/trace 字段注入、child logger、Error 序列化和 stdout-first 收集。后续若需要官方 OTel Logs、Sentry、Loki/ELK 插件，应优先基于 `app.setLogger()` 和外部 Agent 扩展，而不是把 transport 体系内置回 core。
 
@@ -884,6 +910,7 @@ Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，�
 | `logger.level`            | `string`   | `'info'`                    | 日志阈值：`'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'`     |
 | `logger.lifecycleLevel`   | `string`   | `'concise'`                 | 框架生命周期日志详细程度：`'concise'` / `'verbose'`                                            |
 | `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | 是否使用内置 pretty formatter 输出可读格式                                                     |
+| `logger.prettyColor`      | `string`   | `'auto'`                    | pretty 模式下是否给 level label 添加 ANSI：`'auto'` / `'always'` / `'never'`                   |
 | `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免多行噪音，生产 JSON 输出不受影响 |
 | `logger.prettySingleLine` | `boolean`  | `true`                      | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式     |
 | `logger.redactKeys`       | `string[]` | `[]`                        | 按任意层级 exact key 脱敏结构化日志字段                                                        |

@@ -413,8 +413,18 @@ describe("validateConfig", () => {
   describe("logger validation", () => {
     it("accepts valid logger config", () => {
       expect(() =>
-        _validateConfig({ logger: { level: "debug", pretty: true } }),
+        _validateConfig({
+          logger: { level: "debug", pretty: true, prettyColor: "auto" },
+        }),
       ).not.toThrow();
+    });
+
+    it("accepts all valid logger prettyColor modes", () => {
+      for (const prettyColor of ["auto", "always", "never"]) {
+        expect(() =>
+          _validateConfig({ logger: { prettyColor } }),
+        ).not.toThrow();
+      }
     });
 
     it("accepts logger redaction config", () => {
@@ -452,6 +462,15 @@ describe("validateConfig", () => {
     it("rejects non-boolean pretty", () => {
       expect(() => _validateConfig({ logger: { pretty: "yes" } })).toThrow(
         "config.logger.pretty must be a boolean",
+      );
+    });
+
+    it("rejects invalid prettyColor", () => {
+      expect(() =>
+        _validateConfig({ logger: { prettyColor: "rainbow" } }),
+      ).toThrow("config.logger.prettyColor");
+      expect(() => _validateConfig({ logger: { prettyColor: true } })).toThrow(
+        "config.logger.prettyColor",
       );
     });
 

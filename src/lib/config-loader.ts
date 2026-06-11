@@ -532,6 +532,17 @@ function validateConfig(config: Record<string, unknown>): void {
     if (logger.pretty !== undefined && typeof logger.pretty !== "boolean") {
       throw new Error("[vextjs] config.logger.pretty must be a boolean.");
     }
+    if (logger.prettyColor !== undefined) {
+      const validPrettyColors = ["auto", "always", "never"];
+      if (
+        typeof logger.prettyColor !== "string" ||
+        !validPrettyColors.includes(logger.prettyColor)
+      ) {
+        throw new Error(
+          `[vextjs] config.logger.prettyColor must be one of: ${validPrettyColors.join(", ")}, got: "${logger.prettyColor}"`,
+        );
+      }
+    }
     if (logger.redactKeys !== undefined) {
       if (
         !Array.isArray(logger.redactKeys) ||

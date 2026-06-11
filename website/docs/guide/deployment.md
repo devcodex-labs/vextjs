@@ -411,7 +411,7 @@ VextJS 内置了 Cluster 多进程模式（`vext start --cluster`），提供 Ro
 
 ### JSON 日志格式
 
-VextJS 在生产环境（`NODE_ENV=production`）下默认输出 JSON 格式日志，适合被日志收集系统解析：
+VextJS 在生产环境（`NODE_ENV=production`）下默认输出 JSON 格式日志，适合被日志收集系统解析。pretty level 颜色只作用于 pretty 文本模式，生产 JSON 输出不会包含 ANSI：
 
 ```json
 {
@@ -430,6 +430,7 @@ export default {
   logger: {
     level: "info", // 生产环境建议 info（不输出 debug）
     pretty: false, // 生产环境禁用 pretty（默认行为）
+    prettyColor: "never", // 可选：显式禁止 pretty ANSI
   },
 };
 ```

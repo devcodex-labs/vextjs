@@ -14,6 +14,7 @@ export type TimestampMode = "iso" | "epoch" | "none";
 export type LogRecord = Record<string, unknown>;
 
 export interface LogSink {
+  isTTY?: boolean;
   write(line: string): void;
   flush?(): void | Promise<void>;
   close?(): void | Promise<void>;
@@ -22,6 +23,7 @@ export interface LogSink {
 export interface PrettyFormatterOptions {
   ignore?: string;
   singleLine?: boolean;
+  color?: boolean;
 }
 
 export interface LoggerRedactionOptions {

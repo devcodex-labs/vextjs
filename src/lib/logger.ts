@@ -15,6 +15,8 @@ type VextLoggerWithLifecycle = VextLogger & {
   [LOGGER_LIFECYCLE]?: LoggerLifecycle;
 };
 
+type PrettyColorMode = NonNullable<VextLoggerConfig["prettyColor"]>;
+
 function wrapCoreAsVextLogger(core: LoggerCore): VextLogger {
   const logger: VextLogger = {
     trace(...args: unknown[]) {
@@ -77,6 +79,13 @@ export function createLogger(
   const alsEnabled = options?.requestContextEnabled !== false;
   const prettyIgnoreFields = config.prettyIgnore ?? "pid,hostname,requestId";
   const prettySingleLine = config.prettySingleLine !== false;
+  const sink = options?.sink ?? createStdoutSink();
+  const prettyColor = resolvePrettyColor({
+    pretty,
+    mode: config.prettyColor ?? "auto",
+    sink,
+    env: process.env,
+  });
   let mixinWarnEmitted = false;
   let core: LoggerCore;
 
@@ -118,12 +127,13 @@ export function createLogger(
 
   const createdCore = createLoggerCore({
     level,
-    sink: options?.sink ?? createStdoutSink(),
+    sink,
     timestamp: "iso",
     format: pretty ? "pretty" : "json",
     pretty: {
       ignore: prettyIgnoreFields,
       singleLine: prettySingleLine,
+      color: prettyColor,
     },
     contextProvider: alsEnabled
       ? () => {
@@ -149,6 +159,39 @@ export function createLogger(
 
   core = createdCore;
   return wrapCoreAsVextLogger(createdCore);
+}
+
+function resolvePrettyColor({
+  pretty,
+  mode,
+  sink,
+  env,
+}: {
+  pretty: boolean;
+  mode: PrettyColorMode;
+  sink: LogSink;
+  env: NodeJS.ProcessEnv;
+}): boolean {
+  // Priority: format guard, explicit config, env overrides, then sink TTY.
+  if (!pretty) {
+    return false;
+  }
+  if (mode === "never") {
+    return false;
+  }
+  if (mode === "always") {
+    return true;
+  }
+  if (env.FORCE_COLOR !== undefined) {
+    return env.FORCE_COLOR !== "0";
+  }
+  if (env.NO_COLOR !== undefined) {
+    return false;
+  }
+  if (env.TERM === "dumb") {
+    return false;
+  }
+  return sink.isTTY === true;
 }
 
 function isPromiseLike(value: unknown): boolean {

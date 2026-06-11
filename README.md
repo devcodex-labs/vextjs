@@ -168,6 +168,7 @@ const config: VextUserConfig = {
   logger: {
     level: "info",
     pretty: true,
+    prettyColor: "auto",
   },
   server: {
     requestTimeout: 120_000,
@@ -201,7 +202,7 @@ export default config;
 
 Use `src/config/local.ts` for machine-specific overrides and keep it out of Git.
 
-`app.logger` uses Vext's built-in structured logger by default. It outputs JSON in production, uses an internal pretty formatter in development, supports `trace()`, runtime `getLevel()` / `setLevel()`, and exact key/path redaction through `logger.redactKeys` / `logger.redactPaths`. Plugins can wrap it through `app.setLogger()` for external log bridges.
+`app.logger` uses Vext's built-in structured logger by default. It outputs JSON in production, uses an internal pretty formatter in development, colors pretty level labels in TTY terminals or with `FORCE_COLOR=1` through `logger.prettyColor: "auto"`, supports `trace()`, runtime `getLevel()` / `setLevel()`, and exact key/path redaction through `logger.redactKeys` / `logger.redactPaths`. JSON output never contains ANSI color codes. Plugins can wrap it through `app.setLogger()` for external log bridges.
 
 Use `config.server` for inbound Node.js HTTP server settings such as request, headers, keep-alive, socket timeout, request header size, max requests per socket, and incomplete-request checking interval. It applies to the built-in Native, Hono, Fastify, Express, Koa adapters and the dev server; omitted fields keep the current Node.js defaults. This is separate from `config.fetch.timeout`, which only controls outbound `app.fetch` calls.
 

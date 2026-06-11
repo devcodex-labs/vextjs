@@ -344,17 +344,18 @@ export default {
 
 ### 日志配置 (`logger`)
 
-| 配置项                    | 类型                     | 默认值                     | 说明                                                                                        |
-| ------------------------- | ------------------------ | -------------------------- | ------------------------------------------------------------------------------------------- |
-| `logger.level`            | `string`                 | `'info'`                   | 日志级别                                                                                    |
-| `logger.lifecycleLevel`   | `'concise' \| 'verbose'` | `'concise'`                | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                      |
-| `logger.pretty`           | `boolean`                | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式；生产环境默认关闭（输出 JSON）                   |
-| `logger.prettySingleLine` | `boolean`                | `true`                     | pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 使用多行展开格式           |
-| `logger.prettyIgnore`     | `string`                 | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
-| `logger.redactKeys`       | `string[]`               | `[]`                       | 按任意层级 exact key 脱敏结构化日志字段                                                     |
-| `logger.redactPaths`      | `string[]`               | `[]`                       | 按 dot notation exact path 脱敏结构化日志字段                                               |
-| `logger.redactValue`      | `string`                 | `'[Redacted]'`             | 脱敏替换值                                                                                  |
-| `logger.mixin`            | `function`               | `undefined`                | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖   |
+| 配置项                    | 类型                            | 默认值                     | 说明                                                                                        |
+| ------------------------- | ------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`                        | `'info'`                   | 日志级别                                                                                    |
+| `logger.lifecycleLevel`   | `'concise' \| 'verbose'`        | `'concise'`                | 框架生命周期日志详细程度：启动、loader、hot reload、cluster 等系统日志                      |
+| `logger.pretty`           | `boolean`                       | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式；生产环境默认关闭（输出 JSON）                   |
+| `logger.prettyColor`      | `'auto' \| 'always' \| 'never'` | `'auto'`                   | pretty 模式下是否给 level label 添加 ANSI；生产 JSON 不包含 ANSI                            |
+| `logger.prettySingleLine` | `boolean`                       | `true`                     | pretty 模式下将额外字段以 JSON 内联形式压缩到消息同一行；`false` 使用多行展开格式           |
+| `logger.prettyIgnore`     | `string`                        | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）；默认隐藏 `requestId` 避免 mixin 注入字段展开为多行噪音 |
+| `logger.redactKeys`       | `string[]`                      | `[]`                       | 按任意层级 exact key 脱敏结构化日志字段                                                     |
+| `logger.redactPaths`      | `string[]`                      | `[]`                       | 按 dot notation exact path 脱敏结构化日志字段                                               |
+| `logger.redactValue`      | `string`                        | `'[Redacted]'`             | 脱敏替换值                                                                                  |
+| `logger.mixin`            | `function`                      | `undefined`                | 同步返回自定义结构化字段；`requestId` 不可被覆盖，`trace_id` / `span_id` 可由用户字段覆盖   |
 
 支持的日志级别（从低到高）：`'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
 
@@ -364,6 +365,7 @@ export default {
     level: "info", // 生产环境建议 'warn'
     lifecycleLevel: "concise", // 如需排障可设为 'verbose'
     pretty: true, // 开发环境开启可读格式化（生产环境默认关闭）
+    // prettyColor: 'auto',              // TTY 或 FORCE_COLOR=1 时给 level label 加色
     // prettySingleLine: true,              // 额外字段压缩到同行（默认）
     // prettyIgnore: 'pid,hostname,requestId',  // 默认隐藏字段
     // redactKeys: ['password', 'token'],    // exact key 脱敏

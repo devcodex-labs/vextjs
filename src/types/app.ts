@@ -341,6 +341,18 @@ export interface VextLoggerConfig {
   /** 是否美化输出（默认 development 时启用） */
   pretty?: boolean;
   /**
+   * pretty 模式下是否为 level label 输出 ANSI 颜色。
+   *
+   * 默认值: `"auto"`
+   * - `"auto"`：TTY 中自动启用；`FORCE_COLOR=1` 强制启用且优先于 `NO_COLOR`；
+   *   `FORCE_COLOR=0`、`NO_COLOR`、`TERM=dumb` 或非 TTY 禁用
+   * - `"always"`：pretty 模式下强制启用
+   * - `"never"`：禁用
+   *
+   * 仅影响 pretty 文本输出；生产 JSON 输出不包含 ANSI。
+   */
+  prettyColor?: "auto" | "always" | "never";
+  /**
    * pretty 模式下忽略的字段列表（逗号分隔）
    *
    * 默认值: `"pid,hostname,requestId"`

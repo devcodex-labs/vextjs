@@ -26,6 +26,8 @@ import {
 import { requestContext } from "../../src/lib/request-context.js";
 import type { VextLoggerConfig } from "../../src/types/app.js";
 
+type LoggerEnvKey = "NO_COLOR" | "FORCE_COLOR" | "TERM";
+
 function createCapturedLogger(
   config: VextLoggerConfig = {},
   options: { requestContextEnabled?: boolean } = {},
@@ -41,6 +43,37 @@ function createCapturedLogger(
     records: () =>
       sink.lines.map((line) => JSON.parse(line) as Record<string, unknown>),
   };
+}
+
+function withLoggerEnv(
+  nextEnv: Partial<Record<LoggerEnvKey, string | undefined>>,
+  run: () => void,
+): void {
+  const previous: Record<LoggerEnvKey, string | undefined> = {
+    NO_COLOR: process.env.NO_COLOR,
+    FORCE_COLOR: process.env.FORCE_COLOR,
+    TERM: process.env.TERM,
+  };
+  try {
+    for (const key of Object.keys(nextEnv) as LoggerEnvKey[]) {
+      const value = nextEnv[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    run();
+  } finally {
+    for (const key of Object.keys(previous) as LoggerEnvKey[]) {
+      const value = previous[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 }
 
 describe("createLogger", () => {
@@ -749,6 +782,91 @@ describe("createLogger", () => {
     expect(sink.lines[0]).not.toContain("req-1");
   });
 
+  it("colors only the pretty level label when prettyColor is always", () => {
+    const sink = createMemoryLogSink();
+    const logger = createLogger(
+      { pretty: true, prettyColor: "always" },
+      { sink },
+    );
+
+    logger.info({ url: "/health" }, "pretty color");
+
+    expect(sink.lines[0]).toContain("\x1b[32mINFO\x1b[0m: pretty color");
+    expect(sink.lines[0]).toContain('"url":"/health"');
+    expect(sink.lines[0]).not.toContain("\x1b[32m/health");
+  });
+
+  it("keeps JSON output uncolored even when prettyColor is always", () => {
+    const sink = createMemoryLogSink();
+    const logger = createLogger(
+      { pretty: false, prettyColor: "always" },
+      { sink },
+    );
+
+    logger.info("json plain");
+
+    expect(sink.lines[0]).not.toContain("\x1b[");
+    expect(JSON.parse(sink.lines[0]!)).toMatchObject({
+      level: 30,
+      msg: "json plain",
+    });
+  });
+
+  it("resolves prettyColor auto from sink TTY and env overrides", () => {
+    withLoggerEnv(
+      { NO_COLOR: undefined, FORCE_COLOR: undefined, TERM: "xterm-256color" },
+      () => {
+        const ttySink = { ...createMemoryLogSink(), isTTY: true };
+        createLogger({ pretty: true }, { sink: ttySink }).warn("tty auto");
+        expect(ttySink.lines[0]).toContain("\x1b[33mWARN\x1b[0m");
+
+        const nonTtySink = createMemoryLogSink();
+        createLogger({ pretty: true }, { sink: nonTtySink }).warn("no tty");
+        expect(nonTtySink.lines[0]).not.toContain("\x1b[");
+      },
+    );
+
+    withLoggerEnv({ FORCE_COLOR: "1", NO_COLOR: undefined }, () => {
+      const sink = createMemoryLogSink();
+      createLogger({ pretty: true }, { sink }).info("forced");
+      expect(sink.lines[0]).toContain("\x1b[32mINFO\x1b[0m");
+    });
+
+    withLoggerEnv({ FORCE_COLOR: "1", NO_COLOR: "1" }, () => {
+      const sink = { ...createMemoryLogSink(), isTTY: true };
+      createLogger({ pretty: true }, { sink }).error("forced over no color");
+      expect(sink.lines[0]).toContain("\x1b[31mERROR\x1b[0m");
+    });
+
+    withLoggerEnv({ FORCE_COLOR: "0", NO_COLOR: undefined }, () => {
+      const sink = { ...createMemoryLogSink(), isTTY: true };
+      createLogger({ pretty: true }, { sink }).info("force disabled");
+      expect(sink.lines[0]).not.toContain("\x1b[");
+    });
+
+    withLoggerEnv(
+      { NO_COLOR: undefined, FORCE_COLOR: undefined, TERM: "dumb" },
+      () => {
+        const sink = { ...createMemoryLogSink(), isTTY: true };
+        createLogger({ pretty: true }, { sink }).info("dumb terminal");
+        expect(sink.lines[0]).not.toContain("\x1b[");
+      },
+    );
+  });
+
+  it("disables pretty colors when prettyColor is never", () => {
+    const sink = { ...createMemoryLogSink(), isTTY: true };
+    const logger = createLogger(
+      { pretty: true, prettyColor: "never" },
+      { sink },
+    );
+
+    logger.fatal("plain fatal");
+
+    expect(sink.lines[0]).toContain("FATAL: plain fatal");
+    expect(sink.lines[0]).not.toContain("\x1b[");
+  });
+
   it("formats pretty output in multiline mode", () => {
     const sink = createMemoryLogSink();
     const logger = createLogger(
@@ -765,12 +883,13 @@ describe("createLogger", () => {
   it("applies redaction before pretty formatting", () => {
     const sink = createMemoryLogSink();
     const logger = createLogger(
-      { pretty: true, redactKeys: ["password"] },
+      { pretty: true, prettyColor: "always", redactKeys: ["password"] },
       { sink },
     );
 
     logger.info({ password: "secret" }, "pretty redaction");
 
+    expect(sink.lines[0]).toContain("\x1b[32mINFO\x1b[0m");
     expect(sink.lines[0]).toContain("[Redacted]");
     expect(sink.lines[0]).not.toContain("secret");
   });
