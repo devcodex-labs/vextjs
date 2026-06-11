@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | Pending changes [查看](./changelogs/unreleased.md) |
+| [0.3.24] | 2026-06-11 | Patch | Logger pretty level labels can opt into ANSI color while JSON output stays color-free [查看](./changelogs/v0.3.24.md) |
 | [0.3.23] | 2026-06-10 | Patch | Stabilize cold-restarter SIGKILL fallback and publish the startup log modes release [查看](./changelogs/v0.3.23.md) |
 | [0.3.22] | 2026-06-10 | Patch | Startup log modes keep dev/start default output minimal while preserving opt-in profiling and cluster ready totals [查看](./changelogs/v0.3.22.md) |
 | [0.3.21] | 2026-06-10 | Patch | Dev fast-ready tooling removes `ts-morph`, moves generated types under `.vext/`, and adds startup profiling / manifest cache paths [查看](./changelogs/v0.3.21.md) |
@@ -71,7 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.23...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.24...HEAD
+[0.3.24]: https://github.com/vextjs/vext/compare/v0.3.23...v0.3.24
 [0.3.23]: https://github.com/vextjs/vext/compare/v0.3.22...v0.3.23
 [0.3.22]: https://github.com/vextjs/vext/compare/v0.3.21...v0.3.22
 [0.3.21]: https://github.com/vextjs/vext/compare/v0.3.20...v0.3.21
