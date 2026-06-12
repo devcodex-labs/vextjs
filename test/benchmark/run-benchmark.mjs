@@ -20,8 +20,7 @@
  *   --output <path>          报告输出路径（默认 stdout + test/benchmark/RESULTS.md）
  */
 
-import autocannon from "autocannon";
-import { fork } from "node:child_process";
+import { fork, spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +29,8 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
+const AUTOCANNON_VERSION = "8.0.0";
 
 const FRAMEWORKS = ["hono", "fastify", "express", "koa", "native"];
 
@@ -350,23 +351,66 @@ async function waitForHealthy(port, timeoutMs = 5000) {
  */
 function runAutocannon({ port, path, duration, connections, pipelining }) {
   return new Promise((resolve, reject) => {
-    const instance = autocannon(
-      {
-        url: `http://127.0.0.1:${port}${path}`,
-        duration,
-        connections,
-        pipelining,
-        // 禁止 autocannon 的进度输出
-        // （我们自己控制输出）
-      },
-      (err, result) => {
-        if (err) reject(err);
-        else resolve(result);
-      },
-    );
+    const url = `http://127.0.0.1:${port}${path}`;
+    const autocannonArgs = [
+      "exec",
+      "--yes",
+      `--package=autocannon@${AUTOCANNON_VERSION}`,
+      "--",
+      "autocannon",
+      "--json",
+      "--no-progress",
+      "--duration",
+      String(duration),
+      "--connections",
+      String(connections),
+      "--pipelining",
+      String(pipelining),
+      url,
+    ];
+    const args =
+      process.platform === "win32"
+        ? ["/d", "/s", "/c", "npm", ...autocannonArgs]
+        : autocannonArgs;
+    const child = spawn(AUTOCANNON_COMMAND, args, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+    });
 
-    // 不输出进度条
-    autocannon.track(instance, { renderProgressBar: false });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `autocannon CLI failed with code ${code}: ${stderr || stdout}`,
+          ),
+        );
+        return;
+      }
+
+      try {
+        const line = stdout.trim().split(/\r?\n/).at(-1);
+        resolve(JSON.parse(line));
+      } catch (error) {
+        reject(
+          new Error(
+            `Unable to parse autocannon JSON output: ${
+              error instanceof Error ? error.message : String(error)
+            }\n${stdout}\n${stderr}`,
+          ),
+        );
+      }
+    });
   });
 }
 
@@ -375,19 +419,12 @@ function runAutocannon({ port, path, duration, connections, pipelining }) {
  */
 async function warmup(port, path, durationSec) {
   if (durationSec <= 0) return;
-  return new Promise((resolve, reject) => {
-    autocannon(
-      {
-        url: `http://127.0.0.1:${port}${path}`,
-        duration: durationSec,
-        connections: 10,
-        pipelining: 1,
-      },
-      (err) => {
-        if (err) reject(err);
-        else resolve();
-      },
-    );
+  await runAutocannon({
+    port,
+    path,
+    duration: durationSec,
+    connections: 10,
+    pipelining: 1,
   });
 }
 
@@ -602,6 +639,7 @@ async function main() {
   }
 
   const allResults = [];
+  let hadBenchmarkFailure = false;
   let portOffset = 0;
 
   for (const framework of opts.frameworks) {
@@ -661,6 +699,7 @@ async function main() {
           `     📊 Raw RPS: ${formatNumber(rawMetrics.rps)} | P50: ${rawMetrics.latencyP50}ms | P99: ${rawMetrics.latencyP99}ms`,
         );
       } catch (err) {
+        hadBenchmarkFailure = true;
         console.error(`     ❌ 裸跑测试失败: ${err.message}`);
       } finally {
         await stopRawServer(rawServer);
@@ -715,6 +754,7 @@ async function main() {
             console.log(`     📈 Overhead: ${overhead.toFixed(2)}% ${emoji}`);
           }
         } catch (err) {
+          hadBenchmarkFailure = true;
           console.error(`     ❌ vext 测试失败: ${err.message}`);
         } finally {
           await stopRawServer(vextServer);
@@ -751,6 +791,12 @@ async function main() {
     console.log(`\n✅ 报告已保存到: ${opts.output}`);
   } catch (err) {
     console.error(`\n⚠️ 报告保存失败: ${err.message}`);
+  }
+
+  if (hadBenchmarkFailure) {
+    throw new Error(
+      "One or more benchmark runs failed; report contains partial results.",
+    );
   }
 }
 

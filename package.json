@@ -151,7 +151,6 @@
     "@types/koa": "3.0.1",
     "@types/node": "22.19.13",
     "@vitest/coverage-v8": "3.2.6",
-    "autocannon": "8.0.0",
     "eslint": "10.2.1",
     "express": "5.2.1",
     "fastify": "5.8.5",
@@ -163,9 +162,8 @@
     "typescript-eslint": "8.59.0",
     "vitest": "3.2.6"
   },
-  "overrides": {
-    "autocannon": {
-      "hyperid": "4.0.0"
-    }
+  "directories": {
+    "example": "examples",
+    "test": "test"
   }
 }

@@ -61,10 +61,10 @@ npm run test:bench
 
 ```bash
 # 标准模式（PR 前对比）— 5 轮取中位数，每轮 10s
-node test/benchmark/run-benchmark.mjs --framework native,fastify --rounds 5
+npm run test:bench -- --framework native,fastify --rounds 5
 
 # 精确模式（发版前）— 7 轮取中位数，每轮 15s，长预热
-node test/benchmark/run-benchmark.mjs --rounds 7 --duration 15 --warmup 5
+npm run test:bench -- --rounds 7 --duration 15 --warmup 5
 
 # 配合 V8 GC 控制（减少 GC 停顿干扰）
 node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --rounds 5
@@ -74,22 +74,22 @@ node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --rou
 
 ```bash
 # 指定压测持续时间和并发连接数
-node test/benchmark/run-benchmark.mjs --duration 20 --connections 100
+npm run test:bench -- --duration 20 --connections 100
 
 # 仅测试指定框架
-node test/benchmark/run-benchmark.mjs --framework native,fastify
+npm run test:bench -- --framework native,fastify
 
 # 仅运行指定场景
-node test/benchmark/run-benchmark.mjs --scenario json
+npm run test:bench -- --scenario json
 
 # 多轮取中位数（消除 Windows 系统噪声）
-node test/benchmark/run-benchmark.mjs --rounds 5
+npm run test:bench -- --rounds 5
 
 # 调整流水线深度
-node test/benchmark/run-benchmark.mjs --pipelining 20
+npm run test:bench -- --pipelining 20
 
 # 指定报告输出路径
-node test/benchmark/run-benchmark.mjs --output ./my-results.md
+npm run test:bench -- --output ./my-results.md
 ```
 
 ### 可用选项
@@ -153,7 +153,7 @@ test/benchmark/
 1. **裸跑服务器**：每个框架都有一个独立的裸跑服务器文件，实现相同路由场景，使用框架原生 API（Native 裸跑使用 `http.createServer` + `route-core`）
 2. **vext 服务器**：所有框架共用同一套 vext-app 路由代码，仅通过 `BENCH_ADAPTER` 环境变量切换底层 adapter（默认 `native`）
 3. **子进程隔离**：所有服务器（裸跑和 vext）均在独立子进程中启动，避免状态污染和端口冲突
-4. **压测工具**：使用 [autocannon](https://github.com/mcollina/autocannon) 进行 HTTP 压测
+4. **压测工具**：通过 `npm run test:bench` 按需解析 [autocannon](https://github.com/mcollina/autocannon)，避免根安装树携带可选 benchmark 依赖
 5. **预热**：正式压测前先进行短时间预热，消除 JIT 编译和冷启动影响
 6. **报告生成**：自动生成 Markdown 格式的对比报告，包含 RPS、延迟、吞吐量和 Overhead 分析
 
