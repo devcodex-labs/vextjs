@@ -23,14 +23,18 @@ const docsBase = normalizeDocsBase(process.env.VEXT_DOCS_BASE);
 const docsSiteUrl = trimTrailingSlash(
   process.env.VEXT_DOCS_SITE_URL || DEFAULT_DOCS_SITE_URL,
 );
+const docsHomeUrl = `${docsSiteUrl}/`;
+const docsOgImage = `${docsSiteUrl}/og-card.svg`;
 
 export default defineConfig({
   root: path.join(__dirname, "docs"),
   base: docsBase,
   title: "VextJS",
+  logo: "/logo.svg",
+  logoText: "VextJS",
   icon: "/favicon.svg",
   description:
-    "vextjs 是一个现代化的全栈框架，旨在提高开发效率。它提供开箱即用的功能和默认配置，使开发人员能够快速启动项目，使其成为构建高性能 RESTful API 的理想选择。",
+    "VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
   outDir: "dist",
   head: [
     [
@@ -40,6 +44,19 @@ export default defineConfig({
         content: "eYbt9ZyPTFQHdpEJ8Iujlb9ndhmAcMlstxZd6106840",
       },
     ],
+    ["meta", { property: "og:type", content: "website" }],
+    ["meta", { property: "og:title", content: "VextJS" }],
+    [
+      "meta",
+      {
+        property: "og:description",
+        content:
+          "High-performance Node.js API framework with a native fast path, three-tier hot reload, CLI, OpenAPI and production-ready runtime features.",
+      },
+    ],
+    ["meta", { property: "og:url", content: docsHomeUrl }],
+    ["meta", { property: "og:image", content: docsOgImage }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
   ],
   plugins: [
     pluginSitemap({
@@ -50,11 +67,24 @@ export default defineConfig({
     codeBlocks: true,
   },
   themeConfig: {
+    darkMode: false,
     nav: [
       {
-        text: "指南",
+        text: "开始",
         link: "/guide/introduction",
-        activeMatch: "/guide/",
+        activeMatch: "^/guide/(introduction|quick-start|project-structure)",
+      },
+      {
+        text: "运行时",
+        link: "/guide/routing",
+        activeMatch:
+          "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|adapters)",
+      },
+      {
+        text: "生产",
+        link: "/guide/deployment",
+        activeMatch:
+          "^/guide/(build|deployment|testing|cli|hot-reload|preload|cluster|i18n|logger|error-handling|validation|cache|database|fetch|openapi)",
       },
       {
         text: "API 参考",
@@ -96,36 +126,41 @@ export default defineConfig({
           ],
         },
         {
-          text: "核心概念",
+          text: "运行时",
           items: [
             { text: "路由", link: "/guide/routing" },
             { text: "服务层", link: "/guide/services" },
             { text: "中间件", link: "/guide/middleware" },
             { text: "插件", link: "/guide/plugins" },
-            { text: "错误处理", link: "/guide/error-handling" },
             { text: "运行时 Hooks", link: "/guide/hooks" },
-            { text: "参数校验", link: "/guide/validation" },
-            { text: "响应缓存", link: "/guide/cache" },
+            { text: "请求上下文", link: "/guide/request-context" },
             { text: "配置", link: "/guide/configuration" },
+            { text: "Adapter 架构", link: "/guide/adapters" },
           ],
         },
         {
-          text: "进阶",
+          text: "数据与接口",
           items: [
+            { text: "参数校验", link: "/guide/validation" },
+            { text: "响应缓存", link: "/guide/cache" },
             { text: "数据库 (MonSQLize)", link: "/guide/database" },
             { text: "内置 HTTP 客户端", link: "/guide/fetch" },
-            { text: "日志", link: "/guide/logger" },
-            { text: "请求上下文", link: "/guide/request-context" },
-            { text: "Adapter 架构", link: "/guide/adapters" },
             { text: "OpenAPI 文档", link: "/guide/openapi" },
-            { text: "测试", link: "/guide/testing" },
-            { text: "CLI 命令", link: "/guide/cli" },
+          ],
+        },
+        {
+          text: "交付与生产",
+          items: [
             { text: "构建", link: "/guide/build" },
             { text: "部署与生产环境", link: "/guide/deployment" },
+            { text: "测试", link: "/guide/testing" },
+            { text: "CLI 命令", link: "/guide/cli" },
             { text: "热重载", link: "/guide/hot-reload" },
             { text: "预加载 (Preload)", link: "/guide/preload" },
             { text: "Cluster 多进程", link: "/guide/cluster" },
             { text: "国际化 (i18n)", link: "/guide/i18n" },
+            { text: "日志", link: "/guide/logger" },
+            { text: "错误处理", link: "/guide/error-handling" },
           ],
         },
       ],

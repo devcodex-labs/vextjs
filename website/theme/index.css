@@ -1,0 +1,1884 @@
+:root {
+  --rp-c-brand: #12d6c6;
+  --rp-c-brand-light: #52eadc;
+  --rp-c-brand-lighter: #baf8ef;
+  --rp-c-brand-dark: #0da99c;
+  --rp-c-brand-darker: #08776f;
+  --rp-c-brand-tint: rgba(18, 214, 198, 0.16);
+  --rp-c-text-1: #f4fffc;
+  --rp-c-text-2: #c9dfdc;
+  --rp-c-text-3: #91a8a4;
+  --rp-c-bg: #071013;
+  --rp-c-bg-soft: #0d1b21;
+  --rp-c-bg-mute: #13272f;
+  --rp-c-bg-alt: #050b0e;
+  --rp-c-divider: rgba(144, 245, 228, 0.18);
+  --rp-c-divider-light: rgba(144, 245, 228, 0.12);
+  --rp-code-block-bg: #08161b;
+  --rp-code-title-bg: #0c2027;
+  --rp-code-inline-bg: rgba(144, 245, 228, 0.11);
+  --rp-c-gray-soft: rgba(144, 245, 228, 0.11);
+  --shiki-foreground: #eefef9;
+  --shiki-token-constant: #55b8ff;
+  --shiki-token-string: #66f48b;
+  --shiki-token-comment: #78928d;
+  --shiki-token-keyword: #ff6f91;
+  --shiki-token-parameter: #ffd166;
+  --shiki-token-function: #63e7ff;
+  --shiki-token-string-expression: #66f48b;
+  --shiki-token-punctuation: #e7fff9;
+  --shiki-token-link: #78c8ff;
+  --shiki-token-deleted: #ff6f91;
+  --shiki-token-inserted: #66f48b;
+  --vext-ink: #f4fbf9;
+  --vext-muted: #abc3c0;
+  --vext-soft: rgba(214, 255, 249, 0.72);
+  --vext-line: rgba(144, 245, 228, 0.18);
+  --vext-cyan: #12d6c6;
+  --vext-green: #5ee987;
+  --vext-amber: #f5bd4f;
+  --vext-rose: #ff6b7a;
+  --vext-panel: rgba(8, 22, 27, 0.78);
+  --vext-panel-strong: rgba(10, 31, 37, 0.92);
+  --vext-pointer-x: 50vw;
+  --vext-pointer-y: 42vh;
+}
+
+html.dark {
+  --rp-c-brand: #12d6c6;
+  --rp-c-brand-light: #52eadc;
+  --rp-c-brand-lighter: #baf8ef;
+  --rp-c-brand-dark: #0da99c;
+  --rp-c-brand-darker: #08776f;
+  --rp-c-brand-tint: rgba(18, 214, 198, 0.18);
+  --rp-c-text-1: #f4fffc;
+  --rp-c-text-2: #c9dfdc;
+  --rp-c-text-3: #91a8a4;
+  --rp-c-bg: #071013;
+  --rp-c-bg-soft: #0d1b21;
+  --rp-c-bg-mute: #13272f;
+  --rp-c-bg-alt: #050b0e;
+  --rp-c-divider: rgba(144, 245, 228, 0.18);
+  --rp-c-divider-light: rgba(144, 245, 228, 0.12);
+  --rp-code-block-bg: #08161b;
+  --rp-code-title-bg: #0c2027;
+  --rp-code-inline-bg: rgba(144, 245, 228, 0.11);
+  --rp-c-gray-soft: rgba(144, 245, 228, 0.11);
+  --shiki-foreground: #eefef9;
+  --shiki-token-constant: #55b8ff;
+  --shiki-token-string: #66f48b;
+  --shiki-token-comment: #78928d;
+  --shiki-token-keyword: #ff6f91;
+  --shiki-token-parameter: #ffd166;
+  --shiki-token-function: #63e7ff;
+  --shiki-token-string-expression: #66f48b;
+  --shiki-token-punctuation: #e7fff9;
+  --shiki-token-link: #78c8ff;
+  --shiki-token-deleted: #ff6f91;
+  --shiki-token-inserted: #66f48b;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--rp-c-bg);
+}
+
+body {
+  background: var(--rp-c-bg);
+  color: var(--rp-c-text-1);
+}
+
+.vext-motion-field,
+.vext-pointer-field {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vext-motion-field {
+  z-index: 1;
+  opacity: 0.58;
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 68px, rgba(144, 245, 228, 0.06) 68px 69px, transparent 69px 140px),
+    repeating-linear-gradient(180deg, transparent 0 28px, rgba(94, 233, 135, 0.05) 28px 29px, transparent 29px 120px),
+    linear-gradient(120deg, transparent 12%, rgba(18, 214, 198, 0.1) 28%, transparent 44%, rgba(245, 189, 79, 0.08) 72%, transparent 88%);
+  background-size: 280px 180px, 220px 220px, 100% 100%;
+  mix-blend-mode: screen;
+  animation: vext-data-pan 24s linear infinite;
+}
+
+.vext-motion-field::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0 42%, rgba(18, 214, 198, 0.18) 50%, transparent 58% 100%);
+  content: "";
+  transform: translateY(-62%);
+  animation: vext-field-sweep 8s ease-in-out infinite;
+}
+
+.vext-motion-field::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0 18%, rgba(144, 245, 228, 0.12) 23%, transparent 31% 100%),
+    linear-gradient(180deg, transparent 0 62%, rgba(94, 233, 135, 0.09) 68%, transparent 76% 100%);
+  content: "";
+  transform: translate(-42%, -22%);
+  animation: vext-field-cross 11s linear infinite;
+}
+
+.vext-pointer-field {
+  z-index: 3;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, transparent calc(var(--vext-pointer-x) - 1px), rgba(236, 255, 251, 0.54) var(--vext-pointer-x), transparent calc(var(--vext-pointer-x) + 1px)),
+    linear-gradient(180deg, transparent calc(var(--vext-pointer-y) - 1px), rgba(236, 255, 251, 0.44) var(--vext-pointer-y), transparent calc(var(--vext-pointer-y) + 1px)),
+    linear-gradient(90deg, transparent calc(var(--vext-pointer-x) - 260px), rgba(18, 214, 198, 0.2) var(--vext-pointer-x), transparent calc(var(--vext-pointer-x) + 260px)),
+    linear-gradient(180deg, transparent calc(var(--vext-pointer-y) - 220px), rgba(94, 233, 135, 0.16) var(--vext-pointer-y), transparent calc(var(--vext-pointer-y) + 220px));
+  mix-blend-mode: screen;
+  transition: opacity 180ms ease;
+}
+
+html[data-vext-pointer="active"] .vext-pointer-field {
+  opacity: 0.46;
+}
+
+.rp-nav,
+.rspress-nav,
+header[class*="nav"] {
+  border-bottom: 1px solid rgba(144, 245, 228, 0.16);
+  background: rgba(7, 16, 19, 0.84);
+  backdrop-filter: blur(18px);
+}
+
+.rp-nav__title {
+  margin-left: 68px;
+}
+
+.rp-nav-title,
+.rspress-nav-title,
+[class*="nav-title"] {
+  color: var(--rp-c-text-1);
+  font-weight: 800;
+}
+
+.rp-nav-title img {
+  width: 30px;
+  height: 30px;
+}
+
+.rp-nav a,
+.rp-nav button,
+.rspress-nav a,
+.rspress-nav button,
+header[class*="nav"] a,
+header[class*="nav"] button,
+[class*="nav-menu"] a,
+[class*="nav-menu"] button {
+  color: var(--rp-c-text-2);
+}
+
+.rp-nav a:hover,
+.rp-nav button:hover,
+.rspress-nav a:hover,
+.rspress-nav button:hover,
+header[class*="nav"] a:hover,
+header[class*="nav"] button:hover,
+[class*="nav-menu"] a:hover,
+[class*="nav-menu"] button:hover,
+.rp-nav-menu__item--active .rp-nav-menu__item__container {
+  color: var(--vext-cyan);
+}
+
+.rp-search-button,
+.rspress-search-button,
+button[class*="search"] {
+  border-color: rgba(144, 245, 228, 0.18);
+  background: rgba(7, 16, 19, 0.64);
+  color: var(--rp-c-text-2);
+}
+
+.rp-switch-appearance,
+.rp-nav-screen-appearance {
+  display: none !important;
+}
+
+.vext-ecosystem-menu {
+  position: fixed;
+  top: 12px;
+  left: 18px;
+  z-index: 90;
+  color: var(--rp-c-text-1);
+}
+
+.vext-ecosystem-menu::after {
+  position: absolute;
+  top: 9px;
+  right: -14px;
+  width: 1px;
+  height: 22px;
+  background: rgba(144, 245, 228, 0.14);
+  content: "";
+}
+
+.vext-ecosystem-trigger {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(144, 245, 228, 0.18);
+  border-radius: 8px;
+  background: rgba(7, 16, 19, 0.58);
+  color: var(--rp-c-text-2);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1;
+  backdrop-filter: blur(18px);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.vext-ecosystem-trigger:hover,
+.vext-ecosystem-menu:focus-within .vext-ecosystem-trigger {
+  border-color: rgba(94, 233, 135, 0.36);
+  background: rgba(9, 28, 32, 0.82);
+  color: var(--rp-c-text-1);
+}
+
+.vext-ecosystem-trigger__grid {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+}
+
+.vext-ecosystem-trigger__grid span {
+  border: 1px solid rgba(144, 245, 228, 0.38);
+  border-radius: 3px;
+  background: rgba(18, 214, 198, 0.2);
+}
+
+.vext-ecosystem-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(560px, calc(100vw - 28px));
+  max-height: calc(100vh - 88px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid rgba(144, 245, 228, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(19, 30, 37, 0.98), rgba(7, 16, 19, 0.98)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.04) 0 1px, transparent 1px 58px);
+  box-shadow: 0 26px 88px rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 160ms ease;
+  visibility: hidden;
+}
+
+.vext-ecosystem-menu:hover .vext-ecosystem-panel,
+.vext-ecosystem-menu:focus-within .vext-ecosystem-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.vext-ecosystem-panel__header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(144, 245, 228, 0.18);
+}
+
+.vext-ecosystem-panel__mark,
+.vext-ecosystem-card__mark {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(18, 214, 198, 0.3);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(18, 214, 198, 0.24), rgba(94, 233, 135, 0.12)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 7px);
+  color: #dffff8;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1;
+  text-align: center;
+}
+
+.vext-ecosystem-panel__mark > span,
+.vext-ecosystem-card__mark > span {
+  display: block;
+  line-height: 1;
+}
+
+.vext-ecosystem-panel__mark {
+  width: 48px;
+  height: 48px;
+}
+
+.vext-ecosystem-panel__header strong,
+.vext-ecosystem-panel__header > div > span,
+.vext-ecosystem-card strong,
+.vext-ecosystem-card span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vext-ecosystem-panel__header strong {
+  display: block;
+  color: var(--rp-c-text-1);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.vext-ecosystem-panel__header > div > span {
+  display: block;
+  margin-top: 5px;
+  color: var(--vext-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.vext-ecosystem-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.vext-ecosystem-card {
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(144, 245, 228, 0.12);
+  border-radius: 8px;
+  background: rgba(6, 16, 20, 0.66);
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.vext-ecosystem-card:hover {
+  border-color: rgba(94, 233, 135, 0.34);
+  background: rgba(12, 36, 42, 0.82);
+  transform: translateY(-1px);
+}
+
+.vext-ecosystem-card__mark {
+  width: 42px;
+  height: 42px;
+}
+
+.vext-ecosystem-card__text {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.vext-ecosystem-card strong {
+  color: var(--rp-c-text-1);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.vext-ecosystem-card__text > span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--vext-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group {
+  right: -48px;
+  left: auto;
+  display: grid;
+  width: min(560px, calc(100vw - 40px));
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid rgba(144, 245, 228, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(23, 32, 40, 0.98), rgba(8, 18, 22, 0.98)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.04) 0 1px, transparent 1px 58px);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+  transform: none;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group::before {
+  position: absolute;
+  top: 72px;
+  right: 20px;
+  left: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(18, 214, 198, 0.1), rgba(144, 245, 228, 0.28), rgba(245, 189, 79, 0.16));
+  content: "";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item {
+  height: auto;
+  min-height: 76px;
+  padding: 0 !important;
+  border: 1px solid rgba(144, 245, 228, 0.12);
+  border-radius: 8px;
+  background: rgba(6, 16, 20, 0.64);
+  line-height: 1.4;
+  opacity: 1;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item:hover {
+  border-color: rgba(94, 233, 135, 0.32);
+  background: rgba(12, 36, 42, 0.82);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] {
+  grid-column: 1 / -1;
+  min-height: 54px;
+  margin-bottom: 14px;
+  border: 0;
+  background: transparent;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link {
+  display: grid;
+  height: 100%;
+  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  align-content: center;
+  padding: 12px;
+  color: var(--rp-c-text-1);
+  text-align: left;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link::before {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  grid-row: 1 / 3;
+  border: 1px solid rgba(18, 214, 198, 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(18, 214, 198, 0.24), rgba(94, 233, 135, 0.12)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 7px);
+  color: #dffff8;
+  font-size: 12px;
+  font-weight: 800;
+  content: "VX";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link::after {
+  grid-column: 2;
+  margin: 4px 0 0;
+  color: var(--rp-c-text-3);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  content: "High-performance API runtime";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link {
+  grid-template-columns: 48px minmax(0, 1fr);
+  padding: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::before {
+  width: 48px;
+  height: 48px;
+  content: "VX";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::after {
+  color: var(--vext-muted);
+  content: "Docs, packages and integration surface";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] .rp-hover-group__item__link {
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/schema-dsl/"]::before {
+  content: "S";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/schema-dsl/"]::after {
+  content: "Schema declaration and validation semantics";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/monSQLize/"]::before {
+  content: "M";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/monSQLize/"]::after {
+  content: "MongoDB modeling for service projects";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/flex-rate-limit/"]::before {
+  content: "FR";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/flex-rate-limit/"]::after {
+  content: "Flexible rate limiting for APIs";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/permission-core/"]::before {
+  content: "PC";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/permission-core/"]::after {
+  content: "Permission primitives for application guards";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/vextjs"]::before {
+  content: "GH";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/vextjs"]::after {
+  content: "Explore the vextjs organization";
+}
+
+.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[target="_blank"]::after {
+  display: block;
+}
+
+.rp-sidebar,
+.rspress-sidebar,
+aside[class*="sidebar"] {
+  border-right-color: rgba(144, 245, 228, 0.14);
+  background: rgba(5, 13, 16, 0.9);
+  color: var(--rp-c-text-2);
+}
+
+.rp-sidebar a,
+.rspress-sidebar a,
+aside[class*="sidebar"] a {
+  color: var(--rp-c-text-2);
+}
+
+.rp-sidebar a:hover,
+.rspress-sidebar a:hover,
+aside[class*="sidebar"] a:hover {
+  color: var(--rp-c-text-1);
+  background: rgba(18, 214, 198, 0.09);
+}
+
+.rp-sidebar [class*="active"],
+.rspress-sidebar [class*="active"],
+aside[class*="sidebar"] [class*="active"] {
+  color: var(--vext-cyan);
+}
+
+.rp-doc,
+.rspress-doc,
+.rp-doc-container,
+.rspress-doc-container,
+main[class*="doc"] {
+  color: var(--rp-c-text-1);
+}
+
+.rp-doc p,
+.rp-doc li,
+.rp-doc td,
+.rspress-doc p,
+.rspress-doc li,
+.rspress-doc td,
+main[class*="doc"] p,
+main[class*="doc"] li,
+main[class*="doc"] td {
+  color: var(--rp-c-text-2);
+}
+
+.rp-doc h1,
+.rp-doc h2,
+.rp-doc h3,
+.rp-doc h4,
+.rspress-doc h1,
+.rspress-doc h2,
+.rspress-doc h3,
+.rspress-doc h4,
+main[class*="doc"] h1,
+main[class*="doc"] h2,
+main[class*="doc"] h3,
+main[class*="doc"] h4 {
+  color: var(--rp-c-text-1);
+  letter-spacing: 0;
+}
+
+.rp-doc a,
+.rspress-doc a,
+main[class*="doc"] a,
+.rp-toc a,
+.rspress-toc a,
+aside[class*="toc"] a {
+  color: #9ff6eb;
+}
+
+.rp-toc,
+.rspress-toc,
+aside[class*="toc"] {
+  color: var(--rp-c-text-3);
+}
+
+.rp-toc [class*="active"],
+.rspress-toc [class*="active"],
+aside[class*="toc"] [class*="active"] {
+  color: var(--vext-cyan);
+}
+
+.rp-toc code,
+.rspress-toc code,
+aside[class*="toc"] code,
+.rp-outline__toc code,
+.rp-doc-layout__outline code,
+.rp-toc-item__text code {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  padding: 1px 5px;
+  border: 1px solid rgba(144, 245, 228, 0.18);
+  border-radius: 5px;
+  background: rgba(18, 214, 198, 0.08);
+  box-shadow: inset 0 1px 0 rgba(238, 254, 249, 0.07);
+  color: #bdebe5;
+  font-size: 0.9em;
+  font-weight: 620;
+  line-height: 1.32;
+  white-space: nowrap;
+}
+
+.rp-toc a:hover code,
+.rspress-toc a:hover code,
+aside[class*="toc"] a:hover code,
+.rp-outline__toc a:hover code,
+.rp-doc-layout__outline a:hover code,
+.rp-toc [class*="active"] code,
+.rspress-toc [class*="active"] code,
+aside[class*="toc"] [class*="active"] code,
+.rp-outline__toc [class*="active"] code,
+.rp-doc-layout__outline [class*="active"] code {
+  border-color: rgba(18, 214, 198, 0.32);
+  background: rgba(18, 214, 198, 0.12);
+  box-shadow: inset 0 1px 0 rgba(238, 254, 249, 0.1);
+  color: #d7fff8;
+}
+
+.rp-doc table,
+.rspress-doc table,
+main[class*="doc"] table {
+  overflow: hidden;
+  border: 1px solid rgba(144, 245, 228, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 15, 18, 0.72);
+}
+
+.rp-doc .rp-table-scroll-container,
+.rspress-doc .rp-table-scroll-container,
+main[class*="doc"] .rp-table-scroll-container {
+  border-radius: 8px;
+  background: rgba(5, 15, 18, 0.58);
+}
+
+.rp-doc thead,
+.rspress-doc thead,
+main[class*="doc"] thead {
+  background: rgba(18, 214, 198, 0.1);
+}
+
+.rp-doc th,
+.rspress-doc th,
+main[class*="doc"] th {
+  border-color: rgba(144, 245, 228, 0.16);
+  background:
+    linear-gradient(180deg, rgba(23, 45, 51, 0.96), rgba(12, 29, 34, 0.96)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.05) 0 1px, transparent 1px 42px);
+  color: var(--rp-c-text-1);
+}
+
+.rp-doc tr,
+.rp-doc td,
+.rspress-doc tr,
+.rspress-doc td,
+main[class*="doc"] tr,
+main[class*="doc"] td {
+  border-color: rgba(144, 245, 228, 0.12);
+}
+
+.rp-doc :not(pre) > code,
+.rspress-doc :not(pre) > code,
+main[class*="doc"] :not(pre) > code {
+  border: 1px solid rgba(144, 245, 228, 0.12);
+  background: rgba(144, 245, 228, 0.1);
+  color: #9ff6eb;
+}
+
+.rp-doc pre,
+.rspress-doc pre,
+main[class*="doc"] pre {
+  border: 1px solid rgba(144, 245, 228, 0.28);
+  background:
+    linear-gradient(180deg, rgba(5, 20, 24, 0.99), rgba(3, 12, 15, 0.99)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 44px);
+  box-shadow:
+    inset 0 1px 0 rgba(217, 255, 247, 0.1),
+    0 22px 60px rgba(0, 0, 0, 0.22);
+  color: var(--shiki-foreground);
+}
+
+.rp-doc pre code,
+.rspress-doc pre code,
+main[class*="doc"] pre code,
+.rp-doc pre .line,
+.rspress-doc pre .line,
+main[class*="doc"] pre .line,
+.rp-doc .shiki,
+.rspress-doc .shiki,
+main[class*="doc"] .shiki {
+  color: var(--shiki-foreground);
+}
+
+.rp-doc pre code span,
+.rspress-doc pre code span,
+main[class*="doc"] pre code span,
+.rp-doc .shiki span,
+.rspress-doc .shiki span,
+main[class*="doc"] .shiki span {
+  opacity: 0.96;
+  text-shadow: 0 0 16px rgba(99, 231, 255, 0.06);
+}
+
+.rp-doc pre .line,
+.rspress-doc pre .line,
+main[class*="doc"] pre .line {
+  min-height: 1.58em;
+}
+
+.rp-doc blockquote,
+.rspress-doc blockquote,
+main[class*="doc"] blockquote,
+.rspress-doc [class*="custom-block"],
+.rp-doc [class*="custom-block"] {
+  border-color: rgba(94, 233, 135, 0.26);
+  background: rgba(94, 233, 135, 0.08);
+  color: var(--rp-c-text-2);
+}
+
+.rp-doc .rp-callout,
+.rspress-doc .rp-callout,
+main[class*="doc"] .rp-callout {
+  border: 1px solid rgba(144, 245, 228, 0.2);
+  background:
+    linear-gradient(135deg, rgba(10, 30, 36, 0.97), rgba(6, 18, 22, 0.98)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 46px);
+  box-shadow:
+    inset 0 1px 0 rgba(217, 255, 247, 0.07),
+    0 16px 44px rgba(0, 0, 0, 0.18);
+  color: var(--rp-c-text-2);
+}
+
+.rp-doc .rp-callout--tip,
+.rspress-doc .rp-callout--tip,
+main[class*="doc"] .rp-callout--tip {
+  border-color: rgba(94, 233, 135, 0.28);
+  background:
+    linear-gradient(135deg, rgba(9, 34, 31, 0.97), rgba(6, 18, 22, 0.98)),
+    repeating-linear-gradient(90deg, rgba(94, 233, 135, 0.04) 0 1px, transparent 1px 46px);
+}
+
+.rp-doc .rp-callout--warning,
+.rspress-doc .rp-callout--warning,
+main[class*="doc"] .rp-callout--warning {
+  border-color: rgba(245, 189, 79, 0.32);
+  background:
+    linear-gradient(135deg, rgba(43, 33, 16, 0.97), rgba(8, 18, 20, 0.98)),
+    repeating-linear-gradient(90deg, rgba(245, 189, 79, 0.04) 0 1px, transparent 1px 46px);
+}
+
+.rp-doc .rp-callout--info,
+.rspress-doc .rp-callout--info,
+main[class*="doc"] .rp-callout--info {
+  border-color: rgba(18, 214, 198, 0.3);
+}
+
+.rp-doc .rp-callout__title,
+.rspress-doc .rp-callout__title,
+main[class*="doc"] .rp-callout__title {
+  color: var(--rp-c-text-1);
+}
+
+.vext-home,
+.vext-home * {
+  box-sizing: border-box;
+}
+
+.vext-home {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(7, 16, 19, 0.5), #071013 58%, #050b0e),
+    linear-gradient(120deg, rgba(18, 214, 198, 0.08), transparent 35%, rgba(245, 189, 79, 0.07) 72%, transparent),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.045) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(0deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 80px),
+    #071013;
+  color: var(--vext-ink);
+}
+
+.vext-home::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent, rgba(18, 214, 198, 0.08), transparent),
+    repeating-linear-gradient(180deg, transparent 0 22px, rgba(144, 245, 228, 0.035) 22px 23px);
+  opacity: 0.66;
+  transform: translateX(-20%);
+  animation: vext-scan 14s linear infinite;
+}
+
+.vext-home a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.vext-section {
+  position: relative;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 54px 0;
+}
+
+@keyframes vext-grid-drift {
+  from {
+    background-position: center top;
+  }
+
+  to {
+    background-position: center 48px;
+  }
+}
+
+@keyframes vext-data-pan {
+  from {
+    background-position: 0 0, 0 0, 0 0;
+  }
+
+  to {
+    background-position: 280px 120px, -220px 160px, 0 0;
+  }
+}
+
+@keyframes vext-field-sweep {
+  0% {
+    transform: translateY(-62%);
+  }
+
+  48%,
+  100% {
+    transform: translateY(62%);
+  }
+}
+
+@keyframes vext-field-cross {
+  from {
+    transform: translate(-42%, -22%);
+  }
+
+  to {
+    transform: translate(38%, 22%);
+  }
+}
+
+@keyframes vext-scan {
+  from {
+    transform: translateX(-38%);
+  }
+
+  to {
+    transform: translateX(38%);
+  }
+}
+
+@keyframes vext-sheen {
+  from {
+    transform: translateX(-110%) skewX(-16deg);
+  }
+
+  to {
+    transform: translateX(190%) skewX(-16deg);
+  }
+}
+
+@keyframes vext-console-sweep {
+  from {
+    transform: translateY(-100%);
+  }
+
+  to {
+    transform: translateY(420%);
+  }
+}
+
+@keyframes vext-terminal-caret {
+  0%,
+  45% {
+    border-color: rgba(94, 233, 135, 0.8);
+  }
+
+  46%,
+  100% {
+    border-color: transparent;
+  }
+}
+
+.vext-section__header {
+  max-width: 720px;
+  margin-bottom: 28px;
+}
+
+.vext-kicker {
+  margin: 0 0 14px;
+  color: var(--vext-green);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.vext-title {
+  margin: 0;
+  color: var(--vext-ink);
+  font-size: 36px;
+  line-height: 1.14;
+  font-weight: 820;
+  letter-spacing: 0;
+}
+
+.vext-copy {
+  margin: 14px 0 0;
+  color: var(--vext-muted);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.vext-hero {
+  position: relative;
+  padding: 88px 0 44px;
+}
+
+.vext-hero::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(rgba(144, 245, 228, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(144, 245, 228, 0.08) 1px, transparent 1px);
+  background-position: center top;
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, black, transparent 78%);
+  animation: vext-grid-drift 18s linear infinite;
+}
+
+.vext-hero__inner {
+  position: relative;
+  display: grid;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  gap: 42px;
+  align-items: center;
+}
+
+.vext-hero__content {
+  max-width: 700px;
+}
+
+.vext-hero__eyebrow {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(94, 233, 135, 0.28);
+  border-radius: 999px;
+  background: rgba(94, 233, 135, 0.08);
+  color: #bffad0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.vext-hero__eyebrow::before {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vext-green);
+  box-shadow: 0 0 0 5px rgba(94, 233, 135, 0.12);
+  content: "";
+}
+
+.vext-hero h1 {
+  margin: 24px 0 0;
+  color: #f6fffc;
+  font-size: 64px;
+  line-height: 1.02;
+  font-weight: 860;
+  letter-spacing: 0;
+}
+
+.vext-hero__lead {
+  max-width: 650px;
+  margin: 22px 0 0;
+  color: var(--vext-soft);
+  font-size: 20px;
+  line-height: 1.8;
+}
+
+.vext-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.vext-button {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid rgba(144, 245, 228, 0.24);
+  border-radius: 8px;
+  color: #ecfffb;
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.2;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.vext-button:hover {
+  border-color: rgba(144, 245, 228, 0.62);
+  transform: translateY(-1px);
+}
+
+.vext-button--primary {
+  border-color: rgba(18, 214, 198, 0.78);
+  background: linear-gradient(135deg, #0fb9aa, #47d97b);
+  color: #021513;
+}
+
+.vext-button--primary::after {
+  position: absolute;
+  inset: -30% auto -30% -42%;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  content: "";
+  transform: translateX(-110%) skewX(-16deg);
+}
+
+.vext-button--primary:hover::after {
+  animation: vext-sheen 720ms ease;
+}
+
+.vext-button--ghost {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vext-trust-row {
+  display: grid;
+  max-width: 700px;
+  margin-top: 30px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vext-trust-item {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid rgba(144, 245, 228, 0.16);
+  border-radius: 8px;
+  background: rgba(7, 16, 19, 0.52);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.vext-trust-item:hover {
+  border-color: rgba(94, 233, 135, 0.36);
+  background: rgba(10, 31, 37, 0.78);
+  transform: translateY(-2px);
+}
+
+.vext-trust-item strong {
+  display: block;
+  color: #f4fffc;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.vext-trust-item span {
+  display: block;
+  margin-top: 6px;
+  color: var(--vext-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.vext-console {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(144, 245, 228, 0.22);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(13, 29, 35, 0.98), rgba(5, 13, 16, 0.98));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
+}
+
+.vext-console::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(144, 245, 228, 0.12), transparent);
+  content: "";
+  opacity: 0.42;
+  transform: translateY(-100%);
+  animation: vext-console-sweep 5.8s ease-in-out infinite;
+}
+
+.vext-console__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(144, 245, 228, 0.14);
+  color: #9eb8b4;
+  font-size: 12px;
+}
+
+.vext-console__dots {
+  display: flex;
+  gap: 7px;
+}
+
+.vext-console__dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.vext-console__dots span:nth-child(1) {
+  background: var(--vext-rose);
+}
+
+.vext-console__dots span:nth-child(2) {
+  background: var(--vext-amber);
+}
+
+.vext-console__dots span:nth-child(3) {
+  background: var(--vext-green);
+}
+
+.vext-console__body {
+  padding: 18px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.vext-console__line {
+  display: flex;
+  min-height: 24px;
+  gap: 10px;
+  color: #d9fff7;
+  white-space: nowrap;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease,
+    text-shadow 180ms ease;
+}
+
+.vext-console__body[data-vext-terminal="playing"] > .vext-console__line[data-vext-terminal-state="hidden"] {
+  opacity: 0.24;
+  transform: translateY(5px);
+  filter: blur(1px);
+}
+
+.vext-console__body[data-vext-terminal="playing"] > .vext-console__line[data-vext-terminal-state="active"] {
+  opacity: 1;
+  transform: translateY(0);
+  filter: none;
+  text-shadow: 0 0 16px rgba(94, 233, 135, 0.16);
+}
+
+.vext-console__body > .vext-console__line[data-vext-terminal-state="visible"] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+.vext-console__metrics {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.vext-console__body[data-vext-terminal="playing"] .vext-console__metrics {
+  opacity: 0.22;
+  transform: translateY(6px);
+}
+
+.vext-console__body[data-vext-terminal="complete"] .vext-console__metrics {
+  opacity: 1;
+  transform: none;
+}
+
+.vext-console__typed {
+  display: inline-flex;
+  align-items: center;
+  min-width: 11ch;
+  overflow: visible;
+  color: #d9fff7;
+  white-space: nowrap;
+}
+
+.vext-console__typed::after {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  margin-left: 3px;
+  border-right: 1px solid rgba(94, 233, 135, 0.9);
+  content: "";
+  animation: vext-terminal-caret 760ms step-end infinite;
+}
+
+.vext-console__typed[data-vext-typing="static"]::after {
+  content: none;
+}
+
+.vext-console__prompt {
+  color: var(--vext-green);
+}
+
+.vext-console__muted {
+  color: #7e9995;
+}
+
+.vext-console__ok {
+  color: var(--vext-green);
+}
+
+.vext-console__route {
+  color: var(--vext-cyan);
+}
+
+.vext-console__metrics {
+  display: grid;
+  margin-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(144, 245, 228, 0.13);
+}
+
+.vext-console__metric {
+  padding: 14px 10px 0 0;
+}
+
+.vext-console__metric strong {
+  display: block;
+  color: #f4fffc;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.vext-console__metric span {
+  display: block;
+  margin-top: 6px;
+  color: #91aaa6;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.vext-path-strip {
+  display: grid;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(144, 245, 228, 0.15);
+  border-radius: 8px;
+  background: rgba(144, 245, 228, 0.13);
+}
+
+.vext-path-strip a {
+  min-height: 96px;
+  padding: 18px;
+  background: rgba(8, 22, 27, 0.86);
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.vext-path-strip a:hover {
+  background: rgba(12, 37, 43, 0.95);
+  transform: translateY(-1px);
+}
+
+.vext-path-strip strong,
+.vext-path-strip span {
+  display: block;
+}
+
+.vext-path-strip strong {
+  color: #f1fffb;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.vext-path-strip span {
+  margin-top: 8px;
+  color: var(--vext-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.vext-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vext-reload {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vext-reload::before {
+  position: absolute;
+  top: 28px;
+  right: 12%;
+  left: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(18, 214, 198, 0), rgba(18, 214, 198, 0.64), rgba(245, 189, 79, 0.56), rgba(18, 214, 198, 0));
+  content: "";
+}
+
+.vext-tier-card {
+  position: relative;
+  min-height: 226px;
+  padding: 22px;
+  border: 1px solid rgba(144, 245, 228, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(13, 29, 35, 0.92), rgba(7, 16, 19, 0.88)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.045) 0 1px, transparent 1px 44px);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.vext-tier-card::before {
+  position: absolute;
+  top: 23px;
+  right: 22px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(18, 214, 198, 0.72);
+  border-radius: 999px;
+  background: #071013;
+  box-shadow: 0 0 0 6px rgba(18, 214, 198, 0.1);
+  content: "";
+}
+
+.vext-tier-card--active::before {
+  border-color: rgba(94, 233, 135, 0.88);
+  box-shadow: 0 0 0 6px rgba(94, 233, 135, 0.13);
+}
+
+.vext-tier-card:hover {
+  border-color: rgba(144, 245, 228, 0.36);
+  background:
+    linear-gradient(180deg, rgba(14, 42, 48, 0.96), rgba(7, 16, 19, 0.92)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.055) 0 1px, transparent 1px 44px);
+  transform: translateY(-2px);
+}
+
+.vext-tier-card h3 {
+  margin: 18px 0 0;
+  color: #f4fffc;
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.vext-tier-card p {
+  margin: 12px 0 0;
+  color: var(--vext-muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.vext-tier-card code {
+  border: 1px solid rgba(144, 245, 228, 0.14);
+  border-radius: 6px;
+  background: rgba(144, 245, 228, 0.1);
+  color: #9ff6eb;
+  padding: 1px 6px;
+}
+
+.vext-tier-card strong {
+  position: absolute;
+  bottom: 20px;
+  left: 22px;
+  color: #ffe6a3;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.vext-capability {
+  min-height: 196px;
+  padding: 22px;
+  border: 1px solid rgba(144, 245, 228, 0.15);
+  border-radius: 8px;
+  background: var(--vext-panel);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.vext-capability:hover {
+  border-color: rgba(144, 245, 228, 0.32);
+  background: rgba(10, 31, 37, 0.86);
+  transform: translateY(-2px);
+}
+
+.vext-capability__mark {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(94, 233, 135, 0.28);
+  border-radius: 999px;
+  color: #bffad0;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.vext-capability h3 {
+  margin: 18px 0 0;
+  color: #f4fffc;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.vext-capability p {
+  margin: 10px 0 0;
+  color: var(--vext-muted);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.vext-matrix {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.vext-matrix__panel,
+.vext-production {
+  border: 1px solid rgba(144, 245, 228, 0.15);
+  border-radius: 8px;
+  background: var(--vext-panel-strong);
+}
+
+.vext-matrix__panel {
+  padding: 24px;
+}
+
+.vext-matrix__panel h3 {
+  margin: 0;
+  color: #f4fffc;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.vext-matrix__panel p {
+  margin: 14px 0 0;
+  color: var(--vext-muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.vext-adapter-list {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(144, 245, 228, 0.13);
+  border-radius: 8px;
+  background: rgba(144, 245, 228, 0.13);
+}
+
+.vext-adapter-row {
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: 120px minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  background: rgba(8, 22, 27, 0.88);
+}
+
+.vext-adapter-row strong {
+  color: #f4fffc;
+  font-size: 15px;
+}
+
+.vext-adapter-row span {
+  color: var(--vext-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.vext-adapter-row em {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(18, 214, 198, 0.3);
+  border-radius: 999px;
+  color: #9ff6eb;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.vext-production {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 24px;
+  align-items: center;
+  padding: 28px;
+}
+
+.vext-production__signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vext-signal {
+  min-height: 84px;
+  padding: 14px;
+  border: 1px solid rgba(245, 189, 79, 0.18);
+  border-radius: 8px;
+  background: rgba(245, 189, 79, 0.07);
+}
+
+.vext-signal strong {
+  display: block;
+  color: #ffe6a3;
+  font-size: 14px;
+}
+
+.vext-signal span {
+  display: block;
+  margin-top: 8px;
+  color: #d5c6a3;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.vext-next {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vext-next a {
+  min-height: 132px;
+  padding: 20px;
+  border: 1px solid rgba(144, 245, 228, 0.15);
+  border-radius: 8px;
+  background: rgba(8, 22, 27, 0.8);
+}
+
+.vext-next strong,
+.vext-next span {
+  display: block;
+}
+
+.vext-next strong {
+  color: #f4fffc;
+  font-size: 18px;
+}
+
+.vext-next span {
+  margin-top: 10px;
+  color: var(--vext-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.vext-footer {
+  position: relative;
+  border-top: 1px solid rgba(144, 245, 228, 0.15);
+  background:
+    linear-gradient(180deg, rgba(7, 16, 19, 0.72), rgba(5, 11, 14, 0.98)),
+    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 72px);
+}
+
+.vext-footer__inner {
+  display: grid;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  grid-template-columns: minmax(220px, 0.62fr) minmax(0, 1.38fr);
+  gap: 42px;
+  padding: 42px 0;
+}
+
+.vext-footer__brand strong,
+.vext-footer__brand span {
+  display: block;
+}
+
+.vext-footer__brand strong {
+  color: #f4fffc;
+  font-size: 22px;
+}
+
+.vext-footer__brand span {
+  margin-top: 10px;
+  color: var(--vext-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.vext-footer__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.vext-footer h2 {
+  margin: 0 0 12px;
+  color: #f4fffc;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.vext-footer a,
+.vext-footer span {
+  display: block;
+  width: fit-content;
+  margin-top: 8px;
+  color: var(--vext-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.vext-footer a:hover {
+  color: var(--vext-cyan);
+}
+
+@media (max-width: 960px) {
+  .rp-nav__title {
+    margin-left: 66px;
+  }
+
+  .vext-ecosystem-menu {
+    left: 18px;
+  }
+
+  .vext-hero__inner,
+  .vext-matrix,
+  .vext-production,
+  .vext-footer__inner {
+    grid-template-columns: 1fr;
+  }
+
+  .vext-hero h1 {
+    font-size: 46px;
+  }
+
+  .vext-trust-row,
+  .vext-path-strip,
+  .vext-capability-grid,
+  .vext-reload,
+  .vext-footer__grid,
+  .vext-next {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .rp-nav__title {
+    margin-left: 60px;
+  }
+
+  .vext-ecosystem-menu {
+    top: 10px;
+    left: 12px;
+  }
+
+  .vext-ecosystem-panel {
+    left: 0;
+    width: calc(100vw - 20px);
+    padding: 16px;
+  }
+
+  .vext-ecosystem-panel__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vext-section,
+  .vext-hero__inner,
+  .vext-path-strip {
+    width: min(1180px, calc(100% - 28px));
+  }
+
+  .vext-hero {
+    padding: 58px 0 30px;
+  }
+
+  .vext-hero h1 {
+    font-size: 38px;
+  }
+
+  .vext-hero__lead {
+    font-size: 17px;
+  }
+
+  .vext-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vext-button {
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .vext-title {
+    font-size: 30px;
+  }
+
+  .vext-trust-row,
+  .vext-path-strip,
+  .vext-capability-grid,
+  .vext-reload,
+  .vext-production__signals,
+  .vext-next,
+  .vext-footer__grid,
+  .vext-console__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .vext-console__line {
+    white-space: normal;
+  }
+
+  .vext-adapter-row {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .vext-motion-field {
+    display: block;
+    opacity: 0.22;
+    animation: none !important;
+  }
+
+  .vext-motion-field::before,
+  .vext-motion-field::after {
+    opacity: 0.32;
+    transform: none;
+    animation: none !important;
+  }
+
+  .vext-pointer-field {
+    display: block;
+    transition: none !important;
+  }
+
+  html[data-vext-pointer="active"] .vext-pointer-field {
+    opacity: 0.28;
+  }
+
+  .vext-console__typed {
+    min-width: 0;
+    width: auto;
+    border-right: 0;
+    color: #d9fff7;
+    animation: none !important;
+  }
+
+  .vext-console__typed::after {
+    content: none;
+  }
+
+  .vext-console__metrics {
+    animation: none !important;
+  }
+}

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#071013"/>
+  <path d="M0 0H1200V630H0V0Z" fill="url(#bg)"/>
+  <path d="M80 96H1120V534H80V96Z" stroke="#12D6C6" stroke-opacity="0.22" stroke-width="2"/>
+  <path d="M132 142L196 278L268 142" stroke="#12D6C6" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M268 142L294 190L254 232" stroke="#5EE987" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="132" cy="142" r="12" fill="#F5BD4F"/>
+  <circle cx="196" cy="278" r="12" fill="#12D6C6"/>
+  <circle cx="268" cy="142" r="12" fill="#5EE987"/>
+  <text x="330" y="195" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800">VextJS</text>
+  <text x="335" y="262" fill="#B7D0CC" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="500">Adapter-first Node.js API framework</text>
+  <text x="130" y="398" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="750">Native fast path. Five adapters. Production ready.</text>
+  <text x="132" y="462" fill="#9FBAB6" font-family="Inter, Arial, sans-serif" font-size="28">CLI / Validation / OpenAPI / Cluster / Graceful Shutdown</text>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071013"/>
+      <stop offset="0.54" stop-color="#0C2026"/>
+      <stop offset="1" stop-color="#161A22"/>
+    </linearGradient>
+  </defs>
+</svg>
