@@ -34,7 +34,7 @@
 | **内存**     | 64 GB DDR5-5600                                              |
 | **操作系统** | Ubuntu 22.04 LTS                                             |
 | **Node.js**  | v22.12.0                                                     |
-| **测试工具** | [autocannon](https://github.com/mcollina/autocannon) v7.15.0 |
+| **测试工具** | [autocannon](https://github.com/mcollina/autocannon) v8.0.0（通过 `npm exec --package` 调用） |
 | **并发连接** | 100                                                          |
 | **持续时间** | 30 秒                                                        |
 | **预热**     | 5 秒（不计入统计）                                           |
@@ -287,48 +287,47 @@ Express     ████████                                  18,934 req
 
 ```bash
 npm install
-node test/benchmark/run-benchmark.mjs --scenario all --rounds 5
+npm run test:bench -- --scenario all --rounds 5
 ```
 
 ### 运行单个框架
 
 ```bash
 # 仅测试 VextJS (Native)
-node test/benchmark/run-benchmark.mjs --framework native --scenario all --rounds 5
+npm run test:bench -- --framework native --scenario all --rounds 5
 
 # 仅测试 VextJS (Fastify)
-node test/benchmark/run-benchmark.mjs --framework fastify --scenario all --rounds 5
+npm run test:bench -- --framework fastify --scenario all --rounds 5
 
 # 仅测试真实 route-level middleware chain
-node test/benchmark/run-benchmark.mjs --scenario middleware-chain --rounds 5
+npm run test:bench -- --scenario middleware-chain --rounds 5
 ```
 
 ### 使用 autocannon 手动测试
 
+当前仓库的 benchmark runner 会自动启动/停止测试服务器，并通过 `npm exec --package=autocannon@8.0.0` 调用 autocannon。通常不需要手动启动服务器。
+
+如需对一个已启动的本地服务单独压测，可直接运行：
+
 ```bash
-# 启动 VextJS 测试服务器
-pnpm run start:vext &
-
 # 运行 autocannon
-npx autocannon -c 100 -d 30 -p 10 http://localhost:3000/
-
-# 停止服务器
-kill %1
+npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localhost:3000/
 ```
 
 ### 配置说明
 
-在 `bench.config.ts` 中调整测试参数：
+当前 benchmark 通过 CLI 参数配置，不存在 `bench.config.ts`：
 
-```typescript
-export default {
-  connections: 100, // 并发连接数
-  duration: 30, // 测试持续秒数
-  warmup: 5, // 预热秒数
-  pipelining: 1, // HTTP 管道化请求数
-  workers: 1, // autocannon worker 线程数
-};
-```
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--duration` | `15` | 压测持续秒数 |
+| `--connections` | `50` | 并发连接数 |
+| `--pipelining` | `10` | HTTP pipeline 深度 |
+| `--warmup` | `5` | 预热秒数 |
+| `--rounds` | `1` | 轮次；PR / 发版前建议 5 或 7 |
+| `--scenario` | `all` | `json` / `params` / `chain` / `middleware-chain` / `all` |
+| `--framework` | 全部 | 框架过滤，逗号分隔 |
+| `--output` | `test/benchmark/RESULTS.md` | 报告输出路径 |
 
 ---
 

@@ -1,0 +1,991 @@
+# Route definition
+
+This page details the route definition API of VextJS, including `defineRoutes`, routing options, parameter validation, middleware references and document configuration.
+
+## defineRoutes
+
+`defineRoutes` is the core function for creating route files. It receives a factory callback in which the route is registered via the `app` object.
+
+```typescript
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/hello", async (req, res) => {
+    res.json({ message: "Hello World" });
+  });
+});
+```
+
+### Function signature
+
+```typescript
+function defineRoutes(factory: RouteFactory): RouteDefinition;
+
+type RouteFactory = (app: VextApp) => void;
+```
+
+### Working principle
+
+1. When `defineRoutes(factory)` is called, a **collector** (route collector) is created internally
+2. `factory(collector)` is executed, and `app.get/post/...` in the user code actually calls the collector method.
+3. Each route is pushed into the internal `routes` array
+4. Return the `RouteDefinition` object
+5. `router-loader` scans the `src/routes/` directory and calls `register()` on the `default export` of each file to register with the underlying adapter
+
+:::tip
+In the factory callback, `app` not only has HTTP methods (`get/post/put/...`), but also can access complete capabilities such as `app.services`, `app.config`, `app.throw`, `app.logger`, etc. These properties are injected by `router-loader` before executing the factory.
+:::
+
+---
+
+## Route registration syntax
+
+VextJS supports two route registration syntaxes: **three-stage** and **two-stage**.
+
+### Three-stage (recommended)
+
+```typescript
+app.method(path, options, handler);
+```
+
+Complete syntax with `options` configuration, supporting parameter verification, middleware reference, document configuration, etc.:
+
+```typescript
+export default defineRoutes((app) => {
+  app.post(
+    "/users",
+    {
+      validate: {
+        body: { name: "string:1-50", email: "email" },
+      },
+      middlewares: ["auth"],
+      docs: {
+        summary: "Create user",
+        tags: ["user"],
+      },
+    },
+    async (req, res) => {
+      const data = req.valid("body");
+      const user = await app.services.user.create(data);
+      res.json(user, 201);
+    },
+  );
+});
+```
+
+### Two-stage
+
+```typescript
+app.method(path, handler);
+```
+
+Simplified syntax without `options`, suitable for simple routes that do not require validation, middleware or document configuration:
+
+```typescript
+export default defineRoutes((app) => {
+  app.get("/health", async (_req, res) => {
+    res.json({ status: "ok" });
+  });
+});
+```
+
+### Supported HTTP methods
+
+| Method | Description |
+| -------------------------- | ------------ |
+| `app.get(path, ...)` | GET request |
+| `app.post(path, ...)` | POST request |
+| `app.put(path, ...)` | PUT request |
+| `app.patch(path, ...)` | PATCH request |
+| `app.delete(path, ...)` | DELETE request |
+| `app.head(path, ...)` | HEAD request |
+| `app.options(path, ...)` | OPTIONS request |
+
+---
+
+## Routing path
+
+### Static path
+
+```typescript
+app.get("/users", handler);
+app.get("/users/profile", handler);
+```
+
+### Dynamic parameters
+
+Use `:paramName` to define dynamic path parameters, accessed through `req.params` or `req.valid('param')`:
+
+```typescript
+app.get(
+  "/users/:id",
+  {
+    validate: {
+      param: { id: "string:1-" },
+    },
+  },
+  async (req, res) => {
+    const { id } = req.valid("param");
+    const user = await app.services.user.findById(id);
+    res.json(user);
+  },
+);
+```
+
+### Wildcard
+
+```typescript
+app.get("/files/*", async (req, res) => {
+  // req.params['*'] contains the wildcard matching part
+  res.json({ path: req.params["*"] });
+});
+```
+
+### File routing mapping
+
+The directory path of the routing file is automatically mapped to the URL prefix:
+
+| File path | URL prefix | Example |
+| -------------------------- | ------------- | ------------------------------------- |
+| `src/routes/users.ts` | `/users` | `app.get('/list')` → `GET /users/list` |
+| `src/routes/api/orders.ts` | `/api/orders` | `app.post('/')` → `POST /api/orders` |
+| `src/routes/index.ts` | `/` | `app.get('/health')` → `GET /health` |
+
+:::tip
+The `path` registered in the routing file is a **relative subpath**, and the framework automatically splices the file path prefix. For example, `app.get('/:id')` in `src/routes/users.ts` is ultimately registered as `GET /users/:id`.
+:::
+
+---
+
+## RouteOptions
+
+The second parameter of the routing three-part syntax is the declarative configuration object.
+
+```typescript
+interface RouteOptions {
+  validate?: {
+    query?: Record<string, VextSchemaField>;
+    body?: Record<string, VextSchemaField>;
+    param?: Record<string, VextSchemaField>;
+    header?: Record<string, VextSchemaField>;
+  };
+  cache?: false | number | RouteCacheOptions;
+  middlewares?: VextMiddlewareRef[];
+  docs?: RouteDocsConfig;
+  multipart?: {
+    files?: Record<
+      string,
+      string | { description?: string; required?: boolean }
+    >;
+  };
+  override?: {
+    rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
+    timeout?: number;
+    maxBodySize?: string | number;
+    cors?: VextCorsConfig;
+  };
+}
+```
+
+### Complete example
+
+```typescript
+app.put(
+  "/users/:id",
+  {
+    validate: {
+      param: { id: "string:1-" },
+      body: {
+        name: "string:1-50",
+        email: "email",
+        age: "number:0-200?",
+      },
+    },
+    middlewares: ["auth"],
+    cache: false,
+    docs: {
+      summary: "Update user",
+      tags: ["user"],
+      responses: {
+        200: { description: "Update successful" },
+        404: { description: "User does not exist" },
+      },
+    },
+    override: {
+      rateLimit: { max: 10, window: 60 },
+      maxBodySize: "5mb",
+    },
+  },
+  handler,
+);
+```
+
+---
+
+## validate
+
+Declarative parameter validation, based on `schema-dsl` DSL syntax. The framework automatically performs verification before the handler is executed. If verification fails, a `422` error is returned.
+
+The field type is `VextSchemaField`, which supports schema-dsl strings, field-level DslBuilders, nested objects, and object arrays. Field-level DslBuilder is often used to add business descriptions to OpenAPI documents:
+
+```typescript
+app.post(
+  "/translate",
+  {
+    validate: {
+      body: {
+        content: "string:1-20000!".description(
+          "Text to be translated, length 1-20000 characters",
+        ),
+        format: "enum:plain_text,preserve_line_breaks".description("output format"),
+      },
+    },
+  },
+  handler,
+);
+```
+
+These descriptions will enter the OpenAPI schema while retaining constraints such as required, enumeration, and length.
+
+### Verify location
+
+| Location | Data Source | Description |
+| -------- | ------------- | -------------------------- |
+| `param` | `req.params` | Path dynamic parameters (such as `/:id`) |
+| `query` | `req.query` | URL query parameters |
+| `header` | `req.headers` | Request headers |
+| `body` | `req.body` | Request body |
+
+**Verify execution order**: `param` → `query` → `header` → `body`
+
+### Basic usage
+
+```typescript
+app.get(
+  "/users",
+  {
+    validate: {
+      query: {
+        page: "number:1-", // A number greater than or equal to 1
+        limit: "number:1-100", // Number between 1 and 100
+        keyword: "string?", // optional string
+      },
+    },
+  },
+  async (req, res) => {
+    const { page, limit, keyword } = req.valid("query");
+    // page: number, limit: number, keyword: string | undefined
+  },
+);
+```
+
+### DSL syntax quick check
+
+| DSL | Description | Examples |
+|---------------- | ------------------- | ---------------------------------- |
+| `'string'` | Required string | `name: 'string'` |
+| `'string:1-50'' | A string of length 1-50 | `name: 'string:1-50'' |
+| `'string?'` | Optional string | `nickname: 'string?'` |
+| `'number'` | Required number | `age: 'number'` |
+| `'number:0-'` | A number greater than or equal to 0 | `page: 'number:0-'` |
+| `'number:1-100'' | A number between 1 and 100 | `limit: 'number:1-100'` |
+| `'boolean'` | Required Boolean value | `active: 'boolean'` |
+| `'email'` | Email format | `email: 'email'` |
+| `'url'` | URL format | `website: 'url'` |
+| `'date'' | Date format | `birthday: 'date'` |
+| `'uuid'` | UUID format | `id: 'uuid'` |
+| `'enum:a,b,c'` | Enumeration value | `status: 'enum:active,inactive'` |
+| `'array'` | array | `tags: 'array'` |
+| `'object'` | Object | `metadata: 'object'` |
+
+:::tip
+`schema-dsl` will automatically do **type conversion**. For example, `'2'` (string) in the query parameter `?page=2` will be automatically converted to `2` (number), provided that the schema is declared as `'number'` type.
+:::
+
+### Get the verified data
+
+Use `req.valid(location)` to obtain the verified and type-converted data:
+
+```typescript
+app.post(
+  "/users",
+  {
+    validate: {
+      body: { name: "string:1-50", email: "email" },
+      query: { notify: "boolean?" },
+    },
+  },
+  async (req, res) => {
+    const body = req.valid("body"); // { name: string, email: string }
+    const query = req.valid("query"); // { notify?: boolean }
+    // ...
+  },
+);
+```
+
+More precise type hints can be obtained via generics:
+
+```typescript
+interface CreateUserBody {
+  name: string;
+  email: string;
+}
+
+const body = req.valid<CreateUserBody>("body");
+// body.name → IDE knows it is string
+// body.email → IDE knows it is string
+```
+
+### Verification failure response
+
+When verification fails, the framework automatically returns `422` status code:
+
+```json
+{
+  "code": 422,
+  "message": "Validation failed",
+  "errors": [
+    { "field": "email", "message": "must be a valid email address" },
+    { "field": "name", "message": "length must be between 1 and 50" }
+  ],
+  "requestId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+## middlewares
+
+Route-level middleware reference. The referenced middleware must first be declared in the `config.middlewares` whitelist.
+
+### String reference
+
+```typescript
+app.get(
+  "/profile",
+  {
+    middlewares: ["auth"],
+  },
+  handler,
+);
+```
+
+### Object reference (with configuration override)
+
+```typescript
+app.get(
+  "/admin/users",
+  {
+    middlewares: ["auth", { name: "role", options: { required: "admin" } }],
+  },
+  handler,
+);
+```
+
+### VextMiddlewareRef type
+
+```typescript
+type VextMiddlewareRef = string | { name: string; options?: unknown };
+```
+
+### Execution order
+
+Routing-level middleware is executed after global middleware and before handler:
+
+```
+request → [global middleware chain] → [routing-level middleware] → [validate middleware] → handler → response
+```
+
+### Configure whitelist
+
+Middleware referenced in routes must be declared in the configuration file:
+
+```typescript
+// src/config/default.ts
+export default {
+  middlewares: [
+    { name: "auth" },
+    { name: "role", options: { required: "user" } },
+    { name: "client-cache", options: { maxAge: 300 } },
+  ],
+};
+```
+
+```typescript
+// src/middlewares/auth.ts
+import { defineMiddleware } from "vextjs";
+
+export default defineMiddleware(async (req, _res, next) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) {
+    req.app.throw(401, "Authentication token not provided");
+  }
+  //Verify token...
+  req.user = decoded;
+  await next();
+});
+```
+
+:::warning
+References to middleware not declared in the whitelist will throw an error on startup:
+
+```
+[vextjs] Route GET "/profile" references middleware "auth" which is not
+registered in config.middlewares whitelist.
+```
+
+:::
+
+---
+
+## cache
+
+Route-level response cache configuration. Response caching occurs on the server side and caches interface response content; it is not custom middleware, nor is it the browser `Cache-Control` response header.
+
+```typescript
+import { route } from "vext";
+
+route({
+  method: "GET",
+  path: "/posts",
+  cache: {
+    ttl: 30_000, // milliseconds
+    methods: ["GET"],
+    headers: ["accept-language"],
+    partitionKey: (req) => req.user?.tenantId ?? "public",
+  },
+  handler: async () => {
+    return await listPosts();
+  },
+});
+```
+
+Commonly used writing methods:
+
+| Configuration | Description |
+|------|------|
+| `cache: false` | Disable response caching for this route |
+| `cache: 30000` | Enables response caching with a TTL of 30000 milliseconds |
+| `cache: { ttl: 30000 }` | Use full configuration object |
+| `headers: ["accept-language"]` | Specifies the request headers that participate in caching key; it is not recommended to include all request headers in key |
+| `partitionKey` | Generate user, tenant or region isolation dimensions to prevent different visitors from sharing the same cached response |
+
+See the [Response Caching Guide](/guide/cache) for details.
+
+---
+
+## docs
+
+OpenAPI documentation configuration, controls how routes are displayed in automatically generated API documentation.
+
+### RouteDocsConfig
+
+```typescript
+interface RouteDocsConfig {
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  operationId?: string;
+  hidden?: boolean;
+  deprecated?: boolean;
+  security?: Array<Record<string, string[]>>;
+  extensions?: Record<string, unknown>;
+  responses?: Record<string | number, ResponseConfig>;
+}
+```
+
+### Field description
+
+| Field | Type | Default Value | Description |
+| ------------- | ---------- | ------------------- | -------------------------- |
+| `summary` | `string` | — | One sentence summary of the interface |
+| `description` | `string` | — | Detailed description of the interface (supports Markdown) |
+| `tags` | `string[]` | Inferred from route file path | Tag grouping |
+| `operationId` | `string` | Automatic inference | Operation ID (globally unique) |
+| `hidden` | `boolean` | `false` | Whether to hide from the document |
+| `deprecated` | `boolean` | `false` | Whether to mark it as deprecated |
+| `security` | `array` | Inference from middlewares | Security scheme overrides |
+| `extensions` | `object` | — | Custom `x-*` extension fields |
+| `responses` | `object` | — | response definition |
+
+### Complete example
+
+```typescript
+app.post(
+  "/users",
+  {
+    validate: {
+      body: {
+        name: "string:1-50",
+        email: "email",
+        role: "enum:admin,user?",
+      },
+    },
+    middlewares: ["auth"],
+    docs: {
+      summary: "Create user",
+      description: "Create a new user account. Requires administrator privileges.",
+      tags: ["User Management"],
+      operationId: "createUser",
+      responses: {
+        201: {
+          description: "User created successfully",
+          schema: {
+            id: "string",
+            name: "string",
+            email: "email",
+            createdAt: "date",
+          },
+          example: {
+            id: "usr_abc123",
+            name: "Alice",
+            email: "alice@example.com",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        },
+        422: { description: "Request parameter verification failed" },
+        401: { description: "Not authenticated" },
+        409: { description: "Email has been registered" },
+      },
+    },
+  },
+  handler,
+);
+```
+
+### operationId automatically inferred
+
+When `operationId` is not specified, the framework is automatically generated based on the HTTP method and path:
+
+| method + path | inferred operationId |
+| ------------------- | ------------------ |
+| `GET /users` | `getUsers` |
+| `POST /users` | `createUsers` |
+| `GET /users/:id` | `getUsersById` |
+| `PUT /users/:id` | `updateUsersById` |
+| `DELETE /users/:id` | `deleteUsersById` |
+
+### Hidden route
+
+```typescript
+app.get(
+  "/internal/debug",
+  {
+    docs: { hidden: true },
+  },
+  handler,
+);
+```
+
+### Mark obsolete
+
+```typescript
+app.get(
+  "/v1/users",
+  {
+    docs: {
+      deprecated: true,
+      description: "Deprecated, please use /v2/users",
+    },
+  },
+  handler,
+);
+```
+
+### Security solution coverage
+
+By default, security schemes are automatically inferred from `middlewares` (map via `config.openapi.guardSecurityMap`). Can be manually overridden:
+
+```typescript
+//Explicit declaration requires bearerAuth
+app.get(
+  "/secure",
+  {
+    docs: {
+      security: [{ bearerAuth: [] }],
+    },
+  },
+  handler,
+);
+
+// Declare no authentication required (even if there are global security requirements)
+app.get(
+  "/public",
+  {
+    docs: {
+      security: [],
+    },
+  },
+  handler,
+);
+```
+
+### Response definition
+
+```typescript
+interface ResponseConfig {
+  description?: string;
+  schema?: Record<string, unknown> | string;
+  contentType?: string;
+  example?: unknown;
+  examples?: Record<
+    string,
+    {
+      summary?: string;
+      description?: string;
+      value: unknown;
+    }
+  >;
+  headers?: Record<
+    string,
+    {
+      description?: string;
+      schema?: { type: string };
+    }
+  >;
+}
+```
+
+**Multi-example response**:
+
+```typescript
+docs: {
+  responses: {
+    200: {
+      description: 'Query successful',
+      examples: {
+        admin: {
+          summary: 'Administrator user',
+          value: { id: '1', name: 'Admin', role: 'admin' },
+        },
+        normal: {
+          summary: 'Ordinary user',
+          value: { id: '2', name: 'User', role: 'user' },
+        },
+      },
+    },
+  },
+}
+```
+
+**Custom response header**:
+
+```typescript
+docs: {
+  responses: {
+    200: {
+      description: 'Success',
+      headers: {
+        'X-RateLimit-Remaining': {
+          description: 'Number of remaining requests',
+          schema: { type: 'integer' },
+        },
+      },
+    },
+  },
+}
+```
+
+---
+
+## multipart
+
+Route-level file upload configuration. After configuration, the OpenAPI generator automatically outputs `multipart/form-data` requestBody, without the need to manually write `docs.requestBody`.
+
+```typescript
+app.post(
+  "/upload/avatar",
+  {
+    middlewares: ["upload"],
+    multipart: {
+      files: {
+        avatar: { description: "Avatar image (JPEG/PNG)", required: true },
+        thumbnail: "optional thumbnail",
+      },
+    },
+    docs: { summary: "Upload avatar", tags: ["User"] },
+  },
+  async (req, res) => {
+    const file = req.files?.find((f) => f.fieldname === "avatar");
+    res.json({ filename: file?.filename, size: file?.size });
+  },
+);
+```
+
+| Subfield | Type | Description |
+| -------------------------- | ---------------------------------- | ----------------------------------------------- |
+| `files` | `Record<string, string \| object>` | File field mapping; the string value is the description, and the object can be configured with more |
+| `files[].description` | `string` | Field description (for OpenAPI documentation) |
+| `files[].required` | `boolean` | Whether it is required (default `false`) |
+
+:::warning note
+`multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes priority in OpenAPI document generation.
+:::
+
+---
+
+## override
+
+Route-level configuration override, overrides the global configuration in `src/config/default.ts`.
+
+```typescript
+app.post(
+  "/upload",
+  {
+    override: {
+      maxBodySize: "50mb", // Override global body size limit
+      rateLimit: { max: 5, window: 60 }, // Tighten the current limit
+      timeout: 30000, // timeout 30 seconds
+    },
+  },
+  handler,
+);
+
+app.get(
+  "/public/data",
+  {
+    override: {
+      rateLimit: false, // Completely disable rate limiting
+      cors: {
+        origins: ["*"],
+        credentials: false,
+      },
+    },
+  },
+  handler,
+);
+```
+
+| Field | Type | Description |
+| ------------- | ------------------ | ---------------------------- |
+| `rateLimit` | `object \| false` | Route-level current limiting configuration, `false` is disabled |
+| `timeout` | `number` | Request timeout (milliseconds) |
+| `maxBodySize` | `string \| number` | Maximum request body size |
+| `cors` | `VextCorsConfig` | Route-level CORS configuration |
+
+---
+
+## RouteDefinition
+
+The route definition object returned by `defineRoutes()` (internal data structure, usually does not need to be manipulated directly).
+
+```typescript
+interface RouteDefinition {
+  readonly routes: RouteRecord[];
+  sourceFile: string;
+  register(
+    adapter: VextAdapter,
+    prefix: string,
+    middlewareDefs: Map<string, VextMiddleware>,
+    globalMiddlewares: VextMiddleware[],
+  ): void;
+}
+```
+
+| Field | Type | Description |
+| -------------------------- | --------------- | ------------------------------------- |
+| `routes` | `RouteRecord[]` | List of collected route records |
+| `sourceFile` | `string` | Source file path (injected by router-loader) |
+| `register()` | `Function` | Register the route with the underlying adapter |
+
+### RouteRecord
+
+Internal data structure of a single route:
+
+```typescript
+interface RouteRecord {
+  method: string; // HTTP method (uppercase)
+  path: string; // relative subpath
+  options: RouteOptions; // Routing configuration
+  handler: VextHandler; //Route processing function
+}
+```
+
+---
+
+## VextHandler
+
+Type definition of route processing function:
+
+```typescript
+type VextHandler = (
+  req: VextRequest,
+  res: VextResponse,
+) => Promise<void> | void;
+```
+
+Handler is the last link in the middleware chain and does not call `next()`.
+
+### Basic example
+
+```typescript
+const handler: VextHandler = async (req, res) => {
+  const users = await app.services.user.findAll();
+  res.json(users);
+};
+```
+
+### Access App Capabilities
+
+In the factory callback of `defineRoutes`, access `app` through the closure:
+
+```typescript
+export default defineRoutes((app) => {
+  app.get("/users/:id", async (req, res) => {
+    const { id } = req.params;
+    const user = await app.services.user.findById(id);
+
+    if (!user) {
+      app.throw(404, "User does not exist");
+    }
+
+    app.logger.info({ userId: id }, "Query user successfully");
+    res.json(user);
+  });
+});
+```
+
+If you want to actively return clear HTTP errors such as `404`, `401`, `409`, etc., you should use `app.throw(...)` first. The normal `throw new Error("...")` will also be caught by the framework, but it represents an unknown runtime exception and will eventually go down the 500 error path; field-level validation failures should use `VextValidationError`.
+
+---
+
+## Multiple route registration
+
+Multiple routes can be registered in a routing file:
+
+```typescript
+// src/routes/users.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  // GET /users/list
+  app.get(
+    "/list",
+    {
+      validate: {
+        query: { page: "number:1-", limit: "number:1-100" },
+      },
+      docs: { summary: "User List" },
+    },
+    async (req, res) => {
+      const { page, limit } = req.valid("query");
+      const result = await app.services.user.findAll({ page, limit });
+      res.json(result);
+    },
+  );
+
+  // GET /users/:id
+  app.get(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+      },
+      docs: { summary: "Get user details" },
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const user = await app.services.user.findById(id);
+      if (!user) app.throw(404, "User does not exist");
+      res.json(user);
+    },
+  );
+
+  // POST /users
+  app.post(
+    "/",
+    {
+      validate: {
+        body: { name: "string:1-50", email: "email" },
+      },
+      middlewares: ["auth"],
+      docs: { summary: "Create user" },
+    },
+    async (req, res) => {
+      const data = req.valid("body");
+      const user = await app.services.user.create(data);
+      res.json(user, 201);
+    },
+  );
+
+  // PUT /users/:id
+  app.put(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+        body: { name: "string:1-50?", email: "email?" },
+      },
+      middlewares: ["auth"],
+      docs: { summary: "Update user" },
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const data = req.valid("body");
+      const user = await app.services.user.update(id, data);
+      res.json(user);
+    },
+  );
+
+  // DELETE /users/:id
+  app.delete(
+    "/:id",
+    {
+      validate: {
+        param: { id: "string:1-" },
+      },
+      middlewares: ["auth"],
+      docs: { summary: "Delete user" },
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      await app.services.user.delete(id);
+      res.status(204).json(null);
+    },
+  );
+});
+```
+
+---
+
+## Notes
+
+### Do not call HTTP methods directly on the app
+
+The `app` returned by `defineRoutes` is a collector, not a real application instance. Calling the HTTP method directly on the application instance throws an error:
+
+```typescript
+// ❌ Incorrect usage
+import { createApp } from "vextjs";
+const { app } = createApp(config);
+app.get("/hello", handler); // Throw an error!
+
+// ✅ Correct usage
+import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/hello", handler); // OK
+});
+```
+
+### The routing file must be default export
+
+```typescript
+// ✅ Correct
+export default defineRoutes((app) => { ... });
+
+// ❌ Error — router-loader not recognized
+export const routes = defineRoutes((app) => { ... });
+```
+
+### Routing path normalization
+
+The framework automatically handles the following path edge cases:
+
+| prefix | subpath | final path |
+| ------------ | --------- | ------------- |
+| `/users` | `/list` | `/users/list` |
+| `/users` | `/` | `/users` |
+| `/users` | `/:id` | `/users/:id` |
+| `/` | `/` | `/` |
+| `/` | `/health` | `/health` |
+| `/api/users` | `` | `/api/users` |

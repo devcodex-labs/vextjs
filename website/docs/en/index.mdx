@@ -1,0 +1,228 @@
+---
+pageType: custom
+title: VextJS
+description: High-performance Node.js API framework with native routing, three-tier hot reload, schema-dsl validation, OpenAPI, and production runtime features.
+---
+
+export const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+export const docsHref = (path) => `${basePath}${path}`;
+
+<main className="vext-home">
+  <section className="vext-hero">
+    <div className="vext-hero__inner">
+      <div className="vext-hero__content">
+        <p className="vext-hero__eyebrow">VEXTJS 0.3.24 / NATIVE API RUNTIME</p>
+        <h1>VextJS</h1>
+        <p className="vext-hero__lead">
+          A Node.js framework built for high-performance RESTful APIs. Native fast path, three-tier
+          server-side hot reload, CLI, validation, OpenAPI, and production runtime capabilities are
+          ready in one project model.
+        </p>
+        <div className="vext-actions">
+          <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>Quick start</a>
+          <a className="vext-button vext-button--ghost" href={docsHref("/guide/hot-reload.html")}>Three-tier reload</a>
+          <a className="vext-button vext-button--ghost" href={docsHref("/benchmark.html")}>Benchmark</a>
+          <a className="vext-button vext-button--ghost" href="https://github.com/vextjs/vext">GitHub</a>
+        </div>
+        <div className="vext-trust-row">
+          <div className="vext-trust-item">
+            <strong>T1</strong>
+            <span>Route code hot swap in 1-10 ms</span>
+          </div>
+          <div className="vext-trust-item">
+            <strong>T2</strong>
+            <span>Service/model structural reload in 5-50 ms</span>
+          </div>
+          <div className="vext-trust-item">
+            <strong>T3</strong>
+            <span>Config/plugin cold restart in 1-3 s</span>
+          </div>
+          <div className="vext-trust-item">
+            <strong>Native</strong>
+            <span>http.createServer fast path</span>
+          </div>
+        </div>
+      </div>
+
+      <aside className="vext-console" aria-label="Vext project creation console">
+        <div className="vext-console__bar">
+          <div className="vext-console__dots"><span></span><span></span><span></span></div>
+          <span>create</span>
+        </div>
+        <div className="vext-console__body">
+          <div className="vext-console__line vext-console__line--typing"><span className="vext-console__prompt">$</span><span className="vext-console__typed" data-vext-typewriter="npx vextjs create api">npx vextjs create api</span></div>
+          <div className="vext-console__line"><span className="vext-console__ok">create</span><span>vext project "api"</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">preset</span><span>TypeScript / native adapter</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>routes / services / config</span></div>
+          <div className="vext-console__line"><span className="vext-console__route">deps</span><span>install vextjs and dev scripts</span></div>
+          <div className="vext-console__line"><span className="vext-console__ok">done</span><span>Project created successfully</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">next</span><span>cd api && npm run dev</span></div>
+          <div className="vext-console__metrics">
+            <div className="vext-console__metric"><strong>1 cmd</strong><span>create project</span></div>
+            <div className="vext-console__metric"><strong>5 adapters</strong><span>native default</span></div>
+            <div className="vext-console__metric"><strong>TS ready</strong><span>typed API</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <nav className="vext-path-strip" aria-label="Vext documentation paths">
+    <a href={docsHref("/guide/quick-start.html")}><strong>Start</strong><span>From scaffold to the first JSON API</span></a>
+    <a href={docsHref("/guide/hot-reload.html")}><strong>Reload</strong><span>Understand the T1/T2/T3 server-side reload model</span></a>
+    <a href={docsHref("/benchmark.html")}><strong>Perf</strong><span>Reproduce Native fast path benchmark data</span></a>
+    <a href={docsHref("/guide/deployment.html")}><strong>Ship</strong><span>Deploy, gracefully shut down, rolling restart, and cluster</span></a>
+    <a href={docsHref("/api/config.html")}><strong>API</strong><span>Config, routes, context, plugins, and testing tools</span></a>
+  </nav>
+
+  <section className="vext-section">
+    <div className="vext-section__header">
+      <p className="vext-kicker">Hot Reload Pipeline</p>
+      <h2 className="vext-title">Three-tier server-side hot reload, so API development waits for fewer restarts.</h2>
+      <p className="vext-copy">Vext chooses a reload strategy by change boundary: replace what can be hot-swapped, rebuild only the affected structure when needed, and cold start only when runtime boundaries change.</p>
+    </div>
+    <div className="vext-reload">
+      <article className="vext-tier-card vext-tier-card--active">
+        <span className="vext-capability__mark">T1 / code</span>
+        <h3>Route code hot swap</h3>
+        <p>Business code such as <code>src/routes/</code> uses a millisecond-level replacement path while the dev service process and connection state stay alive.</p>
+        <strong>1-10 ms</strong>
+      </article>
+      <article className="vext-tier-card">
+        <span className="vext-capability__mark">T2 / struct</span>
+        <h3>Service and model structural reload</h3>
+        <p>Changes in services, models, locale resources, and similar structures trigger local reloads instead of pushing every edit to a cold restart.</p>
+        <strong>5-50 ms</strong>
+      </article>
+      <article className="vext-tier-card">
+        <span className="vext-capability__mark">T3 / cold</span>
+        <h3>Runtime-boundary cold start</h3>
+        <p>Configuration, plugin, and middleware changes perform a cold start so runtime boundaries are rebuilt correctly without sacrificing safety.</p>
+        <strong>1-3 s</strong>
+      </article>
+    </div>
+  </section>
+
+  <section className="vext-section">
+    <div className="vext-section__header">
+      <p className="vext-kicker">Performance Stack</p>
+      <h2 className="vext-title">Performance is not a wrapper phrase; it is a set of engineering choices from the HTTP path to production guardrails.</h2>
+      <p className="vext-copy">The homepage keeps the framework's real engineering surface visible: Native fast path, route-core, schema/OpenAPI, CLI, and production delivery capabilities.</p>
+    </div>
+    <div className="vext-capability-grid">
+      <article className="vext-capability">
+        <span className="vext-capability__mark">fast path</span>
+        <h3>Native high-performance path</h3>
+        <p>The Native Adapter stays close to Node.js HTTP and keeps routing lightweight with route-core.</p>
+      </article>
+      <article className="vext-capability">
+        <span className="vext-capability__mark">router</span>
+        <h3>API-oriented route core</h3>
+        <p>File routes, three-part route definitions, and request context are organized around RESTful API services.</p>
+      </article>
+      <article className="vext-capability">
+        <span className="vext-capability__mark">schema</span>
+        <h3>Validation and OpenAPI</h3>
+        <p>Declare parameter rules in route options so request validation and API documentation share one definition.</p>
+      </article>
+      <article className="vext-capability">
+        <span className="vext-capability__mark">cli</span>
+        <h3>Ready-to-use CLI</h3>
+        <p>Create, develop, build, and start commands are gathered under the framework entry, so new projects can begin immediately.</p>
+      </article>
+      <article className="vext-capability">
+        <span className="vext-capability__mark">hooks</span>
+        <h3>Runtime lifecycle</h3>
+        <p>request, validation, response, service, fetch, and related hooks support plugins and cross-cutting logic.</p>
+      </article>
+      <article className="vext-capability">
+        <span className="vext-capability__mark">safe ship</span>
+        <h3>Production safety capabilities</h3>
+        <p>Rate limiting, structured errors, graceful shutdown, heartbeat monitoring, and multi-process deployment complete the delivery path.</p>
+      </article>
+    </div>
+  </section>
+
+  <section className="vext-section">
+    <div className="vext-matrix">
+      <div className="vext-matrix__panel">
+        <p className="vext-kicker">Runtime Flexibility</p>
+        <h2 className="vext-title">Adapters are flexibility, not the homepage's main character.</h2>
+        <p>Vext's main line is the framework's own API performance and developer experience. Adapters connect different HTTP ecosystems when needed, making migration and integration steadier.</p>
+      </div>
+      <div className="vext-adapter-list">
+        <div className="vext-adapter-row"><strong>Native</strong><span>Native HTTP fast path for minimal dependencies and throughput-focused services.</span><em>core</em></div>
+        <div className="vext-adapter-row"><strong>Hono</strong><span>Lightweight modern ecosystem for edge scenarios and middleware composition.</span><em>lean</em></div>
+        <div className="vext-adapter-row"><strong>Fastify</strong><span>Mature high-performance ecosystem for complex plugin scenarios.</span><em>plugin</em></div>
+        <div className="vext-adapter-row"><strong>Express</strong><span>Compatible with migration from traditional Node.js projects.</span><em>classic</em></div>
+        <div className="vext-adapter-row"><strong>Koa</strong><span>Fits onion-model flow and reuse of existing Koa code.</span><em>flow</em></div>
+      </div>
+    </div>
+  </section>
+
+  <section className="vext-section">
+    <div className="vext-production">
+      <div>
+        <p className="vext-kicker">Production Ready</p>
+        <h2 className="vext-title">Secure, stable, shippable, and not stuck at the demo layer.</h2>
+        <p className="vext-copy">The Vext documentation entry should let teams quickly judge whether it can enter real server-side projects: rate limiting, graceful shutdown, rolling restart, cluster, i18n, structured errors, and OpenAPI all need to be visible.</p>
+      </div>
+      <div className="vext-production__signals">
+        <div className="vext-signal"><strong>Rate Limit</strong><span>Built-in rate limiting reduces abuse risk.</span></div>
+        <div className="vext-signal"><strong>Graceful</strong><span>The shutdown flow protects connections and requests.</span></div>
+        <div className="vext-signal"><strong>Cluster</strong><span>Multi-process mode and heartbeats fit production supervision.</span></div>
+        <div className="vext-signal"><strong>Errors</strong><span>Business codes, i18n, and JSON-safe details.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section className="vext-section">
+    <div className="vext-section__header">
+      <p className="vext-kicker">Next Steps</p>
+      <h2 className="vext-title">Jump directly into the engineering path you want to verify.</h2>
+    </div>
+    <div className="vext-next">
+      <a href={docsHref("/guide/quick-start.html")}><strong>Create the first project</strong><span>Use npx vextjs create to scaffold a TypeScript project.</span></a>
+      <a href={docsHref("/guide/hot-reload.html")}><strong>Verify hot reload</strong><span>Review T1/T2/T3 trigger boundaries and dev server output.</span></a>
+      <a href={docsHref("/guide/deployment.html")}><strong>Prepare production deployment</strong><span>Review build, start, graceful shutdown, and multi-process strategies.</span></a>
+      <a href={docsHref("/benchmark.html")}><strong>Reproduce performance benchmarks</strong><span>Validate throughput in different scenarios with repository benchmark scripts.</span></a>
+    </div>
+  </section>
+
+  <footer className="vext-footer">
+    <div className="vext-footer__inner">
+      <div className="vext-footer__brand">
+        <strong>VextJS</strong>
+        <span>High-performance Node.js API runtime.</span>
+      </div>
+      <div className="vext-footer__grid">
+        <div>
+          <h2>Vext</h2>
+          <a href={docsHref("/guide/introduction.html")}>Introduction</a>
+          <a href={docsHref("/guide/quick-start.html")}>Quick start</a>
+          <a href={docsHref("/guide/hot-reload.html")}>Hot reload</a>
+        </div>
+        <div>
+          <h2>Ecosystem</h2>
+          <a href="https://vextjs.github.io/schema-dsl/">schema-dsl</a>
+          <a href="https://vextjs.github.io/monSQLize/">monSQLize</a>
+          <a href="https://vextjs.github.io/flex-rate-limit/">flex-rate-limit</a>
+          <a href="https://vextjs.github.io/permission-core/">permission-core</a>
+        </div>
+        <div>
+          <h2>Resources</h2>
+          <a href={docsHref("/api/config.html")}>API Reference</a>
+          <a href={docsHref("/examples/hello-world.html")}>Examples</a>
+          <a href={docsHref("/benchmark.html")}>Benchmark</a>
+        </div>
+        <div>
+          <h2>Version</h2>
+          <a href="https://github.com/vextjs/vext/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="https://github.com/vextjs/vext">GitHub</a>
+          <a href="https://github.com/vextjs">GitHub Organization</a>
+          <span>Apache-2.0</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</main>

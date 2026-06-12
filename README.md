@@ -344,7 +344,7 @@ app.throw({
 
 `details` is sanitized before it is written to the JSON response, so circular references and unsupported values cannot break error serialization.
 
-See the full guide in [Error Handling](https://vextjs.github.io/guide/error-handling) and the API reference in [`app.throw`](https://vextjs.github.io/api/app#appthrowstatus-message-paramsorcode-codeordetails).
+See the full guide in [Error Handling](https://vextjs.github.io/guide/error-handling) and the [App API](https://vextjs.github.io/api/app).
 
 For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
 
@@ -442,7 +442,7 @@ app.hooks.on("service:beforeCall", ({ service, method }) => {
 
 Available lifecycle families include request/route, validation, handler, response, error, fetch/proxy, service, cache, plugin, routes, OpenAPI, server, ready, and close. `app.hooks` is a reserved app property and cannot be overwritten with `app.extend("hooks", ...)`.
 
-See the full guide in [Runtime Hooks](https://vextjs.github.io/guide/hooks) and the API reference in [`app.hooks`](https://vextjs.github.io/api/app#apphooks).
+See the full guide in [Runtime Hooks](https://vextjs.github.io/guide/hooks) and the [App API](https://vextjs.github.io/api/app).
 
 ## Adapters
 

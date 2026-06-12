@@ -283,7 +283,7 @@ function VextEcosystemMenu() {
         type="button"
         aria-haspopup="true"
         aria-label="Open VextJS ecosystem navigation"
-        title="生态"
+        title="Ecosystem"
       >
         <span className="vext-ecosystem-trigger__grid" aria-hidden="true">
           <span />

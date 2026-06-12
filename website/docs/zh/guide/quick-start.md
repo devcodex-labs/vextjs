@@ -118,7 +118,8 @@ export default defineBootstrapConfig({
 });
 ```
 
-适合：数据库、Nacos 启动期配置、密钥 patch。  
+适合：数据库、Nacos 启动期配置、密钥 patch。
+
 不适合：APM / OpenTelemetry 这类需要更早执行的 `preload` 场景。
 
 ### 5. 编写路由

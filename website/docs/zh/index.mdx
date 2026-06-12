@@ -4,8 +4,8 @@ title: VextJS
 description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。
 ---
 
-export const basePath = "/vext";
-export const docsHref = (path) => `${basePath}${path}`;
+export const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+export const docsHref = (path) => `${basePath}/zh${path}`;
 
 <main className="vext-home">
   <section className="vext-hero">

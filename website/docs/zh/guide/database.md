@@ -973,7 +973,7 @@ Model.redefine("items", newDefinition)
 :::
 
 :::info 框架内部机制
-`Model.redefine()` / `Model.undefine()` 是 monSQLize v1.1.8 提供的原生 API，由 vext 框架在热重载流程中自动调用，用户无需手动调用。
+`Model.redefine()` / `Model.undefine()` 是 monSQLize 提供的原生 Model API，由 vext 框架在热重载流程中自动调用，用户无需手动调用。
 :::
 
 ## 优雅关闭
