@@ -3,6 +3,7 @@
 ## Changed
 
 - Upgraded runtime validation and database dependencies to `schema-dsl@2.0.9` and `monsqlize@2.0.3`, keeping the existing schema/OpenAPI and MonSQLize plugin contracts intact.
+- Scoped the benchmark dependency tree to `hyperid@4.0.0` under `autocannon`, removing the vulnerable transitive `uuid` package from the dev audit surface.
 - Redesigned the Rspress documentation site theme, homepage, navigation, favicon and public logo assets around the Vext runtime-console visual direction.
 - Refocused the documentation homepage on Native performance, three-tier server hot reload, ecosystem links, footer navigation and dark-theme readability.
 - Enhanced the documentation site ecosystem menu, GitHub organization footer link and lightweight motion background with pointer-following scan effects.
