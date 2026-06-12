@@ -19,6 +19,7 @@
  * @see 06b-error.md §1.1.1（schema-dsl 与 vext 的依赖方向）
  */
 
+import { createRequire } from "node:module";
 import { dsl, validate as schemaDslValidate, I18nError } from "schema-dsl";
 import type {
   JSONSchema,
@@ -30,6 +31,16 @@ import type {
   DslConfigOptions,
   ErrorMessages,
 } from "schema-dsl";
+
+const requireFromHere = createRequire(import.meta.url);
+let cjsSchemaDsl:
+  | {
+      dsl?: {
+        config?: (options: Parameters<typeof dsl.config>[0]) => void;
+      };
+    }
+  | null
+  | undefined;
 
 // ── 重导出类型（vext 内部模块可直接使用）────────────────────────
 
@@ -154,6 +165,77 @@ function validate<T = unknown>(
   return schemaDslValidate<T>(schema, data, options);
 }
 
+function getI18nParams(
+  paramsOrLocale?: Record<string, unknown> | string,
+): Record<string, unknown> | undefined {
+  if (
+    paramsOrLocale &&
+    typeof paramsOrLocale === "object" &&
+    !Array.isArray(paramsOrLocale)
+  ) {
+    return paramsOrLocale;
+  }
+  return undefined;
+}
+
+function getParamValue(
+  params: Record<string, unknown>,
+  path: string,
+): unknown {
+  let current: unknown = params;
+  for (const segment of path.split(".")) {
+    if (
+      current &&
+      typeof current === "object" &&
+      segment in (current as Record<string, unknown>)
+    ) {
+      current = (current as Record<string, unknown>)[segment];
+      continue;
+    }
+    return undefined;
+  }
+  return current;
+}
+
+function renderLegacyMustacheParams(
+  message: string,
+  params: Record<string, unknown>,
+): string {
+  return message.replace(/{{\s*([A-Za-z_$][\w$.-]*)\s*}}/g, (match, key) => {
+    const value = getParamValue(params, key);
+    return value === undefined ? match : String(value);
+  });
+}
+
+function getCjsSchemaDsl(): NonNullable<typeof cjsSchemaDsl> | null {
+  if (cjsSchemaDsl !== undefined) {
+    return cjsSchemaDsl;
+  }
+
+  try {
+    cjsSchemaDsl = requireFromHere("schema-dsl") as NonNullable<
+      typeof cjsSchemaDsl
+    >;
+  } catch {
+    cjsSchemaDsl = null;
+  }
+  return cjsSchemaDsl;
+}
+
+function configureCjsSchemaDsl(
+  options: Parameters<typeof dsl.config>[0],
+): void {
+  const cjs = getCjsSchemaDsl();
+  if (!cjs) {
+    return;
+  }
+
+  const cjsConfig = cjs?.dsl?.config;
+  if (typeof cjsConfig === "function" && cjs.dsl !== dsl) {
+    cjsConfig(options);
+  }
+}
+
 /**
  * 创建 I18nError 实例（不抛出）
  *
@@ -192,12 +274,20 @@ function createI18nError(
   statusCode?: number,
   locale?: string,
 ): I18nError {
-  return I18nError.create(
+  const error = I18nError.create(
     code,
     paramsOrLocale as Record<string, any> | string | undefined,
     statusCode,
     locale,
   );
+  const params = getI18nParams(paramsOrLocale);
+  if (params) {
+    const renderedMessage = renderLegacyMustacheParams(error.message, params);
+    if (renderedMessage !== error.message) {
+      error.message = renderedMessage;
+    }
+  }
+  return error;
 }
 
 /**
@@ -223,6 +313,7 @@ function createI18nError(
  */
 function configure(options: Parameters<typeof dsl.config>[0]): void {
   dsl.config(options);
+  configureCjsSchemaDsl(options);
 }
 
 // ── 统一导出 ────────────────────────────────────────────────

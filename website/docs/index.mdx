@@ -4,6 +4,9 @@ title: VextJS
 description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。
 ---
 
+export const basePath = "/vext";
+export const docsHref = (path) => `${basePath}${path}`;
+
 <main className="vext-home">
   <section className="vext-hero">
     <div className="vext-hero__inner">
@@ -14,9 +17,9 @@ description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 N
           为高性能 RESTful API 而生的 Node.js 框架。Native fast path、三段式服务端热重载、CLI、校验、OpenAPI 与生产运行能力在同一套工程模型里开箱即用。
         </p>
         <div className="vext-actions">
-          <a className="vext-button vext-button--primary" href="/vext/guide/quick-start.html">快速开始</a>
-          <a className="vext-button vext-button--ghost" href="/vext/guide/hot-reload.html">三段热重载</a>
-          <a className="vext-button vext-button--ghost" href="/vext/benchmark.html">Benchmark</a>
+          <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>快速开始</a>
+          <a className="vext-button vext-button--ghost" href={docsHref("/guide/hot-reload.html")}>三段热重载</a>
+          <a className="vext-button vext-button--ghost" href={docsHref("/benchmark.html")}>Benchmark</a>
           <a className="vext-button vext-button--ghost" href="https://github.com/vextjs/vext">GitHub</a>
         </div>
         <div className="vext-trust-row">
@@ -63,11 +66,11 @@ description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 N
   </section>
 
   <nav className="vext-path-strip" aria-label="Vext documentation paths">
-    <a href="/vext/guide/quick-start.html"><strong>Start</strong><span>从脚手架到第一个 JSON API</span></a>
-    <a href="/vext/guide/hot-reload.html"><strong>Reload</strong><span>理解 T1/T2/T3 三段式服务端热重载</span></a>
-    <a href="/vext/benchmark.html"><strong>Perf</strong><span>复现 Native fast path 与 benchmark 数据</span></a>
-    <a href="/vext/guide/deployment.html"><strong>Ship</strong><span>部署、优雅关闭、Rolling Restart 与 Cluster</span></a>
-    <a href="/vext/api/config.html"><strong>API</strong><span>配置、路由、上下文、插件与测试工具</span></a>
+    <a href={docsHref("/guide/quick-start.html")}><strong>Start</strong><span>从脚手架到第一个 JSON API</span></a>
+    <a href={docsHref("/guide/hot-reload.html")}><strong>Reload</strong><span>理解 T1/T2/T3 三段式服务端热重载</span></a>
+    <a href={docsHref("/benchmark.html")}><strong>Perf</strong><span>复现 Native fast path 与 benchmark 数据</span></a>
+    <a href={docsHref("/guide/deployment.html")}><strong>Ship</strong><span>部署、优雅关闭、Rolling Restart 与 Cluster</span></a>
+    <a href={docsHref("/api/config.html")}><strong>API</strong><span>配置、路由、上下文、插件与测试工具</span></a>
   </nav>
 
   <section className="vext-section">
@@ -177,10 +180,10 @@ description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 N
       <h2 className="vext-title">直接进入你要验证的工程路径。</h2>
     </div>
     <div className="vext-next">
-      <a href="/vext/guide/quick-start.html"><strong>创建第一个项目</strong><span>使用 npx vextjs create 创建 TypeScript 项目。</span></a>
-      <a href="/vext/guide/hot-reload.html"><strong>验证热重载体验</strong><span>查看 T1/T2/T3 触发边界和 dev server 输出。</span></a>
-      <a href="/vext/guide/deployment.html"><strong>准备生产部署</strong><span>查看构建、启动、优雅关闭与多进程策略。</span></a>
-      <a href="/vext/benchmark.html"><strong>复现性能基准</strong><span>基于仓库 benchmark 脚本复核不同场景吞吐。</span></a>
+      <a href={docsHref("/guide/quick-start.html")}><strong>创建第一个项目</strong><span>使用 npx vextjs create 创建 TypeScript 项目。</span></a>
+      <a href={docsHref("/guide/hot-reload.html")}><strong>验证热重载体验</strong><span>查看 T1/T2/T3 触发边界和 dev server 输出。</span></a>
+      <a href={docsHref("/guide/deployment.html")}><strong>准备生产部署</strong><span>查看构建、启动、优雅关闭与多进程策略。</span></a>
+      <a href={docsHref("/benchmark.html")}><strong>复现性能基准</strong><span>基于仓库 benchmark 脚本复核不同场景吞吐。</span></a>
     </div>
   </section>
 
@@ -193,9 +196,9 @@ description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 N
       <div className="vext-footer__grid">
         <div>
           <h2>Vext</h2>
-          <a href="/vext/guide/introduction.html">介绍</a>
-          <a href="/vext/guide/quick-start.html">快速开始</a>
-          <a href="/vext/guide/hot-reload.html">热重载</a>
+          <a href={docsHref("/guide/introduction.html")}>介绍</a>
+          <a href={docsHref("/guide/quick-start.html")}>快速开始</a>
+          <a href={docsHref("/guide/hot-reload.html")}>热重载</a>
         </div>
         <div>
           <h2>生态</h2>
@@ -206,9 +209,9 @@ description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 N
         </div>
         <div>
           <h2>资源</h2>
-          <a href="/vext/api/config.html">API 参考</a>
-          <a href="/vext/examples/hello-world.html">示例</a>
-          <a href="/vext/benchmark.html">Benchmark</a>
+          <a href={docsHref("/api/config.html")}>API 参考</a>
+          <a href={docsHref("/examples/hello-world.html")}>示例</a>
+          <a href={docsHref("/benchmark.html")}>Benchmark</a>
         </div>
         <div>
           <h2>版本</h2>

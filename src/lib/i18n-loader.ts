@@ -23,7 +23,7 @@ import type { VextLogger } from "../types/app.js";
  *   ├── ja-JP.ts         # 可选，按需添加
  *   └── ...
  *
- * 子目录模式（模式 B：schema-dsl ≥ v1.2.3，多人协作）：
+ * 子目录模式（模式 B：schema-dsl 2.x，多人协作）：
  *   src/locales/
  *   ├── core/            # 公共 code 段（框架层维护）
  *   │   ├── zh-CN.js
@@ -62,7 +62,7 @@ import type { VextLogger } from "../types/app.js";
  *   通过 schemaAdapter.configure({ i18n: { locales: { ... } } }) 注册语言包。
  *   schema-dsl 内部使用 dsl.config() 管理 i18n 配置。
  *   注册后，I18nError.create('user.not_found', 'zh-CN') 即可获取翻译后的消息。
- *   schema-dsl v1.2.3+ 支持 dsl.config({ i18n: path }) 自动递归扫描子目录，
+ *   schema-dsl 2.x 支持 dsl.config({ i18n: path }) 自动递归扫描子目录，
  *   同语言文件自动合并，支持 strict 模式检测 key 冲突。
  *
  * 与 defaultThrow 的关系：

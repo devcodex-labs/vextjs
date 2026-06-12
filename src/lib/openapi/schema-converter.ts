@@ -4,7 +4,7 @@
  * 将 vext 路由 options 中的 schema-dsl DSL 字符串转换为标准 JSON Schema 格式，
  * 供 OpenAPIGenerator 嵌入 OpenAPI 3.0 文档的 parameters / requestBody / responses。
  *
- * ⚡ v2.1 重构：使用 schema-dsl v1.2.5 的 toJsonSchema() 替代 toSchema() + 手动清理，
+ * ⚡ v2.1 重构：使用 schema-dsl 的 toJsonSchema() 替代 toSchema() + 手动清理，
  * schema-dsl 现在直接输出纯净 JSON Schema（无 _required / _customMessages 等内部标记），
  * vext 无需再维护 cleanInternalMarkers() 和 SCHEMA_DSL_INTERNAL_KEYS。
  * 仅保留 OpenAPI 特有的 description / example 富化作为后处理步骤。
@@ -29,7 +29,7 @@ import { schemaAdapter } from "../schema-adapter.js";
 import type { DslBuilder } from "../schema-adapter.js";
 import type { JsonSchema, ConvertResult } from "./types.js";
 
-// 注意：schema-dsl v1.2.5+ 的 DslBuilder.toJsonSchema() 已内置内部标记清理，
+// 注意：schema-dsl 的 DslBuilder.toJsonSchema() 已内置内部标记清理，
 // vext 不再需要维护 SCHEMA_DSL_INTERNAL_KEYS 或 cleanInternalMarkers()。
 
 /**
@@ -165,7 +165,7 @@ export class SchemaConverter {
     // ── 委托 schema-dsl 进行核心转换 ────────────────────────
     // compileField 接收完整 DSL 字符串（含 ! / ? 后缀），
     // 内部会正确解析类型、约束、required 标记。
-    // toJsonSchema()（v1.2.5+）直接返回纯净 JSON Schema，
+    // toJsonSchema() 直接返回纯净 JSON Schema，
     // 已自动清理 _required / _customMessages 等内部标记。
     const builder = schemaAdapter.compileField(trimmed);
     const schema: JsonSchema = builder.toJsonSchema() as JsonSchema;
@@ -493,7 +493,7 @@ export class SchemaConverter {
 // ── 模块级常量 ──────────────────────────────────────────────
 
 // 注意：SCHEMA_DSL_INTERNAL_KEYS 已移除（v2.1）。
-// schema-dsl v1.2.5 的 DslBuilder.toJsonSchema() 内置了内部标记清理，
+// schema-dsl 的 DslBuilder.toJsonSchema() 内置了内部标记清理，
 // vext 不再需要维护清理列表。如果 schema-dsl 新增自定义关键字，
 // 只需在 schema-dsl 侧更新 DslBuilder._internalKeys 即可。
 

@@ -1806,6 +1806,25 @@ describe("createConnection", () => {
     expect(mock.mockModel).toHaveBeenCalledWith("User");
   });
 
+  it("normalizes soft-delete deleteOne result to keep deletedCount contract", async () => {
+    const mock = createMockMonSQLize();
+    const softDeleteModel = {
+      softDeleteConfig: { enabled: true },
+      deleteOne: vi.fn().mockResolvedValue({
+        acknowledged: true,
+        modifiedCount: 1,
+      }),
+    };
+    mock.mockModel.mockReturnValueOnce(softDeleteModel);
+    const { app } = createMockApp();
+
+    const conn = await createConnection(mock.instance as any, app);
+    const model = conn.model("Article") as any;
+    const result = await model.deleteOne({ slug: "intro" });
+
+    expect(result.deletedCount).toBe(1);
+  });
+
   it("returns connection with use() method (B1: db() removed)", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();

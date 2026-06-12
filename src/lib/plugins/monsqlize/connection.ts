@@ -15,6 +15,69 @@ import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeConnection } from "./types.js";
 
+const SOFT_DELETE_COMPAT_MARK = Symbol.for("vext.monsqlize.softDeleteCompat");
+
+type SoftDeleteCompatModel = Record<string | symbol, any> & {
+  softDeleteConfig?: { enabled?: boolean };
+};
+
+function normalizeSoftDeleteResult(
+  model: SoftDeleteCompatModel,
+  result: unknown,
+): unknown {
+  if (
+    model.softDeleteConfig?.enabled !== true ||
+    !result ||
+    typeof result !== "object"
+  ) {
+    return result;
+  }
+
+  const record = result as Record<string, unknown>;
+  if (
+    record.deletedCount === undefined &&
+    typeof record.modifiedCount === "number"
+  ) {
+    record.deletedCount = record.modifiedCount;
+  }
+  return result;
+}
+
+function wrapSoftDeleteMethod(
+  model: SoftDeleteCompatModel,
+  methodName: "deleteOne" | "deleteMany",
+): void {
+  const original = model[methodName];
+  if (typeof original !== "function") {
+    return;
+  }
+
+  model[methodName] = async (...args: unknown[]) => {
+    const result = await original.apply(model, args);
+    return normalizeSoftDeleteResult(model, result);
+  };
+}
+
+function applySoftDeleteCompat<T>(model: T): T {
+  if (!model || typeof model !== "object") {
+    return model;
+  }
+
+  const target = model as SoftDeleteCompatModel;
+  if (target[SOFT_DELETE_COMPAT_MARK]) {
+    return model;
+  }
+
+  wrapSoftDeleteMethod(target, "deleteOne");
+  wrapSoftDeleteMethod(target, "deleteMany");
+  Object.defineProperty(target, SOFT_DELETE_COMPAT_MARK, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+  });
+  return model;
+}
+
 /**
  * 创建数据库连接
  *
@@ -39,7 +102,7 @@ export async function createConnection(
 
     // db() — 已删除（R4：原实现调用不存在的 monsqlize.db()，为运行时 bug）
 
-    model: (name: string) => monsqlize.model(name),
+    model: (name: string) => applySoftDeleteCompat(monsqlize.model(name)),
 
     // R2：单参数；R1：补全 collection
     use(dbName: string) {
@@ -47,7 +110,7 @@ export async function createConnection(
       return {
         model: (name: string) => {
           const key = prefix + name.charAt(0).toUpperCase() + name.slice(1);
-          return monsqlize.model(key);
+          return applySoftDeleteCompat(monsqlize.model(key));
         },
         collection: (name: string) =>
           monsqlize.scopedCollection(name, { database: dbName }),
@@ -58,7 +121,7 @@ export async function createConnection(
     pool(poolName: string) {
       return {
         model: (key: string) =>
-          monsqlize.scopedModel(key, { pool: poolName }),
+          applySoftDeleteCompat(monsqlize.scopedModel(key, { pool: poolName })),
 
         collection: (name: string) =>
           monsqlize.scopedCollection(name, { pool: poolName }),
@@ -75,17 +138,21 @@ export async function createConnection(
               // 回落到深度-1 注册键（Db+Name），兼容 models/<db>/<name>.ts
               const depth1Key = dbPrefix + tail;
               try {
-                return monsqlize.scopedModel(depth2Key, {
-                  pool: poolName,
-                  database: dbName,
-                });
+                return applySoftDeleteCompat(
+                  monsqlize.scopedModel(depth2Key, {
+                    pool: poolName,
+                    database: dbName,
+                  }),
+                );
               } catch (err) {
                 const e = err as { code?: string };
                 if (e && e.code === "MODEL_NOT_DEFINED") {
-                  return monsqlize.scopedModel(depth1Key, {
-                    pool: poolName,
-                    database: dbName,
-                  });
+                  return applySoftDeleteCompat(
+                    monsqlize.scopedModel(depth1Key, {
+                      pool: poolName,
+                      database: dbName,
+                    }),
+                  );
                 }
                 throw err;
               }

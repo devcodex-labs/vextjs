@@ -27,6 +27,7 @@ import { existsSync } from "node:fs";
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
+import { loadMonSQLizeModelClass } from "./module.js";
 
 /**
  * 获取 MonSQLize 的 Model 类（静态注册器）
@@ -41,9 +42,7 @@ async function getModelClass(): Promise<{
   define: (name: string, definition: any) => void;
   has: (name: string) => boolean;
 }> {
-  const mod: any = await import("monsqlize");
-  const MonSQLizeClass = mod.default ?? mod.MonSQLize ?? mod;
-  return MonSQLizeClass.Model;
+  return loadMonSQLizeModelClass();
 }
 
 /**

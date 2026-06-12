@@ -24,6 +24,7 @@ import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 import { createConnection } from "./connection.js";
 import { loadModels } from "./model-loader.js";
+import { loadMonSQLizeClass } from "./module.js";
 import type { StartupProfiler } from "../../startup-profiler.js";
 
 export interface SetupMonSQLizeOptions {
@@ -211,11 +212,7 @@ export async function setupMonSQLize(
     MonSQLizeClass = await timeMonSQLize(
       options,
       "worker.builtinPlugin.monsqlize.import",
-      async () => {
-        const mod: any = await import("monsqlize");
-        // 兼容 CJS default export 和 ESM named export
-        return mod.default ?? mod.MonSQLize ?? mod;
-      },
+      () => loadMonSQLizeClass(),
     );
   } catch (err) {
     await stopMemoryServers();

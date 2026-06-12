@@ -4,6 +4,7 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { deriveModelName, resolveModelEntry } from "../plugins/monsqlize/model-loader.js";
+import { loadMonSQLizeModelClass } from "../plugins/monsqlize/module.js";
 
 // 在 ESM 环境中通过 createRequire 获取 CJS 的 require 函数。
 // model-reloader 需要 require() 加载 .vext/dev/models/ 下的 CJS 编译产物，
@@ -116,13 +117,7 @@ interface ModelClassAPI {
  * @returns 统一的 Model 操作接口
  */
 async function getModelClass(): Promise<ModelClassAPI> {
-  const mod: Record<string, unknown> = await import("monsqlize");
-  const MonSQLizeClass =
-    (mod.default as Record<string, unknown>) ??
-    (mod.MonSQLize as Record<string, unknown>) ??
-    mod;
-
-  const ModelStatic = MonSQLizeClass.Model as {
+  const ModelStatic = (await loadMonSQLizeModelClass()) as {
     define: (name: string, definition: unknown) => void;
     redefine: (name: string, definition: unknown) => void;
     undefine: (name: string) => boolean;
