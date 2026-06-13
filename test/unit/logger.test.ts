@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { createLogger, getLoggerLifecycle } from "../../src/lib/logger.js";
+import {
+  createLogger,
+  getLoggerLifecycle,
+  normalizeVextLogger,
+} from "../../src/lib/logger.js";
 import { createLoggerCore } from "../../src/lib/logger/core.js";
 import { formatPrettyRecord } from "../../src/lib/logger/pretty.js";
 import {
@@ -148,6 +152,30 @@ describe("createLogger", () => {
     ]);
     expect(records()[0]).toMatchObject({ service: "child", level: 10 });
     expect(records()[1]).toMatchObject({ level: 40 });
+  });
+
+  it("normalizes partial logger wrappers while preserving lifecycle and children", () => {
+    const { logger, records } = createCapturedLogger({ level: "info" });
+    const info = vi.fn();
+
+    const normalized = normalizeVextLogger(logger, { info });
+
+    expect(getLoggerLifecycle(normalized)).toBe(getLoggerLifecycle(logger));
+    normalized.info("wrapped info");
+    expect(info).toHaveBeenCalledWith("wrapped info");
+
+    expect(normalized.getLevel()).toBe("info");
+    normalized.setLevel("trace");
+    expect(logger.getLevel()).toBe("trace");
+
+    const child = normalized.child({ service: "child" });
+    child.trace("child trace");
+
+    expect(records()[0]).toMatchObject({
+      service: "child",
+      level: 10,
+      msg: "child trace",
+    });
   });
 
   it("rejects invalid runtime levels", () => {

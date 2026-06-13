@@ -2,7 +2,12 @@ import { createLoggerCore } from "./logger/core.js";
 import { createStdoutSink } from "./logger/sinks/stdout.js";
 import type { LoggerCore, LoggerLifecycle, LogSink } from "./logger/types.js";
 import { requestContext } from "./request-context.js";
-import type { VextLogger, VextLoggerConfig } from "../types/app.js";
+import type {
+  VextLogger,
+  VextLoggerConfig,
+  VextLoggerLike,
+  VextRuntimeLogger,
+} from "../types/app.js";
 
 const LOGGER_LIFECYCLE = Symbol("vext.logger.lifecycle");
 
@@ -16,9 +21,17 @@ type VextLoggerWithLifecycle = VextLogger & {
 };
 
 type PrettyColorMode = NonNullable<VextLoggerConfig["prettyColor"]>;
+type LoggerMethodName =
+  | "trace"
+  | "info"
+  | "warn"
+  | "error"
+  | "debug"
+  | "fatal";
+type LoggerMethod = (...args: unknown[]) => void;
 
-function wrapCoreAsVextLogger(core: LoggerCore): VextLogger {
-  const logger: VextLogger = {
+function wrapCoreAsVextLogger(core: LoggerCore): VextRuntimeLogger {
+  const logger: VextRuntimeLogger = {
     trace(...args: unknown[]) {
       core.trace(...args);
     },
@@ -51,7 +64,7 @@ function wrapCoreAsVextLogger(core: LoggerCore): VextLogger {
       core.setLevel(level);
     },
 
-    child(bindings: Record<string, unknown>): VextLogger {
+    child(bindings: Record<string, unknown>): VextRuntimeLogger {
       return wrapCoreAsVextLogger(core.child(bindings));
     },
   };
@@ -70,10 +83,61 @@ export function getLoggerLifecycle(
   return (logger as VextLoggerWithLifecycle)[LOGGER_LIFECYCLE];
 }
 
+export function normalizeVextLogger(
+  original: VextRuntimeLogger,
+  candidate: VextLoggerLike | null | undefined,
+): VextRuntimeLogger {
+  const wrapped = candidate ?? {};
+  const logger: VextRuntimeLogger = {
+    trace: bindLoggerMethod(wrapped, original, "trace") as VextRuntimeLogger["trace"],
+    info: bindLoggerMethod(wrapped, original, "info") as VextLogger["info"],
+    warn: bindLoggerMethod(wrapped, original, "warn") as VextLogger["warn"],
+    error: bindLoggerMethod(wrapped, original, "error") as VextLogger["error"],
+    debug: bindLoggerMethod(wrapped, original, "debug") as VextLogger["debug"],
+    fatal: bindLoggerMethod(wrapped, original, "fatal") as VextLogger["fatal"],
+
+    getLevel() {
+      const getLevel = wrapped.getLevel;
+      if (typeof getLevel === "function") {
+        return getLevel.call(wrapped);
+      }
+      return original.getLevel();
+    },
+
+    setLevel(level) {
+      const setLevel = wrapped.setLevel;
+      if (typeof setLevel === "function") {
+        setLevel.call(wrapped, level);
+        return;
+      }
+      original.setLevel(level);
+    },
+
+    child(bindings: Record<string, unknown>): VextRuntimeLogger {
+      const originalChild = original.child(bindings);
+      const createChild = wrapped.child;
+      if (typeof createChild === "function") {
+        return normalizeVextLogger(originalChild, createChild.call(wrapped, bindings));
+      }
+      return originalChild;
+    },
+  };
+
+  const lifecycle = getLoggerLifecycle(original);
+  if (lifecycle) {
+    Object.defineProperty(logger, LOGGER_LIFECYCLE, {
+      value: lifecycle,
+      enumerable: false,
+    });
+  }
+
+  return logger;
+}
+
 export function createLogger(
   config: VextLoggerConfig = {},
   options?: CreateLoggerOptions,
-): VextLogger {
+): VextRuntimeLogger {
   const level = config.level ?? "info";
   const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
   const alsEnabled = options?.requestContextEnabled !== false;
@@ -201,4 +265,22 @@ function isPromiseLike(value: unknown): boolean {
     "then" in value &&
     typeof (value as { then?: unknown }).then === "function",
   );
+}
+
+function bindLoggerMethod(
+  candidate: VextLoggerLike,
+  original: VextRuntimeLogger,
+  name: LoggerMethodName,
+): LoggerMethod {
+  const method = candidate[name];
+  if (typeof method === "function") {
+    return (...args: unknown[]) => {
+      (method as LoggerMethod).apply(candidate, args);
+    };
+  }
+
+  const fallback = original[name] as LoggerMethod;
+  return (...args: unknown[]) => {
+    fallback.apply(original, args);
+  };
 }

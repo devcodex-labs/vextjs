@@ -494,10 +494,10 @@ async function processPayment(orderId: string, amount: number) {
 ### Function signature
 
 ```typescript
-setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 ```
 
-`wrapper` takes the current logger (the default Vext logger or the result of the previous wrapper) and returns a new `VextLogger` implementation. This can be done in the new implementation:
+`wrapper` takes the current complete runtime logger (the default Vext logger or the normalized result of the previous wrapper) and returns a complete or partial `VextLoggerLike` implementation. Missing methods fall back to the original logger. This can be done in the new implementation:
 
 - Call external SDK to report logs
 - Filter or sample certain levels
@@ -554,12 +554,12 @@ export default definePlugin({
 `setLogger` adopts exactly the same wrapper pattern as `setThrow`: it receives the original implementation and returns the wrapped implementation. This means:
 
 - Can be called multiple times (each time wrapping the previous result)
-- Default logger functions (requestId injection, pretty format, child logger) are fully retained
+- Default logger functions (requestId injection, pretty format, child logger and runtime level control) are retained for methods that the wrapper does not override
 - Exceptions thrown in the wrapper function will not affect the original logger
   :::
 
-:::warning child logger does not automatically bridge
-The `child()` method returns the child logger of the current logger by default, and does not pass through the outer wrapper logic repeatedly, preventing the same log from being forwarded to external systems multiple times. If the child logger is also bridged, please wrap it separately on the child logger.
+:::warning child logger fallback and bridging
+When the wrapper does not return `child()`, child loggers fall back to the original logger. If child loggers should also be bridged, return a `child()` method from the wrapper and wrap the child logger there.
 :::
 
 ---

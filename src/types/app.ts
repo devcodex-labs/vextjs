@@ -43,15 +43,16 @@ export interface VextServices {
 }
 
 /**
- * VextLogger — 框架日志接口
+ * VextLogger — plugin-wrapper-compatible logger interface
  *
  * 内置实现基于 Vext logger kernel，插件可通过 app.setLogger() 包装公开 logger。
- * 普通插件不会替换默认 logger kernel。
+ * 普通插件不会替换默认 logger kernel。Wrapper 可只实现基础日志方法与 child；
+ * 框架会补齐 trace / getLevel / setLevel 等高级运行时能力。
  * 所有日志方法自动携带 requestId（通过 AsyncLocalStorage + logger mixin 实现）。
  */
 export interface VextLogger {
-  trace(msg: string, ...args: unknown[]): void;
-  trace(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
+  trace?(msg: string, ...args: unknown[]): void;
+  trace?(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   info(msg: string, ...args: unknown[]): void;
   info(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
   warn(msg: string, ...args: unknown[]): void;
@@ -66,13 +67,13 @@ export interface VextLogger {
   fatal(obj: Record<string, unknown>, msg?: string, ...args: unknown[]): void;
 
   /** 获取当前有效日志级别。 */
-  getLevel(): NonNullable<VextLoggerConfig["level"]>;
+  getLevel?(): NonNullable<VextLoggerConfig["level"]>;
 
   /**
    * 调整后续日志输出级别。
    * 已创建的 child logger 与父 logger 共享同一个 runtime level controller。
    */
-  setLevel(level: NonNullable<VextLoggerConfig["level"]>): void;
+  setLevel?(level: NonNullable<VextLoggerConfig["level"]>): void;
 
   /**
    * 创建子 logger（携带额外上下文字段）
@@ -80,6 +81,24 @@ export interface VextLogger {
    */
   child(bindings: Record<string, unknown>): VextLogger;
 }
+
+/**
+ * VextRuntimeLogger — complete logger guaranteed by `app.logger`.
+ */
+export interface VextRuntimeLogger extends VextLogger {
+  trace: NonNullable<VextLogger["trace"]>;
+  getLevel: NonNullable<VextLogger["getLevel"]>;
+  setLevel: NonNullable<VextLogger["setLevel"]>;
+  child(bindings: Record<string, unknown>): VextRuntimeLogger;
+}
+
+/**
+ * VextLoggerLike — app.setLogger() wrapper return type.
+ *
+ * A wrapper may override only the methods it cares about; missing methods are
+ * inherited from the original logger by the framework runtime.
+ */
+export type VextLoggerLike = Partial<VextLogger>;
 
 /**
  * VextRateLimiter — 速率限制器接口
@@ -1166,7 +1185,7 @@ export interface VextApp {
    * 结构化日志（内置 Vext logger kernel，插件可通过 app.setLogger() 包装）
    * 自动携带 requestId，支持 .child() 创建子 logger
    */
-  logger: VextLogger;
+  logger: VextRuntimeLogger;
 
   /**
    * 抛出 HTTP 错误，框架统一转为 { code, message, requestId } 响应
@@ -1289,12 +1308,13 @@ export interface VextApp {
    * 包装或替换 app.logger 的实现（插件专用）
    *
    * 与 setThrow 模式一致：接收原始实现，返回新实现。
+   * 返回值可以只覆盖部分 logger 方法，未返回的方法会由框架回退到原始 logger。
    * 常见用途：
    *   - 将日志同时转发到外部系统（OTel Logs、Sentry、自定义聚合）
    *   - 在所有日志中注入全局字段（tenant.id、app.version 等）
    *   - 过滤或采样日志
    *
-   * @param wrapper 接收原始 logger，返回新 logger
+   * @param wrapper 接收原始 logger，返回完整或部分新 logger
    *
    * @example
    * // 在插件中将所有日志转发到 OTel
@@ -1307,7 +1327,7 @@ export interface VextApp {
    *   child: (b) => original.child(b),
    * }))
    */
-  setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+  setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 
   /**
    * 替换全局速率限制实现（插件专用）

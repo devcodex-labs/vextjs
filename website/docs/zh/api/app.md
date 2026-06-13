@@ -844,10 +844,10 @@ export default definePlugin({
 包装或替换 `app.logger` 的实现（**插件专用**）。
 
 ```typescript
-setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 ```
 
-接收原始 logger，返回新 logger。与 `setThrow` 模式完全一致。常见用途：将框架日志同时转发到外部系统（OTel Logs、Sentry 等）。
+接收完整运行时 logger，返回完整或部分新 logger。未返回的方法会回退到原始 logger，包括 `trace`、`getLevel`、`setLevel` 和 `child`。常见用途：将框架日志同时转发到外部系统（OTel Logs、Sentry 等）。
 
 ```typescript
 import { definePlugin } from "vextjs";

@@ -643,7 +643,7 @@ All commands support the following global options:
 ```bash
 # View version
 vext --version
-# Output: vextjs v0.3.24
+# Output: vextjs v0.3.25
 
 # View help
 vext --help

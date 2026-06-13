@@ -835,10 +835,10 @@ import { definePlugin } from "vextjs";export default definePlugin({
 Wraps or replaces the implementation of `app.logger` (**Plugin-specific**).
 
 ```typescript
-setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 ```
 
-Receive the original logger and return the new logger. Exactly the same as `setThrow` mode. Common uses: Forward framework logs to external systems (OTel Logs, Sentry, etc.) simultaneously.
+Receive the complete runtime logger and return a complete or partial new logger. Missing methods fall back to the original logger, including `trace`, `getLevel`, `setLevel` and `child`. Common uses: Forward framework logs to external systems (OTel Logs, Sentry, etc.) simultaneously.
 
 ```typescript
 import { definePlugin } from "vextjs";

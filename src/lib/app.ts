@@ -1,4 +1,4 @@
-import { createLogger, getLoggerLifecycle } from "./logger.js";
+import { createLogger, getLoggerLifecycle, normalizeVextLogger } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { createHookManager } from "./hooks.js";
 import { schemaAdapter } from "./schema-adapter.js";
@@ -10,7 +10,8 @@ import type {
   VextServices,
   VextValidator,
   VextRateLimiter,
-  VextLogger,
+  VextRuntimeLogger,
+  VextLoggerLike,
 } from "../types/app.js";
 import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
@@ -206,8 +207,8 @@ export function createApp(config: VextConfig): {
       app.throw = wrapper(app.throw.bind(app));
     },
 
-    setLogger(wrapper: (original: VextLogger) => VextLogger) {
-      app.logger = wrapper(app.logger);
+    setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike) {
+      app.logger = normalizeVextLogger(app.logger, wrapper(app.logger));
     },
 
     setRateLimiter(limiter: VextRateLimiter) {

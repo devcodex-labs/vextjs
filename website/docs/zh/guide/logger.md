@@ -494,10 +494,10 @@ async function processPayment(orderId: string, amount: number) {
 ### 函数签名
 
 ```typescript
-setLogger(wrapper: (original: VextLogger) => VextLogger): void;
+setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 ```
 
-`wrapper` 接收当前 logger（默认 Vext logger 或上一个 wrapper 的结果），返回新的 `VextLogger` 实现。可以在新实现中：
+`wrapper` 接收当前完整运行时 logger（默认 Vext logger 或上一个 wrapper 归一化后的结果），返回完整或部分 `VextLoggerLike` 实现。未返回的方法会回退到原始 logger。可以在新实现中：
 
 - 调用外部 SDK 上报日志
 - 过滤或采样某些级别
@@ -554,12 +554,12 @@ export default definePlugin({
 `setLogger` 采用与 `setThrow` 完全相同的 wrapper 模式：接收原始实现，返回包装后的实现。这意味着：
 
 - 可以多次调用（每次包裹上一次的结果）
-- 默认 logger 功能（requestId 注入、pretty 格式、child logger）完整保留
+- wrapper 未覆盖的方法会保留默认 logger 功能（requestId 注入、pretty 格式、child logger 与运行时日志级别控制）
 - 包装函数中抛出的异常不会影响原始 logger
   :::
 
-:::warning child logger 不自动桥接
-`child()` 方法默认返回当前 logger 的 child logger，不会重复经过外层 wrapper 逻辑，避免同一条日志被多次转发到外部系统。如需子 logger 也桥接，请在 child logger 上另行包装。
+:::warning child logger 回退与桥接
+当 wrapper 未返回 `child()` 时，child logger 会回退到原始 logger。如需子 logger 也桥接，请在 wrapper 中返回 `child()` 并在该方法内包装子 logger。
 :::
 
 ---

@@ -34,6 +34,8 @@ export type {
   VextApp,
   VextServices,
   VextLogger,
+  VextRuntimeLogger,
+  VextLoggerLike,
   VextRateLimiter,
   VextValidator,
   VextConfig,
