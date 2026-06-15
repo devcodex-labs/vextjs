@@ -13,8 +13,10 @@ import {
 import { createFrontendNotFoundHandler } from "../../src/frontend/runtime/static-mount.js";
 
 const tempDirs: string[] = [];
+const pendingStreams: Promise<void>[] = [];
 
 afterEach(async () => {
+  await Promise.allSettled(pendingStreams.splice(0));
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
@@ -92,10 +94,13 @@ describe("frontend client build", () => {
       path.join(clientDir, "main.js"),
       'import "./styles.css";\ndocument.body.dataset.ready = "1";\n',
     );
-    await writeFile(path.join(clientDir, "styles.css"), "body { color: red; }\n");
+    await writeFile(
+      path.join(clientDir, "styles.css"),
+      "body { color: red; }\n",
+    );
     await writeFile(
       path.join(clientDir, "index.html"),
-      "<!doctype html><html><head></head><body><div id=\"root\"></div></body></html>",
+      '<!doctype html><html><head></head><body><div id="root"></div></body></html>',
     );
 
     const result = await buildFrontendClient({
@@ -275,9 +280,34 @@ function createMockResponse() {
       if (status) this.statusCode = status;
     },
     stream(readable: NodeJS.ReadableStream) {
-      readable.destroy?.();
+      trackReadable(readable);
       this.streamed = true;
     },
   };
   return res as any;
+}
+
+function trackReadable(readable: NodeJS.ReadableStream): void {
+  pendingStreams.push(
+    new Promise<void>((resolve) => {
+      let settled = false;
+      const stream = readable as NodeJS.ReadableStream & {
+        off?: (event: string, listener: () => void) => void;
+        resume?: () => unknown;
+      };
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        stream.off?.("close", done);
+        stream.off?.("end", done);
+        stream.off?.("error", done);
+        resolve();
+      };
+
+      stream.once("close", done);
+      stream.once("end", done);
+      stream.once("error", done);
+      stream.resume?.();
+    }),
+  );
 }

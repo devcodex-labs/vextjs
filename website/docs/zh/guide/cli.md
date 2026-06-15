@@ -48,15 +48,15 @@ npx vextjs create <project-name> [options]
 
 ### 选项
 
-| 选项               | 说明                                                    | 默认值   |
-| ------------------ | ------------------------------------------------------- | -------- |
-| `--template <name>` | 项目模板（`fullstack-react` / `api`） | `fullstack-react` |
-| `--frontend <name>` | 前端目标（`react` / `none`） | `react` |
-| `--adapter <name>` | 指定 Adapter（native / hono / fastify / express / koa） | `native` |
-| `--js`             | 创建 JavaScript 项目（而非 TypeScript）                 | `false`  |
-| `--skip-install`   | 跳过 `npm install`                                      | `false`  |
-| `--force`          | 目标目录存在且非空时强制覆盖                            | `false`  |
-| `-h, --help`       | 显示帮助                                                | —        |
+| 选项                | 说明                                                    | 默认值            |
+| ------------------- | ------------------------------------------------------- | ----------------- |
+| `--template <name>` | 项目模板（`fullstack-react` / `api`）                   | `fullstack-react` |
+| `--frontend <name>` | 前端目标（`react` / `none`）                            | `react`           |
+| `--adapter <name>`  | 指定 Adapter（native / hono / fastify / express / koa） | `native`          |
+| `--js`              | 创建 JavaScript 项目（而非 TypeScript）                 | `false`           |
+| `--skip-install`    | 跳过 `npm install`                                      | `false`           |
+| `--force`           | 目标目录存在且非空时强制覆盖                            | `false`           |
+| `-h, --help`        | 显示帮助                                                | —                 |
 
 ### 示例
 
@@ -660,7 +660,7 @@ Uptime: 2d 5h 32m
 ```bash
 # 查看版本
 vext --version
-# 输出: vextjs v0.3.25
+# 输出: vextjs v0.3.26
 
 # 查看帮助
 vext --help

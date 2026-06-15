@@ -1,6 +1,6 @@
 {
   "name": "vextjs",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "description": "vextjs is a high-performance full-stack Node.js framework with integrated API runtime, scaffolding, typed client generation, and esbuild-powered frontend delivery.",
   "type": "module",
   "main": "./dist/index.js",
@@ -120,10 +120,10 @@
     "esbuild": "0.28.1",
     "fast-glob": "3.3.3",
     "flex-rate-limit": "2.2.4",
-    "monsqlize": "2.0.5",
+    "monsqlize": "2.0.6",
     "response-cache-kit": "1.2.1",
     "route-core": "0.0.7",
-    "schema-dsl": "2.0.10"
+    "schema-dsl": "2.0.11"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.14.1",

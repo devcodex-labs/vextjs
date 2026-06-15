@@ -52,7 +52,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^0.3.25"
+    "vextjs": "^0.3.26"
   }
 }
 ```
@@ -257,11 +257,11 @@ my-app/
 :::info Convention
 VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/client/`, `public/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
 
-| File path | URL prefix |
-| ---------------------------------- | ------------------ |
-| `src/routes/index.ts` | `/` |
-| `src/routes/users.ts` | `/users` |
-| `src/routes/admin/index.ts` | `/admin` |
+| File path                      | URL prefix        |
+| ------------------------------ | ----------------- |
+| `src/routes/index.ts`          | `/`               |
+| `src/routes/users.ts`          | `/users`          |
+| `src/routes/admin/index.ts`    | `/admin`          |
 | `src/routes/admin/settings.ts` | `/admin/settings` |
 
 :::
@@ -277,25 +277,25 @@ After turning on `openapi.enabled: true` in the configuration, you can access it
 
 ## CLI command overview
 
-| Command | Description |
-| -------------------- | ----------------------------------- |
-| `vext dev` | Development mode, file monitoring + hot reloading |
-| `vext start` | Start production mode |
-| `vext build` | Build project (TypeScript → JavaScript) |
-| `vext create <name>` | Create a new project |
-| `vext stop` | Stop the Cluster process |
-| `vext reload` | Rolling restart Worker |
-| `vext status` | View Cluster running status |
+| Command              | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| `vext dev`           | Development mode, file monitoring + hot reloading |
+| `vext start`         | Start production mode                             |
+| `vext build`         | Build project (TypeScript → JavaScript)           |
+| `vext create <name>` | Create a new project                              |
+| `vext stop`          | Stop the Cluster process                          |
+| `vext reload`        | Rolling restart Worker                            |
+| `vext status`        | View Cluster running status                       |
 
 ## Development mode hot reload
 
 `vext dev` provides a three-layer hot reload strategy and automatically selects the optimal method:
 
-| Level | Trigger Condition | Behavior | Speed |
-| ----------------------- | --------------- | ---------------------------- | ---------- |
-| **Tier 1** — Hot routing replacement | Routing file changes | Atomic replacement request handler, zero interruption | ⚡ Millisecond level |
-| **Tier 2** — Service reload | Service/i18n file changes | Rebuild affected service instances | ⚡ Milliseconds |
-| **Tier 3** — Cold Reboot | Configuration/Plugin Changes | Complete Reboot Process | 🔄 Seconds |
+| Level                                | Trigger Condition            | Behavior                                              | Speed                |
+| ------------------------------------ | ---------------------------- | ----------------------------------------------------- | -------------------- |
+| **Tier 1** — Hot routing replacement | Routing file changes         | Atomic replacement request handler, zero interruption | ⚡ Millisecond level |
+| **Tier 2** — Service reload          | Service/i18n file changes    | Rebuild affected service instances                    | ⚡ Milliseconds      |
+| **Tier 3** — Cold Reboot             | Configuration/Plugin Changes | Complete Reboot Process                               | 🔄 Seconds           |
 
 ## Next step
 

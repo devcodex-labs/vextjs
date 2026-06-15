@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | Pending changes [查看](./changelogs/unreleased.md) |
+| [0.3.26] | 2026-06-15 | Patch | Built-in frontend runtime plus schema-dsl ESM/CJS custom type registry compatibility [查看](./changelogs/v0.3.26.md) |
 | [0.3.25] | 2026-06-13 | Patch | Logger wrapper normalization, release-chain latest runtime dependencies, and documentation theme/version convergence [查看](./changelogs/v0.3.25.md) |
 | [0.3.24] | 2026-06-11 | Patch | Logger pretty level labels can opt into ANSI color while JSON output stays color-free [查看](./changelogs/v0.3.24.md) |
 | [0.3.23] | 2026-06-10 | Patch | Stabilize cold-restarter SIGKILL fallback and publish the startup log modes release [查看](./changelogs/v0.3.23.md) |
@@ -73,7 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.25...HEAD
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.26...HEAD
+[0.3.26]: https://github.com/vextjs/vext/compare/v0.3.25...v0.3.26
 [0.3.25]: https://github.com/vextjs/vext/compare/v0.3.24...v0.3.25
 [0.3.24]: https://github.com/vextjs/vext/compare/v0.3.23...v0.3.24
 [0.3.23]: https://github.com/vextjs/vext/compare/v0.3.22...v0.3.23

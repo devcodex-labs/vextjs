@@ -24,17 +24,17 @@ npm run build # → vext build
 
 ## Command overview
 
-| Command | Description | Common scenarios |
-| -------------------- | ------------------------------------------------ | ------------------ |
-| `vext create <name>` | Create a new project | Project initialization |
-| `vext dev` | Start development mode | Daily development |
-| `vext build` | Build project | Build before deployment |
-| `vext typegen` | Generate declaration + service dependency diagnosis (experimental) | TS/JS project engineering assistance |
-| `vext doctor routes` | Static route diagnosis + inspect / manifest (experimental) | OpenAPI / routing management |
-| `vext start` | Start production mode | Production deployment |
-| `vext stop` | Stop service | Cluster mode management |
-| `vext reload` | Rolling restart | Zero-downtime updates |
-| `vext status` | View running status | Cluster status monitoring |
+| Command              | Description                                                        | Common scenarios                     |
+| -------------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| `vext create <name>` | Create a new project                                               | Project initialization               |
+| `vext dev`           | Start development mode                                             | Daily development                    |
+| `vext build`         | Build project                                                      | Build before deployment              |
+| `vext typegen`       | Generate declaration + service dependency diagnosis (experimental) | TS/JS project engineering assistance |
+| `vext doctor routes` | Static route diagnosis + inspect / manifest (experimental)         | OpenAPI / routing management         |
+| `vext start`         | Start production mode                                              | Production deployment                |
+| `vext stop`          | Stop service                                                       | Cluster mode management              |
+| `vext reload`        | Rolling restart                                                    | Zero-downtime updates                |
+| `vext status`        | View running status                                                | Cluster status monitoring            |
 
 ## `vext create` — Create a project
 
@@ -48,15 +48,15 @@ npx vextjs create <project-name> [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------ | --------------------------------------------------------------- | -------- |
-| `--template <name>` | Project template (`fullstack-react` / `api`) | `fullstack-react` |
-| `--frontend <name>` | Frontend target (`react` / `none`) | `react` |
-| `--adapter <name>` | Specify Adapter (native/hono/fastify/express/koa) | `native` |
-| `--js` | Create a JavaScript project (not TypeScript) | `false` |
-| `--skip-install` | Skip `npm install` | `false` |
-| `--force` | Force overwriting if the target directory exists and is not empty | `false` |
-| `-h, --help` | Show help | — |
+| Options             | Description                                                       | Default           |
+| ------------------- | ----------------------------------------------------------------- | ----------------- |
+| `--template <name>` | Project template (`fullstack-react` / `api`)                      | `fullstack-react` |
+| `--frontend <name>` | Frontend target (`react` / `none`)                                | `react`           |
+| `--adapter <name>`  | Specify Adapter (native/hono/fastify/express/koa)                 | `native`          |
+| `--js`              | Create a JavaScript project (not TypeScript)                      | `false`           |
+| `--skip-install`    | Skip `npm install`                                                | `false`           |
+| `--force`           | Force overwriting if the target directory exists and is not empty | `false`           |
+| `-h, --help`        | Show help                                                         | —                 |
 
 ### Example
 
@@ -139,21 +139,21 @@ vext dev [options]
 
 ### Options
 
-| Options | Description | Default |
-| ---------------------------- | ----------------------------------------------- | --------------- |
-| `--port <number>` | Specify port | Value in configuration file |
-| `--host <address>` | Specify the listening address | Value in the configuration file |
-| `--debounce <ms>` | Debounce interval (milliseconds, 0 = disable) | `0` |
-| `--poll` | Force polling mode (Docker/NFS environment) | `false` |
-| `--poll-interval <ms>` | Polling interval (milliseconds, only valid when `--poll` is used) | `1000` |
-| `--no-hot` | Disable Soft Reload, all changes go to Cold Restart | — |
-| `--strict-preflight` | Make TypeScript semantic diagnostics re-block startup/reloading | — |
-| `--port-conflict <strategy>` | Port conflict strategy (`error/prompt/kill/next`) | `error` |
-| `--verbose-lifecycle` | Output detailed lifecycle logs and complete watcher change list | — |
-| `--startup-profile` | Output startup phase summary and detailed time consumption | — |
-| `--startup-profile-json <p>` | Write startup phase time to JSON file | — |
-| `--clear` | Clear the console after each reload | — |
-| `-h, --help` | Show help | — |
+| Options                      | Description                                                       | Default                         |
+| ---------------------------- | ----------------------------------------------------------------- | ------------------------------- |
+| `--port <number>`            | Specify port                                                      | Value in configuration file     |
+| `--host <address>`           | Specify the listening address                                     | Value in the configuration file |
+| `--debounce <ms>`            | Debounce interval (milliseconds, 0 = disable)                     | `0`                             |
+| `--poll`                     | Force polling mode (Docker/NFS environment)                       | `false`                         |
+| `--poll-interval <ms>`       | Polling interval (milliseconds, only valid when `--poll` is used) | `1000`                          |
+| `--no-hot`                   | Disable Soft Reload, all changes go to Cold Restart               | —                               |
+| `--strict-preflight`         | Make TypeScript semantic diagnostics re-block startup/reloading   | —                               |
+| `--port-conflict <strategy>` | Port conflict strategy (`error/prompt/kill/next`)                 | `error`                         |
+| `--verbose-lifecycle`        | Output detailed lifecycle logs and complete watcher change list   | —                               |
+| `--startup-profile`          | Output startup phase summary and detailed time consumption        | —                               |
+| `--startup-profile-json <p>` | Write startup phase time to JSON file                             | —                               |
+| `--clear`                    | Clear the console after each reload                               | —                               |
+| `-h, --help`                 | Show help                                                         | —                               |
 
 #### Port conflict policy
 
@@ -212,11 +212,11 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 `vext dev` provides a three-layer hot reload strategy and automatically selects the optimal method:
 
-| Level | Trigger Condition | Behavior | Speed |
-| ----------------------- | ----------------------------------------- | ---------------------------- | ---------- |
-| **Tier 1** — Hot route replacement | `src/routes/` file changes | Atomic replacement request handler, zero interruption | ⚡ Millisecond level |
-| **Tier 2** — Service Reload | `src/services/` or `src/locales/` file changes | Rebuild affected service instances | ⚡ Milliseconds |
-| **Tier 3** — Cold Reboot | `src/config/` or `src/plugins/` file changes | Full restart process | 🔄 Seconds |
+| Level                              | Trigger Condition                              | Behavior                                              | Speed                |
+| ---------------------------------- | ---------------------------------------------- | ----------------------------------------------------- | -------------------- |
+| **Tier 1** — Hot route replacement | `src/routes/` file changes                     | Atomic replacement request handler, zero interruption | ⚡ Millisecond level |
+| **Tier 2** — Service Reload        | `src/services/` or `src/locales/` file changes | Rebuild affected service instances                    | ⚡ Milliseconds      |
+| **Tier 3** — Cold Reboot           | `src/config/` or `src/plugins/` file changes   | Full restart process                                  | 🔄 Seconds           |
 
 See the [Hot Reload](/guide/hot-reload) chapter for details.
 
@@ -244,15 +244,15 @@ vext build [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------ | ----------------------------------------------- | ------- |
-| `--outdir <path>` | Output directory | `dist` |
-| `--clean` | Clean the output directory before compilation | `false` |
-| `--sourcemap` | Generate source map | `true` |
-| `--no-sourcemap` | Disable source map | — |
-| `--minify` | Compress output code | `false` |
-| `--typecheck` | Execute `tsc --noEmit` after refreshing generated / manifest | `false` |
-| `-h, --help` | Show help | — |
+| Options           | Description                                                  | Default |
+| ----------------- | ------------------------------------------------------------ | ------- |
+| `--outdir <path>` | Output directory                                             | `dist`  |
+| `--clean`         | Clean the output directory before compilation                | `false` |
+| `--sourcemap`     | Generate source map                                          | `true`  |
+| `--no-sourcemap`  | Disable source map                                           | —       |
+| `--minify`        | Compress output code                                         | `false` |
+| `--typecheck`     | Execute `tsc --noEmit` after refreshing generated / manifest | `false` |
+| `-h, --help`      | Show help                                                    | —       |
 
 ### Example
 
@@ -312,17 +312,17 @@ vext typegen [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------ | ----------------------------------------------- | -------- |
-| `--services` | Generate only `services.generated.d.ts` | `false` |
-| `--app-extensions` | Generate only `app-extensions.generated.d.ts` | `false` |
-| `--check` | Only verify generated results, do not write files | `false` |
-| `--json` | Output machine-readable JSON | `false` |
-| `--write-manifest` | Write `.vext/manifest/services.json` | `false` |
-| `--root <path>` | Specify the project root directory | Current directory |
-| `-C <path>` | `--root` alias | — |
-| `--verbose` | Reserved for subsequent detailed logging | `false` |
-| `-h, --help` | Show help | — |
+| Options            | Description                                       | Default           |
+| ------------------ | ------------------------------------------------- | ----------------- |
+| `--services`       | Generate only `services.generated.d.ts`           | `false`           |
+| `--app-extensions` | Generate only `app-extensions.generated.d.ts`     | `false`           |
+| `--check`          | Only verify generated results, do not write files | `false`           |
+| `--json`           | Output machine-readable JSON                      | `false`           |
+| `--write-manifest` | Write `.vext/manifest/services.json`              | `false`           |
+| `--root <path>`    | Specify the project root directory                | Current directory |
+| `-C <path>`        | `--root` alias                                    | —                 |
+| `--verbose`        | Reserved for subsequent detailed logging          | `false`           |
+| `-h, --help`       | Show help                                         | —                 |
 
 ### Products
 
@@ -363,29 +363,29 @@ vext doctor <target> [options]
 
 ### Targets
 
-| Target | Description |
-| -------- | ----------------------------------------------- |
-| `routes` | Scan static route metadata and OpenAPI related fields |
-| `all` | Currently still an alias of `routes`, used to reserve subsequent extension bits |
+| Target   | Description                                                                     |
+| -------- | ------------------------------------------------------------------------------- |
+| `routes` | Scan static route metadata and OpenAPI related fields                           |
+| `all`    | Currently still an alias of `routes`, used to reserve subsequent extension bits |
 
 ### Options
 
-| Options | Description | Default |
-| ------------------ | ---------------------------------- | -------- |
-| `--json` | Output machine-readable JSON | `false` |
-| `--write-inspect` | Write `.vext/inspect/routes.json` | `false` |
-| `--write-manifest` | Write `.vext/manifest/routes.json` | `false` |
-| `--refresh` | Skip cache manifest and rescan routing diagnostics | `false` |
-| `--root <path>` | Specify the project root directory | Current directory |
-| `-C <path>` | `--root` alias | — |
-| `-h, --help` | Show help | — |
+| Options            | Description                                        | Default           |
+| ------------------ | -------------------------------------------------- | ----------------- |
+| `--json`           | Output machine-readable JSON                       | `false`           |
+| `--write-inspect`  | Write `.vext/inspect/routes.json`                  | `false`           |
+| `--write-manifest` | Write `.vext/manifest/routes.json`                 | `false`           |
+| `--refresh`        | Skip cache manifest and rescan routing diagnostics | `false`           |
+| `--root <path>`    | Specify the project root directory                 | Current directory |
+| `-C <path>`        | `--root` alias                                     | —                 |
+| `-h, --help`       | Show help                                          | —                 |
 
 ### Product positioning
 
-| Products | Positioning | Applicable objects |
-| ---------------------------------- | -------------------------------------------------- | ---------------------------------- |
-| `.vext/inspect/routes.json` | inspect / diagnostic middle layer, including diagnostic details and debugging fields | `doctor`, debug, in-depth analysis |
-| `.vext/manifest/routes.json` | Stable consumption layer, fields converge to routes-only manifest | Editor, CI, visualization, follow-up codemod |
+| Products                     | Positioning                                                                          | Applicable objects                           |
+| ---------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `.vext/inspect/routes.json`  | inspect / diagnostic middle layer, including diagnostic details and debugging fields | `doctor`, debug, in-depth analysis           |
+| `.vext/manifest/routes.json` | Stable consumption layer, fields converge to routes-only manifest                    | Editor, CI, visualization, follow-up codemod |
 
 ### Example
 
@@ -413,15 +413,15 @@ vext start [options]
 
 ### Options
 
-| Options | Description | Default |
-| ---------------------------- | ---------------------------------- | --------------- |
-| `--port <number>` | Specify port | Value in configuration file |
-| `--host <address>` | Specify the listening address | Value in the configuration file |
-| `--port-conflict <strategy>` | Port conflict strategy (`error/prompt/kill/next`) | `error` |
-| `--startup-profile` | Output summary and detailed time consumption of production startup phase | — |
-| `--startup-profile-json <p>` | Write the production startup phase time to a JSON file | — |
-| `--verbose-lifecycle` | Output detailed lifecycle logs | — |
-| `-h, --help` | Show help | — |
+| Options                      | Description                                                              | Default                         |
+| ---------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
+| `--port <number>`            | Specify port                                                             | Value in configuration file     |
+| `--host <address>`           | Specify the listening address                                            | Value in the configuration file |
+| `--port-conflict <strategy>` | Port conflict strategy (`error/prompt/kill/next`)                        | `error`                         |
+| `--startup-profile`          | Output summary and detailed time consumption of production startup phase | —                               |
+| `--startup-profile-json <p>` | Write the production startup phase time to a JSON file                   | —                               |
+| `--verbose-lifecycle`        | Output detailed lifecycle logs                                           | —                               |
+| `-h, --help`                 | Show help                                                                | —                               |
 
 ### Example
 
@@ -543,11 +543,11 @@ vext stop [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------- | ------------------- | ----------- |
-| `--pid-file <path>` | PID file path | `.vext.pid` |
-| `--force` | Forced termination (SIGKILL) | `false` |
-| `-h, --help` | Show help | — |
+| Options             | Description                  | Default     |
+| ------------------- | ---------------------------- | ----------- |
+| `--pid-file <path>` | PID file path                | `.vext.pid` |
+| `--force`           | Forced termination (SIGKILL) | `false`     |
+| `-h, --help`        | Show help                    | —           |
 
 ### Example
 
@@ -578,10 +578,10 @@ vext reload [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------- | ----------- | ----------- |
+| Options             | Description   | Default     |
+| ------------------- | ------------- | ----------- |
 | `--pid-file <path>` | PID file path | `.vext.pid` |
-| `-h, --help` | Show help | — |
+| `-h, --help`        | Show help     | —           |
 
 ### Example
 
@@ -619,10 +619,10 @@ vext status [options]
 
 ### Options
 
-| Options | Description | Default |
-| ------------------- | ----------- | ----------- |
+| Options             | Description   | Default     |
+| ------------------- | ------------- | ----------- |
 | `--pid-file <path>` | PID file path | `.vext.pid` |
-| `-h, --help` | Show help | — |
+| `-h, --help`        | Show help     | —           |
 
 ### Example
 
@@ -650,15 +650,15 @@ Uptime: 2d 5h 32m
 
 All commands support the following global options:
 
-| Options | Description |
-| --------------- | ---------- |
-| `-h, --help` | Display help information |
-| `-v, --version` | Display version number |
+| Options         | Description              |
+| --------------- | ------------------------ |
+| `-h, --help`    | Display help information |
+| `-v, --version` | Display version number   |
 
 ```bash
 # View version
 vext --version
-# Output: vextjs v0.3.25
+# Output: vextjs v0.3.26
 
 # View help
 vext --help
