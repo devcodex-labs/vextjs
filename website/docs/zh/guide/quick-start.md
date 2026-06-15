@@ -2,17 +2,20 @@
 
 ## 方式一：使用脚手架（推荐）
 
-VextJS 提供了 `vext create` 命令，可以快速创建项目骨架：
+VextJS 提供了 `vext create` 命令，可以快速创建可运行项目。默认模板是带 Vext API 路由的全栈 React 应用：
 
 ```bash
-# 创建 TypeScript 项目（默认 Native Adapter）
+# 创建 TypeScript 全栈项目（默认 Native Adapter）
 npx vextjs create my-app
 
 # 创建并指定 Adapter
 npx vextjs create my-app --adapter hono
 
-# 创建 JavaScript 项目
+# 创建 JavaScript 全栈项目
 npx vextjs create my-app --js
+
+# 创建 API-only 项目
+npx vextjs create my-api --template api --frontend none
 
 # 跳过 npm install
 npx vextjs create my-app --skip-install
@@ -25,7 +28,7 @@ cd my-app
 npm run dev
 ```
 
-访问 `http://localhost:3000`，你应该能看到 `{ "code": 0, "data": { "message": "hello world" }, "requestId": "..." }` 的 JSON 响应。
+访问 `http://localhost:3000`，你应该能看到 React 客户端。后端 API 路由位于 `/api/hello` 与 `/api/health`。
 
 ## 方式二：手动创建
 
@@ -61,7 +64,7 @@ VextJS 要求 `"type": "module"`，项目使用 ESM 模块格式。
 ### 3. 创建目录结构
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/client public preload
 ```
 
 ### 4. 编写配置
@@ -76,6 +79,14 @@ export default {
   },
   openapi: {
     enabled: true,
+  },
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
   },
 };
 ```
@@ -129,20 +140,20 @@ export default defineBootstrapConfig({
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  // GET /
+  // GET /api/hello
   app.get(
-    "/",
+    "/api/hello",
     {
-      docs: { summary: "首页" },
+      docs: { summary: "Hello API" },
     },
     async (_req, res) => {
       res.json({ message: "Hello VextJS!" });
     },
   );
 
-  // GET /health
+  // GET /api/health
   app.get(
-    "/health",
+    "/api/health",
     {
       docs: { summary: "健康检查" },
     },
@@ -202,13 +213,22 @@ npm run build
 npm start
 ```
 
+浏览器入口需创建 `src/client/main.tsx`、`src/client/App.tsx`、`src/client/index.html` 与 `src/client/styles.css`，也可以直接从默认 `vext create` 模板开始。
+
 ## 项目结构
 
 脚手架或手动创建后，你的项目结构应该如下：
 
 ```
 my-app/
+├── public/
+│   └── favicon.svg          # 会复制到前端构建产物的静态资源
 ├── src/
+│   ├── client/
+│   │   ├── App.tsx          # React 应用
+│   │   ├── index.html       # HTML shell
+│   │   ├── main.tsx         # 浏览器入口
+│   │   └── styles.css
 │   ├── config/
 │   │   ├── default.ts        # 默认配置
 │   │   ├── bootstrap.example.ts # 启动期远程配置 provider 示例
@@ -235,7 +255,7 @@ my-app/
 ```
 
 :::info 约定
-VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
+VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/client/`、`public/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
 
 | 文件路径                       | URL 前缀          |
 | ------------------------------ | ----------------- |
@@ -280,6 +300,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/mi
 ## 下一步
 
 - 了解 [项目结构](/guide/project-structure) 约定
+- 配置 [前端集成](/zh/guide/frontend)
 - 学习 [路由](/guide/routing) 的三段式定义
 - 探索 [中间件](/guide/middleware) 和 [插件](/guide/plugins)
 - 查看 [配置](/guide/configuration) 选项

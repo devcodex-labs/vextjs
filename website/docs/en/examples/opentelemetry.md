@@ -151,7 +151,7 @@ export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
 ```bash
-vextdev
+vext dev
 # Check the file after making several requests (the file name will have the current process pid)
 cat ./otel-data/traces.*.jsonl
 cat ./otel-data/metrics.*.jsonl
@@ -266,7 +266,7 @@ export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
 ```bash
-vextdev
+vext dev
 curl http://localhost:3000/users
 open http://localhost:16686
 ```

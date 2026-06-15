@@ -10,8 +10,8 @@ import type { ClassifierOptions } from "./change-classifier.js";
  *
  * 热重载的入口组件，负责：
  *
- *   1. **监听** `src/` 目录、项目根 `preload/` 目录和根目录配置文件的变更
- *   2. **分类** 变更文件为 `cold`（冷重启）、`soft`（热替换）或 `ignore`（忽略）
+ *   1. **监听** `src/` 目录、项目根 `preload/`/`public/` 目录和根目录配置文件的变更
+ *   2. **分类** 变更文件为 `cold`（冷重启）、`soft`（热替换）、`client`（前端重建）或 `ignore`（忽略）
  *   3. **识别变更类型**（`modify` / `add` / `delete`）— 决定走 Tier 1 还是 Tier 2 编译路径
  *   4. **防抖合并** 100ms 窗口内的多个变更为一次 reload 事件
  *   5. **Docker 兼容** — inotify 不可用时自动降级为 polling
@@ -80,14 +80,15 @@ export interface FileChangeInfo {
  *
  * action 字段是所有变更的合并结果：
  *   - 只要有一个 `cold` 分类的文件 → action = 'cold'（触发 Cold Restart）
- *   - 全部为 `soft` 分类 → action = 'soft'（触发 Soft Reload）
+ *   - 有 server source 变更 → action = 'soft'（触发 Soft Reload）
+ *   - 只有 client 变更 → action = 'client'（触发前端重建）
  */
 export interface FileChangeEvent {
   /** 变更文件列表（含路径和变更类型） */
   files: FileChangeInfo[];
 
   /** 合并后的最终动作（有一个 cold 就是 cold） */
-  action: "soft" | "cold";
+  action: "soft" | "cold" | "client";
 }
 
 // ── 内部类型 ────────────────────────────────────────────────
@@ -96,7 +97,7 @@ export interface FileChangeEvent {
  * Pending 变更条目（防抖期间暂存）
  */
 interface PendingChange {
-  action: "soft" | "cold";
+  action: "soft" | "cold" | "client";
   type: "modify" | "add" | "delete";
 }
 
@@ -119,6 +120,9 @@ export class VextFileWatcher extends EventEmitter {
 
   /** 当前挂载的项目级 preload 目录 watcher（如存在） */
   private preloadWatcher: Closeable | null = null;
+
+  /** 当前挂载的 public 目录 watcher（如存在） */
+  private publicWatcher: Closeable | null = null;
 
   /**
    * 防抖期间暂存的变更集合
@@ -183,6 +187,7 @@ export class VextFileWatcher extends EventEmitter {
    * 监听目标：
      *   - src/ 目录（递归，所有源码文件变更）
      *   - preload/ 目录（非递归，项目级 preload 文件变更）
+   *   - public/ 目录（递归，前端静态资源）
    *   - 根目录配置文件（package.json, tsconfig.json）
    *   - .env 文件（.env, .env.local, .env.production 等）
    */
@@ -253,8 +258,9 @@ export class VextFileWatcher extends EventEmitter {
 
     // ── preload/ 目录监听（项目级 preload，非递归）─────────
     this.attachPreloadWatcher(root);
+    this.attachPublicWatcher(root);
 
-    // ── 项目根目录监听（补足 preload/ 动态创建/删除）───────
+    // ── 项目根目录监听（补足 preload/public 动态创建/删除）────
     try {
       const watcher = watch(
         root,
@@ -266,9 +272,12 @@ export class VextFileWatcher extends EventEmitter {
           if (!filename) return;
 
           const normalized = String(filename).replace(/\\/g, "/");
-          if (!normalized.startsWith("preload")) return;
-
-          void this.reconcilePreloadWatcher(root);
+          if (normalized.startsWith("preload")) {
+            void this.reconcilePreloadWatcher(root);
+          }
+          if (normalized.startsWith("public")) {
+            void this.reconcilePublicWatcher(root);
+          }
         },
       );
 
@@ -348,6 +357,7 @@ export class VextFileWatcher extends EventEmitter {
     this.pendingChanges.clear();
     this.knownFiles.clear();
     this.preloadWatcher = null;
+    this.publicWatcher = null;
   }
 
   // ── 内部方法 ──────────────────────────────────────────────
@@ -433,6 +443,7 @@ export class VextFileWatcher extends EventEmitter {
     const files = [
       ...(await this.walkDirectory(srcDir)),
       ...(await this.listPreloadFiles(root)),
+      ...(await this.listPublicFiles(root)),
     ];
     for (const file of files) {
       const rel = relative(root, file).replace(/\\/g, "/");
@@ -514,6 +525,80 @@ export class VextFileWatcher extends EventEmitter {
     }
   }
 
+  private attachPublicWatcher(root: string): void {
+    if (this.publicWatcher) return;
+
+    const publicDir = join(root, "public");
+
+    try {
+      const watcher = watch(
+        publicDir,
+        {
+          recursive: true,
+          persistent: true,
+        },
+        (eventType, filename) => {
+          if (!filename) return;
+
+          const relativePath = relative(root, join(publicDir, filename));
+          const normalizedPath = relativePath.replace(/\\/g, "/");
+
+          const changeType = this.detectChangeType(
+            eventType,
+            normalizedPath,
+            join(publicDir, filename),
+          );
+
+          this.onFileChange(normalizedPath, changeType);
+        },
+      );
+
+      watcher.on("error", (err) => {
+        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
+          console.warn(
+            "[vext dev] inotify limit reached, falling back to polling",
+          );
+          this.restartWithPolling();
+        }
+      });
+
+      this.publicWatcher = watcher;
+      this.watchers.push(watcher);
+    } catch {
+      // public/ 目录不存在时静默跳过
+    }
+  }
+
+  private async reconcilePublicWatcher(root: string): Promise<void> {
+    const publicDir = join(root, "public");
+
+    if (!existsSync(publicDir)) {
+      for (const filePath of [...this.knownFiles]) {
+        if (!filePath.startsWith("public/")) continue;
+        this.knownFiles.delete(filePath);
+        this.onFileChange(filePath, "delete");
+      }
+
+      if (this.publicWatcher) {
+        this.publicWatcher.close();
+        this.publicWatcher = null;
+      }
+      return;
+    }
+
+    if (!this.publicWatcher) {
+      this.attachPublicWatcher(root);
+    }
+
+    const currentFiles = await this.listPublicFiles(root);
+    for (const file of currentFiles) {
+      const relativePath = relative(root, file).replace(/\\/g, "/");
+      if (this.knownFiles.has(relativePath)) continue;
+      this.knownFiles.add(relativePath);
+      this.onFileChange(relativePath, "add");
+    }
+  }
+
   /**
    * onFileChange — 处理文件变更事件
    *
@@ -521,7 +606,7 @@ export class VextFileWatcher extends EventEmitter {
    * 将 cold/soft 类型加入 pending 集合，启动防抖定时器。
    *
    * 合并策略：
-   *   - 同一文件在防抖窗口内多次变更 → 保留最高优先级的 action（cold > soft）
+   *   - 同一文件在防抖窗口内多次变更 → 保留最高优先级的 action（cold > soft > client）
    *   - 不同文件独立记录
    *
    * @param relativePath 相对于项目根目录的文件路径（/ 分隔符）
@@ -540,7 +625,7 @@ export class VextFileWatcher extends EventEmitter {
     // 合并到 pending 集合
     // 如果已经有一个 cold，保持 cold（cold 优先级最高）
     const existing = this.pendingChanges.get(relativePath);
-    if (!existing || classification.action === "cold") {
+    if (!existing || compareActionPriority(classification.action, existing.action) > 0) {
       this.pendingChanges.set(relativePath, {
         action: classification.action,
         type: changeType,
@@ -562,7 +647,8 @@ export class VextFileWatcher extends EventEmitter {
    *
    * action 合并规则：
    *   - 只要有一个文件的 action 为 'cold' → 整体 action = 'cold'
-   *   - 全部为 'soft' → 整体 action = 'soft'
+   *   - 有 server source 文件 → 整体 action = 'soft'
+   *   - 只有 client 文件 → 整体 action = 'client'
    */
   private flush(): void {
     if (this.pendingChanges.size === 0) return;
@@ -573,10 +659,13 @@ export class VextFileWatcher extends EventEmitter {
     const hasCold = [...this.pendingChanges.values()].some(
       (v) => v.action === "cold",
     );
+    const hasSoft = [...this.pendingChanges.values()].some(
+      (v) => v.action === "soft",
+    );
 
     const event: FileChangeEvent = {
       files,
-      action: hasCold ? "cold" : "soft",
+      action: hasCold ? "cold" : hasSoft ? "soft" : "client",
     };
 
     this.pendingChanges.clear();
@@ -625,6 +714,7 @@ export class VextFileWatcher extends EventEmitter {
       const files = [
         ...(await this.walkDirectory(srcDir)),
         ...(await this.listPreloadFiles(root)),
+        ...(await this.listPublicFiles(root)),
       ];
       const currentPaths = new Set<string>();
 
@@ -692,9 +782,13 @@ export class VextFileWatcher extends EventEmitter {
 
     // 初始扫描（建立基线）
     const srcDir = join(root, "src");
-    Promise.all([this.walkDirectory(srcDir), this.listPreloadFiles(root)])
-      .then(([srcFiles, preloadFiles]) => {
-        for (const file of [...srcFiles, ...preloadFiles]) {
+    Promise.all([
+      this.walkDirectory(srcDir),
+      this.listPreloadFiles(root),
+      this.listPublicFiles(root),
+    ])
+      .then(([srcFiles, preloadFiles, publicFiles]) => {
+        for (const file of [...srcFiles, ...preloadFiles, ...publicFiles]) {
           const relativePath = relative(root, file).replace(/\\/g, "/");
           try {
             const stat = statSync(file);
@@ -741,7 +835,7 @@ export class VextFileWatcher extends EventEmitter {
    * 遍历规则：
    *   - 跳过以 `.` 开头的隐藏目录（如 .git, .vext）
    *   - 跳过 node_modules 目录
-   *   - 只收集代码文件（.ts / .js / .mjs / .cjs / .json）
+   *   - 收集 server 代码与 frontend client 常见资源文件
    *
    * @param dir 要遍历的目录绝对路径
    * @returns 匹配的文件绝对路径列表
@@ -757,7 +851,7 @@ export class VextFileWatcher extends EventEmitter {
           if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
             results.push(...(await this.walkDirectory(fullPath)));
           }
-        } else if (/\.(ts|js|mjs|cjs|json)$/.test(entry.name)) {
+        } else if (/\.(ts|tsx|js|jsx|mjs|cjs|json|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot)$/.test(entry.name)) {
           results.push(fullPath);
         }
       }
@@ -790,4 +884,16 @@ export class VextFileWatcher extends EventEmitter {
 
     return results;
   }
+
+  private async listPublicFiles(root: string): Promise<string[]> {
+    return this.walkDirectory(join(root, "public"));
+  }
+}
+
+function compareActionPriority(
+  left: PendingChange["action"],
+  right: PendingChange["action"],
+): number {
+  const order = { client: 1, soft: 2, cold: 3 } as const;
+  return order[left] - order[right];
 }

@@ -1,7 +1,7 @@
 ---
 pageType: custom
 title: VextJS
-description: VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。
+description: VextJS 是高性能 Node.js 全栈框架，提供 Native fast path、React 前端集成、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。
 ---
 
 export const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
@@ -11,10 +11,10 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   <section className="vext-hero">
     <div className="vext-hero__inner">
       <div className="vext-hero__content">
-        <p className="vext-hero__eyebrow">VEXTJS 0.3.25 / NATIVE API RUNTIME</p>
+        <p className="vext-hero__eyebrow">VEXTJS 0.3.25 / FULL-STACK RUNTIME</p>
         <h1>VextJS</h1>
         <p className="vext-hero__lead">
-          为高性能 RESTful API 而生的 Node.js 框架。Native fast path、三段式服务端热重载、CLI、校验、OpenAPI 与生产运行能力在同一套工程模型里开箱即用。
+          面向高性能 API 与内置 React 前端集成的 Node.js 框架。Native fast path、三段式后端热重载、前端重建、CLI、校验、OpenAPI 与生产运行能力在同一套工程模型里开箱即用。
         </p>
         <div className="vext-actions">
           <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>快速开始</a>
@@ -48,17 +48,17 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
           <span>create</span>
         </div>
         <div className="vext-console__body">
-          <div className="vext-console__line vext-console__line--typing"><span className="vext-console__prompt">$</span><span className="vext-console__typed" data-vext-typewriter="npx vextjs create api">npx vextjs create api</span></div>
-          <div className="vext-console__line"><span className="vext-console__ok">create</span><span>vext project "api"</span></div>
-          <div className="vext-console__line"><span className="vext-console__muted">preset</span><span>TypeScript / native adapter</span></div>
-          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>routes / services / config</span></div>
+          <div className="vext-console__line vext-console__line--typing"><span className="vext-console__prompt">$</span><span className="vext-console__typed" data-vext-typewriter="npx vextjs create my-app">npx vextjs create my-app</span></div>
+          <div className="vext-console__line"><span className="vext-console__ok">create</span><span>vext project "my-app"</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">preset</span><span>TypeScript / React / native adapter</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>client / routes / services / config</span></div>
           <div className="vext-console__line"><span className="vext-console__route">deps</span><span>install vextjs and dev scripts</span></div>
           <div className="vext-console__line"><span className="vext-console__ok">done</span><span>Project created successfully</span></div>
-          <div className="vext-console__line"><span className="vext-console__muted">next</span><span>cd api && npm run dev</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">next</span><span>cd my-app && npm run dev</span></div>
           <div className="vext-console__metrics">
-            <div className="vext-console__metric"><strong>1 cmd</strong><span>create project</span></div>
+            <div className="vext-console__metric"><strong>Full-stack</strong><span>默认脚手架</span></div>
             <div className="vext-console__metric"><strong>5 adapters</strong><span>native default</span></div>
-            <div className="vext-console__metric"><strong>TS ready</strong><span>typed API</span></div>
+            <div className="vext-console__metric"><strong>React</strong><span>typed client</span></div>
           </div>
         </div>
       </aside>
@@ -66,8 +66,8 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   </section>
 
   <nav className="vext-path-strip" aria-label="Vext documentation paths">
-    <a href={docsHref("/guide/quick-start.html")}><strong>Start</strong><span>从脚手架到第一个 JSON API</span></a>
-    <a href={docsHref("/guide/hot-reload.html")}><strong>Reload</strong><span>理解 T1/T2/T3 三段式服务端热重载</span></a>
+    <a href={docsHref("/guide/quick-start.html")}><strong>Start</strong><span>从脚手架到第一个全栈应用</span></a>
+    <a href={docsHref("/guide/hot-reload.html")}><strong>Reload</strong><span>理解后端热重载与前端重建边界</span></a>
     <a href={docsHref("/benchmark.html")}><strong>Perf</strong><span>复现 Native fast path 与 benchmark 数据</span></a>
     <a href={docsHref("/guide/deployment.html")}><strong>Ship</strong><span>部署、优雅关闭、Rolling Restart 与 Cluster</span></a>
     <a href={docsHref("/api/config.html")}><strong>API</strong><span>配置、路由、上下文、插件与测试工具</span></a>
@@ -76,8 +76,8 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   <section className="vext-section">
     <div className="vext-section__header">
       <p className="vext-kicker">Hot Reload Pipeline</p>
-      <h2 className="vext-title">三段式服务端热重载，让 API 开发少等一次重启。</h2>
-      <p className="vext-copy">Vext 会按变更边界选择不同策略：能热替换的直接替换，需要重建结构的只重载结构，触及运行时边界时再冷启动。</p>
+      <h2 className="vext-title">三段式后端热重载加前端重建，让开发反馈更紧。</h2>
+      <p className="vext-copy">Vext 会按变更边界选择不同策略：能热替换的直接替换，客户端文件变化时重建前端资源，触及运行时边界时再冷启动。</p>
     </div>
     <div className="vext-reload">
       <article className="vext-tier-card vext-tier-card--active">
@@ -115,8 +115,8 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
       </article>
       <article className="vext-capability">
         <span className="vext-capability__mark">router</span>
-        <h3>面向 API 的路由核心</h3>
-        <p>文件路由、三段式路由定义和请求上下文围绕 RESTful API 服务组织。</p>
+        <h3>全栈路由核心</h3>
+        <p>文件路由、三段式路由定义、生成客户端契约和请求上下文围绕同一套 Vext 工程模型组织。</p>
       </article>
       <article className="vext-capability">
         <span className="vext-capability__mark">schema</span>
@@ -180,8 +180,8 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
       <h2 className="vext-title">直接进入你要验证的工程路径。</h2>
     </div>
     <div className="vext-next">
-      <a href={docsHref("/guide/quick-start.html")}><strong>创建第一个项目</strong><span>使用 npx vextjs create 创建 TypeScript 项目。</span></a>
-      <a href={docsHref("/guide/hot-reload.html")}><strong>验证热重载体验</strong><span>查看 T1/T2/T3 触发边界和 dev server 输出。</span></a>
+      <a href={docsHref("/guide/quick-start.html")}><strong>创建第一个项目</strong><span>使用 npx vextjs create 创建 TypeScript + React 项目。</span></a>
+      <a href={docsHref("/guide/hot-reload.html")}><strong>验证重载体验</strong><span>查看后端 T1/T2/T3 触发边界和前端重建输出。</span></a>
       <a href={docsHref("/guide/deployment.html")}><strong>准备生产部署</strong><span>查看构建、启动、优雅关闭与多进程策略。</span></a>
       <a href={docsHref("/benchmark.html")}><strong>复现性能基准</strong><span>基于仓库 benchmark 脚本复核不同场景吞吐。</span></a>
     </div>
@@ -191,7 +191,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
     <div className="vext-footer__inner">
       <div className="vext-footer__brand">
         <strong>VextJS</strong>
-        <span>High-performance Node.js API runtime.</span>
+        <span>High-performance Node.js full-stack runtime.</span>
       </div>
       <div className="vext-footer__grid">
         <div>

@@ -535,6 +535,9 @@ export const DEFAULT_CONFIG: VextConfig = {
   openapi: {
     enabled: false,
   },
+  frontend: {
+    enabled: false,
+  },
   requestContext: {
     enabled: true,
   },

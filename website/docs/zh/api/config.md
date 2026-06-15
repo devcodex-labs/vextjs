@@ -128,6 +128,7 @@ export default {
 | `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置           |
 | `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置             |
 | `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方      | 内置 HTTP 客户端与代理配置 |
+| `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置 |
 | `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置         |
 
 ---
@@ -736,6 +737,47 @@ export default {
 
 ---
 
+## VextFrontendConfig
+
+内置前端构建与静态服务配置。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| -------------------- | -------------------- | ------------------------- | ----------------------------- |
+| `enabled` | `boolean` | `false` | 是否启用前端集成 |
+| `framework` | `string` | `'react'` | 前端框架标签 |
+| `root` | `string` | `'src/client'` | 前端源码目录 |
+| `entry` | `string` | `'src/client/main.tsx'` | 浏览器入口文件 |
+| `indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
+| `outDir` | `string` | 开发期 `.vext/client`，生产期 `dist/client` | 前端输出目录 |
+| `publicDir` | `string` | `'public'` | 会复制到前端输出目录的静态资源 |
+| `publicPath` | `string` | `'/'` | 公开资源路径前缀 |
+| `spaFallback` | `boolean \| object` | `true` | 对非 API 浏览器路径服务 `index.html` |
+| `apiClient` | `boolean \| object` | `true` | 生成 client contract 产物 |
+| `build.target` | `string \| string[]` | `'es2022'` | 浏览器构建目标 |
+| `build.minify` | `boolean` | 生产期 `true` | 压缩前端产物 |
+| `build.sourcemap` | `boolean` | 开发期 `true` | 生成前端 source map |
+
+```typescript
+export default {
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+    spaFallback: {
+      enabled: true,
+      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+    },
+  },
+};
+```
+
+默认 SPA fallback 排除 `/api/**`、`/openapi.json` 和 `/docs/**`，让这些路径继续进入后端运行时。
+
+---
+
 ## VextClusterConfig
 
 Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterConfig`。
@@ -942,6 +984,9 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   requestContext: {
     enabled: true,
+  },
+  frontend: {
+    enabled: false,
   },
 }
 ```

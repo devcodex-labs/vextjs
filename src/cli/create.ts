@@ -12,7 +12,8 @@ import { parseArgs } from "node:util";
  * 命令行参数：
  *   <project-name>       项目名称（必填）
  *   --js                 生成 JavaScript 项目（默认 TypeScript）
- *   --template <name>    项目模板（默认 'api'，当前仅支持 api）
+ *   --template <name>    项目模板（默认 fullstack-react，支持 api）
+ *   --frontend <name>    前端集成（react|none，默认随 template）
  *   --skip-install       跳过 npm install
  *   --adapter <name>     指定默认 adapter（hono|fastify|express|koa|native，默认 native）
  *   --force              目标目录存在时强制覆盖（不询问）
@@ -40,7 +41,10 @@ interface CreateOptions {
   language: "ts" | "js";
 
   /** 项目模板 */
-  template: "api";
+  template: "api" | "fullstack-react";
+
+  /** 前端集成 */
+  frontend: "react" | "none";
 
   /** 跳过 npm install */
   skipInstall: boolean;
@@ -55,7 +59,8 @@ interface CreateOptions {
 // ── 常量 ────────────────────────────────────────────────────
 
 const VALID_ADAPTERS = ["hono", "fastify", "express", "koa", "native"];
-const VALID_TEMPLATES = ["api"];
+const VALID_TEMPLATES = ["api", "fullstack-react"];
+const VALID_FRONTENDS = ["react", "none"];
 
 /**
  * adapter 对应的 peer dependency 映射
@@ -203,7 +208,8 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
       args,
       options: {
         js: { type: "boolean", default: false },
-        template: { type: "string", default: "api" },
+        template: { type: "string", default: "fullstack-react" },
+        frontend: { type: "string" },
         "skip-install": { type: "boolean", default: false },
         adapter: { type: "string", default: "native" },
         force: { type: "boolean", default: false },
@@ -247,7 +253,7 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
     }
 
     // ── template 验证 ─────────────────────────────────────
-    const template = (values.template as string) ?? "api";
+    const template = (values.template as string) ?? "fullstack-react";
     if (!VALID_TEMPLATES.includes(template)) {
       console.error(
         `\n  ❌ Invalid template: "${template}"\n\n` +
@@ -256,11 +262,37 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
       process.exit(1);
       return null;
     }
+    const frontend =
+      (values.frontend as string | undefined) ??
+      (template === "api" ? "none" : "react");
+    if (!VALID_FRONTENDS.includes(frontend)) {
+      console.error(
+        `\n  ❌ Invalid frontend: "${frontend}"\n\n` +
+          `  Available frontends: ${VALID_FRONTENDS.join(", ")}\n`,
+      );
+      process.exit(1);
+      return null;
+    }
+    if (template === "api" && frontend !== "none") {
+      console.error(
+        '\n  ❌ --template api only supports --frontend none.\n',
+      );
+      process.exit(1);
+      return null;
+    }
+    if (template === "fullstack-react" && frontend !== "react") {
+      console.error(
+        '\n  ❌ --template fullstack-react requires --frontend react.\n',
+      );
+      process.exit(1);
+      return null;
+    }
 
     return {
       name,
       language: values.js ? "js" : "ts",
-      template: template as "api",
+      template: template as "api" | "fullstack-react",
+      frontend: frontend as "react" | "none",
       skipInstall: !!values["skip-install"],
       adapter,
       force: !!values.force,
@@ -315,6 +347,7 @@ async function generateProject(
 ): Promise<void> {
   // ── 1. 创建目录结构 ────────────────────────────────────
   const isTs = options.language === "ts";
+  const isFullstack = options.template === "fullstack-react";
   const dirs = [
     "src/routes",
     "src/services",
@@ -324,6 +357,9 @@ async function generateProject(
     "src/locales",
     "preload",
   ];
+  if (isFullstack) {
+    dirs.push("src/client", "public");
+  }
 
   if (isTs) {
     dirs.push("src/types/generated");
@@ -382,6 +418,7 @@ function getTemplateFiles(
   const { name, language, adapter } = options;
   const ext = language === "ts" ? "ts" : "js";
   const isTs = language === "ts";
+  const isFullstack = options.template === "fullstack-react";
 
   const files: Record<string, string> = {};
 
@@ -391,21 +428,26 @@ function getTemplateFiles(
     language,
     adapter,
     vextVersion,
+    isFullstack,
   );
 
   // ── .gitignore ────────────────────────────────────────
   files[".gitignore"] = generateGitignore();
 
   // ── README.md ─────────────────────────────────────────
-  files["README.md"] = generateReadme(name, adapter, ext, isTs);
+  files["README.md"] = generateReadme(name, adapter, ext, isTs, isFullstack);
 
   // ── tsconfig.json（TS 项目专用）────────────────────────
   if (isTs) {
-    files["tsconfig.json"] = generateTsconfig();
+    files["tsconfig.json"] = generateTsconfig(isFullstack);
   }
 
   // ── src/config/default ────────────────────────────────
-  files[`src/config/default.${ext}`] = generateDefaultConfig(adapter, isTs);
+  files[`src/config/default.${ext}`] = generateDefaultConfig(
+    adapter,
+    isTs,
+    isFullstack,
+  );
 
   // ── src/config/development ────────────────────────────
   files[`src/config/development.${ext}`] = generateDevelopmentConfig(isTs);
@@ -421,7 +463,7 @@ function getTemplateFiles(
     generateBootstrapExampleConfig(isTs);
 
   // ── src/routes/index ──────────────────────────────────
-  files[`src/routes/index.${ext}`] = generateIndexRoute(isTs);
+  files[`src/routes/index.${ext}`] = generateIndexRoute(isTs, isFullstack);
 
   // ── src/services/example ──────────────────────────────
   files[`src/services/example.${ext}`] = generateExampleService(isTs);
@@ -434,6 +476,14 @@ function getTemplateFiles(
     files["src/types/generated/.gitkeep"] = "";
   }
 
+  if (isFullstack) {
+    files[`src/client/main.${isTs ? "tsx" : "jsx"}`] = generateClientMain(isTs);
+    files[`src/client/App.${isTs ? "tsx" : "jsx"}`] = generateClientApp(isTs);
+    files["src/client/styles.css"] = generateClientStyles();
+    files["src/client/index.html"] = generateClientHtml(name);
+    files["public/favicon.svg"] = generateFaviconSvg();
+  }
+
   return files;
 }
 
@@ -444,16 +494,21 @@ function generatePackageJson(
   language: "ts" | "js",
   adapter: string,
   vextVersion: string,
+  isFullstack: boolean,
 ): string {
   const isTs = language === "ts";
 
   const deps: Record<string, string> = {
     vextjs: vextVersion,
     ...ADAPTER_DEPS[adapter],
+    ...(isFullstack ? { react: "^19.0.0", "react-dom": "^19.0.0" } : {}),
   };
 
   const devDeps: Record<string, string> = {
     ...(isTs ? { typescript: "^5.4.0" } : {}),
+    ...(isFullstack && isTs
+      ? { "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0" }
+      : {}),
     ...ADAPTER_DEV_DEPS[adapter],
   };
 
@@ -470,7 +525,7 @@ function generatePackageJson(
     type: "module",
     scripts: {
       dev: "vext dev",
-      build: isTs ? "vext build" : undefined,
+      build: isTs || isFullstack ? "vext build" : undefined,
       start: "vext start",
     },
     dependencies: sortObj(deps),
@@ -532,6 +587,7 @@ function generateReadme(
   adapter: string,
   ext: string,
   isTs: boolean,
+  isFullstack: boolean,
 ): string {
   const optionalStructureLines = isTs
     ? `├── locales/         # Optional i18n language packs
@@ -556,7 +612,7 @@ npm start
 
 \`\`\`
 src/
-├── config/          # Configuration files and examples
+${isFullstack ? "├── client/          # React 19 browser entry\n" : ""}├── config/          # Configuration files and examples
 ├── routes/          # Route definitions
 ├── services/        # Business logic services
 ├── middlewares/     # Custom middlewares
@@ -569,6 +625,7 @@ preload/             # Optional process-level preload scripts
 ## Configuration
 
 - **Adapter**: \`${adapter}\`
+- **Template**: \`${isFullstack ? "fullstack-react" : "api"}\`
 - **Port**: \`3000\` (default)
 
 Edit \`src/config/default.${ext}\` to customize shared configuration.
@@ -665,17 +722,18 @@ Use this directory for OpenTelemetry, APM, polyfills, or startup bridges that mu
 `;
 }
 
-function generateTsconfig(): string {
+function generateTsconfig(isFullstack: boolean): string {
   const config = {
     compilerOptions: {
       target: "ES2022",
       module: "NodeNext",
       moduleResolution: "NodeNext",
-      lib: ["ES2022"],
+      lib: isFullstack ? ["ES2022", "DOM", "DOM.Iterable"] : ["ES2022"],
       outDir: "./dist",
       rootDir: "./src",
       declaration: true,
       sourceMap: true,
+      ...(isFullstack ? { jsx: "react-jsx" } : {}),
       strict: true,
       noUncheckedIndexedAccess: true,
       forceConsistentCasingInFileNames: true,
@@ -684,20 +742,39 @@ function generateTsconfig(): string {
       skipLibCheck: true,
       resolveJsonModule: true,
     },
-    include: ["src/**/*.ts", "src/**/*.d.ts"],
+    include: isFullstack
+      ? ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"]
+      : ["src/**/*.ts", "src/**/*.d.ts"],
     exclude: ["node_modules", "dist"],
   };
 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-function generateDefaultConfig(adapter: string, isTs: boolean): string {
+function generateDefaultConfig(
+  adapter: string,
+  isTs: boolean,
+  isFullstack: boolean,
+): string {
+  const frontendBlock = isFullstack
+    ? `  frontend: {
+    enabled: true,
+    framework: 'react',
+    entry: 'src/client/main.${isTs ? "tsx" : "jsx"}',
+    indexHtml: 'src/client/index.html',
+    publicDir: 'public',
+    publicPath: '/',
+  },
+`
+    : "";
+
   if (isTs) {
     return `import type { VextUserConfig } from 'vextjs'
 
 const config: VextUserConfig = {
   port: 3000,
   adapter: '${adapter}',
+${frontendBlock}
 }
 
 export default config
@@ -708,6 +785,7 @@ export default config
 const config = {
   port: 3000,
   adapter: '${adapter}',
+${frontendBlock}
 }
 
 export default config
@@ -770,17 +848,19 @@ export default config
 `;
 }
 
-function generateIndexRoute(isTs: boolean): string {
+function generateIndexRoute(isTs: boolean, isFullstack: boolean): string {
+  const helloPath = isFullstack ? "/api/hello" : "/";
+  const healthPath = isFullstack ? "/api/health" : "/health";
   if (isTs) {
     return `import { defineRoutes } from 'vextjs'
 
 export default defineRoutes((app) => {
-  app.get('/', {}, async (req, res) => {
+  app.get('${helloPath}', {}, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('/health', {}, async (req, res) => {
+  app.get('${healthPath}', {}, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -790,12 +870,12 @@ export default defineRoutes((app) => {
   return `import { defineRoutes } from 'vextjs'
 
 export default defineRoutes((app) => {
-  app.get('/', {}, async (req, res) => {
+  app.get('${helloPath}', {}, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('/health', {}, async (req, res) => {
+  app.get('${healthPath}', {}, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -862,6 +942,159 @@ export default class ExampleService {
 `;
 }
 
+function generateClientMain(isTs: boolean): string {
+  const rootElement = isTs
+    ? "document.getElementById('root')!"
+    : "document.getElementById('root')";
+  return `import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { App } from './App'
+import './styles.css'
+
+createRoot(${rootElement}).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+`;
+}
+
+function generateClientApp(isTs: boolean): string {
+  const typeLine = isTs
+    ? "\ntype HelloResponse = { message: string }\n"
+    : "";
+  const cast = isTs ? " as HelloResponse" : "";
+  const constAssertion = isTs ? " as const" : "";
+
+  return `import { useEffect, useState } from 'react'
+import { createVextApiClient, isVextApiError } from 'vextjs/frontend'
+${typeLine}
+const api = createVextApiClient({
+  schemaVersion: 1,
+  kind: 'client-contract',
+  source: 'routes-manifest',
+  generatedAt: 'template',
+  routes: [
+    {
+      method: 'GET',
+      path: '/api/hello',
+      operationId: 'getApiHello',
+      response: { type: 'unknown' },
+    },
+  ],
+  warnings: [],
+}${constAssertion})
+
+export function App() {
+  const [message, setMessage] = useState('Loading...')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.GET('/api/hello')
+      .then((data) => {
+        setMessage((data${cast}).message)
+        setError('')
+      })
+      .catch((err) => {
+        setMessage('Request failed')
+        setError(isVextApiError(err) ? err.message : String(err))
+      })
+  }, [])
+
+  return (
+    <main className="shell">
+      <section className="panel">
+        <p className="eyebrow">vext full-stack</p>
+        <h1>{message}</h1>
+        {error ? <p className="error">{error}</p> : <p>React 19 client served by vext.</p>}
+      </section>
+    </main>
+  )
+}
+`;
+}
+
+function generateClientStyles(): string {
+  return `:root {
+  color: #172026;
+  background: #f7f9fb;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(720px, 100%);
+  border: 1px solid #d6dde5;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 32px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #3b6ea8;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: clamp(28px, 5vw, 48px);
+  line-height: 1.05;
+}
+
+p {
+  margin: 0;
+  color: #52606d;
+}
+
+.error {
+  color: #b42318;
+}
+`;
+}
+
+function generateClientHtml(name: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${name}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    %VEXT_ENTRY%
+  </body>
+</html>
+`;
+}
+
+function generateFaviconSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#172026"/>
+  <path d="M18 18h28L34 46h-8l8-18H18z" fill="#6ee7b7"/>
+</svg>
+`;
+}
+
 // ── 帮助输出 ────────────────────────────────────────────────
 
 function printCreateHelp(): void {
@@ -876,7 +1109,8 @@ function printCreateHelp(): void {
   Options:
     --js                  Create a JavaScript project (default: TypeScript)
     --adapter <name>      Default adapter (hono|fastify|express|koa|native, default: native)
-    --template <name>     Project template (default: api)
+    --template <name>     Project template (fullstack-react|api, default: fullstack-react)
+    --frontend <name>     Frontend integration (react|none, default: by template)
     --skip-install        Skip npm install after project creation
     --force               Overwrite existing directory without asking
     -h, --help            Show this help message
@@ -884,6 +1118,7 @@ function printCreateHelp(): void {
   Examples:
     $ vext create my-app
     $ vext create my-app --js
+    $ vext create my-api --template api
     $ vext create my-app --adapter fastify
     $ vext create my-app --skip-install
     $ vext create my-app --adapter native --js --force
@@ -905,7 +1140,7 @@ function printSuccess(options: CreateOptions): void {
 
   Available commands:
     npm run dev      Start development server (with hot reload)
-    npm start        Start production server${options.language === "ts" ? "\n    npm run build    Build for production" : ""}
+    npm start        Start production server${options.language === "ts" || options.template === "fullstack-react" ? "\n    npm run build    Build for production" : ""}
 
   📖 Documentation: https://vextjs.github.io
 `);

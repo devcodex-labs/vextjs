@@ -17,6 +17,7 @@
  * 生成文件：
  *   - dist/index.cjs                  — 主入口 CJS bundle
  *   - dist/testing/index.cjs          — 测试工具 CJS bundle
+ *   - dist/frontend/index.cjs         — 前端公开契约 CJS bundle
  *   - dist/adapters/hono/index.cjs    — Hono adapter CJS bundle
  *   - dist/adapters/fastify/index.cjs — Fastify adapter CJS bundle
  *   - dist/adapters/express/index.cjs — Express adapter CJS bundle
@@ -95,6 +96,11 @@ const entries = [
     name: "testing",
     input: "dist/testing/index.js",
     output: "dist/testing/index.cjs",
+  },
+  {
+    name: "frontend",
+    input: "dist/frontend/index.js",
+    output: "dist/frontend/index.cjs",
   },
   {
     name: "adapter:hono",

@@ -536,6 +536,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
       const preflightReason =
         event.action === "cold"
           ? "cold restart preflight"
+          : event.action === "client"
+            ? "client rebuild preflight"
           : "soft reload preflight";
       if (!(await runPreflight(preflightReason))) {
         return;
@@ -564,6 +566,20 @@ export async function devCommand(args: string[] = []): Promise<void> {
           console.error("[vext dev] fix the error and save to retry\n");
         }
         return;
+      }
+
+      const clientFiles = event.files.filter((file) =>
+        isFrontendClientFile(file.path),
+      );
+      if (clientFiles.length > 0) {
+        console.log("[vext dev] frontend client change detected -> rebuild...");
+        restarter.sendToChild({
+          type: "frontend-rebuild",
+          files: clientFiles,
+        });
+        if (event.action === "client") {
+          return;
+        }
       }
 
       // ── --no-hot 降级：soft 变更也走 Cold Restart ────
@@ -739,6 +755,10 @@ export async function devCommand(args: string[] = []): Promise<void> {
       }
     });
   }
+}
+
+function isFrontendClientFile(filePath: string): boolean {
+  return filePath.startsWith("src/client/") || filePath.startsWith("public/");
 }
 
 // ── 参数解析 ────────────────────────────────────────────────

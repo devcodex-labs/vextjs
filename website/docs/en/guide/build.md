@@ -1,6 +1,6 @@
 # Build (vext build)
 
-`vext build` compiles TypeScript/JavaScript source code into deployable JavaScript products and outputs them to the `dist/` directory. The current version of `vext build` is designed according to **production-target build**: it will statically inject production mode into `process.env.NODE_ENV` in the user source code, but which environment configuration file is actually loaded during runtime is still determined by `NODE_ENV` at the time of `vext start`. Based on [esbuild](https://esbuild.github.io/) implementation, the pure compilation phase is extremely fast - the compilation time of a typical project (50+ source files) is usually within **1 second**.
+`vext build` compiles server source code into deployable JavaScript products and, when `frontend.enabled` is true, bundles the browser client into `dist/client/`. The current version of `vext build` is designed according to **production-target build**: it will statically inject production mode into `process.env.NODE_ENV` in the user source code, but which environment configuration file is actually loaded during runtime is still determined by `NODE_ENV` at the time of `vext start`. Based on [esbuild](https://esbuild.github.io/) implementation, the compilation phase is optimized for fast local and CI feedback.
 
 ## Quick Start
 
@@ -22,7 +22,8 @@ When a TypeScript project executes `vext build`, it will first refresh the gener
 1. `vext typegen` basic refresh: write `.vext/types/*.generated.d.ts`, `src/types/generated/index.d.ts` and `.vext/manifest/services.json`
 2. `doctor routes --refresh --write-manifest`: Rescan routes and write `.vext/manifest/routes.json`
 3. If `--typecheck` is passed in, execute `tsc --noEmit` at this time
-4. Finally, esbuild outputs `dist/`
+4. esbuild outputs the server runtime into `dist/`
+5. If `config.frontend.enabled` is true, esbuild bundles the browser client into `dist/client/`
 
 This ensures that new scaffolding or projects that have just cleaned `.vext/` can also get the latest generated type in `vext build --typecheck` before entering TypeScript verification.
 
@@ -30,7 +31,7 @@ This ensures that new scaffolding or projects that have just cleaned `.vext/` ca
 
 ### File-by-File Transform
 
-`vext build` uses **file-by-file compilation** mode instead of bundle mode - each source file is independently compiled into an output file, maintaining the directory structure mapping of `src/`:
+`vext build` uses **file-by-file compilation** mode for server code instead of bundle mode - each source file is independently compiled into an output file, maintaining the directory structure mapping of `src/`. `src/client/**` is excluded from this server compile step and is handled by the frontend bundler.
 
 ```
 src/dist/
@@ -74,6 +75,30 @@ src/dist/
 | `--no-sourcemap` | Disable source map | — |
 | `--minify` | Compress output code | `false` |
 | `--typecheck` | Execute `tsc --noEmit` after refreshing generated / manifest | `false` |
+
+## Frontend build
+
+When `config.frontend.enabled` is true, the browser pipeline uses esbuild in bundle mode:
+
+```text
+src/client/main.tsx  →  dist/client/assets/main-<hash>.js
+src/client/index.html → dist/client/index.html
+public/** → dist/client/**
+.vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+```
+
+The frontend build writes:
+
+| File | Description |
+| ----------------------------- | --------------------------------------------- |
+| `dist/client/index.html` | HTML entry served by `vext start` |
+| `dist/client/assets/*` | Bundled JavaScript, CSS, and imported assets |
+| `dist/client/manifest.json` | Frontend asset manifest |
+| `dist/client/size-report.json` | Size summary for generated frontend assets |
+| `dist/client/client-contract.json` | Route contract generated from route manifest |
+| `dist/client/api.generated.ts` | Lightweight typed API client module |
+
+`vext start` fails fast when frontend is enabled but `dist/client/index.html` is missing. Run `vext build` before production start.
 
 ### Output format
 
@@ -144,6 +169,8 @@ If you want to set `NODE_ENV` cross-platform in `package.json` scripts, it is re
 **/*.{ts,js,mjs,cjs}
 ```
 
+Server compilation ignores `src/client/**`; frontend files are handled by the frontend build step.
+
 ### Excluded files
 
 Compilation automatically excludes the following files (two-level exclusion rules):
@@ -164,6 +191,7 @@ Compilation automatically excludes the following files (two-level exclusion rule
 | `**/config/development.*` | Development environment configuration (meaningless for production) |
 | `**/config/local.*` | Local override configuration (never deployed) |
 | `**/config/test.*` | Test environment configuration (not required for production) |
+| `**/client/**` | Browser client source, handled by the frontend bundler |
 
 :::tip
 This means that development/test/local configuration files will not be included in `dist/`, preventing sensitive information from leaking into the production environment.
@@ -287,6 +315,8 @@ NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=productio
 ```
 
 If the TypeScript project lacks `dist/` or key build products, `vext start` will fail directly and prompt to execute `vext build` first. Please use `vext dev` to start the source code during the development period.
+
+If frontend is enabled, `vext start` also checks `dist/client/index.html` and serves `dist/client/` with SPA fallback outside API/documentation paths.
 
 There is no fixed `dist/index.js` startup entry for universal scaffolding projects; the direct `node dist/index.js` is only suitable for advanced scenarios where you maintain the entry file yourself and explicitly call the framework startup logic.
 

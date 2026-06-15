@@ -41,6 +41,42 @@ const mocks = vi.hoisted(() => {
         errors: [],
       };
     }),
+    loadConfig: vi.fn(async () => {
+      order.push("loadConfig");
+      return {
+        frontend: {
+          enabled: false,
+        },
+      };
+    }),
+    buildFrontendClient: vi.fn(async () => {
+      order.push("frontend");
+      return {
+        skipped: true,
+        config: {
+          enabled: false,
+          framework: "react",
+          root: "E:/app/src/client",
+          entry: "E:/app/src/client/main.tsx",
+          indexHtml: "E:/app/src/client/index.html",
+          outDir: "E:/app/dist/client",
+          publicDir: "E:/app/public",
+          publicPath: "/",
+          apiClient: {
+            enabled: true,
+            outFile: "E:/app/.vext/client/api.generated.ts",
+            contractFile: "E:/app/.vext/client/client-contract.json",
+          },
+          spaFallback: true,
+          build: {
+            target: "es2022",
+            minify: false,
+            sourcemap: true,
+          },
+        },
+        warnings: [],
+      };
+    }),
   };
 });
 
@@ -71,6 +107,14 @@ vi.mock("../../../src/lib/build/build-compiler.js", () => ({
   })),
 }));
 
+vi.mock("../../../src/lib/config-loader.js", () => ({
+  loadConfig: mocks.loadConfig,
+}));
+
+vi.mock("../../../src/frontend/tooling/client-build-compiler.js", () => ({
+  buildFrontendClient: mocks.buildFrontendClient,
+}));
+
 import { buildCommand } from "../../../src/cli/build.js";
 
 describe("buildCommand", () => {
@@ -92,7 +136,14 @@ describe("buildCommand", () => {
   it("refreshes generated artifacts before optional TypeScript typecheck", async () => {
     await buildCommand(["--typecheck"]);
 
-    expect(mocks.order).toEqual(["typegen", "doctor", "typecheck", "build"]);
+    expect(mocks.order).toEqual([
+      "typegen",
+      "doctor",
+      "typecheck",
+      "build",
+      "loadConfig",
+      "frontend",
+    ]);
     expect(mocks.runTypegen).toHaveBeenCalledWith({
       rootDir: "E:/app",
       generateServices: true,
@@ -108,6 +159,54 @@ describe("buildCommand", () => {
     expect(mocks.execSync).toHaveBeenCalledWith("npx tsc --noEmit", {
       cwd: "E:/app",
       stdio: "inherit",
+    });
+    expect(mocks.loadConfig).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]dist[\\/]config$/),
+      {
+        rootDir: "E:/app",
+        command: "build",
+        isBuilt: true,
+      },
+    );
+    expect(mocks.buildFrontendClient).toHaveBeenCalledWith({
+      rootDir: "E:/app",
+      config: {
+        enabled: false,
+      },
+      mode: "production",
+    });
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes custom build outdir to frontend output when outDir is omitted", async () => {
+    mocks.loadConfig.mockImplementationOnce(async () => {
+      mocks.order.push("loadConfig");
+      return {
+        frontend: {
+          enabled: true,
+          entry: "src/client/main.tsx",
+        },
+      };
+    });
+
+    await buildCommand(["--outdir", "build"]);
+
+    expect(mocks.loadConfig).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]build[\\/]config$/),
+      {
+        rootDir: "E:/app",
+        command: "build",
+        isBuilt: true,
+      },
+    );
+    expect(mocks.buildFrontendClient).toHaveBeenCalledWith({
+      rootDir: "E:/app",
+      config: expect.objectContaining({
+        enabled: true,
+        entry: "src/client/main.tsx",
+        outDir: expect.stringMatching(/^build[\\/]client$/),
+      }),
+      mode: "production",
     });
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });

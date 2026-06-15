@@ -38,7 +38,7 @@ npm run build  # → vext build
 
 ## `vext create` — 创建项目
 
-交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。
+交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。默认模板是 `fullstack-react`；API-only 脚手架仍可通过 `--template api --frontend none` 创建。
 
 ### 用法
 
@@ -50,6 +50,8 @@ npx vextjs create <project-name> [options]
 
 | 选项               | 说明                                                    | 默认值   |
 | ------------------ | ------------------------------------------------------- | -------- |
+| `--template <name>` | 项目模板（`fullstack-react` / `api`） | `fullstack-react` |
+| `--frontend <name>` | 前端目标（`react` / `none`） | `react` |
 | `--adapter <name>` | 指定 Adapter（native / hono / fastify / express / koa） | `native` |
 | `--js`             | 创建 JavaScript 项目（而非 TypeScript）                 | `false`  |
 | `--skip-install`   | 跳过 `npm install`                                      | `false`  |
@@ -59,15 +61,18 @@ npx vextjs create <project-name> [options]
 ### 示例
 
 ```bash
-# 创建 TypeScript 项目（默认 Native Adapter）
+# 创建 TypeScript 全栈项目（默认 Native Adapter）
 npx vextjs create my-app
 
 # 指定 Adapter
 npx vextjs create my-app --adapter hono
 npx vextjs create my-app --adapter fastify
 
-# 创建 JavaScript 项目
+# 创建 JavaScript 全栈项目
 npx vextjs create my-app --js
+
+# 创建 API-only 项目
+npx vextjs create my-api --template api --frontend none
 
 # 跳过依赖安装
 npx vextjs create my-app --skip-install
@@ -79,7 +84,14 @@ npx vextjs create my-app --skip-install
 my-app/
 ├── preload/
 │   └── README.md             # 项目级 preload 脚本占位说明
+├── public/
+│   └── favicon.svg           # 会复制到前端构建产物的静态资源
 ├── src/
+│   ├── client/
+│   │   ├── App.tsx           # React 应用
+│   │   ├── index.html        # HTML shell
+│   │   ├── main.tsx          # 浏览器入口
+│   │   └── styles.css
 │   ├── config/
 │   │   ├── default.ts        # 默认配置（port: 3000）
 │   │   ├── development.ts    # 开发环境覆盖
@@ -111,7 +123,7 @@ cd my-app
 npm run dev
 ```
 
-访问 `http://localhost:3000`，你应该能看到框架的 JSON 响应。
+访问 `http://localhost:3000`，你应该能看到 React 客户端。API 路由位于 `/api/hello` 与 `/api/health`。
 
 如需在配置冻结前拉取远程配置（例如 Nacos / 启动期数据库配置），可将 `src/config/bootstrap.example.ts` 复制为 `src/config/bootstrap.ts` 并通过 `defineBootstrapConfig()` 注册 provider。需要本地覆盖时，可将 `src/config/local.example.ts` 复制为 `src/config/local.ts`，该文件默认被 `.gitignore` 排除。
 
@@ -208,6 +220,8 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 详见 [热重载](/guide/hot-reload) 章节。
 
+`src/client/**` 下的前端文件和 `public/**` 下的静态资源变更会触发前端重建消息。除非同时混入后端变更，否则不需要后端 cold restart。
+
 ### package.json 脚本
 
 ```json
@@ -220,7 +234,7 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 ## `vext build` — 构建项目
 
-将 TypeScript 源码编译为 JavaScript，生成生产可用的 `dist/` 目录；构建前会刷新 typegen 与 route manifest 这类工具产物。
+将 TypeScript 源码编译为 JavaScript，生成生产可用的 `dist/` 目录；构建前会刷新 typegen 与 route manifest 这类工具产物。启用前端时，`vext build` 还会把浏览器客户端打包到 `dist/client/`。
 
 ### 用法
 
@@ -263,10 +277,11 @@ vext build && vext start
 
 - 先刷新 `.vext/types/*.generated.d.ts`、`src/types/generated/index.d.ts`、`.vext/manifest/services.json` 与 `.vext/manifest/routes.json`
 - `--typecheck` 开启时，在 generated / manifest 刷新后执行 `tsc --noEmit`
-- 使用 esbuild 进行极速编译（TypeScript → JavaScript）
+- 使用 esbuild 进行服务端编译与前端打包
 - 输出目录默认为 `dist/`
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
+- 启用前端时，会生成 `dist/client/index.html`、`manifest.json`、`size-report.json`、静态资源与 client contract 产物
 
 ### package.json 脚本
 
@@ -678,6 +693,8 @@ vext --help
 
 需要先执行 `vext build` 编译 TypeScript 代码。`vext start` 从 `dist/` 加载编译后的 JavaScript 文件。
 
+如果启用了前端，`vext start` 还要求存在 `dist/client/index.html`。
+
 ### 开发时应该用 `vext dev` 还是 `vext start`？
 
 日常开发使用 `vext dev`，它直接加载 `src/` 下的 TypeScript 文件，支持热重载，无需手动编译。`vext start` 用于生产环境。
@@ -697,6 +714,7 @@ echo "22" > .node-version
 ## 下一步
 
 - 了解 [热重载](/guide/hot-reload) 的三层策略细节
+- 配置 [前端集成](/zh/guide/frontend)
 - 学习 [Cluster 多进程](/guide/cluster) 的完整配置
 - 查看 [配置](/guide/configuration) 中端口、日志等选项
 - 探索 [项目结构](/guide/project-structure) 的约定

@@ -1,7 +1,7 @@
 {
   "name": "vextjs",
   "version": "0.3.25",
-  "description": "vextjs is a high‑performance Node.js framework that integrates scaffolding, modular architecture, and a plugin‑based runtime, enabling teams to build maintainable and scalable backend systems with exceptional development efficiency.",
+  "description": "vextjs is a high-performance full-stack Node.js framework with integrated API runtime, scaffolding, typed client generation, and esbuild-powered frontend delivery.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,11 @@
       "types": "./dist/testing/index.d.ts",
       "require": "./dist/testing/index.cjs",
       "import": "./dist/testing/index.js"
+    },
+    "./frontend": {
+      "types": "./dist/frontend/index.d.ts",
+      "require": "./dist/frontend/index.cjs",
+      "import": "./dist/frontend/index.js"
     },
     "./adapters/hono": {
       "types": "./dist/adapters/hono/index.d.ts",
@@ -86,6 +91,10 @@
     "http",
     "rest",
     "api",
+    "fullstack",
+    "frontend",
+    "react",
+    "typed-client",
     "adapter",
     "middleware",
     "plugin",

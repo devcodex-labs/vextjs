@@ -7,7 +7,14 @@ import {
   type LoadConfigMetadata,
   loadRawConfig,
 } from "./config-loader.js";
-import { CLUSTER_BOOTSTRAP_PATCH_ENV } from "./bootstrap-config.js";
+import {
+  CLUSTER_BOOTSTRAP_PATCH_ENV,
+  type BootstrapCommand,
+} from "./bootstrap-config.js";
+import {
+  assertFrontendOutputReady,
+  createFrontendNotFoundHandler,
+} from "../frontend/runtime/static-mount.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
@@ -68,7 +75,7 @@ function isEnvFlagEnabled(value: string | undefined): boolean {
 async function resolveStartupConfig(
   rootDir: string,
   configDir: string,
-  command: "start" | "dev" | "test",
+  command: BootstrapCommand,
   isBuilt: boolean,
   metadata?: LoadConfigMetadata,
 ): Promise<Record<string, unknown>> {
@@ -543,7 +550,20 @@ export async function bootstrap(
     app.adapter.registerErrorHandler(errorHandler);
 
     const notFoundHandler = createNotFoundHandler(hooks);
-    app.adapter.registerNotFound(notFoundHandler);
+    assertFrontendOutputReady({
+      rootDir,
+      mode: "production",
+      config: config.frontend,
+      fallbackHandler: notFoundHandler,
+    });
+    app.adapter.registerNotFound(
+      createFrontendNotFoundHandler({
+        rootDir,
+        mode: "production",
+        config: config.frontend,
+        fallbackHandler: notFoundHandler,
+      }),
+    );
     startupProfiler.mark(
       "start.builtinMiddlewares",
       performance.now() - builtinMiddlewaresStartedAt,

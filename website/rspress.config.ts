@@ -90,7 +90,7 @@ const navSource: NavItemSource[] = [
     zh: "运行时",
     link: "/guide/routing",
     activeMatch:
-      "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|adapters)",
+      "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|frontend|adapters)",
   },
   {
     en: "Data",
@@ -182,6 +182,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Runtime Hooks", link: "/guide/hooks" },
       { text: "Request Context", link: "/guide/request-context" },
       { text: "Configuration", link: "/guide/configuration" },
+      { text: "Frontend", link: "/guide/frontend" },
       { text: "Adapter Architecture", link: "/guide/adapters" },
     ],
   },
@@ -261,6 +262,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "运行时 Hooks", link: "/zh/guide/hooks" },
       { text: "请求上下文", link: "/zh/guide/request-context" },
       { text: "配置", link: "/zh/guide/configuration" },
+      { text: "前端集成", link: "/zh/guide/frontend" },
       { text: "Adapter 架构", link: "/zh/guide/adapters" },
     ],
   },
@@ -330,21 +332,21 @@ export default defineConfig({
   logoText: "VextJS",
   icon: "/favicon.svg",
   description:
-    "High-performance Node.js API framework with a native fast path, schema-dsl validation, OpenAPI, hot reload, and production runtime features.",
+    "High-performance full-stack Node.js framework with a native fast path, React frontend integration, schema-dsl validation, OpenAPI, hot reload, and production runtime features.",
   locales: [
     {
       lang: "en",
       label: "English",
       title: "VextJS",
       description:
-        "High-performance Node.js API framework with native routing, schema-dsl validation, OpenAPI, and production runtime features.",
+        "High-performance full-stack Node.js framework with native routing, React frontend integration, schema-dsl validation, OpenAPI, and production runtime features.",
     },
     {
       lang: "zh",
       label: "简体中文",
       title: "VextJS",
       description:
-        "VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
+        "VextJS 是高性能 Node.js 全栈框架，提供 Native fast path、React 前端集成、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
     },
   ],
   outDir: "dist",
@@ -363,7 +365,7 @@ export default defineConfig({
       {
         property: "og:description",
         content:
-          "High-performance Node.js API framework with a native fast path, three-tier hot reload, CLI, OpenAPI and production-ready runtime features.",
+          "High-performance full-stack Node.js framework with a native fast path, React frontend integration, three-tier hot reload, CLI, OpenAPI and production-ready runtime features.",
       },
     ],
     ["meta", { property: "og:url", content: docsHomeUrl }],
@@ -390,7 +392,7 @@ export default defineConfig({
         label: "English",
         title: "VextJS",
         description:
-          "High-performance Node.js API framework with native routing, schema-dsl validation, OpenAPI, and production runtime features.",
+          "High-performance full-stack Node.js framework with native routing, React frontend integration, schema-dsl validation, OpenAPI, and production runtime features.",
         nav: englishNav,
         sidebar: {
           "/": englishSidebar,
@@ -404,7 +406,7 @@ export default defineConfig({
         label: "简体中文",
         title: "VextJS",
         description:
-          "VextJS 是面向 Node.js API 的高性能服务端框架，提供 Native fast path、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
+          "VextJS 是高性能 Node.js 全栈框架，提供 Native fast path、React 前端集成、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
         nav: chineseNav,
         sidebar: {
           "/zh/": chineseSidebar,

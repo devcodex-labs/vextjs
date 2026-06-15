@@ -2,17 +2,20 @@
 
 ## Method 1: Use scaffolding (recommended)
 
-VextJS provides the `vext create` command to quickly create the project skeleton:
+VextJS provides the `vext create` command to quickly create a runnable project. The default template is a full-stack React app with Vext API routes:
 
 ```bash
-#Create TypeScript project (default Native Adapter)
+# Create TypeScript full-stack project (default Native Adapter)
 npx vextjs create my-app
 
-#Create and specify Adapter
+# Create and specify Adapter
 npx vextjs create my-app --adapter hono
 
-#Create JavaScript project
+# Create JavaScript full-stack project
 npx vextjs create my-app --js
+
+# Create API-only project
+npx vextjs create my-api --template api --frontend none
 
 # Skip npm install
 npx vextjs create my-app --skip-install
@@ -22,10 +25,10 @@ After creation is complete:
 
 ```bash
 cd my-app
-npm rundev
+npm run dev
 ```
 
-Visit `http://localhost:3000` and you should see a JSON response of `{ "code": 0, "data": { "message": "hello world" }, "requestId": "..." }`.
+Visit `http://localhost:3000` and you should see the React client. The backend API routes are available at `/api/hello` and `/api/health`.
 
 ## Method 2: Manual creation
 
@@ -61,7 +64,7 @@ VextJS requires `"type": "module"`, and the project uses the ESM module format.
 ### 3. Create directory structure
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/client public preload
 ```
 
 ### 4. Write configuration
@@ -76,6 +79,14 @@ export default {
   },
   openapi: {
     enabled: true,
+  },
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
   },
 };
 ```
@@ -129,20 +140,20 @@ Not suitable for: `preload` scenarios such as APM / OpenTelemetry that need to b
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  //GET/
+  // GET /api/hello
   app.get(
-    "/",
+    "/api/hello",
     {
-      docs: { summary: "Homepage" },
+      docs: { summary: "Hello API" },
     },
     async (_req, res) => {
       res.json({ message: "Hello VextJS!" });
     },
   );
 
-  //GET /health
+  // GET /api/health
   app.get(
-    "/health",
+    "/api/health",
     {
       docs: { summary: "Health Check" },
     },
@@ -195,12 +206,14 @@ export default defineRoutes((app) => {
 
 ```bash
 # Development mode (hot reload)
-npm rundev
+npm run dev
 
 # Production mode
 npm run build
 npm start
 ```
+
+For the browser entry, create `src/client/main.tsx`, `src/client/App.tsx`, `src/client/index.html`, and `src/client/styles.css`, or start from the default `vext create` template.
 
 ## Project structure
 
@@ -208,7 +221,14 @@ After scaffolding or manual creation, your project structure should look like th
 
 ```
 my-app/
+├── public/
+│ └── favicon.svg # Static asset copied into the frontend build
 ├── src/
+│ ├── client/
+│ │ ├── App.tsx # React app
+│ │ ├── index.html # HTML shell
+│ │ ├── main.tsx # Browser entry
+│ │ └── styles.css
 │ ├── config/
 │ │ ├── default.ts #Default configuration
 │ │ ├── bootstrap.example.ts # Remote configuration provider example during startup
@@ -235,7 +255,7 @@ my-app/
 ```
 
 :::info Convention
-VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
+VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/client/`, `public/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
 
 | File path | URL prefix |
 | ---------------------------------- | ------------------ |
@@ -280,6 +300,7 @@ After turning on `openapi.enabled: true` in the configuration, you can access it
 ## Next step
 
 - Understand [Project Structure](/guide/project-structure) conventions
+- Configure [Frontend integration](/guide/frontend)
 - Learn the three-part definition of [routing](/guide/routing)
 - Explore [middleware](/guide/middleware) and [plugins](/guide/plugins)
 - View the [Configuration](/guide/configuration) options

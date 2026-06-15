@@ -10,7 +10,16 @@ my-app/
 │   ├── 01-otel.ts             # 进程启动前执行
 │   └── README.md              # 脚手架占位说明
 │
+├── public/                    # 会复制到前端构建产物的静态资源
+│   └── favicon.svg
+│
 ├── src/
+│   ├── client/                # 前端源码（默认全栈模板）
+│   │   ├── App.tsx            # React 应用
+│   │   ├── index.html         # HTML shell
+│   │   ├── main.tsx           # 浏览器入口
+│   │   └── styles.css
+│   │
 │   ├── config/                # 配置文件（必须）
 │   │   ├── default.ts         # 默认配置（必须存在）
 │   │   ├── bootstrap.ts       # 启动期 provider（可选）
@@ -53,10 +62,12 @@ my-app/
 │           └── index.d.ts
 │
 ├── .vext/
+│   ├── client/                # 开发期前端构建与 client contract
 │   ├── types/                 # hidden generated declarations
 │   └── manifest/              # tooling manifests
 │
 ├── dist/                      # 构建产物（vext build 生成）
+│   └── client/                # frontend.enabled 为 true 时的生产前端资源
 ├── package.json
 └── tsconfig.json              # TypeScript 配置
 ```
@@ -137,6 +148,27 @@ export default defineBootstrapConfig({
 - 数据库连接信息
 - Nacos / 配置中心启动期 patch
 - 需要在内置插件初始化前就可见的基础设施配置
+
+### `src/client/` — 前端目录
+
+默认全栈脚手架会创建 `src/client/` 作为浏览器应用目录。Vext 当前内置 React-first 模板，并将公开前端契约放在 `vextjs/frontend` 下。
+
+| 文件 | 用途 |
+| ------------------ | ----------------------------- |
+| `main.tsx` / `main.jsx` | 前端 bundler 使用的浏览器入口 |
+| `App.tsx` / `App.jsx` | 默认 React 应用 |
+| `index.html` | HTML shell；可用 `%VEXT_ENTRY%` 作为显式 script 占位 |
+| `styles.css` | 模板样式 |
+
+当 `config.frontend.enabled` 为 true：
+
+- `vext dev` 将客户端构建到 `.vext/client/`
+- `vext build` 将生产资源写入 `dist/client/`
+- `vext start` 服务生产客户端，并在 API / 文档路径之外启用 SPA fallback
+
+### `public/` — 前端静态资源
+
+`public/` 中的文件会复制到前端输出目录。适合放置 favicon、静态图片等不需要进入 JavaScript bundle 的资源。
 
 ### `src/routes/` — 路由目录
 
@@ -352,7 +384,8 @@ export default {
 4. middlewares/ → 扫描中间件定义（loadMiddlewares）
 5. services/    → 实例化并注入到 app.services（loadServices）
 6. routes/      → 扫描路由 + 注册到 adapter（loadRoutes）
-7. 启动 HTTP 监听
+7. frontend     → `frontend.enabled` 为 true 时构建 / 服务客户端资源
+8. 启动 HTTP 监听
 ```
 
 这个顺序确保：
@@ -411,6 +444,11 @@ dist/
 │   └── index.js
 ├── services/
 │   └── user.js
+├── client/
+│   ├── assets/
+│   ├── index.html
+│   ├── manifest.json
+│   └── size-report.json
 └── ...
 ```
 
@@ -418,10 +456,12 @@ dist/
 
 - **`vext dev`**：直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），支持热重载
 - **`vext start`**：从 `dist/` 加载 `.js` 文件，需要先执行 `vext build`
+  - 启用前端时，生产启动还要求存在 `dist/client/index.html`
   :::
 
 ## 下一步
 
 - 学习 [路由](/guide/routing) 的三段式定义和参数校验
+- 配置 [前端集成](/zh/guide/frontend)
 - 了解 [服务层](/guide/services) 的设计模式
 - 探索 [配置](/guide/configuration) 的完整选项

@@ -2,7 +2,7 @@
 
 [Documentation](https://vextjs.github.io)
 
-VextJS is a high-performance Node.js framework for building maintainable backend services. It combines a convention-based project structure, file-system routing, typed services, plugins, middleware, validation, OpenAPI generation, route-level caching, and a CLI workflow that keeps projects productive from the first command.
+VextJS is a high-performance full-stack Node.js framework for building maintainable applications. It combines a convention-based backend runtime, file-system routing, typed services, plugins, middleware, validation, OpenAPI generation, route-level caching, an esbuild-powered React frontend pipeline, and a CLI workflow that keeps projects productive from the first command.
 
 ## Why VextJS
 
@@ -15,6 +15,8 @@ VextJS is a high-performance Node.js framework for building maintainable backend
 - Built-in request context, request id, access logging, body limit, structured error handling with `app.throw` details, i18n, and OpenAPI endpoints.
 - Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
 - Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
+- Built-in React frontend integration for `src/client`, browser bundling, static asset serving, SPA fallback, and generated API contract files.
+- Lightweight `vextjs/frontend` runtime helpers for typed API clients and future external frontend adapters.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.
 - Process-level preload support for OpenTelemetry, APM, polyfills, and startup bridges.
@@ -27,7 +29,7 @@ cd my-app
 npm run dev
 ```
 
-Open `http://localhost:3000`. The scaffold includes a root route and a health check so the project is runnable immediately.
+Open `http://localhost:3000`. The default scaffold is a full-stack React app backed by Vext API routes. It includes a browser client, `/api/hello`, and `/api/health` so the project is runnable immediately.
 
 Create a project with another adapter:
 
@@ -39,6 +41,12 @@ Create a JavaScript project:
 
 ```bash
 npx vextjs create my-app --js
+```
+
+Create an API-only project:
+
+```bash
+npx vextjs create my-api --template api --frontend none
 ```
 
 Skip dependency installation:
@@ -82,7 +90,14 @@ The scaffold creates the convention directories that the runtime knows how to sc
 my-app/
 |-- preload/                    # Optional process-level preload scripts
 |   `-- README.md
+|-- public/
+|   `-- favicon.svg             # Static assets copied into the frontend build
 |-- src/
+|   |-- client/
+|   |   |-- App.tsx             # React app
+|   |   |-- index.html          # HTML shell
+|   |   |-- main.tsx            # Browser entry
+|   |   `-- styles.css
 |   |-- config/
 |   |   |-- default.ts          # Required base config
 |   |   |-- development.ts      # Development override
@@ -107,7 +122,7 @@ my-app/
 ```
 
 JavaScript projects use `.js` files and do not create `src/types/generated/`.
-Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`.
+Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`. Frontend API contract artifacts are written under `.vext/client/` in development and `dist/client/` during production build.
 
 `local.example.ts` and `bootstrap.example.ts` are examples, not active config files. Copy them when you need the feature:
 
@@ -145,6 +160,7 @@ vext create my-app --adapter fastify
 vext create my-app --adapter express
 vext create my-app --adapter koa
 vext create my-app --adapter native
+vext create my-api --template api --frontend none
 vext create my-app --skip-install
 vext create my-app --force
 ```
@@ -178,6 +194,14 @@ const config: VextUserConfig = {
   openapi: {
     enabled: true,
   },
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+  },
 };
 
 export default config;
@@ -205,6 +229,30 @@ Use `src/config/local.ts` for machine-specific overrides and keep it out of Git.
 `app.logger` uses Vext's built-in structured logger by default. It outputs JSON in production, uses an internal pretty formatter in development, colors pretty level labels in TTY terminals or with `FORCE_COLOR=1` through `logger.prettyColor: "auto"`, supports `trace()`, runtime `getLevel()` / `setLevel()`, and exact key/path redaction through `logger.redactKeys` / `logger.redactPaths`. JSON output never contains ANSI color codes. Plugins can wrap it through `app.setLogger()` for external log bridges.
 
 Use `config.server` for inbound Node.js HTTP server settings such as request, headers, keep-alive, socket timeout, request header size, max requests per socket, and incomplete-request checking interval. It applies to the built-in Native, Hono, Fastify, Express, Koa adapters and the dev server; omitted fields keep the current Node.js defaults. This is separate from `config.fetch.timeout`, which only controls outbound `app.fetch` calls.
+
+## Frontend
+
+The default `vext create` template enables `config.frontend` and creates `src/client/`. `vext dev` builds the browser app into `.vext/client/`, watches `src/client/**` and `public/**`, and sends a frontend rebuild message without restarting the backend when only client assets change.
+
+`vext build` compiles server code and then bundles the browser client into `dist/client/`. `vext start` serves `dist/client/index.html`, static assets, and SPA fallback while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
+
+For the complete frontend configuration matrix, scaffold files, HTML template placeholders, generated artifacts, and troubleshooting notes, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+
+Use `vextjs/frontend` in browser code when you want a Vext-aware API client:
+
+```ts
+import { createVextApiClient } from "vextjs/frontend";
+import { contract } from "./api-contract";
+
+const api = createVextApiClient(contract);
+const hello = await api.GET("/api/hello");
+```
+
+For API-only projects, use:
+
+```bash
+npx vextjs create my-api --template api --frontend none
+```
 
 ## Startup Config Providers
 
@@ -566,6 +614,7 @@ The runtime automatically loads locale files during bootstrap. In development, l
 | ---------------------------------------------- | --------------------- |
 | Route files                                    | Hot route replacement |
 | Service or locale files                        | Service/i18n reload   |
+| Frontend files or public assets                | Frontend rebuild      |
 | Config, plugin, preload, env, or package files | Cold restart          |
 
 TypeScript projects are compiled into `.vext/dev/` during development.
@@ -577,7 +626,7 @@ npm run build
 npm start
 ```
 
-`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. `vext start` runs the production bootstrap path and can read compiled preload files from `dist/preload/` when the root `preload/` directory is not present.
+`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
 
 For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
 

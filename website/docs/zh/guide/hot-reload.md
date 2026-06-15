@@ -70,6 +70,17 @@ npx vext dev
 [vext dev] cold restart complete
 ```
 
+纯前端变更会走独立的重建路径：
+
+```
+[vext dev] 1 file(s) changed:
+  🟢 src/client/App.tsx (modify)
+[vext dev] frontend change detected → rebuild client...
+[vextjs] frontend built: .vext/client
+```
+
+该路径会重建 `.vext/client/`，并保持后端进程继续运行。
+
 如果 soft reload 过程中出错，框架会保持旧版本继续运行并提示修复：
 
 ```
@@ -209,6 +220,8 @@ export default {
 | `src/services/**`    | Tier 2   | ⚡ 毫秒级 | 服务实例重建                     |
 | `src/models/**`      | Tier 2   | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚 |
 | `src/locales/**`     | Tier 2   | ⚡ 毫秒级 | 语言包重新加载                   |
+| `src/client/**`      | 前端重建 | ⚡ 快速   | 重建浏览器客户端，不触发后端 cold restart |
+| `public/**`          | 前端重建 | ⚡ 快速   | 复制静态资源并重建前端输出       |
 | `src/config/**`      | Tier 3   | 🔄 秒级   | 配置影响全局，需重启             |
 | `src/plugins/**`     | Tier 3   | 🔄 秒级   | 插件影响全局，需重启             |
 | `src/middlewares/**` | Tier 3   | 🔄 秒级   | 中间件定义变更需重启             |
@@ -288,7 +301,7 @@ vext dev --startup-profile --startup-profile-json .vext/inspect/startup-profile.
 
 ### 监听范围
 
-`vext dev` 默认监听 `src/` 目录下的所有文件变更：
+`vext dev` 默认监听 `src/` 目录与项目根 `public/` 目录下的文件变更：
 
 ```
 src/
@@ -299,7 +312,10 @@ src/
 ├── services/     → Tier 2
 ├── models/       → Tier 2
 ├── locales/      → Tier 2
+├── client/       → 前端重建
 └── types/        → 忽略（仅类型）
+
+public/           → 前端重建
 ```
 
 ### 忽略规则

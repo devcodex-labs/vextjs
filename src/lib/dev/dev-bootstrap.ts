@@ -63,6 +63,8 @@ import {
 import { quietStartupLogger } from "../startup-logger.js";
 import { createStartupProfilerFromEnv } from "../startup-profiler.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
+import { buildFrontendClient } from "../../frontend/tooling/client-build-compiler.js";
+import { createFrontendNotFoundHandler } from "../../frontend/runtime/static-mount.js";
 
 function getLifecycleLevel(
   config: Record<string, unknown>,
@@ -512,6 +514,18 @@ export async function devBootstrap(
     await startupProfiler.time("worker.routeManifest", () =>
       writeDevRouteManifest(projectRoot, collectedRoutes),
     );
+    const frontendBuild = await startupProfiler.time("worker.frontend", () =>
+      buildFrontendClient({
+        rootDir: projectRoot,
+        config: config.frontend,
+        mode: "development",
+      }),
+    );
+    if (!frontendBuild.skipped) {
+      app.logger.info(
+        `[vext dev] frontend built: ${path.relative(projectRoot, frontendBuild.config.outDir)}`,
+      );
+    }
 
     if (openapiEnabled) {
       await startupProfiler.time(
@@ -684,7 +698,14 @@ export async function devBootstrap(
       hooks,
     );
     app.adapter.registerErrorHandler(errorHandler);
-    app.adapter.registerNotFound(createNotFoundHandler(hooks));
+    app.adapter.registerNotFound(
+      createFrontendNotFoundHandler({
+        rootDir: projectRoot,
+        mode: "development",
+        config: config.frontend,
+        fallbackHandler: createNotFoundHandler(hooks),
+      }),
+    );
     startupProfiler.mark(
       "worker.builtinMiddlewares",
       performance.now() - builtinMiddlewaresStartedAt,
@@ -861,7 +882,13 @@ export async function devBootstrap(
           app.logger, // 🆕 soft reload 后重建的错误处理器同样传入 logger
           hooks,
         )) as any,
-      createNotFoundHandler: (() => createNotFoundHandler(hooks)) as any,
+      createNotFoundHandler: (() =>
+        createFrontendNotFoundHandler({
+          rootDir: projectRoot,
+          mode: "development",
+          config: config.frontend,
+          fallbackHandler: createNotFoundHandler(hooks),
+        })) as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
       // 🆕 monSQLize 热重载：传递 reloadModels 闭包（仅当 monsqlize 已加载）
@@ -934,6 +961,26 @@ export async function devBootstrap(
             }
           });
         }
+      } else if (msgType === "frontend-rebuild") {
+        buildFrontendClient({
+          rootDir: projectRoot,
+          config: config.frontend,
+          mode: "development",
+        })
+          .then((result) => {
+            if (!result.skipped) {
+              app.logger.info(
+                `[vext dev] frontend rebuilt: ${path.relative(projectRoot, result.config.outDir)}`,
+              );
+            }
+          })
+          .catch((err: unknown) => {
+            const error = err instanceof Error ? err : new Error(String(err));
+            app.logger.error("[vext dev] frontend rebuild failed:", error.message);
+            if (error.stack) {
+              app.logger.error(error.stack);
+            }
+          });
       } else if (msgType === "shutdown") {
         handleShutdown().finally(() => {
           process.exit(0);

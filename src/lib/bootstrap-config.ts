@@ -6,7 +6,7 @@ const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
 
 export const CLUSTER_BOOTSTRAP_PATCH_ENV = "VEXT_CLUSTER_BOOTSTRAP_PATCH";
 
-export type BootstrapCommand = "start" | "dev" | "test";
+export type BootstrapCommand = "start" | "dev" | "test" | "build";
 
 export interface BootstrapConfigContext {
   rootDir: string;
@@ -243,4 +243,3 @@ export async function loadBootstrapConfigPatch(
 
   return mergedPatch;
 }
-

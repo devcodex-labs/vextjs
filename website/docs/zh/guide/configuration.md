@@ -235,6 +235,56 @@ export default {
 不指定 `adapter` 时默认使用 Native Adapter，性能最高且零框架依赖。仅当需要使用特定框架的生态或特性时才切换。
 :::
 
+## 前端配置 (`frontend`)
+
+`frontend` 控制内置浏览器流水线。它可以是 `true`、`false` 或对象：
+
+```typescript
+export default {
+  frontend: {
+    enabled: true,
+    framework: "react",
+    root: "src/client",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+    spaFallback: {
+      enabled: true,
+      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+    },
+    apiClient: {
+      enabled: true,
+    },
+    build: {
+      target: "es2022",
+      minify: true,
+      sourcemap: false,
+    },
+  },
+};
+```
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| ----------------------------- | ------------------------------- | ------------------------- | ----------------------------- |
+| `frontend.enabled` | `boolean` | `false` | 启用内置前端集成 |
+| `frontend.framework` | `string` | `'react'` | 前端框架标签 |
+| `frontend.root` | `string` | `'src/client'` | 前端源码目录 |
+| `frontend.entry` | `string` | `'src/client/main.tsx'` | 浏览器入口文件 |
+| `frontend.indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
+| `frontend.outDir` | `string` | 开发期 `.vext/client`，生产期 `dist/client` | 前端输出目录 |
+| `frontend.publicDir` | `string` | `'public'` | 会复制到输出目录的静态资源目录 |
+| `frontend.publicPath` | `string` | `'/'` | 公开资源路径前缀 |
+| `frontend.spaFallback` | `boolean \| object` | `true` | 对非 API 浏览器路径服务 `index.html` |
+| `frontend.apiClient` | `boolean \| object` | `true` | 生成 client contract 产物 |
+| `frontend.build.target` | `string \| string[]` | `'es2022'` | 浏览器构建目标 |
+| `frontend.build.minify` | `boolean` | 生产期 `true` | 压缩前端产物 |
+| `frontend.build.sourcemap` | `boolean` | 开发期 `true` | 生成前端 source map |
+
+默认 SPA fallback 排除 `/api/**`、`/openapi.json` 与 `/docs/**`，因此后端 API 和文档路由仍保持原运行时行为。
+
+完整脚手架示例、HTML 模板占位符、生成的客户端产物和 API client 用法见 [前端集成](/zh/guide/frontend)。
+
 ## 完整配置项参考
 
 ### 基础配置
@@ -245,6 +295,7 @@ export default {
 | `host`       | `string`                            | `'0.0.0.0'` | HTTP 监听地址                                  |
 | `adapter`    | `string \| Function \| VextAdapter` | `'native'`  | 底层适配器                                     |
 | `trustProxy` | `boolean`                           | `false`     | 是否信任代理（影响 `req.ip` / `req.protocol`） |
+| `frontend`   | `boolean \| object`                 | `{ enabled: false }` | 内置前端构建与静态服务配置                    |
 
 ```typescript
 export default {
@@ -906,6 +957,15 @@ export default {
     enabled: true,
     title: "My App API",
     version: "1.0.0",
+  },
+
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
   },
 
   middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],

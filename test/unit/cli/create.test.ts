@@ -260,6 +260,8 @@ describe("vext create", () => {
           "src/plugins",
           "src/config",
           "src/locales",
+          "src/client",
+          "public",
           "preload",
           "src/types/generated",
         ]),
@@ -285,6 +287,11 @@ describe("vext create", () => {
           "src/config/bootstrap.example.ts",
           "src/routes/index.ts",
           "src/services/example.ts",
+          "src/client/main.tsx",
+          "src/client/App.tsx",
+          "src/client/styles.css",
+          "src/client/index.html",
+          "public/favicon.svg",
           "src/locales/README.md",
           "preload/README.md",
           "src/types/generated/.gitkeep",
@@ -317,7 +324,13 @@ describe("vext create", () => {
 
   describe("目录结构生成（JavaScript）", () => {
     it("JS 模式不生成 tsconfig.json 和 types/", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const files = getWrittenFiles();
       const fileNames = Object.keys(files);
@@ -328,7 +341,13 @@ describe("vext create", () => {
     });
 
     it("JS 模式不创建 src/types 目录", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const dirs = getCreatedDirs();
       const hasTypesDir = dirs.some((d: string) => d.includes("src/types"));
@@ -336,7 +355,13 @@ describe("vext create", () => {
     });
 
     it("JS 模式生成 .js 扩展名的文件", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const files = getWrittenFiles();
       const fileNames = Object.keys(files);
@@ -364,7 +389,13 @@ describe("vext create", () => {
     });
 
     it("JS 模式 package.json 无 typescript devDependency", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const files = getWrittenFiles();
       const pkg = JSON.parse(files["package.json"]);
@@ -373,7 +404,13 @@ describe("vext create", () => {
     });
 
     it("JS 模式 package.json 无 build script", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const files = getWrittenFiles();
       const pkg = JSON.parse(files["package.json"]);
@@ -485,6 +522,7 @@ describe("vext create", () => {
         const tsconfig = JSON.parse(files["tsconfig.json"]);
 
         expect(tsconfig.include).toContain("src/**/*.ts");
+        expect(tsconfig.include).toContain("src/**/*.tsx");
         expect(tsconfig.include).toContain("src/**/*.d.ts");
       });
 
@@ -621,6 +659,16 @@ describe("vext create", () => {
         expect(files["src/config/default.ts"]).toContain("adapter: 'native'");
       });
 
+      it("默认 fullstack 配置不写死 frontend outDir", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/config/default.ts"]).toContain("frontend:");
+        expect(files["src/config/default.ts"]).not.toContain(
+          "outDir: 'dist/client'",
+        );
+      });
+
       it("JS 模式使用 JSDoc 类型注释", async () => {
         await createCommand(["test-app", "--js", "--skip-install"]);
 
@@ -665,18 +713,18 @@ describe("vext create", () => {
         expect(files["src/routes/index.ts"]).toContain("defineRoutes((app)");
       });
 
-      it("包含根路由 GET /", async () => {
+      it("默认 fullstack 模板包含 API 路由 GET /api/hello", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
-        expect(files["src/routes/index.ts"]).toContain("app.get('/'");
+        expect(files["src/routes/index.ts"]).toContain("app.get('/api/hello'");
       });
 
-      it("包含健康检查路由 GET /health", async () => {
+      it("默认 fullstack 模板包含健康检查路由 GET /api/health", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
-        expect(files["src/routes/index.ts"]).toContain("app.get('/health'");
+        expect(files["src/routes/index.ts"]).toContain("app.get('/api/health'");
       });
 
       it("调用 example service", async () => {
@@ -985,8 +1033,14 @@ describe("vext create", () => {
       expect(logOutput).toContain("npm run build");
     });
 
-    it("JS 模式不提示 npm run build", async () => {
-      await createCommand(["test-app", "--js", "--skip-install"]);
+    it("JS API 模式不提示 npm run build", async () => {
+      await createCommand([
+        "test-app",
+        "--js",
+        "--template",
+        "api",
+        "--skip-install",
+      ]);
 
       const logOutput = consoleLogSpy.mock.calls
         .map((c: unknown[]) => c[0])
@@ -1038,10 +1092,11 @@ describe("vext create", () => {
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + README.md + tsconfig.json +
       //           5 config files + routes/index.ts + services/example.ts +
-      //           locales/README.md + preload/README.md + generated/.gitkeep = 14
+      //           locales/README.md + preload/README.md + generated/.gitkeep +
+      //           5 fullstack client/public files = 19
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 16
-      expect(Object.keys(files).length).toBe(16);
+      // 总计 21
+      expect(Object.keys(files).length).toBe(21);
     });
 
     it("JS 模式生成正确的文件数量", async () => {
@@ -1050,11 +1105,12 @@ describe("vext create", () => {
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + README.md +
       //           5 config files + routes/index.js + services/example.js +
-      //           locales/README.md + preload/README.md = 12
+      //           locales/README.md + preload/README.md +
+      //           5 fullstack client/public files = 17
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 14
+      // 总计 19
       // 不含：tsconfig.json
-      expect(Object.keys(files).length).toBe(14);
+      expect(Object.keys(files).length).toBe(19);
     });
   });
 

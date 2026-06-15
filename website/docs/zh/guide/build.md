@@ -1,6 +1,6 @@
 # 构建 (vext build)
 
-`vext build` 将 TypeScript/JavaScript 源码编译为可部署的 JavaScript 产物，输出到 `dist/` 目录。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快——典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
+`vext build` 会将服务端源码编译为可部署的 JavaScript 产物；当 `frontend.enabled` 为 true 时，还会把浏览器客户端打包到 `dist/client/`。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，编译阶段针对本地与 CI 反馈速度做了优化。
 
 ## 快速开始
 
@@ -22,7 +22,8 @@ TypeScript 项目执行 `vext build` 时，会先刷新开发工具链需要的 
 1. `vext typegen` 基础刷新：写入 `.vext/types/*.generated.d.ts`、`src/types/generated/index.d.ts` 与 `.vext/manifest/services.json`
 2. `doctor routes --refresh --write-manifest`：重新扫描路由并写入 `.vext/manifest/routes.json`
 3. 如果传入 `--typecheck`，此时再执行 `tsc --noEmit`
-4. 最后由 esbuild 输出 `dist/`
+4. 由 esbuild 将服务端运行时代码输出到 `dist/`
+5. 如果 `config.frontend.enabled` 为 true，再由 esbuild 将浏览器客户端打包到 `dist/client/`
 
 这保证新脚手架或刚清理过 `.vext/` 的项目，也能在 `vext build --typecheck` 中先拿到最新 generated 类型，再进入 TypeScript 校验。
 
@@ -30,7 +31,7 @@ TypeScript 项目执行 `vext build` 时，会先刷新开发工具链需要的 
 
 ### 逐文件编译（File-by-File Transform）
 
-`vext build` 采用**逐文件编译**模式，而非 bundle 模式——每个源文件独立编译为一个输出文件，保持 `src/` 的目录结构映射：
+`vext build` 对服务端代码采用**逐文件编译**模式，而非 bundle 模式——每个源文件独立编译为一个输出文件，保持 `src/` 的目录结构映射。`src/client/**` 不进入服务端编译步骤，而是由前端 bundler 单独处理。
 
 ```
 src/                          dist/
@@ -74,6 +75,30 @@ src/                          dist/
 | `--no-sourcemap`  | 禁用 source map                                 | —       |
 | `--minify`        | 压缩输出代码                                    | `false` |
 | `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
+
+## 前端构建
+
+当 `config.frontend.enabled` 为 true 时，浏览器流水线使用 esbuild bundle 模式：
+
+```text
+src/client/main.tsx  →  dist/client/assets/main-<hash>.js
+src/client/index.html → dist/client/index.html
+public/** → dist/client/**
+.vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+```
+
+前端构建会写入：
+
+| 文件 | 说明 |
+| ----------------------------- | ----------------------------- |
+| `dist/client/index.html` | `vext start` 服务的 HTML 入口 |
+| `dist/client/assets/*` | 打包后的 JavaScript、CSS 与导入资产 |
+| `dist/client/manifest.json` | 前端资源 manifest |
+| `dist/client/size-report.json` | 前端资源体积摘要 |
+| `dist/client/client-contract.json` | 基于 route manifest 生成的路由契约 |
+| `dist/client/api.generated.ts` | 轻量 typed API client module |
+
+启用前端但缺少 `dist/client/index.html` 时，`vext start` 会 fail fast。生产启动前请先执行 `vext build`。
 
 ### 输出格式
 
@@ -144,6 +169,8 @@ dist/config/sg-sit.js
 **/*.{ts,js,mjs,cjs}
 ```
 
+服务端编译会忽略 `src/client/**`；前端文件由前端构建步骤处理。
+
 ### 排除的文件
 
 编译自动排除以下文件（两层排除规则）：
@@ -164,6 +191,7 @@ dist/config/sg-sit.js
 | `**/config/development.*` | 开发环境配置（生产无意义） |
 | `**/config/local.*`       | 本地覆盖配置（永远不部署） |
 | `**/config/test.*`        | 测试环境配置（生产不需要） |
+| `**/client/**`            | 浏览器客户端源码，由前端 bundler 处理 |
 
 :::tip
 这意味着 `dist/` 中不会包含开发/测试/本地配置文件，避免敏感信息泄漏到生产环境。
@@ -289,6 +317,8 @@ NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=productio
 ```
 
 如果 TypeScript 项目缺少 `dist/` 或关键构建产物，`vext start` 会直接失败并提示先执行 `vext build`。开发期源码启动请使用 `vext dev`。
+
+如果启用了前端，`vext start` 还会检查 `dist/client/index.html`，并在 API / 文档路径之外以 SPA fallback 服务 `dist/client/`。
 
 通用脚手架项目没有固定的 `dist/index.js` 启动入口；直接 `node dist/index.js` 只适用于你自己维护入口文件并显式调用框架启动逻辑的高级场景。
 

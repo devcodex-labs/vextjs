@@ -128,6 +128,7 @@ export default {
 | `openapi` | [`VextOpenAPIConfig`](#vextopenapiconfig) | See below | OpenAPI documentation configuration |
 | `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below | Request context configuration |
 | `fetch` | [`VextFetchConfig`](#vextfetchconfig) | See below | Built-in HTTP client and proxy configuration |
+| `frontend` | `boolean \| VextFrontendConfig` | `{ enabled: false }` | Built-in frontend build and static serving configuration |
 | `cluster` | [`Partial<VextClusterConfig>`](#vextclusterconfig) | `undefined` | Cluster multi-process configuration |
 
 ---
@@ -722,6 +723,47 @@ After disabling, the following functions will be disabled:
 
 ---
 
+## VextFrontendConfig
+
+Built-in frontend build and static serving configuration.
+
+| Field | Type | Default Value | Description |
+| -------------------- | -------------------- | ------------------------- | --------------------------------------------- |
+| `enabled` | `boolean` | `false` | Whether to enable frontend integration |
+| `framework` | `string` | `'react'` | Frontend framework label |
+| `root` | `string` | `'src/client'` | Frontend source directory |
+| `entry` | `string` | `'src/client/main.tsx'` | Browser entry file |
+| `indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
+| `outDir` | `string` | `.vext/client` in dev, `dist/client` in production | Frontend output directory |
+| `publicDir` | `string` | `'public'` | Static assets copied into the frontend output |
+| `publicPath` | `string` | `'/'` | Public asset path prefix |
+| `spaFallback` | `boolean \| object` | `true` | Serve `index.html` for non-API browser paths |
+| `apiClient` | `boolean \| object` | `true` | Generate client contract artifacts |
+| `build.target` | `string \| string[]` | `'es2022'` | Browser build target |
+| `build.minify` | `boolean` | Production `true` | Minify frontend output |
+| `build.sourcemap` | `boolean` | Development `true` | Generate frontend source maps |
+
+```typescript
+export default {
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+    spaFallback: {
+      enabled: true,
+      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+    },
+  },
+};
+```
+
+Default SPA fallback exclusions keep `/api/**`, `/openapi.json`, and `/docs/**` on the backend runtime path.
+
+---
+
 ## VextClusterConfig
 
 Cluster multi-process configuration. For the complete interface definition, see `src/types/app.ts` `VextClusterConfig`.
@@ -926,6 +968,9 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   requestContext: {
     enabled: true,
+  },
+  frontend: {
+    enabled: false,
   },
 }
 ```

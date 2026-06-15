@@ -647,6 +647,9 @@ function validateConfig(config: Record<string, unknown>): void {
     }
   }
 
+  // ── frontend ──────────────────────────────────────────
+  validateFrontendConfig(config.frontend, "config.frontend");
+
   // ── requestContext ────────────────────────────────────
   const requestContext = config.requestContext as
     | Record<string, unknown>
@@ -716,6 +719,96 @@ function validateConfig(config: Record<string, unknown>): void {
       );
     }
     validateCacheHubConfig(cache.cacheHub, "config.cache.cacheHub");
+  }
+}
+
+function validateFrontendConfig(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+
+  const frontend = value as Record<string, unknown>;
+  if (frontend.enabled !== undefined && typeof frontend.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${path}.enabled must be a boolean.`);
+  }
+  for (const key of [
+    "framework",
+    "root",
+    "entry",
+    "indexHtml",
+    "outDir",
+    "publicDir",
+    "publicPath",
+  ]) {
+    if (frontend[key] !== undefined && typeof frontend[key] !== "string") {
+      throw new Error(`[vextjs] ${path}.${key} must be a string.`);
+    }
+  }
+  if (
+    typeof frontend.publicPath === "string" &&
+    /^[a-z]+:\/\//i.test(frontend.publicPath)
+  ) {
+    throw new Error(`[vextjs] ${path}.publicPath must be a path, not a URL.`);
+  }
+
+  validateFrontendBooleanOrObject(
+    frontend.apiClient,
+    `${path}.apiClient`,
+    ["enabled"],
+  );
+  validateFrontendBooleanOrObject(
+    frontend.spaFallback,
+    `${path}.spaFallback`,
+    ["enabled"],
+  );
+  const spaFallback = frontend.spaFallback as Record<string, unknown> | undefined;
+  if (
+    spaFallback &&
+    typeof spaFallback === "object" &&
+    !Array.isArray(spaFallback)
+  ) {
+    validateOptionalStringArray(spaFallback.exclude, `${path}.spaFallback.exclude`);
+  }
+
+  const build = frontend.build;
+  if (build !== undefined) {
+    if (typeof build !== "object" || build === null || Array.isArray(build)) {
+      throw new Error(`[vextjs] ${path}.build must be an object.`);
+    }
+    const typed = build as Record<string, unknown>;
+    for (const key of ["minify", "sourcemap"]) {
+      if (typed[key] !== undefined && typeof typed[key] !== "boolean") {
+        throw new Error(`[vextjs] ${path}.build.${key} must be a boolean.`);
+      }
+    }
+    if (
+      typed.target !== undefined &&
+      typeof typed.target !== "string" &&
+      (!Array.isArray(typed.target) ||
+        typed.target.some((item) => typeof item !== "string"))
+    ) {
+      throw new Error(`[vextjs] ${path}.build.target must be a string or string array.`);
+    }
+  }
+}
+
+function validateFrontendBooleanOrObject(
+  value: unknown,
+  path: string,
+  booleanKeys: string[],
+): void {
+  if (value === undefined || typeof value === "boolean") return;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of booleanKeys) {
+    if (record[key] !== undefined && typeof record[key] !== "boolean") {
+      throw new Error(`[vextjs] ${path}.${key} must be a boolean.`);
+    }
   }
 }
 

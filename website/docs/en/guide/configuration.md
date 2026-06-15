@@ -235,6 +235,56 @@ export default {
 When `adapter` is not specified, Native Adapter is used by default, which has the highest performance and zero framework dependency. Only switch when you need to use the ecology or features of a specific framework.
 :::
 
+## Frontend configuration (`frontend`)
+
+`frontend` controls the built-in browser pipeline. It can be `true`, `false`, or an object:
+
+```typescript
+export default {
+  frontend: {
+    enabled: true,
+    framework: "react",
+    root: "src/client",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+    spaFallback: {
+      enabled: true,
+      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+    },
+    apiClient: {
+      enabled: true,
+    },
+    build: {
+      target: "es2022",
+      minify: true,
+      sourcemap: false,
+    },
+  },
+};
+```
+
+| Configuration item | Type | Default value | Description |
+| ----------------------------- | ------------------------------- | ------------------------- | --------------------------------------------- |
+| `frontend.enabled` | `boolean` | `false` | Enable built-in frontend integration |
+| `frontend.framework` | `string` | `'react'` | Frontend framework label |
+| `frontend.root` | `string` | `'src/client'` | Frontend source directory |
+| `frontend.entry` | `string` | `'src/client/main.tsx'` | Browser entry file |
+| `frontend.indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
+| `frontend.outDir` | `string` | `.vext/client` in dev, `dist/client` in production | Frontend output directory |
+| `frontend.publicDir` | `string` | `'public'` | Static asset directory copied into output |
+| `frontend.publicPath` | `string` | `'/'` | Public asset path prefix |
+| `frontend.spaFallback` | `boolean \| object` | `true` | Serve `index.html` for non-API browser paths |
+| `frontend.apiClient` | `boolean \| object` | `true` | Generate client contract artifacts |
+| `frontend.build.target` | `string \| string[]` | `'es2022'` | Browser build target |
+| `frontend.build.minify` | `boolean` | Production `true` | Minify frontend output |
+| `frontend.build.sourcemap` | `boolean` | Development `true` | Generate frontend source maps |
+
+Default SPA fallback exclusions are `/api/**`, `/openapi.json`, and `/docs/**`, so backend API and documentation routes keep their runtime behavior.
+
+For the full scaffold example, HTML template placeholders, generated client artifacts, and API client usage, see [Frontend integration](/guide/frontend).
+
 ## Complete configuration item reference
 
 ### Basic configuration
@@ -245,6 +295,7 @@ When `adapter` is not specified, Native Adapter is used by default, which has th
 | `host` | `string` | `'0.0.0.0'` | HTTP listening address |
 | `adapter` | `string \| Function \| VextAdapter` | `'native'` | Low-level adapter |
 | `trustProxy` | `boolean` | `false` | Whether to trust the proxy (affects `req.ip` / `req.protocol`) |
+| `frontend` | `boolean \| object` | `{ enabled: false }` | Built-in frontend build and static serving configuration |
 
 ```typescript
 export default {
@@ -675,7 +726,9 @@ export default {
 The Dev error overlay is based on **Accept content negotiation**, not the HTTP method:
 
 - `Accept: text/html` (Browser address bar GET, HTML form POST) → Return to HTML error page
-- `Accept: application/json` (frontend fetch / axios / curl) → always returns JSONConsole logging is **not affected by overlay** - logging configured with `logErrors` behaves exactly the same whether the response returns HTML or JSON.
+- `Accept: application/json` (frontend fetch / axios / curl) -> always returns JSON.
+
+Console logging is **not affected by overlay** - logging configured with `logErrors` behaves exactly the same whether the response returns HTML or JSON.
 :::
 
 ### Middleware whitelist (`middlewares`)
@@ -900,6 +953,15 @@ export default {
     enabled: true,
     title: "My App API",
     version: "1.0.0",
+  },
+
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
   },
 
   middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],

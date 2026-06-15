@@ -12,7 +12,7 @@ Starting from `0.3.7`, `vext dev` will execute **dev preflight** once before eac
 
 ```bash
 # Start development mode
-npm rundev
+npm run dev
 # or
 npx vext dev
 ```
@@ -69,6 +69,17 @@ If the change involves configuration or plug-ins, a Tier 3 cold restart will be 
 [vext dev] config/plugin change detected → cold restart (Tier 3)...
 [vext dev] cold restart complete
 ```
+
+Frontend-only changes use a separate rebuild path:
+
+```
+[vext dev] 1 file(s) changed:
+  🟢 src/client/App.tsx (modify)
+[vext dev] frontend change detected → rebuild client...
+[vextjs] frontend built: .vext/client
+```
+
+This path rebuilds `.vext/client/` and keeps the backend process running.
 
 If an error occurs during the soft reload process, the framework will keep the old version running and prompt for repair:
 
@@ -209,6 +220,8 @@ export default {
 | `src/services/**` | Tier 2 | ⚡ Millisecond level | Service instance reconstruction |
 | `src/models/**` | Tier 2 | ⚡ Millisecond level | Model definition re-registration, automatic rollback if failure |
 | `src/locales/**` | Tier 2 | ⚡ Milliseconds | Language pack reloading |
+| `src/client/**` | Frontend rebuild | ⚡ Fast | Rebuild browser client without backend cold restart |
+| `public/**` | Frontend rebuild | ⚡ Fast | Copy static assets and rebuild frontend output |
 | `src/config/**` | Tier 3 | 🔄 Second level | Configuration affects the whole world and needs to be restarted |
 | `src/plugins/**` | Tier 3 | 🔄 Seconds | The plug-in affects the global situation and needs to be restarted |
 | `src/middlewares/**` | Tier 3 | 🔄 seconds | Middleware definition changes require a restart |
@@ -286,7 +299,7 @@ By default, `vext dev` only prints the listening address and total startup time;
 
 ### Monitoring range
 
-`vext dev` monitors all file changes in the `src/` directory by default:
+`vext dev` monitors file changes in the `src/` directory and the project root `public/` directory by default:
 
 ```
 src/
@@ -297,7 +310,10 @@ src/
 ├── services/ → Tier 2
 ├── models/ → Tier 2
 ├── locales/ → Tier 2
+├── client/ → frontend rebuild
 └── types/ → ignore (types only)
+
+public/ → frontend rebuild
 ```
 
 ### Ignore rules
@@ -396,7 +412,7 @@ If the production environment requires multiple processes, use `vext start` with
 
 ```bash
 # Development — single process + hot reload
-vextdev
+vext dev
 
 # Production — multi-process + zero-downtime restart
 vext start # with cluster.enabled: true

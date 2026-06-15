@@ -234,6 +234,30 @@ describe("change-classifier", () => {
     });
   });
 
+  // ── classifyChange — client（前端资源）──────────────────
+
+  describe("classifyChange — client patterns", () => {
+    it("src/client 下的 TSX 文件应分类为 client", () => {
+      const result = classifyChange("src/client/App.tsx");
+      expect(result.action).toBe("client");
+    });
+
+    it("src/client 下的 CSS 文件应分类为 client", () => {
+      const result = classifyChange("src/client/styles.css");
+      expect(result.action).toBe("client");
+    });
+
+    it("public 下的静态资源应分类为 client", () => {
+      const result = classifyChange("public/favicon.svg");
+      expect(result.action).toBe("client");
+    });
+
+    it("client 分类应优先于 src 源码 soft 规则", () => {
+      const result = classifyChange("src/client/main.tsx");
+      expect(result.action).toBe("client");
+    });
+  });
+
   // ── classifyChange — soft（源码文件）────────────────────
 
   describe("classifyChange — soft patterns", () => {

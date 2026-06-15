@@ -1,9 +1,10 @@
 /**
  * change-classifier.ts — 文件变更分类器（Phase 2A）
  *
- * 将文件变更分类为三种动作之一：
+ * 将文件变更分类为四种动作之一：
  *   - `cold`   — 冷重启（配置文件、插件、package.json、tsconfig.json、.env 等）
  *   - `soft`   — 热替换（src/ 下的源码文件：.ts/.js/.mjs/.cjs）
+ *   - `client` — 前端 client rebuild（src/client 与 public）
  *   - `ignore` — 忽略（node_modules、dist、.git、测试文件、文档等）
  *
  * 分类器在 FileWatcher 的 onFileChange 回调中调用，
@@ -25,8 +26,8 @@
  * 变更分类结果
  */
 export interface ChangeClassification {
-  /** 应执行的动作：cold=冷重启, soft=热替换, ignore=忽略 */
-  action: "cold" | "soft" | "ignore";
+  /** 应执行的动作：cold=冷重启, soft=热替换, client=前端重建, ignore=忽略 */
+  action: "cold" | "soft" | "client" | "ignore";
 
   /** 分类原因（调试/日志用） */
   reason: string;
@@ -105,6 +106,8 @@ const IGNORE_PATTERNS: RegExp[] = [
   /^docs\//,
 ];
 
+const FRONTEND_CLIENT_PATTERNS: RegExp[] = [/^src\/client\//, /^public\//];
+
 /**
  * 源码文件模式
  *
@@ -123,8 +126,9 @@ const SOURCE_PATTERN = /^src\/.*\.(ts|mts|cts|js|mjs|cjs)$/;
  *   2. 用户自定义 coldPatterns → cold
  *   3. 内置 IGNORE_PATTERNS → ignore
  *   4. 内置 COLD_PATTERNS → cold
- *   5. src/ 下的源码文件 → soft
- *   6. 其他 → ignore
+ *   5. src/client 与 public → client
+ *   6. src/ 下的源码文件 → soft
+ *   7. 其他 → ignore
  *
  * @param relativePath 相对于项目根目录的文件路径（使用 / 分隔符）
  * @param options 用户自定义分类选项（可选）
@@ -193,12 +197,19 @@ export function classifyChange(
     }
   }
 
-  // ── 5. src/ 下的源码文件 → soft ───────────────────────
+  // ── 5. client assets → frontend rebuild ───────────────
+  for (const pattern of FRONTEND_CLIENT_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return { action: "client", reason: `frontend client change: ${pattern}` };
+    }
+  }
+
+  // ── 6. src/ 下的源码文件 → soft ───────────────────────
   if (SOURCE_PATTERN.test(normalized)) {
     return { action: "soft", reason: "source code change" };
   }
 
-  // ── 6. 其他文件 → ignore ──────────────────────────────
+  // ── 7. 其他文件 → ignore ──────────────────────────────
   return { action: "ignore", reason: "unrecognized file type" };
 }
 

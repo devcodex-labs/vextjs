@@ -8,6 +8,7 @@ import type {
   ResponseCacheHubOptions,
   ResponseCacheStats,
 } from "response-cache-kit";
+import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 
 declare global {
   interface String {
@@ -1059,6 +1060,14 @@ export interface VextConfig {
 
   /** OpenAPI 文档配置 */
   openapi: VextOpenAPIConfig;
+
+  /**
+   * 内置前端运行时配置。
+   *
+   * 默认禁用，启用后由 `vext build/dev/start` 接管 client bundle、
+   * typed API client 与静态资源 fallback。
+   */
+  frontend?: VextFrontendUserConfig;
 
   /**
    * AsyncLocalStorage 请求上下文配置

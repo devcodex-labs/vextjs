@@ -2,6 +2,9 @@ import path from "node:path";
 import { rmSync, existsSync } from "node:fs";
 import { detectProject } from "./utils/detect-project.js";
 import { BuildCompiler } from "../lib/build/build-compiler.js";
+import { loadConfig } from "../lib/config-loader.js";
+import { buildFrontendClient } from "../frontend/tooling/client-build-compiler.js";
+import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 
 /**
  * vext build — 生产编译命令（Phase 2A）
@@ -83,17 +86,14 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   const rootDir = path.resolve(process.cwd());
   const project = detectProject(rootDir);
 
-  // ── JavaScript 项目跳过编译 ───────────────────────────────
-  if (project.language !== "ts") {
-    console.log("[vextjs] JavaScript project detected - no build step needed.");
-    console.log('[vextjs] Use "vext start" directly.');
-    return;
-  }
-
   const outDir = path.resolve(project.rootDir, options.outdir);
 
   // ── 打印编译信息 ──────────────────────────────────────────
-  console.log("[vextjs] build - TypeScript -> JavaScript");
+  console.log(
+    project.language === "ts"
+      ? "[vextjs] build - TypeScript -> JavaScript"
+      : "[vextjs] build - JavaScript project",
+  );
   console.log(`[vextjs] src:  ${project.srcDir}`);
   console.log(`[vextjs] out:  ${outDir}`);
 
@@ -108,6 +108,22 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   if (options.clean && existsSync(outDir)) {
     rmSync(outDir, { recursive: true });
     console.log(`[vextjs] cleaned: ${outDir}`);
+  }
+
+  if (project.language !== "ts") {
+    const config = await loadConfig(path.join(project.srcDir, "config"), {
+      rootDir: project.rootDir,
+      command: "build",
+      isBuilt: false,
+    });
+    if (!isFrontendEnabled(config.frontend)) {
+      console.log("[vextjs] JavaScript project detected - no build step needed.");
+      console.log('[vextjs] Use "vext start" directly.');
+      return;
+    }
+    await refreshRouteManifest(project.rootDir);
+    await buildFrontendForCommand(project.rootDir, config.frontend, options);
+    return;
   }
 
   // ── 工具产物刷新 ────────────────────────────────────────
@@ -127,17 +143,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     process.exit(1);
   }
 
-  const { runDoctor } = await import("../tooling/doctor/index.js");
-  const doctorResult = await runDoctor({
-    rootDir: project.rootDir,
-    target: "routes",
-    writeManifest: true,
-    refresh: true,
-  });
-  if (!doctorResult.ok) {
-    console.error("[vextjs] route diagnostics failed - build aborted");
-    process.exit(1);
-  }
+  await refreshRouteManifest(project.rootDir);
 
   // ── 类型检查（--typecheck，可选） ─────────────────────────
   if (options.typecheck) {
@@ -202,6 +208,12 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.log(`[vextjs]    files:   ${result.fileCount}`);
     console.log(`[vextjs]    time:    ${result.elapsed}ms`);
     console.log(`[vextjs]    output:  ${result.outDir}/`);
+    const config = await loadConfig(path.join(outDir, "config"), {
+      rootDir: project.rootDir,
+      command: "build",
+      isBuilt: true,
+    });
+    await buildFrontendForCommand(project.rootDir, config.frontend, options);
     console.log("");
     console.log("[vextjs] To start compiled output:");
     console.log("[vextjs]   NODE_ENV=<env> vext start");
@@ -211,6 +223,67 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.error(err);
     process.exit(1);
   }
+}
+
+async function refreshRouteManifest(rootDir: string): Promise<void> {
+  const { runDoctor } = await import("../tooling/doctor/index.js");
+  const doctorResult = await runDoctor({
+    rootDir,
+    target: "routes",
+    writeManifest: true,
+    refresh: true,
+  });
+  if (!doctorResult.ok) {
+    console.error("[vextjs] route diagnostics failed - build aborted");
+    process.exit(1);
+  }
+}
+
+async function buildFrontendForCommand(
+  rootDir: string,
+  frontend: VextFrontendUserConfig | undefined,
+  options: BuildCommandOptions,
+): Promise<void> {
+  const result = await buildFrontendClient({
+    rootDir,
+    config: withCliFrontendOutDir(frontend, options.outdir),
+    mode: "production",
+  });
+  if (result.skipped) return;
+
+  console.log(
+    `[vextjs] frontend built: ${path.relative(rootDir, result.config.outDir)}`,
+  );
+  if (typeof result.routeCount === "number") {
+    console.log(`[vextjs] frontend api routes: ${result.routeCount}`);
+  }
+  for (const warning of result.warnings) {
+    console.warn(`[vextjs] frontend warning: ${warning}`);
+  }
+}
+
+function isFrontendEnabled(frontend: VextFrontendUserConfig | undefined): boolean {
+  return (
+    frontend === true ||
+    (typeof frontend === "object" && frontend.enabled === true)
+  );
+}
+
+function withCliFrontendOutDir(
+  frontend: VextFrontendUserConfig | undefined,
+  outdir: string,
+): VextFrontendUserConfig | undefined {
+  if (outdir === "dist" || frontend === undefined || frontend === false) {
+    return frontend;
+  }
+  const clientOutDir = path.join(outdir, "client");
+  if (frontend === true) {
+    return { enabled: true, outDir: clientOutDir };
+  }
+  if (!frontend.outDir) {
+    return { ...frontend, outDir: clientOutDir };
+  }
+  return frontend;
 }
 
 // ── 参数解析 ────────────────────────────────────────────────
