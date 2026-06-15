@@ -283,7 +283,7 @@ export default {
 
 默认 SPA fallback 排除 `/api/**`、`/openapi.json` 与 `/docs/**`，因此后端 API 和文档路由仍保持原运行时行为。
 
-完整脚手架示例、HTML 模板占位符、生成的客户端产物和 API client 用法见 [前端集成](/zh/guide/frontend)。
+创建项目、修改页面、添加组件、样式、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
 
 ## 完整配置项参考
 

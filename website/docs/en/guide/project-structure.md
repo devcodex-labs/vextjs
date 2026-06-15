@@ -160,6 +160,8 @@ The default full-stack scaffold creates `src/client/` for the browser app. Vext 
 | `index.html` | HTML shell; `%VEXT_ENTRY%` can be used as an explicit script placeholder |
 | `styles.css` | Template styles |
 
+You may add `src/client/pages/`, `src/client/components/`, `src/client/assets/`, or `src/client/features/` as needed. These are recommended organization conventions, not automatic page routes in the current P0; page files must be imported and rendered from `App.tsx` or from a router you add yourself.
+
 When `config.frontend.enabled` is true:
 
 - `vext dev` builds the client into `.vext/client/`
@@ -168,7 +170,7 @@ When `config.frontend.enabled` is true:
 
 ### `public/` — Frontend static assets
 
-Files in `public/` are copied into the frontend output directory. Use it for assets such as favicons and static images that should be served without going through the JavaScript bundle.
+Files in `public/` are copied into the frontend output directory. Use it for favicons, robots files, and static images that should be served without going through the JavaScript bundle. Images or fonts imported from TSX/CSS and emitted with hashes should usually live under `src/client/assets/`.
 
 ### `src/routes/` — Routing directory
 

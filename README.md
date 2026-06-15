@@ -236,7 +236,7 @@ The default `vext create` template enables `config.frontend` and creates `src/cl
 
 `vext build` compiles server code and then bundles the browser client into `dist/client/`. `vext start` serves `dist/client/index.html`, static assets, and SPA fallback while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
 
-For the complete frontend configuration matrix, scaffold files, HTML template placeholders, generated artifacts, and troubleshooting notes, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+For a user guide that covers creating the app, changing pages, adding components, styles, assets, API calls, configuration, HTML templates, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
 
 Use `vextjs/frontend` in browser code when you want a Vext-aware API client:
 

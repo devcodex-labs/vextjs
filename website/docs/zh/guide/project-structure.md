@@ -160,6 +160,8 @@ export default defineBootstrapConfig({
 | `index.html` | HTML shell；可用 `%VEXT_ENTRY%` 作为显式 script 占位 |
 | `styles.css` | 模板样式 |
 
+用户可以按需新增 `src/client/pages/`、`src/client/components/`、`src/client/assets/` 或 `src/client/features/`。这些是推荐组织方式，不会被当前 P0 自动扫描成页面路由；页面文件需要在 `App.tsx` 或用户自选 router 中导入渲染。
+
 当 `config.frontend.enabled` 为 true：
 
 - `vext dev` 将客户端构建到 `.vext/client/`
@@ -168,7 +170,7 @@ export default defineBootstrapConfig({
 
 ### `public/` — 前端静态资源
 
-`public/` 中的文件会复制到前端输出目录。适合放置 favicon、静态图片等不需要进入 JavaScript bundle 的资源。
+`public/` 中的文件会复制到前端输出目录。适合放置 favicon、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/client/assets/`。
 
 ### `src/routes/` — 路由目录
 

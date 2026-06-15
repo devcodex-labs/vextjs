@@ -1,24 +1,49 @@
 # 前端集成
 
-VextJS 内置一条一等前端流水线，用于让同一个包同时管理 API 路由、开发期重载、生产构建、路由契约生成、HTML 模板渲染与静态资源服务。默认脚手架使用 React，浏览器侧 helper 放在 `vextjs/frontend` 下，保证后端运行时契约不绑定某个 UI 框架。当前实现是前端基础层：它能托管一个浏览器入口和 Vext API client，但还不是完整的应用级前端框架层。
+Vext 内置前端能力用于把 API、浏览器应用、开发期重建、生产构建和静态资源服务放在同一个 Vext 项目里。默认脚手架使用 React 19，浏览器侧 API helper 从 `vextjs/frontend` 导入，后端运行时仍保持框架无关。
+
+当前版本是 P0 前端基础层：它支持单入口浏览器应用、普通 CSS、静态资源、HTML 模板注入、SPA fallback 和 Vext API client helper。它还不是完整应用级前端框架层，因此不会自动扫描 `src/client/pages/**` 生成页面路由，也不内置 nested layout、loader/action、SSR、RSC 或 Server Actions。
 
 ## 目录导航
 
-- [创建全栈项目](#创建全栈项目)
-- [实现映射](#实现映射)
-- [当前范围与应用层路线](#当前范围与应用层路线)
-- [配置](#配置)
-- [配置项参考](#配置项参考)
-- [运行流程](#运行流程)
-- [HTML 模板渲染](#html-模板渲染)
-- [客户端代码示例](#客户端代码示例)
-- [API client helper](#api-client-helper)
-- [开发、构建与启动](#开发构建与启动)
-- [外部前端适配器](#外部前端适配器)
-- [常见问题](#常见问题)
-- [下一步](#下一步)
+- [1. 什么时候使用 Vext Frontend](#1-什么时候使用-vext-frontend)
+- [2. 创建并运行全栈项目](#2-创建并运行全栈项目)
+- [3. 看懂生成目录](#3-看懂生成目录)
+- [4. 修改首页](#4-修改首页)
+- [5. 添加页面文件](#5-添加页面文件)
+- [6. 添加组件](#6-添加组件)
+- [7. 添加样式](#7-添加样式)
+- [8. 添加图片和静态资源](#8-添加图片和静态资源)
+- [9. 调用 Vext API](#9-调用-vext-api)
+- [10. 配置 frontend](#10-配置-frontend)
+- [11. HTML 模板](#11-html-模板)
+- [12. 开发、构建和生产启动](#12-开发构建和生产启动)
+- [13. API-only 项目如何关闭前端](#13-api-only-项目如何关闭前端)
+- [14. 当前边界与下一阶段](#14-当前边界与下一阶段)
+- [15. 常见问题](#15-常见问题)
+- [16. 维护者参考](#16-维护者参考)
 
-## 创建全栈项目
+## 1. 什么时候使用 Vext Frontend
+
+适合使用默认前端集成的场景：
+
+- 你希望一个 Vext 项目同时提供 API 和浏览器页面。
+- 你希望 `vext dev` 同时运行后端和前端。
+- 你只需要一个 React 浏览器入口，并在 `App.tsx` 中组织页面。
+- 你希望 `vext build` 同时输出服务端代码和 `dist/client/` 前端资源。
+- 你希望生产环境由 `vext start` 服务静态资源和 SPA fallback。
+
+不适合作为当前版本内置能力直接使用的场景：
+
+- 你需要文件路由、嵌套路由、layout、loader/action 或 route-level split。
+- 你需要 SSR、React Server Components 或 Server Actions。
+- 你要求 Sass、CSS Modules、Tailwind 等能力由 Vext 默认内置。
+
+这些能力会进入后续 P1 应用层设计；当前版本可以由用户自行接入路由库或样式工具，但 Vext 官方默认路径只承诺本文档列出的能力。
+
+## 2. 创建并运行全栈项目
+
+创建默认全栈 React 项目：
 
 ```bash
 npx vextjs create my-app
@@ -26,7 +51,24 @@ cd my-app
 npm run dev
 ```
 
-默认 full-stack 模板会同时创建后端路由和浏览器应用：
+默认配置端口是 `3000`。开发服务器 ready 后，打开：
+
+```text
+http://localhost:3000
+```
+
+默认页面会从浏览器调用 `/api/hello`，这个 API 来自 `src/routes/index.ts`。页面本身来自 `src/client/App.tsx`。
+
+如果安装依赖时使用了 `--skip-install`，先执行：
+
+```bash
+npm install
+npm run dev
+```
+
+## 3. 看懂生成目录
+
+默认 TypeScript full-stack 项目会生成这些和前端最相关的文件：
 
 ```text
 my-app/
@@ -44,259 +86,23 @@ my-app/
         └── index.ts
 ```
 
-路由模板提供 `/api/hello` 与 `/api/health`。浏览器应用从 `/` 服务，前端文件由 Vext dev 进程重建。
-
-如果只需要 API 项目，显式关闭前端：
-
-```bash
-npx vextjs create my-api --template api --frontend none
-```
-
-## 实现映射
-
-前端集成是在 Vext 内部实现的。下表把文档行为映射到对应源码真相源：
-
-| 行为 | 真相源 | 职责 |
-| --- | --- | --- |
-| 浏览器侧公开 helper | `src/frontend/index.ts` | 通过 `vextjs/frontend` 暴露 `createVextApiClient()`、`isVextApiError()`、`defineFrontendAdapter()`、前端配置类型、路由契约类型和 manifest 类型。 |
-| 前端配置解析 | `src/frontend/tooling/config-resolver.ts` | 规范化 `frontend: true/false/object`，把路径解析到项目根内，应用 dev/prod 默认值，校验 `publicPath`，规范化 SPA fallback 和 API client 选项。 |
-| 客户端契约生成 | `src/frontend/tooling/client-contract-writer.ts` | 读取 `.vext/manifest/routes.json`，跳过隐藏或元数据不完整的路由，写入 `client-contract.json`，并渲染 `api.generated.ts`。 |
-| 浏览器构建与模板渲染 | `src/frontend/tooling/client-build-compiler.ts` | 清理 `outDir`、复制 `publicDir`、运行 esbuild、写入 `manifest.json`、`size-report.json`、路由契约产物和渲染后的 `index.html`。 |
-| 静态资源与 SPA fallback | `src/frontend/runtime/static-mount.ts` | 从 `outDir` 服务资源，处理 `ETag` / `Last-Modified` / `Cache-Control`，按 method 与 `Accept` 门禁 SPA fallback，并防止路径穿越。 |
-| 开发期构建接入 | `src/lib/dev/dev-bootstrap.ts` | 写入开发期 route manifest，按 development 模式构建前端，并处理 watcher 发来的 `frontend-rebuild` IPC 消息。 |
-| 开发期文件分类 | `src/lib/dev/change-classifier.ts` 与 `src/lib/dev/file-watcher.ts` | 将默认 `src/client/**` 与 `public/**` 变更分类为 client rebuild，而不是后端 cold restart。 |
-| 生产构建接入 | `src/cli/build.ts` | 刷新 route manifest，构建服务端产物，重新加载 built config，并按 production 模式运行前端编译器。 |
-| 生产启动接入 | `src/lib/bootstrap.ts` | 前端输出缺失时 fail fast，并在 listen 前注册前端感知的 not-found handler。 |
-| 脚手架生成 | `src/cli/create.ts` | 生成默认 React client 文件、frontend config block、`public/favicon.svg` 和 API-only opt-out 路径。 |
-| 包边界 | `package.json`、`scripts/build-cjs.mjs`、`test/verify-package-exports.mjs` | 发布 `./frontend` 的 ESM、CJS 与 `.d.ts`，并校验导出面。 |
-
-因此这条前端能力不需要 Vite，也不是独立前端框架包。浏览器 bundle 由 Vext 自己的 esbuild 流水线编译，React 只进入生成的 full-stack 项目依赖。
-
-## 当前范围与应用层路线
-
-当前版本的 `Vext Frontend` 是 P0 基础层。它解决的是“Vext 能否自己构建、服务并连接一个浏览器应用”的问题，而不是“Vext 是否已经提供完整复杂应用框架层”的问题。
-
-| 当前已支持 | 当前尚未支持 |
+| 文件或目录 | 用户应该怎么用 |
 | --- | --- |
-| 单个 `frontend.entry` 浏览器入口。 | Vext 控制的页面路由树、文件路由或显式 page manifest。 |
-| esbuild client build、hashed JS/CSS、manifest 与 size report。 | route-level code splitting、route 预取和 route asset graph。 |
-| HTML shell 渲染和 `%VEXT_ENTRY%` / `%VEXT_STYLES%` 注入。 | route 级 head/meta、preload、script/style 管理。 |
-| 静态资源服务、`ETag` / `Last-Modified` / SPA fallback。 | loading/error/not-found 边界和页面生命周期。 |
-| `vextjs/frontend` API client helper。 | 页面 params/search、loader data、action result 的类型生成。 |
-| React 19 最小脚手架。 | 嵌套路由、布局、表单 action、mutation、auth/session/CSRF 前端桥。 |
-| `defineFrontendAdapter()` metadata 扩展点。 | adapter 专属 build/render/route hook。 |
+| `src/client/main.tsx` | 浏览器入口。通常只负责挂载 React 和导入全局样式。 |
+| `src/client/App.tsx` | 当前默认页面入口。先从这里改首页、组织页面、调用 API。 |
+| `src/client/styles.css` | 默认全局样式。可以继续拆出页面或组件 CSS。 |
+| `src/client/index.html` | HTML 模板。用于放 `<title>`、`meta`、`#root` 和 Vext 注入占位符。 |
+| `public/` | 公开静态资源目录。适合 favicon、robots、无需 hash 的图片。 |
+| `src/routes/index.ts` | 后端 API route 示例。默认提供 `/api/hello` 和 `/api/health`。 |
+| `src/config/default.ts` | Vext 配置。默认包含 `frontend` 配置块。 |
 
-也就是说，复杂后台、账户系统、多页面内容站、仪表盘、表单工作流或需要页面级拆包的应用，不应把当前 P0 当成完成态。下一阶段应用层需要补齐：
+不要手写 `.vext/client/` 或 `dist/client/` 里的文件。它们是 Vext 在 dev/build 时生成的前端产物。
 
-- `src/client/pages/**` 或显式 page manifest 到 route tree 的生成。
-- root layout、nested layout、route group、dynamic params、not-found route。
-- route loader/action，与 typed Vext API、validation error、HttpError、abort 和 prefetch 集成。
-- params/search/loader/action/API contract 的类型生成。
-- loading、error、not-found 边界和默认恢复路径。
-- head/meta/link/script/preload 管理。
-- public runtime config、base path、build id、feature flags 注入。
-- auth/session/CSRF 浏览器桥和 401/403 默认处理。
-- route-level splitting、prefetch、route asset manifest 和复杂应用 benchmark。
-- dev overlay 或 inspector，用于观察 route tree、loader/action、fallback 命中和 bundle size。
+## 4. 修改首页
 
-SSR、streaming、React Server Components、Server Actions 和 server functions 不属于当前 P0，也不应在文档或代码里被描述成已支持能力。它们需要在应用层边界稳定后单独做技术方案和基准验证。
-
-## 配置
-
-前端能力由 `config.frontend` 控制。
-
-使用默认 React 布局：
-
-```ts
-import type { VextUserConfig } from "vextjs";
-
-const config: VextUserConfig = {
-  frontend: true,
-};
-
-export default config;
-```
-
-需要完整掌控字段时可以显式配置：
-
-```ts
-import type { VextUserConfig } from "vextjs";
-
-const config: VextUserConfig = {
-  frontend: {
-    enabled: true,
-    framework: "react",
-    root: "src/client",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
-    outDir: "dist/client",
-    publicDir: "public",
-    publicPath: "/",
-    spaFallback: {
-      enabled: true,
-      exclude: ["/api/**", "/openapi.json", "/docs/**"],
-    },
-    apiClient: {
-      enabled: true,
-    },
-    build: {
-      target: ["es2022", "chrome115"],
-      minify: true,
-      sourcemap: false,
-    },
-  },
-};
-
-export default config;
-```
-
-省略 `frontend`、设置 `frontend: false` 或设置 `frontend.enabled: false` 都会关闭前端构建与静态服务。
-
-:::tip
-如果希望 `vext dev` 自动触发 client rebuild，建议保持默认的 `src/client/**` 与 `public/**` 路径。构建编译器支持自定义 `entry`、`indexHtml`、`outDir`、`publicDir` 与 `publicPath`；当前开发期变更分类器主要针对默认 client 和 public 目录优化。
-:::
-
-## 配置项参考
-
-| 字段 | 类型 | 默认值 | 行为 |
-| --- | --- | --- | --- |
-| `frontend` | `boolean \| object` | 禁用 | `true` 启用默认值；`false` 关闭浏览器构建与静态服务。 |
-| `frontend.enabled` | `boolean` | `false` | 启用内置前端流水线。 |
-| `frontend.framework` | `string` | `"react"` | 前端框架标签。React 是当前内置脚手架目标。 |
-| `frontend.root` | `string` | `"src/client"` | 记录在 resolved config 中的前端源码目录。当前编译器直接使用 `entry` 与 `indexHtml`；开发期 rebuild 分类主要针对默认 `src/client/**` 路径优化。 |
-| `frontend.entry` | `string` | `"src/client/main.tsx"` | 传给 esbuild 的浏览器入口文件。文件不存在时会 fail fast。 |
-| `frontend.indexHtml` | `string` | `"src/client/index.html"` | 模板渲染器使用的 HTML shell。文件不存在时，Vext 写入最小 fallback shell。 |
-| `frontend.outDir` | `string` | 开发期 `.vext/client`，生产期 `dist/client` | 浏览器资源、渲染后 HTML、路由契约、manifest 与 size report 的输出目录。 |
-| `frontend.publicDir` | `string` | `"public"` | 构建前复制到 `outDir` 的静态资源目录。 |
-| `frontend.publicPath` | `string` | `"/"` | 生成资源链接的 URL 前缀。必须是路径，不能是完整 URL。`app` 会规范化为 `/app/`。 |
-| `frontend.spaFallback` | `boolean \| object` | 启用 | 为接受 HTML 的浏览器导航路径服务 `index.html`。 |
-| `frontend.spaFallback.exclude` | `string[]` | `["/api/**", "/openapi.json", "/docs/**"]` | 保留后端行为的精确路径或 `/**` 前缀模式。 |
-| `frontend.apiClient` | `boolean \| object` | 启用 | 根据路由 manifest 写入 `client-contract.json` 与 `api.generated.ts`。 |
-| `frontend.build.target` | `string \| string[]` | `"es2022"` | esbuild 浏览器构建目标。 |
-| `frontend.build.minify` | `boolean` | 生产期 `true`，开发期 `false` | 是否压缩前端产物。 |
-| `frontend.build.sourcemap` | `boolean` | 开发期 `true`，生产期 `false` | 是否输出 source map。 |
-| `frontend.adapter` | `VextFrontendAdapter` | 无 | 由 `defineFrontendAdapter()` 返回的扩展点。当前版本仍由 Vext 负责内置构建、manifest、契约与静态服务流程。 |
-
-## 运行流程
-
-### 开发期流程
-
-`vext dev` 使用同一套 Vext 进程树承接后端运行时和浏览器 bundle：
-
-1. dev worker 加载 Vext 配置并注册后端路由。
-2. route collector 写入 `.vext/manifest/routes.json`。
-3. `buildFrontendClient({ mode: "development" })` 解析 `config.frontend`。
-4. 如果前端禁用，跳过前端构建。
-5. 如果前端启用，默认写入 `.vext/client/`。
-6. 前端编译器复制 `public/`，写入 client contract 产物，用 esbuild 打包浏览器入口，写入 `manifest.json`、`size-report.json`，最后渲染 `index.html`。
-7. not-found handler 通过同一个 Vext server 服务静态前端资源和浏览器导航 fallback。
-8. watcher 将默认 `src/client/**` 与 `public/**` 变更分类为 `client`。
-9. worker 收到 `frontend-rebuild` 后重新执行 `buildFrontendClient()`，不触发后端 route reload 或 cold restart。
-
-### 生产构建流程
-
-`vext build` 让服务端输出和浏览器输出归入同一个构建命令：
-
-1. Vext 刷新 generated types 和 route manifest。
-2. TypeScript 项目把服务端代码编译到 CLI `--outdir`，默认是 `dist`。
-3. Vext 从 `<outdir>/config` 以 `command: "build"` 重新加载 built config。
-4. 服务端构建后执行 `buildFrontendClient({ mode: "production" })`。
-5. 如果 CLI `--outdir` 不是 `dist`，且没有显式设置 `frontend.outDir`，浏览器输出会变成 `<outdir>/client`。
-6. 如果显式设置了 `frontend.outDir`，显式值优先。
-7. JavaScript 项目会跳过服务端编译，但只要启用了 `frontend`，仍会构建前端资源。
-
-浏览器 esbuild 构建使用 `platform: "browser"`、`format: "esm"`、`jsx: "automatic"`、`splitting: false`、带 hash 的 `assets/[name]-[hash]` 文件名、常见图片/字体 file loader、CSS bundle，并按 development / production 写入 `process.env.NODE_ENV` define。
-
-### 生产服务流程
-
-`vext start` 只服务已经存在的前端产物：
-
-1. bootstrap 以 production 模式解析前端配置。
-2. `frontend.enabled` 为 true 时，`assertFrontendOutputReady()` 检查 `outDir/index.html`。
-3. 前端输出缺失会 fail fast，并提示先执行 `vext build`。
-4. Vext 将 `createFrontendNotFoundHandler()` 注册为 not-found 路径。
-5. `GET` 与 `HEAD` 请求会先尝试按 `frontend.publicPath` 解析静态资源。
-6. 静态文件带 content type、`ETag`、`Last-Modified` 与 cache header。`index.html` 为 `no-cache`，hash 资源为 immutable。
-7. SPA fallback 只处理接受 HTML、无扩展名、且不匹配 `spaFallback.exclude` 的路径。
-8. JSON / API 客户端继续收到后端 404 或后端错误，不会收到 `index.html`。
-
-### 生成文件来源
-
-| 输出文件 | 来源 |
-| --- | --- |
-| `assets/main-<hash>.js` | 从 `frontend.entry` 进入 esbuild bundle。 |
-| `assets/main-<hash>.css` | 浏览器入口 import 的 CSS，由 esbuild 输出。 |
-| copied public assets | `frontend.publicDir` 下的文件，在 bundle 前复制。 |
-| `client-contract.json` | `.vext/manifest/routes.json` 中的可见路由。 |
-| `api.generated.ts` | 同一个 client contract 渲染成的 TypeScript 小模块，导出 `contract` 和 `api`。 |
-| `manifest.json` | esbuild metafile 输出规范化为公开资源 URL。 |
-| `size-report.json` | 基于 `manifest.json` 统计资源字节数。 |
-| `index.html` | `frontend.indexHtml` 注入生成的样式和脚本标签后得到；模板不存在时使用最小 fallback shell。 |
-
-## HTML 模板渲染
-
-`frontend.indexHtml` 不是简单复制。Vext 会在 esbuild 完成后把它渲染到 `outDir/index.html`，并根据 `manifest.json` 注入生成后的脚本和样式资源。
-
-想精确控制插入位置时，使用显式占位符：
-
-```html
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vext App</title>
-    %VEXT_STYLES%
-  </head>
-  <body>
-    <div id="root"></div>
-    %VEXT_ENTRY%
-  </body>
-</html>
-```
-
-渲染规则如下：
-
-| 占位符或位置 | 渲染结果 |
-| --- | --- |
-| `%VEXT_STYLES%` | 替换为每个 CSS 产物对应的 `<link rel="stylesheet" ... data-vext-style>`。 |
-| `%VEXT_ENTRY%` | 替换为浏览器入口 `<script type="module" ... data-vext-entry></script>`。 |
-| 没有 `%VEXT_STYLES%`，但存在 `</head>` | 样式链接插入到 `</head>` 前。 |
-| 没有 `%VEXT_ENTRY%`，但存在 `</body>` | 入口脚本插入到 `</body>` 前。 |
-| 没有 `</body>` | 生成标签追加到文件末尾。 |
-| `indexHtml` 文件不存在 | Vext 写入包含 `<div id="root"></div>` 的最小 shell。 |
-
-`vext build` 后的渲染结果示例：
-
-```html
-<link rel="stylesheet" href="/assets/main-ABCD1234.css" data-vext-style>
-<script type="module" src="/assets/main-EFGH5678.js" data-vext-entry></script>
-```
-
-如果 `publicPath` 配置为 `/app/`，生成链接会变成 `/app/assets/...`。
-
-## 客户端代码示例
-
-生成的 React 入口会挂载到模板里的 `#root`：
+最直接的首页修改入口是 `src/client/App.tsx`。例如把默认页面改成一个简单 dashboard：
 
 ```tsx
-// src/client/main.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-import { App } from "./App";
-import "./styles.css";
-
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
-```
-
-默认脚手架为了保持示例自包含，会在浏览器应用里声明一个小型路由契约：
-
-```tsx
-// src/client/App.tsx
 import { useEffect, useState } from "react";
 import { createVextApiClient, isVextApiError } from "vextjs/frontend";
 
@@ -338,55 +144,374 @@ export function App() {
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">vext full-stack</p>
+        <p className="eyebrow">Vext dashboard</p>
         <h1>{message}</h1>
-        {error ? <p className="error">{error}</p> : <p>React client served by vext.</p>}
+        {error ? <p className="error">{error}</p> : <p>React client served by Vext.</p>}
       </section>
     </main>
   );
 }
 ```
 
-构建还会在开发期写入 `.vext/client/client-contract.json` 与 `.vext/client/api.generated.ts`，生产构建写入 `dist/client/`。这些文件描述当前可见路由 manifest，主要用于工具和产物检查，不应把 `.vext/client/` 或 `dist/client/` 当作源码目录导入。
+修改保存后，`vext dev` 会对默认 `src/client/**` 变更触发前端重建。当前不承诺组件级 HMR；如果浏览器没有自动刷新，手动刷新页面即可。
 
-当前生成契约会刻意把请求与响应 schema reference 保持为 `unknown`。它会从 route manifest 保留 method、path、`operationId`、summary 和 tags，但还不会从运行时 schema 定义里推断完整 body/query/response TypeScript 类型。
+## 5. 添加页面文件
 
-## API client helper
+当前 P0 不会自动扫描 `src/client/pages/**` 生成页面路由。你可以把 `pages` 当作 React 页面组件目录，然后在 `App.tsx` 中手动导入和渲染。
 
-`vextjs/frontend` 提供轻量 fetch wrapper，能够理解 Vext 路由契约：
+创建页面文件：
 
-```ts
-import { createVextApiClient } from "vextjs/frontend";
-import { contract } from "./api-contract";
-
-const api = createVextApiClient(contract, {
-  baseUrl: "/",
-  headers: {
-    "x-client": "web",
-  },
-});
-
-const hello = await api.GET("/api/hello", {
-  query: { locale: "zh-CN" },
-});
+```text
+src/client/pages/Home.tsx
+src/client/pages/About.tsx
 ```
 
-helper 支持：
+```tsx
+// src/client/pages/Home.tsx
+export function Home() {
+  return (
+    <section>
+      <h1>Home</h1>
+      <p>Welcome to the Vext frontend.</p>
+    </section>
+  );
+}
+```
 
-- `GET`、`POST`、`PUT`、`PATCH` 与 `DELETE` 快捷方法。
-- `request(method, path, options)`，可覆盖契约中的任意方法，包括 `HEAD` 与 `OPTIONS`。
+```tsx
+// src/client/pages/About.tsx
+export function About() {
+  return (
+    <section>
+      <h1>About</h1>
+      <p>This page is rendered by the React client.</p>
+    </section>
+  );
+}
+```
+
+在 `App.tsx` 中接入：
+
+```tsx
+import { About } from "./pages/About";
+import { Home } from "./pages/Home";
+
+export function App() {
+  const page = window.location.pathname === "/about" ? "about" : "home";
+  return page === "about" ? <About /> : <Home />;
+}
+```
+
+访问 `/about` 时，Vext 的 SPA fallback 会返回同一个 `index.html`。最终显示哪个页面，由浏览器里的 `App.tsx` 决定。也就是说，`/about` 能被服务端交给浏览器应用，但当前版本不会因为你创建了 `src/client/pages/About.tsx` 就自动生成页面路由。
+
+需要更完整的客户端路由时，可以自行接入 React Router 等用户侧路由库；Vext 当前不会把它作为默认依赖写入脚手架。
+
+## 6. 添加组件
+
+推荐把可复用 UI 放进 `src/client/components/`：
+
+```text
+src/client/components/Header.tsx
+src/client/components/Button.tsx
+```
+
+```tsx
+// src/client/components/Header.tsx
+export function Header() {
+  return (
+    <header className="header">
+      <strong>Vext App</strong>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+      </nav>
+    </header>
+  );
+}
+```
+
+在页面里使用：
+
+```tsx
+import { Header } from "../components/Header";
+
+export function Home() {
+  return (
+    <>
+      <Header />
+      <main>Home content</main>
+    </>
+  );
+}
+```
+
+`components` 是推荐目录约定，不是框架强制扫描目录。你也可以按业务模块拆成 `src/client/features/users/`、`src/client/features/orders/` 等目录。
+
+## 7. 添加样式
+
+默认脚手架使用普通 CSS。全局样式从 `main.tsx` 导入：
+
+```tsx
+// src/client/main.tsx
+import "./styles.css";
+```
+
+页面或组件样式可以跟随文件放置：
+
+```text
+src/client/pages/Home.tsx
+src/client/pages/Home.css
+```
+
+```tsx
+// src/client/pages/Home.tsx
+import "./Home.css";
+
+export function Home() {
+  return <main className="home">Home</main>;
+}
+```
+
+CSS 会由 esbuild 打包并输出为生产 CSS asset，Vext 会把生成后的 CSS link 注入到 HTML。
+
+当前默认能力只承诺普通 CSS。Sass、CSS Modules、Tailwind、CSS-in-JS 等不是 Vext P0 默认内置能力；你可以在应用侧自行接入，但官方用户指南不把它们写成默认支持。
+
+## 8. 添加图片和静态资源
+
+Vext 当前推荐两类资源放置方式：
+
+| 放置位置 | 适合内容 | 使用方式 |
+| --- | --- | --- |
+| `public/` | favicon、robots、无需 hash 的公开图片或文件 | 直接用 `/favicon.svg`、`/logo.png` 这类 URL 访问 |
+| `src/client/assets/` | 页面 import 的图片、SVG、字体等 | 在 TSX 或 CSS 中 import，由 esbuild 输出 hash asset |
+
+`public/` 示例：
+
+```text
+public/logo.png
+```
+
+```tsx
+export function Header() {
+  return <img src="/logo.png" alt="Logo" />;
+}
+```
+
+`src/client/assets/` 示例：
+
+```text
+src/client/assets/hero.png
+```
+
+```tsx
+import heroUrl from "../assets/hero.png";
+
+export function HomeHero() {
+  return <img src={heroUrl} alt="Home hero" />;
+}
+```
+
+如果 TypeScript 提示图片模块类型缺失，可以在你的应用里补一个声明文件，例如：
+
+```ts
+// src/client/assets.d.ts
+declare module "*.png" {
+  const src: string;
+  export default src;
+}
+```
+
+生成目录仍然不要手写：开发期输出在 `.vext/client/`，生产输出在 `dist/client/`。
+
+## 9. 调用 Vext API
+
+默认模板后端提供：
+
+```text
+GET /api/hello
+GET /api/health
+```
+
+在浏览器侧使用 `vextjs/frontend`：
+
+```tsx
+import { createVextApiClient, isVextApiError } from "vextjs/frontend";
+
+type HelloResponse = { message: string };
+
+const api = createVextApiClient({
+  schemaVersion: 1,
+  kind: "client-contract",
+  source: "routes-manifest",
+  generatedAt: "template",
+  routes: [
+    {
+      method: "GET",
+      path: "/api/hello",
+      operationId: "getApiHello",
+      response: { type: "unknown" },
+    },
+  ],
+  warnings: [],
+} as const);
+
+try {
+  const hello = (await api.GET("/api/hello")) as HelloResponse;
+  console.log(hello.message);
+} catch (err) {
+  if (isVextApiError(err)) {
+    console.error(err.status, err.message, err.details);
+  } else {
+    console.error(err);
+  }
+}
+```
+
+`createVextApiClient()` 支持：
+
+- `GET`、`POST`、`PUT`、`PATCH`、`DELETE` 快捷方法。
+- `request(method, path, options)` 调用其他 HTTP 方法。
 - `params` 替换 `/api/users/:id` 这类路径参数。
-- `query`、JSON `body`、请求 `headers`、`signal`、自定义 `fetch` 与 `baseUrl`。
-- 通过 `VextApiError` 和 `isVextApiError()` 处理非 2xx 响应。
-- 自动展开 Vext 的 `{ code: 0, data }` 响应结构。
+- `query`、JSON `body`、请求 `headers`、`signal`、自定义 `fetch` 和 `baseUrl`。
+- 非 2xx 响应抛出 `VextApiError`，可用 `isVextApiError()` 判断。
+- 自动展开 Vext `{ code: 0, data }` 响应结构。
 
-## 开发、构建与启动
+当前模板为了自包含，会在 `App.tsx` 中手写一个最小 contract。构建也会输出 `client-contract.json` 和 `api.generated.ts`，但当前生成契约会把请求和响应 schema reference 保持为 `unknown`，还不会从运行时 schema 自动推断完整 TypeScript 类型。
 
-`vext dev` 会把前端构建到 `.vext/client/`，并通过同一个 Vext 服务提供访问。默认 `src/client/**` 或 `public/**` 变更会触发前端重建消息，不会导致后端 cold restart。API、配置、插件、路由、服务、语言包和 preload 仍按既有重载策略处理。
+## 10. 配置 frontend
 
-开发产物固定在隐藏的 `.vext/` 下，避免生成的浏览器资源变成源码真相源。
+### 最简配置
 
-`vext build` 会先编译服务端代码，再用 esbuild 打包浏览器客户端。启用前端时，生产产物包括：
+默认 full-stack React 模板会生成对象形式配置。你也可以用最简写法启用默认值：
+
+```ts
+import type { VextUserConfig } from "vextjs";
+
+const config: VextUserConfig = {
+  frontend: true,
+};
+
+export default config;
+```
+
+### 常用配置
+
+```ts
+import type { VextUserConfig } from "vextjs";
+
+const config: VextUserConfig = {
+  port: 3000,
+  adapter: "native",
+  frontend: {
+    enabled: true,
+    framework: "react",
+    entry: "src/client/main.tsx",
+    indexHtml: "src/client/index.html",
+    publicDir: "public",
+    publicPath: "/",
+    spaFallback: {
+      enabled: true,
+      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+    },
+  },
+};
+
+export default config;
+```
+
+### 配置项参考
+
+| 字段 | 默认值 | 用途 |
+| --- | --- | --- |
+| `frontend` | `false` | `true` 启用默认前端；`false` 关闭前端；对象形式可配置字段。 |
+| `frontend.enabled` | `false` | 启用内置前端构建与静态服务。 |
+| `frontend.framework` | `"react"` | 前端框架标签；当前默认模板是 React。 |
+| `frontend.root` | `"src/client"` | 前端源码目录记录值；当前编译主要使用 `entry` 和 `indexHtml`。 |
+| `frontend.entry` | `"src/client/main.tsx"` | 浏览器入口文件。缺失时会 fail fast。 |
+| `frontend.indexHtml` | `"src/client/index.html"` | HTML 模板文件；缺失时使用最小 fallback shell。 |
+| `frontend.outDir` | dev: `.vext/client`；prod: `dist/client` | 前端输出目录。 |
+| `frontend.publicDir` | `"public"` | 构建前复制到输出目录的公开静态资源。 |
+| `frontend.publicPath` | `"/"` | 生成资源链接的 URL 前缀，必须是路径，不能是完整 URL。 |
+| `frontend.spaFallback` | `true` | 为接受 HTML 的浏览器导航路径返回 `index.html`。 |
+| `frontend.spaFallback.exclude` | `["/api/**", "/openapi.json", "/docs/**"]` | 保留后端行为的路径。 |
+| `frontend.apiClient` | `true` | 生成 `client-contract.json` 和 `api.generated.ts`。 |
+| `frontend.build.target` | `"es2022"` | 浏览器构建目标。 |
+| `frontend.build.minify` | production 为 `true` | 是否压缩前端产物。 |
+| `frontend.build.sourcemap` | development 为 `true` | 是否输出 sourcemap。 |
+| `frontend.adapter` | 无 | 预留适配器 metadata 扩展点；当前编译器不会调用 adapter build hook。 |
+
+如果要部署到子路径，例如 `/app/`：
+
+```ts
+export default {
+  frontend: {
+    enabled: true,
+    publicPath: "/app/",
+  },
+};
+```
+
+`publicPath` 会影响生成出来的 script、style 和 asset URL。
+
+## 11. HTML 模板
+
+默认模板文件是 `src/client/index.html`：
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vext App</title>
+    %VEXT_STYLES%
+  </head>
+  <body>
+    <div id="root"></div>
+    %VEXT_ENTRY%
+  </body>
+</html>
+```
+
+当前可用占位符：
+
+| 占位符或位置 | 渲染结果 |
+| --- | --- |
+| `%VEXT_STYLES%` | 替换为生成 CSS 对应的 `<link rel="stylesheet" ... data-vext-style>`。 |
+| `%VEXT_ENTRY%` | 替换为浏览器入口 `<script type="module" ... data-vext-entry></script>`。 |
+| 没有 `%VEXT_STYLES%`，但存在 `</head>` | 样式链接插入到 `</head>` 前。 |
+| 没有 `%VEXT_ENTRY%`，但存在 `</body>` | 入口脚本插入到 `</body>` 前。 |
+| 没有 `</body>` | 生成标签追加到文件末尾。 |
+| `indexHtml` 文件不存在 | Vext 写入包含 `<div id="root"></div>` 的最小 shell。 |
+
+`vext build` 后可能得到：
+
+```html
+<link rel="stylesheet" href="/assets/main-ABCD1234.css" data-vext-style>
+<script type="module" src="/assets/main-EFGH5678.js" data-vext-entry></script>
+```
+
+:::tip
+后续 P1 已计划把正式 token 迁移到 `%vext.*%` 风格；当前版本请继续使用 `%VEXT_STYLES%` 和 `%VEXT_ENTRY%`。
+:::
+
+## 12. 开发、构建和生产启动
+
+开发：
+
+```bash
+npm run dev
+```
+
+开发期前端输出在 `.vext/client/`。默认 `src/client/**` 和 `public/**` 变更会触发前端重建，不会触发后端 cold restart。后端 API、配置、路由、service、middleware、plugin、locale、preload 仍按原有后端重载策略处理。
+
+构建：
+
+```bash
+npm run build
+```
+
+生产前端输出在 `dist/client/`：
 
 ```text
 dist/client/
@@ -400,40 +525,103 @@ dist/client/
 └── size-report.json
 ```
 
-`vext start` 会服务 `dist/client/index.html`、静态资源与 SPA fallback。fallback 默认排除 API / 文档路径，因此 `/api/**`、`/openapi.json` 和 `/docs/**` 仍进入后端运行时。
+生产启动：
 
-SPA fallback 只接管接受 HTML 的 `GET` 与 `HEAD` 请求。JSON 客户端会继续走后端 404 / 错误路径，不会收到 `index.html`；fallback 响应会带上 `Vary: Accept`。
-
-如果 `frontend.enabled` 为 true，但生产环境缺少 `dist/client/index.html`，启动会 fail fast，并提示先执行 `vext build`。
-
-## 外部前端适配器
-
-首个内置目标是 React。未来或用户侧集成可以通过 `defineFrontendAdapter()` 暴露前端适配器：
-
-```ts
-import { defineFrontendAdapter } from "vextjs/frontend";
-
-export const customFrontend = defineFrontendAdapter({
-  name: "custom",
-  framework: "custom",
-});
+```bash
+npm start
 ```
 
-当前版本的 adapter 契约刻意保持较小。`defineFrontendAdapter()` 返回 typed metadata，config resolver 会携带 `frontend.adapter`，但当前编译器还不会调用 adapter 专属 build hook。它是预留扩展点：当前实现仍由 Vext 负责路由、manifest 生成、esbuild 打包、静态服务与 API client contract。
+`vext start` 只服务已经存在的生产前端产物。启用 `frontend` 但缺少 `dist/client/index.html` 时会 fail fast，并提示先执行 `vext build`。
 
-## 常见问题
+SPA fallback 只接管接受 HTML 的 `GET` / `HEAD` 浏览器导航请求。默认排除 `/api/**`、`/openapi.json` 和 `/docs/**`，因此 API 或文档路径继续进入后端运行时。
 
-| 现象 | 检查项 |
+## 13. API-only 项目如何关闭前端
+
+新项目只需要 API 时：
+
+```bash
+npx vextjs create my-api --template api --frontend none
+```
+
+已有项目要关闭内置前端：
+
+```ts
+import type { VextUserConfig } from "vextjs";
+
+const config: VextUserConfig = {
+  frontend: false,
+};
+
+export default config;
+```
+
+或：
+
+```ts
+export default {
+  frontend: {
+    enabled: false,
+  },
+};
+```
+
+关闭后，Vext 不会构建、监听或服务 `src/client/**` / `public/**` 前端资源。
+
+## 14. 当前边界与下一阶段
+
+当前已支持：
+
+- 单个浏览器入口：`src/client/main.tsx`。
+- React 19 默认脚手架。
+- 普通 CSS import 与 CSS bundle。
+- 常见图片、字体、SVG 等 asset import。
+- `public/` 静态资源复制。
+- HTML 模板注入 `%VEXT_STYLES%` / `%VEXT_ENTRY%`。
+- `.vext/client/` 开发输出与 `dist/client/` 生产输出。
+- 静态资源服务、缓存头和 SPA fallback。
+- `vextjs/frontend` API client helper。
+
+当前尚未支持：
+
+- 自动页面文件路由。
+- nested layout、route group、dynamic route、not-found route。
+- route loader/action、route-level split、prefetch。
+- route 级 head/meta/script/style 管理。
+- SSR、streaming、React Server Components、Server Actions。
+- 内置 Sass、CSS Modules、Tailwind。
+
+当前替代做法是：在 `App.tsx` 中手动组织页面，或由用户自行接入客户端路由库和样式工具。后续 P1 会单独设计应用级前端路由、layout、loader/action、类型生成、拆包和诊断能力。
+
+## 15. 常见问题
+
+| 现象 | 处理方式 |
 | --- | --- |
-| `frontend entry not found` | 确认 `frontend.entry` 指向项目根目录内的真实文件。 |
-| 生产启动提示 frontend output 缺失 | 先执行 `vext build` 再执行 `vext start`，或在 API-only 部署中关闭 `frontend.enabled`。 |
-| API 风格路径返回了浏览器应用 | API 客户端发送 `Accept: application/json`，并把该路由前缀加入 `frontend.spaFallback.exclude`。 |
-| 资源 URL 缺少子路径 | 将 `frontend.publicPath` 设置为挂载路径，例如 `/app/`。 |
-| `publicPath` 配置报错 | 使用 `/app/` 这类路径，不要使用 `https://cdn.example.com/app/` 这类完整 URL。 |
-| 源码路径配置报错 | `root`、`entry`、`indexHtml`、`outDir` 和 `publicDir` 必须解析在项目根目录内。 |
+| 修改页面后没变化 | 确认正在运行 `npm run dev`，文件位于默认 `src/client/**` 下；必要时手动刷新浏览器。 |
+| 访问 `/about` 返回同一个 HTML | 这是 SPA fallback。当前需要在 `App.tsx` 或用户自选 router 中根据路径渲染页面。 |
+| 创建了 `src/client/pages/About.tsx` 但没有自动路由 | 当前 P0 不扫描 `pages` 目录。请在 `App.tsx` 中导入并渲染。 |
+| 图片 404 | `public/logo.png` 用 `/logo.png`；`src/client/assets/logo.png` 需要在 TSX/CSS 中 import。 |
+| 生产启动提示缺少前端输出 | 先执行 `npm run build`，再执行 `npm start`。 |
+| API 请求拿到 HTML | API 客户端发送 `Accept: application/json`，并把 API 前缀加入 `frontend.spaFallback.exclude`。 |
+| 资源 URL 缺少子路径 | 配置 `frontend.publicPath`，例如 `/app/`。 |
+| `publicPath` 配置报错 | 使用 `/app/` 这类路径，不要使用 `https://cdn.example.com/app/` 这样的完整 URL。 |
+| 想用 Sass、Tailwind 或 CSS Modules | 当前不是默认内置能力，可以在应用侧自行接入。 |
+| 想关闭前端 | 使用 `--template api --frontend none` 创建项目，或设置 `frontend: false`。 |
 
-## 下一步
+## 16. 维护者参考
 
-- 查看 [构建](/zh/guide/build) 了解生产产物行为。
-- 查看 [CLI 命令](/zh/guide/cli) 了解 `vext create` 与 `vext build` 参数。
-- 查看 [配置](/zh/guide/configuration) 了解完整 `frontend` 字段。
+普通用户不需要理解这些实现细节即可使用前端集成。维护者排查行为时可以按下面的真相源定位：
+
+| 行为 | 真相源 |
+| --- | --- |
+| 公开浏览器 helper | `src/frontend/index.ts` |
+| 前端配置解析 | `src/frontend/tooling/config-resolver.ts` |
+| client contract 写入 | `src/frontend/tooling/client-contract-writer.ts` |
+| esbuild 构建与 HTML 渲染 | `src/frontend/tooling/client-build-compiler.ts` |
+| 静态资源与 SPA fallback | `src/frontend/runtime/static-mount.ts` |
+| dev 前端构建接入 | `src/lib/dev/dev-bootstrap.ts` |
+| dev 文件变更分类 | `src/lib/dev/change-classifier.ts`、`src/lib/dev/file-watcher.ts` |
+| 生产构建接入 | `src/cli/build.ts` |
+| 生产启动静态挂载 | `src/lib/bootstrap.ts` |
+| 脚手架生成 | `src/cli/create.ts` |
+
+下一步可继续阅读 [配置](/zh/guide/configuration)、[构建](/zh/guide/build) 和 [CLI 命令](/zh/guide/cli)。

@@ -283,7 +283,7 @@ export default {
 
 Default SPA fallback exclusions are `/api/**`, `/openapi.json`, and `/docs/**`, so backend API and documentation routes keep their runtime behavior.
 
-For the full scaffold example, HTML template placeholders, generated client artifacts, and API client usage, see [Frontend integration](/guide/frontend).
+For creating the app, changing pages, adding components, styles, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
 
 ## Complete configuration item reference
 
