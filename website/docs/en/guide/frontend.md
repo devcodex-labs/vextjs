@@ -1,45 +1,47 @@
 # Frontend integration
 
-Vext includes a first-party frontend path for projects that want API routes, a browser app, development rebuilds, production builds, and static serving in one Vext project. The default scaffold uses React 19. Browser-side API helpers are imported from `vextjs/frontend`, while the backend runtime contract stays framework-independent.
+Vext frontend integration is the in-development path for keeping HTTP routes, service data, React pages, SSR, hydration, React Fast Refresh, production builds, and static asset serving inside one Vext project. The default frontend path is designed for Vext full-stack usage, while the backend runtime contract remains framework-independent.
 
-The current release is the P0 frontend foundation. It supports one browser entry, plain CSS, static assets, HTML template injection, SPA fallback, and a Vext API client helper. It is not a complete application-level frontend framework yet, so it does not automatically scan `src/client/pages/**` for page routes, and it does not include nested layouts, loaders/actions, SSR, RSC, or Server Actions.
+:::warning Under development
+This page describes the target experience for the frontend integration that is still under development. It is meant to align implementation and user-facing usage. Until the feature is implemented and released, do not treat `src/frontend/pages/**`, `src/frontend/locales/**`, `res.render()`, `renderError()`, `frontend.i18n`, `useVextI18n()`, React Fast Refresh, SSR, layout chains, or automatic browser entry generation as stable published APIs.
+:::
+
+The core model is simple: URLs are still defined in `src/routes/**`; frontend source lives under `src/frontend/**`; page components live in `src/frontend/pages/**`; frontend page copy lives under `src/frontend/locales/**`; a route handler returns an HTML page by calling `res.render(page, props, options)`. Server data is prepared in the route handler or a service, then passed to the page as props, layoutData, or messages. Server-only code is not bundled into the browser output. During development, React pages, layouts, shared components, and styles use Fast Refresh or CSS hot updates by default; when route/service code that affects rendering changes, the browser action is controlled by `frontend.dev.renderRefresh`. Pages, layouts, and shared components can use default aliases such as `@components`, `@styles`, and `@assets`; when they need localized copy, they use `useVextI18n(locale?)` from `vextjs/frontend` and read object properties such as `i18n.dashboard.title`. These capabilities stay inside the frontend source boundary.
 
 ## Table of Contents
 
 - [1. When to use Vext Frontend](#1-when-to-use-vext-frontend)
 - [2. Create and run a full-stack project](#2-create-and-run-a-full-stack-project)
-- [3. Understand the generated files](#3-understand-the-generated-files)
-- [4. Change the home page](#4-change-the-home-page)
-- [5. Add page files](#5-add-page-files)
-- [6. Add components](#6-add-components)
-- [7. Add styles](#7-add-styles)
-- [8. Add images and static assets](#8-add-images-and-static-assets)
-- [9. Call Vext APIs](#9-call-vext-apis)
-- [10. Configure frontend](#10-configure-frontend)
-- [11. HTML template](#11-html-template)
-- [12. Develop, build, and start](#12-develop-build-and-start)
-- [13. Disable frontend for API-only projects](#13-disable-frontend-for-api-only-projects)
-- [14. Current boundaries and next stage](#14-current-boundaries-and-next-stage)
-- [15. Troubleshooting](#15-troubleshooting)
-- [16. Maintainer reference](#16-maintainer-reference)
+- [3. Default project structure](#3-default-project-structure)
+- [4. Add page files](#4-add-page-files)
+- [5. Render a page from a route](#5-render-a-page-from-a-route)
+- [6. Use services to prepare page data](#6-use-services-to-prepare-page-data)
+- [7. Use layouts for page shells](#7-use-layouts-for-page-shells)
+- [8. Shared components](#8-shared-components)
+- [9. Style organization](#9-style-organization)
+- [10. Images and static assets](#10-images-and-static-assets)
+- [11. Call Vext APIs](#11-call-vext-apis)
+- [12. Page internationalization](#12-page-internationalization)
+- [13. Error pages and renderError](#13-error-pages-and-rendererror)
+- [14. HTML template](#14-html-template)
+- [15. Configure frontend](#15-configure-frontend)
+- [16. Develop, build, and start](#16-develop-build-and-start)
+- [17. Disable frontend for API-only projects](#17-disable-frontend-for-api-only-projects)
+- [18. Troubleshooting](#18-troubleshooting)
+- [19. Default boundaries and future capabilities](#19-default-boundaries-and-future-capabilities)
 
 ## 1. When to use Vext Frontend
 
 Use the default frontend integration when:
 
-- You want one Vext project to provide both API routes and browser pages.
-- You want `vext dev` to run the backend and frontend together.
-- You only need one React browser entry and can organize pages inside `App.tsx`.
-- You want `vext build` to output both server code and `dist/client/` frontend assets.
-- You want `vext start` to serve static assets and SPA fallback in production.
+- You want one Vext project to provide APIs, server-rendered pages, and browser interactions.
+- You want `src/routes/**` to be the entry point for both API routes and page routes.
+- You want route handlers to call `app.services` before rendering SSR page data.
+- You want clear enterprise-style default directories for pages, shared components, styles, and static assets.
+- You want `vext dev` to handle backend reloads, React Fast Refresh, and frontend builds together.
+- You want `vext build` to output both server artifacts and frontend page artifacts.
 
-Do not treat the current built-in path as the finished solution when:
-
-- You need file routing, nested routes, layouts, loaders/actions, or route-level splits.
-- You need SSR, React Server Components, or Server Actions.
-- You expect Sass, CSS Modules, Tailwind, or similar tools to be built into Vext by default.
-
-Those capabilities belong to a later P1 application layer. Today you can add a userland router or styling tool yourself, but the official default path only promises the features documented here.
+API-only projects can disable the built-in frontend. Projects that need another frontend framework can use future integration points, while this guide documents the default Vext full-stack React path.
 
 ## 2. Create and run a full-stack project
 
@@ -48,242 +50,451 @@ Create the default full-stack React project:
 ```bash
 npx vextjs create my-app
 cd my-app
+npm install
 npm run dev
 ```
 
 The default port is `3000`. After the dev server is ready, open:
 
 ```text
-http://localhost:3000
+http://localhost:3000/
 ```
 
-The default page calls `/api/hello` from the browser. That API is defined in `src/routes/index.ts`, and the page itself lives in `src/client/App.tsx`.
+The default home page flow is:
 
-If you created the project with `--skip-install`, run:
-
-```bash
-npm install
-npm run dev
+```text
+GET / -> src/routes/index.ts -> res.render("index")
 ```
 
-## 3. Understand the generated files
+In other words, `src/frontend/pages/index.tsx` does not automatically create a URL. The route handler explicitly renders the page.
 
-The default TypeScript full-stack project creates these frontend-related files:
+## 3. Default project structure
+
+A default full-stack React project creates:
 
 ```text
 my-app/
 ├── public/
 │   └── favicon.svg
-└── src/
-    ├── client/
-    │   ├── App.tsx
-    │   ├── index.html
-    │   ├── main.tsx
-    │   └── styles.css
-    ├── config/
-    │   └── default.ts
-    └── routes/
-        └── index.ts
+├── src/
+│   ├── frontend/
+│   │   ├── pages/
+│   │   │   ├── _document.html
+│   │   │   ├── layout.tsx
+│   │   │   ├── index.tsx
+│   │   │   └── error/
+│   │   │       ├── default.tsx
+│   │   │       ├── 404.tsx
+│   │   │       └── 500.tsx
+│   │   ├── components/
+│   │   │   ├── layout/
+│   │   │   │   └── AppShell.tsx
+│   │   │   ├── error/
+│   │   │   │   └── ErrorPanel.tsx
+│   │   │   └── ui/
+│   │   │       └── Button.tsx
+│   │   ├── styles/
+│   │   │   └── index.css
+│   │   ├── assets/
+│   │   │   └── logo.svg
+│   │   └── locales/
+│   │       ├── zh-CN.ts
+│   │       └── en-US.ts
+│   ├── routes/
+│   │   └── index.ts
+│   ├── services/
+│   │   └── dashboard.ts
+│   └── config/
+│       ├── default.ts
+│       ├── development.ts
+│       └── production.ts
+└── package.json
 ```
 
 | File or directory | How to use it |
 | --- | --- |
-| `src/client/main.tsx` | Browser entry. Usually only mounts React and imports global styles. |
-| `src/client/App.tsx` | Default page entry. Start here when changing the home page, organizing pages, or calling APIs. |
-| `src/client/styles.css` | Default global styles. You can split page or component CSS from it. |
-| `src/client/index.html` | HTML template for `<title>`, `meta`, `#root`, and Vext injection placeholders. |
-| `public/` | Public static assets, such as favicons, robots files, or images that should not be hashed. |
-| `src/routes/index.ts` | Backend API route example. It provides `/api/hello` and `/api/health` by default. |
-| `src/config/default.ts` | Vext configuration. The default full-stack template includes a `frontend` block. |
+| `src/frontend/**` | User frontend source root. Pages, components, styles, and bundled assets stay here instead of mixing with server directories. |
+| `src/frontend/pages/**` | Page components, directory-level `layout.tsx`, `_document.html`, and error pages. The relative file path is the page id passed to `res.render(page)`. |
+| `src/frontend/pages/error/default.tsx` | Default error page used when no status-specific page exists. |
+| `src/frontend/pages/error/**` | Status-specific error pages, such as `error/404` and `error/500`. |
+| `src/frontend/components/**` | Shared components, layout components, form components, and reusable error UI. |
+| `src/frontend/styles/**` | Global CSS, theme variables, and page style entries. The default entry is `src/frontend/styles/index.css`. |
+| `src/frontend/assets/**` | Images, SVGs, fonts, and similar assets imported from TSX or CSS. |
+| `src/frontend/locales/**` | Copy dictionaries for frontend pages, layouts, shared components, and error pages. Do not put page copy into the backend `src/locales/**` error-message directory. |
+| `@components/*` and other aliases | Frontend-only import shortcuts. They resolve inside `src/frontend/**`, not into `src/routes/**` or `src/services/**`. |
+| `public/**` | Static public files served as-is, such as favicons, robots files, and verification files. |
+| `src/routes/**` | HTTP routes. API URLs and page URLs are both defined here. |
+| `src/services/**` | Server-side business logic. Route handlers call services, then pass results to pages. |
+| `src/config/**` | Vext configuration, including the `frontend` block. |
 
-Do not edit files inside `.vext/client/` or `dist/client/` by hand. They are generated by Vext during dev/build.
+You do not create `src/client/main.tsx` or `src/client/index.html` for new projects. Vext generates the browser entry, page registry, layout registry, error page registry, and runtime code.
 
-## 4. Change the home page
+## 4. Add page files
 
-The simplest home page entry is `src/client/App.tsx`. For example:
+Add a page file:
+
+```text
+src/frontend/pages/dashboard.tsx
+```
+
+A page is a normal React component:
 
 ```tsx
-import { useEffect, useState } from "react";
-import { createVextApiClient, isVextApiError } from "vextjs/frontend";
+type DashboardPageProps = {
+  stats: {
+    users: number;
+    orders: number;
+  };
+};
 
-type HelloResponse = { message: string };
-
-const api = createVextApiClient({
-  schemaVersion: 1,
-  kind: "client-contract",
-  source: "routes-manifest",
-  generatedAt: "template",
-  routes: [
-    {
-      method: "GET",
-      path: "/api/hello",
-      operationId: "getApiHello",
-      response: { type: "unknown" },
-    },
-  ],
-  warnings: [],
-} as const);
-
-export function App() {
-  const [message, setMessage] = useState("Loading...");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api
-      .GET("/api/hello")
-      .then((data) => {
-        setMessage((data as HelloResponse).message);
-        setError("");
-      })
-      .catch((err) => {
-        setMessage("Request failed");
-        setError(isVextApiError(err) ? err.message : String(err));
-      });
-  }, []);
-
+export default function DashboardPage({ stats }: DashboardPageProps) {
   return (
-    <main className="shell">
-      <section className="panel">
-        <p className="eyebrow">Vext dashboard</p>
-        <h1>{message}</h1>
-        {error ? <p className="error">{error}</p> : <p>React client served by Vext.</p>}
-      </section>
+    <main>
+      <h1>Dashboard</h1>
+      <dl>
+        <dt>Users</dt>
+        <dd>{stats.users}</dd>
+        <dt>Orders</dt>
+        <dd>{stats.orders}</dd>
+      </dl>
     </main>
   );
 }
 ```
 
-After saving the file, `vext dev` rebuilds the frontend for default `src/client/**` changes. Component-level HMR is not promised today; refresh the browser manually if needed.
+The page id is the relative path under `src/frontend/pages/` without the extension:
 
-## 5. Add page files
+| File | Page id |
+| --- | --- |
+| `src/frontend/pages/index.tsx` | `index` |
+| `src/frontend/pages/dashboard.tsx` | `dashboard` |
+| `src/frontend/pages/users/detail.tsx` | `users/detail` |
+| `src/frontend/pages/error/404.tsx` | `error/404` |
 
-P0 does not automatically scan `src/client/pages/**` and turn those files into routes. You can use `pages` as a React page component directory, then import and render those components from `App.tsx`.
+Creating a page file does not create a URL. You still render it from `src/routes/**` with `res.render()`.
 
-Create page files:
+## 5. Render a page from a route
+
+The route shape stays the same as normal Vext routes. In the handler, call `res.render()` instead of `res.json()`.
+
+```ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/dashboard", async (_req, res) => {
+    return res.render("dashboard", {
+      stats: {
+        users: 12,
+        orders: 34,
+      },
+    });
+  });
+});
+```
+
+`res.render(page, props?, options?)` has three parameters:
+
+| Parameter | Required | Description |
+| --- | :---: | --- |
+| `page` | Yes | A page id under `src/frontend/pages/**`. It is not a URL and not an absolute file path. |
+| `props` | No | Data passed to the page component. It must be JSON-safe. |
+| `options` | No | HTML response options for this render, such as `status`, `headers`, `title`, `description`, `head`, `nonce`, `locale`, `messages`, `layout`, and `layoutData`. |
+
+With title, status, and headers:
+
+```ts
+app.get("/welcome", async (_req, res) => {
+  return res.render(
+    "welcome",
+    { name: "Vext" },
+    {
+      status: 200,
+      title: "Welcome",
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+});
+```
+
+Do not put page rendering configuration in route `options`. Route `options` continue to describe backend route behavior such as `validate`, `middlewares`, `docs`, and `override`; page rendering happens in the handler.
+
+Set page head content from the same render call:
+
+```ts
+app.get("/posts/:slug", async (req, res) => {
+  const post = await app.services.posts.findBySlug(req.params.slug);
+
+  return res.render(
+    "posts/detail",
+    { post },
+    {
+      title: post.title,
+      description: post.excerpt,
+      head: {
+        meta: [
+          { property: "og:title", content: post.title },
+          { property: "og:description", content: post.excerpt },
+        ],
+        links: [
+          { rel: "canonical", href: `https://example.com/posts/${post.slug}` },
+        ],
+      },
+    },
+  );
+});
+```
+
+`title`, `description`, and `meta` are shortcuts for common pages. Use `head` when you need Open Graph tags, canonical links, preload links, or custom script/link attributes. If your app uses a Content Security Policy, pass a per-request `nonce`; Vext applies it to its generated data and entry scripts.
+
+## 6. Use services to prepare page data
+
+Put server data logic in services. A route handler calls the service, then passes the result to the page as props.
+
+```ts
+// src/services/dashboard.ts
+export default class DashboardService {
+  async summary() {
+    return {
+      users: 12,
+      orders: 34,
+    };
+  }
+}
+```
+
+```ts
+// src/routes/index.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/dashboard", async (_req, res) => {
+    const stats = await app.services.dashboard.summary();
+    return res.render("dashboard", { stats });
+  });
+});
+```
+
+```tsx
+// src/frontend/pages/dashboard.tsx
+export default function DashboardPage(props: {
+  stats: { users: number; orders: number };
+}) {
+  return <div>{props.stats.users}</div>;
+}
+```
+
+Do not import `src/services/**` from `src/frontend/pages/**` or `src/frontend/components/**`. Pages and components enter the browser build; services should only run inside server route handlers.
+
+## 7. Use layouts for page shells
+
+Default layout files live under `src/frontend/pages/**` and use the fixed file name `layout.tsx`. Vext collects every existing `layout.tsx` from the pages root down to the page directory, then wraps the page from outer to inner during server rendering. Any nested directory can have its own `layout.tsx`; directories without a layout are skipped.
+
+For example:
 
 ```text
-src/client/pages/Home.tsx
-src/client/pages/About.tsx
+src/frontend/pages/layout.tsx
+src/frontend/pages/admin/layout.tsx
+src/frontend/pages/admin/settings/layout.tsx
+src/frontend/pages/admin/settings/users/index.tsx
 ```
 
-```tsx
-// src/client/pages/Home.tsx
-export function Home() {
-  return (
-    <section>
-      <h1>Home</h1>
-      <p>Welcome to the Vext frontend.</p>
-    </section>
-  );
-}
-```
-
-```tsx
-// src/client/pages/About.tsx
-export function About() {
-  return (
-    <section>
-      <h1>About</h1>
-      <p>This page is rendered by the React client.</p>
-    </section>
-  );
-}
-```
-
-Wire them in `App.tsx`:
-
-```tsx
-import { About } from "./pages/About";
-import { Home } from "./pages/Home";
-
-export function App() {
-  const page = window.location.pathname === "/about" ? "about" : "home";
-  return page === "about" ? <About /> : <Home />;
-}
-```
-
-When a browser visits `/about`, Vext's SPA fallback returns the same `index.html`. The browser-side `App.tsx` decides which page to show. Creating `src/client/pages/About.tsx` alone does not create an automatic route in the current release.
-
-If you need fuller client routing, you may add a userland router such as React Router. Vext does not install one by default.
-
-## 6. Add components
-
-Put reusable UI in `src/client/components/`:
+Rendering `admin/settings/users/index` uses this default wrapping order:
 
 ```text
-src/client/components/Header.tsx
-src/client/components/Button.tsx
+src/frontend/pages/layout.tsx
+  -> src/frontend/pages/admin/layout.tsx
+    -> src/frontend/pages/admin/settings/layout.tsx
+      -> src/frontend/pages/admin/settings/users/index.tsx
 ```
 
+Root layout example:
+
 ```tsx
-// src/client/components/Header.tsx
-export function Header() {
+// src/frontend/pages/layout.tsx
+import type { ReactNode } from "react";
+
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <header className="header">
-      <strong>Vext App</strong>
-      <nav>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-      </nav>
-    </header>
+    <div className="app-shell">
+      <header>Vext Admin</header>
+      {children}
+    </div>
   );
 }
 ```
 
-Use it from a page:
+An admin layout can receive layoutData from the route handler:
 
 ```tsx
-import { Header } from "../components/Header";
+// src/frontend/pages/admin/layout.tsx
+import type { ReactNode } from "react";
 
-export function Home() {
+type AdminLayoutData = {
+  userName: string;
+  menu: Array<{ label: string; href: string }>;
+};
+
+export default function AdminLayout({
+  children,
+  data,
+}: {
+  children: ReactNode;
+  data?: AdminLayoutData;
+}) {
   return (
-    <>
-      <Header />
-      <main>Home content</main>
-    </>
+    <div className="admin-shell">
+      <aside>
+        <strong>{data?.userName}</strong>
+        {data?.menu.map((item) => (
+          <a key={item.href} href={item.href}>
+            {item.label}
+          </a>
+        ))}
+      </aside>
+      <main>{children}</main>
+    </div>
   );
 }
 ```
 
-`components` is a recommended convention, not a framework-scanned directory. You can also organize by feature, such as `src/client/features/users/` or `src/client/features/orders/`.
+Pass layoutData from the route handler:
 
-## 7. Add styles
+```ts
+app.get("/admin/users", async (_req, res) => {
+  const users = await app.services.users.list();
+  const session = await app.services.auth.currentSession();
 
-The default scaffold uses plain CSS. Global styles are imported from `main.tsx`:
-
-```tsx
-// src/client/main.tsx
-import "./styles.css";
+  return res.render(
+    "admin/users/index",
+    { users },
+    {
+      layoutData: {
+        "admin/layout": {
+          userName: session.user.name,
+          menu: [
+            { label: "Users", href: "/admin/users" },
+            { label: "Settings", href: "/admin/settings" },
+          ],
+        },
+      },
+    },
+  );
+});
 ```
 
-Page or component styles can live next to the component:
+Layouts only return the React application shell. They do not return `<html>`, `<head>`, or `<body>`; those belong to `_document.html`. If a page should skip the default layout chain, disable it explicitly:
+
+```ts
+return res.render("embed", props, { layout: false });
+```
+
+When different routes or pages need the same shell, prefer putting the shared shell under `src/frontend/components/layout/**` and importing it from multiple directory layouts:
+
+```tsx
+// src/frontend/pages/admin/layout.tsx
+import { AdminShell } from "@components/layout/AdminShell";
+
+export default function AdminLayout({ children, data }) {
+  return <AdminShell user={data?.user}>{children}</AdminShell>;
+}
+```
+
+For the less common case where a route needs to reuse a full layout chain across directories, pass it explicitly for that response:
+
+```ts
+return res.render("dashboard", props, {
+  layout: ["layout", "admin/layout"],
+});
+```
+
+`layout: true` uses the automatic chain; `layout: false` disables layouts; `layout: string | string[]` replaces the automatic chain, and array order is outer to inner. Error pages use the same layout rules by default unless you disable layout in `renderError` options.
+
+## 8. Shared components
+
+Put reusable UI in `src/frontend/components/**`:
 
 ```text
-src/client/pages/Home.tsx
-src/client/pages/Home.css
+src/frontend/components/layout/AppShell.tsx
+src/frontend/components/error/ErrorPanel.tsx
+src/frontend/components/ui/Button.tsx
 ```
 
-```tsx
-// src/client/pages/Home.tsx
-import "./Home.css";
+Import shared components from pages:
 
-export function Home() {
-  return <main className="home">Home</main>;
+```tsx
+import { AppShell } from "@components/layout/AppShell";
+
+export default function DashboardPage() {
+  return (
+    <AppShell>
+      <h1>Dashboard</h1>
+    </AppShell>
+  );
 }
 ```
 
-CSS is bundled by esbuild and emitted as a production CSS asset. Vext injects the generated CSS link into HTML.
+`components` is a user code directory, not a URL routing directory. Components are not exposed as pages automatically; only pages under `src/frontend/pages/**` that are referenced by `res.render()` become page entries.
 
-The default P0 path only promises plain CSS. Sass, CSS Modules, Tailwind, and CSS-in-JS are not built into Vext by default. You can add them in your application, but the official guide does not document them as built-in support.
+Default aliases:
 
-## 8. Add images and static assets
+| Alias | Target |
+| --- | --- |
+| `@frontend/*` | `src/frontend/*` |
+| `@pages/*` | `src/frontend/pages/*` |
+| `@components/*` | `src/frontend/components/*` |
+| `@styles/*` | `src/frontend/styles/*` |
+| `@assets/*` | `src/frontend/assets/*` |
+
+Vext does not provide `@/* -> src/*` by default. This prevents frontend pages from accidentally importing `src/services/**`, `src/routes/**`, or `src/config/**` into the browser bundle. Custom aliases should also stay within the `src/frontend/**` boundary.
+
+## 9. Style organization
+
+The default global style entry is:
+
+```text
+src/frontend/styles/index.css
+```
+
+Vext includes it in the generated browser entry. A typical file looks like:
+
+```css
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #172026;
+  background: #f7f9fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+```
+
+Pages or components can also import CSS directly:
+
+```tsx
+import "../styles/dashboard.css";
+
+export default function DashboardPage() {
+  return <main className="dashboard">Dashboard</main>;
+}
+```
+
+CSS is bundled by esbuild into frontend assets, and Vext injects the generated CSS links into the HTML template.
+
+## 10. Images and static assets
 
 Vext recommends two asset locations:
 
 | Location | Best for | How to reference |
 | --- | --- | --- |
-| `public/` | Favicons, robots files, public images or files that should not be hashed | Use URLs such as `/favicon.svg` or `/logo.png` |
-| `src/client/assets/` | Images, SVGs, and fonts imported by pages or CSS | Import from TSX/CSS; esbuild emits hashed assets |
+| `public/**` | Favicons, robots files, public images or files that should not be hashed | Use URLs such as `/favicon.svg` or `/brand/logo.png` |
+| `src/frontend/assets/**` | Images, SVGs, and fonts imported by pages or CSS | Import from TSX or CSS; esbuild emits hashed assets |
 
 `public/` example:
 
@@ -292,15 +503,15 @@ public/logo.png
 ```
 
 ```tsx
-export function Header() {
+export function HeaderLogo() {
   return <img src="/logo.png" alt="Logo" />;
 }
 ```
 
-`src/client/assets/` example:
+`src/frontend/assets/` example:
 
 ```text
-src/client/assets/hero.png
+src/frontend/assets/hero.png
 ```
 
 ```tsx
@@ -314,87 +525,365 @@ export function HomeHero() {
 If TypeScript reports missing image module types, add a declaration file in your app:
 
 ```ts
-// src/client/assets.d.ts
+// src/frontend/assets.d.ts
 declare module "*.png" {
   const src: string;
   export default src;
 }
 ```
 
-Do not edit generated output directories by hand: development output is `.vext/client/`, and production output is `dist/client/`.
+## 11. Call Vext APIs
 
-## 9. Call Vext APIs
-
-The default backend template provides:
-
-```text
-GET /api/hello
-GET /api/health
-```
-
-Use `vextjs/frontend` in browser code:
+For first-screen data, prefer calling services in the route handler and passing data through `res.render(page, props)`. After the page has loaded, browser interactions such as clicks, filtering, pagination, and form submissions can call Vext APIs in the same project directly.
 
 ```tsx
-import { createVextApiClient, isVextApiError } from "vextjs/frontend";
+type HelloResponse = {
+  message: string;
+};
 
-type HelloResponse = { message: string };
-
-const api = createVextApiClient({
-  schemaVersion: 1,
-  kind: "client-contract",
-  source: "routes-manifest",
-  generatedAt: "template",
-  routes: [
-    {
-      method: "GET",
-      path: "/api/hello",
-      operationId: "getApiHello",
-      response: { type: "unknown" },
+export async function loadHello(): Promise<HelloResponse> {
+  const response = await fetch("/api/hello", {
+    headers: {
+      Accept: "application/json",
     },
-  ],
-  warnings: [],
-} as const);
+  });
 
-try {
-  const hello = (await api.GET("/api/hello")) as HelloResponse;
-  console.log(hello.message);
-} catch (err) {
-  if (isVextApiError(err)) {
-    console.error(err.status, err.message, err.details);
-  } else {
-    console.error(err);
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
   }
+
+  return response.json() as Promise<HelloResponse>;
 }
 ```
 
-`createVextApiClient()` supports:
+If generated API client support is enabled later, this guide should show the generated import path only. Users should not hand-write route contracts. The current `res.render()` path does not depend on a browser API helper.
 
-- `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` shortcut methods.
-- `request(method, path, options)` for other HTTP methods.
-- `params` replacement for path parameters such as `/api/users/:id`.
-- `query`, JSON `body`, request `headers`, `signal`, custom `fetch`, and `baseUrl`.
-- Non-2xx responses as `VextApiError`, checked with `isVextApiError()`.
-- Automatic unwrap of Vext's `{ code: 0, data }` response shape.
+For forms and mutations, keep the server boundary the same:
 
-The template keeps a small handwritten contract in `App.tsx` so the example is self-contained. Builds also emit `client-contract.json` and `api.generated.ts`, but generated contracts currently keep request and response schema references as `unknown`; rich TypeScript inference from runtime schema definitions is not implemented yet.
+```tsx
+import { useActionState } from "react";
 
-## 10. Configure frontend
+type SaveProfileState = {
+  error?: { message: string };
+} | null;
 
-### Minimal configuration
+async function saveProfile(
+  _state: SaveProfileState,
+  formData: FormData,
+): Promise<SaveProfileState> {
+  const response = await fetch("/api/profile", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+    body: formData,
+  });
 
-The default full-stack React template uses an object config. You can also enable defaults with:
+  return response.json() as Promise<SaveProfileState>;
+}
+
+export function ProfileForm() {
+  const [state, action, pending] = useActionState(saveProfile, null);
+
+  return (
+    <form action={action}>
+      <input name="displayName" />
+      <button disabled={pending}>Save</button>
+      {state?.error ? <p>{state.error.message}</p> : null}
+    </form>
+  );
+}
+```
+
+The form calls a normal Vext API route. Put validation, authorization, CSRF or same-origin checks, and idempotency handling in the API route or middleware. This version does not add Server Actions or route actions to the default mutation model; Server Actions are a future dedicated capability.
+
+## 12. Page internationalization
+
+Vext uses two i18n layers:
+
+| Layer | Location | Purpose |
+| --- | --- | --- |
+| Backend locale | `config.locale`, `src/locales/**` | API errors, `app.throw()`, schema-dsl validation messages, `Accept-Language` matching, and `requestContext.locale`. |
+| Frontend i18n | `frontend.i18n`, `src/frontend/locales/**` | Page, layout, shared component, and error page copy, SSR initial messages, hydration, and `<html lang>`. |
+
+Keep API error messages and page copy in separate directories. Put page copy here:
+
+```text
+src/frontend/locales/zh-CN.ts
+src/frontend/locales/en-US.ts
+```
+
+Locale files export JSON-safe objects:
+
+```ts
+// src/frontend/locales/zh-CN.ts
+export default {
+  nav: {
+    dashboard: "控制台",
+  },
+  dashboard: {
+    title: "团队概览",
+    users: "用户",
+    orders: "订单",
+  },
+} as const;
+```
+
+```ts
+// src/frontend/locales/en-US.ts
+export default {
+  nav: {
+    dashboard: "Dashboard",
+  },
+  dashboard: {
+    title: "Team overview",
+    users: "Users",
+    orders: "Orders",
+  },
+} as const;
+```
+
+Pages, layouts, shared components, and error pages read a readonly copy object for the current language with `useVextI18n()`:
+
+```tsx
+import { useVextI18n } from "vextjs/frontend";
+
+type DashboardPageProps = {
+  stats: {
+    users: number;
+    orders: number;
+  };
+};
+
+export default function DashboardPage({ stats }: DashboardPageProps) {
+  const i18n = useVextI18n();
+
+  return (
+    <main>
+      <h1>{i18n.dashboard.title}</h1>
+      <dl>
+        <dt>{i18n.dashboard.users}</dt>
+        <dd>{stats.users}</dd>
+        <dt>{i18n.dashboard.orders}</dt>
+        <dd>{stats.orders}</dd>
+      </dl>
+    </main>
+  );
+}
+```
+
+The default locale file becomes the source of the generated message shape, and other locale files must keep the same object structure during build. This gives editors autocomplete for `i18n.dashboard.title` and surfaces missing copy earlier. To explicitly read another locale, pass it to the hook:
+
+```tsx
+const english = useVextI18n("en-US");
+```
+
+By default, `res.render()` inherits `requestContext.locale` for the current request. That value comes from `config.locale.supported` and the `Accept-Language` request header:
+
+```ts
+app.get("/dashboard", async (_req, res) => {
+  const stats = await app.services.dashboard.summary();
+  return res.render("dashboard", { stats });
+});
+```
+
+To override the language for one HTML response, pass `locale` in the third `res.render()` argument:
+
+```ts
+return res.render(
+  "dashboard",
+  { stats },
+  {
+    locale: "en-US",
+    title: "Dashboard",
+  },
+);
+```
+
+If the route handler needs to add a small amount of page copy at render time, pass `messages`. Messages must be JSON-safe. Do not put functions, React components, database connections, service instances, or request objects in them:
+
+```ts
+return res.render(
+  "dashboard",
+  { stats },
+  {
+    messages: {
+      dashboard: {
+        notice: "The report is being refreshed.",
+      },
+    },
+  },
+);
+```
+
+For the first version, language switching should use a reload flow: after the user chooses a language, store it in a cookie, user preference API, URL prefix, or another server-visible location, then request HTML again. SSR and hydration will then use the same `locale` and `messages` instead of guessing language again in the browser. Do not call the hook imperatively inside a click handler; update the locale source and let React render again, then `useVextI18n(locale?)` returns the new copy object.
+
+```tsx
+export function LanguageSwitch() {
+  return (
+    <form method="post" action="/api/me/locale">
+      <button name="locale" value="zh-CN">中文</button>
+      <button name="locale" value="en-US">English</button>
+    </form>
+  );
+}
+```
+
+When language changes the HTML output, Vext uses `frontend.i18n.vary` to set `Vary: Accept-Language` or an equivalent cache key. If you use path prefixes or cookies as the language source, include the locale in your production CDN or reverse-proxy cache key.
+
+## 13. Error pages and renderError
+
+Vext looks for these error pages by default:
+
+```text
+src/frontend/pages/error/default.tsx
+src/frontend/pages/error/404.tsx
+src/frontend/pages/error/500.tsx
+```
+
+404 page example:
+
+```tsx
+// src/frontend/pages/error/404.tsx
+export default function NotFoundPage(props: {
+  status: number;
+  message: string;
+  requestId: string;
+}) {
+  return (
+    <main>
+      <h1>Page not found</h1>
+      <p>{props.message}</p>
+      <small>{props.requestId}</small>
+    </main>
+  );
+}
+```
+
+Generic error page example:
+
+```tsx
+// src/frontend/pages/error/default.tsx
+export default function ErrorPage(props: {
+  status: number;
+  code: number | string;
+  message: string;
+  requestId: string;
+  details?: unknown;
+}) {
+  return (
+    <main>
+      <h1>{props.status}</h1>
+      <p>{props.message}</p>
+      <small>{props.requestId}</small>
+    </main>
+  );
+}
+```
+
+Render an error page explicitly from a handler:
+
+```ts
+app.get("/orders/:id", async (req, res) => {
+  const order = await app.services.orders.findById(req.params.id);
+
+  if (!order) {
+    return res.renderError(404, { id: req.params.id });
+  }
+
+  return res.render("orders/detail", { order });
+});
+```
+
+Specify the error page:
+
+```ts
+return res.renderError(404, "error/order-not-found");
+```
+
+Pass details and the page at the same time:
+
+```ts
+return res.renderError(
+  404,
+  { id: req.params.id },
+  { page: "error/order-not-found" },
+);
+```
+
+`renderError("error/404")` is not valid usage. Put the page address in the second argument or in `options.page`.
+
+404 response rules:
+
+| Request type | Output |
+| --- | --- |
+| API/JSON request | JSON 404. |
+| Handler calls `res.renderError(404)` | HTML error page. |
+| Browser visits an undefined HTML route | HTML 404 error page. |
+| Static asset is missing | Does not render an HTML error page. |
+| `spaFallback.scopes[]` is explicitly configured and matched | Returns that scope's shell document. |
+
+The default recommendation is to render pages explicitly from routes, not to emulate page routing through SPA fallback.
+
+## 14. HTML template
+
+Most projects do not need a custom HTML template. If you need global meta tags, third-party scripts, or body classes, create:
+
+```text
+src/frontend/pages/_document.html
+```
+
+Template example:
+
+```html
+<!doctype html>
+<html lang="{vext.lang}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {vext.head}
+    {vext.styles}
+  </head>
+  <body>
+    {vext.root}
+    {vext.data}
+    {vext.entry}
+  </body>
+</html>
+```
+
+Available tokens:
+
+| Token | Meaning |
+| --- | --- |
+| `{vext.head}` | Title, description, meta, canonical/preload links, and other safe head content from `res.render()` options. |
+| `{vext.styles}` | CSS `<link>` tags. |
+| `{vext.lang}` | The locale for the current HTML response, used by `<html lang>`. It inherits `requestContext.locale` by default and can be overridden with `options.locale`. |
+| `{vext.root}` | React SSR HTML mount node. |
+| `{vext.data}` | JSON-safe page props, layout data, locale, and initial messages. Vext escapes the serialized payload before writing it into the page. |
+| `{vext.entry}` | Browser entry script. |
+
+The server data flow is: the route handler calls `res.render("page-id", props, options)`; Vext performs SSR on the server; `props`, `layoutData`, `locale`, and `messages` are serialized and escaped into `{vext.data}`; the browser entry reads the same data and hydrates into `{vext.root}`. The template only supports these reserved Vext tokens and does not evaluate arbitrary template expressions.
+
+When you use CSP, pass `nonce` in the third render argument. The same nonce is applied to `{vext.data}`, `{vext.entry}`, and Vext-generated script tags. Do not place raw user input directly in `_document.html`; pass data through `props`, `layoutData`, or `head` so Vext can escape it.
+
+## 15. Configure frontend
+
+Minimal configuration:
 
 ```ts
 import type { VextUserConfig } from "vextjs";
 
 const config: VextUserConfig = {
+  port: 3000,
+  adapter: "native",
   frontend: true,
 };
 
 export default config;
 ```
 
-### Common configuration
+Full configuration:
 
 ```ts
 import type { VextUserConfig } from "vextjs";
@@ -405,13 +894,94 @@ const config: VextUserConfig = {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
+    root: "src/frontend",
+    pages: {
+      dir: "pages",
+      extensions: [".tsx", ".jsx", ".ts", ".js"],
+    },
+    componentsDir: "components",
+    styles: {
+      entry: "styles/index.css",
+    },
+    assetsDir: "assets",
     publicDir: "public",
     publicPath: "/",
-    spaFallback: {
+    dev: {
+      hot: true,
+      fastRefresh: true,
+      transport: "sse",
+      overlay: true,
+      debounceMs: 50,
+      renderRefresh: "prompt",
+    },
+    alias: {
+      "@frontend": ".",
+      "@pages": "pages",
+      "@components": "components",
+      "@styles": "styles",
+      "@assets": "assets",
+    },
+    build: {
+      client: {
+        outDir: "dist/client",
+        assetsDir: "assets",
+        target: "es2022",
+        minify: true,
+        sourcemap: false,
+        splitting: true,
+        entryNames: "[name]-[hash]",
+        chunkNames: "[name]-[hash]",
+        assetNames: "[name]-[hash]",
+        manifest: true,
+      },
+      server: {
+        outFile: "dist/client/server/renderer.mjs",
+        target: "node20",
+        format: "esm",
+        external: ["react", "react-dom"],
+      },
+      assets: {
+        inlineLimit: 0,
+      },
+      css: {
+        modules: true,
+      },
+      diagnostics: {
+        metafile: true,
+        sizeReport: true,
+        leakScan: true,
+      },
+    },
+    deploy: {
+      assetBaseUrl: "https://cdn.example.com/my-app/",
+      crossOrigin: "anonymous",
+      integrity: false,
+    },
+    render: {
+      ssr: true,
+      fallback: "client",
+      timeoutMs: 3000,
+      layout: true,
+    },
+    errorPages: {
+      default: "error/default",
+      status: {
+        404: "error/404",
+        500: "error/500",
+      },
+    },
+    i18n: {
       enabled: true,
-      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+      source: "locales",
+      defaultLocale: "inherit",
+      detect: ["accept-language"],
+      inject: "used",
+      clientSwitch: "reload",
+      htmlLang: true,
+      vary: true,
+    },
+    spaFallback: {
+      scopes: [],
     },
   },
 };
@@ -419,83 +989,112 @@ const config: VextUserConfig = {
 export default config;
 ```
 
-### Configuration reference
+Configuration reference:
 
 | Field | Default | Purpose |
 | --- | --- | --- |
-| `frontend` | `false` | `true` enables defaults; `false` disables frontend; object form configures fields. |
-| `frontend.enabled` | `false` | Enables built-in frontend build and static serving. |
-| `frontend.framework` | `"react"` | Frontend framework label. The current default scaffold is React. |
-| `frontend.root` | `"src/client"` | Recorded frontend source directory; current compilation mainly uses `entry` and `indexHtml`. |
-| `frontend.entry` | `"src/client/main.tsx"` | Browser entry file. Missing files fail fast. |
-| `frontend.indexHtml` | `"src/client/index.html"` | HTML template. A minimal fallback shell is used when the file is missing. |
-| `frontend.outDir` | dev: `.vext/client`; prod: `dist/client` | Frontend output directory. |
-| `frontend.publicDir` | `"public"` | Public static assets copied into output before bundling. |
-| `frontend.publicPath` | `"/"` | URL prefix for generated asset links. It must be a path, not a full URL. |
-| `frontend.spaFallback` | `true` | Returns `index.html` for browser navigation paths that accept HTML. |
-| `frontend.spaFallback.exclude` | `["/api/**", "/openapi.json", "/docs/**"]` | Paths that keep backend behavior. |
-| `frontend.apiClient` | `true` | Generates `client-contract.json` and `api.generated.ts`. |
-| `frontend.build.target` | `"es2022"` | Browser build target. |
-| `frontend.build.minify` | production `true` | Minifies frontend output. |
-| `frontend.build.sourcemap` | development `true` | Emits sourcemaps. |
-| `frontend.adapter` | none | Reserved adapter metadata extension point; the current compiler does not call adapter build hooks. |
+| `frontend` | `false` | `true` enables default frontend; `false` disables frontend; object form configures details. |
+| `frontend.enabled` | `false` | Enables built-in frontend build, SSR, and static serving. |
+| `frontend.framework` | `"react"` | Default React frontend. |
+| `frontend.root` | `"src/frontend"` | User frontend source root. |
+| `frontend.pages.dir` | `"pages"` | Page directory, resolved relative to `frontend.root` by default. |
+| `frontend.pages.extensions` | `[".tsx", ".jsx", ".ts", ".js"]` | Page scan extensions. |
+| `frontend.componentsDir` | `"components"` | Shared component directory, resolved relative to `frontend.root` by default. |
+| `frontend.styles.entry` | `"styles/index.css"` | Global style entry, resolved relative to `frontend.root` by default. |
+| `frontend.assetsDir` | `"assets"` | Imported asset directory, resolved relative to `frontend.root` by default. |
+| `frontend.publicDir` | `"public"` | Static files copied as-is, resolved relative to the project root by default. |
+| `frontend.publicPath` | `"/"` | Public URL prefix for frontend assets. |
+| `frontend.dev.hot` | `true` | Enables the development frontend hot-update channel. When disabled, frontend changes fall back to rebuild + reload. |
+| `frontend.dev.fastRefresh` | `true` | Enables React Fast Refresh when `framework: "react"`. |
+| `frontend.dev.transport` | `"sse"` | Transport for the Vext dev event bus. The first version uses SSE and does not require WebSocket or Vite configuration. |
+| `frontend.dev.overlay` | `true` | Shows frontend build errors, Fast Refresh errors, and render refresh prompts in the dev overlay. |
+| `frontend.dev.debounceMs` | `50` | Debounce window for development file-save storms. |
+| `frontend.dev.renderRefresh` | `"prompt"` | Browser behavior after render-related backend code changes: `"prompt"` shows a refresh prompt, `"auto"` reloads automatically, and `"off"` only records the event. |
+| `frontend.alias` | See the default alias table | Frontend import aliases. Defaults resolve only inside `frontend.root`. |
+| `frontend.build.client.outDir` | `"dist/client"` | Production browser output directory. |
+| `frontend.build.client.assetsDir` | `"assets"` | Output subdirectory for JS, CSS, images, fonts, and other built assets. |
+| `frontend.build.client.target` | `"es2022"` | Browser build target. |
+| `frontend.build.client.minify` | `true` | Minifies production browser builds. |
+| `frontend.build.client.sourcemap` | `false` | Emits sourcemaps for production browser builds. |
+| `frontend.build.client.splitting` | `true` | Allows page and shared-code splitting. |
+| `frontend.build.client.entryNames` | `"[name]-[hash]"` | Page entry file naming template. |
+| `frontend.build.client.chunkNames` | `"[name]-[hash]"` | Shared chunk naming template. |
+| `frontend.build.client.assetNames` | `"[name]-[hash]"` | Static asset naming template. |
+| `frontend.build.client.manifest` | `true` | Emits the browser manifest. |
+| `frontend.build.server.outFile` | `"dist/client/server/renderer.mjs"` | SSR renderer output file. |
+| `frontend.build.server.external` | `["react", "react-dom"]` | Packages externalized from the server renderer bundle. |
+| `frontend.build.assets.inlineLimit` | `0` | Imported asset inline limit; default emits hashed files. |
+| `frontend.build.css.modules` | `true` | Enables CSS Modules convention. Sass, Tailwind, and PostCSS are plugin/user-config capabilities until implemented as defaults. |
+| `frontend.build.diagnostics.metafile` | `true` | Emits esbuild metafile for manifests and bundle debugging. |
+| `frontend.build.diagnostics.sizeReport` | `true` | Emits size report for page and shared chunks. |
+| `frontend.build.diagnostics.leakScan` | `true` | Scans the browser graph and blocks `src/routes/**`, `src/services/**`, `node:*`, and other server-only inputs. |
+| `frontend.deploy.assetBaseUrl` | `undefined` | CDN asset base URL. When set, static asset URLs in HTML and manifests use this prefix. |
+| `frontend.deploy.crossOrigin` | `undefined` | `crossorigin` policy for CDN script/link tags. |
+| `frontend.deploy.integrity` | `false` | Whether to emit integrity metadata; initially this can remain reserved until implemented. |
+| `frontend.render.ssr` | `true` | Enables page SSR. |
+| `frontend.render.fallback` | `"client"` | Whether SSR failure falls back to client rendering. |
+| `frontend.render.timeoutMs` | `3000` | Timeout for one SSR render. |
+| `frontend.render.layout` | `true` | Enables the default layout chain. A single `res.render()` call can override it with `options.layout`. |
+| `frontend.errorPages.default` | `"error/default"` | Default error page. |
+| `frontend.errorPages.status.404` | `"error/404"` | 404 error page. |
+| `frontend.errorPages.status.500` | `"error/500"` | 500 error page. |
+| `frontend.i18n.enabled` | `false` | Enables the frontend page-copy layer. Backend API error language still belongs to `config.locale`. |
+| `frontend.i18n.source` | `"locales"` | Frontend page-copy directory, resolved relative to `frontend.root` as `src/frontend/locales`. |
+| `frontend.i18n.defaultLocale` | `"inherit"` | Inherits `config.locale.default` by default. You can also set a supported locale such as `zh-CN` or `en-US`. |
+| `frontend.i18n.detect` | `["accept-language"]` | Language detection source for the first version. Cookie, path prefix, or user preference support can be added later with an explicit priority order. |
+| `frontend.i18n.inject` | `"used"` | Scope for SSR initial messages. Prefer injecting only property paths used by the current page/layout. |
+| `frontend.i18n.clientSwitch` | `"reload"` | Client language-switch strategy. The first version should request HTML again so SSR and hydration stay aligned. |
+| `frontend.i18n.htmlLang` | `true` | Writes the current locale into `{vext.lang}`. |
+| `frontend.i18n.vary` | `true` | Adds `Vary: Accept-Language` or an equivalent cache key when language affects HTML. |
+| `frontend.spaFallback.scopes` | `[]` | Fallback scopes for client-router sub-apps. Empty by default, so unmatched paths are not handled. |
+| `frontend.spaFallback.scopes[].basePath` | None | URL prefix handled by this SPA sub-app, such as `/admin/app`. |
+| `frontend.spaFallback.scopes[].page` | None | Page shell returned by fallback, such as `admin/app/shell`, still resolved from `src/frontend/pages/**`. |
+| `frontend.spaFallback.scopes[].ssr` | `false` | Whether to SSR the shell. Pure client-router sub-apps usually keep this `false`. |
+| `frontend.spaFallback.scopes[].exclude` | `[]` | Paths inside the scope that must not be handled by fallback, such as `/admin/api/**`. |
+| `frontend.spaFallback.scopes[].status` | `200` | HTTP status returned when fallback matches. |
 
-For a sub-path deployment such as `/app/`:
+### How to understand `spaFallback`
+
+`frontend.spaFallback` is for one case only: part of your project is a true browser-router SPA. If a user opens or refreshes `/app/settings` or `/dashboard/users/1`, the Vext server has no matching route, but you still want the browser to receive that sub-app's shell document so the client router can decide which screen to show.
+
+It is not the default routing model for Vext pages. The default full-stack pages model is still: define the URL in `src/routes/**`, prepare service data in the handler, then call `res.render(page, props, options)` to render `src/frontend/pages/**`. If a page needs SSR, layoutData, i18n messages, head tags, render cache, or server-side authorization results, use `res.render()` instead of SPA fallback.
+
+Before enabling fallback, check that:
+
+- It only handles `GET` / `HEAD` browser HTML navigation requests.
+- API requests send `Accept: application/json`, and API prefixes are listed in the matching scope's `exclude`.
+- `/api/**`, `/openapi.json`, `/docs/**`, static files, built assets, images, fonts, source maps, and manifests are not handled by fallback.
+- `res.renderError()`, HTML route 404s, and `res.render(page)` page-not-found diagnostics are not hidden by fallback.
+- A fallback hit usually returns 200 because the client router handles the route after the document loads; it is not a server-side 404.
+- When multiple scopes match, the longest `basePath` wins. Explicit `src/routes/**` routes always win over fallback.
+
+Common config:
 
 ```ts
 export default {
   frontend: {
-    enabled: true,
-    publicPath: "/app/",
+    spaFallback: {
+      scopes: [
+        {
+          basePath: "/admin/app",
+          page: "admin/app/shell",
+          ssr: false,
+          exclude: ["/admin/api/**", "/admin/app/assets/**"],
+          status: 200,
+        },
+      ],
+    },
   },
 };
 ```
 
-`publicPath` changes generated script, style, and asset URLs.
+If you are building normal SSR pages, an admin first screen, detail pages, or permissioned data pages, keep `scopes: []` by default. Vext does not recommend a single global switch that captures unknown paths; mixed SSR + SPA projects should configure explicit scopes for client-router sub-apps.
 
-## 11. HTML template
+`spaFallback` is also not persistent client-side layout navigation. If Vext later supports an SSCR-like navigation mode, it will intercept links inside a layout, request server data, and replace only the page content. That is a separate future capability and is not enabled implicitly by `spaFallback`.
 
-The default template is `src/client/index.html`:
+`frontend.publicPath` is the app-local URL prefix. `frontend.deploy.assetBaseUrl` is an absolute CDN prefix for built JS, CSS, images, and fonts. `public/**` files remain stable URL files; `src/frontend/assets/**` files go through the build pipeline and are emitted with hashed names. Request-specific asset URL transforms and image/font optimization components are future dedicated or plugin capabilities.
 
-```html
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vext App</title>
-    %VEXT_STYLES%
-  </head>
-  <body>
-    <div id="root"></div>
-    %VEXT_ENTRY%
-  </body>
-</html>
-```
-
-Current placeholders:
-
-| Placeholder or location | Rendered output |
-| --- | --- |
-| `%VEXT_STYLES%` | Replaced with generated CSS `<link rel="stylesheet" ... data-vext-style>` tags. |
-| `%VEXT_ENTRY%` | Replaced with the browser entry `<script type="module" ... data-vext-entry></script>`. |
-| No `%VEXT_STYLES%`, but `</head>` exists | Style links are inserted before `</head>`. |
-| No `%VEXT_ENTRY%`, but `</body>` exists | The entry script is inserted before `</body>`. |
-| No `</body>` | Generated tags are appended to the end of the file. |
-| Missing `indexHtml` file | Vext writes a minimal shell with `<div id="root"></div>`. |
-
-After `vext build`, rendered tags may look like:
-
-```html
-<link rel="stylesheet" href="/assets/main-ABCD1234.css" data-vext-style>
-<script type="module" src="/assets/main-EFGH5678.js" data-vext-entry></script>
-```
-
-:::tip
-A later P1 requirement plans to migrate official tokens to a `%vext.*%` style. Use `%VEXT_STYLES%` and `%VEXT_ENTRY%` in the current release.
-:::
-
-## 12. Develop, build, and start
+## 16. Develop, build, and start
 
 Develop:
 
@@ -503,7 +1102,34 @@ Develop:
 npm run dev
 ```
 
-Development frontend output is written to `.vext/client/`. Default `src/client/**` and `public/**` changes trigger a frontend rebuild instead of a backend cold restart. Backend API, config, route, service, middleware, plugin, locale, and preload changes keep their existing backend reload behavior.
+Changes under these directories trigger frontend hot updates or a required rebuild:
+
+```text
+src/frontend/**
+public/**
+```
+
+Development changes fall into three groups:
+
+| Change | Default behavior |
+| --- | --- |
+| React pages, layouts, and shared components | Update through React Fast Refresh and preserve current page state when React can safely do so. |
+| CSS and hot-updatable style assets | Update through CSS hot updates without a full-page reload by default. |
+| `src/routes/**`, `src/services/**`, middleware, and other server code that affects `res.render()` data | Notify the browser after backend soft reload succeeds; the browser follows `frontend.dev.renderRefresh`. |
+
+`frontend.dev.renderRefresh` supports:
+
+| Value | Behavior |
+| --- | --- |
+| `"prompt"` | Recommended default. Shows a development prompt that says the server render changed; click it to reload. This is better for admin pages, forms, dialogs, and active debugging. |
+| `"auto"` | Automatically calls `location.reload()` after render-related backend code soft-reloads successfully. Use it when you want every server-data change to re-request HTML immediately. |
+| `"off"` | Does not prompt or reload; it only records the event in the console. The next manual refresh, navigation, or request gets the new HTML. |
+
+Normal `res.render()` calls during HTTP requests do not trigger browser refreshes. Refresh events come from source changes after frontend compilation or backend reload results. Frontend syntax errors or Fast Refresh compilation errors show the dev overlay while the previous page stays usable; after you fix the error, updates continue.
+
+Some files cannot be safely hot-replaced, such as `_document.html`, the render manifest schema, browser runtime entry code, or changes that alter hydration payload shape. Vext will reload the page or show a strong prompt for those cases instead of pretending they are Fast Refresh updates.
+
+Backend API, config, plugin, preload, and other non-render frontend paths keep the existing backend reload behavior.
 
 Build:
 
@@ -511,19 +1137,25 @@ Build:
 npm run build
 ```
 
-Production frontend output is written to `dist/client/`:
+Production frontend output:
 
 ```text
 dist/client/
 ├── assets/
-│   ├── main-<hash>.css
-│   └── main-<hash>.js
-├── api.generated.ts
-├── client-contract.json
+├── server/
+│   └── renderer.mjs
 ├── index.html
 ├── manifest.json
+├── messages-manifest.json
+├── render-manifest.json
 └── size-report.json
 ```
+
+Vext builds a browser bundle and a server renderer bundle separately. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. Build diagnostics keep the metafile, manifest, and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
+
+`render-manifest.json` records the build id, pages, layouts, error pages, assets, server renderer path, and diagnostics used by `vext start`. `messages-manifest.json` records available locales, the default locale object shape, page message entries, and the build id. If the manifest schema, messages manifest, or renderer file does not match the runtime, startup fails fast and asks you to rebuild instead of serving a stale page.
+
+The first implementation must keep performance evidence for API-only overhead, development cold start and rebuild, production build time, first SSR render, and client JS size. Vext should not claim "fastest" or "first" without a reproducible benchmark and comparison target.
 
 Start production:
 
@@ -531,11 +1163,18 @@ Start production:
 npm start
 ```
 
-`vext start` only serves existing production frontend output. When `frontend` is enabled but `dist/client/index.html` is missing, startup fails fast and tells you to run `vext build` first.
+`vext start` serves existing production frontend output only. When frontend is enabled but `dist/client/index.html` or `dist/client/render-manifest.json` is missing, startup fails fast and tells you to run `vext build` first.
 
-SPA fallback only handles `GET` / `HEAD` browser navigation requests that accept HTML. It excludes `/api/**`, `/openapi.json`, and `/docs/**` by default, so API and docs paths still reach the backend runtime.
+To publish static assets to a CDN, the recommended flow is:
 
-## 13. Disable frontend for API-only projects
+1. Run `npm run build`.
+2. Upload `dist/client/assets/**` to the CDN.
+3. Set `frontend.deploy.assetBaseUrl` in production config, for example `https://cdn.example.com/my-app/`.
+4. Vext still renders HTML, SSR content, and page data from the server; JS, CSS, images, fonts, and other static assets load from the CDN.
+
+The Vext core only generates stable asset paths and manifests in the first version. It does not bind S3, OSS, Cloudflare, or any other upload provider into core. Put uploads in CI or a future deploy plugin.
+
+## 17. Disable frontend for API-only projects
 
 Create a new API-only project:
 
@@ -565,63 +1204,63 @@ export default {
 };
 ```
 
-When disabled, Vext does not build, watch, or serve `src/client/**` / `public/**` frontend assets.
+When disabled, Vext does not scan `src/frontend/**`, generate a frontend entry, or serve `public/**` frontend assets.
 
-## 14. Current boundaries and next stage
-
-Supported today:
-
-- One browser entry: `src/client/main.tsx`.
-- React 19 default scaffold.
-- Plain CSS imports and CSS bundling.
-- Common image, font, and SVG asset imports.
-- `public/` static asset copying.
-- HTML template injection with `%VEXT_STYLES%` / `%VEXT_ENTRY%`.
-- `.vext/client/` development output and `dist/client/` production output.
-- Static serving, cache headers, and SPA fallback.
-- `vextjs/frontend` API client helper.
-
-Not supported yet:
-
-- Automatic page file routing.
-- Nested layouts, route groups, dynamic routes, and not-found routes.
-- Route loaders/actions, route-level splits, and prefetching.
-- Route-level head/meta/script/style management.
-- SSR, streaming, React Server Components, and Server Actions.
-- Built-in Sass, CSS Modules, or Tailwind.
-
-The current workaround is to organize pages inside `App.tsx`, or add your own client router and styling tools. P1 should design application-level frontend routing, layouts, loaders/actions, type generation, splitting, and diagnostics as a separate layer.
-
-## 15. Troubleshooting
+## 18. Troubleshooting
 
 | Symptom | What to do |
 | --- | --- |
-| Page changes do not appear | Confirm `npm run dev` is running and the file is under default `src/client/**`; refresh the browser if needed. |
-| `/about` returns the same HTML | That is SPA fallback. Render by path inside `App.tsx` or your own router. |
-| `src/client/pages/About.tsx` did not become a route | P0 does not scan `pages`. Import and render the file from `App.tsx`. |
-| Image returns 404 | Use `/logo.png` for `public/logo.png`; import `src/client/assets/logo.png` from TSX/CSS. |
-| Production start says frontend output is missing | Run `npm run build`, then `npm start`. |
-| API request receives HTML | Send `Accept: application/json` from API clients and add the API prefix to `frontend.spaFallback.exclude`. |
-| Asset URLs miss a sub-path | Set `frontend.publicPath`, for example `/app/`. |
-| `publicPath` config throws | Use a path such as `/app/`, not a full URL such as `https://cdn.example.com/app/`. |
-| You want Sass, Tailwind, or CSS Modules | They are not built in by default today; add them at the application level. |
+| A page file exists, but the URL returns 404 | Page files do not create URLs automatically. Define a route under `src/routes/**` and call `res.render("page-id")`. |
+| `res.render("dashboard")` says page not found | Check that `src/frontend/pages/dashboard.tsx` exists. Nested pages need the full page id, such as `users/detail`. |
+| Props serialization fails | `props` must be JSON-safe. Do not pass functions, symbols, BigInt values, circular objects, connections, Request, Response, or Service instances. |
+| A page imports a service and fails | Do not import `src/services/**` from `src/frontend/pages/**` or `src/frontend/components/**`. Services run in route handlers only. |
+| An API request receives HTML | Send `Accept: application/json` from API requests and add the API prefix to the matching `frontend.spaFallback.scopes[].exclude`. The default pages mode does not enable SPA fallback. |
+| A layout does not receive server data | Pass `layoutData` in the third `res.render()` argument. Do not import services directly from layout components. |
+| The page language is wrong | Check `config.locale.supported`, the request `Accept-Language`, user preference cookie/API, and `frontend.i18n.defaultLocale`. |
+| A page-copy property is missing | Check that `src/frontend/locales/<locale>.ts` keeps the same object structure as the default locale. Temporary page copy can be passed with `res.render(page, props, { messages })`. |
+| HTML cache mixes languages | Keep `frontend.i18n.vary=true`, or include locale, path prefix, or cookie in the CDN / reverse-proxy cache key. |
+| Static asset returns 404 | Use `/logo.png` for `public/logo.png`; import `src/frontend/assets/logo.png` from TSX/CSS. |
+| Hydration mismatch | Make the first render depend on `props`, `layoutData`, `locale`, and initial `messages`. Do not generate different random values, timestamps, language decisions, or environment-specific output on server and browser first render. |
+| Head tags are duplicated | Prefer one `title`, one description, and stable canonical links per render. Vext deduplicates common head entries, but the route should still pass one clear source of truth. |
+| CSP blocks the page script | Generate a request nonce in middleware or the route handler and pass it as `res.render(page, props, { nonce })`. |
+| Saving a React component causes a full reload | Check that `frontend.dev.hot` and `frontend.dev.fastRefresh` are enabled. If the file has non-component exports, is imported outside the React tree, or changes critical runtime/document structure, Vext falls back to a prompt or full reload. |
+| Route/service changes do not auto-refresh the page | The default `frontend.dev.renderRefresh` is `"prompt"`. Click the development prompt to reload. Set it to `"auto"` for automatic reloads or `"off"` to only log the event. |
+| Fast Refresh does not preserve component state | React only preserves function component and Hooks state across safe refresh boundaries. Class components, non-component exports, or unsafe refresh signatures may remount. |
 | You want to disable frontend | Create with `--template api --frontend none`, or set `frontend: false`. |
 
-## 16. Maintainer reference
+## 19. Default boundaries and future capabilities
 
-Regular users do not need these internals to use frontend integration. Maintainers can locate behavior through these sources of truth:
+This section separates three things: routes Vext does not take by default, future dedicated capabilities, and capabilities Vext supports or plans to support through a different model.
 
-| Behavior | Source of truth |
-| --- | --- |
-| Public browser helpers | `src/frontend/index.ts` |
-| Frontend config resolution | `src/frontend/tooling/config-resolver.ts` |
-| Client contract writing | `src/frontend/tooling/client-contract-writer.ts` |
-| esbuild build and HTML rendering | `src/frontend/tooling/client-build-compiler.ts` |
-| Static serving and SPA fallback | `src/frontend/runtime/static-mount.ts` |
-| Dev frontend build integration | `src/lib/dev/dev-bootstrap.ts` |
-| Dev file change classification | `src/lib/dev/change-classifier.ts`, `src/lib/dev/file-watcher.ts` |
-| Production build integration | `src/cli/build.ts` |
-| Production static mount | `src/lib/bootstrap.ts` |
-| Scaffold generation | `src/cli/create.ts` |
+### Not the default route
 
-Next, review [Configuration](/guide/configuration), [Build](/guide/build), and [CLI Commands](/guide/cli).
+- Vite or the Vite HMR API. Vext uses esbuild and its own dev event bus.
+- `.tsx` files automatically becoming HTTP routes.
+- User-facing Next/Remix-style route tree DSLs.
+- Loader/action-driven data loading. Vext defaults to preparing data in `src/routes/**` handlers and services, then passing it to `res.render()`.
+- Default dependencies on React Router, TanStack Start, Next, Astro, or other frontend routing/meta frameworks.
+- A default dependency on i18next, react-intl, or another third-party i18n runtime.
+- `t("dashboard.title")` as the primary API. Vext's default page-copy API is `const i18n = useVextI18n(locale?)` followed by object access such as `i18n.dashboard.title`.
+
+### Future dedicated capabilities
+
+These are not permanent exclusions, but they do not belong in the current default implementation. They need separate requirements, performance baselines, bundle impact review, server/browser boundary design, security model, and documentation acceptance before implementation:
+
+- React Server Components.
+- Server Actions.
+- Streaming SSR.
+- Persistent client-side layout navigation / client-side partial navigation.
+- Built-in image optimization components.
+- Built-in font optimization components.
+- Request-specific CDN asset URL transforms.
+
+### Supported or planned, but through a different model
+
+- Layouts: the current target is SSR layout chains and `layoutData`, not a Next/Remix route tree.
+- Mutations: the current target is normal Vext API routes plus middleware, CSRF, same-origin checks, and idempotency; Server Actions can be evaluated later as a dedicated capability.
+- CDN: the current target is `frontend.deploy.assetBaseUrl` plus the build manifest, not per-request asset URL rewriting.
+- SPA fallback: it only serves explicitly configured `spaFallback.scopes[]` client-router sub-apps. It is not the default pages routing model, and it must not hide API 404s, static asset 404s, or page registry errors.
+
+When you need a page, define the URL in `src/routes/**` and render a page from `src/frontend/pages/**` with `res.render()`.
+
+Next, review [Routing](/guide/routing), [Services](/guide/services), [Configuration](/guide/configuration), [Build](/guide/build), and [CLI Commands](/guide/cli).
