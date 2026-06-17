@@ -109,7 +109,9 @@ else
     local pattern="$2"
     local label="$3"
     if [ ! -f "$file" ]; then
-      echo "⚠️  跳过 ${file}（文件不存在）"
+      echo "❌ ${label}"
+      echo "   文件不存在: ${file}"
+      VER_ERRORS=$((VER_ERRORS + 1))
       return
     fi
     if grep -qF "$pattern" "$file"; then
@@ -123,8 +125,10 @@ else
   }
 
   check_version "website/rspress.config.ts"          "\"v${VERSION}\""        "rspress.config.ts → v${VERSION}"
-  check_version "website/docs/guide/cli.md"          "vextjs v${VERSION}"     "cli.md → vextjs v${VERSION}"
-  check_version "website/docs/guide/quick-start.md"  "\"vextjs\": \"^${VERSION}\"" "quick-start.md → ^${VERSION}"
+  check_version "website/docs/en/guide/cli.md"       "vextjs v${VERSION}"     "en cli.md → vextjs v${VERSION}"
+  check_version "website/docs/zh/guide/cli.md"       "vextjs v${VERSION}"     "zh cli.md → vextjs v${VERSION}"
+  check_version "website/docs/en/guide/quick-start.md" "\"vextjs\": \"^${VERSION}\"" "en quick-start.md → ^${VERSION}"
+  check_version "website/docs/zh/guide/quick-start.md" "\"vextjs\": \"^${VERSION}\"" "zh quick-start.md → ^${VERSION}"
   check_version "README.md"                          "\"vextjs\": \"^${VERSION}\"" "README.md → ^${VERSION}"
   check_version "CHANGELOG.md"                       "[${VERSION}]"           "CHANGELOG.md → [${VERSION}]"
 

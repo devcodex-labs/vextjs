@@ -214,11 +214,11 @@ function shouldRenderHtmlError(
 }
 
 function acceptsHtml(acceptHeader: string | undefined): boolean {
-  if (!acceptHeader) return true;
+  if (!acceptHeader) return false;
   return acceptHeader
     .split(",")
     .map((entry) => entry.trim().toLowerCase().split(";")[0])
-    .some((type) => type === "text/html" || type === "*/*");
+    .some((type) => type === "text/html");
 }
 
 function safePathname(value: string): string {

@@ -14,11 +14,20 @@ my-app/
 │ └── favicon.svg
 │
 ├── src/
-│ ├── client/ # Frontend source (default full-stack template)
-│ │ ├── App.tsx # React app
-│ │ ├── index.html # HTML shell
-│ │ ├── main.tsx # Browser entry
-│ │ └── styles.css
+│ ├── frontend/ # Frontend source (default full-stack template)
+│ │ ├── pages/ # Pages, layouts, error pages, and document template
+│ │ │ ├── index.tsx
+│ │ │ ├── layout.tsx
+│ │ │ ├── _document.html
+│ │ │ └── error/
+│ │ │   └── default.tsx
+│ │ ├── components/ # Shared components
+│ │ ├── styles/ # CSS / JSCSS / tokens
+│ │ │ └── index.css
+│ │ ├── assets/ # Assets imported from TSX/CSS into the bundle graph
+│ │ └── locales/ # Frontend page messages
+│ │   ├── zh-CN.ts
+│ │   └── en-US.ts
 │ │
 │ ├── config/ # Configuration file (required)
 │ │ ├── default.ts #Default configuration (must exist)
@@ -62,7 +71,7 @@ my-app/
 │ └── index.d.ts
 │
 ├── .vext/
-│ ├── client/ # development frontend build and client contract
+│ ├── client/ # development frontend build output
 │ ├── types/ # hidden generated declarations
 │ └── manifest/ # tooling manifests
 │

@@ -69,6 +69,7 @@ jobs:
       - name: Resolve schema-dsl version
         id: resolve-version
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             # 从 dispatch payload 中获取版本
             VERSION="${{ github.event.client_payload.version }}"
@@ -81,18 +82,31 @@ jobs:
             # schedule 触发 — 使用 latest
             VERSION="latest"
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "📦 Testing with schema-dsl@$VERSION"
+
+          RESOLVED_VERSION="$(npm view "schema-dsl@$VERSION" version)"
+          echo "version=$RESOLVED_VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Requested schema-dsl@$VERSION"
+          echo "📦 Resolved schema-dsl@$RESOLVED_VERSION"
+          echo "npm: $(npm --version)"
+          echo "node: $(node --version)"
 
       # 升级 schema-dsl 到目标版本
       - name: Upgrade schema-dsl
         run: |
+          set -euo pipefail
           VERSION="${{ steps.resolve-version.outputs.version }}"
           echo "📦 Installing schema-dsl@$VERSION ..."
-          npm install "schema-dsl@$VERSION" --save
+          npm install "schema-dsl@$VERSION" --save --save-exact --no-audit --no-fund || {
+            echo "::warning::First schema-dsl install failed; verifying npm cache and retrying once"
+            npm cache verify
+            npm install "schema-dsl@$VERSION" --save --save-exact --no-audit --no-fund
+          }
           echo ""
           echo "✅ Installed version:"
           node -e "console.log(require('schema-dsl/package.json').version)"
+          echo ""
+          echo "📦 Installed dependency tree:"
+          npm ls schema-dsl
 
       # TypeScript 编译检查
       - name: TypeScript type check

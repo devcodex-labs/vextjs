@@ -16,7 +16,7 @@ VextJS is a high-performance full-stack Node.js framework for building maintaina
 - Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
 - Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
 - Built-in React frontend integration for `src/frontend/pages/**`, route-driven `res.render()`, SSR, hydration, Vext JSCSS/CSS assets, scoped SPA fallback, and generated API contract files.
-- Lightweight `vextjs/frontend` runtime helpers for page i18n, typed API clients, and future external frontend adapters.
+- Lightweight `vextjs/frontend` runtime helpers for page i18n, generated API contract artifacts, and future external frontend adapters.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.
 - Process-level preload support for OpenTelemetry, APM, polyfills, and startup bridges.
@@ -264,15 +264,7 @@ Component styles can use the default `vextjs/style` facade. Files such as `src/f
 
 For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
 
-Use `vextjs/frontend` in browser code when you want a Vext-aware API client for external or advanced frontend integrations:
-
-```ts
-import { createVextApiClient } from "vextjs/frontend";
-import { contract } from "./api-contract";
-
-const api = createVextApiClient(contract);
-const hello = await api.GET("/api/hello");
-```
+When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
 
 For API-only projects, use:
 

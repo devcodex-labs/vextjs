@@ -102,9 +102,11 @@ vi.mock("../../../src/tooling/doctor/index.js", () => ({
 }));
 
 vi.mock("../../../src/lib/build/build-compiler.js", () => ({
-  BuildCompiler: vi.fn().mockImplementation(() => ({
-    build: mocks.build,
-  })),
+  BuildCompiler: vi.fn().mockImplementation(function () {
+    return {
+      build: mocks.build,
+    };
+  }),
 }));
 
 vi.mock("../../../src/lib/config-loader.js", () => ({

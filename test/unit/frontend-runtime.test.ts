@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -429,6 +430,45 @@ describe("frontend client build", () => {
     expect(generatedCss).toContain("@media (min-width: 640px)");
     expect(bundledCss).toContain(".vext-card-");
     expect(bundledCss).toContain(".vext-action-tone-primary-");
+  });
+
+  it("honors the frontend size report diagnostics flag", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    const defaultResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    expect(
+      existsSync(path.join(defaultResult.config.outDir, "size-report.json")),
+    ).toBe(true);
+
+    const disabledRootDir = await tempRoot();
+    await createMinimalFrontend(disabledRootDir);
+
+    const disabledResult = await buildFrontendClient({
+      rootDir: disabledRootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        build: {
+          diagnostics: {
+            sizeReport: false,
+          },
+        },
+      },
+    });
+
+    expect(
+      existsSync(path.join(disabledResult.config.outDir, "size-report.json")),
+    ).toBe(false);
   });
 
   it("injects React Fast Refresh only into development browser builds", async () => {

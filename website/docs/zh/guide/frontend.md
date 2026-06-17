@@ -613,7 +613,7 @@ export async function loadHello(): Promise<HelloResponse> {
 }
 ```
 
-后续如果启用生成式 API client，文档会只展示生成后的导入方式，不要求用户手写 route contract。当前 `res.render()` 主线不依赖浏览器 API helper。
+当 `frontend.apiClient` 保持默认开启时，Vext 会在前端输出目录旁写入 `client-contract.json` 与 `api.generated.ts`，主要给工具链、类型探针或外部前端集成使用。普通页面代码不需要手写 route contract，也不需要为了首屏数据引入 API helper；首屏数据仍优先在 route handler / service 中准备，再通过 `res.render()` 传给页面。
 
 表单和 mutation 仍然遵守同一个服务端边界：
 
@@ -1087,12 +1087,12 @@ export default config;
 | `frontend.build.server.external`         | `[]`                                                | server renderer 构建时外置的包。默认打包 React 运行时，避免部署时缺失渲染依赖。                            |
 | `frontend.build.assets.inlineLimit`      | `0`                                                 | import 型资源是否内联；默认输出 hash 文件。                                                                |
 | `frontend.build.css.modules`             | `true`                                              | 是否支持 CSS Modules 约定。Sass、Tailwind、PostCSS 属于后续插件/用户配置能力，未实现前不作为默认能力承诺。 |
-| `frontend.build.diagnostics.metafile`    | `true`                                              | 输出 esbuild metafile，用于 manifest 和排查包体。                                                          |
-| `frontend.build.diagnostics.sizeReport`  | `true`                                              | 输出 size report，方便检查页面和共享 chunk 大小。                                                          |
+| `frontend.build.diagnostics.metafile`    | `true`                                              | 保留内部 esbuild metafile 诊断，用于 manifest、size report 和 leak scan；不承诺输出独立 metafile 文件。    |
+| `frontend.build.diagnostics.sizeReport`  | `true`                                              | 输出 size report，方便检查页面和共享 chunk 大小；设为 `false` 时不写 `size-report.json`。                  |
 | `frontend.build.diagnostics.leakScan`    | `true`                                              | 扫描 browser graph，阻断 `src/routes/**`、`src/services/**`、`node:*` 等服务端输入。                       |
 | `frontend.deploy.assetBaseUrl`           | `undefined`                                         | CDN 资源基础 URL。设置后，HTML 和 manifest 中的静态资源地址使用该前缀。                                    |
 | `frontend.deploy.crossOrigin`            | `undefined`                                         | CDN script/link 的 crossorigin 策略。                                                                      |
-| `frontend.deploy.integrity`              | `false`                                             | 是否为资源生成 integrity 信息；首期可先作为配置预留或后续能力。                                            |
+| `frontend.deploy.integrity`              | `false`                                             | SRI 资源完整性配置预留；当前不自动注入 integrity。                                                         |
 | `frontend.render.ssr`                    | `true`                                              | 是否启用页面 SSR。                                                                                         |
 | `frontend.render.fallback`               | `"client"`                                          | SSR 失败时是否降级到 client render。                                                                       |
 | `frontend.render.timeoutMs`              | `3000`                                              | 单次 SSR 超时时间。                                                                                        |
@@ -1210,10 +1210,10 @@ dist/client/
 ├── manifest.json
 ├── messages-manifest.json
 ├── render-manifest.json
-└── size-report.json
+└── size-report.json     # 默认输出；build.diagnostics.sizeReport=false 时不写入
 ```
 
-构建时 Vext 会分别生成浏览器 bundle 和 server renderer bundle。浏览器 bundle 只允许从 `src/frontend/**`、`public/**` 和配置的前端安全根起图；server renderer 用于 SSR 页面和 layout。开启 `frontend.i18n` 时，构建还会扫描 `src/frontend/locales/**` 并输出 `messages-manifest.json`。开启默认 JSCSS 时，构建会先扫描 `*.style.ts`、`*.style.js` 和 `*.css.ts`，把 `vextjs/style` 注册的样式抽取成生成 CSS，再交给 esbuild 合并进最终 CSS asset。构建诊断会保留 metafile、manifest 和 size report，并扫描 alias 解析后的真实路径，防止 `src/routes/**`、`src/services/**`、`src/config/**`、`node:*`、`*.server.*` 被打进浏览器产物。`*.client.*` 在首期只作为浏览器专用文件，不应作为同步 SSR 组件使用。
+构建时 Vext 会分别生成浏览器 bundle 和 server renderer bundle。浏览器 bundle 只允许从 `src/frontend/**`、`public/**` 和配置的前端安全根起图；server renderer 用于 SSR 页面和 layout。开启 `frontend.i18n` 时，构建还会扫描 `src/frontend/locales/**` 并输出 `messages-manifest.json`。开启默认 JSCSS 时，构建会先扫描 `*.style.ts`、`*.style.js` 和 `*.css.ts`，把 `vextjs/style` 注册的样式抽取成生成 CSS，再交给 esbuild 合并进最终 CSS asset。构建诊断默认会保留内部 metafile 诊断、输出 manifest 和 size report，并扫描 alias 解析后的真实路径，防止 `src/routes/**`、`src/services/**`、`src/config/**`、`node:*`、`*.server.*` 被打进浏览器产物。`*.client.*` 在首期只作为浏览器专用文件，不应作为同步 SSR 组件使用。
 
 `render-manifest.json` 记录 `vext start` 需要的 build id、页面、layout、错误页、资源、server renderer 路径和诊断信息。`messages-manifest.json` 记录可用 locale、默认 locale 对象 shape、页面 messages entry 和 build id。manifest schema、messages manifest 或 renderer 文件与运行时不匹配时，启动会 fail fast 并提示重新构建，而不是服务过期页面。
 

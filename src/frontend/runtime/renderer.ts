@@ -655,6 +655,10 @@ function renderDocument(
     .filter(Boolean)
     .join("\n");
   let html = template;
+  html = html.replaceAll(
+    "{vext.lang}",
+    escapeAttribute(input.payload.options.locale ?? ""),
+  );
 
   html = html.replace(
     /<div\s+id=["']root["'][^>]*data-vext-root[^>]*><\/div>/iu,

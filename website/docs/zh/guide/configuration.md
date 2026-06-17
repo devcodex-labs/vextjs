@@ -257,8 +257,13 @@ export default {
       defaultLocale: "en-US",
     },
     spaFallback: {
-      enabled: true,
-      scopes: [],
+      scopes: [
+        {
+          basePath: "/admin/app",
+          page: "admin/app/shell",
+          exclude: ["/admin/api/**"],
+        },
+      ],
     },
     apiClient: {
       enabled: true,
@@ -289,7 +294,7 @@ export default {
 | `frontend.build.minify`    | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                         |
 | `frontend.build.sourcemap` | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                  |
 
-默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。
+默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。`spaFallback: true` 仅作为兼容 shorthand，不推荐在企业级混合项目中使用。
 
 创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
 

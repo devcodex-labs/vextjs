@@ -257,8 +257,13 @@ export default {
       defaultLocale: "en-US",
     },
     spaFallback: {
-      enabled: true,
-      scopes: [],
+      scopes: [
+        {
+          basePath: "/admin/app",
+          page: "admin/app/shell",
+          exclude: ["/admin/api/**"],
+        },
+      ],
     },
     apiClient: {
       enabled: true,
@@ -289,7 +294,7 @@ export default {
 | `frontend.build.minify`    | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
 | `frontend.build.sourcemap` | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
 
-By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`.
+By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
 
 For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
 

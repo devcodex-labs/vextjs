@@ -14,11 +14,20 @@ my-app/
 │   └── favicon.svg
 │
 ├── src/
-│   ├── client/                # 前端源码（默认全栈模板）
-│   │   ├── App.tsx            # React 应用
-│   │   ├── index.html         # HTML shell
-│   │   ├── main.tsx           # 浏览器入口
-│   │   └── styles.css
+│   ├── frontend/              # 前端源码（默认全栈模板）
+│   │   ├── pages/             # 页面、layout、错误页和 document 模板
+│   │   │   ├── index.tsx
+│   │   │   ├── layout.tsx
+│   │   │   ├── _document.html
+│   │   │   └── error/
+│   │   │       └── default.tsx
+│   │   ├── components/        # 公共组件
+│   │   ├── styles/            # CSS / JSCSS / tokens
+│   │   │   └── index.css
+│   │   ├── assets/            # 通过 TSX/CSS import 进入打包图的资产
+│   │   └── locales/           # 前端页面文案
+│   │       ├── zh-CN.ts
+│   │       └── en-US.ts
 │   │
 │   ├── config/                # 配置文件（必须）
 │   │   ├── default.ts         # 默认配置（必须存在）
@@ -62,7 +71,7 @@ my-app/
 │           └── index.d.ts
 │
 ├── .vext/
-│   ├── client/                # 开发期前端构建与 client contract
+│   ├── client/                # 开发期前端构建产物
 │   ├── types/                 # hidden generated declarations
 │   └── manifest/              # tooling manifests
 │

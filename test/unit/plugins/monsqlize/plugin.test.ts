@@ -514,7 +514,9 @@ describe("setupMonSQLize", () => {
 
       // Mock monsqlize 模块
       vi.doMock("monsqlize", () => ({
-        default: vi.fn().mockImplementation(() => mockMonSQLize.instance),
+        default: vi.fn().mockImplementation(function () {
+          return mockMonSQLize.instance;
+        }),
       }));
 
       // Mock fs.existsSync — 默认 models/ 目录不存在
@@ -761,7 +763,9 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     vi.resetModules();
 
     const mockInstance = createMockMonSQLize().instance;
-    mockMonSQLizeConstructor = vi.fn().mockImplementation(() => mockInstance);
+    mockMonSQLizeConstructor = vi.fn().mockImplementation(function () {
+      return mockInstance;
+    });
     mockMongoMemoryServerStop = vi.fn().mockResolvedValue(undefined);
     let memoryServerIndex = 0;
     mockMongoMemoryServerCreate = vi.fn().mockImplementation(async () => {
@@ -1999,7 +2003,9 @@ describe("integration: plugin lifecycle", () => {
     mockMonSQLize = createMockMonSQLize();
 
     vi.doMock("monsqlize", () => ({
-      default: vi.fn().mockImplementation(() => mockMonSQLize.instance),
+      default: vi.fn().mockImplementation(function () {
+        return mockMonSQLize.instance;
+      }),
     }));
 
     vi.doMock("node:fs", async (importOriginal) => {

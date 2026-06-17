@@ -12,7 +12,8 @@
  *   Node.js 20 无法 `require()` ESM 模块（ERR_REQUIRE_ESM）。
  *
  *   此脚本生成 CJS 入口文件，配合 package.json exports 的 `"require"` 条件，
- *   使 `require('vextjs')`、`require('vextjs/testing')` 和 adapter 子路径正常工作。
+ *   使 `require('vextjs')`、`require('vextjs/frontend')`、
+ *   `require('vextjs/style')`、`require('vextjs/testing')` 和 adapter 子路径正常工作。
  *
  * 生成文件：
  *   - dist/index.cjs                  — 主入口 CJS bundle

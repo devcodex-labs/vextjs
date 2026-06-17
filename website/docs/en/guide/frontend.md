@@ -613,7 +613,7 @@ export async function loadHello(): Promise<HelloResponse> {
 }
 ```
 
-If generated API client support is enabled later, this guide should show the generated import path only. Users should not hand-write route contracts. The current `res.render()` path does not depend on a browser API helper.
+When `frontend.apiClient` stays enabled, Vext writes `client-contract.json` and `api.generated.ts` next to the frontend output for tooling, type probes, or advanced external frontend integrations. Normal page code does not need to hand-write route contracts or import an API helper for first-screen data; prepare first-screen data in a route handler or service, then pass it through `res.render()`.
 
 For forms and mutations, keep the server boundary the same:
 
@@ -1087,12 +1087,12 @@ Configuration reference:
 | `frontend.build.server.external`         | `[]`                                                | Packages externalized from the server renderer bundle. React runtime is bundled by default so deployment does not miss renderer dependencies.                      |
 | `frontend.build.assets.inlineLimit`      | `0`                                                 | Imported asset inline limit; default emits hashed files.                                                                                                           |
 | `frontend.build.css.modules`             | `true`                                              | Enables CSS Modules convention. Sass, Tailwind, and PostCSS are plugin/user-config capabilities until implemented as defaults.                                     |
-| `frontend.build.diagnostics.metafile`    | `true`                                              | Emits esbuild metafile for manifests and bundle debugging.                                                                                                         |
-| `frontend.build.diagnostics.sizeReport`  | `true`                                              | Emits size report for page and shared chunks.                                                                                                                      |
+| `frontend.build.diagnostics.metafile`    | `true`                                              | Keeps internal esbuild metafile diagnostics for manifests, size report, and leak scan; it does not promise a standalone metafile output.                           |
+| `frontend.build.diagnostics.sizeReport`  | `true`                                              | Emits size report for page and shared chunks; set it to `false` to skip `size-report.json`.                                                                        |
 | `frontend.build.diagnostics.leakScan`    | `true`                                              | Scans the browser graph and blocks `src/routes/**`, `src/services/**`, `node:*`, and other server-only inputs.                                                     |
 | `frontend.deploy.assetBaseUrl`           | `undefined`                                         | CDN asset base URL. When set, static asset URLs in HTML and manifests use this prefix.                                                                             |
 | `frontend.deploy.crossOrigin`            | `undefined`                                         | `crossorigin` policy for CDN script/link tags.                                                                                                                     |
-| `frontend.deploy.integrity`              | `false`                                             | Whether to emit integrity metadata; initially this can remain reserved until implemented.                                                                          |
+| `frontend.deploy.integrity`              | `false`                                             | Reserved SRI integrity option; current builds do not inject integrity.                                                                                             |
 | `frontend.render.ssr`                    | `true`                                              | Enables page SSR.                                                                                                                                                  |
 | `frontend.render.fallback`               | `"client"`                                          | Whether SSR failure falls back to client rendering.                                                                                                                |
 | `frontend.render.timeoutMs`              | `3000`                                              | Timeout for one SSR render.                                                                                                                                        |
@@ -1210,10 +1210,10 @@ dist/client/
 ├── manifest.json
 ├── messages-manifest.json
 ├── render-manifest.json
-└── size-report.json
+└── size-report.json     # default; omitted when build.diagnostics.sizeReport=false
 ```
 
-Vext builds a browser bundle and a server renderer bundle separately. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. When the default JSCSS path is enabled, the build first scans `*.style.ts`, `*.style.js`, and `*.css.ts`, extracts styles registered through `vextjs/style` into generated CSS, then lets esbuild merge that CSS into the final CSS asset. Build diagnostics keep the metafile, manifest, and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
+Vext builds a browser bundle and a server renderer bundle separately. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. When the default JSCSS path is enabled, the build first scans `*.style.ts`, `*.style.js`, and `*.css.ts`, extracts styles registered through `vextjs/style` into generated CSS, then lets esbuild merge that CSS into the final CSS asset. Build diagnostics keep internal metafile diagnostics by default, emit the manifest and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
 
 `render-manifest.json` records the build id, pages, layouts, error pages, assets, server renderer path, and diagnostics used by `vext start`. `messages-manifest.json` records available locales, the default locale object shape, page message entries, and the build id. If the manifest schema, messages manifest, or renderer file does not match the runtime, startup fails fast and asks you to rebuild instead of serving a stale page.
 

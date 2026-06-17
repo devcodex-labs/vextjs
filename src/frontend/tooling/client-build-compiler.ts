@@ -208,11 +208,13 @@ export async function buildFrontendClient(
     `${JSON.stringify(messagesManifest, null, 2)}\n`,
     "utf-8",
   );
-  await writeFile(
-    path.join(config.outDir, "size-report.json"),
-    `${JSON.stringify(buildSizeReport(manifest), null, 2)}\n`,
-    "utf-8",
-  );
+  if (config.build.diagnostics.sizeReport) {
+    await writeFile(
+      path.join(config.outDir, "size-report.json"),
+      `${JSON.stringify(buildSizeReport(manifest), null, 2)}\n`,
+      "utf-8",
+    );
+  }
   await writeFile(
     path.join(config.outDir, "index.html"),
     await renderIndexHtml(config, manifest),
@@ -492,6 +494,7 @@ async function renderIndexHtml(
   }
 
   output = output
+    .replaceAll("{vext.lang}", config.i18n.defaultLocale)
     .replaceAll("{vext.head}", "")
     .replaceAll("{vext.root}", rootTag)
     .replaceAll("{vext.data}", dataTag);

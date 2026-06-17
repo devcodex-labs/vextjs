@@ -727,21 +727,68 @@ After disabling, the following functions will be disabled:
 
 Built-in frontend build and static serving configuration.
 
-| Field             | Type                 | Default Value                                      | Description                                                              |
-| ----------------- | -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ |
-| `enabled`         | `boolean`            | `false`                                            | Whether to enable frontend integration                                   |
-| `framework`       | `string`             | `'react'`                                          | Frontend framework label                                                 |
-| `root`            | `string`             | `'src/frontend'`                                   | Frontend source directory                                                |
-| `entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'`     | Generated browser entry; usually not written by hand                     |
-| `indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`              | HTML document template                                                   |
-| `outDir`          | `string`             | `.vext/client` in dev, `dist/client` in production | Frontend output directory                                                |
-| `publicDir`       | `string`             | `'public'`                                         | Static assets copied into the frontend output                            |
-| `publicPath`      | `string`             | `'/'`                                              | Public asset path prefix                                                 |
-| `spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                                   | Serve fallback only for explicitly declared client-router sub-app scopes |
-| `apiClient`       | `boolean \| object`  | `true`                                             | Generate client contract artifacts                                       |
-| `build.target`    | `string \| string[]` | `'es2022'`                                         | Browser build target                                                     |
-| `build.minify`    | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
-| `build.sourcemap` | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
+| Field                          | Type                                 | Default Value                                           | Description                                                                       |
+| ------------------------------ | ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `enabled`                      | `boolean`                            | `false`                                                 | Whether to enable frontend integration                                            |
+| `framework`                    | `string`                             | `'react'`                                               | Frontend framework label                                                          |
+| `root`                         | `string`                             | `'src/frontend'`                                        | Frontend source directory                                                         |
+| `pages.dir`                    | `string`                             | `'pages'`                                               | Page directory resolved from `root`                                               |
+| `pages.extensions`             | `string[]`                           | `['.tsx', '.jsx', '.ts', '.js']`                        | Extensions scanned for pages, layouts, error pages, and locale modules            |
+| `pages.document`               | `string`                             | `'pages/_document.html'`                                | Document template path resolved from `root`                                       |
+| `pages.errorDir`               | `string`                             | `'pages/error'`                                         | Error page directory resolved from `root`                                         |
+| `componentsDir`                | `string`                             | `'components'`                                          | Shared component directory resolved from `root`                                   |
+| `styles.entry`                 | `string`                             | `'styles/index.css'`                                    | Global CSS entry resolved from `root`                                             |
+| `styles.jscss`                 | `boolean \| object`                  | `{ enabled: true }`                                     | Vext JSCSS build-time CSS extraction and dynamic CSS variables                    |
+| `styles.jscss.files`           | `string[]`                           | `['**/*.style.ts', '**/*.style.js', '**/*.css.ts']`     | JSCSS source file glob patterns                                                   |
+| `styles.jscss.runtimeAdapter`  | `'css-variables' \| 'none' \| false` | `'css-variables'`                                       | Runtime output mode for dynamic style variables                                   |
+| `styles.jscss.dynamicVars`     | `boolean`                            | `true`                                                  | Whether to emit dynamic CSS variables                                             |
+| `styles.jscss.recipes`         | `boolean`                            | `true`                                                  | Whether to emit recipe style combinations                                         |
+| `assetsDir`                    | `string`                             | `'assets'`                                              | Bundled frontend asset directory resolved from `root`                             |
+| `entry`                        | `string`                             | `'.vext/generated/frontend/browser-entry.tsx'`          | Generated browser entry; usually not written by hand                              |
+| `indexHtml`                    | `string`                             | `'src/frontend/pages/_document.html'`                   | HTML document template                                                            |
+| `outDir`                       | `string`                             | `.vext/client` in dev, `dist/client` in production      | Frontend output directory                                                         |
+| `publicDir`                    | `string`                             | `'public'`                                              | Static assets copied into the frontend output                                     |
+| `publicPath`                   | `string`                             | `'/'`                                                   | Public asset path prefix                                                          |
+| `alias`                        | `object`                             | Built-in `@frontend/@pages/@components/@styles/@assets` | Frontend-safe aliases; no default alias points at all of `src`                    |
+| `spaFallback`                  | `boolean \| object`                  | `{ scopes: [] }`                                        | Serve fallback only for explicitly declared client-router sub-app scopes          |
+| `spaFallback.enabled`          | `boolean`                            | `true`                                                  | Enables scoped fallback arbitration; with no scopes, no path is captured          |
+| `spaFallback.exclude`          | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**']`              | Global fallback exclusion paths                                                   |
+| `spaFallback.scopes[]`         | `object[]`                           | `[]`                                                    | Explicit client-router sub-app scopes                                             |
+| `apiClient`                    | `boolean \| object`                  | `true`                                                  | Generate client contract artifacts                                                |
+| `apiClient.enabled`            | `boolean`                            | `true`                                                  | Whether to emit `client-contract.json` and `api.generated.ts`                     |
+| `render.ssr`                   | `boolean`                            | `true`                                                  | Enable SSR rendering                                                              |
+| `render.fallback`              | `'client' \| 'error'`                | `'client'`                                              | Whether SSR failures fall back to a client shell or an error response             |
+| `render.timeoutMs`             | `number`                             | `3000`                                                  | Timeout for one SSR render                                                        |
+| `render.layout`                | `boolean`                            | `true`                                                  | Whether to enable the nested layout chain                                         |
+| `errorPages.default`           | `string`                             | `'error/default'`                                       | Default error page id                                                             |
+| `errorPages.status`            | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                | Status code to error page id mapping                                              |
+| `i18n`                         | `object`                             | `{ enabled: false }`                                    | Frontend page message layer, SSR messages, and `{vext.lang}`                      |
+| `i18n.source`                  | `string`                             | `'locales'`                                             | Frontend message directory resolved from `root`                                   |
+| `i18n.defaultLocale`           | `'inherit' \| string`                | `'inherit'`                                             | Default locale; `inherit` follows the request-level locale                        |
+| `i18n.detect`                  | `string[]`                           | `['accept-language']`                                   | SSR locale detection sources                                                      |
+| `i18n.inject`                  | `'used' \| 'all'`                    | `'used'`                                                | Whether to inject used messages or all messages                                   |
+| `i18n.clientSwitch`            | `'reload'`                           | `'reload'`                                              | Initial client locale switch strategy                                             |
+| `i18n.htmlLang`                | `boolean`                            | `true`                                                  | Whether to write `{vext.lang}` / `<html lang>`                                    |
+| `i18n.vary`                    | `boolean`                            | `true`                                                  | Whether locale affects response vary/cache behavior                               |
+| `dev.hot`                      | `boolean`                            | `true`                                                  | Development frontend hot update channel                                           |
+| `dev.fastRefresh`              | `boolean`                            | `true`                                                  | React Fast Refresh                                                                |
+| `dev.transport`                | `'sse'`                              | `'sse'`                                                 | Transport for the Vext dev event bus                                              |
+| `dev.overlay`                  | `boolean`                            | `true`                                                  | Whether to enable the development error overlay                                   |
+| `dev.debounceMs`               | `number`                             | `50`                                                    | File change event debounce interval                                               |
+| `dev.renderRefresh`            | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                              | Browser behavior after render-related route/service backend changes               |
+| `build.target`                 | `string \| string[]`                 | `'es2022'`                                              | Browser build target                                                              |
+| `build.minify`                 | `boolean`                            | Production `true`                                       | Minify frontend output                                                            |
+| `build.sourcemap`              | `boolean`                            | Development `true`                                      | Generate frontend source maps                                                     |
+| `build.client`                 | `object`                             | Inherits shared build defaults                          | Browser bundle output, hash names, splitting, and external entries                |
+| `build.server`                 | `object`                             | `server/renderer.cjs`                                   | SSR renderer bundle output                                                        |
+| `build.assets.inlineLimit`     | `number`                             | `0`                                                     | Imported asset inline limit; default emits hashed files                           |
+| `build.css.modules`            | `boolean`                            | `true`                                                  | Whether to support the CSS Modules convention                                     |
+| `build.diagnostics.metafile`   | `boolean`                            | `true`                                                  | Whether to keep internal esbuild metafile diagnostics for size report / leak scan |
+| `build.diagnostics.sizeReport` | `boolean`                            | `true`                                                  | Whether to emit a size report                                                     |
+| `build.diagnostics.leakScan`   | `boolean`                            | `true`                                                  | Blocks browser bundles from importing server-only modules                         |
+| `deploy.assetBaseUrl`          | `string`                             | None                                                    | Absolute CDN prefix for static frontend assets                                    |
+| `deploy.crossOrigin`           | `'anonymous' \| 'use-credentials'`   | None                                                    | `crossorigin` value injected into script/link tags                                |
+| `deploy.integrity`             | `boolean`                            | `false`                                                 | Reserved SRI integrity option; current builds do not inject integrity             |
 
 ```typescript
 export default {
@@ -751,14 +798,19 @@ export default {
     publicDir: "public",
     publicPath: "/",
     spaFallback: {
-      enabled: true,
-      scopes: [],
+      scopes: [
+        {
+          basePath: "/admin/app",
+          page: "admin/app/shell",
+          exclude: ["/admin/api/**"],
+        },
+      ],
     },
   },
 };
 ```
 
-By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`.
+By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
 
 ---
 
