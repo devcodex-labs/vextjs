@@ -15,6 +15,7 @@ import {
   assertFrontendOutputReady,
   createFrontendNotFoundHandler,
 } from "../frontend/runtime/static-mount.js";
+import { createFrontendRenderMiddleware } from "../frontend/runtime/renderer.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
@@ -524,6 +525,14 @@ export async function bootstrap(
       app.adapter.registerMiddleware(responseWrapper);
     }
 
+    app.adapter.registerMiddleware(
+      createFrontendRenderMiddleware({
+        rootDir,
+        mode: "production",
+        config: config.frontend,
+      }),
+    );
+
     // 6. access-log（config.accessLog.enabled，默认 true）
     if (config.accessLog?.enabled !== false) {
       const accessLogMiddleware = createAccessLogMiddleware(
@@ -562,6 +571,9 @@ export async function bootstrap(
         mode: "production",
         config: config.frontend,
         fallbackHandler: notFoundHandler,
+        onNotFound: async (req) => {
+          await emitNotFoundRequestHooks(hooks, req);
+        },
       }),
     );
     startupProfiler.mark(

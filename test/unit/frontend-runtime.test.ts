@@ -5,6 +5,8 @@ import { describe, expect, it, afterEach } from "vitest";
 import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolver.js";
 import { buildClientContract } from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
+import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
+import { createFrontendDevEventBus } from "../../src/frontend/runtime/dev-events.js";
 import {
   VextApiError,
   createVextApiClient,
@@ -32,6 +34,21 @@ describe("frontend config resolver", () => {
 
     expect(config.enabled).toBe(false);
     expect(config.framework).toBe("react");
+    expect(config.root).toBe(path.join(rootDir, "src", "frontend"));
+    expect(config.entry).toBe(
+      path.join(rootDir, ".vext", "generated", "frontend", "browser-entry.tsx"),
+    );
+    expect(config.pages.dir).toBe(
+      path.join(rootDir, "src", "frontend", "pages"),
+    );
+    expect(config.styles.jscss.enabled).toBe(true);
+    expect(config.styles.jscss.files).toEqual([
+      "**/*.style.ts",
+      "**/*.style.js",
+      "**/*.css.ts",
+    ]);
+    expect(config.styles.jscss.dynamicVars).toBe(true);
+    expect(config.styles.jscss.recipes).toBe(true);
     expect(config.publicPath).toBe("/");
   });
 
@@ -45,6 +62,45 @@ describe("frontend config resolver", () => {
     expect(config.enabled).toBe(true);
     expect(config.outDir).toBe(path.join(rootDir, ".vext", "client"));
     expect(config.spaFallback.exclude).toContain("/api/**");
+    expect(config.spaFallback.scopes).toEqual([]);
+    expect(config.dev.fastRefresh).toBe(true);
+    expect(config.build.diagnostics.leakScan).toBe(true);
+  });
+
+  it("normalizes B1 frontend page, alias, i18n, and scoped fallback config", async () => {
+    const rootDir = await tempRoot();
+    const config = resolveFrontendConfig(
+      {
+        enabled: true,
+        pages: { dir: "pages", document: "pages/_document.html" },
+        alias: { "@features": "features" },
+        i18n: { enabled: true, defaultLocale: "zh-CN" },
+        deploy: { assetBaseUrl: "https://cdn.example.com/app" },
+        spaFallback: {
+          scopes: [{ basePath: "/admin/app", page: "admin/app/shell" }],
+        },
+      },
+      { rootDir, mode: "production" },
+    );
+
+    expect(config.pages.document).toBe(
+      path.join(rootDir, "src", "frontend", "pages", "_document.html"),
+    );
+    expect(config.alias["@components"]).toBe(
+      path.join(rootDir, "src", "frontend", "components"),
+    );
+    expect(config.alias["@features"]).toBe(
+      path.join(rootDir, "src", "frontend", "features"),
+    );
+    expect(config.i18n.enabled).toBe(true);
+    expect(config.i18n.defaultLocale).toBe("zh-CN");
+    expect(config.deploy.assetBaseUrl).toBe("https://cdn.example.com/app/");
+    expect(config.spaFallback.scopes[0]).toMatchObject({
+      basePath: "/admin/app/",
+      page: "admin/app/shell",
+      ssr: false,
+      status: 200,
+    });
   });
 
   it("rejects paths outside project root", async () => {
@@ -56,6 +112,83 @@ describe("frontend config resolver", () => {
         { rootDir, mode: "production" },
       ),
     ).toThrow("config.frontend.outDir");
+  });
+});
+
+describe("frontend dev event bus", () => {
+  it("serves Vext development events over SSE", async () => {
+    const bus = createFrontendDevEventBus();
+    let closeHandler: (() => void) | undefined;
+    const chunks: string[] = [];
+    const res = {
+      headers: {} as Record<string, string>,
+      streamType: "",
+      setHeader(name: string, value: string) {
+        this.headers[name] = value;
+        return this;
+      },
+      stream(readable: NodeJS.ReadableStream, contentType: string) {
+        this.streamType = contentType;
+        readable.on("data", (chunk) => {
+          chunks.push(Buffer.from(chunk).toString("utf-8"));
+        });
+      },
+    };
+
+    await bus.middleware(
+      {
+        method: "GET",
+        path: "/__vext/dev/events",
+        onClose(handler: () => void) {
+          closeHandler = handler;
+        },
+      } as any,
+      res as any,
+      async () => {
+        throw new Error("next should not be called for dev SSE endpoint");
+      },
+    );
+
+    expect(res.headers["Cache-Control"]).toBe("no-store");
+    expect(res.headers.Connection).toBe("keep-alive");
+    expect(res.streamType).toBe("text/event-stream; charset=utf-8");
+    expect(bus.getClientCount()).toBe(1);
+
+    bus.publish({
+      type: "frontend:built",
+      action: "fast-refresh",
+      entry: "/assets/browser-entry.js",
+      styles: ["/assets/browser-entry.css"],
+      buildId: "dev-build",
+    });
+    await Promise.resolve();
+
+    const frame = chunks.join("");
+    expect(frame).toContain("retry: 500");
+    expect(frame).toContain("event: vext");
+    expect(frame).toContain('"type":"frontend:built"');
+    expect(frame).toContain('"action":"fast-refresh"');
+
+    closeHandler?.();
+    expect(bus.getClientCount()).toBe(0);
+    bus.close();
+  });
+
+  it("passes non-SSE requests to the next middleware", async () => {
+    const bus = createFrontendDevEventBus();
+    let nextCalled = false;
+
+    await bus.middleware(
+      { method: "GET", path: "/health" } as any,
+      {} as any,
+      async () => {
+        nextCalled = true;
+      },
+    );
+
+    expect(nextCalled).toBe(true);
+    expect(bus.getClientCount()).toBe(0);
+    bus.close();
   });
 });
 
@@ -88,7 +221,7 @@ describe("frontend client contract", () => {
 describe("frontend client build", () => {
   it("injects bundled CSS and entry script into index.html", async () => {
     const rootDir = await tempRoot();
-    const clientDir = path.join(rootDir, "src", "client");
+    const clientDir = path.join(rootDir, "src", "frontend", "entry");
     await mkdir(clientDir, { recursive: true });
     await writeFile(
       path.join(clientDir, "main.js"),
@@ -108,8 +241,8 @@ describe("frontend client build", () => {
       mode: "production",
       config: {
         enabled: true,
-        entry: "src/client/main.js",
-        indexHtml: "src/client/index.html",
+        entry: "src/frontend/entry/main.js",
+        indexHtml: "src/frontend/entry/index.html",
         apiClient: false,
       },
     });
@@ -124,6 +257,552 @@ describe("frontend client build", () => {
     expect(html).toMatch(
       /<script type="module" src="\/assets\/main-[^"]+\.js" data-vext-entry><\/script>/,
     );
+    expect(result.renderManifestPath).toBeDefined();
+    expect(result.messagesManifestPath).toBeDefined();
+    expect(result.serverRendererPath).toBeDefined();
+  });
+
+  it("generates page, layout, error, i18n, and render manifests", async () => {
+    const rootDir = await tempRoot();
+    const frontendDir = path.join(rootDir, "src", "frontend");
+    await mkdir(path.join(frontendDir, "pages", "admin"), {
+      recursive: true,
+    });
+    await mkdir(path.join(frontendDir, "pages", "error"), {
+      recursive: true,
+    });
+    await mkdir(path.join(frontendDir, "styles"), { recursive: true });
+    await mkdir(path.join(frontendDir, "locales"), { recursive: true });
+    await writeFile(
+      path.join(frontendDir, "pages", "_document.html"),
+      "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "index.tsx"),
+      "export default function Page() { return null; }\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "admin", "layout.tsx"),
+      "export default function Layout(props) { return props.children; }\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "admin", "index.tsx"),
+      "export default function Admin() { return null; }\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "error", "default.tsx"),
+      "export default function ErrorPage() { return null; }\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "locales", "en-US.ts"),
+      "export default { title: 'Hello' };\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "styles", "index.css"),
+      ":root { color-scheme: light; }\n",
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+
+    const renderManifest = JSON.parse(
+      await readFile(result.renderManifestPath!, "utf-8"),
+    );
+    const messagesManifest = JSON.parse(
+      await readFile(result.messagesManifestPath!, "utf-8"),
+    );
+    const generatedRegistry = await readFile(
+      path.join(result.generatedDir!, "page-registry.ts"),
+      "utf-8",
+    );
+    const html = await readFile(
+      path.join(result.config.outDir, "index.html"),
+      "utf-8",
+    );
+
+    expect(renderManifest.kind).toBe("frontend-render-manifest");
+    expect(renderManifest.pages.map((page: any) => page.id)).toEqual([
+      "admin/index",
+      "index",
+    ]);
+    expect(renderManifest.layouts[0]).toMatchObject({
+      id: "admin",
+      directory: "admin",
+    });
+    expect(renderManifest.errorPages[0]).toMatchObject({
+      id: "error/default",
+    });
+    expect(renderManifest.serverRenderer).toBe("server/renderer.cjs");
+    expect(messagesManifest.locales[0]).toMatchObject({ locale: "en-US" });
+    expect(generatedRegistry).toContain("export const pages");
+    expect(html).toContain('id="__VEXT_DATA__"');
+    expect(html).toContain("data-vext-root");
+    expect(html).not.toContain("%VEXT");
+    expect(html).not.toContain("{vext.");
+  });
+
+  it("extracts Vext JSCSS modules into the bundled CSS asset", async () => {
+    const rootDir = await tempRoot();
+    const frontendDir = path.join(rootDir, "src", "frontend");
+    await mkdir(path.join(frontendDir, "pages"), { recursive: true });
+    await mkdir(path.join(frontendDir, "styles"), { recursive: true });
+    await writeFile(
+      path.join(frontendDir, "pages", "_document.html"),
+      "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+    );
+    await writeFile(
+      path.join(frontendDir, "styles", "card.style.ts"),
+      [
+        'import { createVar, recipe, setVar, style, vars } from "vextjs/style";',
+        'export const accent = createVar("accent", "#0f766e");',
+        "export const card = style({",
+        "  color: accent,",
+        "  padding: 12,",
+        "  opacity: 0.9,",
+        '  "&:hover": { color: "tomato" },',
+        '  "@media (min-width: 640px)": { padding: 16 },',
+        '}, "card");',
+        "export const action = recipe({",
+        '  name: "action",',
+        "  base: { borderRadius: 6 },",
+        "  variants: {",
+        "    tone: {",
+        '      primary: { backgroundColor: "black", color: "white" },',
+        "    },",
+        "  },",
+        '  defaultVariants: { tone: "primary" },',
+        "});",
+        'export const accentStyle = vars(setVar(accent, "#123456"));',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "index.tsx"),
+      [
+        'import { action, card } from "../styles/card.style";',
+        "export default function Page() {",
+        "  return <main className={`${card} ${action()}`}>JSCSS</main>;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const generatedCss = await readFile(
+      path.join(result.generatedDir!, "vext-jscss.css"),
+      "utf-8",
+    );
+    const browserEntry = await readFile(
+      path.join(result.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const manifest = JSON.parse(await readFile(result.manifestPath!, "utf-8"));
+    const cssAssetPath = manifest.assets.find((asset: any) =>
+      asset.path.endsWith(".css"),
+    )?.path;
+    expect(cssAssetPath).toBeDefined();
+    const cssAsset = String(cssAssetPath).replace(/^\/+/, "");
+    const bundledCss = await readFile(
+      path.join(result.config.outDir, cssAsset),
+      "utf-8",
+    );
+
+    expect(browserEntry).toContain("vext-jscss.css");
+    expect(generatedCss).toContain(".vext-card-");
+    expect(generatedCss).toContain("color:var(--vext-accent, #0f766e)");
+    expect(generatedCss).toContain("padding:12px");
+    expect(generatedCss).toContain("@media (min-width: 640px)");
+    expect(bundledCss).toContain(".vext-card-");
+    expect(bundledCss).toContain(".vext-action-tone-primary-");
+  });
+
+  it("injects React Fast Refresh only into development browser builds", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    const devResult = await buildFrontendClient({
+      rootDir,
+      mode: "development",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const devBrowserEntry = await readFile(
+      path.join(devResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const devManifest = JSON.parse(
+      await readFile(devResult.manifestPath!, "utf-8"),
+    );
+    const devBundle = await readFile(
+      path.join(
+        devResult.config.outDir,
+        String(devManifest.entrypoints[0]).replace(/^\/+/, ""),
+      ),
+      "utf-8",
+    );
+
+    expect(devBrowserEntry).toContain("react-refresh/runtime");
+    expect(devBrowserEntry).toContain('EventSource("/__vext/dev/events")');
+    expect(devBrowserEntry).toContain("performReactRefresh");
+    expect(devBundle).toContain("src/frontend/pages/index.tsx Page");
+
+    const productionResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const productionBrowserEntry = await readFile(
+      path.join(productionResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const productionManifest = JSON.parse(
+      await readFile(productionResult.manifestPath!, "utf-8"),
+    );
+    const productionBundle = await readFile(
+      path.join(
+        productionResult.config.outDir,
+        String(productionManifest.entrypoints[0]).replace(/^\/+/, ""),
+      ),
+      "utf-8",
+    );
+
+    expect(productionBrowserEntry).not.toContain("react-refresh/runtime");
+    expect(productionBundle).not.toContain("react-refresh");
+
+    const disabledResult = await buildFrontendClient({
+      rootDir,
+      mode: "development",
+      config: {
+        enabled: true,
+        apiClient: false,
+        dev: { fastRefresh: false },
+      },
+    });
+    const disabledBrowserEntry = await readFile(
+      path.join(disabledResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const disabledManifest = JSON.parse(
+      await readFile(disabledResult.manifestPath!, "utf-8"),
+    );
+    const disabledBundle = await readFile(
+      path.join(
+        disabledResult.config.outDir,
+        String(disabledManifest.entrypoints[0]).replace(/^\/+/, ""),
+      ),
+      "utf-8",
+    );
+
+    expect(disabledBrowserEntry).toContain('EventSource("/__vext/dev/events")');
+    expect(disabledBrowserEntry).not.toContain("react-refresh/runtime");
+    expect(disabledBundle).not.toContain("react-refresh");
+
+    const hotOffResult = await buildFrontendClient({
+      rootDir,
+      mode: "development",
+      config: {
+        enabled: true,
+        apiClient: false,
+        dev: { hot: false },
+      },
+    });
+    const hotOffBrowserEntry = await readFile(
+      path.join(hotOffResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+
+    expect(hotOffBrowserEntry).not.toContain(
+      'EventSource("/__vext/dev/events")',
+    );
+    expect(hotOffBrowserEntry).not.toContain("react-refresh/runtime");
+  });
+
+  it("explains browser boundary leaks before esbuild reports low-level errors", async () => {
+    const rootDir = await tempRoot();
+    await mkdir(path.join(rootDir, "src", "frontend", "entry"), {
+      recursive: true,
+    });
+    await mkdir(path.join(rootDir, "src", "services"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "entry", "main.js"),
+      'import { db } from "../../services/db.js";\nconsole.log(db);\n',
+    );
+    await writeFile(
+      path.join(rootDir, "src", "services", "db.js"),
+      "export const db = {};\n",
+    );
+
+    await expect(
+      buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          entry: "src/frontend/entry/main.js",
+          apiClient: false,
+        },
+      }),
+    ).rejects.toThrow("你跨越了前后端物理边界");
+  });
+
+  it("explains server imports written inside generated page sources", async () => {
+    const rootDir = await tempRoot();
+    await mkdir(path.join(rootDir, "src", "frontend", "pages"), {
+      recursive: true,
+    });
+    await mkdir(path.join(rootDir, "src", "services"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'import { db } from "../../services/db.js";\nexport default function Page() { return db; }\n',
+    );
+    await writeFile(
+      path.join(rootDir, "src", "services", "db.js"),
+      "export const db = {};\n",
+    );
+
+    await expect(
+      buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          apiClient: false,
+        },
+      }),
+    ).rejects.toThrow("src/frontend/pages/index.tsx");
+  });
+});
+
+describe("frontend render middleware", () => {
+  it("binds res.render() to built frontend output", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/dashboard"),
+      res as any,
+      async () => {},
+    );
+    res.render(
+      "index",
+      { title: "<Dashboard>" },
+      {
+        status: 202,
+        headers: { "X-Render": "yes" },
+        nonce: "abc123",
+        head: { title: "Dashboard", meta: { robots: "noindex" } },
+      },
+    );
+
+    expect(res.sent?.status).toBe(202);
+    expect(res.sent?.headers["X-Render"]).toBe("yes");
+    expect(res.sent?.headers["Content-Type"]).toBe("text/html; charset=utf-8");
+    expect(res.sent?.kind).toBe("render");
+    expect(res.sent?.html).toContain("<title>Dashboard</title>");
+    expect(res.sent?.html).toContain('data-vext-entry nonce="abc123"');
+    expect(res.sent?.html).toContain('data-vext-data nonce="abc123"');
+    expect(res.sent?.html).toContain('data-vext-page="index"');
+    expect(res.sent?.html).toContain('"page":"index"');
+    expect(res.sent?.html).toContain("\\u003cDashboard\\u003e");
+    expect(res.onSendPayload?.__vextResponseKind).toBe("render");
+    expect(res.onSendPayload?.payload.page).toBe("index");
+  });
+
+  it("binds res.renderError() to configured error pages", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(createMockRequest("/missing"), res as any, async () => {});
+    res.renderError(404);
+
+    expect(res.sent?.status).toBe(404);
+    expect(res.sent?.html).toContain('data-vext-page="error/404"');
+    expect(res.onSendPayload?.__vextResponseKind).toBe("render");
+    expect(res.onSendPayload?.payload.page).toBe("error/404");
+  });
+
+  it("falls back when custom renderError page is missing and preserves details", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(createMockRequest("/missing"), res as any, async () => {});
+    res.renderError(404, { resource: "user" }, { page: "error/custom-404" });
+
+    const payload = res.sent?.data as any;
+    expect(res.sent?.status).toBe(404);
+    expect(res.sent?.html).toContain('data-vext-page="error/404"');
+    expect(payload.props.error.details).toEqual({ resource: "user" });
+  });
+
+  it("renders React page with nested layout and useVextI18n()", async () => {
+    const rootDir = await tempRoot();
+    const frontendDir = path.join(rootDir, "src", "frontend");
+    await mkdir(path.join(frontendDir, "pages", "admin"), {
+      recursive: true,
+    });
+    await mkdir(path.join(frontendDir, "locales"), { recursive: true });
+    await writeFile(
+      path.join(frontendDir, "pages", "_document.html"),
+      "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "admin", "layout.tsx"),
+      'export default function AdminLayout(props) { return <section data-layout="admin"><nav>{props.data?.menu}</nav>{props.children}</section>; }\n',
+    );
+    await writeFile(
+      path.join(frontendDir, "pages", "admin", "index.tsx"),
+      'import { useVextI18n } from "vextjs/frontend";\nexport default function AdminPage(props) { const i18n = useVextI18n(); return <main><h1>{i18n.title}</h1><span>{props.stats.users}</span></main>; }\n',
+    );
+    await writeFile(
+      path.join(frontendDir, "locales", "en-US.ts"),
+      "export default { title: 'Admin Home' };\n",
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(createMockRequest("/admin"), res as any, async () => {});
+    res.render(
+      "admin/index",
+      { stats: { users: 7 } },
+      { layoutData: { admin: { menu: "Overview" } }, locale: "en-US" },
+    );
+
+    expect(res.sent?.html).toContain('data-layout="admin"');
+    expect(res.sent?.html).toContain("<h1>Admin Home</h1>");
+    expect(res.sent?.html).toContain("<span>7</span>");
+    expect(res.sent?.html).toContain("<nav>Overview</nav>");
+  });
+
+  it("caches production render assets after the first render", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const firstRes = createRenderMockResponse();
+    await middleware(createMockRequest("/"), firstRes as any, async () => {});
+    firstRes.render("index", { title: "Cached" });
+
+    await writeFile(
+      result.renderManifestPath!,
+      JSON.stringify({
+        kind: "frontend-render-manifest",
+        buildId: "broken",
+        generatedAt: "test",
+        pages: [{ id: "other", route: "/other", file: "other.tsx" }],
+        layouts: [],
+        errorPages: [],
+        serverRenderer: "server/renderer.cjs",
+      }),
+    );
+    await writeFile(
+      path.join(result.config.outDir, "index.html"),
+      "<!doctype html><html><body>Broken</body></html>",
+    );
+
+    const secondRes = createRenderMockResponse();
+    await middleware(
+      createMockRequest("/again"),
+      secondRes as any,
+      async () => {},
+    );
+    secondRes.render("index", { title: "Cached" });
+
+    expect(secondRes.sent?.html).toContain('data-vext-page="index"');
+    expect(secondRes.sent?.html).not.toContain("Broken");
   });
 });
 
@@ -170,7 +849,7 @@ describe("frontend api client", () => {
 });
 
 describe("frontend static mount", () => {
-  it("serves SPA fallback and delegates API paths to original 404", async () => {
+  it("does not serve SPA fallback without an explicit scope", async () => {
     const rootDir = await tempRoot();
     const outDir = path.join(rootDir, "dist", "client");
     await mkdir(outDir, { recursive: true });
@@ -188,10 +867,14 @@ describe("frontend static mount", () => {
     });
 
     const pageRes = createMockResponse();
-    await handler(createMockRequest("/dashboard"), pageRes, async () => {});
-    expect(pageRes.streamed).toBe(true);
-    expect(pageRes.headers["Content-Type"]).toBe("text/html; charset=utf-8");
-    expect(pageRes.headers.Vary).toBe("Accept");
+    await handler(
+      createMockRequest("/dashboard", { accept: "text/html" }),
+      pageRes,
+      async () => {},
+    );
+    expect(pageRes.streamed).toBe(false);
+    expect(fallbackCalled).toBe(1);
+    expect(pageRes.statusCode).toBe(404);
 
     const jsonRes = createMockResponse();
     await handler(
@@ -199,13 +882,123 @@ describe("frontend static mount", () => {
       jsonRes,
       async () => {},
     );
-    expect(fallbackCalled).toBe(1);
+    expect(fallbackCalled).toBe(2);
     expect(jsonRes.statusCode).toBe(404);
 
     const apiRes = createMockResponse();
     await handler(createMockRequest("/api/missing"), apiRes, async () => {});
-    expect(fallbackCalled).toBe(2);
+    expect(fallbackCalled).toBe(3);
     expect(apiRes.statusCode).toBe(404);
+  });
+
+  it("serves scoped SPA fallback from the configured page", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "src", "frontend", "pages", "app"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "app", "shell.tsx"),
+      "export default function AppShell() { return null; }\n",
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+
+    let fallbackCalled = 0;
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        spaFallback: {
+          scopes: [{ basePath: "/app", page: "app/shell" }],
+        },
+      },
+      fallbackHandler: async (_req, res) => {
+        fallbackCalled += 1;
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await handler(
+      createMockRequest("/app/settings", { accept: "text/html" }),
+      res as any,
+      async () => {},
+    );
+
+    expect(fallbackCalled).toBe(0);
+    expect(res.sent?.status).toBe(200);
+    expect(res.sent?.headers.Vary).toBe("Accept");
+    expect(res.sent?.html).toContain('data-vext-page="app/shell"');
+  });
+
+  it("renders HTML 404 error page for non-fallback navigation", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+      fallbackHandler: async (_req, res) => {
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await handler(
+      createMockRequest("/missing-page", { accept: "text/html" }),
+      res as any,
+      async () => {},
+    );
+
+    const payload = res.sent?.data as any;
+    expect(res.sent?.status).toBe(404);
+    expect(res.sent?.headers.Vary).toBe("Accept");
+    expect(res.sent?.html).toContain('data-vext-page="error/404"');
+    expect(payload.props.error).toMatchObject({
+      status: 404,
+      code: 404,
+      requestId: "req-1",
+    });
+  });
+
+  it("keeps missing static assets on the JSON 404 path", async () => {
+    const rootDir = await tempRoot();
+    const outDir = path.join(rootDir, "dist", "client");
+    await mkdir(outDir, { recursive: true });
+    await writeFile(path.join(outDir, "index.html"), "<main>app</main>");
+
+    let fallbackCalled = 0;
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+      fallbackHandler: async (_req, res) => {
+        fallbackCalled += 1;
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+
+    const res = createMockResponse();
+    await handler(
+      createMockRequest("/assets/missing.js", { accept: "text/html" }),
+      res,
+      async () => {},
+    );
+
+    expect(fallbackCalled).toBe(1);
+    expect(res.statusCode).toBe(404);
+    expect(res.streamed).toBe(false);
   });
 
   it("serves conditional static requests without source entity length on 304", async () => {
@@ -248,6 +1041,30 @@ async function tempRoot(): Promise<string> {
   return dir;
 }
 
+async function createMinimalFrontend(rootDir: string): Promise<void> {
+  const frontendDir = path.join(rootDir, "src", "frontend");
+  await mkdir(path.join(frontendDir, "pages", "error"), {
+    recursive: true,
+  });
+  await mkdir(path.join(frontendDir, "styles"), { recursive: true });
+  await writeFile(
+    path.join(frontendDir, "pages", "_document.html"),
+    "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+  );
+  await writeFile(
+    path.join(frontendDir, "pages", "index.tsx"),
+    "export default function Page() { return null; }\n",
+  );
+  await writeFile(
+    path.join(frontendDir, "pages", "error", "404.tsx"),
+    "export default function NotFound() { return null; }\n",
+  );
+  await writeFile(
+    path.join(frontendDir, "styles", "index.css"),
+    "body { margin: 0; }\n",
+  );
+}
+
 function createMockRequest(
   pathname: string,
   headers: Record<string, string | undefined> = {},
@@ -285,6 +1102,36 @@ function createMockResponse() {
     },
   };
   return res as any;
+}
+
+function createRenderMockResponse() {
+  const res = {
+    statusCode: 200,
+    sent: undefined as
+      | {
+          html: string;
+          status: number;
+          headers: Record<string, string>;
+          kind: "html" | "render";
+          data?: unknown;
+        }
+      | undefined,
+    onSendPayload: undefined as any,
+    _onSend(data: any) {
+      this.onSendPayload = data;
+    },
+    _sendHtml(
+      html: string,
+      status: number,
+      headers: Record<string, string>,
+      kind: "html" | "render",
+      data?: unknown,
+    ) {
+      this.statusCode = status;
+      this.sent = { html, status, headers, kind, data };
+    },
+  };
+  return res;
 }
 
 function trackReadable(readable: NodeJS.ReadableStream): void {

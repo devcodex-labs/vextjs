@@ -108,28 +108,28 @@ export default {
 
 ### `VextConfig`
 
-| 字段             | 类型                                                    | 默认值      | 说明                       |
-| ---------------- | ------------------------------------------------------- | ----------- | -------------------------- |
-| `port`           | `number`                                                | `3000`      | HTTP 监听端口              |
-| `host`           | `string`                                                | `'0.0.0.0'` | HTTP 监听地址              |
-| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`  | 底层适配器                 |
-| `trustProxy`     | `boolean`                                               | `false`     | 是否信任代理               |
-| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`        | 路由级中间件白名单         |
-| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方      | CORS 配置                  |
-| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方      | 速率限制配置               |
-| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方      | 请求 ID 配置               |
-| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方      | 日志配置                   |
-| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方      | 优雅关闭配置               |
-| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`        | Node.js HTTP server 配置   |
-| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方      | 响应配置                   |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方      | Body 解析配置              |
-| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined` | 文件上传配置               |
-| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方      | 访问日志配置               |
-| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方      | OpenAPI 文档配置           |
-| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方      | 请求上下文配置             |
-| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方      | 内置 HTTP 客户端与代理配置 |
+| 字段             | 类型                                                    | 默认值               | 说明                       |
+| ---------------- | ------------------------------------------------------- | -------------------- | -------------------------- |
+| `port`           | `number`                                                | `3000`               | HTTP 监听端口              |
+| `host`           | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址              |
+| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                 |
+| `trustProxy`     | `boolean`                                               | `false`              | 是否信任代理               |
+| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单         |
+| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                  |
+| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置               |
+| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置               |
+| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                   |
+| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置               |
+| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置   |
+| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                   |
+| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置              |
+| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置               |
+| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置               |
+| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置           |
+| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置             |
+| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置 |
 | `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置 |
-| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined` | Cluster 多进程配置         |
+| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置         |
 
 ---
 
@@ -741,40 +741,38 @@ export default {
 
 内置前端构建与静态服务配置。
 
-| 字段 | 类型 | 默认值 | 说明 |
-| -------------------- | -------------------- | ------------------------- | ----------------------------- |
-| `enabled` | `boolean` | `false` | 是否启用前端集成 |
-| `framework` | `string` | `'react'` | 前端框架标签 |
-| `root` | `string` | `'src/client'` | 前端源码目录 |
-| `entry` | `string` | `'src/client/main.tsx'` | 浏览器入口文件 |
-| `indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
-| `outDir` | `string` | 开发期 `.vext/client`，生产期 `dist/client` | 前端输出目录 |
-| `publicDir` | `string` | `'public'` | 会复制到前端输出目录的静态资源 |
-| `publicPath` | `string` | `'/'` | 公开资源路径前缀 |
-| `spaFallback` | `boolean \| object` | `true` | 对非 API 浏览器路径服务 `index.html` |
-| `apiClient` | `boolean \| object` | `true` | 生成 client contract 产物 |
-| `build.target` | `string \| string[]` | `'es2022'` | 浏览器构建目标 |
-| `build.minify` | `boolean` | 生产期 `true` | 压缩前端产物 |
-| `build.sourcemap` | `boolean` | 开发期 `true` | 生成前端 source map |
+| 字段              | 类型                 | 默认值                                         | 说明                                                 |
+| ----------------- | -------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| `enabled`         | `boolean`            | `false`                                        | 是否启用前端集成                                     |
+| `framework`       | `string`             | `'react'`                                      | 前端框架标签                                         |
+| `root`            | `string`             | `'src/frontend'`                               | 前端源码目录                                         |
+| `entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'` | 自动生成的浏览器入口；通常不需要手写                 |
+| `indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`          | HTML document 模板                                   |
+| `outDir`          | `string`             | 开发期 `.vext/client`，生产期 `dist/client`    | 前端输出目录                                         |
+| `publicDir`       | `string`             | `'public'`                                     | 会复制到前端输出目录的静态资源                       |
+| `publicPath`      | `string`             | `'/'`                                          | 公开资源路径前缀                                     |
+| `spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                               | 只对显式声明的 client-router 子应用范围服务 fallback |
+| `apiClient`       | `boolean \| object`  | `true`                                         | 生成 client contract 产物                            |
+| `build.target`    | `string \| string[]` | `'es2022'`                                     | 浏览器构建目标                                       |
+| `build.minify`    | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                         |
+| `build.sourcemap` | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                  |
 
 ```typescript
 export default {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
     spaFallback: {
       enabled: true,
-      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+      scopes: [],
     },
   },
 };
 ```
 
-默认 SPA fallback 排除 `/api/**`、`/openapi.json` 和 `/docs/**`，让这些路径继续进入后端运行时。
+默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。
 
 ---
 

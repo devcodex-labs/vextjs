@@ -51,11 +51,24 @@ function createMockReq(overrides: Partial<VextRequest> = {}): VextRequest {
  */
 function createMockRes(): VextResponse & {
   _jsonCalls: Array<{ data: unknown; status?: number }>;
+  _htmlCalls: Array<{
+    html: string;
+    status: number;
+    headers: Record<string, string>;
+    kind: "html" | "render";
+  }>;
+  _renderCalls: Array<{
+    payload: unknown;
+    status: number;
+    headers: Record<string, string>;
+  }>;
   _headerCalls: Array<{ name: string; value: string }>;
   _statusVal: number;
 } {
   const res: any = {
     _jsonCalls: [],
+    _htmlCalls: [],
+    _renderCalls: [],
     _headerCalls: [],
     _headers: {},
     _statusVal: 200,
@@ -72,6 +85,25 @@ function createMockRes(): VextResponse & {
       res._jsonCalls.push({ data, status });
     },
     text(_content: string, _status?: number) {},
+    _sendHtml(
+      html: string,
+      status: number,
+      headers: Record<string, string>,
+      kind: "html" | "render",
+    ) {
+      res._statusVal = status;
+      Object.assign(res._headers, headers);
+      res._htmlCalls.push({ html, status, headers, kind });
+    },
+    _renderCached(
+      payload: unknown,
+      status: number,
+      headers: Record<string, string>,
+    ) {
+      res._statusVal = status;
+      Object.assign(res._headers, headers);
+      res._renderCalls.push({ payload, status, headers });
+    },
     stream(_readable: any, _contentType?: string) {},
     download(_readable: any, _filename: string, _contentType?: string) {},
     redirect(_url: string, _status?: number) {},
@@ -384,6 +416,68 @@ describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
     }
 
     expect(count).toBe(2);
+  });
+
+  it("res.render() 的 payload 复用路由缓存，HIT 时通过 _renderCached 重渲染", async () => {
+    const { middleware } = createMiddleware({ ttl: 2_000 });
+    const req = createMockReq({ path: "/dashboard" });
+    const firstRes = createMockRes();
+    const hitRes = createMockRes();
+    let renderCalls = 0;
+
+    await middleware(req, firstRes, async () => {
+      renderCalls++;
+      const headers = { "Content-Type": "text/html; charset=utf-8" };
+      firstRes._onSend?.(
+        {
+          __vextResponseKind: "render",
+          payload: {
+            page: "dashboard",
+            props: { renderCalls },
+            options: {},
+            buildId: "test-build",
+            mode: "production",
+          },
+        },
+        200,
+        headers,
+      );
+      firstRes._sendHtml?.(
+        `<!doctype html><html><body>dashboard-${renderCalls}</body></html>`,
+        200,
+        headers,
+        "render",
+      );
+    });
+
+    const hitNext = vi.fn();
+    await middleware(req, hitRes, hitNext);
+
+    expect(renderCalls).toBe(1);
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(hitRes._headerCalls).toContainEqual({
+      name: "X-Cache",
+      value: "HIT",
+    });
+    expect(hitRes._jsonCalls).toHaveLength(0);
+    expect(hitRes._htmlCalls).toHaveLength(0);
+    expect(hitRes._renderCalls[0]).toMatchObject({
+      status: 200,
+    });
+    expect((hitRes._renderCalls[0]?.payload as any).payload.page).toBe(
+      "dashboard",
+    );
+    expect((hitRes._renderCalls[0]?.payload as any).payload.props).toEqual({
+      renderCalls: 1,
+    });
+    expect(
+      hitRes._renderCalls[0]?.headers["Content-Type"] ??
+        hitRes._renderCalls[0]?.headers["content-type"],
+    ).toBe("text/html; charset=utf-8");
+    expect(
+      hitRes._renderCalls[0]?.headers["Cache-Control"] ??
+        hitRes._renderCalls[0]?.headers["cache-control"],
+    ).toBe("public, max-age=2");
   });
 
   it("并发 MISS 使用 single-flight，只调用一次 handler", async () => {

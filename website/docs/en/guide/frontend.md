@@ -6,7 +6,7 @@ Vext frontend integration is the in-development path for keeping HTTP routes, se
 This page describes the target experience for the frontend integration that is still under development. It is meant to align implementation and user-facing usage. Until the feature is implemented and released, do not treat `src/frontend/pages/**`, `src/frontend/locales/**`, `res.render()`, `renderError()`, `frontend.i18n`, `useVextI18n()`, React Fast Refresh, SSR, layout chains, or automatic browser entry generation as stable published APIs.
 :::
 
-The core model is simple: URLs are still defined in `src/routes/**`; frontend source lives under `src/frontend/**`; page components live in `src/frontend/pages/**`; frontend page copy lives under `src/frontend/locales/**`; a route handler returns an HTML page by calling `res.render(page, props, options)`. Server data is prepared in the route handler or a service, then passed to the page as props, layoutData, or messages. Server-only code is not bundled into the browser output. During development, React pages, layouts, shared components, and styles use Fast Refresh or CSS hot updates by default; when route/service code that affects rendering changes, the browser action is controlled by `frontend.dev.renderRefresh`. Pages, layouts, and shared components can use default aliases such as `@components`, `@styles`, and `@assets`; when they need localized copy, they use `useVextI18n(locale?)` from `vextjs/frontend` and read object properties such as `i18n.dashboard.title`. These capabilities stay inside the frontend source boundary.
+The core model is simple: URLs are still defined in `src/routes/**`; frontend source lives under `src/frontend/**`; page components live in `src/frontend/pages/**`; frontend page copy lives under `src/frontend/locales/**`; a route handler returns an HTML page by calling `res.render(page, props, options)`. Server data is prepared in the route handler or a service, then passed to the page as props, layoutData, or messages. Server-only code is not bundled into the browser output. During development, React pages, layouts, shared components, and styles use Fast Refresh or CSS hot updates by default; when route/service code that affects rendering changes, the browser action is controlled by `frontend.dev.renderRefresh`. Pages, layouts, and shared components can use default aliases such as `@components`, `@styles`, and `@assets`; component-local styles can use Vext JSCSS from `vextjs/style`; when they need localized copy, they use `useVextI18n(locale?)` from `vextjs/frontend` and read object properties such as `i18n.dashboard.title`. These capabilities stay inside the frontend source boundary.
 
 ## Table of Contents
 
@@ -94,7 +94,8 @@ my-app/
 │   │   │   └── ui/
 │   │   │       └── Button.tsx
 │   │   ├── styles/
-│   │   │   └── index.css
+│   │   │   ├── index.css
+│   │   │   └── card.style.ts
 │   │   ├── assets/
 │   │   │   └── logo.svg
 │   │   └── locales/
@@ -111,23 +112,23 @@ my-app/
 └── package.json
 ```
 
-| File or directory | How to use it |
-| --- | --- |
-| `src/frontend/**` | User frontend source root. Pages, components, styles, and bundled assets stay here instead of mixing with server directories. |
-| `src/frontend/pages/**` | Page components, directory-level `layout.tsx`, `_document.html`, and error pages. The relative file path is the page id passed to `res.render(page)`. |
-| `src/frontend/pages/error/default.tsx` | Default error page used when no status-specific page exists. |
-| `src/frontend/pages/error/**` | Status-specific error pages, such as `error/404` and `error/500`. |
-| `src/frontend/components/**` | Shared components, layout components, form components, and reusable error UI. |
-| `src/frontend/styles/**` | Global CSS, theme variables, and page style entries. The default entry is `src/frontend/styles/index.css`. |
-| `src/frontend/assets/**` | Images, SVGs, fonts, and similar assets imported from TSX or CSS. |
-| `src/frontend/locales/**` | Copy dictionaries for frontend pages, layouts, shared components, and error pages. Do not put page copy into the backend `src/locales/**` error-message directory. |
-| `@components/*` and other aliases | Frontend-only import shortcuts. They resolve inside `src/frontend/**`, not into `src/routes/**` or `src/services/**`. |
-| `public/**` | Static public files served as-is, such as favicons, robots files, and verification files. |
-| `src/routes/**` | HTTP routes. API URLs and page URLs are both defined here. |
-| `src/services/**` | Server-side business logic. Route handlers call services, then pass results to pages. |
-| `src/config/**` | Vext configuration, including the `frontend` block. |
+| File or directory                      | How to use it                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/frontend/**`                      | User frontend source root. Pages, components, styles, and bundled assets stay here instead of mixing with server directories.                                      |
+| `src/frontend/pages/**`                | Page components, directory-level `layout.tsx`, `_document.html`, and error pages. The relative file path is the page id passed to `res.render(page)`.              |
+| `src/frontend/pages/error/default.tsx` | Default error page used when no status-specific page exists.                                                                                                       |
+| `src/frontend/pages/error/**`          | Status-specific error pages, such as `error/404` and `error/500`.                                                                                                  |
+| `src/frontend/components/**`           | Shared components, layout components, form components, and reusable error UI.                                                                                      |
+| `src/frontend/styles/**`               | Global CSS, theme variables, page style entries, and Vext JSCSS files. The default CSS entry is `src/frontend/styles/index.css`.                                   |
+| `src/frontend/assets/**`               | Images, SVGs, fonts, and similar assets imported from TSX or CSS.                                                                                                  |
+| `src/frontend/locales/**`              | Copy dictionaries for frontend pages, layouts, shared components, and error pages. Do not put page copy into the backend `src/locales/**` error-message directory. |
+| `@components/*` and other aliases      | Frontend-only import shortcuts. They resolve inside `src/frontend/**`, not into `src/routes/**` or `src/services/**`.                                              |
+| `public/**`                            | Static public files served as-is, such as favicons, robots files, and verification files.                                                                          |
+| `src/routes/**`                        | HTTP routes. API URLs and page URLs are both defined here.                                                                                                         |
+| `src/services/**`                      | Server-side business logic. Route handlers call services, then pass results to pages.                                                                              |
+| `src/config/**`                        | Vext configuration, including the `frontend` block.                                                                                                                |
 
-You do not create `src/client/main.tsx` or `src/client/index.html` for new projects. Vext generates the browser entry, page registry, layout registry, error page registry, and runtime code.
+You do not create a browser entry or HTML shell by hand for new projects. Vext generates the browser entry, page registry, layout registry, error page registry, and runtime code under `.vext/generated/frontend/`.
 
 ## 4. Add page files
 
@@ -164,12 +165,12 @@ export default function DashboardPage({ stats }: DashboardPageProps) {
 
 The page id is the relative path under `src/frontend/pages/` without the extension:
 
-| File | Page id |
-| --- | --- |
-| `src/frontend/pages/index.tsx` | `index` |
-| `src/frontend/pages/dashboard.tsx` | `dashboard` |
+| File                                  | Page id        |
+| ------------------------------------- | -------------- |
+| `src/frontend/pages/index.tsx`        | `index`        |
+| `src/frontend/pages/dashboard.tsx`    | `dashboard`    |
 | `src/frontend/pages/users/detail.tsx` | `users/detail` |
-| `src/frontend/pages/error/404.tsx` | `error/404` |
+| `src/frontend/pages/error/404.tsx`    | `error/404`    |
 
 Creating a page file does not create a URL. You still render it from `src/routes/**` with `res.render()`.
 
@@ -194,11 +195,11 @@ export default defineRoutes((app) => {
 
 `res.render(page, props?, options?)` has three parameters:
 
-| Parameter | Required | Description |
-| --- | :---: | --- |
-| `page` | Yes | A page id under `src/frontend/pages/**`. It is not a URL and not an absolute file path. |
-| `props` | No | Data passed to the page component. It must be JSON-safe. |
-| `options` | No | HTML response options for this render, such as `status`, `headers`, `title`, `description`, `head`, `nonce`, `locale`, `messages`, `layout`, and `layoutData`. |
+| Parameter | Required | Description                                                                                                                                                    |
+| --------- | :------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page`    |   Yes    | A page id under `src/frontend/pages/**`. It is not a URL and not an absolute file path.                                                                        |
+| `props`   |    No    | Data passed to the page component. It must be JSON-safe.                                                                                                       |
+| `options` |    No    | HTML response options for this render, such as `status`, `headers`, `title`, `description`, `head`, `nonce`, `locale`, `messages`, `layout`, and `layoutData`. |
 
 With title, status, and headers:
 
@@ -439,13 +440,13 @@ export default function DashboardPage() {
 
 Default aliases:
 
-| Alias | Target |
-| --- | --- |
-| `@frontend/*` | `src/frontend/*` |
-| `@pages/*` | `src/frontend/pages/*` |
+| Alias           | Target                      |
+| --------------- | --------------------------- |
+| `@frontend/*`   | `src/frontend/*`            |
+| `@pages/*`      | `src/frontend/pages/*`      |
 | `@components/*` | `src/frontend/components/*` |
-| `@styles/*` | `src/frontend/styles/*` |
-| `@assets/*` | `src/frontend/assets/*` |
+| `@styles/*`     | `src/frontend/styles/*`     |
+| `@assets/*`     | `src/frontend/assets/*`     |
 
 Vext does not provide `@/* -> src/*` by default. This prevents frontend pages from accidentally importing `src/services/**`, `src/routes/**`, or `src/config/**` into the browser bundle. Custom aliases should also stay within the `src/frontend/**` boundary.
 
@@ -487,14 +488,70 @@ export default function DashboardPage() {
 
 CSS is bundled by esbuild into frontend assets, and Vext injects the generated CSS links into the HTML template.
 
+If you do not want to write many CSS files, use the built-in Vext JSCSS path. Place styles in `src/frontend/**/*.style.ts`, `src/frontend/**/*.style.js`, or `src/frontend/**/*.css.ts`, then import class names from pages or components:
+
+```ts
+// src/frontend/styles/card.style.ts
+import { createVar, recipe, setVar, style, vars } from "vextjs/style";
+
+export const accent = createVar("accent", "#0f766e");
+
+export const card = style(
+  {
+    color: accent,
+    padding: 16,
+    borderRadius: 8,
+    "&:hover": {
+      color: "tomato",
+    },
+    "@media (min-width: 768px)": {
+      padding: 24,
+    },
+  },
+  "card",
+);
+
+export const button = recipe({
+  name: "button",
+  base: {
+    borderRadius: 6,
+    fontWeight: 600,
+  },
+  variants: {
+    tone: {
+      primary: { backgroundColor: "black", color: "white" },
+      muted: { backgroundColor: "#eef2f7", color: "#172026" },
+    },
+  },
+  defaultVariants: { tone: "primary" },
+});
+
+export const dynamicAccent = vars(setVar(accent, "#2563eb"));
+```
+
+```tsx
+// src/frontend/pages/dashboard.tsx
+import { button, card, dynamicAccent } from "../styles/card.style";
+
+export default function DashboardPage() {
+  return (
+    <main className={card} style={dynamicAccent}>
+      <button className={button({ tone: "primary" })}>Save</button>
+    </main>
+  );
+}
+```
+
+Vext JSCSS extracts static CSS at build time and uses CSS variables for dynamic values. The production browser bundle does not depend on Emotion, styled-components, or another runtime CSS-in-JS package by default. You can still write plain CSS; both paths are merged into the final CSS asset and injected through `{vext.styles}`.
+
 ## 10. Images and static assets
 
 Vext recommends two asset locations:
 
-| Location | Best for | How to reference |
-| --- | --- | --- |
-| `public/**` | Favicons, robots files, public images or files that should not be hashed | Use URLs such as `/favicon.svg` or `/brand/logo.png` |
-| `src/frontend/assets/**` | Images, SVGs, and fonts imported by pages or CSS | Import from TSX or CSS; esbuild emits hashed assets |
+| Location                 | Best for                                                                 | How to reference                                     |
+| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `public/**`              | Favicons, robots files, public images or files that should not be hashed | Use URLs such as `/favicon.svg` or `/brand/logo.png` |
+| `src/frontend/assets/**` | Images, SVGs, and fonts imported by pages or CSS                         | Import from TSX or CSS; esbuild emits hashed assets  |
 
 `public/` example:
 
@@ -601,10 +658,10 @@ The form calls a normal Vext API route. Put validation, authorization, CSRF or s
 
 Vext uses two i18n layers:
 
-| Layer | Location | Purpose |
-| --- | --- | --- |
-| Backend locale | `config.locale`, `src/locales/**` | API errors, `app.throw()`, schema-dsl validation messages, `Accept-Language` matching, and `requestContext.locale`. |
-| Frontend i18n | `frontend.i18n`, `src/frontend/locales/**` | Page, layout, shared component, and error page copy, SSR initial messages, hydration, and `<html lang>`. |
+| Layer          | Location                                   | Purpose                                                                                                             |
+| -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Backend locale | `config.locale`, `src/locales/**`          | API errors, `app.throw()`, schema-dsl validation messages, `Accept-Language` matching, and `requestContext.locale`. |
+| Frontend i18n  | `frontend.i18n`, `src/frontend/locales/**` | Page, layout, shared component, and error page copy, SSR initial messages, hydration, and `<html lang>`.            |
 
 Keep API error messages and page copy in separate directories. Put page copy here:
 
@@ -722,8 +779,12 @@ For the first version, language switching should use a reload flow: after the us
 export function LanguageSwitch() {
   return (
     <form method="post" action="/api/me/locale">
-      <button name="locale" value="zh-CN">中文</button>
-      <button name="locale" value="en-US">English</button>
+      <button name="locale" value="zh-CN">
+        中文
+      </button>
+      <button name="locale" value="en-US">
+        English
+      </button>
     </form>
   );
 }
@@ -815,12 +876,12 @@ return res.renderError(
 
 404 response rules:
 
-| Request type | Output |
-| --- | --- |
-| API/JSON request | JSON 404. |
-| Handler calls `res.renderError(404)` | HTML error page. |
-| Browser visits an undefined HTML route | HTML 404 error page. |
-| Static asset is missing | Does not render an HTML error page. |
+| Request type                                                | Output                               |
+| ----------------------------------------------------------- | ------------------------------------ |
+| API/JSON request                                            | JSON 404.                            |
+| Handler calls `res.renderError(404)`                        | HTML error page.                     |
+| Browser visits an undefined HTML route                      | HTML 404 error page.                 |
+| Static asset is missing                                     | Does not render an HTML error page.  |
 | `spaFallback.scopes[]` is explicitly configured and matched | Returns that scope's shell document. |
 
 The default recommendation is to render pages explicitly from routes, not to emulate page routing through SPA fallback.
@@ -841,27 +902,24 @@ Template example:
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    {vext.head}
-    {vext.styles}
+    {vext.head} {vext.styles}
   </head>
   <body>
-    {vext.root}
-    {vext.data}
-    {vext.entry}
+    {vext.root} {vext.data} {vext.entry}
   </body>
 </html>
 ```
 
 Available tokens:
 
-| Token | Meaning |
-| --- | --- |
-| `{vext.head}` | Title, description, meta, canonical/preload links, and other safe head content from `res.render()` options. |
-| `{vext.styles}` | CSS `<link>` tags. |
-| `{vext.lang}` | The locale for the current HTML response, used by `<html lang>`. It inherits `requestContext.locale` by default and can be overridden with `options.locale`. |
-| `{vext.root}` | React SSR HTML mount node. |
-| `{vext.data}` | JSON-safe page props, layout data, locale, and initial messages. Vext escapes the serialized payload before writing it into the page. |
-| `{vext.entry}` | Browser entry script. |
+| Token           | Meaning                                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `{vext.head}`   | Title, description, meta, canonical/preload links, and other safe head content from `res.render()` options.                                                  |
+| `{vext.styles}` | CSS `<link>` tags.                                                                                                                                           |
+| `{vext.lang}`   | The locale for the current HTML response, used by `<html lang>`. It inherits `requestContext.locale` by default and can be overridden with `options.locale`. |
+| `{vext.root}`   | React SSR HTML mount node.                                                                                                                                   |
+| `{vext.data}`   | JSON-safe page props, layout data, locale, and initial messages. Vext escapes the serialized payload before writing it into the page.                        |
+| `{vext.entry}`  | Browser entry script.                                                                                                                                        |
 
 The server data flow is: the route handler calls `res.render("page-id", props, options)`; Vext performs SSR on the server; `props`, `layoutData`, `locale`, and `messages` are serialized and escaped into `{vext.data}`; the browser entry reads the same data and hydrates into `{vext.root}`. The template only supports these reserved Vext tokens and does not evaluate arbitrary template expressions.
 
@@ -935,10 +993,9 @@ const config: VextUserConfig = {
         manifest: true,
       },
       server: {
-        outFile: "dist/client/server/renderer.mjs",
+        outFile: "dist/client/server/renderer.cjs",
         target: "node20",
-        format: "esm",
-        external: ["react", "react-dom"],
+        external: [],
       },
       assets: {
         inlineLimit: 0,
@@ -991,67 +1048,72 @@ export default config;
 
 Configuration reference:
 
-| Field | Default | Purpose |
-| --- | --- | --- |
-| `frontend` | `false` | `true` enables default frontend; `false` disables frontend; object form configures details. |
-| `frontend.enabled` | `false` | Enables built-in frontend build, SSR, and static serving. |
-| `frontend.framework` | `"react"` | Default React frontend. |
-| `frontend.root` | `"src/frontend"` | User frontend source root. |
-| `frontend.pages.dir` | `"pages"` | Page directory, resolved relative to `frontend.root` by default. |
-| `frontend.pages.extensions` | `[".tsx", ".jsx", ".ts", ".js"]` | Page scan extensions. |
-| `frontend.componentsDir` | `"components"` | Shared component directory, resolved relative to `frontend.root` by default. |
-| `frontend.styles.entry` | `"styles/index.css"` | Global style entry, resolved relative to `frontend.root` by default. |
-| `frontend.assetsDir` | `"assets"` | Imported asset directory, resolved relative to `frontend.root` by default. |
-| `frontend.publicDir` | `"public"` | Static files copied as-is, resolved relative to the project root by default. |
-| `frontend.publicPath` | `"/"` | Public URL prefix for frontend assets. |
-| `frontend.dev.hot` | `true` | Enables the development frontend hot-update channel. When disabled, frontend changes fall back to rebuild + reload. |
-| `frontend.dev.fastRefresh` | `true` | Enables React Fast Refresh when `framework: "react"`. |
-| `frontend.dev.transport` | `"sse"` | Transport for the Vext dev event bus. The first version uses SSE and does not require WebSocket or Vite configuration. |
-| `frontend.dev.overlay` | `true` | Shows frontend build errors, Fast Refresh errors, and render refresh prompts in the dev overlay. |
-| `frontend.dev.debounceMs` | `50` | Debounce window for development file-save storms. |
-| `frontend.dev.renderRefresh` | `"prompt"` | Browser behavior after render-related backend code changes: `"prompt"` shows a refresh prompt, `"auto"` reloads automatically, and `"off"` only records the event. |
-| `frontend.alias` | See the default alias table | Frontend import aliases. Defaults resolve only inside `frontend.root`. |
-| `frontend.build.client.outDir` | `"dist/client"` | Production browser output directory. |
-| `frontend.build.client.assetsDir` | `"assets"` | Output subdirectory for JS, CSS, images, fonts, and other built assets. |
-| `frontend.build.client.target` | `"es2022"` | Browser build target. |
-| `frontend.build.client.minify` | `true` | Minifies production browser builds. |
-| `frontend.build.client.sourcemap` | `false` | Emits sourcemaps for production browser builds. |
-| `frontend.build.client.splitting` | `true` | Allows page and shared-code splitting. |
-| `frontend.build.client.entryNames` | `"[name]-[hash]"` | Page entry file naming template. |
-| `frontend.build.client.chunkNames` | `"[name]-[hash]"` | Shared chunk naming template. |
-| `frontend.build.client.assetNames` | `"[name]-[hash]"` | Static asset naming template. |
-| `frontend.build.client.manifest` | `true` | Emits the browser manifest. |
-| `frontend.build.server.outFile` | `"dist/client/server/renderer.mjs"` | SSR renderer output file. |
-| `frontend.build.server.external` | `["react", "react-dom"]` | Packages externalized from the server renderer bundle. |
-| `frontend.build.assets.inlineLimit` | `0` | Imported asset inline limit; default emits hashed files. |
-| `frontend.build.css.modules` | `true` | Enables CSS Modules convention. Sass, Tailwind, and PostCSS are plugin/user-config capabilities until implemented as defaults. |
-| `frontend.build.diagnostics.metafile` | `true` | Emits esbuild metafile for manifests and bundle debugging. |
-| `frontend.build.diagnostics.sizeReport` | `true` | Emits size report for page and shared chunks. |
-| `frontend.build.diagnostics.leakScan` | `true` | Scans the browser graph and blocks `src/routes/**`, `src/services/**`, `node:*`, and other server-only inputs. |
-| `frontend.deploy.assetBaseUrl` | `undefined` | CDN asset base URL. When set, static asset URLs in HTML and manifests use this prefix. |
-| `frontend.deploy.crossOrigin` | `undefined` | `crossorigin` policy for CDN script/link tags. |
-| `frontend.deploy.integrity` | `false` | Whether to emit integrity metadata; initially this can remain reserved until implemented. |
-| `frontend.render.ssr` | `true` | Enables page SSR. |
-| `frontend.render.fallback` | `"client"` | Whether SSR failure falls back to client rendering. |
-| `frontend.render.timeoutMs` | `3000` | Timeout for one SSR render. |
-| `frontend.render.layout` | `true` | Enables the default layout chain. A single `res.render()` call can override it with `options.layout`. |
-| `frontend.errorPages.default` | `"error/default"` | Default error page. |
-| `frontend.errorPages.status.404` | `"error/404"` | 404 error page. |
-| `frontend.errorPages.status.500` | `"error/500"` | 500 error page. |
-| `frontend.i18n.enabled` | `false` | Enables the frontend page-copy layer. Backend API error language still belongs to `config.locale`. |
-| `frontend.i18n.source` | `"locales"` | Frontend page-copy directory, resolved relative to `frontend.root` as `src/frontend/locales`. |
-| `frontend.i18n.defaultLocale` | `"inherit"` | Inherits `config.locale.default` by default. You can also set a supported locale such as `zh-CN` or `en-US`. |
-| `frontend.i18n.detect` | `["accept-language"]` | Language detection source for the first version. Cookie, path prefix, or user preference support can be added later with an explicit priority order. |
-| `frontend.i18n.inject` | `"used"` | Scope for SSR initial messages. Prefer injecting only property paths used by the current page/layout. |
-| `frontend.i18n.clientSwitch` | `"reload"` | Client language-switch strategy. The first version should request HTML again so SSR and hydration stay aligned. |
-| `frontend.i18n.htmlLang` | `true` | Writes the current locale into `{vext.lang}`. |
-| `frontend.i18n.vary` | `true` | Adds `Vary: Accept-Language` or an equivalent cache key when language affects HTML. |
-| `frontend.spaFallback.scopes` | `[]` | Fallback scopes for client-router sub-apps. Empty by default, so unmatched paths are not handled. |
-| `frontend.spaFallback.scopes[].basePath` | None | URL prefix handled by this SPA sub-app, such as `/admin/app`. |
-| `frontend.spaFallback.scopes[].page` | None | Page shell returned by fallback, such as `admin/app/shell`, still resolved from `src/frontend/pages/**`. |
-| `frontend.spaFallback.scopes[].ssr` | `false` | Whether to SSR the shell. Pure client-router sub-apps usually keep this `false`. |
-| `frontend.spaFallback.scopes[].exclude` | `[]` | Paths inside the scope that must not be handled by fallback, such as `/admin/api/**`. |
-| `frontend.spaFallback.scopes[].status` | `200` | HTTP status returned when fallback matches. |
+| Field                                    | Default                                             | Purpose                                                                                                                                                            |
+| ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `frontend`                               | `false`                                             | `true` enables default frontend; `false` disables frontend; object form configures details.                                                                        |
+| `frontend.enabled`                       | `false`                                             | Enables built-in frontend build, SSR, and static serving.                                                                                                          |
+| `frontend.framework`                     | `"react"`                                           | Default React frontend.                                                                                                                                            |
+| `frontend.root`                          | `"src/frontend"`                                    | User frontend source root.                                                                                                                                         |
+| `frontend.pages.dir`                     | `"pages"`                                           | Page directory, resolved relative to `frontend.root` by default.                                                                                                   |
+| `frontend.pages.extensions`              | `[".tsx", ".jsx", ".ts", ".js"]`                    | Page scan extensions.                                                                                                                                              |
+| `frontend.componentsDir`                 | `"components"`                                      | Shared component directory, resolved relative to `frontend.root` by default.                                                                                       |
+| `frontend.styles.entry`                  | `"styles/index.css"`                                | Global style entry, resolved relative to `frontend.root` by default.                                                                                               |
+| `frontend.styles.jscss.enabled`          | `true`                                              | Enables Vext JSCSS scanning and build-time CSS extraction.                                                                                                         |
+| `frontend.styles.jscss.files`            | `["**/*.style.ts", "**/*.style.js", "**/*.css.ts"]` | JSCSS files scanned inside `frontend.root`.                                                                                                                        |
+| `frontend.styles.jscss.runtimeAdapter`   | `"css-variables"`                                   | Runtime carrier for dynamic style values; the default keeps CSS variables and avoids third-party runtime CSS-in-JS.                                                |
+| `frontend.styles.jscss.dynamicVars`      | `true`                                              | Enables `createVar()`, `setVar()`, and `vars()` helpers.                                                                                                           |
+| `frontend.styles.jscss.recipes`          | `true`                                              | Enables `recipe()` variant helpers.                                                                                                                                |
+| `frontend.assetsDir`                     | `"assets"`                                          | Imported asset directory, resolved relative to `frontend.root` by default.                                                                                         |
+| `frontend.publicDir`                     | `"public"`                                          | Static files copied as-is, resolved relative to the project root by default.                                                                                       |
+| `frontend.publicPath`                    | `"/"`                                               | Public URL prefix for frontend assets.                                                                                                                             |
+| `frontend.dev.hot`                       | `true`                                              | Enables the development frontend hot-update channel. When disabled, frontend changes fall back to rebuild + reload.                                                |
+| `frontend.dev.fastRefresh`               | `true`                                              | Enables React Fast Refresh when `framework: "react"`.                                                                                                              |
+| `frontend.dev.transport`                 | `"sse"`                                             | Transport for the Vext dev event bus. The first version uses SSE and does not require WebSocket or Vite configuration.                                             |
+| `frontend.dev.overlay`                   | `true`                                              | Shows frontend build errors, Fast Refresh errors, and render refresh prompts in the dev overlay.                                                                   |
+| `frontend.dev.debounceMs`                | `50`                                                | Debounce window for development file-save storms.                                                                                                                  |
+| `frontend.dev.renderRefresh`             | `"prompt"`                                          | Browser behavior after render-related backend code changes: `"prompt"` shows a refresh prompt, `"auto"` reloads automatically, and `"off"` only records the event. |
+| `frontend.alias`                         | See the default alias table                         | Frontend import aliases. Defaults resolve only inside `frontend.root`.                                                                                             |
+| `frontend.build.client.outDir`           | `"dist/client"`                                     | Production browser output directory.                                                                                                                               |
+| `frontend.build.client.assetsDir`        | `"assets"`                                          | Output subdirectory for JS, CSS, images, fonts, and other built assets.                                                                                            |
+| `frontend.build.client.target`           | `"es2022"`                                          | Browser build target.                                                                                                                                              |
+| `frontend.build.client.minify`           | `true`                                              | Minifies production browser builds.                                                                                                                                |
+| `frontend.build.client.sourcemap`        | `false`                                             | Emits sourcemaps for production browser builds.                                                                                                                    |
+| `frontend.build.client.splitting`        | `true`                                              | Allows page and shared-code splitting.                                                                                                                             |
+| `frontend.build.client.entryNames`       | `"[name]-[hash]"`                                   | Page entry file naming template.                                                                                                                                   |
+| `frontend.build.client.chunkNames`       | `"[name]-[hash]"`                                   | Shared chunk naming template.                                                                                                                                      |
+| `frontend.build.client.assetNames`       | `"[name]-[hash]"`                                   | Static asset naming template.                                                                                                                                      |
+| `frontend.build.client.manifest`         | `true`                                              | Emits the browser manifest.                                                                                                                                        |
+| `frontend.build.server.outFile`          | `"dist/client/server/renderer.cjs"`                 | SSR renderer output file.                                                                                                                                          |
+| `frontend.build.server.external`         | `[]`                                                | Packages externalized from the server renderer bundle. React runtime is bundled by default so deployment does not miss renderer dependencies.                      |
+| `frontend.build.assets.inlineLimit`      | `0`                                                 | Imported asset inline limit; default emits hashed files.                                                                                                           |
+| `frontend.build.css.modules`             | `true`                                              | Enables CSS Modules convention. Sass, Tailwind, and PostCSS are plugin/user-config capabilities until implemented as defaults.                                     |
+| `frontend.build.diagnostics.metafile`    | `true`                                              | Emits esbuild metafile for manifests and bundle debugging.                                                                                                         |
+| `frontend.build.diagnostics.sizeReport`  | `true`                                              | Emits size report for page and shared chunks.                                                                                                                      |
+| `frontend.build.diagnostics.leakScan`    | `true`                                              | Scans the browser graph and blocks `src/routes/**`, `src/services/**`, `node:*`, and other server-only inputs.                                                     |
+| `frontend.deploy.assetBaseUrl`           | `undefined`                                         | CDN asset base URL. When set, static asset URLs in HTML and manifests use this prefix.                                                                             |
+| `frontend.deploy.crossOrigin`            | `undefined`                                         | `crossorigin` policy for CDN script/link tags.                                                                                                                     |
+| `frontend.deploy.integrity`              | `false`                                             | Whether to emit integrity metadata; initially this can remain reserved until implemented.                                                                          |
+| `frontend.render.ssr`                    | `true`                                              | Enables page SSR.                                                                                                                                                  |
+| `frontend.render.fallback`               | `"client"`                                          | Whether SSR failure falls back to client rendering.                                                                                                                |
+| `frontend.render.timeoutMs`              | `3000`                                              | Timeout for one SSR render.                                                                                                                                        |
+| `frontend.render.layout`                 | `true`                                              | Enables the default layout chain. A single `res.render()` call can override it with `options.layout`.                                                              |
+| `frontend.errorPages.default`            | `"error/default"`                                   | Default error page.                                                                                                                                                |
+| `frontend.errorPages.status.404`         | `"error/404"`                                       | 404 error page.                                                                                                                                                    |
+| `frontend.errorPages.status.500`         | `"error/500"`                                       | 500 error page.                                                                                                                                                    |
+| `frontend.i18n.enabled`                  | `false`                                             | Enables the frontend page-copy layer. Backend API error language still belongs to `config.locale`.                                                                 |
+| `frontend.i18n.source`                   | `"locales"`                                         | Frontend page-copy directory, resolved relative to `frontend.root` as `src/frontend/locales`.                                                                      |
+| `frontend.i18n.defaultLocale`            | `"inherit"`                                         | Inherits `config.locale.default` by default. You can also set a supported locale such as `zh-CN` or `en-US`.                                                       |
+| `frontend.i18n.detect`                   | `["accept-language"]`                               | Language detection source for the first version. Cookie, path prefix, or user preference support can be added later with an explicit priority order.               |
+| `frontend.i18n.inject`                   | `"used"`                                            | Scope for SSR initial messages. Prefer injecting only property paths used by the current page/layout.                                                              |
+| `frontend.i18n.clientSwitch`             | `"reload"`                                          | Client language-switch strategy. The first version should request HTML again so SSR and hydration stay aligned.                                                    |
+| `frontend.i18n.htmlLang`                 | `true`                                              | Writes the current locale into `{vext.lang}`.                                                                                                                      |
+| `frontend.i18n.vary`                     | `true`                                              | Adds `Vary: Accept-Language` or an equivalent cache key when language affects HTML.                                                                                |
+| `frontend.spaFallback.scopes`            | `[]`                                                | Fallback scopes for client-router sub-apps. Empty by default, so unmatched paths are not handled.                                                                  |
+| `frontend.spaFallback.scopes[].basePath` | None                                                | URL prefix handled by this SPA sub-app, such as `/admin/app`.                                                                                                      |
+| `frontend.spaFallback.scopes[].page`     | None                                                | Page shell returned by fallback, such as `admin/app/shell`, still resolved from `src/frontend/pages/**`.                                                           |
+| `frontend.spaFallback.scopes[].ssr`      | `false`                                             | Whether to SSR the shell. Pure client-router sub-apps usually keep this `false`.                                                                                   |
+| `frontend.spaFallback.scopes[].exclude`  | `[]`                                                | Paths inside the scope that must not be handled by fallback, such as `/admin/api/**`.                                                                              |
+| `frontend.spaFallback.scopes[].status`   | `200`                                               | HTTP status returned when fallback matches.                                                                                                                        |
 
 ### How to understand `spaFallback`
 
@@ -1111,19 +1173,19 @@ public/**
 
 Development changes fall into three groups:
 
-| Change | Default behavior |
-| --- | --- |
-| React pages, layouts, and shared components | Update through React Fast Refresh and preserve current page state when React can safely do so. |
-| CSS and hot-updatable style assets | Update through CSS hot updates without a full-page reload by default. |
+| Change                                                                                                 | Default behavior                                                                                         |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| React pages, layouts, and shared components                                                            | Update through React Fast Refresh and preserve current page state when React can safely do so.           |
+| CSS, JSCSS, and hot-updatable style assets                                                             | Update through CSS hot updates without a full-page reload by default.                                    |
 | `src/routes/**`, `src/services/**`, middleware, and other server code that affects `res.render()` data | Notify the browser after backend soft reload succeeds; the browser follows `frontend.dev.renderRefresh`. |
 
 `frontend.dev.renderRefresh` supports:
 
-| Value | Behavior |
-| --- | --- |
-| `"prompt"` | Recommended default. Shows a development prompt that says the server render changed; click it to reload. This is better for admin pages, forms, dialogs, and active debugging. |
-| `"auto"` | Automatically calls `location.reload()` after render-related backend code soft-reloads successfully. Use it when you want every server-data change to re-request HTML immediately. |
-| `"off"` | Does not prompt or reload; it only records the event in the console. The next manual refresh, navigation, or request gets the new HTML. |
+| Value      | Behavior                                                                                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"prompt"` | Recommended default. Shows a development prompt that says the server render changed; click it to reload. This is better for admin pages, forms, dialogs, and active debugging.     |
+| `"auto"`   | Automatically calls `location.reload()` after render-related backend code soft-reloads successfully. Use it when you want every server-data change to re-request HTML immediately. |
+| `"off"`    | Does not prompt or reload; it only records the event in the console. The next manual refresh, navigation, or request gets the new HTML.                                            |
 
 Normal `res.render()` calls during HTTP requests do not trigger browser refreshes. Refresh events come from source changes after frontend compilation or backend reload results. Frontend syntax errors or Fast Refresh compilation errors show the dev overlay while the previous page stays usable; after you fix the error, updates continue.
 
@@ -1143,7 +1205,7 @@ Production frontend output:
 dist/client/
 ├── assets/
 ├── server/
-│   └── renderer.mjs
+│   └── renderer.cjs
 ├── index.html
 ├── manifest.json
 ├── messages-manifest.json
@@ -1151,7 +1213,7 @@ dist/client/
 └── size-report.json
 ```
 
-Vext builds a browser bundle and a server renderer bundle separately. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. Build diagnostics keep the metafile, manifest, and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
+Vext builds a browser bundle and a server renderer bundle separately. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. When the default JSCSS path is enabled, the build first scans `*.style.ts`, `*.style.js`, and `*.css.ts`, extracts styles registered through `vextjs/style` into generated CSS, then lets esbuild merge that CSS into the final CSS asset. Build diagnostics keep the metafile, manifest, and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
 
 `render-manifest.json` records the build id, pages, layouts, error pages, assets, server renderer path, and diagnostics used by `vext start`. `messages-manifest.json` records available locales, the default locale object shape, page message entries, and the build id. If the manifest schema, messages manifest, or renderer file does not match the runtime, startup fails fast and asks you to rebuild instead of serving a stale page.
 
@@ -1208,25 +1270,25 @@ When disabled, Vext does not scan `src/frontend/**`, generate a frontend entry, 
 
 ## 18. Troubleshooting
 
-| Symptom | What to do |
-| --- | --- |
-| A page file exists, but the URL returns 404 | Page files do not create URLs automatically. Define a route under `src/routes/**` and call `res.render("page-id")`. |
-| `res.render("dashboard")` says page not found | Check that `src/frontend/pages/dashboard.tsx` exists. Nested pages need the full page id, such as `users/detail`. |
-| Props serialization fails | `props` must be JSON-safe. Do not pass functions, symbols, BigInt values, circular objects, connections, Request, Response, or Service instances. |
-| A page imports a service and fails | Do not import `src/services/**` from `src/frontend/pages/**` or `src/frontend/components/**`. Services run in route handlers only. |
-| An API request receives HTML | Send `Accept: application/json` from API requests and add the API prefix to the matching `frontend.spaFallback.scopes[].exclude`. The default pages mode does not enable SPA fallback. |
-| A layout does not receive server data | Pass `layoutData` in the third `res.render()` argument. Do not import services directly from layout components. |
-| The page language is wrong | Check `config.locale.supported`, the request `Accept-Language`, user preference cookie/API, and `frontend.i18n.defaultLocale`. |
-| A page-copy property is missing | Check that `src/frontend/locales/<locale>.ts` keeps the same object structure as the default locale. Temporary page copy can be passed with `res.render(page, props, { messages })`. |
-| HTML cache mixes languages | Keep `frontend.i18n.vary=true`, or include locale, path prefix, or cookie in the CDN / reverse-proxy cache key. |
-| Static asset returns 404 | Use `/logo.png` for `public/logo.png`; import `src/frontend/assets/logo.png` from TSX/CSS. |
-| Hydration mismatch | Make the first render depend on `props`, `layoutData`, `locale`, and initial `messages`. Do not generate different random values, timestamps, language decisions, or environment-specific output on server and browser first render. |
-| Head tags are duplicated | Prefer one `title`, one description, and stable canonical links per render. Vext deduplicates common head entries, but the route should still pass one clear source of truth. |
-| CSP blocks the page script | Generate a request nonce in middleware or the route handler and pass it as `res.render(page, props, { nonce })`. |
-| Saving a React component causes a full reload | Check that `frontend.dev.hot` and `frontend.dev.fastRefresh` are enabled. If the file has non-component exports, is imported outside the React tree, or changes critical runtime/document structure, Vext falls back to a prompt or full reload. |
-| Route/service changes do not auto-refresh the page | The default `frontend.dev.renderRefresh` is `"prompt"`. Click the development prompt to reload. Set it to `"auto"` for automatic reloads or `"off"` to only log the event. |
-| Fast Refresh does not preserve component state | React only preserves function component and Hooks state across safe refresh boundaries. Class components, non-component exports, or unsafe refresh signatures may remount. |
-| You want to disable frontend | Create with `--template api --frontend none`, or set `frontend: false`. |
+| Symptom                                            | What to do                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A page file exists, but the URL returns 404        | Page files do not create URLs automatically. Define a route under `src/routes/**` and call `res.render("page-id")`.                                                                                                                              |
+| `res.render("dashboard")` says page not found      | Check that `src/frontend/pages/dashboard.tsx` exists. Nested pages need the full page id, such as `users/detail`.                                                                                                                                |
+| Props serialization fails                          | `props` must be JSON-safe. Do not pass functions, symbols, BigInt values, circular objects, connections, Request, Response, or Service instances.                                                                                                |
+| A page imports a service and fails                 | Do not import `src/services/**` from `src/frontend/pages/**` or `src/frontend/components/**`. Services run in route handlers only.                                                                                                               |
+| An API request receives HTML                       | Send `Accept: application/json` from API requests and add the API prefix to the matching `frontend.spaFallback.scopes[].exclude`. The default pages mode does not enable SPA fallback.                                                           |
+| A layout does not receive server data              | Pass `layoutData` in the third `res.render()` argument. Do not import services directly from layout components.                                                                                                                                  |
+| The page language is wrong                         | Check `config.locale.supported`, the request `Accept-Language`, user preference cookie/API, and `frontend.i18n.defaultLocale`.                                                                                                                   |
+| A page-copy property is missing                    | Check that `src/frontend/locales/<locale>.ts` keeps the same object structure as the default locale. Temporary page copy can be passed with `res.render(page, props, { messages })`.                                                             |
+| HTML cache mixes languages                         | Keep `frontend.i18n.vary=true`, or include locale, path prefix, or cookie in the CDN / reverse-proxy cache key.                                                                                                                                  |
+| Static asset returns 404                           | Use `/logo.png` for `public/logo.png`; import `src/frontend/assets/logo.png` from TSX/CSS.                                                                                                                                                       |
+| Hydration mismatch                                 | Make the first render depend on `props`, `layoutData`, `locale`, and initial `messages`. Do not generate different random values, timestamps, language decisions, or environment-specific output on server and browser first render.             |
+| Head tags are duplicated                           | Prefer one `title`, one description, and stable canonical links per render. Vext deduplicates common head entries, but the route should still pass one clear source of truth.                                                                    |
+| CSP blocks the page script                         | Generate a request nonce in middleware or the route handler and pass it as `res.render(page, props, { nonce })`.                                                                                                                                 |
+| Saving a React component causes a full reload      | Check that `frontend.dev.hot` and `frontend.dev.fastRefresh` are enabled. If the file has non-component exports, is imported outside the React tree, or changes critical runtime/document structure, Vext falls back to a prompt or full reload. |
+| Route/service changes do not auto-refresh the page | The default `frontend.dev.renderRefresh` is `"prompt"`. Click the development prompt to reload. Set it to `"auto"` for automatic reloads or `"off"` to only log the event.                                                                       |
+| Fast Refresh does not preserve component state     | React only preserves function component and Hooks state across safe refresh boundaries. Class components, non-component exports, or unsafe refresh signatures may remount.                                                                       |
+| You want to disable frontend                       | Create with `--template api --frontend none`, or set `frontend: false`.                                                                                                                                                                          |
 
 ## 19. Default boundaries and future capabilities
 

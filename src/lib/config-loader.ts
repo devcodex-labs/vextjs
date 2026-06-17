@@ -737,6 +737,8 @@ function validateFrontendConfig(value: unknown, path: string): void {
   for (const key of [
     "framework",
     "root",
+    "componentsDir",
+    "assetsDir",
     "entry",
     "indexHtml",
     "outDir",
@@ -754,23 +756,64 @@ function validateFrontendConfig(value: unknown, path: string): void {
     throw new Error(`[vextjs] ${path}.publicPath must be a path, not a URL.`);
   }
 
-  validateFrontendBooleanOrObject(
-    frontend.apiClient,
-    `${path}.apiClient`,
-    ["enabled"],
+  const pages = validateOptionalFrontendObject(frontend.pages, `${path}.pages`);
+  if (pages) {
+    validateOptionalString(pages.dir, `${path}.pages.dir`);
+    validateOptionalStringArray(pages.extensions, `${path}.pages.extensions`);
+    validateOptionalString(pages.document, `${path}.pages.document`);
+    validateOptionalString(pages.errorDir, `${path}.pages.errorDir`);
+  }
+
+  const styles = validateOptionalFrontendObject(
+    frontend.styles,
+    `${path}.styles`,
   );
-  validateFrontendBooleanOrObject(
-    frontend.spaFallback,
-    `${path}.spaFallback`,
-    ["enabled"],
-  );
-  const spaFallback = frontend.spaFallback as Record<string, unknown> | undefined;
+  if (styles) {
+    validateOptionalString(styles.entry, `${path}.styles.entry`);
+    validateFrontendBooleanOrObject(styles.jscss, `${path}.styles.jscss`, [
+      "enabled",
+      "dynamicVars",
+      "recipes",
+    ]);
+    const jscss = styles.jscss as Record<string, unknown> | undefined;
+    if (jscss && typeof jscss === "object" && !Array.isArray(jscss)) {
+      validateOptionalStringArray(jscss.files, `${path}.styles.jscss.files`);
+      if (jscss.runtimeAdapter !== false) {
+        validateEnum(
+          jscss.runtimeAdapter,
+          `${path}.styles.jscss.runtimeAdapter`,
+          ["css-variables", "none"],
+        );
+      }
+      validateOptionalBoolean(
+        jscss.dynamicVars,
+        `${path}.styles.jscss.dynamicVars`,
+      );
+      validateOptionalBoolean(jscss.recipes, `${path}.styles.jscss.recipes`);
+    }
+  }
+
+  validateStringRecord(frontend.alias, `${path}.alias`);
+
+  validateFrontendBooleanOrObject(frontend.apiClient, `${path}.apiClient`, [
+    "enabled",
+  ]);
+  validateFrontendBooleanOrObject(frontend.spaFallback, `${path}.spaFallback`, [
+    "enabled",
+  ]);
+  const spaFallback = frontend.spaFallback as
+    | Record<string, unknown>
+    | undefined;
   if (
     spaFallback &&
     typeof spaFallback === "object" &&
     !Array.isArray(spaFallback)
   ) {
-    validateOptionalStringArray(spaFallback.exclude, `${path}.spaFallback.exclude`);
+    validateOptionalStringArray(
+      spaFallback.exclude,
+      `${path}.spaFallback.exclude`,
+    );
+    validateSpaFallbackScopes(spaFallback.scopes, `${path}.spaFallback.scopes`);
   }
 
   const build = frontend.build;
@@ -790,9 +833,212 @@ function validateFrontendConfig(value: unknown, path: string): void {
       (!Array.isArray(typed.target) ||
         typed.target.some((item) => typeof item !== "string"))
     ) {
-      throw new Error(`[vextjs] ${path}.build.target must be a string or string array.`);
+      throw new Error(
+        `[vextjs] ${path}.build.target must be a string or string array.`,
+      );
+    }
+    validateFrontendBuildTarget(typed.client, `${path}.build.client`);
+    validateFrontendBuildTarget(typed.server, `${path}.build.server`);
+    const assets = validateOptionalFrontendObject(
+      typed.assets,
+      `${path}.build.assets`,
+    );
+    if (assets && assets.inlineLimit !== undefined) {
+      validateNonNegativeInteger(
+        assets.inlineLimit,
+        `${path}.build.assets.inlineLimit`,
+      );
+    }
+    const css = validateOptionalFrontendObject(typed.css, `${path}.build.css`);
+    if (css) {
+      validateOptionalBoolean(css.modules, `${path}.build.css.modules`);
+    }
+    const diagnostics = validateOptionalFrontendObject(
+      typed.diagnostics,
+      `${path}.build.diagnostics`,
+    );
+    if (diagnostics) {
+      for (const key of ["metafile", "sizeReport", "leakScan"]) {
+        validateOptionalBoolean(
+          diagnostics[key],
+          `${path}.build.diagnostics.${key}`,
+        );
+      }
     }
   }
+
+  const deploy = validateOptionalFrontendObject(
+    frontend.deploy,
+    `${path}.deploy`,
+  );
+  if (deploy) {
+    validateOptionalString(deploy.assetBaseUrl, `${path}.deploy.assetBaseUrl`);
+    if (
+      typeof deploy.assetBaseUrl === "string" &&
+      !/^[a-z]+:\/\//i.test(deploy.assetBaseUrl)
+    ) {
+      throw new Error(
+        `[vextjs] ${path}.deploy.assetBaseUrl must be an absolute URL.`,
+      );
+    }
+    validateEnum(deploy.crossOrigin, `${path}.deploy.crossOrigin`, [
+      "anonymous",
+      "use-credentials",
+    ]);
+    validateOptionalBoolean(deploy.integrity, `${path}.deploy.integrity`);
+  }
+
+  const render = validateOptionalFrontendObject(
+    frontend.render,
+    `${path}.render`,
+  );
+  if (render) {
+    validateOptionalBoolean(render.ssr, `${path}.render.ssr`);
+    validateEnum(render.fallback, `${path}.render.fallback`, [
+      "client",
+      "error",
+    ]);
+    if (render.timeoutMs !== undefined) {
+      validatePositiveNumber(render.timeoutMs, `${path}.render.timeoutMs`);
+    }
+    validateOptionalBoolean(render.layout, `${path}.render.layout`);
+  }
+
+  const errorPages = validateOptionalFrontendObject(
+    frontend.errorPages,
+    `${path}.errorPages`,
+  );
+  if (errorPages) {
+    validateOptionalString(errorPages.default, `${path}.errorPages.default`);
+    validateStringRecord(errorPages.status, `${path}.errorPages.status`);
+  }
+
+  const i18n = validateOptionalFrontendObject(frontend.i18n, `${path}.i18n`);
+  if (i18n) {
+    validateOptionalBoolean(i18n.enabled, `${path}.i18n.enabled`);
+    validateOptionalString(i18n.source, `${path}.i18n.source`);
+    validateOptionalString(i18n.defaultLocale, `${path}.i18n.defaultLocale`);
+    validateOptionalStringArray(i18n.detect, `${path}.i18n.detect`);
+    validateEnum(i18n.inject, `${path}.i18n.inject`, ["used", "all"]);
+    validateEnum(i18n.clientSwitch, `${path}.i18n.clientSwitch`, ["reload"]);
+    validateOptionalBoolean(i18n.htmlLang, `${path}.i18n.htmlLang`);
+    validateOptionalBoolean(i18n.vary, `${path}.i18n.vary`);
+  }
+
+  const dev = validateOptionalFrontendObject(frontend.dev, `${path}.dev`);
+  if (dev) {
+    for (const key of ["hot", "fastRefresh", "overlay"]) {
+      validateOptionalBoolean(dev[key], `${path}.dev.${key}`);
+    }
+    validateEnum(dev.transport, `${path}.dev.transport`, ["sse"]);
+    if (dev.debounceMs !== undefined) {
+      validateNonNegativeInteger(dev.debounceMs, `${path}.dev.debounceMs`);
+    }
+    validateEnum(dev.renderRefresh, `${path}.dev.renderRefresh`, [
+      "prompt",
+      "auto",
+      "off",
+    ]);
+  }
+}
+
+function validateOptionalFrontendObject(
+  value: unknown,
+  path: string,
+): Record<string, unknown> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateOptionalBoolean(value: unknown, path: string): void {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new Error(`[vextjs] ${path} must be a boolean.`);
+  }
+}
+
+function validateEnum(
+  value: unknown,
+  path: string,
+  allowed: readonly string[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "string" || !allowed.includes(value)) {
+    throw new Error(
+      `[vextjs] ${path} must be ${allowed
+        .map((item) => `"${item}"`)
+        .join(" or ")}.`,
+    );
+  }
+}
+
+function validateSpaFallbackScopes(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an array.`);
+  }
+  value.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`[vextjs] ${itemPath} must be an object.`);
+    }
+    const scope = item as Record<string, unknown>;
+    validateRequiredString(scope.basePath, `${itemPath}.basePath`);
+    validateRequiredString(scope.page, `${itemPath}.page`);
+    validateOptionalBoolean(scope.ssr, `${itemPath}.ssr`);
+    validateOptionalStringArray(scope.exclude, `${itemPath}.exclude`);
+    if (scope.status !== undefined) {
+      if (
+        typeof scope.status !== "number" ||
+        !Number.isInteger(scope.status) ||
+        scope.status < 100 ||
+        scope.status > 599
+      ) {
+        throw new Error(
+          `[vextjs] ${itemPath}.status must be an HTTP status code between 100 and 599.`,
+        );
+      }
+    }
+  });
+}
+
+function validateFrontendBuildTarget(value: unknown, path: string): void {
+  const target = validateOptionalFrontendObject(value, path);
+  if (!target) {
+    return;
+  }
+  for (const key of [
+    "outDir",
+    "outFile",
+    "assetsDir",
+    "entryNames",
+    "chunkNames",
+    "assetNames",
+  ]) {
+    validateOptionalString(target[key], `${path}.${key}`);
+  }
+  if (
+    target.target !== undefined &&
+    typeof target.target !== "string" &&
+    (!Array.isArray(target.target) ||
+      target.target.some((item) => typeof item !== "string"))
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.target must be a string or string array.`,
+    );
+  }
+  for (const key of ["minify", "sourcemap", "splitting", "manifest"]) {
+    validateOptionalBoolean(target[key], `${path}.${key}`);
+  }
+  validateOptionalStringArray(target.external, `${path}.external`);
 }
 
 function validateFrontendBooleanOrObject(

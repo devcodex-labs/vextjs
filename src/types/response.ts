@@ -19,8 +19,44 @@
  */
 export type VextPublicResponse = Omit<
   VextResponse,
-  "_enableWrap" | "rawJson" | "_onSend" | "_hooks"
+  | "_enableWrap"
+  | "rawJson"
+  | "_onSend"
+  | "_hooks"
+  | "_sendHtml"
+  | "_renderCached"
 >;
+
+export interface VextRenderHeadOptions {
+  title?: string;
+  description?: string;
+  meta?: Record<string, string>;
+  links?: Array<Record<string, string>>;
+}
+
+export interface VextRenderOptions {
+  /**
+   * HTML response status. Defaults to the current response status or 200.
+   */
+  status?: number;
+  headers?: Record<string, string>;
+  head?: VextRenderHeadOptions;
+  nonce?: string;
+  locale?: string;
+  messages?: Record<string, unknown>;
+  ssr?: boolean;
+  layout?: boolean | string | string[];
+  layoutData?: Record<string, unknown>;
+}
+
+export interface VextRenderErrorOptions extends VextRenderOptions {
+  page?: string;
+  props?: Record<string, unknown>;
+  code?: string | number;
+  message?: string;
+  details?: unknown;
+  expose?: boolean;
+}
 
 export interface VextResponse {
   /**
@@ -68,6 +104,39 @@ export interface VextResponse {
    * @param status  HTTP 状态码（可选，默认使用 .status() 设置的值或 200）
    */
   text(content: string, status?: number): void;
+
+  /**
+   * 渲染 Vext 内置前端页面。
+   *
+   * URL 仍由 `src/routes/**` 定义；page 参数指向
+   * `src/frontend/pages/**` 下的 page id，不是 URL 或绝对路径。
+   * props / layoutData / messages 必须是 JSON-safe 数据，服务端代码不会进入浏览器 bundle。
+   *
+   * @param page    页面 id，例如 "dashboard" 或 "users/detail"
+   * @param props   传给页面组件的 JSON-safe 数据
+   * @param options HTML 响应、head、layout、nonce、locale、messages 等渲染选项
+   */
+  render(
+    page: string,
+    props?: Record<string, unknown>,
+    options?: VextRenderOptions,
+  ): void;
+
+  /**
+   * 渲染统一错误页面。
+   *
+   * 第一个参数是错误对象、HTTP 状态码或错误码；第二个参数可以是错误页面
+   * page id，也可以直接传 options；第三个参数在第二个参数为 page id 时使用。
+   */
+  renderError(
+    errorOrStatus?: Error | number | string,
+    pageOrOptions?:
+      | string
+      | Record<string, unknown>
+      | unknown[]
+      | VextRenderErrorOptions,
+    options?: VextRenderErrorOptions,
+  ): void;
 
   /**
    * 流式响应（大文件传输、实时数据流）
@@ -160,8 +229,9 @@ export interface VextResponse {
   /**
    * 发送前拦截钩子（内部方法）
    *
-   * cache MISS 时由响应缓存中间件注册，json() 发送前回调以捕获原始 data。
-   * 在包装逻辑（_wrapEnabled）之前调用，缓存的是原始 data 而非包装后的响应体。
+   * cache MISS 时由响应缓存中间件注册，json()/render() 发送前回调以捕获
+   * 原始 JSON data 或 render payload。
+   * JSON 在包装逻辑（_wrapEnabled）之前调用，缓存的是原始 data 而非包装后的响应体。
    * 当前单钩子设计（覆盖赋值）。
    *
    * @internal
@@ -181,6 +251,36 @@ export interface VextResponse {
    * @internal
    */
   _hooks?: import("./hooks.js").VextHooks;
+
+  /**
+   * 发送 HTML 响应（内部方法）
+   *
+   * 由前端 renderer middleware 绑定 `render()` / `renderError()` 后调用。
+   * Adapter 负责把 HTML 写入宿主响应对象，并统一触发 response hooks。
+   *
+   * @internal
+   */
+  _sendHtml?(
+    html: string,
+    status: number,
+    headers: Record<string, string>,
+    kind: "html" | "render",
+    data?: unknown,
+  ): void;
+
+  /**
+   * 回放缓存中的 render payload（内部方法）
+   *
+   * route-cache HIT 时不重新执行 route handler，但必须用当前前端 renderer
+   * 重新生成 document，避免缓存最终 HTML 后造成 manifest/template/head 注入失真。
+   *
+   * @internal
+   */
+  _renderCached?(
+    payload: unknown,
+    status: number,
+    headers: Record<string, string>,
+  ): void;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 

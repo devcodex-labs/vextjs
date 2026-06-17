@@ -14,14 +14,14 @@ Each layer can declare only the fields that need to be covered, and undeclared f
 
 ### Configuration file
 
-| File | Purpose | Is it necessary |
-| --------------------------- | -------------------------------------- | -------- |
-| `src/config/default.ts` | Basic configuration for all environments | ✅ Required |
-| `src/config/development.ts` | Development environment override (`NODE_ENV=development`) | Optional |
-| `src/config/production.ts` | Production environment override (`NODE_ENV=production`) | Optional |
-| `src/config/test.ts` | Test environment coverage (`NODE_ENV=test`) | Optional |
-| `src/config/local.ts` | Local development coverage (should be added to `.gitignore`) | Optional |
-| `src/config/bootstrap.ts` | Startup provider registration entrance | Optional |
+| File                        | Purpose                                                      | Is it necessary |
+| --------------------------- | ------------------------------------------------------------ | --------------- |
+| `src/config/default.ts`     | Basic configuration for all environments                     | ✅ Required     |
+| `src/config/development.ts` | Development environment override (`NODE_ENV=development`)    | Optional        |
+| `src/config/production.ts`  | Production environment override (`NODE_ENV=production`)      | Optional        |
+| `src/config/test.ts`        | Test environment coverage (`NODE_ENV=test`)                  | Optional        |
+| `src/config/local.ts`       | Local development coverage (should be added to `.gitignore`) | Optional        |
+| `src/config/bootstrap.ts`   | Startup provider registration entrance                       | Optional        |
 
 Environment files are automatically matched through the `NODE_ENV` environment variable. Defaults to `development` when `NODE_ENV` is not set.
 
@@ -91,13 +91,13 @@ export default defineBootstrapConfig({
 
 provider context field:
 
-| Field | Description |
-| ----------------------- | ------------------------------------------------------------------ |
-| `env` | Current environment (such as `development` / `production` / `test`) |
-| `baseConfig` | `default/env/local` Merged read-only configuration, which can be used to determine patch based on existing configuration |
-| `signal` | `AbortSignal` that aborts on timeout or cancellation |
-| `rootDir` / `configDir` | Current project and configuration directory path |
-| `command` / `isBuilt` | The current startup command and whether to compile the product |
+| Field                   | Description                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `env`                   | Current environment (such as `development` / `production` / `test`)                                                      |
+| `baseConfig`            | `default/env/local` Merged read-only configuration, which can be used to determine patch based on existing configuration |
+| `signal`                | `AbortSignal` that aborts on timeout or cancellation                                                                     |
+| `rootDir` / `configDir` | Current project and configuration directory path                                                                         |
+| `command` / `isBuilt`   | The current startup command and whether to compile the product                                                           |
 
 Constraints:
 
@@ -244,14 +244,21 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    root: "src/client",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
+    root: "src/frontend",
     publicDir: "public",
     publicPath: "/",
+    styles: {
+      jscss: {
+        enabled: true,
+      },
+    },
+    i18n: {
+      enabled: true,
+      defaultLocale: "en-US",
+    },
     spaFallback: {
       enabled: true,
-      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+      scopes: [],
     },
     apiClient: {
       enabled: true,
@@ -265,37 +272,38 @@ export default {
 };
 ```
 
-| Configuration item | Type | Default value | Description |
-| ----------------------------- | ------------------------------- | ------------------------- | --------------------------------------------- |
-| `frontend.enabled` | `boolean` | `false` | Enable built-in frontend integration |
-| `frontend.framework` | `string` | `'react'` | Frontend framework label |
-| `frontend.root` | `string` | `'src/client'` | Frontend source directory |
-| `frontend.entry` | `string` | `'src/client/main.tsx'` | Browser entry file |
-| `frontend.indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
-| `frontend.outDir` | `string` | `.vext/client` in dev, `dist/client` in production | Frontend output directory |
-| `frontend.publicDir` | `string` | `'public'` | Static asset directory copied into output |
-| `frontend.publicPath` | `string` | `'/'` | Public asset path prefix |
-| `frontend.spaFallback` | `boolean \| object` | `true` | Serve `index.html` for non-API browser paths |
-| `frontend.apiClient` | `boolean \| object` | `true` | Generate client contract artifacts |
-| `frontend.build.target` | `string \| string[]` | `'es2022'` | Browser build target |
-| `frontend.build.minify` | `boolean` | Production `true` | Minify frontend output |
-| `frontend.build.sourcemap` | `boolean` | Development `true` | Generate frontend source maps |
+| Configuration item         | Type                 | Default value                                      | Description                                                              |
+| -------------------------- | -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ |
+| `frontend.enabled`         | `boolean`            | `false`                                            | Enable built-in frontend integration                                     |
+| `frontend.framework`       | `string`             | `'react'`                                          | Frontend framework label                                                 |
+| `frontend.root`            | `string`             | `'src/frontend'`                                   | Frontend source directory                                                |
+| `frontend.entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'`     | Generated browser entry; usually not written by hand                     |
+| `frontend.indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`              | HTML document template                                                   |
+| `frontend.outDir`          | `string`             | `.vext/client` in dev, `dist/client` in production | Frontend output directory                                                |
+| `frontend.styles.jscss`    | `boolean \| object`  | `{ enabled: true }`                                | Vext JSCSS build-time CSS extraction and dynamic CSS variables           |
+| `frontend.publicDir`       | `string`             | `'public'`                                         | Static asset directory copied into output                                |
+| `frontend.publicPath`      | `string`             | `'/'`                                              | Public asset path prefix                                                 |
+| `frontend.spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                                   | Serve fallback only for explicitly declared client-router sub-app scopes |
+| `frontend.apiClient`       | `boolean \| object`  | `true`                                             | Generate client contract artifacts                                       |
+| `frontend.build.target`    | `string \| string[]` | `'es2022'`                                         | Browser build target                                                     |
+| `frontend.build.minify`    | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
+| `frontend.build.sourcemap` | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
 
-Default SPA fallback exclusions are `/api/**`, `/openapi.json`, and `/docs/**`, so backend API and documentation routes keep their runtime behavior.
+By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`.
 
-For creating the app, changing pages, adding components, styles, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
+For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
 
 ## Complete configuration item reference
 
 ### Basic configuration
 
-| Configuration item | Type | Default value | Description |
-| ------------ | ----------------------------------- | ----------- | -------------------------------------------------- |
-| `port` | `number` | `3000` | HTTP listening port |
-| `host` | `string` | `'0.0.0.0'` | HTTP listening address |
-| `adapter` | `string \| Function \| VextAdapter` | `'native'` | Low-level adapter |
-| `trustProxy` | `boolean` | `false` | Whether to trust the proxy (affects `req.ip` / `req.protocol`) |
-| `frontend` | `boolean \| object` | `{ enabled: false }` | Built-in frontend build and static serving configuration |
+| Configuration item | Type                                | Default value        | Description                                                    |
+| ------------------ | ----------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `port`             | `number`                            | `3000`               | HTTP listening port                                            |
+| `host`             | `string`                            | `'0.0.0.0'`          | HTTP listening address                                         |
+| `adapter`          | `string \| Function \| VextAdapter` | `'native'`           | Low-level adapter                                              |
+| `trustProxy`       | `boolean`                           | `false`              | Whether to trust the proxy (affects `req.ip` / `req.protocol`) |
+| `frontend`         | `boolean \| object`                 | `{ enabled: false }` | Built-in frontend build and static serving configuration       |
 
 ```typescript
 export default {
@@ -307,13 +315,13 @@ export default {
 
 ### CORS configuration (`cors`)
 
-| Configuration item | Type | Default value | Description |
-| ------------------ | ---------- | --------------------------------------------------------------- | ------------------ |
-| `cors.enabled` | `boolean` | `true` | Whether to enable CORS middleware |
-| `cors.origins` | `string[]` | `['*']` | List of allowed origins |
-| `cors.methods` | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | Allowed HTTP methods |
-| `cors.headers` | `string[]` | `['Content-Type','Authorization','X-Request-Id']` | Allowed request headers |
-| `cors.credentials` | `boolean` | `false` | Whether to allow carrying credentials |
+| Configuration item | Type       | Default value                                            | Description                           |
+| ------------------ | ---------- | -------------------------------------------------------- | ------------------------------------- |
+| `cors.enabled`     | `boolean`  | `true`                                                   | Whether to enable CORS middleware     |
+| `cors.origins`     | `string[]` | `['*']`                                                  | List of allowed origins               |
+| `cors.methods`     | `string[]` | `['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS']` | Allowed HTTP methods                  |
+| `cors.headers`     | `string[]` | `['Content-Type','Authorization','X-Request-Id']`        | Allowed request headers               |
+| `cors.credentials` | `boolean`  | `false`                                                  | Whether to allow carrying credentials |
 
 ```typescript
 export default {
@@ -327,13 +335,13 @@ export default {
 
 ### Rate limiting configuration (`rateLimit`)
 
-| Configuration item | Type | Default value | Description |
-| ------------------- | --------- | --------------------- | ---------------------------------- |
-| `rateLimit.enabled` | `boolean` | `true` | Whether to enable global throttling |
-| `rateLimit.max` | `number` | `100` | Maximum number of requests within the time window |
-| `rateLimit.window` | `number` | `60` | Time window (seconds) |
-| `rateLimit.message` | `string` | `'Too many requests'` | Rate limiting response message |
-| `rateLimit.keyBy` | `string` | `'ip'` | Rate limit dimension (`'ip'` / custom field) |
+| Configuration item  | Type      | Default value         | Description                                       |
+| ------------------- | --------- | --------------------- | ------------------------------------------------- |
+| `rateLimit.enabled` | `boolean` | `true`                | Whether to enable global throttling               |
+| `rateLimit.max`     | `number`  | `100`                 | Maximum number of requests within the time window |
+| `rateLimit.window`  | `number`  | `60`                  | Time window (seconds)                             |
+| `rateLimit.message` | `string`  | `'Too many requests'` | Rate limiting response message                    |
+| `rateLimit.keyBy`   | `string`  | `'ip'`                | Rate limit dimension (`'ip'` / custom field)      |
 
 ```typescript
 export default {
@@ -376,11 +384,11 @@ app.get(
 
 ### Request ID configuration (`requestId`)
 
-| Configuration item | Type | Default value | Description |
-| -------------------- | -------------- | ------------------- | -------------------------- |
-| `requestId.enabled` | `boolean` | `true` | Whether to enable request ID |
-| `requestId.header` | `string` | `'x-request-id'` | Request ID transparent transmission header name |
-| `requestId.generate` | `() => string` | `crypto.randomUUID` | Custom ID generation function |
+| Configuration item   | Type           | Default value       | Description                                     |
+| -------------------- | -------------- | ------------------- | ----------------------------------------------- |
+| `requestId.enabled`  | `boolean`      | `true`              | Whether to enable request ID                    |
+| `requestId.header`   | `string`       | `'x-request-id'`    | Request ID transparent transmission header name |
+| `requestId.generate` | `() => string` | `crypto.randomUUID` | Custom ID generation function                   |
 
 ```typescript
 export default {
@@ -395,18 +403,18 @@ When the request carries the `X-Request-Id` header, the framework will transpare
 
 ### Log configuration (`logger`)
 
-| Configuration item | Type | Default value | Description |
-| ------------------------- | ---------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `logger.level` | `string` | `'info'` | Log level |
-| `logger.lifecycleLevel` | `'concise' \| 'verbose'` | `'concise'` | Framework life cycle log detail level: startup, loader, hot reload, cluster and other system logs |
-| `logger.pretty` | `boolean` | Development environment `true` | Whether to use the built-in pretty formatter to output a readable format; the production environment is turned off by default (output JSON) |
-| `logger.prettyColor` | `'auto' \| 'always' \| 'never'` | `'auto'` | Whether to add ANSI to the level label in pretty mode; the production JSON does not contain ANSI |
-| `logger.prettySingleLine` | `boolean` | `true` | In pretty mode, compress extra fields in JSON inline form into the same line of the message; `false` uses multi-line expansion format |
-| `logger.prettyIgnore` | `string` | `'pid,hostname,requestId'` | Fields to ignore in pretty mode (comma separated); `requestId` is hidden by default to avoid mixin injected fields from expanding into multi-line noise |
-| `logger.redactKeys` | `string[]` | `[]` | Desensitize structured log fields by exact key at any level |
-| `logger.redactPaths` | `string[]` | `[]` | Desensitize structured log fields by dot notation exact path |
-| `logger.redactValue` | `string` | `'[Redacted]'' | Desensitized replacement value |
-| `logger.mixin` | `function` | `undefined` | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields |
+| Configuration item        | Type                            | Default value                  | Description                                                                                                                                             |
+| ------------------------- | ------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`                        | `'info'`                       | Log level                                                                                                                                               |
+| `logger.lifecycleLevel`   | `'concise' \| 'verbose'`        | `'concise'`                    | Framework life cycle log detail level: startup, loader, hot reload, cluster and other system logs                                                       |
+| `logger.pretty`           | `boolean`                       | Development environment `true` | Whether to use the built-in pretty formatter to output a readable format; the production environment is turned off by default (output JSON)             |
+| `logger.prettyColor`      | `'auto' \| 'always' \| 'never'` | `'auto'`                       | Whether to add ANSI to the level label in pretty mode; the production JSON does not contain ANSI                                                        |
+| `logger.prettySingleLine` | `boolean`                       | `true`                         | In pretty mode, compress extra fields in JSON inline form into the same line of the message; `false` uses multi-line expansion format                   |
+| `logger.prettyIgnore`     | `string`                        | `'pid,hostname,requestId'`     | Fields to ignore in pretty mode (comma separated); `requestId` is hidden by default to avoid mixin injected fields from expanding into multi-line noise |
+| `logger.redactKeys`       | `string[]`                      | `[]`                           | Desensitize structured log fields by exact key at any level                                                                                             |
+| `logger.redactPaths`      | `string[]`                      | `[]`                           | Desensitize structured log fields by dot notation exact path                                                                                            |
+| `logger.redactValue`      | `string`                        | `'[Redacted]''                 | Desensitized replacement value                                                                                                                          |
+| `logger.mixin`            | `function`                      | `undefined`                    | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields                |
 
 Supported log levels (from low to high): `'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
 
@@ -430,9 +438,9 @@ VextJS has a built-in logger kernel with zero runtime dependency, and the `prett
 
 ### Graceful shutdown configuration (`shutdown`)
 
-| Configuration item | Type | Default value | Description |
-| ------------------ | -------- | ------ | ------------------------------- |
-| `shutdown.timeout` | `number` | `10` | Shutdown timeout (seconds), force exit after timeout |
+| Configuration item | Type     | Default value | Description                                          |
+| ------------------ | -------- | ------------- | ---------------------------------------------------- |
+| `shutdown.timeout` | `number` | `10`          | Shutdown timeout (seconds), force exit after timeout |
 
 ```typescript
 export default {
@@ -446,15 +454,15 @@ After receiving the `SIGTERM` / `SIGINT` signal, the framework executes all `onC
 
 ### HTTP Server Configuration (`server`)
 
-`server` controls the inbound Node.js HTTP server layer behavior, applicable to the built-in Native / Hono / Fastify / Express / Koa adapter, and also applicable to the development server created by `vext dev`. Unconfigured fields retain their current Node.js default values.| Configuration item | Type | Default value | Description |
-| ------------------------------------ | -------- | ------------- | -------------------------------------------------- |
-| `server.requestTimeout` | `number` | Node.js default | Maximum time in milliseconds to receive a complete request, `0` means disabled |
-| `server.headersTimeout` | `number` | Node.js default | Maximum time to receive complete HTTP headers (milliseconds) |
-| `server.keepAliveTimeout` | `number` | Node.js default value | Keep-alive idle wait time after response completes (milliseconds) |
-| `server.socketTimeout` | `number` | Node.js default value | socket inactivity timeout (milliseconds), `0` means disabled |
-| `server.maxHeaderSize` | `number` | Node.js default value | Maximum request header size (bytes) |
-| `server.maxRequestsPerSocket` | `number` | Node.js default value | The maximum number of requests per socket, `0` means unlimited |
-| `server.connectionsCheckingInterval` | `number` | Node.js default value | Outstanding request timeout check interval (milliseconds) |
+| `server` controls the inbound Node.js HTTP server layer behavior, applicable to the built-in Native / Hono / Fastify / Express / Koa adapter, and also applicable to the development server created by `vext dev`. Unconfigured fields retain their current Node.js default values. | Configuration item | Type                  | Default value                                                                  | Description |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------- | ------------------------------------------------------------------------------ | ----------- |
+| `server.requestTimeout`                                                                                                                                                                                                                                                             | `number`           | Node.js default       | Maximum time in milliseconds to receive a complete request, `0` means disabled |
+| `server.headersTimeout`                                                                                                                                                                                                                                                             | `number`           | Node.js default       | Maximum time to receive complete HTTP headers (milliseconds)                   |
+| `server.keepAliveTimeout`                                                                                                                                                                                                                                                           | `number`           | Node.js default value | Keep-alive idle wait time after response completes (milliseconds)              |
+| `server.socketTimeout`                                                                                                                                                                                                                                                              | `number`           | Node.js default value | socket inactivity timeout (milliseconds), `0` means disabled                   |
+| `server.maxHeaderSize`                                                                                                                                                                                                                                                              | `number`           | Node.js default value | Maximum request header size (bytes)                                            |
+| `server.maxRequestsPerSocket`                                                                                                                                                                                                                                                       | `number`           | Node.js default value | The maximum number of requests per socket, `0` means unlimited                 |
+| `server.connectionsCheckingInterval`                                                                                                                                                                                                                                                | `number`           | Node.js default value | Outstanding request timeout check interval (milliseconds)                      |
 
 ```typescript
 export default {
@@ -476,13 +484,13 @@ export default {
 
 ### Response configuration (`response`)
 
-| Configuration item | Type | Default value | Description |
-| ---------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------- |
-| `response.wrap` | `boolean` | `true` | Whether to enable export packaging (`res.json(data)` is automatically wrapped as `{ code, data, requestId }`) |
-| `response.hideInternalErrors` | `boolean` | `true` | Whether to hide 500 error details (it is recommended to enable it in production environment and not expose stack trace) |
-| `response.logErrors.unknownErrors` | `boolean` | `true` | Whether to log unknown 500 errors (including complete err object and stack trace) |
-| `response.logErrors.http5xx` | `boolean` | `true` | Whether to log HttpError 5xx (error level) |
-| `response.logErrors.http4xx` | `boolean` | `false` | Whether to log HttpError 4xx (warn level, it is recommended to turn it off in high traffic scenarios to reduce log noise) |
+| Configuration item                 | Type      | Default value | Description                                                                                                               |
+| ---------------------------------- | --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `response.wrap`                    | `boolean` | `true`        | Whether to enable export packaging (`res.json(data)` is automatically wrapped as `{ code, data, requestId }`)             |
+| `response.hideInternalErrors`      | `boolean` | `true`        | Whether to hide 500 error details (it is recommended to enable it in production environment and not expose stack trace)   |
+| `response.logErrors.unknownErrors` | `boolean` | `true`        | Whether to log unknown 500 errors (including complete err object and stack trace)                                         |
+| `response.logErrors.http5xx`       | `boolean` | `true`        | Whether to log HttpError 5xx (error level)                                                                                |
+| `response.logErrors.http4xx`       | `boolean` | `false`       | Whether to log HttpError 4xx (warn level, it is recommended to turn it off in high traffic scenarios to reduce log noise) |
 
 ```typescript
 export default {
@@ -514,10 +522,10 @@ Set `wrap: false` to turn off wrapping, and `res.json(data)` will output the ori
 
 ### Body Parser configuration (`bodyParser`)
 
-| Configuration item | Type | Default value | Description |
-| ------------------------ | ------------------ | ------- | ------------------ |
-| `bodyParser.enabled` | `boolean` | `true` | Whether to enable body parsing |
-| `bodyParser.maxBodySize` | `string \| number` | `'1mb'` | Maximum request body size |
+| Configuration item       | Type               | Default value | Description                    |
+| ------------------------ | ------------------ | ------------- | ------------------------------ |
+| `bodyParser.enabled`     | `boolean`          | `true`        | Whether to enable body parsing |
+| `bodyParser.maxBodySize` | `string \| number` | `'1mb'`       | Maximum request body size      |
 
 ```typescript
 export default {
@@ -532,12 +540,12 @@ export default {
 
 ### Multipart / File upload configuration (`multipart`)
 
-| Configuration item | Type | Default value | Description |
-| ---------------------------- | ---------- | ---------- | ---------------------------------------------------------- |
-| `multipart.enabled` | `boolean` | `false` | Whether to enable built-in multipart parsing (`req.files` will be automatically filled when enabled) |
-| `multipart.maxFileSize` | `number` | `10485760` | Maximum size of a single file (bytes, default 10MB) |
-| `multipart.maxFiles` | `number` | `10` | Maximum number of files in a single request |
-| `multipart.allowedMimeTypes` | `string[]` | `undefined` | Whitelist of allowed MIME types (no restriction if not set) |
+| Configuration item           | Type       | Default value | Description                                                                                          |
+| ---------------------------- | ---------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `multipart.enabled`          | `boolean`  | `false`       | Whether to enable built-in multipart parsing (`req.files` will be automatically filled when enabled) |
+| `multipart.maxFileSize`      | `number`   | `10485760`    | Maximum size of a single file (bytes, default 10MB)                                                  |
+| `multipart.maxFiles`         | `number`   | `10`          | Maximum number of files in a single request                                                          |
+| `multipart.allowedMimeTypes` | `string[]` | `undefined`   | Whitelist of allowed MIME types (no restriction if not set)                                          |
 
 ```typescript
 export default {
@@ -552,15 +560,15 @@ export default {
 
 ### Access Log Configuration (`accessLog`)
 
-| Configuration item | Type | Default value | Description |
-| ---------------------------- | ---------- | -------- | ----------------------------------------------- |
-| `accessLog.enabled` | `boolean` | `true` | Whether to enable access log |
-| `accessLog.level` | `string` | `'info'` | Basic log level, only supports `'info'` or `'debug'` |
-| `accessLog.skipPaths` | `string[]` | `[]` | Exact match skipped path list |
-| `accessLog.skipPathPrefixes` | `string[]` | `[]` | List of paths skipped by prefix matching |
-| `accessLog.slowThreshold` | `number` | `0` | Slow request threshold, `0` means not enabled |
-| `accessLog.warnOn4xx` | `boolean` | `false` | Whether to promote 4xx responses to `warn` |
-| `accessLog.logResponseSize` | `boolean` | `false` | Whether to append the response body size |
+| Configuration item           | Type       | Default value | Description                                          |
+| ---------------------------- | ---------- | ------------- | ---------------------------------------------------- |
+| `accessLog.enabled`          | `boolean`  | `true`        | Whether to enable access log                         |
+| `accessLog.level`            | `string`   | `'info'`      | Basic log level, only supports `'info'` or `'debug'` |
+| `accessLog.skipPaths`        | `string[]` | `[]`          | Exact match skipped path list                        |
+| `accessLog.skipPathPrefixes` | `string[]` | `[]`          | List of paths skipped by prefix matching             |
+| `accessLog.slowThreshold`    | `number`   | `0`           | Slow request threshold, `0` means not enabled        |
+| `accessLog.warnOn4xx`        | `boolean`  | `false`       | Whether to promote 4xx responses to `warn`           |
+| `accessLog.logResponseSize`  | `boolean`  | `false`       | Whether to append the response body size             |
 
 ```typescript
 export default {
@@ -584,21 +592,21 @@ GET /api/users 200 12ms | 127.0.0.1
 
 ### OpenAPI configuration (`openapi`)
 
-| Configuration item | Type | Default value | Description |
-| -------------------------- | --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `openapi.enabled` | `boolean` | `false` | Whether to enable OpenAPI documentation |
-| `openapi.title` | `string` | `'API Documentation'` | Document title |
-| `openapi.description` | `string` | `''` | Document description |
-| `openapi.version` | `string` | `'1.0.0'` | API version number |
-| `openapi.docsPath` | `string` | `'/docs'` | Scalar documentation path |
-| `openapi.jsonPath` | `string` | `'/openapi.json'' | OpenAPI JSON endpoint path (vext internal route registration path) |
-| `openapi.jsonPublicPath` | `string` | Same as `jsonPath` | The public path to reference spec in Scalar HTML. The reverse proxy stripping prefix scenario is required. For details, see [Reverse Proxy Deployment](/guide/openapi#Reverse Proxy Path Prefix Scenario) |
-| `openapi.scalar` | `object` | `{}` | Scalar API Reference UI configuration (theme, dark mode, layout, favicon, etc.) |
-| `openapi.servers` | `Array` | `[]` | List of API servers |
-| `openapi.tags` | `Array` | `[]` | Tag definition |
-| `openapi.securitySchemes` | `object` | `{}` | Security schemes |
-| `openapi.contact` | `object` | `{}` | Contact information |
-| `openapi.license` | `object` | `{}` | License information |
+| Configuration item        | Type      | Default value         | Description                                                                                                                                                                                               |
+| ------------------------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openapi.enabled`         | `boolean` | `false`               | Whether to enable OpenAPI documentation                                                                                                                                                                   |
+| `openapi.title`           | `string`  | `'API Documentation'` | Document title                                                                                                                                                                                            |
+| `openapi.description`     | `string`  | `''`                  | Document description                                                                                                                                                                                      |
+| `openapi.version`         | `string`  | `'1.0.0'`             | API version number                                                                                                                                                                                        |
+| `openapi.docsPath`        | `string`  | `'/docs'`             | Scalar documentation path                                                                                                                                                                                 |
+| `openapi.jsonPath`        | `string`  | `'/openapi.json''     | OpenAPI JSON endpoint path (vext internal route registration path)                                                                                                                                        |
+| `openapi.jsonPublicPath`  | `string`  | Same as `jsonPath`    | The public path to reference spec in Scalar HTML. The reverse proxy stripping prefix scenario is required. For details, see [Reverse Proxy Deployment](/guide/openapi#Reverse Proxy Path Prefix Scenario) |
+| `openapi.scalar`          | `object`  | `{}`                  | Scalar API Reference UI configuration (theme, dark mode, layout, favicon, etc.)                                                                                                                           |
+| `openapi.servers`         | `Array`   | `[]`                  | List of API servers                                                                                                                                                                                       |
+| `openapi.tags`            | `Array`   | `[]`                  | Tag definition                                                                                                                                                                                            |
+| `openapi.securitySchemes` | `object`  | `{}`                  | Security schemes                                                                                                                                                                                          |
+| `openapi.contact`         | `object`  | `{}`                  | Contact information                                                                                                                                                                                       |
+| `openapi.license`         | `object`  | `{}`                  | License information                                                                                                                                                                                       |
 
 ```typescript
 export default {
@@ -644,9 +652,9 @@ export default {
 
 ### Request context configuration (`requestContext`)
 
-| Configuration item | Type | Default value | Description |
-| -------------------------- | --------- | ------ | ------------------------------------- |
-| `requestContext.enabled` | `boolean` | `true` | Whether to enable AsyncLocalStorage request context |
+| Configuration item       | Type      | Default value | Description                                         |
+| ------------------------ | --------- | ------------- | --------------------------------------------------- |
+| `requestContext.enabled` | `boolean` | `true`        | Whether to enable AsyncLocalStorage request context |
 
 ```typescript
 export default {
@@ -668,22 +676,22 @@ Consider disabling it only in extreme performance scenarios.
 
 ### Cluster configuration (`cluster`)
 
-| Configuration item | Type | Default value | Description |
-|-------------------------------- | ------------------ | ------------- | ----------------------------------------------- |
-| `cluster.enabled` | `boolean` | `false` | Whether to enable Cluster mode |
-| `cluster.workers` | `number \| string` | `'auto'` | Number of Workers (`'auto'` = number of CPU cores) |
-| `cluster.autoRestart` | `boolean` | `true` | Automatically restart Worker when it crashes |
-| `cluster.maxRestarts` | `number` | `5` | Maximum number of restarts within the time window |
-| `cluster.restartWindow` | `number` | `60000` | Restart count window (milliseconds) |
-| `cluster.restartBaseDelay` | `number` | `1000` | Restart base delay (milliseconds) |
-| `cluster.restartMaxDelay` | `number` | `30000` | Maximum restart delay (milliseconds) |
-| `cluster.healthCheck.enabled` | `boolean` | `true` | Whether to enable Worker heartbeat detection |
-| `cluster.healthCheck.interval` | `number` | `15000` | Heartbeat detection interval (milliseconds) |
-| `cluster.healthCheck.timeout` | `number` | `30000` | Heartbeat timeout (milliseconds) |
-| `cluster.reload.workerDelay` | `number` | `2000` | Time to wait before replacing the next Worker (milliseconds) |
-| `cluster.reload.readyTimeout` | `number` | `30000` | Worker ready timeout (milliseconds) |
-| `cluster.reload.shutdownTimeout` | `number` | `10000` | Worker shutdown timeout (milliseconds) |
-| `cluster.pidFile` | `string` | `'.vext.pid'` | PID file path |
+| Configuration item               | Type               | Default value | Description                                                  |
+| -------------------------------- | ------------------ | ------------- | ------------------------------------------------------------ |
+| `cluster.enabled`                | `boolean`          | `false`       | Whether to enable Cluster mode                               |
+| `cluster.workers`                | `number \| string` | `'auto'`      | Number of Workers (`'auto'` = number of CPU cores)           |
+| `cluster.autoRestart`            | `boolean`          | `true`        | Automatically restart Worker when it crashes                 |
+| `cluster.maxRestarts`            | `number`           | `5`           | Maximum number of restarts within the time window            |
+| `cluster.restartWindow`          | `number`           | `60000`       | Restart count window (milliseconds)                          |
+| `cluster.restartBaseDelay`       | `number`           | `1000`        | Restart base delay (milliseconds)                            |
+| `cluster.restartMaxDelay`        | `number`           | `30000`       | Maximum restart delay (milliseconds)                         |
+| `cluster.healthCheck.enabled`    | `boolean`          | `true`        | Whether to enable Worker heartbeat detection                 |
+| `cluster.healthCheck.interval`   | `number`           | `15000`       | Heartbeat detection interval (milliseconds)                  |
+| `cluster.healthCheck.timeout`    | `number`           | `30000`       | Heartbeat timeout (milliseconds)                             |
+| `cluster.reload.workerDelay`     | `number`           | `2000`        | Time to wait before replacing the next Worker (milliseconds) |
+| `cluster.reload.readyTimeout`    | `number`           | `30000`       | Worker ready timeout (milliseconds)                          |
+| `cluster.reload.shutdownTimeout` | `number`           | `10000`       | Worker shutdown timeout (milliseconds)                       |
+| `cluster.pidFile`                | `string`           | `'.vext.pid'` | PID file path                                                |
 
 ```typescript
 export default {
@@ -702,11 +710,11 @@ You can also turn on Cluster mode through the environment variable `VEXT_CLUSTER
 
 ### Dev mode configuration (`dev`)
 
-| Configuration item | Type | Default value | Description |
-| ---------------------------------- | ---------------------------------- | -------- | ------------------------------------------------------------------ |
-| `dev.errorOverlay.enabled` | `boolean` | `true` | Whether to enable the Dev error overlay (the HTML error page will be displayed when the browser accesses the error route) |
-| `dev.errorOverlay.theme` | `'dark' \| 'light'` | `'dark'` | Error overlay theme |
-| `dev.errorOverlay.maxFrames` | `number` | `25` | The maximum number of stack frames to display |
+| Configuration item           | Type                | Default value | Description                                                                                                               |
+| ---------------------------- | ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `dev.errorOverlay.enabled`   | `boolean`           | `true`        | Whether to enable the Dev error overlay (the HTML error page will be displayed when the browser accesses the error route) |
+| `dev.errorOverlay.theme`     | `'dark' \| 'light'` | `'dark'`      | Error overlay theme                                                                                                       |
+| `dev.errorOverlay.maxFrames` | `number`            | `25`          | The maximum number of stack frames to display                                                                             |
 
 ```typescript
 export default {
@@ -733,9 +741,9 @@ Console logging is **not affected by overlay** - logging configured with `logErr
 
 ### Middleware whitelist (`middlewares`)
 
-| Configuration item | Type | Default value | Description |
-| ------------- | ------------------------------------ | ------ | ------------------ |
-| `middlewares` | `Array<string \| { name, options }>` | `[]` | Route-level middleware whitelist |
+| Configuration item | Type                                 | Default value | Description                      |
+| ------------------ | ------------------------------------ | ------------- | -------------------------------- |
+| `middlewares`      | `Array<string \| { name, options }>` | `[]`          | Route-level middleware whitelist |
 
 ```typescript
 export default {
@@ -842,15 +850,15 @@ declare module "vextjs" {
 
 In addition to configuration files, some settings can also be controlled through environment variables:
 
-| Environment variables | Description |
-|----------------------|------------------------------------------------------------------|
-| `NODE_ENV` | Determine which environment configuration file to load (`development` / `production` / `test`) |
-| `PORT` | Can be referenced in `default.ts` | `process.env.PORT` |
-| `VEXT_PORT` | Internal pass variable of CLI `--port`, has higher priority than provider patch |
-| `VEXT_HOST` | CLI `--host` internal pass variable, has higher priority than provider patch |
-| `VEXT_PORT_CONFLICT` | Port conflict policy: `error` / `prompt` / `kill` / `next` |
-| `VEXT_LIFECYCLE_LEVEL` | Lifecycle log level: `concise` / `verbose` |
-| `VEXT_CLUSTER` | Enables Cluster mode when set to `1` |
+| Environment variables  | Description                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------ |
+| `NODE_ENV`             | Determine which environment configuration file to load (`development` / `production` / `test`) |
+| `PORT`                 | Can be referenced in `default.ts`                                                              | `process.env.PORT` |
+| `VEXT_PORT`            | Internal pass variable of CLI `--port`, has higher priority than provider patch                |
+| `VEXT_HOST`            | CLI `--host` internal pass variable, has higher priority than provider patch                   |
+| `VEXT_PORT_CONFLICT`   | Port conflict policy: `error` / `prompt` / `kill` / `next`                                     |
+| `VEXT_LIFECYCLE_LEVEL` | Lifecycle log level: `concise` / `verbose`                                                     |
+| `VEXT_CLUSTER`         | Enables Cluster mode when set to `1`                                                           |
 
 ```typescript
 // src/config/default.ts — use environment variables
@@ -872,6 +880,7 @@ Do not hardcode sensitive information (such as database passwords, API Keys) in 
 ## Configuration verification
 
 `config-loader` will perform Fail Fast verification after the merge is completed, checking the following:- `port` must be a positive integer in the range 1-65535
+
 - `adapter` must be a known built-in identifier or a valid adapter object/function
 - Each element in the `middlewares` array must be a string or a `{ name: string }` object
 - `rateLimit.max` must be a positive integer
@@ -958,8 +967,6 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
   },

@@ -31,7 +31,7 @@ TypeScript 项目执行 `vext build` 时，会先刷新开发工具链需要的 
 
 ### 逐文件编译（File-by-File Transform）
 
-`vext build` 对服务端代码采用**逐文件编译**模式，而非 bundle 模式——每个源文件独立编译为一个输出文件，保持 `src/` 的目录结构映射。`src/client/**` 不进入服务端编译步骤，而是由前端 bundler 单独处理。
+`vext build` 对服务端代码采用**逐文件编译**模式，而非 bundle 模式——每个源文件独立编译为一个输出文件，保持 `src/` 的目录结构映射。`src/frontend/**` 不进入服务端逐文件编译步骤，而是由前端 bundler 和 SSR renderer 构建步骤单独处理。
 
 ```
 src/                          dist/
@@ -81,22 +81,27 @@ src/                          dist/
 当 `config.frontend.enabled` 为 true 时，浏览器流水线使用 esbuild bundle 模式：
 
 ```text
-src/client/main.tsx  →  dist/client/assets/main-<hash>.js
-src/client/index.html → dist/client/index.html
+src/frontend/pages/index.tsx      →  dist/client/assets/browser-entry-<hash>.js
+src/frontend/pages/_document.html →  dist/client/index.html
+src/frontend/styles/index.css     →  dist/client/assets/browser-entry-<hash>.css
 public/** → dist/client/**
 .vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+.vext/generated/frontend/server-renderer.ts → dist/client/server/renderer.cjs
 ```
 
 前端构建会写入：
 
-| 文件 | 说明 |
-| ----------------------------- | ----------------------------- |
-| `dist/client/index.html` | `vext start` 服务的 HTML 入口 |
-| `dist/client/assets/*` | 打包后的 JavaScript、CSS 与导入资产 |
-| `dist/client/manifest.json` | 前端资源 manifest |
-| `dist/client/size-report.json` | 前端资源体积摘要 |
-| `dist/client/client-contract.json` | 基于 route manifest 生成的路由契约 |
-| `dist/client/api.generated.ts` | 轻量 typed API client module |
+| 文件                                 | 说明                                         |
+| ------------------------------------ | -------------------------------------------- |
+| `dist/client/index.html`             | `vext start` 服务的 HTML 入口                |
+| `dist/client/assets/*`               | 打包后的 JavaScript、CSS 与导入资产          |
+| `dist/client/manifest.json`          | 前端资源 manifest                            |
+| `dist/client/render-manifest.json`   | SSR 页面、layout、错误页与 renderer manifest |
+| `dist/client/messages-manifest.json` | 前端 i18n messages manifest                  |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                          |
+| `dist/client/size-report.json`       | 前端资源体积摘要                             |
+| `dist/client/client-contract.json`   | 基于 route manifest 生成的路由契约           |
+| `dist/client/api.generated.ts`       | 轻量 typed API client module                 |
 
 启用前端但缺少 `dist/client/index.html` 时，`vext start` 会 fail fast。生产启动前请先执行 `vext build`。
 
@@ -169,7 +174,7 @@ dist/config/sg-sit.js
 **/*.{ts,js,mjs,cjs}
 ```
 
-服务端编译会忽略 `src/client/**`；前端文件由前端构建步骤处理。
+服务端逐文件编译会忽略 `src/frontend/**`；前端文件由浏览器 bundle 和 SSR renderer 构建步骤处理。
 
 ### 排除的文件
 
@@ -186,11 +191,11 @@ dist/config/sg-sit.js
 
 #### 生产编译额外排除
 
-| 模式                      | 说明                       |
-| ------------------------- | -------------------------- |
-| `**/config/development.*` | 开发环境配置（生产无意义） |
-| `**/config/local.*`       | 本地覆盖配置（永远不部署） |
-| `**/config/test.*`        | 测试环境配置（生产不需要） |
+| 模式                      | 说明                                  |
+| ------------------------- | ------------------------------------- |
+| `**/config/development.*` | 开发环境配置（生产无意义）            |
+| `**/config/local.*`       | 本地覆盖配置（永远不部署）            |
+| `**/config/test.*`        | 测试环境配置（生产不需要）            |
 | `**/client/**`            | 浏览器客户端源码，由前端 bundler 处理 |
 
 :::tip

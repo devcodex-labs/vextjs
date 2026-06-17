@@ -220,7 +220,7 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 See the [Hot Reload](/guide/hot-reload) chapter for details.
 
-Frontend files under `src/client/**` and static assets under `public/**` trigger a frontend rebuild message. They do not require a backend cold restart unless mixed with backend changes.
+Frontend files under `src/frontend/**` and static assets under `public/**` trigger a frontend rebuild message. React pages, layouts, and shared components use Fast Refresh by default; they do not require a backend cold restart unless mixed with backend changes.
 
 ### package.json script
 

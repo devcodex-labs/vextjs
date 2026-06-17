@@ -238,6 +238,14 @@ export function buildRouteCacheMiddleware(
       for (const [name, value] of Object.entries(headers)) {
         res.setHeader(name, value);
       }
+      if (isRenderCacheHit(result.body, headers)) {
+        sendCachedRender(res, result.body, result.status, headers);
+        return;
+      }
+      if (isLegacyHtmlCacheHit(result.body, headers)) {
+        sendCachedHtml(res, String(result.body), result.status, headers);
+        return;
+      }
       res.json(result.body, result.status);
     }
   };
@@ -379,6 +387,61 @@ function createVextHeaders(
     );
   }
   return headers;
+}
+
+function isRenderCacheHit(body: unknown, headers: HeaderBag): boolean {
+  if (!isRecord(body) || body.__vextResponseKind !== "render") return false;
+  const contentType = getHeaderValue(headers, "Content-Type");
+  return contentType.toLowerCase().includes("text/html");
+}
+
+function sendCachedRender(
+  res: Parameters<VextMiddleware>[1],
+  payload: unknown,
+  status: number,
+  headers: HeaderBag,
+): void {
+  if (!res._renderCached) {
+    throw new Error(
+      "[vextjs] cached render response requires frontend renderer middleware. Ensure frontend render middleware is registered before route cache.",
+    );
+  }
+  res._renderCached(payload, status, headers);
+}
+
+function isLegacyHtmlCacheHit(body: unknown, headers: HeaderBag): boolean {
+  if (typeof body !== "string") return false;
+  const contentType = getHeaderValue(headers, "Content-Type");
+  return contentType.toLowerCase().includes("text/html");
+}
+
+function sendCachedHtml(
+  res: Parameters<VextMiddleware>[1],
+  html: string,
+  status: number,
+  headers: HeaderBag,
+): void {
+  if (res._sendHtml) {
+    res._sendHtml(html, status, headers, "render");
+    return;
+  }
+
+  for (const [name, value] of Object.entries(headers)) {
+    res.setHeader(name, value);
+  }
+  res.text(html, status);
+}
+
+function getHeaderValue(headers: HeaderBag, name: string): string {
+  const wanted = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === wanted) return String(value);
+  }
+  return "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function resolvePartitionKey(

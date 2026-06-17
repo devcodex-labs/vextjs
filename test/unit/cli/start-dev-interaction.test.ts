@@ -664,4 +664,24 @@ describe("cli interaction: start/dev", () => {
       expect.objectContaining({ type: "reload" }),
     );
   });
+
+  it("devCommand should rebuild frontend for src/frontend changes", async () => {
+    await devCommand([]);
+    const watcher = mocks.watcherInstances[0]!;
+    const restarter = mocks.restarterInstances[0]!;
+    const file = { path: "src/frontend/pages/index.tsx", type: "modify" };
+
+    await watcher.handlers.get("change")?.({
+      files: [file],
+      action: "client",
+    });
+
+    expect(restarter.sendToChild).toHaveBeenCalledWith({
+      type: "frontend-rebuild",
+      files: [file],
+    });
+    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reload" }),
+    );
+  });
 });

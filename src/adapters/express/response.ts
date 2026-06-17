@@ -4,6 +4,10 @@ import {
   beginResponseSend,
   finishResponseSend,
 } from "../../lib/response-hooks.js";
+import {
+  renderErrorUnavailable,
+  renderUnavailable,
+} from "../../lib/response-render-placeholder.js";
 
 /**
  * Express Response → VextResponse 转换
@@ -253,6 +257,36 @@ export function createVextResponse(
       expressRes.end(content);
       finishResponseSend(res, sendState);
     },
+
+    _sendHtml(html, status, headers, kind, data): void {
+      if (checkSent(kind)) return;
+
+      let finalStatus = status ?? _status;
+      _status = finalStatus;
+      Object.assign(_headers, headers);
+      const sendState = beginResponseSend(res, {
+        kind,
+        data: data ?? html,
+        status: finalStatus,
+        headers: { ..._headers },
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      html = typeof sendState.data === "string" ? sendState.data : html;
+      finalStatus = sendState.status;
+      _status = finalStatus;
+      Object.assign(_headers, sendState.headers);
+
+      expressRes.statusCode = finalStatus;
+      expressRes.setHeader("Content-Type", "text/html; charset=utf-8");
+      applyHeaders();
+      expressRes.end(html);
+      finishResponseSend(res, sendState);
+    },
+
+    render: renderUnavailable,
+
+    renderError: renderErrorUnavailable,
 
     /**
      * 流式响应（大文件传输、实时数据流）

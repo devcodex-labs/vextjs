@@ -40,10 +40,12 @@ function createMockLogger() {
   };
 }
 
-function createMockReq(acceptHeader?: string) {
+function createMockReq(acceptHeader?: string, requestPath = "/page") {
   return {
     requestId: "test-req-id",
     headers: acceptHeader !== undefined ? { accept: acceptHeader } : {},
+    path: requestPath,
+    url: requestPath,
   };
 }
 
@@ -302,6 +304,37 @@ describe("createErrorHandler — logger 日志行为", () => {
       handler(new HttpError(422, "Unprocessable"), req as any, res as any);
 
       expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("HTML route HttpError 404 → 优先调用 res.renderError()", () => {
+      const logger = createMockLogger();
+      const handler = createErrorHandler(
+        { hideInternalErrors: true },
+        undefined,
+        logger,
+      );
+      const req = createMockReq("text/html", "/missing");
+      const res = { ...createMockRes(), renderError: vi.fn() };
+      const error = new HttpError(404, "Not Found");
+
+      handler(error, req as any, res as any);
+
+      expect(res.renderError).toHaveBeenCalledWith(error, { expose: false });
+      expect(res.rawJson).not.toHaveBeenCalled();
+    });
+
+    it("API HttpError 404 即使 Accept text/html 也保持 JSON", () => {
+      const handler = createErrorHandler({ hideInternalErrors: true });
+      const req = createMockReq("text/html", "/api/missing");
+      const res = { ...createMockRes(), renderError: vi.fn() };
+
+      handler(new HttpError(404, "Not Found"), req as any, res as any);
+
+      expect(res.renderError).not.toHaveBeenCalled();
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 404 }),
+        404,
+      );
     });
   });
 

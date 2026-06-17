@@ -223,6 +223,13 @@ export interface BuiltinMiddlewareCreators {
   responseWrapper?: RouteReloaderMiddleware;
 
   /**
+   * 创建 frontend render 中间件
+   */
+  createFrontendRenderMiddleware?: (
+    config: Record<string, unknown>,
+  ) => RouteReloaderMiddleware;
+
+  /**
    * 创建 access-log 中间件
    *
    * 需要从 config 中读取 accessLog 配置，
@@ -412,6 +419,13 @@ export async function reloadRoutes(
     }
     if (builtinMiddlewares.responseWrapper) {
       freshAdapter.registerMiddleware(builtinMiddlewares.responseWrapper);
+    }
+    if (builtinMiddlewares.createFrontendRenderMiddleware) {
+      freshAdapter.registerMiddleware(
+        builtinMiddlewares.createFrontendRenderMiddleware(
+          app.config as Record<string, unknown>,
+        ),
+      );
     }
     if (builtinMiddlewares.createAccessLogMiddleware) {
       freshAdapter.registerMiddleware(

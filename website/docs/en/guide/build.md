@@ -31,7 +31,7 @@ This ensures that new scaffolding or projects that have just cleaned `.vext/` ca
 
 ### File-by-File Transform
 
-`vext build` uses **file-by-file compilation** mode for server code instead of bundle mode - each source file is independently compiled into an output file, maintaining the directory structure mapping of `src/`. `src/client/**` is excluded from this server compile step and is handled by the frontend bundler.
+`vext build` uses **file-by-file compilation** mode for server code instead of bundle mode - each source file is independently compiled into an output file, maintaining the directory structure mapping of `src/`. `src/frontend/**` is excluded from this server file-by-file step and is handled by the frontend bundler and SSR renderer build steps.
 
 ```
 src/dist/
@@ -55,69 +55,74 @@ src/dist/
 
 ### Why not Bundle?
 
-| Features | File-by-file compilation | Bundle |
-| ---------- | ---------------------------- | ---------------------------- |
-| Directory structure | Keep the original structure for easy debugging | Merge into a single/few files |
-| Source Map | Exact mapping to source file line numbers | Mapping may be inaccurate |
-| Module loading | Node.js native parsing `require()` | Need to customize runtime |
-| Hot reloading | Single file replacement possible (development mode) | Full recompile required |
-| Dependency management | External dependencies are resolved by Node.js | Externals needs to be configured |
+| Features              | File-by-file compilation                            | Bundle                           |
+| --------------------- | --------------------------------------------------- | -------------------------------- |
+| Directory structure   | Keep the original structure for easy debugging      | Merge into a single/few files    |
+| Source Map            | Exact mapping to source file line numbers           | Mapping may be inaccurate        |
+| Module loading        | Node.js native parsing `require()`                  | Need to customize runtime        |
+| Hot reloading         | Single file replacement possible (development mode) | Full recompile required          |
+| Dependency management | External dependencies are resolved by Node.js       | Externals needs to be configured |
 
 ## Compile options
 
 ### CLI parameters
 
-| Parameters | Description | Default value |
-| ------------------ | ----------------------------------------------- | ------- |
-| `--outdir <path>` | Output directory | `dist` |
-| `--clean` | Clean the output directory before compilation | `false` |
-| `--sourcemap` | Generate source map | `true` |
-| `--no-sourcemap` | Disable source map | — |
-| `--minify` | Compress output code | `false` |
-| `--typecheck` | Execute `tsc --noEmit` after refreshing generated / manifest | `false` |
+| Parameters        | Description                                                  | Default value |
+| ----------------- | ------------------------------------------------------------ | ------------- |
+| `--outdir <path>` | Output directory                                             | `dist`        |
+| `--clean`         | Clean the output directory before compilation                | `false`       |
+| `--sourcemap`     | Generate source map                                          | `true`        |
+| `--no-sourcemap`  | Disable source map                                           | —             |
+| `--minify`        | Compress output code                                         | `false`       |
+| `--typecheck`     | Execute `tsc --noEmit` after refreshing generated / manifest | `false`       |
 
 ## Frontend build
 
 When `config.frontend.enabled` is true, the browser pipeline uses esbuild in bundle mode:
 
 ```text
-src/client/main.tsx  →  dist/client/assets/main-<hash>.js
-src/client/index.html → dist/client/index.html
+src/frontend/pages/index.tsx      →  dist/client/assets/browser-entry-<hash>.js
+src/frontend/pages/_document.html → dist/client/index.html
+src/frontend/styles/index.css     → dist/client/assets/browser-entry-<hash>.css
 public/** → dist/client/**
 .vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+.vext/generated/frontend/server-renderer.ts → dist/client/server/renderer.cjs
 ```
 
 The frontend build writes:
 
-| File | Description |
-| ----------------------------- | --------------------------------------------- |
-| `dist/client/index.html` | HTML entry served by `vext start` |
-| `dist/client/assets/*` | Bundled JavaScript, CSS, and imported assets |
-| `dist/client/manifest.json` | Frontend asset manifest |
-| `dist/client/size-report.json` | Size summary for generated frontend assets |
-| `dist/client/client-contract.json` | Route contract generated from route manifest |
-| `dist/client/api.generated.ts` | Lightweight typed API client module |
+| File                                 | Description                                         |
+| ------------------------------------ | --------------------------------------------------- |
+| `dist/client/index.html`             | HTML entry served by `vext start`                   |
+| `dist/client/assets/*`               | Bundled JavaScript, CSS, and imported assets        |
+| `dist/client/manifest.json`          | Frontend asset manifest                             |
+| `dist/client/render-manifest.json`   | SSR page, layout, error page, and renderer manifest |
+| `dist/client/messages-manifest.json` | Frontend i18n messages manifest                     |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                 |
+| `dist/client/size-report.json`       | Size summary for generated frontend assets          |
+| `dist/client/client-contract.json`   | Route contract generated from route manifest        |
+| `dist/client/api.generated.ts`       | Lightweight typed API client module                 |
 
 `vext start` fails fast when frontend is enabled but `dist/client/index.html` is missing. Run `vext build` before production start.
 
 ### Output format
 
-| Options | Values | Description |
-| -------- | ------------- | ----------------------------------------------- |
-| Format | `cjs` (CommonJS) | Unified output of CommonJS to ensure that `require.cache` is controllable |
-| Target | `node20` | Align with `engines.node >= 20.19.0` |
-| Platform | `node` | Node.js runtime |
-| Charset | `utf8` | Force UTF-8, avoid Chinese escaping |
+| Options  | Values           | Description                                                               |
+| -------- | ---------------- | ------------------------------------------------------------------------- |
+| Format   | `cjs` (CommonJS) | Unified output of CommonJS to ensure that `require.cache` is controllable |
+| Target   | `node20`         | Align with `engines.node >= 20.19.0`                                      |
+| Platform | `node`           | Node.js runtime                                                           |
+| Charset  | `utf8`           | Force UTF-8, avoid Chinese escaping                                       |
 
 ### Optimization options
 
-| Options | Default | Description |
-| -------------------------- | ---------------------------- | ------------------------------------- |
-| Source Map | `external` (`.js.map` file) | Error stack mapped back to TypeScript line numbers |
-| Tree Shaking | Enable | Remove unused exports (dead code elimination) |
-| Keep Names | On | Keep function/class names (error stack readability) |
-| Minify | Off | Optional on, reduce product volume |
-| packages | `external` | External dependencies are not packaged and are resolved by Node.js at runtime |
+| Options      | Default                     | Description                                                                   |
+| ------------ | --------------------------- | ----------------------------------------------------------------------------- |
+| Source Map   | `external` (`.js.map` file) | Error stack mapped back to TypeScript line numbers                            |
+| Tree Shaking | Enable                      | Remove unused exports (dead code elimination)                                 |
+| Keep Names   | On                          | Keep function/class names (error stack readability)                           |
+| Minify       | Off                         | Optional on, reduce product volume                                            |
+| packages     | `external`                  | External dependencies are not packaged and are resolved by Node.js at runtime |
 
 ### Automatic injection
 
@@ -169,7 +174,7 @@ If you want to set `NODE_ENV` cross-platform in `package.json` scripts, it is re
 **/*.{ts,js,mjs,cjs}
 ```
 
-Server compilation ignores `src/client/**`; frontend files are handled by the frontend build step.
+Server file-by-file compilation ignores `src/frontend/**`; frontend files are handled by the browser bundle and SSR renderer build steps.
 
 ### Excluded files
 
@@ -177,21 +182,21 @@ Compilation automatically excludes the following files (two-level exclusion rule
 
 #### Universal exclusions (shared with development mode)
 
-| Mode | Description |
-| ------------------ | ----------------------------------------------- |
-| `**/*.d.ts` | TypeScript type declaration (type only, no runtime code) |
-| `**/*.test.*` | Test file |
-| `**/*.spec.*` | Test files |
-| `**/__tests__/**` | Test directory |
+| Mode              | Description                                              |
+| ----------------- | -------------------------------------------------------- |
+| `**/*.d.ts`       | TypeScript type declaration (type only, no runtime code) |
+| `**/*.test.*`     | Test file                                                |
+| `**/*.spec.*`     | Test files                                               |
+| `**/__tests__/**` | Test directory                                           |
 
 #### Additional exclusions for production compilation
 
-| Mode | Description |
-|----------------------|--------------------------|
+| Mode                      | Description                                                        |
+| ------------------------- | ------------------------------------------------------------------ |
 | `**/config/development.*` | Development environment configuration (meaningless for production) |
-| `**/config/local.*` | Local override configuration (never deployed) |
-| `**/config/test.*` | Test environment configuration (not required for production) |
-| `**/client/**` | Browser client source, handled by the frontend bundler |
+| `**/config/local.*`       | Local override configuration (never deployed)                      |
+| `**/config/test.*`        | Test environment configuration (not required for production)       |
+| `**/client/**`            | Browser client source, handled by the frontend bundler             |
 
 :::tip
 This means that development/test/local configuration files will not be included in `dist/`, preventing sensitive information from leaking into the production environment.
@@ -237,11 +242,11 @@ Error: Something went wrong
 
 ### Source Map Purpose
 
-| Scene | Description |
-| -------- | ------------------------------------- |
-| error stack | map back to original TypeScript line number |
-| APM tools | Sentry / Datadog and other tools to locate source code |
-| Debugging | `node --inspect --enable-source-maps` |
+| Scene       | Description                                            |
+| ----------- | ------------------------------------------------------ |
+| error stack | map back to original TypeScript line number            |
+| APM tools   | Sentry / Datadog and other tools to locate source code |
+| Debugging   | `node --inspect --enable-source-maps`                  |
 
 :::warning
 When deploying to a production environment, the `.js.map` file can remain on the server (not exposed by HTTP), but do not deploy to a CDN or static file serving.
@@ -249,16 +254,16 @@ When deploying to a production environment, the `.js.map` file can remain on the
 
 ## Comparison with DevCompiler
 
-`vext build` and `vext dev` share the same esbuild base configuration (`createBaseEsbuildConfig()`), ensuring consistent compilation behavior in development and production environments:| Features | `vext dev` (DevCompiler) | `vext build` (BuildCompiler) |
-| ------------------ | ---------------------------------- | ---------------------------------- |
-| **Output directory** | `.vext/dev/` (temporary, gitignore) | `dist/` (persistent, deployable) |
-| **Compilation mode** | Incremental compilation + single file compilation | Full compilation (full volume each time) |
-| **Source Map** | inline (embedded JS file) | external (standalone `.js.map`) |
-| **Hot reload** | Supported (Tier 1/2/3) | Not supported (one-time compilation) |
-| **Extra Exclusions** | None | config/development, local, test |
-| **NODE_ENV injection** | None | `"production"` |
-| **MetaFile** | None | Yes (compile statistics) |
-| **Typical time consuming** | ~23ms (incremental) | ~500ms (full) |
+| `vext build` and `vext dev` share the same esbuild base configuration (`createBaseEsbuildConfig()`), ensuring consistent compilation behavior in development and production environments: | Features                                          | `vext dev` (DevCompiler)                 | `vext build` (BuildCompiler) |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- | ---------------------------- |
+| **Output directory**                                                                                                                                                                      | `.vext/dev/` (temporary, gitignore)               | `dist/` (persistent, deployable)         |
+| **Compilation mode**                                                                                                                                                                      | Incremental compilation + single file compilation | Full compilation (full volume each time) |
+| **Source Map**                                                                                                                                                                            | inline (embedded JS file)                         | external (standalone `.js.map`)          |
+| **Hot reload**                                                                                                                                                                            | Supported (Tier 1/2/3)                            | Not supported (one-time compilation)     |
+| **Extra Exclusions**                                                                                                                                                                      | None                                              | config/development, local, test          |
+| **NODE_ENV injection**                                                                                                                                                                    | None                                              | `"production"`                           |
+| **MetaFile**                                                                                                                                                                              | None                                              | Yes (compile statistics)                 |
+| **Typical time consuming**                                                                                                                                                                | ~23ms (incremental)                               | ~500ms (full)                            |
 
 ### Shared configuration
 
@@ -290,16 +295,16 @@ vext build
 
 ### BuildResult structure
 
-| Field | Type | Description |
-| -------------------------- | ----------- | -------------------------------- |
-| `success` | `boolean` | Whether the compilation was successful (no errors) |
-| `fileCount` | `number` | Number of output JS files |
-| `totalFiles` | `number` | Total number of input source files |
-| `elapsed` | `number` | Compilation time (milliseconds) |
-| `outDir` | `string` | Output directory path |
-| `warnings` | `Message[]` | esbuild warning message |
-| `errors` | `Message[]` | esbuild error message |
-| `metafile` | `Metafile` | esbuild compilation meta information (file size, etc.) |
+| Field        | Type        | Description                                            |
+| ------------ | ----------- | ------------------------------------------------------ |
+| `success`    | `boolean`   | Whether the compilation was successful (no errors)     |
+| `fileCount`  | `number`    | Number of output JS files                              |
+| `totalFiles` | `number`    | Total number of input source files                     |
+| `elapsed`    | `number`    | Compilation time (milliseconds)                        |
+| `outDir`     | `string`    | Output directory path                                  |
+| `warnings`   | `Message[]` | esbuild warning message                                |
+| `errors`     | `Message[]` | esbuild error message                                  |
+| `metafile`   | `Metafile`  | esbuild compilation meta information (file size, etc.) |
 
 ## Run the compiled product
 

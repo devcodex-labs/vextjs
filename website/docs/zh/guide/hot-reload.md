@@ -74,12 +74,12 @@ npx vext dev
 
 ```
 [vext dev] 1 file(s) changed:
-  🟢 src/client/App.tsx (modify)
-[vext dev] frontend change detected → rebuild client...
+  🟢 src/frontend/pages/index.tsx (modify)
+[vext dev] frontend client change detected -> rebuild...
 [vextjs] frontend built: .vext/client
 ```
 
-该路径会重建 `.vext/client/`，并保持后端进程继续运行。
+该路径会重建 `.vext/client/`，并保持后端进程继续运行。React 页面、layout 和公共组件默认通过 React Fast Refresh 更新；纯 CSS 变更会更新样式链接；route/service 等影响 render 数据的后端 soft reload 成功后，浏览器动作由 `frontend.dev.renderRefresh` 控制。
 
 如果 soft reload 过程中出错，框架会保持旧版本继续运行并提示修复：
 
@@ -214,19 +214,19 @@ export default {
 
 ## 重载策略决策表
 
-| 变更文件             | 重载策略 | 速度      | 说明                             |
-| -------------------- | -------- | --------- | -------------------------------- |
-| `src/routes/**`      | Tier 1   | ⚡ 毫秒级 | 路由处理器原子替换               |
-| `src/services/**`    | Tier 2   | ⚡ 毫秒级 | 服务实例重建                     |
-| `src/models/**`      | Tier 2   | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚 |
-| `src/locales/**`     | Tier 2   | ⚡ 毫秒级 | 语言包重新加载                   |
-| `src/client/**`      | 前端重建 | ⚡ 快速   | 重建浏览器客户端，不触发后端 cold restart |
-| `public/**`          | 前端重建 | ⚡ 快速   | 复制静态资源并重建前端输出       |
-| `src/config/**`      | Tier 3   | 🔄 秒级   | 配置影响全局，需重启             |
-| `src/plugins/**`     | Tier 3   | 🔄 秒级   | 插件影响全局，需重启             |
-| `src/middlewares/**` | Tier 3   | 🔄 秒级   | 中间件定义变更需重启             |
-| `src/types/**`       | —        | —         | 类型文件不触发重载               |
-| `package.json`       | Tier 3   | 🔄 秒级   | 依赖变更需重启                   |
+| 变更文件             | 重载策略                | 速度      | 说明                                                                   |
+| -------------------- | ----------------------- | --------- | ---------------------------------------------------------------------- |
+| `src/routes/**`      | Tier 1                  | ⚡ 毫秒级 | 路由处理器原子替换                                                     |
+| `src/services/**`    | Tier 2                  | ⚡ 毫秒级 | 服务实例重建                                                           |
+| `src/models/**`      | Tier 2                  | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚                                       |
+| `src/locales/**`     | Tier 2                  | ⚡ 毫秒级 | 语言包重新加载                                                         |
+| `src/frontend/**`    | 前端重建 / Fast Refresh | ⚡ 快速   | 重建浏览器客户端；React 页面尽量 Fast Refresh，不触发后端 cold restart |
+| `public/**`          | 前端重建                | ⚡ 快速   | 复制静态资源并重建前端输出                                             |
+| `src/config/**`      | Tier 3                  | 🔄 秒级   | 配置影响全局，需重启                                                   |
+| `src/plugins/**`     | Tier 3                  | 🔄 秒级   | 插件影响全局，需重启                                                   |
+| `src/middlewares/**` | Tier 3                  | 🔄 秒级   | 中间件定义变更需重启                                                   |
+| `src/types/**`       | —                       | —         | 类型文件不触发重载                                                     |
+| `package.json`       | Tier 3                  | 🔄 秒级   | 依赖变更需重启                                                         |
 
 ## 与 `vext build` 的关系
 

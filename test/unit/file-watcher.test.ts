@@ -229,7 +229,9 @@ describe("change-classifier", () => {
     });
 
     it("src/types/generated/ 下的文件应分类为 ignore", () => {
-      const result = classifyChange("src/types/generated/services.generated.d.ts");
+      const result = classifyChange(
+        "src/types/generated/services.generated.d.ts",
+      );
       expect(result.action).toBe("ignore");
     });
   });
@@ -237,13 +239,13 @@ describe("change-classifier", () => {
   // ── classifyChange — client（前端资源）──────────────────
 
   describe("classifyChange — client patterns", () => {
-    it("src/client 下的 TSX 文件应分类为 client", () => {
-      const result = classifyChange("src/client/App.tsx");
+    it("src/frontend 下的 TSX 文件应分类为 client", () => {
+      const result = classifyChange("src/frontend/pages/index.tsx");
       expect(result.action).toBe("client");
     });
 
-    it("src/client 下的 CSS 文件应分类为 client", () => {
-      const result = classifyChange("src/client/styles.css");
+    it("src/frontend 下的 CSS 文件应分类为 client", () => {
+      const result = classifyChange("src/frontend/styles/app.css");
       expect(result.action).toBe("client");
     });
 
@@ -253,7 +255,7 @@ describe("change-classifier", () => {
     });
 
     it("client 分类应优先于 src 源码 soft 规则", () => {
-      const result = classifyChange("src/client/main.tsx");
+      const result = classifyChange("src/frontend/pages/index.tsx");
       expect(result.action).toBe("client");
     });
   });
@@ -672,14 +674,17 @@ describe("VextFileWatcher", () => {
 
       if (event) {
         expect(event.action).toBe("cold");
-        expect(event.files.some((f) => f.path.includes("preload/01-env.ts"))).toBe(
-          true,
-        );
+        expect(
+          event.files.some((f) => f.path.includes("preload/01-env.ts")),
+        ).toBe(true);
       }
     });
 
     it("fs.watch 模式下动态创建 preload/ 目录后应监听其中新增文件", async () => {
-      fs.rmSync(path.join(projectRoot, "preload"), { recursive: true, force: true });
+      fs.rmSync(path.join(projectRoot, "preload"), {
+        recursive: true,
+        force: true,
+      });
 
       watcher = new VextFileWatcher({
         root: projectRoot,
@@ -713,7 +718,9 @@ describe("VextFileWatcher", () => {
 
       if (event) {
         expect(event.action).toBe("cold");
-        const lateFile = event.files.find((f) => f.path.includes("preload/01-late.ts"));
+        const lateFile = event.files.find((f) =>
+          f.path.includes("preload/01-late.ts"),
+        );
         expect(lateFile?.type).toBe("add");
       }
     });

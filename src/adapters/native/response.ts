@@ -5,6 +5,10 @@ import {
   beginResponseSend,
   finishResponseSend,
 } from "../../lib/response-hooks.js";
+import {
+  renderErrorUnavailable,
+  renderUnavailable,
+} from "../../lib/response-render-placeholder.js";
 
 type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
@@ -344,6 +348,44 @@ class NativeVextResponse implements VextResponse {
     sr.end(content);
     finishResponseSend(this, sendState);
   }
+
+  _sendHtml(
+    html: string,
+    status: number,
+    headers: Record<string, string>,
+    kind: "html" | "render",
+    data?: unknown,
+  ): void {
+    if (this._checkSent(kind)) return;
+
+    let finalStatus = status ?? this._status;
+    this._status = finalStatus;
+    Object.assign(this._headers, headers);
+    const sendState = beginResponseSend(this, {
+      kind,
+      data: data ?? html,
+      status: finalStatus,
+      headers: { ...this._headers },
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    html = typeof sendState.data === "string" ? sendState.data : html;
+    finalStatus = sendState.status;
+    this._status = finalStatus;
+    Object.assign(this._headers, sendState.headers);
+
+    const sr = this._serverResponse;
+    sr.statusCode = finalStatus;
+    sr.setHeader("Content-Type", "text/html; charset=utf-8");
+    sr.setHeader("Content-Length", Buffer.byteLength(html));
+    this._applyHeaders();
+    sr.end(html);
+    finishResponseSend(this, sendState);
+  }
+
+  render = renderUnavailable;
+
+  renderError = renderErrorUnavailable;
 
   /**
    * 流式响应（大文件传输、实时数据流）

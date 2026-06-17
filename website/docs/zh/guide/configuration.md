@@ -244,14 +244,21 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    root: "src/client",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
+    root: "src/frontend",
     publicDir: "public",
     publicPath: "/",
+    styles: {
+      jscss: {
+        enabled: true,
+      },
+    },
+    i18n: {
+      enabled: true,
+      defaultLocale: "en-US",
+    },
     spaFallback: {
       enabled: true,
-      exclude: ["/api/**", "/openapi.json", "/docs/**"],
+      scopes: [],
     },
     apiClient: {
       enabled: true,
@@ -265,37 +272,38 @@ export default {
 };
 ```
 
-| 配置项 | 类型 | 默认值 | 说明 |
-| ----------------------------- | ------------------------------- | ------------------------- | ----------------------------- |
-| `frontend.enabled` | `boolean` | `false` | 启用内置前端集成 |
-| `frontend.framework` | `string` | `'react'` | 前端框架标签 |
-| `frontend.root` | `string` | `'src/client'` | 前端源码目录 |
-| `frontend.entry` | `string` | `'src/client/main.tsx'` | 浏览器入口文件 |
-| `frontend.indexHtml` | `string` | `'src/client/index.html'` | HTML shell |
-| `frontend.outDir` | `string` | 开发期 `.vext/client`，生产期 `dist/client` | 前端输出目录 |
-| `frontend.publicDir` | `string` | `'public'` | 会复制到输出目录的静态资源目录 |
-| `frontend.publicPath` | `string` | `'/'` | 公开资源路径前缀 |
-| `frontend.spaFallback` | `boolean \| object` | `true` | 对非 API 浏览器路径服务 `index.html` |
-| `frontend.apiClient` | `boolean \| object` | `true` | 生成 client contract 产物 |
-| `frontend.build.target` | `string \| string[]` | `'es2022'` | 浏览器构建目标 |
-| `frontend.build.minify` | `boolean` | 生产期 `true` | 压缩前端产物 |
-| `frontend.build.sourcemap` | `boolean` | 开发期 `true` | 生成前端 source map |
+| 配置项                     | 类型                 | 默认值                                         | 说明                                                 |
+| -------------------------- | -------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| `frontend.enabled`         | `boolean`            | `false`                                        | 启用内置前端集成                                     |
+| `frontend.framework`       | `string`             | `'react'`                                      | 前端框架标签                                         |
+| `frontend.root`            | `string`             | `'src/frontend'`                               | 前端源码目录                                         |
+| `frontend.entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'` | 自动生成的浏览器入口；通常不需要手写                 |
+| `frontend.indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`          | HTML document 模板                                   |
+| `frontend.outDir`          | `string`             | 开发期 `.vext/client`，生产期 `dist/client`    | 前端输出目录                                         |
+| `frontend.styles.jscss`    | `boolean \| object`  | `{ enabled: true }`                            | Vext JSCSS 构建期 CSS 抽取与动态 CSS variables       |
+| `frontend.publicDir`       | `string`             | `'public'`                                     | 会复制到输出目录的静态资源目录                       |
+| `frontend.publicPath`      | `string`             | `'/'`                                          | 公开资源路径前缀                                     |
+| `frontend.spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                               | 只对显式声明的 client-router 子应用范围服务 fallback |
+| `frontend.apiClient`       | `boolean \| object`  | `true`                                         | 生成 client contract 产物                            |
+| `frontend.build.target`    | `string \| string[]` | `'es2022'`                                     | 浏览器构建目标                                       |
+| `frontend.build.minify`    | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                         |
+| `frontend.build.sourcemap` | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                  |
 
-默认 SPA fallback 排除 `/api/**`、`/openapi.json` 与 `/docs/**`，因此后端 API 和文档路由仍保持原运行时行为。
+默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。
 
-创建项目、修改页面、添加组件、样式、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
+创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
 
 ## 完整配置项参考
 
 ### 基础配置
 
-| 配置项       | 类型                                | 默认值      | 说明                                           |
-| ------------ | ----------------------------------- | ----------- | ---------------------------------------------- |
-| `port`       | `number`                            | `3000`      | HTTP 监听端口                                  |
-| `host`       | `string`                            | `'0.0.0.0'` | HTTP 监听地址                                  |
-| `adapter`    | `string \| Function \| VextAdapter` | `'native'`  | 底层适配器                                     |
-| `trustProxy` | `boolean`                           | `false`     | 是否信任代理（影响 `req.ip` / `req.protocol`） |
-| `frontend`   | `boolean \| object`                 | `{ enabled: false }` | 内置前端构建与静态服务配置                    |
+| 配置项       | 类型                                | 默认值               | 说明                                           |
+| ------------ | ----------------------------------- | -------------------- | ---------------------------------------------- |
+| `port`       | `number`                            | `3000`               | HTTP 监听端口                                  |
+| `host`       | `string`                            | `'0.0.0.0'`          | HTTP 监听地址                                  |
+| `adapter`    | `string \| Function \| VextAdapter` | `'native'`           | 底层适配器                                     |
+| `trustProxy` | `boolean`                           | `false`              | 是否信任代理（影响 `req.ip` / `req.protocol`） |
+| `frontend`   | `boolean \| object`                 | `{ enabled: false }` | 内置前端构建与静态服务配置                     |
 
 ```typescript
 export default {
@@ -962,8 +970,6 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
   },

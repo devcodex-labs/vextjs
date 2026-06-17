@@ -2,6 +2,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 
 import { DevCompiler } from "./compiler.js";
 import type { CompileStats } from "./compiler.js";
@@ -64,7 +65,13 @@ import { quietStartupLogger } from "../startup-logger.js";
 import { createStartupProfilerFromEnv } from "../startup-profiler.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
 import { buildFrontendClient } from "../../frontend/tooling/client-build-compiler.js";
+import type { BuildFrontendClientResult } from "../../frontend/tooling/client-build-compiler.js";
 import { createFrontendNotFoundHandler } from "../../frontend/runtime/static-mount.js";
+import { createFrontendRenderMiddleware } from "../../frontend/runtime/renderer.js";
+import {
+  createFrontendDevEventBus,
+  type VextFrontendDevEvent,
+} from "../../frontend/runtime/dev-events.js";
 
 function getLifecycleLevel(
   config: Record<string, unknown>,
@@ -75,6 +82,86 @@ function getLifecycleLevel(
 
 function isEnvFlagEnabled(value: string | undefined): boolean {
   return value === "1" || value === "true";
+}
+
+async function createFrontendBuiltEvent(
+  result: BuildFrontendClientResult,
+  files: FileChangeInfo[],
+): Promise<VextFrontendDevEvent> {
+  const manifest = result.manifestPath
+    ? JSON.parse(await readFile(result.manifestPath, "utf-8"))
+    : {};
+  const entry =
+    Array.isArray(manifest.entrypoints) &&
+    typeof manifest.entrypoints[0] === "string"
+      ? manifest.entrypoints[0]
+      : undefined;
+  const styles = Array.isArray(manifest.assets)
+    ? manifest.assets
+        .map((asset: Record<string, unknown>) => asset.path)
+        .filter(
+          (assetPath: unknown): assetPath is string =>
+            typeof assetPath === "string" && assetPath.endsWith(".css"),
+        )
+    : [];
+
+  return {
+    type: "frontend:built",
+    action: isStyleOnlyFrontendChange(files)
+      ? "style"
+      : result.config.dev.hot && result.config.dev.fastRefresh
+        ? "fast-refresh"
+        : "reload",
+    entry,
+    styles,
+    buildId: await readBuildIdFromRenderManifest(result),
+    files: files.map((file) => file.path),
+  };
+}
+
+async function readBuildIdFromRenderManifest(
+  result: BuildFrontendClientResult,
+): Promise<string | undefined> {
+  if (!result.renderManifestPath) return undefined;
+  try {
+    if (!existsSync(result.renderManifestPath)) return undefined;
+    const manifest = JSON.parse(
+      await readFile(result.renderManifestPath, "utf-8"),
+    );
+    return typeof manifest.buildId === "string" ? manifest.buildId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isStyleOnlyFrontendChange(files: FileChangeInfo[]): boolean {
+  return (
+    files.length > 0 &&
+    files.every((file) => /\.(css|pcss|postcss)$/u.test(file.path))
+  );
+}
+
+function createRenderReloadEvent(
+  files: FileChangeInfo[],
+  renderRefresh: "prompt" | "auto" | "off",
+): VextFrontendDevEvent | undefined {
+  if (renderRefresh === "off") return undefined;
+  if (!files.some((file) => isRenderRelatedServerFile(file.path))) {
+    return undefined;
+  }
+  return {
+    type: "render:reload",
+    action: renderRefresh,
+    files: files.map((file) => file.path),
+  };
+}
+
+function isRenderRelatedServerFile(filePath: string): boolean {
+  return (
+    filePath.startsWith("src/routes/") ||
+    filePath.startsWith("src/services/") ||
+    filePath.startsWith("src/middlewares/")
+  );
 }
 
 /**
@@ -521,6 +608,8 @@ export async function devBootstrap(
         mode: "development",
       }),
     );
+    let frontendRuntimeConfig = frontendBuild.config;
+    const frontendDevEvents = createFrontendDevEventBus();
     if (!frontendBuild.skipped) {
       app.logger.info(
         `[vext dev] frontend built: ${path.relative(projectRoot, frontendBuild.config.outDir)}`,
@@ -655,6 +744,15 @@ export async function devBootstrap(
       app.adapter.registerMiddleware(responseWrapper);
     }
 
+    app.adapter.registerMiddleware(
+      createFrontendRenderMiddleware({
+        rootDir: projectRoot,
+        mode: "development",
+        config: config.frontend,
+      }),
+    );
+    app.adapter.registerMiddleware(frontendDevEvents.middleware);
+
     // 6. access-log（config.accessLog.enabled，默认 true）
     //    洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码
     if (config.accessLog?.enabled !== false) {
@@ -704,6 +802,9 @@ export async function devBootstrap(
         mode: "development",
         config: config.frontend,
         fallbackHandler: createNotFoundHandler(hooks),
+        onNotFound: async (req) => {
+          await emitNotFoundRequestHooks(hooks, req);
+        },
       }),
     );
     startupProfiler.mark(
@@ -852,6 +953,12 @@ export async function devBootstrap(
           : undefined,
       responseWrapper:
         config.response?.wrap !== false ? (responseWrapper as any) : undefined,
+      createFrontendRenderMiddleware: ((cfg: Record<string, unknown>) =>
+        createFrontendRenderMiddleware({
+          rootDir: projectRoot,
+          mode: "development",
+          config: (cfg as any).frontend,
+        })) as any,
       createAccessLogMiddleware:
         config.accessLog?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>
@@ -888,6 +995,9 @@ export async function devBootstrap(
           mode: "development",
           config: config.frontend,
           fallbackHandler: createNotFoundHandler(hooks),
+          onNotFound: async (req) => {
+            await emitNotFoundRequestHooks(hooks, req);
+          },
         })) as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
@@ -927,6 +1037,8 @@ export async function devBootstrap(
       } catch {
         // 静默忽略 compiler dispose 错误
       }
+
+      frontendDevEvents.close();
     };
 
     // ── 步骤 12c: 注册 IPC 消息监听（reload + shutdown）──
@@ -950,33 +1062,61 @@ export async function devBootstrap(
         const files = (msg as Record<string, unknown>)
           .files as FileChangeInfo[];
         if (Array.isArray(files) && files.length > 0) {
-          softReloader!.reload(files).catch((err: unknown) => {
-            const error = err instanceof Error ? err : new Error(String(err));
-            app.logger.error(
-              "[hot-reload] unexpected error in reload:",
-              error.message,
-            );
-            if (error.stack) {
-              app.logger.error(error.stack);
-            }
-          });
+          softReloader!
+            .reload(files)
+            .then((result) => {
+              if (result.success) {
+                const event = createRenderReloadEvent(
+                  files,
+                  frontendRuntimeConfig.dev.renderRefresh,
+                );
+                if (event) {
+                  frontendDevEvents.publish(event);
+                }
+              }
+            })
+            .catch((err: unknown) => {
+              const error = err instanceof Error ? err : new Error(String(err));
+              app.logger.error(
+                "[hot-reload] unexpected error in reload:",
+                error.message,
+              );
+              if (error.stack) {
+                app.logger.error(error.stack);
+              }
+            });
         }
       } else if (msgType === "frontend-rebuild") {
+        const files = ((msg as Record<string, unknown>).files ??
+          []) as FileChangeInfo[];
         buildFrontendClient({
           rootDir: projectRoot,
           config: config.frontend,
           mode: "development",
         })
-          .then((result) => {
+          .then(async (result) => {
+            frontendRuntimeConfig = result.config;
             if (!result.skipped) {
               app.logger.info(
                 `[vext dev] frontend rebuilt: ${path.relative(projectRoot, result.config.outDir)}`,
+              );
+              frontendDevEvents.publish(
+                await createFrontendBuiltEvent(result, files),
               );
             }
           })
           .catch((err: unknown) => {
             const error = err instanceof Error ? err : new Error(String(err));
-            app.logger.error("[vext dev] frontend rebuild failed:", error.message);
+            app.logger.error(
+              "[vext dev] frontend rebuild failed:",
+              error.message,
+            );
+            frontendDevEvents.publish({
+              type: "frontend:error",
+              action: "prompt",
+              message: error.message,
+              files: files.map((file) => file.path),
+            });
             if (error.stack) {
               app.logger.error(error.stack);
             }

@@ -53,7 +53,13 @@ export interface VextValidationLocationResult {
   data: unknown;
 }
 
-export type VextResponseKind = "json" | "rawJson" | "text" | "stream";
+export type VextResponseKind =
+  | "json"
+  | "rawJson"
+  | "text"
+  | "html"
+  | "render"
+  | "stream";
 
 export interface VextResponseBeforePatch {
   data?: unknown;

@@ -220,7 +220,7 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 详见 [热重载](/guide/hot-reload) 章节。
 
-`src/client/**` 下的前端文件和 `public/**` 下的静态资源变更会触发前端重建消息。除非同时混入后端变更，否则不需要后端 cold restart。
+`src/frontend/**` 下的前端文件和 `public/**` 下的静态资源变更会触发前端重建消息。React 页面、layout、公共组件默认走 Fast Refresh；除非同时混入后端变更，否则不需要后端 cold restart。
 
 ### package.json 脚本
 

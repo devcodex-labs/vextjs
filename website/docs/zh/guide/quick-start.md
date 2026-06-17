@@ -64,7 +64,7 @@ VextJS 要求 `"type": "module"`，项目使用 ESM 模块格式。
 ### 3. 创建目录结构
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/client public preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public preload
 ```
 
 ### 4. 编写配置
@@ -83,10 +83,12 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
+    i18n: {
+      enabled: true,
+      defaultLocale: "en-US",
+    },
   },
 };
 ```
@@ -213,7 +215,7 @@ npm run build
 npm start
 ```
 
-浏览器入口需创建 `src/client/main.tsx`、`src/client/App.tsx`、`src/client/index.html` 与 `src/client/styles.css`，也可以直接从默认 `vext create` 模板开始。
+前端页面放在 `src/frontend/pages/**`。浏览器入口、页面 registry、layout registry 和 HTML 注入代码由 Vext 自动生成；手动项目至少需要创建 `src/frontend/pages/index.tsx`、`src/frontend/pages/_document.html` 与 `src/frontend/styles/index.css`，也可以直接从默认 `vext create` 模板开始。
 
 ## 项目结构
 
@@ -224,11 +226,18 @@ my-app/
 ├── public/
 │   └── favicon.svg          # 会复制到前端构建产物的静态资源
 ├── src/
-│   ├── client/
-│   │   ├── App.tsx          # React 应用
-│   │   ├── index.html       # HTML shell
-│   │   ├── main.tsx         # 浏览器入口
-│   │   └── styles.css
+│   ├── frontend/
+│   │   ├── pages/
+│   │   │   ├── _document.html
+│   │   │   ├── index.tsx
+│   │   │   ├── layout.tsx
+│   │   │   └── error/
+│   │   │       └── default.tsx
+│   │   ├── components/
+│   │   ├── styles/
+│   │   │   └── index.css
+│   │   ├── assets/
+│   │   └── locales/
 │   ├── config/
 │   │   ├── default.ts        # 默认配置
 │   │   ├── bootstrap.example.ts # 启动期远程配置 provider 示例
@@ -255,7 +264,7 @@ my-app/
 ```
 
 :::info 约定
-VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/client/`、`public/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
+VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/frontend/`、`public/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
 
 | 文件路径                       | URL 前缀          |
 | ------------------------------ | ----------------- |

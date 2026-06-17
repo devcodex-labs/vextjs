@@ -15,8 +15,8 @@ VextJS is a high-performance full-stack Node.js framework for building maintaina
 - Built-in request context, request id, access logging, body limit, structured error handling with `app.throw` details, i18n, and OpenAPI endpoints.
 - Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
 - Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
-- Built-in React frontend integration for `src/client`, browser bundling, static asset serving, SPA fallback, and generated API contract files.
-- Lightweight `vextjs/frontend` runtime helpers for typed API clients and future external frontend adapters.
+- Built-in React frontend integration for `src/frontend/pages/**`, route-driven `res.render()`, SSR, hydration, Vext JSCSS/CSS assets, scoped SPA fallback, and generated API contract files.
+- Lightweight `vextjs/frontend` runtime helpers for page i18n, typed API clients, and future external frontend adapters.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.
 - Process-level preload support for OpenTelemetry, APM, polyfills, and startup bridges.
@@ -29,7 +29,7 @@ cd my-app
 npm run dev
 ```
 
-Open `http://localhost:3000`. The default scaffold is a full-stack React app backed by Vext API routes. It includes a browser client, `/api/hello`, and `/api/health` so the project is runnable immediately.
+Open `http://localhost:3000`. The default scaffold is a full-stack React app rendered from Vext routes. It includes a React page, a shared layout, default error page, `/api/hello`, and `/api/health` so the project is runnable immediately.
 
 Create a project with another adapter:
 
@@ -93,11 +93,21 @@ my-app/
 |-- public/
 |   `-- favicon.svg             # Static assets copied into the frontend build
 |-- src/
-|   |-- client/
-|   |   |-- App.tsx             # React app
-|   |   |-- index.html          # HTML shell
-|   |   |-- main.tsx            # Browser entry
-|   |   `-- styles.css
+|   |-- frontend/
+|   |   |-- pages/
+|   |   |   |-- _document.html   # HTML document with {vext.*} slots
+|   |   |   |-- index.tsx        # Page rendered by res.render("index")
+|   |   |   |-- layout.tsx       # Shared layout chain entry
+|   |   |   `-- error/
+|   |   |       `-- default.tsx  # Default HTML error page
+|   |   |-- components/
+|   |   |   `-- AppShell.tsx
+|   |   |-- locales/
+|   |   |   `-- en-US.ts
+|   |   |-- styles/
+|   |   |   |-- index.css
+|   |   |   `-- card.style.ts
+|   |   `-- assets/
 |   |-- config/
 |   |   |-- default.ts          # Required base config
 |   |   |-- development.ts      # Development override
@@ -122,7 +132,7 @@ my-app/
 ```
 
 JavaScript projects use `.js` files and do not create `src/types/generated/`.
-Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`. Frontend API contract artifacts are written under `.vext/client/` in development and `dist/client/` during production build.
+Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`. Frontend generated source lives under `.vext/generated/frontend/`; browser and SSR output is written under `.vext/client/` in development and `dist/client/` during production build.
 
 `local.example.ts` and `bootstrap.example.ts` are examples, not active config files. Copy them when you need the feature:
 
@@ -197,10 +207,15 @@ const config: VextUserConfig = {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
+    i18n: {
+      enabled: true,
+      defaultLocale: "en-US",
+    },
+    dev: {
+      renderRefresh: "prompt",
+    },
   },
 };
 
@@ -232,13 +247,24 @@ Use `config.server` for inbound Node.js HTTP server settings such as request, he
 
 ## Frontend
 
-The default `vext create` template enables `config.frontend` and creates `src/client/`. `vext dev` builds the browser app into `.vext/client/`, watches `src/client/**` and `public/**`, and sends a frontend rebuild message without restarting the backend when only client assets change.
+The default `vext create` template enables `config.frontend` and creates `src/frontend/**`. URL entry still lives in `src/routes/**`; a route renders a page by calling `res.render(page, props, options)`:
 
-`vext build` compiles server code and then bundles the browser client into `dist/client/`. `vext start` serves `dist/client/index.html`, static assets, and SPA fallback while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
+```ts
+app.get("/", {}, async (req, res) => {
+  const greeting = await app.services.example.greeting("Vext");
+  res.render("index", { greeting });
+});
+```
 
-For a user guide that covers creating the app, changing pages, adding components, styles, assets, API calls, configuration, HTML templates, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+`vext dev` builds the browser app into `.vext/client/`, watches `src/frontend/**` and `public/**`, and uses the dev event bus for CSS/JSCSS updates, React Fast Refresh, and optional render-data refresh prompts after backend soft reloads.
 
-Use `vextjs/frontend` in browser code when you want a Vext-aware API client:
+Component styles can use the default `vextjs/style` facade. Files such as `src/frontend/styles/card.style.ts` are scanned during build, extracted into generated CSS, and merged into the final CSS asset without adding Emotion or styled-components as default runtime dependencies.
+
+`vext build` compiles server code and then bundles the browser client and SSR renderer into `dist/client/`. `vext start` serves static frontend assets and HTML rendering while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
+
+For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+
+Use `vextjs/frontend` in browser code when you want a Vext-aware API client for external or advanced frontend integrations:
 
 ```ts
 import { createVextApiClient } from "vextjs/frontend";

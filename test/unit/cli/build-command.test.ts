@@ -56,9 +56,9 @@ const mocks = vi.hoisted(() => {
         config: {
           enabled: false,
           framework: "react",
-          root: "E:/app/src/client",
-          entry: "E:/app/src/client/main.tsx",
-          indexHtml: "E:/app/src/client/index.html",
+          root: "E:/app/src/frontend",
+          entry: "E:/app/.vext/generated/frontend/browser-entry.tsx",
+          indexHtml: "E:/app/src/frontend/pages/_document.html",
           outDir: "E:/app/dist/client",
           publicDir: "E:/app/public",
           publicPath: "/",
@@ -184,7 +184,7 @@ describe("buildCommand", () => {
       return {
         frontend: {
           enabled: true,
-          entry: "src/client/main.tsx",
+          entry: "src/frontend/custom-entry.tsx",
         },
       };
     });
@@ -203,7 +203,7 @@ describe("buildCommand", () => {
       rootDir: "E:/app",
       config: expect.objectContaining({
         enabled: true,
-        entry: "src/client/main.tsx",
+        entry: "src/frontend/custom-entry.tsx",
         outDir: expect.stringMatching(/^build[\\/]client$/),
       }),
       mode: "production",

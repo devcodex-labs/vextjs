@@ -74,12 +74,12 @@ Frontend-only changes use a separate rebuild path:
 
 ```
 [vext dev] 1 file(s) changed:
-  🟢 src/client/App.tsx (modify)
-[vext dev] frontend change detected → rebuild client...
+  🟢 src/frontend/pages/index.tsx (modify)
+[vext dev] frontend client change detected -> rebuild...
 [vextjs] frontend built: .vext/client
 ```
 
-This path rebuilds `.vext/client/` and keeps the backend process running.
+This path rebuilds `.vext/client/` and keeps the backend process running. React pages, layouts, and shared components use React Fast Refresh by default; CSS-only changes update stylesheet links; after backend soft reloads that affect render data, the browser action follows `frontend.dev.renderRefresh`.
 
 If an error occurs during the soft reload process, the framework will keep the old version running and prompt for repair:
 
@@ -94,12 +94,12 @@ VextJS's hot reloading adopts a three-layer strategy and automatically selects t
 
 ### Tier 1 — Route hot replacement ⚡
 
-| Trigger conditions | File changes under `src/routes/` |
-| -------- | ---------------------------------- |
-| Behavior | Atomic replacement request handler, zero interrupts |
-| Speed | Millisecond level (1-10ms) |
-| Impact | Only the routing files are changed, other routes are not affected |
-| Connection interrupted | ❌ No interruption, the request being processed is not affected |
+| Trigger conditions     | File changes under `src/routes/`                                  |
+| ---------------------- | ----------------------------------------------------------------- |
+| Behavior               | Atomic replacement request handler, zero interrupts               |
+| Speed                  | Millisecond level (1-10ms)                                        |
+| Impact                 | Only the routing files are changed, other routes are not affected |
+| Connection interrupted | ❌ No interruption, the request being processed is not affected   |
 
 ```
 Modify src/routes/users.ts
@@ -128,12 +128,12 @@ export default defineRoutes((app) => {
 
 ### Tier 2 — Service Reload ⚡
 
-| Trigger conditions | File changes under `src/services/`, `src/models/` or `src/locales/` |
-|--------|----------------------------------------------------------------|
-| Behavior | Rebuild affected service instances |
-| Speed | Millisecond level (5-50ms) |
-| Impact | Changed services and their dependency chains |
-| Connection interrupted | ❌ No interruption |
+| Trigger conditions     | File changes under `src/services/`, `src/models/` or `src/locales/` |
+| ---------------------- | ------------------------------------------------------------------- |
+| Behavior               | Rebuild affected service instances                                  |
+| Speed                  | Millisecond level (5-50ms)                                          |
+| Impact                 | Changed services and their dependency chains                        |
+| Connection interrupted | ❌ No interruption                                                  |
 
 ```
 Modify src/services/user.ts
@@ -182,12 +182,12 @@ export default {
 
 ### Tier 3 — Cold Reboot 🔄
 
-| Trigger conditions | File changes under `src/config/`, `src/plugins/`, `src/middlewares/` |
-| -------- | --------------------------------------------------------------- |
-| Behavior | Full restart process |
-| Speed | Second level (1-3s) |
-| Impact | Entire application reinitialization |
-| Connection Interrupted | ✅ Requests being processed may be interrupted |
+| Trigger conditions     | File changes under `src/config/`, `src/plugins/`, `src/middlewares/` |
+| ---------------------- | -------------------------------------------------------------------- |
+| Behavior               | Full restart process                                                 |
+| Speed                  | Second level (1-3s)                                                  |
+| Impact                 | Entire application reinitialization                                  |
+| Connection Interrupted | ✅ Requests being processed may be interrupted                       |
 
 ```
 Modify src/config/default.ts
@@ -214,29 +214,29 @@ export default {
 
 ## Reload strategy decision table
 
-| Change files | Reload strategy | Speed | Description |
-| -------------------- | -------- | --------- | -------------------------------- |
-| `src/routes/**` | Tier 1 | ⚡ Millisecond level | Route processor atomic replacement |
-| `src/services/**` | Tier 2 | ⚡ Millisecond level | Service instance reconstruction |
-| `src/models/**` | Tier 2 | ⚡ Millisecond level | Model definition re-registration, automatic rollback if failure |
-| `src/locales/**` | Tier 2 | ⚡ Milliseconds | Language pack reloading |
-| `src/client/**` | Frontend rebuild | ⚡ Fast | Rebuild browser client without backend cold restart |
-| `public/**` | Frontend rebuild | ⚡ Fast | Copy static assets and rebuild frontend output |
-| `src/config/**` | Tier 3 | 🔄 Second level | Configuration affects the whole world and needs to be restarted |
-| `src/plugins/**` | Tier 3 | 🔄 Seconds | The plug-in affects the global situation and needs to be restarted |
-| `src/middlewares/**` | Tier 3 | 🔄 seconds | Middleware definition changes require a restart |
-| `src/types/**` | — | — | Type files do not trigger reloading |
-| `package.json` | Tier 3 | 🔄 Seconds | Dependency changes require restarting |
+| Change files         | Reload strategy                 | Speed                | Description                                                                       |
+| -------------------- | ------------------------------- | -------------------- | --------------------------------------------------------------------------------- |
+| `src/routes/**`      | Tier 1                          | ⚡ Millisecond level | Route processor atomic replacement                                                |
+| `src/services/**`    | Tier 2                          | ⚡ Millisecond level | Service instance reconstruction                                                   |
+| `src/models/**`      | Tier 2                          | ⚡ Millisecond level | Model definition re-registration, automatic rollback if failure                   |
+| `src/locales/**`     | Tier 2                          | ⚡ Milliseconds      | Language pack reloading                                                           |
+| `src/frontend/**`    | Frontend rebuild / Fast Refresh | ⚡ Fast              | Rebuild browser client; React pages try Fast Refresh without backend cold restart |
+| `public/**`          | Frontend rebuild                | ⚡ Fast              | Copy static assets and rebuild frontend output                                    |
+| `src/config/**`      | Tier 3                          | 🔄 Second level      | Configuration affects the whole world and needs to be restarted                   |
+| `src/plugins/**`     | Tier 3                          | 🔄 Seconds           | The plug-in affects the global situation and needs to be restarted                |
+| `src/middlewares/**` | Tier 3                          | 🔄 seconds           | Middleware definition changes require a restart                                   |
+| `src/types/**`       | —                               | —                    | Type files do not trigger reloading                                               |
+| `package.json`       | Tier 3                          | 🔄 Seconds           | Dependency changes require restarting                                             |
 
 ## Relationship with `vext build`
 
 `vext dev` loads `.ts` files directly from `src/` in development mode (on-the-fly compilation via esbuild), without the need to execute `vext build` beforehand.
 
-| Command | Source code directory | Compilation method | Hot reloading |
-| -------------------------- | ------------- | -------------------------- | ------------- |
-| `vext dev` | `src/` | esbuild instant compilation | ✅ Three-layer hot reloading |
-| `vext start` | `dist/` | Precompile (requires `vext build` first) | ❌ None |
-| `vext build` | `src/` → `dist/` | esbuild production compilation | — |
+| Command      | Source code directory | Compilation method                       | Hot reloading                |
+| ------------ | --------------------- | ---------------------------------------- | ---------------------------- |
+| `vext dev`   | `src/`                | esbuild instant compilation              | ✅ Three-layer hot reloading |
+| `vext start` | `dist/`               | Precompile (requires `vext build` first) | ❌ None                      |
+| `vext build` | `src/` → `dist/`      | esbuild production compilation           | —                            |
 
 Development process:
 
@@ -445,6 +445,7 @@ export default {
 ### 4. Use `_` prefix to share code
 
 Files starting with `_` in the routes and services directories are not automatically loaded as routes/services. When modifying these tool files:- If referenced by the routing file → trigger Tier 1 (because the dependencies of the routing module have changed)
+
 - If referenced by service file → trigger Tier 2
 
 ```

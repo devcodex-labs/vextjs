@@ -696,6 +696,109 @@ describe("validateConfig", () => {
     });
   });
 
+  // ── frontend ───────────────────────────────────────────
+
+  describe("frontend validation", () => {
+    it("accepts B1 frontend integration config", () => {
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            enabled: true,
+            root: "src/frontend",
+            pages: {
+              dir: "pages",
+              extensions: [".tsx", ".jsx"],
+              document: "pages/_document.html",
+              errorDir: "pages/error",
+            },
+            componentsDir: "components",
+            styles: {
+              entry: "styles/index.css",
+              jscss: { enabled: true, runtimeAdapter: "css-variables" },
+            },
+            assetsDir: "assets",
+            alias: {
+              "@components": "components",
+            },
+            build: {
+              client: {
+                target: ["es2022"],
+                splitting: true,
+                manifest: true,
+              },
+              server: {
+                outFile: "dist/client/server/renderer.cjs",
+                external: ["react", "react-dom"],
+              },
+              assets: { inlineLimit: 0 },
+              css: { modules: true },
+              diagnostics: {
+                metafile: true,
+                sizeReport: true,
+                leakScan: true,
+              },
+            },
+            deploy: {
+              assetBaseUrl: "https://cdn.example.com/app/",
+              crossOrigin: "anonymous",
+              integrity: false,
+            },
+            render: {
+              ssr: true,
+              fallback: "client",
+              timeoutMs: 3000,
+              layout: true,
+            },
+            errorPages: {
+              default: "error/default",
+              status: { 404: "error/404" },
+            },
+            i18n: {
+              enabled: true,
+              source: "locales",
+              defaultLocale: "inherit",
+              detect: ["accept-language"],
+              inject: "used",
+              clientSwitch: "reload",
+              htmlLang: true,
+              vary: true,
+            },
+            dev: {
+              hot: true,
+              fastRefresh: true,
+              transport: "sse",
+              overlay: true,
+              debounceMs: 50,
+              renderRefresh: "prompt",
+            },
+            spaFallback: {
+              scopes: [
+                {
+                  basePath: "/admin/app",
+                  page: "admin/app/shell",
+                  exclude: ["/admin/api/**"],
+                  status: 200,
+                },
+              ],
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects invalid scoped SPA fallback page with a field-level message", () => {
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            spaFallback: {
+              scopes: [{ basePath: "/admin/app" }],
+            },
+          },
+        }),
+      ).toThrow("config.frontend.spaFallback.scopes[0].page");
+    });
+  });
+
   // ── fetch ───────────────────────────────────────────────
 
   describe("fetch validation", () => {

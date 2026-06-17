@@ -64,7 +64,7 @@ VextJS requires `"type": "module"`, and the project uses the ESM module format.
 ### 3. Create directory structure
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/client public preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public preload
 ```
 
 ### 4. Write configuration
@@ -83,10 +83,12 @@ export default {
   frontend: {
     enabled: true,
     framework: "react",
-    entry: "src/client/main.tsx",
-    indexHtml: "src/client/index.html",
     publicDir: "public",
     publicPath: "/",
+    i18n: {
+      enabled: true,
+      defaultLocale: "en-US",
+    },
   },
 };
 ```
@@ -213,7 +215,7 @@ npm run build
 npm start
 ```
 
-For the browser entry, create `src/client/main.tsx`, `src/client/App.tsx`, `src/client/index.html`, and `src/client/styles.css`, or start from the default `vext create` template.
+Frontend pages live under `src/frontend/pages/**`. Vext generates the browser entry, page registry, layout registry, and HTML injection code automatically. For a manual project, create at least `src/frontend/pages/index.tsx`, `src/frontend/pages/_document.html`, and `src/frontend/styles/index.css`, or start from the default `vext create` template.
 
 ## Project structure
 
@@ -224,11 +226,18 @@ my-app/
 ├── public/
 │ └── favicon.svg # Static asset copied into the frontend build
 ├── src/
-│ ├── client/
-│ │ ├── App.tsx # React app
-│ │ ├── index.html # HTML shell
-│ │ ├── main.tsx # Browser entry
-│ │ └── styles.css
+│ ├── frontend/
+│ │ ├── pages/
+│ │ │ ├── _document.html
+│ │ │ ├── index.tsx
+│ │ │ ├── layout.tsx
+│ │ │ └── error/
+│ │ │   └── default.tsx
+│ │ ├── components/
+│ │ ├── styles/
+│ │ │ └── index.css
+│ │ ├── assets/
+│ │ └── locales/
 │ ├── config/
 │ │ ├── default.ts #Default configuration
 │ │ ├── bootstrap.example.ts # Remote configuration provider example during startup
@@ -255,7 +264,7 @@ my-app/
 ```
 
 :::info Convention
-VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/client/`, `public/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
+VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/frontend/`, `public/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
 
 | File path                      | URL prefix        |
 | ------------------------------ | ----------------- |

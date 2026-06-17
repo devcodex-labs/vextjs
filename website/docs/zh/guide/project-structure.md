@@ -149,28 +149,30 @@ export default defineBootstrapConfig({
 - Nacos / 配置中心启动期 patch
 - 需要在内置插件初始化前就可见的基础设施配置
 
-### `src/client/` — 前端目录
+### `src/frontend/` — 前端目录
 
-默认全栈脚手架会创建 `src/client/` 作为浏览器应用目录。Vext 当前内置 React-first 模板，并将公开前端契约放在 `vextjs/frontend` 下。
+默认全栈脚手架会创建 `src/frontend/` 作为 React 页面源码目录。URL 入口仍由 `src/routes/**` 定义，route handler 通过 `res.render(page, props, options)` 渲染页面；浏览器入口和 registry 由 Vext 自动生成到 `.vext/generated/frontend/`。
 
-| 文件 | 用途 |
-| ------------------ | ----------------------------- |
-| `main.tsx` / `main.jsx` | 前端 bundler 使用的浏览器入口 |
-| `App.tsx` / `App.jsx` | 默认 React 应用 |
-| `index.html` | HTML shell；可用 `%VEXT_ENTRY%` 作为显式 script 占位 |
-| `styles.css` | 模板样式 |
-
-用户可以按需新增 `src/client/pages/`、`src/client/components/`、`src/client/assets/` 或 `src/client/features/`。这些是推荐组织方式，不会被当前 P0 自动扫描成页面路由；页面文件需要在 `App.tsx` 或用户自选 router 中导入渲染。
+| 路径                                                  | 用途                                                                              |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `pages/index.tsx` / `pages/index.jsx`                 | 默认页面，page id 为 `index`                                                      |
+| `pages/layout.tsx` / `pages/layout.jsx`               | 目录级 layout，可嵌套复用                                                         |
+| `pages/error/default.tsx` / `pages/error/default.jsx` | 默认错误页面                                                                      |
+| `pages/_document.html`                                | HTML document，使用 `{vext.root}`、`{vext.data}`、`{vext.entry}`、`{vext.styles}` |
+| `components/`                                         | 公共组件，可通过 `@components/...` 导入                                           |
+| `styles/index.css`                                    | 全局样式入口                                                                      |
+| `assets/`                                             | TSX/CSS import 的图片、字体等资源                                                 |
+| `locales/`                                            | 前端页面文案，配合 `useVextI18n()` 使用                                           |
 
 当 `config.frontend.enabled` 为 true：
 
 - `vext dev` 将客户端构建到 `.vext/client/`
 - `vext build` 将生产资源写入 `dist/client/`
-- `vext start` 服务生产客户端，并在 API / 文档路径之外启用 SPA fallback
+- `vext start` 服务生产客户端、SSR renderer 与静态资源；未知 HTML 路径是否 fallback 取决于 `frontend.spaFallback.scopes[]`
 
 ### `public/` — 前端静态资源
 
-`public/` 中的文件会复制到前端输出目录。适合放置 favicon、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/client/assets/`。
+`public/` 中的文件会复制到前端输出目录。适合放置 favicon、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/frontend/assets/`。
 
 ### `src/routes/` — 路由目录
 
@@ -459,7 +461,7 @@ dist/
 - **`vext dev`**：直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），支持热重载
 - **`vext start`**：从 `dist/` 加载 `.js` 文件，需要先执行 `vext build`
   - 启用前端时，生产启动还要求存在 `dist/client/index.html`
-  :::
+    :::
 
 ## 下一步
 

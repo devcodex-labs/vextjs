@@ -12,6 +12,7 @@ const cjsEntrypoints = [
   "vextjs",
   "vextjs/testing",
   "vextjs/frontend",
+  "vextjs/style",
   "vextjs/adapters/hono",
   "vextjs/adapters/fastify",
   "vextjs/adapters/express",
@@ -22,6 +23,7 @@ const esmEntrypoints = [
   dist("index.js"),
   dist("testing", "index.js"),
   dist("frontend", "index.js"),
+  dist("frontend", "style", "index.js"),
   dist("adapters", "hono", "index.js"),
   dist("adapters", "fastify", "index.js"),
   dist("adapters", "express", "index.js"),
@@ -35,6 +37,14 @@ const namedExports = {
     "defineFrontendAdapter",
     "isVextApiError",
   ],
+  "vextjs/style": [
+    "createVar",
+    "globalStyle",
+    "recipe",
+    "setVar",
+    "style",
+    "vars",
+  ],
   "vextjs/adapters/hono": ["createHonoAdapter", "honoAdapter"],
   "vextjs/adapters/fastify": ["createFastifyAdapter", "fastifyAdapter"],
   "vextjs/adapters/express": ["createExpressAdapter", "expressAdapter"],
@@ -43,6 +53,7 @@ const namedExports = {
 };
 const esmNamedExports = new Map([
   [dist("frontend", "index.js"), namedExports["vextjs/frontend"]],
+  [dist("frontend", "style", "index.js"), namedExports["vextjs/style"]],
   [dist("adapters", "hono", "index.js"), namedExports["vextjs/adapters/hono"]],
   [
     dist("adapters", "fastify", "index.js"),
@@ -62,6 +73,7 @@ const cjsOutputFiles = [
   path.join(root, "dist", "index.cjs"),
   path.join(root, "dist", "testing", "index.cjs"),
   path.join(root, "dist", "frontend", "index.cjs"),
+  path.join(root, "dist", "frontend", "style", "index.cjs"),
   path.join(root, "dist", "adapters", "hono", "index.cjs"),
   path.join(root, "dist", "adapters", "fastify", "index.cjs"),
   path.join(root, "dist", "adapters", "express", "index.cjs"),

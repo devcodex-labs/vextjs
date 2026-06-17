@@ -260,7 +260,11 @@ describe("vext create", () => {
           "src/plugins",
           "src/config",
           "src/locales",
-          "src/client",
+          "src/frontend/pages/error",
+          "src/frontend/components",
+          "src/frontend/styles",
+          "src/frontend/assets",
+          "src/frontend/locales",
           "public",
           "preload",
           "src/types/generated",
@@ -287,10 +291,13 @@ describe("vext create", () => {
           "src/config/bootstrap.example.ts",
           "src/routes/index.ts",
           "src/services/example.ts",
-          "src/client/main.tsx",
-          "src/client/App.tsx",
-          "src/client/styles.css",
-          "src/client/index.html",
+          "src/frontend/pages/index.tsx",
+          "src/frontend/pages/layout.tsx",
+          "src/frontend/pages/error/default.tsx",
+          "src/frontend/pages/_document.html",
+          "src/frontend/components/AppShell.tsx",
+          "src/frontend/locales/en-US.ts",
+          "src/frontend/styles/index.css",
           "public/favicon.svg",
           "src/locales/README.md",
           "preload/README.md",
@@ -664,6 +671,13 @@ describe("vext create", () => {
 
         const files = getWrittenFiles();
         expect(files["src/config/default.ts"]).toContain("frontend:");
+        expect(files["src/config/default.ts"]).not.toContain("src/client");
+        expect(files["src/config/default.ts"]).not.toContain("entry:");
+        expect(files["src/config/default.ts"]).not.toContain("indexHtml:");
+        expect(files["src/config/default.ts"]).toContain("i18n:");
+        expect(files["src/config/default.ts"]).toContain(
+          "defaultLocale: 'en-US'",
+        );
         expect(files["src/config/default.ts"]).not.toContain(
           "outDir: 'dist/client'",
         );
@@ -727,6 +741,16 @@ describe("vext create", () => {
         expect(files["src/routes/index.ts"]).toContain("app.get('/api/health'");
       });
 
+      it("默认 fullstack 模板首页通过 res.render 渲染页面", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/routes/index.ts"]).toContain("app.get('/'");
+        expect(files["src/routes/index.ts"]).toContain("res.render(");
+        expect(files["src/routes/index.ts"]).toContain("'index'");
+        expect(files["src/routes/index.ts"]).toContain("layoutData:");
+      });
+
       it("调用 example service", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
@@ -734,6 +758,45 @@ describe("vext create", () => {
         expect(files["src/routes/index.ts"]).toContain(
           "app.services.example.greeting",
         );
+      });
+    });
+
+    describe("src/frontend", () => {
+      it("生成自动入口所需的 document、layout、页面和默认错误页", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/frontend/pages/_document.html"]).toContain(
+          "{vext.root}",
+        );
+        expect(files["src/frontend/pages/_document.html"]).toContain(
+          "{vext.data}",
+        );
+        expect(files["src/frontend/pages/_document.html"]).toContain(
+          "{vext.entry}",
+        );
+        expect(files["src/frontend/pages/_document.html"]).not.toContain(
+          "%VEXT",
+        );
+        expect(files["src/frontend/pages/layout.tsx"]).toContain(
+          "@components/AppShell",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain("useVextI18n");
+        expect(files["src/frontend/pages/error/default.tsx"]).toContain(
+          "DefaultErrorPage",
+        );
+      });
+
+      it("默认 fullstack 模板不再生成旧 src/client SPA 入口", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        const content = Object.values(files).join("\n");
+        expect(
+          Object.keys(files).some((file) => file.startsWith("src/client/")),
+        ).toBe(false);
+        expect(content).not.toContain("createVextApiClient");
+        expect(content).not.toContain("%VEXT_ENTRY%");
       });
     });
 
@@ -1093,10 +1156,10 @@ describe("vext create", () => {
       // 模板文件：package.json + .gitignore + README.md + tsconfig.json +
       //           5 config files + routes/index.ts + services/example.ts +
       //           locales/README.md + preload/README.md + generated/.gitkeep +
-      //           5 fullstack client/public files = 19
+      //           8 fullstack frontend/public files = 22
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 21
-      expect(Object.keys(files).length).toBe(21);
+      // 总计 24
+      expect(Object.keys(files).length).toBe(24);
     });
 
     it("JS 模式生成正确的文件数量", async () => {
@@ -1106,11 +1169,11 @@ describe("vext create", () => {
       // 模板文件：package.json + .gitignore + README.md +
       //           5 config files + routes/index.js + services/example.js +
       //           locales/README.md + preload/README.md +
-      //           5 fullstack client/public files = 17
+      //           8 fullstack frontend/public files = 20
       // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 19
+      // 总计 22
       // 不含：tsconfig.json
-      expect(Object.keys(files).length).toBe(19);
+      expect(Object.keys(files).length).toBe(22);
     });
   });
 

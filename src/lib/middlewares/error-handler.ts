@@ -1,8 +1,8 @@
+import path from "node:path";
 import type { VextErrorMiddleware } from "../../types/middleware.js";
 import type { VextResponseConfig, VextLogger } from "../../types/app.js";
-import { HttpError, VextValidationError } from "../../types/errors.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
-import { sanitizeErrorDetails } from "../error-details.js";
+import { normalizeErrorForResponse } from "../error-response.js";
 import { isInternalHooks } from "../hooks.js";
 
 /**
@@ -171,93 +171,64 @@ export function createErrorHandler(
     }
 
     const requestId = req.requestId;
-
-    // ── 层 1：校验错误（422）────────────────────────────
-    //
-    // VextValidationError 由 validate 中间件在 schema 校验失败时抛出。
-    // 携带 errors 数组，每个元素描述一个字段的校验错误。
-    // HTTP 状态码固定为 422 Unprocessable Entity。
-    //
-    if (err instanceof VextValidationError) {
-      const prepared = prepareErrorResponse(activeHooks, err, requestId, 422, {
-        code: 422,
-        message: err.message,
-        errors: err.errors, // [{ field: 'email', message: '邮箱格式不正确' }]
-        requestId,
-      });
-      res.rawJson(prepared.body, prepared.status);
-      emitErrorAfterResponse(activeHooks, err, prepared.status, requestId);
-      return;
-    }
-
-    // ── 层 2：HTTP 业务错误（app.throw 抛出）─────────────
-    //
-    // HttpError 由 app.throw() 或 createDefaultThrow() 创建。
-    // status: HTTP 状态码（4xx / 5xx）
-    // message: 错误描述（可能是 i18n 翻译后的文本）
-    // code: 业务错误码（可选，不传则 code = status）
-    //
-    // 响应的 code 字段优先使用业务错误码（err.code），
-    // 没有业务码时降级使用 HTTP 状态码（err.status）。
-    // 这样 API 消费方可以通过 code 区分具体的业务错误类型。
-    //
-    if (err instanceof HttpError) {
-      const body: Record<string, unknown> = {
-        code: err.code ?? err.status, // 有业务码用业务码，否则用 HTTP 状态码
-        message: err.message,
-        requestId,
-      };
-      const details = sanitizeErrorDetails(err.details);
-      if (details !== undefined) {
-        body.details = details;
+    if (shouldRenderHtmlError(req) && typeof res.renderError === "function") {
+      try {
+        res.renderError(errObj, {
+          expose: hideInternalErrors === false,
+        });
+        return;
+      } catch {
+        // renderError 不可用或前端产物缺失时，继续降级到 JSON 错误响应。
       }
-
-      const prepared = prepareErrorResponse(
-        activeHooks,
-        err,
-        requestId,
-        err.status,
-        body,
-      );
-      res.rawJson(prepared.body, prepared.status);
-      emitErrorAfterResponse(activeHooks, err, prepared.status, requestId);
-      return;
     }
 
-    // ── 层 3：未知错误（500）─────────────────────────────
-    //
-    // 所有非 VextValidationError / HttpError 的错误走此分支。
-    // 包括：运行时 TypeError / ReferenceError、第三方库异常、
-    // 数据库连接失败等。
-    //
-    // 生产环境隐藏内部细节（安全性）：
-    //   - message 固定为 'Internal Server Error'
-    //   - 不暴露 stack trace、错误详情、文件路径等
-    //
-    // 开发环境显示 stack（调试便利性）：
-    //   - 附带 stack 字段，开发者可快速定位错误位置
-    //
-    const body: Record<string, unknown> = {
-      code: 500,
-      message: "Internal Server Error",
+    const normalized = normalizeErrorForResponse(err, {
       requestId,
-    };
-
-    // 开发环境：附带 stack trace 供调试
-    if (!hideInternalErrors) {
-      body.stack = errObj.stack;
-    }
-
+      hideInternalErrors,
+    });
     const prepared = prepareErrorResponse(
       activeHooks,
-      errObj,
+      normalized.error,
       requestId,
-      500,
-      body,
+      normalized.status,
+      normalized.body,
     );
     res.rawJson(prepared.body, prepared.status);
-    emitErrorAfterResponse(activeHooks, errObj, prepared.status, requestId);
+    emitErrorAfterResponse(
+      activeHooks,
+      normalized.error,
+      prepared.status,
+      requestId,
+    );
   };
+}
+
+function shouldRenderHtmlError(
+  req: Parameters<VextErrorMiddleware>[1],
+): boolean {
+  if (!acceptsHtml(req.headers.accept)) return false;
+  const pathname = safePathname(req.path || req.url || "/");
+  if (path.extname(pathname)) return false;
+  if (pathname === "/api" || pathname.startsWith("/api/")) return false;
+  return true;
+}
+
+function acceptsHtml(acceptHeader: string | undefined): boolean {
+  if (!acceptHeader) return true;
+  return acceptHeader
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase().split(";")[0])
+    .some((type) => type === "text/html" || type === "*/*");
+}
+
+function safePathname(value: string): string {
+  const raw = value.split("?")[0] || "/";
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded.startsWith("/") ? decoded : `/${decoded}`;
+  } catch {
+    return "/";
+  }
 }
 
 function prepareErrorResponse(

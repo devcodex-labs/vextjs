@@ -1,0 +1,706 @@
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import fg from "fast-glob";
+import type {
+  ResolvedVextFrontendConfig,
+  VextFrontendErrorPageRegistryEntry,
+  VextFrontendLayoutRegistryEntry,
+  VextFrontendLocaleRegistryEntry,
+  VextFrontendMode,
+  VextFrontendPageRegistryEntry,
+} from "../contract/types.js";
+import {
+  extractJscssStyles,
+  type ExtractJscssResult,
+} from "./jscss-extractor.js";
+
+export interface WriteFrontendRenderRegistryOptions {
+  rootDir: string;
+  config: ResolvedVextFrontendConfig;
+  mode: VextFrontendMode;
+}
+
+export interface FrontendRenderRegistryResult {
+  generatedDir: string;
+  browserEntryPath: string;
+  serverEntryPath: string;
+  runtimePath: string;
+  registryPath: string;
+  jscss: ExtractJscssResult;
+  pages: VextFrontendPageRegistryEntry[];
+  layouts: VextFrontendLayoutRegistryEntry[];
+  errorPages: VextFrontendErrorPageRegistryEntry[];
+  locales: VextFrontendLocaleRegistryEntry[];
+  warnings: string[];
+}
+
+export async function writeFrontendRenderRegistry(
+  options: WriteFrontendRenderRegistryOptions,
+): Promise<FrontendRenderRegistryResult> {
+  const generatedDir = resolveGeneratedDir(options.rootDir, options.config);
+  await mkdir(generatedDir, { recursive: true });
+
+  const [pages, layouts, errorPages, locales] = await Promise.all([
+    scanPages(options.rootDir, options.config),
+    scanLayouts(options.rootDir, options.config),
+    scanErrorPages(options.rootDir, options.config),
+    scanLocales(options.rootDir, options.config),
+  ]);
+
+  const registryPath = path.join(generatedDir, "page-registry.ts");
+  const runtimePath = path.join(generatedDir, "vext-runtime.tsx");
+  const browserEntryPath = path.join(generatedDir, "browser-entry.tsx");
+  const serverEntryPath = path.join(generatedDir, "server-renderer.ts");
+  const jscss = await extractJscssStyles({
+    rootDir: options.rootDir,
+    generatedDir,
+    config: options.config,
+  });
+  const registryInput = { pages, layouts, errorPages, locales };
+
+  await Promise.all([
+    writeFile(registryPath, renderRegistryModule(registryInput), "utf-8"),
+    writeFile(runtimePath, renderRuntimeModule(), "utf-8"),
+    writeFile(
+      browserEntryPath,
+      renderBrowserEntryModule(
+        options.mode,
+        options.config,
+        generatedDir,
+        options.rootDir,
+        registryInput,
+        jscss.cssPath,
+      ),
+      "utf-8",
+    ),
+    writeFile(
+      serverEntryPath,
+      renderServerRendererModule(
+        options.mode,
+        generatedDir,
+        options.rootDir,
+        options.config.i18n.defaultLocale,
+        registryInput,
+      ),
+      "utf-8",
+    ),
+  ]);
+
+  return {
+    generatedDir,
+    browserEntryPath,
+    serverEntryPath,
+    runtimePath,
+    registryPath,
+    jscss,
+    pages,
+    layouts,
+    errorPages,
+    locales,
+    warnings: [],
+  };
+}
+
+function resolveGeneratedDir(
+  rootDir: string,
+  config: ResolvedVextFrontendConfig,
+): string {
+  const entryDir = path.dirname(config.entry);
+  const relativeEntryDir = path.relative(rootDir, entryDir).replace(/\\/g, "/");
+  if (relativeEntryDir === ".vext/generated/frontend") {
+    return entryDir;
+  }
+  return path.join(rootDir, ".vext", "generated", "frontend");
+}
+
+async function scanPages(
+  rootDir: string,
+  config: ResolvedVextFrontendConfig,
+): Promise<VextFrontendPageRegistryEntry[]> {
+  if (!existsSync(config.pages.dir)) return [];
+
+  const ignore = [
+    "**/*.d.ts",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/_document.*",
+    "**/layout.*",
+  ];
+  const errorDirRelative = normalizeRelativePath(
+    path.relative(config.pages.dir, config.pages.errorDir),
+  );
+  if (errorDirRelative && !errorDirRelative.startsWith("..")) {
+    ignore.push(`${errorDirRelative}/**`);
+  }
+
+  const files = await scanByExtensions(
+    config.pages.dir,
+    config.pages.extensions,
+    {
+      ignore,
+    },
+  );
+
+  return files
+    .map((filePath) => {
+      const id = filePathToId(
+        filePath,
+        config.pages.dir,
+        config.pages.extensions,
+      );
+      return {
+        id,
+        file: normalizeRelativePath(path.relative(rootDir, filePath)),
+        routePath: pageIdToRoutePath(id),
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function scanLayouts(
+  rootDir: string,
+  config: ResolvedVextFrontendConfig,
+): Promise<VextFrontendLayoutRegistryEntry[]> {
+  if (!existsSync(config.pages.dir)) return [];
+  const files = await fg(extensionGlob("**/layout", config.pages.extensions), {
+    cwd: config.pages.dir,
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/*.d.ts", "**/*.test.*", "**/*.spec.*"],
+  });
+
+  return files
+    .map((filePath) => {
+      const directory = normalizeRelativePath(
+        path.relative(config.pages.dir, path.dirname(filePath)),
+      );
+      return {
+        id: directory || ".",
+        file: normalizeRelativePath(path.relative(rootDir, filePath)),
+        directory,
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function scanErrorPages(
+  rootDir: string,
+  config: ResolvedVextFrontendConfig,
+): Promise<VextFrontendErrorPageRegistryEntry[]> {
+  if (!existsSync(config.pages.errorDir)) return [];
+  const files = await scanByExtensions(
+    config.pages.errorDir,
+    config.pages.extensions,
+    {
+      ignore: ["**/*.d.ts", "**/*.test.*", "**/*.spec.*"],
+    },
+  );
+
+  return files
+    .map((filePath) => {
+      const id = filePathToId(
+        filePath,
+        config.pages.errorDir,
+        config.pages.extensions,
+      );
+      const status = Number.parseInt(path.basename(id), 10);
+      return {
+        id: `error/${id}`,
+        file: normalizeRelativePath(path.relative(rootDir, filePath)),
+        status: Number.isNaN(status) ? undefined : status,
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function scanLocales(
+  rootDir: string,
+  config: ResolvedVextFrontendConfig,
+): Promise<VextFrontendLocaleRegistryEntry[]> {
+  if (!existsSync(config.i18n.source)) return [];
+  const files = await fg(["**/*.{ts,js,json}"], {
+    cwd: config.i18n.source,
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/*.d.ts", "**/*.test.*", "**/*.spec.*"],
+  });
+
+  return files
+    .map((filePath) => ({
+      locale: stripKnownExtension(
+        normalizeRelativePath(path.relative(config.i18n.source, filePath)),
+        [".ts", ".js", ".json"],
+      ),
+      file: normalizeRelativePath(path.relative(rootDir, filePath)),
+    }))
+    .sort((a, b) => a.locale.localeCompare(b.locale));
+}
+
+async function scanByExtensions(
+  cwd: string,
+  extensions: string[],
+  options: { ignore: string[] },
+): Promise<string[]> {
+  return fg(extensionGlob("**/*", extensions), {
+    cwd,
+    absolute: true,
+    onlyFiles: true,
+    ignore: options.ignore,
+  });
+}
+
+function extensionGlob(prefix: string, extensions: string[]): string[] {
+  const normalized = extensions.map((ext) => ext.replace(/^\./u, ""));
+  return [`${prefix}.{${normalized.join(",")}}`];
+}
+
+function filePathToId(
+  filePath: string,
+  baseDir: string,
+  extensions: string[],
+): string {
+  return stripKnownExtension(
+    normalizeRelativePath(path.relative(baseDir, filePath)),
+    extensions,
+  );
+}
+
+function stripKnownExtension(filePath: string, extensions: string[]): string {
+  const normalized = normalizeRelativePath(filePath);
+  const sorted = [...extensions].sort((a, b) => b.length - a.length);
+  const extension = sorted.find((ext) => normalized.endsWith(ext));
+  return extension ? normalized.slice(0, -extension.length) : normalized;
+}
+
+function pageIdToRoutePath(id: string): string {
+  if (id === "index") return "/";
+  if (id.endsWith("/index")) {
+    return `/${id.slice(0, -"index".length)}`.replace(/\/+$/u, "");
+  }
+  return `/${id}`;
+}
+
+function renderRegistryModule(input: {
+  pages: VextFrontendPageRegistryEntry[];
+  layouts: VextFrontendLayoutRegistryEntry[];
+  errorPages: VextFrontendErrorPageRegistryEntry[];
+  locales: VextFrontendLocaleRegistryEntry[];
+}): string {
+  return `/* This file is generated by vextjs. Do not edit it by hand. */
+export const pages = ${JSON.stringify(input.pages, null, 2)} as const;
+export const layouts = ${JSON.stringify(input.layouts, null, 2)} as const;
+export const errorPages = ${JSON.stringify(input.errorPages, null, 2)} as const;
+export const locales = ${JSON.stringify(input.locales, null, 2)} as const;
+
+export const registry = {
+  pages,
+  layouts,
+  errorPages,
+  locales,
+} as const;
+`;
+}
+
+function renderRuntimeModule(): string {
+  return `/* This file is generated by vextjs. Do not edit it by hand. */
+import { createContext, createElement, useContext } from "react";
+
+const defaultContext = {
+  locale: "",
+  messages: {},
+  allMessages: {},
+};
+
+export const VextRenderContext = createContext(defaultContext);
+
+export function VextRenderProvider(props) {
+  return createElement(
+    VextRenderContext.Provider,
+    { value: props.context ?? defaultContext },
+    props.children,
+  );
+}
+
+export function useVextI18n(locale) {
+  const context = useContext(VextRenderContext);
+  if (locale && context.allMessages && context.allMessages[locale]) {
+    return context.allMessages[locale];
+  }
+  return context.messages ?? {};
+}
+`;
+}
+
+function renderBrowserEntryModule(
+  mode: VextFrontendMode,
+  config: ResolvedVextFrontendConfig,
+  generatedDir: string,
+  rootDir: string,
+  input: {
+    pages: VextFrontendPageRegistryEntry[];
+    layouts: VextFrontendLayoutRegistryEntry[];
+    errorPages: VextFrontendErrorPageRegistryEntry[];
+    locales: VextFrontendLocaleRegistryEntry[];
+  },
+  jscssCssPath: string | undefined,
+): string {
+  const useDevEvents = mode === "development" && config.dev.hot;
+  const useFastRefresh =
+    useDevEvents && config.framework === "react" && config.dev.fastRefresh;
+  const styleImports = [
+    existsSync(config.styles.entry)
+      ? toImportSpecifier(generatedDir, config.styles.entry)
+      : undefined,
+    jscssCssPath,
+  ]
+    .filter((filePath): filePath is string => Boolean(filePath))
+    .map(
+      (filePath) =>
+        `import ${JSON.stringify(
+          path.isAbsolute(filePath)
+            ? toImportSpecifier(generatedDir, filePath)
+            : filePath,
+        )};`,
+    )
+    .join("\n");
+  const moduleImports = renderModuleImports(generatedDir, rootDir, input);
+  const devImport = useFastRefresh
+    ? 'import * as RefreshRuntime from "react-refresh/runtime";\n'
+    : "";
+  const devRuntime = useDevEvents
+    ? renderDevBrowserRuntime(useFastRefresh)
+    : "";
+  const mountCall = useDevEvents
+    ? "mountVextTree(root, tree);\n  connectVextDevEvents();"
+    : "hydrateRoot(root, tree);";
+
+  return `/* This file is generated by vextjs. Do not edit it by hand. */
+${styleImports ? `${styleImports}\n` : ""}${devImport}import { createElement } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { registry } from "./page-registry";
+import { VextRenderProvider } from "./vext-runtime";
+${moduleImports}
+
+${renderRuntimeMaps(input)}
+${renderSharedRendererHelpers(config.i18n.defaultLocale)}
+${devRuntime}
+
+const root =
+  document.getElementById("root") ??
+  document.querySelector<HTMLElement>("[data-vext-root]");
+
+if (root instanceof HTMLElement) {
+  const dataScript = document.getElementById("__VEXT_DATA__");
+  const payload = dataScript?.textContent ? JSON.parse(dataScript.textContent) : {};
+  const tree = createVextTree(payload.page, payload.props ?? {}, payload.options ?? {});
+  ${mountCall}
+  root.dataset.vextHydration = "done";
+  root.dataset.vextPageCount = String(registry.pages.length);
+}
+`;
+}
+
+function renderServerRendererModule(
+  mode: VextFrontendMode,
+  generatedDir: string,
+  rootDir: string,
+  defaultLocale: string,
+  input: {
+    pages: VextFrontendPageRegistryEntry[];
+    layouts: VextFrontendLayoutRegistryEntry[];
+    errorPages: VextFrontendErrorPageRegistryEntry[];
+    locales: VextFrontendLocaleRegistryEntry[];
+  },
+): string {
+  const moduleImports = renderModuleImports(generatedDir, rootDir, input);
+
+  return `/* This file is generated by vextjs. Do not edit it by hand. */
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
+import { registry } from "./page-registry";
+import { VextRenderProvider } from "./vext-runtime";
+${moduleImports}
+
+export { registry };
+
+${renderRuntimeMaps(input)}
+${renderSharedRendererHelpers(defaultLocale)}
+
+export function renderPage(request = {}) {
+  const tree = createVextTree(request.page, request.props ?? {}, request.options ?? {});
+  return {
+    html: renderToString(tree),
+    head: "",
+    mode: ${JSON.stringify(mode)},
+    registry,
+    request,
+  };
+}
+
+export function renderError(request = {}) {
+  return renderPage(request);
+}
+`;
+}
+
+function renderDevBrowserRuntime(useFastRefresh: boolean): string {
+  const refreshGlobal = useFastRefresh
+    ? `
+  $RefreshReg$?: (type: unknown, id: string) => void;
+  $RefreshSig$?: () => (type: unknown) => unknown;`
+    : "";
+  const refreshSetup = useFastRefresh
+    ? `
+RefreshRuntime.injectIntoGlobalHook(globalThis);
+__vextGlobal.$RefreshReg$ ??= (type, id) => RefreshRuntime.register(type, id);
+__vextGlobal.$RefreshSig$ ??= RefreshRuntime.createSignatureFunctionForTransform;
+`
+    : "";
+  const refreshHandler = useFastRefresh
+    ? `
+    if (payload.action === "fast-refresh" && payload.entry) {
+      await import(withVextDevQuery(payload.entry, payload.buildId));
+      RefreshRuntime.performReactRefresh();
+      return;
+    }
+`
+    : "";
+  return `const __vextGlobal = globalThis as typeof globalThis & {
+  __VEXT_DEV__?: {
+    root?: ReturnType<typeof hydrateRoot>;
+    connected?: boolean;
+    source?: EventSource;
+  };${refreshGlobal}
+};
+
+const __vextDev = (__vextGlobal.__VEXT_DEV__ ??= {});
+${refreshSetup}
+
+function mountVextTree(root, tree) {
+  if (__vextDev.root) {
+    __vextDev.root.render(tree);
+    return;
+  }
+  __vextDev.root = hydrateRoot(root, tree);
+}
+
+function connectVextDevEvents() {
+  if (__vextDev.connected || typeof EventSource === "undefined") return;
+  __vextDev.connected = true;
+  const source = new EventSource("/__vext/dev/events");
+  __vextDev.source = source;
+  source.addEventListener("vext", (event) => {
+    const payload = JSON.parse(event.data || "{}");
+    handleVextDevEvent(payload).catch((error) => {
+      console.error("[vext dev] frontend refresh failed", error);
+      window.location.reload();
+    });
+  });
+}
+
+async function handleVextDevEvent(payload) {
+  if (payload.type === "frontend:built") {
+    updateVextStyleLinks(payload.styles ?? [], payload.buildId);
+    if (payload.action === "style") return;
+${refreshHandler}
+    window.location.reload();
+    return;
+  }
+
+  if (payload.type === "frontend:error") {
+    console.error("[vext dev] frontend rebuild failed:", payload.message);
+    return;
+  }
+
+  if (payload.type === "render:reload") {
+    if (payload.action === "auto") {
+      window.location.reload();
+      return;
+    }
+    if (payload.action === "prompt") {
+      showVextRenderRefreshPrompt();
+    }
+  }
+}
+
+function updateVextStyleLinks(styles, buildId) {
+  if (!Array.isArray(styles) || styles.length === 0) return;
+  const links = Array.from(document.querySelectorAll("link[data-vext-style]"));
+  for (let i = 0; i < styles.length; i++) {
+    const href = withVextDevQuery(styles[i], buildId);
+    const existing = links[i];
+    if (existing instanceof HTMLLinkElement) {
+      existing.href = href;
+      continue;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.setAttribute("data-vext-style", "");
+    document.head.appendChild(link);
+  }
+}
+
+function withVextDevQuery(url, buildId) {
+  const joiner = String(url).includes("?") ? "&" : "?";
+  return String(url) + joiner + "vext_hmr=" + encodeURIComponent(buildId ?? Date.now());
+}
+
+function showVextRenderRefreshPrompt() {
+  const id = "__vext_render_refresh__";
+  if (document.getElementById(id)) return;
+  const button = document.createElement("button");
+  button.id = id;
+  button.type = "button";
+  button.textContent = "Refresh server data";
+  button.style.cssText =
+    "position:fixed;right:16px;bottom:16px;z-index:2147483647;border:0;border-radius:6px;background:#111827;color:white;padding:10px 14px;font:500 13px/1.2 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18);cursor:pointer";
+  button.onclick = () => window.location.reload();
+  document.body.appendChild(button);
+}
+`;
+}
+
+function renderModuleImports(
+  generatedDir: string,
+  rootDir: string,
+  input: {
+    pages: VextFrontendPageRegistryEntry[];
+    layouts: VextFrontendLayoutRegistryEntry[];
+    errorPages: VextFrontendErrorPageRegistryEntry[];
+    locales: VextFrontendLocaleRegistryEntry[];
+  },
+): string {
+  const imports = [
+    ...input.pages.map((entry, index) =>
+      renderImport(`pageModule${index}`, generatedDir, rootDir, entry.file),
+    ),
+    ...input.layouts.map((entry, index) =>
+      renderImport(`layoutModule${index}`, generatedDir, rootDir, entry.file),
+    ),
+    ...input.errorPages.map((entry, index) =>
+      renderImport(
+        `errorPageModule${index}`,
+        generatedDir,
+        rootDir,
+        entry.file,
+      ),
+    ),
+    ...input.locales.map((entry, index) =>
+      renderImport(`localeModule${index}`, generatedDir, rootDir, entry.file),
+    ),
+  ];
+  return imports.join("\n");
+}
+
+function renderImport(
+  name: string,
+  generatedDir: string,
+  rootDir: string,
+  file: string,
+): string {
+  const specifier = toImportSpecifier(generatedDir, path.join(rootDir, file));
+  return `import * as ${name} from ${JSON.stringify(specifier)};`;
+}
+
+function renderRuntimeMaps(input: {
+  pages: VextFrontendPageRegistryEntry[];
+  layouts: VextFrontendLayoutRegistryEntry[];
+  errorPages: VextFrontendErrorPageRegistryEntry[];
+  locales: VextFrontendLocaleRegistryEntry[];
+}): string {
+  return `const pageModules = ${renderObjectMap(input.pages, "pageModule", "id")};
+const layoutModules = ${renderObjectMap(input.layouts, "layoutModule", "id")};
+const errorPageModules = ${renderObjectMap(input.errorPages, "errorPageModule", "id")};
+const localeModules = ${renderObjectMap(input.locales, "localeModule", "locale")};
+`;
+}
+
+function renderObjectMap<T extends { id?: string; locale?: string }>(
+  entries: T[],
+  prefix: string,
+  key: keyof T,
+): string {
+  const lines = entries.map((entry, index) => {
+    const mapKey = String(entry[key]);
+    return `  ${JSON.stringify(mapKey)}: ${prefix}${index}`;
+  });
+  return `{\n${lines.join(",\n")}\n}`;
+}
+
+function renderSharedRendererHelpers(defaultLocale: string): string {
+  return `function createVextTree(page, props, options) {
+  const Page = readComponent(pageModules[page] ?? errorPageModules[page], page);
+  let tree = createElement(Page, props);
+  for (const layout of resolveLayoutChain(page, options.layout).reverse()) {
+    const Layout = readComponent(layoutModules[layout.id], layout.id);
+    const data =
+      options.layoutData?.[layout.id] ??
+      options.layoutData?.[layout.directory] ??
+      undefined;
+    tree = createElement(Layout, { data }, tree);
+  }
+  return createElement(
+    VextRenderProvider,
+    { context: resolveI18nContext(options) },
+    tree,
+  );
+}
+
+function readComponent(module, id) {
+  const component = module?.default ?? module;
+  if (!component) {
+    throw new Error("[vextjs] frontend component not found: " + id);
+  }
+  return component;
+}
+
+function resolveLayoutChain(page, layoutOption) {
+  if (layoutOption === false) return [];
+  if (typeof layoutOption === "string") {
+    return registry.layouts.filter((layout) => layout.id === layoutOption);
+  }
+  if (Array.isArray(layoutOption)) {
+    const requested = new Set(layoutOption);
+    return registry.layouts.filter((layout) => requested.has(layout.id));
+  }
+  const pageDirectory = page.includes("/") ? page.slice(0, page.lastIndexOf("/")) : "";
+  return registry.layouts
+    .filter((layout) => {
+      const directory = layout.directory ?? "";
+      return (
+        directory === "" ||
+        pageDirectory === directory ||
+        pageDirectory.startsWith(directory + "/")
+      );
+    })
+    .sort((a, b) => (a.directory ?? "").length - (b.directory ?? "").length);
+}
+
+function resolveI18nContext(options) {
+  const allMessages = {};
+  for (const [locale, module] of Object.entries(localeModules)) {
+    allMessages[locale] = module.default ?? module.messages ?? module;
+  }
+  const defaultLocale = ${JSON.stringify(defaultLocale)};
+  const locale = options.locale ?? defaultLocale ?? Object.keys(allMessages)[0] ?? "";
+  const messages =
+    options.messages ??
+    allMessages[locale] ??
+    allMessages[defaultLocale] ??
+    {};
+  return { locale, messages, allMessages };
+}
+`;
+}
+
+function toImportSpecifier(fromDir: string, targetPath: string): string {
+  const relative = normalizeRelativePath(path.relative(fromDir, targetPath));
+  return relative.startsWith(".") ? relative : `./${relative}`;
+}
+
+function normalizeRelativePath(value: string): string {
+  const normalized = value.replace(/\\/g, "/");
+  return normalized === "." ? "" : normalized;
+}

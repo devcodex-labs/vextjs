@@ -538,7 +538,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
           ? "cold restart preflight"
           : event.action === "client"
             ? "client rebuild preflight"
-          : "soft reload preflight";
+            : "soft reload preflight";
       if (!(await runPreflight(preflightReason))) {
         return;
       }
@@ -758,7 +758,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
 }
 
 function isFrontendClientFile(filePath: string): boolean {
-  return filePath.startsWith("src/client/") || filePath.startsWith("public/");
+  return filePath.startsWith("src/frontend/") || filePath.startsWith("public/");
 }
 
 // ── 参数解析 ────────────────────────────────────────────────

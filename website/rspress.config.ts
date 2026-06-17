@@ -86,11 +86,17 @@ const navSource: NavItemSource[] = [
     activeMatch: "^/guide/(introduction|quick-start|project-structure)",
   },
   {
+    en: "Frontend",
+    zh: "前端",
+    link: "/guide/frontend",
+    activeMatch: "^/guide/frontend",
+  },
+  {
     en: "Runtime",
     zh: "运行时",
     link: "/guide/routing",
     activeMatch:
-      "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|frontend|adapters)",
+      "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|adapters)",
   },
   {
     en: "Data",
@@ -173,6 +179,10 @@ const englishSidebar: SidebarGroup[] = [
     ],
   },
   {
+    text: "Frontend",
+    items: [{ text: "Frontend integration", link: "/guide/frontend" }],
+  },
+  {
     text: "Runtime",
     items: [
       { text: "Routing", link: "/guide/routing" },
@@ -182,7 +192,6 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Runtime Hooks", link: "/guide/hooks" },
       { text: "Request Context", link: "/guide/request-context" },
       { text: "Configuration", link: "/guide/configuration" },
-      { text: "Frontend", link: "/guide/frontend" },
       { text: "Adapter Architecture", link: "/guide/adapters" },
     ],
   },
@@ -253,6 +262,10 @@ const chineseSidebar: SidebarGroup[] = [
     ],
   },
   {
+    text: "前端",
+    items: [{ text: "前端集成", link: "/zh/guide/frontend" }],
+  },
+  {
     text: "运行时",
     items: [
       { text: "路由", link: "/zh/guide/routing" },
@@ -262,7 +275,6 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "运行时 Hooks", link: "/zh/guide/hooks" },
       { text: "请求上下文", link: "/zh/guide/request-context" },
       { text: "配置", link: "/zh/guide/configuration" },
-      { text: "前端集成", link: "/zh/guide/frontend" },
       { text: "Adapter 架构", link: "/zh/guide/adapters" },
     ],
   },

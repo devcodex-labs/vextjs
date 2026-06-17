@@ -4,7 +4,7 @@
  * 将文件变更分类为四种动作之一：
  *   - `cold`   — 冷重启（配置文件、插件、package.json、tsconfig.json、.env 等）
  *   - `soft`   — 热替换（src/ 下的源码文件：.ts/.js/.mjs/.cjs）
- *   - `client` — 前端 client rebuild（src/client 与 public）
+ *   - `client` — 前端 client rebuild（src/frontend 与 public）
  *   - `ignore` — 忽略（node_modules、dist、.git、测试文件、文档等）
  *
  * 分类器在 FileWatcher 的 onFileChange 回调中调用，
@@ -106,7 +106,7 @@ const IGNORE_PATTERNS: RegExp[] = [
   /^docs\//,
 ];
 
-const FRONTEND_CLIENT_PATTERNS: RegExp[] = [/^src\/client\//, /^public\//];
+const FRONTEND_CLIENT_PATTERNS: RegExp[] = [/^src\/frontend\//, /^public\//];
 
 /**
  * 源码文件模式
@@ -126,7 +126,7 @@ const SOURCE_PATTERN = /^src\/.*\.(ts|mts|cts|js|mjs|cjs)$/;
  *   2. 用户自定义 coldPatterns → cold
  *   3. 内置 IGNORE_PATTERNS → ignore
  *   4. 内置 COLD_PATTERNS → cold
- *   5. src/client 与 public → client
+ *   5. src/frontend 与 public → client
  *   6. src/ 下的源码文件 → soft
  *   7. 其他 → ignore
  *

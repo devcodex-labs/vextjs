@@ -639,6 +639,31 @@ describe("Fastify Adapter — VextAdapter 接口合规性", () => {
       expect(response.body).toBe("<h1>Hello</h1>");
     });
 
+    it("_sendHtml() 应发送 HTML 响应并保留自定义响应头", async () => {
+      adapter.registerRoute("GET", "/render-html", [
+        async (_req, res) => {
+          res._sendHtml?.(
+            "<main>Rendered</main>",
+            202,
+            { "X-Render": "yes" },
+            "render",
+            { page: "index" },
+          );
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/render-html",
+      });
+
+      expect(response.status).toBe(202);
+      expect(response.headers["content-type"]).toContain("text/html");
+      expect(response.headers["x-render"]).toBe("yes");
+      expect(response.body).toBe("<main>Rendered</main>");
+    });
+
     it("status() 应支持链式调用", async () => {
       adapter.registerRoute("POST", "/created", [
         async (req, res) => {

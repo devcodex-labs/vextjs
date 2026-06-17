@@ -274,15 +274,13 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
       return null;
     }
     if (template === "api" && frontend !== "none") {
-      console.error(
-        '\n  ❌ --template api only supports --frontend none.\n',
-      );
+      console.error("\n  ❌ --template api only supports --frontend none.\n");
       process.exit(1);
       return null;
     }
     if (template === "fullstack-react" && frontend !== "react") {
       console.error(
-        '\n  ❌ --template fullstack-react requires --frontend react.\n',
+        "\n  ❌ --template fullstack-react requires --frontend react.\n",
       );
       process.exit(1);
       return null;
@@ -358,7 +356,14 @@ async function generateProject(
     "preload",
   ];
   if (isFullstack) {
-    dirs.push("src/client", "public");
+    dirs.push(
+      "src/frontend/pages/error",
+      "src/frontend/components",
+      "src/frontend/styles",
+      "src/frontend/assets",
+      "src/frontend/locales",
+      "public",
+    );
   }
 
   if (isTs) {
@@ -477,10 +482,19 @@ function getTemplateFiles(
   }
 
   if (isFullstack) {
-    files[`src/client/main.${isTs ? "tsx" : "jsx"}`] = generateClientMain(isTs);
-    files[`src/client/App.${isTs ? "tsx" : "jsx"}`] = generateClientApp(isTs);
-    files["src/client/styles.css"] = generateClientStyles();
-    files["src/client/index.html"] = generateClientHtml(name);
+    const viewExt = isTs ? "tsx" : "jsx";
+    const localeExt = isTs ? "ts" : "js";
+    files[`src/frontend/pages/index.${viewExt}`] =
+      generateFrontendHomePage(isTs);
+    files[`src/frontend/pages/layout.${viewExt}`] =
+      generateFrontendLayout(isTs);
+    files[`src/frontend/pages/error/default.${viewExt}`] =
+      generateFrontendErrorPage(isTs);
+    files["src/frontend/pages/_document.html"] = generateFrontendDocument(name);
+    files[`src/frontend/components/AppShell.${viewExt}`] =
+      generateFrontendAppShell(isTs);
+    files[`src/frontend/locales/en-US.${localeExt}`] = generateFrontendLocale();
+    files["src/frontend/styles/index.css"] = generateFrontendStyles();
     files["public/favicon.svg"] = generateFaviconSvg();
   }
 
@@ -501,13 +515,13 @@ function generatePackageJson(
   const deps: Record<string, string> = {
     vextjs: vextVersion,
     ...ADAPTER_DEPS[adapter],
-    ...(isFullstack ? { react: "^19.0.0", "react-dom": "^19.0.0" } : {}),
+    ...(isFullstack ? { react: "^19.2.7", "react-dom": "^19.2.7" } : {}),
   };
 
   const devDeps: Record<string, string> = {
     ...(isTs ? { typescript: "^5.4.0" } : {}),
     ...(isFullstack && isTs
-      ? { "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0" }
+      ? { "@types/react": "^19.2.17", "@types/react-dom": "^19.2.3" }
       : {}),
     ...ADAPTER_DEV_DEPS[adapter],
   };
@@ -593,6 +607,34 @@ function generateReadme(
     ? `├── locales/         # Optional i18n language packs
 └── types/generated/ # Generated TypeScript declarations`
     : `└── locales/         # Optional i18n language packs`;
+  const frontendStructure = isFullstack
+    ? `├── frontend/
+│   ├── pages/       # React pages, layouts, document and error pages
+│   ├── components/  # Shared React components
+│   ├── styles/      # CSS and JSCSS-ready style entry
+│   ├── assets/      # Bundled images, fonts and static imports
+│   └── locales/     # Frontend page messages
+`
+    : "";
+  const frontendUsage = isFullstack
+    ? `
+## Frontend Rendering
+
+The default full-stack template renders React pages from Vext routes:
+
+\`\`\`${ext}
+app.get('/', {}, async (req, res) => {
+  const greeting = await app.services.example.greeting('Vext')
+  res.render('index', { greeting })
+})
+\`\`\`
+
+- Page files live in \`src/frontend/pages/**\`.
+- Shared components live in \`src/frontend/components/**\` and can be imported with \`@components/...\`.
+- The HTML document is \`src/frontend/pages/_document.html\` and uses \`{vext.root}\`, \`{vext.data}\`, \`{vext.entry}\`, and \`{vext.styles}\`.
+- Static files in \`public/\` are copied to the frontend output directory.
+`
+    : "";
 
   return `# ${name}
 
@@ -612,7 +654,7 @@ npm start
 
 \`\`\`
 src/
-${isFullstack ? "├── client/          # React 19 browser entry\n" : ""}├── config/          # Configuration files and examples
+${frontendStructure}├── config/          # Configuration files and examples
 ├── routes/          # Route definitions
 ├── services/        # Business logic services
 ├── middlewares/     # Custom middlewares
@@ -631,6 +673,7 @@ preload/             # Optional process-level preload scripts
 Edit \`src/config/default.${ext}\` to customize shared configuration.
 Copy \`src/config/local.example.${ext}\` to \`src/config/local.${ext}\` for local-only overrides.
 Copy \`src/config/bootstrap.example.${ext}\` to \`src/config/bootstrap.${ext}\` when you need startup-time config providers.
+${frontendUsage}
 
 ## Learn More
 
@@ -760,10 +803,15 @@ function generateDefaultConfig(
     ? `  frontend: {
     enabled: true,
     framework: 'react',
-    entry: 'src/client/main.${isTs ? "tsx" : "jsx"}',
-    indexHtml: 'src/client/index.html',
     publicDir: 'public',
     publicPath: '/',
+    i18n: {
+      enabled: true,
+      defaultLocale: 'en-US',
+    },
+    dev: {
+      renderRefresh: 'prompt',
+    },
   },
 `
     : "";
@@ -849,7 +897,83 @@ export default config
 }
 
 function generateIndexRoute(isTs: boolean, isFullstack: boolean): string {
-  const helloPath = isFullstack ? "/api/hello" : "/";
+  if (isFullstack) {
+    if (isTs) {
+      return `import { defineRoutes } from 'vextjs'
+
+export default defineRoutes((app) => {
+  app.get('/', {}, async (req, res) => {
+    const greeting = await app.services.example.greeting('Vext')
+    res.render(
+      'index',
+      {
+        greeting,
+        renderedAt: new Date().toISOString(),
+      },
+      {
+        head: {
+          title: 'Vext full-stack app',
+          description: 'A React 19 page rendered by Vext routes and services.',
+        },
+        layoutData: {
+          default: {
+            section: 'Dashboard',
+          },
+        },
+      },
+    )
+  })
+
+  app.get('/api/hello', {}, async (req, res) => {
+    const greeting = await app.services.example.greeting('Vext')
+    res.json(greeting)
+  })
+
+  app.get('/api/health', {}, async (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() })
+  })
+})
+`;
+    }
+
+    return `import { defineRoutes } from 'vextjs'
+
+export default defineRoutes((app) => {
+  app.get('/', {}, async (req, res) => {
+    const greeting = await app.services.example.greeting('Vext')
+    res.render(
+      'index',
+      {
+        greeting,
+        renderedAt: new Date().toISOString(),
+      },
+      {
+        head: {
+          title: 'Vext full-stack app',
+          description: 'A React 19 page rendered by Vext routes and services.',
+        },
+        layoutData: {
+          default: {
+            section: 'Dashboard',
+          },
+        },
+      },
+    )
+  })
+
+  app.get('/api/hello', {}, async (req, res) => {
+    const greeting = await app.services.example.greeting('Vext')
+    res.json(greeting)
+  })
+
+  app.get('/api/health', {}, async (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() })
+  })
+})
+`;
+  }
+
+  const helloPath = "/";
   const healthPath = isFullstack ? "/api/health" : "/health";
   if (isTs) {
     return `import { defineRoutes } from 'vextjs'
@@ -942,79 +1066,201 @@ export default class ExampleService {
 `;
 }
 
-function generateClientMain(isTs: boolean): string {
-  const rootElement = isTs
-    ? "document.getElementById('root')!"
-    : "document.getElementById('root')";
-  return `import React from 'react'
-import { createRoot } from 'react-dom/client'
-import { App } from './App'
-import './styles.css'
+function generateFrontendHomePage(isTs: boolean): string {
+  if (isTs) {
+    return `import { useVextI18n } from 'vextjs/frontend'
 
-createRoot(${rootElement}).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
-`;
+type HomeMessages = {
+  home: {
+    eyebrow: string
+    title: string
+    intro: string
+  }
 }
 
-function generateClientApp(isTs: boolean): string {
-  const typeLine = isTs
-    ? "\ntype HelloResponse = { message: string }\n"
-    : "";
-  const cast = isTs ? " as HelloResponse" : "";
-  const constAssertion = isTs ? " as const" : "";
+type HomePageProps = {
+  greeting: {
+    message: string
+  }
+  renderedAt: string
+}
 
-  return `import { useEffect, useState } from 'react'
-import { createVextApiClient, isVextApiError } from 'vextjs/frontend'
-${typeLine}
-const api = createVextApiClient({
-  schemaVersion: 1,
-  kind: 'client-contract',
-  source: 'routes-manifest',
-  generatedAt: 'template',
-  routes: [
-    {
-      method: 'GET',
-      path: '/api/hello',
-      operationId: 'getApiHello',
-      response: { type: 'unknown' },
-    },
-  ],
-  warnings: [],
-}${constAssertion})
-
-export function App() {
-  const [message, setMessage] = useState('Loading...')
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    api.GET('/api/hello')
-      .then((data) => {
-        setMessage((data${cast}).message)
-        setError('')
-      })
-      .catch((err) => {
-        setMessage('Request failed')
-        setError(isVextApiError(err) ? err.message : String(err))
-      })
-  }, [])
+export default function HomePage({ greeting, renderedAt }: HomePageProps) {
+  const i18n = useVextI18n<HomeMessages>()
 
   return (
-    <main className="shell">
-      <section className="panel">
-        <p className="eyebrow">vext full-stack</p>
-        <h1>{message}</h1>
-        {error ? <p className="error">{error}</p> : <p>React 19 client served by vext.</p>}
-      </section>
+    <main className="home">
+      <p className="eyebrow">{i18n.home.eyebrow}</p>
+      <h1>{i18n.home.title}</h1>
+      <p className="lead">{i18n.home.intro}</p>
+      <dl className="facts">
+        <div>
+          <dt>Service data</dt>
+          <dd>{greeting.message}</dd>
+        </div>
+        <div>
+          <dt>Rendered at</dt>
+          <dd>{renderedAt}</dd>
+        </div>
+      </dl>
+    </main>
+  )
+}
+`;
+  }
+
+  return `import { useVextI18n } from 'vextjs/frontend'
+
+export default function HomePage({ greeting, renderedAt }) {
+  const i18n = useVextI18n()
+
+  return (
+    <main className="home">
+      <p className="eyebrow">{i18n.home.eyebrow}</p>
+      <h1>{i18n.home.title}</h1>
+      <p className="lead">{i18n.home.intro}</p>
+      <dl className="facts">
+        <div>
+          <dt>Service data</dt>
+          <dd>{greeting.message}</dd>
+        </div>
+        <div>
+          <dt>Rendered at</dt>
+          <dd>{renderedAt}</dd>
+        </div>
+      </dl>
     </main>
   )
 }
 `;
 }
 
-function generateClientStyles(): string {
+function generateFrontendLayout(isTs: boolean): string {
+  if (isTs) {
+    return `import type { ReactNode } from 'react'
+import { AppShell } from '@components/AppShell'
+
+type LayoutProps = {
+  children?: ReactNode
+  data?: {
+    section?: string
+  }
+}
+
+export default function RootLayout({ children, data }: LayoutProps) {
+  return <AppShell section={data?.section ?? 'Home'}>{children}</AppShell>
+}
+`;
+  }
+
+  return `import { AppShell } from '@components/AppShell'
+
+export default function RootLayout({ children, data }) {
+  return <AppShell section={data?.section ?? 'Home'}>{children}</AppShell>
+}
+`;
+}
+
+function generateFrontendAppShell(isTs: boolean): string {
+  if (isTs) {
+    return `import type { ReactNode } from 'react'
+
+type AppShellProps = {
+  children?: ReactNode
+  section: string
+}
+
+export function AppShell({ children, section }: AppShellProps) {
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="/">
+          vext
+        </a>
+        <nav aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/api/health">Health</a>
+        </nav>
+        <span className="section">{section}</span>
+      </header>
+      {children}
+    </div>
+  )
+}
+`;
+  }
+
+  return `export function AppShell({ children, section }) {
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="/">
+          vext
+        </a>
+        <nav aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/api/health">Health</a>
+        </nav>
+        <span className="section">{section}</span>
+      </header>
+      {children}
+    </div>
+  )
+}
+`;
+}
+
+function generateFrontendErrorPage(isTs: boolean): string {
+  if (isTs) {
+    return `type ErrorPageProps = {
+  error?: {
+    status?: number
+    message?: string
+    requestId?: string
+  }
+}
+
+export default function DefaultErrorPage({ error }: ErrorPageProps) {
+  const status = error?.status ?? 500
+  return (
+    <main className="error-page">
+      <p className="eyebrow">Request failed</p>
+      <h1>{status}</h1>
+      <p>{error?.message ?? 'Something went wrong.'}</p>
+      {error?.requestId ? <small>Request ID: {error.requestId}</small> : null}
+    </main>
+  )
+}
+`;
+  }
+
+  return `export default function DefaultErrorPage({ error }) {
+  const status = error?.status ?? 500
+  return (
+    <main className="error-page">
+      <p className="eyebrow">Request failed</p>
+      <h1>{status}</h1>
+      <p>{error?.message ?? 'Something went wrong.'}</p>
+      {error?.requestId ? <small>Request ID: {error.requestId}</small> : null}
+    </main>
+  )
+}
+`;
+}
+
+function generateFrontendLocale(): string {
+  return `export default {
+  home: {
+    eyebrow: 'Vext full-stack',
+    title: 'Routes render React pages',
+    intro:
+      'Prepare data in a route or service, then render a React page with res.render().',
+  },
+}
+`;
+}
+
+function generateFrontendStyles(): string {
   return `:root {
   color: #172026;
   background: #f7f9fb;
@@ -1031,23 +1277,58 @@ body {
   margin: 0;
 }
 
-.shell {
+.app-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
 }
 
-.panel {
-  width: min(720px, 100%);
-  border: 1px solid #d6dde5;
-  border-radius: 8px;
+.topbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 24px;
+  border-bottom: 1px solid #d6dde5;
   background: #ffffff;
-  padding: 32px;
+}
+
+.brand {
+  color: #172026;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 14px;
+}
+
+.topbar nav a {
+  color: #52606d;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.section {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.home,
+.error-page {
+  min-height: calc(100vh - 56px);
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 48px clamp(20px, 6vw, 80px);
+}
+
+.home {
+  max-width: 960px;
 }
 
 .eyebrow {
-  margin: 0 0 12px;
+  margin: 0;
   color: #3b6ea8;
   font-size: 13px;
   font-weight: 700;
@@ -1055,8 +1336,9 @@ body {
 }
 
 h1 {
-  margin: 0 0 16px;
-  font-size: clamp(28px, 5vw, 48px);
+  margin: 0;
+  max-width: 760px;
+  font-size: 48px;
   line-height: 1.05;
 }
 
@@ -1065,23 +1347,64 @@ p {
   color: #52606d;
 }
 
-.error {
-  color: #b42318;
+.lead {
+  max-width: 640px;
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+
+.facts div {
+  border: 1px solid #d6dde5;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+dt {
+  margin-bottom: 8px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 0;
+  color: #172026;
+  font-weight: 600;
+}
+
+.error-page {
+  max-width: 720px;
+}
+
+.error-page small {
+  color: #6b7280;
 }
 `;
 }
 
-function generateClientHtml(name: string): string {
+function generateFrontendDocument(name: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${name}</title>
+    {vext.head}
+    {vext.styles}
   </head>
   <body>
-    <div id="root"></div>
-    %VEXT_ENTRY%
+    {vext.root}
+    {vext.data}
+    {vext.entry}
   </body>
 </html>
 `;

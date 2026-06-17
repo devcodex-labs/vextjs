@@ -1,14 +1,21 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextFrontendMode, VextFrontendUserConfig } from "../contract/types.js";
+import type {
+  ResolvedVextFrontendConfig,
+  ResolvedVextFrontendSpaFallbackScope,
+  VextFrontendMode,
+  VextFrontendUserConfig,
+} from "../contract/types.js";
 import { resolveFrontendConfig } from "../tooling/config-resolver.js";
+import { createFrontendRenderer } from "./renderer.js";
 
 export interface CreateFrontendNotFoundHandlerOptions {
   rootDir: string;
   mode: VextFrontendMode;
   config: VextFrontendUserConfig | undefined;
   fallbackHandler: VextMiddleware;
+  onNotFound?: (req: Parameters<VextMiddleware>[0]) => Promise<void> | void;
 }
 
 export function createFrontendNotFoundHandler(
@@ -21,22 +28,38 @@ export function createFrontendNotFoundHandler(
   if (!config.enabled) {
     return options.fallbackHandler;
   }
+  const renderer = createFrontendRenderer(options);
 
   return async (req, res, next) => {
     if (!isStaticMethod(req.method)) {
       return options.fallbackHandler(req, res, next);
     }
 
-    const assetPath = resolveAssetPath(config.outDir, config.publicPath, req.path);
+    const assetPath = resolveAssetPath(
+      config.outDir,
+      config.publicPath,
+      req.path,
+    );
     if (assetPath) {
       const served = serveFile(req, res, assetPath);
       if (served) return;
     }
 
-    if (shouldServeFallback(req.path, req.headers.accept, config.spaFallback)) {
-      const indexPath = path.join(config.outDir, "index.html");
-      res.setHeader("Vary", "Accept");
-      if (serveFile(req, res, indexPath, "text/html; charset=utf-8")) return;
+    const fallbackScope = resolveSpaFallbackScope(
+      req.path,
+      req.headers.accept,
+      config.spaFallback,
+    );
+    if (fallbackScope) {
+      await options.onNotFound?.(req);
+      const rendered = tryRenderScopedFallback(res, renderer, fallbackScope);
+      if (rendered) return;
+    }
+
+    if (shouldRenderHtmlNotFound(req.path, req.headers.accept, config)) {
+      await options.onNotFound?.(req);
+      const rendered = tryRenderHtmlNotFound(req, res, renderer);
+      if (rendered) return;
     }
 
     return options.fallbackHandler(req, res, next);
@@ -72,7 +95,8 @@ function resolveAssetPath(
   const pathname = safeDecodePath(requestPath);
   if (!pathname) return null;
 
-  const normalizedPublicPath = publicPath === "/" ? "/" : publicPath.replace(/\/$/, "");
+  const normalizedPublicPath =
+    publicPath === "/" ? "/" : publicPath.replace(/\/$/, "");
   if (normalizedPublicPath !== "/" && pathname !== normalizedPublicPath) {
     if (!pathname.startsWith(`${normalizedPublicPath}/`)) return null;
   }
@@ -88,7 +112,11 @@ function resolveAssetPath(
 
   const candidate = path.resolve(staticRoot, normalizedAsset);
   const relative = path.relative(staticRoot, candidate);
-  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (
+    relative === "" ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  ) {
     return null;
   }
   return candidate;
@@ -124,21 +152,126 @@ function serveFile(
     return true;
   }
 
-  res.stream(createReadStream(filePath), forcedContentType ?? mimeTypeFor(filePath));
+  res.stream(
+    createReadStream(filePath),
+    forcedContentType ?? mimeTypeFor(filePath),
+  );
   return true;
 }
 
-function shouldServeFallback(
+function resolveSpaFallbackScope(
   requestPath: string,
   acceptHeader: string | undefined,
-  fallback: { enabled: boolean; exclude: string[] },
+  fallback: ResolvedVextFrontendConfig["spaFallback"],
+): ResolvedVextFrontendSpaFallbackScope | null {
+  if (!fallback.enabled || fallback.scopes.length === 0) return null;
+  if (!acceptsHtml(acceptHeader)) return null;
+  const pathname = safeDecodePath(requestPath);
+  if (!pathname) return null;
+  if (path.extname(pathname)) return null;
+  if (fallback.exclude.some((pattern) => matchPathPattern(pathname, pattern))) {
+    return null;
+  }
+
+  return (
+    fallback.scopes
+      .filter((scope) => matchesScope(pathname, scope))
+      .sort((a, b) => b.basePath.length - a.basePath.length)[0] ?? null
+  );
+}
+
+function shouldRenderHtmlNotFound(
+  requestPath: string,
+  acceptHeader: string | undefined,
+  config: ResolvedVextFrontendConfig,
 ): boolean {
-  if (!fallback.enabled) return false;
   if (!acceptsHtml(acceptHeader)) return false;
   const pathname = safeDecodePath(requestPath);
   if (!pathname) return false;
   if (path.extname(pathname)) return false;
-  return !fallback.exclude.some((pattern) => matchPathPattern(pathname, pattern));
+  if (isApiPath(pathname)) return false;
+  if (
+    config.spaFallback.exclude.some((pattern) =>
+      matchPathPattern(pathname, pattern),
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function matchesScope(
+  pathname: string,
+  scope: ResolvedVextFrontendSpaFallbackScope,
+): boolean {
+  const base = scope.basePath === "/" ? "/" : scope.basePath.replace(/\/$/, "");
+  const inScope =
+    base === "/" ? true : pathname === base || pathname.startsWith(`${base}/`);
+  if (!inScope) return false;
+  return !scope.exclude.some((pattern) => matchPathPattern(pathname, pattern));
+}
+
+function tryRenderScopedFallback(
+  res: Parameters<VextMiddleware>[1],
+  renderer: ReturnType<typeof createFrontendRenderer>,
+  scope: ResolvedVextFrontendSpaFallbackScope,
+): boolean {
+  if (!res._sendHtml) return false;
+  try {
+    const rendered = renderer.renderPage(
+      scope.page,
+      {},
+      {
+        status: scope.status,
+        headers: { Vary: "Accept" },
+        ssr: scope.ssr,
+      },
+      res.statusCode,
+    );
+    res._sendHtml(
+      rendered.html,
+      rendered.status,
+      rendered.headers,
+      "render",
+      rendered.payload,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryRenderHtmlNotFound(
+  req: Parameters<VextMiddleware>[0],
+  res: Parameters<VextMiddleware>[1],
+  renderer: ReturnType<typeof createFrontendRenderer>,
+): boolean {
+  if (!res._sendHtml) return false;
+  try {
+    const rendered = renderer.renderError(
+      404,
+      {
+        details: { path: req.path },
+      },
+      undefined,
+      404,
+      req.requestId,
+    );
+    res._sendHtml(
+      rendered.html,
+      rendered.status,
+      { ...rendered.headers, Vary: "Accept" },
+      "render",
+      rendered.payload,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isApiPath(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
 }
 
 function acceptsHtml(acceptHeader: string | undefined): boolean {
