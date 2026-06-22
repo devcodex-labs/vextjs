@@ -1,8 +1,13 @@
 import path from "node:path";
 import type {
+  VextFrontendDeployUploadAdapter,
+  VextFrontendDeployUploadAdapterName,
+  VextFrontendExternalRuntimeEntry,
   ResolvedVextFrontendConfig,
+  VextFrontendBuildBudgetsConfig,
   VextFrontendSpaFallbackConfig,
   VextFrontendSpaFallbackScope,
+  VextFrontendVendorChunksConfig,
   VextFrontendMode,
   VextFrontendUserConfig,
 } from "../contract/types.js";
@@ -162,6 +167,10 @@ export function resolveFrontendConfig(
         assetNames: clientBuild.assetNames ?? "[name]-[hash]",
         manifest: clientBuild.manifest ?? true,
         external: clientBuild.external ?? [],
+        externalRuntime: normalizeExternalRuntime(
+          clientBuild.externalRuntime,
+          "config.frontend.build.client.externalRuntime",
+        ),
       },
       server: {
         outFile:
@@ -178,6 +187,8 @@ export function resolveFrontendConfig(
         manifest: serverBuild.manifest ?? true,
         external: serverBuild.external ?? [],
       },
+      vendorChunks: normalizeVendorChunks(build.vendorChunks),
+      budgets: normalizeBudgets(build.budgets),
       assets: {
         inlineLimit: build.assets?.inlineLimit ?? 0,
       },
@@ -194,6 +205,7 @@ export function resolveFrontendConfig(
       assetBaseUrl: normalizeAssetBaseUrl(raw?.deploy?.assetBaseUrl),
       crossOrigin: raw?.deploy?.crossOrigin,
       integrity: raw?.deploy?.integrity ?? false,
+      upload: normalizeDeployUpload(raw?.deploy?.upload, options.rootDir),
     },
     render: {
       ssr: raw?.render?.ssr ?? true,
@@ -229,6 +241,107 @@ export function resolveFrontendConfig(
       renderRefresh: raw?.dev?.renderRefresh ?? "prompt",
     },
     adapter: raw?.adapter,
+  };
+}
+
+function normalizeExternalRuntime(
+  value: Record<string, string | VextFrontendExternalRuntimeEntry> | undefined,
+  label: string,
+): Record<string, VextFrontendExternalRuntimeEntry> {
+  if (!value) return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([specifier, entry]) => {
+      const normalized =
+        typeof entry === "string" ? { url: entry } : { ...entry };
+      if (!/^[a-z]+:\/\//i.test(normalized.url)) {
+        throw new Error(
+          `[vextjs] ${label}.${specifier}.url must be an absolute URL.`,
+        );
+      }
+      return [specifier, normalized];
+    }),
+  );
+}
+
+function normalizeVendorChunks(
+  value: boolean | VextFrontendVendorChunksConfig | undefined,
+): Required<VextFrontendVendorChunksConfig> {
+  if (value === false) {
+    return { enabled: false, packages: [], entryName: "vext-vendor" };
+  }
+  const raw = value === true ? { enabled: true } : (value ?? {});
+  return {
+    enabled: raw.enabled ?? true,
+    packages: raw.packages ?? ["react", "react-dom", "react-dom/client"],
+    entryName: raw.entryName ?? "vext-vendor",
+  };
+}
+
+function normalizeBudgets(
+  value: VextFrontendBuildBudgetsConfig | undefined,
+): Required<VextFrontendBuildBudgetsConfig> {
+  return {
+    maxAssetBytes: value?.maxAssetBytes ?? 0,
+    maxInitialJsBytes: value?.maxInitialJsBytes ?? 0,
+    maxTotalBytes: value?.maxTotalBytes ?? 0,
+    warnOnly: value?.warnOnly ?? false,
+  };
+}
+
+function normalizeDeployUpload(
+  value:
+    | boolean
+    | {
+        enabled?: boolean;
+        adapter?:
+          | VextFrontendDeployUploadAdapterName
+          | VextFrontendDeployUploadAdapter;
+        targetDir?: string;
+        publicBaseUrl?: string;
+        prefix?: string;
+        stateFile?: string;
+        dryRun?: boolean;
+        concurrency?: number;
+        include?: string[];
+        exclude?: string[];
+      }
+    | undefined,
+  rootDir: string,
+): ResolvedVextFrontendConfig["deploy"]["upload"] {
+  const raw = typeof value === "boolean" ? { enabled: value } : (value ?? {});
+  const enabled = raw.enabled ?? false;
+  const targetDir = raw.targetDir
+    ? resolveProjectPath(
+        rootDir,
+        raw.targetDir,
+        "config.frontend.deploy.upload.targetDir",
+      )
+    : enabled
+      ? resolveProjectPath(
+          rootDir,
+          path.join(".vext", "deploy", "frontend-assets"),
+          "config.frontend.deploy.upload.targetDir",
+        )
+      : undefined;
+  const stateFile = resolveProjectPath(
+    rootDir,
+    raw.stateFile ?? path.join(".vext", "deploy", "frontend-assets-state.json"),
+    "config.frontend.deploy.upload.stateFile",
+  );
+  return {
+    enabled,
+    adapter: raw.adapter ?? "filesystem",
+    targetDir,
+    publicBaseUrl: normalizeOptionalAbsoluteUrl(
+      raw.publicBaseUrl,
+      "config.frontend.deploy.upload.publicBaseUrl",
+    ),
+    prefix: normalizeUploadPrefix(raw.prefix ?? ""),
+    stateFile,
+    dryRun: raw.dryRun ?? false,
+    concurrency: raw.concurrency ?? 4,
+    include: raw.include ?? ["**/*"],
+    exclude: raw.exclude ?? ["**/*.map"],
   };
 }
 
@@ -312,6 +425,27 @@ function normalizeAssetBaseUrl(value: string | undefined): string | undefined {
     );
   }
   return value.endsWith("/") ? value : `${value}/`;
+}
+
+function normalizeOptionalAbsoluteUrl(
+  value: string | undefined,
+  label: string,
+): string | undefined {
+  if (!value) return undefined;
+  if (!/^[a-z]+:\/\//i.test(value)) {
+    throw new Error(`[vextjs] ${label} must be an absolute URL.`);
+  }
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function normalizeUploadPrefix(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/^\/+/u, "");
+  if (normalized.includes("..")) {
+    throw new Error(
+      "[vextjs] config.frontend.deploy.upload.prefix must not contain '..'.",
+    );
+  }
+  return normalized.replace(/\/+$/u, "");
 }
 
 function normalizeErrorPages(

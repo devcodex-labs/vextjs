@@ -18,13 +18,13 @@ export interface VextFrontendDevEventBus {
   getClientCount(): number;
 }
 
-const DEV_EVENT_PATH = "/__vext/dev/events";
+export const VEXT_FRONTEND_DEV_EVENT_PATH = "/__vext/dev/events";
 
 export function createFrontendDevEventBus(): VextFrontendDevEventBus {
   const clients = new Set<PassThrough>();
 
   const middleware: VextMiddleware = async (req, res, next) => {
-    if (req.method !== "GET" || req.path !== DEV_EVENT_PATH) {
+    if (req.method !== "GET" || req.path !== VEXT_FRONTEND_DEV_EVENT_PATH) {
       await next();
       return;
     }

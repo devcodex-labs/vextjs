@@ -389,6 +389,9 @@ describe("reloadRoutes", () => {
       const bodyMw = createMockMiddleware("bodyParser");
       const rateMw = createMockMiddleware("rateLimit");
       const respMw = createMockMiddleware("responseWrapper");
+      const frontendRenderMw = createMockMiddleware("frontendRender");
+      const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
+      const accessLogMw = createMockMiddleware("accessLog");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
@@ -396,6 +399,9 @@ describe("reloadRoutes", () => {
         createBodyParserMiddleware: vi.fn(() => bodyMw),
         createRateLimitMiddleware: vi.fn(() => rateMw),
         responseWrapper: respMw,
+        createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
+        frontendDevEvents: frontendDevEventsMw,
+        createAccessLogMiddleware: vi.fn(() => accessLogMw),
       };
 
       const freshAdapter = createMockAdapter();
@@ -413,15 +419,27 @@ describe("reloadRoutes", () => {
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(bodyMw);
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(rateMw);
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(respMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(
+        frontendRenderMw,
+      );
+      expect(freshAdapter.registerRoute).toHaveBeenCalledWith(
+        "GET",
+        "/__vext/dev/events",
+        [frontendDevEventsMw],
+      );
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(accessLogMw);
     });
 
-    it("应按正确顺序注册内置中间件（requestId → cors → body → rate → response → globals）", async () => {
+    it("应按正确顺序注册内置中间件与 dev events route", async () => {
       const registrationOrder: string[] = [];
       const reqIdMw = createMockMiddleware("requestId");
       const corsMw = createMockMiddleware("cors");
       const bodyMw = createMockMiddleware("bodyParser");
       const rateMw = createMockMiddleware("rateLimit");
       const respMw = createMockMiddleware("responseWrapper");
+      const frontendRenderMw = createMockMiddleware("frontendRender");
+      const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
+      const accessLogMw = createMockMiddleware("accessLog");
       const globalMw = createMockMiddleware("globalPlugin");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
@@ -430,6 +448,9 @@ describe("reloadRoutes", () => {
         createBodyParserMiddleware: vi.fn(() => bodyMw),
         createRateLimitMiddleware: vi.fn(() => rateMw),
         responseWrapper: respMw,
+        createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
+        frontendDevEvents: frontendDevEventsMw,
+        createAccessLogMiddleware: vi.fn(() => accessLogMw),
       };
 
       const freshAdapter = createMockAdapter({
@@ -439,8 +460,22 @@ describe("reloadRoutes", () => {
           else if (mw === bodyMw) registrationOrder.push("bodyParser");
           else if (mw === rateMw) registrationOrder.push("rateLimit");
           else if (mw === respMw) registrationOrder.push("responseWrapper");
+          else if (mw === frontendRenderMw)
+            registrationOrder.push("frontendRender");
+          else if (mw === accessLogMw) registrationOrder.push("accessLog");
           else if (mw === globalMw) registrationOrder.push("global");
         }),
+        registerRoute: vi.fn(
+          (method: string, path: string, chain: RouteReloaderMiddleware[]) => {
+            if (
+              method === "GET" &&
+              path === "/__vext/dev/events" &&
+              chain[0] === frontendDevEventsMw
+            ) {
+              registrationOrder.push("frontendDevEventsRoute");
+            }
+          },
+        ),
       });
 
       const options = createDefaultOptions({
@@ -457,6 +492,9 @@ describe("reloadRoutes", () => {
         "bodyParser",
         "rateLimit",
         "responseWrapper",
+        "frontendRender",
+        "frontendDevEventsRoute",
+        "accessLog",
         "global",
       ]);
     });
@@ -510,11 +548,11 @@ describe("reloadRoutes", () => {
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
-        createCorsMiddleware: undefined,        // cors disabled
+        createCorsMiddleware: undefined, // cors disabled
         createBodyParserMiddleware: vi.fn(() => bodyMw),
-        createRateLimitMiddleware: undefined,   // rateLimit disabled
-        responseWrapper: undefined,             // response.wrap = false
-        createAccessLogMiddleware: undefined,   // accessLog disabled
+        createRateLimitMiddleware: undefined, // rateLimit disabled
+        responseWrapper: undefined, // response.wrap = false
+        createAccessLogMiddleware: undefined, // accessLog disabled
       };
 
       const freshAdapter = createMockAdapter();
@@ -529,8 +567,14 @@ describe("reloadRoutes", () => {
 
       // 只有 requestId 和 bodyParser 被注册
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledTimes(2);
-      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(1, reqIdMw);
-      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(2, bodyMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(
+        1,
+        reqIdMw,
+      );
+      expect(freshAdapter.registerMiddleware).toHaveBeenNthCalledWith(
+        2,
+        bodyMw,
+      );
     });
 
     it("应将 app.config 传递给内置中间件工厂", async () => {

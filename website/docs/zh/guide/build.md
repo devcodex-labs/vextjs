@@ -81,7 +81,8 @@ src/                          dist/
 当 `config.frontend.enabled` 为 true 时，浏览器流水线使用 esbuild bundle 模式：
 
 ```text
-src/frontend/pages/index.tsx      →  dist/client/assets/browser-entry-<hash>.js
+src/frontend/pages/index.tsx      →  dist/client/assets/index-<hash>.js
+generated browser entry           →  dist/client/assets/browser-entry-<hash>.js
 src/frontend/pages/_document.html →  dist/client/index.html
 src/frontend/styles/index.css     →  dist/client/assets/browser-entry-<hash>.css
 public/** → dist/client/**
@@ -91,19 +92,24 @@ public/** → dist/client/**
 
 前端构建会写入：
 
-| 文件                                 | 说明                                         |
-| ------------------------------------ | -------------------------------------------- |
-| `dist/client/index.html`             | `vext start` 服务的 HTML 入口                |
-| `dist/client/assets/*`               | 打包后的 JavaScript、CSS 与导入资产          |
-| `dist/client/manifest.json`          | 前端资源 manifest                            |
-| `dist/client/render-manifest.json`   | SSR 页面、layout、错误页与 renderer manifest |
-| `dist/client/messages-manifest.json` | 前端 i18n messages manifest                  |
-| `dist/client/server/renderer.cjs`    | SSR renderer bundle                          |
-| `dist/client/size-report.json`       | 前端资源体积摘要                             |
-| `dist/client/client-contract.json`   | 基于 route manifest 生成的路由契约           |
-| `dist/client/api.generated.ts`       | 轻量 typed API client module                 |
+| 文件                                 | 说明                                                              |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `dist/client/index.html`             | `vext start` 服务的 HTML 入口                                     |
+| `dist/client/assets/*`               | 打包后的 JavaScript、CSS 与导入资产                               |
+| `dist/client/manifest.json`          | 前端资源 manifest                                                 |
+| `dist/client/deploy-manifest.json`   | 可上传静态资源 manifest，含 sha256、SRI、content type、upload key |
+| `dist/client/render-manifest.json`   | SSR 页面、layout、错误页与 renderer manifest                      |
+| `dist/client/messages-manifest.json` | 前端 i18n messages manifest                                       |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                               |
+| `dist/client/size-report.json`       | 前端资源体积摘要                                                  |
+| `dist/client/client-contract.json`   | 基于 route manifest 生成的路由契约                                |
+| `dist/client/api.generated.ts`       | 轻量 typed API client module                                      |
 
 启用前端但缺少 `dist/client/index.html` 时，`vext start` 会 fail fast。生产启动前请先执行 `vext build`。
+
+浏览器端页面、layout、错误页和 locale 会通过动态 import 形成页面级 chunk；React 等公共依赖默认通过 Vext-managed vendor entry 配合 esbuild splitting 形成共享 chunk。`frontend.build.client.external` 可把模块排除出 browser bundle，但必须用 `frontend.build.client.externalRuntime` 给浏览器提供 import map URL，否则浏览器无法加载该外置模块。
+
+`frontend.deploy.integrity=true` 时，Vext 会把构建期计算出的 SRI 写入生成 HTML 的 JS/CSS 标签。`deploy-manifest.json` 同时覆盖 esbuild 输出资源和 `public/**` 复制资源，可用于 `vext deploy assets` 的真实上传与增量发布；默认不包含服务端渲染的 `index.html` 和 source map。
 
 ### 输出格式
 

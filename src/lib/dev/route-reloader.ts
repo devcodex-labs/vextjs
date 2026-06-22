@@ -8,6 +8,7 @@ import type { OpenAPIConfig } from "../openapi/types.js";
 import { createRequestHookMiddleware } from "../middlewares/request-hook.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
+import { VEXT_FRONTEND_DEV_EVENT_PATH } from "../../frontend/runtime/dev-events.js";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）
@@ -230,6 +231,16 @@ export interface BuiltinMiddlewareCreators {
   ) => RouteReloaderMiddleware;
 
   /**
+   * frontend dev event SSE 处理器
+   *
+   * dev 模式前端 bundle 会连接 /__vext/dev/events。
+   * soft reload 创建 fresh adapter 后也必须把它注册为内部 route。
+   * 不能只注册为 middleware，因为 Native adapter 的全局中间件只在命中
+   * 业务 route 后进入 chain，不处理未匹配路径。
+   */
+  frontendDevEvents?: RouteReloaderMiddleware;
+
+  /**
    * 创建 access-log 中间件
    *
    * 需要从 config 中读取 accessLog 配置，
@@ -376,7 +387,8 @@ export async function reloadRoutes(
   // ── 2. 注册内置中间件（如果提供）─────────────────────
   //
   // 与 dev-bootstrap.ts 中的中间件注册顺序和条件守卫保持一致：
-  //   requestId → cors → body-parser → rate-limit → response-wrapper → access-log
+  //   requestId → cors → body-parser → rate-limit → response-wrapper
+  //   → frontend render → frontend dev events route → access-log
   //
   // 注意：builtinMwCreators 中对应 creator 为 undefined 时表示该中间件被禁用，
   // route-reloader 通过 if 检查自动跳过，行为与 dev-bootstrap 条件守卫完全一致。
@@ -426,6 +438,11 @@ export async function reloadRoutes(
           app.config as Record<string, unknown>,
         ),
       );
+    }
+    if (builtinMiddlewares.frontendDevEvents) {
+      freshAdapter.registerRoute("GET", VEXT_FRONTEND_DEV_EVENT_PATH, [
+        builtinMiddlewares.frontendDevEvents,
+      ]);
     }
     if (builtinMiddlewares.createAccessLogMiddleware) {
       freshAdapter.registerMiddleware(

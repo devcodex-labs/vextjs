@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ResolvedVextFrontendConfig,
+  VextFrontendDeployManifest,
   VextFrontendManifest,
   VextFrontendManifestAsset,
   VextFrontendMessagesManifest,
@@ -18,6 +19,9 @@ import {
   type FrontendRenderRegistryResult,
   writeFrontendRenderRegistry,
 } from "./render-registry-writer.js";
+import { buildFrontendDeployManifest } from "../deploy/manifest.js";
+import { getFrontendContentType } from "../deploy/content-type.js";
+import { createSha256, createSriSha256 } from "../deploy/integrity.js";
 
 export interface BuildFrontendClientOptions {
   rootDir: string;
@@ -29,6 +33,7 @@ export interface BuildFrontendClientResult {
   skipped: boolean;
   config: ResolvedVextFrontendConfig;
   manifestPath?: string;
+  deployManifestPath?: string;
   renderManifestPath?: string;
   messagesManifestPath?: string;
   serverRendererPath?: string;
@@ -88,8 +93,11 @@ export async function buildFrontendClient(
     : undefined;
   const nodePaths = resolveFrontendNodePaths(options.rootDir);
 
+  const browserEntryPoints = [config.entry, registry.vendorEntryPath].filter(
+    (entryPoint): entryPoint is string => Boolean(entryPoint),
+  );
   const buildResult = await esbuild.build({
-    entryPoints: [config.entry],
+    entryPoints: browserEntryPoints,
     bundle: true,
     platform: "browser",
     format: "esm",
@@ -111,6 +119,7 @@ export async function buildFrontendClient(
     minify: config.build.client.minify,
     splitting: config.build.client.splitting,
     metafile: true,
+    external: config.build.client.external,
     jsx: "automatic",
     loader: {
       ".png": "file",
@@ -131,6 +140,8 @@ export async function buildFrontendClient(
         options.mode === "production" ? '"production"' : '"development"',
     },
     plugins: [
+      createAssetInlineLimitPlugin(config),
+      createCssModulesPlugin(config),
       createReactRefreshRegistrationPlugin(
         config,
         options.rootDir,
@@ -173,7 +184,10 @@ export async function buildFrontendClient(
   });
 
   const buildId = createBuildId();
-  const manifest = buildManifest(config, buildResult.metafile, options.mode);
+  const manifest = await attachManifestAssetMetadata(
+    config,
+    buildManifest(config, buildResult.metafile, options.mode),
+  );
   const manifestPath = path.join(config.outDir, "manifest.json");
   const renderManifest = buildRenderManifest({
     config,
@@ -220,11 +234,25 @@ export async function buildFrontendClient(
     await renderIndexHtml(config, manifest),
     "utf-8",
   );
+  const deployManifest = await buildFrontendDeployManifest({
+    rootDir: options.rootDir,
+    config,
+    mode: options.mode,
+    browserManifest: manifest,
+  });
+  assertFrontendBudgets(config, deployManifest);
+  const deployManifestPath = path.join(config.outDir, "deploy-manifest.json");
+  await writeFile(
+    deployManifestPath,
+    `${JSON.stringify(deployManifest, null, 2)}\n`,
+    "utf-8",
+  );
 
   return {
     skipped: false,
     config,
     manifestPath,
+    deployManifestPath,
     renderManifestPath,
     messagesManifestPath,
     serverRendererPath: config.build.server.outFile,
@@ -238,6 +266,47 @@ export async function buildFrontendClient(
       ...registry.warnings,
       ...(contract?.warnings ?? []),
     ],
+  };
+}
+
+function createAssetInlineLimitPlugin(
+  config: ResolvedVextFrontendConfig,
+): esbuild.Plugin | undefined {
+  if (config.build.assets.inlineLimit <= 0) return undefined;
+  return {
+    name: "vext-asset-inline-limit",
+    setup(build) {
+      build.onLoad(
+        {
+          filter: /\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot)$/,
+        },
+        async (args) => {
+          const content = await readFile(args.path);
+          if (content.byteLength > config.build.assets.inlineLimit) {
+            return undefined;
+          }
+          return {
+            contents: content,
+            loader: "dataurl",
+          };
+        },
+      );
+    },
+  };
+}
+
+function createCssModulesPlugin(
+  config: ResolvedVextFrontendConfig,
+): esbuild.Plugin | undefined {
+  if (!config.build.css.modules) return undefined;
+  return {
+    name: "vext-css-modules",
+    setup(build) {
+      build.onLoad({ filter: /\.module\.css$/ }, async (args) => ({
+        contents: await readFile(args.path, "utf-8"),
+        loader: "local-css",
+      }));
+    },
   };
 }
 
@@ -334,10 +403,15 @@ function buildManifest(
     .filter(([filePath]) => !filePath.endsWith(".map"))
     .map(([filePath, output]) => {
       const relativePath = toPublicAssetPath(config, filePath);
+      const entryPoint = output.entryPoint
+        ? toProjectRelativePath(config.outDir, path.resolve(filePath))
+        : undefined;
       return {
         path: relativePath,
         bytes: output.bytes,
         entry: Boolean(output.entryPoint),
+        entryPoint,
+        source: "bundle" as const,
       };
     })
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -351,9 +425,34 @@ function buildManifest(
     indexHtml: joinPublicPath(config.publicPath, "index.html"),
     entrypoints: assets
       .filter((asset) => asset.entry)
+      .sort((a, b) => {
+        const aMain = isBrowserEntrypoint(config, a);
+        const bMain = isBrowserEntrypoint(config, b);
+        if (aMain !== bMain) return aMain ? -1 : 1;
+        return a.path.localeCompare(b.path);
+      })
       .map((asset) => asset.path),
     assets,
   };
+}
+
+async function attachManifestAssetMetadata(
+  config: ResolvedVextFrontendConfig,
+  manifest: VextFrontendManifest,
+): Promise<VextFrontendManifest> {
+  const assets = await Promise.all(
+    manifest.assets.map(async (asset) => {
+      const filePath = publicAssetPathToFile(config, asset.path);
+      const content = await readFile(filePath);
+      return {
+        ...asset,
+        sha256: createSha256(content),
+        integrity: createSriSha256(content),
+        contentType: getFrontendContentType(filePath),
+      };
+    }),
+  );
+  return { ...manifest, assets };
 }
 
 function buildRenderManifest(input: {
@@ -423,6 +522,30 @@ function toPublicAssetPath(
   return joinPublicPath(getAssetBase(config), relative);
 }
 
+function publicAssetPathToFile(
+  config: ResolvedVextFrontendConfig,
+  assetPath: string,
+): string {
+  const base = getAssetBase(config);
+  if (!assetPath.startsWith(base)) {
+    throw new Error(
+      `[vextjs] frontend asset path is outside public base: ${assetPath}`,
+    );
+  }
+  return path.join(config.outDir, assetPath.slice(base.length));
+}
+
+function isBrowserEntrypoint(
+  config: ResolvedVextFrontendConfig,
+  asset: VextFrontendManifestAsset,
+): boolean {
+  const prefix = joinPublicPath(
+    getAssetBase(config),
+    `${config.build.client.assetsDir}/browser-entry`,
+  );
+  return asset.path.startsWith(prefix);
+}
+
 function joinPublicPath(publicPath: string, relativePath: string): string {
   const trimmed = relativePath.replace(/^\/+/, "");
   return `${publicPath}${trimmed}`;
@@ -463,11 +586,13 @@ async function renderIndexHtml(
   manifest: VextFrontendManifest,
 ): Promise<string> {
   const entryScript = manifest.entrypoints[0];
-  const crossOriginAttr = config.deploy.crossOrigin
-    ? ` crossorigin="${config.deploy.crossOrigin}"`
-    : "";
+  const entryAsset = manifest.assets.find(
+    (asset) => asset.path === entryScript,
+  );
+  const entryAttrs = entryAsset ? renderAssetAttrs(config, entryAsset) : "";
+  const externalRuntimeTags = renderExternalRuntimeTags(config);
   const scriptTag = entryScript
-    ? `<script type="module" src="${entryScript}"${crossOriginAttr} data-vext-entry></script>`
+    ? `<script type="module" src="${entryScript}"${entryAttrs} data-vext-entry></script>`
     : "";
   const rootTag = '<div id="root" data-vext-root></div>';
   const dataTag =
@@ -476,7 +601,10 @@ async function renderIndexHtml(
     .filter((asset) => asset.path.endsWith(".css"))
     .map(
       (asset) =>
-        `<link rel="stylesheet" href="${asset.path}"${crossOriginAttr} data-vext-style>`,
+        `<link rel="stylesheet" href="${asset.path}"${renderAssetAttrs(
+          config,
+          asset,
+        )} data-vext-style>`,
     )
     .join("\n");
   const template = existsSync(config.indexHtml)
@@ -492,10 +620,17 @@ async function renderIndexHtml(
     output = output.replace("</head>", `  ${styleTags}\n</head>`);
     stylesInjected = true;
   }
+  if (
+    externalRuntimeTags &&
+    !output.includes("{vext.head}") &&
+    output.includes("</head>")
+  ) {
+    output = output.replace("</head>", `  ${externalRuntimeTags}\n</head>`);
+  }
 
   output = output
     .replaceAll("{vext.lang}", config.i18n.defaultLocale)
-    .replaceAll("{vext.head}", "")
+    .replaceAll("{vext.head}", externalRuntimeTags)
     .replaceAll("{vext.root}", rootTag)
     .replaceAll("{vext.data}", dataTag);
 
@@ -509,6 +644,51 @@ async function renderIndexHtml(
     return output.replace("</body>", `  ${bodyAssets}\n</body>`);
   }
   return `${output}\n${[styleTags, scriptTag].filter(Boolean).join("\n")}\n`;
+}
+
+function renderAssetAttrs(
+  config: ResolvedVextFrontendConfig,
+  asset: VextFrontendManifestAsset,
+): string {
+  const attrs: string[] = [];
+  if (config.deploy.crossOrigin) {
+    attrs.push(`crossorigin="${config.deploy.crossOrigin}"`);
+  }
+  if (config.deploy.integrity && asset.integrity) {
+    attrs.push(`integrity="${asset.integrity}"`);
+  }
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
+
+function renderExternalRuntimeTags(config: ResolvedVextFrontendConfig): string {
+  const entries = Object.entries(config.build.client.externalRuntime);
+  if (entries.length === 0) return "";
+  const importMap = {
+    imports: Object.fromEntries(
+      entries.map(([specifier, runtime]) => [specifier, runtime.url]),
+    ),
+  };
+  const preloadTags = entries
+    .map(([, runtime]) => {
+      const attrs = [
+        'rel="modulepreload"',
+        `href="${runtime.url}"`,
+        runtime.crossOrigin || config.deploy.crossOrigin
+          ? `crossorigin="${runtime.crossOrigin ?? config.deploy.crossOrigin}"`
+          : undefined,
+        runtime.integrity ? `integrity="${runtime.integrity}"` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<link ${attrs}>`;
+    })
+    .join("\n");
+  return [
+    `<script type="importmap">${JSON.stringify(importMap)}</script>`,
+    preloadTags,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const FRONTEND_RESOLVE_EXTENSIONS = [
@@ -800,4 +980,52 @@ function buildSizeReport(manifest: VextFrontendManifest): {
     totalBytes: manifest.assets.reduce((sum, asset) => sum + asset.bytes, 0),
     assets: manifest.assets,
   };
+}
+
+function assertFrontendBudgets(
+  config: ResolvedVextFrontendConfig,
+  manifest: VextFrontendDeployManifest,
+): void {
+  const failures: string[] = [];
+  const budgets = config.build.budgets;
+  if (budgets.maxAssetBytes > 0) {
+    const oversize = manifest.assets.filter(
+      (asset) => asset.bytes > budgets.maxAssetBytes,
+    );
+    for (const asset of oversize) {
+      failures.push(
+        `${asset.file} is ${asset.bytes} bytes, over maxAssetBytes ${budgets.maxAssetBytes}`,
+      );
+    }
+  }
+  if (budgets.maxInitialJsBytes > 0) {
+    const initialJsBytes = manifest.assets
+      .filter((asset) => asset.entry && asset.file.endsWith(".js"))
+      .reduce((sum, asset) => sum + asset.bytes, 0);
+    if (initialJsBytes > budgets.maxInitialJsBytes) {
+      failures.push(
+        `initial JS is ${initialJsBytes} bytes, over maxInitialJsBytes ${budgets.maxInitialJsBytes}`,
+      );
+    }
+  }
+  if (budgets.maxTotalBytes > 0) {
+    const totalBytes = manifest.assets.reduce(
+      (sum, asset) => sum + asset.bytes,
+      0,
+    );
+    if (totalBytes > budgets.maxTotalBytes) {
+      failures.push(
+        `total frontend assets are ${totalBytes} bytes, over maxTotalBytes ${budgets.maxTotalBytes}`,
+      );
+    }
+  }
+  if (failures.length === 0) return;
+  const message = `[vextjs] frontend build budget exceeded:\n${failures
+    .map((failure) => `  - ${failure}`)
+    .join("\n")}`;
+  if (budgets.warnOnly) {
+    console.warn(message);
+    return;
+  }
+  throw new Error(message);
 }

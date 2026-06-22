@@ -70,6 +70,7 @@ import { createFrontendNotFoundHandler } from "../../frontend/runtime/static-mou
 import { createFrontendRenderMiddleware } from "../../frontend/runtime/renderer.js";
 import {
   createFrontendDevEventBus,
+  VEXT_FRONTEND_DEV_EVENT_PATH,
   type VextFrontendDevEvent,
 } from "../../frontend/runtime/dev-events.js";
 
@@ -690,7 +691,8 @@ export async function devBootstrap(
     //
     // 与生产 bootstrap 保持一致的中间件注册顺序和条件守卫：
     //   requestId → cors → body-parser → rate-limit → response-wrapper
-    //   → access-log → 插件全局中间件 → 错误处理 → 404
+    //   → frontend render → frontend dev events route → access-log
+    //   → 插件全局中间件 → 错误处理 → 404
     //
     // 🔧 D2/D3 修复：每个中间件仅在 enabled !== false 时注册（与生产 bootstrap.ts 对齐）。
     // 禁用的中间件完全不进入中间件链，实现真正的零开销。
@@ -751,7 +753,9 @@ export async function devBootstrap(
         config: config.frontend,
       }),
     );
-    app.adapter.registerMiddleware(frontendDevEvents.middleware);
+    app.adapter.registerRoute("GET", VEXT_FRONTEND_DEV_EVENT_PATH, [
+      frontendDevEvents.middleware,
+    ]);
 
     // 6. access-log（config.accessLog.enabled，默认 true）
     //    洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码
@@ -959,6 +963,7 @@ export async function devBootstrap(
           mode: "development",
           config: (cfg as any).frontend,
         })) as any,
+      frontendDevEvents: frontendDevEvents.middleware as any,
       createAccessLogMiddleware:
         config.accessLog?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>

@@ -67,14 +67,16 @@ src/dist/
 
 ### CLI parameters
 
-| Parameters        | Description                                                  | Default value |
-| ----------------- | ------------------------------------------------------------ | ------------- |
-| `--outdir <path>` | Output directory                                             | `dist`        |
-| `--clean`         | Clean the output directory before compilation                | `false`       |
-| `--sourcemap`     | Generate source map                                          | `true`        |
-| `--no-sourcemap`  | Disable source map                                           | —             |
-| `--minify`        | Compress output code                                         | `false`       |
-| `--typecheck`     | Execute `tsc --noEmit` after refreshing generated / manifest | `false`       |
+| Parameters         | Description                                                  | Default value |
+| ------------------ | ------------------------------------------------------------ | ------------- |
+| `--outdir <path>`  | Output directory                                             | `dist`        |
+| `--clean`          | Clean the output directory before compilation                | `false`       |
+| `--sourcemap`      | Generate source map                                          | `true`        |
+| `--no-sourcemap`   | Disable source map                                           | —             |
+| `--minify`         | Compress output code                                         | `false`       |
+| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest | `false`       |
+| `--upload-assets`  | Upload frontend static assets after the frontend build       | `false`       |
+| `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false`       |
 
 ## Frontend build
 
@@ -91,19 +93,24 @@ public/** → dist/client/**
 
 The frontend build writes:
 
-| File                                 | Description                                         |
-| ------------------------------------ | --------------------------------------------------- |
-| `dist/client/index.html`             | HTML entry served by `vext start`                   |
-| `dist/client/assets/*`               | Bundled JavaScript, CSS, and imported assets        |
-| `dist/client/manifest.json`          | Frontend asset manifest                             |
-| `dist/client/render-manifest.json`   | SSR page, layout, error page, and renderer manifest |
-| `dist/client/messages-manifest.json` | Frontend i18n messages manifest                     |
-| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                 |
-| `dist/client/size-report.json`       | Size summary for generated frontend assets          |
-| `dist/client/client-contract.json`   | Route contract generated from route manifest        |
-| `dist/client/api.generated.ts`       | Lightweight typed API client module                 |
+| File                                 | Description                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------- |
+| `dist/client/index.html`             | HTML entry served by `vext start`                                               |
+| `dist/client/assets/*`               | Bundled JavaScript, CSS, and imported assets                                    |
+| `dist/client/manifest.json`          | Frontend asset manifest                                                         |
+| `dist/client/deploy-manifest.json`   | Uploadable static asset manifest with sha256, SRI, content type, and upload key |
+| `dist/client/render-manifest.json`   | SSR page, layout, error page, and renderer manifest                             |
+| `dist/client/messages-manifest.json` | Frontend i18n messages manifest                                                 |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                                             |
+| `dist/client/size-report.json`       | Size summary for generated frontend assets                                      |
+| `dist/client/client-contract.json`   | Route contract generated from route manifest                                    |
+| `dist/client/api.generated.ts`       | Lightweight typed API client module                                             |
 
 `vext start` fails fast when frontend is enabled but `dist/client/index.html` is missing. Run `vext build` before production start.
+
+Browser pages, layouts, error pages, and locale entries are loaded through dynamic imports so page-level chunks are emitted by default. React and other shared packages are pulled into a Vext-managed vendor entry and split through esbuild. `frontend.build.client.external` can exclude a module from the browser bundle, but the browser must receive it through `frontend.build.client.externalRuntime`, which Vext writes into an import map.
+
+When `frontend.deploy.integrity=true`, Vext injects build-time SRI into generated JS/CSS tags. `deploy-manifest.json` includes esbuild output and copied `public/**` files for `vext deploy assets`; it intentionally excludes `index.html` and source maps because HTML is rendered and cached by the Vext server path, while source maps should stay on the server debugging path unless explicitly published.
 
 ### Output format
 

@@ -932,6 +932,8 @@ describe("parseBuildArgs", () => {
       expect(options.sourcemap).toBe(true);
       expect(options.minify).toBe(false);
       expect(options.typecheck).toBe(false);
+      expect(options.uploadAssets).toBe(false);
+      expect(options.deployDryRun).toBe(false);
     });
   });
 
@@ -966,12 +968,24 @@ describe("parseBuildArgs", () => {
       expect(options.typecheck).toBe(true);
     });
 
+    it("--upload-assets 应启用前端静态资源上传", () => {
+      const options = parseBuildArgs(["--upload-assets"]);
+      expect(options.uploadAssets).toBe(true);
+    });
+
+    it("--deploy-dry-run 应启用前端上传 dry-run", () => {
+      const options = parseBuildArgs(["--deploy-dry-run"]);
+      expect(options.deployDryRun).toBe(true);
+    });
+
     it("应支持多个参数组合", () => {
       const options = parseBuildArgs([
         "--clean",
         "--minify",
         "--no-sourcemap",
         "--typecheck",
+        "--upload-assets",
+        "--deploy-dry-run",
         "--outdir",
         "output",
       ]);
@@ -980,6 +994,8 @@ describe("parseBuildArgs", () => {
       expect(options.minify).toBe(true);
       expect(options.sourcemap).toBe(false);
       expect(options.typecheck).toBe(true);
+      expect(options.uploadAssets).toBe(true);
+      expect(options.deployDryRun).toBe(true);
       expect(options.outdir).toBe("output");
     });
   });

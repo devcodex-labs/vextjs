@@ -272,29 +272,60 @@ export default {
       target: "es2022",
       minify: true,
       sourcemap: false,
+      client: {
+        external: [],
+        externalRuntime: {},
+      },
+      vendorChunks: {
+        enabled: true,
+      },
+      budgets: {
+        maxTotalBytes: 5_000_000,
+      },
+    },
+    deploy: {
+      integrity: true,
+      upload: {
+        enabled: false,
+        adapter: "filesystem",
+        targetDir: ".vext/deploy/frontend-assets",
+        prefix: "my-app",
+        exclude: ["**/*.map"],
+      },
     },
   },
 };
 ```
 
-| Configuration item         | Type                 | Default value                                      | Description                                                              |
-| -------------------------- | -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ |
-| `frontend.enabled`         | `boolean`            | `false`                                            | Enable built-in frontend integration                                     |
-| `frontend.framework`       | `string`             | `'react'`                                          | Frontend framework label                                                 |
-| `frontend.root`            | `string`             | `'src/frontend'`                                   | Frontend source directory                                                |
-| `frontend.entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'`     | Generated browser entry; usually not written by hand                     |
-| `frontend.indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`              | HTML document template                                                   |
-| `frontend.outDir`          | `string`             | `.vext/client` in dev, `dist/client` in production | Frontend output directory                                                |
-| `frontend.styles.jscss`    | `boolean \| object`  | `{ enabled: true }`                                | Vext JSCSS build-time CSS extraction and dynamic CSS variables           |
-| `frontend.publicDir`       | `string`             | `'public'`                                         | Static asset directory copied into output                                |
-| `frontend.publicPath`      | `string`             | `'/'`                                              | Public asset path prefix                                                 |
-| `frontend.spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                                   | Serve fallback only for explicitly declared client-router sub-app scopes |
-| `frontend.apiClient`       | `boolean \| object`  | `true`                                             | Generate client contract artifacts                                       |
-| `frontend.build.target`    | `string \| string[]` | `'es2022'`                                         | Browser build target                                                     |
-| `frontend.build.minify`    | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
-| `frontend.build.sourcemap` | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
+| Configuration item                      | Type                 | Default value                                      | Description                                                              |
+| --------------------------------------- | -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ |
+| `frontend.enabled`                      | `boolean`            | `false`                                            | Enable built-in frontend integration                                     |
+| `frontend.framework`                    | `string`             | `'react'`                                          | Frontend framework label                                                 |
+| `frontend.root`                         | `string`             | `'src/frontend'`                                   | Frontend source directory                                                |
+| `frontend.entry`                        | `string`             | `'.vext/generated/frontend/browser-entry.tsx'`     | Generated browser entry; usually not written by hand                     |
+| `frontend.indexHtml`                    | `string`             | `'src/frontend/pages/_document.html'`              | HTML document template                                                   |
+| `frontend.outDir`                       | `string`             | `.vext/client` in dev, `dist/client` in production | Frontend output directory                                                |
+| `frontend.styles.jscss`                 | `boolean \| object`  | `{ enabled: true }`                                | Vext JSCSS build-time CSS extraction and dynamic CSS variables           |
+| `frontend.publicDir`                    | `string`             | `'public'`                                         | Static asset directory copied into output and deploy manifest            |
+| `frontend.publicPath`                   | `string`             | `'/'`                                              | Public asset path prefix                                                 |
+| `frontend.spaFallback`                  | `boolean \| object`  | `{ scopes: [] }`                                   | Serve fallback only for explicitly declared client-router sub-app scopes |
+| `frontend.apiClient`                    | `boolean \| object`  | `true`                                             | Generate client contract artifacts                                       |
+| `frontend.build.target`                 | `string \| string[]` | `'es2022'`                                         | Browser build target                                                     |
+| `frontend.build.minify`                 | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
+| `frontend.build.sourcemap`              | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
+| `frontend.build.client.external`        | `string[]`           | `[]`                                               | Browser bundle external modules                                          |
+| `frontend.build.client.externalRuntime` | `object`             | `{}`                                               | Import map URL mapping for externalized browser modules                  |
+| `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                                | Shared dependency chunk management                                       |
+| `frontend.build.budgets`                | `object`             | All `0`                                            | Build size budgets; `0` disables a budget                                |
+| `frontend.build.assets.inlineLimit`     | `number`             | `0`                                                | Imported image/font inline limit                                         |
+| `frontend.build.css.modules`            | `boolean`            | `true`                                             | Supports the `.module.css` CSS Modules convention                        |
+| `frontend.deploy.assetBaseUrl`          | `string`             | None                                               | Absolute CDN prefix for frontend static assets                           |
+| `frontend.deploy.integrity`             | `boolean`            | `false`                                            | Inject SRI integrity for JS/CSS tags                                     |
+| `frontend.deploy.upload`                | `boolean \| object`  | `{ enabled: false, exclude: ["**/*.map"] }`        | Static asset upload and incremental deployment configuration             |
 
 By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
+
+When `frontend.deploy.upload` is enabled, `vext deploy assets` reads `dist/client/deploy-manifest.json` and uploads changed assets by `uploadKey` and sha256. The built-in `filesystem` adapter writes files to `targetDir`, which is useful as a CDN sync staging directory. HTML is still rendered by Vext, and `index.html` plus `**/*.map` are excluded from the default deploy manifest.
 
 For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
 

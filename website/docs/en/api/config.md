@@ -780,7 +780,11 @@ Built-in frontend build and static serving configuration.
 | `build.minify`                 | `boolean`                            | Production `true`                                       | Minify frontend output                                                            |
 | `build.sourcemap`              | `boolean`                            | Development `true`                                      | Generate frontend source maps                                                     |
 | `build.client`                 | `object`                             | Inherits shared build defaults                          | Browser bundle output, hash names, splitting, and external entries                |
+| `build.client.external`        | `string[]`                           | `[]`                                                    | Modules externalized from the browser bundle                                      |
+| `build.client.externalRuntime` | `object`                             | `{}`                                                    | Import map URL mapping for externalized browser modules                           |
 | `build.server`                 | `object`                             | `server/renderer.cjs`                                   | SSR renderer bundle output                                                        |
+| `build.vendorChunks`           | `boolean \| object`                  | `{ enabled: true }`                                     | Vext-managed vendor entry and shared chunk handling                               |
+| `build.budgets`                | `object`                             | All `0`                                                 | Frontend asset budgets; `0` disables a budget                                     |
 | `build.assets.inlineLimit`     | `number`                             | `0`                                                     | Imported asset inline limit; default emits hashed files                           |
 | `build.css.modules`            | `boolean`                            | `true`                                                  | Whether to support the CSS Modules convention                                     |
 | `build.diagnostics.metafile`   | `boolean`                            | `true`                                                  | Whether to keep internal esbuild metafile diagnostics for size report / leak scan |
@@ -788,7 +792,8 @@ Built-in frontend build and static serving configuration.
 | `build.diagnostics.leakScan`   | `boolean`                            | `true`                                                  | Blocks browser bundles from importing server-only modules                         |
 | `deploy.assetBaseUrl`          | `string`                             | None                                                    | Absolute CDN prefix for static frontend assets                                    |
 | `deploy.crossOrigin`           | `'anonymous' \| 'use-credentials'`   | None                                                    | `crossorigin` value injected into script/link tags                                |
-| `deploy.integrity`             | `boolean`                            | `false`                                                 | Reserved SRI integrity option; current builds do not inject integrity             |
+| `deploy.integrity`             | `boolean`                            | `false`                                                 | Inject build-time SRI into generated JS/CSS tags                                  |
+| `deploy.upload`                | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`             | Static asset upload config; `vext deploy assets` uploads incrementally by sha256  |
 
 ```typescript
 export default {

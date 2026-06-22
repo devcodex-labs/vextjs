@@ -3,7 +3,11 @@ import { rmSync, existsSync } from "node:fs";
 import { detectProject } from "./utils/detect-project.js";
 import { BuildCompiler } from "../lib/build/build-compiler.js";
 import { loadConfig } from "../lib/config-loader.js";
-import { buildFrontendClient } from "../frontend/tooling/client-build-compiler.js";
+import {
+  buildFrontendClient,
+  type BuildFrontendClientResult,
+} from "../frontend/tooling/client-build-compiler.js";
+import { deployFrontendAssets } from "../frontend/deploy/index.js";
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 
 /**
@@ -57,6 +61,12 @@ interface BuildCommandOptions {
 
   /** 工具产物刷新后执行 TypeScript 类型检查 */
   typecheck: boolean;
+
+  /** 前端构建完成后上传静态资源 */
+  uploadAssets: boolean;
+
+  /** 只输出前端上传计划，不执行真实上传 */
+  deployDryRun: boolean;
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -117,7 +127,9 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       isBuilt: false,
     });
     if (!isFrontendEnabled(config.frontend)) {
-      console.log("[vextjs] JavaScript project detected - no build step needed.");
+      console.log(
+        "[vextjs] JavaScript project detected - no build step needed.",
+      );
       console.log('[vextjs] Use "vext start" directly.');
       return;
     }
@@ -243,13 +255,18 @@ async function buildFrontendForCommand(
   rootDir: string,
   frontend: VextFrontendUserConfig | undefined,
   options: BuildCommandOptions,
-): Promise<void> {
+): Promise<BuildFrontendClientResult | undefined> {
   const result = await buildFrontendClient({
     rootDir,
     config: withCliFrontendOutDir(frontend, options.outdir),
     mode: "production",
   });
-  if (result.skipped) return;
+  if (result.skipped) {
+    if (options.uploadAssets) {
+      console.log("[vextjs] frontend upload skipped: frontend is disabled");
+    }
+    return undefined;
+  }
 
   console.log(
     `[vextjs] frontend built: ${path.relative(rootDir, result.config.outDir)}`,
@@ -260,9 +277,27 @@ async function buildFrontendForCommand(
   for (const warning of result.warnings) {
     console.warn(`[vextjs] frontend warning: ${warning}`);
   }
+  if (options.uploadAssets) {
+    if (!result.deployManifestPath) {
+      throw new Error("[vextjs] frontend deploy manifest was not generated.");
+    }
+    const deployResult = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath,
+      dryRun: options.deployDryRun,
+    });
+    console.log(
+      `[vextjs] frontend assets ${deployResult.dryRun ? "planned" : "uploaded"}: ` +
+        `${deployResult.uploaded} uploaded, ${deployResult.skipped} skipped, ` +
+        `${deployResult.bytesUploaded} bytes`,
+    );
+  }
+  return result;
 }
 
-function isFrontendEnabled(frontend: VextFrontendUserConfig | undefined): boolean {
+function isFrontendEnabled(
+  frontend: VextFrontendUserConfig | undefined,
+): boolean {
   return (
     frontend === true ||
     (typeof frontend === "object" && frontend.enabled === true)
@@ -315,6 +350,8 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
     sourcemap: process.env.VEXT_BUILD_SOURCEMAP !== "false",
     minify: process.env.VEXT_BUILD_MINIFY === "true",
     typecheck: false,
+    uploadAssets: false,
+    deployDryRun: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -347,6 +384,14 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
 
       case "--typecheck":
         options.typecheck = true;
+        break;
+
+      case "--upload-assets":
+        options.uploadAssets = true;
+        break;
+
+      case "--deploy-dry-run":
+        options.deployDryRun = true;
         break;
 
       case "--help":
@@ -386,6 +431,8 @@ function printBuildHelp(): void {
     --no-sourcemap     Disable source map generation
     --minify           Minify output code
     --typecheck        Run TypeScript type check after generated artifacts refresh
+    --upload-assets    Upload frontend static assets after build
+    --deploy-dry-run   Print frontend upload plan without writing assets
     -h, --help         Show this help message
 
   Environment variables:
@@ -397,6 +444,8 @@ function printBuildHelp(): void {
     $ vext build
     $ vext build --clean
     $ vext build --clean --minify --typecheck
+    $ vext build --upload-assets
+    $ vext build --upload-assets --deploy-dry-run
     $ vext build --outdir build
     $ vext build --no-sourcemap
 

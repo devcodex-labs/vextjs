@@ -29,6 +29,7 @@ npm run build  # → vext build
 | `vext create <name>` | 创建新项目                                        | 项目初始化         |
 | `vext dev`           | 开发模式启动                                      | 日常开发           |
 | `vext build`         | 构建项目                                          | 部署前构建         |
+| `vext deploy assets` | 上传前端静态资源                                  | 前端 CDN/静态发布  |
 | `vext typegen`       | 生成声明 + service 依赖诊断（experimental）       | TS/JS 项目工程辅助 |
 | `vext doctor routes` | 静态路由诊断 + inspect / manifest（experimental） | OpenAPI / 路由治理 |
 | `vext start`         | 生产模式启动                                      | 生产部署           |
@@ -244,15 +245,17 @@ vext build [options]
 
 ### 选项
 
-| 选项              | 说明                                            | 默认值  |
-| ----------------- | ----------------------------------------------- | ------- |
-| `--outdir <path>` | 输出目录                                        | `dist`  |
-| `--clean`         | 编译前清理输出目录                              | `false` |
-| `--sourcemap`     | 生成 source map                                 | `true`  |
-| `--no-sourcemap`  | 禁用 source map                                 | —       |
-| `--minify`        | 压缩输出代码                                    | `false` |
-| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
-| `-h, --help`      | 显示帮助                                        | —       |
+| 选项               | 说明                                            | 默认值  |
+| ------------------ | ----------------------------------------------- | ------- |
+| `--outdir <path>`  | 输出目录                                        | `dist`  |
+| `--clean`          | 编译前清理输出目录                              | `false` |
+| `--sourcemap`      | 生成 source map                                 | `true`  |
+| `--no-sourcemap`   | 禁用 source map                                 | —       |
+| `--minify`         | 压缩输出代码                                    | `false` |
+| `--typecheck`      | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
+| `--upload-assets`  | 前端构建完成后执行静态资源上传                  | `false` |
+| `--deploy-dry-run` | 只输出前端上传计划，不写入目标                  | `false` |
+| `-h, --help`       | 显示帮助                                        | —       |
 
 ### 示例
 
@@ -269,6 +272,12 @@ vext build --clean
 # 指定输出目录
 vext build --outdir build
 
+# 构建后上传前端静态资源
+vext build --upload-assets
+
+# 只看前端静态资源上传计划
+vext build --upload-assets --deploy-dry-run
+
 # 构建后启动
 vext build && vext start
 ```
@@ -281,7 +290,8 @@ vext build && vext start
 - 输出目录默认为 `dist/`
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
-- 启用前端时，会生成 `dist/client/index.html`、`manifest.json`、`size-report.json`、静态资源与 client contract 产物
+- 启用前端时，会生成 `dist/client/index.html`、`manifest.json`、`deploy-manifest.json`、`size-report.json`、静态资源与 client contract 产物
+- 使用 `--upload-assets` 时，会读取 `dist/client/deploy-manifest.json`，按 sha256 和 `frontend.deploy.upload.stateFile` 增量上传静态资源
 
 ### package.json 脚本
 
@@ -299,6 +309,44 @@ vext build && vext start
 - **`vext dev`**：直接从 `src/` 加载 `.ts` 文件，通过 esbuild 即时编译，支持热重载
 - **`vext build`**：将 `src/` 编译到 `dist/`，生产模式从 `dist/` 加载
   :::
+
+## `vext deploy assets` — 上传前端静态资源
+
+读取 `dist/client/deploy-manifest.json`，把前端构建产物中的 JS、CSS、图片、字体和 `public/**` 资源上传到配置的目标。首期内置 `filesystem` 与 `mock` adapter；普通云厂商上传可通过后续自定义 adapter 承接。
+
+### 用法
+
+```bash
+vext deploy assets [options]
+```
+
+### 选项
+
+| 选项                  | 说明                                    | 默认值                             |
+| --------------------- | --------------------------------------- | ---------------------------------- |
+| `--outdir <path>`     | 构建输出目录                            | `dist`                             |
+| `--manifest <path>`   | 指定 deploy manifest 路径               | `dist/client/deploy-manifest.json` |
+| `--adapter <name>`    | 上传 adapter，例如 `filesystem`、`mock` | 配置值                             |
+| `--target-dir <path>` | `filesystem` adapter 写入目录           | 配置值                             |
+| `--prefix <path>`     | 上传 key 前缀                           | 配置值                             |
+| `--state-file <path>` | 增量上传状态文件                        | 配置值                             |
+| `--dry-run`           | 只输出上传计划，不写入目标              | `false`                            |
+| `-h, --help`          | 显示帮助                                | —                                  |
+
+### 示例
+
+```bash
+# 使用配置中的 upload 目标
+vext deploy assets
+
+# 只看计划
+vext deploy assets --dry-run
+
+# 本次覆盖上传目录和 key 前缀
+vext deploy assets --target-dir .deploy/cdn --prefix my-app/v1
+```
+
+第二次执行时，Vext 会读取 `frontend.deploy.upload.stateFile`，对比每个 `uploadKey` 的 sha256；内容未变化的资源会跳过，不会重复上传图片、字体或稳定 public 文件。默认 deploy manifest 不包含 `index.html` 和 source map：HTML 仍由 Vext 服务端渲染，source map 不随 CDN 静态资源发布。
 
 ## `vext typegen` — 生成声明并执行 service 依赖诊断（experimental）
 

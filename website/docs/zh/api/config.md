@@ -794,7 +794,11 @@ export default {
 | `build.minify`                 | `boolean`                            | 生产期 `true`                                       | 压缩前端产物                                                        |
 | `build.sourcemap`              | `boolean`                            | 开发期 `true`                                       | 生成前端 source map                                                 |
 | `build.client`                 | `object`                             | 继承共享 build 默认值                               | 浏览器 bundle 输出、hash 命名、splitting 与 external                |
+| `build.client.external`        | `string[]`                           | `[]`                                                | 浏览器 bundle 外置模块列表                                          |
+| `build.client.externalRuntime` | `object`                             | `{}`                                                | 外置模块 import map URL 映射                                        |
 | `build.server`                 | `object`                             | `server/renderer.cjs`                               | SSR renderer bundle 输出                                            |
+| `build.vendorChunks`           | `boolean \| object`                  | `{ enabled: true }`                                 | Vext-managed vendor entry 与共享 chunk 管理                         |
+| `build.budgets`                | `object`                             | 全部 `0`                                            | 前端资源大小预算；`0` 表示不限制                                    |
 | `build.assets.inlineLimit`     | `number`                             | `0`                                                 | import 型资源内联阈值；默认输出 hash 文件                           |
 | `build.css.modules`            | `boolean`                            | `true`                                              | 是否支持 CSS Modules 约定                                           |
 | `build.diagnostics.metafile`   | `boolean`                            | `true`                                              | 是否保留内部 esbuild metafile 诊断，供 size report / leak scan 使用 |
@@ -802,7 +806,8 @@ export default {
 | `build.diagnostics.leakScan`   | `boolean`                            | `true`                                              | 阻断浏览器 bundle 误引入服务端模块                                  |
 | `deploy.assetBaseUrl`          | `string`                             | 无                                                  | CDN 静态资源绝对前缀                                                |
 | `deploy.crossOrigin`           | `'anonymous' \| 'use-credentials'`   | 无                                                  | 注入 script/link 时的 crossorigin 值                                |
-| `deploy.integrity`             | `boolean`                            | `false`                                             | SRI 资源完整性配置预留；当前不自动注入 integrity                    |
+| `deploy.integrity`             | `boolean`                            | `false`                                             | 是否把构建期 SRI 注入 JS/CSS 标签                                   |
+| `deploy.upload`                | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`         | 静态资源上传配置；`vext deploy assets` 按 sha256 增量上传           |
 
 ```typescript
 export default {

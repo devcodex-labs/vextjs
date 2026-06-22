@@ -37,8 +37,28 @@ export {
   createFrontendRenderer,
 } from "./runtime/renderer.js";
 export {
+  buildFrontendDeployManifest,
+  createFilesystemDeployAdapter,
+  createFrontendDeployPlan,
+  createMockDeployAdapter,
+  deployFrontendAssets,
+  joinUploadKey,
+} from "./deploy/index.js";
+export {
   VextRenderContext,
   VextRenderProvider,
   useVextI18n,
   type VextI18nContextValue,
 } from "./runtime/i18n.js";
+export type {
+  VextFrontendDeployManifest,
+  VextFrontendDeployManifestAsset,
+  VextFrontendDeployPlan,
+  VextFrontendDeployPlanItem,
+  VextFrontendDeployResult,
+  VextFrontendDeployUploadAdapter,
+  VextFrontendDeployUploadAdapterInput,
+  VextFrontendDeployUploadAdapterName,
+  VextFrontendDeployUploadAdapterResult,
+  VextFrontendDeployUploadConfig,
+} from "./contract/types.js";

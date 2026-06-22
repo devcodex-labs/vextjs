@@ -272,29 +272,62 @@ export default {
       target: "es2022",
       minify: true,
       sourcemap: false,
+      client: {
+        external: [],
+        externalRuntime: {},
+      },
+      vendorChunks: {
+        enabled: true,
+      },
+      budgets: {
+        maxTotalBytes: 5_000_000,
+      },
+    },
+    deploy: {
+      integrity: true,
+      upload: {
+        enabled: false,
+        adapter: "filesystem",
+        targetDir: ".vext/deploy/frontend-assets",
+        prefix: "my-app",
+        exclude: ["**/*.map"],
+      },
     },
   },
 };
 ```
 
-| 配置项                     | 类型                 | 默认值                                         | 说明                                                 |
-| -------------------------- | -------------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| `frontend.enabled`         | `boolean`            | `false`                                        | 启用内置前端集成                                     |
-| `frontend.framework`       | `string`             | `'react'`                                      | 前端框架标签                                         |
-| `frontend.root`            | `string`             | `'src/frontend'`                               | 前端源码目录                                         |
-| `frontend.entry`           | `string`             | `'.vext/generated/frontend/browser-entry.tsx'` | 自动生成的浏览器入口；通常不需要手写                 |
-| `frontend.indexHtml`       | `string`             | `'src/frontend/pages/_document.html'`          | HTML document 模板                                   |
-| `frontend.outDir`          | `string`             | 开发期 `.vext/client`，生产期 `dist/client`    | 前端输出目录                                         |
-| `frontend.styles.jscss`    | `boolean \| object`  | `{ enabled: true }`                            | Vext JSCSS 构建期 CSS 抽取与动态 CSS variables       |
-| `frontend.publicDir`       | `string`             | `'public'`                                     | 会复制到输出目录的静态资源目录                       |
-| `frontend.publicPath`      | `string`             | `'/'`                                          | 公开资源路径前缀                                     |
-| `frontend.spaFallback`     | `boolean \| object`  | `{ scopes: [] }`                               | 只对显式声明的 client-router 子应用范围服务 fallback |
-| `frontend.apiClient`       | `boolean \| object`  | `true`                                         | 生成 client contract 产物                            |
-| `frontend.build.target`    | `string \| string[]` | `'es2022'`                                     | 浏览器构建目标                                       |
-| `frontend.build.minify`    | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                         |
-| `frontend.build.sourcemap` | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                  |
+| 配置项                                  | 类型                 | 默认值                                         | 说明                                                  |
+| --------------------------------------- | -------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `frontend.enabled`                      | `boolean`            | `false`                                        | 启用内置前端集成                                      |
+| `frontend.framework`                    | `string`             | `'react'`                                      | 前端框架标签                                          |
+| `frontend.root`                         | `string`             | `'src/frontend'`                               | 前端源码目录                                          |
+| `frontend.entry`                        | `string`             | `'.vext/generated/frontend/browser-entry.tsx'` | 自动生成的浏览器入口；通常不需要手写                  |
+| `frontend.indexHtml`                    | `string`             | `'src/frontend/pages/_document.html'`          | HTML document 模板                                    |
+| `frontend.outDir`                       | `string`             | 开发期 `.vext/client`，生产期 `dist/client`    | 前端输出目录                                          |
+| `frontend.styles.jscss`                 | `boolean \| object`  | `{ enabled: true }`                            | Vext JSCSS 构建期 CSS 抽取与动态 CSS variables        |
+| `frontend.publicDir`                    | `string`             | `'public'`                                     | 会复制到输出目录并进入 deploy manifest 的静态资源目录 |
+| `frontend.publicPath`                   | `string`             | `'/'`                                          | 公开资源路径前缀                                      |
+| `frontend.spaFallback`                  | `boolean \| object`  | `{ scopes: [] }`                               | 只对显式声明的 client-router 子应用范围服务 fallback  |
+| `frontend.apiClient`                    | `boolean \| object`  | `true`                                         | 生成 client contract 产物                             |
+| `frontend.build.target`                 | `string \| string[]` | `'es2022'`                                     | 浏览器构建目标                                        |
+| `frontend.build.minify`                 | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                          |
+| `frontend.build.sourcemap`              | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                   |
+| `frontend.build.client.external`        | `string[]`           | `[]`                                           | 浏览器构建外置模块列表                                |
+| `frontend.build.client.externalRuntime` | `object`             | `{}`                                           | 外置模块的 import map URL                             |
+| `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                            | 公共依赖共享 chunk 管理                               |
+| `frontend.build.budgets`                | `object`             | 全部 `0`                                       | 构建体积预算；`0` 表示不限制                          |
+| `frontend.build.assets.inlineLimit`     | `number`             | `0`                                            | import 型图片/字体等资源内联阈值                      |
+| `frontend.build.css.modules`            | `boolean`            | `true`                                         | 支持 `.module.css` CSS Modules                        |
+| `frontend.deploy.assetBaseUrl`          | `string`             | 无                                             | CDN 资源绝对前缀                                      |
+| `frontend.deploy.integrity`             | `boolean`            | `false`                                        | 为 JS/CSS 注入 SRI integrity                          |
+| `frontend.deploy.upload`                | `boolean \| object`  | `{ enabled: false, exclude: ["**/*.map"] }`    | 静态资源上传和增量发布配置                            |
 
 默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。`spaFallback: true` 仅作为兼容 shorthand，不推荐在企业级混合项目中使用。
+
+`frontend.deploy.upload` 启用后，`vext deploy assets` 会读取 `dist/client/deploy-manifest.json`，按 `uploadKey` 和 sha256 增量上传。内置 `filesystem` adapter 会把文件写入 `targetDir`，适合作为 CDN 同步前的 staging 目录；真实云厂商上传可通过自定义 adapter 扩展。
+
+默认上传排除 `index.html` 和 `**/*.map`：HTML 仍由 Vext 服务端渲染，source map 可保留在服务器调试链路中，不随 CDN 静态资源发布。
 
 创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
 

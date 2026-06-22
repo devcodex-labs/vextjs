@@ -1,0 +1,16 @@
+import { describe, expect, it } from "vitest";
+import { parseDeployAssetsArgs } from "../../../src/cli/deploy.js";
+
+describe("deploy assets command", () => {
+  it("normalizes upload key prefix from CLI options", () => {
+    const options = parseDeployAssetsArgs(["--prefix", "/cdn/v1/"]);
+
+    expect(options.prefix).toBe("cdn/v1");
+  });
+
+  it("rejects unsafe upload key prefix from CLI options", () => {
+    expect(() => parseDeployAssetsArgs(["--prefix", "../outside"])).toThrow(
+      "[vextjs] --prefix must not contain '..'.",
+    );
+  });
+});

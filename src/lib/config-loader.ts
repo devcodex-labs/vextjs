@@ -839,6 +839,11 @@ function validateFrontendConfig(value: unknown, path: string): void {
     }
     validateFrontendBuildTarget(typed.client, `${path}.build.client`);
     validateFrontendBuildTarget(typed.server, `${path}.build.server`);
+    validateFrontendVendorChunks(
+      typed.vendorChunks,
+      `${path}.build.vendorChunks`,
+    );
+    validateFrontendBudgets(typed.budgets, `${path}.build.budgets`);
     const assets = validateOptionalFrontendObject(
       typed.assets,
       `${path}.build.assets`,
@@ -886,6 +891,7 @@ function validateFrontendConfig(value: unknown, path: string): void {
       "use-credentials",
     ]);
     validateOptionalBoolean(deploy.integrity, `${path}.deploy.integrity`);
+    validateFrontendDeployUpload(deploy.upload, `${path}.deploy.upload`);
   }
 
   const render = validateOptionalFrontendObject(
@@ -1039,6 +1045,110 @@ function validateFrontendBuildTarget(value: unknown, path: string): void {
     validateOptionalBoolean(target[key], `${path}.${key}`);
   }
   validateOptionalStringArray(target.external, `${path}.external`);
+  validateFrontendExternalRuntime(
+    target.externalRuntime,
+    `${path}.externalRuntime`,
+  );
+}
+
+function validateFrontendExternalRuntime(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+  for (const [specifier, entry] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    const itemPath = `${path}.${specifier}`;
+    if (typeof entry === "string") {
+      if (!/^[a-z]+:\/\//i.test(entry)) {
+        throw new Error(`[vextjs] ${itemPath} must be an absolute URL.`);
+      }
+      continue;
+    }
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error(
+        `[vextjs] ${itemPath} must be a URL string or an object.`,
+      );
+    }
+    const typed = entry as Record<string, unknown>;
+    validateRequiredString(typed.url, `${itemPath}.url`);
+    if (!/^[a-z]+:\/\//i.test(typed.url as string)) {
+      throw new Error(`[vextjs] ${itemPath}.url must be an absolute URL.`);
+    }
+    validateOptionalString(typed.integrity, `${itemPath}.integrity`);
+    validateEnum(typed.crossOrigin, `${itemPath}.crossOrigin`, [
+      "anonymous",
+      "use-credentials",
+    ]);
+  }
+}
+
+function validateFrontendVendorChunks(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+  const typed = value as Record<string, unknown>;
+  validateOptionalBoolean(typed.enabled, `${path}.enabled`);
+  validateOptionalStringArray(typed.packages, `${path}.packages`);
+  validateOptionalString(typed.entryName, `${path}.entryName`);
+}
+
+function validateFrontendBudgets(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+  const typed = value as Record<string, unknown>;
+  for (const key of ["maxAssetBytes", "maxInitialJsBytes", "maxTotalBytes"]) {
+    if (typed[key] !== undefined) {
+      validateNonNegativeInteger(typed[key], `${path}.${key}`);
+    }
+  }
+  validateOptionalBoolean(typed.warnOnly, `${path}.warnOnly`);
+}
+
+function validateFrontendDeployUpload(value: unknown, path: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be a boolean or an object.`);
+  }
+  const typed = value as Record<string, unknown>;
+  validateOptionalBoolean(typed.enabled, `${path}.enabled`);
+  if (
+    typed.adapter !== undefined &&
+    typeof typed.adapter !== "string" &&
+    (typeof typed.adapter !== "object" || typed.adapter === null)
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.adapter must be a string or adapter object.`,
+    );
+  }
+  validateOptionalString(typed.targetDir, `${path}.targetDir`);
+  validateOptionalString(typed.publicBaseUrl, `${path}.publicBaseUrl`);
+  if (
+    typeof typed.publicBaseUrl === "string" &&
+    !/^[a-z]+:\/\//i.test(typed.publicBaseUrl)
+  ) {
+    throw new Error(`[vextjs] ${path}.publicBaseUrl must be an absolute URL.`);
+  }
+  validateOptionalString(typed.prefix, `${path}.prefix`);
+  validateOptionalString(typed.stateFile, `${path}.stateFile`);
+  validateOptionalBoolean(typed.dryRun, `${path}.dryRun`);
+  if (typed.concurrency !== undefined) {
+    validatePositiveInteger(typed.concurrency, `${path}.concurrency`);
+  }
+  validateOptionalStringArray(typed.include, `${path}.include`);
+  validateOptionalStringArray(typed.exclude, `${path}.exclude`);
 }
 
 function validateFrontendBooleanOrObject(

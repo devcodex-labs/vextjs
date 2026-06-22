@@ -1,4 +1,11 @@
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  writeFile,
+  mkdir,
+  readFile,
+  readdir,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +18,7 @@ import { createFrontendDevEventBus } from "../../src/frontend/runtime/dev-events
 import {
   VextApiError,
   createVextApiClient,
+  deployFrontendAssets,
   isVextApiError,
 } from "../../src/frontend/index.js";
 import { createFrontendNotFoundHandler } from "../../src/frontend/runtime/static-mount.js";
@@ -51,6 +59,9 @@ describe("frontend config resolver", () => {
     expect(config.styles.jscss.dynamicVars).toBe(true);
     expect(config.styles.jscss.recipes).toBe(true);
     expect(config.publicPath).toBe("/");
+    expect(config.build.vendorChunks.enabled).toBe(true);
+    expect(config.deploy.upload.enabled).toBe(false);
+    expect(config.deploy.upload.exclude).toEqual(["**/*.map"]);
   });
 
   it("normalizes enabled frontend paths inside project root", async () => {
@@ -76,7 +87,25 @@ describe("frontend config resolver", () => {
         pages: { dir: "pages", document: "pages/_document.html" },
         alias: { "@features": "features" },
         i18n: { enabled: true, defaultLocale: "zh-CN" },
-        deploy: { assetBaseUrl: "https://cdn.example.com/app" },
+        build: {
+          client: {
+            external: ["react"],
+            externalRuntime: {
+              react: "https://cdn.example.com/react.mjs",
+            },
+          },
+          budgets: {
+            maxTotalBytes: 1_000_000,
+          },
+        },
+        deploy: {
+          assetBaseUrl: "https://cdn.example.com/app",
+          upload: {
+            enabled: true,
+            targetDir: ".deploy/cdn",
+            prefix: "v1",
+          },
+        },
         spaFallback: {
           scopes: [{ basePath: "/admin/app", page: "admin/app/shell" }],
         },
@@ -96,6 +125,11 @@ describe("frontend config resolver", () => {
     expect(config.i18n.enabled).toBe(true);
     expect(config.i18n.defaultLocale).toBe("zh-CN");
     expect(config.deploy.assetBaseUrl).toBe("https://cdn.example.com/app/");
+    expect(config.build.client.externalRuntime.react.url).toBe(
+      "https://cdn.example.com/react.mjs",
+    );
+    expect(config.deploy.upload.enabled).toBe(true);
+    expect(config.deploy.upload.prefix).toBe("v1");
     expect(config.spaFallback.scopes[0]).toMatchObject({
       basePath: "/admin/app/",
       page: "admin/app/shell",
@@ -259,8 +293,104 @@ describe("frontend client build", () => {
       /<script type="module" src="\/assets\/main-[^"]+\.js" data-vext-entry><\/script>/,
     );
     expect(result.renderManifestPath).toBeDefined();
+    expect(result.deployManifestPath).toBeDefined();
     expect(result.messagesManifestPath).toBeDefined();
     expect(result.serverRendererPath).toBeDefined();
+  });
+
+  it("writes deploy manifest, injects SRI, and uploads only changed assets", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "public", "static"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "public", "static", "logo.txt"),
+      "logo-v1",
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        deploy: {
+          integrity: true,
+          upload: {
+            enabled: true,
+            targetDir: ".deploy/cdn",
+            publicBaseUrl: "https://cdn.example.com/app/",
+            prefix: "app/v1",
+          },
+        },
+      },
+    });
+    const html = await readFile(
+      path.join(result.config.outDir, "index.html"),
+      "utf-8",
+    );
+    const deployManifest = JSON.parse(
+      await readFile(result.deployManifestPath!, "utf-8"),
+    );
+
+    expect(html).toContain('integrity="sha256-');
+    expect(deployManifest.kind).toBe("frontend-deploy-manifest");
+    expect(
+      deployManifest.assets.some((asset: any) => asset.file === "index.html"),
+    ).toBe(false);
+    expect(
+      deployManifest.assets.some(
+        (asset: any) =>
+          asset.file === "static/logo.txt" &&
+          asset.uploadKey === "app/v1/static/logo.txt",
+      ),
+    ).toBe(true);
+
+    const firstUpload = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath!,
+    });
+    expect(firstUpload.uploaded).toBeGreaterThan(0);
+    expect(
+      existsSync(
+        path.join(rootDir, ".deploy", "cdn", "app", "v1", "static", "logo.txt"),
+      ),
+    ).toBe(true);
+
+    const secondUpload = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath!,
+    });
+    expect(secondUpload.uploaded).toBe(0);
+    expect(secondUpload.skipped).toBe(deployManifest.assets.length);
+  });
+
+  it("renders an import map for configured browser external runtime modules", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        build: {
+          client: {
+            external: ["react"],
+            externalRuntime: {
+              react: "https://cdn.example.com/react.mjs",
+            },
+          },
+        },
+      },
+    });
+    const html = await readFile(
+      path.join(result.config.outDir, "index.html"),
+      "utf-8",
+    );
+
+    expect(html).toContain('<script type="importmap">');
+    expect(html).toContain('"react":"https://cdn.example.com/react.mjs"');
   });
 
   it("generates page, layout, error, i18n, and render manifests", async () => {
@@ -487,16 +617,9 @@ describe("frontend client build", () => {
       path.join(devResult.generatedDir!, "browser-entry.tsx"),
       "utf-8",
     );
-    const devManifest = JSON.parse(
-      await readFile(devResult.manifestPath!, "utf-8"),
-    );
-    const devBundle = await readFile(
-      path.join(
-        devResult.config.outDir,
-        String(devManifest.entrypoints[0]).replace(/^\/+/, ""),
-      ),
-      "utf-8",
-    );
+    const devBundle = (
+      await readTextFiles(devResult.config.outDir, ".js")
+    ).join("\n");
 
     expect(devBrowserEntry).toContain("react-refresh/runtime");
     expect(devBrowserEntry).toContain('EventSource("/__vext/dev/events")');
@@ -515,16 +638,9 @@ describe("frontend client build", () => {
       path.join(productionResult.generatedDir!, "browser-entry.tsx"),
       "utf-8",
     );
-    const productionManifest = JSON.parse(
-      await readFile(productionResult.manifestPath!, "utf-8"),
-    );
-    const productionBundle = await readFile(
-      path.join(
-        productionResult.config.outDir,
-        String(productionManifest.entrypoints[0]).replace(/^\/+/, ""),
-      ),
-      "utf-8",
-    );
+    const productionBundle = (
+      await readTextFiles(productionResult.config.outDir, ".js")
+    ).join("\n");
 
     expect(productionBrowserEntry).not.toContain("react-refresh/runtime");
     expect(productionBundle).not.toContain("react-refresh");
@@ -542,16 +658,9 @@ describe("frontend client build", () => {
       path.join(disabledResult.generatedDir!, "browser-entry.tsx"),
       "utf-8",
     );
-    const disabledManifest = JSON.parse(
-      await readFile(disabledResult.manifestPath!, "utf-8"),
-    );
-    const disabledBundle = await readFile(
-      path.join(
-        disabledResult.config.outDir,
-        String(disabledManifest.entrypoints[0]).replace(/^\/+/, ""),
-      ),
-      "utf-8",
-    );
+    const disabledBundle = (
+      await readTextFiles(disabledResult.config.outDir, ".js")
+    ).join("\n");
 
     expect(disabledBrowserEntry).toContain('EventSource("/__vext/dev/events")');
     expect(disabledBrowserEntry).not.toContain("react-refresh/runtime");
@@ -575,7 +684,7 @@ describe("frontend client build", () => {
       'EventSource("/__vext/dev/events")',
     );
     expect(hotOffBrowserEntry).not.toContain("react-refresh/runtime");
-  });
+  }, 30_000);
 
   it("explains browser boundary leaks before esbuild reports low-level errors", async () => {
     const rootDir = await tempRoot();
@@ -1103,6 +1212,25 @@ async function createMinimalFrontend(rootDir: string): Promise<void> {
     path.join(frontendDir, "styles", "index.css"),
     "body { margin: 0; }\n",
   );
+}
+
+async function readTextFiles(
+  dir: string,
+  extension: string,
+): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    const filePath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await readTextFiles(filePath, extension)));
+      continue;
+    }
+    if (entry.name.endsWith(extension)) {
+      results.push(await readFile(filePath, "utf-8"));
+    }
+  }
+  return results;
 }
 
 function createMockRequest(

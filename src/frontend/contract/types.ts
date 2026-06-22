@@ -49,6 +49,26 @@ export interface VextFrontendBuildTargetConfig {
   assetNames?: string;
   manifest?: boolean;
   external?: string[];
+  externalRuntime?: Record<string, string | VextFrontendExternalRuntimeEntry>;
+}
+
+export interface VextFrontendExternalRuntimeEntry {
+  url: string;
+  integrity?: string;
+  crossOrigin?: "anonymous" | "use-credentials";
+}
+
+export interface VextFrontendVendorChunksConfig {
+  enabled?: boolean;
+  packages?: string[];
+  entryName?: string;
+}
+
+export interface VextFrontendBuildBudgetsConfig {
+  maxAssetBytes?: number;
+  maxInitialJsBytes?: number;
+  maxTotalBytes?: number;
+  warnOnly?: boolean;
 }
 
 export interface VextFrontendBuildConfig {
@@ -61,6 +81,8 @@ export interface VextFrontendBuildConfig {
   target?: string | string[];
   client?: VextFrontendBuildTargetConfig;
   server?: VextFrontendBuildTargetConfig;
+  vendorChunks?: boolean | VextFrontendVendorChunksConfig;
+  budgets?: VextFrontendBuildBudgetsConfig;
   assets?: {
     inlineLimit?: number;
   };
@@ -78,6 +100,47 @@ export interface VextFrontendDeployConfig {
   assetBaseUrl?: string;
   crossOrigin?: "anonymous" | "use-credentials";
   integrity?: boolean;
+  upload?: boolean | VextFrontendDeployUploadConfig;
+}
+
+export type VextFrontendDeployUploadAdapterName =
+  | "filesystem"
+  | "mock"
+  | (string & {});
+
+export interface VextFrontendDeployUploadAdapter {
+  name: string;
+  upload(
+    input: VextFrontendDeployUploadAdapterInput,
+  ): Promise<VextFrontendDeployUploadAdapterResult>;
+}
+
+export interface VextFrontendDeployUploadAdapterInput {
+  asset: VextFrontendDeployManifestAsset;
+  sourcePath: string;
+  uploadKey: string;
+  dryRun: boolean;
+}
+
+export interface VextFrontendDeployUploadAdapterResult {
+  uploaded: boolean;
+  url?: string;
+  etag?: string;
+}
+
+export interface VextFrontendDeployUploadConfig {
+  enabled?: boolean;
+  adapter?:
+    | VextFrontendDeployUploadAdapterName
+    | VextFrontendDeployUploadAdapter;
+  targetDir?: string;
+  publicBaseUrl?: string;
+  prefix?: string;
+  stateFile?: string;
+  dryRun?: boolean;
+  concurrency?: number;
+  include?: string[];
+  exclude?: string[];
 }
 
 export interface VextFrontendRenderConfig {
@@ -187,16 +250,33 @@ export interface ResolvedVextFrontendConfig {
   apiClient: {
     enabled: boolean;
   };
-  build: Required<VextFrontendBuildConfig> & {
+  build: Omit<
+    Required<VextFrontendBuildConfig>,
+    | "target"
+    | "client"
+    | "server"
+    | "vendorChunks"
+    | "budgets"
+    | "assets"
+    | "css"
+    | "diagnostics"
+  > & {
     target: string[];
-    client: Required<Omit<VextFrontendBuildTargetConfig, "outFile">> & {
+    client: Required<
+      Omit<VextFrontendBuildTargetConfig, "outFile" | "externalRuntime">
+    > & {
       target: string[];
       outFile?: string;
+      externalRuntime: Record<string, VextFrontendExternalRuntimeEntry>;
     };
-    server: Required<Omit<VextFrontendBuildTargetConfig, "outDir">> & {
+    server: Required<
+      Omit<VextFrontendBuildTargetConfig, "outDir" | "externalRuntime">
+    > & {
       target: string[];
       outDir?: string;
     };
+    vendorChunks: Required<VextFrontendVendorChunksConfig>;
+    budgets: Required<VextFrontendBuildBudgetsConfig>;
     assets: {
       inlineLimit: number;
     };
@@ -213,6 +293,20 @@ export interface ResolvedVextFrontendConfig {
     assetBaseUrl?: string;
     crossOrigin?: "anonymous" | "use-credentials";
     integrity: boolean;
+    upload: {
+      enabled: boolean;
+      adapter:
+        | VextFrontendDeployUploadAdapterName
+        | VextFrontendDeployUploadAdapter;
+      targetDir?: string;
+      publicBaseUrl?: string;
+      prefix: string;
+      stateFile: string;
+      dryRun: boolean;
+      concurrency: number;
+      include: string[];
+      exclude: string[];
+    };
   };
   render: Required<VextFrontendRenderConfig>;
   errorPages: {
@@ -274,6 +368,11 @@ export interface VextFrontendManifestAsset {
   path: string;
   bytes: number;
   entry?: boolean;
+  entryPoint?: string;
+  source?: "bundle" | "public";
+  sha256?: string;
+  integrity?: string;
+  contentType?: string;
 }
 
 export interface VextFrontendManifest {
@@ -285,6 +384,74 @@ export interface VextFrontendManifest {
   indexHtml: string;
   entrypoints: string[];
   assets: VextFrontendManifestAsset[];
+}
+
+export interface VextFrontendDeployManifestAsset {
+  file: string;
+  path: string;
+  uploadKey: string;
+  bytes: number;
+  sha256: string;
+  integrity: string;
+  contentType: string;
+  source: "bundle" | "public";
+  entry?: boolean;
+  immutable: boolean;
+}
+
+export interface VextFrontendDeployManifest {
+  schemaVersion: 1;
+  kind: "frontend-deploy-manifest";
+  generatedAt: string;
+  mode: VextFrontendMode;
+  outDir: string;
+  publicPath: string;
+  assetBaseUrl?: string;
+  upload: {
+    enabled: boolean;
+    adapter: string;
+    prefix: string;
+    publicBaseUrl?: string;
+    stateFile: string;
+    dryRun: boolean;
+  };
+  assets: VextFrontendDeployManifestAsset[];
+}
+
+export interface VextFrontendDeployPlanItem {
+  asset: VextFrontendDeployManifestAsset;
+  sourcePath: string;
+  status: "upload" | "skip";
+  reason: "missing-state" | "hash-changed" | "unchanged";
+  previousSha256?: string;
+}
+
+export interface VextFrontendDeployPlan {
+  manifestPath: string;
+  outDir: string;
+  items: VextFrontendDeployPlanItem[];
+  summary: {
+    total: number;
+    upload: number;
+    skip: number;
+    bytes: number;
+    uploadBytes: number;
+  };
+}
+
+export interface VextFrontendDeployResult {
+  manifestPath: string;
+  stateFile: string;
+  dryRun: boolean;
+  uploaded: number;
+  skipped: number;
+  bytesUploaded: number;
+  assets: Array<{
+    file: string;
+    uploadKey: string;
+    status: "uploaded" | "skipped" | "planned";
+    url?: string;
+  }>;
 }
 
 export interface VextFrontendPageRegistryEntry {

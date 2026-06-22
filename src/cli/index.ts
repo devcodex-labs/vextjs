@@ -4,6 +4,7 @@ import { startCommand } from "./start.js";
 import { devCommand } from "./dev.js";
 import { buildCommand } from "./build.js";
 import { createCommand } from "./create.js";
+import { deployCommand } from "./deploy.js";
 import { stopCommand } from "./stop.js";
 import { reloadCommand } from "./reload.js";
 import { statusCommand } from "./status.js";
@@ -48,6 +49,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   dev: devCommand,
   build: buildCommand,
   create: createCommand,
+  deploy: deployCommand,
   stop: stopCommand,
   reload: reloadCommand,
   status: statusCommand,
@@ -147,6 +149,7 @@ function printHelp(): void {
     start                 Start the application in production mode
     dev                   Start with hot reload (development mode)
     build                 Build the application for production
+    deploy assets         Upload frontend static assets from deploy manifest
     stop                  Stop the running server (cluster mode)
     reload                Trigger zero-downtime rolling restart (cluster mode)
     status                Show server status (cluster mode)
@@ -165,6 +168,7 @@ function printHelp(): void {
     vext status --help    Show status command options
     vext doctor --help    Show doctor command options
     vext typegen --help   Show typegen command options
+    vext deploy --help    Show deploy command options
 
   Examples:
     $ vext create my-app

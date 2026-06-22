@@ -991,6 +991,8 @@ const config: VextUserConfig = {
         chunkNames: "[name]-[hash]",
         assetNames: "[name]-[hash]",
         manifest: true,
+        external: [],
+        externalRuntime: {},
       },
       server: {
         outFile: "dist/client/server/renderer.cjs",
@@ -999,6 +1001,17 @@ const config: VextUserConfig = {
       },
       assets: {
         inlineLimit: 0,
+      },
+      vendorChunks: {
+        enabled: true,
+        packages: ["react", "react-dom", "react-dom/client"],
+        entryName: "vext-vendor",
+      },
+      budgets: {
+        maxAssetBytes: 0,
+        maxInitialJsBytes: 0,
+        maxTotalBytes: 0,
+        warnOnly: false,
       },
       css: {
         modules: true,
@@ -1012,7 +1025,19 @@ const config: VextUserConfig = {
     deploy: {
       assetBaseUrl: "https://cdn.example.com/my-app/",
       crossOrigin: "anonymous",
-      integrity: false,
+      integrity: true,
+      upload: {
+        enabled: false,
+        adapter: "filesystem",
+        targetDir: ".vext/deploy/frontend-assets",
+        publicBaseUrl: "https://cdn.example.com/my-app/",
+        prefix: "my-app",
+        stateFile: ".vext/deploy/frontend-assets-state.json",
+        dryRun: false,
+        concurrency: 4,
+        include: ["**/*"],
+        exclude: ["**/*.map"],
+      },
     },
     render: {
       ssr: true,
@@ -1048,72 +1073,90 @@ export default config;
 
 配置项参考：
 
-| 字段                                     | 默认值                                              | 用途                                                                                                       |
-| ---------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `frontend`                               | `false`                                             | `true` 启用默认前端；`false` 关闭前端；对象形式可配置细节。                                                |
-| `frontend.enabled`                       | `false`                                             | 是否启用内置前端构建、SSR 和静态服务。                                                                     |
-| `frontend.framework`                     | `"react"`                                           | 默认 React。                                                                                               |
-| `frontend.root`                          | `"src/frontend"`                                    | 用户前端源码根目录。                                                                                       |
-| `frontend.pages.dir`                     | `"pages"`                                           | 页面目录，默认相对 `frontend.root` 解析。                                                                  |
-| `frontend.pages.extensions`              | `[".tsx", ".jsx", ".ts", ".js"]`                    | 页面扫描扩展名。                                                                                           |
-| `frontend.componentsDir`                 | `"components"`                                      | 公共组件目录，默认相对 `frontend.root` 解析。                                                              |
-| `frontend.styles.entry`                  | `"styles/index.css"`                                | 全局样式入口，默认相对 `frontend.root` 解析。                                                              |
-| `frontend.styles.jscss.enabled`          | `true`                                              | 是否启用 Vext JSCSS 扫描和构建期 CSS 抽取。                                                                |
-| `frontend.styles.jscss.files`            | `["**/*.style.ts", "**/*.style.js", "**/*.css.ts"]` | 在 `frontend.root` 内扫描的 JSCSS 文件。                                                                   |
-| `frontend.styles.jscss.runtimeAdapter`   | `"css-variables"`                                   | 动态样式运行时承载方式；默认只保留 CSS variables，不引入第三方 runtime CSS-in-JS。                         |
-| `frontend.styles.jscss.dynamicVars`      | `true`                                              | 是否启用 `createVar()`、`setVar()` 和 `vars()` 这类动态变量辅助。                                          |
-| `frontend.styles.jscss.recipes`          | `true`                                              | 是否启用 `recipe()` variants 辅助。                                                                        |
-| `frontend.assetsDir`                     | `"assets"`                                          | import 型资源目录，默认相对 `frontend.root` 解析。                                                         |
-| `frontend.publicDir`                     | `"public"`                                          | 原样复制的静态文件目录，默认相对项目根解析。                                                               |
-| `frontend.publicPath`                    | `"/"`                                               | 前端资源公开路径前缀。                                                                                     |
-| `frontend.dev.hot`                       | `true`                                              | 开发期启用前端热更新通道。关闭后前端变更退回 rebuild + reload。                                            |
-| `frontend.dev.fastRefresh`               | `true`                                              | `framework: "react"` 时启用 React Fast Refresh。                                                           |
-| `frontend.dev.transport`                 | `"sse"`                                             | Vext dev event bus 传输方式。首期使用 SSE，不要求用户配置 WebSocket 或 Vite。                              |
-| `frontend.dev.overlay`                   | `true`                                              | 前端构建错误、Fast Refresh 错误和 render refresh 提示是否显示为 dev overlay。                              |
-| `frontend.dev.debounceMs`                | `50`                                                | 开发期文件保存风暴的防抖时间。                                                                             |
-| `frontend.dev.renderRefresh`             | `"prompt"`                                          | render 相关后端代码变更后的浏览器动作：`"prompt"` 提示刷新，`"auto"` 自动刷新，`"off"` 只记录事件。        |
-| `frontend.alias`                         | 见默认 alias 表                                     | 前端源码快捷导入。默认只解析到 `frontend.root` 内部。                                                      |
-| `frontend.build.client.outDir`           | `"dist/client"`                                     | 生产浏览器产物输出目录。                                                                                   |
-| `frontend.build.client.assetsDir`        | `"assets"`                                          | JS、CSS、图片和字体等构建资源输出子目录。                                                                  |
-| `frontend.build.client.target`           | `"es2022"`                                          | 浏览器构建目标。                                                                                           |
-| `frontend.build.client.minify`           | `true`                                              | 生产浏览器构建是否压缩。                                                                                   |
-| `frontend.build.client.sourcemap`        | `false`                                             | 生产浏览器构建是否输出 sourcemap。                                                                         |
-| `frontend.build.client.splitting`        | `true`                                              | 是否允许页面和共享代码分包。                                                                               |
-| `frontend.build.client.entryNames`       | `"[name]-[hash]"`                                   | 页面入口文件命名模板。                                                                                     |
-| `frontend.build.client.chunkNames`       | `"[name]-[hash]"`                                   | 共享 chunk 命名模板。                                                                                      |
-| `frontend.build.client.assetNames`       | `"[name]-[hash]"`                                   | 静态资源文件命名模板。                                                                                     |
-| `frontend.build.client.manifest`         | `true`                                              | 是否输出浏览器 manifest。                                                                                  |
-| `frontend.build.server.outFile`          | `"dist/client/server/renderer.cjs"`                 | SSR renderer 输出文件。                                                                                    |
-| `frontend.build.server.external`         | `[]`                                                | server renderer 构建时外置的包。默认打包 React 运行时，避免部署时缺失渲染依赖。                            |
-| `frontend.build.assets.inlineLimit`      | `0`                                                 | import 型资源是否内联；默认输出 hash 文件。                                                                |
-| `frontend.build.css.modules`             | `true`                                              | 是否支持 CSS Modules 约定。Sass、Tailwind、PostCSS 属于后续插件/用户配置能力，未实现前不作为默认能力承诺。 |
-| `frontend.build.diagnostics.metafile`    | `true`                                              | 保留内部 esbuild metafile 诊断，用于 manifest、size report 和 leak scan；不承诺输出独立 metafile 文件。    |
-| `frontend.build.diagnostics.sizeReport`  | `true`                                              | 输出 size report，方便检查页面和共享 chunk 大小；设为 `false` 时不写 `size-report.json`。                  |
-| `frontend.build.diagnostics.leakScan`    | `true`                                              | 扫描 browser graph，阻断 `src/routes/**`、`src/services/**`、`node:*` 等服务端输入。                       |
-| `frontend.deploy.assetBaseUrl`           | `undefined`                                         | CDN 资源基础 URL。设置后，HTML 和 manifest 中的静态资源地址使用该前缀。                                    |
-| `frontend.deploy.crossOrigin`            | `undefined`                                         | CDN script/link 的 crossorigin 策略。                                                                      |
-| `frontend.deploy.integrity`              | `false`                                             | SRI 资源完整性配置预留；当前不自动注入 integrity。                                                         |
-| `frontend.render.ssr`                    | `true`                                              | 是否启用页面 SSR。                                                                                         |
-| `frontend.render.fallback`               | `"client"`                                          | SSR 失败时是否降级到 client render。                                                                       |
-| `frontend.render.timeoutMs`              | `3000`                                              | 单次 SSR 超时时间。                                                                                        |
-| `frontend.render.layout`                 | `true`                                              | 是否启用默认 layout chain。也可以在单次 `res.render()` 中用 `options.layout` 覆盖。                        |
-| `frontend.errorPages.default`            | `"error/default"`                                   | 默认错误页面。                                                                                             |
-| `frontend.errorPages.status.404`         | `"error/404"`                                       | 404 错误页面。                                                                                             |
-| `frontend.errorPages.status.500`         | `"error/500"`                                       | 500 错误页面。                                                                                             |
-| `frontend.i18n.enabled`                  | `false`                                             | 是否启用前端页面文案层。后端 API 错误语言仍由 `config.locale` 负责。                                       |
-| `frontend.i18n.source`                   | `"locales"`                                         | 前端页面文案目录，默认相对 `frontend.root` 解析为 `src/frontend/locales`。                                 |
-| `frontend.i18n.defaultLocale`            | `"inherit"`                                         | 默认继承 `config.locale.default`；也可以指定为 `zh-CN`、`en-US` 等支持语言。                               |
-| `frontend.i18n.detect`                   | `["accept-language"]`                               | 首期语言检测来源。后续可扩展 cookie、path prefix 或用户偏好，但必须明确优先级。                            |
-| `frontend.i18n.inject`                   | `"used"`                                            | SSR 注入初始 messages 的范围。推荐只注入当前页面/layout 使用的属性路径。                                   |
-| `frontend.i18n.clientSwitch`             | `"reload"`                                          | 客户端语言切换策略。首期推荐重新请求 HTML，保证 SSR 与 hydration 一致。                                    |
-| `frontend.i18n.htmlLang`                 | `true`                                              | 是否把当前 locale 输出到 `{vext.lang}`。                                                                   |
-| `frontend.i18n.vary`                     | `true`                                              | 语言影响 HTML 时是否追加 `Vary: Accept-Language` 或等价 cache key。                                        |
-| `frontend.spaFallback.scopes`            | `[]`                                                | client-router 子应用 fallback 范围。默认空数组，不接管未知路径。                                           |
-| `frontend.spaFallback.scopes[].basePath` | 无                                                  | 该 SPA 子应用接管的 URL 前缀，例如 `/admin/app`。                                                          |
-| `frontend.spaFallback.scopes[].page`     | 无                                                  | fallback 返回的 page shell，例如 `admin/app/shell`，仍从 `src/frontend/pages/**` 查找。                    |
-| `frontend.spaFallback.scopes[].ssr`      | `false`                                             | 是否对 shell 做 SSR。纯 client-router 子应用通常保持 `false`。                                             |
-| `frontend.spaFallback.scopes[].exclude`  | `[]`                                                | 当前 scope 下仍不允许 fallback 的路径，例如 `/admin/api/**`。                                              |
-| `frontend.spaFallback.scopes[].status`   | `200`                                               | fallback 命中时返回的 HTTP 状态。                                                                          |
+| 字段                                       | 默认值                                              | 用途                                                                                                       |
+| ------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `frontend`                                 | `false`                                             | `true` 启用默认前端；`false` 关闭前端；对象形式可配置细节。                                                |
+| `frontend.enabled`                         | `false`                                             | 是否启用内置前端构建、SSR 和静态服务。                                                                     |
+| `frontend.framework`                       | `"react"`                                           | 默认 React。                                                                                               |
+| `frontend.root`                            | `"src/frontend"`                                    | 用户前端源码根目录。                                                                                       |
+| `frontend.pages.dir`                       | `"pages"`                                           | 页面目录，默认相对 `frontend.root` 解析。                                                                  |
+| `frontend.pages.extensions`                | `[".tsx", ".jsx", ".ts", ".js"]`                    | 页面扫描扩展名。                                                                                           |
+| `frontend.componentsDir`                   | `"components"`                                      | 公共组件目录，默认相对 `frontend.root` 解析。                                                              |
+| `frontend.styles.entry`                    | `"styles/index.css"`                                | 全局样式入口，默认相对 `frontend.root` 解析。                                                              |
+| `frontend.styles.jscss.enabled`            | `true`                                              | 是否启用 Vext JSCSS 扫描和构建期 CSS 抽取。                                                                |
+| `frontend.styles.jscss.files`              | `["**/*.style.ts", "**/*.style.js", "**/*.css.ts"]` | 在 `frontend.root` 内扫描的 JSCSS 文件。                                                                   |
+| `frontend.styles.jscss.runtimeAdapter`     | `"css-variables"`                                   | 动态样式运行时承载方式；默认只保留 CSS variables，不引入第三方 runtime CSS-in-JS。                         |
+| `frontend.styles.jscss.dynamicVars`        | `true`                                              | 是否启用 `createVar()`、`setVar()` 和 `vars()` 这类动态变量辅助。                                          |
+| `frontend.styles.jscss.recipes`            | `true`                                              | 是否启用 `recipe()` variants 辅助。                                                                        |
+| `frontend.assetsDir`                       | `"assets"`                                          | import 型资源目录，默认相对 `frontend.root` 解析。                                                         |
+| `frontend.publicDir`                       | `"public"`                                          | 原样复制的静态文件目录，默认相对项目根解析。                                                               |
+| `frontend.publicPath`                      | `"/"`                                               | 前端资源公开路径前缀。                                                                                     |
+| `frontend.dev.hot`                         | `true`                                              | 开发期启用前端热更新通道。关闭后前端变更退回 rebuild + reload。                                            |
+| `frontend.dev.fastRefresh`                 | `true`                                              | `framework: "react"` 时启用 React Fast Refresh。                                                           |
+| `frontend.dev.transport`                   | `"sse"`                                             | Vext dev event bus 传输方式。首期使用 SSE，不要求用户配置 WebSocket 或 Vite。                              |
+| `frontend.dev.overlay`                     | `true`                                              | 前端构建错误、Fast Refresh 错误和 render refresh 提示是否显示为 dev overlay。                              |
+| `frontend.dev.debounceMs`                  | `50`                                                | 开发期文件保存风暴的防抖时间。                                                                             |
+| `frontend.dev.renderRefresh`               | `"prompt"`                                          | render 相关后端代码变更后的浏览器动作：`"prompt"` 提示刷新，`"auto"` 自动刷新，`"off"` 只记录事件。        |
+| `frontend.alias`                           | 见默认 alias 表                                     | 前端源码快捷导入。默认只解析到 `frontend.root` 内部。                                                      |
+| `frontend.build.client.outDir`             | `"dist/client"`                                     | 生产浏览器产物输出目录。                                                                                   |
+| `frontend.build.client.assetsDir`          | `"assets"`                                          | JS、CSS、图片和字体等构建资源输出子目录。                                                                  |
+| `frontend.build.client.target`             | `"es2022"`                                          | 浏览器构建目标。                                                                                           |
+| `frontend.build.client.minify`             | `true`                                              | 生产浏览器构建是否压缩。                                                                                   |
+| `frontend.build.client.sourcemap`          | `false`                                             | 生产浏览器构建是否输出 sourcemap。                                                                         |
+| `frontend.build.client.splitting`          | `true`                                              | 是否允许页面和共享代码分包。                                                                               |
+| `frontend.build.client.entryNames`         | `"[name]-[hash]"`                                   | 页面入口文件命名模板。                                                                                     |
+| `frontend.build.client.chunkNames`         | `"[name]-[hash]"`                                   | 共享 chunk 命名模板。                                                                                      |
+| `frontend.build.client.assetNames`         | `"[name]-[hash]"`                                   | 静态资源文件命名模板。                                                                                     |
+| `frontend.build.client.manifest`           | `true`                                              | 是否输出浏览器 manifest。                                                                                  |
+| `frontend.build.client.external`           | `[]`                                                | 浏览器 bundle 外置模块列表。只给明确由 import map 或宿主运行时提供的包使用。                               |
+| `frontend.build.client.externalRuntime`    | `{}`                                                | 外置模块到浏览器 URL 的映射；Vext 会写入 import map，例如 `{ react: "https://cdn/react.mjs" }`。           |
+| `frontend.build.server.outFile`            | `"dist/client/server/renderer.cjs"`                 | SSR renderer 输出文件。                                                                                    |
+| `frontend.build.server.external`           | `[]`                                                | server renderer 构建时外置的包。默认打包 React 运行时，避免部署时缺失渲染依赖。                            |
+| `frontend.build.vendorChunks.enabled`      | `true`                                              | 是否生成 Vext-managed vendor entry，配合 esbuild splitting 把 React 等公共依赖拆成共享 chunk。             |
+| `frontend.build.vendorChunks.packages`     | `["react", "react-dom", "react-dom/client"]`        | vendor entry 导入的包列表。                                                                                |
+| `frontend.build.budgets.maxAssetBytes`     | `0`                                                 | 单个静态资源大小上限；`0` 表示不限制。                                                                     |
+| `frontend.build.budgets.maxInitialJsBytes` | `0`                                                 | 首屏入口 JS 大小上限；`0` 表示不限制。                                                                     |
+| `frontend.build.budgets.maxTotalBytes`     | `0`                                                 | deploy manifest 中所有资源总大小上限；`0` 表示不限制。                                                     |
+| `frontend.build.budgets.warnOnly`          | `false`                                             | 超出预算时只警告不阻断。默认阻断，便于 CI 守住性能预算。                                                   |
+| `frontend.build.assets.inlineLimit`        | `0`                                                 | import 型资源是否内联；默认输出 hash 文件。                                                                |
+| `frontend.build.css.modules`               | `true`                                              | 是否支持 CSS Modules 约定。Sass、Tailwind、PostCSS 属于后续插件/用户配置能力，未实现前不作为默认能力承诺。 |
+| `frontend.build.diagnostics.metafile`      | `true`                                              | 保留内部 esbuild metafile 诊断，用于 manifest、size report 和 leak scan；不承诺输出独立 metafile 文件。    |
+| `frontend.build.diagnostics.sizeReport`    | `true`                                              | 输出 size report，方便检查页面和共享 chunk 大小；设为 `false` 时不写 `size-report.json`。                  |
+| `frontend.build.diagnostics.leakScan`      | `true`                                              | 扫描 browser graph，阻断 `src/routes/**`、`src/services/**`、`node:*` 等服务端输入。                       |
+| `frontend.deploy.assetBaseUrl`             | `undefined`                                         | CDN 资源基础 URL。设置后，HTML 和 manifest 中的静态资源地址使用该前缀。                                    |
+| `frontend.deploy.crossOrigin`              | `undefined`                                         | CDN script/link 的 crossorigin 策略。                                                                      |
+| `frontend.deploy.integrity`                | `false`                                             | 是否把构建期计算出的 SRI 注入 JS/CSS 的 `<script>` / `<link>` 标签。                                       |
+| `frontend.deploy.upload.enabled`           | `false`                                             | 是否启用内置静态资源上传。普通 `vext build` 默认不会上传，必须显式开启或使用 CLI 上传命令。                |
+| `frontend.deploy.upload.adapter`           | `"filesystem"`                                      | 上传 adapter。首期内置 `filesystem` 和 `mock`；S3/OSS/Cloudflare 可通过后续自定义 adapter 接入。           |
+| `frontend.deploy.upload.targetDir`         | `".vext/deploy/frontend-assets"`                    | `filesystem` adapter 写入目录。                                                                            |
+| `frontend.deploy.upload.publicBaseUrl`     | `undefined`                                         | 上传结果公开 URL 前缀；未设置时使用 `frontend.deploy.assetBaseUrl`。                                       |
+| `frontend.deploy.upload.prefix`            | `""`                                                | 上传 key 前缀，例如 `my-app/v1`。                                                                          |
+| `frontend.deploy.upload.stateFile`         | `".vext/deploy/frontend-assets-state.json"`         | 增量上传状态文件，按 `uploadKey -> sha256` 判断是否跳过。                                                  |
+| `frontend.deploy.upload.dryRun`            | `false`                                             | 只输出计划，不写入目标。                                                                                   |
+| `frontend.deploy.upload.concurrency`       | `4`                                                 | 上传并发数。                                                                                               |
+| `frontend.deploy.upload.include`           | `["**/*"]`                                          | 进入 deploy manifest 和上传计划的文件 glob。                                                               |
+| `frontend.deploy.upload.exclude`           | `["**/*.map"]`                                      | 从 deploy manifest 和上传计划排除的文件 glob；默认不上传 source map。                                      |
+| `frontend.render.ssr`                      | `true`                                              | 是否启用页面 SSR。                                                                                         |
+| `frontend.render.fallback`                 | `"client"`                                          | SSR 失败时是否降级到 client render。                                                                       |
+| `frontend.render.timeoutMs`                | `3000`                                              | 单次 SSR 超时时间。                                                                                        |
+| `frontend.render.layout`                   | `true`                                              | 是否启用默认 layout chain。也可以在单次 `res.render()` 中用 `options.layout` 覆盖。                        |
+| `frontend.errorPages.default`              | `"error/default"`                                   | 默认错误页面。                                                                                             |
+| `frontend.errorPages.status.404`           | `"error/404"`                                       | 404 错误页面。                                                                                             |
+| `frontend.errorPages.status.500`           | `"error/500"`                                       | 500 错误页面。                                                                                             |
+| `frontend.i18n.enabled`                    | `false`                                             | 是否启用前端页面文案层。后端 API 错误语言仍由 `config.locale` 负责。                                       |
+| `frontend.i18n.source`                     | `"locales"`                                         | 前端页面文案目录，默认相对 `frontend.root` 解析为 `src/frontend/locales`。                                 |
+| `frontend.i18n.defaultLocale`              | `"inherit"`                                         | 默认继承 `config.locale.default`；也可以指定为 `zh-CN`、`en-US` 等支持语言。                               |
+| `frontend.i18n.detect`                     | `["accept-language"]`                               | 首期语言检测来源。后续可扩展 cookie、path prefix 或用户偏好，但必须明确优先级。                            |
+| `frontend.i18n.inject`                     | `"used"`                                            | SSR 注入初始 messages 的范围。推荐只注入当前页面/layout 使用的属性路径。                                   |
+| `frontend.i18n.clientSwitch`               | `"reload"`                                          | 客户端语言切换策略。首期推荐重新请求 HTML，保证 SSR 与 hydration 一致。                                    |
+| `frontend.i18n.htmlLang`                   | `true`                                              | 是否把当前 locale 输出到 `{vext.lang}`。                                                                   |
+| `frontend.i18n.vary`                       | `true`                                              | 语言影响 HTML 时是否追加 `Vary: Accept-Language` 或等价 cache key。                                        |
+| `frontend.spaFallback.scopes`              | `[]`                                                | client-router 子应用 fallback 范围。默认空数组，不接管未知路径。                                           |
+| `frontend.spaFallback.scopes[].basePath`   | 无                                                  | 该 SPA 子应用接管的 URL 前缀，例如 `/admin/app`。                                                          |
+| `frontend.spaFallback.scopes[].page`       | 无                                                  | fallback 返回的 page shell，例如 `admin/app/shell`，仍从 `src/frontend/pages/**` 查找。                    |
+| `frontend.spaFallback.scopes[].ssr`        | `false`                                             | 是否对 shell 做 SSR。纯 client-router 子应用通常保持 `false`。                                             |
+| `frontend.spaFallback.scopes[].exclude`    | `[]`                                                | 当前 scope 下仍不允许 fallback 的路径，例如 `/admin/api/**`。                                              |
+| `frontend.spaFallback.scopes[].status`     | `200`                                               | fallback 命中时返回的 HTTP 状态。                                                                          |
 
 ### `spaFallback` 怎么理解
 
@@ -1154,7 +1197,7 @@ export default {
 
 `spaFallback` 也不等于持久客户端 layout 导航。后续如果 Vext 支持类似 SSCR 的局部导航，它会在 layout 内接管链接、请求服务端数据并局部替换页面内容；这是单独的后续专项能力，不会通过 `spaFallback` 隐式开启。
 
-`frontend.publicPath` 是应用内资源 URL 前缀。`frontend.deploy.assetBaseUrl` 是构建产物静态资源的 CDN 绝对前缀。`public/**` 文件保持稳定 URL；`src/frontend/assets/**` 文件会经过构建并输出 hash 文件名。按请求动态转换 CDN 资源 URL、图片优化和字体优化属于后续专项能力或插件能力。
+`frontend.publicPath` 是应用内资源 URL 前缀。`frontend.deploy.assetBaseUrl` 是构建产物静态资源的 CDN 绝对前缀。`public/**` 文件保持稳定 URL 并进入 `deploy-manifest.json`；`src/frontend/assets/**` 文件会经过构建并输出 hash 文件名。构建期上传只处理静态资源，不处理业务运行时头像/附件上传；按请求动态转换 CDN 资源 URL、图片优化和字体优化属于后续专项能力或插件能力。
 
 ## 16. 开发、构建和生产启动
 
@@ -1207,15 +1250,16 @@ dist/client/
 ├── server/
 │   └── renderer.cjs
 ├── index.html
+├── deploy-manifest.json
 ├── manifest.json
 ├── messages-manifest.json
 ├── render-manifest.json
 └── size-report.json     # 默认输出；build.diagnostics.sizeReport=false 时不写入
 ```
 
-构建时 Vext 会分别生成浏览器 bundle 和 server renderer bundle。浏览器 bundle 只允许从 `src/frontend/**`、`public/**` 和配置的前端安全根起图；server renderer 用于 SSR 页面和 layout。开启 `frontend.i18n` 时，构建还会扫描 `src/frontend/locales/**` 并输出 `messages-manifest.json`。开启默认 JSCSS 时，构建会先扫描 `*.style.ts`、`*.style.js` 和 `*.css.ts`，把 `vextjs/style` 注册的样式抽取成生成 CSS，再交给 esbuild 合并进最终 CSS asset。构建诊断默认会保留内部 metafile 诊断、输出 manifest 和 size report，并扫描 alias 解析后的真实路径，防止 `src/routes/**`、`src/services/**`、`src/config/**`、`node:*`、`*.server.*` 被打进浏览器产物。`*.client.*` 在首期只作为浏览器专用文件，不应作为同步 SSR 组件使用。
+构建时 Vext 会分别生成浏览器 bundle 和 server renderer bundle。浏览器端页面、layout、错误页和 locale 会以动态 import 进入构建图，默认支持页面级 chunk；React、ReactDOM 等公共依赖通过 Vext-managed vendor entry 配合 esbuild splitting 形成共享 chunk。浏览器 bundle 只允许从 `src/frontend/**`、`public/**` 和配置的前端安全根起图；server renderer 用于 SSR 页面和 layout。开启 `frontend.i18n` 时，构建还会扫描 `src/frontend/locales/**` 并输出 `messages-manifest.json`。开启默认 JSCSS 时，构建会先扫描 `*.style.ts`、`*.style.js` 和 `*.css.ts`，把 `vextjs/style` 注册的样式抽取成生成 CSS，再交给 esbuild 合并进最终 CSS asset。构建诊断默认会保留内部 metafile 诊断、输出 manifest、deploy manifest 和 size report，并扫描 alias 解析后的真实路径，防止 `src/routes/**`、`src/services/**`、`src/config/**`、`node:*`、`*.server.*` 被打进浏览器产物。`*.client.*` 在首期只作为浏览器专用文件，不应作为同步 SSR 组件使用。
 
-`render-manifest.json` 记录 `vext start` 需要的 build id、页面、layout、错误页、资源、server renderer 路径和诊断信息。`messages-manifest.json` 记录可用 locale、默认 locale 对象 shape、页面 messages entry 和 build id。manifest schema、messages manifest 或 renderer 文件与运行时不匹配时，启动会 fail fast 并提示重新构建，而不是服务过期页面。
+`render-manifest.json` 记录 `vext start` 需要的 build id、页面、layout、错误页、资源、server renderer 路径和诊断信息。`deploy-manifest.json` 记录可发布静态资源的本地文件、公开 URL、upload key、字节数、content type、sha256 和 SRI；其中包括 esbuild 输出的 JS/CSS/图片/字体，也包括 `public/**` 复制过来的公开资源，但默认不包含 `index.html` 和 source map。`messages-manifest.json` 记录可用 locale、默认 locale 对象 shape、页面 messages entry 和 build id。manifest schema、messages manifest 或 renderer 文件与运行时不匹配时，启动会 fail fast 并提示重新构建，而不是服务过期页面。
 
 首期实现必须保留性能证据：API-only overhead、开发冷启动和重建、生产构建耗时、首次 SSR 渲染耗时、client JS 体积。没有可复现 benchmark 和对比对象时，不能宣称“最快”或“第一”。
 
@@ -1230,11 +1274,27 @@ npm start
 发布静态资源到 CDN 时，推荐流程是：
 
 1. 执行 `npm run build`。
-2. 上传 `dist/client/assets/**` 到 CDN。
-3. 在生产配置中设置 `frontend.deploy.assetBaseUrl`，例如 `https://cdn.example.com/my-app/`。
-4. 服务器仍由 Vext 输出 HTML、SSR 内容和页面数据；JS、CSS、图片、字体等静态资源从 CDN 加载。
+2. 检查 `dist/client/deploy-manifest.json`，确认 JS、CSS、图片、字体和 `public/**` 资源都进入清单。
+3. 执行 `npx vext deploy assets` 上传静态资源；首次上传写入目标，第二次会按 sha256 和 `stateFile` 增量跳过未变化资源。
+4. 需要把构建和上传合在一个命令时，可使用 `npx vext build --upload-assets`；想只看上传计划时使用 `--deploy-dry-run` 或 `vext deploy assets --dry-run`。
+5. 在生产配置中设置 `frontend.deploy.assetBaseUrl`，例如 `https://cdn.example.com/my-app/`。
+6. 服务器仍由 Vext 输出 HTML、SSR 内容和页面数据；JS、CSS、图片、字体等静态资源从 CDN 加载。
 
-Vext core 首期只负责生成稳定资源路径和 manifest，不绑定 S3、OSS、Cloudflare 等上传 provider。上传动作建议放在 CI 或后续 deploy plugin 中。
+首期内置 `filesystem` adapter，适合把资源写入本地发布目录、Nginx 静态目录、CI artifact 目录或对象存储同步前的 staging 目录；`mock` adapter 用于测试。S3、OSS、Cloudflare R2 等云厂商上传可以在后续通过自定义 deploy adapter 接入，Vext core 不把某个云厂商设为默认依赖。
+
+```bash
+# 构建后上传
+npx vext build --upload-assets
+
+# 只生成上传计划，不写入目标
+npx vext deploy assets --dry-run
+
+# 覆盖本次 filesystem 上传目录和 key 前缀
+npx vext deploy assets \
+  --target-dir .deploy/cdn \
+  --prefix my-app/v1 \
+  --state-file .vext/deploy/frontend-assets-state.json
+```
 
 ## 17. API-only 项目如何关闭前端
 
@@ -1320,7 +1380,7 @@ export default {
 
 - layout：当前目标是 SSR layout chain 和 `layoutData`，不是 Next/Remix route tree。
 - mutation：当前目标是普通 Vext API route + middleware/CSRF/same-origin/idempotency，Server Actions 后续再专项评估。
-- CDN：当前目标是 `frontend.deploy.assetBaseUrl` 和构建 manifest，不是每个请求动态改写资源 URL。
+- CDN：当前目标是 `frontend.deploy.assetBaseUrl`、`deploy-manifest.json`、SRI 和构建期静态资源上传，不是每个请求动态改写资源 URL。
 - SPA fallback：只服务显式配置的 `spaFallback.scopes[]` client-router 子应用，不是默认 pages 路由机制，也不能掩盖 API 404、静态资源 404 或 page registry 错误。
 
 需要页面时，在 `src/routes/**` 中定义 URL，并用 `res.render()` 渲染 `src/frontend/pages/**`。

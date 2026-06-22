@@ -260,7 +260,9 @@ app.get("/", {}, async (req, res) => {
 
 Component styles can use the default `vextjs/style` facade. Files such as `src/frontend/styles/card.style.ts` are scanned during build, extracted into generated CSS, and merged into the final CSS asset without adding Emotion or styled-components as default runtime dependencies.
 
-`vext build` compiles server code and then bundles the browser client and SSR renderer into `dist/client/`. `vext start` serves static frontend assets and HTML rendering while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
+`vext build` compiles server code and then bundles the browser client and SSR renderer into `dist/client/`. Browser pages, layouts, error pages, and locale entries are split through dynamic imports; shared React runtime packages go through the Vext-managed vendor entry. `vext start` serves static frontend assets and HTML rendering while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
+
+Production builds also write `dist/client/deploy-manifest.json` for CDN or static asset publishing. `vext deploy assets` and `vext build --upload-assets` upload only changed JS/CSS/images/fonts and copied `public/**` files by sha256 state; server-rendered `index.html` is not uploaded by default.
 
 For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
 
@@ -644,7 +646,7 @@ npm run build
 npm start
 ```
 
-`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
+`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/deploy-manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
 
 For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
 
