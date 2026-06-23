@@ -60,6 +60,12 @@ describe("frontend config resolver", () => {
     expect(config.styles.jscss.recipes).toBe(true);
     expect(config.publicPath).toBe("/");
     expect(config.build.vendorChunks.enabled).toBe(true);
+    expect(config.build.budgets.maxInitialJsGzipBytes).toBe(0);
+    expect(config.build.budgets.maxInitialJsBrotliBytes).toBe(0);
+    expect(config.build.budgets.maxRouteInitialJsBrotliBytes).toBe(0);
+    expect(config.build.budgets.maxAppOwnedInitialJsBrotliBytes).toBe(0);
+    expect(config.build.diagnostics.performanceReport).toBe(true);
+    expect(config.i18n.clientLoad).toBe("current");
     expect(config.deploy.upload.enabled).toBe(false);
     expect(config.deploy.upload.exclude).toEqual(["**/*.map"]);
   });
@@ -86,7 +92,11 @@ describe("frontend config resolver", () => {
         enabled: true,
         pages: { dir: "pages", document: "pages/_document.html" },
         alias: { "@features": "features" },
-        i18n: { enabled: true, defaultLocale: "zh-CN" },
+        i18n: {
+          enabled: true,
+          defaultLocale: "zh-CN",
+          clientLoad: "all",
+        },
         build: {
           client: {
             external: ["react"],
@@ -96,6 +106,13 @@ describe("frontend config resolver", () => {
           },
           budgets: {
             maxTotalBytes: 1_000_000,
+            maxInitialJsGzipBytes: 120_000,
+            maxInitialJsBrotliBytes: 100_000,
+            maxRouteInitialJsBrotliBytes: 80_000,
+            maxAppOwnedInitialJsBrotliBytes: 70_000,
+          },
+          diagnostics: {
+            performanceReport: false,
           },
         },
         deploy: {
@@ -124,6 +141,12 @@ describe("frontend config resolver", () => {
     );
     expect(config.i18n.enabled).toBe(true);
     expect(config.i18n.defaultLocale).toBe("zh-CN");
+    expect(config.i18n.clientLoad).toBe("all");
+    expect(config.build.budgets.maxInitialJsGzipBytes).toBe(120_000);
+    expect(config.build.budgets.maxInitialJsBrotliBytes).toBe(100_000);
+    expect(config.build.budgets.maxRouteInitialJsBrotliBytes).toBe(80_000);
+    expect(config.build.budgets.maxAppOwnedInitialJsBrotliBytes).toBe(70_000);
+    expect(config.build.diagnostics.performanceReport).toBe(false);
     expect(config.deploy.assetBaseUrl).toBe("https://cdn.example.com/app/");
     expect(config.build.client.externalRuntime.react.url).toBe(
       "https://cdn.example.com/react.mjs",
@@ -147,6 +170,20 @@ describe("frontend config resolver", () => {
         { rootDir, mode: "production" },
       ),
     ).toThrow("config.frontend.outDir");
+  });
+
+  it("rejects invalid i18n clientLoad values", async () => {
+    const rootDir = await tempRoot();
+
+    expect(() =>
+      resolveFrontendConfig(
+        {
+          enabled: true,
+          i18n: { clientLoad: "lazy" as any },
+        },
+        { rootDir, mode: "production" },
+      ),
+    ).toThrow('config.frontend.i18n.clientLoad must be "current" or "all"');
   });
 });
 
@@ -393,6 +430,27 @@ describe("frontend client build", () => {
     expect(html).toContain('"react":"https://cdn.example.com/react.mjs"');
   });
 
+  it("fails fast when browser React externals are missing runtime mappings", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    await expect(
+      buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          apiClient: false,
+          build: {
+            client: {
+              external: ["react"],
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("frontend browser external runtime mapping is incomplete");
+  });
+
   it("generates page, layout, error, i18n, and render manifests", async () => {
     const rootDir = await tempRoot();
     const frontendDir = path.join(rootDir, "src", "frontend");
@@ -471,12 +529,90 @@ describe("frontend client build", () => {
       id: "error/default",
     });
     expect(renderManifest.serverRenderer).toBe("server/renderer.cjs");
+    expect(renderManifest.routeAssets.schemaVersion).toBe(1);
+    expect(renderManifest.routeAssets.routes.map((route: any) => route.page)).toContain(
+      "admin/index",
+    );
+    expect(
+      renderManifest.routeAssets.routes.find(
+        (route: any) => route.page === "admin/index",
+      )?.initialJsBrotliBytes,
+    ).toBeGreaterThan(0);
     expect(messagesManifest.locales[0]).toMatchObject({ locale: "en-US" });
     expect(generatedRegistry).toContain("export const pages");
     expect(html).toContain('id="__VEXT_DATA__"');
     expect(html).toContain("data-vext-root");
     expect(html).not.toContain("%VEXT");
     expect(html).not.toContain("{vext.");
+  });
+
+  it("generates i18n clientLoad mode and hydration telemetry in the browser entry", async () => {
+    const currentRootDir = await tempRoot();
+    await createMinimalFrontend(currentRootDir);
+    await mkdir(path.join(currentRootDir, "src", "frontend", "locales"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(currentRootDir, "src", "frontend", "locales", "en-US.ts"),
+      "export default { title: 'Hello' };\n",
+    );
+    await writeFile(
+      path.join(currentRootDir, "src", "frontend", "locales", "zh-CN.ts"),
+      "export default { title: '你好' };\n",
+    );
+
+    const currentResult = await buildFrontendClient({
+      rootDir: currentRootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+    const currentEntry = await readFile(
+      path.join(currentResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+
+    expect(currentEntry).toContain('const clientLoad = "current";');
+    expect(currentEntry).toContain("markVextHydrationStart(root)");
+    expect(currentEntry).toContain('root.dataset.vextHydration = "done"');
+    expect(currentEntry).toContain('performance.measure(name, start, end)');
+
+    const allRootDir = await tempRoot();
+    await createMinimalFrontend(allRootDir);
+    await mkdir(path.join(allRootDir, "src", "frontend", "locales"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(allRootDir, "src", "frontend", "locales", "en-US.ts"),
+      "export default { title: 'Hello' };\n",
+    );
+    await writeFile(
+      path.join(allRootDir, "src", "frontend", "locales", "zh-CN.ts"),
+      "export default { title: 'Ni hao' };\n",
+    );
+
+    const allResult = await buildFrontendClient({
+      rootDir: allRootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: {
+          enabled: true,
+          defaultLocale: "en-US",
+          clientLoad: "all",
+        },
+      },
+    });
+    const allEntry = await readFile(
+      path.join(allResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+
+    expect(allEntry).toContain('const clientLoad = "all";');
   });
 
   it("extracts Vext JSCSS modules into the bundled CSS asset", async () => {
@@ -578,6 +714,20 @@ describe("frontend client build", () => {
     expect(
       existsSync(path.join(defaultResult.config.outDir, "size-report.json")),
     ).toBe(true);
+    const sizeReport = JSON.parse(
+      await readFile(
+        path.join(defaultResult.config.outDir, "size-report.json"),
+        "utf-8",
+      ),
+    );
+    expect(sizeReport.kind).toBe("frontend-size-report");
+    expect(sizeReport.totalBytes).toBeGreaterThan(0);
+    expect(sizeReport.totalGzipBytes).toBeGreaterThan(0);
+    expect(sizeReport.totalBrotliBytes).toBeGreaterThan(0);
+    expect(sizeReport.initialJsBrotliBytes).toBeGreaterThan(0);
+    expect(sizeReport.appOwnedInitialJsBrotliBytes).toBeGreaterThan(0);
+    expect(sizeReport.assets[0]).toHaveProperty("gzipBytes");
+    expect(sizeReport.assets[0]).toHaveProperty("brotliBytes");
 
     const disabledRootDir = await tempRoot();
     await createMinimalFrontend(disabledRootDir);
@@ -599,6 +749,27 @@ describe("frontend client build", () => {
     expect(
       existsSync(path.join(disabledResult.config.outDir, "size-report.json")),
     ).toBe(false);
+  });
+
+  it("fails with a friendly error when compressed frontend budgets are exceeded", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    await expect(
+      buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          apiClient: false,
+          build: {
+            budgets: {
+              maxInitialJsBrotliBytes: 1,
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("maxInitialJsBrotliBytes");
   });
 
   it("injects React Fast Refresh only into development browser builds", async () => {
@@ -783,6 +954,8 @@ describe("frontend render middleware", () => {
     expect(res.sent?.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(res.sent?.kind).toBe("render");
     expect(res.sent?.html).toContain("<title>Dashboard</title>");
+    expect(res.sent?.html).toContain('rel="modulepreload"');
+    expect(res.sent?.html).toContain("data-vext-route-preload");
     expect(res.sent?.html).toContain('data-vext-entry nonce="abc123"');
     expect(res.sent?.html).toContain('data-vext-data nonce="abc123"');
     expect(res.sent?.html).toContain('data-vext-page="index"');

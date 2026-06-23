@@ -742,6 +742,10 @@ describe("validateConfig", () => {
               budgets: {
                 maxAssetBytes: 200_000,
                 maxInitialJsBytes: 500_000,
+                maxInitialJsGzipBytes: 180_000,
+                maxInitialJsBrotliBytes: 150_000,
+                maxRouteInitialJsBrotliBytes: 120_000,
+                maxAppOwnedInitialJsBrotliBytes: 100_000,
                 maxTotalBytes: 1_000_000,
                 warnOnly: false,
               },
@@ -750,6 +754,7 @@ describe("validateConfig", () => {
               diagnostics: {
                 metafile: true,
                 sizeReport: true,
+                performanceReport: true,
                 leakScan: true,
               },
             },
@@ -786,6 +791,7 @@ describe("validateConfig", () => {
               defaultLocale: "inherit",
               detect: ["accept-language"],
               inject: "used",
+              clientLoad: "current",
               clientSwitch: "reload",
               htmlLang: true,
               vary: true,
@@ -823,6 +829,30 @@ describe("validateConfig", () => {
           },
         }),
       ).toThrow("config.frontend.spaFallback.scopes[0].page");
+    });
+
+    it("rejects invalid i18n clientLoad values", () => {
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            i18n: { clientLoad: "lazy" },
+          },
+        }),
+      ).toThrow('config.frontend.i18n.clientLoad must be "current" or "all"');
+    });
+
+    it("rejects invalid compressed budget values", () => {
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            build: {
+              budgets: {
+                maxRouteInitialJsBrotliBytes: -1,
+              },
+            },
+          },
+        }),
+      ).toThrow("config.frontend.build.budgets.maxRouteInitialJsBrotliBytes");
     });
   });
 

@@ -2,6 +2,7 @@
 
 ## 2026-06-22
 
+- **React hydration performance** Added the B3 React hydration optimization path: frontend i18n now defaults to current-locale browser loading, route initial assets drive SSR `modulepreload`, size reports include raw/gzip/brotli and app-owned/external groups, compressed build budgets can fail CI, React external runtime mappings fail fast when incomplete, and `vext-test` includes a real-browser frontend performance probe.
 - **Frontend enterprise build and deploy** Added page-level browser chunking, browser external import-map support, Vext-managed vendor chunks, deploy manifest generation, SRI injection, build budgets, asset inline/CSS Modules handling, filesystem/mock static asset upload adapters, `vext deploy assets`, `vext build --upload-assets`, and `vext-test` frontend deploy validation.
 
 ## 2026-06-18

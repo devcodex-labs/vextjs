@@ -67,6 +67,10 @@ export interface VextFrontendVendorChunksConfig {
 export interface VextFrontendBuildBudgetsConfig {
   maxAssetBytes?: number;
   maxInitialJsBytes?: number;
+  maxInitialJsGzipBytes?: number;
+  maxInitialJsBrotliBytes?: number;
+  maxRouteInitialJsBrotliBytes?: number;
+  maxAppOwnedInitialJsBrotliBytes?: number;
   maxTotalBytes?: number;
   warnOnly?: boolean;
 }
@@ -92,6 +96,7 @@ export interface VextFrontendBuildConfig {
   diagnostics?: {
     metafile?: boolean;
     sizeReport?: boolean;
+    performanceReport?: boolean;
     leakScan?: boolean;
   };
 }
@@ -155,12 +160,15 @@ export interface VextFrontendErrorPagesConfig {
   status?: Record<string | number, string>;
 }
 
+export type VextFrontendI18nClientLoad = "current" | "all";
+
 export interface VextFrontendI18nConfig {
   enabled?: boolean;
   source?: string;
   defaultLocale?: "inherit" | string;
   detect?: string[];
   inject?: "used" | "all";
+  clientLoad?: VextFrontendI18nClientLoad;
   clientSwitch?: "reload";
   htmlLang?: boolean;
   vary?: boolean;
@@ -286,6 +294,7 @@ export interface ResolvedVextFrontendConfig {
     diagnostics: {
       metafile: boolean;
       sizeReport: boolean;
+      performanceReport: boolean;
       leakScan: boolean;
     };
   };
@@ -369,7 +378,7 @@ export interface VextFrontendManifestAsset {
   bytes: number;
   entry?: boolean;
   entryPoint?: string;
-  source?: "bundle" | "public";
+  source?: "bundle" | "public" | "external";
   sha256?: string;
   integrity?: string;
   contentType?: string;
@@ -477,6 +486,62 @@ export interface VextFrontendLocaleRegistryEntry {
   file: string;
 }
 
+export type VextFrontendAssetGroup =
+  | "entry"
+  | "shared"
+  | "page"
+  | "layout"
+  | "locale"
+  | "style"
+  | "asset"
+  | "external";
+
+export interface VextFrontendSizeMetric {
+  path: string;
+  bytes: number;
+  gzipBytes: number;
+  brotliBytes: number;
+  source: "bundle" | "public" | "external";
+  group: VextFrontendAssetGroup;
+  entry?: boolean;
+  entryPoint?: string;
+}
+
+export interface VextFrontendRouteInitialAssets {
+  page: string;
+  routePath: string;
+  layouts: string[];
+  locale?: string;
+  scripts: string[];
+  styles: string[];
+  assets: string[];
+  externalScripts: string[];
+  initialJsBytes: number;
+  initialJsGzipBytes: number;
+  initialJsBrotliBytes: number;
+  appOwnedInitialJsBrotliBytes: number;
+}
+
+export interface VextFrontendRouteAssetsManifest {
+  schemaVersion: 1;
+  routes: VextFrontendRouteInitialAssets[];
+}
+
+export interface VextFrontendSizeReport {
+  schemaVersion: 1;
+  kind: "frontend-size-report";
+  generatedAt: string;
+  totalBytes: number;
+  totalGzipBytes: number;
+  totalBrotliBytes: number;
+  initialJsBytes: number;
+  initialJsGzipBytes: number;
+  initialJsBrotliBytes: number;
+  appOwnedInitialJsBrotliBytes: number;
+  assets: VextFrontendSizeMetric[];
+  routes?: VextFrontendRouteInitialAssets[];
+}
+
 export interface VextFrontendRenderManifest {
   schemaVersion: 1;
   kind: "frontend-render-manifest";
@@ -501,8 +566,10 @@ export interface VextFrontendRenderManifest {
   diagnostics: {
     metafile: boolean;
     sizeReport: boolean;
+    performanceReport: boolean;
     leakScan: boolean;
   };
+  routeAssets?: VextFrontendRouteAssetsManifest;
 }
 
 export interface VextFrontendMessagesManifest {

@@ -15,7 +15,7 @@ VextJS is a high-performance full-stack Node.js framework for building maintaina
 - Built-in request context, request id, access logging, body limit, structured error handling with `app.throw` details, i18n, and OpenAPI endpoints.
 - Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
 - Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
-- Built-in React frontend integration for `src/frontend/pages/**`, route-driven `res.render()`, SSR, hydration, Vext JSCSS/CSS assets, scoped SPA fallback, and generated API contract files.
+- Built-in React frontend integration for `src/frontend/pages/**`, route-driven `res.render()`, SSR, hydration telemetry, route-specific modulepreload, Vext JSCSS/CSS assets, scoped SPA fallback, and generated API contract files.
 - Lightweight `vextjs/frontend` runtime helpers for page i18n, generated API contract artifacts, and future external frontend adapters.
 - Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
 - Type generation for service and plugin app extensions.
@@ -262,9 +262,11 @@ Component styles can use the default `vextjs/style` facade. Files such as `src/f
 
 `vext build` compiles server code and then bundles the browser client and SSR renderer into `dist/client/`. Browser pages, layouts, error pages, and locale entries are split through dynamic imports; shared React runtime packages go through the Vext-managed vendor entry. `vext start` serves static frontend assets and HTML rendering while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
 
-Production builds also write `dist/client/deploy-manifest.json` for CDN or static asset publishing. `vext deploy assets` and `vext build --upload-assets` upload only changed JS/CSS/images/fonts and copied `public/**` files by sha256 state; server-rendered `index.html` is not uploaded by default.
+Production builds also write `dist/client/deploy-manifest.json` for CDN or static asset publishing and `dist/client/size-report.json` for raw/gzip/brotli size evidence, route initial assets, and app-owned/external runtime groups. `vext deploy assets` and `vext build --upload-assets` upload only changed JS/CSS/images/fonts and copied `public/**` files by sha256 state; server-rendered `index.html` is not uploaded by default.
 
-For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+For React hydration performance budgets, set fields such as `frontend.build.budgets.maxInitialJsBrotliBytes`, `maxRouteInitialJsBrotliBytes`, or `maxAppOwnedInitialJsBrotliBytes`. The default frontend i18n mode uses `frontend.i18n.clientLoad: "current"` so the browser loads only the SSR locale during hydration; use `"all"` only when a page needs no-reload locale switching. Advanced React CDN/import-map usage remains opt-in through `frontend.build.client.external` plus `externalRuntime`; React-related externals must provide runtime mappings.
+
+For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, performance budgets, browser hydration validation, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
 
 When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
 
@@ -646,7 +648,7 @@ npm run build
 npm start
 ```
 
-`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/deploy-manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
+`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/render-manifest.json`, `dist/client/deploy-manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. The render manifest includes route initial assets used by SSR modulepreload; production `vext start` fails fast when that schema is missing and asks you to rebuild instead of serving stale frontend output. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
 
 For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
 

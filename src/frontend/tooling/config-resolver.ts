@@ -198,6 +198,7 @@ export function resolveFrontendConfig(
       diagnostics: {
         metafile: build.diagnostics?.metafile ?? true,
         sizeReport: build.diagnostics?.sizeReport ?? true,
+        performanceReport: build.diagnostics?.performanceReport ?? true,
         leakScan: build.diagnostics?.leakScan ?? true,
       },
     },
@@ -228,6 +229,7 @@ export function resolveFrontendConfig(
       defaultLocale: raw?.i18n?.defaultLocale ?? "inherit",
       detect: raw?.i18n?.detect ?? ["accept-language"],
       inject: raw?.i18n?.inject ?? "used",
+      clientLoad: normalizeI18nClientLoad(raw?.i18n?.clientLoad),
       clientSwitch: raw?.i18n?.clientSwitch ?? "reload",
       htmlLang: raw?.i18n?.htmlLang ?? true,
       vary: raw?.i18n?.vary ?? true,
@@ -283,9 +285,28 @@ function normalizeBudgets(
   return {
     maxAssetBytes: value?.maxAssetBytes ?? 0,
     maxInitialJsBytes: value?.maxInitialJsBytes ?? 0,
+    maxInitialJsGzipBytes: value?.maxInitialJsGzipBytes ?? 0,
+    maxInitialJsBrotliBytes: value?.maxInitialJsBrotliBytes ?? 0,
+    maxRouteInitialJsBrotliBytes: value?.maxRouteInitialJsBrotliBytes ?? 0,
+    maxAppOwnedInitialJsBrotliBytes:
+      value?.maxAppOwnedInitialJsBrotliBytes ?? 0,
     maxTotalBytes: value?.maxTotalBytes ?? 0,
     warnOnly: value?.warnOnly ?? false,
   };
+}
+
+function normalizeI18nClientLoad(
+  value: unknown,
+): ResolvedVextFrontendConfig["i18n"]["clientLoad"] {
+  if (value === undefined) {
+    return "current";
+  }
+  if (value === "current" || value === "all") {
+    return value;
+  }
+  throw new Error(
+    '[vextjs] config.frontend.i18n.clientLoad must be "current" or "all".',
+  );
 }
 
 function normalizeDeployUpload(

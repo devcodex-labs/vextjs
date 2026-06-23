@@ -123,7 +123,7 @@ export function createFrontendRenderer(
       return cachedAssets;
     }
 
-    const manifest = readRenderManifest(options.rootDir, config);
+    const manifest = readRenderManifest(options.rootDir, config, options.mode);
     const serverRendererPath = resolveServerRendererPath(
       options.rootDir,
       config,
@@ -363,6 +363,7 @@ function renderPageDocument(input: {
   });
   const html = renderDocument(input.assets.template, {
     page: input.page,
+    manifest: input.assets.manifest,
     head: input.options.head,
     headHtml: ssr.head,
     nonce: input.options.nonce,
@@ -538,6 +539,7 @@ function renderBuiltinErrorDocument(input: {
   };
   const html = renderDocument(input.assets.template, {
     page: input.page,
+    manifest: input.assets.manifest,
     head: input.options.head ?? { title: `${input.status} ${message}` },
     nonce: input.options.nonce,
     payload,
@@ -562,6 +564,7 @@ function renderBuiltinErrorBody(
 function readRenderManifest(
   rootDir: string,
   config: ResolvedVextFrontendConfig,
+  mode: VextFrontendMode,
 ): VextFrontendRenderManifest {
   const manifestPath = path.join(config.outDir, "render-manifest.json");
   if (!existsSync(manifestPath)) {
@@ -569,9 +572,15 @@ function readRenderManifest(
       `[vextjs] frontend render manifest is missing: ${path.relative(rootDir, manifestPath)}. Run "vext build" first.`,
     );
   }
-  return JSON.parse(
+  const manifest = JSON.parse(
     readFileSync(manifestPath, "utf-8"),
   ) as VextFrontendRenderManifest;
+  if (mode === "production" && !manifest.routeAssets) {
+    throw new Error(
+      `[vextjs] frontend render-manifest.json is missing routeAssets. Run "vext build" again before starting production SSR.`,
+    );
+  }
+  return manifest;
 }
 
 function readIndexHtml(
@@ -643,6 +652,7 @@ function renderDocument(
   template: string,
   input: {
     page: string;
+    manifest: VextFrontendRenderManifest;
     head?: VextRenderHeadOptions;
     headHtml?: string;
     nonce?: string;
@@ -651,7 +661,11 @@ function renderDocument(
   },
 ): string {
   const payloadJson = serializeJsonForHtml(input.payload);
-  const headHtml = [renderHead(input.head), input.headHtml]
+  const headHtml = [
+    renderRoutePreloads(input.manifest, input.page),
+    renderHead(input.head),
+    input.headHtml,
+  ]
     .filter(Boolean)
     .join("\n");
   let html = template;
@@ -686,6 +700,20 @@ function addNonceToVextScripts(html: string, nonce: string): string {
     /<script\b(?=[^>]*\bdata-vext-(?:data|entry)\b)(?![^>]*\bnonce=)([^>]*)>/giu,
     `<script$1 nonce="${escapeAttribute(nonce)}">`,
   );
+}
+
+function renderRoutePreloads(
+  manifest: VextFrontendRenderManifest,
+  page: string,
+): string {
+  const route = manifest.routeAssets?.routes.find((item) => item.page === page);
+  if (!route) return "";
+  return route.scripts
+    .map(
+      (href) =>
+        `<link rel="modulepreload" href="${escapeAttribute(href)}" data-vext-route-preload>`,
+    )
+    .join("\n");
 }
 
 function renderHead(head: VextRenderHeadOptions | undefined): string {

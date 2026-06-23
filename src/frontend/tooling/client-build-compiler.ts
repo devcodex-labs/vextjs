@@ -5,11 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ResolvedVextFrontendConfig,
-  VextFrontendDeployManifest,
   VextFrontendManifest,
   VextFrontendManifestAsset,
   VextFrontendMessagesManifest,
   VextFrontendMode,
+  VextFrontendRouteAssetsManifest,
   VextFrontendRenderManifest,
   VextFrontendUserConfig,
 } from "../contract/types.js";
@@ -22,6 +22,11 @@ import {
 import { buildFrontendDeployManifest } from "../deploy/manifest.js";
 import { getFrontendContentType } from "../deploy/content-type.js";
 import { createSha256, createSriSha256 } from "../deploy/integrity.js";
+import {
+  assertFrontendBudgets,
+  buildFrontendSizeReport,
+} from "./size-report.js";
+import { buildFrontendRouteAssets } from "./route-assets.js";
 
 export interface BuildFrontendClientOptions {
   rootDir: string;
@@ -96,6 +101,7 @@ export async function buildFrontendClient(
   const browserEntryPoints = [config.entry, registry.vendorEntryPath].filter(
     (entryPoint): entryPoint is string => Boolean(entryPoint),
   );
+  assertBrowserExternalRuntimeMappings(config);
   const buildResult = await esbuild.build({
     entryPoints: browserEntryPoints,
     bundle: true,
@@ -189,6 +195,13 @@ export async function buildFrontendClient(
     buildManifest(config, buildResult.metafile, options.mode),
   );
   const manifestPath = path.join(config.outDir, "manifest.json");
+  const routeAssets = await buildFrontendRouteAssets({
+    rootDir: options.rootDir,
+    config,
+    manifest,
+    metafile: buildResult.metafile,
+    registry,
+  });
   const renderManifest = buildRenderManifest({
     config,
     registry,
@@ -196,6 +209,7 @@ export async function buildFrontendClient(
     manifestPath,
     mode: options.mode,
     rootDir: options.rootDir,
+    routeAssets,
   });
   const renderManifestPath = path.join(config.outDir, "render-manifest.json");
   const messagesManifest = buildMessagesManifest({
@@ -222,13 +236,6 @@ export async function buildFrontendClient(
     `${JSON.stringify(messagesManifest, null, 2)}\n`,
     "utf-8",
   );
-  if (config.build.diagnostics.sizeReport) {
-    await writeFile(
-      path.join(config.outDir, "size-report.json"),
-      `${JSON.stringify(buildSizeReport(manifest), null, 2)}\n`,
-      "utf-8",
-    );
-  }
   await writeFile(
     path.join(config.outDir, "index.html"),
     await renderIndexHtml(config, manifest),
@@ -240,7 +247,19 @@ export async function buildFrontendClient(
     mode: options.mode,
     browserManifest: manifest,
   });
-  assertFrontendBudgets(config, deployManifest);
+  const sizeReport = await buildFrontendSizeReport({
+    config,
+    deployManifest,
+    routes: routeAssets.routes,
+  });
+  assertFrontendBudgets(config, sizeReport);
+  if (config.build.diagnostics.sizeReport) {
+    await writeFile(
+      path.join(config.outDir, "size-report.json"),
+      `${JSON.stringify(sizeReport, null, 2)}\n`,
+      "utf-8",
+    );
+  }
   const deployManifestPath = path.join(config.outDir, "deploy-manifest.json");
   await writeFile(
     deployManifestPath,
@@ -461,6 +480,7 @@ function buildRenderManifest(input: {
   buildId: string;
   manifestPath: string;
   mode: VextFrontendMode;
+  routeAssets: VextFrontendRouteAssetsManifest;
   rootDir: string;
 }): VextFrontendRenderManifest {
   return {
@@ -493,8 +513,10 @@ function buildRenderManifest(input: {
     diagnostics: {
       metafile: input.config.build.diagnostics.metafile,
       sizeReport: input.config.build.diagnostics.sizeReport,
+      performanceReport: input.config.build.diagnostics.performanceReport,
       leakScan: input.config.build.diagnostics.leakScan,
     },
+    routeAssets: input.routeAssets,
   };
 }
 
@@ -689,6 +711,33 @@ function renderExternalRuntimeTags(config: ResolvedVextFrontendConfig): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function assertBrowserExternalRuntimeMappings(
+  config: ResolvedVextFrontendConfig,
+): void {
+  const reactRuntimeSpecifiers = new Set([
+    "react",
+    "react-dom",
+    "react-dom/client",
+    "react/jsx-runtime",
+    "react/jsx-dev-runtime",
+  ]);
+  const missing = config.build.client.external.filter(
+    (specifier) =>
+      reactRuntimeSpecifiers.has(specifier) &&
+      !config.build.client.externalRuntime[specifier],
+  );
+  if (missing.length === 0) return;
+  throw new Error(
+    [
+      "[vextjs] frontend browser external runtime mapping is incomplete.",
+      `Externalized modules: ${missing.join(", ")}`,
+      "Browser external modules are not bundled; Vext must write import map URLs for them.",
+      "Add mappings under config.frontend.build.client.externalRuntime, for example:",
+      '  externalRuntime: { react: "https://cdn.example.com/react.mjs" }',
+    ].join("\n"),
+  );
 }
 
 const FRONTEND_RESOLVE_EXTENSIONS = [
@@ -970,62 +1019,4 @@ function formatBoundaryLeakError(
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-function buildSizeReport(manifest: VextFrontendManifest): {
-  totalBytes: number;
-  assets: VextFrontendManifestAsset[];
-} {
-  return {
-    totalBytes: manifest.assets.reduce((sum, asset) => sum + asset.bytes, 0),
-    assets: manifest.assets,
-  };
-}
-
-function assertFrontendBudgets(
-  config: ResolvedVextFrontendConfig,
-  manifest: VextFrontendDeployManifest,
-): void {
-  const failures: string[] = [];
-  const budgets = config.build.budgets;
-  if (budgets.maxAssetBytes > 0) {
-    const oversize = manifest.assets.filter(
-      (asset) => asset.bytes > budgets.maxAssetBytes,
-    );
-    for (const asset of oversize) {
-      failures.push(
-        `${asset.file} is ${asset.bytes} bytes, over maxAssetBytes ${budgets.maxAssetBytes}`,
-      );
-    }
-  }
-  if (budgets.maxInitialJsBytes > 0) {
-    const initialJsBytes = manifest.assets
-      .filter((asset) => asset.entry && asset.file.endsWith(".js"))
-      .reduce((sum, asset) => sum + asset.bytes, 0);
-    if (initialJsBytes > budgets.maxInitialJsBytes) {
-      failures.push(
-        `initial JS is ${initialJsBytes} bytes, over maxInitialJsBytes ${budgets.maxInitialJsBytes}`,
-      );
-    }
-  }
-  if (budgets.maxTotalBytes > 0) {
-    const totalBytes = manifest.assets.reduce(
-      (sum, asset) => sum + asset.bytes,
-      0,
-    );
-    if (totalBytes > budgets.maxTotalBytes) {
-      failures.push(
-        `total frontend assets are ${totalBytes} bytes, over maxTotalBytes ${budgets.maxTotalBytes}`,
-      );
-    }
-  }
-  if (failures.length === 0) return;
-  const message = `[vextjs] frontend build budget exceeded:\n${failures
-    .map((failure) => `  - ${failure}`)
-    .join("\n")}`;
-  if (budgets.warnOnly) {
-    console.warn(message);
-    return;
-  }
-  throw new Error(message);
 }

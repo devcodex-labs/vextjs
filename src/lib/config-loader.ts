@@ -863,7 +863,12 @@ function validateFrontendConfig(value: unknown, path: string): void {
       `${path}.build.diagnostics`,
     );
     if (diagnostics) {
-      for (const key of ["metafile", "sizeReport", "leakScan"]) {
+      for (const key of [
+        "metafile",
+        "sizeReport",
+        "performanceReport",
+        "leakScan",
+      ]) {
         validateOptionalBoolean(
           diagnostics[key],
           `${path}.build.diagnostics.${key}`,
@@ -926,6 +931,10 @@ function validateFrontendConfig(value: unknown, path: string): void {
     validateOptionalString(i18n.defaultLocale, `${path}.i18n.defaultLocale`);
     validateOptionalStringArray(i18n.detect, `${path}.i18n.detect`);
     validateEnum(i18n.inject, `${path}.i18n.inject`, ["used", "all"]);
+    validateEnum(i18n.clientLoad, `${path}.i18n.clientLoad`, [
+      "current",
+      "all",
+    ]);
     validateEnum(i18n.clientSwitch, `${path}.i18n.clientSwitch`, ["reload"]);
     validateOptionalBoolean(i18n.htmlLang, `${path}.i18n.htmlLang`);
     validateOptionalBoolean(i18n.vary, `${path}.i18n.vary`);
@@ -1107,7 +1116,15 @@ function validateFrontendBudgets(value: unknown, path: string): void {
     throw new Error(`[vextjs] ${path} must be an object.`);
   }
   const typed = value as Record<string, unknown>;
-  for (const key of ["maxAssetBytes", "maxInitialJsBytes", "maxTotalBytes"]) {
+  for (const key of [
+    "maxAssetBytes",
+    "maxInitialJsBytes",
+    "maxInitialJsGzipBytes",
+    "maxInitialJsBrotliBytes",
+    "maxRouteInitialJsBrotliBytes",
+    "maxAppOwnedInitialJsBrotliBytes",
+    "maxTotalBytes",
+  ]) {
     if (typed[key] !== undefined) {
       validateNonNegativeInteger(typed[key], `${path}.${key}`);
     }

@@ -782,6 +782,7 @@ export default {
 | `i18n.detect`                  | `string[]`                           | `['accept-language']`                               | SSR locale 探测来源                                                 |
 | `i18n.inject`                  | `'used' \| 'all'`                    | `'used'`                                            | 注入已使用 messages 还是全部 messages                               |
 | `i18n.clientSwitch`            | `'reload'`                           | `'reload'`                                          | 客户端切换 locale 的首期策略                                        |
+| `i18n.clientLoad`              | `'current' \| 'all'`                 | `'current'`                                         | 浏览器端只加载当前 SSR locale，或加载全部 locale                    |
 | `i18n.htmlLang`                | `boolean`                            | `true`                                              | 是否写入 `{vext.lang}` / `<html lang>`                              |
 | `i18n.vary`                    | `boolean`                            | `true`                                              | 是否按 locale 影响响应 vary/cache                                   |
 | `dev.hot`                      | `boolean`                            | `true`                                              | 开发期前端热更新通道                                                |
@@ -795,14 +796,19 @@ export default {
 | `build.sourcemap`              | `boolean`                            | 开发期 `true`                                       | 生成前端 source map                                                 |
 | `build.client`                 | `object`                             | 继承共享 build 默认值                               | 浏览器 bundle 输出、hash 命名、splitting 与 external                |
 | `build.client.external`        | `string[]`                           | `[]`                                                | 浏览器 bundle 外置模块列表                                          |
-| `build.client.externalRuntime` | `object`                             | `{}`                                                | 外置模块 import map URL 映射                                        |
+| `build.client.externalRuntime` | `object`                             | `{}`                                                | 外置模块 import map URL 映射；React external 缺映射会构建失败       |
 | `build.server`                 | `object`                             | `server/renderer.cjs`                               | SSR renderer bundle 输出                                            |
 | `build.vendorChunks`           | `boolean \| object`                  | `{ enabled: true }`                                 | Vext-managed vendor entry 与共享 chunk 管理                         |
 | `build.budgets`                | `object`                             | 全部 `0`                                            | 前端资源大小预算；`0` 表示不限制                                    |
+| `build.budgets.maxInitialJsGzipBytes` | `number`                     | `0`                                                 | 首屏入口 JS gzip 预算                                               |
+| `build.budgets.maxInitialJsBrotliBytes` | `number`                   | `0`                                                 | 首屏入口 JS brotli 预算                                             |
+| `build.budgets.maxRouteInitialJsBrotliBytes` | `number`              | `0`                                                 | 单 route 首屏 JS brotli 预算                                        |
+| `build.budgets.maxAppOwnedInitialJsBrotliBytes` | `number`          | `0`                                                 | 排除 external runtime 后的应用自有首屏 JS brotli 预算              |
 | `build.assets.inlineLimit`     | `number`                             | `0`                                                 | import 型资源内联阈值；默认输出 hash 文件                           |
 | `build.css.modules`            | `boolean`                            | `true`                                              | 是否支持 CSS Modules 约定                                           |
 | `build.diagnostics.metafile`   | `boolean`                            | `true`                                              | 是否保留内部 esbuild metafile 诊断，供 size report / leak scan 使用 |
 | `build.diagnostics.sizeReport` | `boolean`                            | `true`                                              | 是否生成体积报告                                                    |
+| `build.diagnostics.performanceReport` | `boolean`                    | `true`                                              | 是否保留 route initial assets、压缩预算和浏览器性能探针所需报告数据 |
 | `build.diagnostics.leakScan`   | `boolean`                            | `true`                                              | 阻断浏览器 bundle 误引入服务端模块                                  |
 | `deploy.assetBaseUrl`          | `string`                             | 无                                                  | CDN 静态资源绝对前缀                                                |
 | `deploy.crossOrigin`           | `'anonymous' \| 'use-credentials'`   | 无                                                  | 注入 script/link 时的 crossorigin 值                                |

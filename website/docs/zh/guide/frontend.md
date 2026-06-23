@@ -1010,6 +1010,10 @@ const config: VextUserConfig = {
       budgets: {
         maxAssetBytes: 0,
         maxInitialJsBytes: 0,
+        maxInitialJsGzipBytes: 0,
+        maxInitialJsBrotliBytes: 0,
+        maxRouteInitialJsBrotliBytes: 0,
+        maxAppOwnedInitialJsBrotliBytes: 0,
         maxTotalBytes: 0,
         warnOnly: false,
       },
@@ -1019,6 +1023,7 @@ const config: VextUserConfig = {
       diagnostics: {
         metafile: true,
         sizeReport: true,
+        performanceReport: true,
         leakScan: true,
       },
     },
@@ -1059,6 +1064,7 @@ const config: VextUserConfig = {
       detect: ["accept-language"],
       inject: "used",
       clientSwitch: "reload",
+      clientLoad: "current",
       htmlLang: true,
       vary: true,
     },
@@ -1109,19 +1115,24 @@ export default config;
 | `frontend.build.client.assetNames`         | `"[name]-[hash]"`                                   | 静态资源文件命名模板。                                                                                     |
 | `frontend.build.client.manifest`           | `true`                                              | 是否输出浏览器 manifest。                                                                                  |
 | `frontend.build.client.external`           | `[]`                                                | 浏览器 bundle 外置模块列表。只给明确由 import map 或宿主运行时提供的包使用。                               |
-| `frontend.build.client.externalRuntime`    | `{}`                                                | 外置模块到浏览器 URL 的映射；Vext 会写入 import map，例如 `{ react: "https://cdn/react.mjs" }`。           |
+| `frontend.build.client.externalRuntime`    | `{}`                                                | 外置模块到浏览器 URL 的映射；Vext 会写入 import map，例如 `{ react: "https://cdn/react.mjs" }`。React 相关包被 external 时必须有对应映射，否则构建会友好报错。 |
 | `frontend.build.server.outFile`            | `"dist/client/server/renderer.cjs"`                 | SSR renderer 输出文件。                                                                                    |
 | `frontend.build.server.external`           | `[]`                                                | server renderer 构建时外置的包。默认打包 React 运行时，避免部署时缺失渲染依赖。                            |
 | `frontend.build.vendorChunks.enabled`      | `true`                                              | 是否生成 Vext-managed vendor entry，配合 esbuild splitting 把 React 等公共依赖拆成共享 chunk。             |
 | `frontend.build.vendorChunks.packages`     | `["react", "react-dom", "react-dom/client"]`        | vendor entry 导入的包列表。                                                                                |
 | `frontend.build.budgets.maxAssetBytes`     | `0`                                                 | 单个静态资源大小上限；`0` 表示不限制。                                                                     |
 | `frontend.build.budgets.maxInitialJsBytes` | `0`                                                 | 首屏入口 JS 大小上限；`0` 表示不限制。                                                                     |
+| `frontend.build.budgets.maxInitialJsGzipBytes` | `0`                                             | 首屏入口 JS gzip 大小上限；`0` 表示不限制。                                                               |
+| `frontend.build.budgets.maxInitialJsBrotliBytes` | `0`                                           | 首屏入口 JS brotli 大小上限；`0` 表示不限制。                                                             |
+| `frontend.build.budgets.maxRouteInitialJsBrotliBytes` | `0`                                      | 单个 SSR route 首屏 JS brotli 上限，覆盖 entry、shared、page、layout 和当前 locale 资产；`0` 表示不限制。 |
+| `frontend.build.budgets.maxAppOwnedInitialJsBrotliBytes` | `0`                                  | 排除 external runtime 后的应用自有首屏 JS brotli 上限；`0` 表示不限制。                                   |
 | `frontend.build.budgets.maxTotalBytes`     | `0`                                                 | deploy manifest 中所有资源总大小上限；`0` 表示不限制。                                                     |
 | `frontend.build.budgets.warnOnly`          | `false`                                             | 超出预算时只警告不阻断。默认阻断，便于 CI 守住性能预算。                                                   |
 | `frontend.build.assets.inlineLimit`        | `0`                                                 | import 型资源是否内联；默认输出 hash 文件。                                                                |
 | `frontend.build.css.modules`               | `true`                                              | 是否支持 CSS Modules 约定。Sass、Tailwind、PostCSS 属于后续插件/用户配置能力，未实现前不作为默认能力承诺。 |
 | `frontend.build.diagnostics.metafile`      | `true`                                              | 保留内部 esbuild metafile 诊断，用于 manifest、size report 和 leak scan；不承诺输出独立 metafile 文件。    |
 | `frontend.build.diagnostics.sizeReport`    | `true`                                              | 输出 size report，方便检查页面和共享 chunk 大小；设为 `false` 时不写 `size-report.json`。                  |
+| `frontend.build.diagnostics.performanceReport` | `true`                                          | 保留 route initial assets、压缩体积预算和外部消费者浏览器探针需要的构建期性能报告数据。                    |
 | `frontend.build.diagnostics.leakScan`      | `true`                                              | 扫描 browser graph，阻断 `src/routes/**`、`src/services/**`、`node:*` 等服务端输入。                       |
 | `frontend.deploy.assetBaseUrl`             | `undefined`                                         | CDN 资源基础 URL。设置后，HTML 和 manifest 中的静态资源地址使用该前缀。                                    |
 | `frontend.deploy.crossOrigin`              | `undefined`                                         | CDN script/link 的 crossorigin 策略。                                                                      |
@@ -1149,6 +1160,7 @@ export default config;
 | `frontend.i18n.detect`                     | `["accept-language"]`                               | 首期语言检测来源。后续可扩展 cookie、path prefix 或用户偏好，但必须明确优先级。                            |
 | `frontend.i18n.inject`                     | `"used"`                                            | SSR 注入初始 messages 的范围。推荐只注入当前页面/layout 使用的属性路径。                                   |
 | `frontend.i18n.clientSwitch`               | `"reload"`                                          | 客户端语言切换策略。首期推荐重新请求 HTML，保证 SSR 与 hydration 一致。                                    |
+| `frontend.i18n.clientLoad`                 | `"current"`                                         | 浏览器端 locale 加载模式。`"current"` 只加载 SSR 当前语言，`"all"` 保留无刷新读取全部语言的能力。          |
 | `frontend.i18n.htmlLang`                   | `true`                                              | 是否把当前 locale 输出到 `{vext.lang}`。                                                                   |
 | `frontend.i18n.vary`                       | `true`                                              | 语言影响 HTML 时是否追加 `Vary: Accept-Language` 或等价 cache key。                                        |
 | `frontend.spaFallback.scopes`              | `[]`                                                | client-router 子应用 fallback 范围。默认空数组，不接管未知路径。                                           |
@@ -1259,9 +1271,15 @@ dist/client/
 
 构建时 Vext 会分别生成浏览器 bundle 和 server renderer bundle。浏览器端页面、layout、错误页和 locale 会以动态 import 进入构建图，默认支持页面级 chunk；React、ReactDOM 等公共依赖通过 Vext-managed vendor entry 配合 esbuild splitting 形成共享 chunk。浏览器 bundle 只允许从 `src/frontend/**`、`public/**` 和配置的前端安全根起图；server renderer 用于 SSR 页面和 layout。开启 `frontend.i18n` 时，构建还会扫描 `src/frontend/locales/**` 并输出 `messages-manifest.json`。开启默认 JSCSS 时，构建会先扫描 `*.style.ts`、`*.style.js` 和 `*.css.ts`，把 `vextjs/style` 注册的样式抽取成生成 CSS，再交给 esbuild 合并进最终 CSS asset。构建诊断默认会保留内部 metafile 诊断、输出 manifest、deploy manifest 和 size report，并扫描 alias 解析后的真实路径，防止 `src/routes/**`、`src/services/**`、`src/config/**`、`node:*`、`*.server.*` 被打进浏览器产物。`*.client.*` 在首期只作为浏览器专用文件，不应作为同步 SSR 组件使用。
 
-`render-manifest.json` 记录 `vext start` 需要的 build id、页面、layout、错误页、资源、server renderer 路径和诊断信息。`deploy-manifest.json` 记录可发布静态资源的本地文件、公开 URL、upload key、字节数、content type、sha256 和 SRI；其中包括 esbuild 输出的 JS/CSS/图片/字体，也包括 `public/**` 复制过来的公开资源，但默认不包含 `index.html` 和 source map。`messages-manifest.json` 记录可用 locale、默认 locale 对象 shape、页面 messages entry 和 build id。manifest schema、messages manifest 或 renderer 文件与运行时不匹配时，启动会 fail fast 并提示重新构建，而不是服务过期页面。
+`render-manifest.json` 记录 `vext start` 需要的 build id、页面、layout、错误页、资源、server renderer 路径、诊断信息和 `routeAssets`。生产 SSR 会按当前 page、layout chain、locale 和 error context 注入 route-specific `modulepreload`，避免首屏再发生无必要的动态 import 瀑布；如果生产环境缺少 `routeAssets`，`vext start` 会提示重新执行 `vext build`。`deploy-manifest.json` 记录可发布静态资源的本地文件、公开 URL、upload key、字节数、content type、sha256 和 SRI；其中包括 esbuild 输出的 JS/CSS/图片/字体，也包括 `public/**` 复制过来的公开资源，但默认不包含 `index.html` 和 source map。`messages-manifest.json` 记录可用 locale、默认 locale 对象 shape、页面 messages entry 和 build id。`size-report.json` 使用 `frontend-size-report` schema，列出 raw/gzip/brotli 总量、route initial JS、app-owned 与 external runtime 分组。manifest schema、messages manifest 或 renderer 文件与运行时不匹配时，启动会 fail fast 并提示重新构建，而不是服务过期页面。
 
-首期实现必须保留性能证据：API-only overhead、开发冷启动和重建、生产构建耗时、首次 SSR 渲染耗时、client JS 体积。没有可复现 benchmark 和对比对象时，不能宣称“最快”或“第一”。
+首期实现必须保留性能证据：API-only overhead、开发冷启动和重建、生产构建耗时、首次 SSR 渲染耗时、client JS 体积、route initial gzip/brotli 和真实浏览器 hydration 结果。没有可复现 benchmark 和对比对象时，不能宣称“最快”或“第一”。在外部消费者项目中可以运行：
+
+```bash
+npm run verify:frontend-performance
+```
+
+该验证会先构建，再启动本轮自己的 `vext start`，用真实浏览器打开页面，检查 console/pageerror、前端资源 404、route `modulepreload`、`data-vext-hydration="done"` 和 `performance.measure("vext:hydration")`，最后写入 `reports/frontend-performance.json` 并关闭本轮启动的服务。
 
 生产启动：
 

@@ -991,6 +991,8 @@ const config: VextUserConfig = {
         chunkNames: "[name]-[hash]",
         assetNames: "[name]-[hash]",
         manifest: true,
+        external: [],
+        externalRuntime: {},
       },
       server: {
         outFile: "dist/client/server/renderer.cjs",
@@ -1000,12 +1002,28 @@ const config: VextUserConfig = {
       assets: {
         inlineLimit: 0,
       },
+      vendorChunks: {
+        enabled: true,
+        packages: ["react", "react-dom", "react-dom/client"],
+        entryName: "vext-vendor",
+      },
+      budgets: {
+        maxAssetBytes: 0,
+        maxInitialJsBytes: 0,
+        maxInitialJsGzipBytes: 0,
+        maxInitialJsBrotliBytes: 0,
+        maxRouteInitialJsBrotliBytes: 0,
+        maxAppOwnedInitialJsBrotliBytes: 0,
+        maxTotalBytes: 0,
+        warnOnly: false,
+      },
       css: {
         modules: true,
       },
       diagnostics: {
         metafile: true,
         sizeReport: true,
+        performanceReport: true,
         leakScan: true,
       },
     },
@@ -1046,6 +1064,7 @@ const config: VextUserConfig = {
       detect: ["accept-language"],
       inject: "used",
       clientSwitch: "reload",
+      clientLoad: "current",
       htmlLang: true,
       vary: true,
     },
@@ -1092,7 +1111,7 @@ Configuration reference:
 | `frontend.build.client.sourcemap`          | `false`                                             | Emits sourcemaps for production browser builds.                                                                                                                    |
 | `frontend.build.client.splitting`          | `true`                                              | Allows page and shared-code splitting.                                                                                                                             |
 | `frontend.build.client.external`           | `[]`                                                | Browser bundle externals. Use only for packages explicitly provided by an import map or host runtime.                                                              |
-| `frontend.build.client.externalRuntime`    | `{}`                                                | Browser URL mapping for externalized modules. Vext writes it into an import map, for example `{ react: "https://cdn/react.mjs" }`.                                 |
+| `frontend.build.client.externalRuntime`    | `{}`                                                | Browser URL mapping for externalized modules. Vext writes it into an import map, for example `{ react: "https://cdn/react.mjs" }`. React-related externals must have mappings or the build fails with a friendly error. |
 | `frontend.build.client.entryNames`         | `"[name]-[hash]"`                                   | Page entry file naming template.                                                                                                                                   |
 | `frontend.build.client.chunkNames`         | `"[name]-[hash]"`                                   | Shared chunk naming template.                                                                                                                                      |
 | `frontend.build.client.assetNames`         | `"[name]-[hash]"`                                   | Static asset naming template.                                                                                                                                      |
@@ -1103,12 +1122,17 @@ Configuration reference:
 | `frontend.build.vendorChunks.packages`     | `["react", "react-dom", "react-dom/client"]`        | Packages imported by the vendor entry.                                                                                                                             |
 | `frontend.build.budgets.maxAssetBytes`     | `0`                                                 | Per-asset size budget. `0` disables the budget.                                                                                                                    |
 | `frontend.build.budgets.maxInitialJsBytes` | `0`                                                 | Initial browser JS size budget. `0` disables the budget.                                                                                                           |
+| `frontend.build.budgets.maxInitialJsGzipBytes` | `0`                                             | Initial browser JS gzip budget. `0` disables the budget.                                                                                                           |
+| `frontend.build.budgets.maxInitialJsBrotliBytes` | `0`                                           | Initial browser JS brotli budget. `0` disables the budget.                                                                                                         |
+| `frontend.build.budgets.maxRouteInitialJsBrotliBytes` | `0`                                      | Per-route initial JS brotli budget covering entry, shared chunks, page, layout, and current locale assets. `0` disables the budget.                                |
+| `frontend.build.budgets.maxAppOwnedInitialJsBrotliBytes` | `0`                                  | App-owned initial JS brotli budget, excluding configured external runtime assets. `0` disables the budget.                                                         |
 | `frontend.build.budgets.maxTotalBytes`     | `0`                                                 | Total deploy-manifest asset size budget. `0` disables the budget.                                                                                                  |
 | `frontend.build.budgets.warnOnly`          | `false`                                             | Warns instead of blocking when budgets are exceeded. The default blocks to keep CI performance budgets enforceable.                                                |
 | `frontend.build.assets.inlineLimit`        | `0`                                                 | Imported asset inline limit; default emits hashed files.                                                                                                           |
 | `frontend.build.css.modules`               | `true`                                              | Enables CSS Modules convention. Sass, Tailwind, and PostCSS are plugin/user-config capabilities until implemented as defaults.                                     |
 | `frontend.build.diagnostics.metafile`      | `true`                                              | Keeps internal esbuild metafile diagnostics for manifests, size report, and leak scan; it does not promise a standalone metafile output.                           |
 | `frontend.build.diagnostics.sizeReport`    | `true`                                              | Emits size report for page and shared chunks; set it to `false` to skip `size-report.json`.                                                                        |
+| `frontend.build.diagnostics.performanceReport` | `true`                                          | Keeps the build-time performance report data needed for route initial assets, compressed budgets, and consumer browser probes.                                      |
 | `frontend.build.diagnostics.leakScan`      | `true`                                              | Scans the browser graph and blocks `src/routes/**`, `src/services/**`, `node:*`, and other server-only inputs.                                                     |
 | `frontend.deploy.assetBaseUrl`             | `undefined`                                         | CDN asset base URL. When set, static asset URLs in HTML and manifests use this prefix.                                                                             |
 | `frontend.deploy.crossOrigin`              | `undefined`                                         | `crossorigin` policy for CDN script/link tags.                                                                                                                     |
@@ -1136,6 +1160,7 @@ Configuration reference:
 | `frontend.i18n.detect`                     | `["accept-language"]`                               | Language detection source for the first version. Cookie, path prefix, or user preference support can be added later with an explicit priority order.               |
 | `frontend.i18n.inject`                     | `"used"`                                            | Scope for SSR initial messages. Prefer injecting only property paths used by the current page/layout.                                                              |
 | `frontend.i18n.clientSwitch`               | `"reload"`                                          | Client language-switch strategy. The first version should request HTML again so SSR and hydration stay aligned.                                                    |
+| `frontend.i18n.clientLoad`                 | `"current"`                                         | Browser locale loading mode. `"current"` loads only the SSR locale for hydration; `"all"` keeps all locales available for no-reload language switching.             |
 | `frontend.i18n.htmlLang`                   | `true`                                              | Writes the current locale into `{vext.lang}`.                                                                                                                      |
 | `frontend.i18n.vary`                       | `true`                                              | Adds `Vary: Accept-Language` or an equivalent cache key when language affects HTML.                                                                                |
 | `frontend.spaFallback.scopes`              | `[]`                                                | Fallback scopes for client-router sub-apps. Empty by default, so unmatched paths are not handled.                                                                  |
@@ -1246,9 +1271,15 @@ dist/client/
 
 Vext builds a browser bundle and a server renderer bundle separately. Browser pages, layouts, error pages, and locale entries enter the build graph through dynamic imports, so the default build supports page-level chunks. React, ReactDOM, and other shared dependencies go through the Vext-managed vendor entry and esbuild splitting to become shared chunks. The browser bundle can only start from `src/frontend/**`, `public/**`, and configured frontend-safe roots; the server renderer is used for SSR pages and layouts. When `frontend.i18n` is enabled, the build also scans `src/frontend/locales/**` and emits `messages-manifest.json`. When the default JSCSS path is enabled, the build first scans `*.style.ts`, `*.style.js`, and `*.css.ts`, extracts styles registered through `vextjs/style` into generated CSS, then lets esbuild merge that CSS into the final CSS asset. Build diagnostics keep internal metafile diagnostics by default, emit the browser manifest, deploy manifest, and size report, and scan alias-resolved real paths so `src/routes/**`, `src/services/**`, `src/config/**`, `node:*`, and `*.server.*` files do not enter browser output. Files named `*.client.*` are browser-only in the first version and should not be used as synchronous SSR components.
 
-`render-manifest.json` records the build id, pages, layouts, error pages, assets, server renderer path, and diagnostics used by `vext start`. `deploy-manifest.json` records publishable static assets with local file path, public URL, upload key, byte size, content type, sha256, and SRI; it includes JS/CSS/images/fonts emitted by esbuild and public resources copied from `public/**`, but excludes `index.html` and source maps by default. `messages-manifest.json` records available locales, the default locale object shape, page message entries, and the build id. If the manifest schema, messages manifest, or renderer file does not match the runtime, startup fails fast and asks you to rebuild instead of serving a stale page.
+`render-manifest.json` records the build id, pages, layouts, error pages, assets, server renderer path, diagnostics, and `routeAssets` used by `vext start`. Production SSR uses the current page, layout chain, locale, and error context to inject route-specific `modulepreload` links, so the browser does not need an avoidable dynamic-import waterfall for the first route. If production output is missing `routeAssets`, `vext start` asks you to run `vext build` again. `deploy-manifest.json` records publishable static assets with local file path, public URL, upload key, byte size, content type, sha256, and SRI; it includes JS/CSS/images/fonts emitted by esbuild and public resources copied from `public/**`, but excludes `index.html` and source maps by default. `messages-manifest.json` records available locales, the default locale object shape, page message entries, and the build id. `size-report.json` uses the `frontend-size-report` schema and records raw/gzip/brotli totals, route initial JS, and app-owned versus external runtime groups. If the manifest schema, messages manifest, or renderer file does not match the runtime, startup fails fast and asks you to rebuild instead of serving a stale page.
 
-The first implementation must keep performance evidence for API-only overhead, development cold start and rebuild, production build time, first SSR render, and client JS size. Vext should not claim "fastest" or "first" without a reproducible benchmark and comparison target.
+The first implementation must keep performance evidence for API-only overhead, development cold start and rebuild, production build time, first SSR render, client JS size, route initial gzip/brotli, and real-browser hydration results. Vext should not claim "fastest" or "first" without a reproducible benchmark and comparison target. In a consumer project you can run:
+
+```bash
+npm run verify:frontend-performance
+```
+
+That verification builds the project, starts its own `vext start`, opens a real browser, checks console/page errors, frontend resource 404s, route `modulepreload`, `data-vext-hydration="done"`, and `performance.measure("vext:hydration")`, writes `reports/frontend-performance.json`, then stops the service it started.
 
 Start production:
 
