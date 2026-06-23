@@ -176,26 +176,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Introduction", link: "/guide/introduction" },
       { text: "Quick Start", link: "/guide/quick-start" },
       { text: "Project Structure", link: "/guide/project-structure" },
-    ],
-  },
-  {
-    text: "Frontend",
-    items: [
-      { text: "Overview", link: "/frontend/overview" },
-      { text: "Project Structure", link: "/frontend/project-structure" },
-      { text: "Pages and Rendering", link: "/frontend/pages-and-rendering" },
-      { text: "Data and API Calls", link: "/frontend/data-and-api" },
-      { text: "Layouts and Components", link: "/frontend/layouts-and-components" },
-      { text: "Styles and Assets", link: "/frontend/styles-and-assets" },
-      { text: "I18n", link: "/frontend/i18n" },
-      { text: "Errors and Document", link: "/frontend/errors-and-document" },
-      { text: "Dev Workflow", link: "/frontend/dev-workflow" },
-      {
-        text: "Build, Deploy, and Performance",
-        link: "/frontend/build-deploy-performance",
-      },
-      { text: "Configuration", link: "/frontend/configuration" },
-      { text: "Troubleshooting", link: "/frontend/troubleshooting" },
+      { text: "Frontend Overview", link: "/frontend/overview" },
     ],
   },
   {
@@ -268,6 +249,84 @@ const englishSidebar: SidebarGroup[] = [
   },
 ];
 
+const englishFrontendSidebar: SidebarGroup[] = [
+  {
+    text: "Start",
+    items: [
+      { text: "Overview", link: "/frontend/overview" },
+      { text: "Getting Started", link: "/frontend/getting-started" },
+      { text: "Project Structure", link: "/frontend/project-structure" },
+    ],
+  },
+  {
+    text: "Core Concepts",
+    items: [
+      { text: "Routing and Pages", link: "/frontend/routing-and-pages" },
+      { text: "Rendering Modes", link: "/frontend/rendering-modes" },
+      { text: "Data Flow", link: "/frontend/data-flow" },
+      { text: "Layouts and Components", link: "/frontend/layouts-and-components" },
+      { text: "Styles and Assets", link: "/frontend/styles-and-assets" },
+    ],
+  },
+  {
+    text: "Rendering Modes",
+    items: [
+      { text: "SSR", link: "/frontend/ssr" },
+      { text: "Hydration", link: "/frontend/hydration" },
+      {
+        text: "CSR and SPA Fallback",
+        link: "/frontend/csr-and-spa-fallback",
+      },
+      {
+        text: "Render Data and Cache",
+        link: "/frontend/render-data-and-cache",
+      },
+    ],
+  },
+  {
+    text: "Development",
+    items: [
+      { text: "Dev Workflow", link: "/frontend/dev-workflow" },
+      { text: "Fast Refresh", link: "/frontend/fast-refresh" },
+      { text: "Render Refresh", link: "/frontend/render-refresh" },
+      {
+        text: "Diagnostics and Leak Scan",
+        link: "/frontend/diagnostics-and-leak-scan",
+      },
+    ],
+  },
+  {
+    text: "Production",
+    items: [
+      { text: "Build and Deploy", link: "/frontend/build-and-deploy" },
+      { text: "Code Splitting", link: "/frontend/code-splitting" },
+      {
+        text: "Static Assets and CDN",
+        link: "/frontend/static-assets-and-cdn",
+      },
+      { text: "Performance Budgets", link: "/frontend/performance-budgets" },
+      { text: "Hydration Validation", link: "/frontend/hydration-validation" },
+    ],
+  },
+  {
+    text: "Reference",
+    items: [
+      { text: "Configuration", link: "/frontend/configuration" },
+      {
+        text: "API Client and Contracts",
+        link: "/frontend/api-client-and-contracts",
+      },
+      { text: "Errors and Document", link: "/frontend/errors-and-document" },
+      { text: "I18n", link: "/frontend/i18n" },
+      { text: "Troubleshooting", link: "/frontend/troubleshooting" },
+      {
+        text: "Boundaries and Roadmap",
+        link: "/frontend/boundaries-and-roadmap",
+      },
+    ],
+  },
+];
+
 const chineseSidebar: SidebarGroup[] = [
   {
     text: "开始",
@@ -275,26 +334,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "介绍", link: "/zh/guide/introduction" },
       { text: "快速开始", link: "/zh/guide/quick-start" },
       { text: "项目结构", link: "/zh/guide/project-structure" },
-    ],
-  },
-  {
-    text: "前端",
-    items: [
-      { text: "总览", link: "/zh/frontend/overview" },
-      { text: "项目结构", link: "/zh/frontend/project-structure" },
-      { text: "页面与渲染", link: "/zh/frontend/pages-and-rendering" },
-      { text: "数据与 API 调用", link: "/zh/frontend/data-and-api" },
-      { text: "Layout 与组件", link: "/zh/frontend/layouts-and-components" },
-      { text: "样式与资源", link: "/zh/frontend/styles-and-assets" },
-      { text: "多语言", link: "/zh/frontend/i18n" },
-      { text: "错误页与 Document", link: "/zh/frontend/errors-and-document" },
-      { text: "开发工作流", link: "/zh/frontend/dev-workflow" },
-      {
-        text: "构建、发布与性能",
-        link: "/zh/frontend/build-deploy-performance",
-      },
-      { text: "配置", link: "/zh/frontend/configuration" },
-      { text: "排错", link: "/zh/frontend/troubleshooting" },
+      { text: "前端总览", link: "/zh/frontend/overview" },
     ],
   },
   {
@@ -363,6 +403,84 @@ const chineseSidebar: SidebarGroup[] = [
     items: [
       { text: "Nacos 接入", link: "/zh/examples/nacos-integration" },
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
+    ],
+  },
+];
+
+const chineseFrontendSidebar: SidebarGroup[] = [
+  {
+    text: "开始",
+    items: [
+      { text: "总览", link: "/zh/frontend/overview" },
+      { text: "快速开始", link: "/zh/frontend/getting-started" },
+      { text: "项目结构", link: "/zh/frontend/project-structure" },
+    ],
+  },
+  {
+    text: "核心概念",
+    items: [
+      { text: "路由与页面", link: "/zh/frontend/routing-and-pages" },
+      { text: "渲染模式", link: "/zh/frontend/rendering-modes" },
+      { text: "数据流", link: "/zh/frontend/data-flow" },
+      { text: "Layout 与组件", link: "/zh/frontend/layouts-and-components" },
+      { text: "样式与资源", link: "/zh/frontend/styles-and-assets" },
+    ],
+  },
+  {
+    text: "渲染模式",
+    items: [
+      { text: "SSR", link: "/zh/frontend/ssr" },
+      { text: "Hydration", link: "/zh/frontend/hydration" },
+      {
+        text: "CSR 与 SPA Fallback",
+        link: "/zh/frontend/csr-and-spa-fallback",
+      },
+      {
+        text: "Render Data 与缓存",
+        link: "/zh/frontend/render-data-and-cache",
+      },
+    ],
+  },
+  {
+    text: "开发体验",
+    items: [
+      { text: "开发工作流", link: "/zh/frontend/dev-workflow" },
+      { text: "Fast Refresh", link: "/zh/frontend/fast-refresh" },
+      { text: "Render Refresh", link: "/zh/frontend/render-refresh" },
+      {
+        text: "诊断与 Leak Scan",
+        link: "/zh/frontend/diagnostics-and-leak-scan",
+      },
+    ],
+  },
+  {
+    text: "生产交付",
+    items: [
+      { text: "构建与发布", link: "/zh/frontend/build-and-deploy" },
+      { text: "代码拆分", link: "/zh/frontend/code-splitting" },
+      {
+        text: "静态资源与 CDN",
+        link: "/zh/frontend/static-assets-and-cdn",
+      },
+      { text: "性能预算", link: "/zh/frontend/performance-budgets" },
+      { text: "Hydration 验证", link: "/zh/frontend/hydration-validation" },
+    ],
+  },
+  {
+    text: "参考",
+    items: [
+      { text: "配置", link: "/zh/frontend/configuration" },
+      {
+        text: "API Client 与契约",
+        link: "/zh/frontend/api-client-and-contracts",
+      },
+      { text: "错误页与 Document", link: "/zh/frontend/errors-and-document" },
+      { text: "多语言", link: "/zh/frontend/i18n" },
+      { text: "排错", link: "/zh/frontend/troubleshooting" },
+      {
+        text: "边界与路线图",
+        link: "/zh/frontend/boundaries-and-roadmap",
+      },
     ],
   },
 ];
@@ -439,6 +557,7 @@ export default defineConfig({
           "High-performance full-stack Node.js framework with native routing, React frontend integration, schema-dsl validation, OpenAPI, and production runtime features.",
         nav: englishNav,
         sidebar: {
+          "/frontend/": englishFrontendSidebar,
           "/": englishSidebar,
         },
         footer: {
@@ -453,6 +572,7 @@ export default defineConfig({
           "VextJS 是高性能 Node.js 全栈框架，提供 Native fast path、React 前端集成、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。",
         nav: chineseNav,
         sidebar: {
+          "/zh/frontend/": chineseFrontendSidebar,
           "/zh/": chineseSidebar,
         },
         footer: {
@@ -461,6 +581,8 @@ export default defineConfig({
       },
     ],
     sidebar: {
+      "/frontend/": englishFrontendSidebar,
+      "/zh/frontend/": chineseFrontendSidebar,
       "/": englishSidebar,
       "/zh/": chineseSidebar,
     },

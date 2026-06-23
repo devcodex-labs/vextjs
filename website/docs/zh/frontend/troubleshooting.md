@@ -121,11 +121,8 @@ res.render("admin/dashboard", props, {
 
 本阶段不作为默认能力：
 
-- Vite
 - React Server Components
 - Server Actions
-- Qwik/Astro 架构切换
 - streaming SSR
 - 持久客户端 layout 导航
 - 内置图片/字体优化组件
-

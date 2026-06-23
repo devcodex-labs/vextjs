@@ -2,20 +2,20 @@
 
 ## Table of Contents
 
-- [Current Status](#current-status)
+- [Current Capabilities](#current-capabilities)
 - [What Vext Frontend Is](#what-vext-frontend-is)
 - [Create a Full-stack Project](#create-a-full-stack-project)
 - [Project Structure](#project-structure)
 - [First Page](#first-page)
-- [Where to Go Next](#where-to-go-next)
+- [Reading Paths](#reading-paths)
 
-## Current Status
+## Current Capabilities
 
-This Frontend guide describes the target user experience for the in-development Vext built-in frontend capability. Treat the APIs here as the implementation target until the next stable release documents them as released features.
+This Frontend guide documents the current built-in Vext frontend capability: route-driven React 19 pages, SSR, hydration, nested layouts, frontend i18n, Fast Refresh, render refresh, code splitting, static assets, CDN upload, performance budgets, and hydration validation.
 
 ## What Vext Frontend Is
 
-Vext Frontend is the built-in full-stack React 19 experience for Vext projects. It is not a separate frontend framework and it is not based on Vite. The URL still belongs to `src/routes/**`; the route handler prepares server data and calls `res.render()` to render a page from `src/frontend/pages/**`.
+Vext Frontend is the built-in full-stack React 19 experience for Vext projects. The URL still belongs to `src/routes/**`; the route handler prepares server data and calls `res.render()` to render a page from `src/frontend/pages/**`.
 
 Use it when you want one Vext application to own API routes, services, SSR, hydration, frontend assets, and production static serving without adding a second application framework.
 
@@ -103,17 +103,26 @@ export default (app) => {
 | `props` | JSON-safe server data serialized into the SSR document and reused during hydration. |
 | `options` | Rendering options such as `status`, `head`, `layoutData`, `messages`, `nonce`, or page-specific behavior. |
 
-## Where to Go Next
+## Reading Paths
 
-- [Project Structure](/frontend/project-structure): where pages, components, layouts, styles, assets, locales, and generated files live.
-- [Pages and Rendering](/frontend/pages-and-rendering): route-driven rendering, `res.render()`, SSR, hydration, and SPA fallback boundaries.
-- [Data and API Calls](/frontend/data-and-api): service data, render props, render cache reuse, client API calls, and generated API contracts.
-- [Layouts and Components](/frontend/layouts-and-components): nested layouts, layout data, admin shells, public components, and SSR-safe component rules.
-- [Styles and Assets](/frontend/styles-and-assets): CSS, CSS Modules, Vext JSCSS, static files, imported assets, public files, and CDN URLs.
-- [I18n](/frontend/i18n): locale resolution, frontend dictionaries, `useVextI18n(locale)`, switching language, and cache headers.
-- [Errors and Document](/frontend/errors-and-document): default error pages, `renderError()`, `_document.html`, HTML tokens, head injection, and CSP nonce.
-- [Dev Workflow](/frontend/dev-workflow): React Fast Refresh, CSS updates, route render refresh, full reload, and leak diagnostics.
-- [Build, Deploy, and Performance](/frontend/build-deploy-performance): output files, code splitting, CDN upload, budgets, route assets, and hydration validation.
-- [Configuration](/frontend/configuration): practical `frontend` config examples and field guide.
-- [Troubleshooting](/frontend/troubleshooting): common setup, rendering, import, asset, hydration, and performance issues.
-- [Legacy Frontend integration page](/guide/frontend): compatibility entry kept for existing links.
+Use the left navigation as the main map. It is intentionally split into concept, task, and reference layers.
+
+| Need | Start here |
+|------|------------|
+| First successful page | [Getting Started](/frontend/getting-started) |
+| Understand URL and page ownership | [Routing and Pages](/frontend/routing-and-pages) |
+| Choose SSR, hydration, or CSR | [Rendering Modes](/frontend/rendering-modes) |
+| Pass service data to pages | [Data Flow](/frontend/data-flow) |
+| Build nested shells | [Layouts and Components](/frontend/layouts-and-components) |
+| Debug SSR output | [SSR](/frontend/ssr) |
+| Debug browser attach/mismatch | [Hydration](/frontend/hydration) |
+| Build a client-router sub-app | [CSR and SPA Fallback](/frontend/csr-and-spa-fallback) |
+| Cache render data | [Render Data and Cache](/frontend/render-data-and-cache) |
+| Tune development feedback | [Fast Refresh](/frontend/fast-refresh) and [Render Refresh](/frontend/render-refresh) |
+| Ship frontend assets | [Build and Deploy](/frontend/build-and-deploy) and [Static Assets and CDN](/frontend/static-assets-and-cdn) |
+| Keep JS small | [Code Splitting](/frontend/code-splitting) and [Performance Budgets](/frontend/performance-budgets) |
+| Validate production hydration | [Hydration Validation](/frontend/hydration-validation) |
+| Find config fields | [Configuration](/frontend/configuration) |
+| Check current boundaries | [Boundaries and Roadmap](/frontend/boundaries-and-roadmap) |
+
+The old [Frontend integration page](/guide/frontend) is kept only as a compatibility entry for existing links.

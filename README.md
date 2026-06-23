@@ -274,7 +274,7 @@ Production builds also write `dist/client/deploy-manifest.json` for CDN or stati
 
 For React hydration performance budgets, set fields such as `frontend.build.budgets.maxInitialJsBrotliBytes`, `maxRouteInitialJsBrotliBytes`, or `maxAppOwnedInitialJsBrotliBytes`. The default frontend i18n mode uses `frontend.i18n.clientLoad: "current"` so the browser loads only the SSR locale during hydration; use `"all"` only when a page needs no-reload locale switching. Advanced React CDN/import-map usage remains opt-in through `frontend.build.client.external` plus `externalRuntime`; React-related externals must provide runtime mappings.
 
-For the frontend user guide, start with [Frontend Overview](https://vextjs.github.io/frontend/overview), then continue through project structure, pages, data/API calls, layouts, styles/assets, i18n, error pages, configuration, build/deploy, and troubleshooting from the Frontend menu.
+For the frontend user guide, start with [Frontend Overview](https://vextjs.github.io/frontend/overview). The Frontend section has its own navigation for getting started, routing/pages, SSR, hydration, CSR fallback, render data cache, Fast Refresh, code splitting, static assets/CDN, performance budgets, configuration, and troubleshooting.
 
 When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
 

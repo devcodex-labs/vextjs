@@ -121,11 +121,8 @@ Current default path:
 
 Not default in this phase:
 
-- Vite
 - React Server Components
 - Server Actions
-- Qwik/Astro architecture switch
 - streaming SSR
 - persistent client layout navigation
 - built-in image/font optimization components
-

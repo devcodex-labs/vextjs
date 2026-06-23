@@ -2,20 +2,20 @@
 
 ## 目录导航
 
-- [当前状态](#当前状态)
+- [当前能力](#当前能力)
 - [Vext Frontend 是什么](#vext-frontend-是什么)
 - [创建全栈项目](#创建全栈项目)
 - [项目结构](#项目结构)
 - [第一个页面](#第一个页面)
-- [下一步阅读](#下一步阅读)
+- [阅读路径](#阅读路径)
 
-## 当前状态
+## 当前能力
 
-本前端指南描述的是 Vext 内置前端能力正在开发中的目标用户体验。在下一次稳定版本明确发布这些能力前，请把本文中的 API 和目录约定视为实现目标，而不是已发布稳定 API。
+本前端指南描述 Vext 当前内置前端能力：route 驱动 React 19 页面、SSR、hydration、嵌套 layout、前端多语言、Fast Refresh、render refresh、代码拆分、静态资源、CDN 上传、性能预算和 hydration 验证。
 
 ## Vext Frontend 是什么
 
-Vext Frontend 是 Vext 内置的 React 19 全栈页面能力。它不是一个独立前端框架，也不是基于 Vite 的封装。URL 入口仍然由 `src/routes/**` 定义；route handler 准备服务端数据后，通过 `res.render()` 渲染 `src/frontend/pages/**` 中的页面。
+Vext Frontend 是 Vext 内置的 React 19 全栈页面能力。URL 入口仍然由 `src/routes/**` 定义；route handler 准备服务端数据后，通过 `res.render()` 渲染 `src/frontend/pages/**` 中的页面。
 
 当你希望一个 Vext 项目同时拥有 API routes、services、SSR、hydration、前端资源构建和生产静态服务时，使用默认前端能力即可。
 
@@ -103,17 +103,26 @@ export default (app) => {
 | `props` | 可 JSON 序列化的服务端数据，会写入 SSR 文档并在 hydration 时复用。 |
 | `options` | 渲染选项，例如 `status`、`head`、`layoutData`、`messages`、`nonce` 或页面级行为。 |
 
-## 下一步阅读
+## 阅读路径
 
-- [项目结构](/zh/frontend/project-structure)：页面、组件、layout、样式、资源、多语言和生成文件放在哪里。
-- [页面与渲染](/zh/frontend/pages-and-rendering)：route 驱动渲染、`res.render()`、SSR、hydration 和 SPA fallback 边界。
-- [数据与 API 调用](/zh/frontend/data-and-api)：service 数据、render props、render 缓存复用、客户端 API 调用和生成契约。
-- [Layout 与组件](/zh/frontend/layouts-and-components)：嵌套 layout、layoutData、后台壳层、公共组件和 SSR 安全组件规则。
-- [样式与资源](/zh/frontend/styles-and-assets)：CSS、CSS Modules、Vext JSCSS、静态文件、import 资源、public 文件和 CDN 地址。
-- [多语言](/zh/frontend/i18n)：语言解析、前端词典、`useVextI18n(locale)`、切换语言和缓存响应头。
-- [错误页与 Document](/zh/frontend/errors-and-document)：默认错误页、`renderError()`、`_document.html`、HTML token、head 注入和 CSP nonce。
-- [开发工作流](/zh/frontend/dev-workflow)：React Fast Refresh、CSS 更新、route render 刷新、整页刷新和泄漏诊断。
-- [构建、发布与性能](/zh/frontend/build-deploy-performance)：构建产物、代码拆分、CDN 上传、预算、route assets 和 hydration 验证。
-- [配置](/zh/frontend/configuration)：实用 `frontend` 配置示例和字段说明。
-- [排错](/zh/frontend/troubleshooting)：常见初始化、渲染、导入、资源、hydration 和性能问题。
-- [旧前端集成页](/zh/guide/frontend)：为历史链接保留的兼容入口。
+左侧导航就是主地图，按概念、任务和参考三层组织。
+
+| 需求 | 从这里开始 |
+|------|------------|
+| 第一次跑通页面 | [快速开始](/zh/frontend/getting-started) |
+| 理解 URL 与页面归属 | [路由与页面](/zh/frontend/routing-and-pages) |
+| 选择 SSR、Hydration 或 CSR | [渲染模式](/zh/frontend/rendering-modes) |
+| 把 service 数据传给页面 | [数据流](/zh/frontend/data-flow) |
+| 组织嵌套壳层 | [Layout 与组件](/zh/frontend/layouts-and-components) |
+| 排查 SSR 输出 | [SSR](/zh/frontend/ssr) |
+| 排查浏览器 attach / mismatch | [Hydration](/zh/frontend/hydration) |
+| 构建 client-router 子应用 | [CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback) |
+| 缓存 render 数据 | [Render Data 与缓存](/zh/frontend/render-data-and-cache) |
+| 优化开发反馈 | [Fast Refresh](/zh/frontend/fast-refresh) 与 [Render Refresh](/zh/frontend/render-refresh) |
+| 发布前端资源 | [构建与发布](/zh/frontend/build-and-deploy) 与 [静态资源与 CDN](/zh/frontend/static-assets-and-cdn) |
+| 控制 JS 大小 | [代码拆分](/zh/frontend/code-splitting) 与 [性能预算](/zh/frontend/performance-budgets) |
+| 验证生产 hydration | [Hydration 验证](/zh/frontend/hydration-validation) |
+| 查找配置字段 | [配置](/zh/frontend/configuration) |
+| 查看当前边界 | [边界与路线图](/zh/frontend/boundaries-and-roadmap) |
+
+旧 [前端集成页](/zh/guide/frontend) 只作为历史链接兼容入口保留。

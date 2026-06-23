@@ -3,6 +3,7 @@
 ## 2026-06-23
 
 - **Config profile selection** Added `--config <name>` and `VEXT_CONFIG=<name>` as the official way to select `src/config/{profile}.ts` for `vext start`, `vext dev`, `vext build`, and `vext deploy assets`; `vext start` now forces production runtime `NODE_ENV` while keeping legacy custom `NODE_ENV` profile fallback with a migration warning.
+- **Frontend documentation** Added the dedicated frontend documentation space with frontend-only navigation and updated the overview/status wording to describe current built-in frontend capabilities instead of an in-development target.
 
 ## 2026-06-22
 
