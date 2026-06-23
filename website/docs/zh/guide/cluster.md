@@ -444,7 +444,6 @@ services:
     build: .
     environment:
       - VEXT_CLUSTER=1
-      - NODE_ENV=production
     ports:
       - "3000:3000"
     stop_grace_period: 30s # 大于 shutdown.timeout

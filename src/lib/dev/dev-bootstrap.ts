@@ -11,6 +11,7 @@ import { SoftReloader } from "./soft-reloader.js";
 import { reloadModels as reloadModelDefs } from "./model-reloader.js";
 import type { ModelReloadResult } from "./model-reloader.js";
 import { finalizeConfig, loadRawConfig } from "../config-loader.js";
+import { resolveConfigProfile } from "../config-profile.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
 import {
@@ -363,10 +364,16 @@ export async function devBootstrap(
     // dev 子进程不带 tsx loader，无法直接 require TS 文件。
     // compiler.start() 已将 src/config/ 编译为 .vext/dev/config/ 下的 CJS .js
     //
+    const resolvedConfigProfile = resolveConfigProfile({
+      env: process.env,
+      command: "dev",
+    });
     const rawConfig = await startupProfiler.time("worker.config", () =>
       loadRawConfig(path.join(outDir, "config"), {
         rootDir: projectRoot,
         command: "dev",
+        mode: "development",
+        configProfile: resolvedConfigProfile.profile,
         env: process.env,
       }),
     );

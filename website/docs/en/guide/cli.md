@@ -487,11 +487,11 @@ vext start --port-conflict next
 vext start --startup-profile
 vext start --startup-profile-json .vext/inspect/start-profile.json
 
-# Load production configuration
-PORT=8080 NODE_ENV=production vext start
+# Load the production profile and override the port
+vext start --port 8080
 
-# Load custom environment configuration (src/config/sg-sit.ts needs to exist)
-NODE_ENV=sg-sit vext start
+# Load a custom config profile (src/config/sg-sit.ts needs to exist)
+vext start --config sg-sit
 ```
 
 ### Default command
@@ -544,38 +544,31 @@ See [Preload](/guide/preload) for details.
 
 ### Configuring Provider during startup
 
-If `src/config/bootstrap.ts` exists in the project, `vext start` / `vext dev` will execute the `bootstrap config provider` declared in it before configuring validate / freeze, and merge the patch returned by the provider into the final configuration. The priority is: `default < env < local < provider < CLI`.
+If `src/config/bootstrap.ts` exists in the project, `vext start` / `vext dev` will execute the `bootstrap config provider` declared in it before configuring validate / freeze, and merge the patch returned by the provider into the final configuration. The priority is: `default < config profile < local < provider < CLI`.
 
 In Cluster mode, the Master will pass the current round of provider patches to the Worker for reuse, preventing the Master/Worker from seeing different remote configurations in the same startup cycle.
 
 ### package.json script
 
-It is recommended to use `cross-env` to set environment variables in cross-platform projects:
-
-```bash
-npm i -D cross-env
-```
-
 ```json
 {
   "scripts": {
     "build": "vext build",
-    "start": "cross-env NODE_ENV=production vext start",
-    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start",
-    "start:us-uat": "cross-env NODE_ENV=us-uat vext start"
+    "start": "vext start",
+    "start:sg-sit": "vext start --config sg-sit",
+    "start:us-uat": "vext start --config us-uat",
+    "deploy:assets:sg-sit": "vext deploy assets --config sg-sit --dry-run"
   }
 }
 ```
 
-Vext itself does not have built-in `cross-env`; it is just a recommended script layer compatibility tool for uniformly setting `NODE_ENV` under Windows, macOS, and Linux.
+:::tip Config profile selection
+`vext start`, `vext build`, and `vext deploy assets` default to the `production` profile. `vext dev` defaults to the `development` profile. To select a custom profile:
 
-:::tip Environment file selection
-Currently `vext start` does not have such a parameter as `--config <file>`. The selection mechanism for environment profiles is:
+- CLI argument: `vext start --config sg-sit`
+- Environment variable: `VEXT_CONFIG=sg-sit vext start`
 
-- Read runtime `NODE_ENV`
-- Matches `src/config/{NODE_ENV}.ts` (corresponds to `dist/config/{NODE_ENV}.js` after build)
-
-If you need custom environments such as `sg-sit.ts` and `us-uat.ts`, just set the corresponding `NODE_ENV` at startup.
+The profile name maps to `src/config/{profile}.ts` and, after build, `dist/config/{profile}.js`.
 :::
 
 ## `vext stop` — stop the service
@@ -759,7 +752,7 @@ These three commands are only available in Cluster mode. Make sure `cluster.enab
 ## Next step
 
 - Learn the details of the three-layer strategy of [Hot Reload](/guide/hot-reload)
-- Configure [Frontend integration](/guide/frontend)
+- Configure the [Frontend guide](/frontend/overview)
 - Learn the complete configuration of [Cluster multi-process](/guide/cluster)
 - View options such as ports and logs in [Configuration](/guide/configuration)
 - Explore the conventions of [Project Structure](/guide/project-structure)

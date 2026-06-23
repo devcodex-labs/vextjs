@@ -8,6 +8,12 @@ describe("deploy assets command", () => {
     expect(options.prefix).toBe("cdn/v1");
   });
 
+  it("parses --config for frontend deploy settings", () => {
+    const options = parseDeployAssetsArgs(["--config", "sg-sit"]);
+
+    expect(options.configProfile).toBe("sg-sit");
+  });
+
   it("rejects unsafe upload key prefix from CLI options", () => {
     expect(() => parseDeployAssetsArgs(["--prefix", "../outside"])).toThrow(
       "[vextjs] --prefix must not contain '..'.",

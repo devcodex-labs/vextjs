@@ -48,14 +48,14 @@ src/dist/
 
 ### Compile options
 
-| Options | Default | Description |
-| -------------------------- | -------------------------- | ---------------------------------- |
-| Source Map | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers |
-| Minify | Off | Optional on, reduce product volume |
-| Target | `node20` | Align with `engines.node >= 20.19.0` |
-| Format | CJS | CommonJS output, Node.js runs stably |
-| Tree Shaking | Enable | Remove unused exports |
-| Keep Names | On | Keep function/class names (error stack readability) |
+| Options      | Default                 | Description                                         |
+| ------------ | ----------------------- | --------------------------------------------------- |
+| Source Map   | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers  |
+| Minify       | Off                     | Optional on, reduce product volume                  |
+| Target       | `node20`                | Align with `engines.node >= 20.19.0`                |
+| Format       | CJS                     | CommonJS output, Node.js runs stably                |
+| Tree Shaking | Enable                  | Remove unused exports                               |
+| Keep Names   | On                      | Keep function/class names (error stack readability) |
 
 ### Compile Exclusion
 
@@ -70,9 +70,9 @@ Production compilation automatically excludes the following files:
 
 ### Compile the bottom layer
 
-`vext build` is implemented based on [esbuild](https://esbuild.github.io/), and the pure compilation phase is extremely fast. Compilation time for a typical project (50+ source files) is usually under 1 second**.
+`vext build` is implemented based on [esbuild](https://esbuild.github.io/), and the pure compilation phase is extremely fast. Compilation time for a typical project (50+ source files) is usually under 1 second\*\*.
 
-`process.env.NODE_ENV = "production"` will be automatically injected during compilation, so the environment branch in the user source code after build will be statically folded according to production semantics; but which configuration file is actually loaded at runtime is still determined by `NODE_ENV` at startup.
+`process.env.NODE_ENV = "production"` will be automatically injected during compilation, so the environment branch in the user source code after build will be statically folded according to production semantics; the runtime config profile is selected independently with `--config` or `VEXT_CONFIG`.
 
 ## Start production service
 
@@ -80,13 +80,13 @@ Production compilation automatically excludes the following files:
 
 ```bash
 # Use vext start (recommended)
-NODE_ENV=production vext start
+vext start
 
-# You can also load custom environment configuration (src/config/sg-sit.ts needs to exist)
-NODE_ENV=sg-sit vext start
+# You can also load a custom config profile (src/config/sg-sit.ts needs to exist)
+vext start --config sg-sit
 
 # Enable Source Map support (error stack shows TypeScript line numbers)
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 ```
 
 When deploying a TypeScript project, `vext start` will require the existence of a valid `dist/` build product:
@@ -98,11 +98,12 @@ Please use `vext dev` to start source code during the development period. Produc
 
 ### Environment variables
 
-| Variable | Description | Recommended value |
-| ---------- | -------- | ---------- |
-| `NODE_ENV` | Running environment | `production` |
-| `PORT` | Listening port | `3000` |
-| `HOST` | Listening address | `0.0.0.0` |
+| Variable      | Description                                      | Recommended value        |
+| ------------- | ------------------------------------------------ | ------------------------ |
+| `NODE_ENV`    | Runtime mode; `vext start` sets it to production | Usually not set manually |
+| `VEXT_CONFIG` | Config profile; lower priority than `--config`   | `production`             |
+| `PORT`        | Listening port                                   | `3000`                   |
+| `HOST`        | Listening address                                | `0.0.0.0`                |
 
 ## Docker deployment
 
@@ -144,7 +145,6 @@ RUN addgroup --system --gid 1001 vext && \
 USER vext
 
 #Environment variables
-ENV NODE_ENV=production
 ENV NODE_OPTIONS=--enable-source-maps
 ENVPORT=3000
 
@@ -183,9 +183,7 @@ services:
     build: .
     ports:
       - "3000:3000"
-    environment:
-      -NODE_ENV=production
-      -PORT=3000
+    environment: -PORT=3000
       - MONGODB_URL=mongodb://mongo:27017/myapp
     depends_on:
       mongo:
@@ -223,7 +221,6 @@ docker build -t myapp:latest .
 docker run -d \
   --name myapp \
   -p 3000:3000 \
-  -e NODE_ENV=production \
   -e MONGODB_URL=mongodb://host.docker.internal:27017/myapp \
   myapp:latest
 
@@ -344,7 +341,6 @@ module.exports = {
 
       // environment variables
       env: {
-        NODE_ENV: "production",
         PORT: 3000,
       },
 
@@ -413,7 +409,7 @@ See [Cluster multi-process](/guide/cluster) for details.
 
 ### JSON log format
 
-VextJS outputs JSON format logs by default in the production environment (`NODE_ENV=production`), which is suitable for parsing by the log collection system. Pretty level colors only work in pretty text mode, and the produced JSON output will not contain ANSI:
+VextJS outputs JSON logs by default in the production runtime mode used by `vext start`, which is suitable for parsing by the log collection system. Pretty level colors only work in pretty text mode, and the produced JSON output will not contain ANSI:
 
 ```json
 {
@@ -482,7 +478,7 @@ In platforms such as Kubernetes / AWS ECS / Cloud Run, output directly to stdout
 
 ```bash
 # No additional configuration is required, JSON logs are output directly to stdout
-NODE_ENV=production vext start
+vext start
 ```
 
 ## Health Check
@@ -520,7 +516,8 @@ export default defineRoutes((app) => {
           checks.database = "disconnected";
           checks.status = "degraded";
         }
-      }const statusCode = checks.status === "ok" ? 200 : 503;
+      }
+      const statusCode = checks.status === "ok" ? 200 : 503;
       res.json(checks, statusCode);
     },
   );
@@ -669,7 +666,8 @@ onFatalError: async (error, origin) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       app: 'my-service',
-      env: process.env.NODE_ENV,
+      runtimeMode: process.env.NODE_ENV,
+      configProfile: process.env.VEXT_CONFIG,
       origin,
       error: error.message,
       stack: error.stack,
@@ -683,12 +681,12 @@ onFatalError: async (error, origin) => {
 
 ### Notes
 
-| Project | Description |
-| ------------ | ------------------------------------------------------------------------------- |
-| **Timeout Protection** | The `onFatalError` callback has a 10-second timeout, and the process will be forced to exit after the timeout |
-| **Error Isolation** | Exceptions thrown inside the callback will be caught and recorded, and will not prevent the process from exiting |
-| **Unrecoverable** | After `uncaughtException`, the process is in an uncertain state, the callback should be as light as possible (just send a notification) |
-| **Test Mode** | Do not register fatal error handlers under `_testMode` to avoid interfering with testing |
+| Project                  | Description                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Timeout Protection**   | The `onFatalError` callback has a 10-second timeout, and the process will be forced to exit after the timeout                              |
+| **Error Isolation**      | Exceptions thrown inside the callback will be caught and recorded, and will not prevent the process from exiting                           |
+| **Unrecoverable**        | After `uncaughtException`, the process is in an uncertain state, the callback should be as light as possible (just send a notification)    |
+| **Test Mode**            | Do not register fatal error handlers under `_testMode` to avoid interfering with testing                                                   |
 | **Cooperating with PM2** | PM2 itself also has restart notification capabilities (plug-ins such as `pm2-slack`), which can be used in conjunction with `onFatalError` |
 
 :::tip Why can’t it be implemented using middleware?
@@ -699,18 +697,18 @@ onFatalError: async (error, origin) => {
 
 ### Production environment list
 
-| # | Check items | Description |
-| --- | ------------------- | --------------------------------------------------------------- |
-| 1 | **HTTPS** | Terminates TLS via Nginx/CDN, does not handle SSL at the Node.js layer |
-| 2 | **CORS** | Configure `config.cors` to limit allowed source domain names |
-| 3 | **Rate Limit** | Configure `config.rateLimit` to set stricter rate limits for sensitive interfaces such as login |
-| 4 | **Helmet** | Set security response headers through middleware (X-Frame-Options, CSP, etc.) |
-| 5 | **Environment variables** | Sensitive information (database password, API Key) is passed in through environment variables and is not written to the configuration file |
-| 6 | **config/local.ts** | Make sure `.gitignore` contains `config/local.*` |
-| 7 | **Log** | Do not output sensitive data (password, token, etc.) to the log |
-| 8 | **Dependency Audit** | Regular `npm audit` to fix known vulnerabilities in a timely manner |
-| 9 | **Non-root** | Running as a non-root user in a Docker container |
-| 10 | **Graceful shutdown** | Ensure `SIGTERM` signal is handled correctly (VextJS built-in support) |
+| #   | Check items               | Description                                                                                                                                |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **HTTPS**                 | Terminates TLS via Nginx/CDN, does not handle SSL at the Node.js layer                                                                     |
+| 2   | **CORS**                  | Configure `config.cors` to limit allowed source domain names                                                                               |
+| 3   | **Rate Limit**            | Configure `config.rateLimit` to set stricter rate limits for sensitive interfaces such as login                                            |
+| 4   | **Helmet**                | Set security response headers through middleware (X-Frame-Options, CSP, etc.)                                                              |
+| 5   | **Environment variables** | Sensitive information (database password, API Key) is passed in through environment variables and is not written to the configuration file |
+| 6   | **config/local.ts**       | Make sure `.gitignore` contains `config/local.*`                                                                                           |
+| 7   | **Log**                   | Do not output sensitive data (password, token, etc.) to the log                                                                            |
+| 8   | **Dependency Audit**      | Regular `npm audit` to fix known vulnerabilities in a timely manner                                                                        |
+| 9   | **Non-root**              | Running as a non-root user in a Docker container                                                                                           |
+| 10  | **Graceful shutdown**     | Ensure `SIGTERM` signal is handled correctly (VextJS built-in support)                                                                     |
 
 ### Environment variable management
 
@@ -731,13 +729,13 @@ JWT_SECRET=local-dev-secret
 
 ```bash
 # Increase the memory limit (default ~1.5GB)
-NODE_OPTIONS=--max-old-space-size=4096 NODE_ENV=production vext start
+NODE_OPTIONS=--max-old-space-size=4096 vext start
 
 # Enable Source Map (recommended)
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # Use in combination
-NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" vext start
 ```
 
 ### Cluster multi-process
@@ -814,14 +812,14 @@ upstream vext_backend {
 
 ### Key monitoring indicators
 
-| Indicators | Normal range | Alarm conditions |
-| ------------- | ----------- | ------------------ |
-| Response time P99 | < 500ms | > 1s for 5 minutes |
-| Error rate (5xx) | < 0.1% | > 1% for 1 minute |
-| Memory usage | < 80% limit | > 90% for 5 minutes |
-| CPU usage | < 70% | > 90% for 5 minutes |
-| Number of active connections | < 1000 | > 5000 |
-| Database connection pool | No waiting | Waiting time > 1s |
+| Indicators                   | Normal range | Alarm conditions    |
+| ---------------------------- | ------------ | ------------------- |
+| Response time P99            | < 500ms      | > 1s for 5 minutes  |
+| Error rate (5xx)             | < 0.1%       | > 1% for 1 minute   |
+| Memory usage                 | < 80% limit  | > 90% for 5 minutes |
+| CPU usage                    | < 70%        | > 90% for 5 minutes |
+| Number of active connections | < 1000       | > 5000              |
+| Database connection pool     | No waiting   | Waiting time > 1s   |
 
 ### Prometheus Metrics Endpoint
 

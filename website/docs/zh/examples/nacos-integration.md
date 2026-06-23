@@ -45,7 +45,10 @@ export default {
       group: "DEFAULT_GROUP",
       ip: process.env.SERVICE_IP ?? "127.0.0.1",
       port: 3000,
-      metadata: { version: "1.0.0", env: process.env.NODE_ENV ?? "dev" },
+      metadata: {
+        version: "1.0.0",
+        profile: process.env.VEXT_CONFIG ?? "default",
+      },
     },
 
     // 配置中心（缺省则不订阅）
@@ -147,7 +150,7 @@ export default defineBootstrapConfig({
 });
 ```
 
-这样配置优先级会进入正式链路：`default < env < local < provider < CLI`。
+这样配置优先级会进入正式链路：`default < config profile < local < provider < CLI`。
 
 :::info 当前边界
 `createNacosBootstrapProvider()` 只负责**启动期批量拉取并深合并 JSON 对象 patch**，适合数据库、密钥、基础设施配置这类“必须在配置冻结前生效”的内容。
@@ -268,7 +271,7 @@ export default {
     configs: [
       { dataId: "features-base.json", group: "DEFAULT_GROUP" },
       {
-        dataId: `features-${process.env.NODE_ENV ?? "development"}.json`,
+        dataId: `features-${process.env.VEXT_CONFIG ?? "development"}.json`,
         group: "DEFAULT_GROUP",
       },
     ],

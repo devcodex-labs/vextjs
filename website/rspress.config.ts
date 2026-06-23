@@ -88,8 +88,8 @@ const navSource: NavItemSource[] = [
   {
     en: "Frontend",
     zh: "前端",
-    link: "/guide/frontend",
-    activeMatch: "^/guide/frontend",
+    link: "/frontend/overview",
+    activeMatch: "^/(frontend|guide/frontend)",
   },
   {
     en: "Runtime",
@@ -180,7 +180,23 @@ const englishSidebar: SidebarGroup[] = [
   },
   {
     text: "Frontend",
-    items: [{ text: "Frontend integration", link: "/guide/frontend" }],
+    items: [
+      { text: "Overview", link: "/frontend/overview" },
+      { text: "Project Structure", link: "/frontend/project-structure" },
+      { text: "Pages and Rendering", link: "/frontend/pages-and-rendering" },
+      { text: "Data and API Calls", link: "/frontend/data-and-api" },
+      { text: "Layouts and Components", link: "/frontend/layouts-and-components" },
+      { text: "Styles and Assets", link: "/frontend/styles-and-assets" },
+      { text: "I18n", link: "/frontend/i18n" },
+      { text: "Errors and Document", link: "/frontend/errors-and-document" },
+      { text: "Dev Workflow", link: "/frontend/dev-workflow" },
+      {
+        text: "Build, Deploy, and Performance",
+        link: "/frontend/build-deploy-performance",
+      },
+      { text: "Configuration", link: "/frontend/configuration" },
+      { text: "Troubleshooting", link: "/frontend/troubleshooting" },
+    ],
   },
   {
     text: "Runtime",
@@ -263,7 +279,23 @@ const chineseSidebar: SidebarGroup[] = [
   },
   {
     text: "前端",
-    items: [{ text: "前端集成", link: "/zh/guide/frontend" }],
+    items: [
+      { text: "总览", link: "/zh/frontend/overview" },
+      { text: "项目结构", link: "/zh/frontend/project-structure" },
+      { text: "页面与渲染", link: "/zh/frontend/pages-and-rendering" },
+      { text: "数据与 API 调用", link: "/zh/frontend/data-and-api" },
+      { text: "Layout 与组件", link: "/zh/frontend/layouts-and-components" },
+      { text: "样式与资源", link: "/zh/frontend/styles-and-assets" },
+      { text: "多语言", link: "/zh/frontend/i18n" },
+      { text: "错误页与 Document", link: "/zh/frontend/errors-and-document" },
+      { text: "开发工作流", link: "/zh/frontend/dev-workflow" },
+      {
+        text: "构建、发布与性能",
+        link: "/zh/frontend/build-deploy-performance",
+      },
+      { text: "配置", link: "/zh/frontend/configuration" },
+      { text: "排错", link: "/zh/frontend/troubleshooting" },
+    ],
   },
   {
     text: "运行时",

@@ -11,7 +11,7 @@ DEFAULT_CONFIG (framework built-in default value)
   ↓ Deep merge
 src/config/default.ts (project default configuration)
   ↓ Deep merge
-src/config/${NODE_ENV}.ts (environment configuration, such as production.ts)
+src/config/{profile}.ts (config profile, such as production.ts or sg-sit.ts)
   ↓ Deep merge
 src/config/local.ts (local override, optional)
   ↓ provider patch
@@ -24,14 +24,15 @@ The merged configuration is deep-frozen through `deepFreeze()` and cannot be mod
 
 ### Configuration file list
 
-| File                        | Purpose                                  | Is it necessary |
-| --------------------------- | ---------------------------------------- | :-------------: |
-| `src/config/default.ts`     | Basic configuration for all environments |       ✅        |
-| `src/config/development.ts` | Development environment overrides        |    Optional     |
-| `src/config/production.ts`  | Production environment coverage          |    Optional     |
-| `src/config/test.ts`        | Test environment coverage                |    Optional     |
-| `src/config/local.ts`       | Local override (usually no Git commit)   |    Optional     |
-| `src/config/bootstrap.ts`   | Startup provider registration entrance   |    Optional     |
+| File                        | Purpose                                | Is it necessary |
+| --------------------------- | -------------------------------------- | :-------------: |
+| `src/config/default.ts`     | Basic configuration for all profiles   |       ✅        |
+| `src/config/development.ts` | Default development profile overrides  |    Optional     |
+| `src/config/production.ts`  | Default production profile overrides   |    Optional     |
+| `src/config/test.ts`        | Default test profile overrides         |    Optional     |
+| `src/config/sg-sit.ts`      | Custom profile overrides               |    Optional     |
+| `src/config/local.ts`       | Local override (usually no Git commit) |    Optional     |
+| `src/config/bootstrap.ts`   | Startup provider registration entrance |    Optional     |
 
 ### `src/config/bootstrap.ts`
 
@@ -45,10 +46,11 @@ export default defineBootstrapConfig({
     {
       name: "remote-config",
       timeoutMs: 10_000,
-      async load({ env, signal, baseConfig }) {
-        const response = await fetch(`https://config.example.com/${env}.json`, {
-          signal,
-        });
+      async load({ configProfile, signal, baseConfig }) {
+        const response = await fetch(
+          `https://config.example.com/${configProfile}.json`,
+          { signal },
+        );
         const remote = await response.json();
         return {
           database: remote.database,
@@ -727,79 +729,79 @@ After disabling, the following functions will be disabled:
 
 Built-in frontend build and static serving configuration.
 
-| Field                          | Type                                 | Default Value                                           | Description                                                                       |
-| ------------------------------ | ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `enabled`                      | `boolean`                            | `false`                                                 | Whether to enable frontend integration                                            |
-| `framework`                    | `string`                             | `'react'`                                               | Frontend framework label                                                          |
-| `root`                         | `string`                             | `'src/frontend'`                                        | Frontend source directory                                                         |
-| `pages.dir`                    | `string`                             | `'pages'`                                               | Page directory resolved from `root`                                               |
-| `pages.extensions`             | `string[]`                           | `['.tsx', '.jsx', '.ts', '.js']`                        | Extensions scanned for pages, layouts, error pages, and locale modules            |
-| `pages.document`               | `string`                             | `'pages/_document.html'`                                | Document template path resolved from `root`                                       |
-| `pages.errorDir`               | `string`                             | `'pages/error'`                                         | Error page directory resolved from `root`                                         |
-| `componentsDir`                | `string`                             | `'components'`                                          | Shared component directory resolved from `root`                                   |
-| `styles.entry`                 | `string`                             | `'styles/index.css'`                                    | Global CSS entry resolved from `root`                                             |
-| `styles.jscss`                 | `boolean \| object`                  | `{ enabled: true }`                                     | Vext JSCSS build-time CSS extraction and dynamic CSS variables                    |
-| `styles.jscss.files`           | `string[]`                           | `['**/*.style.ts', '**/*.style.js', '**/*.css.ts']`     | JSCSS source file glob patterns                                                   |
-| `styles.jscss.runtimeAdapter`  | `'css-variables' \| 'none' \| false` | `'css-variables'`                                       | Runtime output mode for dynamic style variables                                   |
-| `styles.jscss.dynamicVars`     | `boolean`                            | `true`                                                  | Whether to emit dynamic CSS variables                                             |
-| `styles.jscss.recipes`         | `boolean`                            | `true`                                                  | Whether to emit recipe style combinations                                         |
-| `assetsDir`                    | `string`                             | `'assets'`                                              | Bundled frontend asset directory resolved from `root`                             |
-| `entry`                        | `string`                             | `'.vext/generated/frontend/browser-entry.tsx'`          | Generated browser entry; usually not written by hand                              |
-| `indexHtml`                    | `string`                             | `'src/frontend/pages/_document.html'`                   | HTML document template                                                            |
-| `outDir`                       | `string`                             | `.vext/client` in dev, `dist/client` in production      | Frontend output directory                                                         |
-| `publicDir`                    | `string`                             | `'public'`                                              | Static assets copied into the frontend output                                     |
-| `publicPath`                   | `string`                             | `'/'`                                                   | Public asset path prefix                                                          |
-| `alias`                        | `object`                             | Built-in `@frontend/@pages/@components/@styles/@assets` | Frontend-safe aliases; no default alias points at all of `src`                    |
-| `spaFallback`                  | `boolean \| object`                  | `{ scopes: [] }`                                        | Serve fallback only for explicitly declared client-router sub-app scopes          |
-| `spaFallback.enabled`          | `boolean`                            | `true`                                                  | Enables scoped fallback arbitration; with no scopes, no path is captured          |
-| `spaFallback.exclude`          | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**']`              | Global fallback exclusion paths                                                   |
-| `spaFallback.scopes[]`         | `object[]`                           | `[]`                                                    | Explicit client-router sub-app scopes                                             |
-| `apiClient`                    | `boolean \| object`                  | `true`                                                  | Generate client contract artifacts                                                |
-| `apiClient.enabled`            | `boolean`                            | `true`                                                  | Whether to emit `client-contract.json` and `api.generated.ts`                     |
-| `render.ssr`                   | `boolean`                            | `true`                                                  | Enable SSR rendering                                                              |
-| `render.fallback`              | `'client' \| 'error'`                | `'client'`                                              | Whether SSR failures fall back to a client shell or an error response             |
-| `render.timeoutMs`             | `number`                             | `3000`                                                  | Timeout for one SSR render                                                        |
-| `render.layout`                | `boolean`                            | `true`                                                  | Whether to enable the nested layout chain                                         |
-| `errorPages.default`           | `string`                             | `'error/default'`                                       | Default error page id                                                             |
-| `errorPages.status`            | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                | Status code to error page id mapping                                              |
-| `i18n`                         | `object`                             | `{ enabled: false }`                                    | Frontend page message layer, SSR messages, and `{vext.lang}`                      |
-| `i18n.source`                  | `string`                             | `'locales'`                                             | Frontend message directory resolved from `root`                                   |
-| `i18n.defaultLocale`           | `'inherit' \| string`                | `'inherit'`                                             | Default locale; `inherit` follows the request-level locale                        |
-| `i18n.detect`                  | `string[]`                           | `['accept-language']`                                   | SSR locale detection sources                                                      |
-| `i18n.inject`                  | `'used' \| 'all'`                    | `'used'`                                                | Whether to inject used messages or all messages                                   |
-| `i18n.clientSwitch`            | `'reload'`                           | `'reload'`                                              | Initial client locale switch strategy                                             |
-| `i18n.clientLoad`              | `'current' \| 'all'`                 | `'current'`                                             | Whether the browser loads only the current SSR locale or all locales              |
-| `i18n.htmlLang`                | `boolean`                            | `true`                                                  | Whether to write `{vext.lang}` / `<html lang>`                                    |
-| `i18n.vary`                    | `boolean`                            | `true`                                                  | Whether locale affects response vary/cache behavior                               |
-| `dev.hot`                      | `boolean`                            | `true`                                                  | Development frontend hot update channel                                           |
-| `dev.fastRefresh`              | `boolean`                            | `true`                                                  | React Fast Refresh                                                                |
-| `dev.transport`                | `'sse'`                              | `'sse'`                                                 | Transport for the Vext dev event bus                                              |
-| `dev.overlay`                  | `boolean`                            | `true`                                                  | Whether to enable the development error overlay                                   |
-| `dev.debounceMs`               | `number`                             | `50`                                                    | File change event debounce interval                                               |
-| `dev.renderRefresh`            | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                              | Browser behavior after render-related route/service backend changes               |
-| `build.target`                 | `string \| string[]`                 | `'es2022'`                                              | Browser build target                                                              |
-| `build.minify`                 | `boolean`                            | Production `true`                                       | Minify frontend output                                                            |
-| `build.sourcemap`              | `boolean`                            | Development `true`                                      | Generate frontend source maps                                                     |
-| `build.client`                 | `object`                             | Inherits shared build defaults                          | Browser bundle output, hash names, splitting, and external entries                |
-| `build.client.external`        | `string[]`                           | `[]`                                                    | Modules externalized from the browser bundle                                      |
-| `build.client.externalRuntime` | `object`                             | `{}`                                                    | Import map URL mapping for externalized browser modules; React externals fail without mappings |
-| `build.server`                 | `object`                             | `server/renderer.cjs`                                   | SSR renderer bundle output                                                        |
-| `build.vendorChunks`           | `boolean \| object`                  | `{ enabled: true }`                                     | Vext-managed vendor entry and shared chunk handling                               |
-| `build.budgets`                | `object`                             | All `0`                                                 | Frontend asset budgets; `0` disables a budget                                     |
-| `build.budgets.maxInitialJsGzipBytes` | `number`                     | `0`                                                     | Initial JS gzip budget                                                            |
-| `build.budgets.maxInitialJsBrotliBytes` | `number`                   | `0`                                                     | Initial JS brotli budget                                                          |
-| `build.budgets.maxRouteInitialJsBrotliBytes` | `number`              | `0`                                                     | Per-route initial JS brotli budget                                                |
-| `build.budgets.maxAppOwnedInitialJsBrotliBytes` | `number`          | `0`                                                     | App-owned initial JS brotli budget excluding external runtime assets              |
-| `build.assets.inlineLimit`     | `number`                             | `0`                                                     | Imported asset inline limit; default emits hashed files                           |
-| `build.css.modules`            | `boolean`                            | `true`                                                  | Whether to support the CSS Modules convention                                     |
-| `build.diagnostics.metafile`   | `boolean`                            | `true`                                                  | Whether to keep internal esbuild metafile diagnostics for size report / leak scan |
-| `build.diagnostics.sizeReport` | `boolean`                            | `true`                                                  | Whether to emit a size report                                                     |
-| `build.diagnostics.performanceReport` | `boolean`                    | `true`                                                  | Whether to keep route initial assets, compressed budget, and browser probe report data |
-| `build.diagnostics.leakScan`   | `boolean`                            | `true`                                                  | Blocks browser bundles from importing server-only modules                         |
-| `deploy.assetBaseUrl`          | `string`                             | None                                                    | Absolute CDN prefix for static frontend assets                                    |
-| `deploy.crossOrigin`           | `'anonymous' \| 'use-credentials'`   | None                                                    | `crossorigin` value injected into script/link tags                                |
-| `deploy.integrity`             | `boolean`                            | `false`                                                 | Inject build-time SRI into generated JS/CSS tags                                  |
-| `deploy.upload`                | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`             | Static asset upload config; `vext deploy assets` uploads incrementally by sha256  |
+| Field                                           | Type                                 | Default Value                                           | Description                                                                                    |
+| ----------------------------------------------- | ------------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `enabled`                                       | `boolean`                            | `false`                                                 | Whether to enable frontend integration                                                         |
+| `framework`                                     | `string`                             | `'react'`                                               | Frontend framework label                                                                       |
+| `root`                                          | `string`                             | `'src/frontend'`                                        | Frontend source directory                                                                      |
+| `pages.dir`                                     | `string`                             | `'pages'`                                               | Page directory resolved from `root`                                                            |
+| `pages.extensions`                              | `string[]`                           | `['.tsx', '.jsx', '.ts', '.js']`                        | Extensions scanned for pages, layouts, error pages, and locale modules                         |
+| `pages.document`                                | `string`                             | `'pages/_document.html'`                                | Document template path resolved from `root`                                                    |
+| `pages.errorDir`                                | `string`                             | `'pages/error'`                                         | Error page directory resolved from `root`                                                      |
+| `componentsDir`                                 | `string`                             | `'components'`                                          | Shared component directory resolved from `root`                                                |
+| `styles.entry`                                  | `string`                             | `'styles/index.css'`                                    | Global CSS entry resolved from `root`                                                          |
+| `styles.jscss`                                  | `boolean \| object`                  | `{ enabled: true }`                                     | Vext JSCSS build-time CSS extraction and dynamic CSS variables                                 |
+| `styles.jscss.files`                            | `string[]`                           | `['**/*.style.ts', '**/*.style.js', '**/*.css.ts']`     | JSCSS source file glob patterns                                                                |
+| `styles.jscss.runtimeAdapter`                   | `'css-variables' \| 'none' \| false` | `'css-variables'`                                       | Runtime output mode for dynamic style variables                                                |
+| `styles.jscss.dynamicVars`                      | `boolean`                            | `true`                                                  | Whether to emit dynamic CSS variables                                                          |
+| `styles.jscss.recipes`                          | `boolean`                            | `true`                                                  | Whether to emit recipe style combinations                                                      |
+| `assetsDir`                                     | `string`                             | `'assets'`                                              | Bundled frontend asset directory resolved from `root`                                          |
+| `entry`                                         | `string`                             | `'.vext/generated/frontend/browser-entry.tsx'`          | Generated browser entry; usually not written by hand                                           |
+| `indexHtml`                                     | `string`                             | `'src/frontend/pages/_document.html'`                   | HTML document template                                                                         |
+| `outDir`                                        | `string`                             | `.vext/client` in dev, `dist/client` in production      | Frontend output directory                                                                      |
+| `publicDir`                                     | `string`                             | `'public'`                                              | Static assets copied into the frontend output                                                  |
+| `publicPath`                                    | `string`                             | `'/'`                                                   | Public asset path prefix                                                                       |
+| `alias`                                         | `object`                             | Built-in `@frontend/@pages/@components/@styles/@assets` | Frontend-safe aliases; no default alias points at all of `src`                                 |
+| `spaFallback`                                   | `boolean \| object`                  | `{ scopes: [] }`                                        | Serve fallback only for explicitly declared client-router sub-app scopes                       |
+| `spaFallback.enabled`                           | `boolean`                            | `true`                                                  | Enables scoped fallback arbitration; with no scopes, no path is captured                       |
+| `spaFallback.exclude`                           | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**']`              | Global fallback exclusion paths                                                                |
+| `spaFallback.scopes[]`                          | `object[]`                           | `[]`                                                    | Explicit client-router sub-app scopes                                                          |
+| `apiClient`                                     | `boolean \| object`                  | `true`                                                  | Generate client contract artifacts                                                             |
+| `apiClient.enabled`                             | `boolean`                            | `true`                                                  | Whether to emit `client-contract.json` and `api.generated.ts`                                  |
+| `render.ssr`                                    | `boolean`                            | `true`                                                  | Enable SSR rendering                                                                           |
+| `render.fallback`                               | `'client' \| 'error'`                | `'client'`                                              | Whether SSR failures fall back to a client shell or an error response                          |
+| `render.timeoutMs`                              | `number`                             | `3000`                                                  | Timeout for one SSR render                                                                     |
+| `render.layout`                                 | `boolean`                            | `true`                                                  | Whether to enable the nested layout chain                                                      |
+| `errorPages.default`                            | `string`                             | `'error/default'`                                       | Default error page id                                                                          |
+| `errorPages.status`                             | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                | Status code to error page id mapping                                                           |
+| `i18n`                                          | `object`                             | `{ enabled: false }`                                    | Frontend page message layer, SSR messages, and `{vext.lang}`                                   |
+| `i18n.source`                                   | `string`                             | `'locales'`                                             | Frontend message directory resolved from `root`                                                |
+| `i18n.defaultLocale`                            | `'inherit' \| string`                | `'inherit'`                                             | Default locale; `inherit` follows the request-level locale                                     |
+| `i18n.detect`                                   | `string[]`                           | `['accept-language']`                                   | SSR locale detection sources                                                                   |
+| `i18n.inject`                                   | `'used' \| 'all'`                    | `'used'`                                                | Whether to inject used messages or all messages                                                |
+| `i18n.clientSwitch`                             | `'reload'`                           | `'reload'`                                              | Initial client locale switch strategy                                                          |
+| `i18n.clientLoad`                               | `'current' \| 'all'`                 | `'current'`                                             | Whether the browser loads only the current SSR locale or all locales                           |
+| `i18n.htmlLang`                                 | `boolean`                            | `true`                                                  | Whether to write `{vext.lang}` / `<html lang>`                                                 |
+| `i18n.vary`                                     | `boolean`                            | `true`                                                  | Whether locale affects response vary/cache behavior                                            |
+| `dev.hot`                                       | `boolean`                            | `true`                                                  | Development frontend hot update channel                                                        |
+| `dev.fastRefresh`                               | `boolean`                            | `true`                                                  | React Fast Refresh                                                                             |
+| `dev.transport`                                 | `'sse'`                              | `'sse'`                                                 | Transport for the Vext dev event bus                                                           |
+| `dev.overlay`                                   | `boolean`                            | `true`                                                  | Whether to enable the development error overlay                                                |
+| `dev.debounceMs`                                | `number`                             | `50`                                                    | File change event debounce interval                                                            |
+| `dev.renderRefresh`                             | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                              | Browser behavior after render-related route/service backend changes                            |
+| `build.target`                                  | `string \| string[]`                 | `'es2022'`                                              | Browser build target                                                                           |
+| `build.minify`                                  | `boolean`                            | Production `true`                                       | Minify frontend output                                                                         |
+| `build.sourcemap`                               | `boolean`                            | Development `true`                                      | Generate frontend source maps                                                                  |
+| `build.client`                                  | `object`                             | Inherits shared build defaults                          | Browser bundle output, hash names, splitting, and external entries                             |
+| `build.client.external`                         | `string[]`                           | `[]`                                                    | Modules externalized from the browser bundle                                                   |
+| `build.client.externalRuntime`                  | `object`                             | `{}`                                                    | Import map URL mapping for externalized browser modules; React externals fail without mappings |
+| `build.server`                                  | `object`                             | `server/renderer.cjs`                                   | SSR renderer bundle output                                                                     |
+| `build.vendorChunks`                            | `boolean \| object`                  | `{ enabled: true }`                                     | Vext-managed vendor entry and shared chunk handling                                            |
+| `build.budgets`                                 | `object`                             | All `0`                                                 | Frontend asset budgets; `0` disables a budget                                                  |
+| `build.budgets.maxInitialJsGzipBytes`           | `number`                             | `0`                                                     | Initial JS gzip budget                                                                         |
+| `build.budgets.maxInitialJsBrotliBytes`         | `number`                             | `0`                                                     | Initial JS brotli budget                                                                       |
+| `build.budgets.maxRouteInitialJsBrotliBytes`    | `number`                             | `0`                                                     | Per-route initial JS brotli budget                                                             |
+| `build.budgets.maxAppOwnedInitialJsBrotliBytes` | `number`                             | `0`                                                     | App-owned initial JS brotli budget excluding external runtime assets                           |
+| `build.assets.inlineLimit`                      | `number`                             | `0`                                                     | Imported asset inline limit; default emits hashed files                                        |
+| `build.css.modules`                             | `boolean`                            | `true`                                                  | Whether to support the CSS Modules convention                                                  |
+| `build.diagnostics.metafile`                    | `boolean`                            | `true`                                                  | Whether to keep internal esbuild metafile diagnostics for size report / leak scan              |
+| `build.diagnostics.sizeReport`                  | `boolean`                            | `true`                                                  | Whether to emit a size report                                                                  |
+| `build.diagnostics.performanceReport`           | `boolean`                            | `true`                                                  | Whether to keep route initial assets, compressed budget, and browser probe report data         |
+| `build.diagnostics.leakScan`                    | `boolean`                            | `true`                                                  | Blocks browser bundles from importing server-only modules                                      |
+| `deploy.assetBaseUrl`                           | `string`                             | None                                                    | Absolute CDN prefix for static frontend assets                                                 |
+| `deploy.crossOrigin`                            | `'anonymous' \| 'use-credentials'`   | None                                                    | `crossorigin` value injected into script/link tags                                             |
+| `deploy.integrity`                              | `boolean`                            | `false`                                                 | Inject build-time SRI into generated JS/CSS tags                                               |
+| `deploy.upload`                                 | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`             | Static asset upload config; `vext deploy assets` uploads incrementally by sha256               |
 
 ```typescript
 export default {
@@ -1071,7 +1073,7 @@ const config = await loadConfig(join(process.cwd(), "src/config"), {
 // config: VextConfig (merged, frozen)
 ```
 
-Usually there is no need to call it manually, `bootstrap()` will automatically call `loadConfig()` internally. The merge order is: `DEFAULT_CONFIG < default < env < local < bootstrap provider patch < CLI override`.
+Usually there is no need to call it manually, `bootstrap()` will automatically call `loadConfig()` internally. The merge order is: `DEFAULT_CONFIG < default < config profile < local < bootstrap provider patch < CLI override`.
 
 ---
 
@@ -1079,15 +1081,16 @@ Usually there is no need to call it manually, `bootstrap()` will automatically c
 
 Some configurations support overriding through environment variables:
 
-| Environment variables | Corresponding configuration | Description                                            |
-| --------------------- | --------------------------- | ------------------------------------------------------ |
-| `PORT`                | `port`                      | HTTP listening port                                    |
-| `HOST`                | `host`                      | HTTP listening address                                 |
-| `NODE_ENV`            | —                           | Determine which environment configuration file to load |
-| `VEXT_CLUSTER`        | `cluster.enabled`           | Set to `1` to enable clustering                        |
+| Environment variables | Corresponding configuration | Description                                   |
+| --------------------- | --------------------------- | --------------------------------------------- |
+| `PORT`                | `port`                      | HTTP listening port                           |
+| `HOST`                | `host`                      | HTTP listening address                        |
+| `VEXT_CONFIG`         | —                           | Select the config profile to load             |
+| `NODE_ENV`            | —                           | Runtime mode; `vext start` runs as production |
+| `VEXT_CLUSTER`        | `cluster.enabled`           | Set to `1` to enable clustering               |
 
 ```bash
-PORT=8080 NODE_ENV=production vext start
+PORT=8080 VEXT_CONFIG=sg-sit vext start
 ```
 
 ---

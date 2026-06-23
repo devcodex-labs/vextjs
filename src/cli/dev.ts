@@ -20,6 +20,10 @@ import {
   type StartupProfileSnapshot,
 } from "../lib/startup-profiler.js";
 import { printReadyLog } from "../lib/utils/network.js";
+import {
+  printConfigProfileWarning,
+  resolveConfigProfile,
+} from "../lib/config-profile.js";
 
 /**
  * cli/dev.ts — vext dev 命令实现
@@ -80,6 +84,9 @@ export interface DevCommandOptions {
 
   /** 覆盖监听地址（通过 VEXT_HOST 环境变量传递给子进程） */
   host?: string;
+
+  /** 配置 profile 名称 */
+  configProfile?: string;
 
   /** 强制使用 polling 模式（适用于 Docker / 网络文件系统） */
   poll?: boolean;
@@ -205,6 +212,8 @@ function printFileChanges(
  */
 export async function devCommand(args: string[] = []): Promise<void> {
   const options = parseDevArgs(args);
+  const resolvedConfigProfile = resolveCliConfigProfile(options);
+  printConfigProfileWarning(resolvedConfigProfile);
   const hasLifecycleOverride =
     options.verboseLifecycle === true ||
     process.env.VEXT_LIFECYCLE_LEVEL === "verbose";
@@ -257,7 +266,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
     VEXT_ROOT: project.rootDir,
     VEXT_DEV_MODE: "1",
     VEXT_DEV_PARENT_READY_LOG: "1",
-    NODE_ENV: process.env.NODE_ENV || "development",
+    NODE_ENV: "development",
+    VEXT_CONFIG: resolvedConfigProfile.profile,
   };
 
   // --port / --host → VEXT_PORT / VEXT_HOST 环境变量传递给子进程
@@ -763,6 +773,21 @@ function isFrontendClientFile(filePath: string): boolean {
 
 // ── 参数解析 ────────────────────────────────────────────────
 
+function resolveCliConfigProfile(
+  options: DevCommandOptions,
+): ReturnType<typeof resolveConfigProfile> {
+  try {
+    return resolveConfigProfile({
+      cliProfile: options.configProfile,
+      env: process.env,
+      command: "dev",
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+}
+
 /**
  * parseDevArgs — 解析 vext dev 的命令行参数
  *
@@ -779,7 +804,7 @@ function isFrontendClientFile(filePath: string): boolean {
  * @param args 命令行参数
  * @returns 解析后的选项
  */
-function parseDevArgs(args: string[]): DevCommandOptions {
+export function parseDevArgs(args: string[]): DevCommandOptions {
   const options: DevCommandOptions = {};
 
   for (let i = 0; i < args.length; i++) {
@@ -808,6 +833,14 @@ function parseDevArgs(args: string[]): DevCommandOptions {
         if (i + 1 < args.length) {
           options.host = args[++i]!;
         }
+        break;
+
+      case "--config":
+        if (i + 1 >= args.length) {
+          console.error("[vextjs] --config requires a value");
+          process.exit(1);
+        }
+        options.configProfile = args[++i]!;
         break;
 
       case "--poll":
@@ -1014,6 +1047,7 @@ function printDevHelp(): void {
   Options:
     --port <number>       Override the listening port
     --host <string>       Override the listening host
+    --config <name>       Load src/config/<name> instead of the default profile
     --root <path>         Project root directory (default: cwd)
     --poll                Force polling mode (for Docker / NFS)
     --poll-interval <ms>  Polling interval in ms (default: 1000)
@@ -1031,6 +1065,7 @@ function printDevHelp(): void {
 
   Examples:
     $ vext dev
+    $ vext dev --config sg-sit
     $ vext dev --port 8080
     $ vext dev --host 127.0.0.1 --port 3000
     $ vext dev --poll --poll-interval 2000
@@ -1039,6 +1074,7 @@ function printDevHelp(): void {
     $ vext dev --port-conflict prompt
 
   Environment variables:
+    VEXT_CONFIG           Load a named config profile when --config is not set
     VEXT_DEV_POLL=1       Force polling mode
     VEXT_DEV_POLL=0       Force disable polling
     VEXT_DEV_NO_HOT=1     Disable soft reload

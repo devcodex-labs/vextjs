@@ -180,7 +180,7 @@ vext create my-app --force
 Configuration is loaded and merged in this order:
 
 ```text
-framework defaults -> default -> NODE_ENV file -> local -> bootstrap provider patch -> CLI override
+framework defaults -> default -> config profile -> local -> bootstrap provider patch -> CLI override
 ```
 
 `src/config/default.ts`:
@@ -222,7 +222,15 @@ const config: VextUserConfig = {
 export default config;
 ```
 
-Environment files can return partial config:
+Config profile files can return partial config. `vext start`, `vext build`, and `vext deploy assets` default to the `production` profile; `vext dev` defaults to `development`. Use `--config <name>` or `VEXT_CONFIG=<name>` to load a custom profile such as `src/config/sg-sit.ts`:
+
+```bash
+vext start --config sg-sit
+VEXT_CONFIG=sg-sit vext start
+vext deploy assets --config sg-sit --dry-run
+```
+
+Profile files can return partial config:
 
 ```ts
 // src/config/production.ts
@@ -266,7 +274,7 @@ Production builds also write `dist/client/deploy-manifest.json` for CDN or stati
 
 For React hydration performance budgets, set fields such as `frontend.build.budgets.maxInitialJsBrotliBytes`, `maxRouteInitialJsBrotliBytes`, or `maxAppOwnedInitialJsBrotliBytes`. The default frontend i18n mode uses `frontend.i18n.clientLoad: "current"` so the browser loads only the SSR locale during hydration; use `"all"` only when a page needs no-reload locale switching. Advanced React CDN/import-map usage remains opt-in through `frontend.build.client.external` plus `externalRuntime`; React-related externals must provide runtime mappings.
 
-For a user guide that covers creating pages, layouts, components, styles, assets, API calls, configuration, HTML documents, render data, SSR, i18n, scoped SPA fallback, performance budgets, browser hydration validation, and troubleshooting, see [Frontend integration](https://vextjs.github.io/guide/frontend).
+For the frontend user guide, start with [Frontend Overview](https://vextjs.github.io/frontend/overview), then continue through project structure, pages, data/API calls, layouts, styles/assets, i18n, error pages, configuration, build/deploy, and troubleshooting from the Frontend menu.
 
 When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
 
@@ -287,10 +295,11 @@ export default defineBootstrapConfig({
   providers: [
     {
       name: "remote-config",
-      async load({ env, signal }) {
-        const response = await fetch(`https://config.example.com/${env}.json`, {
-          signal,
-        });
+      async load({ configProfile, signal }) {
+        const response = await fetch(
+          `https://config.example.com/${configProfile}.json`,
+          { signal },
+        );
         return await response.json();
       },
     },

@@ -943,6 +943,11 @@ describe("parseBuildArgs", () => {
       expect(options.outdir).toBe("build");
     });
 
+    it("--config 应设置配置 profile", () => {
+      const options = parseBuildArgs(["--config", "sg-sit"]);
+      expect(options.configProfile).toBe("sg-sit");
+    });
+
     it("--clean 应设置清理标志", () => {
       const options = parseBuildArgs(["--clean"]);
       expect(options.clean).toBe(true);

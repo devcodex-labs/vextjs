@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { detectProject } from "./utils/detect-project.js";
 import { loadConfig } from "../lib/config-loader.js";
+import {
+  printConfigProfileWarning,
+  resolveConfigProfile,
+} from "../lib/config-profile.js";
 import { deployFrontendAssets } from "../frontend/deploy/index.js";
 import { resolveFrontendConfig } from "../frontend/tooling/config-resolver.js";
 import type {
@@ -18,6 +22,7 @@ interface DeployAssetsCommandOptions {
   targetDir?: string;
   prefix?: string;
   stateFile?: string;
+  configProfile?: string;
 }
 
 export async function deployCommand(args: string[] = []): Promise<void> {
@@ -41,12 +46,16 @@ export async function deployCommand(args: string[] = []): Promise<void> {
 
 async function deployAssetsCommand(args: string[]): Promise<void> {
   const options = parseDeployAssetsArgs(args);
+  const resolvedConfigProfile = resolveCliConfigProfile(options);
+  printConfigProfileWarning(resolvedConfigProfile);
   const rootDir = detectProject(path.resolve(process.cwd())).rootDir;
   const configDir = resolveConfigDir(rootDir, options.outdir);
   const config = await loadConfig(configDir, {
     rootDir,
     command: "build",
     isBuilt: configDir.includes(`${path.sep}${options.outdir}${path.sep}`),
+    mode: "production",
+    configProfile: resolvedConfigProfile.profile,
   });
   const frontend = withCliFrontendOutDir(config.frontend, options.outdir);
   const resolved = withDeployCliOverrides(
@@ -100,6 +109,9 @@ export function parseDeployAssetsArgs(
       case "--manifest":
         options.manifest = readRequiredValue(args, ++i, "--manifest");
         break;
+      case "--config":
+        options.configProfile = readRequiredValue(args, ++i, "--config");
+        break;
       case "--adapter":
         options.adapter = readRequiredValue(
           args,
@@ -136,6 +148,22 @@ export function parseDeployAssetsArgs(
     }
   }
   return options;
+}
+
+function resolveCliConfigProfile(
+  options: DeployAssetsCommandOptions,
+): ReturnType<typeof resolveConfigProfile> {
+  try {
+    return resolveConfigProfile({
+      cliProfile: options.configProfile,
+      env: process.env,
+      command: "build",
+      displayCommand: "deploy assets",
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
 
 function resolveConfigDir(rootDir: string, outdir: string): string {
@@ -216,6 +244,7 @@ function printDeployHelp(): void {
 
   Examples:
     $ vext deploy assets
+    $ vext deploy assets --config sg-sit
     $ vext deploy assets --dry-run
 `);
 }
@@ -226,6 +255,7 @@ function printDeployAssetsHelp(): void {
 
   Options:
     --outdir <path>       Build output directory (default: "dist")
+    --config <name>       Load config profile for frontend deploy settings
     --manifest <path>     Deploy manifest path
     --adapter <name>      Upload adapter: filesystem, mock, or custom adapter name
     --target-dir <path>   Filesystem adapter target directory
@@ -236,6 +266,7 @@ function printDeployAssetsHelp(): void {
 
   Examples:
     $ vext deploy assets
+    $ vext deploy assets --config sg-sit
     $ vext deploy assets --dry-run
     $ vext deploy assets --adapter filesystem --target-dir .deploy/cdn
 `);

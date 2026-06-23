@@ -1,6 +1,6 @@
 # Build (vext build)
 
-`vext build` compiles server source code into deployable JavaScript products and, when `frontend.enabled` is true, bundles the browser client into `dist/client/`. The current version of `vext build` is designed according to **production-target build**: it will statically inject production mode into `process.env.NODE_ENV` in the user source code, but which environment configuration file is actually loaded during runtime is still determined by `NODE_ENV` at the time of `vext start`. Based on [esbuild](https://esbuild.github.io/) implementation, the compilation phase is optimized for fast local and CI feedback.
+`vext build` compiles server source code into deployable JavaScript products and, when `frontend.enabled` is true, bundles the browser client into `dist/client/`. The current version of `vext build` is designed as a **production-target build**: it statically injects production mode into `process.env.NODE_ENV` in user source code; the runtime config profile is selected independently with `vext start --config <name>` or `VEXT_CONFIG=<name>`. Based on [esbuild](https://esbuild.github.io/) implementation, the compilation phase is optimized for fast local and CI feedback.
 
 ## Quick Start
 
@@ -9,10 +9,10 @@
 vext build
 
 # Run the built product (TypeScript project must have generated a valid dist/)
-NODE_ENV=production vext start
+vext start
 
-# Load custom environment configuration (src/config/sg-sit.ts needs to exist)
-NODE_ENV=sg-sit vext start
+# Load a custom config profile (src/config/sg-sit.ts needs to exist)
+vext start --config sg-sit
 ```
 
 ## Build pre-product refresh
@@ -70,6 +70,7 @@ src/dist/
 | Parameters         | Description                                                  | Default value |
 | ------------------ | ------------------------------------------------------------ | ------------- |
 | `--outdir <path>`  | Output directory                                             | `dist`        |
+| `--config <name>`  | Select the build-time config profile                         | `production`  |
 | `--clean`          | Clean the output directory before compilation                | `false`       |
 | `--sourcemap`      | Generate source map                                          | `true`        |
 | `--no-sourcemap`   | Disable source map                                           | —             |
@@ -143,10 +144,10 @@ define: {
 
 This will cause the `process.env.NODE_ENV` branch in the user source code after build to be statically collapsed according to production semantics.
 
-Note that this injection does not equal "fixed loading of `config/production.ts` at runtime". Which configuration file is actually loaded during runtime is still determined by `NODE_ENV` when `vext start`, for example:
+This injection does not mean the runtime can only load `config/production.ts`. The runtime config profile is selected by `vext start --config <name>` or `VEXT_CONFIG=<name>`, for example:
 
 ```bash
-NODE_ENV=sg-sit vext start
+vext start --config sg-sit
 ```
 
 Will try to load:
@@ -158,15 +159,14 @@ dist/config/sg-sit.js
 Therefore, the current recommended usage of `vext build` is:
 
 - Use it to generate production-target artifact
-- Use `NODE_ENV` of `vext start` to select the environment configuration file
+- Use `vext start --config <profile>` or `VEXT_CONFIG=<profile>` to select the config profile
 - Do not rely on the `process.env.NODE_ENV` conditional branch in the user source code after build to do sit/uat/prod switching
-
-If you want to set `NODE_ENV` cross-platform in `package.json` scripts, it is recommended to use `cross-env`:
 
 ```json
 {
   "scripts": {
-    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start"
+    "start": "vext start",
+    "start:sg-sit": "vext start --config sg-sit"
   }
 }
 ```
@@ -230,7 +230,7 @@ dist/
 Enable source maps when running in Node.js so that error stacks show TypeScript line numbers:
 
 ```bash
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 ```
 
 Error stack when not enabled:
@@ -317,13 +317,13 @@ vext build
 
 ```bash
 # Basic startup
-NODE_ENV=production vext start
+vext start
 
 # Enable source map (recommended)
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # Increase the memory limit
-NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" vext start
 ```
 
 If the TypeScript project lacks `dist/` or key build products, `vext start` will fail directly and prompt to execute `vext build` first. Please use `vext dev` to start the source code during the development period.
@@ -357,7 +357,7 @@ npx vext build
 npm ci --omit=dev
 
 # 4. Start
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production npx vext start
+NODE_OPTIONS=--enable-source-maps npx vext start
 ```
 
 ### Docker multi-stage build
@@ -379,7 +379,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
-ENV NODE_ENV=production
 ENV NODE_OPTIONS=--enable-source-maps
 CMD ["npm", "start"]
 ```
@@ -422,7 +421,7 @@ Make sure to pass the `--enable-source-maps` parameter via `NODE_OPTIONS` when s
 
 ```bash
 # ✅ Correct
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # ❌ Parameter position error
 vext start --enable-source-maps

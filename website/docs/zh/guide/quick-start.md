@@ -309,7 +309,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/mi
 ## 下一步
 
 - 了解 [项目结构](/guide/project-structure) 约定
-- 配置 [前端集成](/zh/guide/frontend)
+- 配置 [前端指南](/zh/frontend/overview)
 - 学习 [路由](/guide/routing) 的三段式定义
 - 探索 [中间件](/guide/middleware) 和 [插件](/guide/plugins)
 - 查看 [配置](/guide/configuration) 选项

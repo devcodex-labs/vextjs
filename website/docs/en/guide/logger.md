@@ -26,14 +26,14 @@ export default defineRoutes((app) => {
 
 `app.logger` exposes 6 commonly used methods, ordered from lowest to highest severity:
 
-| Level | Method | Description | Typical Scenario |
-| ------- | -------------------- | -------- | ---------------------------- |
-| `trace` | `app.logger.trace()` | Finest granularity | Temporary troubleshooting, very detailed path information |
-| `debug` | `app.logger.debug()` | Debug information | Variable values, SQL queries, detailed processes |
-| `info` | `app.logger.info()` | General information | Service startup, request processing, business events |
-| `warn` | `app.logger.warn()` | Warning | Performance degradation, deprecated API, retry |
-| `error` | `app.logger.error()` | Error | Exception, failed operation |
-| `fatal` | `app.logger.fatal()` | Fatal error | The application cannot continue running |
+| Level   | Method               | Description         | Typical Scenario                                          |
+| ------- | -------------------- | ------------------- | --------------------------------------------------------- |
+| `trace` | `app.logger.trace()` | Finest granularity  | Temporary troubleshooting, very detailed path information |
+| `debug` | `app.logger.debug()` | Debug information   | Variable values, SQL queries, detailed processes          |
+| `info`  | `app.logger.info()`  | General information | Service startup, request processing, business events      |
+| `warn`  | `app.logger.warn()`  | Warning             | Performance degradation, deprecated API, retry            |
+| `error` | `app.logger.error()` | Error               | Exception, failed operation                               |
+| `fatal` | `app.logger.fatal()` | Fatal error         | The application cannot continue running                   |
 
 `logger.level` accepts `trace` and `silent` as threshold configurations: `trace` will enable all logging methods, and `silent` will turn off all output.
 
@@ -185,11 +185,11 @@ export default {
 
 `prettyColor` only affects pretty text output and supports three modes:
 
-| value | behavior |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"auto"` | Default value. Enabled in TTY; `FORCE_COLOR=1` forces enable and takes precedence over `NO_COLOR`; `FORCE_COLOR=0`, `NO_COLOR` when `FORCE_COLOR` is not set, `TERM=dumb` or non-TTY disabled |
-| `"always"` | Forces ANSI output in pretty mode, often used for local manual observation or automated verification |
-| `"never"` | disable pretty ANSI |
+| value      | behavior                                                                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"auto"`   | Default value. Enabled in TTY; `FORCE_COLOR=1` forces enable and takes precedence over `NO_COLOR`; `FORCE_COLOR=0`, `NO_COLOR` when `FORCE_COLOR` is not set, `TERM=dumb` or non-TTY disabled |
+| `"always"` | Forces ANSI output in pretty mode, often used for local manual observation or automated verification                                                                                          |
+| `"never"`  | disable pretty ANSI                                                                                                                                                                           |
 
 ```typescript
 // src/config/development.ts
@@ -478,10 +478,16 @@ app.logger.error({ err: error }, "Operation failed");
 async function processPayment(orderId: string, amount: number) {
   try {
     const result = await paymentGateway.charge(amount);
-    app.logger.info({ orderId, amount, chargeId: result.id }, "Payment successful");
+    app.logger.info(
+      { orderId, amount, chargeId: result.id },
+      "Payment successful",
+    );
     return result;
   } catch (err) {
-    app.logger.error({ err, orderId, amount, gateway: "stripe" }, "Payment failed");
+    app.logger.error(
+      { err, orderId, amount, gateway: "stripe" },
+      "Payment failed",
+    );
     throw err;
   }
 }
@@ -570,14 +576,14 @@ For production environments, it is recommended that VextJS output structured JSO
 
 ### Solution Overview
 
-| Solution | Complexity | Applicable scenarios | Description |
-| -------------------------- | :----: | -------------------------- | ----------------------------------- |
-| **stdout → Cloud native** | ⭐ | K8s / Cloud Run / ECS | Platform automatically collects stdout |
-| **PM2/systemd file collection** | ⭐ | Stand-alone deployment | Process manager collects stdout/stderr to file |
-| **logrotate** | ⭐⭐ | Stand-alone / needs automatic cutting | System-level log rotation, no need for application awareness |
-| **Filebeat → ELK** | ⭐⭐⭐ | Medium and large projects | File collection → Elasticsearch → Kibana |
-| **Docker → Loki** | ⭐⭐ | Containerized deployment | Docker logging driver or Agent push |
-| **app.setLogger bridging** | ⭐⭐⭐ | Requires SDK direct connection | The plug-in wraps the logger and forwards it to the external SDK synchronously |
+| Solution                        | Complexity | Applicable scenarios                  | Description                                                                    |
+| ------------------------------- | :--------: | ------------------------------------- | ------------------------------------------------------------------------------ |
+| **stdout → Cloud native**       |     ⭐     | K8s / Cloud Run / ECS                 | Platform automatically collects stdout                                         |
+| **PM2/systemd file collection** |     ⭐     | Stand-alone deployment                | Process manager collects stdout/stderr to file                                 |
+| **logrotate**                   |    ⭐⭐    | Stand-alone / needs automatic cutting | System-level log rotation, no need for application awareness                   |
+| **Filebeat → ELK**              |   ⭐⭐⭐   | Medium and large projects             | File collection → Elasticsearch → Kibana                                       |
+| **Docker → Loki**               |    ⭐⭐    | Containerized deployment              | Docker logging driver or Agent push                                            |
+| **app.setLogger bridging**      |   ⭐⭐⭐   | Requires SDK direct connection        | The plug-in wraps the logger and forwards it to the external SDK synchronously |
 
 ### Recommended log directory structure
 
@@ -605,15 +611,15 @@ In platforms such as Kubernetes / AWS ECS / Google Cloud Run, output directly to
 
 ```bash
 # No additional configuration is required, JSON logs are output directly to stdout
-NODE_ENV=production vext start
+vext start
 ```
 
-| Platform | Log collection method |
-|------------------------|--------------------------------------------------------|
-| **Kubernetes** | stdout → kubelet → Fluentd / Fluent Bit / Loki → Storage |
-| **AWS ECS** | stdout → CloudWatch Logs |
-| **Google Cloud Run** | stdout → Cloud Logging |
-| **Azure Container Apps** | stdout → Azure Monitor |
+| Platform                 | Log collection method                                    |
+| ------------------------ | -------------------------------------------------------- |
+| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → Storage |
+| **AWS ECS**              | stdout → CloudWatch Logs                                 |
+| **Google Cloud Run**     | stdout → Cloud Logging                                   |
+| **Azure Container Apps** | stdout → Azure Monitor                                   |
 
 This is the simplest and most recommended cloud native solution - **don't do any log configuration** and let the platform handle everything.
 
@@ -633,7 +639,6 @@ module.exports = {
       name: "myapp",
       script: "node_modules/vextjs/dist/cli/index.js",
       args: "start",
-      env: { NODE_ENV: "production" },
       error_file: "/var/log/myapp/error.log",
       out_file: "/var/log/myapp/app.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
@@ -650,7 +655,6 @@ module.exports = {
 [Service]
 ExecStart=/usr/bin/npm start
 WorkingDirectory=/srv/myapp
-Environment=NODE_ENV=production
 StandardOutput=append:/var/log/myapp/app.log
 StandardError=append:/var/log/myapp/error.log
 Restart=always
@@ -675,13 +679,13 @@ If you use PM2 or systemd to manage the process, you can use the system's own `l
 }
 ```
 
-| Options | Description |
-| --------------- | ---------------------------------- |
-| `daily` | Rotate every day |
-| `rotate 30` | Keep 30 historical files |
-| `compress` | History file gzip compression |
-| `delaycompress` | The most recent file is not compressed (easy to view) |
-| `copytruncate` | Truncate after copying (without interrupting process writing) |
+| Options         | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `daily`         | Rotate every day                                              |
+| `rotate 30`     | Keep 30 historical files                                      |
+| `compress`      | History file gzip compression                                 |
+| `delaycompress` | The most recent file is not compressed (easy to view)         |
+| `copytruncate`  | Truncate after copying (without interrupting process writing) |
 
 ---
 
@@ -718,8 +722,7 @@ filebeat.inputs:
 
   - type: log
     enabled: true
-    paths:
-      -/var/log/myapp/error.log
+    paths: -/var/log/myapp/error.log
     json.keys_under_root: true
     json.overwrite_keys: true
     fields:
@@ -888,35 +891,35 @@ class PaymentService {
 
 The goal of Vext's built-in logger is to override a stable subset of the framework's default logging requirements and remove the logger runtime dependency from the default installation path. It is not a complete compatibility layer for Pino, nor does it move all Pino extension points into the core.
 
-| Pino capabilities | Vext current status | Recommended expansion paths |
-| ---------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `logger.trace()` public method | Supported | N/A |
-| Modify the log level at runtime | `getLevel()` / `setLevel()` is supported; the writable `logger.level` property is not supported | If sampling/complex strategies are required, the `app.setLogger()` wrapper is available |
-| custom levels / level formatter | Custom levels or renamed `level` fields are not supported | External logging system side mapping numeric level |
-| `redact` path desensitization | Exact key/path subset is supported | wildcard/remove/censor function can be processed on the wrapper/Agent side |
-| serializers/stdSerializers | Only built-in Error and JSON-safe serialization | Business field preprocessing or processing in wrapper |
-| `messageKey` / `errorKey` | Fixed use of `msg` / `err` semantics | Log collection side mapping field |
-| `transport` / multistream / file | No built-in worker transport, multi-target or file writing | stdout → Agent/platform collection, or `app.setLogger()` bridge |
-| pino-pretty complete options | Only supports built-in pretty, `prettyColor`, `prettyIgnore`, `prettySingleLine` | External formatter or custom wrapper can be connected during development |
-| browser API | Browser logger is not supported | Vext is a Node.js server-side framework, an alternative on the browser side |
-| `hooks.logMethod` / merge strategy | Unexposed log call hook or mixin merge strategy | Use `app.setLogger()` to wrap the exposed method |
+| Pino capabilities                  | Vext current status                                                                             | Recommended expansion paths                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `logger.trace()` public method     | Supported                                                                                       | N/A                                                                                     |
+| Modify the log level at runtime    | `getLevel()` / `setLevel()` is supported; the writable `logger.level` property is not supported | If sampling/complex strategies are required, the `app.setLogger()` wrapper is available |
+| custom levels / level formatter    | Custom levels or renamed `level` fields are not supported                                       | External logging system side mapping numeric level                                      |
+| `redact` path desensitization      | Exact key/path subset is supported                                                              | wildcard/remove/censor function can be processed on the wrapper/Agent side              |
+| serializers/stdSerializers         | Only built-in Error and JSON-safe serialization                                                 | Business field preprocessing or processing in wrapper                                   |
+| `messageKey` / `errorKey`          | Fixed use of `msg` / `err` semantics                                                            | Log collection side mapping field                                                       |
+| `transport` / multistream / file   | No built-in worker transport, multi-target or file writing                                      | stdout → Agent/platform collection, or `app.setLogger()` bridge                         |
+| pino-pretty complete options       | Only supports built-in pretty, `prettyColor`, `prettyIgnore`, `prettySingleLine`                | External formatter or custom wrapper can be connected during development                |
+| browser API                        | Browser logger is not supported                                                                 | Vext is a Node.js server-side framework, an alternative on the browser side             |
+| `hooks.logMethod` / merge strategy | Unexposed log call hook or mixin merge strategy                                                 | Use `app.setLogger()` to wrap the exposed method                                        |
 
 These gaps do not affect the Vext default framework log, access log, requestId/trace field injection, child logger, Error serialization, and stdout-first collection. If official OTel Logs, Sentry, Loki/ELK plug-ins are needed in the future, priority should be based on `app.setLogger()` and external Agent extensions, rather than building the transport system back into the core.
 
 ## Configuration reference
 
-| Configuration item | Type | Default value | Description |
-| ----------------------- | ---------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
-| `logger.level` | `string` | `'info'` | Log thresholds: `'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'` |
-| `logger.lifecycleLevel` | `string` | `'concise'` | Framework lifecycle log verbosity level: `'concise'` / `'verbose'` |
-| `logger.pretty` | `boolean` | `NODE_ENV !== 'production'` | Whether to use the built-in pretty formatter to output a readable format |
-| `logger.prettyColor` | `string` | `'auto'` | Whether to add ANSI to the level label in pretty mode: `'auto'` / `'always'` / `'never'` |
-| `logger.prettyIgnore` | `string` | `'pid,hostname,requestId'` | Fields to ignore in pretty mode (comma separated). Hide `requestId` by default to avoid multi-line noise, production JSON output is not affected |
-| `logger.prettySingleLine` | `boolean` | `true` | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format |
-| `logger.redactKeys` | `string[]` | `[]` | Desensitize structured log fields by exact key at any level |
-| `logger.redactPaths` | `string[]` | `[]` | Desensitize structured log fields by dot notation exact path |
-| `logger.redactValue` | `string` | `'[Redacted]'' | Desensitized replacement value |
-| `logger.mixin` | `function` | `undefined` | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields |
+| Configuration item        | Type       | Default value               | Description                                                                                                                                       |
+| ------------------------- | ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`   | `'info'`                    | Log thresholds: `'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'`                                                  |
+| `logger.lifecycleLevel`   | `string`   | `'concise'`                 | Framework lifecycle log verbosity level: `'concise'` / `'verbose'`                                                                                |
+| `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | Whether to use the built-in pretty formatter to output a readable format                                                                          |
+| `logger.prettyColor`      | `string`   | `'auto'`                    | Whether to add ANSI to the level label in pretty mode: `'auto'` / `'always'` / `'never'`                                                          |
+| `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | Fields to ignore in pretty mode (comma separated). Hide `requestId` by default to avoid multi-line noise, production JSON output is not affected  |
+| `logger.prettySingleLine` | `boolean`  | `true`                      | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format |
+| `logger.redactKeys`       | `string[]` | `[]`                        | Desensitize structured log fields by exact key at any level                                                                                       |
+| `logger.redactPaths`      | `string[]` | `[]`                        | Desensitize structured log fields by dot notation exact path                                                                                      |
+| `logger.redactValue`      | `string`   | `'[Redacted]''              | Desensitized replacement value                                                                                                                    |
+| `logger.mixin`            | `function` | `undefined`                 | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields          |
 
 ## Best Practices
 
@@ -944,13 +947,19 @@ app.logger.info({ service: 'OrderService', ... }, 'xxx');
 
 ```typescript
 // ✅ SAFE
-app.logger.info({ userId, action: "password_change" }, "Password has been changed");
+app.logger.info(
+  { userId, action: "password_change" },
+  "Password has been changed",
+);
 
 // ❌ DANGER — password leaked to logs
 app.logger.info({ userId, newPassword }, "Password has been changed");
 
 // ❌ Danger — token leaks to logs
-app.logger.debug({ token: req.headers.authorization }, "Authentication information");
+app.logger.debug(
+  { token: req.headers.authorization },
+  "Authentication information",
+);
 ```
 
 ### 4. Use log levels appropriately
@@ -969,7 +978,10 @@ app.logger.warn({ retryCount: 3, url }, "Request retry");
 app.logger.error({ err, orderId }, "Payment processing failed");
 
 // fatal — the application cannot continue to run
-app.logger.fatal({ err }, "The database connection is disconnected and cannot be restored");
+app.logger.fatal(
+  { err },
+  "The database connection is disconnected and cannot be restored",
+);
 ```
 
 ### 5. Use JSON format in production environment

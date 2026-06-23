@@ -309,7 +309,7 @@ After turning on `openapi.enabled: true` in the configuration, you can access it
 ## Next step
 
 - Understand [Project Structure](/guide/project-structure) conventions
-- Configure [Frontend integration](/guide/frontend)
+- Configure the [Frontend guide](/frontend/overview)
 - Learn the three-part definition of [routing](/guide/routing)
 - Explore [middleware](/guide/middleware) and [plugins](/guide/plugins)
 - View the [Configuration](/guide/configuration) options

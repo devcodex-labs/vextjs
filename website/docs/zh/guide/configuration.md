@@ -7,7 +7,7 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
+框架内置默认值 → default.ts → {configProfile}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
 每一层都可以只声明需要覆盖的字段，未声明的字段从上一层继承。
@@ -17,30 +17,31 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 | 文件                        | 用途                                   | 是否必须 |
 | --------------------------- | -------------------------------------- | -------- |
 | `src/config/default.ts`     | 所有环境的基础配置                     | ✅ 必须  |
-| `src/config/development.ts` | 开发环境覆盖（`NODE_ENV=development`） | 可选     |
-| `src/config/production.ts`  | 生产环境覆盖（`NODE_ENV=production`）  | 可选     |
-| `src/config/test.ts`        | 测试环境覆盖（`NODE_ENV=test`）        | 可选     |
+| `src/config/development.ts` | 开发 profile 覆盖（`vext dev` 默认）   | 可选     |
+| `src/config/production.ts`  | 生产 profile 覆盖（`vext start` 默认） | 可选     |
+| `src/config/test.ts`        | 测试 profile 覆盖                      | 可选     |
 | `src/config/local.ts`       | 本地开发覆盖（应加入 `.gitignore`）    | 可选     |
 | `src/config/bootstrap.ts`   | 启动期 provider 注册入口               | 可选     |
 
-环境文件通过 `NODE_ENV` 环境变量自动匹配。未设置 `NODE_ENV` 时默认为 `development`。
+配置 profile 通过 `--config <name>` 或 `VEXT_CONFIG=<name>` 显式选择。未指定时，`vext start`、`vext build`、`vext deploy assets` 默认使用 `production` profile，`vext dev` 默认使用 `development` profile。
 
-`NODE_ENV` 不限于 `development` / `production` / `test`，也可以是任意自定义环境名，例如：
+profile 名可以是自定义部署环境名，例如：
 
 - `src/config/sg-sit.ts`
 - `src/config/us-uat.ts`
 - `src/config/us-prod.ts`
 
-启动时只要设置：
+启动时传入 profile 名：
 
 ```bash
-NODE_ENV=sg-sit vext start
+vext start --config sg-sit
+VEXT_CONFIG=sg-sit vext start
 ```
 
 Vext 就会按同一套合并链路加载：`default -> sg-sit -> local -> bootstrap provider patch -> CLI override`。
 
-:::warning Build 与 Runtime 的环境语义
-`vext build` 当前会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`。这不会改变 `vext start` 在运行时按 `NODE_ENV` 选择配置文件的行为，但会影响 build 后用户源码里的环境分支判断。
+:::warning Build、Runtime 与 Config Profile 的语义
+`vext build` 会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`，`vext start` 运行时也会使用 production runtime mode。配置 profile 是独立概念，由 `--config` / `VEXT_CONFIG` 决定。
 
 因此，推荐把环境差异放进：
 
@@ -71,10 +72,11 @@ export default defineBootstrapConfig({
     {
       name: "remote-config",
       timeoutMs: 10_000,
-      async load({ env, baseConfig, signal }) {
-        const response = await fetch(`https://config.example.com/${env}`, {
-          signal,
-        });
+      async load({ configProfile, baseConfig, signal }) {
+        const response = await fetch(
+          `https://config.example.com/${configProfile}`,
+          { signal },
+        );
 
         const remote = await response.json();
         return {
@@ -329,7 +331,7 @@ export default {
 
 默认上传排除 `index.html` 和 `**/*.map`：HTML 仍由 Vext 服务端渲染，source map 可保留在服务器调试链路中，不随 CDN 静态资源发布。
 
-创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端集成](/zh/guide/frontend)。
+创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端指南](/zh/frontend/overview)。
 
 ## 完整配置项参考
 
@@ -810,7 +812,8 @@ export default defineRoutes((app) => {
   app.get("/info", async (_req, res) => {
     res.json({
       port: app.config.port,
-      env: process.env.NODE_ENV,
+      runtimeMode: process.env.NODE_ENV,
+      configProfile: process.env.VEXT_CONFIG,
       openapi: app.config.openapi.enabled,
     });
   });
@@ -890,15 +893,16 @@ declare module "vextjs" {
 
 除了配置文件，部分设置也可以通过环境变量控制：
 
-| 环境变量               | 说明                                                              |
-| ---------------------- | ----------------------------------------------------------------- |
-| `NODE_ENV`             | 决定加载哪个环境配置文件（`development` / `production` / `test`） |
-| `PORT`                 | 可在 `default.ts` 中引用 `process.env.PORT`                       |
-| `VEXT_PORT`            | CLI `--port` 的内部传递变量，优先级高于 provider patch            |
-| `VEXT_HOST`            | CLI `--host` 的内部传递变量，优先级高于 provider patch            |
-| `VEXT_PORT_CONFLICT`   | 端口冲突策略：`error` / `prompt` / `kill` / `next`                |
-| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别：`concise` / `verbose`                           |
-| `VEXT_CLUSTER`         | 设为 `1` 时启用 Cluster 模式                                      |
+| 环境变量               | 说明                                                   |
+| ---------------------- | ------------------------------------------------------ |
+| `VEXT_CONFIG`          | 选择要加载的配置 profile                               |
+| `NODE_ENV`             | 运行时模式；`vext start` 固定为 production             |
+| `PORT`                 | 可在 `default.ts` 中引用 `process.env.PORT`            |
+| `VEXT_PORT`            | CLI `--port` 的内部传递变量，优先级高于 provider patch |
+| `VEXT_HOST`            | CLI `--host` 的内部传递变量，优先级高于 provider patch |
+| `VEXT_PORT_CONFLICT`   | 端口冲突策略：`error` / `prompt` / `kill` / `next`     |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别：`concise` / `verbose`                |
+| `VEXT_CLUSTER`         | 设为 `1` 时启用 Cluster 模式                           |
 
 ```typescript
 // src/config/default.ts — 使用环境变量

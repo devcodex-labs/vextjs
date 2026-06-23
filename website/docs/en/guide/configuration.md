@@ -7,7 +7,7 @@ VextJS uses a **multi-layer configuration merging** mechanism to support configu
 When the framework starts, `config-loader` loads configuration files and merges them deeply in the following order:
 
 ```
-Framework built-in defaults → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
+Framework built-in defaults → default.ts → {configProfile}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
 Each layer can declare only the fields that need to be covered, and undeclared fields are inherited from the previous layer.
@@ -17,30 +17,31 @@ Each layer can declare only the fields that need to be covered, and undeclared f
 | File                        | Purpose                                                      | Is it necessary |
 | --------------------------- | ------------------------------------------------------------ | --------------- |
 | `src/config/default.ts`     | Basic configuration for all environments                     | ✅ Required     |
-| `src/config/development.ts` | Development environment override (`NODE_ENV=development`)    | Optional        |
-| `src/config/production.ts`  | Production environment override (`NODE_ENV=production`)      | Optional        |
-| `src/config/test.ts`        | Test environment coverage (`NODE_ENV=test`)                  | Optional        |
+| `src/config/development.ts` | Development profile override (`vext dev` default)            | Optional        |
+| `src/config/production.ts`  | Production profile override (`vext start` default)           | Optional        |
+| `src/config/test.ts`        | Test profile override                                        | Optional        |
 | `src/config/local.ts`       | Local development coverage (should be added to `.gitignore`) | Optional        |
 | `src/config/bootstrap.ts`   | Startup provider registration entrance                       | Optional        |
 
-Environment files are automatically matched through the `NODE_ENV` environment variable. Defaults to `development` when `NODE_ENV` is not set.
+Select a config profile explicitly with `--config <name>` or `VEXT_CONFIG=<name>`. When omitted, `vext start`, `vext build`, and `vext deploy assets` default to the `production` profile, while `vext dev` defaults to the `development` profile.
 
-`NODE_ENV` is not limited to `development` / `production` / `test`, it can also be any custom environment name, for example:
+Profile names can represent custom deployment environments, for example:
 
 - `src/config/sg-sit.ts`
 - `src/config/us-uat.ts`
 - `src/config/us-prod.ts`
 
-When starting up, just set:
+Pass the profile name at startup:
 
 ```bash
-NODE_ENV=sg-sit vext start
+vext start --config sg-sit
+VEXT_CONFIG=sg-sit vext start
 ```
 
 Vext will be loaded according to the same set of merge links: `default -> sg-sit -> local -> bootstrap provider patch -> CLI override`.
 
-:::warning Environmental semantics of Build and Runtime
-`vext build` currently statically injects `process.env.NODE_ENV` in user source code as `"production"`. This will not change the behavior of `vext start` when pressing `NODE_ENV` to select the configuration file during runtime, but it will affect the environment branch judgment in the user source code after build.
+:::warning Build, Runtime, and Config Profile semantics
+`vext build` statically injects `process.env.NODE_ENV` in user source code as `"production"`, and `vext start` runs with production runtime mode. Config profile selection is independent and is controlled by `--config` / `VEXT_CONFIG`.
 
 Therefore, it is recommended to put the environmental differences into:
 
@@ -71,10 +72,11 @@ export default defineBootstrapConfig({
     {
       name: "remote-config",
       timeoutMs: 10_000,
-      async load({ env, baseConfig, signal }) {
-        const response = await fetch(`https://config.example.com/${env}`, {
-          signal,
-        });
+      async load({ configProfile, baseConfig, signal }) {
+        const response = await fetch(
+          `https://config.example.com/${configProfile}`,
+          { signal },
+        );
 
         const remote = await response.json();
         return {
@@ -327,7 +329,7 @@ By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowe
 
 When `frontend.deploy.upload` is enabled, `vext deploy assets` reads `dist/client/deploy-manifest.json` and uploads changed assets by `uploadKey` and sha256. The built-in `filesystem` adapter writes files to `targetDir`, which is useful as a CDN sync staging directory. HTML is still rendered by Vext, and `index.html` plus `**/*.map` are excluded from the default deploy manifest.
 
-For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see [Frontend integration](/guide/frontend).
+For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see the [Frontend guide](/frontend/overview).
 
 ## Complete configuration item reference
 
@@ -806,7 +808,8 @@ export default defineRoutes((app) => {
   app.get("/info", async (_req, res) => {
     res.json({
       port: app.config.port,
-      env: process.env.NODE_ENV,
+      runtimeMode: process.env.NODE_ENV,
+      configProfile: process.env.VEXT_CONFIG,
       openapi: app.config.openapi.enabled,
     });
   });
@@ -886,15 +889,16 @@ declare module "vextjs" {
 
 In addition to configuration files, some settings can also be controlled through environment variables:
 
-| Environment variables  | Description                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------ |
-| `NODE_ENV`             | Determine which environment configuration file to load (`development` / `production` / `test`) |
-| `PORT`                 | Can be referenced in `default.ts`                                                              | `process.env.PORT` |
-| `VEXT_PORT`            | Internal pass variable of CLI `--port`, has higher priority than provider patch                |
-| `VEXT_HOST`            | CLI `--host` internal pass variable, has higher priority than provider patch                   |
-| `VEXT_PORT_CONFLICT`   | Port conflict policy: `error` / `prompt` / `kill` / `next`                                     |
-| `VEXT_LIFECYCLE_LEVEL` | Lifecycle log level: `concise` / `verbose`                                                     |
-| `VEXT_CLUSTER`         | Enables Cluster mode when set to `1`                                                           |
+| Environment variables  | Description                                                                 |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `VEXT_CONFIG`          | Select the config profile to load                                           |
+| `NODE_ENV`             | Runtime mode; `vext start` runs as production                               |
+| `PORT`                 | Can be referenced in `default.ts` as `process.env.PORT`                     |
+| `VEXT_PORT`            | Internal pass variable of CLI `--port`, higher priority than provider patch |
+| `VEXT_HOST`            | CLI `--host` internal pass variable, higher priority than provider patch    |
+| `VEXT_PORT_CONFLICT`   | Port conflict policy: `error` / `prompt` / `kill` / `next`                  |
+| `VEXT_LIFECYCLE_LEVEL` | Lifecycle log level: `concise` / `verbose`                                  |
+| `VEXT_CLUSTER`         | Enables Cluster mode when set to `1`                                        |
 
 ```typescript
 // src/config/default.ts — use environment variables

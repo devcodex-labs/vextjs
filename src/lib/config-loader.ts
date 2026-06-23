@@ -1,7 +1,7 @@
 /**
  * config-loader.ts — 配置加载器
  *
- * 负责加载并合并三层配置文件（default → env → local），
+ * 负责加载并合并配置文件（default → config profile → local），
  * 执行 Fail Fast 校验，然后 deepFreeze 返回只读配置对象。
  *
  * 合并规则（含 CJS interop 支持）：
@@ -12,8 +12,8 @@
  * 配置文件结构：
  *   src/config/
  *   ├── default.ts       — 基准配置（必须存在）
- *   ├── development.ts   — 开发环境覆盖（可选）
- *   ├── production.ts    — 生产环境覆盖（可选）
+ *   ├── development.ts   — 开发 profile 覆盖（可选）
+ *   ├── production.ts    — 生产 profile 覆盖（可选）
  *   └── local.ts         — 本地覆盖（最高优先级，可选，不提交 git）
  *
  * @module lib/config-loader
@@ -30,6 +30,12 @@ import {
   loadBootstrapConfigPatch,
   type BootstrapCommand,
 } from "./bootstrap-config.js";
+import {
+  getDefaultRuntimeMode,
+  resolveConfigProfile,
+  validateConfigProfileName,
+  type RuntimeMode,
+} from "./config-profile.js";
 
 // ── 常量 ────────────────────────────────────────────────────
 
@@ -59,6 +65,8 @@ export interface LoadConfigOptions {
   rootDir?: string;
   command?: BootstrapCommand;
   isBuilt?: boolean;
+  configProfile?: string;
+  mode?: RuntimeMode;
   env?: NodeJS.ProcessEnv;
   meta?: LoadConfigMetadata;
 }
@@ -1622,7 +1630,7 @@ async function importConfigFile(
 /**
  * 加载并合并配置文件
  *
- * 合并顺序：default → {NODE_ENV} → local
+ * 合并顺序：default → {configProfile} → local
  * 合并完成后执行 Fail Fast 校验，通过后 deepFreeze 返回只读对象。
  *
  * @param configDir 配置目录绝对路径（通常为 path.join(projectRoot, 'src/config')）
@@ -1643,6 +1651,14 @@ export async function loadRawConfig(
   options: LoadConfigOptions = {},
 ): Promise<Record<string, unknown>> {
   const processEnv = options.env ?? process.env;
+  const configProfile =
+    options.configProfile !== undefined
+      ? validateConfigProfileName(options.configProfile, "configProfile")
+      : resolveConfigProfile({
+          env: processEnv,
+          command: options.command,
+        }).profile;
+  const mode = options.mode ?? getDefaultRuntimeMode(options.command);
 
   // ── 1. 加载 default（必须存在）────────────────────────
   const defaultFile = resolveConfigFile(configDir, "default");
@@ -1683,24 +1699,24 @@ export async function loadRawConfig(
       userDefaultConfig.middlewares;
   }
 
-  // ── 2. 加载环境文件（可选）──────────────────────────────
-  const env = processEnv.NODE_ENV || "development";
-  const envFile = resolveConfigFile(configDir, env);
-  const envConfig = envFile ? await importConfigFile(envFile) : {};
+  // ── 2. 加载 profile 文件（可选）──────────────────────────
+  const profileFile = resolveConfigFile(configDir, configProfile);
+  const profileConfig = profileFile ? await importConfigFile(profileFile) : {};
 
   // ── 3. 加载 local（可选，不存在则静默跳过）──────────────
   const localFile = resolveConfigFile(configDir, "local");
   const localConfig = localFile ? await importConfigFile(localFile) : {};
 
   // ── 4. 合并 ────────────────────────────────────────────
-  let merged = applyConfigLayer(defaultConfig, envConfig);
+  let merged = applyConfigLayer(defaultConfig, profileConfig);
   merged = applyConfigLayer(merged, localConfig);
 
   const rootDir = options.rootDir ?? path.dirname(path.dirname(configDir));
   const providerPatch = await loadBootstrapConfigPatch({
     rootDir,
     configDir,
-    env,
+    mode,
+    configProfile,
     command: options.command ?? "start",
     isBuilt: options.isBuilt ?? false,
     baseConfig: merged,

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { RuntimeMode } from "./config-profile.js";
 
 const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
 
@@ -11,6 +12,9 @@ export type BootstrapCommand = "start" | "dev" | "test" | "build";
 export interface BootstrapConfigContext {
   rootDir: string;
   configDir: string;
+  mode: RuntimeMode;
+  configProfile: string;
+  /** @deprecated Use ctx.mode for runtime mode or ctx.configProfile for profile names. */
   env: string;
   command: BootstrapCommand;
   isBuilt: boolean;
@@ -34,7 +38,9 @@ export interface BootstrapConfigDefinition {
 export interface LoadBootstrapConfigOptions {
   rootDir: string;
   configDir: string;
-  env: string;
+  mode: RuntimeMode;
+  configProfile: string;
+  env?: string;
   command: BootstrapCommand;
   isBuilt: boolean;
   baseConfig: Readonly<Record<string, unknown>>;
@@ -126,7 +132,9 @@ async function executeProvider(
     throw new Error("[vextjs] Invalid bootstrap config provider definition.");
   }
   if (!provider.name || typeof provider.name !== "string") {
-    throw new Error("[vextjs] Bootstrap config provider must have a non-empty name.");
+    throw new Error(
+      "[vextjs] Bootstrap config provider must have a non-empty name.",
+    );
   }
   if (typeof provider.load !== "function") {
     throw new Error(
@@ -213,13 +221,15 @@ export async function loadBootstrapConfigPatch(
 
   for (const provider of definition.providers) {
     const required =
-      provider.required ?? (options.env === "production" ? true : false);
+      provider.required ?? (options.mode === "production" ? true : false);
 
     try {
       const patch = await executeProvider(provider, {
         rootDir: options.rootDir,
         configDir: options.configDir,
-        env: options.env,
+        mode: options.mode,
+        configProfile: options.configProfile,
+        env: options.env ?? options.mode,
         command: options.command,
         isBuilt: options.isBuilt,
         baseConfig: options.baseConfig,
@@ -230,8 +240,7 @@ export async function loadBootstrapConfigPatch(
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      const message =
-        `[vextjs] Bootstrap config provider "${provider.name}" failed: ${reason}`;
+      const message = `[vextjs] Bootstrap config provider "${provider.name}" failed: ${reason}`;
 
       if (required) {
         throw new Error(message);

@@ -1068,6 +1068,7 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
   let savedPort: string | undefined;
   let savedHost: string | undefined;
   let savedLifecycleLevel: string | undefined;
+  let savedConfigProfile: string | undefined;
   let savedNodeEnv: string | undefined;
 
   beforeEach(() => {
@@ -1081,9 +1082,10 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
     savedPort = process.env.VEXT_PORT;
     savedHost = process.env.VEXT_HOST;
     savedLifecycleLevel = process.env.VEXT_LIFECYCLE_LEVEL;
+    savedConfigProfile = process.env.VEXT_CONFIG;
     savedNodeEnv = process.env.NODE_ENV;
-    // loadConfig 内部使用 NODE_ENV 查找环境文件
     process.env.NODE_ENV = "test";
+    delete process.env.VEXT_CONFIG;
   });
 
   afterEach(() => {
@@ -1102,6 +1104,11 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
       process.env.VEXT_LIFECYCLE_LEVEL = savedLifecycleLevel;
     } else {
       delete process.env.VEXT_LIFECYCLE_LEVEL;
+    }
+    if (savedConfigProfile !== undefined) {
+      process.env.VEXT_CONFIG = savedConfigProfile;
+    } else {
+      delete process.env.VEXT_CONFIG;
     }
     if (savedNodeEnv !== undefined) {
       process.env.NODE_ENV = savedNodeEnv;
@@ -1196,10 +1203,116 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
   });
 });
 
+describe("loadConfig — config profile selection", () => {
+  let tmpDir: string;
+  let savedConfigProfile: string | undefined;
+  let savedNodeEnv: string | undefined;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vext-profile-test-"));
+    fs.writeFileSync(
+      path.join(tmpDir, "default.js"),
+      `module.exports = { port: 3000, host: "default.local" };\n`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "development.js"),
+      `module.exports = { port: 3001, host: "development.local" };\n`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "production.js"),
+      `module.exports = { port: 3002, host: "production.local" };\n`,
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "sg-sit.js"),
+      `module.exports = { port: 3100, host: "sg-sit.local" };\n`,
+    );
+
+    savedConfigProfile = process.env.VEXT_CONFIG;
+    savedNodeEnv = process.env.NODE_ENV;
+    delete process.env.VEXT_CONFIG;
+    delete process.env.NODE_ENV;
+  });
+
+  afterEach(() => {
+    if (savedConfigProfile !== undefined) {
+      process.env.VEXT_CONFIG = savedConfigProfile;
+    } else {
+      delete process.env.VEXT_CONFIG;
+    }
+    if (savedNodeEnv !== undefined) {
+      process.env.NODE_ENV = savedNodeEnv;
+    } else {
+      delete process.env.NODE_ENV;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("loads an explicit configProfile independent of NODE_ENV", async () => {
+    process.env.NODE_ENV = "production";
+
+    const config = await loadConfig(tmpDir, {
+      command: "start",
+      mode: "production",
+      configProfile: "sg-sit",
+    });
+
+    expect(config.port).toBe(3100);
+    expect(config.host).toBe("sg-sit.local");
+  });
+
+  it("loads VEXT_CONFIG when configProfile is not passed", async () => {
+    process.env.VEXT_CONFIG = "sg-sit";
+    process.env.NODE_ENV = "production";
+
+    const config = await loadConfig(tmpDir, {
+      command: "start",
+    });
+
+    expect(config.port).toBe(3100);
+  });
+
+  it("does not use standard NODE_ENV values as config profile names", async () => {
+    process.env.NODE_ENV = "production";
+
+    const config = await loadConfig(tmpDir, {
+      command: "dev",
+    });
+
+    expect(config.port).toBe(3001);
+    expect(config.host).toBe("development.local");
+  });
+
+  it("supports legacy custom NODE_ENV as a fallback profile", async () => {
+    process.env.NODE_ENV = "sg-sit";
+
+    const config = await loadConfig(tmpDir, {
+      command: "start",
+    });
+
+    expect(config.port).toBe(3100);
+  });
+
+  it("applies local config after the selected profile", async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "local.js"),
+      `module.exports = { host: "local.local" };\n`,
+    );
+
+    const config = await loadConfig(tmpDir, {
+      command: "start",
+      configProfile: "sg-sit",
+    });
+
+    expect(config.port).toBe(3100);
+    expect(config.host).toBe("local.local");
+  });
+});
+
 describe("loadConfig — bootstrap config provider", () => {
   let tmpRoot: string;
   let configDir: string;
   let savedNodeEnv: string | undefined;
+  let savedConfigProfile: string | undefined;
   let savedPort: string | undefined;
   let savedHost: string | undefined;
 
@@ -1219,9 +1332,11 @@ describe("loadConfig — bootstrap config provider", () => {
     );
 
     savedNodeEnv = process.env.NODE_ENV;
+    savedConfigProfile = process.env.VEXT_CONFIG;
     savedPort = process.env.VEXT_PORT;
     savedHost = process.env.VEXT_HOST;
     process.env.NODE_ENV = "test";
+    delete process.env.VEXT_CONFIG;
     delete process.env.VEXT_PORT;
     delete process.env.VEXT_HOST;
   });
@@ -1231,6 +1346,11 @@ describe("loadConfig — bootstrap config provider", () => {
       process.env.NODE_ENV = savedNodeEnv;
     } else {
       delete process.env.NODE_ENV;
+    }
+    if (savedConfigProfile !== undefined) {
+      process.env.VEXT_CONFIG = savedConfigProfile;
+    } else {
+      delete process.env.VEXT_CONFIG;
     }
     if (savedPort !== undefined) {
       process.env.VEXT_PORT = savedPort;
@@ -1267,6 +1387,33 @@ describe("loadConfig — bootstrap config provider", () => {
 
     expect(config.host).toBe("cli.local");
     expect(config.logger?.lifecycleLevel).toBe("concise");
+  });
+
+  it("passes mode and configProfile to bootstrap providers", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = {
+  providers: [{
+    name: "context-provider",
+    load(ctx) {
+      return {
+        host: ctx.configProfile + "." + ctx.mode + "." + ctx.env,
+        logger: { level: ctx.mode === "production" ? "warn" : "debug" }
+      };
+    }
+  }]
+};\n`,
+    );
+
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "start",
+      mode: "production",
+      configProfile: "sg-sit",
+    });
+
+    expect(config.host).toBe("sg-sit.production.production");
+    expect(config.logger?.level).toBe("warn");
   });
 
   it("allows optional provider failure outside production", async () => {

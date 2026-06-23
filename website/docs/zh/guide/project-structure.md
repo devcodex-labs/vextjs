@@ -88,21 +88,22 @@ my-app/
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {NODE_ENV}.ts → local.ts → bootstrap provider patch → CLI override
+框架内置默认值 → default.ts → {profile}.ts → local.ts → bootstrap provider patch → CLI override
 ```
 
 | 文件                   | 用途                                                     | 是否必须 |
 | ---------------------- | -------------------------------------------------------- | -------- |
-| `default.ts`           | 所有环境的基础配置                                       | ✅ 必须  |
+| `default.ts`           | 所有 profile 的基础配置                                  | ✅ 必须  |
 | `bootstrap.ts`         | 启动期远程配置 provider 注册入口                         | 可选     |
 | `bootstrap.example.ts` | 脚手架生成的 provider 示例，复制为 `bootstrap.ts` 后启用 | 示例     |
-| `development.ts`       | 开发环境覆盖                                             | 可选     |
-| `production.ts`        | 生产环境覆盖                                             | 可选     |
-| `test.ts`              | 测试环境覆盖                                             | 可选     |
+| `development.ts`       | 开发默认 profile 覆盖                                    | 可选     |
+| `production.ts`        | 生产默认 profile 覆盖                                    | 可选     |
+| `test.ts`              | 测试默认 profile 覆盖                                    | 可选     |
+| `sg-sit.ts`            | 自定义 profile 覆盖                                      | 可选     |
 | `local.ts`             | 本地开发覆盖（应加入 `.gitignore`）                      | 可选     |
 | `local.example.ts`     | 脚手架生成的本地覆盖示例，复制为 `local.ts` 后启用       | 示例     |
 
-环境文件通过 `NODE_ENV` 环境变量自动匹配。例如 `NODE_ENV=production` 时加载 `production.ts`。
+配置 profile 可通过 `vext start --config <name>` 或 `VEXT_CONFIG=<name>` 选择。例如 `vext start --config sg-sit` 时加载 `sg-sit.ts`。
 
 :::info 脚手架约定
 `vext create` 默认生成 `local.example.ts` / `bootstrap.example.ts`，而不是直接生成 `local.ts` / `bootstrap.ts`。这样既能告诉用户约定路径，也能避免把本地覆盖或远程配置入口误提交到仓库。
@@ -475,6 +476,6 @@ dist/
 ## 下一步
 
 - 学习 [路由](/guide/routing) 的三段式定义和参数校验
-- 配置 [前端集成](/zh/guide/frontend)
+- 配置 [前端指南](/zh/frontend/overview)
 - 了解 [服务层](/guide/services) 的设计模式
 - 探索 [配置](/guide/configuration) 的完整选项

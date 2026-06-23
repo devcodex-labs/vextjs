@@ -9,6 +9,10 @@ import {
 } from "../frontend/tooling/client-build-compiler.js";
 import { deployFrontendAssets } from "../frontend/deploy/index.js";
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
+import {
+  printConfigProfileWarning,
+  resolveConfigProfile,
+} from "../lib/config-profile.js";
 
 /**
  * vext build — 生产编译命令（Phase 2A）
@@ -67,6 +71,9 @@ interface BuildCommandOptions {
 
   /** 只输出前端上传计划，不执行真实上传 */
   deployDryRun: boolean;
+
+  /** 配置 profile 名称 */
+  configProfile?: string;
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -91,6 +98,8 @@ interface BuildCommandOptions {
 export async function buildCommand(args: string[] = []): Promise<void> {
   // ── 解析命令行参数 ────────────────────────────────────────
   const options = parseBuildArgs(args);
+  const resolvedConfigProfile = resolveCliConfigProfile(options);
+  printConfigProfileWarning(resolvedConfigProfile);
 
   // ── 检测项目结构 ──────────────────────────────────────────
   const rootDir = path.resolve(process.cwd());
@@ -125,6 +134,8 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       rootDir: project.rootDir,
       command: "build",
       isBuilt: false,
+      mode: "production",
+      configProfile: resolvedConfigProfile.profile,
     });
     if (!isFrontendEnabled(config.frontend)) {
       console.log(
@@ -224,12 +235,16 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       rootDir: project.rootDir,
       command: "build",
       isBuilt: true,
+      mode: "production",
+      configProfile: resolvedConfigProfile.profile,
     });
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
     console.log("");
     console.log("[vextjs] To start compiled output:");
-    console.log("[vextjs]   NODE_ENV=<env> vext start");
-    console.log("[vextjs]   e.g. NODE_ENV=production vext start");
+    console.log("[vextjs]   vext start");
+    console.log(
+      `[vextjs]   vext start --config ${resolvedConfigProfile.profile}`,
+    );
   } catch (err) {
     console.error("[vextjs] build failed:");
     console.error(err);
@@ -323,6 +338,21 @@ function withCliFrontendOutDir(
 
 // ── 参数解析 ────────────────────────────────────────────────
 
+function resolveCliConfigProfile(
+  options: BuildCommandOptions,
+): ReturnType<typeof resolveConfigProfile> {
+  try {
+    return resolveConfigProfile({
+      cliProfile: options.configProfile,
+      env: process.env,
+      command: "build",
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+}
+
 /**
  * parseBuildArgs — 解析 vext build 的命令行参数
  *
@@ -364,6 +394,14 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
           process.exit(1);
         }
         options.outdir = args[++i]!;
+        break;
+
+      case "--config":
+        if (i + 1 >= args.length) {
+          console.error("[vextjs] --config requires a value");
+          process.exit(1);
+        }
+        options.configProfile = args[++i]!;
         break;
 
       case "--clean":
@@ -426,6 +464,7 @@ function printBuildHelp(): void {
 
   Options:
     --outdir <path>    Output directory (default: "dist")
+    --config <name>    Load src/config/<name> for build-time config
     --clean            Clean output directory before build
     --sourcemap        Generate source maps (default: true)
     --no-sourcemap     Disable source map generation
@@ -442,6 +481,7 @@ function printBuildHelp(): void {
 
   Examples:
     $ vext build
+    $ vext build --config sg-sit
     $ vext build --clean
     $ vext build --clean --minify --typecheck
     $ vext build --upload-assets
@@ -450,7 +490,7 @@ function printBuildHelp(): void {
     $ vext build --no-sourcemap
 
   After building, start with:
-    $ NODE_ENV=<env> vext start
-    $ NODE_ENV=production vext start
+    $ vext start
+    $ vext start --config sg-sit
 `);
 }

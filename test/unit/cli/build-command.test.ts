@@ -167,6 +167,8 @@ describe("buildCommand", () => {
       {
         rootDir: "E:/app",
         command: "build",
+        mode: "production",
+        configProfile: "production",
         isBuilt: true,
       },
     );
@@ -198,6 +200,8 @@ describe("buildCommand", () => {
       {
         rootDir: "E:/app",
         command: "build",
+        mode: "production",
+        configProfile: "production",
         isBuilt: true,
       },
     );

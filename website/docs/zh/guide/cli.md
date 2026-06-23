@@ -488,11 +488,11 @@ vext start --port-conflict next
 vext start --startup-profile
 vext start --startup-profile-json .vext/inspect/start-profile.json
 
-# 加载 production 配置
-PORT=8080 NODE_ENV=production vext start
+# 加载 production profile 并覆盖端口
+vext start --port 8080
 
-# 加载自定义环境配置（需存在 src/config/sg-sit.ts）
-NODE_ENV=sg-sit vext start
+# 加载自定义配置 profile（需存在 src/config/sg-sit.ts）
+vext start --config sg-sit
 ```
 
 ### 默认命令
@@ -547,38 +547,31 @@ VEXT_CLUSTER=1 vext start
 
 ### 启动期配置 Provider
 
-如果项目存在 `src/config/bootstrap.ts`，`vext start` / `vext dev` 会在配置 validate / freeze 前执行其中声明的 `bootstrap config provider`，并将 provider 返回的 patch 合并到最终配置中。优先级为：`default < env < local < provider < CLI`。
+如果项目存在 `src/config/bootstrap.ts`，`vext start` / `vext dev` 会在配置 validate / freeze 前执行其中声明的 `bootstrap config provider`，并将 provider 返回的 patch 合并到最终配置中。优先级为：`default < config profile < local < provider < CLI`。
 
 Cluster 模式下，Master 会把本轮 provider patch 传递给 Worker 复用，避免同一启动周期内 Master / Worker 看到不同远程配置。
 
 ### package.json 脚本
 
-推荐在跨平台项目中使用 `cross-env` 设置环境变量：
-
-```bash
-npm i -D cross-env
-```
-
 ```json
 {
   "scripts": {
     "build": "vext build",
-    "start": "cross-env NODE_ENV=production vext start",
-    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start",
-    "start:us-uat": "cross-env NODE_ENV=us-uat vext start"
+    "start": "vext start",
+    "start:sg-sit": "vext start --config sg-sit",
+    "start:us-uat": "vext start --config us-uat",
+    "deploy:assets:sg-sit": "vext deploy assets --config sg-sit --dry-run"
   }
 }
 ```
 
-Vext 本身不内置 `cross-env`；它只是推荐的脚本层兼容工具，用于在 Windows、macOS、Linux 下统一设置 `NODE_ENV`。
+:::tip 配置 profile 选择
+`vext start`、`vext build` 和 `vext deploy assets` 默认读取 `production` profile，`vext dev` 默认读取 `development` profile。需要切换到自定义 profile 时：
 
-:::tip 环境文件选择
-当前 `vext start` 没有 `--config <file>` 这样的参数。环境配置文件的选择机制是：
+- CLI 参数：`vext start --config sg-sit`
+- 环境变量：`VEXT_CONFIG=sg-sit vext start`
 
-- 读取运行时 `NODE_ENV`
-- 匹配 `src/config/{NODE_ENV}.ts`（build 后对应 `dist/config/{NODE_ENV}.js`）
-
-如果你需要 `sg-sit.ts`、`us-uat.ts` 这类自定义环境，只需在启动时设置对应的 `NODE_ENV`。
+profile 名匹配 `src/config/{profile}.ts`（build 后对应 `dist/config/{profile}.js`）。
 :::
 
 ## `vext stop` — 停止服务
@@ -762,7 +755,7 @@ echo "22" > .node-version
 ## 下一步
 
 - 了解 [热重载](/guide/hot-reload) 的三层策略细节
-- 配置 [前端集成](/zh/guide/frontend)
+- 配置 [前端指南](/zh/frontend/overview)
 - 学习 [Cluster 多进程](/guide/cluster) 的完整配置
 - 查看 [配置](/guide/configuration) 中端口、日志等选项
 - 探索 [项目结构](/guide/project-structure) 的约定

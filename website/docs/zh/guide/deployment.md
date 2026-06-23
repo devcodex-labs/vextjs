@@ -72,7 +72,7 @@ src/                          dist/
 
 `vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快。典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
 
-编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置文件，仍由启动时的 `NODE_ENV` 决定。
+编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置 profile，仍由启动时的 `--config` 或 `VEXT_CONFIG` 决定。
 
 ## 启动生产服务
 
@@ -80,13 +80,13 @@ src/                          dist/
 
 ```bash
 # 使用 vext start（推荐）
-NODE_ENV=production vext start
+vext start
 
-# 也可以加载自定义环境配置（需存在 src/config/sg-sit.ts）
-NODE_ENV=sg-sit vext start
+# 也可以加载自定义配置 profile（需存在 src/config/sg-sit.ts）
+vext start --config sg-sit
 
 # 启用 Source Map 支持（错误堆栈显示 TypeScript 行号）
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 ```
 
 TypeScript 项目部署时，`vext start` 会要求存在有效的 `dist/` 构建产物：
@@ -98,11 +98,12 @@ TypeScript 项目部署时，`vext start` 会要求存在有效的 `dist/` 构�
 
 ### 环境变量
 
-| 变量       | 说明     | 推荐值       |
-| ---------- | -------- | ------------ |
-| `NODE_ENV` | 运行环境 | `production` |
-| `PORT`     | 监听端口 | `3000`       |
-| `HOST`     | 监听地址 | `0.0.0.0`    |
+| 变量          | 说明                                           | 推荐值           |
+| ------------- | ---------------------------------------------- | ---------------- |
+| `NODE_ENV`    | runtime mode；`vext start` 会设置为 production | 通常无需手动设置 |
+| `VEXT_CONFIG` | 配置 profile；低于 `--config` 优先级           | `production`     |
+| `PORT`        | 监听端口                                       | `3000`           |
+| `HOST`        | 监听地址                                       | `0.0.0.0`        |
 
 ## Docker 部署
 
@@ -146,7 +147,6 @@ RUN addgroup --system --gid 1001 vext && \
 USER vext
 
 # 环境变量
-ENV NODE_ENV=production
 ENV NODE_OPTIONS=--enable-source-maps
 ENV PORT=3000
 
@@ -186,7 +186,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
       - PORT=3000
       - MONGODB_URL=mongodb://mongo:27017/myapp
     depends_on:
@@ -225,7 +224,6 @@ docker build -t myapp:latest .
 docker run -d \
   --name myapp \
   -p 3000:3000 \
-  -e NODE_ENV=production \
   -e MONGODB_URL=mongodb://host.docker.internal:27017/myapp \
   myapp:latest
 
@@ -342,7 +340,6 @@ module.exports = {
 
       // 环境变量
       env: {
-        NODE_ENV: "production",
         PORT: 3000,
       },
 
@@ -411,7 +408,7 @@ VextJS 内置了 Cluster 多进程模式（`vext start --cluster`），提供 Ro
 
 ### JSON 日志格式
 
-VextJS 在生产环境（`NODE_ENV=production`）下默认输出 JSON 格式日志，适合被日志收集系统解析。pretty level 颜色只作用于 pretty 文本模式，生产 JSON 输出不会包含 ANSI：
+VextJS 在 `vext start` 的 production runtime mode 下默认输出 JSON 格式日志，适合被日志收集系统解析。pretty level 颜色只作用于 pretty 文本模式，生产 JSON 输出不会包含 ANSI：
 
 ```json
 {
@@ -480,7 +477,7 @@ services:
 
 ```bash
 # 不需要额外配置，JSON 日志直接输出到 stdout
-NODE_ENV=production vext start
+vext start
 ```
 
 ## 健康检查
@@ -669,7 +666,8 @@ onFatalError: async (error, origin) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       app: 'my-service',
-      env: process.env.NODE_ENV,
+      runtimeMode: process.env.NODE_ENV,
+      configProfile: process.env.VEXT_CONFIG,
       origin,
       error: error.message,
       stack: error.stack,
@@ -731,13 +729,13 @@ JWT_SECRET=local-dev-secret
 
 ```bash
 # 增大内存上限（默认 ~1.5GB）
-NODE_OPTIONS=--max-old-space-size=4096 NODE_ENV=production vext start
+NODE_OPTIONS=--max-old-space-size=4096 vext start
 
 # 启用 Source Map（推荐）
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # 组合使用
-NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" vext start
 ```
 
 ### Cluster 多进程

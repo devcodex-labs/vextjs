@@ -15,6 +15,10 @@ import {
   type StartupProfileSnapshot,
 } from "../lib/startup-profiler.js";
 import { printReadyLog } from "../lib/utils/network.js";
+import {
+  printConfigProfileWarning,
+  resolveConfigProfile,
+} from "../lib/config-profile.js";
 
 /**
  * vext start — 生产模式启动命令（Phase 1）
@@ -36,7 +40,8 @@ import { printReadyLog } from "../lib/utils/network.js";
  *   - VEXT_MODE=start — 告知 bootstrap.ts 是被 CLI fork 的（触发自执行入口）
  *   - VEXT_ROOT=<rootDir> — 传递项目根目录给 bootstrap
  *   - VEXT_BUILT=1 — 当使用 dist/ 编译产物时设置
- *   - NODE_ENV — 默认 'production'（如未显式设置）
+ *   - NODE_ENV — 固定为 'production'
+ *   - VEXT_CONFIG — 配置 profile（默认 production，可由 --config/VEXT_CONFIG 覆盖）
  *
  * 命令行参数（Phase 1 基础版）：
  *   --port <number>   覆盖配置中的端口
@@ -54,6 +59,8 @@ interface StartOptions {
   port?: number;
   /** 覆盖监听地址 */
   host?: string;
+  /** 配置 profile 名称 */
+  configProfile?: string;
   /** 生命周期日志增强 */
   verboseLifecycle?: boolean;
   /** 端口冲突策略 */
@@ -131,6 +138,8 @@ async function promptPortConflictDecision(
 export async function startCommand(args: string[] = []): Promise<void> {
   // ── 解析命令行参数 ────────────────────────────────────────
   const options = parseStartArgs(args);
+  const resolvedConfigProfile = resolveCliConfigProfile(options);
+  printConfigProfileWarning(resolvedConfigProfile);
   const commandStartedAt = performance.now();
   const readyLogger = {
     info(message: string) {
@@ -181,7 +190,8 @@ export async function startCommand(args: string[] = []): Promise<void> {
   // ── 构建环境变量 ──────────────────────────────────────────
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    NODE_ENV: process.env.NODE_ENV || "production",
+    NODE_ENV: "production",
+    VEXT_CONFIG: resolvedConfigProfile.profile,
     VEXT_MODE: "start",
     VEXT_ROOT: project.rootDir,
     VEXT_START_PARENT_READY_LOG: "1",
@@ -341,6 +351,21 @@ export async function startCommand(args: string[] = []): Promise<void> {
 
 // ── 参数解析 ────────────────────────────────────────────────
 
+function resolveCliConfigProfile(
+  options: StartOptions,
+): ReturnType<typeof resolveConfigProfile> {
+  try {
+    return resolveConfigProfile({
+      cliProfile: options.configProfile,
+      env: process.env,
+      command: "start",
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+}
+
 /**
  * parseStartArgs — 解析 vext start 的命令行参数
  *
@@ -353,7 +378,7 @@ export async function startCommand(args: string[] = []): Promise<void> {
  * @param args process.argv.slice(2) 的子集（已去除 'start' 命令本身）
  * @returns 解析后的选项
  */
-function parseStartArgs(args: string[]): StartOptions {
+export function parseStartArgs(args: string[]): StartOptions {
   const options: StartOptions = {};
 
   for (let i = 0; i < args.length; i++) {
@@ -369,6 +394,11 @@ function parseStartArgs(args: string[]): StartOptions {
       options.port = port;
     } else if (arg === "--host" && i + 1 < args.length) {
       options.host = args[++i]!;
+    } else if (arg === "--config" && i + 1 < args.length) {
+      options.configProfile = args[++i]!;
+    } else if (arg === "--config") {
+      console.error("[vextjs] --config requires a value");
+      process.exit(1);
     } else if (arg === "--port-conflict" && i + 1 < args.length) {
       const strategy = args[++i]!;
       if (
@@ -454,6 +484,7 @@ function printStartHelp(): void {
   Options:
     --port <number>   Override the listening port
     --host <string>   Override the listening host
+    --config <name>   Load src/config/<name> instead of the default profile
     --port-conflict <error|prompt|kill|next>
                        Configure how port conflicts are handled
     --startup-profile  Print startup phase timings
@@ -465,13 +496,15 @@ function printStartHelp(): void {
 
   Examples:
     $ vext start
+    $ vext start --config sg-sit
     $ vext start --port 8080
     $ vext start --host 127.0.0.1 --port 3000
     $ vext start --port-conflict prompt
     $ vext start --startup-profile
 
   Environment variables:
-    NODE_ENV          Set the environment (default: production)
+    NODE_ENV          Runtime mode is forced to production by vext start
+    VEXT_CONFIG       Load a named config profile when --config is not set
     VEXT_CLUSTER=1    Enable cluster mode
     VEXT_STARTUP_PROFILE_JSON=<path>
                       Write startup phase timings to a JSON file

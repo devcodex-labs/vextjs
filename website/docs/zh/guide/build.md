@@ -1,6 +1,6 @@
 # 构建 (vext build)
 
-`vext build` 会将服务端源码编译为可部署的 JavaScript 产物；当 `frontend.enabled` 为 true 时，还会把浏览器客户端打包到 `dist/client/`。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入，但运行时实际加载哪个环境配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，编译阶段针对本地与 CI 反馈速度做了优化。
+`vext build` 会将服务端源码编译为可部署的 JavaScript 产物；当 `frontend.enabled` 为 true 时，还会把浏览器客户端打包到 `dist/client/`。当前版本的 `vext build` 按 **production-target build** 设计：它会对用户源码中的 `process.env.NODE_ENV` 做生产模式静态注入；运行时实际加载哪个配置 profile，由 `vext start --config <name>` 或 `VEXT_CONFIG=<name>` 决定。基于 [esbuild](https://esbuild.github.io/) 实现，编译阶段针对本地与 CI 反馈速度做了优化。
 
 ## 快速开始
 
@@ -9,10 +9,10 @@
 vext build
 
 # 运行已构建产物（TypeScript 项目需已生成有效 dist/）
-NODE_ENV=production vext start
+vext start
 
-# 加载自定义环境配置（需存在 src/config/sg-sit.ts）
-NODE_ENV=sg-sit vext start
+# 加载自定义配置 profile（需存在 src/config/sg-sit.ts）
+vext start --config sg-sit
 ```
 
 ## 构建前置产物刷新
@@ -67,14 +67,15 @@ src/                          dist/
 
 ### CLI 参数
 
-| 参数              | 说明                                            | 默认值  |
-| ----------------- | ----------------------------------------------- | ------- |
-| `--outdir <path>` | 输出目录                                        | `dist`  |
-| `--clean`         | 编译前清理输出目录                              | `false` |
-| `--sourcemap`     | 生成 source map                                 | `true`  |
-| `--no-sourcemap`  | 禁用 source map                                 | —       |
-| `--minify`        | 压缩输出代码                                    | `false` |
-| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
+| 参数              | 说明                                            | 默认值       |
+| ----------------- | ----------------------------------------------- | ------------ |
+| `--outdir <path>` | 输出目录                                        | `dist`       |
+| `--config <name>` | 选择 build-time 配置 profile                    | `production` |
+| `--clean`         | 编译前清理输出目录                              | `false`      |
+| `--sourcemap`     | 生成 source map                                 | `true`       |
+| `--no-sourcemap`  | 禁用 source map                                 | —            |
+| `--minify`        | 压缩输出代码                                    | `false`      |
+| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
 
 ## 前端构建
 
@@ -142,10 +143,10 @@ define: {
 
 这会让 build 后**用户源码中的** `process.env.NODE_ENV` 分支按 production 语义被静态折叠。
 
-注意，这个注入并不等于“运行时固定加载 `config/production.ts`”。运行时实际加载哪个配置文件，仍由 `vext start` 时的 `NODE_ENV` 决定，例如：
+注意，这个注入并不等于“运行时只能加载 `config/production.ts`”。运行时实际加载哪个配置 profile，仍由 `vext start --config <name>` 或 `VEXT_CONFIG=<name>` 决定，例如：
 
 ```bash
-NODE_ENV=sg-sit vext start
+vext start --config sg-sit
 ```
 
 会尝试加载：
@@ -157,15 +158,14 @@ dist/config/sg-sit.js
 因此，当前 `vext build` 的推荐用法是：
 
 - 用它生成 production-target artifact
-- 用 `vext start` 的 `NODE_ENV` 选择环境配置文件
+- 用 `vext start --config <profile>` 或 `VEXT_CONFIG=<profile>` 选择配置 profile
 - 不要依赖 build 后用户源码中的 `process.env.NODE_ENV` 条件分支做 sit/uat/prod 切换
-
-如果你希望在 `package.json` scripts 中跨平台设置 `NODE_ENV`，推荐使用 `cross-env`：
 
 ```json
 {
   "scripts": {
-    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start"
+    "start": "vext start",
+    "start:sg-sit": "vext start --config sg-sit"
   }
 }
 ```
@@ -229,7 +229,7 @@ dist/
 在 Node.js 运行时启用 source map，让错误堆栈显示 TypeScript 行号：
 
 ```bash
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 ```
 
 未启用时的错误堆栈：
@@ -318,13 +318,13 @@ vext build
 
 ```bash
 # 基本启动
-NODE_ENV=production vext start
+vext start
 
 # 启用 source map（推荐）
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # 增大内存上限
-NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" NODE_ENV=production vext start
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" vext start
 ```
 
 如果 TypeScript 项目缺少 `dist/` 或关键构建产物，`vext start` 会直接失败并提示先执行 `vext build`。开发期源码启动请使用 `vext dev`。
@@ -358,7 +358,7 @@ npx vext build
 npm ci --omit=dev
 
 # 4. 启动
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production npx vext start
+NODE_OPTIONS=--enable-source-maps npx vext start
 ```
 
 ### Docker 多阶段构建
@@ -380,7 +380,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
-ENV NODE_ENV=production
 ENV NODE_OPTIONS=--enable-source-maps
 CMD ["npm", "start"]
 ```
@@ -423,7 +422,7 @@ Error: Cannot find module './routes/users.js'
 
 ```bash
 # ✅ 正确
-NODE_OPTIONS=--enable-source-maps NODE_ENV=production vext start
+NODE_OPTIONS=--enable-source-maps vext start
 
 # ❌ 参数位置错误
 vext start --enable-source-maps

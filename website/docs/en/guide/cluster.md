@@ -118,12 +118,12 @@ export default {
 
 ### Worker quantity strategy
 
-| Value | Meaning | Applicable scenarios |
-| ---------- | ---------------- | ---------------------------------- |
-| `'auto'` | Number of CPU cores | Production environment (default recommended) |
+| Value      | Meaning                 | Applicable scenarios                                          |
+| ---------- | ----------------------- | ------------------------------------------------------------- |
+| `'auto'`   | Number of CPU cores     | Production environment (default recommended)                  |
 | `'auto-1'` | Number of CPU cores - 1 | Single-machine mixed deployment (reserve one core for Master) |
-| `2` | Fixed 2 Workers | Development environment test Cluster |
-| `1` | Fixed 1 Worker | Debugging Cluster logic |
+| `2`        | Fixed 2 Workers         | Development environment test Cluster                          |
+| `1`        | Fixed 1 Worker          | Debugging Cluster logic                                       |
 
 ```typescript
 // Production environment: fully utilize all CPU cores
@@ -170,13 +170,7 @@ vext stop
 
 `vext stop` finds the Master process by reading the PID file (default `.vext.pid`) and sends the `SIGTERM` signal to trigger graceful shutdown.
 
-Close process:1. Master receives `SIGTERM`
-2. Master sends shutdown instructions to all Workers
-3. Each Worker executes the `onClose` hook (closes the database connection, etc.)
-4. Worker stops accepting new requests and waits for existing requests to complete
-5. Forced exit after timeout (controlled by `shutdown.timeout`)
-6. After all Workers exit, the Master exits
-7. PID files are automatically deleted
+Close process:1. Master receives `SIGTERM` 2. Master sends shutdown instructions to all Workers 3. Each Worker executes the `onClose` hook (closes the database connection, etc.) 4. Worker stops accepting new requests and waits for existing requests to complete 5. Forced exit after timeout (controlled by `shutdown.timeout`) 6. After all Workers exit, the Master exits 7. PID files are automatically deleted
 
 ### `vext reload` — rolling restart
 
@@ -387,21 +381,21 @@ Master and Worker communicate through IPC messages. VextJS defines a standardize
 
 ### Worker → Master message
 
-| Message type | Description |
-|------------------------|---------------------------------------------|
-| `worker:ready` | Worker initialization is completed and starts accepting requests |
-| `worker:heartbeat` | Heartbeat response |
-| `worker:metrics` | Worker reports running metrics (number of requests, memory, etc.) |
-| `worker:request-restart` | Worker requests itself to restart (if a memory leak is detected) |
+| Message type             | Description                                                       |
+| ------------------------ | ----------------------------------------------------------------- |
+| `worker:ready`           | Worker initialization is completed and starts accepting requests  |
+| `worker:heartbeat`       | Heartbeat response                                                |
+| `worker:metrics`         | Worker reports running metrics (number of requests, memory, etc.) |
+| `worker:request-restart` | Worker requests itself to restart (if a memory leak is detected)  |
 
 ### Master → Worker message
 
-| Message type | Description |
-|---------------------|---------------------|
-| `master:set-title` | Set Worker process title |
-| `master:shutdown` | Notify Worker to shut down gracefully |
-| `master:health-check` | Heartbeat detection |
-| `master:broadcast` | Broadcast messages to all Workers |
+| Message type          | Description                           |
+| --------------------- | ------------------------------------- |
+| `master:set-title`    | Set Worker process title              |
+| `master:shutdown`     | Notify Worker to shut down gracefully |
+| `master:health-check` | Heartbeat detection                   |
+| `master:broadcast`    | Broadcast messages to all Workers     |
 
 ## Deploying with Docker
 
@@ -442,7 +436,6 @@ services:
     build: .
     environment:
       - VEXT_CLUSTER=1
-      -NODE_ENV=production
     ports:
       - "3000:3000"
     stop_grace_period: 30s # greater than shutdown.timeout

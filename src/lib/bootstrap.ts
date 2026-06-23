@@ -12,6 +12,10 @@ import {
   type BootstrapCommand,
 } from "./bootstrap-config.js";
 import {
+  getDefaultRuntimeMode,
+  resolveConfigProfile,
+} from "./config-profile.js";
+import {
   assertFrontendOutputReady,
   createFrontendNotFoundHandler,
 } from "../frontend/runtime/static-mount.js";
@@ -80,10 +84,16 @@ async function resolveStartupConfig(
   isBuilt: boolean,
   metadata?: LoadConfigMetadata,
 ): Promise<Record<string, unknown>> {
+  const resolvedConfigProfile = resolveConfigProfile({
+    env: process.env,
+    command,
+  });
   const rawConfig = await loadRawConfig(configDir, {
     rootDir,
     command,
     isBuilt,
+    mode: getDefaultRuntimeMode(command),
+    configProfile: resolvedConfigProfile.profile,
     meta: metadata,
   });
 
@@ -930,10 +940,16 @@ async function detectAndStart(rootDir: string): Promise<void> {
   let clusterEnabled = false;
 
   try {
+    const resolvedConfigProfile = resolveConfigProfile({
+      env: process.env,
+      command: "start",
+    });
     const config = await loadConfig(join(srcDir, "config"), {
       rootDir,
       command: "start",
       isBuilt,
+      mode: "production",
+      configProfile: resolvedConfigProfile.profile,
     });
     const clusterConfig = config.cluster as { enabled?: boolean } | undefined;
     clusterEnabled = clusterConfig?.enabled === true;

@@ -45,7 +45,10 @@ export default {
       group: "DEFAULT_GROUP",
       ip: process.env.SERVICE_IP ?? "127.0.0.1",
       port: 3000,
-      metadata: { version: "1.0.0", env: process.env.NODE_ENV ?? "dev" },
+      metadata: {
+        version: "1.0.0",
+        profile: process.env.VEXT_CONFIG ?? "default",
+      },
     },
 
     //Configuration center (not subscribed by default)
@@ -130,7 +133,7 @@ If you want to pull the database configuration from Nacos before **MonSQLize is 
 
 ```typescript
 import { defineBootstrapConfig } from "vextjs";
-import { createNacosBootstrapProvider } from "vextjs-nacos";// src/config/bootstrap.ts
+import { createNacosBootstrapProvider } from "vextjs-nacos"; // src/config/bootstrap.ts
 export default defineBootstrapConfig({
   providers: [
     createNacosBootstrapProvider({
@@ -145,12 +148,12 @@ export default defineBootstrapConfig({
 });
 ```
 
-Configuring the priority in this way will enter the official link: `default < env < local < provider < CLI`.
+Configuring the priority in this way will enter the official link: `default < config profile < local < provider < CLI`.
 
 :::info current boundary
 `createNacosBootstrapProvider()` is only responsible for batch pulling and deep merging of JSON object patches during the startup period, which is suitable for content such as databases, keys, and infrastructure configurations that "must take effect before the configuration is frozen."
 
-This return value will enter the provider patch merge link of **`app.config` and will not automatically become `app.remoteConfig`.
+This return value will enter the provider patch merge link of \*\*`app.config` and will not automatically become `app.remoteConfig`.
 
 It is **not responsible** for:
 
@@ -266,7 +269,7 @@ export default {
     configs: [
       { dataId: "features-base.json", group: "DEFAULT_GROUP" },
       {
-        dataId: `features-${process.env.NODE_ENV ?? "development"}.json`,
+        dataId: `features-${process.env.VEXT_CONFIG ?? "development"}.json`,
         group: "DEFAULT_GROUP",
       },
     ],

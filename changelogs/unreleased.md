@@ -1,5 +1,9 @@
 # Unreleased
 
+## 2026-06-23
+
+- **Config profile selection** Added `--config <name>` and `VEXT_CONFIG=<name>` as the official way to select `src/config/{profile}.ts` for `vext start`, `vext dev`, `vext build`, and `vext deploy assets`; `vext start` now forces production runtime `NODE_ENV` while keeping legacy custom `NODE_ENV` profile fallback with a migration warning.
+
 ## 2026-06-22
 
 - **React hydration performance** Added the B3 React hydration optimization path: frontend i18n now defaults to current-locale browser loading, route initial assets drive SSR `modulepreload`, size reports include raw/gzip/brotli and app-owned/external groups, compressed build budgets can fail CI, React external runtime mappings fail fast when incomplete, and `vext-test` includes a real-browser frontend performance probe.
