@@ -1,6 +1,6 @@
 import type { ResolvedVextDocsConfig } from "../types.js";
 
-const VEXT_DOCS_ASSET_VERSION = "20260702-b30";
+const VEXT_DOCS_ASSET_VERSION = "20260702-b31";
 
 function escapeHtml(value: string): string {
   return value
@@ -51,15 +51,18 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
 </head>
 <body>
   <main id="vext-docs-root" class="vext-docs-shell">
-    <aside class="vext-docs-sidebar">
+    <div id="vext-docs-sidebar-backdrop" class="vext-docs-sidebar-backdrop" hidden></div>
+    <aside id="vext-docs-sidebar" class="vext-docs-sidebar">
       <div class="vext-docs-brand">Vext Docs</div>
+      <div id="vext-docs-mobile-sidebar-tools" class="vext-docs-mobile-sidebar-tools" aria-label="Mobile documentation tools"></div>
       <nav id="vext-docs-nav" aria-label="Documentation sections"></nav>
     </aside>
     <div id="vext-docs-resizer" class="vext-docs-resizer" role="separator" aria-orientation="vertical" aria-label="Resize navigation" tabindex="0"></div>
     <section class="vext-docs-content">
       <header class="vext-docs-header">
+        <button id="vext-docs-mobile-nav-toggle" class="vext-docs-mobile-nav-toggle" type="button" aria-controls="vext-docs-sidebar" aria-expanded="false">Menu</button>
         <h1>${escapeHtml(title)}</h1>
-        <input id="vext-docs-search" type="search" placeholder="Search" aria-label="Search documentation">
+        <input id="vext-docs-search" class="vext-docs-search-input" type="search" placeholder="Search" aria-label="Search documentation">
       </header>
       <div id="vext-docs-status" class="vext-docs-status">Loading documentation...</div>
       <div id="vext-docs-panel" class="vext-docs-panel"></div>

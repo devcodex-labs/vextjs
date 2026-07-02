@@ -85,6 +85,8 @@ B26 adds built-in theme and density controls, a more useful Overview workspace, 
 
 B27 upgrades Try it out into a lightweight request console. Each operation can show a server selector and full URL preview with Copy URL, plus tabs for Params, Headers, Body, Auth, Samples, History, and Response. Structured query/header rows stay compact when empty and still support raw fallbacks; header rows are generated from OpenAPI `parameters[in=header]`, including `validate.header`. The Samples tab includes cURL, browser fetch, Node fetch, and Axios snippets, while the fixed Response tab keeps pretty/raw body modes and shows the actual request headers beside the response headers so you can verify what was sent. The Axios snippet is only text; Vext does not add Axios as a runtime dependency.
 
+B31 improves the default docs page on small screens and large API surfaces. Mobile uses an off-canvas navigation drawer with synchronized search and category filters, generated field tables switch to labeled row cards under narrow breakpoints, Try it out internals are created only when an operation console is opened, and long HTTP API lists render incrementally with a Load more control while preserving deep-link targets.
+
 If you need to append organization-level extension fields after generation, you can use OpenAPI hooks. `OpenAPIGenerator.generate()` remains synchronized, and `openapi:afterGenerate` must also return patches synchronously:
 
 ```typescript

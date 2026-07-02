@@ -85,6 +85,8 @@ B26 进一步补齐主题与密度控制、Overview 工作台、搜索快捷键�
 
 B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Auth、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
 
+B31 进一步优化小屏与大接口量场景。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
+
 如果需要在生成后追加组织级扩展字段，可使用 OpenAPI hook。`OpenAPIGenerator.generate()` 仍保持同步，`openapi:afterGenerate` 也必须同步返回 patch：
 
 ```typescript

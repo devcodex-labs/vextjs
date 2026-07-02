@@ -111,10 +111,12 @@ describe("registerDocsEndpoints", () => {
     expect(response.body).toContain("</aside>\n    <div id=\"vext-docs-resizer\"");
     expect(response.body).toContain('/_vext/docs/style.css?v=');
     expect(response.body).toContain('/_vext/docs/app.js?v=');
-    expect(response.body).toContain("20260702-b30");
+    expect(response.body).toContain("20260702-b31");
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
-    expect(response.body).toContain('"assetVersion":"20260702-b30"');
+    expect(response.body).toContain('"assetVersion":"20260702-b31"');
+    expect(response.body).toContain('id="vext-docs-mobile-nav-toggle"');
+    expect(response.body).toContain('id="vext-docs-sidebar-backdrop"');
     expect(response.body).toContain('"accessMode":"off"');
     expect(response.body).not.toContain("Scalar.createApiReference");
   });

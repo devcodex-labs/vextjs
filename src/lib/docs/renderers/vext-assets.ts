@@ -75,6 +75,12 @@ body {
   grid-template-columns: var(--vext-docs-sidebar-width, 280px) 8px minmax(0, 1fr);
 }
 
+.vext-docs-sidebar-backdrop,
+.vext-docs-mobile-nav-toggle,
+.vext-docs-mobile-sidebar-tools {
+  display: none;
+}
+
 .vext-docs-sidebar {
   border-right: 1px solid var(--vext-line);
   background: var(--vext-panel);
@@ -697,6 +703,10 @@ body {
   border-bottom: 0;
 }
 
+.vext-docs-table td::before {
+  content: none;
+}
+
 .vext-docs-table code,
 .vext-docs-path code {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
@@ -985,6 +995,25 @@ body {
   white-space: pre-wrap;
 }
 
+.vext-docs-load-more {
+  width: calc(100% - 44px);
+  margin: 4px 22px 26px;
+  border: 1px dashed var(--vext-line);
+  border-radius: 8px;
+  background: var(--vext-panel);
+  color: var(--vext-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 12px;
+}
+
+.vext-docs-load-more:hover,
+.vext-docs-load-more:focus-visible {
+  background: var(--vext-accent-soft);
+  outline: none;
+}
+
 .vext-docs-nav-button {
   width: 100%;
   border: 0;
@@ -1264,6 +1293,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .vext-docs-operation,
   .vext-docs-code-item,
+  .vext-docs-sidebar,
   .vext-docs-resizer::after {
     transition: none;
   }
@@ -1279,18 +1309,81 @@ body {
 @media (max-width: 760px) {
   .vext-docs-shell {
     grid-template-columns: 1fr;
+    overflow-x: clip;
+  }
+
+  body.vext-docs-nav-locked {
+    overflow: hidden;
+  }
+
+  .vext-docs-mobile-nav-toggle {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--vext-line);
+    border-radius: 6px;
+    background: var(--vext-panel);
+    color: var(--vext-accent);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 650;
+    padding: 7px 12px;
+  }
+
+  .vext-docs-mobile-nav-toggle:focus-visible {
+    outline: 2px solid var(--vext-accent);
+    outline-offset: 2px;
+  }
+
+  .vext-docs-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  .vext-docs-shell.vext-docs-nav-open .vext-docs-sidebar-backdrop {
+    display: block;
   }
 
   .vext-docs-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--vext-line);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    height: auto;
-    max-height: 54vh;
+    display: none;
+    width: min(88vw, 380px);
+    border-right: 1px solid var(--vext-line);
+    border-bottom: 0;
+    box-shadow: 20px 0 44px rgba(15, 23, 42, 0.18);
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    height: 100vh;
+    max-height: none;
     overflow-y: auto;
-    padding: 14px 16px;
+    padding: 16px;
+    transform: translateX(-104%);
+    transition: transform 180ms ease;
+  }
+
+  .vext-docs-shell.vext-docs-nav-open .vext-docs-sidebar {
+    display: block;
+    transform: translateX(0);
+  }
+
+  .vext-docs-mobile-sidebar-tools {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--vext-line);
+  }
+
+  .vext-docs-mobile-sidebar-tools input {
+    width: 100%;
+  }
+
+  .vext-docs-header > .vext-docs-search-tools {
+    display: none;
   }
 
   .vext-docs-sidebar::-webkit-scrollbar {
@@ -1341,8 +1434,14 @@ body {
   }
 
   .vext-docs-response-tabs {
-    flex-wrap: nowrap;
-    padding-bottom: 2px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .vext-docs-response-tab {
+    min-width: 0;
+    white-space: normal;
   }
 
   .vext-docs-kv-row {
@@ -1351,6 +1450,63 @@ body {
 
   .vext-docs-code-sample pre {
     max-width: 100%;
+  }
+
+  .vext-docs-table-wrap {
+    overflow: visible;
+    border: 0;
+  }
+
+  .vext-docs-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .vext-docs-table thead {
+    display: none;
+  }
+
+  .vext-docs-table tbody,
+  .vext-docs-table tr,
+  .vext-docs-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .vext-docs-table tr {
+    margin-bottom: 10px;
+    border: 1px solid var(--vext-line);
+    border-radius: 8px;
+    background: var(--vext-panel);
+    overflow: hidden;
+  }
+
+  .vext-docs-table td {
+    display: grid;
+    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    border-bottom: 1px solid var(--vext-line);
+    overflow-wrap: anywhere;
+  }
+
+  .vext-docs-table td::before {
+    content: attr(data-label);
+    color: var(--vext-muted);
+    font-weight: 650;
+  }
+
+  .vext-docs-table tr:last-child td {
+    border-bottom: 1px solid var(--vext-line);
+  }
+
+  .vext-docs-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .vext-docs-load-more {
+    width: 100%;
+    margin: 4px 0 22px;
   }
 }
 `;
@@ -1365,8 +1521,13 @@ export const VEXT_DOCS_APP_JS = `
   const searchEl = document.getElementById("vext-docs-search");
   const contentEl = document.querySelector(".vext-docs-content");
   const sidebarEl = document.querySelector(".vext-docs-sidebar");
+  const sidebarBackdropEl = document.getElementById("vext-docs-sidebar-backdrop");
+  const mobileNavButton = document.getElementById("vext-docs-mobile-nav-toggle");
+  const mobileSidebarToolsEl = document.getElementById("vext-docs-mobile-sidebar-tools");
   const resizerEl = document.getElementById("vext-docs-resizer");
   const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
+  const MOBILE_NAV_MEDIA_QUERY = "(max-width: 760px)";
+  const OPERATION_RENDER_CHUNK_SIZE = 40;
   const SIDEBAR_WIDTH_STORAGE_KEY = "vext-docs-sidebar-width";
   const THEME_STORAGE_KEY = "vext-docs-theme";
   const DENSITY_STORAGE_KEY = "vext-docs-density";
@@ -1421,7 +1582,7 @@ export const VEXT_DOCS_APP_JS = `
   const hasStoredSidebarWidth = () => readStoredSidebarWidth() > 0;
 
   const applyAutoSidebarWidth = () => {
-    if (!rootEl || !navEl || hasStoredSidebarWidth() || window.matchMedia("(max-width: 760px)").matches) return;
+    if (!rootEl || !navEl || hasStoredSidebarWidth() || window.matchMedia(MOBILE_NAV_MEDIA_QUERY).matches) return;
     const labels = Array.from(navEl.querySelectorAll(".vext-docs-nav-label"));
     if (labels.length === 0) return;
     const canvas = applyAutoSidebarWidth.canvas || (applyAutoSidebarWidth.canvas = document.createElement("canvas"));
@@ -1495,7 +1656,7 @@ export const VEXT_DOCS_APP_JS = `
     };
 
     resizerEl.addEventListener("pointerdown", (event) => {
-      if (window.matchMedia("(max-width: 760px)").matches) return;
+      if (window.matchMedia(MOBILE_NAV_MEDIA_QUERY).matches) return;
       activePointerId = event.pointerId;
       startX = event.clientX;
       startWidth = currentSidebarWidth();
@@ -1528,6 +1689,49 @@ export const VEXT_DOCS_APP_JS = `
     });
   };
 
+  const closeMobileNavigation = () => {
+    if (!rootEl || !mobileNavButton || !sidebarBackdropEl) return;
+    rootEl.classList.remove("vext-docs-nav-open");
+    document.body.classList.remove("vext-docs-nav-locked");
+    mobileNavButton.setAttribute("aria-expanded", "false");
+    sidebarBackdropEl.hidden = true;
+  };
+
+  const openMobileNavigation = () => {
+    if (!rootEl || !mobileNavButton || !sidebarBackdropEl) return;
+    rootEl.classList.add("vext-docs-nav-open");
+    document.body.classList.add("vext-docs-nav-locked");
+    mobileNavButton.setAttribute("aria-expanded", "true");
+    sidebarBackdropEl.hidden = false;
+  };
+
+  const setupMobileNavigation = () => {
+    if (!rootEl || !mobileNavButton || !sidebarEl || !sidebarBackdropEl) return;
+    const media = window.matchMedia(MOBILE_NAV_MEDIA_QUERY);
+
+    mobileNavButton.addEventListener("click", () => {
+      if (rootEl.classList.contains("vext-docs-nav-open")) {
+        closeMobileNavigation();
+      } else {
+        openMobileNavigation();
+      }
+    });
+
+    sidebarBackdropEl.addEventListener("click", closeMobileNavigation);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMobileNavigation();
+    });
+
+    const handleViewportChange = () => {
+      if (!media.matches) closeMobileNavigation();
+    };
+    if (media.addEventListener) {
+      media.addEventListener("change", handleViewportChange);
+    } else if (media.addListener) {
+      media.addListener(handleViewportChange);
+    }
+  };
+
   const readStoredChoice = (key, allowed, fallback) => {
     try {
       const value = localStorage.getItem(key);
@@ -1553,6 +1757,7 @@ export const VEXT_DOCS_APP_JS = `
   const setupUiControls = () => {
     if (!searchEl || !searchEl.parentElement) return;
     const header = searchEl.parentElement;
+    searchEl.classList.add("vext-docs-search-input");
 
     const controls = document.createElement("div");
     controls.className = "vext-docs-ui-controls";
@@ -1591,24 +1796,42 @@ export const VEXT_DOCS_APP_JS = `
     }));
     header.appendChild(controls);
 
-    const filters = document.createElement("div");
-    filters.className = "vext-docs-search-tools";
-    filters.setAttribute("aria-label", "Search categories");
-    for (const [view, label] of VIEW_FILTERS) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "vext-docs-filter-button";
-      button.textContent = label;
-      button.setAttribute("aria-pressed", view === state.searchScope ? "true" : "false");
-      button.addEventListener("click", () => {
-        state.searchScope = view;
-        state.view = view === "all" ? "overview" : view;
-        state.anchor = "";
-        render();
-      });
-      filters.appendChild(button);
+    const createFilterControls = () => {
+      const filters = document.createElement("div");
+      filters.className = "vext-docs-search-tools";
+      filters.setAttribute("aria-label", "Search categories");
+      for (const [view, label] of VIEW_FILTERS) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "vext-docs-filter-button";
+        button.textContent = label;
+        button.setAttribute("aria-pressed", view === state.searchScope ? "true" : "false");
+        button.addEventListener("click", () => {
+          state.searchScope = view;
+          state.view = view === "all" ? "overview" : view;
+          state.anchor = "";
+          render();
+          if (view === "overview") closeMobileNavigation();
+        });
+        filters.appendChild(button);
+      }
+      return filters;
+    };
+
+    header.appendChild(createFilterControls());
+
+    if (mobileSidebarToolsEl) {
+      clear(mobileSidebarToolsEl);
+      const mobileSearch = document.createElement("input");
+      mobileSearch.id = "vext-docs-mobile-search";
+      mobileSearch.className = "vext-docs-search-input";
+      mobileSearch.type = "search";
+      mobileSearch.placeholder = "Search";
+      mobileSearch.setAttribute("aria-label", "Search documentation");
+      mobileSearch.value = state.query;
+      mobileSidebarToolsEl.appendChild(mobileSearch);
+      mobileSidebarToolsEl.appendChild(createFilterControls());
     }
-    header.appendChild(filters);
 
     document.addEventListener("keydown", (event) => {
       const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
@@ -1619,6 +1842,24 @@ export const VEXT_DOCS_APP_JS = `
         event.preventDefault();
       }
     });
+  };
+
+  const syncSearchInputs = (value, source) => {
+    for (const input of document.querySelectorAll(".vext-docs-search-input")) {
+      if (input !== source) input.value = value;
+    }
+  };
+
+  const bindSearchInputs = () => {
+    for (const input of document.querySelectorAll(".vext-docs-search-input")) {
+      if (input.dataset.vextDocsBound === "true") continue;
+      input.dataset.vextDocsBound = "true";
+      input.addEventListener("input", () => {
+        state.query = input.value;
+        syncSearchInputs(state.query, input);
+        render();
+      });
+    }
   };
 
   const setupOutline = () => {
@@ -1922,11 +2163,12 @@ export const VEXT_DOCS_APP_JS = `
     const tbody = document.createElement("tbody");
     for (const row of rows) {
       const tr = document.createElement("tr");
-      for (const value of row) {
+      row.forEach((value, index) => {
         const cell = document.createElement("td");
+        cell.setAttribute("data-label", headers[index] || "");
         cell.textContent = text(value);
         tr.appendChild(cell);
-      }
+      });
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -2581,6 +2823,11 @@ export const VEXT_DOCS_APP_JS = `
     summary.textContent = "Try it out";
     details.appendChild(summary);
 
+    let initialized = false;
+    const buildTryItOutPanel = () => {
+      if (initialized) return;
+      initialized = true;
+
     const grid = document.createElement("div");
     grid.className = "vext-docs-tryout-grid";
 
@@ -2879,9 +3126,14 @@ export const VEXT_DOCS_APP_JS = `
       }
     });
 
-    details.appendChild(grid);
-    updateConsole();
-    history.render();
+      details.appendChild(grid);
+      updateConsole();
+      history.render();
+    };
+
+    details.addEventListener("toggle", () => {
+      if (details.open) buildTryItOutPanel();
+    });
     return details;
   };
 
@@ -3901,9 +4153,40 @@ export const VEXT_DOCS_APP_JS = `
   };
 
   const renderOperations = (operations) => {
-    for (const item of operations) {
-      panelEl.appendChild(createOperation(item.method, item.path, item.operation));
+    const anchorIndex = state.anchor
+      ? operations.findIndex((item) => operationAnchorId(item.method, item.path) === state.anchor)
+      : -1;
+    let renderedCount = Math.min(operations.length, OPERATION_RENDER_CHUNK_SIZE);
+    if (anchorIndex >= renderedCount) {
+      renderedCount = Math.min(operations.length, anchorIndex + 1);
     }
+
+    const appendRange = (from, to) => {
+      for (let index = from; index < to; index += 1) {
+        const item = operations[index];
+        panelEl.appendChild(createOperation(item.method, item.path, item.operation));
+      }
+    };
+
+    const appendLoadMore = () => {
+      if (renderedCount >= operations.length) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "vext-docs-load-more";
+      button.textContent = "Load " + Math.min(OPERATION_RENDER_CHUNK_SIZE, operations.length - renderedCount) + " more operations";
+      button.addEventListener("click", () => {
+        const from = renderedCount;
+        renderedCount = Math.min(operations.length, renderedCount + OPERATION_RENDER_CHUNK_SIZE);
+        button.remove();
+        appendRange(from, renderedCount);
+        appendLoadMore();
+        renderOutline();
+      });
+      panelEl.appendChild(button);
+    };
+
+    appendRange(0, renderedCount);
+    appendLoadMore();
   };
 
   const groupCodeItems = (items, view) => {
@@ -4060,6 +4343,7 @@ export const VEXT_DOCS_APP_JS = `
         button.addEventListener("click", () => {
           state.anchor = node.anchorId;
           if (history.replaceState) history.replaceState(null, "", "#" + node.anchorId);
+          closeMobileNavigation();
           render();
         });
       } else {
@@ -4154,6 +4438,7 @@ export const VEXT_DOCS_APP_JS = `
         state.anchor = "";
         state.collapsedGroups.delete(group.view);
         render();
+        if (!hasTree || group.view === "overview") closeMobileNavigation();
       });
       navEl.appendChild(button);
 
@@ -4286,6 +4571,7 @@ export const VEXT_DOCS_APP_JS = `
   }
   state.view = resolveInitialView(config);
   setupSidebarResize();
+  setupMobileNavigation();
   setupOutline();
   setupUiControls();
 
@@ -4313,10 +4599,7 @@ export const VEXT_DOCS_APP_JS = `
       statusEl.textContent = "OpenAPI source: " + config.specPublicPath;
       renderAuthControls();
       render();
-      searchEl.addEventListener("input", () => {
-        state.query = searchEl.value;
-        render();
-      });
+      bindSearchInputs();
     })
     .catch((error) => {
       clear(panelEl);
