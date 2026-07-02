@@ -186,6 +186,34 @@ body {
   align-self: end;
 }
 
+.vext-docs-source-switcher {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.vext-docs-source-button {
+  min-height: 30px;
+  border: 1px solid var(--vext-line);
+  border-radius: 6px;
+  background: var(--vext-panel);
+  color: var(--vext-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.vext-docs-source-button[aria-pressed="true"],
+.vext-docs-source-button:hover,
+.vext-docs-source-button:focus-visible {
+  background: var(--vext-accent-soft);
+  color: var(--vext-accent);
+  outline: none;
+}
+
 .vext-docs-ui-controls label {
   display: inline-grid;
   gap: 3px;
@@ -742,6 +770,8 @@ body {
 
 .vext-docs-tryout-target,
 .vext-docs-auth-note,
+.vext-docs-server-vars,
+.vext-docs-hook-note,
 .vext-docs-kv-section,
 .vext-docs-code-samples,
 .vext-docs-history,
@@ -806,6 +836,8 @@ body {
 
 .vext-docs-tryout-target strong,
 .vext-docs-auth-note strong,
+.vext-docs-server-vars strong,
+.vext-docs-hook-note strong,
 .vext-docs-kv-section strong,
 .vext-docs-code-samples strong,
 .vext-docs-history strong {
@@ -815,6 +847,11 @@ body {
 }
 
 .vext-docs-kv-section {
+  display: grid;
+  gap: 8px;
+}
+
+.vext-docs-server-vars {
   display: grid;
   gap: 8px;
 }
@@ -868,7 +905,8 @@ body {
   outline: none;
 }
 
-.vext-docs-auth-note {
+.vext-docs-auth-note,
+.vext-docs-hook-note {
   color: var(--vext-muted);
   font-size: 13px;
   line-height: 1.55;
@@ -1754,6 +1792,47 @@ export const VEXT_DOCS_APP_JS = `
     document.documentElement.setAttribute("data-vext-docs-density", density);
   };
 
+  const renderSourceSwitcher = () => {
+    const header = searchEl && searchEl.parentElement;
+    if (!header) return;
+    if (!hasMultipleSources()) {
+      if (sourceSwitcherEl) {
+        sourceSwitcherEl.remove();
+        sourceSwitcherEl = null;
+      }
+      return;
+    }
+    if (!sourceSwitcherEl) {
+      sourceSwitcherEl = document.createElement("div");
+      sourceSwitcherEl.className = "vext-docs-source-switcher";
+      sourceSwitcherEl.setAttribute("aria-label", "Documentation sources");
+      header.insertBefore(sourceSwitcherEl, searchEl.nextSibling);
+    }
+    clear(sourceSwitcherEl);
+    for (const source of state.sources) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "vext-docs-source-button";
+      button.textContent = source.operationCount
+        ? source.label + " (" + source.operationCount + ")"
+        : source.label;
+      button.setAttribute("aria-pressed", source.id === state.activeSourceId ? "true" : "false");
+      if (source.description) button.title = source.description;
+      button.addEventListener("click", () => switchSource(source.id));
+      sourceSwitcherEl.appendChild(button);
+    }
+  };
+
+  const switchSource = (sourceId) => {
+    if (!sourceId || sourceId === state.activeSourceId) return;
+    captureSourceState();
+    state.activeSourceId = sourceId;
+    applySourceState(sourceId);
+    renderSourceSwitcher();
+    closeMobileNavigation();
+    loadDocsForActiveSource();
+  };
+
   const setupUiControls = () => {
     if (!searchEl || !searchEl.parentElement) return;
     const header = searchEl.parentElement;
@@ -1795,6 +1874,7 @@ export const VEXT_DOCS_APP_JS = `
       writeStoredChoice(DENSITY_STORAGE_KEY, value);
     }));
     header.appendChild(controls);
+    renderSourceSwitcher();
 
     const createFilterControls = () => {
       const filters = document.createElement("div");
@@ -1974,7 +2054,15 @@ export const VEXT_DOCS_APP_JS = `
 
   const linkForAnchor = (anchor) => {
     const url = new URL(window.location.href);
-    url.hash = anchor || "";
+    if (hasMultipleSources() && state.activeSourceId) {
+      const params = new URLSearchParams();
+      params.set("source", state.activeSourceId);
+      params.set("view", state.view);
+      if (anchor) params.set("id", anchor);
+      url.hash = params.toString();
+    } else {
+      url.hash = anchor || "";
+    }
     return url.toString();
   };
 
@@ -1987,6 +2075,8 @@ export const VEXT_DOCS_APP_JS = `
   };
 
   const state = {
+    activeSourceId: "all",
+    sources: [],
     view: "overview",
     query: "",
     anchor: "",
@@ -1999,6 +2089,8 @@ export const VEXT_DOCS_APP_JS = `
   };
 
   let outlineEl = null;
+  let sourceSwitcherEl = null;
+  const sourceStateCache = new Map();
 
   const resolveInitialView = (config) => {
     const view = config && config.ui ? config.ui.defaultView : "overview";
@@ -2012,6 +2104,72 @@ export const VEXT_DOCS_APP_JS = `
     badge.className = "vext-docs-badge";
     badge.textContent = label;
     parent.appendChild(badge);
+  };
+
+  const hasMultipleSources = () => Array.isArray(state.sources) && state.sources.length > 1;
+
+  const activeSource = () => {
+    if (!Array.isArray(state.sources) || state.sources.length === 0) return null;
+    return state.sources.find((source) => source.id === state.activeSourceId) || state.sources.find((source) => source.default) || state.sources[0];
+  };
+
+  const endpointUrl = (endpoint) => {
+    const url = new URL(endpoint, window.location.href);
+    if (hasMultipleSources() && state.activeSourceId) {
+      url.searchParams.set("source", state.activeSourceId);
+    }
+    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : url.toString();
+  };
+
+  const parseHashState = () => {
+    const raw = decodeURIComponent(window.location.hash.replace(/^#/u, ""));
+    if (!raw) return { anchor: "" };
+    if (!raw.includes("=")) return { anchor: raw };
+    const params = new URLSearchParams(raw);
+    return {
+      source: params.get("source") || "",
+      view: params.get("view") || "",
+      anchor: params.get("id") || params.get("anchor") || "",
+    };
+  };
+
+  const captureSourceState = () => {
+    if (!state.activeSourceId) return;
+    sourceStateCache.set(state.activeSourceId, {
+      view: state.view,
+      query: state.query,
+      anchor: state.anchor,
+      collapsedGroups: new Set(state.collapsedGroups),
+      collapsedNav: new Set(state.collapsedNav),
+      searchScope: state.searchScope,
+      spec: state.spec,
+      codeDocs: state.codeDocs,
+    });
+  };
+
+  const applySourceState = (sourceId) => {
+    const cached = sourceStateCache.get(sourceId);
+    if (cached) {
+      state.view = cached.view;
+      state.query = cached.query;
+      state.anchor = cached.anchor;
+      state.collapsedGroups = new Set(cached.collapsedGroups);
+      state.collapsedNav = new Set(cached.collapsedNav);
+      state.searchScope = cached.searchScope;
+      state.spec = cached.spec;
+      state.codeDocs = cached.codeDocs || { items: [] };
+      syncSearchInputs(state.query, null);
+      return;
+    }
+    state.view = resolveInitialView(config);
+    state.query = "";
+    state.anchor = "";
+    state.collapsedGroups = new Set();
+    state.collapsedNav = new Set();
+    state.searchScope = state.view === "overview" ? "all" : state.view;
+    state.spec = null;
+    state.codeDocs = { items: [] };
+    syncSearchInputs("", null);
   };
 
   const isLocalDocsPage = () => {
@@ -2840,6 +2998,11 @@ export const VEXT_DOCS_APP_JS = `
     }
     grid.appendChild(wrapControl("Server", serverSelect));
 
+    const serverVariableInputs = new Map();
+    const serverVariablesPanel = document.createElement("div");
+    serverVariablesPanel.className = "vext-docs-server-vars";
+    grid.appendChild(serverVariablesPanel);
+
     const targetPreview = document.createElement("div");
     targetPreview.className = "vext-docs-tryout-target";
     grid.appendChild(targetPreview);
@@ -2879,6 +3042,7 @@ export const VEXT_DOCS_APP_JS = `
     const authPanel = document.createElement("div");
     authPanel.className = "vext-docs-tryout-panel-grid";
     authPanel.appendChild(authNote);
+    if (hasTryItOutHookConfig()) authPanel.appendChild(createHookNote());
 
     let bodyInput = null;
     const bodyPanel = document.createElement("div");
@@ -2964,7 +3128,8 @@ export const VEXT_DOCS_APP_JS = `
     const collectRequest = () => {
       const auth = buildAuthParts(operation);
       const queryParts = collectQueryParts(queryEditor.values(), queryEditor.rawInput.value, auth.query);
-      const target = buildTryItOutUrl(serverSelect.value, path, pathInputs, queryParts);
+      const serverUrl = resolveServerUrl(serverSelect.value, serverVariableInputs);
+      const target = buildTryItOutUrl(serverUrl, path, pathInputs, queryParts);
       const manualHeaders = {
         ...normalizeHeaders(headersEditor.valuesObject()),
         ...normalizeHeaders(parseHeaders(headersEditor.rawInput.value)),
@@ -2978,6 +3143,7 @@ export const VEXT_DOCS_APP_JS = `
         headers,
         body,
         server: serverSelect.value,
+        resolvedServer: serverUrl,
         displayUrl: resolveDisplayUrl(target),
       };
     };
@@ -3011,12 +3177,49 @@ export const VEXT_DOCS_APP_JS = `
     const updateConsole = () => {
       try {
         const request = collectRequest();
-        const cors = isAbsoluteUrl(request.server) ? " Browser CORS rules apply." : " Same-origin request.";
+        const cors = isAbsoluteUrl(request.resolvedServer || request.server) ? " Browser CORS rules apply." : " Same-origin request.";
         targetPreview.textContent = "URL: " + (request.displayUrl || request.target) + "." + cors;
         renderCodeSamples(sampleBlocks, request);
       } catch (error) {
         targetPreview.textContent = error && error.message ? error.message : String(error);
         for (const block of Object.values(sampleBlocks)) block.textContent = "Fix request inputs to generate samples.";
+      }
+    };
+
+    const renderServerVariables = () => {
+      clear(serverVariablesPanel);
+      serverVariableInputs.clear();
+      const server = getServerDefinition(serverSelect.value);
+      const variables = server && server.variables && typeof server.variables === "object"
+        ? server.variables
+        : {};
+      const entries = Object.entries(variables);
+      if (entries.length === 0) {
+        serverVariablesPanel.hidden = true;
+        return;
+      }
+      serverVariablesPanel.hidden = false;
+      const title = document.createElement("strong");
+      title.textContent = "Server variables";
+      serverVariablesPanel.appendChild(title);
+      for (const [name, variable] of entries) {
+        const typed = variable && typeof variable === "object" ? variable : {};
+        const values = Array.isArray(typed.enum) ? typed.enum.map((item) => text(item)) : [];
+        const control = values.length > 0 ? document.createElement("select") : document.createElement("input");
+        if (values.length > 0) {
+          for (const value of values) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value;
+            control.appendChild(option);
+          }
+        }
+        control.name = name;
+        control.value = text(typed.default || values[0] || "");
+        control.title = text(typed.description || "");
+        serverVariableInputs.set(name, control);
+        bindUpdate(control);
+        serverVariablesPanel.appendChild(wrapControl(name, control));
       }
     };
 
@@ -3032,6 +3235,10 @@ export const VEXT_DOCS_APP_JS = `
       node.addEventListener("input", updateConsole);
       node.addEventListener("change", updateConsole);
     };
+    serverSelect.addEventListener("change", () => {
+      renderServerVariables();
+      updateConsole();
+    });
     bindUpdate(serverSelect);
     for (const input of pathInputs) bindUpdate(input);
     queryEditor.onChange = updateConsole;
@@ -3041,8 +3248,13 @@ export const VEXT_DOCS_APP_JS = `
     button.addEventListener("click", async () => {
       button.disabled = true;
       status.textContent = "Sending...";
+      const hookDiagnostics = [];
       try {
-        const request = collectRequest();
+        const request = await applyBeforeRequestHook(
+          collectRequest(),
+          { method: methodName, path, operation },
+          hookDiagnostics,
+        );
         const init = { method: request.method, headers: request.headers };
         if (request.body) init.body = request.body;
         const startedAt = performance.now();
@@ -3066,7 +3278,15 @@ export const VEXT_DOCS_APP_JS = `
           body: responseText,
           prettyBody: formatResponseBody(responseText),
           error: "",
+          diagnostics: hookDiagnostics,
         };
+        lastResponse = await applyAfterResponseHook(
+          lastResponse,
+          request,
+          { method: methodName, path, operation },
+          hookDiagnostics,
+        );
+        lastResponse.diagnostics = hookDiagnostics;
         pushRequestHistory({
           operationKey,
           method: request.method,
@@ -3106,6 +3326,7 @@ export const VEXT_DOCS_APP_JS = `
           body: message,
           prettyBody: message,
           error: message,
+          diagnostics: hookDiagnostics,
         };
         pushRequestHistory({
           operationKey,
@@ -3127,6 +3348,7 @@ export const VEXT_DOCS_APP_JS = `
     });
 
       details.appendChild(grid);
+      renderServerVariables();
       updateConsole();
       history.render();
     };
@@ -3173,12 +3395,22 @@ export const VEXT_DOCS_APP_JS = `
     return button;
   };
 
+  const getServerDefinitions = () => {
+    const servers = state.spec && Array.isArray(state.spec.servers) ? state.spec.servers : [];
+    return servers
+      .filter((server) => server && server.url)
+      .map((server) => ({
+        ...server,
+        url: text(server.url).trim(),
+      }))
+      .filter((server) => server.url);
+  };
+
   const getServerOptions = () => {
     const options = [{ label: "Same origin", value: "" }];
-    const servers = state.spec && Array.isArray(state.spec.servers) ? state.spec.servers : [];
+    const servers = getServerDefinitions();
     for (const server of servers) {
-      if (!server || !server.url) continue;
-      const url = text(server.url).trim();
+      const url = server.url;
       if (!url) continue;
       const description = server.description ? text(server.description) + " - " : "";
       if (!options.some((entry) => entry.value === url)) {
@@ -3186,6 +3418,31 @@ export const VEXT_DOCS_APP_JS = `
       }
     }
     return options;
+  };
+
+  const getServerDefinition = (url) =>
+    getServerDefinitions().find((server) => server.url === url) || null;
+
+  const resolveServerUrl = (serverUrl, variableInputs) => {
+    const raw = text(serverUrl);
+    if (!raw) return "";
+    const server = getServerDefinition(raw);
+    const variables = server && server.variables && typeof server.variables === "object"
+      ? server.variables
+      : {};
+    return raw.replace(/\\{([^}]+)\\}/gu, (_match, name) => {
+      const variable = variables[name] && typeof variables[name] === "object" ? variables[name] : {};
+      const input = variableInputs.get(name);
+      const value = input ? text(input.value).trim() : text(variable.default).trim();
+      if (!value) {
+        throw new Error("Server variable " + name + " requires a value.");
+      }
+      const allowed = Array.isArray(variable.enum) ? variable.enum.map((item) => text(item)) : [];
+      if (allowed.length > 0 && !allowed.includes(value)) {
+        throw new Error("Server variable " + name + " must be one of: " + allowed.join(", "));
+      }
+      return encodeURIComponent(value);
+    });
   };
 
   const isAbsoluteUrl = (value) => /^https?:\\/\\//iu.test(text(value));
@@ -3318,6 +3575,99 @@ export const VEXT_DOCS_APP_JS = `
     }
     note.appendChild(list);
     return note;
+  };
+
+  const hasTryItOutHookConfig = () =>
+    Boolean(config.tryItOut && (config.tryItOut.hookScript || config.tryItOut.hookGlobal));
+
+  const getTryItOutHooks = () => {
+    const name = config.tryItOut && config.tryItOut.hookGlobal ? config.tryItOut.hookGlobal : "VextDocsHooks";
+    const hooks = window[name];
+    return hooks && typeof hooks === "object" ? hooks : null;
+  };
+
+  const createHookNote = () => {
+    const note = document.createElement("div");
+    note.className = "vext-docs-hook-note";
+    const title = document.createElement("strong");
+    title.textContent = "Request hook";
+    note.appendChild(title);
+    const body = document.createElement("p");
+    const name = config.tryItOut && config.tryItOut.hookGlobal ? config.tryItOut.hookGlobal : "VextDocsHooks";
+    body.textContent = "Browser-side hook global: window." + name + ". Hook changes are reflected in diagnostics and sent request headers.";
+    note.appendChild(body);
+    return note;
+  };
+
+  const cloneRequest = (request) => ({
+    ...request,
+    headers: { ...(request.headers || {}) },
+  });
+
+  const applyHookRequestPatch = (request, patch) => {
+    if (!patch || typeof patch !== "object") return request;
+    const next = cloneRequest(request);
+    if (typeof patch.method === "string") next.method = patch.method.toUpperCase();
+    if (typeof patch.target === "string") next.target = patch.target;
+    if (typeof patch.displayUrl === "string") next.displayUrl = patch.displayUrl;
+    if (typeof patch.body === "string") next.body = patch.body;
+    if (patch.headers && typeof patch.headers === "object") {
+      next.headers = {
+        ...next.headers,
+        ...normalizeHeaders(patch.headers),
+      };
+    }
+    return next;
+  };
+
+  const applyBeforeRequestHook = async (request, context, diagnostics) => {
+    const hooks = getTryItOutHooks();
+    if (!hooks || typeof hooks.beforeRequest !== "function") return request;
+    try {
+      const result = await hooks.beforeRequest({
+        request: cloneRequest(request),
+        operation: context.operation,
+        method: context.method,
+        path: context.path,
+        source: activeSource(),
+      });
+      if (result) {
+        diagnostics.push("beforeRequest hook applied.");
+      }
+      return applyHookRequestPatch(request, result);
+    } catch (error) {
+      diagnostics.push("beforeRequest hook failed: " + (error && error.message ? error.message : String(error)));
+      return request;
+    }
+  };
+
+  const applyAfterResponseHook = async (response, request, context, diagnostics) => {
+    const hooks = getTryItOutHooks();
+    if (!hooks || typeof hooks.afterResponse !== "function") return response;
+    try {
+      const result = await hooks.afterResponse({
+        response: { ...response },
+        request: cloneRequest(request),
+        operation: context.operation,
+        method: context.method,
+        path: context.path,
+        source: activeSource(),
+      });
+      if (result && typeof result === "object") {
+        if (Array.isArray(result.diagnostics)) {
+          diagnostics.push(...result.diagnostics.map((item) => text(item)));
+        } else {
+          diagnostics.push("afterResponse hook applied.");
+        }
+        if (result.response && typeof result.response === "object") {
+          return { ...response, ...result.response };
+        }
+      }
+      return response;
+    } catch (error) {
+      diagnostics.push("afterResponse hook failed: " + (error && error.message ? error.message : String(error)));
+      return response;
+    }
   };
 
   const createCodeSamplesSection = () => {
@@ -3524,6 +3874,9 @@ export const VEXT_DOCS_APP_JS = `
       "Response headers:",
       response.headers && response.headers.length > 0 ? response.headers.join("\\n") : "(none)",
       "",
+      "Diagnostics:",
+      response.diagnostics && response.diagnostics.length > 0 ? response.diagnostics.join("\\n") : "(none)",
+      "",
       mode === "raw" ? "Raw body:" : "Body:",
       body || "(empty)",
     ];
@@ -3577,6 +3930,13 @@ export const VEXT_DOCS_APP_JS = `
     blocks.browserFetch.textContent = createBrowserFetchSample(request);
     blocks.nodeFetch.textContent = createNodeFetchSample(request);
     blocks.axios.textContent = createAxiosSample(request);
+    if (hasTryItOutHookConfig()) {
+      const note = "\\n\\n// Note: a browser-side Vext Docs request hook may modify the runtime request.";
+      blocks.browserFetch.textContent += note;
+      blocks.nodeFetch.textContent += note;
+      blocks.axios.textContent += note;
+      blocks.curl.textContent += "\\n\\n# Note: a browser-side Vext Docs request hook may modify the runtime request.";
+    }
   };
 
   const jsonLiteral = (value) => JSON.stringify(value, null, 2);
@@ -4342,7 +4702,7 @@ export const VEXT_DOCS_APP_JS = `
         appendLeafContent(button, node);
         button.addEventListener("click", () => {
           state.anchor = node.anchorId;
-          if (history.replaceState) history.replaceState(null, "", "#" + node.anchorId);
+          if (history.replaceState) history.replaceState(null, "", linkForAnchor(node.anchorId));
           closeMobileNavigation();
           render();
         });
@@ -4477,6 +4837,10 @@ export const VEXT_DOCS_APP_JS = `
       const meta = document.createElement("div");
       meta.className = "vext-docs-meta";
       const operations = flattenOperations(state.spec);
+      const currentSource = activeSource();
+      if (currentSource && hasMultipleSources()) {
+        appendBadge(meta, "source: " + currentSource.label);
+      }
       appendBadge(meta, "OpenAPI source: " + config.specPublicPath);
       appendBadge(meta, "asset: " + (config.assetVersion || "dev"));
       appendBadge(meta, "access: " + (config.accessMode || "off"));
@@ -4564,42 +4928,147 @@ export const VEXT_DOCS_APP_JS = `
     renderOutline();
   };
 
-  const config = readConfig();
+  let config = readConfig();
   if (!config) {
     statusEl.textContent = "Failed to read docs configuration.";
     return;
   }
-  state.view = resolveInitialView(config);
+
+  const fetchJson = (url, label) =>
+    fetch(url, { headers: { Accept: "application/json" } }).then((response) => {
+      if (!response.ok) throw new Error(label + " HTTP " + response.status);
+      return response.json();
+    });
+
+  const mergeRuntimeConfig = (runtimeConfig) => {
+    if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+    config = {
+      ...config,
+      ...runtimeConfig,
+      endpoints: {
+        ...(config.endpoints || {}),
+        ...(runtimeConfig.endpoints || {}),
+      },
+      ui: {
+        ...(config.ui || {}),
+        ...(runtimeConfig.ui || {}),
+      },
+    };
+  };
+
+  const loadRuntimeConfig = () => {
+    if (!config.endpoints || !config.endpoints.config) {
+      return Promise.resolve();
+    }
+    return fetchJson(config.endpoints.config, "Docs config")
+      .then((runtimeConfig) => {
+        mergeRuntimeConfig(runtimeConfig);
+      })
+      .catch(() => {
+        // The boot config is enough for legacy single-source pages.
+      });
+  };
+
+  const loadTryItOutHookScript = () => {
+    const src = config.tryItOut && config.tryItOut.hookScript ? text(config.tryItOut.hookScript).trim() : "";
+    if (!src) return Promise.resolve();
+    if (document.querySelector('script[data-vext-docs-hook="true"]')) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.dataset.vextDocsHook = "true";
+      script.onload = () => resolve();
+      script.onerror = () => {
+        statusEl.textContent = "Docs hook script failed to load; Try it out will continue without hook changes.";
+        resolve();
+      };
+      document.head.appendChild(script);
+    });
+  };
+
+  const applyHashState = (hashState) => {
+    if (!hashState) return;
+    if (hashState.anchor) {
+      state.anchor = hashState.anchor;
+    }
+    const hashView = hashState.view || viewForAnchor(hashState.anchor);
+    if (hashView) {
+      state.view = hashView;
+      state.searchScope = hashView;
+    }
+  };
+
+  const updateLoadedStatus = () => {
+    const source = activeSource();
+    const prefix = source && hasMultipleSources() ? source.label + " · " : "";
+    statusEl.textContent = prefix + "OpenAPI source: " + config.specPublicPath;
+  };
+
+  const loadDocsForActiveSource = (hashState) => {
+    const sourceId = state.activeSourceId;
+    statusEl.textContent = "Loading documentation...";
+    return Promise.all([
+      fetchJson(endpointUrl(config.endpoints.openapi), "OpenAPI"),
+      fetchJson(endpointUrl(config.endpoints.code), "Code docs"),
+    ])
+      .then(([spec, codeDocs]) => {
+        if (sourceId !== state.activeSourceId) return;
+        state.spec = spec;
+        state.codeDocs = codeDocs || { items: [] };
+        applyHashState(hashState);
+        captureSourceState();
+        updateLoadedStatus();
+        renderAuthControls();
+        renderSourceSwitcher();
+        render();
+        bindSearchInputs();
+        window.requestAnimationFrame(scrollToAnchor);
+      })
+      .catch((error) => {
+        clear(panelEl);
+        statusEl.textContent = "Failed to load documentation.";
+        const errorEl = document.createElement("div");
+        errorEl.className = "vext-docs-error";
+        errorEl.textContent = error && error.message ? error.message : String(error);
+        panelEl.appendChild(errorEl);
+        renderOutline();
+      });
+  };
+
+  const initializeSources = (hashState) => {
+    state.sources = Array.isArray(config.sources) ? config.sources : [];
+    const requestedSource = hashState.source
+      ? state.sources.find((source) => source.id === hashState.source)
+      : null;
+    const defaultSource =
+      requestedSource ||
+      state.sources.find((source) => source.default) ||
+      state.sources[0] ||
+      null;
+    state.activeSourceId = defaultSource ? defaultSource.id : "all";
+    applySourceState(state.activeSourceId);
+    if (hashState.view) {
+      state.view = hashState.view;
+      state.searchScope = hashState.view === "overview" ? "all" : hashState.view;
+    }
+  };
+
+  const initialHashState = parseHashState();
   setupSidebarResize();
   setupMobileNavigation();
   setupOutline();
-  setupUiControls();
 
-  Promise.all([
-    fetch(config.endpoints.openapi, { headers: { Accept: "application/json" } }),
-    fetch(config.endpoints.code, { headers: { Accept: "application/json" } }),
-  ])
-    .then(([specRes, codeRes]) => {
-      if (!specRes.ok) throw new Error("OpenAPI HTTP " + specRes.status);
-      if (!codeRes.ok) throw new Error("Code docs HTTP " + codeRes.status);
-      return Promise.all([specRes.json(), codeRes.json()]);
+  loadRuntimeConfig()
+    .then(() => {
+      return loadTryItOutHookScript();
     })
-    .then(([spec, codeDocs]) => {
-      state.spec = spec;
-      state.codeDocs = codeDocs || { items: [] };
-      const initialHash = decodeURIComponent(window.location.hash.replace(/^#/u, ""));
-      if (initialHash) {
-        state.anchor = initialHash;
-        const hashView = viewForAnchor(initialHash);
-        if (hashView) {
-          state.view = hashView;
-          state.searchScope = hashView;
-        }
-      }
-      statusEl.textContent = "OpenAPI source: " + config.specPublicPath;
-      renderAuthControls();
-      render();
-      bindSearchInputs();
+    .then(() => {
+      initializeSources(initialHashState);
+      setupUiControls();
+      return loadDocsForActiveSource(initialHashState);
     })
     .catch((error) => {
       clear(panelEl);

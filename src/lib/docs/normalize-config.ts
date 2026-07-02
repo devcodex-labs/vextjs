@@ -9,8 +9,11 @@ import type {
   ResolvedVextCodeDocsConfig,
   ResolvedVextDocsAccessConfig,
   ResolvedVextDocsConfig,
+  ResolvedVextDocsSource,
+  ResolvedVextDocsTryItOutConfig,
   ResolvedVextDocsUiConfig,
   VextCodeDocsSourceConfig,
+  VextDocsSourceCodeFilterConfig,
 } from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,6 +35,84 @@ function normalizeCodeSource(
 
 function joinAssetPath(base: string, file: string): string {
   return `${base.replace(/\/+$/, "")}/${file.replace(/^\/+/, "")}`;
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeSourceCodeFilter(
+  value: unknown,
+): VextDocsSourceCodeFilterConfig | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const code: VextDocsSourceCodeFilterConfig = {};
+  const include = normalizeStringArray(value.include);
+  const exclude = normalizeStringArray(value.exclude);
+  if (include.length > 0) code.include = include;
+  if (exclude.length > 0) code.exclude = exclude;
+  return code.include || code.exclude ? code : undefined;
+}
+
+function normalizeDocsSources(value: unknown): ResolvedVextDocsSource[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const sources: ResolvedVextDocsSource[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.id !== "string") {
+      continue;
+    }
+    const id = item.id.trim();
+    const match = normalizeStringArray(item.match);
+    if (!id || seen.has(id) || match.length === 0) {
+      continue;
+    }
+    seen.add(id);
+
+    const source: ResolvedVextDocsSource = {
+      id,
+      label:
+        typeof item.label === "string" && item.label.trim()
+          ? item.label.trim()
+          : id,
+      match,
+      default: item.default === true,
+    };
+    if (typeof item.version === "string" && item.version.trim()) {
+      source.version = item.version.trim();
+    }
+    if (typeof item.description === "string" && item.description.trim()) {
+      source.description = item.description.trim();
+    }
+    if (item.access !== undefined) {
+      source.access = item.access as ResolvedVextDocsSource["access"];
+    }
+    const code = normalizeSourceCodeFilter(item.code);
+    if (code) {
+      source.code = code;
+    }
+    sources.push(source);
+  }
+
+  if (sources.length > 0 && !sources.some((source) => source.default)) {
+    sources[0] = { ...sources[0]!, default: true };
+  }
+  return sources;
 }
 
 export function normalizeDocsConfig(
@@ -74,6 +155,10 @@ export function normalizeDocsConfig(
     resolver: openapi.docs?.access?.resolver,
     cacheKey: openapi.docs?.access?.cacheKey,
   };
+  const tryItOut: ResolvedVextDocsTryItOutConfig = {
+    hookScript: openapi.docs?.tryItOut?.hookScript,
+    hookGlobal: openapi.docs?.tryItOut?.hookGlobal ?? "VextDocsHooks",
+  };
   const renderer = openapi.docs?.renderer;
   if (renderer !== undefined && renderer !== DEFAULT_DOCS_RENDERER) {
     throw new Error(
@@ -90,6 +175,8 @@ export function normalizeDocsConfig(
     ui,
     code: codeConfig,
     access,
+    tryItOut,
+    sources: normalizeDocsSources(openapi.docs?.sources),
     endpoints: {
       page: docsPath,
       openapi: joinAssetPath(assetsPath, "openapi.json"),

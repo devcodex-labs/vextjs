@@ -30,7 +30,50 @@ describe("docs public contract", () => {
     expect(config.code.preload).toBe(false);
     expect(config.code.styles).toBe(false);
     expect(config.access.mode).toBe("off");
+    expect(config.tryItOut.hookGlobal).toBe("VextDocsHooks");
+    expect(config.tryItOut.hookScript).toBeUndefined();
+    expect(config.sources).toEqual([]);
     expect(config.endpoints.appJs).toBe("/_vext/docs/app.js");
+  });
+
+  it("normalizes explicit docs sources", () => {
+    const config = normalizeDocsConfig({
+      docs: {
+        sources: [
+          {
+            id: "public-v1",
+            label: "Public v1",
+            match: ["/api/v1/**"],
+            version: "v1",
+            description: "Public API version 1",
+            code: { include: ["services/public/**"] },
+          },
+          {
+            id: "admin",
+            match: "/admin/**",
+            default: true,
+          },
+        ],
+      },
+    });
+
+    expect(config.sources).toEqual([
+      expect.objectContaining({
+        id: "public-v1",
+        label: "Public v1",
+        match: ["/api/v1/**"],
+        version: "v1",
+        default: false,
+        description: "Public API version 1",
+        code: { include: ["services/public/**"] },
+      }),
+      expect.objectContaining({
+        id: "admin",
+        label: "admin",
+        match: ["/admin/**"],
+        default: true,
+      }),
+    ]);
   });
 
   it("keeps optional static docs sources available when explicitly enabled", () => {
@@ -64,6 +107,10 @@ describe("docs public contract", () => {
         ui: { defaultView: "api", tryItOut: false, theme: "dark", density: "compact" },
         code: { enabled: false, scan: "background" },
         access: { mode: "visibility-only", openapiJson: "public" },
+        tryItOut: {
+          hookScript: "/docs-hook.js",
+          hookGlobal: "CustomDocsHooks",
+        },
       },
     });
 
@@ -78,6 +125,8 @@ describe("docs public contract", () => {
     expect(config.code.scan).toBe("background");
     expect(config.access.mode).toBe("visibility-only");
     expect(config.access.openapiJson).toBe("public");
+    expect(config.tryItOut.hookScript).toBe("/docs-hook.js");
+    expect(config.tryItOut.hookGlobal).toBe("CustomDocsHooks");
   });
 
   it("rejects external renderer objects", () => {

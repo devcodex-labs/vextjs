@@ -79,6 +79,44 @@ const spec = {
   },
 };
 
+const versionedSpec = {
+  openapi: "3.0.0",
+  info: { title: "Versioned API", version: "1.0.0" },
+  tags: [{ name: "API v1" }, { name: "API v2" }, { name: "Admin" }],
+  "x-tagGroups": [
+    { name: "Versioned", tags: ["API v1", "API v2"] },
+    { name: "Admin", tags: ["Admin"] },
+  ],
+  paths: {
+    "/api/v1/info": {
+      get: {
+        summary: "API v1 info",
+        tags: ["API v1"],
+        responses: { 200: { description: "OK" } },
+      },
+      post: {
+        summary: "Create API v1 info",
+        tags: ["API v1"],
+        responses: { 201: { description: "Created" } },
+      },
+    },
+    "/api/v2/info": {
+      get: {
+        summary: "API v2 info",
+        tags: ["API v2"],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+    "/admin/stats": {
+      get: {
+        summary: "Admin stats",
+        tags: ["Admin"],
+        responses: { 200: { description: "OK" } },
+      },
+    },
+  },
+};
+
 describe("registerDocsEndpoints", () => {
   it("registers Vext docs endpoints without Scalar assets", async () => {
     const app = createMockApp();
@@ -111,10 +149,10 @@ describe("registerDocsEndpoints", () => {
     expect(response.body).toContain("</aside>\n    <div id=\"vext-docs-resizer\"");
     expect(response.body).toContain('/_vext/docs/style.css?v=');
     expect(response.body).toContain('/_vext/docs/app.js?v=');
-    expect(response.body).toContain("20260702-b31");
+    expect(response.body).toContain("20260702-b32");
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
-    expect(response.body).toContain('"assetVersion":"20260702-b31"');
+    expect(response.body).toContain('"assetVersion":"20260702-b32"');
     expect(response.body).toContain('id="vext-docs-mobile-nav-toggle"');
     expect(response.body).toContain('id="vext-docs-sidebar-backdrop"');
     expect(response.body).toContain('"accessMode":"off"');
@@ -175,7 +213,7 @@ describe("registerDocsEndpoints", () => {
     expect(appJsResponse.headers["Cache-Control"]).toBe(
       "no-cache, max-age=0, must-revalidate",
     );
-    expect(appJsResponse.body).toContain("fetch(config.endpoints.openapi");
+    expect(appJsResponse.body).toContain("endpointUrl(config.endpoints.openapi");
 
     const styleCssResponse = createMockResponse();
     await styleCssRoute!.chain[0]({}, styleCssResponse);
@@ -185,6 +223,81 @@ describe("registerDocsEndpoints", () => {
     expect(styleCssResponse.headers["Cache-Control"]).toBe(
       "no-cache, max-age=0, must-revalidate",
     );
+  });
+
+  it("exposes automatic version sources and filters source data endpoints", async () => {
+    const app = createMockApp();
+    registerDocsEndpoints(app, versionedSpec, {
+      title: "Versioned API",
+    });
+
+    const configRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/config.json",
+    );
+    const openapiRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/openapi.json",
+    );
+    const searchRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/search.json",
+    );
+
+    const configResponse = createMockResponse();
+    await configRoute!.chain[0]({}, configResponse);
+    expect(configResponse.body).toMatchObject({
+      sources: [
+        expect.objectContaining({
+          id: "all",
+          label: "All",
+          default: true,
+          operationCount: 4,
+        }),
+        expect.objectContaining({
+          id: "api-v1",
+          label: "API v1",
+          match: ["/api/v1/**"],
+          auto: true,
+          operationCount: 2,
+        }),
+        expect.objectContaining({
+          id: "api-v2",
+          label: "API v2",
+          match: ["/api/v2/**"],
+          auto: true,
+          operationCount: 1,
+        }),
+      ],
+    });
+
+    const v1Response = createMockResponse();
+    await openapiRoute!.chain[0](
+      { query: { source: "api-v1" } },
+      v1Response,
+    );
+    expect(v1Response.body).toMatchObject({
+      paths: { "/api/v1/info": expect.any(Object) },
+      tags: [{ name: "API v1" }],
+      "x-tagGroups": [{ name: "Versioned", tags: ["API v1"] }],
+    });
+    expect(
+      (v1Response.body as typeof versionedSpec).paths["/api/v2/info"],
+    ).toBeUndefined();
+    expect(
+      (v1Response.body as typeof versionedSpec).paths["/admin/stats"],
+    ).toBeUndefined();
+
+    const searchResponse = createMockResponse();
+    await searchRoute!.chain[0](
+      { query: { source: "api-v2" } },
+      searchResponse,
+    );
+    expect(searchResponse.body).toEqual(
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ kind: "openapi", path: "/api/v2/info" }),
+        ]),
+      }),
+    );
+    expect(JSON.stringify(searchResponse.body)).not.toContain("/api/v1/info");
   });
 
   it("omits project metadata when package.json is unavailable", async () => {

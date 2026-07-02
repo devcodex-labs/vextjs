@@ -128,7 +128,14 @@ export interface OpenAPIConfig {
   version?: string;
 
   /** 服务器地址列表 */
-  servers?: Array<{ url: string; description?: string }>;
+  servers?: Array<{
+    url: string;
+    description?: string;
+    variables?: Record<
+      string,
+      { default: string; enum?: string[]; description?: string }
+    >;
+  }>;
 
   /** 全局安全方案 */
   securitySchemes?: Record<string, SecurityScheme>;
@@ -183,7 +190,14 @@ export interface OpenAPIDocument {
     contact?: { name?: string; email?: string; url?: string };
     license?: { name: string; url?: string };
   };
-  servers?: Array<{ url: string; description?: string }>;
+  servers?: Array<{
+    url: string;
+    description?: string;
+    variables?: Record<
+      string,
+      { default: string; enum?: string[]; description?: string }
+    >;
+  }>;
   paths: Record<string, Record<string, OpenAPIOperation>>;
   components?: {
     schemas?: Record<string, JsonSchema>;

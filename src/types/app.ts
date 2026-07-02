@@ -662,7 +662,14 @@ export interface VextOpenAPIConfig {
   license?: { name: string; url?: string };
 
   /** 服务器地址列表 */
-  servers?: Array<{ url: string; description?: string }>;
+  servers?: Array<{
+    url: string;
+    description?: string;
+    variables?: Record<
+      string,
+      { default: string; enum?: string[]; description?: string }
+    >;
+  }>;
   /** 全局标签定义 */
   tags?: Array<{ name: string; description?: string }>;
 

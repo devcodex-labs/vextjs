@@ -17,8 +17,15 @@ import {
   createCodeDocsProvider,
   type CodeDocsProvider,
 } from "./sources/code-jsdoc-source.js";
+import {
+  filterCodeDocsItemsBySource,
+  filterOpenAPIDocumentBySource,
+  resolveDocsSource,
+  resolveDocsSources,
+} from "./sources/source-registry.js";
 import type {
   ResolvedVextDocsConfig,
+  ResolvedVextDocsSource,
   VextDocsProjectInfo,
   VextDocsProjectScriptGroup,
   VextDocsOpenAPIDocument,
@@ -72,8 +79,10 @@ function registerOpenAPIJsonEndpoint(
       const resolvedSpec = await resolveOpenAPISpecForEndpoint(
         spec,
         config,
-        toDocsRequestContext(req),
-        config.access.openapiJson === "public",
+        {
+          request: toDocsRequestContext(req),
+          allowPublicCanonical: config.access.openapiJson === "public",
+        },
       );
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -90,20 +99,32 @@ function registerDocsDataEndpoints(
   endpointConfig: DocEndpointsConfig,
 ): void {
   app.adapter.registerRoute("GET", config.endpoints.config, [
-    async (_req, res) => {
+    async (req, res) => {
+      const request = toDocsRequestContext(req);
+      const sources = await resolveVisibleDocsSources(spec, config, request);
       res.setHeader("Content-Type", "application/json");
-      res.rawJson(createPublicDocsConfig(config));
+      res.rawJson(createPublicDocsConfig(config, sources));
     },
   ]);
 
   app.adapter.registerRoute("GET", config.endpoints.openapi, [
     async (req, res) => {
-      const resolvedSpec = await resolveOpenAPISpecForEndpoint(
+      const request = toDocsRequestContext(req);
+      const sourceId = readQueryString(req, "source");
+      const selected = await resolveSelectedDocsSource(
         spec,
         config,
-        toDocsRequestContext(req),
-        false,
+        request,
+        sourceId,
       );
+      if (!selected) {
+        sendUnknownDocsSource(res, sourceId);
+        return;
+      }
+      const resolvedSpec = await resolveOpenAPISpecForEndpoint(spec, config, {
+        request,
+        source: selected.source,
+      });
       res.setHeader("Content-Type", "application/json");
       res.rawJson(resolvedSpec);
     },
@@ -111,10 +132,23 @@ function registerDocsDataEndpoints(
 
   app.adapter.registerRoute("GET", config.endpoints.code, [
     async (req, res) => {
+      const request = toDocsRequestContext(req);
+      const sourceId = readQueryString(req, "source");
+      const selected = await resolveSelectedDocsSource(
+        spec,
+        config,
+        request,
+        sourceId,
+      );
+      if (!selected) {
+        sendUnknownDocsSource(res, sourceId);
+        return;
+      }
       const codeDocs = await resolveCodeDocsForView(
         codeDocsProvider,
         config,
-        toDocsRequestContext(req),
+        request,
+        selected.source,
       );
       res.setHeader("Content-Type", "application/json");
       res.rawJson(codeDocs);
@@ -124,16 +158,26 @@ function registerDocsDataEndpoints(
   app.adapter.registerRoute("GET", config.endpoints.search, [
     async (req, res) => {
       const request = toDocsRequestContext(req);
-      const resolvedSpec = await resolveOpenAPISpecForEndpoint(
+      const sourceId = readQueryString(req, "source");
+      const selected = await resolveSelectedDocsSource(
         spec,
         config,
         request,
-        false,
+        sourceId,
       );
+      if (!selected) {
+        sendUnknownDocsSource(res, sourceId);
+        return;
+      }
+      const resolvedSpec = await resolveOpenAPISpecForEndpoint(spec, config, {
+        request,
+        source: selected.source,
+      });
       const codeDocs = await resolveCodeDocsForView(
         codeDocsProvider,
         config,
         request,
+        selected.source,
       );
       res.setHeader("Content-Type", "application/json");
       res.rawJson(createDocsSearchIndex(codeDocs, resolvedSpec));
@@ -202,7 +246,10 @@ function registerDocsPage(
   ]);
 }
 
-function createPublicDocsConfig(config: ResolvedVextDocsConfig) {
+function createPublicDocsConfig(
+  config: ResolvedVextDocsConfig,
+  sources: ResolvedVextDocsSource[],
+) {
   const publicConfig: Record<string, unknown> = {
     path: config.path,
     assetsPath: config.assetsPath,
@@ -211,10 +258,12 @@ function createPublicDocsConfig(config: ResolvedVextDocsConfig) {
     endpoints: config.endpoints,
     ui: config.ui,
     code: config.code,
+    tryItOut: config.tryItOut,
     access: {
       mode: config.access.mode,
       openapiJson: config.access.openapiJson,
     },
+    sources,
   };
   if (config.project) {
     publicConfig.project = config.project;
@@ -424,19 +473,25 @@ async function resolveOpenAPISpec(
 async function resolveOpenAPISpecForEndpoint(
   spec: OpenAPISpecProvider,
   config: ResolvedVextDocsConfig,
-  request: VextDocsRequestContext | undefined,
-  allowPublicCanonical: boolean,
-  filterOptions = {},
+  options: {
+    request?: VextDocsRequestContext;
+    allowPublicCanonical?: boolean;
+    source?: ResolvedVextDocsSource;
+    filterOptions?: Record<string, unknown>;
+  } = {},
 ): Promise<VextDocsOpenAPIDocument> {
   const resolved = await resolveOpenAPISpec(spec);
-  if (allowPublicCanonical) {
+  if (options.allowPublicCanonical) {
     return resolved;
   }
+  const sourceScoped = options.source
+    ? filterOpenAPIDocumentBySource(resolved, options.source)
+    : resolved;
   return filterOpenAPIDocumentForDocs(
-    resolved,
+    sourceScoped,
     config.access,
-    request,
-    filterOptions,
+    options.request,
+    options.filterOptions,
   );
 }
 
@@ -444,11 +499,78 @@ async function resolveCodeDocsForView(
   codeDocsProvider: CodeDocsProvider,
   config: ResolvedVextDocsConfig,
   request: VextDocsRequestContext | undefined,
+  source?: ResolvedVextDocsSource,
 ) {
   const codeDocs = await codeDocsProvider();
-  return filterCodeDocsForDocs(codeDocs, config.access, request, {
+  const filtered = await filterCodeDocsForDocs(codeDocs, config.access, request, {
     includeVisibilityOnly: true,
   });
+  return source
+    ? {
+        ...filtered,
+        items: filterCodeDocsItemsBySource(filtered.items, source),
+      }
+    : filtered;
+}
+
+async function resolveVisibleDocsSources(
+  spec: OpenAPISpecProvider,
+  config: ResolvedVextDocsConfig,
+  request?: VextDocsRequestContext,
+): Promise<ResolvedVextDocsSource[]> {
+  const document = await resolveOpenAPISpecForEndpoint(spec, config, {
+    request,
+  });
+  return resolveDocsSources(document, config).filter(isVisibleDocsSource);
+}
+
+async function resolveSelectedDocsSource(
+  spec: OpenAPISpecProvider,
+  config: ResolvedVextDocsConfig,
+  request: VextDocsRequestContext | undefined,
+  sourceId: string | undefined,
+): Promise<{ source: ResolvedVextDocsSource; sources: ResolvedVextDocsSource[] } | undefined> {
+  const sources = await resolveVisibleDocsSources(spec, config, request);
+  const source = resolveDocsSource(sources, sourceId);
+  return source ? { source, sources } : undefined;
+}
+
+function isVisibleDocsSource(source: ResolvedVextDocsSource): boolean {
+  if (
+    typeof source.access === "object" &&
+    source.access !== null &&
+    source.access.visible === false
+  ) {
+    return false;
+  }
+  return source.id === "all" || (source.operationCount ?? 0) > 0;
+}
+
+function readQueryString(request: unknown, name: string): string | undefined {
+  if (typeof request !== "object" || request === null) {
+    return undefined;
+  }
+  const query = (request as Record<string, unknown>).query;
+  if (typeof query !== "object" || query === null) {
+    return undefined;
+  }
+  const value = (query as Record<string, unknown>)[name];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sendUnknownDocsSource(
+  response: { rawJson: (body: unknown, status?: number) => unknown },
+  sourceId: string | undefined,
+): void {
+  response.rawJson(
+    {
+      code: 404,
+      message: sourceId
+        ? `Docs source "${sourceId}" was not found.`
+        : "Docs source was not found.",
+    },
+    404,
+  );
 }
 
 function warnScalarMigration(app: VextApp, config: DocEndpointsConfig): void {

@@ -18,4 +18,12 @@ export {
   getOpenAPIOperationTags,
   isOpenAPIHttpMethod,
 } from "./sources/openapi-source.js";
+export {
+  DEFAULT_DOCS_SOURCE_ID,
+  countOpenAPIOperations,
+  filterCodeDocsItemsBySource,
+  filterOpenAPIDocumentBySource,
+  resolveDocsSource,
+  resolveDocsSources,
+} from "./sources/source-registry.js";
 export type * from "./types.js";

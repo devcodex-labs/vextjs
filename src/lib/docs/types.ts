@@ -200,6 +200,40 @@ export interface ResolvedVextDocsAccessConfig {
   cacheKey?: VextDocsAccessCacheKeyResolver | string;
 }
 
+export interface ResolvedVextDocsTryItOutConfig {
+  hookScript?: string;
+  hookGlobal: string;
+}
+
+export interface VextDocsSourceCodeFilterConfig {
+  include?: string[];
+  exclude?: string[];
+}
+
+export interface VextDocsSourceConfig {
+  id: string;
+  label?: string;
+  match: string | string[];
+  version?: string;
+  description?: string;
+  default?: boolean;
+  access?: VextRouteDocsAccessConfig | string;
+  code?: VextDocsSourceCodeFilterConfig;
+}
+
+export interface ResolvedVextDocsSource {
+  id: string;
+  label: string;
+  match: string[];
+  version?: string;
+  description?: string;
+  default: boolean;
+  auto?: boolean;
+  operationCount?: number;
+  access?: VextRouteDocsAccessConfig | string;
+  code?: VextDocsSourceCodeFilterConfig;
+}
+
 export type VextDocsProjectScriptGroup =
   | "development"
   | "production"
@@ -228,6 +262,8 @@ export interface ResolvedVextDocsConfig {
   ui: ResolvedVextDocsUiConfig;
   code: ResolvedVextCodeDocsConfig;
   access: ResolvedVextDocsAccessConfig;
+  tryItOut: ResolvedVextDocsTryItOutConfig;
+  sources: ResolvedVextDocsSource[];
   endpoints: VextDocsEndpointMap;
   project?: VextDocsProjectInfo;
 }
@@ -268,6 +304,11 @@ export interface VextDocsConfig {
     scan?: VextDocsCodeScanMode;
   };
   access?: VextDocsAccessConfig;
+  tryItOut?: {
+    hookScript?: string;
+    hookGlobal?: string;
+  };
+  sources?: VextDocsSourceConfig[];
 }
 
 export type VextDocsAccessDescriptor =

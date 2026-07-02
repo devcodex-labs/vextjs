@@ -979,6 +979,7 @@ function validateOpenAPIConfig(value: unknown, pathName: string): void {
     openapi.jsonPublicPath,
     `${pathName}.jsonPublicPath`,
   );
+  validateOpenAPIServers(openapi.servers, `${pathName}.servers`);
 
   if (openapi.scalar !== undefined) {
     if (
@@ -1016,6 +1017,8 @@ function validateOpenAPIDocsConfig(
   validateDocsUiConfig(docs.ui, `${pathName}.docs.ui`);
   validateDocsCodeConfig(docs.code, `${pathName}.docs.code`);
   validateDocsAccessConfig(docs.access, `${pathName}.docs.access`);
+  validateDocsTryItOutConfig(docs.tryItOut, `${pathName}.docs.tryItOut`);
+  validateDocsSourcesConfig(docs.sources, `${pathName}.docs.sources`);
 
   const docsPath = docs.path ?? openapi.docsPath;
   const specPath = openapi.jsonPath;
@@ -1123,6 +1126,119 @@ function validateDocsAccessConfig(value: unknown, pathName: string): void {
     throw new Error(
       `[vextjs] ${pathName}.cacheKey must be a function or string.`,
     );
+  }
+}
+
+function validateDocsTryItOutConfig(value: unknown, pathName: string): void {
+  const tryItOut = validateOptionalFrontendObject(value, pathName);
+  if (!tryItOut) {
+    return;
+  }
+  validateOptionalString(tryItOut.hookScript, `${pathName}.hookScript`);
+  validateOptionalString(tryItOut.hookGlobal, `${pathName}.hookGlobal`);
+}
+
+function validateOpenAPIServers(value: unknown, pathName: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an array.`);
+  }
+  for (const [index, item] of value.entries()) {
+    const itemPath = `${pathName}[${index}]`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`[vextjs] ${itemPath} must be an object.`);
+    }
+    const server = item as Record<string, unknown>;
+    validateRequiredString(server.url, `${itemPath}.url`);
+    validateOptionalString(server.description, `${itemPath}.description`);
+    if (server.variables === undefined) {
+      continue;
+    }
+    if (
+      typeof server.variables !== "object" ||
+      server.variables === null ||
+      Array.isArray(server.variables)
+    ) {
+      throw new Error(`[vextjs] ${itemPath}.variables must be an object.`);
+    }
+    for (const [name, variable] of Object.entries(
+      server.variables as Record<string, unknown>,
+    )) {
+      const variablePath = `${itemPath}.variables.${name}`;
+      if (
+        typeof variable !== "object" ||
+        variable === null ||
+        Array.isArray(variable)
+      ) {
+        throw new Error(`[vextjs] ${variablePath} must be an object.`);
+      }
+      const typed = variable as Record<string, unknown>;
+      validateRequiredString(typed.default, `${variablePath}.default`);
+      validateOptionalStringArray(typed.enum, `${variablePath}.enum`);
+      validateOptionalString(typed.description, `${variablePath}.description`);
+    }
+  }
+}
+
+function validateDocsSourcesConfig(value: unknown, pathName: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an array.`);
+  }
+  const seen = new Set<string>();
+  for (const [index, item] of value.entries()) {
+    const itemPath = `${pathName}[${index}]`;
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`[vextjs] ${itemPath} must be an object.`);
+    }
+    const source = item as Record<string, unknown>;
+    validateRequiredString(source.id, `${itemPath}.id`);
+    const id = (source.id as string).trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(id)) {
+      throw new Error(
+        `[vextjs] ${itemPath}.id must contain only letters, numbers, "_" or "-".`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(`[vextjs] ${itemPath}.id must be unique.`);
+    }
+    seen.add(id);
+    validateOptionalString(source.label, `${itemPath}.label`);
+    validateDocsSourceMatch(source.match, `${itemPath}.match`);
+    validateOptionalString(source.version, `${itemPath}.version`);
+    validateOptionalString(source.description, `${itemPath}.description`);
+    validateOptionalBoolean(source.default, `${itemPath}.default`);
+    if (
+      source.access !== undefined &&
+      typeof source.access !== "string" &&
+      (typeof source.access !== "object" ||
+        source.access === null ||
+        Array.isArray(source.access))
+    ) {
+      throw new Error(`[vextjs] ${itemPath}.access must be a string or object.`);
+    }
+    const code = validateOptionalFrontendObject(source.code, `${itemPath}.code`);
+    if (code) {
+      validateOptionalStringArray(code.include, `${itemPath}.code.include`);
+      validateOptionalStringArray(code.exclude, `${itemPath}.code.exclude`);
+    }
+  }
+}
+
+function validateDocsSourceMatch(value: unknown, pathName: string): void {
+  if (typeof value === "string") {
+    if (value.trim() === "") {
+      throw new Error(`[vextjs] ${pathName} must not be empty.`);
+    }
+    return;
+  }
+  validateOptionalStringArray(value, pathName);
+  if (Array.isArray(value) && value.length === 0) {
+    throw new Error(`[vextjs] ${pathName} must not be empty.`);
   }
 }
 
