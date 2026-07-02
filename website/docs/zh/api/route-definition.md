@@ -61,7 +61,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "创建用户",
-        tags: ["用户"],
       },
     },
     async (req, res) => {
@@ -205,7 +204,6 @@ app.put(
     cache: false,
     docs: {
       summary: "更新用户",
-      tags: ["用户"],
       responses: {
         200: { description: "更新成功" },
         404: { description: "用户不存在" },
@@ -484,6 +482,7 @@ OpenAPI 文档配置，控制路由在自动生成的 API 文档中的展示方�
 interface RouteDocsConfig {
   summary?: string;
   description?: string;
+  /** @deprecated 已忽略；operation tags 会自动推断 */
   tags?: string[];
   operationId?: string;
   hidden?: boolean;
@@ -500,7 +499,7 @@ interface RouteDocsConfig {
 | ------------- | ---------- | ------------------- | ----------------------------- |
 | `summary`     | `string`   | —                   | 接口一句话摘要                |
 | `description` | `string`   | —                   | 接口详细描述（支持 Markdown） |
-| `tags`        | `string[]` | 从路由文件路径推断  | 标签分组                      |
+| `tags`        | `string[]` | 已忽略              | 已废弃。operation tags 会从路由 path/source 自动推断 |
 | `operationId` | `string`   | 自动推断            | 操作标识（全局唯一）          |
 | `hidden`      | `boolean`  | `false`             | 是否从文档中隐藏              |
 | `deprecated`  | `boolean`  | `false`             | 是否标记为已废弃              |
@@ -525,7 +524,6 @@ app.post(
     docs: {
       summary: "创建用户",
       description: "创建一个新用户账号。需要管理员权限。",
-      tags: ["用户管理"],
       operationId: "createUser",
       responses: {
         201: {
@@ -703,7 +701,7 @@ app.post(
         thumbnail: "可选缩略图",
       },
     },
-    docs: { summary: "上传头像", tags: ["用户"] },
+    docs: { summary: "上传头像" },
   },
   async (req, res) => {
     const file = req.files?.find((f) => f.fieldname === "avatar");

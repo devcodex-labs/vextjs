@@ -94,7 +94,7 @@ export default defineRoutes((app) => {
     expect(payload.routeCount).toBe(1);
     expect(payload.summary.warnings).toBe(0);
     expect(payload.summary.infos).toBe(1);
-    expect(payload.diagnostics[0]?.code).toBe("doctor-routes-ok");
+    expect(payload.diagnostics[0]?.code).toBe("deprecated-docs-tags");
     expect(payload.diagnostics[0]?.suggestedValue).toBeUndefined();
   });
 
@@ -157,9 +157,10 @@ export default defineRoutes((app) => {
     const payload = JSON.parse(String(consoleLog.mock.calls[0]?.[0] ?? "{}"));
     expect(payload.ok).toBe(true);
     expect(payload.summary.warnings).toBe(0);
-    expect(payload.summary.infos).toBe(1);
+    expect(payload.summary.infos).toBe(2);
     expect(payload.diagnostics[0]?.code).toBe("auto-operation-id");
     expect(payload.diagnostics[0]?.suggestedValue).toBe("getUsersById");
+    expect(payload.diagnostics[1]?.code).toBe("deprecated-docs-tags");
     expect(payload.inspect?.status).toBe("written");
     expect(payload.manifest?.status).toBe("written");
 

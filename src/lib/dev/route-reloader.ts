@@ -1,7 +1,10 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { RouteMetadataCollector } from "../openapi/collector.js";
-import { OpenAPIGenerator } from "../openapi/generator.js";
+import {
+  OpenAPIGenerator,
+  createDeprecatedRouteDocsTagsWarning,
+} from "../openapi/generator.js";
 import { generateOpenAPIDocumentWithHooks } from "../openapi/hook-lifecycle.js";
 import { registerDocEndpoints } from "../openapi/doc-endpoints.js";
 import type { OpenAPIConfig } from "../openapi/types.js";
@@ -538,6 +541,7 @@ export async function reloadRoutes(
     );
 
     if (openapiEnabled) {
+      const projectRoot = projectRootFromOutDir(outDir);
       const generator = new OpenAPIGenerator({
         title: (openapiCfg as Record<string, unknown>)?.title as
           | string
@@ -577,6 +581,9 @@ export async function reloadRoutes(
           | undefined,
       } as OpenAPIConfig);
 
+      const docsTagsWarning = createDeprecatedRouteDocsTagsWarning(routes);
+      if (docsTagsWarning) app.logger.warn(docsTagsWarning);
+
       const specProvider = createCachedOpenApiSpecProvider(() =>
         app.hooks
           ? generateOpenAPIDocumentWithHooks(app as any, generator, routes)
@@ -595,8 +602,16 @@ export async function reloadRoutes(
         title: (openapiCfg as Record<string, unknown>)?.title as
           | string
           | undefined,
+        docs: (openapiCfg as Record<string, unknown>)?.docs as
+          | Record<string, unknown>
+          | undefined,
         scalar: (openapiCfg as Record<string, unknown>)?.scalar as
           | Record<string, unknown>
+          | undefined,
+        rootDir: projectRoot,
+        srcDir: path.join(projectRoot, "src"),
+        modelsDir: (openapiCfg as Record<string, unknown>)?.docsModelsDir as
+          | string
           | undefined,
       });
 

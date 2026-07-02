@@ -366,7 +366,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "健康检查",
-        tags: ["基础"],
       },
     },
     async (_req, res) => {
@@ -405,7 +404,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "用户列表",
         description: "分页查询用户列表，支持按姓名或邮箱模糊搜索。",
-        tags: ["用户"],
         responses: {
           200: {
             description: "查询成功",
@@ -445,7 +443,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "获取用户详情",
-        tags: ["用户"],
         responses: {
           200: { description: "查询成功" },
           404: { description: "用户不存在" },
@@ -482,7 +479,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "创建用户",
         description: "创建一个新用户。需要 Bearer Token 认证。",
-        tags: ["用户"],
         responses: {
           201: {
             description: "创建成功",
@@ -533,7 +529,6 @@ export default defineRoutes((app) => {
         summary: "更新用户",
         description:
           "更新指定用户的信息。需要 Bearer Token 认证。只需传入需要更新的字段。",
-        tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
           422: { description: "参数校验失败" },
@@ -570,7 +565,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "删除用户",
         description: "删除指定用户。需要 Bearer Token 认证。此操作不可逆。",
-        tags: ["用户"],
         responses: {
           204: { description: "删除成功（无响应体）" },
           401: { description: "未认证" },
@@ -842,7 +836,7 @@ pnpm dev
 启动后可以：
 
 - 访问 `http://localhost:3000/` 查看健康检查
-- 访问 `http://localhost:3000/docs` 查看自动生成的 Scalar API 文档
+- 访问 `http://localhost:3000/docs` 查看自动生成的 Vext Docs API 文档
 - 使用 `curl` 测试各个接口
 
 ### 运行测试

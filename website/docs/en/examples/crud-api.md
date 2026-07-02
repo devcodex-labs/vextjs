@@ -362,7 +362,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
     {
       docs: {
         summary: "Health Check",
-        tags: ["Basics"],
       },
     },
     async (_req, res) => {
@@ -401,7 +400,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "User list",
         description: "Query the user list in pages, supporting fuzzy search by name or email.",
-        tags: ["user"],
         responses: {
           200: {
             description: "Query successful",
@@ -441,7 +439,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user details",
-        tags: ["user"],
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -478,7 +475,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Create user",
         description: "Create a new user. Bearer Token authentication is required.",
-        tags: ["user"],
         responses: {
           201: {
             description: "Created successfully",
@@ -527,7 +523,6 @@ export default defineRoutes((app) => {
         summary: "Update user",
         description:
           "Update the specified user's information. Bearer Token authentication is required. Just pass in the fields that need to be updated.",
-        tags: ["user"],
         responses: {
           200: { description: "Update successful" },
           422: { description: "Parameter verification failed" },
@@ -564,7 +559,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Delete user",
         description: "Delete the specified user. Bearer Token authentication is required. This operation is irreversible.",
-        tags: ["user"],
         responses: {
           204: { description: "Delete successfully (no response body)" },
           401: { description: "Not authenticated" },
@@ -832,7 +826,7 @@ pnpmdev
 After startup you can:
 
 - Visit `http://localhost:3000/` to view the health check
-- Visit `http://localhost:3000/docs` to view the automatically generated Scalar API documentation
+- Visit `http://localhost:3000/docs` to view the automatically generated Vext Docs API documentation
 - Use `curl` to test each interface
 
 ### Run the test

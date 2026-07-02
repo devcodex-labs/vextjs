@@ -424,6 +424,7 @@ function registerRouteDefinition(
         fullPath,
         route.options ?? {},
         routeDef.sourceFile,
+        route.handler,
       );
     }
   }

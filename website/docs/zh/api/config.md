@@ -630,30 +630,34 @@ OpenAPI 文档自动生成配置。
 | `title`                | `string`                     | `undefined`         | 文档标题                                                                                                                                                        |
 | `version`              | `string`                     | `undefined`         | 文档版本号                                                                                                                                                      |
 | `description`          | `string`                     | `undefined`         | 文档描述                                                                                                                                                        |
-| `docsPath`             | `string`                     | `'/docs'`           | Scalar 文档路径                                                                                                                                                 |
+| `docs.path`            | `string`                     | `'/docs'`           | Vext Docs 文档路径                                                                                                                                              |
+| `docs.assetsPath`      | `string`                     | `'/_vext/docs'`     | Vext Docs 内置资产与数据端点前缀                                                                                                                                |
+| `docs.renderer`        | `'vext'`                     | `'vext'`            | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                     |
+| `docs.ui.theme`        | `'system' \| 'light' \| 'dark'` | `'system'`       | 内置 Vext Docs 颜色主题；访问者也可在 UI 中本地覆盖                                                                                                             |
+| `docs.ui.density`      | `'comfortable' \| 'compact'` | `'comfortable'`     | 内置 Vext Docs 间距密度；访问者也可在 UI 中本地覆盖                                                                                                             |
+| `docs.code.enabled`    | `boolean \| 'auto'`          | `'auto'`            | 是否从 services / utils / models / components / plugins / middlewares 及显式开启的可选静态来源生成代码文档                                                       |
+| `docs.code.components` | `boolean \| object`          | `true`              | Components JSDoc 文档源；默认扫描 `src/frontend/components/**`，仅发现条目时在 UI 中展示                                                                         |
+| `docs.code.plugins`    | `boolean \| object`          | `true`              | Plugins JSDoc/runtime 文档源；默认扫描 `src/plugins/**`，仅发现条目时在 UI 中展示                                                                                |
+| `docs.code.middlewares` | `boolean \| object`         | `true`              | Middlewares JSDoc/runtime 文档源；默认扫描 `src/middlewares/**`，仅发现条目时在 UI 中展示                                                                        |
+| `docs.code.locales`    | `boolean \| object`          | `false`             | 可选 Locales 文档源；开启后扫描 `src/locales/**` 和 `src/frontend/locales/**`；配置 `dir` 时只扫描该自定义 locale 根目录                                           |
+| `docs.code.config`     | `boolean \| object`          | `false`             | 可选 Config 文档源；开启后扫描 `src/config/**`                                                                                                                     |
+| `docs.code.styles`     | `boolean \| object`          | `false`             | 可选 Styles 文档源；开启后扫描 `src/frontend/styles/**`                                                                                                            |
+| `docs.code.preload`    | `boolean \| object`          | `false`             | 可选 Preload 文档源；开启后扫描项目根 `preload/**`                                                                                                                  |
+| `docs.access.mode`     | `'off' \| 'visibility-only' \| 'enforce'` | `'off'` | 文档菜单/operation 权限模式                                                                                                                                     |
+| `docsPath`             | `string`                     | `'/docs'`           | 兼容字段；新项目推荐使用 `docs.path`                                                                                                                            |
 | `jsonPath`             | `string`                     | `'/openapi.json'`   | OpenAPI JSON 路径                                                                                                                                               |
-| `jsonPublicPath`       | `string`                     | 同 `jsonPath`       | OpenAPI spec 的公开访问路径（仅影响 Scalar HTML 中引用 spec 的 URL，不影响路由注册）。用于反向代理剥离前缀场景，[详见指南](/guide/openapi#反向代理路径前缀场景) |
+| `jsonPublicPath`       | `string`                     | 同 `jsonPath`       | OpenAPI spec 的公开访问路径（仅影响文档页引用 spec 的 URL，不影响路由注册）。用于反向代理剥离前缀场景，[详见指南](/guide/openapi#反向代理路径前缀场景)          |
 | `contact`              | `object`                     | `undefined`         | 联系信息                                                                                                                                                        |
 | `license`              | `object`                     | `undefined`         | 许可证信息                                                                                                                                                      |
 | `servers`              | `array`                      | `undefined`         | 服务器地址列表                                                                                                                                                  |
 | `tags`                 | `array`                      | `undefined`         | 全局标签定义                                                                                                                                                    |
 | `guardSecurityMap`     | `Record<string, string>`     | `undefined`         | Guard → Security Scheme 映射                                                                                                                                    |
 | `securitySchemes`      | `object`                     | `undefined`         | 安全方案定义                                                                                                                                                    |
-| `scalar`               | `object`                     | `{}`                | Scalar API Reference UI 配置（主题、深色模式、布局、favicon 等）                                                                                                |
-| `scalar.theme`         | `string`                     | `'default'`         | 主题：`'default'` \| `'moon'` \| `'purple'` \| `'solarized'` \| `'bluePlanet'` \| `'saturn'` \| `'kepler'` \| `'mars'` \| `'deepSpace'` \| `'none'`             |
-| `scalar.darkMode`      | `boolean`                    | `false`             | 是否启用深色模式                                                                                                                                                |
-| `scalar.layout`        | `string`                     | `'modern'`          | 布局模式：`'modern'`（三栏） \| `'classic'`（双栏）                                                                                                             |
-| `scalar.favicon`       | `string`                     | `undefined`         | 文档页面 favicon URL（如 `'/favicon.svg'`）                                                                                                                     |
-| `scalar.sources`       | `array`                      | `undefined`         | 多 OpenAPI 文档源（[详见指南](/guide/openapi#导入外部-openapi)）。每项含 `title`、`url` 或 `content`、`slug`                                                    |
-| `scalar.cdnUrl`        | `string`                     | jsDelivr CDN        | 自定义 Scalar JS 加载地址（[详见指南](/guide/openapi#使用自定义地址覆盖本地服务)）。适用于内网/离线/版本锁定                                                    |
-| `scalar.showSidebar`   | `boolean`                    | `true`              | 是否显示侧边栏                                                                                                                                                  |
-| `scalar.hideModels`    | `boolean`                    | `false`             | 是否隐藏 Models/Schemas 面板                                                                                                                                    |
-| `scalar.hiddenClients` | `string[]`                   | `undefined`         | 隐藏的客户端语言列表（如 `['php', 'ruby']`）                                                                                                                    |
-| `scalar.searchHotKey`  | `string`                     | `'k'`               | 搜索热键（Ctrl+K / Cmd+K）                                                                                                                                      |
-| `scalar.proxyUrl`      | `string`                     | `undefined`         | 代理 URL（Try it out 请求避免 CORS）                                                                                                                            |
-| `scalar.customCss`     | `string`                     | `undefined`         | 自定义 CSS                                                                                                                                                      |
-| ~~`tryItOutEnabled`~~  | `boolean`                    | `true`              | ~~已废弃~~ Scalar 内置 Try it out，无需单独配置                                                                                                                 |
-| ~~`docExpansion`~~     | `'none' \| 'list' \| 'full'` | `'list'`            | ~~已废弃~~ 请使用 `scalar.layout` 替代                                                                                                                          |
+| `scalar`               | `object`                     | `{}`                | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                       |
+| ~~`tryItOutEnabled`~~  | `boolean`                    | `true`              | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                  |
+| ~~`docExpansion`~~     | `'none' \| 'list' \| 'full'` | `'list'`            | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                  |
+
+默认 Vext Docs renderer 会从 code docs 数据生成 Services / Utils / Models / Components / Plugins / Middlewares。Model 条目可展示静态 schema fields、enums、options、indexes、methods、hooks 和 usage；Plugins 与 Middlewares 可展示可推断的 lifecycle/bootstrap、app extension、middleware 类型、route usage 和源码链接；Locales / Config / Styles / Preload 属于可选高级静态来源，可在 `docs.code` 下显式开启，但不进入默认顶层文档入口；本地 loopback 文档页还可为 code docs 条目展示 `Open source` 链接，不需要新增单独配置项。
 
 ```typescript
 export default {
@@ -662,11 +666,12 @@ export default {
     title: "My API",
     version: "1.0.0",
     description: "我的 API 文档",
-    scalar: {
-      theme: "default",
-      darkMode: false,
-      layout: "modern",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      renderer: "vext",
+      code: {
+        enabled: "auto",
+      },
     },
     servers: [
       { url: "http://localhost:3000", description: "开发环境" },

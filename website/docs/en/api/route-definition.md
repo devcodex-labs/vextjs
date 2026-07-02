@@ -61,7 +61,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create user",
-        tags: ["user"],
       },
     },
     async (req, res) => {
@@ -205,7 +204,6 @@ app.put(
     cache: false,
     docs: {
       summary: "Update user",
-      tags: ["user"],
       responses: {
         200: { description: "Update successful" },
         404: { description: "User does not exist" },
@@ -484,6 +482,7 @@ OpenAPI documentation configuration, controls how routes are displayed in automa
 interface RouteDocsConfig {
   summary?: string;
   description?: string;
+  /** @deprecated ignored; operation tags are inferred automatically */
   tags?: string[];
   operationId?: string;
   hidden?: boolean;
@@ -500,7 +499,7 @@ interface RouteDocsConfig {
 | ------------- | ---------- | ------------------- | -------------------------- |
 | `summary` | `string` | — | One sentence summary of the interface |
 | `description` | `string` | — | Detailed description of the interface (supports Markdown) |
-| `tags` | `string[]` | Inferred from route file path | Tag grouping |
+| `tags` | `string[]` | Ignored | Deprecated. Operation tags are inferred automatically from the route path/source. |
 | `operationId` | `string` | Automatic inference | Operation ID (globally unique) |
 | `hidden` | `boolean` | `false` | Whether to hide from the document |
 | `deprecated` | `boolean` | `false` | Whether to mark it as deprecated |
@@ -525,7 +524,6 @@ app.post(
     docs: {
       summary: "Create user",
       description: "Create a new user account. Requires administrator privileges.",
-      tags: ["User Management"],
       operationId: "createUser",
       responses: {
         201: {
@@ -703,7 +701,7 @@ app.post(
         thumbnail: "optional thumbnail",
       },
     },
-    docs: { summary: "Upload avatar", tags: ["User"] },
+    docs: { summary: "Upload avatar" },
   },
   async (req, res) => {
     const file = req.files?.find((f) => f.fieldname === "avatar");

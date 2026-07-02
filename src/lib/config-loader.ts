@@ -40,6 +40,12 @@ import {
 // ── 常量 ────────────────────────────────────────────────────
 
 const FETCH_PROXY_RESERVED_TARGET_NAMES = new Set(["then"]);
+const OPENAPI_DOCS_ACCESS_MODES = ["off", "visibility-only", "enforce"];
+const OPENAPI_DOCS_DEFAULT_VIEWS = ["overview", "api", "code"];
+const OPENAPI_DOCS_THEMES = ["system", "light", "dark"];
+const OPENAPI_DOCS_DENSITIES = ["comfortable", "compact"];
+const OPENAPI_DOCS_SCAN_MODES = ["lazy", "background"];
+const OPENAPI_DOCS_OPENAPI_JSON_MODES = ["filtered", "public"];
 
 /**
  * 支持的配置文件扩展名（按优先级排序）
@@ -645,15 +651,7 @@ function validateConfig(config: Record<string, unknown>): void {
   }
 
   // ── openapi ───────────────────────────────────────────
-  const openapi = config.openapi as Record<string, unknown> | undefined;
-  if (openapi !== undefined) {
-    if (typeof openapi !== "object" || openapi === null) {
-      throw new Error("[vextjs] config.openapi must be an object.");
-    }
-    if (openapi.enabled !== undefined && typeof openapi.enabled !== "boolean") {
-      throw new Error("[vextjs] config.openapi.enabled must be a boolean.");
-    }
-  }
+  validateOpenAPIConfig(config.openapi, "config.openapi");
 
   // ── frontend ──────────────────────────────────────────
   validateFrontendConfig(config.frontend, "config.frontend");
@@ -962,6 +960,204 @@ function validateFrontendConfig(value: unknown, path: string): void {
       "auto",
       "off",
     ]);
+  }
+}
+
+function validateOpenAPIConfig(value: unknown, pathName: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an object.`);
+  }
+
+  const openapi = value as Record<string, unknown>;
+  validateOptionalBoolean(openapi.enabled, `${pathName}.enabled`);
+  validateOptionalUrlPath(openapi.docsPath, `${pathName}.docsPath`);
+  validateOptionalUrlPath(openapi.jsonPath, `${pathName}.jsonPath`);
+  validateOptionalUrlPath(
+    openapi.jsonPublicPath,
+    `${pathName}.jsonPublicPath`,
+  );
+
+  if (openapi.scalar !== undefined) {
+    if (
+      typeof openapi.scalar !== "object" ||
+      openapi.scalar === null ||
+      Array.isArray(openapi.scalar)
+    ) {
+      throw new Error(`[vextjs] ${pathName}.scalar must be an object.`);
+    }
+  }
+
+  validateOpenAPIDocsConfig(openapi, pathName);
+}
+
+function validateOpenAPIDocsConfig(
+  openapi: Record<string, unknown>,
+  pathName: string,
+): void {
+  const docsValue = openapi.docs;
+  if (docsValue === undefined) {
+    return;
+  }
+  if (
+    typeof docsValue !== "object" ||
+    docsValue === null ||
+    Array.isArray(docsValue)
+  ) {
+    throw new Error(`[vextjs] ${pathName}.docs must be an object.`);
+  }
+
+  const docs = docsValue as Record<string, unknown>;
+  validateOptionalUrlPath(docs.path, `${pathName}.docs.path`);
+  validateOptionalUrlPath(docs.assetsPath, `${pathName}.docs.assetsPath`);
+  validateDocsRenderer(docs.renderer, `${pathName}.docs.renderer`);
+  validateDocsUiConfig(docs.ui, `${pathName}.docs.ui`);
+  validateDocsCodeConfig(docs.code, `${pathName}.docs.code`);
+  validateDocsAccessConfig(docs.access, `${pathName}.docs.access`);
+
+  const docsPath = docs.path ?? openapi.docsPath;
+  const specPath = openapi.jsonPath;
+  const assetsPath = docs.assetsPath;
+  if (
+    typeof assetsPath === "string" &&
+    ((typeof docsPath === "string" && assetsPath === docsPath) ||
+      (typeof specPath === "string" && assetsPath === specPath))
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.docs.assetsPath must not equal docs or OpenAPI JSON paths.`,
+    );
+  }
+}
+
+function validateDocsRenderer(value: unknown, pathName: string): void {
+  if (value === undefined || value === "vext") {
+    return;
+  }
+  throw new Error(
+    `[vextjs] ${pathName} only supports "vext". Third-party docs renderer objects are no longer supported; external tools can consume /openapi.json.`,
+  );
+}
+
+function validateDocsUiConfig(value: unknown, pathName: string): void {
+  const ui = validateOptionalFrontendObject(value, pathName);
+  if (!ui) {
+    return;
+  }
+  validateOptionalString(ui.title, `${pathName}.title`);
+  validateOptionalBoolean(ui.tryItOut, `${pathName}.tryItOut`);
+  validateEnum(
+    ui.defaultView,
+    `${pathName}.defaultView`,
+    OPENAPI_DOCS_DEFAULT_VIEWS,
+  );
+  validateEnum(ui.theme, `${pathName}.theme`, OPENAPI_DOCS_THEMES);
+  validateEnum(ui.density, `${pathName}.density`, OPENAPI_DOCS_DENSITIES);
+}
+
+function validateDocsCodeConfig(value: unknown, pathName: string): void {
+  const code = validateOptionalFrontendObject(value, pathName);
+  if (!code) {
+    return;
+  }
+  if (
+    code.enabled !== undefined &&
+    code.enabled !== "auto" &&
+    typeof code.enabled !== "boolean"
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.enabled must be a boolean or "auto".`,
+    );
+  }
+  validateEnum(code.scan, `${pathName}.scan`, OPENAPI_DOCS_SCAN_MODES);
+  validateDocsCodeSource(code.services, `${pathName}.services`);
+  validateDocsCodeSource(code.utils, `${pathName}.utils`);
+  validateDocsCodeSource(code.models, `${pathName}.models`);
+  validateDocsCodeSource(code.components, `${pathName}.components`);
+  validateDocsCodeSource(code.plugins, `${pathName}.plugins`);
+  validateDocsCodeSource(code.middlewares, `${pathName}.middlewares`);
+  validateDocsCodeSource(code.locales, `${pathName}.locales`);
+  validateDocsCodeSource(code.config, `${pathName}.config`);
+  validateDocsCodeSource(code.preload, `${pathName}.preload`);
+  validateDocsCodeSource(code.styles, `${pathName}.styles`);
+}
+
+function validateDocsCodeSource(value: unknown, pathName: string): void {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+  const source = validateOptionalFrontendObject(value, pathName);
+  if (!source) {
+    return;
+  }
+  validateOptionalBoolean(source.enabled, `${pathName}.enabled`);
+  validateOptionalRelativeProjectPath(source.dir, `${pathName}.dir`);
+  validateOptionalString(source.title, `${pathName}.title`);
+  validateOptionalStringArray(source.include, `${pathName}.include`);
+  validateOptionalStringArray(source.exclude, `${pathName}.exclude`);
+}
+
+function validateDocsAccessConfig(value: unknown, pathName: string): void {
+  const access = validateOptionalFrontendObject(value, pathName);
+  if (!access) {
+    return;
+  }
+  validateEnum(access.mode, `${pathName}.mode`, OPENAPI_DOCS_ACCESS_MODES);
+  validateEnum(
+    access.openapiJson,
+    `${pathName}.openapiJson`,
+    OPENAPI_DOCS_OPENAPI_JSON_MODES,
+  );
+  if (
+    access.resolver !== undefined &&
+    typeof access.resolver !== "function"
+  ) {
+    throw new Error(`[vextjs] ${pathName}.resolver must be a function.`);
+  }
+  if (
+    access.cacheKey !== undefined &&
+    typeof access.cacheKey !== "function" &&
+    typeof access.cacheKey !== "string"
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.cacheKey must be a function or string.`,
+    );
+  }
+}
+
+function validateOptionalUrlPath(value: unknown, pathName: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName} must be a URL path starting with "/".`,
+    );
+  }
+}
+
+function validateOptionalRelativeProjectPath(
+  value: unknown,
+  pathName: string,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    path.isAbsolute(value) ||
+    value.split(/[\\/]+/).includes("..")
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName} must be a relative path inside the project root.`,
+    );
   }
 }
 

@@ -367,7 +367,7 @@ The above route will be automatically generated in the OpenAPI documentation:
 - `limit` — query parameter, type: integer, minimum: 1, maximum: 100
 - `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
 
-Visit `/docs` to view the automatically generated parameter documentation and built-in "Try it out" functionality in the Scalar documentation.
+Visit `/docs` to view the automatically generated parameter documentation in Vext Docs.
 
 If you want the OpenAPI document to display the business meaning of the field, you can append `.description()` after the field DSL:
 

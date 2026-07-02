@@ -113,7 +113,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "Greeting interface",
-        tags: ["Basics"],
       },
     },
     async (_req, res) => {
@@ -304,7 +303,7 @@ export default {
 | `validate` | Declarative parameter validation (schema-dsl DSL syntax) |
 | `req.valid()` | Get the verified and type-converted data |
 | `res.json()` | Returns a JSON response (automatic export wrapper) |
-| `docs` | OpenAPI document configuration, automatically generate Scalar API documentation |
+| `docs` | OpenAPI document configuration, automatically generate Vext Docs API documentation |
 | Export packaging | Unified response format `{ code, data, requestId }` |
 
 ## Next step

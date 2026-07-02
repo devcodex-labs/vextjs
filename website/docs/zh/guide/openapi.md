@@ -1,6 +1,6 @@
 # OpenAPI 文档
 
-VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范的 JSON 文档，并提供 [Scalar API Reference](https://github.com/scalar/scalar) 在线查看和交互式调试。
+VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范 JSON，并通过 Vext Docs Renderer 提供默认 `/docs` 文档页。第三方文档工具请直接消费 `/openapi.json`。
 
 ## 快速开始
 
@@ -37,7 +37,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "获取用户列表",
         description: "分页获取所有用户信息",
-        tags: ["用户管理"],
       },
     },
     async (req, res) => {
@@ -60,7 +59,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "创建用户",
-        tags: ["用户管理"],
       },
     },
     async (req, res) => {
@@ -78,8 +76,14 @@ export default defineRoutes((app) => {
 
 | 地址                                 | 说明                                               |
 | ------------------------------------ | -------------------------------------------------- |
-| `http://localhost:3000/docs`         | Scalar API Reference 文档界面（含内置 Try it out） |
+| `http://localhost:3000/docs`         | Vext Docs 文档界面（HTTP API、Pages、services/utils/models/components/plugins/middlewares 文档） |
 | `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                              |
+
+默认 Vext Docs UI 会把 HTTP API、Pages、Services、Utils、Models、已发现的 Components、Plugins、Middlewares 作为顶层入口，当前选中的顶层入口可以收缩/展开自己的左侧导航树。HTTP API 与 Pages 会根据 OpenAPI path segment 生成递归导航，保留 `/api/v1/info` 这类稳定资源路径段作为分类，具体接口叶子优先显示 `docs.summary`，未配置 summary 时回退到接口地址，并把 `{id}` 这类动态 path 参数视为参数而不是普通业务目录。响应状态会以横向 tab 展示，内容区不再重复展示状态标题；本地 schema `$ref` 会展开为真实字段，object schema 不再显示人工 `(root)` 行。桌面端左侧侧栏会固定在视口内并独立滚动，可根据可见导航标签自动加宽，也支持手动拖拽并持久化宽度，内置 docs 资产会带版本标记，避免浏览器缓存遮住 renderer 更新。顶部 header 会把搜索、UI 控件、分类筛选与 Authorize 分成清晰行；Overview 工作台会展示统计和 package 启动/build/验证命令。右侧 API/code/model/plugin/middleware 条目会使用独立 item shell 分隔，长页面连续阅读时更容易区分。Pages 由 route handler 中直接调用 `res.render()` 或 `res.renderError()` 自动识别；Services / Utils / Components 从标准 JSDoc 生成，且不会 import 或执行用户代码。Models 会列出可识别的 model 文件，没有 JSDoc 时生成最小条目，有 JSDoc 时作为增强信息；根目录 model 会直接挂在 Models 下，不再出现人工 `root` 分类，嵌套 model 按源码目录分组。默认 UI 会静态读取支持的 model definition 形态，展示 registry key、name、collection、connection、schema fields、enums、options、indexes、methods、hooks 和 usage，同样不会 import 或执行 model 代码。Plugins 与 Middlewares 会从 `src/plugins`、`src/middlewares` 扫描 JSDoc 与可静态推断的生命周期/bootstrap、app extension、middleware 类型、路由调用方式和源码链接。Locales / Config / Styles / Preload 静态源码文档仍是可选高级来源，可以通过 `openapi.docs.code.*` 显式开启，但不属于默认顶层文档入口。本地 loopback 访问文档页时，code docs 条目可展示 `Open source` 链接并跳转到 `vscode://file/...`；非本地访问默认隐藏该链接。路由级 `docs.tags` 已废弃并会被忽略，同时输出 warning；operation tags 会从路由 path/source 自动推断，并收进折叠 Metadata，不再作为主要 badge 铺开。`x-tagGroups` 仅在显式配置 `openapi.tagGroups` 时作为原始 OpenAPI vendor extension 输出；内置文档导航不依赖它。存在 OpenAPI security schemes 时，UI 会展示接口鉴权状态，并提供全局 Authorize 控件供同源 Try it out 合并使用。
+
+B26 进一步补齐主题与密度控制、Overview 工作台、搜索快捷键、类别过滤、命中高亮、桌面右侧大纲、endpoint/link/response/usage/source path 复制按钮和导航深链。动态 path 参数仍弱化展示，但当中间动态段后面还有稳定子资源时会保留层级，例如 `/docs-nav/{id}/sdfs/sdfaf` 会保留参数节点与后续资源层级。
+
+B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Auth、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
 
 如果需要在生成后追加组织级扩展字段，可使用 OpenAPI hook。`OpenAPIGenerator.generate()` 仍保持同步，`openapi:afterGenerate` 也必须同步返回 patch：
 
@@ -115,21 +119,27 @@ export default {
     description: "我的应用程序 RESTful API 文档",
     version: "1.0.0",
 
-    // Scalar 文档路径
-    docsPath: "/docs",
-
     // OpenAPI JSON 路径
     jsonPath: "/openapi.json",
 
     // 反向代理公开路径（代理剥离前缀时配置，详见"自定义文档路径"章节）
     // jsonPublicPath: '/admin/openapi.json',
 
-    // Scalar API Reference 配置
-    scalar: {
-      theme: "default", // 主题：'default' | 'moon' | 'purple' | 'solarized' | ...
-      darkMode: false, // 深色模式
-      layout: "modern", // 布局：'modern'（三栏） | 'classic'（双栏）
-      favicon: "/favicon.svg", // 文档页面图标
+    // Vext Docs 配置
+    docs: {
+      path: "/docs",
+      ui: {
+        title: "My App API",
+        defaultView: "overview",
+        theme: "system",
+        density: "comfortable",
+      },
+      code: {
+        enabled: "auto",
+        services: true,
+        utils: true,
+        models: true,
+      },
     },
 
     // API 服务器列表
@@ -138,7 +148,7 @@ export default {
       { url: "https://api.myapp.com", description: "生产环境" },
     ],
 
-    // 标签定义（控制分组顺序和描述）
+    // 标签定义（控制全局 tag 描述，默认文档页仍按 path segment 导航）
     tags: [
       { name: "用户管理", description: "用户 CRUD 操作" },
       { name: "订单管理", description: "订单相关接口" },
@@ -181,6 +191,8 @@ export default {
 };
 ```
 
+Code docs 会扫描 `src/services`、`src/utils`、配置后的 models 目录、`src/frontend/components`、`src/plugins` 和 `src/middlewares`，且不会 import 或执行用户代码。Services、Utils、Components 需要导出符号上存在标准 JSDoc；Models 会列出可识别的 model 文件，即使没有 JSDoc 也会生成最小条目，default export 上的 JSDoc 会作为增强信息。支持的 model definition 还会在默认 UI 中展示 schema fields、enums、options、indexes、methods、hooks 与 usage 示例。Plugins 会展示可推断的 plugin name、dependencies、lifecycle hooks、全局 middleware 注册、app extension 和 setup 使用方式；Middlewares 会展示可推断的 middleware/factory 类型和路由调用示例。`vext start` 运行构建产物时，如果项目根目录仍存在 `<project>/src`，Vext 会优先读取该源码目录以保留顶层 JSDoc 和本地源码跳转；如果部署环境没有源码树，则回退到运行时目录。
+
 ### 路由级文档配置
 
 每个路由可以通过 `options.docs` 配置其 OpenAPI 文档信息：
@@ -194,9 +206,6 @@ app.post('/users', {
 
     // 详细描述（支持 Markdown）
     description: '创建一个新用户。\n\n**注意：** 邮箱必须唯一。',
-
-    // 标签分组（默认从路由文件路径推断）
-    tags: ['用户管理'],
 
     // 操作标识（全局唯一，默认自动推断）
     operationId: 'createUser',
@@ -263,21 +272,17 @@ docs: {
 }
 ```
 
-### `tags` — 标签分组
+### `tags` — 已废弃接口标签
 
-控制接口在文档中的分组。如果不指定，框架会从路由文件路径自动推断：
+路由级 `docs.tags` 已废弃并会被忽略。Vext 现在会优先从路由 path 自动推断一个 operation tag，必要时才回退到 source file：
 
 ```
-src/routes/users.ts      → 默认 tag: 'users'
-src/routes/admin/users.ts → 默认 tag: 'admin'
+/admin/check-role-test/override → Admin
+/api/v1/info                  → API v1
+/permission/roles/{id}        → Permission
 ```
 
-```typescript
-// 手动指定（覆盖自动推断）
-docs: {
-  tags: ["用户管理", "管理后台"];
-}
-```
+如果既有路由仍配置了 `docs.tags`，Vext 会忽略该值并输出废弃警告。请从路由定义中移除该字段，依赖 path/source 自动推断。
 
 ### `operationId` — 操作标识
 
@@ -614,7 +619,6 @@ app.post(
     },
     docs: {
       summary: "上传头像",
-      tags: ["用户"],
     },
   },
   handler,
@@ -660,9 +664,11 @@ export default {
   openapi: {
     enabled: true,
     title: "My App API",
-    scalar: {
-      theme: "default",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      ui: {
+        title: "My App API",
+      },
     },
   },
 };
@@ -684,22 +690,29 @@ export default {
 export default {
   openapi: {
     enabled: true,
-    scalar: {
-      darkMode: false,
+    docs: {
+      path: "/docs",
+      access: {
+        mode: "visibility-only",
+      },
     },
   },
 };
 ```
 
+`visibility-only` 会保持公开 `/openapi.json` 完整，但 Vext Docs 页面、code docs、search 数据和菜单会收到按可见性过滤后的数据。若隐藏的 operations 或 code docs 也必须从 canonical docs data 中移除，应使用 `enforce`。
+
 ## 自定义文档路径
 
-通过 `docsPath` 和 `jsonPath` 修改两个端点的注册路径：
+通过 `docs.path` 和 `jsonPath` 修改两个端点的注册路径。`docsPath` 仍作为兼容字段保留，但新项目推荐使用 `docs.path`：
 
 ```typescript
 export default {
   openapi: {
     enabled: true,
-    docsPath: "/api-docs", // 文档: http://localhost:3000/api-docs
+    docs: {
+      path: "/api-docs", // 文档: http://localhost:3000/api-docs
+    },
     jsonPath: "/api/spec.json", // JSON: http://localhost:3000/api/spec.json
   },
 };
@@ -718,9 +731,9 @@ location /admin/ {
 }
 ```
 
-此时 vext 收到的请求路径已去掉 `/admin`，路由注册无需修改。但 Scalar HTML 里的 spec URL 是绝对路径（如 `/openapi.json`），浏览器会请求 `https://example.com/openapi.json`，**丢失了 `/admin` 前缀**，导致 404。
+此时 vext 收到的请求路径已去掉 `/admin`，路由注册无需修改。但 docs 页面中的 spec 公开路径如果仍是 `/openapi.json`，浏览器会请求 `https://example.com/openapi.json`，**丢失了 `/admin` 前缀**，导致 404。
 
-需要通过 `jsonPublicPath` 告诉 Scalar 使用带前缀的公开地址：
+需要通过 `jsonPublicPath` 告诉文档页使用带前缀的公开地址：
 
 ```typescript
 // config/production.ts
@@ -729,8 +742,10 @@ export default {
     enabled: true,
     // vext 内部路由保持默认
     jsonPath: "/openapi.json",
-    docsPath: "/docs",
-    // 告诉 Scalar HTML 用带前缀的完整路径获取 spec
+    docs: {
+      path: "/docs",
+    },
+    // 告诉 Vext Docs 用带前缀的完整路径获取 spec
     jsonPublicPath: "/admin/openapi.json",
   },
 };
@@ -740,8 +755,8 @@ export default {
 
 ```
 浏览器 GET /admin/docs
-  → Nginx 剥离 /admin → vext GET /docs → 返回 Scalar HTML
-  → Scalar 读取 jsonPublicPath，fetch /admin/openapi.json
+  → Nginx 剥离 /admin → vext GET /docs → 返回 Vext Docs HTML
+  → Vext Docs 读取 specPublicPath，fetch /admin/openapi.json
   → Nginx 剥离 /admin → vext GET /openapi.json → 返回 spec ✅
 ```
 
@@ -762,7 +777,9 @@ export default {
   openapi: {
     enabled: true,
     jsonPath: "/admin/openapi.json",
-    docsPath: "/admin/docs",
+    docs: {
+      path: "/admin/docs",
+    },
   },
 };
 ```
@@ -773,12 +790,12 @@ export default {
 | ------------------ | -------------------------------------- | ------------------------------------- |
 | Nginx `proxy_pass` | `http://127.0.0.1:3000/`（末尾有 `/`） | `http://127.0.0.1:3000`（末尾无 `/`） |
 | `jsonPath`         | `/openapi.json`（默认）                | `/admin/openapi.json`                 |
-| `docsPath`         | `/docs`（默认）                        | `/admin/docs`                         |
+| `docs.path`        | `/docs`（默认）                        | `/admin/docs`                         |
 | `jsonPublicPath`   | `/admin/openapi.json`（**必须配置**）  | 无需配置                              |
 
 ### `servers` — 文档交互地址
 
-`servers` 是写入 OpenAPI 规范文档本身的元数据字段，**与端点注册路径无关**。它的唯一作用是告诉 Scalar "Try it out" 功能发请求时使用哪个基础地址。
+`servers` 是写入 OpenAPI 规范文档本身的元数据字段，**与端点注册路径无关**。它用于告诉文档 UI 或第三方工具发起交互请求时使用哪个基础地址。
 
 **默认行为**（不配置时）：
 
@@ -791,7 +808,7 @@ export default {
 **需要显式配置的场景**：
 
 - 文档页面和 API 不在同一个域（跨域）
-- 希望在 Scalar 顶部提供多环境切换下拉框
+- 希望在文档 UI 或第三方工具中提供多环境切换能力
 
 ```typescript
 export default {
@@ -805,131 +822,11 @@ export default {
 };
 ```
 
-配置后 Scalar 顶部出现服务器下拉框，用户可手动切换目标环境。
+配置后，支持 `servers` 的文档 UI 或工具可以让用户手动切换目标环境。
 
 ## 导入外部 OpenAPI
 
-Scalar 支持同时加载多个 OpenAPI 文档，在文档页面顶部显示切换器。通过 `scalar.sources` 配置：
-
-```typescript
-export default {
-  openapi: {
-    enabled: true,
-    scalar: {
-      sources: [
-        // 框架自动生成的 spec 会作为第一个 source 注入（无需手动添加）
-        {
-          title: "Partner API",
-          url: "https://partner.example.com/openapi.json",
-          slug: "partner",
-        },
-        {
-          title: "Payment API",
-          url: "https://pay.example.com/v1/openapi.json",
-          slug: "payment",
-        },
-      ],
-    },
-  },
-};
-```
-
-每个 source 支持以下字段：
-
-| 字段      | 类型     | 说明                                            |
-| --------- | -------- | ----------------------------------------------- |
-| `title`   | `string` | 文档标题（显示在切换器中）                      |
-| `url`     | `string` | OpenAPI 规范 URL（远程或本地端点）              |
-| `content` | `string` | OpenAPI 规范内联 JSON 字符串（与 `url` 二选一） |
-| `slug`    | `string` | URL slug 标识（如 `/docs#/slug`）               |
-
-:::tip 自动注入
-当配置了 `sources` 时，框架自动生成的 `/openapi.json` 会作为第一个 source 注入（除非 sources 中已包含相同路径），无需手动重复声明。
-:::
-
-也可以通过 `content` 内联提供规范（适合小型/固定的 spec）：
-
-```typescript
-scalar: {
-  sources: [
-    {
-      title: 'Mock API',
-      content: JSON.stringify({
-        openapi: '3.0.0',
-        info: { title: 'Mock', version: '1.0.0' },
-        paths: {},
-      }),
-      slug: 'mock',
-    },
-  ],
-}
-```
-
-## 本地资产自动服务（v0.3.0+）
-
-从 **v0.3.0** 开始，当 `openapi.enabled: true` 时，框架**强制本地服务** Scalar JS，不再依赖外部 CDN。这解决了中国大陆、内网、离线环境下白屏或加载缓慢的问题。
-
-### 工作原理
-
-启动时框架自动执行以下流程：
-
-```
-1. 检测 @scalar/api-reference 是否已安装
-   ├─ 已安装 → 读取本地文件，注册 GET /_vext/scalar.js 路由
-   └─ 未安装 → 检测包管理器（pnpm / yarn / bun / npm）→ 自动安装 → 注册路由
-```
-
-`/docs` 页面的 `<script src>` 将自动指向 `/_vext/scalar.js`（本地路由），而非 CDN 地址。
-
-### 手动预装（推荐用于生产环境）
-
-自动安装依赖运行时网络访问，不适合 Docker/K8s 只读容器或 CI/CD 部署。建议在构建阶段提前安装：
-
-```bash
-# npm
-npm install @scalar/api-reference --no-save
-
-# pnpm
-pnpm add @scalar/api-reference
-
-# yarn
-yarn add @scalar/api-reference
-
-# bun
-bun add @scalar/api-reference
-```
-
-:::tip 生产环境最佳实践
-在 `Dockerfile` 中的依赖安装步骤提前安装 `@scalar/api-reference`，避免容器启动时触发网络请求：
-
-```dockerfile
-RUN npm install && npm install @scalar/api-reference --no-save
-```
-
-:::
-
-:::warning 安装失败
-如果自动安装失败（如无网络访问权限），框架会抛出明确错误并提示手动安装命令，**不会静默降级回 CDN**。
-:::
-
-### 使用自定义地址（覆盖本地服务）
-
-如果你有特殊需求（如内网 CDN 镜像、版本锁定），可以通过 `scalar.cdnUrl` 显式指定加载地址。配置后框架**跳过**本地检测和安装，直接使用你提供的地址：
-
-```typescript
-export default {
-  openapi: {
-    enabled: true,
-    scalar: {
-      // 锁定特定版本（此时框架不再自动安装本地包）
-      cdnUrl: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0",
-
-      // 或使用内网 CDN 镜像
-      // cdnUrl: 'https://static.internal.com/libs/scalar-api-reference.js',
-    },
-  },
-};
-```
+Vext 默认文档页聚焦当前应用生成的 OpenAPI 文档。如果需要把多个外部 OpenAPI 文档聚合到同一个 UI，请在 Vext 外部使用文档平台或独立 UI，并让它们直接读取各服务的 `/openapi.json`。Vext 不暴露第三方 docs renderer hook，也不会安装文档 UI 包。
 
 ## 与第三方工具集成
 
@@ -1047,7 +944,6 @@ app.get(
   {
     docs: {
       summary: "获取用户列表",
-      tags: ["用户 v2"],
     },
   },
   handler,
@@ -1056,7 +952,7 @@ app.get(
 
 ## 多级目录示例
 
-VextJS 的文件路由支持多层嵌套目录，每一级目录自动映射为 URL 路径段。配合 `tags` 分组，多级路由在 Scalar 文档页面中自动归类展示。
+VextJS 的文件路由支持多层嵌套目录，每一级目录自动映射为 URL 路径段。默认 Vext Docs 页面会使用这些 OpenAPI path segment 生成递归 API 导航，保留稳定资源路径段作为分类，并在该目录下展示具体接口叶子。接口叶子优先使用 `docs.summary`，没有 summary 时回退到接口地址；`{id}` 这类动态 path 参数会按参数处理，不作为普通业务目录强化展示。operation tags 会从路由 path/source 自动推断，并作为轻量元数据 badge 展示；显式 `x-tagGroups` 只作为 vendor extension 元数据保留。
 
 ### 目录结构
 
@@ -1089,9 +985,9 @@ src/routes/
 | `routes/api/v1/admin/users.ts`       | `/api/v1/admin/users`      | 管理后台用户管理         |
 | `routes/webhooks/stripe.ts`          | `/webhooks/stripe`         | Stripe 回调              |
 
-### 全局 tags 定义
+### 全局 tags 描述
 
-在配置中预定义标签，Scalar 文档会按标签分组展示：
+只有需要给自动推断的 operation tags 增加描述时，才需要在配置中预定义全局 tags；默认导航仍以 path segment 为准：
 
 ```typescript
 // src/config/default.ts
@@ -1101,12 +997,7 @@ export default {
     enabled: true,
     title: "My App API",
     version: "2.0.0",
-    tags: [
-      { name: "v1/用户", description: "用户公开接口" },
-      { name: "v1/用户订单", description: "用户关联订单" },
-      { name: "v1/管理后台", description: "管理员专用接口" },
-      { name: "Webhook", description: "第三方回调" },
-    ],
+    tags: [{ name: "API v1", description: "版本 1 API 接口" }],
   },
 };
 ```
@@ -1133,7 +1024,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "获取用户列表",
-        tags: ["v1/用户"],
       },
     },
     async (req, res) => {
@@ -1150,7 +1040,6 @@ export default defineRoutes((app) => {
       validate: { param: { id: "string!" } },
       docs: {
         summary: "获取用户详情",
-        tags: ["v1/用户"],
         responses: {
           200: { description: "用户信息" },
           404: { description: "用户不存在" },
@@ -1188,7 +1077,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "获取用户订单列表",
         description: "获取指定用户的所有订单，支持按状态筛选。",
-        tags: ["v1/用户订单"],
         responses: {
           200: { description: "订单列表" },
           404: { description: "用户不存在" },
@@ -1212,7 +1100,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "获取订单详情",
-        tags: ["v1/用户订单"],
       },
     },
     async (req, res) => {
@@ -1242,7 +1129,6 @@ export default defineRoutes((app) => {
       ],
       docs: {
         summary: "获取仪表盘统计",
-        tags: ["v1/管理后台"],
         responses: {
           200: {
             description: "统计数据",
@@ -1291,7 +1177,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "管理员查看用户列表",
         description: "管理员专用，支持按用户状态筛选，返回完整用户信息。",
-        tags: ["v1/管理后台"],
       },
     },
     async (req, res) => {
@@ -1315,7 +1200,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "封禁用户",
-        tags: ["v1/管理后台"],
         responses: {
           200: { description: "封禁成功" },
           404: { description: "用户不存在" },
@@ -1348,7 +1232,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Stripe Webhook 回调",
-        tags: ["Webhook"],
         description: "接收 Stripe 支付事件通知。需要验证签名。",
         responses: {
           200: { description: "处理成功" },
@@ -1367,7 +1250,7 @@ export default defineRoutes((app) => {
 
 ### 生成的 OpenAPI 路径
 
-以上目录结构最终自动生成以下 OpenAPI 路径，在 Scalar 文档中按 tags 分组展示：
+以上目录结构最终自动生成以下 OpenAPI 路径。默认 Vext Docs 侧栏按路径段导航，tags 作为接口元数据保留：
 
 | OpenAPI 路径                          | 方法  | Tag         | 来源文件                      |
 | ------------------------------------- | ----- | ----------- | ----------------------------- |
@@ -1384,57 +1267,21 @@ export default defineRoutes((app) => {
 
 - **用目录层级表达 URL 结构**：`api/v1/admin/` 自动映射为 `/api/v1/admin/` 前缀，无需手动拼接
 - **动态参数用 `[param]` 目录**：`users/[id]/orders.ts` 自动变为 `/users/:id/orders`，文件内的 `param` 校验会出现在 OpenAPI 文档中
-- **tags 统一管理**：在全局配置中预定义 tags，各路由文件通过 `docs.tags` 引用，Scalar 文档按标签分组
+- **operation tag 自动推断**：路由级 `docs.tags` 已废弃并会被忽略；Vext 从路由 path/source 自动推断 operation tags，默认文档页仍按路径段导航
 - **文件名即路由**：无需 `app.group()` 或手动注册路由前缀，目录结构就是路由结构
   :::
 
 ## 标签分组（x-tagGroups）
 
-OpenAPI 3.x 规范的 `tags` 是**一维扁平列表**，不原生支持嵌套层级。当路由数量较多时，所有 tags 在 Scalar 文档侧边栏中平铺并列，不便于导航。
+OpenAPI 3.x 规范的 `tags` 是**一维扁平列表**，不原生支持嵌套层级。当路由数量较多时，所有 tags 在文档侧边栏中平铺并列，不便于导航。
 
-VextJS 通过 [Scalar 支持的 `x-tagGroups` 扩展](https://github.com/scalar/scalar) 实现**两级导航**：将多个 tags 归入更高级别的分组（group），在 Scalar 侧边栏中展示为可折叠的分组层级。
+VextJS 只有在显式配置 `openapi.tagGroups` 时才会透传 `x-tagGroups`。内置 Vext Docs renderer 的默认侧栏主导航会优先使用 OpenAPI path segment 生成递归树，因此 `x-tagGroups` 只是原始 OpenAPI vendor extension 元数据，不是 Vext Docs 的导航能力。
 
-### 自动推断（默认行为）
+### 默认行为
 
-当路由文件分布在多个顶层目录时，框架**自动推断** `x-tagGroups`：
+VextJS 默认不生成 `x-tagGroups`。内置 Vext Docs renderer 会使用 OpenAPI path segment 作为递归侧栏的真相源，因此自动 tag 分组并不必要，也容易生成 `General / Admin` 这类误导性分组。
 
-- 提取每条路由文件在 `routes/` 之后的**第一层目录名**作为分组名（首字母大写）
-- 直接位于 `routes/` 下的文件归入 **"General"** 分组
-- 如果所有路由都在同一个分组中，则不生成 `x-tagGroups`（避免冗余）
-
-```
-src/routes/
-├── health.ts              → 分组: General
-├── api/
-│   ├── users.ts           → 分组: Api
-│   └── orders.ts          → 分组: Api
-├── admin/
-│   ├── dashboard.ts       → 分组: Admin
-│   └── users.ts           → 分组: Admin
-└── webhooks/
-    └── stripe.ts          → 分组: Webhooks
-```
-
-生成的 `x-tagGroups`：
-
-```json
-{
-  "x-tagGroups": [
-    { "name": "Admin", "tags": ["admin-dashboard", "admin-users"] },
-    { "name": "Api", "tags": ["api-orders", "api-users"] },
-    { "name": "Webhooks", "tags": ["webhooks-stripe"] },
-    { "name": "General", "tags": ["health"] }
-  ]
-}
-```
-
-:::tip
-分组按字母排序，**General 始终排在最后**。同一分组内的 tags 也按字母排序且自动去重。
-:::
-
-### 手动配置（覆盖自动推断）
-
-如果自动推断的分组不满足需求，可以在配置中显式指定 `tagGroups`：
+路由级 `docs.tags` 已废弃并会被忽略。如果交付链路里的其他 OpenAPI 工具需要 `x-tagGroups`，可以在配置中显式指定 `tagGroups`，并确保分组里的名称匹配自动推断出的 operation tags 或全局 `openapi.tags`：
 
 ```typescript
 // src/config/app.ts
@@ -1445,55 +1292,47 @@ export default {
     title: "My API",
     version: "1.0.0",
 
-    // 手动配置标签分组
+    // 给 OpenAPI 工具显式透传 vendor extension
     tagGroups: [
       {
-        name: "User API",
-        tags: ["users", "user-profile", "user-orders"],
-      },
-      {
-        name: "Administration",
-        tags: ["admin-dashboard", "admin-users"],
+        name: "Public API",
+        tags: ["API v1"],
       },
       {
         name: "Integration",
-        tags: ["webhooks"],
+        tags: ["Webhooks"],
       },
     ],
 
-    // tags 定义（可选，提供描述信息）
+    // 可选：给自动推断的 operation tags 增加描述。
     tags: [
-      { name: "users", description: "用户公开接口" },
-      { name: "user-profile", description: "用户个人资料" },
-      { name: "user-orders", description: "用户订单" },
-      { name: "admin-dashboard", description: "管理后台仪表盘" },
-      { name: "admin-users", description: "管理后台用户管理" },
-      { name: "webhooks", description: "第三方回调" },
+      { name: "API v1", description: "版本 1 API 接口" },
+      { name: "Webhooks", description: "第三方回调" },
     ],
   },
 };
 ```
 
 :::warning
-配置了 `tagGroups` 后，框架**不再自动推断**，直接使用用户配置。请确保所有 tags 都被覆盖到至少一个分组中，否则未分组的 tags 在 Scalar 中可能不显示。
+只有配置了 `tagGroups` 时，框架才会输出 `x-tagGroups`。请确保每个分组内的 tag 名称都能匹配 operation tag 或全局 `tags` 定义，避免消费该 OpenAPI 文档的工具出现未分组或不可见的标签。
 :::
 
 ### 效果对比
 
-|                      无 x-tagGroups                      |                       有 x-tagGroups                       |
+|                     默认 Vext Docs                      |                     显式 x-tagGroups                      |
 | :------------------------------------------------------: | :--------------------------------------------------------: |
-|                  所有 tags 平铺在侧边栏                  |                    tags 按分组折叠展示                     |
-| `users` / `admin-dashboard` / `orders` / `webhooks` 并列 | **User API** ▸ users, orders / **Admin** ▸ admin-dashboard |
-|                       适合少量路由                       |                   适合路由数量较多的项目                   |
+|                 侧栏按 OpenAPI path segment 导航          |       OpenAPI 文档包含显式 vendor extension 元数据        |
+|                 `/api/v1/info` 保留为资源分类             | **Public API** ▸ API v1 / **Integration** ▸ Webhooks |
+|                     tags 作为接口元数据                   |       仅适合下游 OpenAPI 工具明确消费 `x-tagGroups`       |
 
 ### 与热重载的兼容性
 
-在 dev 模式下，热重载（soft reload）会**自动重新生成** `x-tagGroups`：
+在 dev 模式下，热重载（soft reload）会自动重新生成 OpenAPI spec。如果配置了 `openapi.tagGroups`，显式 `x-tagGroups` 会随 spec 一起再次输出：
 
 1. 路由文件变更 → 触发热重载
 2. 创建新的 adapter 实例
 3. 重新加载路由 + 收集路由元信息
-4. 重新生成 OpenAPI spec（含 `x-tagGroups`）
+4. 重新生成 OpenAPI spec（配置了 `tagGroups` 时包含显式 `x-tagGroups`）
 5. 在新 adapter 上重新注册 `/docs` 和 `/openapi.json` 端点
 
 无需重启 dev server，刷新文档页面即可看到更新后的分组。
@@ -1522,7 +1361,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "获取订单列表",
         description: "分页获取当前用户的订单列表，支持按状态和日期范围筛选。",
-        tags: ["订单"],
         responses: {
           200: {
             description: "订单列表",
@@ -1558,7 +1396,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "创建订单",
-        tags: ["订单"],
         responses: {
           201: {
             description: "订单创建成功",
@@ -1591,7 +1428,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "取消订单",
-        tags: ["订单"],
         responses: {
           200: { description: "取消成功" },
           400: { description: "订单状态不允许取消" },

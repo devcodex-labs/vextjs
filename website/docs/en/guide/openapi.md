@@ -1,6 +1,6 @@
 # OpenAPI Documentation
 
-VextJS has built-in automatic generation of OpenAPI documentation. Based on the `validate` and `docs` configuration of the route, the framework automatically generates the JSON document of the OpenAPI 3.0 specification and provides [Scalar API Reference](https://github.com/scalar/scalar) for online viewing and interactive debugging.
+VextJS has built-in automatic generation of OpenAPI documentation. Based on route `validate` and `docs` configuration, the framework generates an OpenAPI 3.0 JSON document and serves the default `/docs` page with the Vext Docs Renderer. Third-party documentation tools should consume `/openapi.json` directly.
 
 ## Quick Start
 
@@ -37,7 +37,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Get user list",
         description: "Get all user information in pages",
-        tags: ["User Management"],
       },
     },
     async (req, res) => {
@@ -60,7 +59,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create user",
-        tags: ["User Management"],
       },
     },
     async (req, res) => {
@@ -78,8 +76,14 @@ After starting the project, visit the following address:
 
 | Address | Description |
 | -------------------------------------------------- | -------------------------------------------------- |
-| `http://localhost:3000/docs` | Scalar API Reference documentation interface (including built-in Try it out) |
+| `http://localhost:3000/docs` | Vext Docs interface (HTTP API, Pages, and services/utils/models/components/plugins/middlewares docs) |
 | `http://localhost:3000/openapi.json` | OpenAPI JSON specification file |
+
+The default Vext Docs UI keeps HTTP API, Pages, Services, Utils, Models, discovered Components, Plugins, and Middlewares as top-level sections. Active top-level sections can collapse and expand their current navigation tree. HTTP API and Pages use recursive navigation generated from OpenAPI path segments, keep stable resource segments such as `/api/v1/info` as categories, use each operation `summary` as the concrete leaf label with endpoint fallback, and weaken dynamic path parameters such as `{id}` instead of treating them as normal business categories. Response status codes are shown as horizontal tabs without repeated panel headings, local schema `$ref` values are expanded into real fields, and object schemas do not show artificial root rows. The desktop sidebar stays sticky while the content scrolls, can auto-size to visible navigation labels, supports persisted manual resizing, and built-in docs assets are version-tagged so browser cache does not hide renderer updates. The header separates search, UI controls, filters, and Authorize into clear rows, while the Overview workspace shows counts plus package startup/build/verification commands. Right-side API/code/model/plugin/middleware entries use a separated item shell so long pages remain scannable. Pages are detected from route handlers that call `res.render()` or `res.renderError()`, while Services / Utils / Components are generated from standard JSDoc without importing user code. Models are listed from recognizable model files even when no JSDoc is present; root-level models are shown directly under Models instead of under an artificial `root` group, and nested model files are grouped by source directory. The renderer statically reads supported model definition shapes to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code. Plugins and middlewares are scanned from `src/plugins` and `src/middlewares` to show JSDoc, lifecycle/bootstrap metadata, app extensions, middleware type, route usage, and source links when they can be inferred from source text. Locales, Config, Styles, and Preload static source docs are optional advanced sources that can be enabled explicitly through `openapi.docs.code.*`; they are not part of the default top-level documentation surface. On local loopback docs pages, code docs entries can include an `Open source` link that redirects to `vscode://file/...`; the link is hidden for non-local access. Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source and are tucked into collapsed Metadata instead of being shown as primary badges. `x-tagGroups` is emitted only when `openapi.tagGroups` is explicitly configured as a raw OpenAPI vendor extension; the built-in docs navigation does not depend on it. When OpenAPI security schemes are present, the UI shows operation security badges and a global Authorize control that is merged into same-origin Try it out requests.
+
+B26 adds built-in theme and density controls, a more useful Overview workspace, keyboard search shortcuts, category search filters, highlighted matches, desktop page outline, copy buttons for endpoints, links, responses, usage snippets, and source paths, plus deep links for navigation leaves. Middle dynamic path parameters remain visually weak but are preserved when they lead to stable child resources, so paths such as `/docs-nav/{id}/sdfs/sdfaf` keep their resource hierarchy.
+
+B27 upgrades Try it out into a lightweight request console. Each operation can show a server selector and full URL preview with Copy URL, plus tabs for Params, Headers, Body, Auth, Samples, History, and Response. Structured query/header rows stay compact when empty and still support raw fallbacks; header rows are generated from OpenAPI `parameters[in=header]`, including `validate.header`. The Samples tab includes cURL, browser fetch, Node fetch, and Axios snippets, while the fixed Response tab keeps pretty/raw body modes and shows the actual request headers beside the response headers so you can verify what was sent. The Axios snippet is only text; Vext does not add Axios as a runtime dependency.
 
 If you need to append organization-level extension fields after generation, you can use OpenAPI hooks. `OpenAPIGenerator.generate()` remains synchronized, and `openapi:afterGenerate` must also return patches synchronously:
 
@@ -115,21 +119,27 @@ export default {
     description: "My Application RESTful API Documentation",
     version: "1.0.0",
 
-    // Scalar document path
-    docsPath: "/docs",
-
     //OpenAPI JSON path
     jsonPath: "/openapi.json",
 
     // Reverse proxy public path (configured when the proxy strips the prefix, see the "Customized Document Path" chapter for details)
     // jsonPublicPath: '/admin/openapi.json',
 
-    // Scalar API Reference configuration
-    scalar: {
-      theme: "default", // Theme: 'default' | 'moon' | 'purple' | 'solarized' | ...
-      darkMode: false, // dark mode
-      layout: "modern", // Layout: 'modern' (three columns) | 'classic' (two columns)
-      favicon: "/favicon.svg", // Document page icon
+    // Vext Docs configuration
+    docs: {
+      path: "/docs",
+      ui: {
+        title: "My App API",
+        defaultView: "overview",
+        theme: "system",
+        density: "comfortable",
+      },
+      code: {
+        enabled: "auto",
+        services: true,
+        utils: true,
+        models: true,
+      },
     },
 
     // API server list
@@ -138,7 +148,7 @@ export default {
       { url: "https://api.myapp.com", description: "Production environment" },
     ],
 
-    // Tag definition (control grouping order and description)
+    // Tag definitions (describe global tags; the default docs page still navigates by path segment)
     tags: [
       { name: "User Management", description: "User CRUD Operation" },
       { name: "Order Management", description: "Order Related Interface" },
@@ -179,6 +189,8 @@ export default {
 };
 ```
 
+Code docs scan `src/services`, `src/utils`, the configured models directory, `src/frontend/components`, `src/plugins`, and `src/middlewares` without importing or executing user code. Services, utils, and components require standard JSDoc on exported symbols. Models are listed from recognizable model files even without JSDoc, and JSDoc above the default export enriches the generated entry. Supported model definitions also expose schema fields, enums, options, indexes, methods, hooks, and a usage snippet in the default UI. Plugins expose inferred plugin name, dependencies, lifecycle hooks, global middleware registration, app extensions, and setup usage. Middlewares expose inferred middleware/factory type and route usage snippets. When `vext start` runs built output, Vext prefers `<project>/src` if source files are present so top-level JSDoc and local source links are preserved; if the source tree is not deployed, it falls back to the runtime directory.
+
 ### Routing level document configuration
 
 Each route can configure its OpenAPI documentation information through `options.docs`:
@@ -192,9 +204,6 @@ app.post('/users', {
 
     // Detailed description (supports Markdown)
     description: 'Create a new user. \n\n**Note:** The email address must be unique. ',
-
-    // Tag grouping (default inferred from route file path)
-    tags: ['User Management'],
 
     // Operation identifier (globally unique, automatically inferred by default)
     operationId: 'createUser',
@@ -261,21 +270,17 @@ Create a new user account.
 }
 ```
 
-### `tags` — tag grouping
+### `tags` — deprecated operation tags
 
-Controls the grouping of interfaces in the document. If not specified, the framework will automatically infer from the route file path:
+Route-level `docs.tags` is deprecated and ignored. Vext now infers one operation tag automatically from the route path, falling back to the source file only when needed:
 
 ```
-src/routes/users.ts → default tag: 'users'
-src/routes/admin/users.ts → default tag: 'admin'
+/admin/check-role-test/override → Admin
+/api/v1/info                  → API v1
+/permission/roles/{id}        → Permission
 ```
 
-```typescript
-// Manually specified (overrides automatic inference)
-docs: {
-  tags: ["User Management", "Management Backstage"];
-}
-```
+If an existing route still sets `docs.tags`, Vext ignores that value and logs a deprecation warning. Remove the field from route definitions and rely on automatic path/source inference.
 
 ### `operationId` — operation identification
 
@@ -612,7 +617,6 @@ app.post(
     },
     docs: {
       summary: "Upload avatar",
-      tags: ["user"],
     },
   },
   handler,
@@ -658,9 +662,11 @@ export default {
   openapi: {
     enabled: true,
     title: "My App API",
-    scalar: {
-      theme: "default",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      ui: {
+        title: "My App API",
+      },
     },
   },
 };
@@ -682,22 +688,29 @@ If your production environment requires keeping API documentation (read-only ref
 export default {
   openapi: {
     enabled: true,
-    scalar: {
-      darkMode: false,
+    docs: {
+      path: "/docs",
+      access: {
+        mode: "visibility-only",
+      },
     },
   },
 };
 ```
 
+`visibility-only` keeps the public `/openapi.json` complete while the Vext Docs page, code docs, search data, and menu receive visibility-filtered data. Use `enforce` when hidden operations or code docs must also be removed from canonical docs data.
+
 ## Custom document path
 
-Modify the registration paths of the two endpoints through `docsPath` and `jsonPath`:
+Modify the registration paths of the two endpoints through `docs.path` and `jsonPath`. `docsPath` remains as a compatibility field, but new projects should prefer `docs.path`:
 
 ```typescript
 export default {
   openapi: {
     enabled: true,
-    docsPath: "/api-docs", // Documentation: http://localhost:3000/api-docs
+    docs: {
+      path: "/api-docs", // Documentation: http://localhost:3000/api-docs
+    },
     jsonPath: "/api/spec.json", // JSON: http://localhost:3000/api/spec.json
   },
 };
@@ -718,9 +731,9 @@ location /admin/ {
 }
 ```
 
-At this time, the request path received by vext has removed `/admin`, and the route registration does not need to be modified. But the spec URL in Scalar HTML is an absolute path (such as `/openapi.json`), and the browser will request `https://example.com/openapi.json`, **losing the `/admin` prefix**, resulting in 404.
+At this time, the request path received by vext has removed `/admin`, and route registration does not need to change. But if the docs page still exposes `/openapi.json` as the public spec URL, the browser will request `https://example.com/openapi.json`, **losing the `/admin` prefix**, resulting in 404.
 
-You need to tell Scalar to use the prefixed public address via `jsonPublicPath`:
+Use `jsonPublicPath` to tell the docs page to fetch the prefixed public address:
 
 ```typescript
 // config/production.ts
@@ -729,8 +742,10 @@ export default {
     enabled: true,
     // vext internal routing remains default
     jsonPath: "/openapi.json",
-    docsPath: "/docs",
-    // Tell Scalar HTML to get the spec with the prefixed full path
+    docs: {
+      path: "/docs",
+    },
+    // Tell Vext Docs to get the spec with the prefixed full path
     jsonPublicPath: "/admin/openapi.json",
   },
 };
@@ -740,8 +755,8 @@ Request link:
 
 ```
 Browser GET /admin/docs
-  → Nginx strip /admin → vext GET /docs → return Scalar HTML
-  → Scalar reads jsonPublicPath, fetch /admin/openapi.json
+  → Nginx strip /admin → vext GET /docs → return Vext Docs HTML
+  → Vext Docs reads specPublicPath, fetch /admin/openapi.json
   → Nginx strip /admin → vext GET /openapi.json → return spec ✅
 ```
 
@@ -764,7 +779,9 @@ export default {
   openapi: {
     enabled: true,
     jsonPath: "/admin/openapi.json",
-    docsPath: "/admin/docs",
+    docs: {
+      path: "/admin/docs",
+    },
   },
 };
 ```
@@ -775,10 +792,12 @@ export default {
 | ------------------ | ----------------------------------------------- | ---------------------------------- |
 | Nginx `proxy_pass` | `http://127.0.0.1:3000/` (with `/` at the end) | `http://127.0.0.1:3000` (without `/` at the end) |
 | `jsonPath` | `/openapi.json` (default) | `/admin/openapi.json` |
-| `docsPath` | `/docs` (default) | `/admin/docs` |
+| `docs.path` | `/docs` (default) | `/admin/docs` |
 | `jsonPublicPath` | `/admin/openapi.json` (**must be configured**) | No configuration required |
 
-### `servers` — document interaction address`servers` is a metadata field written to the OpenAPI specification document itself, independent of the endpoint registration path. Its only purpose is to tell Scalar's "Try it out" function which base address to use when making requests.
+### `servers` — document interaction address
+
+`servers` is a metadata field written to the OpenAPI specification document itself, independent of the endpoint registration path. Documentation UIs and third-party tools can use it as the base address for interactive requests.
 
 **Default behavior** (when not configured):
 
@@ -791,7 +810,7 @@ The relative path `/` will automatically follow the domain name of the current p
 **Scenarios that require explicit configuration**:
 
 - The documentation page and the API are not in the same domain (cross-domain)
-- Hope to provide a multi-environment switching drop-down box at the top of Scalar
+- You want documentation UIs or third-party tools to expose environment switching
 
 ```typescript
 export default {
@@ -805,131 +824,11 @@ export default {
 };
 ```
 
-After configuration, a server drop-down box appears at the top of Scalar, and users can manually switch the target environment.
+After configuration, documentation UIs or tools that support `servers` can let users switch the target environment.
 
 ## Import external OpenAPI
 
-Scalar supports loading multiple OpenAPI documents simultaneously, displaying a switcher at the top of the documentation page. Configure via `scalar.sources`:
-
-```typescript
-export default {
-  openapi: {
-    enabled: true,
-    scalar: {
-      sources: [
-        // The spec automatically generated by the framework will be injected as the first source (no need to add it manually)
-        {
-          title: "Partner API",
-          url: "https://partner.example.com/openapi.json",
-          slug: "partner",
-        },
-        {
-          title: "Payment API",
-          url: "https://pay.example.com/v1/openapi.json",
-          slug: "payment",
-        },
-      ],
-    },
-  },
-};
-```
-
-Each source supports the following fields:
-
-| Field | Type | Description |
-| --------- | -------- | ----------------------------------------------- |
-| `title` | `string` | Document title (shown in switcher) |
-| `url` | `string` | OpenAPI canonical URL (remote or local endpoint) |
-| `content` | `string` | OpenAPI specification inline JSON string (alternative to `url`) |
-| `slug` | `string` | URL slug identifier (e.g. `/docs#/slug`) |
-
-:::tip automatic injection
-When `sources` is configured, the `/openapi.json` automatically generated by the framework will be injected as the first source (unless the same path is already included in sources), without manual repeated declaration.
-:::
-
-Specs can also be provided inline via `content` (suitable for small/fixed specs):
-
-```typescript
-scalar: {
-  sources: [
-    {
-      title: 'Mock API',
-      content: JSON.stringify({
-        openapi: '3.0.0',
-        info: { title: 'Mock', version: '1.0.0' },
-        paths: {},
-      }),
-      slug: 'mock',
-    },
-  ],
-}
-```
-
-## Local asset automatic service (v0.3.0+)
-
-Starting from **v0.3.0**, when `openapi.enabled: true`, the framework **forces** Scalar JS to be served locally and no longer relies on an external CDN. This solves the problem of white screen or slow loading in mainland China, intranet, and offline environments.
-
-### Working principle
-
-The framework automatically performs the following processes at startup:
-
-```
-1. Check whether @scalar/api-reference is installed
-   ├─ Installed → Read local files and register GET /_vext/scalar.js route
-   └─ Not installed → Detect package manager (pnpm/yarn/bun/npm) → Automatically install → Register route
-```
-
-The `<script src>` of the `/docs` page will automatically point to `/_vext/scalar.js` (the local route) instead of the CDN address.
-
-### Manual preinstallation (recommended for production environment)
-
-Automated installation relies on runtime network access and is not suitable for Docker/K8s read-only containers or CI/CD deployments. It is recommended to install it in advance during the build phase:
-
-```bash
-#npm
-npm install @scalar/api-reference --no-save
-
-#pnpm
-pnpm add @scalar/api-reference
-
-# yarn
-yarn add @scalar/api-reference
-
-# bun
-bun add @scalar/api-reference
-```
-
-:::tip Best practices for production environments
-Install `@scalar/api-reference` in advance in the dependency installation step in `Dockerfile` to avoid triggering network requests when the container starts:
-
-```dockerfile
-RUN npm install && npm install @scalar/api-reference --no-save
-```
-
-:::
-
-:::warning Installation failed
-If the automatic installation fails (e.g. without network access), the framework will throw an explicit error and prompt for a manual installation command without silently downgrading back to the CDN.
-:::
-
-### Use custom address (override local service)
-
-If you have special needs (such as intranet CDN mirroring, version locking), you can explicitly specify the loading address through `scalar.cdnUrl`. After configuration, the framework **skips** local detection and installation and directly uses the address you provided:
-
-```typescript
-export default {
-  openapi: {
-    enabled: true,
-    scalar: {
-      // Lock a specific version (the framework will no longer automatically install local packages at this time)
-      cdnUrl: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.0",
-
-      // Or use intranet CDN mirroring
-      // cdnUrl: 'https://static.internal.com/libs/scalar-api-reference.js',
-    },
-  },
-};
-```
+The default Vext Docs page focuses on the OpenAPI document generated by the current application. To aggregate multiple external OpenAPI documents, use an external documentation platform or standalone UI outside Vext and point it at each service's `/openapi.json`. Vext does not expose a third-party docs renderer hook or install documentation UI packages.
 
 ## Integrate with third-party tools
 
@@ -1047,7 +946,6 @@ app.get(
   {
     docs: {
       summary: "Get user list",
-      tags: ["user v2"],
     },
   },
   handler,
@@ -1056,7 +954,7 @@ app.get(
 
 ## Multi-level directory example
 
-VextJS's file routing supports multi-level nested directories, and each level of directory is automatically mapped to a URL path segment. With `tags` grouping, multi-level routes are automatically classified and displayed in the Scalar document page.
+VextJS's file routing supports multi-level nested directories, and each level of directory is automatically mapped to a URL path segment. The default Vext Docs page uses those OpenAPI path segments to build recursive API navigation, keeps stable resource-level segments as categories, and shows concrete operation leaves under that directory. Operation leaves prefer `docs.summary`; if no summary is configured, they fall back to the endpoint path. Dynamic path parameters such as `{id}` are treated as parameters rather than normal business directories. Operation tags are inferred automatically from the route path/source and shown as lightweight metadata badges; explicit `x-tagGroups` remains available only as vendor extension metadata.
 
 ### Directory structure
 
@@ -1089,9 +987,9 @@ src/routes/
 | `routes/api/v1/admin/users.ts` | `/api/v1/admin/users` | Management background user management |
 | `routes/webhooks/stripe.ts` | `/webhooks/stripe` | Stripe callbacks |
 
-### Global tags definition
+### Global tags description
 
-Predefine tags in the configuration, and Scalar documents will be displayed in groups by tags:
+Predefine global tags only when you want to add descriptions for automatically inferred operation tags. Path segments remain the default navigation source:
 
 ```typescript
 // src/config/default.ts
@@ -1101,12 +999,7 @@ export default {
     enabled: true,
     title: "My App API",
     version: "2.0.0",
-    tags: [
-      { name: "v1/user", description: "User public interface" },
-      { name: "v1/user order", description: "User associated order" },
-      { name: "v1/Management Backend", description: "Administrator Private Interface" },
-      { name: "Webhook", description: "Third-party callback" },
-    ],
+    tags: [{ name: "API v1", description: "Version 1 API endpoints" }],
   },
 };
 ```
@@ -1133,7 +1026,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user list",
-        tags: ["v1/user"],
       },
     },
     async (req, res) => {
@@ -1150,7 +1042,6 @@ export default defineRoutes((app) => {
       validate: { param: { id: "string!" } },
       docs: {
         summary: "Get user details",
-        tags: ["v1/user"],
         responses: {
           200: { description: "User information" },
           404: { description: "User does not exist" },
@@ -1188,7 +1079,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Get user order list",
         description: "Get all orders of the specified user, support filtering by status.",
-        tags: ["v1/user order"],
         responses: {
           200: { description: "Order List" },
           404: { description: "User does not exist" },
@@ -1212,7 +1102,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get order details",
-        tags: ["v1/user order"],
       },
     },
     async (req, res) => {
@@ -1242,7 +1131,6 @@ export default defineRoutes((app) => {
       ],
       docs: {
         summary: "Get dashboard statistics",
-        tags: ["v1/administration background"],
         responses: {
           200: {
             description: "statistics",
@@ -1289,7 +1177,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       docs: {
         summary: "Administrator views user list",
         description: "Exclusively for administrators, supports filtering by user status and returns complete user information.",
-        tags: ["v1/administration background"],
       },
     },
     async (req, res) => {
@@ -1313,7 +1200,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       },
       docs: {
         summary: "Ban user",
-        tags: ["v1/administration background"],
         responses: {
           200: { description: "Banned successfully" },
           404: { description: "User does not exist" },
@@ -1346,7 +1232,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Stripe Webhook callback",
-        tags: ["Webhook"],
         description: "Receive notification of Stripe payment events. Requires signature verification.",
         responses: {
           200: { description: "Processed successfully" },
@@ -1365,7 +1250,7 @@ export default defineRoutes((app) => {
 
 ### Generated OpenAPI path
 
-The above directory structure finally automatically generates the following OpenAPI path, which is displayed in groups by tags in the Scalar document:
+The above directory structure finally automatically generates the following OpenAPI paths. The default Vext Docs sidebar follows the path segments; tags remain operation metadata:
 
 | OpenAPI Path | Method | Tag | Source File |
 | --------------------------------------- | ----- | ----------- | --------------------------------------- |
@@ -1382,57 +1267,21 @@ The above directory structure finally automatically generates the following Open
 
 - **Use directory hierarchy to express URL structure**: `api/v1/admin/` is automatically mapped to `/api/v1/admin/` prefix, no manual splicing is required
 - **Dynamic parameters use the `[param]` directory**: `users/[id]/orders.ts` automatically becomes `/users/:id/orders`, and the `param` verification in the file will appear in the OpenAPI document
-- **tags unified management**: tags are predefined in the global configuration, each routing file is referenced through `docs.tags`, and Scalar documents are grouped by tags
+- **automatic operation tags**: route-level `docs.tags` is deprecated and ignored; Vext infers operation tags from route path/source while the built-in docs page uses path segments for navigation
 - **The file name is the route**: No need for `app.group()` or manual registration of routing prefixes, the directory structure is the routing structure
   :::
 
 ## Tag groups (x-tagGroups)
 
-The `tags` of the OpenAPI 3.x specification are **one-dimensional flat lists** and do not natively support nesting levels. When there are a large number of routes, all tags are tiled and juxtaposed in the sidebar of the Scalar document, making navigation inconvenient.
+The `tags` of the OpenAPI 3.x specification are **one-dimensional flat lists** and do not natively support nesting levels. When there are a large number of routes, all tags can become flat and hard to browse in a docs sidebar.
 
-VextJS implements **two-level navigation** through [`x-tagGroups` extension supported by Scalar](https://github.com/scalar/scalar): multiple tags are classified into higher-level groups (groups) and displayed as collapsible grouping levels in the Scalar sidebar.
+VextJS passes through `x-tagGroups` only when you explicitly configure `openapi.tagGroups`. The built-in Vext Docs renderer uses OpenAPI path segments as its primary recursive sidebar navigation, so `x-tagGroups` is treated as raw OpenAPI vendor extension metadata rather than a Vext Docs navigation feature.
 
-### Automatic inference (default behavior)
+### Default behavior
 
-When routing files are spread across multiple top-level directories, the framework **automatically infers** `x-tagGroups`:
+VextJS does not generate `x-tagGroups` by default. The built-in Vext Docs renderer uses OpenAPI path segments as the source of truth for recursive navigation, so automatic tag grouping is unnecessary and can create misleading groups such as `General / Admin`.
 
-- Extract the **first-level directory name** after `routes/` of each route file as the group name (the first letter is capitalized)
-- Files located directly under `routes/` are grouped into the **"General"** group
-- Do not generate `x-tagGroups` if all routes are in the same group (avoid redundancy)
-
-```
-src/routes/
-├── health.ts → Group: General
-├── api/
-│ ├── users.ts → Group: Api
-│ └── orders.ts → Group: Api
-├──admin/
-│ ├── dashboard.ts → Group: Admin
-│ └── users.ts → Group: Admin
-└── webhooks/
-    └── stripe.ts → Grouping: Webhooks
-```
-
-Generated `x-tagGroups`:
-
-```json
-{
-  "x-tagGroups": [
-    { "name": "Admin", "tags": ["admin-dashboard", "admin-users"] },
-    { "name": "Api", "tags": ["api-orders", "api-users"] },
-    { "name": "Webhooks", "tags": ["webhooks-stripe"] },
-    { "name": "General", "tags": ["health"] }
-  ]
-}
-```
-
-:::tip
-The groups are sorted alphabetically, with **General always coming last**. Tags within the same group are also sorted alphabetically and automatically deduplicated.
-:::
-
-### Manual configuration (overrides automatic inference)
-
-If the automatically inferred groupings do not meet your needs, you can explicitly specify `tagGroups` in the configuration:
+Route-level `docs.tags` is deprecated and ignored. If another OpenAPI tool in your delivery chain needs `x-tagGroups`, explicitly specify `tagGroups` in the configuration and make sure the names match the automatically inferred operation tags or the global `openapi.tags` entries:
 
 ```typescript
 // src/config/app.ts
@@ -1443,55 +1292,47 @@ export default {
     title: "My API",
     version: "1.0.0",
 
-    // Manually configure label grouping
+    // Explicit vendor extension pass-through for OpenAPI tools
     tagGroups: [
       {
-        name: "User API",
-        tags: ["users", "user-profile", "user-orders"],
-      },
-      {
-        name: "Administration",
-        tags: ["admin-dashboard", "admin-users"],
+        name: "Public API",
+        tags: ["API v1"],
       },
       {
         name: "Integration",
-        tags: ["webhooks"],
+        tags: ["Webhooks"],
       },
     ],
 
-    // tags definition (optional, provide description information)
+    // Optional descriptions for automatically inferred operation tags.
     tags: [
-      { name: "users", description: "User public interface" },
-      { name: "user-profile", description: "user profile" },
-      { name: "user-orders", description: "user-orders" },
-      { name: "admin-dashboard", description: "Admin dashboard" },
-      { name: "admin-users", description: "Administrative background user management" },
-      { name: "webhooks", description: "Third-party callbacks" },
+      { name: "API v1", description: "Version 1 API endpoints" },
+      { name: "Webhooks", description: "Third-party callbacks" },
     ],
   },
 };
 ```
 
 :::warning
-After `tagGroups` is configured, the framework no longer automatically infers it and uses user configuration directly. Please make sure that all tags are covered into at least one group, otherwise ungrouped tags may not be displayed in Scalar.
+`tagGroups` is emitted only when configured. Make sure every grouped tag name matches an operation tag or a global `tags` entry expected by the tool that consumes the OpenAPI document.
 :::
 
 ### Effect comparison
 
-| Without x-tagGroups | With x-tagGroups |
+| Default Vext Docs | Explicit x-tagGroups |
 | :----------------------------------------------------------------: | :----------------------------------------------------------------: |
-| All tags are tiled in the sidebar | tags are displayed collapsed by group |
-| `users` / `admin-dashboard` / `orders` / `webhooks` parallel | **User API** ▸ users, orders / **Admin** ▸ admin-dashboard |
-| Suitable for a small number of routes | Suitable for projects with a large number of routes |
+| Sidebar follows OpenAPI path segments | OpenAPI document includes explicit vendor extension metadata |
+| `/api/v1/info` stays a resource category | **Public API** ▸ API v1 / **Integration** ▸ Webhooks |
+| Tags remain operation metadata | Suitable only when a downstream OpenAPI tool explicitly consumes `x-tagGroups` |
 
 ### Compatibility with hot reload
 
-In dev mode, soft reload will automatically regenerate `x-tagGroups`:
+In dev mode, soft reload automatically regenerates the OpenAPI spec. If `openapi.tagGroups` is configured, the explicit `x-tagGroups` block is emitted again:
 
 1. Routing file changes → trigger hot reload
 2. Create a new adapter instance
 3. Reload routing + collect routing meta information
-4. Regenerate OpenAPI spec (including `x-tagGroups`)
+4. Regenerate OpenAPI spec (including explicit `x-tagGroups`, when configured)
 5. Re-register the `/docs` and `/openapi.json` endpoints on the new adapter
 
 No need to restart the dev server, refresh the document page to see the updated grouping.
@@ -1518,7 +1359,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       docs: {
         summary: "Get order list",
         description: "Get the current user's order list in pages, supporting filtering by status and date range.",
-        tags: ["Order"],
         responses: {
           200: {
             description: "Order List",
@@ -1554,7 +1394,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create order",
-        tags: ["Order"],
         responses: {
           201: {
             description: "Order created successfully",
@@ -1587,7 +1426,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Cancel order",
-        tags: ["Order"],
         responses: {
           200: { description: "Cancellation successful" },
           400: { description: "Order status does not allow cancellation" },

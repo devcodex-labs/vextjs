@@ -99,7 +99,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
-      docs: { summary: "Create User", tags: ["User Management"] },
+      docs: { summary: "Create User" },
     },
     async (req, res) => {
       const data = req.valid("body");
@@ -521,7 +521,6 @@ app.post(
     docs: {
       summary: "Create user",
       description: "Create a new user, the email address must be unique.",
-      tags: ["User Management"],
       operationId: "createUser",
       deprecated: false,
       responses: {
@@ -674,7 +673,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get article list",
-        tags: ["article"],
       },
     },
     async (req, res) => {
@@ -689,7 +687,7 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
     "/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "Get article details", tags: ["article"] },
+      docs: { summary: "Get article details" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -713,7 +711,6 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create article",
-        tags: ["article"],
         responses: {
           201: { description: "Created successfully" },
           401: { description: "Not authenticated" },
@@ -743,7 +740,7 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
-      docs: { summary: "Update article", tags: ["article"] },
+      docs: { summary: "Update article" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -759,7 +756,7 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
     {
       validate: { param: { id: "string!" } },
       middlewares: ["auth"],
-      docs: { summary: "Delete article", tags: ["article"] },
+      docs: { summary: "Delete article" },
     },
     async (req, res) => {
       const { id } = req.valid("param");

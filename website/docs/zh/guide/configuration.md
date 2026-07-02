@@ -640,10 +640,13 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.title`           | `string`  | `'API Documentation'` | 文档标题                                                                                                              |
 | `openapi.description`     | `string`  | `''`                  | 文档描述                                                                                                              |
 | `openapi.version`         | `string`  | `'1.0.0'`             | API 版本号                                                                                                            |
-| `openapi.docsPath`        | `string`  | `'/docs'`             | Scalar 文档路径                                                                                                       |
+| `openapi.docs.path`       | `string`  | `'/docs'`             | Vext Docs 文档路径                                                                                                    |
+| `openapi.docsPath`        | `string`  | `'/docs'`             | 兼容字段；新项目推荐使用 `openapi.docs.path`                                                                          |
 | `openapi.jsonPath`        | `string`  | `'/openapi.json'`     | OpenAPI JSON 端点路径（vext 内部路由注册路径）                                                                        |
-| `openapi.jsonPublicPath`  | `string`  | 同 `jsonPath`         | Scalar HTML 中引用 spec 的公开路径。反向代理剥离前缀场景必填，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景) |
-| `openapi.scalar`          | `object`  | `{}`                  | Scalar API Reference UI 配置（主题、深色模式、布局、favicon 等）                                                      |
+| `openapi.jsonPublicPath`  | `string`  | 同 `jsonPath`         | 文档页引用 spec 的公开路径。反向代理剥离前缀场景必填，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景)         |
+| `openapi.docs.renderer`   | `'vext'` | `'vext'` | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                            |
+| `openapi.docs.code`       | `object`  | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares 文档源配置                                           |
+| `openapi.scalar`          | `object`  | `{}`                  | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                            |
 | `openapi.servers`         | `Array`   | `[]`                  | API 服务器列表                                                                                                        |
 | `openapi.tags`            | `Array`   | `[]`                  | 标签定义                                                                                                              |
 | `openapi.securitySchemes` | `object`  | `{}`                  | 安全方案                                                                                                              |
@@ -657,14 +660,14 @@ export default {
     title: "My App API",
     description: "我的应用 API 文档",
     version: "1.0.0",
-    docsPath: "/docs",
-    jsonPath: "/openapi.json",
-    scalar: {
-      theme: "default",
-      darkMode: false,
-      layout: "modern",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      renderer: "vext",
+      code: {
+        enabled: "auto",
+      },
     },
+    jsonPath: "/openapi.json",
     servers: [
       { url: "http://localhost:3000", description: "本地开发" },
       { url: "https://api.myapp.com", description: "生产环境" },

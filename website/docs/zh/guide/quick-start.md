@@ -281,7 +281,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/mi
 
 配置中开启 `openapi.enabled: true` 后，启动项目即可访问：
 
-- **Scalar 文档**: `http://localhost:3000/docs`
+- **Vext Docs 文档**: `http://localhost:3000/docs`
 - **OpenAPI JSON**: `http://localhost:3000/openapi.json`
 
 ## CLI 命令速览

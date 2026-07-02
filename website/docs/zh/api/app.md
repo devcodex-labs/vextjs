@@ -1296,7 +1296,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "用户列表",
-        tags: ["用户"],
       },
     },
     async (req, res) => {

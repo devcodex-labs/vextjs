@@ -281,7 +281,7 @@ VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `s
 
 After turning on `openapi.enabled: true` in the configuration, you can access it by starting the project:
 
-- **Scalar Documentation**: `http://localhost:3000/docs`
+- **Vext Docs Documentation**: `http://localhost:3000/docs`
 - **OpenAPI JSON**: `http://localhost:3000/openapi.json`
 
 ## CLI command overview

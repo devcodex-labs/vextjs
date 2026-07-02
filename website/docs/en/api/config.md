@@ -611,35 +611,42 @@ Message fields include HTTP method, path, status code, response time (ms) and cl
 
 ## VextOpenAPIConfig
 
-| OpenAPI documentation automatically generates configuration. | Field                        | Type                           | Default Value                                                                                                                                                                                                                                              | Description |
-| ------------------------------------------------------------ | ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------- | -------- | ---- | ------------------------------------------------------------------------------- |
-| `enabled`                                                    | `boolean`                    | dev is enabled, prod is closed | Whether to enable                                                                                                                                                                                                                                          |
-| `title`                                                      | `string`                     | `undefined`                    | Document title                                                                                                                                                                                                                                             |
-| `version`                                                    | `string`                     | `undefined`                    | Document version number                                                                                                                                                                                                                                    |
-| `description`                                                | `string`                     | `undefined`                    | Document description                                                                                                                                                                                                                                       |
-| `docsPath`                                                   | `string`                     | `'/docs'`                      | Scalar document path                                                                                                                                                                                                                                       |
-| `jsonPath`                                                   | `string`                     | `'/openapi.json''              | OpenAPI JSON path                                                                                                                                                                                                                                          |
-| `jsonPublicPath`                                             | `string`                     | Same as `jsonPath`             | Public access path of OpenAPI spec (only affects the URL referencing the spec in Scalar HTML, not routing registration). Used for reverse proxy stripping prefix scenarios, [see the guide for details](/guide/openapi#reverse proxy path prefix scenario) |
-| `contact`                                                    | `object`                     | `undefined`                    | Contact information                                                                                                                                                                                                                                        |
-| `license`                                                    | `object`                     | `undefined`                    | License information                                                                                                                                                                                                                                        |
-| `servers`                                                    | `array`                      | `undefined`                    | Server address list                                                                                                                                                                                                                                        |
-| `tags`                                                       | `array`                      | `undefined`                    | Global tag definition                                                                                                                                                                                                                                      |
-| `guardSecurityMap`                                           | `Record<string, string>`     | `undefined`                    | Guard → Security Scheme mapping                                                                                                                                                                                                                            |
-| `securitySchemes`                                            | `object`                     | `undefined`                    | Security scheme definition                                                                                                                                                                                                                                 |             | `scalar` | `object` | `{}` | Scalar API Reference UI configuration (theme, dark mode, layout, favicon, etc.) |
-| `scalar.theme`                                               | `string`                     | `'default'`                    | Theme: `'default'` \| `'moon'` \| `'purple'` \| `'solarized'` \| `'bluePlanet'` \| `'saturn'` \| `'kepler'` \| `'mars'` \| `'deepSpace'` \| `'none'`                                                                                                       |
-| `scalar.darkMode`                                            | `boolean`                    | `false`                        | Whether to enable dark mode                                                                                                                                                                                                                                |
-| `scalar.layout`                                              | `string`                     | `'modern'`                     | Layout mode: `'modern'` (three columns) \| `'classic'` (two columns)                                                                                                                                                                                       |
-| `scalar.favicon`                                             | `string`                     | `undefined`                    | Document page favicon URL (such as `'/favicon.svg'`)                                                                                                                                                                                                       |
-| `scalar.sources`                                             | `array`                      | `undefined`                    | Multiple OpenAPI documentation sources ([see guide for details](/guide/openapi#import external-openapi)). Each item contains `title`, `url` or `content`, `slug`                                                                                           |
-| `scalar.cdnUrl`                                              | `string`                     | jsDelivr CDN                   | Customize Scalar JS loading address ([see guide for details](/guide/openapi#Use custom address to override local service)). Applicable to intranet/offline/version locked                                                                                  |
-| `scalar.showSidebar`                                         | `boolean`                    | `true`                         | Whether to display the sidebar                                                                                                                                                                                                                             |
-| `scalar.hideModels`                                          | `boolean`                    | `false`                        | Whether to hide the Models/Schemas panel                                                                                                                                                                                                                   |
-| `scalar.hiddenClients`                                       | `string[]`                   | `undefined`                    | List of hidden client languages (e.g. `['php', 'ruby']`)                                                                                                                                                                                                   |
-| `scalar.searchHotKey`                                        | `string`                     | `'k'`                          | Search hotkey (Ctrl+K / Cmd+K)                                                                                                                                                                                                                             |
-| `scalar.proxyUrl`                                            | `string`                     | `undefined`                    | Proxy URL (Try it out request to avoid CORS)                                                                                                                                                                                                               |
-| `scalar.customCss`                                           | `string`                     | `undefined`                    | Custom CSS                                                                                                                                                                                                                                                 |
-| ~~`tryItOutEnabled`~~                                        | `boolean`                    | `true`                         | ~~Deprecated~~ Scalar has built-in Try it out, no separate configuration is required                                                                                                                                                                       |
-| ~~`docExpansion`~~                                           | `'none' \| 'list' \| 'full'` | `'list'`                       | ~~Deprecated~~ Please use `scalar.layout` instead                                                                                                                                                                                                          |
+OpenAPI documentation generation configuration.
+
+| Field | Type | Default Value | Description |
+| ----- | ---- | ------------- | ----------- |
+| `enabled` | `boolean` | dev enabled, prod disabled | Whether to enable OpenAPI generation |
+| `title` | `string` | `undefined` | Document title |
+| `version` | `string` | `undefined` | Document version |
+| `description` | `string` | `undefined` | Document description |
+| `docs.path` | `string` | `'/docs'` | Vext Docs path |
+| `docs.assetsPath` | `string` | `'/_vext/docs'` | Vext Docs built-in asset and data endpoint prefix |
+| `docs.renderer` | `'vext'` | `'vext'` | Built-in Vext Docs renderer. Third-party renderer objects are no longer supported; external tools should consume `/openapi.json` |
+| `docs.ui.theme` | `'system' \| 'light' \| 'dark'` | `'system'` | Built-in Vext Docs color theme. Visitors can override it locally in the UI |
+| `docs.ui.density` | `'comfortable' \| 'compact'` | `'comfortable'` | Built-in Vext Docs spacing density. Visitors can override it locally in the UI |
+| `docs.code.enabled` | `boolean \| 'auto'` | `'auto'` | Whether to generate code docs from services / utils / models / components / plugins / middlewares and explicitly enabled optional static sources |
+| `docs.code.components` | `boolean \| object` | `true` | Component JSDoc source. Defaults to `src/frontend/components/**`; only discovered entries appear in the UI |
+| `docs.code.plugins` | `boolean \| object` | `true` | Plugin JSDoc/runtime source. Defaults to `src/plugins/**`; only discovered entries appear in the UI |
+| `docs.code.middlewares` | `boolean \| object` | `true` | Middleware JSDoc/runtime source. Defaults to `src/middlewares/**`; only discovered entries appear in the UI |
+| `docs.code.locales` | `boolean \| object` | `false` | Optional locale source. When enabled, scans `src/locales/**` and `src/frontend/locales/**`; set `dir` to scan one custom locale root |
+| `docs.code.config` | `boolean \| object` | `false` | Optional runtime config source. When enabled, scans `src/config/**` |
+| `docs.code.styles` | `boolean \| object` | `false` | Optional frontend style source. When enabled, scans `src/frontend/styles/**` |
+| `docs.code.preload` | `boolean \| object` | `false` | Optional project preload source. When enabled, scans project-root `preload/**` |
+| `docs.access.mode` | `'off' \| 'visibility-only' \| 'enforce'` | `'off'` | Docs menu / operation access mode |
+| `docsPath` | `string` | `'/docs'` | Compatibility field; prefer `docs.path` in new projects |
+| `jsonPath` | `string` | `'/openapi.json'` | OpenAPI JSON path |
+| `jsonPublicPath` | `string` | Same as `jsonPath` | Public access path of the OpenAPI spec used by the docs page. It does not change route registration. Used when a reverse proxy strips a prefix; [see the guide](/guide/openapi#reverse-proxy-path-prefix-scenario) |
+| `contact` | `object` | `undefined` | Contact information |
+| `license` | `object` | `undefined` | License information |
+| `servers` | `array` | `undefined` | Server address list |
+| `tags` | `array` | `undefined` | Global tag definition |
+| `guardSecurityMap` | `Record<string, string>` | `undefined` | Guard to Security Scheme mapping |
+| `securitySchemes` | `object` | `undefined` | Security scheme definition |
+| `scalar` | `object` | `{}` | Deprecated compatibility field. It only triggers a warning and does not affect the built-in Vext Docs page |
+| ~~`tryItOutEnabled`~~ | `boolean` | `true` | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation |
+| ~~`docExpansion`~~ | `'none' \| 'list' \| 'full'` | `'list'` | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation |
+
+The default Vext Docs renderer derives Services / Utils / Models / Components / Plugins / Middlewares from code docs data. Model entries can show static schema fields, enums, options, indexes, methods, hooks, and usage. Plugins and middlewares can show inferred lifecycle/bootstrap, app extensions, middleware type, route usage, and source links. Locales, Config, Styles, and Preload are optional advanced static sources that can be enabled explicitly under `docs.code`; they are not shown in the default top-level documentation surface. Local loopback pages can also show `Open source` links for code docs entries without adding a separate configuration field.
 
 ```typescript
 export default {
@@ -648,11 +655,12 @@ export default {
     title: "My API",
     version: "1.0.0",
     description: "My API Documentation",
-    scalar: {
-      theme: "default",
-      darkMode: false,
-      layout: "modern",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      renderer: "vext",
+      code: {
+        enabled: "auto",
+      },
     },
     servers: [
       { url: "http://localhost:3000", description: "Development environment" },

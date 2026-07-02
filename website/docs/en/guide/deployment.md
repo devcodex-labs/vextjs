@@ -494,7 +494,7 @@ export default defineRoutes((app) => {
     "/health",
     {
       override: { rateLimit: false },
-      docs: { summary: "Health Check", tags: ["System"] },
+      docs: { summary: "Health Check" },
     },
     async (req, res) => {
       const checks: Record<string, unknown> = {

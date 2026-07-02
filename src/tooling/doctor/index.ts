@@ -25,6 +25,7 @@ export interface DoctorDiagnostic {
     | "missing-docs-summary"
     | "auto-operation-id"
     | "missing-tags"
+    | "deprecated-docs-tags"
     | "doctor-routes-ok"
     | "doctor-no-routes";
   message: string;
@@ -244,13 +245,13 @@ function analyzeRoutes(routeEntries: RouteIndexEntry[]): DoctorDiagnostic[] {
       });
     }
 
-    if (entry.tags.length === 0) {
+    if (entry.tags.length > 0) {
       diagnostics.push({
-        level: "warn",
+        level: "info",
         group: "docs",
         blocking: false,
-        code: "missing-tags",
-        message: `${entry.method} ${entry.path} is missing docs.tags.`,
+        code: "deprecated-docs-tags",
+        message: `${entry.method} ${entry.path} uses deprecated docs.tags; Vext ignores it and infers operation tags automatically.`,
         filePath: entry.filePath,
         fileRelativePath: entry.fileRelativePath,
         method: entry.method,

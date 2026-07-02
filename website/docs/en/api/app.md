@@ -1285,7 +1285,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "User list",
-        tags: ["user"],
       },
     },
     async (req, res) => {

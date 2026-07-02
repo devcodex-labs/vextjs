@@ -27,13 +27,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// mock scalar-assets：阻断真实 execSync / readFileSync / registerRoute 等 I/O
-// 原因：reloadRoutes + openapiConfig.enabled=true 会触发 registerDocEndpoints
-//       → registerScalarAssets → autoInstallScalar → execSync('npm install ...')
-//       execSync 在单元测试中会真实执行网络安装，导致超时（> 10s）
-vi.mock("../../src/lib/openapi/scalar-assets.js", () => ({
-  registerScalarAssets: vi.fn().mockReturnValue("/_vext/scalar.js"),
-}));
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

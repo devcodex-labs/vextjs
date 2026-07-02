@@ -994,7 +994,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "Health Check",
-        tags: ["Basics"],
       },
     },
     async (_req, res) => {
@@ -1034,7 +1033,6 @@ export default defineRoutes((app) => {
         summary: "User list",
         description:
           "Query the user list in pages, supporting keyword search and role filtering. Returns the count of articles and comments for each user.",
-        tags: ["user"],
       },
     },
     async (req, res) => {
@@ -1059,7 +1057,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Get user details",
         description: "Query user details, including list of published articles and statistical information.",
-        tags: ["user"],
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -1090,7 +1087,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create user",
-        tags: ["user"],
         responses: {
           201: { description: "Created successfully" },
           422: { description: "Parameter verification failed" },
@@ -1120,7 +1116,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Update user",
-        tags: ["user"],
         responses: {
           200: { description: "Update successful" },
           404: { description: "User does not exist" },
@@ -1147,7 +1142,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Delete user",
         description: "Delete the user and all his posts and comments (cascade deletion).",
-        tags: ["user"],
         responses: {
           204: { description: "Delete successfully" },
           404: { description: "User does not exist" },
@@ -1185,7 +1179,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Article List",
         description: "Query the list of published articles, supporting keyword search and tag filtering.",
-        tags: ["article"],
       },
     },
     async (req, res) => {
@@ -1211,7 +1204,6 @@ export default defineRoutes((app) => {
         summary: "Article details",
         description:
           "Query article details, including author information, tags, and comment list. Each visit automatically increases the browsing count.",
-        tags: ["article"],
         responses: {
           200: { description: "Query successful" },
           404: { description: "The article does not exist" },
@@ -1242,7 +1234,6 @@ export default defineRoutes((app) => {
         summary: "Create article",
         description:
           "Create a new article. Tags (array of strings) can be associated via the tags field in the request body.",
-        tags: ["article"],
         responses: {
           201: { description: "Created successfully" },
           401: { description: "Not authenticated" },
@@ -1287,7 +1278,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Update article",
-        tags: ["article"],
         responses: {
           200: { description: "Update successful" },
           404: { description: "The article does not exist" },
@@ -1316,7 +1306,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Delete article",
-        tags: ["article"],
         responses: {
           204: { description: "Delete successfully" },
           404: { description: "The article does not exist" },
@@ -1344,7 +1333,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Add comment",
         description: "Add a comment to the specified article. The article must have been published.",
-        tags: ["article"],
         responses: {
           201: { description: "Comment successful" },
           400: { description: "Cannot comment on unpublished articles" },

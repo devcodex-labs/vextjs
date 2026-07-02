@@ -313,7 +313,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "用户列表",
         description: "分页查询用户列表，支持按姓名或邮箱模糊搜索。",
-        tags: ["用户"],
       },
     },
     async (req, res) => {
@@ -338,7 +337,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "获取用户详情",
-        tags: ["用户"],
         responses: {
           200: { description: "查询成功" },
           404: { description: "用户不存在" },
@@ -370,7 +368,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "创建用户",
         description: "创建新用户。支持标签和个人资料等复杂嵌套结构。",
-        tags: ["用户"],
         responses: {
           201: {
             description: "创建成功",
@@ -418,7 +415,6 @@ export default defineRoutes((app) => {
         summary: "更新用户",
         description:
           "更新用户信息。所有字段可选，但至少需要提供一个字段。不允许修改角色。",
-        tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
           422: { description: "参数校验失败（或未提供任何字段）" },
@@ -451,7 +447,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "删除用户",
-        tags: ["用户"],
         responses: {
           204: { description: "删除成功" },
           401: { description: "未认证" },
@@ -479,7 +474,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "批量删除用户",
         description: "批量删除多个用户。单次最多 50 个。",
-        tags: ["用户"],
         responses: {
           200: { description: "批量删除结果" },
           422: { description: "参数校验失败" },

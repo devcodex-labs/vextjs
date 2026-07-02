@@ -621,10 +621,169 @@ describe("validateConfig", () => {
       ).not.toThrow();
     });
 
+    it("accepts valid docs config", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            enabled: true,
+            docsPath: "/docs",
+            jsonPath: "/openapi.json",
+            jsonPublicPath: "/admin/openapi.json",
+            docs: {
+              path: "/admin/docs",
+              assetsPath: "/_vext/docs",
+              renderer: "vext",
+              ui: {
+                title: "Admin API",
+                tryItOut: false,
+                defaultView: "code",
+                theme: "dark",
+                density: "compact",
+              },
+              code: {
+                enabled: "auto",
+                scan: "lazy",
+                services: {
+                  dir: "services",
+                  include: ["**/*.ts"],
+                  exclude: ["**/*.test.ts"],
+                },
+                utils: true,
+                models: false,
+                components: {
+                  dir: "frontend/components",
+                  include: ["**/*.tsx"],
+                },
+                locales: {
+                  dir: "locales",
+                },
+                config: {
+                  dir: "config",
+                },
+                preload: {
+                  dir: "preload",
+                },
+                styles: {
+                  dir: "frontend/styles",
+                },
+              },
+              access: {
+                mode: "enforce",
+                openapiJson: "filtered",
+                resolver: () => true,
+                cacheKey: "admin",
+              },
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
     it("rejects non-boolean enabled", () => {
       expect(() => _validateConfig({ openapi: { enabled: "true" } })).toThrow(
         "config.openapi.enabled must be a boolean",
       );
+    });
+
+    it("rejects invalid docs path", () => {
+      expect(() =>
+        _validateConfig({ openapi: { docs: { path: "docs" } } }),
+      ).toThrow("config.openapi.docs.path");
+    });
+
+    it("rejects invalid docs renderer", () => {
+      expect(() =>
+        _validateConfig({ openapi: { docs: { renderer: "scalar" } } }),
+      ).toThrow("config.openapi.docs.renderer");
+    });
+
+    it("rejects external docs renderer objects", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: {
+              renderer: {
+                name: "custom",
+                render: () => "<html></html>",
+              },
+            },
+          },
+        }),
+      ).toThrow('only supports "vext"');
+    });
+
+    it("rejects invalid docs ui theme or density", () => {
+      expect(() =>
+        _validateConfig({ openapi: { docs: { ui: { theme: "sepia" } } } }),
+      ).toThrow("config.openapi.docs.ui.theme");
+      expect(() =>
+        _validateConfig({ openapi: { docs: { ui: { density: "tiny" } } } }),
+      ).toThrow("config.openapi.docs.ui.density");
+    });
+
+    it("rejects invalid docs access mode", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: { docs: { access: { mode: "hidden-only" } } },
+        }),
+      ).toThrow("config.openapi.docs.access.mode");
+    });
+
+    it("rejects docs source dir outside project root", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: { docs: { code: { services: { dir: "../services" } } } },
+        }),
+      ).toThrow("config.openapi.docs.code.services.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { components: { dir: "../components" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.components.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { plugins: { dir: "../plugins" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.plugins.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { middlewares: { dir: "../middlewares" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.middlewares.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { locales: { dir: "../locales" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.locales.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { config: { dir: "../config" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.config.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { preload: { dir: "../preload" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.preload.dir");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: { code: { styles: { dir: "../styles" } } },
+          },
+        }),
+      ).toThrow("config.openapi.docs.code.styles.dir");
     });
   });
 

@@ -4,6 +4,11 @@ import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
 import type {
+  VextDocsConfig,
+  VextRouteDocsAccessConfig,
+  VextScalarConfig,
+} from "../lib/docs/types.js";
+import type {
   ResponseCache,
   ResponseCacheHubOptions,
   ResponseCacheStats,
@@ -619,31 +624,37 @@ export interface VextOpenAPIConfig {
   version?: string;
   /** 文档描述 */
   description?: string;
-  /** Scalar 文档路径（默认 '/docs'） */
+  /** 文档页面路径（默认 '/docs'），保留为 openapi.docs.path 的兼容别名 */
   docsPath?: string;
   /** OpenAPI JSON 路径（默认 '/openapi.json'） */
   jsonPath?: string;
   /**
-   * OpenAPI JSON 的公开访问路径（用于 Scalar HTML 中引用 spec 的 URL）
+   * OpenAPI JSON 的公开访问路径（用于文档页面引用 spec 的 URL）
    *
-   * 仅影响 Scalar HTML 里 `url` 字段的值，**不影响** vext 内部路由注册路径。
+   * 仅影响文档页面里的 spec URL，**不影响** vext 内部路由注册路径。
    * 未设置时默认与 `jsonPath` 相同。
    *
    * **使用场景**：应用部署在反向代理路径前缀下，且代理**剥离**前缀后转发给 vext。
    * 此时 vext 内部路由是 `/openapi.json`，但浏览器必须通过 `/admin/openapi.json` 访问。
-   * 如果不配置此字段，Scalar HTML 里会写死 `/openapi.json`（绝对路径），
+   * 如果不配置此字段，文档页面会引用 `/openapi.json`（绝对路径），
    * 浏览器会请求 `https://example.com/openapi.json`（丢失代理前缀）导致 404。
    *
    * @example
    * ```typescript
    * // Nginx: /admin/* → vext（剥离 /admin 前缀）
    * openapi: {
-   *   jsonPath: '/openapi.json',           // vext 内部路由
-   *   jsonPublicPath: '/admin/openapi.json', // Scalar HTML 引用地址
+   *   jsonPath: '/openapi.json',             // vext 内部路由
+   *   jsonPublicPath: '/admin/openapi.json', // 文档页引用地址
    * }
    * ```
    */
   jsonPublicPath?: string;
+
+  /** Vext 内置文档页面、系统资产、Code JSDoc 与菜单权限配置 */
+  docs?: VextDocsConfig;
+
+  /** @deprecated Scalar 已退出默认文档实现。保留为历史兼容字段；外部工具请直接消费 /openapi.json。 */
+  scalar?: VextScalarConfig;
 
   /** 联系信息 */
   contact?: { name?: string; email?: string; url?: string };
@@ -676,9 +687,9 @@ export interface VextOpenAPIConfig {
     }
   >;
 
-  /** @deprecated Scalar 内置 Try it out，无需单独配置。此字段仅为向后兼容保留 */
+  /** @deprecated 默认 Vext Docs 不读取此字段。此字段仅为向后兼容保留 */
   tryItOutEnabled?: boolean;
-  /** @deprecated Scalar 不使用此配置。请使用 openapi.scalar.layout 替代。此字段仅为向后兼容保留 */
+  /** @deprecated 默认 Vext Docs 不读取此字段。此字段仅为向后兼容保留 */
   docExpansion?: "none" | "list" | "full";
 }
 
@@ -1475,7 +1486,7 @@ export interface RouteDocsConfig {
   /** 接口详细描述（支持 Markdown），映射到 OpenAPI operation.description */
   description?: string;
 
-  /** 标签分组，映射到 OpenAPI operation.tags。默认从路由文件路径推断 */
+  /** @deprecated `docs.tags` 已忽略；OpenAPI operation.tags 现在会从路由 path/source 自动推断 */
   tags?: string[];
 
   /**
@@ -1486,6 +1497,9 @@ export interface RouteDocsConfig {
 
   /** 是否从文档中隐藏此路由 @default false */
   hidden?: boolean;
+
+  /** 文档菜单权限 metadata，仅作用于未 hidden 的文档项 */
+  access?: VextRouteDocsAccessConfig;
 
   /** 是否已废弃，映射到 OpenAPI operation.deprecated @default false */
   deprecated?: boolean;
@@ -1550,7 +1564,7 @@ export interface RouteDocsConfig {
  * app.post('/users', {
  *   validate: { body: { name: 'string:1-50', email: 'email' } },
  *   middlewares: ['auth'],
- *   docs: { summary: '创建用户', tags: ['用户'] },
+ *   docs: { summary: '创建用户' },
  * }, handler)
  */
 export interface RouteOptions {

@@ -79,7 +79,12 @@ describe("frontend config resolver", () => {
 
     expect(config.enabled).toBe(true);
     expect(config.outDir).toBe(path.join(rootDir, ".vext", "client"));
-    expect(config.spaFallback.exclude).toContain("/api/**");
+    expect(config.spaFallback.exclude).toEqual([
+      "/api/**",
+      "/openapi.json",
+      "/docs/**",
+      "/_vext/docs/**",
+    ]);
     expect(config.spaFallback.scopes).toEqual([]);
     expect(config.dev.fastRefresh).toBe(true);
     expect(config.build.diagnostics.leakScan).toBe(true);
@@ -935,7 +940,7 @@ describe("frontend render middleware", () => {
 
     await middleware(
       createMockRequest("/dashboard"),
-      res as any,
+      res,
       async () => {},
     );
     res.render(
@@ -1256,6 +1261,35 @@ describe("frontend static mount", () => {
     expect(res.sent?.status).toBe(200);
     expect(res.sent?.headers.Vary).toBe("Accept");
     expect(res.sent?.html).toContain('data-vext-page="app/shell"');
+  });
+
+  it("does not serve SPA fallback for Vext docs system routes", async () => {
+    const rootDir = await tempRoot();
+    let fallbackCalled = 0;
+    let onNotFoundCalled = 0;
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, spaFallback: true },
+      onNotFound: () => {
+        onNotFoundCalled += 1;
+      },
+      fallbackHandler: async (_req, res) => {
+        fallbackCalled += 1;
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+    const res = createMockResponse();
+
+    await handler(
+      createMockRequest("/_vext/docs/internal", { accept: "text/html" }),
+      res,
+      async () => {},
+    );
+
+    expect(onNotFoundCalled).toBe(0);
+    expect(fallbackCalled).toBe(1);
+    expect(res.statusCode).toBe(404);
   });
 
   it("renders HTML 404 error page for non-fallback navigation", async () => {

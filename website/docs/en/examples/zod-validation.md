@@ -311,7 +311,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "User list",
         description: "Query the user list in pages, supporting fuzzy search by name or email.",
-        tags: ["user"],
       },
     },
     async (req, res) => {
@@ -336,7 +335,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user details",
-        tags: ["user"],
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -368,7 +366,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Create user",
         description: "Create a new user. Supports complex nested structures such as tags and profiles.",
-        tags: ["user"],
         responses: {
           201: {
             description: "Created successfully",
@@ -414,7 +411,6 @@ export default defineRoutes((app) => {
         summary: "Update user",
         description:
           "Update user information. All fields are optional, but at least one field is required. Modification of roles is not allowed.",
-        tags: ["user"],
         responses: {
           200: { description: "Update successful" },
           422: { description: "Parameter validation failed (or no fields were provided)" },
@@ -447,7 +443,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Delete user",
-        tags: ["user"],
         responses: {
           204: { description: "Delete successfully" },
           401: { description: "Not authenticated" },
@@ -475,7 +470,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Delete users in batches",
         description: "Delete multiple users in batches. Up to 50 users at a time.",
-        tags: ["user"],
         responses: {
           200: { description: "Delete results in batches" },
           422: { description: "Parameter verification failed" },

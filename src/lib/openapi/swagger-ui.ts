@@ -2,14 +2,15 @@
  * swagger-ui.ts — 向后兼容桩
  *
  * 原有的 Swagger UI HTML 模板 + 端点注册模块。
- * 现已被 Scalar API Reference 替代（doc-endpoints.ts + redoc-ui.ts）。
+ * 历史上曾委托到第三方文档 UI；当前默认 /docs 已迁移到
+ * lib/docs 内置 renderer，不再注册第三方 UI 资产。
  *
  * 保留 registerOpenAPIRoutes 导出以维持向后兼容，
- * 内部委托给 registerDocEndpoints（Scalar 实现）。
+ * 内部委托给 registerDocEndpoints（Vext Docs 实现）。
  *
  * @deprecated 使用 registerDocEndpoints 替代
  * @module lib/openapi/swagger-ui
- * @see doc-endpoints.ts（Scalar API Reference 实现）
+ * @see doc-endpoints.ts（Vext Docs 兼容入口）
  */
 
 import type { VextApp } from "../../types/app.js";
@@ -19,7 +20,7 @@ import { registerDocEndpoints } from "./doc-endpoints.js";
  * 向后兼容的端点注册接口
  *
  * @deprecated 请使用 `registerDocEndpoints` 替代。
- *             此函数仅为向后兼容保留，内部委托给 Scalar 实现。
+ *             此函数仅为向后兼容保留，内部委托给 Vext Docs 实现。
  */
 export interface LegacyEndpointConfig {
   /** 文档页面路径 @default '/docs' */
@@ -43,7 +44,7 @@ export interface LegacyEndpointConfig {
  * 注册 OpenAPI 文档端点（向后兼容）
  *
  * @deprecated 请使用 `registerDocEndpoints` 替代。
- *             此函数内部委托给 Scalar API Reference 实现。
+ *             此函数内部委托给 Vext Docs 实现。
  *
  * @param app    VextApp 实例
  * @param spec   OpenAPI 文档对象

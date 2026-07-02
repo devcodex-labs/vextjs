@@ -47,7 +47,10 @@ import {
 import { createVextFetch, type VextFetchConfig } from "./fetch.js";
 import { setupShutdown } from "./shutdown.js";
 import { RouteMetadataCollector } from "./openapi/collector.js";
-import { OpenAPIGenerator } from "./openapi/generator.js";
+import {
+  OpenAPIGenerator,
+  createDeprecatedRouteDocsTagsWarning,
+} from "./openapi/generator.js";
 import { generateOpenAPIDocumentWithHooks } from "./openapi/hook-lifecycle.js";
 import { registerDocEndpoints } from "./openapi/doc-endpoints.js";
 import type { VextServerHandle } from "../types/adapter.js";
@@ -420,6 +423,9 @@ export async function bootstrap(
         tags: (openapiConfig as Record<string, unknown>)?.tags as
           | Array<{ name: string; description?: string }>
           | undefined,
+        tagGroups: (openapiConfig as Record<string, unknown>)?.tagGroups as
+          | Array<{ name: string; tags: string[] }>
+          | undefined,
         securitySchemes: (openapiConfig as Record<string, unknown>)
           ?.securitySchemes as Record<
           string,
@@ -441,6 +447,8 @@ export async function bootstrap(
       });
 
       const routes = collector.getRoutes();
+      const docsTagsWarning = createDeprecatedRouteDocsTagsWarning(routes);
+      if (docsTagsWarning) app.logger.warn(docsTagsWarning);
       const spec = generateOpenAPIDocumentWithHooks(app, generator, routes);
 
       registerDocEndpoints(app, spec, {
@@ -449,9 +457,13 @@ export async function bootstrap(
           ?.jsonPublicPath as string | undefined,
         docsPath: openapiConfig?.docsPath ?? "/docs",
         title: openapiConfig?.title,
+        docs: openapiConfig?.docs,
         scalar: (openapiConfig as Record<string, unknown>)?.scalar as
           | Record<string, unknown>
           | undefined,
+        rootDir,
+        srcDir,
+        modelsDir: resolveConfiguredModelsDir(config),
       });
 
       app.logger.info(`[openapi] ${collector.getCount()} route(s) documented`);
@@ -759,6 +771,22 @@ export async function bootstrap(
     // 重新抛出，让外层处理（CLI 层 / 测试层）
     throw err;
   }
+}
+
+function resolveConfiguredModelsDir(config: unknown): string | undefined {
+  const database =
+    typeof config === "object" && config !== null
+      ? (config as Record<string, unknown>).database
+      : undefined;
+  if (typeof database !== "object" || database === null) {
+    return undefined;
+  }
+  const models = (database as Record<string, unknown>).models;
+  if (typeof models !== "object" || models === null) {
+    return undefined;
+  }
+  const dir = (models as Record<string, unknown>).dir;
+  return typeof dir === "string" ? dir : undefined;
 }
 
 // ── 返回类型 ────────────────────────────────────────────────

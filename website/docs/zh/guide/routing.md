@@ -99,7 +99,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
-      docs: { summary: "创建用户", tags: ["用户管理"] },
+      docs: { summary: "创建用户" },
     },
     async (req, res) => {
       const data = req.valid("body");
@@ -523,7 +523,6 @@ app.post(
     docs: {
       summary: "创建用户",
       description: "创建一个新用户，邮箱必须唯一。",
-      tags: ["用户管理"],
       operationId: "createUser",
       deprecated: false,
       responses: {
@@ -678,7 +677,6 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "获取文章列表",
-        tags: ["文章"],
       },
     },
     async (req, res) => {
@@ -693,7 +691,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "获取文章详情", tags: ["文章"] },
+      docs: { summary: "获取文章详情" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -717,7 +715,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "创建文章",
-        tags: ["文章"],
         responses: {
           201: { description: "创建成功" },
           401: { description: "未认证" },
@@ -747,7 +744,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
-      docs: { summary: "更新文章", tags: ["文章"] },
+      docs: { summary: "更新文章" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -763,7 +760,7 @@ export default defineRoutes((app) => {
     {
       validate: { param: { id: "string!" } },
       middlewares: ["auth"],
-      docs: { summary: "删除文章", tags: ["文章"] },
+      docs: { summary: "删除文章" },
     },
     async (req, res) => {
       const { id } = req.valid("param");

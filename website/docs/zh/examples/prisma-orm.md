@@ -1004,7 +1004,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "健康检查",
-        tags: ["基础"],
       },
     },
     async (_req, res) => {
@@ -1044,7 +1043,6 @@ export default defineRoutes((app) => {
         summary: "用户列表",
         description:
           "分页查询用户列表，支持关键词搜索和角色筛选。返回每个用户的文章和评论计数。",
-        tags: ["用户"],
       },
     },
     async (req, res) => {
@@ -1069,7 +1067,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "获取用户详情",
         description: "查询用户详情，包含已发布文章列表及统计信息。",
-        tags: ["用户"],
         responses: {
           200: { description: "查询成功" },
           404: { description: "用户不存在" },
@@ -1100,7 +1097,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "创建用户",
-        tags: ["用户"],
         responses: {
           201: { description: "创建成功" },
           422: { description: "参数校验失败" },
@@ -1132,7 +1128,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "更新用户",
-        tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
           404: { description: "用户不存在" },
@@ -1159,7 +1154,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "删除用户",
         description: "删除用户及其所有文章和评论（级联删除）。",
-        tags: ["用户"],
         responses: {
           204: { description: "删除成功" },
           404: { description: "用户不存在" },
@@ -1197,7 +1191,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "文章列表",
         description: "查询已发布文章列表，支持关键词搜索和标签筛选。",
-        tags: ["文章"],
       },
     },
     async (req, res) => {
@@ -1223,7 +1216,6 @@ export default defineRoutes((app) => {
         summary: "文章详情",
         description:
           "查询文章详情，包含作者信息、标签、评论列表。每次访问自动增加浏览计数。",
-        tags: ["文章"],
         responses: {
           200: { description: "查询成功" },
           404: { description: "文章不存在" },
@@ -1254,7 +1246,6 @@ export default defineRoutes((app) => {
         summary: "创建文章",
         description:
           "创建一篇新文章。可通过请求体中的 tags 字段关联标签（字符串数组）。",
-        tags: ["文章"],
         responses: {
           201: { description: "创建成功" },
           401: { description: "未认证" },
@@ -1301,7 +1292,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "更新文章",
-        tags: ["文章"],
         responses: {
           200: { description: "更新成功" },
           404: { description: "文章不存在" },
@@ -1330,7 +1320,6 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "删除文章",
-        tags: ["文章"],
         responses: {
           204: { description: "删除成功" },
           404: { description: "文章不存在" },
@@ -1358,7 +1347,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "添加评论",
         description: "为指定文章添加评论。文章必须已发布。",
-        tags: ["文章"],
         responses: {
           201: { description: "评论成功" },
           400: { description: "不能评论未发布的文章" },

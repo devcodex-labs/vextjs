@@ -708,7 +708,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "健康检查",
-        tags: ["基础"],
       },
     },
     async (_req, res) => {
@@ -748,7 +747,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "用户列表",
         description: "分页查询用户列表。支持按姓名或邮箱关键词搜索。",
-        tags: ["用户"],
         responses: {
           200: {
             description: "查询成功",
@@ -792,7 +790,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "获取用户详情",
         description: "查询用户详情，包含该用户发布的所有文章。",
-        tags: ["用户"],
         responses: {
           200: { description: "查询成功" },
           404: { description: "用户不存在" },
@@ -829,7 +826,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "创建用户",
         description: "创建新用户。需要 Bearer Token 认证。邮箱必须唯一。",
-        tags: ["用户"],
         responses: {
           201: { description: "创建成功" },
           422: { description: "参数校验失败" },
@@ -863,7 +859,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "更新用户",
         description: "更新用户信息。只需传入需要更新的字段。",
-        tags: ["用户"],
         responses: {
           200: { description: "更新成功" },
           422: { description: "参数校验失败" },
@@ -894,7 +889,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "删除用户",
         description: "删除用户及其所有文章（CASCADE）。不可逆操作。",
-        tags: ["用户"],
         responses: {
           204: { description: "删除成功" },
           401: { description: "未认证" },

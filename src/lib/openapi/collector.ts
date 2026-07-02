@@ -19,6 +19,8 @@
  */
 
 import type { RouteOptions } from "../../types/app.js";
+import type { VextHandler } from "../../types/middleware.js";
+import { detectRouteDocsKind } from "./route-docs-kind.js";
 import type { RouteMetadata } from "./types.js";
 
 /**
@@ -53,17 +55,25 @@ export class RouteMetadataCollector {
    * @param path       完整路由路径（含前缀，如 /api/users/:id）
    * @param options    路由 options 原始对象（含 validate / middlewares / docs）
    * @param sourceFile 路由文件来源路径（用于 tag 推断）
+   * @param handler    路由 handler（用于识别 res.render()/res.renderError() 前端路由）
    */
   addRoute(
     method: string,
     path: string,
     options: RouteOptions,
     sourceFile: string,
+    handler?: VextHandler,
   ): void {
     // 跳过隐藏路由（docs.hidden = true 的路由不出现在 OpenAPI 文档中）
     if (options.docs?.hidden) return;
 
-    this.routes.push({ method, path, options, sourceFile });
+    this.routes.push({
+      method,
+      path,
+      options,
+      sourceFile,
+      docsKind: detectRouteDocsKind(handler),
+    });
   }
 
   /**

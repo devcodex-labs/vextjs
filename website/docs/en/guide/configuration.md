@@ -636,10 +636,13 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.title`           | `string`  | `'API Documentation'` | Document title                                                                                                                                                                                            |
 | `openapi.description`     | `string`  | `''`                  | Document description                                                                                                                                                                                      |
 | `openapi.version`         | `string`  | `'1.0.0'`             | API version number                                                                                                                                                                                        |
-| `openapi.docsPath`        | `string`  | `'/docs'`             | Scalar documentation path                                                                                                                                                                                 |
+| `openapi.docs.path`       | `string`  | `'/docs'`             | Vext Docs path                                                                                                                                                                                            |
+| `openapi.docsPath`        | `string`  | `'/docs'`             | Compatibility field; prefer `openapi.docs.path` in new projects                                                                                                                                           |
 | `openapi.jsonPath`        | `string`  | `'/openapi.json''     | OpenAPI JSON endpoint path (vext internal route registration path)                                                                                                                                        |
-| `openapi.jsonPublicPath`  | `string`  | Same as `jsonPath`    | The public path to reference spec in Scalar HTML. The reverse proxy stripping prefix scenario is required. For details, see [Reverse Proxy Deployment](/guide/openapi#Reverse Proxy Path Prefix Scenario) |
-| `openapi.scalar`          | `object`  | `{}`                  | Scalar API Reference UI configuration (theme, dark mode, layout, favicon, etc.)                                                                                                                           |
+| `openapi.jsonPublicPath`  | `string`  | Same as `jsonPath`    | Public spec path used by the docs page. Required when a reverse proxy strips a prefix; see [Reverse Proxy Deployment](/guide/openapi#reverse-proxy-path-prefix-scenario)                                  |
+| `openapi.docs.renderer`   | `'vext'` | `'vext'` | Built-in Vext Docs renderer. Third-party renderer objects are no longer supported; external tools should consume `/openapi.json`                                                                               |
+| `openapi.docs.code`       | `object`  | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares docs source configuration                                                                                                                 |
+| `openapi.scalar`          | `object`  | `{}`                  | Deprecated compatibility field. It only triggers a warning and does not affect the built-in Vext Docs page                                                                                                  |
 | `openapi.servers`         | `Array`   | `[]`                  | List of API servers                                                                                                                                                                                       |
 | `openapi.tags`            | `Array`   | `[]`                  | Tag definition                                                                                                                                                                                            |
 | `openapi.securitySchemes` | `object`  | `{}`                  | Security schemes                                                                                                                                                                                          |
@@ -653,14 +656,14 @@ export default {
     title: "My App API",
     description: "My App API Documentation",
     version: "1.0.0",
-    docsPath: "/docs",
-    jsonPath: "/openapi.json",
-    scalar: {
-      theme: "default",
-      darkMode: false,
-      layout: "modern",
-      favicon: "/favicon.svg",
+    docs: {
+      path: "/docs",
+      renderer: "vext",
+      code: {
+        enabled: "auto",
+      },
     },
+    jsonPath: "/openapi.json",
     servers: [
       { url: "http://localhost:3000", description: "Local development" },
       { url: "https://api.myapp.com", description: "Production environment" },

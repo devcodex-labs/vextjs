@@ -15,6 +15,7 @@
 
 export type {
   RouteMetadata,
+  VextOpenAPIDocsKind,
   CollectedRoutes,
   JsonSchema,
   ConvertResult,
@@ -33,6 +34,8 @@ export type {
 
 export { RouteMetadataCollector } from "./collector.js";
 
+export { detectRenderCall, detectRouteDocsKind } from "./route-docs-kind.js";
+
 // ── 转换器 ──────────────────────────────────────────────────
 
 export { SchemaConverter } from "./schema-converter.js";
@@ -45,10 +48,10 @@ export { OpenAPIGenerator } from "./generator.js";
 
 export { inferOperationId } from "./operation-id.js";
 
-// ── Swagger UI 端点注册（向后兼容） ─────────────────────────
+// ── Swagger UI 端点注册（向后兼容，委托 Vext Docs） ─────────
 
 export { registerOpenAPIRoutes } from "./swagger-ui.js";
 
-// ── 文档端点统一注册（Scalar API Reference） ────────────────
+// ── 文档端点统一注册（Vext Docs） ──────────────────────────
 
 export { registerDocEndpoints } from "./doc-endpoints.js";

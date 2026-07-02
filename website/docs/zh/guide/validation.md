@@ -367,7 +367,7 @@ app.get(
 - `limit` — query parameter, type: integer, minimum: 1, maximum: 100
 - `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
 
-访问 `/docs` 即可在 Scalar 文档中查看自动生成的参数文档和内置的 "Try it out" 功能。
+访问 `/docs` 即可在 Vext Docs 中查看自动生成的参数文档。
 
 如果希望 OpenAPI 文档展示字段的业务含义，可以在字段 DSL 后追加 `.description()`：
 

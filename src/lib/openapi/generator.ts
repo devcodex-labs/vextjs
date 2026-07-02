@@ -5,7 +5,7 @@
  *
  * 核心职责：
  *   1. 遍历路由元信息，为每条路由构建 Operation 对象
- *   2. 将 validate.param / query → parameters
+ *   2. 将 validate.param / query / header → parameters
  *   3. 将 validate.body → requestBody
  *   4. 将 docs.responses → responses（成功响应自动包装为 { code, data, requestId }）
  *   5. 从 middlewares 推断 security（auth → bearerAuth）
@@ -32,6 +32,51 @@ import type {
 } from "./types.js";
 import { SchemaConverter } from "./schema-converter.js";
 import { inferOperationId } from "./operation-id.js";
+
+const DOCS_TAGS_WARNING_SAMPLE_LIMIT = 3;
+
+export const DEPRECATED_ROUTE_DOCS_TAGS_WARNING =
+  "[openapi] route docs.tags is deprecated and ignored. Tags are inferred automatically from route path/source.";
+
+export interface DeprecatedRouteDocsTagsUsage {
+  method: string;
+  path: string;
+  sourceFile: string;
+  tags: string[];
+}
+
+export function collectDeprecatedRouteDocsTagsUsage(
+  routes: RouteMetadata[],
+): DeprecatedRouteDocsTagsUsage[] {
+  return routes
+    .filter(
+      (route) =>
+        Array.isArray(route.options.docs?.tags) &&
+        route.options.docs.tags.length > 0,
+    )
+    .map((route) => ({
+      method: route.method,
+      path: route.path,
+      sourceFile: route.sourceFile,
+      tags: [...route.options.docs!.tags!],
+    }));
+}
+
+export function createDeprecatedRouteDocsTagsWarning(
+  routes: RouteMetadata[],
+): string | undefined {
+  const usages = collectDeprecatedRouteDocsTagsUsage(routes);
+  if (usages.length === 0) return undefined;
+
+  const samples = usages
+    .slice(0, DOCS_TAGS_WARNING_SAMPLE_LIMIT)
+    .map((usage) => `${usage.method.toUpperCase()} ${usage.path}`)
+    .join(", ");
+  const remaining = usages.length - DOCS_TAGS_WARNING_SAMPLE_LIMIT;
+  const suffix = remaining > 0 ? `, +${remaining} more` : "";
+
+  return `${DEPRECATED_ROUTE_DOCS_TAGS_WARNING} Found ${usages.length} route(s): ${samples}${suffix}.`;
+}
 
 /**
  * OpenAPIGenerator — OpenAPI 3.0 文档生成器
@@ -143,12 +188,12 @@ export class OpenAPIGenerator {
       required: ["code", "data", "requestId"],
     };
 
-    // ── 添加 x-tagGroups（标签分组）────────────────────────
+    // ── 透传显式 x-tagGroups vendor extension ─────────────
     //
-    // Scalar / Redocly 支持的 vendor extension，将 tags 分组为两级导航。
-    // 优先使用用户配置的 tagGroups，否则自动从路由文件路径推断。
+    // 默认 Vext Docs 使用 path segment 递归导航；tagGroups 仅在用户
+    // 显式配置时作为 OpenAPI vendor extension 原样输出。
     //
-    const tagGroups = this.buildTagGroups(routes, doc.tags ?? []);
+    const tagGroups = this.buildTagGroups();
     if (tagGroups.length > 0) {
       doc["x-tagGroups"] = tagGroups;
     }
@@ -175,29 +220,33 @@ export class OpenAPIGenerator {
    *   1. summary / operationId / tags / deprecated / description
    *   2. 路径参数（validate.param → parameters[in=path]）
    *   3. 查询参数（validate.query → parameters[in=query]）
-   *   4. 请求体（validate.body → requestBody，仅 POST/PUT/PATCH）
-   *   5. 响应（docs.responses → responses，成功响应自动包装）
-   *   6. 默认响应（未声明时添加 200 OK）
-   *   7. 安全方案（从 middlewares 或 docs.security 推断）
-   *   8. 自定义扩展（docs.extensions → x-* 字段）
-   *   9. 速率限制（从 rate-limit 中间件推断 x-rate-limit）
-   *   10. 清空空参数数组
+   *   4. 请求头（validate.header → parameters[in=header]）
+   *   5. 请求体（validate.body → requestBody，仅 POST/PUT/PATCH）
+   *   6. 响应（docs.responses → responses，成功响应自动包装）
+   *   7. 默认响应（未声明时添加 200 OK）
+   *   8. 安全方案（从 middlewares 或 docs.security 推断）
+   *   9. 自定义扩展（docs.extensions → x-* 字段）
+   *   10. 速率限制（从 rate-limit 中间件推断 x-rate-limit）
+   *   11. 清空空参数数组
    *
    * @param route 单条路由的元信息
    * @returns OpenAPIOperation 对象
    */
   private buildOperation(route: RouteMetadata): OpenAPIOperation {
-    const { options, method, path, sourceFile } = route;
+    const { options, method, path } = route;
     const docs = options.docs ?? {};
 
     const operation: OpenAPIOperation = {
       summary: docs.summary ?? `${method} ${path}`,
       operationId: docs.operationId ?? inferOperationId(method, path),
-      tags: docs.tags ?? [this.inferTagFromFile(sourceFile)],
+      tags: [this.inferTag(route)],
       deprecated: docs.deprecated ?? false,
       parameters: [],
       responses: {},
     };
+
+    (operation as Record<string, unknown>)["x-vext-docs-kind"] =
+      route.docsKind ?? "backend-api";
 
     // ── 描述 ────────────────────────────────────────────────
     if (docs.description) {
@@ -235,6 +284,23 @@ export class OpenAPIGenerator {
         operation.parameters!.push({
           name,
           in: "query",
+          required: isRequired,
+          schema,
+        });
+      }
+    }
+
+    // ── 请求头参数（header）─────────────────────────────────
+    // validate.header 与 validate.query 一样属于请求输入契约，
+    // 映射到 OpenAPI parameters[in=header] 后，Docs Try it out 可自动生成 Header 行。
+    if (options.validate?.header) {
+      const headers = options.validate.header as Record<string, string>;
+      for (const [name, dsl] of Object.entries(headers)) {
+        if (typeof dsl !== "string") continue;
+        const { schema, isRequired } = this.converter.convertDSLString(dsl);
+        operation.parameters!.push({
+          name,
+          in: "header",
           required: isRequired,
           schema,
         });
@@ -655,6 +721,20 @@ export class OpenAPIGenerator {
   }
 
   /**
+   * 构建显式 x-tagGroups vendor extension
+   *
+   * 只有用户显式配置 openapi.tagGroups 时才输出。
+   * 默认 Vext Docs renderer 已使用 OpenAPI path segment 生成递归导航；
+   * 自动把业务 tags 归入文件目录分组容易生成误导性的 General 分组。
+   */
+  private buildTagGroups(): Array<{ name: string; tags: string[] }> {
+    if (this.config.tagGroups && this.config.tagGroups.length > 0) {
+      return this.config.tagGroups;
+    }
+    return [];
+  }
+
+  /**
    * 从路由列表推断 tags
    *
    * 收集所有路由的 tags（显式声明或从文件路径推断），
@@ -663,159 +743,81 @@ export class OpenAPIGenerator {
    * @param routes 路由元信息列表
    * @returns tag 定义列表（按名称排序）
    */
-  /**
-   * 构建标签分组（x-tagGroups）
-   *
-   * 优先级：
-   *   1. 用户在 config.tagGroups 中显式配置 → 直接使用
-   *   2. 未配置 → 自动从路由文件路径推断分组
-   *
-   * 自动推断逻辑：
-   *   - 提取每条路由文件路径在 routes/ 之后的第一层目录名作为分组名
-   *   - 同一分组下的所有 tags 归入该分组
-   *   - 直接位于 routes/ 下的文件（如 routes/index.ts）归入 "General" 分组
-   *   - 分组名首字母大写（如 api → Api, admin → Admin）
-   *   - 如果所有路由都在同一个分组中（无多级），则不生成 x-tagGroups（避免冗余）
-   *
-   * @param routes 路由元信息列表
-   * @param tags 已生成的 tags 列表（用于确保所有 tag 都被分组覆盖）
-   * @returns tagGroups 数组，空数组表示不需要分组
-   */
-  private buildTagGroups(
-    routes: RouteMetadata[],
-    tags: Array<{ name: string; description?: string }>,
-  ): Array<{ name: string; tags: string[] }> {
-    // 用户显式配置 → 直接使用
-    if (this.config.tagGroups && this.config.tagGroups.length > 0) {
-      return this.config.tagGroups;
-    }
-
-    // 自动推断
-    return this.inferTagGroups(routes, tags);
-  }
-
-  /**
-   * 从路由文件路径自动推断标签分组
-   *
-   * 策略：
-   *   - 提取 routes/ 之后的第一层目录名作为 group name
-   *   - 直接在 routes/ 下的文件归入 "General" 组
-   *   - 每个 group 收集其下所有 tag（去重排序）
-   *   - 如果只有一个分组，返回空数组（不需要分组）
-   *
-   * @example
-   *   routes/users.ts          → group "General", tag "users"
-   *   routes/api/v1/users.ts   → group "Api",     tag 从 docs.tags 或推断
-   *   routes/admin/dashboard.ts→ group "Admin",    tag 从 docs.tags 或推断
-   */
-  private inferTagGroups(
-    routes: RouteMetadata[],
-    tags: Array<{ name: string; description?: string }>,
-  ): Array<{ name: string; tags: string[] }> {
-    // group name → Set<tag name>
-    const groupMap = new Map<string, Set<string>>();
-
-    for (const route of routes) {
-      // 提取 routes/ 之后的相对路径
-      const relative = route.sourceFile
-        .replace(/\\/g, "/")
-        .replace(/^.*routes\//, "");
-
-      // 获取第一层目录名
-      const segments = relative.split("/");
-      let groupName: string;
-
-      if (segments.length <= 1) {
-        // 直接在 routes/ 下的文件（如 routes/users.ts）
-        groupName = "General";
-      } else {
-        // 取第一层目录名并首字母大写
-        const firstDir = segments[0] ?? "General";
-        groupName = firstDir.charAt(0).toUpperCase() + firstDir.slice(1);
-      }
-
-      // 获取该路由的 tags
-      const routeTags = route.options.docs?.tags ?? [
-        this.inferTagFromFile(route.sourceFile),
-      ];
-
-      if (!groupMap.has(groupName)) {
-        groupMap.set(groupName, new Set());
-      }
-      const tagSet = groupMap.get(groupName)!;
-      for (const tag of routeTags) {
-        tagSet.add(tag);
-      }
-    }
-
-    // 如果只有一个分组（或没有路由），不需要 x-tagGroups
-    if (groupMap.size <= 1) {
-      return [];
-    }
-
-    // 确保所有已声明的 tags 都被覆盖
-    // 收集已分组的 tags
-    const groupedTags = new Set<string>();
-    for (const tagSet of groupMap.values()) {
-      for (const tag of tagSet) {
-        groupedTags.add(tag);
-      }
-    }
-
-    // 检查是否有未分组的 tags（来自 config.tags 但未被任何路由关联）
-    const ungroupedTags: string[] = [];
-    for (const tag of tags) {
-      if (!groupedTags.has(tag.name)) {
-        ungroupedTags.push(tag.name);
-      }
-    }
-
-    // 构建结果（按 group name 排序，General 放最后）
-    const result: Array<{ name: string; tags: string[] }> = [];
-
-    const sortedGroups = [...groupMap.keys()].sort((a, b) => {
-      if (a === "General") return 1;
-      if (b === "General") return -1;
-      return a.localeCompare(b);
-    });
-
-    for (const groupName of sortedGroups) {
-      const tagSet = groupMap.get(groupName)!;
-      result.push({
-        name: groupName,
-        tags: [...tagSet].sort(),
-      });
-    }
-
-    // 未分组的 tags 追加到 "Other" 分组
-    if (ungroupedTags.length > 0) {
-      result.push({
-        name: "Other",
-        tags: ungroupedTags.sort(),
-      });
-    }
-
-    return result;
-  }
-
   private inferTags(
     routes: RouteMetadata[],
   ): Array<{ name: string; description?: string }> {
     const tagSet = new Set<string>();
 
     for (const route of routes) {
-      if (route.options.docs?.tags) {
-        for (const tag of route.options.docs.tags) {
-          tagSet.add(tag);
-        }
-      } else {
-        tagSet.add(this.inferTagFromFile(route.sourceFile));
-      }
+      tagSet.add(this.inferTag(route));
     }
 
     return Array.from(tagSet)
       .sort()
       .map((name) => ({ name }));
+  }
+
+  private inferTag(route: RouteMetadata): string {
+    return (
+      this.inferTagFromPath(route.path) ??
+      this.inferTagFromFile(route.sourceFile)
+    );
+  }
+
+  private inferTagFromPath(path: string): string | undefined {
+    const segments = path
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0)
+      .filter((segment) => !this.isDynamicPathSegment(segment));
+
+    if (segments.length === 0) {
+      return "General";
+    }
+
+    const first = segments[0]!.toLowerCase();
+    if (segments.length === 1 && (first === "health" || first === "ping")) {
+      return "General";
+    }
+
+    if (first === "api") {
+      const version = segments[1];
+      if (version && /^v\d+$/iu.test(version)) {
+        return `API ${version.toLowerCase()}`;
+      }
+      return "API";
+    }
+
+    return this.humanizeTagSegment(segments[0]!);
+  }
+
+  private isDynamicPathSegment(segment: string): boolean {
+    return (
+      segment.startsWith(":") ||
+      segment.startsWith("*") ||
+      /^\{.+\}$/u.test(segment) ||
+      /^\[\[?\.{0,3}.+\]?\]$/u.test(segment)
+    );
+  }
+
+  private humanizeTagSegment(segment: string): string {
+    const acronyms: Record<string, string> = {
+      api: "API",
+      db: "DB",
+      id: "ID",
+      openapi: "OpenAPI",
+      ssr: "SSR",
+      ui: "UI",
+    };
+
+    return segment
+      .split(/[-_\s]+/u)
+      .filter(Boolean)
+      .map((part) => {
+        const lower = part.toLowerCase();
+        return acronyms[lower] ?? lower.charAt(0).toUpperCase() + lower.slice(1);
+      })
+      .join(" ");
   }
 
   /**

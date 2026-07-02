@@ -700,7 +700,6 @@ export default defineRoutes((app) => {
     {
       docs: {
         summary: "Health Check",
-        tags: ["Basics"],
       },
     },
     async (_req, res) => {
@@ -740,7 +739,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "User list",
         description: "Query the user list in pages. Search by name or email keywords is supported.",
-        tags: ["user"],
         responses: {
           200: {
             description: "Query successful",
@@ -782,7 +780,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Get user details",
         description: "Query user details, including all articles published by this user.",
-        tags: ["user"],
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -819,7 +816,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Create user",
         description: "Create a new user. Bearer Token authentication is required. Email must be unique.",
-        tags: ["user"],
         responses: {
           201: { description: "Created successfully" },
           422: { description: "Parameter verification failed" },
@@ -853,7 +849,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Update user",
         description: "Update user information. Just pass in the fields that need to be updated.",
-        tags: ["user"],
         responses: {
           200: { description: "Update successful" },
           422: { description: "Parameter verification failed" },
@@ -884,7 +879,6 @@ export default defineRoutes((app) => {
       docs: {
         summary: "Delete user",
         description: "Delete user and all articles (CASCADE). Irreversible operation.",
-        tags: ["user"],
         responses: {
           204: { description: "Delete successfully" },
           401: { description: "Not authenticated" },

@@ -718,7 +718,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "Get user list", tags: ["Users"] },
+      docs: { summary: "Get user list" },
     },
     async (req, res) => {
       const { page, limit, role } = req.valid("query");
@@ -731,7 +731,7 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "Get user details", tags: ["Users"] },
+      docs: { summary: "Get user details" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -750,7 +750,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "Create User", tags: ["Users"] },
+      docs: { summary: "Create User" },
     },
     async (req, res) => {
       const data = req.valid("body");
@@ -770,7 +770,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "Update Users", tags: ["Users"] },
+      docs: { summary: "Update Users" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -782,7 +782,7 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "Delete User", tags: ["Users"] },
+      docs: { summary: "Delete User" },
     },
     async (req, res) => {
       const { id } = req.valid("param");

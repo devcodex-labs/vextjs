@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { OpenAPIGenerator } from "../../../src/lib/openapi/generator.js";
+import {
+  OpenAPIGenerator,
+  collectDeprecatedRouteDocsTagsUsage,
+  createDeprecatedRouteDocsTagsWarning,
+} from "../../../src/lib/openapi/generator.js";
 import { RouteMetadataCollector } from "../../../src/lib/openapi/collector.js";
 import { dsl } from "schema-dsl";
 import type {
@@ -68,6 +72,39 @@ describe("RouteMetadataCollector", () => {
       expect(routes[0].method).toBe("GET");
       expect(routes[0].path).toBe("/users");
       expect(routes[0].sourceFile).toBe("routes/users.ts");
+      expect(routes[0].docsKind).toBe("backend-api");
+    });
+
+    it("根据 handler 中的 res.render 调用识别前端路由", () => {
+      collector.addRoute(
+        "GET",
+        "/frontend/render",
+        {},
+        "routes/frontend.ts",
+        async (_req: any, res: any) => {
+          await res.render("Home");
+        },
+      );
+
+      const routes = collector.getRoutes();
+      expect(routes[0].docsKind).toBe("frontend-route");
+    });
+
+    it("忽略注释和字符串中的 render 字样", () => {
+      collector.addRoute(
+        "GET",
+        "/users",
+        {},
+        "routes/users.ts",
+        (_req: any, res: any) => {
+          const message = "res.render() is not called";
+          // res.render("Home")
+          res.json({ message });
+        },
+      );
+
+      const routes = collector.getRoutes();
+      expect(routes[0].docsKind).toBe("backend-api");
     });
 
     it("收集多条路由", () => {
@@ -338,15 +375,15 @@ describe("OpenAPIGenerator", () => {
   // ── tags 推断 ─────────────────────────────────────────────
 
   describe("tags 推断", () => {
-    it("从文件路径推断 tags", () => {
+    it("从路由 path 推断 tags", () => {
       const doc = generate([
         createRoute("GET", "/users", {}, "routes/users.ts"),
         createRoute("GET", "/posts", {}, "routes/posts.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "posts" }, { name: "users" }]);
+      expect(doc.tags).toEqual([{ name: "Posts" }, { name: "Users" }]);
     });
 
-    it("从 docs.tags 获取显式声明的 tags", () => {
+    it("忽略已废弃的 docs.tags 并使用自动推断 tags", () => {
       const doc = generate([
         createRoute(
           "GET",
@@ -355,10 +392,10 @@ describe("OpenAPIGenerator", () => {
           "routes/users.ts",
         ),
       ]);
-      expect(doc.tags).toEqual([{ name: "用户管理" }]);
+      expect(doc.tags).toEqual([{ name: "Users" }]);
     });
 
-    it("混合显式和推断的 tags（去重排序）", () => {
+    it("混合已废弃 docs.tags 和自动推断 tags（去重排序）", () => {
       const doc = generate([
         createRoute(
           "GET",
@@ -374,10 +411,9 @@ describe("OpenAPIGenerator", () => {
           "routes/users.ts",
         ),
       ]);
-      // 去重后：Users, posts
       const tagNames = doc.tags!.map((t) => t.name);
       expect(tagNames).toContain("Users");
-      expect(tagNames).toContain("posts");
+      expect(tagNames).toContain("Posts");
       // 已排序
       expect(tagNames).toEqual([...tagNames].sort());
     });
@@ -399,39 +435,52 @@ describe("OpenAPIGenerator", () => {
       });
     });
 
-    it("routes/index.ts → tag 'default'", () => {
+    it("根级健康检查 → tag 'General'", () => {
       const doc = generate([
         createRoute("GET", "/health", {}, "routes/index.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "default" }]);
+      expect(doc.tags).toEqual([{ name: "General" }]);
     });
 
-    it("routes/admin/roles.ts → tag 'admin-roles'", () => {
+    it("/admin/roles → tag 'Admin'", () => {
       const doc = generate([
         createRoute("GET", "/admin/roles", {}, "routes/admin/roles.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "admin-roles" }]);
+      expect(doc.tags).toEqual([{ name: "Admin" }]);
     });
 
-    it("Windows 路径分隔符正确处理", () => {
+    it("Windows 来源路径分隔符不影响 path 优先推断", () => {
       const doc = generate([
         createRoute("GET", "/admin/roles", {}, "routes\\admin\\roles.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "admin-roles" }]);
+      expect(doc.tags).toEqual([{ name: "Admin" }]);
     });
 
-    it("深层嵌套路径 routes/api/v2/users.ts → 'api-v2-users'", () => {
+    it("API 版本路径 /api/v2/users → 'API v2'", () => {
       const doc = generate([
         createRoute("GET", "/api/v2/users", {}, "routes/api/v2/users.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "api-v2-users" }]);
+      expect(doc.tags).toEqual([{ name: "API v2" }]);
     });
 
-    it("routes/users/index.ts → tag 'users'（去掉 /index）", () => {
+    it("/users → tag 'Users'", () => {
       const doc = generate([
         createRoute("GET", "/users", {}, "routes/users/index.ts"),
       ]);
-      expect(doc.tags).toEqual([{ name: "users" }]);
+      expect(doc.tags).toEqual([{ name: "Users" }]);
+    });
+
+    it("聚合生成 docs.tags 弃用 warning", () => {
+      const routes = [
+        createRoute("GET", "/admin/stats", { docs: { tags: ["Admin"] } }),
+        createRoute("GET", "/api/v1/info", { docs: { tags: ["API v1"] } }),
+        createRoute("GET", "/users", {}),
+      ];
+
+      expect(collectDeprecatedRouteDocsTagsUsage(routes)).toHaveLength(2);
+      expect(createDeprecatedRouteDocsTagsWarning(routes)).toContain(
+        "route docs.tags is deprecated and ignored",
+      );
     });
   });
 
@@ -559,14 +608,14 @@ describe("OpenAPIGenerator", () => {
       expect(doc.paths["/users"].get!.description).toBeUndefined();
     });
 
-    it("从文件路径推断 tags", () => {
+    it("从路由 path 推断 tags", () => {
       const doc = generate([
         createRoute("GET", "/users", {}, "routes/users.ts"),
       ]);
-      expect(doc.paths["/users"].get!.tags).toEqual(["users"]);
+      expect(doc.paths["/users"].get!.tags).toEqual(["Users"]);
     });
 
-    it("使用 docs.tags 覆盖推断的 tags", () => {
+    it("docs.tags 已废弃并不会覆盖自动推断 tags", () => {
       const doc = generate([
         createRoute(
           "GET",
@@ -575,7 +624,7 @@ describe("OpenAPIGenerator", () => {
           "routes/users.ts",
         ),
       ]);
-      expect(doc.paths["/users"].get!.tags).toEqual(["用户管理", "Admin"]);
+      expect(doc.paths["/users"].get!.tags).toEqual(["Users"]);
     });
   });
 
@@ -732,19 +781,68 @@ describe("OpenAPIGenerator", () => {
     });
   });
 
+  describe("parameters — 请求头参数", () => {
+    it("validate.header 中的字段映射为 header 参数", () => {
+      const doc = generate([
+        createRoute("GET", "/admin/check-role-test/default", {
+          validate: {
+            header: {
+              "x-admin-role": "string!",
+              "x-trace-id": "string?",
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/admin/check-role-test/default"].get!;
+      expect(op.parameters).toHaveLength(2);
+
+      const role = op.parameters!.find((p) => p.name === "x-admin-role")!;
+      expect(role).toMatchObject({
+        in: "header",
+        required: true,
+        schema: { type: "string" },
+      });
+
+      const traceId = op.parameters!.find((p) => p.name === "x-trace-id")!;
+      expect(traceId.in).toBe("header");
+      expect(traceId.required).toBe(false);
+    });
+
+    it("路径、查询和请求头参数合并", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id", {
+          validate: {
+            param: { id: "objectId!" },
+            query: { expand: "string?" },
+            header: { "x-tenant-id": "string!" },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.parameters).toHaveLength(3);
+      expect(op.parameters!.map((p) => p.in)).toEqual([
+        "path",
+        "query",
+        "header",
+      ]);
+    });
+  });
+
   describe("parameters — 空参数清理", () => {
     it("无 validate 时不包含 parameters 字段", () => {
       const doc = generate([createRoute("GET", "/users")]);
       expect(doc.paths["/users"].get!.parameters).toBeUndefined();
     });
 
-    it("validate 存在但无 params/query 时不包含 parameters 字段", () => {
+    it("validate 存在但无 params/query/header 时不包含 parameters 字段", () => {
       const doc = generate([
         createRoute("GET", "/users", {
           validate: { body: { name: "string!" } },
         }),
       ]);
-      // GET 请求不生成 requestBody，也无 params/query → parameters 被清理
+      // GET 请求不生成 requestBody，也无 params/query/header → parameters 被清理
       expect(doc.paths["/users"].get!.parameters).toBeUndefined();
     });
   });
@@ -1469,12 +1567,24 @@ describe("OpenAPIGenerator", () => {
       expect(op["x-x-rate-limit-special"]).toBeUndefined();
     });
 
-    it("无 docs.extensions 时不添加扩展字段", () => {
+    it("无 docs.extensions 时只保留文档分类扩展字段", () => {
       const doc = generate([createRoute("GET", "/users")]);
       const op = doc.paths["/users"].get! as Record<string, unknown>;
-      // 不应有任何 x- 字段
       const xKeys = Object.keys(op).filter((k) => k.startsWith("x-"));
-      expect(xKeys).toHaveLength(0);
+      expect(xKeys).toEqual(["x-vext-docs-kind"]);
+      expect(op["x-vext-docs-kind"]).toBe("backend-api");
+    });
+
+    it("输出 route metadata 中的文档分类扩展字段", () => {
+      const doc = generate([
+        {
+          ...createRoute("GET", "/frontend/render"),
+          docsKind: "frontend-route",
+        },
+      ]);
+
+      const op = doc.paths["/frontend/render"].get! as Record<string, unknown>;
+      expect(op["x-vext-docs-kind"]).toBe("frontend-route");
     });
   });
 
@@ -1705,7 +1815,7 @@ describe("OpenAPIGenerator", () => {
       const getUsers = doc.paths["/users"].get!;
       expect(getUsers.summary).toBe("获取用户列表");
       expect(getUsers.operationId).toBe("getUsers");
-      expect(getUsers.tags).toEqual(["用户管理"]);
+      expect(getUsers.tags).toEqual(["Users"]);
       expect(getUsers.parameters).toHaveLength(4);
       expect(getUsers.security).toEqual([{ bearerAuth: [] }]);
       expect(getUsers.responses["200"]).toBeDefined();
@@ -1807,7 +1917,7 @@ describe("OpenAPIGenerator", () => {
       const op = doc.paths["/health"].get!;
       expect(op.summary).toBe("GET /health");
       expect(op.operationId).toBe("getHealth");
-      expect(op.tags).toEqual(["health"]);
+      expect(op.tags).toEqual(["General"]);
       expect(op.deprecated).toBe(false);
       expect(op.parameters).toBeUndefined();
       expect(op.requestBody).toBeUndefined();
@@ -1978,20 +2088,14 @@ describe("OpenAPIGenerator", () => {
   });
 
   describe("x-tagGroups 标签分组", () => {
-    describe("自动推断", () => {
-      it("多个顶层目录 → 自动推断分组", () => {
+    describe("默认行为", () => {
+      it("未配置 tagGroups 时不再自动推断 x-tagGroups", () => {
         const doc = generate([
           createRoute(
             "GET",
             "/api/v1/users",
             { docs: { tags: ["users"] } },
             "routes/api/v1/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/api/v1/orders",
-            { docs: { tags: ["orders"] } },
-            "routes/api/v1/orders.ts",
           ),
           createRoute(
             "GET",
@@ -2001,103 +2105,27 @@ describe("OpenAPIGenerator", () => {
           ),
         ]);
 
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const groups = doc["x-tagGroups"]!;
-        expect(groups.length).toBeGreaterThanOrEqual(2);
-
-        const apiGroup = groups.find((g) => g.name === "Api");
-        expect(apiGroup).toBeDefined();
-        expect(apiGroup!.tags).toContain("users");
-        expect(apiGroup!.tags).toContain("orders");
-
-        const adminGroup = groups.find((g) => g.name === "Admin");
-        expect(adminGroup).toBeDefined();
-        expect(adminGroup!.tags).toContain("admin-dashboard");
-      });
-
-      it("所有路由在同一目录 → 不生成 x-tagGroups", () => {
-        const doc = generate([
-          createRoute("GET", "/users", {}, "routes/users.ts"),
-          createRoute("GET", "/orders", {}, "routes/orders.ts"),
+        expect(doc.tags?.map((tag) => tag.name)).toEqual([
+          "API v1",
+          "Admin",
         ]);
-
-        // 全部在 routes/ 下（General 分组唯一），不需要分组
         expect(doc["x-tagGroups"]).toBeUndefined();
       });
 
-      it("无路由 → 不生成 x-tagGroups", () => {
-        const doc = generate([]);
-        expect(doc["x-tagGroups"]).toBeUndefined();
-      });
+      it("自定义 config.tags 不会触发默认 x-tagGroups", () => {
+        const generator = createGenerator({
+          tags: [
+            { name: "users", description: "User management" },
+            { name: "admin", description: "Administration" },
+          ],
+        });
 
-      it("混合顶层和子目录路由 → 子目录分组 + General 分组", () => {
-        const doc = generate([
-          createRoute("GET", "/health", {}, "routes/health.ts"),
+        const doc = generator.generate([
           createRoute(
             "GET",
             "/api/users",
             { docs: { tags: ["users"] } },
             "routes/api/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/admin/stats",
-            { docs: { tags: ["admin-stats"] } },
-            "routes/admin/stats.ts",
-          ),
-        ]);
-
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const groups = doc["x-tagGroups"]!;
-
-        const generalGroup = groups.find((g) => g.name === "General");
-        expect(generalGroup).toBeDefined();
-        expect(generalGroup!.tags).toContain("health");
-
-        const apiGroup = groups.find((g) => g.name === "Api");
-        expect(apiGroup).toBeDefined();
-        expect(apiGroup!.tags).toContain("users");
-
-        // General 排在最后
-        expect(groups[groups.length - 1].name).toBe("General");
-      });
-
-      it("自动推断的分组名首字母大写", () => {
-        const doc = generate([
-          createRoute("GET", "/api/users", {}, "routes/api/users.ts"),
-          createRoute(
-            "GET",
-            "/webhooks/stripe",
-            {},
-            "routes/webhooks/stripe.ts",
-          ),
-        ]);
-
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const groupNames = doc["x-tagGroups"]!.map((g) => g.name);
-        expect(groupNames).toContain("Api");
-        expect(groupNames).toContain("Webhooks");
-      });
-
-      it("同一分组内 tags 去重且排序", () => {
-        const doc = generate([
-          createRoute(
-            "GET",
-            "/api/users",
-            { docs: { tags: ["users"] } },
-            "routes/api/users.ts",
-          ),
-          createRoute(
-            "POST",
-            "/api/users",
-            { docs: { tags: ["users"] } },
-            "routes/api/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/api/orders",
-            { docs: { tags: ["orders"] } },
-            "routes/api/orders.ts",
           ),
           createRoute(
             "GET",
@@ -2107,85 +2135,42 @@ describe("OpenAPIGenerator", () => {
           ),
         ]);
 
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const apiGroup = doc["x-tagGroups"]!.find((g) => g.name === "Api");
-        expect(apiGroup).toBeDefined();
-        // tags 去重后为 ["orders", "users"]（排序）
-        expect(apiGroup!.tags).toEqual(["orders", "users"]);
-      });
-
-      it("无 docs.tags 时使用 inferTagFromFile 推断的 tag", () => {
-        const doc = generate([
-          createRoute("GET", "/api/users", {}, "routes/api/users.ts"),
-          createRoute("GET", "/admin/roles", {}, "routes/admin/roles.ts"),
+        expect(doc.tags).toEqual([
+          { name: "users", description: "User management" },
+          { name: "admin", description: "Administration" },
         ]);
-
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const apiGroup = doc["x-tagGroups"]!.find((g) => g.name === "Api");
-        expect(apiGroup).toBeDefined();
-        expect(apiGroup!.tags).toContain("api-users");
-
-        const adminGroup = doc["x-tagGroups"]!.find((g) => g.name === "Admin");
-        expect(adminGroup).toBeDefined();
-        expect(adminGroup!.tags).toContain("admin-roles");
+        expect(doc["x-tagGroups"]).toBeUndefined();
       });
 
-      it("深层嵌套路径按第一层目录分组", () => {
-        const doc = generate([
-          createRoute(
-            "GET",
-            "/api/v1/users",
-            { docs: { tags: ["API v1 Users"] } },
-            "routes/api/v1/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/api/v2/users",
-            { docs: { tags: ["API v2 Users"] } },
-            "routes/api/v2/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/admin/dashboard",
-            { docs: { tags: ["Dashboard"] } },
-            "routes/admin/dashboard.ts",
-          ),
-        ]);
-
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const apiGroup = doc["x-tagGroups"]!.find((g) => g.name === "Api");
-        expect(apiGroup).toBeDefined();
-        // 两个 api 子目录的 tags 都归入 Api 分组
-        expect(apiGroup!.tags).toContain("API v1 Users");
-        expect(apiGroup!.tags).toContain("API v2 Users");
-      });
-
-      it("Windows 路径分隔符正确处理", () => {
-        const doc = generate([
+      it("generateJSON 默认不包含 x-tagGroups", () => {
+        const generator = createGenerator();
+        const routes = [
           createRoute(
             "GET",
             "/api/users",
             { docs: { tags: ["users"] } },
-            "routes\\api\\users.ts",
+            "routes/api/users.ts",
           ),
           createRoute(
             "GET",
             "/admin/panel",
             { docs: { tags: ["admin"] } },
-            "routes\\admin\\panel.ts",
+            "routes/admin/panel.ts",
           ),
-        ]);
+        ];
 
-        expect(doc["x-tagGroups"]).toBeDefined();
-        expect(doc["x-tagGroups"]!.find((g) => g.name === "Api")).toBeDefined();
-        expect(
-          doc["x-tagGroups"]!.find((g) => g.name === "Admin"),
-        ).toBeDefined();
+        const parsed = JSON.parse(generator.generateJSON(routes));
+
+        expect(parsed.tags.map((tag: { name: string }) => tag.name)).toEqual([
+          "API",
+          "Admin",
+        ]);
+        expect(parsed["x-tagGroups"]).toBeUndefined();
       });
     });
 
-    describe("用户配置覆盖", () => {
-      it("config.tagGroups 覆盖自动推断", () => {
+    describe("用户配置输出", () => {
+      it("config.tagGroups 显式输出 x-tagGroups", () => {
         const customGroups = [
           { name: "User Management", tags: ["users", "user-profile"] },
           { name: "Administration", tags: ["admin-dashboard", "admin-users"] },
@@ -2218,12 +2203,10 @@ describe("OpenAPIGenerator", () => {
           createRoute("GET", "/admin/panel", {}, "routes/admin/panel.ts"),
         ]);
 
-        // 空 tagGroups 配置 → 回退到自动推断
-        // 自动推断时有多个分组 → 会生成
-        expect(doc["x-tagGroups"]).toBeDefined();
+        expect(doc["x-tagGroups"]).toBeUndefined();
       });
 
-      it("config.tagGroups 优先于自动推断（即使目录结构存在）", () => {
+      it("config.tagGroups 仅使用显式配置（即使目录结构存在）", () => {
         const customGroups = [
           { name: "Public API", tags: ["users", "orders"] },
           { name: "Internal", tags: ["admin"] },
@@ -2251,7 +2234,7 @@ describe("OpenAPIGenerator", () => {
           ),
         ]);
 
-        // 使用用户配置的分组名而不是自动推断的 "Api" / "Admin"
+        // 使用用户配置的分组名，不会根据目录结构生成 "Api" / "Admin"
         expect(doc["x-tagGroups"]).toEqual(customGroups);
         const groupNames = doc["x-tagGroups"]!.map((g) => g.name);
         expect(groupNames).toContain("Public API");
@@ -2259,15 +2242,17 @@ describe("OpenAPIGenerator", () => {
         expect(groupNames).not.toContain("Api");
         expect(groupNames).not.toContain("Admin");
       });
-    });
 
-    describe("与其他功能集成", () => {
-      it("x-tagGroups 与自定义 config.tags 共存", () => {
+      it("显式 x-tagGroups 与自定义 config.tags 共存", () => {
         const generator = createGenerator({
           tags: [
             { name: "users", description: "User management" },
             { name: "orders", description: "Order processing" },
             { name: "admin", description: "Administration" },
+          ],
+          tagGroups: [
+            { name: "Public API", tags: ["users", "orders"] },
+            { name: "Internal", tags: ["admin"] },
           ],
         });
 
@@ -2296,11 +2281,13 @@ describe("OpenAPIGenerator", () => {
         expect(doc.tags).toHaveLength(3);
         expect(doc.tags![0].description).toBe("User management");
 
-        // 同时也生成 x-tagGroups
-        expect(doc["x-tagGroups"]).toBeDefined();
+        expect(doc["x-tagGroups"]).toEqual([
+          { name: "Public API", tags: ["users", "orders"] },
+          { name: "Internal", tags: ["admin"] },
+        ]);
       });
 
-      it("collector clear + regenerate 后 x-tagGroups 正确更新", () => {
+      it("collector clear + regenerate 后不会产生隐式 x-tagGroups", () => {
         const collector = new RouteMetadataCollector();
         const generator = createGenerator();
 
@@ -2319,10 +2306,9 @@ describe("OpenAPIGenerator", () => {
         );
 
         const doc1 = generator.generate(collector.getRoutes());
-        expect(doc1["x-tagGroups"]).toBeDefined();
-        expect(doc1["x-tagGroups"]!.length).toBe(2);
+        expect(doc1["x-tagGroups"]).toBeUndefined();
 
-        // 清空 + 第二次：只有一个目录
+        // 清空 + 第二次：目录结构变化也不隐式生成 x-tagGroups
         collector.clear();
         collector.addRoute(
           "GET",
@@ -2338,54 +2324,7 @@ describe("OpenAPIGenerator", () => {
         );
 
         const doc2 = generator.generate(collector.getRoutes());
-        // 所有路由在同一分组 → 不生成
         expect(doc2["x-tagGroups"]).toBeUndefined();
-      });
-
-      it("generateJSON 包含 x-tagGroups", () => {
-        const generator = createGenerator();
-        const routes = [
-          createRoute(
-            "GET",
-            "/api/users",
-            { docs: { tags: ["users"] } },
-            "routes/api/users.ts",
-          ),
-          createRoute(
-            "GET",
-            "/admin/panel",
-            { docs: { tags: ["admin"] } },
-            "routes/admin/panel.ts",
-          ),
-        ];
-
-        const json = generator.generateJSON(routes);
-        const parsed = JSON.parse(json);
-
-        expect(parsed["x-tagGroups"]).toBeDefined();
-        expect(Array.isArray(parsed["x-tagGroups"])).toBe(true);
-      });
-
-      it("分组按字母排序（General 放最后）", () => {
-        const doc = generate([
-          createRoute("GET", "/health", {}, "routes/health.ts"),
-          createRoute(
-            "GET",
-            "/webhooks/stripe",
-            {},
-            "routes/webhooks/stripe.ts",
-          ),
-          createRoute("GET", "/api/users", {}, "routes/api/users.ts"),
-          createRoute("GET", "/admin/panel", {}, "routes/admin/panel.ts"),
-        ]);
-
-        expect(doc["x-tagGroups"]).toBeDefined();
-        const names = doc["x-tagGroups"]!.map((g) => g.name);
-        // Admin, Api, Webhooks 按字母排序, General 放最后
-        expect(names[names.length - 1]).toBe("General");
-        const nonGeneral = names.slice(0, -1);
-        const sorted = [...nonGeneral].sort();
-        expect(nonGeneral).toEqual(sorted);
       });
     });
   });

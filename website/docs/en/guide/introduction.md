@@ -130,7 +130,7 @@ VextJS uses ESM + conventional directories as the module system: `src/config/`, 
 - **`vext dev`** — File monitoring + smart hot reload (Soft Reload Tier 1/2 + Cold Restart Tier 3)
 - **`vext build`** — esbuild extremely fast build, TypeScript zero configuration
 - **`vext create`** — interactive scaffolding that supports 5 Adapter choices
-- **OpenAPI/Scalar** — Automatically generated based on routing `docs` + `validate`, visit `/docs` to view (built-in Try it out interactive test)
+- **OpenAPI/Vext Docs** — Automatically generated from route `docs` + `validate`; visit `/docs` for API and standard JSDoc documentation, or use `/openapi.json` with external tools
 
 ### 🏢 Enterprise-level features
 

@@ -17,7 +17,12 @@ export interface ResolveFrontendConfigOptions {
   mode: VextFrontendMode;
 }
 
-const DEFAULT_FALLBACK_EXCLUDE = ["/api/**", "/openapi.json", "/docs/**"];
+const DEFAULT_FALLBACK_EXCLUDE = [
+  "/api/**",
+  "/openapi.json",
+  "/docs/**",
+  "/_vext/docs/**",
+];
 
 export function resolveFrontendConfig(
   input: VextFrontendUserConfig | undefined,

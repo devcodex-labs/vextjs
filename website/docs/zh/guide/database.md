@@ -722,7 +722,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "获取用户列表", tags: ["Users"] },
+      docs: { summary: "获取用户列表" },
     },
     async (req, res) => {
       const { page, limit, role } = req.valid("query");
@@ -735,7 +735,7 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "获取用户详情", tags: ["Users"] },
+      docs: { summary: "获取用户详情" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -754,7 +754,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "创建用户", tags: ["Users"] },
+      docs: { summary: "创建用户" },
     },
     async (req, res) => {
       const data = req.valid("body");
@@ -774,7 +774,7 @@ export default defineRoutes((app) => {
           role: "admin|editor|viewer",
         },
       },
-      docs: { summary: "更新用户", tags: ["Users"] },
+      docs: { summary: "更新用户" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
@@ -788,7 +788,7 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       validate: { param: { id: "string!" } },
-      docs: { summary: "删除用户", tags: ["Users"] },
+      docs: { summary: "删除用户" },
     },
     async (req, res) => {
       const { id } = req.valid("param");
