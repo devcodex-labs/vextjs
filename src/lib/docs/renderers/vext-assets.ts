@@ -3577,14 +3577,22 @@ export const VEXT_DOCS_APP_JS = `
     return note;
   };
 
-  const hasTryItOutHookConfig = () =>
-    Boolean(config.tryItOut && (config.tryItOut.hookScript || config.tryItOut.hookGlobal));
-
   const getTryItOutHooks = () => {
     const name = config.tryItOut && config.tryItOut.hookGlobal ? config.tryItOut.hookGlobal : "VextDocsHooks";
     const hooks = window[name];
     return hooks && typeof hooks === "object" ? hooks : null;
   };
+
+  const hasTryItOutHookRuntime = () => {
+    const hooks = getTryItOutHooks();
+    return Boolean(
+      hooks &&
+      (typeof hooks.beforeRequest === "function" || typeof hooks.afterResponse === "function")
+    );
+  };
+
+  const hasTryItOutHookConfig = () =>
+    Boolean(config.tryItOut && (config.tryItOut.hookScript || hasTryItOutHookRuntime()));
 
   const createHookNote = () => {
     const note = document.createElement("div");

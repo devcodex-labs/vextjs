@@ -7,6 +7,7 @@ import {
   filterCodeDocsForDocs,
   filterOpenAPIDocumentForDocs,
 } from "./access/filter.js";
+import { resolveDocsAccess } from "./access/resolver.js";
 import { normalizeDocsConfig } from "./normalize-config.js";
 import { renderVextDocsHTML } from "./renderers/vext-html.js";
 import {
@@ -521,7 +522,16 @@ async function resolveVisibleDocsSources(
   const document = await resolveOpenAPISpecForEndpoint(spec, config, {
     request,
   });
-  return resolveDocsSources(document, config).filter(isVisibleDocsSource);
+  const visible: ResolvedVextDocsSource[] = [];
+  for (const source of resolveDocsSources(document, config)) {
+    if (
+      isNonEmptyDocsSource(source) &&
+      (await isVisibleDocsSource(config, source, request))
+    ) {
+      visible.push(source);
+    }
+  }
+  return visible;
 }
 
 async function resolveSelectedDocsSource(
@@ -535,7 +545,11 @@ async function resolveSelectedDocsSource(
   return source ? { source, sources } : undefined;
 }
 
-function isVisibleDocsSource(source: ResolvedVextDocsSource): boolean {
+async function isVisibleDocsSource(
+  config: ResolvedVextDocsConfig,
+  source: ResolvedVextDocsSource,
+  request?: VextDocsRequestContext,
+): Promise<boolean> {
   if (
     typeof source.access === "object" &&
     source.access !== null &&
@@ -543,6 +557,26 @@ function isVisibleDocsSource(source: ResolvedVextDocsSource): boolean {
   ) {
     return false;
   }
+  if (!config.access.resolver || source.access === undefined) {
+    return true;
+  }
+  const result = await resolveDocsAccess(
+    config.access,
+    {
+      kind: "source",
+      id: `source:${source.id}`,
+      sourceId: source.id,
+      title: source.label,
+      match: source.match,
+      version: source.version,
+      access: source.access,
+    },
+    request,
+  );
+  return result.visible;
+}
+
+function isNonEmptyDocsSource(source: ResolvedVextDocsSource): boolean {
   return source.id === "all" || (source.operationCount ?? 0) > 0;
 }
 

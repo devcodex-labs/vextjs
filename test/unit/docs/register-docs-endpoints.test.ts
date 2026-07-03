@@ -149,10 +149,10 @@ describe("registerDocsEndpoints", () => {
     expect(response.body).toContain("</aside>\n    <div id=\"vext-docs-resizer\"");
     expect(response.body).toContain('/_vext/docs/style.css?v=');
     expect(response.body).toContain('/_vext/docs/app.js?v=');
-    expect(response.body).toContain("20260702-b32");
+    expect(response.body).toContain("20260703-b32a");
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
-    expect(response.body).toContain('"assetVersion":"20260702-b32"');
+    expect(response.body).toContain('"assetVersion":"20260703-b32a"');
     expect(response.body).toContain('id="vext-docs-mobile-nav-toggle"');
     expect(response.body).toContain('id="vext-docs-sidebar-backdrop"');
     expect(response.body).toContain('"accessMode":"off"');
@@ -298,6 +298,60 @@ describe("registerDocsEndpoints", () => {
       }),
     );
     expect(JSON.stringify(searchResponse.body)).not.toContain("/api/v1/info");
+  });
+
+  it("filters explicit docs sources through source access descriptors", async () => {
+    const app = createMockApp();
+    const resolver = vi.fn(({ descriptor }) => {
+      if (descriptor.kind === "source" && descriptor.access === "admin") {
+        return false;
+      }
+      return true;
+    });
+    registerDocsEndpoints(app, versionedSpec, {
+      title: "Versioned API",
+      docs: {
+        access: { mode: "enforce", resolver },
+        sources: [
+          { id: "all", label: "All", match: "/**", default: true },
+          { id: "api-v1", label: "API v1", match: "/api/v1/**" },
+          { id: "admin-v1", label: "Admin v1", match: "/admin/**", access: "admin" },
+          { id: "hidden-v2", label: "Hidden v2", match: "/api/v2/**", access: { visible: false } },
+        ],
+      },
+    });
+
+    const configRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/config.json",
+    );
+    const openapiRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/openapi.json",
+    );
+
+    const configResponse = createMockResponse();
+    await configRoute!.chain[0]({}, configResponse);
+    const sourceIds = ((configResponse.body as { sources: Array<{ id: string }> }).sources ?? [])
+      .map((source) => source.id);
+    expect(sourceIds).toEqual(["all", "api-v1"]);
+    expect(resolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descriptor: expect.objectContaining({
+          kind: "source",
+          sourceId: "admin-v1",
+          access: "admin",
+        }),
+      }),
+    );
+
+    const hiddenSourceResponse = createMockResponse();
+    await openapiRoute!.chain[0](
+      { query: { source: "admin-v1" } },
+      hiddenSourceResponse,
+    );
+    expect(hiddenSourceResponse.body).toMatchObject({
+      code: 404,
+      message: 'Docs source "admin-v1" was not found.',
+    });
   });
 
   it("omits project metadata when package.json is unavailable", async () => {

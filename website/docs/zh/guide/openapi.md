@@ -87,9 +87,9 @@ B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server
 
 B31 进一步优化小屏与大接口量场景。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
 
-B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI paths 中存在 `/api/v1/**`、`/api/v2/**` 这类版本命名空间时，Vext Docs 会自动展示 `All / API v1 / API v2` 切换器。每个 source 会分别读取过滤后的 `/_vext/docs/openapi.json?source=<id>`、`code.json?source=<id>`、`search.json?source=<id>` 数据，因此当前 source 拥有独立的 Overview 统计、导航树、搜索状态、权限过滤后的接口集合和 deep link。既有单 source 的 `#anchor` 链接继续兼容；多 source 链接使用 `#source=<id>&view=<view>&id=<anchor>`。如果自动版本识别不够，项目可以通过 `openapi.docs.sources` 显式定义文档面。
+B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI paths 中存在 `/api/v1/**`、`/api/v2/**` 这类版本命名空间时，Vext Docs 会自动展示 `All / API v1 / API v2` 切换器。每个 source 会分别读取过滤后的 `/_vext/docs/openapi.json?source=<id>`、`code.json?source=<id>`、`search.json?source=<id>` 数据，因此当前 source 拥有独立的 Overview 统计、导航树、搜索状态、权限过滤后的接口集合和 deep link。非 `All` source 默认只返回 OpenAPI 条目；只有该 source 显式配置 `code.include` / `code.exclude` 时，才会纳入 Code JSDoc 条目，避免全局 Services / Utils / Models 泄漏到单版本 API 文档面。既有单 source 的 `#anchor` 链接继续兼容；多 source 链接使用 `#source=<id>&view=<view>&id=<anchor>`。如果自动版本识别不够，项目可以通过 `openapi.docs.sources` 显式定义文档面，source 级 `access` / `visible` 也会作用于 source 切换器和 source-aware 数据端点。
 
-B32 同时增强 Try it out 的真实项目接入能力。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。项目也可以通过 `openapi.docs.tryItOut.hookScript` 与 `hookGlobal` 配置浏览器端请求 hook；文档页会在 fetch 前调用 `window[hookGlobal].beforeRequest`，响应后调用 `afterResponse`，合并 hook 返回的请求 header/body/URL 变更，并在 Response 标签页展示诊断信息。hook 只运行在浏览器文档页，Vext 不会为此 import 或执行后端项目代码。
+B32 同时增强 Try it out 的真实项目接入能力。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。项目也可以通过 `openapi.docs.tryItOut.hookScript` 与 `hookGlobal` 配置浏览器端请求 hook；`hookGlobal` 只是浏览器查找名，只有配置了 hook script 或运行时全局对象暴露 `beforeRequest` / `afterResponse` 时才显示 hook 提示。文档页会在 fetch 前后调用这些函数，合并 hook 返回的请求 header/body/URL 变更，并在 Response 标签页展示诊断信息。hook 只运行在浏览器文档页，Vext 不会为此 import 或执行后端项目代码。
 
 如果需要在生成后追加组织级扩展字段，可使用 OpenAPI hook。`OpenAPIGenerator.generate()` 仍保持同步，`openapi:afterGenerate` 也必须同步返回 patch：
 

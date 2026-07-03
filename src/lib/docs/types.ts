@@ -367,6 +367,15 @@ export type VextDocsAccessDescriptor =
       id: string;
       title: string;
       source: "openapi" | "code";
+    }
+  | {
+      kind: "source";
+      id: string;
+      sourceId: string;
+      title: string;
+      match: string[];
+      version?: string;
+      access?: VextRouteDocsAccessConfig | string;
     };
 
 export interface VextDocsAccessContext {

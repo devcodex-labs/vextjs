@@ -82,9 +82,12 @@ export function filterCodeDocsItemsBySource<T extends { id?: string; title?: str
   items: T[],
   source: ResolvedVextDocsSource,
 ): T[] {
+  if (isDefaultSource(source)) {
+    return items;
+  }
   const code = source.code;
   if (!code || (!code.include?.length && !code.exclude?.length)) {
-    return items;
+    return [];
   }
   return items.filter((item) => {
     const value = [

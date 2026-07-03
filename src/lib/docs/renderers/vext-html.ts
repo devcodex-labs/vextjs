@@ -1,6 +1,6 @@
 import type { ResolvedVextDocsConfig } from "../types.js";
 
-const VEXT_DOCS_ASSET_VERSION = "20260702-b32";
+const VEXT_DOCS_ASSET_VERSION = "20260703-b32a";
 
 function escapeHtml(value: string): string {
   return value
