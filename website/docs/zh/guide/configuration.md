@@ -634,24 +634,30 @@ GET /api/users 200 12ms | 127.0.0.1
 
 ### OpenAPI 配置 (`openapi`)
 
-| 配置项                    | 类型      | 默认值                | 说明                                                                                                                  |
-| ------------------------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `openapi.enabled`         | `boolean` | `false`               | 是否启用 OpenAPI 文档                                                                                                 |
-| `openapi.title`           | `string`  | `'API Documentation'` | 文档标题                                                                                                              |
-| `openapi.description`     | `string`  | `''`                  | 文档描述                                                                                                              |
-| `openapi.version`         | `string`  | `'1.0.0'`             | API 版本号                                                                                                            |
-| `openapi.docs.path`       | `string`  | `'/docs'`             | Vext Docs 文档路径                                                                                                    |
-| `openapi.docsPath`        | `string`  | `'/docs'`             | 兼容字段；新项目推荐使用 `openapi.docs.path`                                                                          |
-| `openapi.jsonPath`        | `string`  | `'/openapi.json'`     | OpenAPI JSON 端点路径（vext 内部路由注册路径）                                                                        |
-| `openapi.jsonPublicPath`  | `string`  | 同 `jsonPath`         | 文档页引用 spec 的公开路径。反向代理剥离前缀场景必填，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景)         |
-| `openapi.docs.renderer`   | `'vext'` | `'vext'` | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                            |
-| `openapi.docs.code`       | `object`  | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares 文档源配置                                           |
-| `openapi.scalar`          | `object`  | `{}`                  | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                            |
-| `openapi.servers`         | `Array`   | `[]`                  | API 服务器列表                                                                                                        |
-| `openapi.tags`            | `Array`   | `[]`                  | 标签定义                                                                                                              |
-| `openapi.securitySchemes` | `object`  | `{}`                  | 安全方案                                                                                                              |
-| `openapi.contact`         | `object`  | `{}`                  | 联系方式                                                                                                              |
-| `openapi.license`         | `object`  | `{}`                  | 许可证信息                                                                                                            |
+| 配置项                             | 类型                     | 默认值                | 说明                                                                                                                                                                               |
+| ---------------------------------- | ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openapi.enabled`                  | `boolean`                | `false`               | 是否启用 OpenAPI 文档                                                                                                                                                              |
+| `openapi.title`                    | `string`                 | `'API Documentation'` | 文档标题                                                                                                                                                                           |
+| `openapi.description`              | `string`                 | `''`                  | 文档描述                                                                                                                                                                           |
+| `openapi.version`                  | `string`                 | `'1.0.0'`             | API 版本号                                                                                                                                                                         |
+| `openapi.docs.path`                | `string`                 | `'/docs'`             | Vext Docs 文档路径                                                                                                                                                                 |
+| `openapi.docs.assetsPath`          | `string`                 | `'/_vext/docs'`       | Vext 内部注册的 docs 资产与 source-aware 数据端点前缀                                                                                                                              |
+| `openapi.docs.assetsPublicPath`    | `string`                 | 同 `assetsPath`       | 浏览器可见的 docs 资产/数据前缀。反向代理剥离公开前缀时使用                                                                                                                        |
+| `openapi.docsPath`                 | `string`                 | `'/docs'`             | 兼容字段；新项目推荐使用 `openapi.docs.path`                                                                                                                                       |
+| `openapi.jsonPath`                 | `string`                 | `'/openapi.json'`     | OpenAPI JSON 端点路径（vext 内部路由注册路径）                                                                                                                                     |
+| `openapi.jsonPublicPath`           | `string`                 | 同 `jsonPath`         | 外部工具和链接使用的公开 OpenAPI 规范地址。内置 source-aware docs 数据使用 `openapi.docs.assetsPublicPath` / `assetsPath`，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景) |
+| `openapi.docs.renderer`            | `'vext'`                 | `'vext'`              | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                                        |
+| `openapi.docs.code`                | `object`                 | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares 文档源配置                                                                                                          |
+| `openapi.docs.sources`             | `Array`                  | `[]`                  | 可选的 Public/Admin/Internal 或多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                           |
+| `openapi.docs.tryItOut.hookScript` | `string`                 | `undefined`           | 可选的浏览器端 hook 脚本路径，Vext Docs 会加载后再按 `hookGlobal` 查找请求/响应 hook                                                                                               |
+| `openapi.docs.tryItOut.hookGlobal` | `string`                 | `'VextDocsHooks'`     | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                               |
+| `openapi.docs.access.openapiJson`  | `'filtered' \| 'public'` | `'filtered'`          | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                                       |
+| `openapi.scalar`                   | `object`                 | `{}`                  | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                                          |
+| `openapi.servers`                  | `Array`                  | `[]`                  | API 服务器列表                                                                                                                                                                     |
+| `openapi.tags`                     | `Array`                  | `[]`                  | 标签定义                                                                                                                                                                           |
+| `openapi.securitySchemes`          | `object`                 | `{}`                  | 安全方案                                                                                                                                                                           |
+| `openapi.contact`                  | `object`                 | `{}`                  | 联系方式                                                                                                                                                                           |
+| `openapi.license`                  | `object`                 | `{}`                  | 许可证信息                                                                                                                                                                         |
 
 ```typescript
 export default {

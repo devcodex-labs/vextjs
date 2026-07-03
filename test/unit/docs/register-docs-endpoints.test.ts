@@ -146,13 +146,15 @@ describe("registerDocsEndpoints", () => {
     expect(response.body).toContain("Vext Docs");
     expect(response.body).toContain('<link rel="icon" href="data:,">');
     expect(response.body).toContain('id="vext-docs-resizer"');
-    expect(response.body).toContain("</aside>\n    <div id=\"vext-docs-resizer\"");
-    expect(response.body).toContain('/_vext/docs/style.css?v=');
-    expect(response.body).toContain('/_vext/docs/app.js?v=');
-    expect(response.body).toContain("20260703-b32a");
+    expect(response.body).toContain(
+      '</aside>\n    <div id="vext-docs-resizer"',
+    );
+    expect(response.body).toContain("/_vext/docs/style.css?v=");
+    expect(response.body).toContain("/_vext/docs/app.js?v=");
+    expect(response.body).toContain("20260703-b32b");
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
-    expect(response.body).toContain('"assetVersion":"20260703-b32a"');
+    expect(response.body).toContain('"assetVersion":"20260703-b32b"');
     expect(response.body).toContain('id="vext-docs-mobile-nav-toggle"');
     expect(response.body).toContain('id="vext-docs-sidebar-backdrop"');
     expect(response.body).toContain('"accessMode":"off"');
@@ -213,7 +215,9 @@ describe("registerDocsEndpoints", () => {
     expect(appJsResponse.headers["Cache-Control"]).toBe(
       "no-cache, max-age=0, must-revalidate",
     );
-    expect(appJsResponse.body).toContain("endpointUrl(config.endpoints.openapi");
+    expect(appJsResponse.body).toContain(
+      "endpointUrl(config.endpoints.openapi",
+    );
 
     const styleCssResponse = createMockResponse();
     await styleCssRoute!.chain[0]({}, styleCssResponse);
@@ -223,6 +227,47 @@ describe("registerDocsEndpoints", () => {
     expect(styleCssResponse.headers["Cache-Control"]).toBe(
       "no-cache, max-age=0, must-revalidate",
     );
+  });
+
+  it("uses assetsPublicPath only for browser-facing docs URLs", async () => {
+    const app = createMockApp();
+    registerDocsEndpoints(app, spec, {
+      title: "Proxy API",
+      docs: {
+        assetsPath: "/_vext/docs",
+        assetsPublicPath: "/admin/_vext/docs",
+      },
+    });
+
+    const paths = app.routes.map((route) => route.path);
+    expect(paths).toContain("/_vext/docs/app.js");
+    expect(paths).toContain("/_vext/docs/style.css");
+    expect(paths).toContain("/_vext/docs/openapi.json");
+    expect(paths).not.toContain("/admin/_vext/docs/app.js");
+    expect(paths).not.toContain("/admin/_vext/docs/openapi.json");
+
+    const docsRoute = app.routes.find((route) => route.path === "/docs");
+    const docsResponse = createMockResponse();
+    await docsRoute!.chain[0]({}, docsResponse);
+    expect(docsResponse.body).toContain("/admin/_vext/docs/app.js?v=");
+    expect(docsResponse.body).toContain("/admin/_vext/docs/style.css?v=");
+    expect(docsResponse.body).toContain('"assetsPath":"/admin/_vext/docs"');
+    expect(docsResponse.body).toContain(
+      '"openapi":"/admin/_vext/docs/openapi.json"',
+    );
+
+    const configRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/config.json",
+    );
+    const configResponse = createMockResponse();
+    await configRoute!.chain[0]({}, configResponse);
+    expect(configResponse.body).toMatchObject({
+      assetsPath: "/admin/_vext/docs",
+      endpoints: expect.objectContaining({
+        appJs: "/admin/_vext/docs/app.js",
+        openapi: "/admin/_vext/docs/openapi.json",
+      }),
+    });
   });
 
   it("exposes automatic version sources and filters source data endpoints", async () => {
@@ -269,10 +314,7 @@ describe("registerDocsEndpoints", () => {
     });
 
     const v1Response = createMockResponse();
-    await openapiRoute!.chain[0](
-      { query: { source: "api-v1" } },
-      v1Response,
-    );
+    await openapiRoute!.chain[0]({ query: { source: "api-v1" } }, v1Response);
     expect(v1Response.body).toMatchObject({
       paths: { "/api/v1/info": expect.any(Object) },
       tags: [{ name: "API v1" }],
@@ -315,8 +357,18 @@ describe("registerDocsEndpoints", () => {
         sources: [
           { id: "all", label: "All", match: "/**", default: true },
           { id: "api-v1", label: "API v1", match: "/api/v1/**" },
-          { id: "admin-v1", label: "Admin v1", match: "/admin/**", access: "admin" },
-          { id: "hidden-v2", label: "Hidden v2", match: "/api/v2/**", access: { visible: false } },
+          {
+            id: "admin-v1",
+            label: "Admin v1",
+            match: "/admin/**",
+            access: "admin",
+          },
+          {
+            id: "hidden-v2",
+            label: "Hidden v2",
+            match: "/api/v2/**",
+            access: { visible: false },
+          },
         ],
       },
     });
@@ -330,8 +382,9 @@ describe("registerDocsEndpoints", () => {
 
     const configResponse = createMockResponse();
     await configRoute!.chain[0]({}, configResponse);
-    const sourceIds = ((configResponse.body as { sources: Array<{ id: string }> }).sources ?? [])
-      .map((source) => source.id);
+    const sourceIds = (
+      (configResponse.body as { sources: Array<{ id: string }> }).sources ?? []
+    ).map((source) => source.id);
     expect(sourceIds).toEqual(["all", "api-v1"]);
     expect(resolver).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -352,6 +405,55 @@ describe("registerDocsEndpoints", () => {
       code: 404,
       message: 'Docs source "admin-v1" was not found.',
     });
+  });
+
+  it("keeps explicit code-only docs sources visible", async () => {
+    const app = createMockApp();
+    registerDocsEndpoints(app, versionedSpec, {
+      title: "Versioned API",
+      docs: {
+        sources: [
+          { id: "all", label: "All", match: "/**", default: true },
+          {
+            id: "sdk",
+            label: "SDK",
+            match: "/sdk/**",
+            code: { include: ["services/sdk"] },
+          },
+        ],
+      },
+    });
+
+    const configRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/config.json",
+    );
+    const openapiRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/openapi.json",
+    );
+    const codeRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/code.json",
+    );
+
+    const configResponse = createMockResponse();
+    await configRoute!.chain[0]({}, configResponse);
+    const sources =
+      (
+        configResponse.body as {
+          sources: Array<{ id: string; operationCount?: number }>;
+        }
+      ).sources ?? [];
+    expect(sources.map((source) => source.id)).toEqual(["all", "sdk"]);
+    expect(sources.find((source) => source.id === "sdk")).toMatchObject({
+      operationCount: 0,
+    });
+
+    const openapiResponse = createMockResponse();
+    await openapiRoute!.chain[0]({ query: { source: "sdk" } }, openapiResponse);
+    expect(openapiResponse.body).toMatchObject({ paths: {} });
+
+    const codeResponse = createMockResponse();
+    await codeRoute!.chain[0]({ query: { source: "sdk" } }, codeResponse);
+    expect(codeResponse.body).toMatchObject({ items: [] });
   });
 
   it("omits project metadata when package.json is unavailable", async () => {
@@ -502,8 +604,14 @@ describe("registerDocsEndpoints", () => {
     try {
       await mkdir(join(rootDir, "src", "utils"), { recursive: true });
       await mkdir(join(rootDir, "preload"), { recursive: true });
-      await writeFile(join(rootDir, "src", "utils", "date.ts"), "export const date = 1;");
-      await writeFile(join(rootDir, "preload", "bootstrap.ts"), "export const boot = 1;");
+      await writeFile(
+        join(rootDir, "src", "utils", "date.ts"),
+        "export const date = 1;",
+      );
+      await writeFile(
+        join(rootDir, "preload", "bootstrap.ts"),
+        "export const boot = 1;",
+      );
       await writeFile(join(rootDir, "root-file.ts"), "export const root = 1;");
 
       const app = createMockApp();

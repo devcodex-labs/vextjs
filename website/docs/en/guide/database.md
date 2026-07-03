@@ -138,25 +138,25 @@ export default {
 
 ### Complete configuration items
 
-| Configuration item | Type | Default value | Description |
-| ------------------------ | -------------------------------- | --------------------- | ------------------------------------------------------------------------------- |
-| `type` | `'url' \| 'replica' \| 'srv'` | `'url'` | connection type |
-| `config` | `object` | — | Connection parameters (url/hosts/host, etc.) |
-| `maxTimeMS` | `number` | `2000` | Global query timeout (milliseconds) |
-| `findLimit` | `number` | `10` | `find` returns the number of items by default |
-| `findPageMaxLimit` | `number` | `500` | Maximum paging limit |
-| `slowQueryMs` | `number` | `500` | Slow query threshold (milliseconds) |
-| `autoConvertObjectId` | `boolean \| object` | — | Automatic ObjectId conversion |
-| `namespace` | `{ scope: string }` | `{ scope: 'database' }` | cache namespace |
-| `cursorSecret` | `string` | — | Deep paged cursor encryption key |
-| `useMemoryServer` | `boolean` | `false` | Use in-memory database (for testing) |
-| `logger` | `'app' \| false` | `'app'` | Log bridging (`'app'` uses app.logger) |
-| `cache` | `object` | — | Cache configuration (see below) |
-| `models` | `object` | — | Model loading configuration (see below) |
-| `databaseName` | `string` | URI automatic extraction | Default database name (cross-database routing fallback value, extracted from the path segment of `config.uri` if not filled in) |
-| `pools` | `array` | — | Multiple connection pool configuration |
-| `poolStrategy` | `string` | `'auto'` | Connection pool selection strategy |
-| `slowQueryLog` | `object` | — | Slow query persistence configuration |
+| Configuration item    | Type                          | Default value            | Description                                                                                                                     |
+| --------------------- | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                  | connection type                                                                                                                 |
+| `config`              | `object`                      | —                        | Connection parameters (url/hosts/host, etc.)                                                                                    |
+| `maxTimeMS`           | `number`                      | `2000`                   | Global query timeout (milliseconds)                                                                                             |
+| `findLimit`           | `number`                      | `10`                     | `find` returns the number of items by default                                                                                   |
+| `findPageMaxLimit`    | `number`                      | `500`                    | Maximum paging limit                                                                                                            |
+| `slowQueryMs`         | `number`                      | `500`                    | Slow query threshold (milliseconds)                                                                                             |
+| `autoConvertObjectId` | `boolean \| object`           | —                        | Automatic ObjectId conversion                                                                                                   |
+| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }`  | cache namespace                                                                                                                 |
+| `cursorSecret`        | `string`                      | —                        | Deep paged cursor encryption key                                                                                                |
+| `useMemoryServer`     | `boolean`                     | `false`                  | Use in-memory database (for testing)                                                                                            |
+| `logger`              | `'app' \| false`              | `'app'`                  | Log bridging (`'app'` uses app.logger)                                                                                          |
+| `cache`               | `object`                      | —                        | Cache configuration (see below)                                                                                                 |
+| `models`              | `object`                      | —                        | Model loading configuration (see below)                                                                                         |
+| `databaseName`        | `string`                      | URI automatic extraction | Default database name (cross-database routing fallback value, extracted from the path segment of `config.uri` if not filled in) |
+| `pools`               | `array`                       | —                        | Multiple connection pool configuration                                                                                          |
+| `poolStrategy`        | `string`                      | `'auto'`                 | Connection pool selection strategy                                                                                              |
+| `slowQueryLog`        | `object`                      | —                        | Slow query persistence configuration                                                                                            |
 
 ### Cache configuration
 
@@ -335,7 +335,8 @@ const Order2 = app.db.pool("cn").use("billing").model("Order"); // Equivalent sh
 Get the original MongoDB Client instance (for advanced scenarios such as transactions):
 
 ```typescript
-const session = app.db.client.startSession();try {
+const session = app.db.client.startSession();
+try {
   await session.withTransaction(async () => {
     await app.db
       .collection("accounts")
@@ -446,12 +447,12 @@ export default {
 
 ### Model options
 
-| Options | Type | Default | Description |
-| -------------------------- | ------------------- | ----------- | -------------------------- |
-| `timestamps` | `boolean \| object` | `undefined` | Automatic management createdAt/updatedAt |
-| `softDelete` | `boolean \| object` | `undefined` | Soft delete support |
-| `version` | `boolean \| object` | `undefined` | Optimistic locking version number |
-| `validate` | `boolean` | `true` | Schema validation switch during insert/update |
+| Options      | Type                | Default     | Description                                   |
+| ------------ | ------------------- | ----------- | --------------------------------------------- |
+| `timestamps` | `boolean \| object` | `undefined` | Automatic management createdAt/updatedAt      |
+| `softDelete` | `boolean \| object` | `undefined` | Soft delete support                           |
+| `version`    | `boolean \| object` | `undefined` | Optimistic locking version number             |
+| `validate`   | `boolean`           | `true`      | Schema validation switch during insert/update |
 
 #### timestamps configuration
 
@@ -528,12 +529,12 @@ Placing the Model file in a subdirectory of `models/` allows vext to automatical
 
 **Directory depth rules:**
 
-| Directory structure | Registration key name | Automatic injection |
-|-------------------------------- | -------------------------------------------------- | -------------------------------------------------- |
-| `models/order.ts` | `Order` (or `def.collection` / `def.name`) | None (no change in behavior) |
-| `models/billing/invoice.ts` | `BillingInvoice` | `connection: { database: 'billing' }` |
-| `models/main/billing/invoice.ts` | `MainBillingInvoice` | `connection: { pool: 'main', database: 'billing' }` |
-| `models/a/b/c/invoice.ts` | ❌ skip (max depth 2 exceeded, output warning) | — |
+| Directory structure              | Registration key name                          | Automatic injection                                 |
+| -------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `models/order.ts`                | `Order` (or `def.collection` / `def.name`)     | None (no change in behavior)                        |
+| `models/billing/invoice.ts`      | `BillingInvoice`                               | `connection: { database: 'billing' }`               |
+| `models/main/billing/invoice.ts` | `MainBillingInvoice`                           | `connection: { pool: 'main', database: 'billing' }` |
+| `models/a/b/c/invoice.ts`        | ❌ skip (max depth 2 exceeded, output warning) | —                                                   |
 
 > 💡 When the directory depth exceeds 2 levels, vext will output a warning log and skip the file. For more complex routing, explicitly set the `connection` field in the Model file.
 
@@ -627,7 +628,9 @@ export class UserService {
     }
 
     return user;
-  }async findAll(
+  }
+
+  async findAll(
     options: { page?: number; limit?: number; role?: string } = {},
   ) {
     const { page = 1, limit = 20, role } = options;
@@ -778,7 +781,8 @@ export default defineRoutes((app) => {
       const user = await app.services.user.update(id, data);
       res.json(user);
     },
-  );app.delete(
+  );
+  app.delete(
     "/users/:id",
     {
       validate: { param: { id: "string!" } },
@@ -940,13 +944,13 @@ New requests use new Model definition
 
 ### Overloading behavior description
 
-| Scene | Behavior |
-| --------------------------- | -------------------------------------------------------------- |
-| Modify schema field type | Use new schema validation rules for next write |
-| Modify hooks | New hooks will take effect immediately for subsequent operations |
-| Modify indexes | Index changes require a cold restart to be synchronized to MongoDB |
-| Reload failure (such as syntax error) | Automatically roll back to the old definition and the service continues to run |
-| Concurrent Requests | Requests being processed during reload are completed using the old definition, and new requests are completed using the new definition |
+| Scene                                 | Behavior                                                                                                                               |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Modify schema field type              | Use new schema validation rules for next write                                                                                         |
+| Modify hooks                          | New hooks will take effect immediately for subsequent operations                                                                       |
+| Modify indexes                        | Index changes require a cold restart to be synchronized to MongoDB                                                                     |
+| Reload failure (such as syntax error) | Automatically roll back to the old definition and the service continues to run                                                         |
+| Concurrent Requests                   | Requests being processed during reload are completed using the old definition, and new requests are completed using the new definition |
 
 ### Log output example
 

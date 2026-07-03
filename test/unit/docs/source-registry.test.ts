@@ -31,7 +31,10 @@ const spec: VextDocsOpenAPIDocument = {
     },
     "/api/v1/info": {
       get: { tags: ["API v1"], responses: { 200: { description: "OK" } } },
-      post: { tags: ["API v1"], responses: { 201: { description: "Created" } } },
+      post: {
+        tags: ["API v1"],
+        responses: { 201: { description: "Created" } },
+      },
     },
     "/api/v2/info": {
       get: { tags: ["API v2"], responses: { 200: { description: "OK" } } },
@@ -122,6 +125,22 @@ describe("docs source registry", () => {
       }),
     ]);
     expect(resolveDocsSource(sources)?.id).toBe("all");
+  });
+
+  it("keeps a single versioned source group as catch-all only", () => {
+    const sources = resolveDocsSources(
+      { ...spec, paths: { "/api/v1/info": spec.paths!["/api/v1/info"]! } },
+      config(),
+    );
+
+    expect(sources).toEqual([
+      expect.objectContaining({
+        id: "all",
+        label: "All",
+        default: true,
+        operationCount: 2,
+      }),
+    ]);
   });
 
   it("infers namespaced API sources and keeps the catch-all source first", () => {
@@ -217,6 +236,12 @@ describe("docs source registry", () => {
         "/v4/info": {
           get: { tags: ["API v4"], responses: { 200: { description: "OK" } } },
         },
+        "/beta/info": {
+          get: {
+            tags: ["API Beta"],
+            responses: { 200: { description: "OK" } },
+          },
+        },
         "/api/v4/metadata": {
           parameters: [],
         },
@@ -229,12 +254,131 @@ describe("docs source registry", () => {
       "all",
       "api-v3",
       "api-v4",
+      "api-beta",
     ]);
     expect(sources[1]).toMatchObject({
       label: "API v3",
-      match: ["/api/v3/**"],
+      match: ["/v3/**"],
       operationCount: 2,
     });
+    expect(sources.find((source) => source.id === "api-beta")).toMatchObject({
+      label: "API Beta",
+      match: ["/beta/**"],
+      operationCount: 1,
+    });
+    const v3 = sources.find((source) => source.id === "api-v3")!;
+    const filtered = filterOpenAPIDocumentBySource(rootVersionSpec, v3);
+    expect(Object.keys(filtered.paths ?? {})).toEqual([
+      "/v3/info",
+      "/v3/users",
+    ]);
+    expect(countOpenAPIOperations(filtered)).toBe(2);
+  });
+
+  it("orders numbered version sources before named release channels", () => {
+    const mixedOrderSpec: VextDocsOpenAPIDocument = {
+      ...spec,
+      paths: {
+        "/api/beta/info": {
+          get: {
+            tags: ["API Beta"],
+            responses: { 200: { description: "OK" } },
+          },
+        },
+        "/api/v10/info": {
+          get: { tags: ["API v10"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/rc1/info": {
+          get: { tags: ["API RC1"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/v2/info": {
+          get: { tags: ["API v2"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/alpha/info": {
+          get: {
+            tags: ["API Alpha"],
+            responses: { 200: { description: "OK" } },
+          },
+        },
+        "/api/v1/info": {
+          get: { tags: ["API v1"], responses: { 200: { description: "OK" } } },
+        },
+      },
+    };
+    const sources = resolveDocsSources(mixedOrderSpec, config());
+
+    expect(sources.map((source) => source.id)).toEqual([
+      "all",
+      "api-v1",
+      "api-v2",
+      "api-v10",
+      "api-alpha",
+      "api-beta",
+      "api-rc1",
+    ]);
+    expect(sources.find((source) => source.id === "api-rc1")).toMatchObject({
+      label: "API RC1",
+    });
+  });
+
+  it("merges root and namespaced version patterns under the same API source", () => {
+    const mixedVersionSpec: VextDocsOpenAPIDocument = {
+      ...spec,
+      paths: {
+        "/v1/info": {
+          get: { tags: ["API v1"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/v1/users": {
+          get: { tags: ["API v1"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/v2/info": {
+          get: { tags: ["API v2"], responses: { 200: { description: "OK" } } },
+        },
+        "/api/beta/info": {
+          get: {
+            tags: ["API Beta"],
+            responses: { 200: { description: "OK" } },
+          },
+        },
+        "/beta/info": {
+          get: {
+            tags: ["API Beta"],
+            responses: { 200: { description: "OK" } },
+          },
+        },
+      },
+    };
+    const sources = resolveDocsSources(mixedVersionSpec, config());
+    const v1 = sources.find((source) => source.id === "api-v1")!;
+    const filtered = filterOpenAPIDocumentBySource(mixedVersionSpec, v1);
+
+    expect(sources.map((source) => source.id)).toEqual([
+      "all",
+      "api-v1",
+      "api-v2",
+      "api-beta",
+    ]);
+    expect(v1).toMatchObject({
+      label: "API v1",
+      match: ["/v1/**", "/api/v1/**"],
+      operationCount: 2,
+    });
+    expect(Object.keys(filtered.paths ?? {})).toEqual([
+      "/v1/info",
+      "/api/v1/users",
+    ]);
+    expect(countOpenAPIOperations(filtered)).toBe(2);
+    const beta = sources.find((source) => source.id === "api-beta")!;
+    const betaFiltered = filterOpenAPIDocumentBySource(mixedVersionSpec, beta);
+    expect(beta).toMatchObject({
+      label: "API Beta",
+      match: ["/api/beta/**", "/beta/**"],
+      operationCount: 2,
+    });
+    expect(Object.keys(betaFiltered.paths ?? {})).toEqual([
+      "/api/beta/info",
+      "/beta/info",
+    ]);
   });
 
   it("keeps malformed tag groups while removing empty valid groups", () => {
@@ -379,6 +523,33 @@ describe("docs source registry", () => {
         code: { include: ["admin"] },
       },
     );
+    const explicitCatchAllWithCodeRules = filterCodeDocsItemsBySource(
+      codeItems,
+      {
+        id: "public-all",
+        label: "Public All",
+        match: ["/**"],
+        default: false,
+        code: { include: ["models/*"] },
+      },
+    );
+    const scopedWithNestedModelGlob = filterCodeDocsItemsBySource(
+      [
+        ...codeItems,
+        {
+          id: "model:BillingInvoice#default",
+          title: "models.BillingInvoice",
+          sourceFile: "models/billing/invoice.ts",
+        },
+      ],
+      {
+        id: "models",
+        label: "Models",
+        match: ["/api/**"],
+        default: false,
+        code: { include: ["models/**"] },
+      },
+    );
 
     expect(all).toHaveLength(3);
     expect(scopedWithoutCodeRules).toEqual([]);
@@ -392,6 +563,13 @@ describe("docs source registry", () => {
     expect(scopedWithWildcardInclude).toHaveLength(3);
     expect(scopedWithIncludeOnlyAndMissingFields).toEqual([
       { id: "service:admin#missing-fields" },
+    ]);
+    expect(explicitCatchAllWithCodeRules.map((item) => item.id)).toEqual([
+      "model:Product#default",
+    ]);
+    expect(scopedWithNestedModelGlob.map((item) => item.id)).toEqual([
+      "model:Product#default",
+      "model:BillingInvoice#default",
     ]);
   });
 });

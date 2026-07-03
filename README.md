@@ -626,11 +626,120 @@ Then visit:
 - `http://localhost:3000/docs` for the built-in Vext Docs page.
 - `http://localhost:3000/openapi.json` for the generated OpenAPI document.
 
-Route metadata is collected from `docs`, validation declarations, parameters, responses, and route registration data. The default docs UI is served by Vext's first-party HTML + vanilla JavaScript renderer under `/_vext/docs`, separates HTTP API operations from page render routes by detecting `res.render()` / `res.renderError()` handlers, keeps a sticky desktop sidebar, and builds recursive navigation from OpenAPI path segments. Default top-level sections are HTTP API, Pages, Services, Utils, Models, and discovered Components / Plugins / Middlewares; each active section can collapse and expand its current navigation tree. HTTP API navigation keeps stable resource segments such as `/api/v1/info` as categories, uses each operation `summary` as the concrete leaf label with endpoint fallback, weakens dynamic path parameters such as `{id}` instead of treating them as normal business categories, preserves middle dynamic segments when they lead to child resources, and version-tags built-in assets so browser cache does not hide renderer updates. When a project exposes versioned namespaces such as `/api/v1/**` and `/api/v2/**`, Vext Docs automatically adds an `All / API v1 / API v2` source switcher. Each source loads source-aware `/_vext/docs/openapi.json?source=...`, `code.json?source=...`, and `search.json?source=...` data so search, Overview counts, navigation, deep links, and access-filtered operations stay isolated. Non-`All` sources return only OpenAPI entries by default; Code JSDoc items are included for a source only when that source explicitly defines `code.include` / `code.exclude`, avoiding global Services / Utils / Models leakage into API version surfaces. Projects can override or add source definitions with `openapi.docs.sources`; source `access` / `visible` settings are also respected by the docs source list and source-aware data endpoints.
+Route metadata is collected from `docs`, validation declarations, parameters, responses, and route registration data. The default docs UI is served by Vext's first-party HTML + vanilla JavaScript renderer under `/_vext/docs`.
 
-The UI shows parameters, request bodies, horizontal response status tabs without repeated status headings, resolved schema fields without artificial root rows, search entries, auth/deprecated/Try it out state badges, collapsed operation Metadata, a global Authorize control for OpenAPI security schemes, same-origin Try it out, and Code JSDoc usage recipes. The Try it out console is organized as tabs for Params, Headers, Body, Auth, Samples, History, and Response; it includes server selection, OpenAPI `servers[].variables` controls, full resolved URL preview and Copy URL, structured query/header rows generated from OpenAPI parameters including `validate.header`, raw fallbacks, auth injection notes, optional browser-side request/response hooks through `openapi.docs.tryItOut.hookScript` / `hookGlobal`, diagnostics, cURL/browser fetch/Node fetch/Axios code samples, request history, and a fixed response viewer with pretty/raw body modes plus the actual request and response headers for the last send. `hookGlobal` is only the browser lookup name; hook notes and sample diagnostics are shown only when a `hookScript` is configured or the runtime global exposes `beforeRequest` / `afterResponse`. Empty query/header lists stay compact until a row is added, and Try it out internals are built only when the operation console is opened. The UI supports `openapi.docs.ui.theme`, `openapi.docs.ui.density`, keyboard search shortcuts, category search filters, a desktop outline on wide screens, auto/sidebar resize with persisted manual width, a mobile drawer with synchronized search/filter controls, responsive field tables on narrow screens, incremental rendering for long operation lists, copy actions, old single-source hash links, multi-source `#source=<id>&view=<view>&id=<anchor>` deep links, and an Overview workspace with counts, source metadata, and package startup / build / verification commands.
+The default renderer focuses on these surfaces:
 
-Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source. `docs.code.enabled` surfaces standard JSDoc and lightweight runtime metadata from `src/services/`, `src/utils/`, the configured models directory, `src/frontend/components/`, `src/plugins/`, and `src/middlewares/` as Services / Utils / Models / Components / Plugins / Middlewares with recursive namespace/source navigation. Locales / Config / Styles / Preload static source scanning remains available only when explicitly enabled through `openapi.docs.code.*`; it is not part of the default top-level documentation surface. Models are listed from recognizable model files even when no JSDoc is present; root-level models are shown directly under Models, nested model files are grouped by source directory, and the default UI statically reads model definitions to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code. Plugins and middlewares show bootstrap/lifecycle, app extension, middleware type, route usage, and source links when they can be inferred from source text. On local loopback docs pages, code docs entries can show an `Open source` link that redirects to `vscode://file/...`; non-local access hides that link. Vext no longer auto-generates `x-tagGroups`; explicit `openapi.tagGroups` is only passed through as an OpenAPI vendor extension and is not used by the built-in docs navigation. In `vext start`, Code JSDoc prefers `<project>/src` when source files are present and falls back to the runtime directory when only built output is available. External documentation tools should consume `/openapi.json` directly instead of using a Vext renderer hook.
+- HTTP API, Pages, Services, Utils, Models, and discovered Components / Plugins / Middlewares are top-level sections.
+- HTTP API and Pages use recursive navigation from OpenAPI path segments.
+- Stable resource segments such as `/api/v1/info` stay as categories.
+- Each operation leaf prefers `summary`, then falls back to the endpoint path.
+- Dynamic path parameters such as `{id}` are visually weakened instead of treated as business categories.
+- Middle dynamic segments are preserved when they lead to child resources.
+- Built-in docs assets are version-tagged so browser cache does not hide renderer updates.
+
+When a project exposes at least two versioned source groups such as `/api/v1/**`, `/api/v2/**`, `/api/beta/**`, `/v1/**`, `/v2/**`, or `/beta/**`, Vext Docs automatically adds an ordered `All / API v1 / API v2 / API Beta` style source switcher. Numbered versions are listed before named release channels such as `alpha`, `beta`, or `rc`.
+
+Each source loads source-aware `/_vext/docs/openapi.json?source=...`, `code.json?source=...`, and `search.json?source=...` data so search, Overview counts, navigation, deep links, and access-filtered operations stay isolated. Non-`All` sources return only OpenAPI entries by default; Code JSDoc items are included for a source only when that source explicitly defines `code.include` / `code.exclude`.
+
+Projects can override or add source definitions with `openapi.docs.sources`; source `access`, including `source.access.visible`, is also respected by the docs source list and source-aware data endpoints. Every explicit source still needs a `match` pattern because it scopes OpenAPI data. For a code-only source, use a stable non-API namespace such as `/sdk/**` and opt into Code JSDoc with `code.include` / `code.exclude`.
+
+The operation view includes parameters, request bodies, horizontal response status tabs without repeated status headings, resolved schema fields without artificial root rows, search entries, auth/deprecated/Try it out state badges, collapsed operation Metadata, a global Authorize control for OpenAPI security schemes, same-origin Try it out, and Code JSDoc usage recipes.
+
+The Try it out console is organized as tabs for Params, Headers, Body, Auth, Samples, History, and Response. It includes server selection, OpenAPI `servers[].variables` controls, full resolved URL preview and Copy URL, structured query/header rows generated from OpenAPI parameters including `validate.header`, raw fallbacks, auth injection notes, optional browser-side request/response hooks through `openapi.docs.tryItOut.hookScript` / `hookGlobal`, diagnostics, cURL/browser fetch/Node fetch/Axios code samples, request history, and a fixed response viewer with pretty/raw body modes plus the actual request and response headers for the last send.
+
+`hookGlobal` is only the browser lookup name; hook notes and sample diagnostics are shown only when a `hookScript` is configured or the runtime global exposes `beforeRequest` / `afterResponse`.
+
+The UI also supports:
+
+- `openapi.docs.ui.theme` and `openapi.docs.ui.density`;
+- keyboard search shortcuts and category search filters;
+- a desktop outline on wide screens;
+- auto/sidebar resize with persisted manual width;
+- a mobile drawer with synchronized search/filter controls;
+- responsive field tables on narrow screens;
+- incremental rendering for long operation lists;
+- copy actions, old single-source hash links, and multi-source `#source=<id>&view=<view>&id=<anchor>` deep links;
+- an Overview workspace with counts, source metadata, and package startup / build / verification commands.
+
+Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source. Vext no longer auto-generates `x-tagGroups`; explicit `openapi.tagGroups` is only passed through as an OpenAPI vendor extension and is not used by the built-in docs navigation.
+
+`docs.code.enabled` surfaces standard JSDoc and lightweight runtime metadata from `src/services/`, `src/utils/`, the configured models directory, `src/frontend/components/`, `src/plugins/`, and `src/middlewares/` as Services / Utils / Models / Components / Plugins / Middlewares with recursive namespace/source navigation.
+
+Locales / Config / Styles / Preload static source scanning remains available only when explicitly enabled through `openapi.docs.code.*`; it is not part of the default top-level documentation surface.
+
+Models are listed from recognizable model files even when no JSDoc is present. Root-level models are shown directly under Models, nested model files are grouped by source directory, and the default UI statically reads model definitions to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code.
+
+Plugins and middlewares show bootstrap/lifecycle, app extension, middleware type, route usage, and source links when they can be inferred from source text.
+
+On local loopback docs pages, code docs entries can show an `Open source` link that redirects to `vscode://file/...`; non-local access hides that link. In `vext start`, Code JSDoc prefers `<project>/src` when source files are present and falls back to the runtime directory when only built output is available. External documentation tools should consume `/openapi.json` directly instead of using a Vext renderer hook.
+
+Custom source surfaces can be configured when the automatic version selector is not enough:
+
+```ts
+export default {
+  openapi: {
+    docs: {
+      sources: [
+        {
+          id: "public-v1",
+          label: "Public v1",
+          match: ["/api/v1/**"],
+          default: true,
+        },
+        {
+          id: "admin-v1",
+          label: "Admin v1",
+          match: ["/admin/v1/**"],
+          access: "admin",
+        },
+        {
+          id: "internal-v1",
+          label: "Internal v1",
+          match: ["/internal/v1/**"],
+          access: { visible: false },
+        },
+        {
+          id: "sdk",
+          label: "SDK",
+          match: ["/sdk/**"],
+          code: {
+            include: ["services/sdk", "models/*"],
+            exclude: ["*internal*"],
+          },
+        },
+      ],
+    },
+  },
+};
+```
+
+`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
+
+`openapi.docs.assetsPath` is the internal route prefix registered by Vext for docs assets and source-aware data endpoints. `openapi.docs.assetsPublicPath` can be different when a reverse proxy strips a public prefix, so the browser fetches `/admin/_vext/docs/*` while Vext still registers `/_vext/docs/*`. `openapi.jsonPublicPath` remains the public canonical `/openapi.json` path for external tools and metadata; the built-in source-aware docs UI fetches `openapi.docs.assetsPublicPath` endpoints.
+
+Try it out request hooks run only in the browser docs page. A minimal hook script looks like this:
+
+```js
+// public/docs-hook.js
+window.VextDocsHooks = {
+  beforeRequest({ request, path }) {
+    return {
+      headers: {
+        ...request.headers,
+        "x-docs-signature": "demo-" + path,
+      },
+    };
+  },
+  afterResponse({ response }) {
+    return {
+      diagnostics: ["status: " + response.status],
+    };
+  },
+};
+```
+
+Enable it with `openapi.docs.tryItOut.hookScript = "/docs-hook.js"` and optionally change the lookup name with `hookGlobal`.
 
 ## i18n
 

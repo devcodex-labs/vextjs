@@ -299,24 +299,20 @@ export interface DocEndpointsConfig {
   specPath?: string;
 
   /**
-   * OpenAPI spec 的公开访问路径（用于文档页面中引用 spec 的 URL）
+   * OpenAPI spec 的公开访问路径，主要用于外部工具、链接和文档元信息。
    *
-   * 仅影响文档页面里的 spec URL，**不影响** vext 内部路由注册路径。
-   * 未设置时默认与 `specPath` 相同。
-   *
-   * **使用场景**：应用部署在反向代理路径前缀下，且代理**剥离**前缀后转发给 vext。
-   * 此时 vext 内部路由是 `/openapi.json`，但浏览器必须通过 `/admin/openapi.json` 访问。
-   * 如果不配置此字段，文档页面会引用 `/openapi.json`（绝对路径），
-   * 浏览器会请求 `https://example.com/openapi.json`（丢失代理前缀）导致 404。
+   * 仅影响公开 canonical spec URL，**不影响** vext 内部路由注册路径。
+   * 未设置时默认与 `specPath` 相同。内置 source-aware Vext Docs 的
+   * `/_vext/docs/*.json` 数据端点公开前缀由 `docs.assetsPublicPath` 负责。
    *
    * @example
    * ```typescript
    * // Nginx: /admin/* → vext（剥离 /admin 前缀）
    * // vext 路由注册在 /openapi.json
-   * // 浏览器访问 /admin/openapi.json → Nginx 剥离 → vext /openapi.json ✅
+   * // 浏览器/外部工具访问 /admin/openapi.json → Nginx 剥离 → vext /openapi.json ✅
    * {
    *   specPath: '/openapi.json',             // vext 内部路由
-   *   specPublicPath: '/admin/openapi.json', // 文档页引用地址
+   *   specPublicPath: '/admin/openapi.json', // 公开 canonical spec 地址
    * }
    * ```
    */

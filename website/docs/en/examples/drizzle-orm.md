@@ -4,14 +4,14 @@ This example shows how to integrate [Drizzle ORM](https://orm.drizzle.team) into
 
 ## Why choose Drizzle ORM?
 
-| Features | Description |
-| -------------------------- | ----------------------------------------------- |
-| **Type Safety** | Schema is the type, and the query results automatically infer the TypeScript type |
-| **Lightweight** | No runtime code generation, zero abstraction overhead |
-| **SQL-like** | API is close to SQL syntax, low learning cost |
-| **Multiple databases** | Support PostgreSQL, MySQL, SQLite |
-| **Migration Tool** | Built-in `drizzle-kit` for schema migration |
-| **Performance** | No additional query layer, compiled directly into SQL |
+| Features               | Description                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| **Type Safety**        | Schema is the type, and the query results automatically infer the TypeScript type |
+| **Lightweight**        | No runtime code generation, zero abstraction overhead                             |
+| **SQL-like**           | API is close to SQL syntax, low learning cost                                     |
+| **Multiple databases** | Support PostgreSQL, MySQL, SQLite                                                 |
+| **Migration Tool**     | Built-in `drizzle-kit` for schema migration                                       |
+| **Performance**        | No additional query layer, compiled directly into SQL                             |
 
 ## Project structure
 
@@ -127,6 +127,7 @@ export type NewPost = typeof posts.$inferInsert;
 
 :::tip
 Drizzle's `$inferSelect` and `$inferInsert` type tools are very powerful:- `$inferSelect` — Infer query result type from table definition (includes all fields, `id`, `createdAt`, etc. are required)
+
 - `$inferInsert` — infer the insertion type from the table definition (fields with default values become optional, such as `role`, `createdAt`)
 
 These types can be used directly in the service layer's parameter and return value declarations, eliminating the need to manually maintain interface definitions.
@@ -267,7 +268,8 @@ export default definePlugin({
       try {
         // Verify connection
         client.pragma("quick_check");
-        app.logger.info("Database connection verification successful");// Check if seed data is required
+        app.logger.info("Database connection verification successful");
+        // Check if seed data is required
         const userCount = db.select().from(users).all();
         if (userCount.length === 0) {
           app.logger.info("The database is empty, filling seed data...");
@@ -326,7 +328,8 @@ async function seedDatabase(db: DrizzleDB): Promise<void> {
     .values([
       {
         title: "VextJS Getting Started Guide",
-        content: "This article introduces how to use VextJS to build a high-performance RESTful API...",
+        content:
+          "This article introduces how to use VextJS to build a high-performance RESTful API...",
         authorId: insertedUsers[0].id,
         published: true,
       },
@@ -338,7 +341,8 @@ async function seedDatabase(db: DrizzleDB): Promise<void> {
       },
       {
         title: "TypeScript type gymnastics",
-        content: "In-depth understanding of TypeScript's advanced type system...",
+        content:
+          "In-depth understanding of TypeScript's advanced type system...",
         authorId: insertedUsers[2].id,
         published: false,
       },
@@ -452,7 +456,8 @@ export default {
 import type { VextApp, VextLogger } from "vextjs";
 import { users, posts } from "../db/schema.js";
 import type { User, NewUser } from "../db/schema.js";
-import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default class UserService {
+import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";
+export default class UserService {
   private logger: VextLogger;
 
   constructor(private app: VextApp) {
@@ -494,7 +499,7 @@ import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default
     const orderBy =
       options.sortBy === "name"
         ? options.sortOrder === "desc"
-          ?desc(users.name)
+          ? desc(users.name)
           : asc(users.name)
         : options.sortOrder === "asc"
           ? asc(users.createdAt)
@@ -522,7 +527,7 @@ import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default
       total,
       page: options.page,
       limit: options.limit,
-      totalPages: Math.ceil(total/options.limit),
+      totalPages: Math.ceil(total / options.limit),
     };
   }
 
@@ -592,7 +597,10 @@ import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default
       .returning()
       .get();
 
-    this.logger.info({ userId: user.id, email: user.email }, "User created successfully");
+    this.logger.info(
+      { userId: user.id, email: user.email },
+      "User created successfully",
+    );
 
     return user;
   }
@@ -618,7 +626,7 @@ import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default
     const existing = db.select().from(users).where(eq(users.id, id)).get();
     if (!existing) {
       this.app.throw(404, "User does not exist");
-    }// If updating mailbox, check for uniqueness
+    } // If updating mailbox, check for uniqueness
     if (data.email && data.email !== existing.email) {
       const emailTaken = db
         .select({ id: users.id })
@@ -627,7 +635,11 @@ import { eq, like, or, sql, desc, asc, count } from "drizzle-orm";export default
         .get();
 
       if (emailTaken) {
-        this.app.throw(409, "The mailbox is already used by another user", 10002);
+        this.app.throw(
+          409,
+          "The mailbox is already used by another user",
+          10002,
+        );
       }
     }
 
@@ -738,7 +750,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "User list",
-        description: "Query the user list in pages. Search by name or email keywords is supported.",
+        description:
+          "Query the user list in pages. Search by name or email keywords is supported.",
         responses: {
           200: {
             description: "Query successful",
@@ -768,7 +781,9 @@ export default defineRoutes((app) => {
       const result = await app.services.user.findAll({ page, limit, keyword });
       res.json(result);
     },
-  );// ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
+  );
+
+  // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   // GET /users/:id — Query user details (including articles)
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   app.get(
@@ -779,7 +794,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user details",
-        description: "Query user details, including all articles published by this user.",
+        description:
+          "Query user details, including all articles published by this user.",
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -815,7 +831,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create user",
-        description: "Create a new user. Bearer Token authentication is required. Email must be unique.",
+        description:
+          "Create a new user. Bearer Token authentication is required. Email must be unique.",
         responses: {
           201: { description: "Created successfully" },
           422: { description: "Parameter verification failed" },
@@ -848,7 +865,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Update user",
-        description: "Update user information. Just pass in the fields that need to be updated.",
+        description:
+          "Update user information. Just pass in the fields that need to be updated.",
         responses: {
           200: { description: "Update successful" },
           422: { description: "Parameter verification failed" },
@@ -878,7 +896,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Delete user",
-        description: "Delete user and all articles (CASCADE). Irreversible operation.",
+        description:
+          "Delete user and all articles (CASCADE). Irreversible operation.",
         responses: {
           204: { description: "Delete successfully" },
           401: { description: "Not authenticated" },
@@ -1233,14 +1252,14 @@ The business code (service layer, routing layer) **does not need to be modified 
 
 ## Project mode summary
 
-| Hierarchy | Responsibilities | Documentation |
-| -------------------------- | ------------------------------- | ---------------------------- |
-| **Schema** | Table definition + type inference | `src/db/schema.ts` |
-| **Connection Factory** | Create database instance | `src/db/index.ts` |
-| **Plug-in** | Initialize connection, mount `app.db`, clean up | `src/plugins/database.ts` |
-| **Service layer** | Business logic + Drizzle query | `src/services/user.ts` |
-| **Routing layer** | Request verification + calling service + response | `src/routes/users.ts` |
-| **Type declaration** | `app.db` type extension | `types/vext.d.ts` |
+| Hierarchy              | Responsibilities                                  | Documentation             |
+| ---------------------- | ------------------------------------------------- | ------------------------- |
+| **Schema**             | Table definition + type inference                 | `src/db/schema.ts`        |
+| **Connection Factory** | Create database instance                          | `src/db/index.ts`         |
+| **Plug-in**            | Initialize connection, mount `app.db`, clean up   | `src/plugins/database.ts` |
+| **Service layer**      | Business logic + Drizzle query                    | `src/services/user.ts`    |
+| **Routing layer**      | Request verification + calling service + response | `src/routes/users.ts`     |
+| **Type declaration**   | `app.db` type extension                           | `types/vext.d.ts`         |
 
 ### Core Principles
 

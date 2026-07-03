@@ -6,6 +6,25 @@ import type {
 import { collectOpenAPITags, isOpenAPIHttpMethod } from "./openapi-source.js";
 
 export const DEFAULT_DOCS_SOURCE_ID = "all";
+const NAMED_VERSION_SEGMENTS =
+  /^(?:alpha|beta|canary|latest|next|preview|rc|stable)(?:-?\d+)?$/iu;
+const NAMED_VERSION_ORDER = [
+  "alpha",
+  "beta",
+  "rc",
+  "preview",
+  "next",
+  "canary",
+  "stable",
+  "latest",
+];
+const NUMBERED_VERSION_SEGMENTS = /^v\d+[A-Za-z0-9-]*$/u;
+
+type InferredVextDocsSource = ResolvedVextDocsSource & {
+  namespace: string;
+  operationCount: number;
+  version: string;
+};
 
 export function resolveDocsSources(
   document: VextDocsOpenAPIDocument,
@@ -29,11 +48,7 @@ export function resolveDocsSource(
   sourceId?: string,
 ): ResolvedVextDocsSource | undefined {
   if (!sourceId) {
-    return (
-      sources.find((source) => source.default) ??
-      sources[0] ??
-      undefined
-    );
+    return sources.find((source) => source.default) ?? sources[0] ?? undefined;
   }
   return sources.find((source) => source.id === sourceId);
 }
@@ -78,10 +93,9 @@ export function countOpenAPIOperations(
   return count;
 }
 
-export function filterCodeDocsItemsBySource<T extends { id?: string; title?: string; sourceFile?: string }>(
-  items: T[],
-  source: ResolvedVextDocsSource,
-): T[] {
+export function filterCodeDocsItemsBySource<
+  T extends { id?: string; title?: string; sourceFile?: string },
+>(items: T[], source: ResolvedVextDocsSource): T[] {
   if (isDefaultSource(source)) {
     return items;
   }
@@ -90,11 +104,9 @@ export function filterCodeDocsItemsBySource<T extends { id?: string; title?: str
     return [];
   }
   return items.filter((item) => {
-    const value = [
-      item.id ?? "",
-      item.title ?? "",
-      item.sourceFile ?? "",
-    ].join(" ");
+    const value = [item.id ?? "", item.title ?? "", item.sourceFile ?? ""].join(
+      " ",
+    );
     const included =
       !code.include?.length ||
       code.include.some((pattern) => matchesTextPattern(value, pattern));
@@ -138,7 +150,7 @@ function createDefaultSource(
 function inferVersionedSources(
   document: VextDocsOpenAPIDocument,
 ): ResolvedVextDocsSource[] {
-  const candidates = new Map<string, ResolvedVextDocsSource>();
+  const candidates = new Map<string, InferredVextDocsSource>();
 
   for (const [path, pathItem] of Object.entries(document.paths ?? {})) {
     const version = parseVersionedPath(path);
@@ -150,15 +162,20 @@ function inferVersionedSources(
       continue;
     }
     const id = `${version.namespace}-${version.version}`.toLowerCase();
+    const pattern = `${version.matchPrefix}/**`;
     const existing = candidates.get(id);
     if (existing) {
-      existing.operationCount = (existing.operationCount ?? 0) + operationCount;
+      existing.operationCount += operationCount;
+      if (!existing.match.includes(pattern)) {
+        existing.match.push(pattern);
+      }
       continue;
     }
     candidates.set(id, {
       id,
-      label: `${toTitle(version.namespace)} ${version.version}`,
-      match: [`/${version.namespace}/${version.version}/**`],
+      label: `${toTitle(version.namespace)} ${formatVersionLabel(version.version)}`,
+      match: [pattern],
+      namespace: version.namespace.toLowerCase(),
       version: version.version,
       default: false,
       auto: true,
@@ -166,9 +183,61 @@ function inferVersionedSources(
     });
   }
 
-  return Array.from(candidates.values()).sort((a, b) =>
-    a.id.localeCompare(b.id),
+  return Array.from(candidates.values())
+    .sort(compareInferredSources)
+    .map(({ namespace: _namespace, ...source }) => source);
+}
+
+function compareInferredSources(
+  a: InferredVextDocsSource,
+  b: InferredVextDocsSource,
+): number {
+  const namespaceOrder = a.namespace.localeCompare(b.namespace);
+  if (namespaceOrder !== 0) {
+    return namespaceOrder;
+  }
+  return compareVersionSegments(a.version, b.version);
+}
+
+function compareVersionSegments(a: string, b: string): number {
+  const aKey = versionSortKey(a);
+  const bKey = versionSortKey(b);
+  return (
+    aKey.bucket - bKey.bucket ||
+    aKey.order - bKey.order ||
+    aKey.number - bKey.number ||
+    aKey.suffix.localeCompare(bKey.suffix) ||
+    aKey.raw.localeCompare(bKey.raw)
   );
+}
+
+function versionSortKey(version: string): {
+  bucket: number;
+  order: number;
+  number: number;
+  suffix: string;
+  raw: string;
+} {
+  const raw = version.toLowerCase();
+  const numbered = /^v(\d+)(.*)$/u.exec(raw);
+  if (NUMBERED_VERSION_SEGMENTS.test(version) && numbered) {
+    return {
+      bucket: 0,
+      order: 0,
+      number: Number(numbered[1]),
+      suffix: numbered[2]!,
+      raw,
+    };
+  }
+
+  const named = /^([a-z]+)(?:-?(\d+))?$/u.exec(raw)!;
+  return {
+    bucket: 1,
+    order: NAMED_VERSION_ORDER.indexOf(named[1]!),
+    number: named[2] ? Number(named[2]) : 0,
+    suffix: "",
+    raw,
+  };
 }
 
 function countPathItemOperations(pathItem: unknown): number {
@@ -186,25 +255,33 @@ function countPathItemOperations(pathItem: unknown): number {
 
 function parseVersionedPath(
   path: string,
-): { namespace: string; version: string } | undefined {
-  const namespaced = /^\/([A-Za-z][A-Za-z0-9-]*)\/(v\d+[A-Za-z0-9-]*)(?:\/|$)/u.exec(
-    path,
-  );
-  if (namespaced) {
+): { namespace: string; version: string; matchPrefix: string } | undefined {
+  const namespaced =
+    /^\/([A-Za-z][A-Za-z0-9-]*)\/([A-Za-z][A-Za-z0-9-]*)(?:\/|$)/u.exec(path);
+  if (namespaced && isVersionSegment(namespaced[2]!)) {
     return {
       namespace: namespaced[1]!,
       version: namespaced[2]!,
+      matchPrefix: `/${namespaced[1]!}/${namespaced[2]!}`,
     };
   }
 
-  const rootVersion = /^\/(v\d+[A-Za-z0-9-]*)(?:\/|$)/u.exec(path);
-  if (rootVersion) {
+  const rootVersion = /^\/([A-Za-z][A-Za-z0-9-]*)(?:\/|$)/u.exec(path);
+  if (rootVersion && isVersionSegment(rootVersion[1]!)) {
     return {
       namespace: "api",
       version: rootVersion[1]!,
+      matchPrefix: `/${rootVersion[1]!}`,
     };
   }
   return undefined;
+}
+
+function isVersionSegment(segment: string): boolean {
+  return (
+    NUMBERED_VERSION_SEGMENTS.test(segment) ||
+    NAMED_VERSION_SEGMENTS.test(segment)
+  );
 }
 
 function matchesSourcePath(
@@ -243,17 +320,37 @@ function matchesTextPattern(value: string, pattern: string): boolean {
   if (!normalized) {
     return false;
   }
+  const normalizedValue = value.replace(/\\/gu, "/");
+  const candidates = [
+    normalizedValue,
+    ...normalizedValue.split(/\s+/u).filter(Boolean),
+  ];
   if (normalized === "*" || normalized === "**") {
     return true;
   }
   if (normalized.includes("*")) {
-    const escaped = normalized
-      .split("*")
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-      .join(".*");
-    return new RegExp(`^${escaped}$`, "iu").test(value);
+    const matcher = wildcardTextPatternToRegExp(normalized);
+    return candidates.some((candidate) => matcher.test(candidate));
   }
-  return value.toLowerCase().includes(normalized.toLowerCase());
+  return normalizedValue.toLowerCase().includes(normalized.toLowerCase());
+}
+
+function wildcardTextPatternToRegExp(pattern: string): RegExp {
+  let source = "";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]!;
+    if (char === "*") {
+      if (pattern[index + 1] === "*") {
+        source += ".*";
+        index += 1;
+      } else {
+        source += "[^/\\s]*";
+      }
+      continue;
+    }
+    source += char.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  }
+  return new RegExp(`^${source}$`, "iu");
 }
 
 function normalizePath(value: string): string {
@@ -265,10 +362,7 @@ function normalizePath(value: string): string {
 }
 
 function isDefaultSource(source: ResolvedVextDocsSource): boolean {
-  return (
-    source.id === DEFAULT_DOCS_SOURCE_ID ||
-    source.match.some((pattern) => pattern === "**" || pattern === "/**")
-  );
+  return source.id === DEFAULT_DOCS_SOURCE_ID;
 }
 
 function toTitle(value: string): string {
@@ -278,6 +372,16 @@ function toTitle(value: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .map((part) => (part.toLowerCase() === "api" ? "API" : part))
     .join(" ");
+}
+
+function formatVersionLabel(version: string): string {
+  if (NUMBERED_VERSION_SEGMENTS.test(version)) {
+    return version;
+  }
+  if (/^rc(?:-?\d+)?$/iu.test(version)) {
+    return version.toUpperCase();
+  }
+  return toTitle(version);
 }
 
 function filterTagsInPlace(document: VextDocsOpenAPIDocument): void {

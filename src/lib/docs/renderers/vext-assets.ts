@@ -1828,6 +1828,9 @@ export const VEXT_DOCS_APP_JS = `
     captureSourceState();
     state.activeSourceId = sourceId;
     applySourceState(sourceId);
+    if (history.replaceState) {
+      history.replaceState(null, "", linkForAnchor(state.anchor));
+    }
     renderSourceSwitcher();
     closeMobileNavigation();
     loadDocsForActiveSource();

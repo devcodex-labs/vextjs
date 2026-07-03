@@ -74,12 +74,33 @@ export default defineRoutes((app) => {
 
 启动项目后，访问以下地址：
 
-| 地址                                 | 说明                                               |
-| ------------------------------------ | -------------------------------------------------- |
+| 地址                                 | 说明                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `http://localhost:3000/docs`         | Vext Docs 文档界面（HTTP API、Pages、services/utils/models/components/plugins/middlewares 文档） |
-| `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                              |
+| `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                                                                            |
 
-默认 Vext Docs UI 会把 HTTP API、Pages、Services、Utils、Models、已发现的 Components、Plugins、Middlewares 作为顶层入口，当前选中的顶层入口可以收缩/展开自己的左侧导航树。HTTP API 与 Pages 会根据 OpenAPI path segment 生成递归导航，保留 `/api/v1/info` 这类稳定资源路径段作为分类，具体接口叶子优先显示 `docs.summary`，未配置 summary 时回退到接口地址，并把 `{id}` 这类动态 path 参数视为参数而不是普通业务目录。响应状态会以横向 tab 展示，内容区不再重复展示状态标题；本地 schema `$ref` 会展开为真实字段，object schema 不再显示人工 `(root)` 行。桌面端左侧侧栏会固定在视口内并独立滚动，可根据可见导航标签自动加宽，也支持手动拖拽并持久化宽度，内置 docs 资产会带版本标记，避免浏览器缓存遮住 renderer 更新。顶部 header 会把搜索、UI 控件、分类筛选与 Authorize 分成清晰行；Overview 工作台会展示统计和 package 启动/build/验证命令。右侧 API/code/model/plugin/middleware 条目会使用独立 item shell 分隔，长页面连续阅读时更容易区分。Pages 由 route handler 中直接调用 `res.render()` 或 `res.renderError()` 自动识别；Services / Utils / Components 从标准 JSDoc 生成，且不会 import 或执行用户代码。Models 会列出可识别的 model 文件，没有 JSDoc 时生成最小条目，有 JSDoc 时作为增强信息；根目录 model 会直接挂在 Models 下，不再出现人工 `root` 分类，嵌套 model 按源码目录分组。默认 UI 会静态读取支持的 model definition 形态，展示 registry key、name、collection、connection、schema fields、enums、options、indexes、methods、hooks 和 usage，同样不会 import 或执行 model 代码。Plugins 与 Middlewares 会从 `src/plugins`、`src/middlewares` 扫描 JSDoc 与可静态推断的生命周期/bootstrap、app extension、middleware 类型、路由调用方式和源码链接。Locales / Config / Styles / Preload 静态源码文档仍是可选高级来源，可以通过 `openapi.docs.code.*` 显式开启，但不属于默认顶层文档入口。本地 loopback 访问文档页时，code docs 条目可展示 `Open source` 链接并跳转到 `vscode://file/...`；非本地访问默认隐藏该链接。路由级 `docs.tags` 已废弃并会被忽略，同时输出 warning；operation tags 会从路由 path/source 自动推断，并收进折叠 Metadata，不再作为主要 badge 铺开。`x-tagGroups` 仅在显式配置 `openapi.tagGroups` 时作为原始 OpenAPI vendor extension 输出；内置文档导航不依赖它。存在 OpenAPI security schemes 时，UI 会展示接口鉴权状态，并提供全局 Authorize 控件供同源 Try it out 合并使用。
+默认 Vext Docs UI 会把 HTTP API、Pages、Services、Utils、Models、已发现的 Components、Plugins、Middlewares 作为顶层入口，当前选中的顶层入口可以收缩/展开自己的左侧导航树。
+
+HTTP API 与 Pages 会：
+
+- 根据 OpenAPI path segment 生成递归导航；
+- 保留 `/api/v1/info` 这类稳定资源路径段作为分类；
+- 具体接口叶子优先显示 `docs.summary`，未配置 summary 时回退到接口地址；
+- 把 `{id}` 这类动态 path 参数视为参数，而不是普通业务目录。
+
+响应状态会以横向 tab 展示，内容区不再重复展示状态标题；本地 schema `$ref` 会展开为真实字段，object schema 不再显示人工 `(root)` 行。桌面端左侧侧栏会固定在视口内并独立滚动，可根据可见导航标签自动加宽，也支持手动拖拽并持久化宽度，内置 docs 资产会带版本标记，避免浏览器缓存遮住 renderer 更新。
+
+顶部 header 会把搜索、UI 控件、分类筛选与 Authorize 分成清晰行；Overview 工作台会展示统计和 package 启动/build/验证命令。右侧 API/code/model/plugin/middleware 条目会使用独立 item shell 分隔，长页面连续阅读时更容易区分。
+
+Pages 由 route handler 中直接调用 `res.render()` 或 `res.renderError()` 自动识别。Services / Utils / Components 从标准 JSDoc 生成，且不会 import 或执行用户代码。Models 会列出可识别的 model 文件，没有 JSDoc 时生成最小条目，有 JSDoc 时作为增强信息；根目录 model 会直接挂在 Models 下，不再出现人工 `root` 分类，嵌套 model 按源码目录分组。
+
+默认 UI 会静态读取支持的 model definition 形态，展示 registry key、name、collection、connection、schema fields、enums、options、indexes、methods、hooks 和 usage，同样不会 import 或执行 model 代码。Plugins 与 Middlewares 会从 `src/plugins`、`src/middlewares` 扫描 JSDoc 与可静态推断的生命周期/bootstrap、app extension、middleware 类型、路由调用方式和源码链接。
+
+Locales / Config / Styles / Preload 静态源码文档仍是可选高级来源，可以通过 `openapi.docs.code.*` 显式开启，但不属于默认顶层文档入口。本地 loopback 访问文档页时，code docs 条目可展示 `Open source` 链接并跳转到 `vscode://file/...`；非本地访问默认隐藏该链接。
+
+路由级 `docs.tags` 已废弃并会被忽略，同时输出 warning；operation tags 会从路由 path/source 自动推断，并收进折叠 Metadata，不再作为主要 badge 铺开。
+
+`x-tagGroups` 仅在显式配置 `openapi.tagGroups` 时作为原始 OpenAPI vendor extension 输出；内置文档导航不依赖它。存在 OpenAPI security schemes 时，UI 会展示接口鉴权状态，并提供全局 Authorize 控件供同源 Try it out 合并使用。
 
 B26 进一步补齐主题与密度控制、Overview 工作台、搜索快捷键、类别过滤、命中高亮、桌面右侧大纲、endpoint/link/response/usage/source path 复制按钮和导航深链。动态 path 参数仍弱化展示，但当中间动态段后面还有稳定子资源时会保留层级，例如 `/docs-nav/{id}/sdfs/sdfaf` 会保留参数节点与后续资源层级。
 
@@ -87,9 +108,100 @@ B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server
 
 B31 进一步优化小屏与大接口量场景。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
 
-B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI paths 中存在 `/api/v1/**`、`/api/v2/**` 这类版本命名空间时，Vext Docs 会自动展示 `All / API v1 / API v2` 切换器。每个 source 会分别读取过滤后的 `/_vext/docs/openapi.json?source=<id>`、`code.json?source=<id>`、`search.json?source=<id>` 数据，因此当前 source 拥有独立的 Overview 统计、导航树、搜索状态、权限过滤后的接口集合和 deep link。非 `All` source 默认只返回 OpenAPI 条目；只有该 source 显式配置 `code.include` / `code.exclude` 时，才会纳入 Code JSDoc 条目，避免全局 Services / Utils / Models 泄漏到单版本 API 文档面。既有单 source 的 `#anchor` 链接继续兼容；多 source 链接使用 `#source=<id>&view=<view>&id=<anchor>`。如果自动版本识别不够，项目可以通过 `openapi.docs.sources` 显式定义文档面，source 级 `access` / `visible` 也会作用于 source 切换器和 source-aware 数据端点。
+B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI paths 中至少存在两个版本 source group，例如 `/api/v1/**`、`/api/v2/**`、`/api/beta/**`、`/v1/**`、`/v2/**`、`/beta/**` 时，Vext Docs 会自动展示有序的 `All / API v1 / API v2 / API Beta` 这类切换器。数字版本会排在 `alpha`、`beta`、`rc` 这类命名发布通道之前。
 
-B32 同时增强 Try it out 的真实项目接入能力。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。项目也可以通过 `openapi.docs.tryItOut.hookScript` 与 `hookGlobal` 配置浏览器端请求 hook；`hookGlobal` 只是浏览器查找名，只有配置了 hook script 或运行时全局对象暴露 `beforeRequest` / `afterResponse` 时才显示 hook 提示。文档页会在 fetch 前后调用这些函数，合并 hook 返回的请求 header/body/URL 变更，并在 Response 标签页展示诊断信息。hook 只运行在浏览器文档页，Vext 不会为此 import 或执行后端项目代码。
+每个 source 会分别读取过滤后的 `/_vext/docs/openapi.json?source=<id>`、`code.json?source=<id>`、`search.json?source=<id>` 数据，因此当前 source 拥有独立的 Overview 统计、导航树、搜索状态、权限过滤后的接口集合和 deep link。
+
+非 `All` source 默认只返回 OpenAPI 条目；只有该 source 显式配置 `code.include` / `code.exclude` 时，才会纳入 Code JSDoc 条目，避免全局 Services / Utils / Models 泄漏到单版本 API 文档面。既有单 source 的 `#anchor` 链接继续兼容；多 source 链接使用 `#source=<id>&view=<view>&id=<anchor>`。
+
+如果自动版本识别不够，项目可以通过 `openapi.docs.sources` 显式定义文档面，`source.access`，包括 `source.access.visible`，也会作用于 source 切换器和 source-aware 数据端点。每个显式 source 仍需要 `match`，因为它定义 OpenAPI 数据作用域；纯 Code JSDoc source 可以使用 `/sdk/**` 这类稳定的非 API namespace，再通过 `code.include` / `code.exclude` 纳入对应代码文档。
+
+B32 同时增强 Try it out 的真实项目接入能力。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。
+
+项目也可以通过 `openapi.docs.tryItOut.hookScript` 与 `hookGlobal` 配置浏览器端请求 hook；`hookGlobal` 只是浏览器查找名，只有配置了 hook script 或运行时全局对象暴露 `beforeRequest` / `afterResponse` 时才显示 hook 提示。
+
+文档页会在 fetch 前后调用这些函数，合并 hook 返回的请求 header/body/URL 变更，并在 Response 标签页展示诊断信息。hook 只运行在浏览器文档页，Vext 不会为此 import 或执行后端项目代码。
+
+### 多文档面配置
+
+当 Public/Admin/Internal、版本或受众边界无法仅通过路径自动推断时，可以使用 `openapi.docs.sources`：
+
+```typescript
+export default {
+  openapi: {
+    docs: {
+      sources: [
+        {
+          id: "public-v1",
+          label: "Public v1",
+          match: ["/api/v1/**"],
+          default: true,
+        },
+        {
+          id: "admin-v1",
+          label: "Admin v1",
+          match: ["/admin/v1/**"],
+          access: "admin",
+        },
+        {
+          id: "internal-v1",
+          label: "Internal v1",
+          match: ["/internal/v1/**"],
+          access: { visible: false },
+        },
+        {
+          id: "sdk",
+          label: "SDK",
+          match: ["/sdk/**"],
+          code: {
+            include: ["services/sdk", "models/*"],
+            exclude: ["*internal*"],
+          },
+        },
+      ],
+    },
+  },
+};
+```
+
+`source.access` 会作为 `kind: "source"` descriptor 传给 `openapi.docs.access.resolver`。`source.access.visible: false` 会在 resolver 执行前隐藏该 source。`source.code.include` / `source.code.exclude` 用于让非 `All` source 纳入 Code JSDoc 条目；不配置时，非 `All` source 只暴露 OpenAPI 条目。Code 过滤会同时匹配条目的 id、title 与 source file，因此 `models/*`、`services/sdk/**` 这类路径风格模式可用于常见源码范围。
+
+### Try it out 请求 Hook
+
+`hookScript` 指向文档页会加载的浏览器脚本。脚本需要暴露 `window[hookGlobal]`，并可实现 `beforeRequest` / `afterResponse`：
+
+```js
+// public/docs-hook.js
+window.VextDocsHooks = {
+  beforeRequest({ request, path, source }) {
+    return {
+      headers: {
+        ...request.headers,
+        "x-docs-source": source && source.id ? source.id : "all",
+        "x-docs-signature": "demo-" + path,
+      },
+    };
+  },
+  afterResponse({ response }) {
+    return {
+      diagnostics: ["status: " + response.status],
+    };
+  },
+};
+```
+
+```typescript
+export default {
+  openapi: {
+    docs: {
+      tryItOut: {
+        hookScript: "/docs-hook.js",
+        hookGlobal: "VextDocsHooks",
+      },
+    },
+  },
+};
+```
 
 如果需要在生成后追加组织级扩展字段，可使用 OpenAPI hook。`OpenAPIGenerator.generate()` 仍保持同步，`openapi:afterGenerate` 也必须同步返回 patch：
 
@@ -128,12 +240,14 @@ export default {
     // OpenAPI JSON 路径
     jsonPath: "/openapi.json",
 
-    // 反向代理公开路径（代理剥离前缀时配置，详见"自定义文档路径"章节）
+    // 代理剥离前缀时，外部工具使用的公开 OpenAPI 规范地址
     // jsonPublicPath: '/admin/openapi.json',
 
     // Vext Docs 配置
     docs: {
       path: "/docs",
+      // 代理剥离前缀时，浏览器可见的 docs 资产/数据前缀
+      // assetsPublicPath: "/admin/_vext/docs",
       ui: {
         title: "My App API",
         defaultView: "overview",
@@ -285,6 +399,8 @@ docs: {
 ```
 /admin/check-role-test/override → Admin
 /api/v1/info                  → API v1
+/api/beta/info                → API Beta
+/v1/info                      → API v1
 /permission/roles/{id}        → Permission
 ```
 
@@ -737,9 +853,9 @@ location /admin/ {
 }
 ```
 
-此时 vext 收到的请求路径已去掉 `/admin`，路由注册无需修改。但 docs 页面中的 spec 公开路径如果仍是 `/openapi.json`，浏览器会请求 `https://example.com/openapi.json`，**丢失了 `/admin` 前缀**，导致 404。
+此时 vext 收到的请求路径已去掉 `/admin`，路由注册无需修改。内置 docs 页面会从 `/_vext/docs/*.json` 读取 source-aware 数据，所以这些浏览器可见的资产和数据地址也需要带上公开的 `/admin` 前缀。`jsonPublicPath` 仍可作为外部工具和元数据使用的 OpenAPI 公开规范地址，但它不是内置 source-aware docs UI 的主要数据端点。
 
-需要通过 `jsonPublicPath` 告诉文档页使用带前缀的公开地址：
+需要通过 `docs.assetsPublicPath` 配置浏览器可见的 docs 资产/数据前缀，同时保留 `docs.assetsPath` 作为 vext 内部注册路径：
 
 ```typescript
 // config/production.ts
@@ -748,11 +864,15 @@ export default {
     enabled: true,
     // vext 内部路由保持默认
     jsonPath: "/openapi.json",
+    // 外部工具和链接使用的公开 OpenAPI 规范地址
+    jsonPublicPath: "/admin/openapi.json",
     docs: {
       path: "/docs",
+      // 代理剥离 /admin 后 vext 实际收到的内部路径
+      assetsPath: "/_vext/docs",
+      // 浏览器看到的公开路径
+      assetsPublicPath: "/admin/_vext/docs",
     },
-    // 告诉 Vext Docs 用带前缀的完整路径获取 spec
-    jsonPublicPath: "/admin/openapi.json",
   },
 };
 ```
@@ -762,8 +882,10 @@ export default {
 ```
 浏览器 GET /admin/docs
   → Nginx 剥离 /admin → vext GET /docs → 返回 Vext Docs HTML
-  → Vext Docs 读取 specPublicPath，fetch /admin/openapi.json
-  → Nginx 剥离 /admin → vext GET /openapi.json → 返回 spec ✅
+  → 浏览器 fetch /admin/_vext/docs/config.json
+  → Nginx 剥离 /admin → vext GET /_vext/docs/config.json ✅
+  → 浏览器 fetch /admin/_vext/docs/openapi.json?source=all
+  → Nginx 剥离 /admin → vext GET /_vext/docs/openapi.json?source=all ✅
 ```
 
 #### 情况二：代理透传前缀（`proxy_pass` 末尾不带 `/`）
@@ -775,7 +897,7 @@ location /admin/ {
 }
 ```
 
-此时 vext 收到的请求路径仍带 `/admin`，需要同步配置端点路径，无需配置 `jsonPublicPath`：
+此时 vext 收到的请求路径仍带 `/admin`，需要同步配置端点路径。浏览器公开路径与 vext 内部路径一致，所以无需配置 `assetsPublicPath` 或 `jsonPublicPath`：
 
 ```typescript
 // config/production.ts
@@ -785,6 +907,7 @@ export default {
     jsonPath: "/admin/openapi.json",
     docs: {
       path: "/admin/docs",
+      assetsPath: "/admin/_vext/docs",
     },
   },
 };
@@ -792,12 +915,14 @@ export default {
 
 #### 两种情况对比
 
-|                    | 代理剥离前缀                           | 代理透传前缀                          |
-| ------------------ | -------------------------------------- | ------------------------------------- |
-| Nginx `proxy_pass` | `http://127.0.0.1:3000/`（末尾有 `/`） | `http://127.0.0.1:3000`（末尾无 `/`） |
-| `jsonPath`         | `/openapi.json`（默认）                | `/admin/openapi.json`                 |
-| `docs.path`        | `/docs`（默认）                        | `/admin/docs`                         |
-| `jsonPublicPath`   | `/admin/openapi.json`（**必须配置**）  | 无需配置                              |
+|                         | 代理剥离前缀                                    | 代理透传前缀                          |
+| ----------------------- | ----------------------------------------------- | ------------------------------------- |
+| Nginx `proxy_pass`      | `http://127.0.0.1:3000/`（末尾有 `/`）          | `http://127.0.0.1:3000`（末尾无 `/`） |
+| `jsonPath`              | `/openapi.json`（默认）                         | `/admin/openapi.json`                 |
+| `docs.path`             | `/docs`（默认）                                 | `/admin/docs`                         |
+| `docs.assetsPath`       | `/_vext/docs`（默认）                           | `/admin/_vext/docs`                   |
+| `docs.assetsPublicPath` | `/admin/_vext/docs`（**必须配置**）             | 无需配置                              |
+| `jsonPublicPath`        | `/admin/openapi.json`（推荐用于公开 spec 链接） | 无需配置                              |
 
 ### `servers` — 文档交互地址
 
@@ -1325,11 +1450,11 @@ export default {
 
 ### 效果对比
 
-|                     默认 Vext Docs                      |                     显式 x-tagGroups                      |
-| :------------------------------------------------------: | :--------------------------------------------------------: |
-|                 侧栏按 OpenAPI path segment 导航          |       OpenAPI 文档包含显式 vendor extension 元数据        |
-|                 `/api/v1/info` 保留为资源分类             | **Public API** ▸ API v1 / **Integration** ▸ Webhooks |
-|                     tags 作为接口元数据                   |       仅适合下游 OpenAPI 工具明确消费 `x-tagGroups`       |
+|          默认 Vext Docs          |                   显式 x-tagGroups                   |
+| :------------------------------: | :--------------------------------------------------: |
+| 侧栏按 OpenAPI path segment 导航 |     OpenAPI 文档包含显式 vendor extension 元数据     |
+|  `/api/v1/info` 保留为资源分类   | **Public API** ▸ API v1 / **Integration** ▸ Webhooks |
+|       tags 作为接口元数据        |    仅适合下游 OpenAPI 工具明确消费 `x-tagGroups`     |
 
 ### 与热重载的兼容性
 

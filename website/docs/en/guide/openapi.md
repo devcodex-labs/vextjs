@@ -74,12 +74,41 @@ export default defineRoutes((app) => {
 
 After starting the project, visit the following address:
 
-| Address | Description |
-| -------------------------------------------------- | -------------------------------------------------- |
-| `http://localhost:3000/docs` | Vext Docs interface (HTTP API, Pages, and services/utils/models/components/plugins/middlewares docs) |
-| `http://localhost:3000/openapi.json` | OpenAPI JSON specification file |
+| Address                              | Description                                                                                          |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `http://localhost:3000/docs`         | Vext Docs interface (HTTP API, Pages, and services/utils/models/components/plugins/middlewares docs) |
+| `http://localhost:3000/openapi.json` | OpenAPI JSON specification file                                                                      |
 
-The default Vext Docs UI keeps HTTP API, Pages, Services, Utils, Models, discovered Components, Plugins, and Middlewares as top-level sections. Active top-level sections can collapse and expand their current navigation tree. HTTP API and Pages use recursive navigation generated from OpenAPI path segments, keep stable resource segments such as `/api/v1/info` as categories, use each operation `summary` as the concrete leaf label with endpoint fallback, and weaken dynamic path parameters such as `{id}` instead of treating them as normal business categories. Response status codes are shown as horizontal tabs without repeated panel headings, local schema `$ref` values are expanded into real fields, and object schemas do not show artificial root rows. The desktop sidebar stays sticky while the content scrolls, can auto-size to visible navigation labels, supports persisted manual resizing, and built-in docs assets are version-tagged so browser cache does not hide renderer updates. The header separates search, UI controls, filters, and Authorize into clear rows, while the Overview workspace shows counts plus package startup/build/verification commands. Right-side API/code/model/plugin/middleware entries use a separated item shell so long pages remain scannable. Pages are detected from route handlers that call `res.render()` or `res.renderError()`, while Services / Utils / Components are generated from standard JSDoc without importing user code. Models are listed from recognizable model files even when no JSDoc is present; root-level models are shown directly under Models instead of under an artificial `root` group, and nested model files are grouped by source directory. The renderer statically reads supported model definition shapes to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code. Plugins and middlewares are scanned from `src/plugins` and `src/middlewares` to show JSDoc, lifecycle/bootstrap metadata, app extensions, middleware type, route usage, and source links when they can be inferred from source text. Locales, Config, Styles, and Preload static source docs are optional advanced sources that can be enabled explicitly through `openapi.docs.code.*`; they are not part of the default top-level documentation surface. On local loopback docs pages, code docs entries can include an `Open source` link that redirects to `vscode://file/...`; the link is hidden for non-local access. Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source and are tucked into collapsed Metadata instead of being shown as primary badges. `x-tagGroups` is emitted only when `openapi.tagGroups` is explicitly configured as a raw OpenAPI vendor extension; the built-in docs navigation does not depend on it. When OpenAPI security schemes are present, the UI shows operation security badges and a global Authorize control that is merged into same-origin Try it out requests.
+The default Vext Docs UI keeps HTTP API, Pages, Services, Utils, Models, discovered Components, Plugins, and Middlewares as top-level sections. Active top-level sections can collapse and expand their current navigation tree.
+
+The HTTP API and Pages sections:
+
+- use recursive navigation generated from OpenAPI path segments;
+- keep stable resource segments such as `/api/v1/info` as categories;
+- use each operation `summary` as the concrete leaf label with endpoint fallback;
+- weaken dynamic path parameters such as `{id}` instead of treating them as normal business categories.
+
+The operation view shows response status codes as horizontal tabs without repeated panel headings, expands local schema `$ref` values into real fields, and avoids artificial root rows for object schemas.
+
+The desktop sidebar stays sticky while the content scrolls, can auto-size to visible navigation labels, supports persisted manual resizing, and built-in docs assets are version-tagged so browser cache does not hide renderer updates.
+
+The header separates search, UI controls, filters, and Authorize into clear rows, while the Overview workspace shows counts plus package startup/build/verification commands. Right-side API/code/model/plugin/middleware entries use a separated item shell so long pages remain scannable.
+
+Pages are detected from route handlers that call `res.render()` or `res.renderError()`. Services / Utils / Components are generated from standard JSDoc without importing user code.
+
+Models are listed from recognizable model files even when no JSDoc is present; root-level models are shown directly under Models instead of under an artificial `root` group, and nested model files are grouped by source directory.
+
+The renderer statically reads supported model definition shapes to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code.
+
+Plugins and middlewares are scanned from `src/plugins` and `src/middlewares` to show JSDoc, lifecycle/bootstrap metadata, app extensions, middleware type, route usage, and source links when they can be inferred from source text.
+
+Locales, Config, Styles, and Preload static source docs are optional advanced sources that can be enabled explicitly through `openapi.docs.code.*`; they are not part of the default top-level documentation surface.
+
+On local loopback docs pages, code docs entries can include an `Open source` link that redirects to `vscode://file/...`; the link is hidden for non-local access.
+
+Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source and are tucked into collapsed Metadata instead of being shown as primary badges.
+
+`x-tagGroups` is emitted only when `openapi.tagGroups` is explicitly configured as a raw OpenAPI vendor extension; the built-in docs navigation does not depend on it. When OpenAPI security schemes are present, the UI shows operation security badges and a global Authorize control that is merged into same-origin Try it out requests.
 
 B26 adds built-in theme and density controls, a more useful Overview workspace, keyboard search shortcuts, category search filters, highlighted matches, desktop page outline, copy buttons for endpoints, links, responses, usage snippets, and source paths, plus deep links for navigation leaves. Middle dynamic path parameters remain visually weak but are preserved when they lead to stable child resources, so paths such as `/docs-nav/{id}/sdfs/sdfaf` keep their resource hierarchy.
 
@@ -87,9 +116,100 @@ B27 upgrades Try it out into a lightweight request console. Each operation can s
 
 B31 improves the default docs page on small screens and large API surfaces. Mobile uses an off-canvas navigation drawer with synchronized search and category filters, generated field tables switch to labeled row cards under narrow breakpoints, Try it out internals are created only when an operation console is opened, and long HTTP API lists render incrementally with a Load more control while preserving deep-link targets.
 
-B32 adds source-aware documentation surfaces for multi-version projects. If the generated OpenAPI paths contain versioned namespaces such as `/api/v1/**` and `/api/v2/**`, Vext Docs automatically exposes an `All / API v1 / API v2` selector. Each source fetches filtered `/_vext/docs/openapi.json?source=<id>`, `code.json?source=<id>`, and `search.json?source=<id>` data, so the current source has its own Overview counts, navigation tree, search state, access-filtered operations, and deep links. Non-`All` sources return only OpenAPI entries by default; Code JSDoc items appear for a source only when that source explicitly configures `code.include` / `code.exclude`. Existing single-source `#anchor` links remain valid; multi-source links use `#source=<id>&view=<view>&id=<anchor>`. Projects can define custom source surfaces with `openapi.docs.sources` when automatic version detection is not enough, and source-level `access` / `visible` settings are applied to the source selector and source-aware endpoints.
+B32 adds source-aware documentation surfaces for multi-version projects. If the generated OpenAPI paths contain at least two versioned source groups such as `/api/v1/**`, `/api/v2/**`, `/api/beta/**`, `/v1/**`, `/v2/**`, or `/beta/**`, Vext Docs automatically exposes an ordered `All / API v1 / API v2 / API Beta` style selector. Numbered versions are listed before named release channels such as `alpha`, `beta`, or `rc`.
 
-B32 also extends Try it out for real project environments. OpenAPI `servers[].variables` are rendered as controls beside the server selector and are resolved into the URL preview, Copy URL, samples, history, and Send request. Projects can optionally configure a browser-side request hook with `openapi.docs.tryItOut.hookScript` and `hookGlobal`; `hookGlobal` is only the lookup name, so hook notes are shown only when a hook script is configured or the runtime global exposes `beforeRequest` / `afterResponse`. The docs page calls those hook functions around fetch, merges returned request headers/body/URL changes, and shows diagnostics in the Response tab. Hooks run only in the browser documentation page and Vext does not import or execute backend project code for them.
+Each source fetches filtered `/_vext/docs/openapi.json?source=<id>`, `code.json?source=<id>`, and `search.json?source=<id>` data, so the current source has its own Overview counts, navigation tree, search state, access-filtered operations, and deep links.
+
+Non-`All` sources return only OpenAPI entries by default; Code JSDoc items appear for a source only when that source explicitly configures `code.include` / `code.exclude`. Existing single-source `#anchor` links remain valid; multi-source links use `#source=<id>&view=<view>&id=<anchor>`.
+
+Projects can define custom source surfaces with `openapi.docs.sources` when automatic version detection is not enough. `source.access`, including `source.access.visible`, is applied to the source selector and source-aware endpoints. Every explicit source still needs a `match` pattern because it scopes OpenAPI data. For a code-only source, use a stable non-API namespace such as `/sdk/**` and opt into Code JSDoc with `code.include` / `code.exclude`.
+
+B32 also extends Try it out for real project environments. OpenAPI `servers[].variables` are rendered as controls beside the server selector and are resolved into the URL preview, Copy URL, samples, history, and Send request.
+
+Projects can optionally configure a browser-side request hook with `openapi.docs.tryItOut.hookScript` and `hookGlobal`. `hookGlobal` is only the lookup name, so hook notes are shown only when a hook script is configured or the runtime global exposes `beforeRequest` / `afterResponse`.
+
+The docs page calls those hook functions around fetch, merges returned request headers/body/URL changes, and shows diagnostics in the Response tab. Hooks run only in the browser documentation page and Vext does not import or execute backend project code for them.
+
+### Multi-source configuration
+
+Use `openapi.docs.sources` when Public/Admin/Internal, version, or audience boundaries cannot be inferred from the path alone:
+
+```typescript
+export default {
+  openapi: {
+    docs: {
+      sources: [
+        {
+          id: "public-v1",
+          label: "Public v1",
+          match: ["/api/v1/**"],
+          default: true,
+        },
+        {
+          id: "admin-v1",
+          label: "Admin v1",
+          match: ["/admin/v1/**"],
+          access: "admin",
+        },
+        {
+          id: "internal-v1",
+          label: "Internal v1",
+          match: ["/internal/v1/**"],
+          access: { visible: false },
+        },
+        {
+          id: "sdk",
+          label: "SDK",
+          match: ["/sdk/**"],
+          code: {
+            include: ["services/sdk", "models/*"],
+            exclude: ["*internal*"],
+          },
+        },
+      ],
+    },
+  },
+};
+```
+
+`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items; without them, non-`All` sources only expose OpenAPI entries. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
+
+### Try it out request hook
+
+`hookScript` points to a browser script loaded by the docs page. The script should expose `window[hookGlobal]` and may implement `beforeRequest` / `afterResponse`:
+
+```js
+// public/docs-hook.js
+window.VextDocsHooks = {
+  beforeRequest({ request, path, source }) {
+    return {
+      headers: {
+        ...request.headers,
+        "x-docs-source": source && source.id ? source.id : "all",
+        "x-docs-signature": "demo-" + path,
+      },
+    };
+  },
+  afterResponse({ response }) {
+    return {
+      diagnostics: ["status: " + response.status],
+    };
+  },
+};
+```
+
+```typescript
+export default {
+  openapi: {
+    docs: {
+      tryItOut: {
+        hookScript: "/docs-hook.js",
+        hookGlobal: "VextDocsHooks",
+      },
+    },
+  },
+};
+```
 
 If you need to append organization-level extension fields after generation, you can use OpenAPI hooks. `OpenAPIGenerator.generate()` remains synchronized, and `openapi:afterGenerate` must also return patches synchronously:
 
@@ -128,12 +248,14 @@ export default {
     //OpenAPI JSON path
     jsonPath: "/openapi.json",
 
-    // Reverse proxy public path (configured when the proxy strips the prefix, see the "Customized Document Path" chapter for details)
+    // Public canonical spec path for external tools when the proxy strips a prefix
     // jsonPublicPath: '/admin/openapi.json',
 
     // Vext Docs configuration
     docs: {
       path: "/docs",
+      // Browser-facing docs assets/data prefix when the proxy strips a prefix
+      // assetsPublicPath: "/admin/_vext/docs",
       ui: {
         title: "My App API",
         defaultView: "overview",
@@ -173,7 +295,7 @@ export default {
         in: "header",
         name: "X-API-Key",
       },
-    },//Middleware name → security scheme mapping
+    }, //Middleware name → security scheme mapping
     guardSecurityMap: {
       auth: "bearerAuth",
       "api-key": "apiKeyAuth",
@@ -283,6 +405,8 @@ Route-level `docs.tags` is deprecated and ignored. Vext now infers one operation
 ```
 /admin/check-role-test/override → Admin
 /api/v1/info                  → API v1
+/api/beta/info                → API Beta
+/v1/info                      → API v1
 /permission/roles/{id}        → Permission
 ```
 
@@ -519,12 +643,12 @@ app.get(
 
 Automatically generated OpenAPI parameters:
 
-| Parameters | Position | Type | Constraints |
-| --------- | ----- | ------- | ------------------------------------------ |
-| `page` | query | integer | minimum: 1 |
-| `limit` | query | integer | minimum: 1, maximum: 100 |
-| `status` | query | string | enum: ["active", "inactive", "banned"] |
-| `keyword` | query | string | — |
+| Parameters | Position | Type    | Constraints                            |
+| ---------- | -------- | ------- | -------------------------------------- |
+| `page`     | query    | integer | minimum: 1                             |
+| `limit`    | query    | integer | minimum: 1, maximum: 100               |
+| `status`   | query    | string  | enum: ["active", "inactive", "banned"] |
+| `keyword`  | query    | string  | —                                      |
 
 Rules for `validate.body` are automatically mapped to `requestBody` (JSON schema):
 
@@ -574,7 +698,9 @@ app.post(
             code: "string:1-64!".description("target language code"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description("output format"),
+        format: "enum:plain_text,preserve_line_breaks".description(
+          "output format",
+        ),
       },
     },
   },
@@ -728,18 +854,16 @@ When an application is deployed on a reverse proxy, it needs to be handled in tw
 
 #### Case 1: Proxy stripping prefix (`proxy_pass` with `/` at the end)
 
-```
-
-nginx
+```nginx
 # Nginx: /admin/* → vext (strip /admin prefix)
 location /admin/ {
     proxy_pass http://127.0.0.1:3000/;
 }
 ```
 
-At this time, the request path received by vext has removed `/admin`, and route registration does not need to change. But if the docs page still exposes `/openapi.json` as the public spec URL, the browser will request `https://example.com/openapi.json`, **losing the `/admin` prefix**, resulting in 404.
+At this time, the request path received by vext has removed `/admin`, and route registration does not need to change. The built-in docs page fetches source-aware data from `/_vext/docs/*.json`, so those browser-facing asset/data URLs also need the public `/admin` prefix. `jsonPublicPath` is still useful as the public canonical OpenAPI URL for external tools and metadata, but it is not the primary data endpoint used by the built-in source-aware docs UI.
 
-Use `jsonPublicPath` to tell the docs page to fetch the prefixed public address:
+Use `docs.assetsPublicPath` for browser-facing docs assets/data, while keeping `docs.assetsPath` as the internal route prefix registered by vext:
 
 ```typescript
 // config/production.ts
@@ -748,11 +872,15 @@ export default {
     enabled: true,
     // vext internal routing remains default
     jsonPath: "/openapi.json",
+    // Public canonical spec URL for links and external tools
+    jsonPublicPath: "/admin/openapi.json",
     docs: {
       path: "/docs",
+      // Internal route prefix received after the proxy strips /admin
+      assetsPath: "/_vext/docs",
+      // Browser-facing prefix before the proxy strips /admin
+      assetsPublicPath: "/admin/_vext/docs",
     },
-    // Tell Vext Docs to get the spec with the prefixed full path
-    jsonPublicPath: "/admin/openapi.json",
   },
 };
 ```
@@ -762,22 +890,22 @@ Request link:
 ```
 Browser GET /admin/docs
   → Nginx strip /admin → vext GET /docs → return Vext Docs HTML
-  → Vext Docs reads specPublicPath, fetch /admin/openapi.json
-  → Nginx strip /admin → vext GET /openapi.json → return spec ✅
+  → Browser fetch /admin/_vext/docs/config.json
+  → Nginx strip /admin → vext GET /_vext/docs/config.json ✅
+  → Browser fetch /admin/_vext/docs/openapi.json?source=all
+  → Nginx strip /admin → vext GET /_vext/docs/openapi.json?source=all ✅
 ```
 
 #### Scenario 2: Proxy transparent transmission prefix (`proxy_pass` does not have `/` at the end)
 
-```
-
-nginx
+```nginx
 # Nginx:/admin/* → vext (retain /admin prefix transparent transmission)
 location /admin/ {
     proxy_pass http://127.0.0.1:3000;
 }
 ```
 
-At this time, the request path received by vext still contains `/admin`, and the endpoint path needs to be configured synchronously. There is no need to configure `jsonPublicPath`:
+At this time, the request path received by vext still contains `/admin`, and the endpoint paths need to be configured synchronously. There is no need to configure `assetsPublicPath` or `jsonPublicPath` because the browser-facing and internal paths are the same:
 
 ```typescript
 // config/production.ts
@@ -787,6 +915,7 @@ export default {
     jsonPath: "/admin/openapi.json",
     docs: {
       path: "/admin/docs",
+      assetsPath: "/admin/_vext/docs",
     },
   },
 };
@@ -794,12 +923,14 @@ export default {
 
 #### Comparison of two situations
 
-| | Proxy stripping prefix | Proxy transparent transmission prefix |
-| ------------------ | ----------------------------------------------- | ---------------------------------- |
-| Nginx `proxy_pass` | `http://127.0.0.1:3000/` (with `/` at the end) | `http://127.0.0.1:3000` (without `/` at the end) |
-| `jsonPath` | `/openapi.json` (default) | `/admin/openapi.json` |
-| `docs.path` | `/docs` (default) | `/admin/docs` |
-| `jsonPublicPath` | `/admin/openapi.json` (**must be configured**) | No configuration required |
+|                         | Proxy stripping prefix                                    | Proxy transparent transmission prefix            |
+| ----------------------- | --------------------------------------------------------- | ------------------------------------------------ |
+| Nginx `proxy_pass`      | `http://127.0.0.1:3000/` (with `/` at the end)            | `http://127.0.0.1:3000` (without `/` at the end) |
+| `jsonPath`              | `/openapi.json` (default)                                 | `/admin/openapi.json`                            |
+| `docs.path`             | `/docs` (default)                                         | `/admin/docs`                                    |
+| `docs.assetsPath`       | `/_vext/docs` (default)                                   | `/admin/_vext/docs`                              |
+| `docs.assetsPublicPath` | `/admin/_vext/docs` (**must be configured**)              | No configuration required                        |
+| `jsonPublicPath`        | `/admin/openapi.json` (recommended for public spec links) | No configuration required                        |
 
 ### `servers` — document interaction address
 
@@ -823,8 +954,14 @@ export default {
   openapi: {
     enabled: true,
     servers: [
-      { url: "https://sit-api.example.com/admin", description: "SIT environment" },
-      { url: "https://api.example.com/admin", description: "Production environment" },
+      {
+        url: "https://sit-api.example.com/admin",
+        description: "SIT environment",
+      },
+      {
+        url: "https://api.example.com/admin",
+        description: "Production environment",
+      },
     ],
   },
 };
@@ -983,15 +1120,15 @@ src/routes/
 
 ### Path mapping comparison
 
-| File path | URL prefix | Description |
-| ------------------------------------ | -------------------------------- | -------------------------------- |
-| `routes/index.ts` | `/` | Root route (health check) |
-| `routes/api/v1/index.ts` | `/api/v1` | API version entry |
-| `routes/api/v1/users.ts` | `/api/v1/users` | User public interface |
+| File path                            | URL prefix                 | Description                             |
+| ------------------------------------ | -------------------------- | --------------------------------------- |
+| `routes/index.ts`                    | `/`                        | Root route (health check)               |
+| `routes/api/v1/index.ts`             | `/api/v1`                  | API version entry                       |
+| `routes/api/v1/users.ts`             | `/api/v1/users`            | User public interface                   |
 | `routes/api/v1/users/[id]/orders.ts` | `/api/v1/users/:id/orders` | User orders (dynamic parameter nesting) |
-| `routes/api/v1/admin/dashboard.ts` | `/api/v1/admin/dashboard` | Management backend dashboard |
-| `routes/api/v1/admin/users.ts` | `/api/v1/admin/users` | Management background user management |
-| `routes/webhooks/stripe.ts` | `/webhooks/stripe` | Stripe callbacks |
+| `routes/api/v1/admin/dashboard.ts`   | `/api/v1/admin/dashboard`  | Management backend dashboard            |
+| `routes/api/v1/admin/users.ts`       | `/api/v1/admin/users`      | Management background user management   |
+| `routes/webhooks/stripe.ts`          | `/webhooks/stripe`         | Stripe callbacks                        |
 
 ### Global tags description
 
@@ -1084,7 +1221,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user order list",
-        description: "Get all orders of the specified user, support filtering by status.",
+        description:
+          "Get all orders of the specified user, support filtering by status.",
         responses: {
           200: { description: "Order List" },
           404: { description: "User does not exist" },
@@ -1164,7 +1302,8 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/api/v1/admin/users.ts
-import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
+import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
   // GET /api/v1/admin/users → Administrator views all users
   app.get(
     "/",
@@ -1182,7 +1321,8 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       },
       docs: {
         summary: "Administrator views user list",
-        description: "Exclusively for administrators, supports filtering by user status and returns complete user information.",
+        description:
+          "Exclusively for administrators, supports filtering by user status and returns complete user information.",
       },
     },
     async (req, res) => {
@@ -1238,7 +1378,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Stripe Webhook callback",
-        description: "Receive notification of Stripe payment events. Requires signature verification.",
+        description:
+          "Receive notification of Stripe payment events. Requires signature verification.",
         responses: {
           200: { description: "Processed successfully" },
           400: { description: "Signature verification failed" },
@@ -1258,16 +1399,16 @@ export default defineRoutes((app) => {
 
 The above directory structure finally automatically generates the following OpenAPI paths. The default Vext Docs sidebar follows the path segments; tags remain operation metadata:
 
-| OpenAPI Path | Method | Tag | Source File |
-| --------------------------------------- | ----- | ----------- | --------------------------------------- |
-| `/api/v1/users` | GET | v1/users | `api/v1/users.ts` |
-| `/api/v1/users/{id}` | GET | v1/users | `api/v1/users.ts` |
-| `/api/v1/users/{id}/orders` | GET | v1/userorders | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/users/{id}/orders/{orderId}` | GET | v1/userorders | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/admin/dashboard/stats` | GET | v1/admin backend | `api/v1/admin/dashboard.ts` |
-| `/api/v1/admin/users` | GET | v1/admin backend | `api/v1/admin/users.ts` |
-| `/api/v1/admin/users/{id}/ban` | PATCH | v1/admin backend | `api/v1/admin/users.ts` |
-| `/webhooks/stripe` | POST | Webhook | `webhooks/stripe.ts` |
+| OpenAPI Path                          | Method | Tag              | Source File                   |
+| ------------------------------------- | ------ | ---------------- | ----------------------------- |
+| `/api/v1/users`                       | GET    | v1/users         | `api/v1/users.ts`             |
+| `/api/v1/users/{id}`                  | GET    | v1/users         | `api/v1/users.ts`             |
+| `/api/v1/users/{id}/orders`           | GET    | v1/userorders    | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/users/{id}/orders/{orderId}` | GET    | v1/userorders    | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/admin/dashboard/stats`       | GET    | v1/admin backend | `api/v1/admin/dashboard.ts`   |
+| `/api/v1/admin/users`                 | GET    | v1/admin backend | `api/v1/admin/users.ts`       |
+| `/api/v1/admin/users/{id}/ban`        | PATCH  | v1/admin backend | `api/v1/admin/users.ts`       |
+| `/webhooks/stripe`                    | POST   | Webhook          | `webhooks/stripe.ts`          |
 
 :::tip Best practices for multi-level directories
 
@@ -1325,11 +1466,11 @@ export default {
 
 ### Effect comparison
 
-| Default Vext Docs | Explicit x-tagGroups |
-| :----------------------------------------------------------------: | :----------------------------------------------------------------: |
-| Sidebar follows OpenAPI path segments | OpenAPI document includes explicit vendor extension metadata |
-| `/api/v1/info` stays a resource category | **Public API** ▸ API v1 / **Integration** ▸ Webhooks |
-| Tags remain operation metadata | Suitable only when a downstream OpenAPI tool explicitly consumes `x-tagGroups` |
+|            Default Vext Docs             |                              Explicit x-tagGroups                              |
+| :--------------------------------------: | :----------------------------------------------------------------------------: |
+|  Sidebar follows OpenAPI path segments   |          OpenAPI document includes explicit vendor extension metadata          |
+| `/api/v1/info` stays a resource category |              **Public API** ▸ API v1 / **Integration** ▸ Webhooks              |
+|      Tags remain operation metadata      | Suitable only when a downstream OpenAPI tool explicitly consumes `x-tagGroups` |
 
 ### Compatibility with hot reload
 
@@ -1347,7 +1488,8 @@ No need to restart the dev server, refresh the document page to see the updated 
 
 ```typescript
 // src/routes/orders.ts
-import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
+import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
   // Get order list
   app.get(
     "/",
@@ -1364,7 +1506,8 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Get order list",
-        description: "Get the current user's order list in pages, supporting filtering by status and date range.",
+        description:
+          "Get the current user's order list in pages, supporting filtering by status and date range.",
         responses: {
           200: {
             description: "Order List",

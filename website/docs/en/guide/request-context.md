@@ -46,7 +46,10 @@ export class OrderService {
     const store = requestContext.getStore();
     const requestId = store?.requestId;
 
-    this.app.logger.info({ requestId, orderId: data.id }, "Start creating order");
+    this.app.logger.info(
+      { requestId, orderId: data.id },
+      "Start creating order",
+    );
 
     // ... business logic
   }
@@ -116,13 +119,13 @@ interface RequestContextStore {
 }
 ```
 
-| Field | Writing time | Writer | Purpose |
-| ------------------- | ---------- | ------------------- | ------------------------------------------------------------------- |
-| `requestId` | When the request comes in | requestId middleware | Log tracking, outbound request propagation |
-| `locale` | When request comes in | i18n middleware | Error message internationalization |
-| `propagatedHeaders` | When a request comes in | requestId middleware | Distributed tracing headers, multi-tenant headers, etc. are automatically transparently transmitted to the downstream |
-| `traceId` | When the request comes in | User tracing middleware | The logger built-in mixin automatically reads and injects `trace_id` into the log (OTEL semantic convention) |
-| `spanId` | When the request comes in | User tracing middleware | The logger built-in mixin automatically reads and injects `span_id` into the log (OTEL semantic convention) |
+| Field               | Writing time              | Writer                  | Purpose                                                                                                               |
+| ------------------- | ------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `requestId`         | When the request comes in | requestId middleware    | Log tracking, outbound request propagation                                                                            |
+| `locale`            | When request comes in     | i18n middleware         | Error message internationalization                                                                                    |
+| `propagatedHeaders` | When a request comes in   | requestId middleware    | Distributed tracing headers, multi-tenant headers, etc. are automatically transparently transmitted to the downstream |
+| `traceId`           | When the request comes in | User tracing middleware | The logger built-in mixin automatically reads and injects `trace_id` into the log (OTEL semantic convention)          |
+| `spanId`            | When the request comes in | User tracing middleware | The logger built-in mixin automatically reads and injects `span_id` into the log (OTEL semantic convention)           |
 
 ## Advanced usage
 
@@ -135,7 +138,8 @@ import { defineMiddleware } from "vextjs";
 import { requestContext } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const store = requestContext.getStore();if (store) {
+  const store = requestContext.getStore();
+  if (store) {
     //Extract user information from JWT token and write it into context
     const token = req.headers.authorization?.replace("Bearer ", "");
     if (token) {
@@ -293,7 +297,8 @@ export default defineMiddleware(async (req, res, next) => {
   // Calculate the time taken after the request is completed
   const startTime = (store as any)?.startTime;
   if (startTime) {
-    const duration = Math.round(performance.now() - startTime);//Slow request alert
+    const duration = Math.round(performance.now() - startTime);
+    // Slow request alert
     if (duration > 1000) {
       req.app.logger.warn(
         {
@@ -370,12 +375,12 @@ async function scheduledTask(app: any) {
 
 ## Relationship with the built-in functions of the framework
 
-| Function | Fields read | Description |
-| -------------- | ----------- | ------------------------------------------ |
-| `app.logger` | `requestId` | Automatically injected into each log through logger mixin |
-| `app.fetch` | `requestId` | Automatically injected into the `x-request-id` header of outbound requests |
-| `app.throw()` | `locale` | I18nError translate error message according to locale |
-| Access log middleware | `requestId` | Record the requestId of inbound requests |
+| Function              | Fields read | Description                                                                |
+| --------------------- | ----------- | -------------------------------------------------------------------------- |
+| `app.logger`          | `requestId` | Automatically injected into each log through logger mixin                  |
+| `app.fetch`           | `requestId` | Automatically injected into the `x-request-id` header of outbound requests |
+| `app.throw()`         | `locale`    | I18nError translate error message according to locale                      |
+| Access log middleware | `requestId` | Record the requestId of inbound requests                                   |
 
 ## requestContext API
 

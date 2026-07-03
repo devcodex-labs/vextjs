@@ -632,6 +632,7 @@ describe("validateConfig", () => {
             docs: {
               path: "/admin/docs",
               assetsPath: "/_vext/docs",
+              assetsPublicPath: "/admin/_vext/docs",
               renderer: "vext",
               ui: {
                 title: "Admin API",
@@ -673,6 +674,28 @@ describe("validateConfig", () => {
                 resolver: () => true,
                 cacheKey: "admin",
               },
+              tryItOut: {
+                hookScript: "/docs-hook.js",
+                hookGlobal: "VextDocsHooks",
+              },
+              sources: [
+                {
+                  id: "public-v1",
+                  label: "Public v1",
+                  match: ["/api/v1/**"],
+                  access: {
+                    roles: ["developer"],
+                    permissions: ["docs:read"],
+                    visible: true,
+                    tryItOut: false,
+                    group: "public",
+                  },
+                  code: {
+                    include: ["services/public/**"],
+                    exclude: ["**/*.internal.ts"],
+                  },
+                },
+              ],
             },
           },
         }),
@@ -689,6 +712,21 @@ describe("validateConfig", () => {
       expect(() =>
         _validateConfig({ openapi: { docs: { path: "docs" } } }),
       ).toThrow("config.openapi.docs.path");
+      expect(() =>
+        _validateConfig({
+          openapi: { docs: { assetsPublicPath: "admin/_vext/docs" } },
+        }),
+      ).toThrow("config.openapi.docs.assetsPublicPath");
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: {
+              path: "/docs",
+              assetsPublicPath: "/docs",
+            },
+          },
+        }),
+      ).toThrow("config.openapi.docs.assetsPublicPath");
     });
 
     it("rejects invalid docs renderer", () => {
@@ -727,6 +765,40 @@ describe("validateConfig", () => {
           openapi: { docs: { access: { mode: "hidden-only" } } },
         }),
       ).toThrow("config.openapi.docs.access.mode");
+    });
+
+    it("rejects invalid docs source access fields", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: {
+              sources: [
+                {
+                  id: "admin",
+                  match: "/admin/**",
+                  access: { visible: "false" },
+                },
+              ],
+            },
+          },
+        }),
+      ).toThrow("config.openapi.docs.sources[0].access.visible");
+
+      expect(() =>
+        _validateConfig({
+          openapi: {
+            docs: {
+              sources: [
+                {
+                  id: "admin",
+                  match: "/admin/**",
+                  access: { roles: ["admin", 1] },
+                },
+              ],
+            },
+          },
+        }),
+      ).toThrow("config.openapi.docs.sources[0].access.roles");
     });
 
     it("rejects docs source dir outside project root", () => {

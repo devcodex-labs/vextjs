@@ -975,10 +975,7 @@ function validateOpenAPIConfig(value: unknown, pathName: string): void {
   validateOptionalBoolean(openapi.enabled, `${pathName}.enabled`);
   validateOptionalUrlPath(openapi.docsPath, `${pathName}.docsPath`);
   validateOptionalUrlPath(openapi.jsonPath, `${pathName}.jsonPath`);
-  validateOptionalUrlPath(
-    openapi.jsonPublicPath,
-    `${pathName}.jsonPublicPath`,
-  );
+  validateOptionalUrlPath(openapi.jsonPublicPath, `${pathName}.jsonPublicPath`);
   validateOpenAPIServers(openapi.servers, `${pathName}.servers`);
 
   if (openapi.scalar !== undefined) {
@@ -1013,6 +1010,10 @@ function validateOpenAPIDocsConfig(
   const docs = docsValue as Record<string, unknown>;
   validateOptionalUrlPath(docs.path, `${pathName}.docs.path`);
   validateOptionalUrlPath(docs.assetsPath, `${pathName}.docs.assetsPath`);
+  validateOptionalUrlPath(
+    docs.assetsPublicPath,
+    `${pathName}.docs.assetsPublicPath`,
+  );
   validateDocsRenderer(docs.renderer, `${pathName}.docs.renderer`);
   validateDocsUiConfig(docs.ui, `${pathName}.docs.ui`);
   validateDocsCodeConfig(docs.code, `${pathName}.docs.code`);
@@ -1022,7 +1023,9 @@ function validateOpenAPIDocsConfig(
 
   const docsPath = docs.path ?? openapi.docsPath;
   const specPath = openapi.jsonPath;
+  const specPublicPath = openapi.jsonPublicPath;
   const assetsPath = docs.assetsPath;
+  const assetsPublicPath = docs.assetsPublicPath;
   if (
     typeof assetsPath === "string" &&
     ((typeof docsPath === "string" && assetsPath === docsPath) ||
@@ -1030,6 +1033,17 @@ function validateOpenAPIDocsConfig(
   ) {
     throw new Error(
       `[vextjs] ${pathName}.docs.assetsPath must not equal docs or OpenAPI JSON paths.`,
+    );
+  }
+  if (
+    typeof assetsPublicPath === "string" &&
+    ((typeof docsPath === "string" && assetsPublicPath === docsPath) ||
+      (typeof specPath === "string" && assetsPublicPath === specPath) ||
+      (typeof specPublicPath === "string" &&
+        assetsPublicPath === specPublicPath))
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.docs.assetsPublicPath must not equal docs or OpenAPI JSON paths.`,
     );
   }
 }
@@ -1112,10 +1126,7 @@ function validateDocsAccessConfig(value: unknown, pathName: string): void {
     `${pathName}.openapiJson`,
     OPENAPI_DOCS_OPENAPI_JSON_MODES,
   );
-  if (
-    access.resolver !== undefined &&
-    typeof access.resolver !== "function"
-  ) {
+  if (access.resolver !== undefined && typeof access.resolver !== "function") {
     throw new Error(`[vextjs] ${pathName}.resolver must be a function.`);
   }
   if (
@@ -1212,21 +1223,31 @@ function validateDocsSourcesConfig(value: unknown, pathName: string): void {
     validateOptionalString(source.version, `${itemPath}.version`);
     validateOptionalString(source.description, `${itemPath}.description`);
     validateOptionalBoolean(source.default, `${itemPath}.default`);
-    if (
-      source.access !== undefined &&
-      typeof source.access !== "string" &&
-      (typeof source.access !== "object" ||
-        source.access === null ||
-        Array.isArray(source.access))
-    ) {
-      throw new Error(`[vextjs] ${itemPath}.access must be a string or object.`);
-    }
-    const code = validateOptionalFrontendObject(source.code, `${itemPath}.code`);
+    validateDocsSourceAccess(source.access, `${itemPath}.access`);
+    const code = validateOptionalFrontendObject(
+      source.code,
+      `${itemPath}.code`,
+    );
     if (code) {
       validateOptionalStringArray(code.include, `${itemPath}.code.include`);
       validateOptionalStringArray(code.exclude, `${itemPath}.code.exclude`);
     }
   }
+}
+
+function validateDocsSourceAccess(value: unknown, pathName: string): void {
+  if (value === undefined || typeof value === "string") {
+    return;
+  }
+  const access = validateOptionalFrontendObject(value, pathName);
+  if (!access) {
+    return;
+  }
+  validateOptionalStringArray(access.roles, `${pathName}.roles`);
+  validateOptionalStringArray(access.permissions, `${pathName}.permissions`);
+  validateOptionalBoolean(access.visible, `${pathName}.visible`);
+  validateOptionalBoolean(access.tryItOut, `${pathName}.tryItOut`);
+  validateOptionalString(access.group, `${pathName}.group`);
 }
 
 function validateDocsSourceMatch(value: unknown, pathName: string): void {

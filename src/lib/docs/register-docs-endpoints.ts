@@ -77,14 +77,10 @@ function registerOpenAPIJsonEndpoint(
 ): void {
   app.adapter.registerRoute("GET", config.specPath, [
     async (req, res) => {
-      const resolvedSpec = await resolveOpenAPISpecForEndpoint(
-        spec,
-        config,
-        {
-          request: toDocsRequestContext(req),
-          allowPublicCanonical: config.access.openapiJson === "public",
-        },
-      );
+      const resolvedSpec = await resolveOpenAPISpecForEndpoint(spec, config, {
+        request: toDocsRequestContext(req),
+        allowPublicCanonical: config.access.openapiJson === "public",
+      });
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.rawJson(resolvedSpec);
@@ -234,10 +230,7 @@ function registerVextDocsAssets(
   ]);
 }
 
-function registerDocsPage(
-  app: VextApp,
-  config: ResolvedVextDocsConfig,
-): void {
+function registerDocsPage(app: VextApp, config: ResolvedVextDocsConfig): void {
   app.adapter.registerRoute("GET", config.path, [
     async (_req, res) => {
       const html = renderVextDocsHTML(config);
@@ -253,10 +246,10 @@ function createPublicDocsConfig(
 ) {
   const publicConfig: Record<string, unknown> = {
     path: config.path,
-    assetsPath: config.assetsPath,
+    assetsPath: config.assetsPublicPath,
     specPath: config.specPath,
     specPublicPath: config.specPublicPath,
-    endpoints: config.endpoints,
+    endpoints: config.publicEndpoints,
     ui: config.ui,
     code: config.code,
     tryItOut: config.tryItOut,
@@ -272,7 +265,9 @@ function createPublicDocsConfig(
   return publicConfig;
 }
 
-function readDocsProjectInfo(rootDir?: string): VextDocsProjectInfo | undefined {
+function readDocsProjectInfo(
+  rootDir?: string,
+): VextDocsProjectInfo | undefined {
   const packagePath = resolve(rootDir ?? process.cwd(), "package.json");
   if (!existsSync(packagePath)) {
     return undefined;
@@ -326,10 +321,20 @@ function collectProjectScripts(scripts: Record<string, unknown>) {
 
 function scriptGroup(name: string): VextDocsProjectScriptGroup | undefined {
   if (name === "dev" || name.startsWith("dev:")) return "development";
-  if (name === "start" || name.startsWith("start:") || name === "build" || name.startsWith("build:")) {
+  if (
+    name === "start" ||
+    name.startsWith("start:") ||
+    name === "build" ||
+    name.startsWith("build:")
+  ) {
     return "production";
   }
-  if (name === "test" || name.startsWith("test:") || name === "verify" || name.startsWith("verify:")) {
+  if (
+    name === "test" ||
+    name.startsWith("test:") ||
+    name === "verify" ||
+    name.startsWith("verify:")
+  ) {
     return "verification";
   }
   return undefined;
@@ -503,9 +508,14 @@ async function resolveCodeDocsForView(
   source?: ResolvedVextDocsSource,
 ) {
   const codeDocs = await codeDocsProvider();
-  const filtered = await filterCodeDocsForDocs(codeDocs, config.access, request, {
-    includeVisibilityOnly: true,
-  });
+  const filtered = await filterCodeDocsForDocs(
+    codeDocs,
+    config.access,
+    request,
+    {
+      includeVisibilityOnly: true,
+    },
+  );
   return source
     ? {
         ...filtered,
@@ -539,7 +549,10 @@ async function resolveSelectedDocsSource(
   config: ResolvedVextDocsConfig,
   request: VextDocsRequestContext | undefined,
   sourceId: string | undefined,
-): Promise<{ source: ResolvedVextDocsSource; sources: ResolvedVextDocsSource[] } | undefined> {
+): Promise<
+  | { source: ResolvedVextDocsSource; sources: ResolvedVextDocsSource[] }
+  | undefined
+> {
   const sources = await resolveVisibleDocsSources(spec, config, request);
   const source = resolveDocsSource(sources, sourceId);
   return source ? { source, sources } : undefined;
@@ -577,7 +590,15 @@ async function isVisibleDocsSource(
 }
 
 function isNonEmptyDocsSource(source: ResolvedVextDocsSource): boolean {
-  return source.id === "all" || (source.operationCount ?? 0) > 0;
+  return (
+    source.id === "all" ||
+    (source.operationCount ?? 0) > 0 ||
+    hasExplicitCodeSourceFilter(source)
+  );
+}
+
+function hasExplicitCodeSourceFilter(source: ResolvedVextDocsSource): boolean {
+  return Boolean(source.code?.include?.length || source.code?.exclude?.length);
 }
 
 function readQueryString(request: unknown, name: string): string | undefined {

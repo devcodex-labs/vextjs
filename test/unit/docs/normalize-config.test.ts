@@ -12,6 +12,7 @@ describe("docs public contract", () => {
 
     expect(config.path).toBe(DEFAULT_DOCS_PATH);
     expect(config.assetsPath).toBe(DEFAULT_DOCS_ASSETS_PATH);
+    expect(config.assetsPublicPath).toBe(DEFAULT_DOCS_ASSETS_PATH);
     expect(config.specPath).toBe(DEFAULT_OPENAPI_SPEC_PATH);
     expect(config.specPublicPath).toBe(DEFAULT_OPENAPI_SPEC_PATH);
     expect(config.renderer).toBe("vext");
@@ -34,6 +35,7 @@ describe("docs public contract", () => {
     expect(config.tryItOut.hookScript).toBeUndefined();
     expect(config.sources).toEqual([]);
     expect(config.endpoints.appJs).toBe("/_vext/docs/app.js");
+    expect(config.publicEndpoints.appJs).toBe("/_vext/docs/app.js");
   });
 
   it("normalizes explicit docs sources", () => {
@@ -103,8 +105,14 @@ describe("docs public contract", () => {
       jsonPath: "/openapi.json",
       jsonPublicPath: "/admin/openapi.json",
       docs: {
-        assetsPath: "/admin/_vext/docs",
-        ui: { defaultView: "api", tryItOut: false, theme: "dark", density: "compact" },
+        assetsPath: "/_vext/docs",
+        assetsPublicPath: "/admin/_vext/docs",
+        ui: {
+          defaultView: "api",
+          tryItOut: false,
+          theme: "dark",
+          density: "compact",
+        },
         code: { enabled: false, scan: "background" },
         access: { mode: "visibility-only", openapiJson: "public" },
         tryItOut: {
@@ -115,7 +123,12 @@ describe("docs public contract", () => {
     });
 
     expect(config.path).toBe("/admin/docs");
-    expect(config.assetsPath).toBe("/admin/_vext/docs");
+    expect(config.assetsPath).toBe("/_vext/docs");
+    expect(config.assetsPublicPath).toBe("/admin/_vext/docs");
+    expect(config.endpoints.openapi).toBe("/_vext/docs/openapi.json");
+    expect(config.publicEndpoints.openapi).toBe(
+      "/admin/_vext/docs/openapi.json",
+    );
     expect(config.specPublicPath).toBe("/admin/openapi.json");
     expect(config.ui.defaultView).toBe("api");
     expect(config.ui.tryItOut).toBe(false);

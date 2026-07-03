@@ -463,6 +463,23 @@ describe("OpenAPIGenerator", () => {
       expect(doc.tags).toEqual([{ name: "API v2" }]);
     });
 
+    it("命名版本和根版本路径与 source 推断保持一致", () => {
+      const doc = generate([
+        createRoute("GET", "/api/beta/info", {}, "routes/api/beta/info.ts"),
+        createRoute("GET", "/api/rc1/info", {}, "routes/api/rc1/info.ts"),
+        createRoute("GET", "/v1/info", {}, "routes/v1/info.ts"),
+      ]);
+
+      expect(doc.tags).toEqual([
+        { name: "API Beta" },
+        { name: "API RC1" },
+        { name: "API v1" },
+      ]);
+      expect(doc.paths["/api/beta/info"]!.get!.tags).toEqual(["API Beta"]);
+      expect(doc.paths["/api/rc1/info"]!.get!.tags).toEqual(["API RC1"]);
+      expect(doc.paths["/v1/info"]!.get!.tags).toEqual(["API v1"]);
+    });
+
     it("/users → tag 'Users'", () => {
       const doc = generate([
         createRoute("GET", "/users", {}, "routes/users/index.ts"),
@@ -2105,10 +2122,7 @@ describe("OpenAPIGenerator", () => {
           ),
         ]);
 
-        expect(doc.tags?.map((tag) => tag.name)).toEqual([
-          "API v1",
-          "Admin",
-        ]);
+        expect(doc.tags?.map((tag) => tag.name)).toEqual(["API v1", "Admin"]);
         expect(doc["x-tagGroups"]).toBeUndefined();
       });
 

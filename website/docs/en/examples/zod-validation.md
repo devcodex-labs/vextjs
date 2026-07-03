@@ -4,13 +4,13 @@ This example shows how to use [Zod](https://zod.dev) to replace VextJS's built-i
 
 ## Why choose Zod?
 
-| Features | Built-in schema-dsl | Zod |
-| ------------------- | ----------------------- | ---------------------------------- |
-| Learning Curve | Low (DSL String Syntax) | Medium (Chained API) |
-| TypeScript type inference | ❌ None (no need to manually declare generics) | ✅ Automatic inference `z.infer<T>` |
-| Complex verification | Basic type + range + enumeration | Union type, recursion, transform, refine, etc. |
-| Ecology | Exclusive to VextJS | Widely used, rich community ecology |
-| Package size | 0 (framework built-in) | ~14KB (min+gzip) |
+| Features                  | Built-in schema-dsl                            | Zod                                            |
+| ------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| Learning Curve            | Low (DSL String Syntax)                        | Medium (Chained API)                           |
+| TypeScript type inference | ❌ None (no need to manually declare generics) | ✅ Automatic inference `z.infer<T>`            |
+| Complex verification      | Basic type + range + enumeration               | Union type, recursion, transform, refine, etc. |
+| Ecology                   | Exclusive to VextJS                            | Widely used, rich community ecology            |
+| Package size              | 0 (framework built-in)                         | ~14KB (min+gzip)                               |
 
 :::tip
 If your project only requires simple parameter verification (string/number/enumeration/email, etc.), the built-in schema-dsl is enough. Zod is more suitable for scenarios that require complex verification logic, deep type inference, or where Zod is already used in the project.
@@ -122,7 +122,8 @@ export default definePlugin({
 
         if (hasZodFields) {
           // Collect scattered Zod fields as z.object
-          const shape: Record<string, ZodType> = {};for (const [key, value] of Object.entries(schema)) {
+          const shape: Record<string, ZodType> = {};
+          for (const [key, value] of Object.entries(schema)) {
             if (value instanceof ZodType) {
               shape[key] = value;
             } else {
@@ -158,7 +159,9 @@ export default definePlugin({
       },
     });
 
-    app.logger.info("[zod-validator] Zod verification plug-in has been registered");
+    app.logger.info(
+      "[zod-validator] Zod verification plug-in has been registered",
+    );
   },
 });
 ```
@@ -184,8 +187,17 @@ export const userIdParam = z.object({
 
 /** Pagination query parameters */
 export const paginationQuery = z.object({
-  page: z.coerce.number().int().min(1, "The minimum page number is 1").default(1),
-  limit: z.coerce.number().int().min(1).max(100, "Maximum 100 items per page").default(10),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1, "The minimum page number is 1")
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100, "Maximum 100 items per page")
+    .default(10),
   keyword: z.string().optional(),
 });
 
@@ -193,7 +205,11 @@ export const paginationQuery = z.object({
 
 /** Create user */
 export const createUserBody = z.object({
-  name: z.string().min(1, "The name cannot be empty").max(50, "The name can be up to 50 characters").trim(),
+  name: z
+    .string()
+    .min(1, "The name cannot be empty")
+    .max(50, "The name can be up to 50 characters")
+    .trim(),
   email: z.string().email("Email format is invalid").toLowerCase(),
   age: z
     .number()
@@ -206,10 +222,16 @@ export const createUserBody = z.object({
       errorMap: () => ({ message: "Role must be admin, user or editor" }),
     })
     .default("user"),
-  tags: z.array(z.string().min(1).max(20)).max(10, "Maximum 10 tags").optional(),
+  tags: z
+    .array(z.string().min(1).max(20))
+    .max(10, "Maximum 10 tags")
+    .optional(),
   profile: z
     .object({
-      bio: z.string().max(500, "The maximum length of the introduction is 500 characters").optional(),
+      bio: z
+        .string()
+        .max(500, "The maximum length of the introduction is 500 characters")
+        .optional(),
       avatar: z.string().url("The avatar must be a valid URL").optional(),
       website: z.string().url("The website must be a valid URL").optional(),
     })
@@ -310,7 +332,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "User list",
-        description: "Query the user list in pages, supporting fuzzy search by name or email.",
+        description:
+          "Query the user list in pages, supporting fuzzy search by name or email.",
       },
     },
     async (req, res) => {
@@ -365,7 +388,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Create user",
-        description: "Create a new user. Supports complex nested structures such as tags and profiles.",
+        description:
+          "Create a new user. Supports complex nested structures such as tags and profiles.",
         responses: {
           201: {
             description: "Created successfully",
@@ -396,7 +420,9 @@ export default defineRoutes((app) => {
       const user = await app.services.user.create(body);
       res.json(user, 201);
     },
-  );// ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
+  );
+
+  // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   // PUT /users/:id — update user
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   app.put(
@@ -413,7 +439,10 @@ export default defineRoutes((app) => {
           "Update user information. All fields are optional, but at least one field is required. Modification of roles is not allowed.",
         responses: {
           200: { description: "Update successful" },
-          422: { description: "Parameter validation failed (or no fields were provided)" },
+          422: {
+            description:
+              "Parameter validation failed (or no fields were provided)",
+          },
           401: { description: "Not authenticated" },
           404: { description: "User does not exist" },
           409: { description: "The mailbox is already used by another user" },
@@ -469,7 +498,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Delete users in batches",
-        description: "Delete multiple users in batches. Up to 50 users at a time.",
+        description:
+          "Delete multiple users in batches. Up to 50 users at a time.",
         responses: {
           200: { description: "Delete results in batches" },
           422: { description: "Parameter verification failed" },
@@ -531,7 +561,9 @@ export default class UserService {
   constructor(private app: VextApp) {
     this.logger = app.logger.child({ service: "UserService" });
     this.seed();
-  }private seed(): void {
+  }
+
+  private seed(): void {
     const seedUsers: Partial<User>[] = [
       {
         name: "Alice",
@@ -577,7 +609,7 @@ export default class UserService {
       total,
       page: options.page,
       limit: options.limit,
-      totalPages: Math.ceil(total/options.limit),
+      totalPages: Math.ceil(total / options.limit),
     };
   }
 
@@ -609,7 +641,10 @@ export default class UserService {
     };
 
     this.users.set(id, user);
-    this.logger.info({ userId: id, email: data.email }, "User created successfully");
+    this.logger.info(
+      { userId: id, email: data.email },
+      "User created successfully",
+    );
     return user;
   }
 
@@ -622,7 +657,11 @@ export default class UserService {
     if (data.email && data.email !== user.email) {
       for (const u of this.users.values()) {
         if (u.email === data.email) {
-          this.app.throw(409, "The mailbox is already used by another user", 10002);
+          this.app.throw(
+            409,
+            "The mailbox is already used by another user",
+            10002,
+          );
         }
       }
     }
@@ -805,7 +844,7 @@ app.post("/notify", { validate: { body: notificationBody } }, handler);
 ### Preprocess (preprocessing)
 
 ```typescript
-import { z } from "zod";// Handle "true" / "false" string to boolean conversion (commonly used in query parameters)
+import { z } from "zod"; // Handle "true" / "false" string to boolean conversion (commonly used in query parameters)
 const filterQuery = z
   .object({
     active: z.preprocess((val) => {
@@ -823,7 +862,10 @@ const filterQuery = z
       }
       return true;
     },
-    { message: "minAge must be less than or equal to maxAge", path: ["minAge"] },
+    {
+      message: "minAge must be less than or equal to maxAge",
+      path: ["minAge"],
+    },
   );
 ```
 
@@ -897,19 +939,19 @@ The plug-in will automatically detect the schema type internally: when the field
 
 ## Key comparison
 
-| scene | schema-dsl | Zod |
-| -------------------------- | ------------------------ | ----------------------------------------------- |
-| Simple field verification | `name: 'string:1-50'` | `z.string().min(1).max(50)` |
-| Optional fields | `age: 'number?'` | `z.number().optional()` |
-| Enumeration | `role: 'enum:admin,user'` | `z.enum(['admin', 'user'])` |
-| Email | `email: 'email'` | `z.string().email()` |
-| Nested objects | ❌ Not supported | `z.object({ profile: z.object({...}) })` |
-| Array verification | `tags: 'array'` | `z.array(z.string()).max(10)` |
-| Union type | ❌ Not supported | `z.union([...])` / `z.discriminatedUnion(...)` |
-| Custom validation | ❌ Not supported | `.refine()` / `.superRefine()` |
-| Data conversion | Type conversion only | `.transform()` / `.preprocess()` |
-| Default value | ❌ Not supported | `.default()` |
-| Type inference | ❌ Needs to be declared manually | ✅ `z.infer<typeof schema>` |
+| scene                     | schema-dsl                       | Zod                                            |
+| ------------------------- | -------------------------------- | ---------------------------------------------- |
+| Simple field verification | `name: 'string:1-50'`            | `z.string().min(1).max(50)`                    |
+| Optional fields           | `age: 'number?'`                 | `z.number().optional()`                        |
+| Enumeration               | `role: 'enum:admin,user'`        | `z.enum(['admin', 'user'])`                    |
+| Email                     | `email: 'email'`                 | `z.string().email()`                           |
+| Nested objects            | ❌ Not supported                 | `z.object({ profile: z.object({...}) })`       |
+| Array verification        | `tags: 'array'`                  | `z.array(z.string()).max(10)`                  |
+| Union type                | ❌ Not supported                 | `z.union([...])` / `z.discriminatedUnion(...)` |
+| Custom validation         | ❌ Not supported                 | `.refine()` / `.superRefine()`                 |
+| Data conversion           | Type conversion only             | `.transform()` / `.preprocess()`               |
+| Default value             | ❌ Not supported                 | `.default()`                                   |
+| Type inference            | ❌ Needs to be declared manually | ✅ `z.infer<typeof schema>`                    |
 
 ## Next step
 

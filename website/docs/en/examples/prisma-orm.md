@@ -4,14 +4,14 @@ This example shows how to integrate [Prisma](https://www.prisma.io) into a VextJ
 
 ## Why choose Prisma?
 
-| Features | Description |
-| -------------- | --------------------------------------------------------------- |
-| **Type Safety** | Prisma Client for code generation, automatic type inference for queries and results |
-| **Intuitive API** | Advanced query API, supporting nested creation, related queries, transactions, etc. |
-| **Database Migration** | Built-in `prisma migrate` for declarative schema migration |
-| **Multiple Databases** | Supports PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB |
-| **Visualization Tools** | Prisma Studio provides a database graphical management interface |
-| **Rich Ecology** | Extensive community plug-ins and third-party integrations |
+| Features                | Description                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| **Type Safety**         | Prisma Client for code generation, automatic type inference for queries and results |
+| **Intuitive API**       | Advanced query API, supporting nested creation, related queries, transactions, etc. |
+| **Database Migration**  | Built-in `prisma migrate` for declarative schema migration                          |
+| **Multiple Databases**  | Supports PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB                            |
+| **Visualization Tools** | Prisma Studio provides a database graphical management interface                    |
+| **Rich Ecology**        | Extensive community plug-ins and third-party integrations                           |
 
 :::tip
 **Prisma vs Drizzle**: Prisma provides a higher level of abstraction and richer query API (such as `include`, `select`, nested writing), which is suitable for projects that require rapid development and complex association operations. Drizzle is closer to the native semantics of SQL and is suitable for scenarios that require higher SQL control. VextJS supports both, the choice depends on team preference.
@@ -332,13 +332,13 @@ export default definePlugin({
     const prisma = new PrismaClient({
       log:
         app.config.logger.level === "debug"
-          ?[
+          ? [
               { emit: "event", level: "query" },
               { emit: "stdout", level: "info" },
               { emit: "stdout", level: "warn" },
               { emit: "stdout", level: "error" },
             ]
-          :[
+          : [
               { emit: "stdout", level: "warn" },
               { emit: "stdout", level: "error" },
             ],
@@ -366,9 +366,15 @@ export default definePlugin({
       try {
         await prisma.$queryRaw`SELECT 1`;
         const userCount = await prisma.user.count();
-        app.logger.info({ userCount }, "Database connection verification successful");
+        app.logger.info(
+          { userCount },
+          "Database connection verification successful",
+        );
       } catch (err) {
-        app.logger.error({ error: err }, "Database connection verification failed");
+        app.logger.error(
+          { error: err },
+          "Database connection verification failed",
+        );
         throw err;
       }
     });
@@ -476,7 +482,7 @@ export default class UserService {
 
   constructor(private app: VextApp) {
     this.logger = app.logger.child({ service: "UserService" });
-  }/**
+  } /**
    * Query user list by page
    *
    * Support keyword search, role filtering and sorting.
@@ -540,7 +546,7 @@ export default class UserService {
       total,
       page: options.page,
       limit: options.limit,
-      totalPages: Math.ceil(total/options.limit),
+      totalPages: Math.ceil(total / options.limit),
     };
   }
 
@@ -617,7 +623,10 @@ export default class UserService {
       },
     });
 
-    this.logger.info({ userId: user.id, email: user.email }, "User created successfully");
+    this.logger.info(
+      { userId: user.id, email: user.email },
+      "User created successfully",
+    );
     return user;
   }
 
@@ -644,7 +653,7 @@ export default class UserService {
 
     if (!existing) {
       this.app.throw(404, "User does not exist");
-    }// Email uniqueness check
+    } // Email uniqueness check
     if (data.email && data.email !== existing.email) {
       const emailTaken = await this.app.prisma.user.findUnique({
         where: { email: data.email },
@@ -652,7 +661,11 @@ export default class UserService {
       });
 
       if (emailTaken) {
-        this.app.throw(409, "The mailbox is already used by another user", 10002);
+        this.app.throw(
+          409,
+          "The mailbox is already used by another user",
+          10002,
+        );
       }
     }
 
@@ -684,7 +697,10 @@ export default class UserService {
 
     await this.app.prisma.user.delete({ where: { id } });
 
-    this.logger.info({ userId: id }, "User deleted successfully (associated data has been cascade deleted)");
+    this.logger.info(
+      { userId: id },
+      "User deleted successfully (associated data has been cascade deleted)",
+    );
   }
 
   /**
@@ -766,7 +782,7 @@ export default class PostService {
       total,
       page: options.page,
       limit: options.limit,
-      totalPages: Math.ceil(total/options.limit),
+      totalPages: Math.ceil(total / options.limit),
     };
   }
 
@@ -810,7 +826,7 @@ export default class PostService {
     });
 
     return post;
-  }/**
+  } /**
    *Create article
    */
   async create(data: {
@@ -963,7 +979,8 @@ export default class PostService {
 
     if (!post.published) {
       this.app.throw(400, "Cannot comment on unpublished articles");
-    }const comment = await prisma.comment.create({
+    }
+    const comment = await prisma.comment.create({
       data: {
         content: data.content,
         authorId: data.authorId,
@@ -1056,7 +1073,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Get user details",
-        description: "Query user details, including list of published articles and statistical information.",
+        description:
+          "Query user details, including list of published articles and statistical information.",
         responses: {
           200: { description: "Query successful" },
           404: { description: "User does not exist" },
@@ -1100,7 +1118,9 @@ export default defineRoutes((app) => {
       const user = await app.services.user.create(body);
       res.json(user, 201);
     },
-  );// PUT /users/:id — update user (authentication required)
+  );
+
+  // PUT /users/:id — update user (authentication required)
   app.put(
     "/:id",
     {
@@ -1141,7 +1161,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Delete user",
-        description: "Delete the user and all his posts and comments (cascade deletion).",
+        description:
+          "Delete the user and all his posts and comments (cascade deletion).",
         responses: {
           204: { description: "Delete successfully" },
           404: { description: "User does not exist" },
@@ -1178,7 +1199,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Article List",
-        description: "Query the list of published articles, supporting keyword search and tag filtering.",
+        description:
+          "Query the list of published articles, supporting keyword search and tag filtering.",
       },
     },
     async (req, res) => {
@@ -1251,7 +1273,8 @@ export default defineRoutes((app) => {
 
       // tags are obtained from the original body (not declared in validate schema, because schema-dsl does not support array validation)
       const rawBody = req.body as any;
-      const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;const post = await app.services.post.create({
+      const tags = Array.isArray(rawBody?.tags) ? rawBody.tags : undefined;
+      const post = await app.services.post.create({
         title: body.title,
         content: body.content,
         authorId,
@@ -1332,7 +1355,8 @@ export default defineRoutes((app) => {
       middlewares: ["auth"],
       docs: {
         summary: "Add comment",
-        description: "Add a comment to the specified article. The article must have been published.",
+        description:
+          "Add a comment to the specified article. The article must have been published.",
         responses: {
           201: { description: "Comment successful" },
           400: { description: "Cannot comment on unpublished articles" },
@@ -1569,7 +1593,8 @@ describe("User CRUD (Prisma)", () => {
   });
 
   it("GET /users/:id should contain associated articles and tags", async () => {
-    const res = await testApp.request.get("/users/1");expect(res.status).toBe(200);
+    const res = await testApp.request.get("/users/1");
+    expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data.posts)).toBe(true);
 
     if (res.body.data.posts.length > 0) {
@@ -1662,30 +1687,30 @@ describe("Articles and Comments (Prisma)", () => {
 
 ## Project mode summary
 
-| Hierarchy | Responsibilities | Documentation |
-| -------------------------- | ----------------------------------------------- | ---------------------------- |
-| **Schema** | Prisma data model definition | `prisma/schema.prisma` |
-| **Seed data** | Initial data filling | `prisma/seed.ts` |
-| **Migration** | Database structure version management | `prisma/migrations/` |
-| **Plug-in** | Initialize PrismaClient, mount `app.prisma`, clean up | `src/plugins/database.ts` |
-| **Service layer** | Business logic + Prisma query | `src/services/*.ts` |
-| **Routing layer** | Request verification + calling service + response | `src/routes/*.ts` |
-| **Type declaration** | `app.prisma` type extension | `types/vext.d.ts` |
+| Hierarchy            | Responsibilities                                      | Documentation             |
+| -------------------- | ----------------------------------------------------- | ------------------------- |
+| **Schema**           | Prisma data model definition                          | `prisma/schema.prisma`    |
+| **Seed data**        | Initial data filling                                  | `prisma/seed.ts`          |
+| **Migration**        | Database structure version management                 | `prisma/migrations/`      |
+| **Plug-in**          | Initialize PrismaClient, mount `app.prisma`, clean up | `src/plugins/database.ts` |
+| **Service layer**    | Business logic + Prisma query                         | `src/services/*.ts`       |
+| **Routing layer**    | Request verification + calling service + response     | `src/routes/*.ts`         |
+| **Type declaration** | `app.prisma` type extension                           | `types/vext.d.ts`         |
 
 ### Comparison with Drizzle solution
 
-| Dimensions | Prisma | Drizzle |
-| ----------- | ----------------------------------- | ----------------------------------- |
-| Schema definition | `.prisma` DSL file | TypeScript code |
-| Type generation | Code generation (`prisma generate`) | Schema inference (`$inferSelect`) |
-| Query API | Advanced ORM API (`include`, nested writing) | SQL-like API (close to native SQL) |
-| Related query | `include` / `select` nesting | Relations API / Manual JOIN |
-| Migration | `prisma migrate` (declarative) | `drizzle-kit` (declarative) |
-| Transaction | `$transaction` | `db.transaction` |
-| Visualization Tools | Prisma Studio | Drizzle Studio |
-| Performance | Medium (with query layer abstraction) | High (directly compiled SQL) |
-| Package size | Larger (generated Client) | Lightweight |
-| Learning curve | Low (rich documentation) | Medium (requires SQL basics) |
+| Dimensions          | Prisma                                       | Drizzle                            |
+| ------------------- | -------------------------------------------- | ---------------------------------- |
+| Schema definition   | `.prisma` DSL file                           | TypeScript code                    |
+| Type generation     | Code generation (`prisma generate`)          | Schema inference (`$inferSelect`)  |
+| Query API           | Advanced ORM API (`include`, nested writing) | SQL-like API (close to native SQL) |
+| Related query       | `include` / `select` nesting                 | Relations API / Manual JOIN        |
+| Migration           | `prisma migrate` (declarative)               | `drizzle-kit` (declarative)        |
+| Transaction         | `$transaction`                               | `db.transaction`                   |
+| Visualization Tools | Prisma Studio                                | Drizzle Studio                     |
+| Performance         | Medium (with query layer abstraction)        | High (directly compiled SQL)       |
+| Package size        | Larger (generated Client)                    | Lightweight                        |
+| Learning curve      | Low (rich documentation)                     | Medium (requires SQL basics)       |
 
 The integration modes of the two solutions in VextJS are exactly the same: **Initialize connection through plug-in → Mount to app → Service layer encapsulation query → Routing layer orchestration call**. Which one you choose depends on team preference and project needs.
 

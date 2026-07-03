@@ -81,16 +81,16 @@ interface CreateTestAppOptions {
 
 ### Field description
 
-| Field | Type | Default Value | Description |
-| -------------- | ---------------------------- | --------------- | ----------------------------------------------- |
-| `config` | `Partial<VextConfig>` | `{}` | Override the default configuration (deeply merged into the test default configuration) |
-| `plugins` | `boolean` | `false` | Whether to load `src/plugins/` (not loaded by default in the test environment) |
-| `setupPlugins` | `Function` | `undefined` | Manually register plugins (replacing automatic scanning) |
-| `services` | `boolean` | `true` | Whether to load `src/services/` |
-| `mockServices` | `Partial<VextServices>` | `undefined` | Manually inject mock services |
-| `routes` | `boolean` | `true` | Whether to load `src/routes/` |
-| `middlewares` | `boolean` | `true` | Whether to load `src/middlewares/` |
-| `rootDir` | `string` | `process.cwd()` | Project root directory (used to locate the `src/` subdirectory) |
+| Field          | Type                    | Default Value   | Description                                                                            |
+| -------------- | ----------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `config`       | `Partial<VextConfig>`   | `{}`            | Override the default configuration (deeply merged into the test default configuration) |
+| `plugins`      | `boolean`               | `false`         | Whether to load `src/plugins/` (not loaded by default in the test environment)         |
+| `setupPlugins` | `Function`              | `undefined`     | Manually register plugins (replacing automatic scanning)                               |
+| `services`     | `boolean`               | `true`          | Whether to load `src/services/`                                                        |
+| `mockServices` | `Partial<VextServices>` | `undefined`     | Manually inject mock services                                                          |
+| `routes`       | `boolean`               | `true`          | Whether to load `src/routes/`                                                          |
+| `middlewares`  | `boolean`               | `true`          | Whether to load `src/middlewares/`                                                     |
+| `rootDir`      | `string`                | `process.cwd()` | Project root directory (used to locate the `src/` subdirectory)                        |
 
 ---
 
@@ -187,10 +187,10 @@ testApp = await createTestApp({
 
 When `services: true`, `service-loader` scans the `src/services/` directory and automatically loads `.ts` source files. Due to two limitations of Node.js native ESM, the framework uses **esbuild** to automatically handle them:
 
-| Limitations | Description |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js native ESM does not support direct `import()` `.ts` files |
-| `.js → .ts` remapping missing | TypeScript ESM convention is to write `.js` extension in import, and Node.js/Vite resolver will not automatically fall back to `.ts` |
+| Limitations                       | Description                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js native ESM does not support direct `import()` `.ts` files                                                                    |
+| `.js → .ts` remapping missing     | TypeScript ESM convention is to write `.js` extension in import, and Node.js/Vite resolver will not automatically fall back to `.ts` |
 
 `service-loader` performs the following process for each `.ts` service file:
 
@@ -232,12 +232,12 @@ testApp = await createTestApp({
 
 **Merge Logic**:
 
-| `services` | `mockServices` | behavior |
-| :--------: | :----------------: | -------------------------------------------------- |
-| `true` | Valid | Load the real service first, then use `mockServices` to overwrite the service with the same name |
-| `true` | No value | Only use real services |
-| `false` | has value | only use `mockServices` |
-| `false` | No value | `app.services` is an empty object `{}` |
+| `services` | `mockServices` | behavior                                                                                         |
+| :--------: | :------------: | ------------------------------------------------------------------------------------------------ |
+|   `true`   |     Valid      | Load the real service first, then use `mockServices` to overwrite the service with the same name |
+|   `true`   |    No value    | Only use real services                                                                           |
+|  `false`   |   has value    | only use `mockServices`                                                                          |
+|  `false`   |    No value    | `app.services` is an empty object `{}`                                                           |
 
 ---
 
@@ -362,15 +362,15 @@ interface TestRequest {
 
 ### Supported HTTP methods
 
-| Method | Description |
-| ----------------------- | ------------------ |
-| `request.get(path)` | Send GET request |
-| `request.post(path)` | Send POST request |
-| `request.put(path)` | Send PUT request |
-| `request.patch(path)` | Send PATCH request |
-| `request.delete(path)` | Send DELETE request |
+| Method                  | Description          |
+| ----------------------- | -------------------- |
+| `request.get(path)`     | Send GET request     |
+| `request.post(path)`    | Send POST request    |
+| `request.put(path)`     | Send PUT request     |
+| `request.patch(path)`   | Send PATCH request   |
+| `request.delete(path)`  | Send DELETE request  |
 | `request.options(path)` | Send OPTIONS request |
-| `request.head(path)` | Send HEAD request |
+| `request.head(path)`    | Send HEAD request    |
 
 Each method returns `TestRequestBuilder`, which supports chain configuration and execution of requests through `await`.
 
@@ -663,7 +663,9 @@ expect(res.body).toEqual({
   code: 0,
   data: expect.any(Array),
   requestId: expect.any(String),
-});// Directly access business data
+});
+
+// Directly access business data
 expect(res.body.data).toHaveLength(2);
 expect(res.body.data[0].name).toBe("Alice");
 ```
@@ -826,7 +828,8 @@ describe("User routing (mock service)", () => {
   it("GET /users/list call findAll", async () => {
     testApp = await createTestApp({
       mockServices: { user: mockUserService },
-    });const res = await testApp.request
+    });
+    const res = await testApp.request
       .get("/users/list")
       .query({ page: "1", limit: "10" });
 
@@ -987,7 +990,9 @@ describe("Redis cache plug-in", () => {
           del: async (key) => mockCache.delete(key),
         });
       },
-    });// Assuming that the route handler will read app.userCache, cached data should be returned
+    });
+
+    // Assuming that the route handler will read app.userCache, cached data should be returned
     const res = await testApp.request.get("/users/1");
     expect(res.status).toBe(200);
   });
@@ -1047,7 +1052,9 @@ describe("Error handling", () => {
       },
       mockServices: {
         user: {
-          findAll: vi.fn().mockRejectedValue(new Error("Database connection failed")),
+          findAll: vi
+            .fn()
+            .mockRejectedValue(new Error("Database connection failed")),
         },
       },
     });

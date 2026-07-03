@@ -782,13 +782,36 @@ export class OpenAPIGenerator {
 
     if (first === "api") {
       const version = segments[1];
-      if (version && /^v\d+$/iu.test(version)) {
-        return `API ${version.toLowerCase()}`;
+      if (version && this.isApiVersionTagSegment(version)) {
+        return `API ${this.formatApiVersionTagSegment(version)}`;
       }
       return "API";
     }
 
+    if (this.isApiVersionTagSegment(segments[0]!)) {
+      return `API ${this.formatApiVersionTagSegment(segments[0]!)}`;
+    }
+
     return this.humanizeTagSegment(segments[0]!);
+  }
+
+  private isApiVersionTagSegment(segment: string): boolean {
+    return (
+      /^v\d+[A-Za-z0-9-]*$/u.test(segment) ||
+      /^(?:alpha|beta|canary|latest|next|preview|rc|stable)(?:-?\d+)?$/iu.test(
+        segment,
+      )
+    );
+  }
+
+  private formatApiVersionTagSegment(segment: string): string {
+    if (/^v\d+[A-Za-z0-9-]*$/u.test(segment)) {
+      return segment;
+    }
+    if (/^rc(?:-?\d+)?$/iu.test(segment)) {
+      return segment.toUpperCase();
+    }
+    return this.humanizeTagSegment(segment);
   }
 
   private isDynamicPathSegment(segment: string): boolean {
@@ -815,7 +838,9 @@ export class OpenAPIGenerator {
       .filter(Boolean)
       .map((part) => {
         const lower = part.toLowerCase();
-        return acronyms[lower] ?? lower.charAt(0).toUpperCase() + lower.slice(1);
+        return (
+          acronyms[lower] ?? lower.charAt(0).toUpperCase() + lower.slice(1)
+        );
       })
       .join(" ");
   }

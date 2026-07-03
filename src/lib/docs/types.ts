@@ -256,6 +256,7 @@ export interface VextDocsProjectInfo {
 export interface ResolvedVextDocsConfig {
   path: string;
   assetsPath: string;
+  assetsPublicPath: string;
   specPath: string;
   specPublicPath: string;
   renderer: VextDocsRendererName;
@@ -265,6 +266,7 @@ export interface ResolvedVextDocsConfig {
   tryItOut: ResolvedVextDocsTryItOutConfig;
   sources: ResolvedVextDocsSource[];
   endpoints: VextDocsEndpointMap;
+  publicEndpoints: VextDocsEndpointMap;
   project?: VextDocsProjectInfo;
 }
 
@@ -287,6 +289,7 @@ export interface VextDocsUiConfig {
 export interface VextDocsConfig {
   path?: string;
   assetsPath?: string;
+  assetsPublicPath?: string;
   renderer?: VextDocsRendererName;
   ui?: VextDocsUiConfig;
   code?: {

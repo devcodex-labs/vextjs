@@ -1,6 +1,6 @@
 import type { ResolvedVextDocsConfig } from "../types.js";
 
-const VEXT_DOCS_ASSET_VERSION = "20260703-b32a";
+const VEXT_DOCS_ASSET_VERSION = "20260703-b32b";
 
 function escapeHtml(value: string): string {
   return value
@@ -30,10 +30,10 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
   const boot = {
     title,
     docsPath: config.path,
-    assetsPath: config.assetsPath,
+    assetsPath: config.assetsPublicPath,
     specPath: config.specPath,
     specPublicPath: config.specPublicPath,
-    endpoints: config.endpoints,
+    endpoints: config.publicEndpoints,
     ui: config.ui,
     assetVersion: VEXT_DOCS_ASSET_VERSION,
     accessMode: config.access.mode,
@@ -47,7 +47,7 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="${escapeHtml(versionedAssetUrl(config.endpoints.styleCss))}">
+  <link rel="stylesheet" href="${escapeHtml(versionedAssetUrl(config.publicEndpoints.styleCss))}">
 </head>
 <body>
   <main id="vext-docs-root" class="vext-docs-shell">
@@ -70,7 +70,7 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
   </main>
   <noscript><p class="vext-docs-noscript">JavaScript is required to browse this documentation.</p></noscript>
   <script id="vext-docs-config" type="application/json">${safeJson(boot)}</script>
-  <script src="${escapeHtml(versionedAssetUrl(config.endpoints.appJs))}" defer></script>
+  <script src="${escapeHtml(versionedAssetUrl(config.publicEndpoints.appJs))}" defer></script>
 </body>
 </html>`;
 }

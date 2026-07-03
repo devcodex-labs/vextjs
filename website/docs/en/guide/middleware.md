@@ -38,11 +38,11 @@ type VextMiddleware = (
 ) => Promise<void> | void;
 ```
 
-| Parameters | Description |
-| ------ | -------------------------------------------------------- |
-| `req` | Framework-unified request object (decoupled from Adapter) |
-| `res` | Framework-unified response object |
-| `next` | Call the next middleware; must `await`, otherwise the post logic cannot be executed correctly |
+| Parameters | Description                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| `req`      | Framework-unified request object (decoupled from Adapter)                                     |
+| `res`      | Framework-unified response object                                                             |
+| `next`     | Call the next middleware; must `await`, otherwise the post logic cannot be executed correctly |
 
 ## Define middleware
 
@@ -154,7 +154,8 @@ Specify middleware for routes via `options.middlewares`:
 
 ```typescript
 // src/routes/admin.ts
-import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
+import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
   // String reference - use default parameters from configuration
   app.get(
     "/profile",
@@ -330,7 +331,8 @@ export default defineMiddlewareFactory<RoleOptions>((options) => {
 
 ```typescript
 // src/middlewares/timing.ts
-import { defineMiddleware } from "vextjs";export default defineMiddleware(async (req, res, next) => {
+import { defineMiddleware } from "vextjs";
+export default defineMiddleware(async (req, res, next) => {
   const start = performance.now();
 
   await next();
@@ -427,7 +429,7 @@ req.app.throw(404, "user.not_found");
 req.app.throw(
   502,
   "payment.failed",
-  {orderId},
+  { orderId },
   {
     provider: "stripe",
     providerCode: "card_declined",
@@ -435,7 +437,9 @@ req.app.throw(
 );
 
 //Field-level validation errors
-throw new VextValidationError([{ field: "email", message: "The email format is incorrect" }]);
+throw new VextValidationError([
+  { field: "email", message: "The email format is incorrect" },
+]);
 
 // Unexpected runtime error
 throw new Error("Database connection lost");
@@ -480,7 +484,8 @@ export default definePlugin({
       } catch (err) {
         //Report errors to Sentry
         // Sentry.captureException(err);
-        app.logger.error({ err }, "Captured by Sentry plugin");// Rethrow and let the framework's error-handler handle the response
+        app.logger.error({ err }, "Captured by Sentry plugin");
+        // Rethrow and let the framework's error-handler handle the response
         throw err;
       }
     });
@@ -530,15 +535,15 @@ The configured `middlewares` array uses a smart patch strategy: matching and mer
 
 VextJS has the following built-in global middleware, which controls behavior through configuration items:
 
-| Middleware | Configuration items | Description |
-| ------------------- | ------------------- | --------------------------------------------------- |
-| **requestId** | `config.requestId` | Generate/transparently transmit request unique identifier |
-| **cors** | `config.cors` | CORS cross-domain processing |
-| **bodyParser** | `config.bodyParser` | Request body parsing (JSON/URL-encoded) |
-| **rateLimit** | `config.rateLimit` | Global rate limit |
-| **accessLog** | `config.accessLog` | Access log (method/path/status/duration) |
-| **responseWrapper** | `config.response` | Response export wrapper `{ code, data, requestId }` |
-| **errorHandler** | — | Global error handling (not configurable, always enabled) |
+| Middleware          | Configuration items | Description                                               |
+| ------------------- | ------------------- | --------------------------------------------------------- |
+| **requestId**       | `config.requestId`  | Generate/transparently transmit request unique identifier |
+| **cors**            | `config.cors`       | CORS cross-domain processing                              |
+| **bodyParser**      | `config.bodyParser` | Request body parsing (JSON/URL-encoded)                   |
+| **rateLimit**       | `config.rateLimit`  | Global rate limit                                         |
+| **accessLog**       | `config.accessLog`  | Access log (method/path/status/duration)                  |
+| **responseWrapper** | `config.response`   | Response export wrapper `{ code, data, requestId }`       |
+| **errorHandler**    | —                   | Global error handling (not configurable, always enabled)  |
 
 See the [Configuration](/guide/configuration) chapter for details on various configuration options.
 
@@ -634,6 +639,7 @@ export default defineMiddleware(async (req, res, next) => {
 ```
 
 ## Next step- Learn [plugins](/guide/plugins) how to register global middleware through `app.use()`
+
 - Understand the automatic generation of [Parameter Validation](/guide/validation) middleware
 - See the complete options for built-in middleware in [Configuration](/guide/configuration)
 - Explore [Testing](/guide/testing) how to test middleware logic

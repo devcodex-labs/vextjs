@@ -66,30 +66,30 @@ interface BootstrapResult {
 
 ### Parameters
 
-| Parameters | Type | Default value | Description |
-| --------- | -------- | --------------- | ---------- |
-| `rootDir` | `string` | `process.cwd()` | Project root directory |
+| Parameters | Type     | Default value   | Description            |
+| ---------- | -------- | --------------- | ---------------------- |
+| `rootDir`  | `string` | `process.cwd()` | Project root directory |
 
 ### Start the process
 
 `bootstrap()` internally performs the following steps (in order):
 
-| Steps | Action | Instructions |
-| ---- | ------------------- | ------------------------------------------------------------------------------- |
-| ① | `loadConfig()` | Three-layer configuration merging (default → env → local) |
-| ② | `createApp(config)` | Create app instance |
-| ③ | `resolveAdapter()` | Resolve and instantiate the underlying adapter |
-| ④ | `loadPlugins()` | Scan `src/plugins/` and execute according to topological sorting `setup()` |
-| ⑤ | `loadMiddlewares()` | Scan `src/middlewares/` and register middleware definitions |
-| ⑥ | `loadServices()` | Scan `src/services/` and inject into `app.services` |
-| ⑥+ | Mount `app.fetch` | Encapsulate Node.js fetch, automatically propagate requestId + structured log |
-| ⑦ | `loadRoutes()` | Scan `src/routes/` and register routes to adapter |
-| ⑧ | `lockUse()` | Lock `app.use()` and prohibit subsequent registration of global middleware |
-| ⑨ | Register built-in middleware | requestId → cors → bodyParser → rateLimit → responseWrapper → accessLog |
-| ⑩ | Registration error handling | errorHandler + 404 Keep the secret |
-| ⑪ | `adapter.listen()` | HTTP starts listening |
-| ⑫ | `setupShutdown()` | Register signal processing (SIGTERM / SIGINT) |
-| ⑬ | `runReady()` | Execute all `onReady` hooks |
+| Steps | Action                       | Instructions                                                                  |
+| ----- | ---------------------------- | ----------------------------------------------------------------------------- |
+| ①     | `loadConfig()`               | Three-layer configuration merging (default → env → local)                     |
+| ②     | `createApp(config)`          | Create app instance                                                           |
+| ③     | `resolveAdapter()`           | Resolve and instantiate the underlying adapter                                |
+| ④     | `loadPlugins()`              | Scan `src/plugins/` and execute according to topological sorting `setup()`    |
+| ⑤     | `loadMiddlewares()`          | Scan `src/middlewares/` and register middleware definitions                   |
+| ⑥     | `loadServices()`             | Scan `src/services/` and inject into `app.services`                           |
+| ⑥+    | Mount `app.fetch`            | Encapsulate Node.js fetch, automatically propagate requestId + structured log |
+| ⑦     | `loadRoutes()`               | Scan `src/routes/` and register routes to adapter                             |
+| ⑧     | `lockUse()`                  | Lock `app.use()` and prohibit subsequent registration of global middleware    |
+| ⑨     | Register built-in middleware | requestId → cors → bodyParser → rateLimit → responseWrapper → accessLog       |
+| ⑩     | Registration error handling  | errorHandler + 404 Keep the secret                                            |
+| ⑪     | `adapter.listen()`           | HTTP starts listening                                                         |
+| ⑫     | `setupShutdown()`            | Register signal processing (SIGTERM / SIGINT)                                 |
+| ⑬     | `runReady()`                 | Execute all `onReady` hooks                                                   |
 
 ### Typical entry file
 
@@ -106,9 +106,12 @@ bootstrap().catch((err) => {
 ### Return value
 
 ```typescript
-const { app, serverHandle } = await bootstrap();// app: VextApp instance
+const { app, serverHandle } = await bootstrap();
+// app: VextApp instance
 // serverHandle: HTTP server handle (used to obtain the listening address, etc.)
-console.log(`The server is running at http://${app.config.host}:${app.config.port}`);
+console.log(
+  `The server is running at http://${app.config.host}:${app.config.port}`,
+);
 ```
 
 ---
@@ -134,9 +137,9 @@ function createApp(config: VextConfig): {
 
 ### Return value
 
-| Field | Type | Description |
-| ----------- | -------------- | ---------------------------------- |
-| `app` | `VextApp` | User-visible application instance |
+| Field       | Type           | Description                                         |
+| ----------- | -------------- | --------------------------------------------------- |
+| `app`       | `VextApp`      | User-visible application instance                   |
 | `internals` | `AppInternals` | Framework internal methods (only used by bootstrap) |
 
 :::tip
@@ -171,7 +174,10 @@ app.logger.getLevel(); // "info"
 app.logger.setLevel("debug");
 
 // Structured log (object + message)
-app.logger.info({ event: "user_created", userId: "abc" }, "User created successfully");
+app.logger.info(
+  { event: "user_created", userId: "abc" },
+  "User created successfully",
+);
 
 // Child logger (carries additional context)
 const serviceLogger = app.logger.child({ service: "UserService" });
@@ -181,14 +187,14 @@ serviceLogger.info("Query user list");
 
 **Log level method**:
 
-| Method | Level | Description |
-| ------------------- | ----- | ----------------------- |
+| Method              | Level | Description                                    |
+| ------------------- | ----- | ---------------------------------------------- |
 | `logger.fatal(...)` | fatal | Fatal error, the application is about to crash |
-| `logger.error(...)` | error | runtime error |
-| `logger.warn(...)` | warn | Warning message |
-| `logger.info(...)` | info | General information (default level) |
-| `logger.debug(...)` | debug | debug information |
-| `logger.trace(...)` | trace | The most granular troubleshooting information |
+| `logger.error(...)` | error | runtime error                                  |
+| `logger.warn(...)`  | warn  | Warning message                                |
+| `logger.info(...)`  | info  | General information (default level)            |
+| `logger.debug(...)` | debug | debug information                              |
+| `logger.trace(...)` | trace | The most granular troubleshooting information  |
 
 Each method supports two signatures:
 
@@ -287,10 +293,10 @@ app.throw("user.not_found");
 
 **Status parsing rules for shortcuts**:
 
-| Priority | Source | Description |
-| :----: | ---------------------------- | ----------------------------------------------- |
-| 1 | `statusCode` in i18n language package | If `user.not_found` is configured with `statusCode: 404` |
-| 2 | Default value `400` | Base value when `statusCode` is not configured |
+| Priority | Source                                | Description                                              |
+| :------: | ------------------------------------- | -------------------------------------------------------- |
+|    1     | `statusCode` in i18n language package | If `user.not_found` is configured with `statusCode: 404` |
+|    2     | Default value `400`                   | Base value when `statusCode` is not configured           |
 
 **Business error code of shortcut**: If the i18n language package is configured with an independent `code` for the key (different from the key itself), it will be automatically appended to the response.
 
@@ -320,7 +326,7 @@ app.throw(400, "balance.insufficient", { balance: 50 }, 20001);
 app.throw(
   502,
   "payment.failed",
-  {orderId},
+  { orderId },
   {
     provider: "stripe",
     providerCode: "card_declined",
@@ -338,11 +344,11 @@ app.throw({
 
 **Standard calling parameters**:
 
-| Parameters | Type | Description |
-| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `status` | `number` | HTTP status code (400/401/403/404/409/500…) |
-| `message` | `string` | Error description (also looked up as i18n key) |
-| `paramsOrCode` | `Record<string, unknown> \| number \| string` | i18n interpolation parameter object or business error code |
+| Parameters      | Type                                                       | Description                                                                                                   |
+| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `status`        | `number`                                                   | HTTP status code (400/401/403/404/409/500…)                                                                   |
+| `message`       | `string`                                                   | Error description (also looked up as i18n key)                                                                |
+| `paramsOrCode`  | `Record<string, unknown> \| number \| string`              | i18n interpolation parameter object or business error code                                                    |
 | `codeOrDetails` | `number \| string \| Record<string, unknown> \| unknown[]` | When the fourth parameter is number/string, it is the business code; when it is object/array, it is `details` |
 
 `details` is suitable for storing business details returned by third-party interfaces, such as upstream error codes, original messages, trace ids or fields that can be displayed to the caller. The framework will do JSON-safe cleaning before responding: circular references will become `"[Circular]"`, `Date` will output ISO strings, `Error` will only output `name/message`, and functions and `undefined` will not appear in the response. Unknown plain `Error` details are not automatically exposed and must be passed in explicitly via `HttpError` or `app.throw`.
@@ -487,43 +493,43 @@ off();
 
 **Execution Strategy**:
 
-| Hook Type | Strategy |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `request:start`, `validation:success`, `handler:before`, `fetch:before`, `proxy:before`, `plugin:beforeSetup`, `server:beforeListen` | Errors thrown by the handler will propagate upward and can prevent subsequent processes |
-| `response:before`, `error:beforeResponse`, `service:beforeCall`, `service:afterCall`, `service:error`, `openapi:*` | Synchronous life cycle, return of Promise is not allowed |
-| `handler:after`, `handler:error`, `response:after`, `error:afterResponse`, `fetch:after/error`, `proxy:after/error`, `cache:*`, `plugin:afterSetup/error`, `routes:ready`, `app:ready/close` | safe emit, hook errors will be recorded but will not change the main process |
+| Hook Type                                                                                                                                                                                    | Strategy                                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `request:start`, `validation:success`, `handler:before`, `fetch:before`, `proxy:before`, `plugin:beforeSetup`, `server:beforeListen`                                                         | Errors thrown by the handler will propagate upward and can prevent subsequent processes |
+| `response:before`, `error:beforeResponse`, `service:beforeCall`, `service:afterCall`, `service:error`, `openapi:*`                                                                           | Synchronous life cycle, return of Promise is not allowed                                |
+| `handler:after`, `handler:error`, `response:after`, `error:afterResponse`, `fetch:after/error`, `proxy:after/error`, `cache:*`, `plugin:afterSetup/error`, `routes:ready`, `app:ready/close` | safe emit, hook errors will be recorded but will not change the main process            |
 
-**Available hooks**:| Name | Trigger Point |
-|---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `request:start` | After requestId is generated, it enters the global middleware chain; 404 will also be triggered, `matched=false` |
-| `route:matched` | After the adapter matches the route and before executing the checksum handler |
-| `route:notFound` | No route matching, 404 response before sending |
-| `validation:success` | Route `validate` all passed, before `next()` |
-| `validation:error` | Route `validate` fails and throws `VextValidationError` before |
-| `handler:before` | Before the business handler is called |
-| `handler:after` | After the business handler returns successfully |
-| `handler:error` | After the business handler throws an error and before entering global error handling |
-| `response:before` | `res.json/rawJson/text/stream` can be synchronized before sending. patch `data/status/headers` |
-| `response:after` | After the response is sent |
-| `error:beforeResponse` | `error-handler` can synchronize patch `body/status` before writing JSON error response |
-| `error:afterResponse` | After the error response is sent |
-| `fetch:before` | `app.fetch` can be modified before leaving the website `Headers` |
-| `fetch:after` | `app.fetch` returns `Response` after |
-| `fetch:error` | `app.fetch` finally fails |
-| `proxy:before` | `app.fetch.proxy` After parsing the upstream request and before sending it |
-| `proxy:after` | `app.fetch.proxy` after receiving the upstream response and before transparent transmission |
-| `proxy:error` | `app.fetch.proxy` on local error, timeout or upstream network failure |
-| `service:loaded` | After service is loaded and mounted during cold start |
-| `service:reloaded` | dev soft reload after re-instantiating service |
-| `service:beforeCall` | Before the service method is called |
-| `service:afterCall` | After the service method returns successfully |
-| `service:error` | After the service method throws an error or rejects |
-| `cache:hit`, `cache:miss`, `cache:write`, `cache:error` | Route-level response cache read and write life cycle |
-| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup` || `routes:ready` | After route scanning and registration are completed |
-| `openapi:beforeGenerate`, `openapi:afterGenerate` | Before and after OpenAPI document generation; `afterGenerate` can replace document synchronously |
-| `server:beforeListen` | Before HTTP server starts listening |
-| `app:ready` | `onReady` before and after execution |
-| `app:close` | `onClose`/shutdown before and after execution |
+| **Available hooks**:                                      | Name                                                                                                             | Trigger Point |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------- | -------------- | --------------------------------------------------- |
+| `request:start`                                           | After requestId is generated, it enters the global middleware chain; 404 will also be triggered, `matched=false` |
+| `route:matched`                                           | After the adapter matches the route and before executing the checksum handler                                    |
+| `route:notFound`                                          | No route matching, 404 response before sending                                                                   |
+| `validation:success`                                      | Route `validate` all passed, before `next()`                                                                     |
+| `validation:error`                                        | Route `validate` fails and throws `VextValidationError` before                                                   |
+| `handler:before`                                          | Before the business handler is called                                                                            |
+| `handler:after`                                           | After the business handler returns successfully                                                                  |
+| `handler:error`                                           | After the business handler throws an error and before entering global error handling                             |
+| `response:before`                                         | `res.json/rawJson/text/stream` can be synchronized before sending. patch `data/status/headers`                   |
+| `response:after`                                          | After the response is sent                                                                                       |
+| `error:beforeResponse`                                    | `error-handler` can synchronize patch `body/status` before writing JSON error response                           |
+| `error:afterResponse`                                     | After the error response is sent                                                                                 |
+| `fetch:before`                                            | `app.fetch` can be modified before leaving the website `Headers`                                                 |
+| `fetch:after`                                             | `app.fetch` returns `Response` after                                                                             |
+| `fetch:error`                                             | `app.fetch` finally fails                                                                                        |
+| `proxy:before`                                            | `app.fetch.proxy` After parsing the upstream request and before sending it                                       |
+| `proxy:after`                                             | `app.fetch.proxy` after receiving the upstream response and before transparent transmission                      |
+| `proxy:error`                                             | `app.fetch.proxy` on local error, timeout or upstream network failure                                            |
+| `service:loaded`                                          | After service is loaded and mounted during cold start                                                            |
+| `service:reloaded`                                        | dev soft reload after re-instantiating service                                                                   |
+| `service:beforeCall`                                      | Before the service method is called                                                                              |
+| `service:afterCall`                                       | After the service method returns successfully                                                                    |
+| `service:error`                                           | After the service method throws an error or rejects                                                              |
+| `cache:hit`, `cache:miss`, `cache:write`, `cache:error`   | Route-level response cache read and write life cycle                                                             |
+| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup`                    |               | `routes:ready` | After route scanning and registration are completed |
+| `openapi:beforeGenerate`, `openapi:afterGenerate`         | Before and after OpenAPI document generation; `afterGenerate` can replace document synchronously                 |
+| `server:beforeListen`                                     | Before HTTP server starts listening                                                                              |
+| `app:ready`                                               | `onReady` before and after execution                                                                             |
+| `app:close`                                               | `onClose`/shutdown before and after execution                                                                    |
 
 :::tip
 If you only want to record "requests that pass parameter verification", use `validation:success`. In this way, requests that fail verification will not enter this hook, which is more direct than manually excluding `VextValidationError` in ordinary global middleware.
@@ -544,12 +550,12 @@ cache: {
 };
 ```
 
-| Method | Description |
-| ------------------ | -------------------------------------------------- |
-| `invalidate(tag)` | Batch invalidate all associated cache entries by tag |
-| `delete(key)` | Delete the cache of the specified key |
-| `clear()` | Clear all entries in the current vext response cache namespace |
-| `stats()` | Return cache statistics (number of entries, number of hits, number of misses, hit rate) |
+| Method            | Description                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `invalidate(tag)` | Batch invalidate all associated cache entries by tag                                    |
+| `delete(key)`     | Delete the cache of the specified key                                                   |
+| `clear()`         | Clear all entries in the current vext response cache namespace                          |
+| `stats()`         | Return cache statistics (number of entries, number of hits, number of misses, hit rate) |
 
 ```typescript
 //Invalid related cache after product update
@@ -811,7 +817,8 @@ setThrow(wrapper: (original: VextApp['throw']) => VextApp['throw']): void;
 Receives the original `throw` implementation and returns the new implementation. Can be used to intercept errors, add logs, modify error formats, etc.
 
 ```typescript
-import { definePlugin } from "vextjs";export default definePlugin({
+import { definePlugin } from "vextjs";
+export default definePlugin({
   name: "error-tracking",
   setup(app) {
     app.setThrow((originalThrow) => {
@@ -985,7 +992,9 @@ app.onReady(async () => {
 });
 
 app.onReady(() => {
-  app.logger.info(`The server is running at http://${app.config.host}:${app.config.port}`);
+  app.logger.info(
+    `The server is running at http://${app.config.host}:${app.config.port}`,
+  );
 });
 ```
 
@@ -1065,14 +1074,14 @@ interface AppInternals {
 }
 ```
 
-| Method | Description |
-|--------------------------|-----------------------------------|
-| `lockUse()` | Lock `app.use()`, called after routing registration is completed |
-| `runReady()` | Execute all `onReady` hooks |
-| `getGlobalMiddlewares()` | Get the global middleware list |
-| `getRateLimiter()` | Get a custom rate limiter |
-| `getRequestIdGenerator()` | Get custom requestId generator |
-| `shutdown()` | Trigger graceful shutdown process |
+| Method                    | Description                                                      |
+| ------------------------- | ---------------------------------------------------------------- |
+| `lockUse()`               | Lock `app.use()`, called after routing registration is completed |
+| `runReady()`              | Execute all `onReady` hooks                                      |
+| `getGlobalMiddlewares()`  | Get the global middleware list                                   |
+| `getRateLimiter()`        | Get a custom rate limiter                                        |
+| `getRequestIdGenerator()` | Get custom requestId generator                                   |
+| `shutdown()`              | Trigger graceful shutdown process                                |
 
 ### shutdown process
 
@@ -1157,7 +1166,7 @@ export default defineRoutes((app) => {
 Create helper functions for middleware. See [plugin API](/api/plugin-api#definemiddleware).
 
 ```typescript
-import { defineMiddleware, defineMiddlewareFactory } from "vextjs";// No configuration middleware
+import { defineMiddleware, defineMiddlewareFactory } from "vextjs"; // No configuration middleware
 export default defineMiddleware(async (req, res, next) => {
   // ...
   await next();

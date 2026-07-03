@@ -37,6 +37,19 @@ function joinAssetPath(base: string, file: string): string {
   return `${base.replace(/\/+$/, "")}/${file.replace(/^\/+/, "")}`;
 }
 
+function createEndpointMap(base: string): ResolvedVextDocsConfig["endpoints"] {
+  return {
+    page: "",
+    openapi: joinAssetPath(base, "openapi.json"),
+    config: joinAssetPath(base, "config.json"),
+    code: joinAssetPath(base, "code.json"),
+    search: joinAssetPath(base, "search.json"),
+    source: joinAssetPath(base, "source"),
+    appJs: joinAssetPath(base, "app.js"),
+    styleCss: joinAssetPath(base, "style.css"),
+  };
+}
+
 function normalizeStringArray(value: unknown): string[] {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -125,6 +138,7 @@ export function normalizeDocsConfig(
   const specPublicPath = openapi.jsonPublicPath ?? specPath;
   const docsPath = openapi.docs?.path ?? openapi.docsPath ?? DEFAULT_DOCS_PATH;
   const assetsPath = openapi.docs?.assetsPath ?? DEFAULT_DOCS_ASSETS_PATH;
+  const assetsPublicPath = openapi.docs?.assetsPublicPath ?? assetsPath;
 
   const ui: ResolvedVextDocsUiConfig = {
     title: openapi.docs?.ui?.title ?? openapi.title ?? "Vext API Docs",
@@ -169,6 +183,7 @@ export function normalizeDocsConfig(
   return {
     path: docsPath,
     assetsPath,
+    assetsPublicPath,
     specPath,
     specPublicPath,
     renderer: DEFAULT_DOCS_RENDERER,
@@ -177,15 +192,7 @@ export function normalizeDocsConfig(
     access,
     tryItOut,
     sources: normalizeDocsSources(openapi.docs?.sources),
-    endpoints: {
-      page: docsPath,
-      openapi: joinAssetPath(assetsPath, "openapi.json"),
-      config: joinAssetPath(assetsPath, "config.json"),
-      code: joinAssetPath(assetsPath, "code.json"),
-      search: joinAssetPath(assetsPath, "search.json"),
-      source: joinAssetPath(assetsPath, "source"),
-      appJs: joinAssetPath(assetsPath, "app.js"),
-      styleCss: joinAssetPath(assetsPath, "style.css"),
-    },
+    endpoints: { ...createEndpointMap(assetsPath), page: docsPath },
+    publicEndpoints: { ...createEndpointMap(assetsPublicPath), page: docsPath },
   };
 }

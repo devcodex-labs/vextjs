@@ -232,9 +232,7 @@ docker logs -f myapp
 
 ### Basic configuration
 
-```
-
-nginx
+```nginx
 # /etc/nginx/conf.d/myapp.conf
 
 upstream vext_backend {
@@ -303,9 +301,7 @@ server {
 
 ### Multi-instance load balancing
 
-```
-
-nginx
+```nginx
 upstream vext_backend {
     least_conn;
     server 127.0.0.1:3001;

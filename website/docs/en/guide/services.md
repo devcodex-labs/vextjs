@@ -19,6 +19,7 @@ Data layer (models) ← Data access (provided through plugins)
 This layering enables:
 
 -Business logic can be reused between different routes
+
 - The service layer can be unit tested independently (not relying on HTTP)
 - Switching the underlying Adapter does not affect the business code
 
@@ -122,14 +123,14 @@ export default defineRoutes((app) => {
 
 ### Mapping rules
 
-| File path | Access method | Description |
-| ------------------------------- | ------------------------------- | ----------------------- |
-| `services/user.ts` | `app.services.user` | Flat naming |
-| `services/order.ts` | `app.services.order` | Flat naming |
-| `services/user-profile.ts` | `app.services.userProfile` | kebab-case → camelCase |
-| `services/payment/stripe.ts` | `app.services.payment.stripe` | Nested namespaces |
-| `services/payment/alipay.ts` | `app.services.payment.alipay` | Nested namespaces |
-| `services/admin/user-manage.ts` | `app.services.admin.userManage` | Nesting + CamelCase |
+| File path                       | Access method                   | Description            |
+| ------------------------------- | ------------------------------- | ---------------------- |
+| `services/user.ts`              | `app.services.user`             | Flat naming            |
+| `services/order.ts`             | `app.services.order`            | Flat naming            |
+| `services/user-profile.ts`      | `app.services.userProfile`      | kebab-case → camelCase |
+| `services/payment/stripe.ts`    | `app.services.payment.stripe`   | Nested namespaces      |
+| `services/payment/alipay.ts`    | `app.services.payment.alipay`   | Nested namespaces      |
+| `services/admin/user-manage.ts` | `app.services.admin.userManage` | Nesting + CamelCase    |
 
 **Conversion Rules:**
 
@@ -206,7 +207,7 @@ export default definePlugin({
 
 ## Inter-service calls
 
-Services can call each other. It is recommended to access on-demand (delayed access) in the **method through `this.app.services` instead of directly referencing it in the constructor:
+Services can call each other. It is recommended to access on-demand (delayed access) in the \*\*method through `this.app.services` instead of directly referencing it in the constructor:
 
 ```typescript
 // src/services/order.ts
@@ -302,7 +303,9 @@ export default class UserService {
 
   constructor(app: VextApp) {
     this.app = app;
-  }async findById(id: string) {
+  }
+
+  async findById(id: string) {
     //Check cache first
     const cached = await (this.app as any).redis.get(`user:${id}`);
     if (cached) return cached;
@@ -440,7 +443,8 @@ export default class PaymentService {
   constructor(private app: VextApp) {}
 
   async processPayment(orderId: string, amount: number) {
-    this.app.logger.info({ orderId, amount }, "Processing payment");try {
+    this.app.logger.info({ orderId, amount }, "Processing payment");
+    try {
       // Call external payment API...
       const result = { transactionId: "txn_xxx" };
       this.app.logger.info(
