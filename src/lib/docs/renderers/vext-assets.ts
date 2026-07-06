@@ -410,6 +410,71 @@ body {
   color: var(--vext-muted);
 }
 
+.vext-docs-loading {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.vext-docs-loading-card,
+.vext-docs-nav-skeleton-line {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--vext-panel-soft), var(--vext-panel), var(--vext-panel-soft));
+  background-size: 220% 100%;
+  animation: vext-docs-loading-pulse 1.3s ease-in-out infinite;
+}
+
+.vext-docs-loading-card {
+  display: grid;
+  gap: 10px;
+  min-height: 126px;
+  border: 1px solid var(--vext-line);
+  padding: 16px;
+}
+
+.vext-docs-loading-line {
+  height: 10px;
+  max-width: 100%;
+  border-radius: 999px;
+  background: var(--vext-line);
+  opacity: 0.65;
+}
+
+.vext-docs-loading-line.is-short {
+  width: 42%;
+}
+
+.vext-docs-loading-line.is-medium {
+  width: 68%;
+}
+
+.vext-docs-nav-skeleton {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.vext-docs-nav-skeleton-line {
+  height: 30px;
+}
+
+.vext-docs-nav-skeleton-line.is-child {
+  margin-left: 18px;
+  width: calc(100% - 18px);
+}
+
+@keyframes vext-docs-loading-pulse {
+  from {
+    background-position: 120% 0;
+  }
+
+  to {
+    background-position: -120% 0;
+  }
+}
+
 .vext-docs-operation {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -771,6 +836,7 @@ body {
 .vext-docs-tryout-target,
 .vext-docs-auth-note,
 .vext-docs-server-vars,
+.vext-docs-custom-server,
 .vext-docs-hook-note,
 .vext-docs-kv-section,
 .vext-docs-code-samples,
@@ -829,6 +895,11 @@ body {
   display: none;
 }
 
+.vext-docs-server-vars[hidden],
+.vext-docs-custom-server[hidden] {
+  display: none !important;
+}
+
 .vext-docs-tryout-panel-grid {
   display: grid;
   gap: 10px;
@@ -837,6 +908,7 @@ body {
 .vext-docs-tryout-target strong,
 .vext-docs-auth-note strong,
 .vext-docs-server-vars strong,
+.vext-docs-custom-server strong,
 .vext-docs-hook-note strong,
 .vext-docs-kv-section strong,
 .vext-docs-code-samples strong,
@@ -851,7 +923,8 @@ body {
   gap: 8px;
 }
 
-.vext-docs-server-vars {
+.vext-docs-server-vars,
+.vext-docs-custom-server {
   display: grid;
   gap: 8px;
 }
@@ -918,9 +991,24 @@ body {
   padding-left: 18px;
 }
 
+.vext-docs-auth-note p {
+  margin: 8px 0;
+}
+
 .vext-docs-auth-note li,
 .vext-docs-history-list li {
   margin: 4px 0;
+}
+
+.vext-docs-effective-headers {
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--vext-code-bg);
+  color: var(--vext-code-fg);
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 .vext-docs-code-samples {
@@ -1570,6 +1658,8 @@ export const VEXT_DOCS_APP_JS = `
   const THEME_STORAGE_KEY = "vext-docs-theme";
   const DENSITY_STORAGE_KEY = "vext-docs-density";
   const REQUEST_HISTORY_STORAGE_KEY = "vext-docs-request-history";
+  const CUSTOM_SERVER_VALUE = "__vext_docs_custom_server__";
+  const SAME_ORIGIN_SERVER_VALUE = "";
   const SIDEBAR_MIN_WIDTH = 240;
   const SIDEBAR_MAX_WIDTH = 480;
   const SIDEBAR_AUTO_MAX_WIDTH = 380;
@@ -2202,6 +2292,8 @@ export const VEXT_DOCS_APP_JS = `
     parent.appendChild(link);
   };
 
+  const AUTH_CHANGE_EVENT = "vext-docs-auth-change";
+
   const authStorageKey = (name) => "vext-docs-auth:" + name;
 
   const readStoredAuth = (name) => {
@@ -2222,6 +2314,10 @@ export const VEXT_DOCS_APP_JS = `
     } catch {
       // Ignore storage errors in locked-down browsers.
     }
+  };
+
+  const emitAuthChange = () => {
+    document.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
   };
 
   const createBlock = (value) => {
@@ -2764,6 +2860,10 @@ export const VEXT_DOCS_APP_JS = `
     return names.length > 0 ? "auth: " + names.join(", ") : "";
   };
 
+  const getAuthRequirementNames = (operation) => (
+    Array.from(new Set(getOperationSecurity(operation).flatMap((requirement) => Object.keys(requirement || {}))))
+  );
+
   const renderAuthControls = () => {
     const existing = document.getElementById("vext-docs-auth");
     if (existing) existing.remove();
@@ -2793,6 +2893,7 @@ export const VEXT_DOCS_APP_JS = `
       input.addEventListener("input", () => {
         state.auth[name] = input.value;
         writeStoredAuth(name, input.value);
+        emitAuthChange();
       });
       label.appendChild(labelText);
       label.appendChild(input);
@@ -2806,8 +2907,7 @@ export const VEXT_DOCS_APP_JS = `
     const headers = {};
     const query = [];
     const schemes = getSecuritySchemes();
-    const requirements = getOperationSecurity(operation);
-    const names = Array.from(new Set(requirements.flatMap((requirement) => Object.keys(requirement || {}))));
+    const names = getAuthRequirementNames(operation);
     for (const name of names) {
       const value = state.auth[name] || readStoredAuth(name);
       const scheme = schemes[name];
@@ -2828,25 +2928,25 @@ export const VEXT_DOCS_APP_JS = `
       return ["This operation declares no auth."];
     }
     const schemes = getSecuritySchemes();
-    const requirements = getOperationSecurity(operation);
-    const names = Array.from(new Set(requirements.flatMap((requirement) => Object.keys(requirement || {}))));
+    const names = getAuthRequirementNames(operation);
     if (names.length === 0) return ["No auth scheme is attached to this operation."];
     const lines = [];
     for (const name of names) {
       const scheme = schemes[name];
+      const configured = state.auth[name] || readStoredAuth(name) ? "configured" : "not configured";
       if (!scheme || typeof scheme !== "object") {
         lines.push(name + ": unknown scheme, not auto-injected.");
         continue;
       }
       if (scheme.type === "http" && String(scheme.scheme || "").toLowerCase() === "bearer") {
-        lines.push(name + ": auto-injected as Authorization bearer header when configured.");
+        lines.push(name + ": Authorization bearer header, " + configured + ".");
         continue;
       }
       if (scheme.type === "apiKey" && scheme.name) {
         if (scheme.in === "header") {
-          lines.push(name + ": auto-injected as header " + scheme.name + " when configured.");
+          lines.push(name + ": header " + scheme.name + ", " + configured + ".");
         } else if (scheme.in === "query") {
-          lines.push(name + ": auto-injected as query " + scheme.name + " when configured.");
+          lines.push(name + ": query " + scheme.name + ", " + configured + ".");
         } else if (scheme.in === "cookie") {
           lines.push(name + ": cookie apiKey is not auto-injected in browser console.");
         }
@@ -2914,7 +3014,7 @@ export const VEXT_DOCS_APP_JS = `
 
   let tabIdSequence = 0;
 
-  const createTabs = (items, initialId, className) => {
+  const createTabs = (items, initialId, className, onActivate) => {
     const wrapper = document.createElement("div");
     wrapper.className = className || "vext-docs-tabs";
     const tablist = document.createElement("div");
@@ -2935,6 +3035,7 @@ export const VEXT_DOCS_APP_JS = `
         entry.panel.hidden = !selected;
         if (selected && focus) entry.button.focus();
       }
+      if (typeof onActivate === "function") onActivate(id);
     };
 
     items.forEach((item, index) => {
@@ -2999,7 +3100,19 @@ export const VEXT_DOCS_APP_JS = `
       item.textContent = option.label;
       serverSelect.appendChild(item);
     }
+    serverSelect.value = resolveInitialServerValue();
     grid.appendChild(wrapControl("Server", serverSelect));
+
+    const customServerInput = document.createElement("input");
+    customServerInput.placeholder = "https://api.example.com";
+    customServerInput.value = customServerDefaultUrl();
+    const customServerPanel = document.createElement("div");
+    customServerPanel.className = "vext-docs-custom-server";
+    const customServerTitle = document.createElement("strong");
+    customServerTitle.textContent = "Custom server";
+    customServerPanel.appendChild(customServerTitle);
+    customServerPanel.appendChild(wrapControl("Base URL", customServerInput));
+    grid.appendChild(customServerPanel);
 
     const serverVariableInputs = new Map();
     const serverVariablesPanel = document.createElement("div");
@@ -3040,12 +3153,9 @@ export const VEXT_DOCS_APP_JS = `
     const headersPanel = document.createElement("div");
     headersPanel.className = "vext-docs-tryout-panel-grid";
     headersPanel.appendChild(headersEditor.element);
-
-    const authNote = createAuthNote(operation);
-    const authPanel = document.createElement("div");
-    authPanel.className = "vext-docs-tryout-panel-grid";
-    authPanel.appendChild(authNote);
-    if (hasTryItOutHookConfig()) authPanel.appendChild(createHookNote());
+    const headersAuthStatus = createHeadersAuthStatus(operation);
+    headersPanel.appendChild(headersAuthStatus.element);
+    if (hasTryItOutHookConfig()) headersPanel.appendChild(createHookNote());
 
     let bodyInput = null;
     const bodyPanel = document.createElement("div");
@@ -3112,18 +3222,21 @@ export const VEXT_DOCS_APP_JS = `
     responsePanel.appendChild(responseToolbar);
     responsePanel.appendChild(result);
 
+    let updateConsole = () => {};
     const tabs = createTabs(
       [
         { id: "params", label: "Params", content: paramsPanel },
         { id: "headers", label: "Headers", content: headersPanel },
         { id: "body", label: "Body", content: bodyPanel },
-        { id: "auth", label: "Auth", content: authPanel },
         { id: "samples", label: "Samples", content: samples.element },
         { id: "history", label: "History", content: history.element },
         { id: "response", label: "Response", content: responsePanel },
       ],
       "params",
       "vext-docs-tryout-tabs",
+      (id) => {
+        if (id === "headers") updateConsole();
+      },
     );
     grid.appendChild(tabs.element);
     grid.appendChild(actions);
@@ -3131,7 +3244,9 @@ export const VEXT_DOCS_APP_JS = `
     const collectRequest = () => {
       const auth = buildAuthParts(operation);
       const queryParts = collectQueryParts(queryEditor.values(), queryEditor.rawInput.value, auth.query);
-      const serverUrl = resolveServerUrl(serverSelect.value, serverVariableInputs);
+      const serverUrl = serverSelect.value === CUSTOM_SERVER_VALUE
+        ? normalizeCustomServerUrl(customServerInput.value)
+        : resolveServerUrl(serverSelect.value, serverVariableInputs);
       const target = buildTryItOutUrl(serverUrl, path, pathInputs, queryParts);
       const manualHeaders = {
         ...normalizeHeaders(headersEditor.valuesObject()),
@@ -3139,11 +3254,18 @@ export const VEXT_DOCS_APP_JS = `
       };
       const headers = { ...auth.headers, ...manualHeaders };
       const body = bodyInput && bodyInput.value.trim() ? bodyInput.value : "";
-      if (body && !headers["content-type"]) headers["content-type"] = getRequestBodyContentType(operation);
+      let autoContentTypeHeader = false;
+      if (body && !headers["content-type"]) {
+        headers["content-type"] = getRequestBodyContentType(operation);
+        autoContentTypeHeader = true;
+      }
       return {
         method: methodName,
         target,
         headers,
+        authHeaders: auth.headers,
+        manualHeaders,
+        autoContentTypeHeader,
         body,
         server: serverSelect.value,
         resolvedServer: serverUrl,
@@ -3154,6 +3276,7 @@ export const VEXT_DOCS_APP_JS = `
     const collectSnapshot = () => ({
       operationKey,
       server: serverSelect.value,
+      customServer: customServerInput.value,
       pathValues: pathInputs.map((input) => ({ name: input.name, value: input.value })),
       queryRows: queryEditor.snapshot(),
       queryRaw: queryEditor.rawInput.value,
@@ -3164,7 +3287,11 @@ export const VEXT_DOCS_APP_JS = `
 
     function restoreSnapshot(snapshot) {
       if (!snapshot || snapshot.operationKey !== operationKey) return;
-      serverSelect.value = snapshot.server || "";
+      const optionValues = Array.from(serverSelect.options).map((option) => option.value);
+      serverSelect.value = optionValues.includes(snapshot.server)
+        ? snapshot.server
+        : resolveInitialServerValue();
+      customServerInput.value = snapshot.customServer || customServerInput.value || customServerDefaultUrl();
       for (const input of pathInputs) {
         const next = (snapshot.pathValues || []).find((entry) => entry.name === input.name);
         input.value = next ? next.value : "";
@@ -3174,17 +3301,21 @@ export const VEXT_DOCS_APP_JS = `
       headersEditor.restore(snapshot.headerRows || []);
       headersEditor.rawInput.value = snapshot.headerRaw || "";
       if (bodyInput) bodyInput.value = snapshot.body || "";
+      renderCustomServer();
+      renderServerVariables();
       updateConsole();
     }
 
-    const updateConsole = () => {
+    updateConsole = () => {
       try {
         const request = collectRequest();
-        const cors = isAbsoluteUrl(request.resolvedServer || request.server) ? " Browser CORS rules apply." : " Same-origin request.";
+        const cors = isCrossOriginUrl(request.resolvedServer || request.target) ? " Browser CORS rules apply." : " Same-origin request.";
         targetPreview.textContent = "URL: " + (request.displayUrl || request.target) + "." + cors;
+        headersAuthStatus.render(request);
         renderCodeSamples(sampleBlocks, request);
       } catch (error) {
         targetPreview.textContent = error && error.message ? error.message : String(error);
+        headersAuthStatus.render(null);
         for (const block of Object.values(sampleBlocks)) block.textContent = "Fix request inputs to generate samples.";
       }
     };
@@ -3192,7 +3323,7 @@ export const VEXT_DOCS_APP_JS = `
     const renderServerVariables = () => {
       clear(serverVariablesPanel);
       serverVariableInputs.clear();
-      const server = getServerDefinition(serverSelect.value);
+      const server = serverSelect.value === CUSTOM_SERVER_VALUE ? null : getServerDefinition(serverSelect.value);
       const variables = server && server.variables && typeof server.variables === "object"
         ? server.variables
         : {};
@@ -3226,6 +3357,13 @@ export const VEXT_DOCS_APP_JS = `
       }
     };
 
+    const renderCustomServer = () => {
+      customServerPanel.hidden = serverSelect.value !== CUSTOM_SERVER_VALUE;
+      if (!customServerPanel.hidden && !customServerInput.value && customServerDefaultUrl()) {
+        customServerInput.value = customServerDefaultUrl();
+      }
+    };
+
     const renderResponseResult = () => {
       if (!lastResponse) {
         result.textContent = "No request sent.";
@@ -3239,14 +3377,24 @@ export const VEXT_DOCS_APP_JS = `
       node.addEventListener("change", updateConsole);
     };
     serverSelect.addEventListener("change", () => {
+      renderCustomServer();
       renderServerVariables();
       updateConsole();
     });
     bindUpdate(serverSelect);
+    bindUpdate(customServerInput);
     for (const input of pathInputs) bindUpdate(input);
     queryEditor.onChange = updateConsole;
     headersEditor.onChange = updateConsole;
     if (bodyInput) bindUpdate(bodyInput);
+    const syncAuthChange = () => {
+      if (!item.isConnected) {
+        document.removeEventListener(AUTH_CHANGE_EVENT, syncAuthChange);
+        return;
+      }
+      updateConsole();
+    };
+    document.addEventListener(AUTH_CHANGE_EVENT, syncAuthChange);
 
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -3351,6 +3499,7 @@ export const VEXT_DOCS_APP_JS = `
     });
 
       details.appendChild(grid);
+      renderCustomServer();
       renderServerVariables();
       updateConsole();
       history.render();
@@ -3409,9 +3558,34 @@ export const VEXT_DOCS_APP_JS = `
       .filter((server) => server.url);
   };
 
+  const tryItOutConfig = () =>
+    config && config.tryItOut && typeof config.tryItOut === "object"
+      ? config.tryItOut
+      : {};
+
+  const shouldIncludeSameOriginServer = (servers) => {
+    const mode = tryItOutConfig().sameOrigin === undefined ? "auto" : tryItOutConfig().sameOrigin;
+    if (mode === true) return true;
+    if (mode === false) return false;
+    return servers.length === 0;
+  };
+
+  const isCustomServerEnabled = () => tryItOutConfig().customServer !== false;
+
+  const customServerDefaultUrl = () => text(tryItOutConfig().customServerUrl).trim();
+
+  const normalizeDefaultServerValue = (value, servers, options) => {
+    const requested = text(value).trim();
+    if (!requested) return "";
+    if (requested === "same-origin") return SAME_ORIGIN_SERVER_VALUE;
+    if (requested === "custom") return CUSTOM_SERVER_VALUE;
+    if (requested === "first") return servers[0] ? servers[0].url : "";
+    return options.some((option) => option.value === requested) ? requested : "";
+  };
+
   const getServerOptions = () => {
-    const options = [{ label: "Same origin", value: "" }];
     const servers = getServerDefinitions();
+    const options = [];
     for (const server of servers) {
       const url = server.url;
       if (!url) continue;
@@ -3420,11 +3594,58 @@ export const VEXT_DOCS_APP_JS = `
         options.push({ label: description + url, value: url });
       }
     }
+    if (shouldIncludeSameOriginServer(servers) && !options.some((entry) => entry.value === SAME_ORIGIN_SERVER_VALUE)) {
+      options.push({ label: "Same origin", value: SAME_ORIGIN_SERVER_VALUE });
+    }
+    if (isCustomServerEnabled()) {
+      options.push({ label: "Custom server...", value: CUSTOM_SERVER_VALUE });
+    }
+    if (options.length === 0) {
+      options.push({ label: "Same origin", value: SAME_ORIGIN_SERVER_VALUE });
+    }
     return options;
+  };
+
+  const resolveInitialServerValue = () => {
+    const servers = getServerDefinitions();
+    const options = getServerOptions();
+    const optionValues = options.map((option) => option.value);
+    const configuredRaw = text(tryItOutConfig().defaultServer).trim();
+    const configured = normalizeDefaultServerValue(configuredRaw, servers, options);
+    if (configuredRaw && configured && optionValues.includes(configured)) return configured;
+    if (configuredRaw && configured === SAME_ORIGIN_SERVER_VALUE && optionValues.includes(SAME_ORIGIN_SERVER_VALUE)) return SAME_ORIGIN_SERVER_VALUE;
+    if (customServerDefaultUrl() && optionValues.includes(CUSTOM_SERVER_VALUE)) return CUSTOM_SERVER_VALUE;
+    if (servers[0] && optionValues.includes(servers[0].url)) return servers[0].url;
+    if (optionValues.includes(SAME_ORIGIN_SERVER_VALUE)) return SAME_ORIGIN_SERVER_VALUE;
+    return optionValues[0] || SAME_ORIGIN_SERVER_VALUE;
   };
 
   const getServerDefinition = (url) =>
     getServerDefinitions().find((server) => server.url === url) || null;
+
+  const normalizeCustomServerUrl = (value) => {
+    const url = text(value).trim();
+    if (!url) throw new Error("Custom server URL is required.");
+    if (url.startsWith("//")) {
+      throw new Error("Custom server URL must include http(s):// or start with /.");
+    }
+    if (!/^https?:\\/\\//iu.test(url) && !url.startsWith("/")) {
+      throw new Error("Custom server URL must include http(s):// or start with /.");
+    }
+    let parsed;
+    try {
+      parsed = new URL(url, window.location.origin);
+    } catch {
+      throw new Error("Custom server URL is invalid.");
+    }
+    if (parsed.username || parsed.password) {
+      throw new Error("Custom server URL must not include credentials.");
+    }
+    if (url.includes("://") && parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("Custom server URL must use http or https.");
+    }
+    return url;
+  };
 
   const resolveServerUrl = (serverUrl, variableInputs) => {
     const raw = text(serverUrl);
@@ -3449,6 +3670,16 @@ export const VEXT_DOCS_APP_JS = `
   };
 
   const isAbsoluteUrl = (value) => /^https?:\\/\\//iu.test(text(value));
+
+  const isCrossOriginUrl = (value) => {
+    const raw = text(value).trim();
+    if (!raw) return false;
+    try {
+      return new URL(raw, window.location.origin).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  };
 
   const resolveDisplayUrl = (target) => {
     try {
@@ -3564,20 +3795,72 @@ export const VEXT_DOCS_APP_JS = `
     return editor;
   };
 
-  const createAuthNote = (operation) => {
+  const hasOwnHeader = (headers, key) => (
+    Boolean(headers && Object.prototype.hasOwnProperty.call(headers, String(key || "").toLowerCase()))
+  );
+
+  const isAuthLikeHeader = (key) => {
+    const lower = String(key || "").toLowerCase();
+    return lower === "authorization" ||
+      lower === "cookie" ||
+      lower === "set-cookie" ||
+      lower.includes("token") ||
+      lower.includes("secret") ||
+      lower.includes("api-key");
+  };
+
+  const formatHeaderPreviewValue = (key, value) => {
+    const raw = text(value);
+    if (!raw || !isAuthLikeHeader(key)) return raw;
+    return raw.toLowerCase().startsWith("bearer ") ? "Bearer ***" : "***";
+  };
+
+  const formatEffectiveHeadersPreview = (request) => {
+    if (!request) return "Fix request inputs to preview effective headers.";
+    const headers = request.headers && typeof request.headers === "object" ? request.headers : {};
+    const entries = Object.entries(headers).sort(([left], [right]) => left.localeCompare(right));
+    if (entries.length === 0) return "(none)";
+    return entries.map(([key, value]) => {
+      const source = [];
+      if (hasOwnHeader(request.manualHeaders, key)) {
+        source.push(hasOwnHeader(request.authHeaders, key) ? "manual override" : "manual");
+      } else if (hasOwnHeader(request.authHeaders, key)) {
+        source.push("auto auth");
+      } else if (request.autoContentTypeHeader && String(key).toLowerCase() === "content-type") {
+        source.push("auto");
+      }
+      return key + ": " + formatHeaderPreviewValue(key, value) + (source.length > 0 ? " (" + source.join(", ") + ")" : "");
+    }).join("\\n");
+  };
+
+  const createHeadersAuthStatus = (operation) => {
     const note = document.createElement("div");
     note.className = "vext-docs-auth-note";
     const title = document.createElement("strong");
-    title.textContent = "Auth injection";
+    title.textContent = "Auth and effective headers";
     note.appendChild(title);
     const list = document.createElement("ul");
-    for (const line of describeAuthInjection(operation)) {
-      const item = document.createElement("li");
-      item.textContent = line;
-      list.appendChild(item);
-    }
     note.appendChild(list);
-    return note;
+    const previewLabel = document.createElement("strong");
+    previewLabel.textContent = "Effective headers preview";
+    note.appendChild(previewLabel);
+    const previewHelp = document.createElement("p");
+    previewHelp.textContent = "Configure credentials in Authorize. Auth-like values are masked in this preview.";
+    note.appendChild(previewHelp);
+    const preview = document.createElement("pre");
+    preview.className = "vext-docs-effective-headers";
+    note.appendChild(preview);
+    const render = (request) => {
+      clear(list);
+      for (const line of describeAuthInjection(operation)) {
+        const item = document.createElement("li");
+        item.textContent = line;
+        list.appendChild(item);
+      }
+      preview.textContent = formatEffectiveHeadersPreview(request);
+    };
+    render(null);
+    return { element: note, render };
   };
 
   const getTryItOutHooks = () => {
@@ -4833,6 +5116,7 @@ export const VEXT_DOCS_APP_JS = `
 
   const render = () => {
     clear(panelEl);
+    panelEl.setAttribute("aria-busy", "false");
     if (rootEl) rootEl.setAttribute("data-vext-docs-view", state.view);
     panelEl.setAttribute("data-vext-docs-view", state.view);
     updateSearchFilterButtons();
@@ -4932,10 +5216,54 @@ export const VEXT_DOCS_APP_JS = `
   };
 
   const renderEmpty = (message) => {
+    panelEl.setAttribute("aria-busy", "false");
     const empty = document.createElement("div");
     empty.className = "vext-docs-empty";
     empty.textContent = message;
     panelEl.appendChild(empty);
+    renderOutline();
+  };
+
+  const appendLoadingCard = (parent) => {
+    const card = document.createElement("div");
+    card.className = "vext-docs-loading-card";
+    for (const className of ["vext-docs-loading-line is-short", "vext-docs-loading-line is-medium", "vext-docs-loading-line"]) {
+      const line = document.createElement("div");
+      line.className = className;
+      card.appendChild(line);
+    }
+    parent.appendChild(card);
+  };
+
+  const renderNavLoading = () => {
+    clear(navEl);
+    const skeleton = document.createElement("div");
+    skeleton.className = "vext-docs-nav-skeleton";
+    skeleton.setAttribute("aria-hidden", "true");
+    for (const className of [
+      "vext-docs-nav-skeleton-line",
+      "vext-docs-nav-skeleton-line",
+      "vext-docs-nav-skeleton-line is-child",
+      "vext-docs-nav-skeleton-line is-child",
+      "vext-docs-nav-skeleton-line",
+    ]) {
+      const line = document.createElement("div");
+      line.className = className;
+      skeleton.appendChild(line);
+    }
+    navEl.appendChild(skeleton);
+  };
+
+  const renderLoadingState = () => {
+    panelEl.setAttribute("aria-busy", "true");
+    clear(panelEl);
+    const loading = document.createElement("div");
+    loading.className = "vext-docs-loading";
+    loading.setAttribute("aria-hidden", "true");
+    appendLoadingCard(loading);
+    appendLoadingCard(loading);
+    panelEl.appendChild(loading);
+    renderNavLoading();
     renderOutline();
   };
 
@@ -5021,6 +5349,7 @@ export const VEXT_DOCS_APP_JS = `
   const loadDocsForActiveSource = (hashState) => {
     const sourceId = state.activeSourceId;
     statusEl.textContent = "Loading documentation...";
+    renderLoadingState();
     return Promise.all([
       fetchJson(endpointUrl(config.endpoints.openapi), "OpenAPI"),
       fetchJson(endpointUrl(config.endpoints.code), "Code docs"),
@@ -5040,6 +5369,7 @@ export const VEXT_DOCS_APP_JS = `
       })
       .catch((error) => {
         clear(panelEl);
+        panelEl.setAttribute("aria-busy", "false");
         statusEl.textContent = "Failed to load documentation.";
         const errorEl = document.createElement("div");
         errorEl.className = "vext-docs-error";

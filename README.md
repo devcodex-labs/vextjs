@@ -646,7 +646,7 @@ Projects can override or add source definitions with `openapi.docs.sources`; sou
 
 The operation view includes parameters, request bodies, horizontal response status tabs without repeated status headings, resolved schema fields without artificial root rows, search entries, auth/deprecated/Try it out state badges, collapsed operation Metadata, a global Authorize control for OpenAPI security schemes, same-origin Try it out, and Code JSDoc usage recipes.
 
-The Try it out console is organized as tabs for Params, Headers, Body, Auth, Samples, History, and Response. It includes server selection, OpenAPI `servers[].variables` controls, full resolved URL preview and Copy URL, structured query/header rows generated from OpenAPI parameters including `validate.header`, raw fallbacks, auth injection notes, optional browser-side request/response hooks through `openapi.docs.tryItOut.hookScript` / `hookGlobal`, diagnostics, cURL/browser fetch/Node fetch/Axios code samples, request history, and a fixed response viewer with pretty/raw body modes plus the actual request and response headers for the last send.
+The Try it out console is organized as tabs for Params, Headers, Body, Samples, History, and Response. It includes server selection that prefers OpenAPI `servers[]`, OpenAPI `servers[].variables` controls, optional same-origin fallback, an optional per-request Custom server input, full resolved URL preview and Copy URL, structured query/header rows generated from OpenAPI parameters including `validate.header`, raw fallbacks, auth status and effective header previews inside the Headers tab, optional browser-side request/response hooks through `openapi.docs.tryItOut.hookScript` / `hookGlobal`, diagnostics, cURL/browser fetch/Node fetch/Axios code samples, request history, and a fixed response viewer with pretty/raw body modes plus the actual request and response headers for the last send.
 
 `hookGlobal` is only the browser lookup name; hook notes and sample diagnostics are shown only when a `hookScript` is configured or the runtime global exposes `beforeRequest` / `afterResponse`.
 
@@ -740,6 +740,32 @@ window.VextDocsHooks = {
 ```
 
 Enable it with `openapi.docs.tryItOut.hookScript = "/docs-hook.js"` and optionally change the lookup name with `hookGlobal`.
+
+Try it out server behavior can be tuned separately from the OpenAPI `servers[]` metadata:
+
+```ts
+export default {
+  openapi: {
+    servers: [
+      {
+        url: "http://127.0.0.1:3000",
+        description: "Local development server",
+      },
+      { url: "https://api.example.com", description: "Production" },
+    ],
+    docs: {
+      tryItOut: {
+        defaultServer: "first", // "first", "same-origin", "custom", or an exact server URL
+        sameOrigin: "auto", // auto shows Same origin only when no OpenAPI servers exist
+        customServer: true,
+        customServerUrl: "http://127.0.0.1:3000",
+      },
+    },
+  },
+};
+```
+
+For fixed local or deployed endpoints, prefer a complete server URL including its port. Reserve OpenAPI `servers[].variables` for genuinely variable parts such as environment names, regions, tenants, or API versions.
 
 ## i18n
 

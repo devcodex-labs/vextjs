@@ -104,7 +104,7 @@ Locales / Config / Styles / Preload 静态源码文档仍是可选高级来源�
 
 B26 进一步补齐主题与密度控制、Overview 工作台、搜索快捷键、类别过滤、命中高亮、桌面右侧大纲、endpoint/link/response/usage/source path 复制按钮和导航深链。动态 path 参数仍弱化展示，但当中间动态段后面还有稳定子资源时会保留层级，例如 `/docs-nav/{id}/sdfs/sdfaf` 会保留参数节点与后续资源层级。
 
-B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Auth、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
+B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Headers 标签页同时展示 auth 状态和最终有效 headers 预览，让 Authorize 自动注入的请求头与手动覆盖关系放在同一个位置确认。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
 
 B31 进一步优化小屏与大接口量场景。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
 
@@ -954,6 +954,8 @@ export default {
 ```
 
 配置后，支持 `servers` 的文档 UI 或工具可以让用户手动切换目标环境。
+
+Vext Docs 会把这些 `servers[]` 条目作为 Try it out 的 Server 列表，并默认选择第一条有效 server。固定本地或部署端点建议直接配置带端口的完整 URL，例如 `http://127.0.0.1:3000`；`servers[].variables` 更适合环境名、区域、租户或 API 版本等真正需要切换的片段，存在时才会渲染为可编辑控件，并参与 URL 预览、Copy URL、代码示例和 Send 请求。`Same origin` 选项默认只在没有配置 OpenAPI servers 时自动出现；可以通过 `openapi.docs.tryItOut.sameOrigin` 设置为 `true` 或 `false` 强制显示或隐藏。`openapi.docs.tryItOut.defaultServer` 支持 `"first"`、`"same-origin"`、`"custom"` 或精确 server URL，用于指定初始选中项。`openapi.docs.tryItOut.customServer` 默认开启，用户可以在浏览器里临时填写其他环境地址，不需要改项目配置。
 
 ## 导入外部 OpenAPI
 

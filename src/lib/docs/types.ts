@@ -200,9 +200,15 @@ export interface ResolvedVextDocsAccessConfig {
   cacheKey?: VextDocsAccessCacheKeyResolver | string;
 }
 
+export type VextDocsSameOriginServerMode = boolean | "auto";
+
 export interface ResolvedVextDocsTryItOutConfig {
   hookScript?: string;
   hookGlobal: string;
+  defaultServer?: string;
+  sameOrigin: VextDocsSameOriginServerMode;
+  customServer: boolean;
+  customServerUrl?: string;
 }
 
 export interface VextDocsSourceCodeFilterConfig {
@@ -310,6 +316,10 @@ export interface VextDocsConfig {
   tryItOut?: {
     hookScript?: string;
     hookGlobal?: string;
+    defaultServer?: string;
+    sameOrigin?: VextDocsSameOriginServerMode;
+    customServer?: boolean;
+    customServerUrl?: string;
   };
   sources?: VextDocsSourceConfig[];
 }

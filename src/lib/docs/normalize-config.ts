@@ -172,6 +172,10 @@ export function normalizeDocsConfig(
   const tryItOut: ResolvedVextDocsTryItOutConfig = {
     hookScript: openapi.docs?.tryItOut?.hookScript,
     hookGlobal: openapi.docs?.tryItOut?.hookGlobal ?? "VextDocsHooks",
+    defaultServer: openapi.docs?.tryItOut?.defaultServer,
+    sameOrigin: openapi.docs?.tryItOut?.sameOrigin ?? "auto",
+    customServer: openapi.docs?.tryItOut?.customServer ?? true,
+    customServerUrl: openapi.docs?.tryItOut?.customServerUrl,
   };
   const renderer = openapi.docs?.renderer;
   if (renderer !== undefined && renderer !== DEFAULT_DOCS_RENDERER) {

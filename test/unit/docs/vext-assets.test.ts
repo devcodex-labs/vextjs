@@ -72,11 +72,19 @@ describe("Vext docs vanilla assets", () => {
     expect(VEXT_DOCS_APP_JS).toContain("History");
     expect(VEXT_DOCS_APP_JS).toContain("No declared query parameters");
     expect(VEXT_DOCS_APP_JS).toContain("No declared request headers");
-    expect(VEXT_DOCS_APP_JS).toContain("Auth injection");
+    expect(VEXT_DOCS_APP_JS).toContain("Auth and effective headers");
+    expect(VEXT_DOCS_APP_JS).toContain("Effective headers preview");
+    expect(VEXT_DOCS_APP_JS).toContain("vext-docs-auth-change");
+    expect(VEXT_DOCS_APP_JS).not.toContain('{ id: "auth", label: "Auth"');
     expect(VEXT_DOCS_APP_JS).toContain("Request headers:");
     expect(VEXT_DOCS_APP_JS).toContain("Response headers:");
     expect(VEXT_DOCS_APP_JS).toContain("vext-docs-tryout-status");
     expect(VEXT_DOCS_APP_JS).toContain("Same origin");
+    expect(VEXT_DOCS_APP_JS).toContain("Custom server...");
+    expect(VEXT_DOCS_APP_JS).toContain("Custom server URL is required.");
+    expect(VEXT_DOCS_APP_JS).toContain("resolveInitialServerValue");
+    expect(VEXT_DOCS_APP_JS).toContain("defaultServer");
+    expect(VEXT_DOCS_APP_JS).toContain("customServerUrl");
     expect(VEXT_DOCS_APP_JS).toContain("Browser CORS rules apply");
     expect(VEXT_DOCS_APP_JS).toContain(
       "Manual header rows or raw JSON override auto auth headers",
@@ -88,6 +96,7 @@ describe("Vext docs vanilla assets", () => {
     expect(VEXT_DOCS_APP_JS).toContain("REQUEST_HISTORY_STORAGE_KEY");
     expect(VEXT_DOCS_APP_JS).toContain("vext-docs-request-history");
     expect(VEXT_DOCS_APP_JS).toContain("resolveDisplayUrl");
+    expect(VEXT_DOCS_APP_JS).toContain("isCrossOriginUrl");
     expect(VEXT_DOCS_APP_JS).toContain('tabs.activate("response", false)');
     expect(VEXT_DOCS_APP_JS).toContain("Copy usage");
     expect(VEXT_DOCS_APP_JS).toContain("Copy source path");
@@ -135,6 +144,10 @@ describe("Vext docs vanilla assets", () => {
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-command-row");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-nav-param");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-mark");
+    expect(VEXT_DOCS_APP_JS).toContain("renderLoadingState");
+    expect(VEXT_DOCS_APP_JS).toContain("renderNavLoading");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-loading-card");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-nav-skeleton");
     expect(VEXT_DOCS_APP_JS).toContain("fullLabel");
     expect(VEXT_DOCS_APP_JS).toContain("aria-expanded");
     expect(VEXT_DOCS_APP_JS).toContain("resolveSchema");
@@ -152,6 +165,8 @@ describe("Vext docs vanilla assets", () => {
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-nav-count");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-response-explorer");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-tryout-target");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-custom-server");
+    expect(VEXT_DOCS_STYLE_CSS).toContain(".vext-docs-server-vars[hidden]");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-tryout-tabs");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-tablist");
     expect(VEXT_DOCS_STYLE_CSS).toContain("flex-wrap: nowrap");
@@ -160,6 +175,7 @@ describe("Vext docs vanilla assets", () => {
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-code-samples");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-history");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-kv-row");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-effective-headers");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-response-toolbar");
     expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-tryout-status");
     expect(VEXT_DOCS_APP_JS).toContain("vext-docs-operation-body");

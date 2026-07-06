@@ -1147,6 +1147,18 @@ function validateDocsTryItOutConfig(value: unknown, pathName: string): void {
   }
   validateOptionalString(tryItOut.hookScript, `${pathName}.hookScript`);
   validateOptionalString(tryItOut.hookGlobal, `${pathName}.hookGlobal`);
+  validateOptionalString(tryItOut.defaultServer, `${pathName}.defaultServer`);
+  validateOptionalBoolean(tryItOut.customServer, `${pathName}.customServer`);
+  validateOptionalString(tryItOut.customServerUrl, `${pathName}.customServerUrl`);
+  if (
+    tryItOut.sameOrigin !== undefined &&
+    typeof tryItOut.sameOrigin !== "boolean" &&
+    tryItOut.sameOrigin !== "auto"
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.sameOrigin must be a boolean or "auto".`,
+    );
+  }
 }
 
 function validateOpenAPIServers(value: unknown, pathName: string): void {

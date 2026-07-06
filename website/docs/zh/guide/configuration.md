@@ -651,6 +651,10 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.docs.sources`             | `Array`                  | `[]`                  | 可选的 Public/Admin/Internal 或多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                           |
 | `openapi.docs.tryItOut.hookScript` | `string`                 | `undefined`           | 可选的浏览器端 hook 脚本路径，Vext Docs 会加载后再按 `hookGlobal` 查找请求/响应 hook                                                                                               |
 | `openapi.docs.tryItOut.hookGlobal` | `string`                 | `'VextDocsHooks'`     | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                               |
+| `openapi.docs.tryItOut.defaultServer` | `string`              | `undefined`           | Try it out 初始 server，支持 `"first"`、`"same-origin"`、`"custom"` 或精确 OpenAPI server URL                                                                                      |
+| `openapi.docs.tryItOut.sameOrigin` | `boolean \| 'auto'`      | `'auto'`              | 是否显示 Same origin server 选项；`auto` 仅在没有配置 OpenAPI servers 时显示                                                                                                      |
+| `openapi.docs.tryItOut.customServer` | `boolean`              | `true`                | 是否允许访问者在浏览器中临时填写 Try it out base URL                                                                                                                              |
+| `openapi.docs.tryItOut.customServerUrl` | `string`           | `undefined`           | Custom server 输入框的可选默认值                                                                                                                                                  |
 | `openapi.docs.access.openapiJson`  | `'filtered' \| 'public'` | `'filtered'`          | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                                       |
 | `openapi.scalar`                   | `object`                 | `{}`                  | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                                          |
 | `openapi.servers`                  | `Array`                  | `[]`                  | API 服务器列表                                                                                                                                                                     |
@@ -658,6 +662,8 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.securitySchemes`          | `object`                 | `{}`                  | 安全方案                                                                                                                                                                           |
 | `openapi.contact`                  | `object`                 | `{}`                  | 联系方式                                                                                                                                                                           |
 | `openapi.license`                  | `object`                 | `{}`                  | 许可证信息                                                                                                                                                                         |
+
+固定本地或部署 API 目标时，`openapi.servers[].url` 建议直接写带端口的完整 base URL，例如 `http://127.0.0.1:3000`。只有环境名、区域、租户或 API 版本这类真正会变化的 URL 片段，才建议使用 `openapi.servers[].variables`。`openapi.docs.tryItOut.defaultServer` 用于控制 Try it out 初始选中的 server，`openapi.docs.tryItOut.customServer` 用于允许用户在浏览器里临时输入其他目标地址，不需要修改项目配置。
 
 ```typescript
 export default {

@@ -677,6 +677,10 @@ describe("validateConfig", () => {
               tryItOut: {
                 hookScript: "/docs-hook.js",
                 hookGlobal: "VextDocsHooks",
+                defaultServer: "first",
+                sameOrigin: "auto",
+                customServer: true,
+                customServerUrl: "http://127.0.0.1:3001",
               },
               sources: [
                 {
@@ -765,6 +769,14 @@ describe("validateConfig", () => {
           openapi: { docs: { access: { mode: "hidden-only" } } },
         }),
       ).toThrow("config.openapi.docs.access.mode");
+    });
+
+    it("rejects invalid docs try it out server mode", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: { docs: { tryItOut: { sameOrigin: "yes" } } },
+        }),
+      ).toThrow('config.openapi.docs.tryItOut.sameOrigin must be a boolean or "auto"');
     });
 
     it("rejects invalid docs source access fields", () => {

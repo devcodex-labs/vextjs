@@ -33,6 +33,10 @@ describe("docs public contract", () => {
     expect(config.access.mode).toBe("off");
     expect(config.tryItOut.hookGlobal).toBe("VextDocsHooks");
     expect(config.tryItOut.hookScript).toBeUndefined();
+    expect(config.tryItOut.defaultServer).toBeUndefined();
+    expect(config.tryItOut.sameOrigin).toBe("auto");
+    expect(config.tryItOut.customServer).toBe(true);
+    expect(config.tryItOut.customServerUrl).toBeUndefined();
     expect(config.sources).toEqual([]);
     expect(config.endpoints.appJs).toBe("/_vext/docs/app.js");
     expect(config.publicEndpoints.appJs).toBe("/_vext/docs/app.js");
@@ -118,6 +122,10 @@ describe("docs public contract", () => {
         tryItOut: {
           hookScript: "/docs-hook.js",
           hookGlobal: "CustomDocsHooks",
+          defaultServer: "first",
+          sameOrigin: false,
+          customServer: false,
+          customServerUrl: "http://127.0.0.1:3001",
         },
       },
     });
@@ -140,6 +148,10 @@ describe("docs public contract", () => {
     expect(config.access.openapiJson).toBe("public");
     expect(config.tryItOut.hookScript).toBe("/docs-hook.js");
     expect(config.tryItOut.hookGlobal).toBe("CustomDocsHooks");
+    expect(config.tryItOut.defaultServer).toBe("first");
+    expect(config.tryItOut.sameOrigin).toBe(false);
+    expect(config.tryItOut.customServer).toBe(false);
+    expect(config.tryItOut.customServerUrl).toBe("http://127.0.0.1:3001");
   });
 
   it("rejects external renderer objects", () => {

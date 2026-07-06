@@ -144,17 +144,34 @@ describe("registerDocsEndpoints", () => {
 
     expect(response.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(response.body).toContain("Vext Docs");
+    expect(response.body).toContain(
+      '<html lang="en" data-vext-docs-theme="system" data-vext-docs-density="comfortable">',
+    );
     expect(response.body).toContain('<link rel="icon" href="data:,">');
+    expect(response.body).toContain('id="vext-docs-critical-boot"');
+    expect(response.body).toContain('localStorage.getItem("vext-docs-theme")');
+    expect(response.body).toContain('id="vext-docs-critical-style"');
     expect(response.body).toContain('id="vext-docs-resizer"');
     expect(response.body).toContain(
       '</aside>\n    <div id="vext-docs-resizer"',
     );
     expect(response.body).toContain("/_vext/docs/style.css?v=");
     expect(response.body).toContain("/_vext/docs/app.js?v=");
-    expect(response.body).toContain("20260703-b32b");
+    const appAssetVersion = response.body.match(
+      /\/_vext\/docs\/app\.js\?v=([^"]+)/,
+    )?.[1];
+    const styleAssetVersion = response.body.match(
+      /\/_vext\/docs\/style\.css\?v=([^"]+)/,
+    )?.[1];
+    expect(appAssetVersion).toBeTruthy();
+    expect(styleAssetVersion).toBe(appAssetVersion);
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
-    expect(response.body).toContain('"assetVersion":"20260703-b32b"');
+    expect(response.body).toContain(`"assetVersion":"${appAssetVersion}"`);
+    expect(response.body).toContain('"sameOrigin":"auto"');
+    expect(response.body).toContain('"customServer":true');
+    expect(response.body).toContain('class="vext-docs-loading"');
+    expect(response.body).toContain('class="vext-docs-nav-skeleton"');
     expect(response.body).toContain('id="vext-docs-mobile-nav-toggle"');
     expect(response.body).toContain('id="vext-docs-sidebar-backdrop"');
     expect(response.body).toContain('"accessMode":"off"');
