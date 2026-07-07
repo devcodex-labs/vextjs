@@ -219,8 +219,17 @@ interface TestResponse {
   /** HTTP 状态码 */
   status: number;
 
-  /** 响应头（小写 key） */
-  headers: Record<string, string>;
+  /** 响应头（小写 key，Set-Cookie 可能是 string[]） */
+  headers: Record<string, string | string[]>;
+
+  /** Set-Cookie 响应头 */
+  cookies: string[];
+
+  /** 读取响应头的第一个值 */
+  header(name: string): string | undefined;
+
+  /** 读取响应头的所有值 */
+  headerValues(name: string): string[];
 
   /** 解析后的响应体（JSON 自动解析为对象） */
   body: any;
@@ -244,8 +253,9 @@ expect(res.body).toEqual({
 });
 
 // 断言响应头
-expect(res.headers["content-type"]).toContain("application/json");
+expect(res.header("content-type")).toContain("application/json");
 expect(res.headers["x-request-id"]).toBeDefined();
+expect(res.headerValues("set-cookie")).toEqual(res.cookies);
 
 // 断言原始文本
 expect(res.text).toContain('"code":0');

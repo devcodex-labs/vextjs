@@ -14,6 +14,8 @@ function createReq(overrides: Partial<VextRequest> = {}): VextRequest {
     query: {},
     params: {},
     headers: {},
+    cookies: {},
+    cookie: vi.fn(),
     body: undefined,
     app: {} as any,
     ip: "127.0.0.1",
@@ -79,5 +81,24 @@ describe("buildValidateMiddleware hooks", () => {
         requestId: "req-1",
       }),
     );
+  });
+
+  it("validates cookie data and stores validated cookie result", async () => {
+    const middleware = buildValidateMiddleware(
+      { cookie: { sid: "string!" } },
+      () => ({
+        compile: () => (data: unknown) => ({
+          valid: true,
+          data: { sid: (data as Record<string, string>).sid },
+        }),
+      }),
+    )!;
+    const req = createReq({ cookies: { sid: "abc" } });
+    const next = vi.fn();
+
+    await middleware(req, {} as any, next);
+
+    expect((req as any)._validated_cookie).toEqual({ sid: "abc" });
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });

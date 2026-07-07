@@ -90,14 +90,14 @@ export default defineRoutes((app) => {
 
 ### Supported HTTP methods
 
-| Method | Description |
-| -------------------------- | ------------ |
-| `app.get(path, ...)` | GET request |
-| `app.post(path, ...)` | POST request |
-| `app.put(path, ...)` | PUT request |
-| `app.patch(path, ...)` | PATCH request |
-| `app.delete(path, ...)` | DELETE request |
-| `app.head(path, ...)` | HEAD request |
+| Method                   | Description     |
+| ------------------------ | --------------- |
+| `app.get(path, ...)`     | GET request     |
+| `app.post(path, ...)`    | POST request    |
+| `app.put(path, ...)`     | PUT request     |
+| `app.patch(path, ...)`   | PATCH request   |
+| `app.delete(path, ...)`  | DELETE request  |
+| `app.head(path, ...)`    | HEAD request    |
 | `app.options(path, ...)` | OPTIONS request |
 
 ---
@@ -144,11 +144,11 @@ app.get("/files/*", async (req, res) => {
 
 The directory path of the routing file is automatically mapped to the URL prefix:
 
-| File path | URL prefix | Example |
-| -------------------------- | ------------- | ------------------------------------- |
-| `src/routes/users.ts` | `/users` | `app.get('/list')` → `GET /users/list` |
-| `src/routes/api/orders.ts` | `/api/orders` | `app.post('/')` → `POST /api/orders` |
-| `src/routes/index.ts` | `/` | `app.get('/health')` → `GET /health` |
+| File path                  | URL prefix    | Example                                |
+| -------------------------- | ------------- | -------------------------------------- |
+| `src/routes/users.ts`      | `/users`      | `app.get('/list')` → `GET /users/list` |
+| `src/routes/api/orders.ts` | `/api/orders` | `app.post('/')` → `POST /api/orders`   |
+| `src/routes/index.ts`      | `/`           | `app.get('/health')` → `GET /health`   |
 
 :::tip
 The `path` registered in the routing file is a **relative subpath**, and the framework automatically splices the file path prefix. For example, `app.get('/:id')` in `src/routes/users.ts` is ultimately registered as `GET /users/:id`.
@@ -167,6 +167,7 @@ interface RouteOptions {
     body?: Record<string, VextSchemaField>;
     param?: Record<string, VextSchemaField>;
     header?: Record<string, VextSchemaField>;
+    cookie?: Record<string, VextSchemaField>;
   };
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
@@ -235,7 +236,9 @@ app.post(
         content: "string:1-20000!".description(
           "Text to be translated, length 1-20000 characters",
         ),
-        format: "enum:plain_text,preserve_line_breaks".description("output format"),
+        format: "enum:plain_text,preserve_line_breaks".description(
+          "output format",
+        ),
       },
     },
   },
@@ -247,14 +250,15 @@ These descriptions will enter the OpenAPI schema while retaining constraints suc
 
 ### Verify location
 
-| Location | Data Source | Description |
-| -------- | ------------- | -------------------------- |
-| `param` | `req.params` | Path dynamic parameters (such as `/:id`) |
-| `query` | `req.query` | URL query parameters |
-| `header` | `req.headers` | Request headers |
-| `body` | `req.body` | Request body |
+| Location | Data Source   | Description                              |
+| -------- | ------------- | ---------------------------------------- |
+| `param`  | `req.params`  | Path dynamic parameters (such as `/:id`) |
+| `query`  | `req.query`   | URL query parameters                     |
+| `header` | `req.headers` | Request headers                          |
+| `cookie` | `req.cookies` | Parsed cookie values                     |
+| `body`   | `req.body`    | Request body                             |
 
-**Verify execution order**: `param` → `query` → `header` → `body`
+**Verify execution order**: `param` → `query` → `header` → `cookie` → `body`
 
 ### Basic usage
 
@@ -279,22 +283,22 @@ app.get(
 
 ### DSL syntax quick check
 
-| DSL | Description | Examples |
-|---------------- | ------------------- | ---------------------------------- |
-| `'string'` | Required string | `name: 'string'` |
-| `'string:1-50'' | A string of length 1-50 | `name: 'string:1-50'' |
-| `'string?'` | Optional string | `nickname: 'string?'` |
-| `'number'` | Required number | `age: 'number'` |
-| `'number:0-'` | A number greater than or equal to 0 | `page: 'number:0-'` |
-| `'number:1-100'' | A number between 1 and 100 | `limit: 'number:1-100'` |
-| `'boolean'` | Required Boolean value | `active: 'boolean'` |
-| `'email'` | Email format | `email: 'email'` |
-| `'url'` | URL format | `website: 'url'` |
-| `'date'' | Date format | `birthday: 'date'` |
-| `'uuid'` | UUID format | `id: 'uuid'` |
-| `'enum:a,b,c'` | Enumeration value | `status: 'enum:active,inactive'` |
-| `'array'` | array | `tags: 'array'` |
-| `'object'` | Object | `metadata: 'object'` |
+| DSL              | Description                         | Examples                         |
+| ---------------- | ----------------------------------- | -------------------------------- |
+| `'string'`       | Required string                     | `name: 'string'`                 |
+| `'string:1-50''  | A string of length 1-50             | `name: 'string:1-50''            |
+| `'string?'`      | Optional string                     | `nickname: 'string?'`            |
+| `'number'`       | Required number                     | `age: 'number'`                  |
+| `'number:0-'`    | A number greater than or equal to 0 | `page: 'number:0-'`              |
+| `'number:1-100'' | A number between 1 and 100          | `limit: 'number:1-100'`          |
+| `'boolean'`      | Required Boolean value              | `active: 'boolean'`              |
+| `'email'`        | Email format                        | `email: 'email'`                 |
+| `'url'`          | URL format                          | `website: 'url'`                 |
+| `'date''         | Date format                         | `birthday: 'date'`               |
+| `'uuid'`         | UUID format                         | `id: 'uuid'`                     |
+| `'enum:a,b,c'`   | Enumeration value                   | `status: 'enum:active,inactive'` |
+| `'array'`        | array                               | `tags: 'array'`                  |
+| `'object'`       | Object                              | `metadata: 'object'`             |
 
 :::tip
 `schema-dsl` will automatically do **type conversion**. For example, `'2'` (string) in the query parameter `?page=2` will be automatically converted to `2` (number), provided that the schema is declared as `'number'` type.
@@ -460,13 +464,14 @@ route({
 
 Commonly used writing methods:
 
-| Configuration | Description |
-|------|------|
-| `cache: false` | Disable response caching for this route |
-| `cache: 30000` | Enables response caching with a TTL of 30000 milliseconds |
-| `cache: { ttl: 30000 }` | Use full configuration object |
-| `headers: ["accept-language"]` | Specifies the request headers that participate in caching key; it is not recommended to include all request headers in key |
-| `partitionKey` | Generate user, tenant or region isolation dimensions to prevent different visitors from sharing the same cached response |
+| Configuration                  | Description                                                                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `cache: false`                 | Disable response caching for this route                                                                                          |
+| `cache: 30000`                 | Enables response caching with a TTL of 30000 milliseconds                                                                        |
+| `cache: { ttl: 30000 }`        | Use full configuration object                                                                                                    |
+| `headers: ["accept-language"]` | Specifies the request headers that participate in caching key; it is not recommended to include all request headers in key       |
+| `partitionKey`                 | Generate user, tenant or region isolation dimensions to prevent different visitors from sharing the same cached response         |
+| `allowCookieCache`             | Allow requests with a `Cookie` header to participate in cache; keep disabled unless the cookie input is part of a safe cache key |
 
 See the [Response Caching Guide](/guide/cache) for details.
 
@@ -495,17 +500,17 @@ interface RouteDocsConfig {
 
 ### Field description
 
-| Field | Type | Default Value | Description |
-| ------------- | ---------- | ------------------- | -------------------------- |
-| `summary` | `string` | — | One sentence summary of the interface |
-| `description` | `string` | — | Detailed description of the interface (supports Markdown) |
-| `tags` | `string[]` | Ignored | Deprecated. Operation tags are inferred automatically from the route path/source. |
-| `operationId` | `string` | Automatic inference | Operation ID (globally unique) |
-| `hidden` | `boolean` | `false` | Whether to hide from the document |
-| `deprecated` | `boolean` | `false` | Whether to mark it as deprecated |
-| `security` | `array` | Inference from middlewares | Security scheme overrides |
-| `extensions` | `object` | — | Custom `x-*` extension fields |
-| `responses` | `object` | — | response definition |
+| Field         | Type       | Default Value              | Description                                                                       |
+| ------------- | ---------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `summary`     | `string`   | —                          | One sentence summary of the interface                                             |
+| `description` | `string`   | —                          | Detailed description of the interface (supports Markdown)                         |
+| `tags`        | `string[]` | Ignored                    | Deprecated. Operation tags are inferred automatically from the route path/source. |
+| `operationId` | `string`   | Automatic inference        | Operation ID (globally unique)                                                    |
+| `hidden`      | `boolean`  | `false`                    | Whether to hide from the document                                                 |
+| `deprecated`  | `boolean`  | `false`                    | Whether to mark it as deprecated                                                  |
+| `security`    | `array`    | Inference from middlewares | Security scheme overrides                                                         |
+| `extensions`  | `object`   | —                          | Custom `x-*` extension fields                                                     |
+| `responses`   | `object`   | —                          | response definition                                                               |
 
 ### Complete example
 
@@ -523,7 +528,8 @@ app.post(
     middlewares: ["auth"],
     docs: {
       summary: "Create user",
-      description: "Create a new user account. Requires administrator privileges.",
+      description:
+        "Create a new user account. Requires administrator privileges.",
       operationId: "createUser",
       responses: {
         201: {
@@ -555,13 +561,13 @@ app.post(
 
 When `operationId` is not specified, the framework is automatically generated based on the HTTP method and path:
 
-| method + path | inferred operationId |
-| ------------------- | ------------------ |
-| `GET /users` | `getUsers` |
-| `POST /users` | `createUsers` |
-| `GET /users/:id` | `getUsersById` |
-| `PUT /users/:id` | `updateUsersById` |
-| `DELETE /users/:id` | `deleteUsersById` |
+| method + path       | inferred operationId |
+| ------------------- | -------------------- |
+| `GET /users`        | `getUsers`           |
+| `POST /users`       | `createUsers`        |
+| `GET /users/:id`    | `getUsersById`       |
+| `PUT /users/:id`    | `updateUsersById`    |
+| `DELETE /users/:id` | `deleteUsersById`    |
 
 ### Hidden route
 
@@ -710,11 +716,11 @@ app.post(
 );
 ```
 
-| Subfield | Type | Description |
-| -------------------------- | ---------------------------------- | ----------------------------------------------- |
-| `files` | `Record<string, string \| object>` | File field mapping; the string value is the description, and the object can be configured with more |
-| `files[].description` | `string` | Field description (for OpenAPI documentation) |
-| `files[].required` | `boolean` | Whether it is required (default `false`) |
+| Subfield              | Type                               | Description                                                                                         |
+| --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `files`               | `Record<string, string \| object>` | File field mapping; the string value is the description, and the object can be configured with more |
+| `files[].description` | `string`                           | Field description (for OpenAPI documentation)                                                       |
+| `files[].required`    | `boolean`                          | Whether it is required (default `false`)                                                            |
 
 :::warning note
 `multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes priority in OpenAPI document generation.
@@ -754,12 +760,12 @@ app.get(
 );
 ```
 
-| Field | Type | Description |
-| ------------- | ------------------ | ---------------------------- |
-| `rateLimit` | `object \| false` | Route-level current limiting configuration, `false` is disabled |
-| `timeout` | `number` | Request timeout (milliseconds) |
-| `maxBodySize` | `string \| number` | Maximum request body size |
-| `cors` | `VextCorsConfig` | Route-level CORS configuration |
+| Field         | Type               | Description                                                     |
+| ------------- | ------------------ | --------------------------------------------------------------- |
+| `rateLimit`   | `object \| false`  | Route-level current limiting configuration, `false` is disabled |
+| `timeout`     | `number`           | Request timeout (milliseconds)                                  |
+| `maxBodySize` | `string \| number` | Maximum request body size                                       |
+| `cors`        | `VextCorsConfig`   | Route-level CORS configuration                                  |
 
 ---
 
@@ -780,11 +786,11 @@ interface RouteDefinition {
 }
 ```
 
-| Field | Type | Description |
-| -------------------------- | --------------- | ------------------------------------- |
-| `routes` | `RouteRecord[]` | List of collected route records |
-| `sourceFile` | `string` | Source file path (injected by router-loader) |
-| `register()` | `Function` | Register the route with the underlying adapter |
+| Field        | Type            | Description                                    |
+| ------------ | --------------- | ---------------------------------------------- |
+| `routes`     | `RouteRecord[]` | List of collected route records                |
+| `sourceFile` | `string`        | Source file path (injected by router-loader)   |
+| `register()` | `Function`      | Register the route with the underlying adapter |
 
 ### RouteRecord
 
@@ -979,11 +985,11 @@ export const routes = defineRoutes((app) => { ... });
 
 The framework automatically handles the following path edge cases:
 
-| prefix | subpath | final path |
+| prefix       | subpath   | final path    |
 | ------------ | --------- | ------------- |
-| `/users` | `/list` | `/users/list` |
-| `/users` | `/` | `/users` |
-| `/users` | `/:id` | `/users/:id` |
-| `/` | `/` | `/` |
-| `/` | `/health` | `/health` |
-| `/api/users` | `` | `/api/users` |
+| `/users`     | `/list`   | `/users/list` |
+| `/users`     | `/`       | `/users`      |
+| `/users`     | `/:id`    | `/users/:id`  |
+| `/`          | `/`       | `/`           |
+| `/`          | `/health` | `/health`     |
+| `/api/users` | ``        | `/api/users`  |

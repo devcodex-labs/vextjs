@@ -8,22 +8,22 @@ This page details the complete API of VextJS's request object `VextRequest` and 
 
 ### Attribute list
 
-| Properties | Type | Description |
-| ----------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `method` | `string` | HTTP method (uppercase, such as `'GET'`, `'POST'`) |
-| `url` | `string` | Full request URL |
-| `path` | `string` | Path part (excluding query string) |
-| `route` | `string` | The route template matched by the current request (such as `/users/:id`); the static route is the same as `path`; it is an empty string when no route is matched (404) `''` |
-| `params` | `Record<string, string>` | Path dynamic parameters |
-| `query` | `Record<string, string>` | URL query parameters (parsed) |
-| `body` | `unknown` | Request body (populated by body-parser middleware) |
-| `headers` | `Record<string, string \| undefined>` | Request headers (all lowercase keys) |
-| `app` | `VextApp` | The application instance to which the current request belongs |
-| `requestId` | `string` | Request unique identifier |
-| `ip` | `string` | Client IP |
-| `protocol` | `'http' \| 'https'` | Request protocol |
-| `t` | `Function \| undefined` | i18n translation function (plug-in injection) |
-| `files` | `ParsedFile[] \| undefined` | File upload list (populated after multipart plug-in parses) |
+| Properties  | Type                                  | Description                                                                                                                                                                 |
+| ----------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`    | `string`                              | HTTP method (uppercase, such as `'GET'`, `'POST'`)                                                                                                                          |
+| `url`       | `string`                              | Full request URL                                                                                                                                                            |
+| `path`      | `string`                              | Path part (excluding query string)                                                                                                                                          |
+| `route`     | `string`                              | The route template matched by the current request (such as `/users/:id`); the static route is the same as `path`; it is an empty string when no route is matched (404) `''` |
+| `params`    | `Record<string, string>`              | Path dynamic parameters                                                                                                                                                     |
+| `query`     | `Record<string, string>`              | URL query parameters (parsed)                                                                                                                                               |
+| `body`      | `unknown`                             | Request body (populated by body-parser middleware)                                                                                                                          |
+| `headers`   | `Record<string, string \| undefined>` | Request headers (all lowercase keys)                                                                                                                                        |
+| `app`       | `VextApp`                             | The application instance to which the current request belongs                                                                                                               |
+| `requestId` | `string`                              | Request unique identifier                                                                                                                                                   |
+| `ip`        | `string`                              | Client IP                                                                                                                                                                   |
+| `protocol`  | `'http' \| 'https'`                   | Request protocol                                                                                                                                                            |
+| `t`         | `Function \| undefined`               | i18n translation function (plug-in injection)                                                                                                                               |
+| `files`     | `ParsedFile[] \| undefined`           | File upload list (populated after multipart plug-in parses)                                                                                                                 |
 
 ---
 
@@ -77,11 +77,11 @@ console.log(req.route); // '/users/:id' (route template, low cardinality)✅
 // Use req.route as http.route tag in OpenTelemetry / Prometheus
 ```
 
-| Scenario | `req.path` | `req.route` |
-| ---------------------------------------- | ------------------ | ---------------- |
-| Parameter route `/users/:id`, request `/users/123` | `/users/123` | `/users/:id` |
-| Static route `/health`, request `/health` | `/health` | `/health` |
-| Route not matched (404) | `/unknown/path` | `''` (empty string) |
+| Scenario                                           | `req.path`      | `req.route`         |
+| -------------------------------------------------- | --------------- | ------------------- |
+| Parameter route `/users/:id`, request `/users/123` | `/users/123`    | `/users/:id`        |
+| Static route `/health`, request `/health`          | `/health`       | `/health`           |
+| Route not matched (404)                            | `/unknown/path` | `''` (empty string) |
 
 ---
 
@@ -176,13 +176,13 @@ export default defineMiddleware(async (req, _res, next) => {
 
 Capabilities accessible via `req.app`:
 
-| Properties/Methods | Description |
-| ------------------ | ---------------- |
-| `req.app.logger` | Structured log |
-| `req.app.throw()` | Throw HTTP error |
-| `req.app.config` | Runtime configuration |
+| Properties/Methods | Description               |
+| ------------------ | ------------------------- |
+| `req.app.logger`   | Structured log            |
+| `req.app.throw()`  | Throw HTTP error          |
+| `req.app.config`   | Runtime configuration     |
 | `req.app.services` | Injected service instance |
-| `req.app.fetch` | Built-in HTTP client |
+| `req.app.fetch`    | Built-in HTTP client      |
 
 ---
 
@@ -212,10 +212,10 @@ app.get("/info", async (req, res) => {
 
 Client IP address.
 
-| `config.trustProxy` | Behavior |
-| ------------------- | ----------------------------------- |
-| `false` (default) | Read from the underlying socket's `remoteAddress` |
-| `true` | Read the first IP from the `X-Forwarded-For` request header |
+| `config.trustProxy` | Behavior                                                    |
+| ------------------- | ----------------------------------------------------------- |
+| `false` (default)   | Read from the underlying socket's `remoteAddress`           |
+| `true`              | Read the first IP from the `X-Forwarded-For` request header |
 
 ```typescript
 app.get("/info", async (req, res) => {
@@ -233,10 +233,10 @@ When deployed behind a reverse proxy (Nginx/Cloud Load Balancer), `trustProxy: t
 
 Request agreement.
 
-| `config.trustProxy` | Behavior |
-| ------------------- | ---------------------------------- |
-| `false` (default) | Always return `'http'' |
-| `true` | Read from `X-Forwarded-Proto` request header |
+| `config.trustProxy` | Behavior                                     |
+| ------------------- | -------------------------------------------- |
+| `false` (default)   | Always return `'http''                       |
+| `true`              | Read from `X-Forwarded-Proto` request header |
 
 ```typescript
 app.get("/info", async (req, res) => {
@@ -252,24 +252,25 @@ Get the data after `validate` verification and type conversion.
 
 ```typescript
 function valid<T = Record<string, any>>(
-  location: "query" | "body" | "param" | "header",
+  location: "query" | "body" | "param" | "header" | "cookie",
 ): T;
 ```
 
 **Parameters**:
 
-| Parameters | Type | Description |
-| ---------- | ----------------------------------------------- | ---------- |
-| `location` | `'query' \| 'body' \| 'param' \| 'header'` | Verification data location |
+| Parameters | Type                                                   | Description                |
+| ---------- | ------------------------------------------------------ | -------------------------- |
+| `location` | `'query' \| 'body' \| 'param' \| 'header' \| 'cookie'` | Verification data location |
 
 **`location` and data source mapping**:
 
-| location | data source | description |
-| ---------- | ------------- | ---------- |
-| `'query'` | `req.query` | URL query parameters |
-| `'body'` | `req.body` | Request body |
-| `'param'` | `req.params` | Path dynamic parameters |
-| `'header'` | `req.headers` | Request headers |
+| location   | data source   | description             |
+| ---------- | ------------- | ----------------------- |
+| `'query'`  | `req.query`   | URL query parameters    |
+| `'body'`   | `req.body`    | Request body            |
+| `'param'`  | `req.params`  | Path dynamic parameters |
+| `'header'` | `req.headers` | Request headers         |
+| `'cookie'` | `req.cookies` | Parsed Cookie values    |
 
 :::tip
 Note that `location` uses the **singular** `'param`` (consistent with the key configured in `validate`), but the underlying data source is the **plural** `req.params`. The frame internals are mapped correctly.
@@ -425,13 +426,16 @@ Returns a `Buffer` of the original request body. Each adapter is guaranteed to c
 
 ```typescript
 // Plug-in example (use busboy to parse multipart/form-data)
-import { createBusboy } from 'busboy';
-import type { ParsedFile } from 'vextjs';
+import { createBusboy } from "busboy";
+import type { ParsedFile } from "vextjs";
 
 export default definePlugin(async (app) => {
   app.use(async (req, _res, next) => {
-    const ct = req.headers['content-type'] ?? '';
-    if (!ct.startsWith('multipart/form-data')) { await next(); return; }
+    const ct = req.headers["content-type"] ?? "";
+    if (!ct.startsWith("multipart/form-data")) {
+      await next();
+      return;
+    }
 
     const rawBuffer = await req._getRawBodyBuffer();
     const files: ParsedFile[] = await parseMultipart(rawBuffer, ct);
@@ -481,16 +485,16 @@ app.get("/profile", { middlewares: ["auth"] }, async (req, res) => {
 
 ### List of methods
 
-| Method | Return Value | Description |
-| -------------------------------------------------- | -------- | ---------------------------------- |
-| `json(data, status?)` | `void` | Returns a JSON response (wrapped for export) |
-| `text(content, status?)` | `void` | Return plain text response |
-| `stream(readable, contentType?)` | `void` | Streaming response |
-| `download(readable, filename, contentType?)` | `void` | File download |
-| `redirect(url, status?)` | `void` | Redirect |
-| `status(code)` | `this` | Set status code (chain call) |
-| `setHeader(name, value)` | `this` | Set response header (chain call) |
-| `statusCode` | `number` | Current status code (read-only) |
+| Method                                       | Return Value | Description                                  |
+| -------------------------------------------- | ------------ | -------------------------------------------- |
+| `json(data, status?)`                        | `void`       | Returns a JSON response (wrapped for export) |
+| `text(content, status?)`                     | `void`       | Return plain text response                   |
+| `stream(readable, contentType?)`             | `void`       | Streaming response                           |
+| `download(readable, filename, contentType?)` | `void`       | File download                                |
+| `redirect(url, status?)`                     | `void`       | Redirect                                     |
+| `status(code)`                               | `this`       | Set status code (chain call)                 |
+| `setHeader(name, value)`                     | `this`       | Set response header (chain call)             |
+| `statusCode`                                 | `number`     | Current status code (read-only)              |
 
 ---
 
@@ -504,10 +508,10 @@ function json(data: unknown, status?: number): void;
 
 **Parameters**:
 
-| Parameters | Type | Default value | Description |
-| -------- | --------- | ------ | ------------------- |
-| `data` | `unknown` | — | Business data |
-| `status` | `number` | `200` | HTTP status code (optional) |
+| Parameters | Type      | Default value | Description                 |
+| ---------- | --------- | ------------- | --------------------------- |
+| `data`     | `unknown` | —             | Business data               |
+| `status`   | `number`  | `200`         | HTTP status code (optional) |
 
 **Export Packaging**:
 
@@ -594,10 +598,10 @@ function stream(readable: NodeJS.ReadableStream, contentType?: string): void;
 
 **Parameters**:
 
-| Parameters | Type | Default value | Description |
-| ------------- | ----------------------- | ---------------------------- | --------------- |
-| `readable` | `NodeJS.ReadableStream` | — | Node.js readable stream |
-| `contentType` | `string` | `'application/octet-stream'` | MIME type |
+| Parameters    | Type                    | Default value                | Description             |
+| ------------- | ----------------------- | ---------------------------- | ----------------------- |
+| `readable`    | `NodeJS.ReadableStream` | —                            | Node.js readable stream |
+| `contentType` | `string`                | `'application/octet-stream'` | MIME type               |
 
 ```typescript
 import { createReadStream } from "node:fs";
@@ -645,11 +649,11 @@ function download(
 
 **Parameters**:
 
-| Parameters | Type | Default value | Description |
-| ------------- | ----------------------- | ---------------------------- | ---------------------------- |
-| `readable` | `NodeJS.ReadableStream` | — | File stream |
-| `filename` | `string` | — | Download file name (displayed by browser) |
-| `contentType` | `string` | `'application/octet-stream'` | MIME type |
+| Parameters    | Type                    | Default value                | Description                               |
+| ------------- | ----------------------- | ---------------------------- | ----------------------------------------- |
+| `readable`    | `NodeJS.ReadableStream` | —                            | File stream                               |
+| `filename`    | `string`                | —                            | Download file name (displayed by browser) |
+| `contentType` | `string`                | `'application/octet-stream'` | MIME type                                 |
 
 ```typescript
 import { createReadStream } from "node:fs";
@@ -678,10 +682,10 @@ function redirect(url: string, status?: 301 | 302 | 307 | 308): void;
 
 **Parameters**:
 
-| Parameters | Type | Default value | Description |
-| -------- | -------------------------- | ------ | ---------- |
-| `url` | `string` | — | Target URL |
-| `status` | `301 \| 302 \| 307 \| 308` | `302` | Redirect status code |
+| Parameters | Type                       | Default value | Description          |
+| ---------- | -------------------------- | ------------- | -------------------- |
+| `url`      | `string`                   | —             | Target URL           |
+| `status`   | `301 \| 302 \| 307 \| 308` | `302`         | Redirect status code |
 
 ```typescript
 // Temporary redirect (302)
@@ -699,12 +703,12 @@ res.redirect("/api/v2/users", 308);
 
 **Redirect status code description**:
 
-| Status code | Description | Whether to keep the HTTP method |
-| ------ | ------------------ | ------------------ |
-| `301` | Permanent redirect | No (may become GET) |
-| `302` | Temporary redirect (default) | No (may become GET) |
-| `307` | Temporary redirection | Yes |
-| `308` | Permanent redirect | Yes |
+| Status code | Description                  | Whether to keep the HTTP method |
+| ----------- | ---------------------------- | ------------------------------- |
+| `301`       | Permanent redirect           | No (may become GET)             |
+| `302`       | Temporary redirect (default) | No (may become GET)             |
+| `307`       | Temporary redirection        | Yes                             |
+| `308`       | Permanent redirect           | Yes                             |
 
 ---
 
@@ -908,7 +912,8 @@ If you need to actively return an explicit HTTP error, use `app.throw(...)`. If 
 
 ```typescript
 app.post("/upload", async (req, res) => {
-  const result = await processUpload(req.body);res
+  const result = await processUpload(req.body);
+  res
     .status(201)
     .setHeader("Location", `/files/${result.id}`)
     .setHeader("X-File-Size", String(result.size))

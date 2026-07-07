@@ -595,7 +595,10 @@ Simulates an HTTP response object, including status code, response headers and p
 ```typescript
 interface TestResponse {
   status: number;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>;
+  cookies: string[];
+  header(name: string): string | undefined;
+  headerValues(name: string): string[];
   body: any;
   text: string;
 }
@@ -629,20 +632,28 @@ expect(res3.status).toBe(201);
 Response header object, all keys are lowercase.
 
 ```typescript
-headers: Record<string, string>;
+headers: Record<string, string | string[]>;
 ```
 
 ```typescript
 const res = await testApp.request.get("/users/list");
 
 // Check Content-Type
-expect(res.headers["content-type"]).toContain("application/json");
+expect(res.header("content-type")).toContain("application/json");
 
 // Check custom response headers
 expect(res.headers["x-request-id"]).toBeDefined();
 
 // Check CORS headers
 expect(res.headers["access-control-allow-origin"]).toBeDefined();
+```
+
+`Set-Cookie` is preserved as an array. Prefer `res.cookies` or `res.headerValues("set-cookie")` when asserting cookies:
+
+```typescript
+expect(res.cookies).toHaveLength(2);
+expect(res.headerValues("set-cookie")).toEqual(res.cookies);
+expect(res.header("content-type")).toContain("application/json");
 ```
 
 ---

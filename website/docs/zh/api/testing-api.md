@@ -597,7 +597,10 @@ expect(res.headers["x-request-id"]).toBe("test-req-001");
 ```typescript
 interface TestResponse {
   status: number;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>;
+  cookies: string[];
+  header(name: string): string | undefined;
+  headerValues(name: string): string[];
   body: any;
   text: string;
 }
@@ -631,20 +634,28 @@ expect(res3.status).toBe(201);
 响应头对象，所有 key 为小写。
 
 ```typescript
-headers: Record<string, string>;
+headers: Record<string, string | string[]>;
 ```
 
 ```typescript
 const res = await testApp.request.get("/users/list");
 
 // 检查 Content-Type
-expect(res.headers["content-type"]).toContain("application/json");
+expect(res.header("content-type")).toContain("application/json");
 
 // 检查自定义响应头
 expect(res.headers["x-request-id"]).toBeDefined();
 
 // 检查 CORS 头
 expect(res.headers["access-control-allow-origin"]).toBeDefined();
+```
+
+`Set-Cookie` 会保留为数组。断言 cookie 时优先使用 `res.cookies` 或 `res.headerValues("set-cookie")`：
+
+```typescript
+expect(res.cookies).toHaveLength(2);
+expect(res.headerValues("set-cookie")).toEqual(res.cookies);
+expect(res.header("content-type")).toContain("application/json");
 ```
 
 ---

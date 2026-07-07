@@ -52,16 +52,17 @@ app.get("/realtime", { cache: false }, async (req, res) => {
 
 ### RouteOptions.cache
 
-| Field | Type | Default Value | Description |
-| ------------------------- | --------------------------- | -------- | ------------------------------------------------------------------ |
-| `ttl` | `number` | — | Cache validity period, in milliseconds, must be > 0 |
-| `key` | `string \| (req) => string` | Automatically generated | Custom cache key; `partitionKey` and `vary` will still participate in the final underlying key |
-| `condition` | `(req) => boolean` | — | The caching logic is only used when `true` is returned |
-| `vary` | `string[] \| "*"` | `[]` | Request headers that participate in caching key; `"*"` means that all request headers are involved |
-| `partitionKey` | `string \| (req) => string` | — | User, tenant or other business partition, used for isolation zone authentication or multi-tenant response |
-| `allowAuthorizationCache` | `boolean` | `false` | Whether to still allow caching of requests with `Authorization` when there is no `partitionKey` |
-| `cacheControl` | `boolean` | `true` | Whether to set the `Cache-Control` response header |
-| `tags` | `string[]` | `[]` | Cache tag, used for `app.cache.invalidate(tag)` batch invalidation |
+| Field                     | Type                        | Default Value           | Description                                                                                               |
+| ------------------------- | --------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ttl`                     | `number`                    | —                       | Cache validity period, in milliseconds, must be > 0                                                       |
+| `key`                     | `string \| (req) => string` | Automatically generated | Custom cache key; `partitionKey` and `vary` will still participate in the final underlying key            |
+| `condition`               | `(req) => boolean`          | —                       | The caching logic is only used when `true` is returned                                                    |
+| `vary`                    | `string[] \| "*"`           | `[]`                    | Request headers that participate in caching key; `"*"` means that all request headers are involved        |
+| `partitionKey`            | `string \| (req) => string` | —                       | User, tenant or other business partition, used for isolation zone authentication or multi-tenant response |
+| `allowAuthorizationCache` | `boolean`                   | `false`                 | Whether to still allow caching of requests with `Authorization` when there is no `partitionKey`           |
+| `allowCookieCache`        | `boolean`                   | `false`                 | Whether to allow requests with a `Cookie` header to participate in cache                                  |
+| `cacheControl`            | `boolean`                   | `true`                  | Whether to set the `Cache-Control` response header                                                        |
+| `tags`                    | `string[]`                  | `[]`                    | Cache tag, used for `app.cache.invalidate(tag)` batch invalidation                                        |
 
 ### Global configuration (config.cache)
 
@@ -84,14 +85,14 @@ The response cache runtime is handled by `response-cache-kit`, and the underlyin
 
 #### config.cache field
 
-| Field | Type | Default Value | Description |
-| ------------------ | ---------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `enabled` | `boolean` | `true` | Whether to enable route-level response caching. When set to `false`, the cache middleware will not be installed and the Redis/MultiLevel connection will not be opened |
-| `defaultTtl` | `number` | `60000` | The default TTL when the route does not specify `ttl`, in milliseconds |
-| `maxEntries` | `number` | `1000` | Memory mode quick configuration, effective when `cacheHub` is not configured or is Memory |
-| `maxMemory` | `number` | — | Memory mode quick configuration, maximum memory usage bytes |
-| `cleanupInterval` | `number` | `0` | Memory mode quick configuration, periodic cleaning interval; `0` means lazy cleaning only during access |
-| `cacheHub` | `object` | Memory | Underlying runtime configuration: Memory, Redis, MultiLevel, lease, distributed |
+| Field             | Type      | Default Value | Description                                                                                                                                                            |
+| ----------------- | --------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `boolean` | `true`        | Whether to enable route-level response caching. When set to `false`, the cache middleware will not be installed and the Redis/MultiLevel connection will not be opened |
+| `defaultTtl`      | `number`  | `60000`       | The default TTL when the route does not specify `ttl`, in milliseconds                                                                                                 |
+| `maxEntries`      | `number`  | `1000`        | Memory mode quick configuration, effective when `cacheHub` is not configured or is Memory                                                                              |
+| `maxMemory`       | `number`  | —             | Memory mode quick configuration, maximum memory usage bytes                                                                                                            |
+| `cleanupInterval` | `number`  | `0`           | Memory mode quick configuration, periodic cleaning interval; `0` means lazy cleaning only during access                                                                |
+| `cacheHub`        | `object`  | Memory        | Underlying runtime configuration: Memory, Redis, MultiLevel, lease, distributed                                                                                        |
 
 #### Memory cacheHub
 
@@ -110,14 +111,14 @@ export default {
 };
 ```
 
-| Field | Type | Default Value | Description |
-| ------------------ | ---------- | ---------- | -------------------------- |
-| `mode` | `"memory"` | `"memory"` | Use in-process Memory cache |
-| `maxEntries` | `number` | `1000` | Maximum number of entries |
-| `maxMemory` | `number` | — | Maximum memory usage bytes |
-| `cleanupInterval` | `number` | `0` | Periodic cleanup interval, in milliseconds |
-| `enableStats` | `boolean` | `true` | Whether to record statistical information |
-| `enabled` | `boolean` | `true` | Whether the underlying Memory Store is enabled |
+| Field             | Type       | Default Value | Description                                    |
+| ----------------- | ---------- | ------------- | ---------------------------------------------- |
+| `mode`            | `"memory"` | `"memory"`    | Use in-process Memory cache                    |
+| `maxEntries`      | `number`   | `1000`        | Maximum number of entries                      |
+| `maxMemory`       | `number`   | —             | Maximum memory usage bytes                     |
+| `cleanupInterval` | `number`   | `0`           | Periodic cleanup interval, in milliseconds     |
+| `enableStats`     | `boolean`  | `true`        | Whether to record statistical information      |
+| `enabled`         | `boolean`  | `true`        | Whether the underlying Memory Store is enabled |
 
 #### Redis cacheHub
 
@@ -147,16 +148,16 @@ Redis mode is suitable for multiple instances to share response cache. When enab
 npm install ioredis
 ```
 
-| Field | Type | Default Value | Description |
-| --------------- | ------------------- | ------------------- | ----------------------------------- |
-| `mode` | `"redis"` | Required | Use Redis to store response snapshots |
-| `url` | `string` | `redis://localhost:6379` | Redis URL |
-| `client` | `object` | — | Existing Redis-like client, advanced usage |
-| `metaKeyPrefix` | `string` | cache-hub default value | tag metadata key prefix |
-| `scanCount` | `number` | cache-hub default value | SCAN batch size |
-| `deleteCommand` | `"del" \| "unlink"` | `del` | Delete command; large value recommended `unlink` |
-| `lease` | `boolean \| object` | `false` | Cross-process coordination with key back to the source |
-| `distributed` | `boolean \| object` | `false` | Distributed pattern/tag failure broadcast |
+| Field           | Type                | Default Value            | Description                                            |
+| --------------- | ------------------- | ------------------------ | ------------------------------------------------------ |
+| `mode`          | `"redis"`           | Required                 | Use Redis to store response snapshots                  |
+| `url`           | `string`            | `redis://localhost:6379` | Redis URL                                              |
+| `client`        | `object`            | —                        | Existing Redis-like client, advanced usage             |
+| `metaKeyPrefix` | `string`            | cache-hub default value  | tag metadata key prefix                                |
+| `scanCount`     | `number`            | cache-hub default value  | SCAN batch size                                        |
+| `deleteCommand` | `"del" \| "unlink"` | `del`                    | Delete command; large value recommended `unlink`       |
+| `lease`         | `boolean \| object` | `false`                  | Cross-process coordination with key back to the source |
+| `distributed`   | `boolean \| object` | `false`                  | Distributed pattern/tag failure broadcast              |
 
 #### MultiLevel cacheHub
 
@@ -184,17 +185,17 @@ export default {
 
 MultiLevel uses the memory of this process as L1 and Redis as L2. It is suitable for services that want to reduce the reading pressure of Redis but still need to share the cache across processes.
 
-| Field | Type | Default Value | Description |
-| -------------------------- | ------------------------------------- | ------------- | ----------------------------- |
-| `mode` | `"multi-level"` | Required | Enable L1 Memory + L2 Redis |
-| `memory` | `object` | `{}` | L1 Memory configuration |
-| `redis` | `object` | `{}` | L2 Redis configuration |
-| `writePolicy` | `"both" \| "local-first-async-remote"` | `both` | Write policy |
-| `backfillOnRemoteHit` | `boolean` | cache-hub default value | Whether to backfill L1 after L2 hits |
-| `remoteTimeout` | `number` | cache-hub default value | L2 operation timeout in milliseconds |
-| `remoteInvalidationErrors` | `"ignore" \| "throw"` | cache-hub default value | L2 invalidation error handling |
-| `lease` | `boolean \| object` | `false` | Use the Redis layer for cross-process back-to-source coordination |
-| `distributed` | `boolean \| object` | `false` | Distributed failure broadcast |
+| Field                      | Type                                   | Default Value           | Description                                                       |
+| -------------------------- | -------------------------------------- | ----------------------- | ----------------------------------------------------------------- |
+| `mode`                     | `"multi-level"`                        | Required                | Enable L1 Memory + L2 Redis                                       |
+| `memory`                   | `object`                               | `{}`                    | L1 Memory configuration                                           |
+| `redis`                    | `object`                               | `{}`                    | L2 Redis configuration                                            |
+| `writePolicy`              | `"both" \| "local-first-async-remote"` | `both`                  | Write policy                                                      |
+| `backfillOnRemoteHit`      | `boolean`                              | cache-hub default value | Whether to backfill L1 after L2 hits                              |
+| `remoteTimeout`            | `number`                               | cache-hub default value | L2 operation timeout in milliseconds                              |
+| `remoteInvalidationErrors` | `"ignore" \| "throw"`                  | cache-hub default value | L2 invalidation error handling                                    |
+| `lease`                    | `boolean \| object`                    | `false`                 | Use the Redis layer for cross-process back-to-source coordination |
+| `distributed`              | `boolean \| object`                    | `false`                 | Distributed failure broadcast                                     |
 
 #### lease and distributed
 
@@ -225,10 +226,10 @@ By default only GET / HEAD requests are processed, and successful responses sent
 
 ### Response header
 
-| header | value | description |
-| --------------- | ------------------- | ----------------------------------- |
-| `X-Cache` | `HIT` | cache hit |
-| `X-Cache` | `MISS` | Cache miss (first request or expiration) |
+| header          | value               | description                                           |
+| --------------- | ------------------- | ----------------------------------------------------- |
+| `X-Cache`       | `HIT`               | cache hit                                             |
+| `X-Cache`       | `MISS`              | Cache miss (first request or expiration)              |
 | `Cache-Control` | `public, max-age=N` | N=TTL seconds when MISS, N=remaining seconds when HIT |
 
 ### Cache Key algorithm
@@ -243,6 +244,7 @@ GET /products (Accept-Language: zh-CN) → GET:/products|accept-language=zh-CN
 
 - Query parameters are automatically sorted (`?b=2&a=1` ≡ `?a=1&b=2`)
 - Requests with `Authorization` are not cached by default unless `partitionKey` is configured or `allowAuthorizationCache: true` is explicitly set
+- Requests with `Cookie` are not cached by default unless `allowCookieCache: true` is explicitly set
 - When you need to differentiate cache by user or tenant, use `partitionKey` first
 - When using a custom `key`, `partitionKey` and `vary` will still be appended to the underlying key
 
@@ -254,6 +256,7 @@ GET /products (Accept-Language: zh-CN) → GET:/products|accept-language=zh-CN
 - Response header contains `Cache-Control: no-store` or `private`
 - The request header contains `Cache-Control: no-store` or `no-cache`
 - With `Authorization` and no `partitionKey` / `allowAuthorizationCache` configured
+- With `Cookie` and no `allowCookieCache` configured
 - Response not sent via `res.json()`
 - `cache: false` explicitly disabled
 - `cache: 0` or negative value

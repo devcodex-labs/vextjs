@@ -110,28 +110,29 @@ export default {
 
 ### `VextConfig`
 
-| 字段             | 类型                                                    | 默认值               | 说明                       |
-| ---------------- | ------------------------------------------------------- | -------------------- | -------------------------- |
-| `port`           | `number`                                                | `3000`               | HTTP 监听端口              |
-| `host`           | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址              |
-| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                 |
-| `trustProxy`     | `boolean`                                               | `false`              | 是否信任代理               |
-| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单         |
-| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                  |
-| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置               |
-| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置               |
-| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                   |
-| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置               |
-| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置   |
-| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                   |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置              |
-| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置               |
-| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置               |
-| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置           |
-| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置             |
-| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置 |
-| `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置 |
-| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置         |
+| 字段             | 类型                                                    | 默认值               | 说明                                  |
+| ---------------- | ------------------------------------------------------- | -------------------- | ------------------------------------- |
+| `port`           | `number`                                                | `3000`               | HTTP 监听端口                         |
+| `host`           | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                         |
+| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                            |
+| `trustProxy`     | `boolean`                                               | `false`              | 是否信任代理                          |
+| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单                    |
+| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                             |
+| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置                          |
+| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置                          |
+| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                              |
+| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置                          |
+| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置              |
+| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                              |
+| `session`        | `VextSessionConfig`                                     | 见指南               | 显式 `session()` 中间件使用的默认配置 |
+| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                         |
+| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                          |
+| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                          |
+| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置                      |
+| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置                        |
+| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置            |
+| `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置            |
+| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                    |
 
 ---
 
@@ -624,47 +625,47 @@ POST /api/users 201 12ms | 192.168.1.1
 
 OpenAPI 文档自动生成配置。
 
-| 字段                       | 类型                                      | 默认值               | 说明                                                                                                                                                                    |
-| -------------------------- | ----------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                  | `boolean`                                 | dev 启用，prod 关闭  | 是否启用                                                                                                                                                                |
-| `title`                    | `string`                                  | `undefined`          | 文档标题                                                                                                                                                                |
-| `version`                  | `string`                                  | `undefined`          | 文档版本号                                                                                                                                                              |
-| `description`              | `string`                                  | `undefined`          | 文档描述                                                                                                                                                                |
-| `docs.path`                | `string`                                  | `'/docs'`            | Vext Docs 文档路径                                                                                                                                                      |
-| `docs.assetsPath`          | `string`                                  | `'/_vext/docs'`      | Vext Docs 内置资产与数据端点前缀                                                                                                                                        |
-| `docs.assetsPublicPath`    | `string`                                  | 同 `docs.assetsPath` | 浏览器可见的 docs 资产/数据前缀，用于反向代理剥离公开前缀的场景                                                                                                         |
-| `docs.renderer`            | `'vext'`                                  | `'vext'`             | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                             |
-| `docs.ui.theme`            | `'system' \| 'light' \| 'dark'`           | `'system'`           | 内置 Vext Docs 颜色主题；访问者也可在 UI 中本地覆盖                                                                                                                     |
-| `docs.ui.density`          | `'comfortable' \| 'compact'`              | `'comfortable'`      | 内置 Vext Docs 间距密度；访问者也可在 UI 中本地覆盖                                                                                                                     |
-| `docs.code.enabled`        | `boolean \| 'auto'`                       | `'auto'`             | 是否从 services / utils / models / components / plugins / middlewares 及显式开启的可选静态来源生成代码文档                                                              |
-| `docs.code.components`     | `boolean \| object`                       | `true`               | Components JSDoc 文档源；默认扫描 `src/frontend/components/**`，仅发现条目时在 UI 中展示                                                                                |
-| `docs.code.plugins`        | `boolean \| object`                       | `true`               | Plugins JSDoc/runtime 文档源；默认扫描 `src/plugins/**`，仅发现条目时在 UI 中展示                                                                                       |
-| `docs.code.middlewares`    | `boolean \| object`                       | `true`               | Middlewares JSDoc/runtime 文档源；默认扫描 `src/middlewares/**`，仅发现条目时在 UI 中展示                                                                               |
-| `docs.code.locales`        | `boolean \| object`                       | `false`              | 可选 Locales 文档源；开启后扫描 `src/locales/**` 和 `src/frontend/locales/**`；配置 `dir` 时只扫描该自定义 locale 根目录                                                |
-| `docs.code.config`         | `boolean \| object`                       | `false`              | 可选 Config 文档源；开启后扫描 `src/config/**`                                                                                                                          |
-| `docs.code.styles`         | `boolean \| object`                       | `false`              | 可选 Styles 文档源；开启后扫描 `src/frontend/styles/**`                                                                                                                 |
-| `docs.code.preload`        | `boolean \| object`                       | `false`              | 可选 Preload 文档源；开启后扫描项目根 `preload/**`                                                                                                                      |
-| `docs.access.mode`         | `'off' \| 'visibility-only' \| 'enforce'` | `'off'`              | 文档菜单/operation 权限模式                                                                                                                                             |
-| `docs.access.openapiJson`  | `'filtered' \| 'public'`                  | `'filtered'`         | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                            |
-| `docs.sources`             | `Array`                                   | `[]`                 | 可选的多 API / 多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                                |
-| `docs.tryItOut.hookScript` | `string`                                  | `undefined`          | Try it out 请求/响应 hook 的可选浏览器脚本路径                                                                                                                          |
-| `docs.tryItOut.hookGlobal` | `string`                                  | `'VextDocsHooks'`    | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                    |
-| `docs.tryItOut.defaultServer` | `string`                               | `undefined`          | Try it out 初始 server，支持 `"first"`、`"same-origin"`、`"custom"` 或精确 OpenAPI server URL                                                                            |
-| `docs.tryItOut.sameOrigin` | `boolean \| 'auto'`                       | `'auto'`             | 是否显示 Same origin server 选项；`auto` 仅在没有配置 OpenAPI servers 时显示                                                                                            |
-| `docs.tryItOut.customServer` | `boolean`                               | `true`               | 是否允许访问者在浏览器中临时填写 Try it out base URL                                                                                                                    |
-| `docs.tryItOut.customServerUrl` | `string`                            | `undefined`          | Custom server 输入框的可选默认值                                                                                                                                        |
-| `docsPath`                 | `string`                                  | `'/docs'`            | 兼容字段；新项目推荐使用 `docs.path`                                                                                                                                    |
-| `jsonPath`                 | `string`                                  | `'/openapi.json'`    | OpenAPI JSON 路径                                                                                                                                                       |
-| `jsonPublicPath`           | `string`                                  | 同 `jsonPath`        | 外部工具和链接使用的公开 OpenAPI 规范地址。内置 source-aware docs 数据使用 `docs.assetsPublicPath` / `docs.assetsPath`，[详见指南](/guide/openapi#反向代理路径前缀场景) |
-| `contact`                  | `object`                                  | `undefined`          | 联系信息                                                                                                                                                                |
-| `license`                  | `object`                                  | `undefined`          | 许可证信息                                                                                                                                                              |
-| `servers`                  | `array`                                   | `undefined`          | 服务器地址列表                                                                                                                                                          |
-| `tags`                     | `array`                                   | `undefined`          | 全局标签定义                                                                                                                                                            |
-| `guardSecurityMap`         | `Record<string, string>`                  | `undefined`          | Guard → Security Scheme 映射                                                                                                                                            |
-| `securitySchemes`          | `object`                                  | `undefined`          | 安全方案定义                                                                                                                                                            |
-| `scalar`                   | `object`                                  | `{}`                 | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                               |
-| ~~`tryItOutEnabled`~~      | `boolean`                                 | `true`               | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
-| ~~`docExpansion`~~         | `'none' \| 'list' \| 'full'`              | `'list'`             | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
+| 字段                            | 类型                                      | 默认值               | 说明                                                                                                                                                                    |
+| ------------------------------- | ----------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                       | `boolean`                                 | dev 启用，prod 关闭  | 是否启用                                                                                                                                                                |
+| `title`                         | `string`                                  | `undefined`          | 文档标题                                                                                                                                                                |
+| `version`                       | `string`                                  | `undefined`          | 文档版本号                                                                                                                                                              |
+| `description`                   | `string`                                  | `undefined`          | 文档描述                                                                                                                                                                |
+| `docs.path`                     | `string`                                  | `'/docs'`            | Vext Docs 文档路径                                                                                                                                                      |
+| `docs.assetsPath`               | `string`                                  | `'/_vext/docs'`      | Vext Docs 内置资产与数据端点前缀                                                                                                                                        |
+| `docs.assetsPublicPath`         | `string`                                  | 同 `docs.assetsPath` | 浏览器可见的 docs 资产/数据前缀，用于反向代理剥离公开前缀的场景                                                                                                         |
+| `docs.renderer`                 | `'vext'`                                  | `'vext'`             | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                             |
+| `docs.ui.theme`                 | `'system' \| 'light' \| 'dark'`           | `'system'`           | 内置 Vext Docs 颜色主题；访问者也可在 UI 中本地覆盖                                                                                                                     |
+| `docs.ui.density`               | `'comfortable' \| 'compact'`              | `'comfortable'`      | 内置 Vext Docs 间距密度；访问者也可在 UI 中本地覆盖                                                                                                                     |
+| `docs.code.enabled`             | `boolean \| 'auto'`                       | `'auto'`             | 是否从 services / utils / models / components / plugins / middlewares 及显式开启的可选静态来源生成代码文档                                                              |
+| `docs.code.components`          | `boolean \| object`                       | `true`               | Components JSDoc 文档源；默认扫描 `src/frontend/components/**`，仅发现条目时在 UI 中展示                                                                                |
+| `docs.code.plugins`             | `boolean \| object`                       | `true`               | Plugins JSDoc/runtime 文档源；默认扫描 `src/plugins/**`，仅发现条目时在 UI 中展示                                                                                       |
+| `docs.code.middlewares`         | `boolean \| object`                       | `true`               | Middlewares JSDoc/runtime 文档源；默认扫描 `src/middlewares/**`，仅发现条目时在 UI 中展示                                                                               |
+| `docs.code.locales`             | `boolean \| object`                       | `false`              | 可选 Locales 文档源；开启后扫描 `src/locales/**` 和 `src/frontend/locales/**`；配置 `dir` 时只扫描该自定义 locale 根目录                                                |
+| `docs.code.config`              | `boolean \| object`                       | `false`              | 可选 Config 文档源；开启后扫描 `src/config/**`                                                                                                                          |
+| `docs.code.styles`              | `boolean \| object`                       | `false`              | 可选 Styles 文档源；开启后扫描 `src/frontend/styles/**`                                                                                                                 |
+| `docs.code.preload`             | `boolean \| object`                       | `false`              | 可选 Preload 文档源；开启后扫描项目根 `preload/**`                                                                                                                      |
+| `docs.access.mode`              | `'off' \| 'visibility-only' \| 'enforce'` | `'off'`              | 文档菜单/operation 权限模式                                                                                                                                             |
+| `docs.access.openapiJson`       | `'filtered' \| 'public'`                  | `'filtered'`         | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                            |
+| `docs.sources`                  | `Array`                                   | `[]`                 | 可选的多 API / 多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                                |
+| `docs.tryItOut.hookScript`      | `string`                                  | `undefined`          | Try it out 请求/响应 hook 的可选浏览器脚本路径                                                                                                                          |
+| `docs.tryItOut.hookGlobal`      | `string`                                  | `'VextDocsHooks'`    | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                    |
+| `docs.tryItOut.defaultServer`   | `string`                                  | `undefined`          | Try it out 初始 server，支持 `"first"`、`"same-origin"`、`"custom"` 或精确 OpenAPI server URL                                                                           |
+| `docs.tryItOut.sameOrigin`      | `boolean \| 'auto'`                       | `'auto'`             | 是否显示 Same origin server 选项；`auto` 仅在没有配置 OpenAPI servers 时显示                                                                                            |
+| `docs.tryItOut.customServer`    | `boolean`                                 | `true`               | 是否允许访问者在浏览器中临时填写 Try it out base URL                                                                                                                    |
+| `docs.tryItOut.customServerUrl` | `string`                                  | `undefined`          | Custom server 输入框的可选默认值                                                                                                                                        |
+| `docsPath`                      | `string`                                  | `'/docs'`            | 兼容字段；新项目推荐使用 `docs.path`                                                                                                                                    |
+| `jsonPath`                      | `string`                                  | `'/openapi.json'`    | OpenAPI JSON 路径                                                                                                                                                       |
+| `jsonPublicPath`                | `string`                                  | 同 `jsonPath`        | 外部工具和链接使用的公开 OpenAPI 规范地址。内置 source-aware docs 数据使用 `docs.assetsPublicPath` / `docs.assetsPath`，[详见指南](/guide/openapi#反向代理路径前缀场景) |
+| `contact`                       | `object`                                  | `undefined`          | 联系信息                                                                                                                                                                |
+| `license`                       | `object`                                  | `undefined`          | 许可证信息                                                                                                                                                              |
+| `servers`                       | `array`                                   | `undefined`          | 服务器地址列表                                                                                                                                                          |
+| `tags`                          | `array`                                   | `undefined`          | 全局标签定义                                                                                                                                                            |
+| `guardSecurityMap`              | `Record<string, string>`                  | `undefined`          | Guard → Security Scheme 映射                                                                                                                                            |
+| `securitySchemes`               | `object`                                  | `undefined`          | 安全方案定义                                                                                                                                                            |
+| `scalar`                        | `object`                                  | `{}`                 | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                               |
+| ~~`tryItOutEnabled`~~           | `boolean`                                 | `true`               | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
+| ~~`docExpansion`~~              | `'none' \| 'list' \| 'full'`              | `'list'`             | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
 
 固定本地或部署 API 目标时，`servers[].url` 建议直接写带端口的完整 base URL，例如 `http://127.0.0.1:3000`。只有环境名、区域、租户或 API 版本这类真正会变化的 URL 片段，才建议使用 `servers[].variables`。`docs.tryItOut.defaultServer` 用于控制 Try it out 初始选中的 server，`docs.tryItOut.customServer` 用于允许用户在浏览器里临时输入其他目标地址，不需要修改项目配置。
 
@@ -726,6 +727,8 @@ app.get("/profile", { middlewares: ["auth"] }, handler);
 | `apiKey`        | API Key        | `name`, `in`（`header` / `query` / `cookie`） |
 | `oauth2`        | OAuth 2.0      | —                                             |
 | `openIdConnect` | OpenID Connect | —                                             |
+
+对于 `in: "cookie"` 的 `apiKey` 安全方案和 `validate.cookie` 参数，内置文档可以展示字段，但浏览器 Try it out 不能直接设置受限的 `Cookie` header。如需手动 cookie 值，请使用同源浏览器 cookie 或 HTTP 客户端。
 
 ---
 
@@ -1049,6 +1052,20 @@ import { DEFAULT_CONFIG } from 'vextjs';
     hideInternalErrors: true,
     wrap: true,
   },
+  session: {
+    enabled: true,
+    name: 'vext.sid',
+    ttl: 86400,
+    rolling: false,
+    autoCommit: true,
+    idLength: 32,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: 'auto',
+    },
+  },
   bodyParser: {
     enabled: true,
     maxBodySize: '1mb',
@@ -1086,6 +1103,27 @@ const config: VextUserConfig = {
 
 export default config;
 ```
+
+---
+
+### `VextSessionConfig`
+
+`config.session` 由显式注册的 `session()` 中间件消费；它本身不会全局启用 session。
+
+| 字段         | 类型                       | 默认值       | 说明                                          |
+| ------------ | -------------------------- | ------------ | --------------------------------------------- |
+| `enabled`    | `boolean`                  | `true`       | 设为 `false` 时让 `session()` 成为 no-op      |
+| `name`       | `string`                   | `'vext.sid'` | session cookie 名称                           |
+| `ttl`        | `number`                   | `86400`      | store TTL，单位秒                             |
+| `rolling`    | `boolean`                  | `false`      | 每次请求刷新 store TTL 与 cookie              |
+| `autoCommit` | `boolean`                  | `true`       | 响应发送前自动持久化 dirty session            |
+| `idLength`   | `number`                   | `32`         | CSPRNG session id 的随机字节长度，范围 16-128 |
+| `cookie`     | `VextSessionCookieOptions` | 见下方       | session cookie 属性                           |
+| `store`      | `VextSessionStore`         | memory store | 面向共享部署的自定义异步 store                |
+
+`VextSessionCookieOptions` 基于 `CookieSerializeOptions`，并额外支持 `secure: boolean | "auto"`。Cookie 选项包含 `domain`、`path`、`expires`、`maxAge`、`httpOnly`、`secure`、`sameSite`、`priority`、`partitioned` 与 `encode`。
+
+`VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。如果自定义 store 暴露 `close()`，请通过 `app.onClose()` 或插件 teardown 主动关闭。
 
 ---
 

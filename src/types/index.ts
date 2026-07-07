@@ -13,6 +13,21 @@ export { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "./middleware.js";
 // ── 请求 / 响应类型 ────────────────────────────────────────
 export type { VextRequest, ParsedFile } from "./request.js";
 export type { VextResponse, VextPublicResponse } from "./response.js";
+export type { VextHeaderValue, VextHeaders } from "./headers.js";
+export type {
+  CookieParseOptions,
+  CookieSerializeOptions,
+  VextCookieJar,
+  VextCookiePriority,
+  VextCookieSameSite,
+} from "./cookies.js";
+export type {
+  VextSession,
+  VextSessionConfig,
+  VextSessionCookieOptions,
+  VextSessionData,
+  VextSessionStore,
+} from "./session.js";
 
 // ── 错误类型 ────────────────────────────────────────────────
 export { HttpError, VextValidationError } from "./errors.js";

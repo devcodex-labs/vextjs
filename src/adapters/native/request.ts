@@ -1,6 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import type { VextCookieJar } from "../../types/cookies.js";
+import { parseCookies } from "../../lib/cookies.js";
 import {
   assertBodySize,
   createPayloadTooLargeError,
@@ -87,6 +89,7 @@ export function createVextRequest(
   // 使用 getter + 缓存实现懒解析，首次访问时从 URL 解析，结果缓存。
   //
   let _queryCache: Record<string, string> | undefined;
+  let _cookiesCache: VextCookieJar | undefined;
 
   // ── 缓存原始请求体（body-parser 用）───────────────────────
   //
@@ -164,6 +167,12 @@ export function createVextRequest(
     return _rawStringPromise;
   }
 
+  function getCookies(): VextCookieJar {
+    if (_cookiesCache !== undefined) return _cookiesCache;
+    _cookiesCache = parseCookies(incoming.headers.cookie);
+    return _cookiesCache;
+  }
+
   // ── 解析 IP ──────────────────────────────────────────────
   //
   // trustProxy = true 时，从 X-Forwarded-For 请求头读取第一个 IP。
@@ -234,6 +243,12 @@ export function createVextRequest(
     body: undefined, // body-parser 中间件负责填充
     params,
     headers: incoming.headers as Record<string, string | undefined>,
+    get cookies(): VextCookieJar {
+      return getCookies();
+    },
+    cookie(name: string): string | undefined {
+      return getCookies()[name];
+    },
     method: (incoming.method ?? "GET").toUpperCase(),
     url: rawUrl,
     path: urlPath,
@@ -274,7 +289,7 @@ export function createVextRequest(
     // valid() 方法从对应的 key 中读取数据返回。
     //
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header",
+      location: "query" | "body" | "param" | "header" | "cookie",
     ): T {
       return (req as Record<string, any>)[`_validated_${location}`] as T;
     },

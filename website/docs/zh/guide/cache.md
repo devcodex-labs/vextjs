@@ -60,6 +60,7 @@ app.get("/realtime", { cache: false }, async (req, res) => {
 | `vary`                    | `string[] \| "*"`           | `[]`     | 参与缓存 key 的请求头；`"*"` 表示所有请求头都参与               |
 | `partitionKey`            | `string \| (req) => string` | —        | 用户、租户或其他业务分区，用于隔离带认证或多租户响应            |
 | `allowAuthorizationCache` | `boolean`                   | `false`  | 没有 `partitionKey` 时，是否仍允许缓存带 `Authorization` 的请求 |
+| `allowCookieCache`        | `boolean`                   | `false`  | 是否允许带 `Cookie` 请求头的请求参与缓存                        |
 | `cacheControl`            | `boolean`                   | `true`   | 是否设置 `Cache-Control` 响应头                                 |
 | `tags`                    | `string[]`                  | `[]`     | 缓存标签，用于 `app.cache.invalidate(tag)` 批量失效             |
 
@@ -243,6 +244,7 @@ GET /products (Accept-Language: zh-CN)     → GET:/products|accept-language=zh-
 
 - Query 参数自动排序（`?b=2&a=1` ≡ `?a=1&b=2`）
 - 带 `Authorization` 的请求默认不缓存，除非配置了 `partitionKey` 或显式设置 `allowAuthorizationCache: true`
+- 带 `Cookie` 的请求默认不缓存，除非显式设置 `allowCookieCache: true`
 - 需要按用户或租户区分缓存时，优先使用 `partitionKey`
 - 使用自定义 `key` 时，`partitionKey` 与 `vary` 仍会追加到底层 key 上
 
@@ -254,6 +256,7 @@ GET /products (Accept-Language: zh-CN)     → GET:/products|accept-language=zh-
 - 响应头包含 `Cache-Control: no-store` 或 `private`
 - 请求头包含 `Cache-Control: no-store` 或 `no-cache`
 - 带 `Authorization` 且未配置 `partitionKey` / `allowAuthorizationCache`
+- 带 `Cookie` 且未配置 `allowCookieCache`
 - 未通过 `res.json()` 发送的响应
 - `cache: false` 显式禁用
 - `cache: 0` 或负值

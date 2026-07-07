@@ -392,6 +392,42 @@ app.post(
 
 Validation errors use HTTP `422` by default and can be localized through `src/locales/`.
 
+## Cookies and Sessions
+
+Vext parses the request `Cookie` header for every adapter and exposes it through readonly `req.cookies` and `req.cookie(name)` with first-wins duplicate semantics. Responses can append multiple cookies without collapsing them into a comma-joined header:
+
+```ts
+app.get("/preferences", {}, async (req, res) => {
+  const theme = req.cookie("theme") ?? "system";
+  res.cookie("theme", theme, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+  res.json({ theme });
+});
+```
+
+Register session support explicitly with the built-in middleware:
+
+```ts
+import { session } from "vextjs";
+
+export default definePlugin({
+  name: "session",
+  setup(app) {
+    app.use(session());
+  },
+});
+
+app.post("/login", {}, async (req, res) => {
+  req.session!.userId = "u_123";
+  res.json({ ok: true });
+});
+```
+
+The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments; use the `VextSessionStore` interface for production shared stores. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
+
 ## Error Handling
 
 VextJS catches exceptions thrown from routes, services, and middleware through a built-in global `error-handler`.

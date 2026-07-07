@@ -14,6 +14,7 @@ import type {
   ResponseCacheStats,
 } from "response-cache-kit";
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
+import type { VextSessionConfig } from "./session.js";
 
 declare global {
   interface String {
@@ -193,6 +194,13 @@ export interface RouteCacheOptions {
    * 默认 false。多数业务应优先使用 partitionKey 做用户/租户隔离。
    */
   allowAuthorizationCache?: boolean;
+
+  /**
+   * 允许携带 Cookie 的请求进入缓存（默认 false）。
+   *
+   * Cookie 常用于用户态或 session 标识，默认绕过以避免缓存污染。
+   */
+  allowCookieCache?: boolean;
 
   /** 是否设置 Cache-Control 响应头（默认 true） */
   cacheControl?: boolean;
@@ -1067,6 +1075,9 @@ export interface VextConfig {
   /** 响应配置 */
   response: VextResponseConfig;
 
+  /** Session middleware 默认配置（显式注册 session() 后生效） */
+  session?: VextSessionConfig;
+
   /** Body 解析配置 */
   bodyParser: VextBodyParserConfig;
 
@@ -1579,13 +1590,14 @@ export interface RouteOptions {
    * 请求数据校验（schema-dsl DSL 对象）
    *
    * 框架内部统一调用 dsl() + validate()，用户无需 import schema-dsl。
-   * 校验顺序：param → query → header → body
+   * 校验顺序：param → query → header → cookie → body
    */
   validate?: {
     query?: Record<string, VextSchemaField>;
     body?: Record<string, VextSchemaField>;
     param?: Record<string, VextSchemaField>;
     header?: Record<string, VextSchemaField>;
+    cookie?: Record<string, VextSchemaField>;
   };
 
   /**

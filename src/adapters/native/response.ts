@@ -1,10 +1,23 @@
 import type { ServerResponse } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
+import type { CookieSerializeOptions } from "../../types/cookies.js";
 import {
   beginResponseSend,
   finishResponseSend,
 } from "../../lib/response-hooks.js";
+import {
+  cloneHeaders,
+  mergeHeaders,
+  replaceHeaders,
+  setHeader as setBufferedHeader,
+} from "../../lib/headers.js";
+import {
+  appendSetCookie,
+  serializeClearCookie,
+  serializeCookie,
+} from "../../lib/cookies.js";
 import {
   renderErrorUnavailable,
   renderUnavailable,
@@ -104,7 +117,7 @@ class NativeVextResponse implements VextResponse {
   private _status: number = 200;
 
   /** 响应头缓冲区（通过 setHeader() 累积，在发送时一次性设置） */
-  private _headers: Record<string, string> = {};
+  private _headers: VextHeaders = {};
 
   /** 出口包装开关（由 response-wrapper 中间件通过 _enableWrap() 开启） */
   private _wrapEnabled: boolean = false;
@@ -113,11 +126,7 @@ class NativeVextResponse implements VextResponse {
   private _sent: boolean = false;
 
   /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
-  _onSend?: (
-    data: unknown,
-    statusCode: number,
-    headers?: Record<string, string>,
-  ) => void;
+  _onSend?: (data: unknown, statusCode: number, headers?: VextHeaders) => void;
 
   constructor(
     serverResponse: ServerResponse,
@@ -238,21 +247,21 @@ class NativeVextResponse implements VextResponse {
 
     // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
     if (this._onSend) {
-      this._onSend(data, finalStatus, { ...this._headers });
+      this._onSend(data, finalStatus, cloneHeaders(this._headers));
     }
 
     const sendState = beginResponseSend(this, {
       kind: "json",
       data,
       status: finalStatus,
-      headers: { ...this._headers },
+      headers: cloneHeaders(this._headers),
       wrapped: this._wrapEnabled,
       requestId: this._resolveRequestId(),
     });
     data = sendState.data;
     finalStatus = sendState.status;
     this._status = finalStatus;
-    Object.assign(this._headers, sendState.headers);
+    replaceHeaders(this._headers, sendState.headers);
 
     if (this._wrapEnabled) {
       // 204 No Content 不能有消息体（RFC 9110 §15.3.5）
@@ -303,14 +312,14 @@ class NativeVextResponse implements VextResponse {
       kind: "rawJson",
       data,
       status: finalStatus,
-      headers: { ...this._headers },
+      headers: cloneHeaders(this._headers),
       wrapped: false,
       requestId: this._resolveRequestId(),
     });
     data = sendState.data;
     finalStatus = sendState.status;
     this._status = finalStatus;
-    Object.assign(this._headers, sendState.headers);
+    replaceHeaders(this._headers, sendState.headers);
 
     this._sendJsonString(JSON.stringify(data), finalStatus);
     finishResponseSend(this, sendState);
@@ -328,7 +337,7 @@ class NativeVextResponse implements VextResponse {
       kind: "text",
       data: content,
       status: finalStatus,
-      headers: { ...this._headers },
+      headers: cloneHeaders(this._headers),
       wrapped: false,
       requestId: this._resolveRequestId(),
     });
@@ -336,7 +345,7 @@ class NativeVextResponse implements VextResponse {
       typeof sendState.data === "string" ? sendState.data : String(content);
     finalStatus = sendState.status;
     this._status = finalStatus;
-    Object.assign(this._headers, sendState.headers);
+    replaceHeaders(this._headers, sendState.headers);
 
     const sr = this._serverResponse;
     sr.statusCode = finalStatus;
@@ -352,7 +361,7 @@ class NativeVextResponse implements VextResponse {
   _sendHtml(
     html: string,
     status: number,
-    headers: Record<string, string>,
+    headers: VextHeaders,
     kind: "html" | "render",
     data?: unknown,
   ): void {
@@ -360,19 +369,19 @@ class NativeVextResponse implements VextResponse {
 
     let finalStatus = status ?? this._status;
     this._status = finalStatus;
-    Object.assign(this._headers, headers);
+    mergeHeaders(this._headers, headers);
     const sendState = beginResponseSend(this, {
       kind,
       data: data ?? html,
       status: finalStatus,
-      headers: { ...this._headers },
+      headers: cloneHeaders(this._headers),
       wrapped: false,
       requestId: this._resolveRequestId(),
     });
     html = typeof sendState.data === "string" ? sendState.data : html;
     finalStatus = sendState.status;
     this._status = finalStatus;
-    Object.assign(this._headers, sendState.headers);
+    replaceHeaders(this._headers, sendState.headers);
 
     const sr = this._serverResponse;
     sr.statusCode = finalStatus;
@@ -402,12 +411,12 @@ class NativeVextResponse implements VextResponse {
     const sendState = beginResponseSend(this, {
       kind: "stream",
       status: this._status,
-      headers: { ...this._headers },
+      headers: cloneHeaders(this._headers),
       wrapped: false,
       requestId: this._resolveRequestId(),
     });
     this._status = sendState.status;
-    Object.assign(this._headers, sendState.headers);
+    replaceHeaders(this._headers, sendState.headers);
 
     const sr = this._serverResponse;
     sr.statusCode = this._status;
@@ -470,8 +479,18 @@ class NativeVextResponse implements VextResponse {
   /**
    * 设置响应头（链式调用）
    */
-  setHeader(name: string, value: string): this {
-    this._headers[name] = value;
+  setHeader(name: string, value: VextHeaderValue): this {
+    setBufferedHeader(this._headers, name, value);
+    return this;
+  }
+
+  cookie(name: string, value: string, options?: CookieSerializeOptions): this {
+    appendSetCookie(this._headers, serializeCookie(name, value, options));
+    return this;
+  }
+
+  clearCookie(name: string, options?: CookieSerializeOptions): this {
+    appendSetCookie(this._headers, serializeClearCookie(name, options));
     return this;
   }
 

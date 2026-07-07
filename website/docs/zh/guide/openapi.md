@@ -311,6 +311,8 @@ export default {
 };
 ```
 
+`apiKey` 安全方案可以使用 `in: "cookie"`，`validate.cookie` 也会渲染为 OpenAPI cookie 参数。浏览器 Try it out 不能直接设置受限的 `Cookie` header；如需手动 cookie 值，请使用同源浏览器 cookie 或 cURL 等 HTTP 客户端。
+
 Code docs 会扫描 `src/services`、`src/utils`、配置后的 models 目录、`src/frontend/components`、`src/plugins` 和 `src/middlewares`，且不会 import 或执行用户代码。Services、Utils、Components 需要导出符号上存在标准 JSDoc；Models 会列出可识别的 model 文件，即使没有 JSDoc 也会生成最小条目，default export 上的 JSDoc 会作为增强信息。支持的 model definition 还会在默认 UI 中展示 schema fields、enums、options、indexes、methods、hooks 与 usage 示例。Plugins 会展示可推断的 plugin name、dependencies、lifecycle hooks、全局 middleware 注册、app extension 和 setup 使用方式；Middlewares 会展示可推断的 middleware/factory 类型和路由调用示例。`vext start` 运行构建产物时，如果项目根目录仍存在 `<project>/src`，Vext 会优先读取该源码目录以保留顶层 JSDoc 和本地源码跳转；如果部署环境没有源码树，则回退到运行时目录。
 
 ### 路由级文档配置

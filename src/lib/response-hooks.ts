@@ -3,13 +3,15 @@ import type {
   VextResponseKind,
 } from "../types/hooks.js";
 import type { VextResponse } from "../types/response.js";
+import type { VextHeaders } from "../types/headers.js";
 import { isInternalHooks } from "./hooks.js";
+import { cloneHeaders, mergeHeaders } from "./headers.js";
 
 export interface ResponseSendState {
   kind: VextResponseKind;
   data?: unknown;
   status: number;
-  headers: Record<string, string>;
+  headers: VextHeaders;
   requestId: string;
   startedAt: number;
 }
@@ -20,7 +22,7 @@ export function beginResponseSend(
     kind: VextResponseKind;
     data?: unknown;
     status: number;
-    headers: Record<string, string>;
+    headers: VextHeaders;
     wrapped: boolean;
     requestId: string;
   },
@@ -31,10 +33,8 @@ export function beginResponseSend(
     | VextResponseBeforePatch
     | undefined;
 
-  const nextHeaders = {
-    ...payload.headers,
-    ...(patch?.headers ?? {}),
-  };
+  const nextHeaders = cloneHeaders(payload.headers);
+  mergeHeaders(nextHeaders, patch?.headers);
 
   return {
     kind: payload.kind,

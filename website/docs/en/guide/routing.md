@@ -8,14 +8,14 @@ VextJS uses **conventional file routing** + **three-stage routing definition** t
 
 Each file in the `src/routes/` directory is automatically mapped to a URL prefix:
 
-| File path | URL prefix |
-| ----------------------------- | ------------------ |
-| `routes/index.ts` | `/` |
-| `routes/users.ts` | `/users` |
-| `routes/users/index.ts` | `/users` |
-| `routes/users/[id].ts` | `/users/:id` |
+| File path                  | URL prefix        |
+| -------------------------- | ----------------- |
+| `routes/index.ts`          | `/`               |
+| `routes/users.ts`          | `/users`          |
+| `routes/users/index.ts`    | `/users`          |
+| `routes/users/[id].ts`     | `/users/:id`      |
 | `routes/admin/settings.ts` | `/admin/settings` |
-| `routes/api/v1/index.ts` | `/api/v1` |
+| `routes/api/v1/index.ts`   | `/api/v1`         |
 
 ### Three-stage definition
 
@@ -44,12 +44,12 @@ app.get("/health", async (_req, res) => {
 
 The second parameter `options` in the three-part expression is a declarative configuration object, including:
 
-| Field | Description |
-|------------- |---------------------------------------------|
-| `validate` | Parameter validation rules (query / body / param / header) |
-| `middlewares` | Route-level middleware reference |
-| `docs` | OpenAPI documentation configuration |
-| `override` | Route-level configuration override (current limiting, timeout, etc.) |
+| Field         | Description                                                          |
+| ------------- | -------------------------------------------------------------------- |
+| `validate`    | Parameter validation rules (query / body / param / header)           |
+| `middlewares` | Route-level middleware reference                                     |
+| `docs`        | OpenAPI documentation configuration                                  |
+| `override`    | Route-level configuration override (current limiting, timeout, etc.) |
 
 ## How to write routing files
 
@@ -146,15 +146,15 @@ export default defineRoutes((app) => {
 
 ## HTTP method
 
-The `app` object in the `defineRoutes()` callback supports the following HTTP methods:| Method | Usage | Common scenarios |
-| --------------- | ---------- | ------------------------------- |
-| `app.get()` | Query resources | List query, details acquisition |
-| `app.post()` | Create resources | Form submission, resource creation |
-| `app.put()` | Full update | Resource replacement |
-| `app.patch()` | Partial update | Field-level update |
-| `app.delete()` | Delete resources | Resource deletion |
-| `app.head()` | Get header information | Resource existence check |
-| `app.options()` | Preflight request | CORS preflight (usually handled automatically by the framework) |
+| The `app` object in the `defineRoutes()` callback supports the following HTTP methods: | Method                 | Usage                                                           | Common scenarios |
+| -------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------- | ---------------- |
+| `app.get()`                                                                            | Query resources        | List query, details acquisition                                 |
+| `app.post()`                                                                           | Create resources       | Form submission, resource creation                              |
+| `app.put()`                                                                            | Full update            | Resource replacement                                            |
+| `app.patch()`                                                                          | Partial update         | Field-level update                                              |
+| `app.delete()`                                                                         | Delete resources       | Resource deletion                                               |
+| `app.head()`                                                                           | Get header information | Resource existence check                                        |
+| `app.options()`                                                                        | Preflight request      | CORS preflight (usually handled automatically by the framework) |
 
 ## Dynamic routing parameters
 
@@ -240,6 +240,9 @@ app.post("/example", async (req, res) => {
   req.body; // Request body (parsed by body-parser middleware)
   req.params; // path parameters { id: '123' }
   req.headers; // Request headers (lowercase key)
+  req.cookies; // Parsed cookies (readonly, first-wins)
+  req.cookie("theme"); // Read one cookie value
+  req.session; // Available after registering session()
   req.requestId; //Request unique identifier (automatically generated or transparently transmitted from X-Request-Id)
   req.ip; // Client IP
   req.protocol; // 'http' | 'https'
@@ -272,14 +275,15 @@ app.get(
 );
 ```
 
-`req.valid()` supports four positions:
+`req.valid()` supports five positions:
 
-| Parameters | Data source | Description |
-| ---------- | ------------- | ---------- |
-| `'query'` | `req.query` | URL query parameters |
-| `'body'` | `req.body` | Request body |
-| `'param'` | `req.params` | Path dynamic parameters |
-| `'header'` | `req.headers` | Request headers |
+| Parameters | Data source   | Description             |
+| ---------- | ------------- | ----------------------- |
+| `'query'`  | `req.query`   | URL query parameters    |
+| `'body'`   | `req.body`    | Request body            |
+| `'param'`  | `req.params`  | Path dynamic parameters |
+| `'header'` | `req.headers` | Request headers         |
+| `'cookie'` | `req.cookies` | Parsed Cookie values    |
 
 :::tip type tip
 You can use generics to get more precise type hints:
@@ -408,20 +412,20 @@ VextJS integrates [schema-dsl](https://github.com/vextjs/schema-dsl), declares v
 
 ### DSL syntax quick check
 
-| DSL expression | Meaning |
-| -------------------------- | -------------------------- |
-| `'string!'' | Required string |
-| `'string?'` | Optional string |
-| `'string:1-50'' | String, length 1-50 |
-| `'string:1-50!'' | Required string, length 1-50 |
-| `'number!'' | Required number |
-| `'number:1-'` | Number, minimum value 1 (no upper limit) |
-| `'number:1-100'' | Number, range 1-100 |
-| `'email!'' | Required, email format |
-| `'url?'' | Optional, URL format |
-| `'boolean!'' | Required Boolean value |
-| `'admin\|user\|guest'` | Enumeration value |
-| `'date!'' | Required date string |
+| DSL expression         | Meaning                                  |
+| ---------------------- | ---------------------------------------- |
+| `'string!''            | Required string                          |
+| `'string?'`            | Optional string                          |
+| `'string:1-50''        | String, length 1-50                      |
+| `'string:1-50!''       | Required string, length 1-50             |
+| `'number!''            | Required number                          |
+| `'number:1-'`          | Number, minimum value 1 (no upper limit) |
+| `'number:1-100''       | Number, range 1-100                      |
+| `'email!''             | Required, email format                   |
+| `'url?''               | Optional, URL format                     |
+| `'boolean!''           | Required Boolean value                   |
+| `'admin\|user\|guest'` | Enumeration value                        |
+| `'date!''              | Required date string                     |
 
 ### Verify location
 
@@ -590,7 +594,7 @@ In short:
 
 - **static/stable fields** → closure `app` can continue to be used
 - **Dynamic field replacement during runtime** → Prioritize using `req.app`
-:::
+  :::
 
 ## Error handling
 
@@ -659,7 +663,8 @@ src/routes/
 
 ```typescript
 // src/routes/posts.ts
-import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
+import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
   // GET /posts — paginated list
   app.get(
     "/",

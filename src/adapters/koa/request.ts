@@ -1,6 +1,8 @@
 import type Koa from "koa";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import type { VextCookieJar } from "../../types/cookies.js";
+import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 
 /**
@@ -79,6 +81,13 @@ export function createVextRequest(
   // 预先收集为 Buffer。_getRawBody 将其转为 string 供 vext body-parser 中间件解析。
   //
   let _rawBodyCache: string | undefined;
+  let _cookiesCache: VextCookieJar | undefined;
+
+  function getCookies(): VextCookieJar {
+    if (_cookiesCache !== undefined) return _cookiesCache;
+    _cookiesCache = parseCookies(ctx.headers.cookie);
+    return _cookiesCache;
+  }
 
   function getRawBody(maxBytes?: number): Promise<string> {
     if (_rawBodyCache !== undefined) {
@@ -109,7 +118,8 @@ export function createVextRequest(
   }
 
   function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
-    if (rawBody === undefined || rawBody === null) return Promise.resolve(Buffer.alloc(0));
+    if (rawBody === undefined || rawBody === null)
+      return Promise.resolve(Buffer.alloc(0));
     if (Buffer.isBuffer(rawBody)) {
       assertBodySize(rawBody.byteLength, maxBytes);
       return Promise.resolve(rawBody);
@@ -163,6 +173,12 @@ export function createVextRequest(
     body: undefined, // body-parser 中间件负责填充
     params: params ?? {},
     headers: ctx.headers as Record<string, string | undefined>,
+    get cookies(): VextCookieJar {
+      return getCookies();
+    },
+    cookie(name: string): string | undefined {
+      return getCookies()[name];
+    },
     method: ctx.method.toUpperCase(),
     url: ctx.originalUrl ?? ctx.url,
     path: urlPath,
@@ -185,7 +201,7 @@ export function createVextRequest(
     // valid() 方法从对应的 key 中读取数据返回。
     //
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header",
+      location: "query" | "body" | "param" | "header" | "cookie",
     ): T {
       return (req as Record<string, any>)[`_validated_${location}`] as T;
     },
@@ -195,7 +211,8 @@ export function createVextRequest(
     // 通过 (req as any)._getRawBody() 访问，不暴露在 VextRequest 公共类型中。
     // 从预收集的 rawBody（Buffer）转为 string，供 body-parser 中间件解析。
     //
-    _getRawBody: getRawBody, _getRawBodyBuffer: getRawBodyBuffer,
+    _getRawBody: getRawBody,
+    _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────

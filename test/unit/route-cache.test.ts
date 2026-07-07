@@ -37,6 +37,10 @@ function createMockReq(overrides: Partial<VextRequest> = {}): VextRequest {
     body: undefined,
     params: {},
     headers: {},
+    cookies: {},
+    cookie(name: string) {
+      return (this.cookies as Record<string, string>)[name];
+    },
     requestId: "test-req-id",
     ip: "127.0.0.1",
     protocol: "http",
@@ -62,7 +66,7 @@ function createMockRes(): VextResponse & {
     status: number;
     headers: Record<string, string>;
   }>;
-  _headerCalls: Array<{ name: string; value: string }>;
+  _headerCalls: Array<{ name: string; value: string | string[] }>;
   _statusVal: number;
 } {
   const res: any = {
@@ -111,10 +115,22 @@ function createMockRes(): VextResponse & {
       res._statusVal = code;
       return res;
     },
-    setHeader(name: string, value: string) {
+    setHeader(name: string, value: string | string[]) {
       res._headers[name] = value;
       res._headerCalls.push({ name, value });
       return res;
+    },
+    cookie(name: string, value: string) {
+      const current = res._headers["Set-Cookie"];
+      res._headers["Set-Cookie"] = Array.isArray(current)
+        ? [...current, `${name}=${value}`]
+        : current
+          ? [current, `${name}=${value}`]
+          : `${name}=${value}`;
+      return res;
+    },
+    clearCookie(name: string) {
+      return res.cookie(name, "");
     },
     get statusCode() {
       return res._statusVal;
@@ -207,6 +223,97 @@ describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
       data: { value: "origin" },
       status: 200,
     });
+  });
+
+  it("默认跳过带 Cookie 的请求缓存", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq({ headers: { cookie: "sid=1" } });
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    let count = 0;
+
+    await middleware(req, firstRes, async () => {
+      firstRes.json({ value: ++count }, 200);
+    });
+    await middleware(req, secondRes, async () => {
+      secondRes.json({ value: ++count }, 200);
+    });
+
+    expect(count).toBe(2);
+    expect(secondRes._jsonCalls[0]).toEqual({
+      data: { value: 2 },
+      status: 200,
+    });
+    expect(firstRes._headers["Cache-Control"]).toBe("no-store");
+    expect(secondRes._headers["Cache-Control"]).toBe("no-store");
+  });
+
+  it("Cookie 请求缓存绕过对 header 大小写不敏感", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq({ headers: { Cookie: "sid=1" } as any });
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    let count = 0;
+
+    await middleware(req, firstRes, async () => {
+      firstRes.json({ value: ++count }, 200);
+    });
+    await middleware(req, secondRes, async () => {
+      secondRes.json({ value: ++count }, 200);
+    });
+
+    expect(count).toBe(2);
+    expect(firstRes._headers["Cache-Control"]).toBe("no-store");
+    expect(secondRes._headers["Cache-Control"]).toBe("no-store");
+  });
+
+  it("allowCookieCache=true 时允许显式缓存 Cookie 请求", async () => {
+    const { middleware } = createMiddleware({
+      ttl: 60_000,
+      allowCookieCache: true,
+    });
+    const req = createMockReq({ headers: { cookie: "sid=1" } });
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    let count = 0;
+
+    await middleware(req, firstRes, async () => {
+      firstRes.json({ value: ++count }, 200);
+    });
+    await middleware(req, secondRes, async () => {
+      secondRes.json({ value: ++count }, 200);
+    });
+
+    expect(count).toBe(1);
+    expect(secondRes._jsonCalls[0]).toEqual({
+      data: { value: 1 },
+      status: 200,
+    });
+  });
+
+  it("Set-Cookie 响应不写入缓存", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq();
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    let count = 0;
+
+    await middleware(req, firstRes, async () => {
+      firstRes.setHeader("Set-Cookie", `sid=${++count}`);
+      firstRes.json({ value: count }, 200);
+    });
+    await middleware(req, secondRes, async () => {
+      secondRes.setHeader("Set-Cookie", `sid=${++count}`);
+      secondRes.json({ value: count }, 200);
+    });
+
+    expect(count).toBe(2);
+    expect(secondRes._jsonCalls[0]).toEqual({
+      data: { value: 2 },
+      status: 200,
+    });
+    expect(firstRes._headers["Cache-Control"]).toBe("no-store");
+    expect(secondRes._headers["Cache-Control"]).toBe("no-store");
   });
 
   it("使用毫秒 TTL，并把 Cache-Control max-age 转成秒", async () => {

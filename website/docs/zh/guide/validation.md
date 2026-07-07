@@ -37,16 +37,17 @@ export default defineRoutes((app) => {
 
 ## 校验位置
 
-`validate` 支持四个位置，对应请求的不同数据来源：
+`validate` 支持五个位置，对应请求的不同数据来源：
 
 | 位置     | 数据来源      | 说明                         |
 | -------- | ------------- | ---------------------------- |
 | `param`  | `req.params`  | 路径动态参数（如 `/:id`）    |
 | `query`  | `req.query`   | URL 查询参数（如 `?page=1`） |
 | `header` | `req.headers` | 请求头                       |
+| `cookie` | `req.cookies` | 已解析的 Cookie 值           |
 | `body`   | `req.body`    | 请求体（JSON / URL-encoded） |
 
-校验按 `param` → `query` → `header` → `body` 的顺序执行，任一位置校验失败会立即返回错误。
+校验按 `param` → `query` → `header` → `cookie` → `body` 的顺序执行，任一位置校验失败会立即返回错误。
 
 ```typescript
 app.put(
@@ -62,6 +63,9 @@ app.put(
       header: {
         "x-api-version": "string?",
       },
+      cookie: {
+        sid: "string?",
+      },
       body: {
         name: "string:1-50?",
         email: "email?",
@@ -70,6 +74,7 @@ app.put(
   },
   async (req, res) => {
     const { id } = req.valid("param");
+    const cookies = req.valid("cookie");
     const body = req.valid("body");
     const user = await app.services.user.update(id, body);
     res.json(user);

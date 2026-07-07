@@ -172,6 +172,8 @@ export interface TestRequestBuilder extends PromiseLike<TestResponse> {
   type(contentType: string): this;
 }
 
+export type TestResponseHeaderValue = string | string[];
+
 /**
  * 模拟 HTTP 响应
  *
@@ -182,7 +184,16 @@ export interface TestResponse {
   status: number;
 
   /** 响应头 */
-  headers: Record<string, string>;
+  headers: Record<string, TestResponseHeaderValue>;
+
+  /** Set-Cookie 响应头数组 */
+  cookies: string[];
+
+  /** 读取单个响应头（多值头返回第一个值） */
+  header(name: string): string | undefined;
+
+  /** 读取响应头的所有值 */
+  headerValues(name: string): string[];
 
   /** 自动解析的 JSON 响应体 */
   body: any;
@@ -675,8 +686,17 @@ function executeRequest(
       //
       // 收集 handler 写入的响应头和响应体。
       const responseChunks: Buffer[] = [];
-      const responseHeaders: Record<string, string> = {};
+      const responseHeaders: Record<string, TestResponseHeaderValue> = {};
       let statusCode = 200;
+
+      function recordResponseHeader(
+        name: string,
+        value: number | string | string[],
+      ): void {
+        responseHeaders[name.toLowerCase()] = Array.isArray(value)
+          ? value.map(String)
+          : String(value);
+      }
 
       // 创建 writable stream 作为 mock ServerResponse
       const mockRes = new ServerResponse(mockReq);
@@ -704,9 +724,7 @@ function executeRequest(
 
         if (headersArg) {
           for (const [k, v] of Object.entries(headersArg)) {
-            responseHeaders[k.toLowerCase()] = Array.isArray(v)
-              ? v.join(", ")
-              : String(v);
+            recordResponseHeader(k, v);
           }
         }
 
@@ -752,9 +770,7 @@ function executeRequest(
           for (const name of headerNames) {
             const value = mockRes.getHeader(name);
             if (value !== undefined) {
-              responseHeaders[name.toLowerCase()] = Array.isArray(value)
-                ? value.join(", ")
-                : String(value);
+              recordResponseHeader(name, value as string | string[]);
             }
           }
 
@@ -764,7 +780,7 @@ function executeRequest(
 
           // 尝试解析 JSON
           let parsedBody: any = text;
-          const ct = responseHeaders["content-type"] ?? "";
+          const ct = firstHeaderValue(responseHeaders, "content-type") ?? "";
           if (ct.includes("application/json") || ct.includes("+json")) {
             try {
               parsedBody = JSON.parse(text);
@@ -782,9 +798,19 @@ function executeRequest(
             // 静默忽略
           }
 
+          const headersSnapshot = { ...responseHeaders };
+          const cookies = headerValues(headersSnapshot, "set-cookie");
+
           resolve({
             status: finalStatus,
-            headers: responseHeaders,
+            headers: headersSnapshot,
+            cookies,
+            header(name: string): string | undefined {
+              return firstHeaderValue(headersSnapshot, name);
+            },
+            headerValues(name: string): string[] {
+              return headerValues(headersSnapshot, name);
+            },
             body: parsedBody,
             text,
           });
@@ -799,4 +825,21 @@ function executeRequest(
       reject(err);
     }
   });
+}
+
+function firstHeaderValue(
+  headers: Record<string, TestResponseHeaderValue>,
+  name: string,
+): string | undefined {
+  const values = headerValues(headers, name);
+  return values[0];
+}
+
+function headerValues(
+  headers: Record<string, TestResponseHeaderValue>,
+  name: string,
+): string[] {
+  const value = headers[name.toLowerCase()];
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
 }

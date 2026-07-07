@@ -21,6 +21,8 @@ import type { VextMiddleware } from "../../types/middleware.js";
 import type { RouteCacheOptions } from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
+import type { VextHeaders } from "../../types/headers.js";
+import { hasHeader } from "../headers.js";
 import {
   VEXT_CACHEABLE_STATUSES,
   createResponseCacheHeaders,
@@ -141,6 +143,7 @@ export function buildRouteCacheMiddleware(
     cacheControl = true,
     partitionKey,
     allowAuthorizationCache = false,
+    allowCookieCache = false,
   } = cacheOpts;
 
   const cacheMiddleware: VextMiddleware = async (req, res, next) => {
@@ -186,6 +189,7 @@ export function buildRouteCacheMiddleware(
       req,
       resolvedPartitionKey,
       allowAuthorizationCache,
+      allowCookieCache,
     );
     const handleOptions = createHandleOptions(
       cacheKey,
@@ -312,10 +316,13 @@ function createOrigin(
       res._onSend = (data, statusCode, headers = {}) => {
         previousOnSend?.(data, statusCode, headers);
 
-        const responseHeaders: HeaderBag = { ...headers };
-        if (
+        const hasSetCookie = hasHeader(headers, "Set-Cookie");
+        const responseHeaders = toCacheHeaderBag(headers);
+        if (!options.requestAllowsCache || hasSetCookie) {
+          res.setHeader("Cache-Control", "no-store");
+          responseHeaders["Cache-Control"] = "no-store";
+        } else if (
           options.cacheControl &&
-          options.requestAllowsCache &&
           shouldSetMissCacheControl(statusCode, responseHeaders)
         ) {
           const value = `public, max-age=${Math.ceil(options.ttl / 1000)}`;
@@ -459,6 +466,7 @@ function isCacheableRequest(
   req: VextRequest,
   partitionKey: string | undefined,
   allowAuthorizationCache: boolean,
+  allowCookieCache: boolean,
 ): boolean {
   const method = req.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") return false;
@@ -471,6 +479,10 @@ function isCacheableRequest(
     return false;
   }
 
+  if (hasHeader(req.headers as VextHeaders, "Cookie") && !allowCookieCache) {
+    return false;
+  }
+
   return true;
 }
 
@@ -479,8 +491,8 @@ function shouldSetMissCacheControl(
   headers: HeaderBag,
 ): boolean {
   if (!VEXT_CACHEABLE_STATUSES.includes(statusCode)) return false;
-  if (headers["Cache-Control"] || headers["cache-control"]) return false;
-  if (headers["Set-Cookie"] || headers["set-cookie"]) return false;
+  if (hasHeader(headers, "Cache-Control")) return false;
+  if (hasHeader(headers, "Set-Cookie")) return false;
   return true;
 }
 
@@ -489,6 +501,15 @@ function hasCacheControlToken(value: string, token: string): boolean {
     .split(",")
     .map((part) => part.trim().toLowerCase())
     .includes(token);
+}
+
+function toCacheHeaderBag(headers: VextHeaders): HeaderBag {
+  const cacheHeaders: HeaderBag = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() === "set-cookie") continue;
+    cacheHeaders[name] = Array.isArray(value) ? value.join(", ") : value;
+  }
+  return cacheHeaders;
 }
 
 function normalizeRequestHeaders(

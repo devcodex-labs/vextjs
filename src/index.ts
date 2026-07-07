@@ -18,6 +18,18 @@ export type {
   ParsedFile,
   VextResponse,
   VextPublicResponse,
+  VextHeaderValue,
+  VextHeaders,
+  CookieParseOptions,
+  CookieSerializeOptions,
+  VextCookieJar,
+  VextCookiePriority,
+  VextCookieSameSite,
+  VextSession,
+  VextSessionConfig,
+  VextSessionCookieOptions,
+  VextSessionData,
+  VextSessionStore,
 
   // 错误类型
   HttpErrorOptions,
@@ -126,6 +138,20 @@ export { createRateLimitMiddleware } from "./lib/middlewares/rate-limit.js";
 export { responseWrapper } from "./lib/middlewares/response-wrapper.js";
 export { createAccessLogMiddleware } from "./lib/middlewares/access-log.js";
 export { createErrorHandler } from "./lib/middlewares/error-handler.js";
+
+// Cookies / sessions
+export {
+  appendSetCookie,
+  parseCookies,
+  serializeClearCookie,
+  serializeCookie,
+} from "./lib/cookies.js";
+export {
+  createMemorySessionStore,
+  createSessionMiddleware,
+  session,
+} from "./lib/session.js";
+export type { VextMemorySessionStore } from "./lib/session.js";
 
 // 中间件定义辅助函数（用户使用）
 export {

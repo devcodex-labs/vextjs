@@ -1,9 +1,22 @@
 import type { Context } from "hono";
 import type { VextResponse } from "../../types/response.js";
+import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
   beginResponseSend,
   finishResponseSend,
 } from "../../lib/response-hooks.js";
+import {
+  cloneHeaders,
+  isSetCookieHeader,
+  mergeHeaders,
+  replaceHeaders,
+  setHeader as setBufferedHeader,
+} from "../../lib/headers.js";
+import {
+  appendSetCookie,
+  serializeClearCookie,
+  serializeCookie,
+} from "../../lib/cookies.js";
 import {
   renderErrorUnavailable,
   renderUnavailable,
@@ -90,7 +103,7 @@ export function createVextResponse(
   let _status = 200;
 
   /** 响应头缓冲区（通过 setHeader() 累积，在发送时一次性设置） */
-  const _headers: Record<string, string> = {};
+  const _headers: VextHeaders = {};
 
   /** 出口包装开关（由 response-wrapper 中间件通过 _enableWrap() 开启） */
   let _wrapEnabled = false;
@@ -103,6 +116,16 @@ export function createVextResponse(
    */
   function applyHeaders(): void {
     for (const [k, v] of Object.entries(_headers)) {
+      if (Array.isArray(v)) {
+        if (!isSetCookieHeader(k)) {
+          c.header(k, v.join(", "));
+          continue;
+        }
+        for (const value of v) {
+          c.header(k, value, { append: true });
+        }
+        continue;
+      }
       c.header(k, v);
     }
   }
@@ -148,21 +171,21 @@ export function createVextResponse(
 
       // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
       if (res._onSend) {
-        res._onSend(data, finalStatus, { ..._headers });
+        res._onSend(data, finalStatus, cloneHeaders(_headers));
       }
 
       const sendState = beginResponseSend(res, {
         kind: "json",
         data,
         status: finalStatus,
-        headers: { ..._headers },
+        headers: cloneHeaders(_headers),
         wrapped: _wrapEnabled,
         requestId: getRequestId(),
       });
       data = sendState.data;
       finalStatus = sendState.status;
       _status = finalStatus;
-      Object.assign(_headers, sendState.headers);
+      replaceHeaders(_headers, sendState.headers);
 
       // 设置 HTTP 状态码和响应头
       c.status(finalStatus as any);
@@ -208,14 +231,14 @@ export function createVextResponse(
         kind: "rawJson",
         data,
         status: finalStatus,
-        headers: { ..._headers },
+        headers: cloneHeaders(_headers),
         wrapped: false,
         requestId: getRequestId(),
       });
       data = sendState.data;
       finalStatus = sendState.status;
       _status = finalStatus;
-      Object.assign(_headers, sendState.headers);
+      replaceHeaders(_headers, sendState.headers);
       c.status(finalStatus as any);
       applyHeaders();
       captureResponse(c.json(data as object));
@@ -231,7 +254,7 @@ export function createVextResponse(
         kind: "text",
         data: content,
         status: finalStatus,
-        headers: { ..._headers },
+        headers: cloneHeaders(_headers),
         wrapped: false,
         requestId: getRequestId(),
       });
@@ -239,7 +262,7 @@ export function createVextResponse(
         typeof sendState.data === "string" ? sendState.data : String(content);
       finalStatus = sendState.status;
       _status = finalStatus;
-      Object.assign(_headers, sendState.headers);
+      replaceHeaders(_headers, sendState.headers);
       c.status(finalStatus as any);
       // 先设默认 Content-Type: text/plain，再调 applyHeaders()
       // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
@@ -258,19 +281,19 @@ export function createVextResponse(
 
       let finalStatus = status ?? _status;
       _status = finalStatus;
-      Object.assign(_headers, headers);
+      mergeHeaders(_headers, headers);
       const sendState = beginResponseSend(res, {
         kind,
         data: data ?? html,
         status: finalStatus,
-        headers: { ..._headers },
+        headers: cloneHeaders(_headers),
         wrapped: false,
         requestId: getRequestId(),
       });
       html = typeof sendState.data === "string" ? sendState.data : html;
       finalStatus = sendState.status;
       _status = finalStatus;
-      Object.assign(_headers, sendState.headers);
+      replaceHeaders(_headers, sendState.headers);
 
       c.status(finalStatus as any);
       c.header("Content-Type", "text/html; charset=utf-8");
@@ -292,12 +315,12 @@ export function createVextResponse(
       const sendState = beginResponseSend(res, {
         kind: "stream",
         status: _status,
-        headers: { ..._headers },
+        headers: cloneHeaders(_headers),
         wrapped: false,
         requestId: getRequestId(),
       });
       _status = sendState.status;
-      Object.assign(_headers, sendState.headers);
+      replaceHeaders(_headers, sendState.headers);
 
       c.status(_status as any);
       c.header("Content-Type", contentType);
@@ -333,8 +356,18 @@ export function createVextResponse(
       return res;
     },
 
-    setHeader(name: string, value: string): VextResponse {
-      _headers[name] = value;
+    setHeader(name: string, value: VextHeaderValue): VextResponse {
+      setBufferedHeader(_headers, name, value);
+      return res;
+    },
+
+    cookie(name, value, options): VextResponse {
+      appendSetCookie(_headers, serializeCookie(name, value, options));
+      return res;
+    },
+
+    clearCookie(name, options): VextResponse {
+      appendSetCookie(_headers, serializeClearCookie(name, options));
       return res;
     },
 

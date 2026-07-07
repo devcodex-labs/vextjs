@@ -124,6 +124,7 @@ export default {
 | `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                          |
 | `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                        |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                   |
+| `session`        | `VextSessionConfig`                                     | See guide            | Defaults consumed by the explicit `session()` middleware |
 | `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                               |
 | `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                |
 | `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                 |
@@ -613,47 +614,47 @@ Message fields include HTTP method, path, status code, response time (ms) and cl
 
 OpenAPI documentation generation configuration.
 
-| Field                      | Type                                      | Default Value              | Description                                                                                                                                                                                                   |
-| -------------------------- | ----------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                  | `boolean`                                 | dev enabled, prod disabled | Whether to enable OpenAPI generation                                                                                                                                                                          |
-| `title`                    | `string`                                  | `undefined`                | Document title                                                                                                                                                                                                |
-| `version`                  | `string`                                  | `undefined`                | Document version                                                                                                                                                                                              |
-| `description`              | `string`                                  | `undefined`                | Document description                                                                                                                                                                                          |
-| `docs.path`                | `string`                                  | `'/docs'`                  | Vext Docs path                                                                                                                                                                                                |
-| `docs.assetsPath`          | `string`                                  | `'/_vext/docs'`            | Vext Docs built-in asset and data endpoint prefix                                                                                                                                                             |
-| `docs.assetsPublicPath`    | `string`                                  | Same as `docs.assetsPath`  | Browser-facing docs asset/data prefix for prefix-stripping reverse proxies                                                                                                                                    |
-| `docs.renderer`            | `'vext'`                                  | `'vext'`                   | Built-in Vext Docs renderer. Third-party renderer objects are no longer supported; external tools should consume `/openapi.json`                                                                              |
-| `docs.ui.theme`            | `'system' \| 'light' \| 'dark'`           | `'system'`                 | Built-in Vext Docs color theme. Visitors can override it locally in the UI                                                                                                                                    |
-| `docs.ui.density`          | `'comfortable' \| 'compact'`              | `'comfortable'`            | Built-in Vext Docs spacing density. Visitors can override it locally in the UI                                                                                                                                |
-| `docs.code.enabled`        | `boolean \| 'auto'`                       | `'auto'`                   | Whether to generate code docs from services / utils / models / components / plugins / middlewares and explicitly enabled optional static sources                                                              |
-| `docs.code.components`     | `boolean \| object`                       | `true`                     | Component JSDoc source. Defaults to `src/frontend/components/**`; only discovered entries appear in the UI                                                                                                    |
-| `docs.code.plugins`        | `boolean \| object`                       | `true`                     | Plugin JSDoc/runtime source. Defaults to `src/plugins/**`; only discovered entries appear in the UI                                                                                                           |
-| `docs.code.middlewares`    | `boolean \| object`                       | `true`                     | Middleware JSDoc/runtime source. Defaults to `src/middlewares/**`; only discovered entries appear in the UI                                                                                                   |
-| `docs.code.locales`        | `boolean \| object`                       | `false`                    | Optional locale source. When enabled, scans `src/locales/**` and `src/frontend/locales/**`; set `dir` to scan one custom locale root                                                                          |
-| `docs.code.config`         | `boolean \| object`                       | `false`                    | Optional runtime config source. When enabled, scans `src/config/**`                                                                                                                                           |
-| `docs.code.styles`         | `boolean \| object`                       | `false`                    | Optional frontend style source. When enabled, scans `src/frontend/styles/**`                                                                                                                                  |
-| `docs.code.preload`        | `boolean \| object`                       | `false`                    | Optional project preload source. When enabled, scans project-root `preload/**`                                                                                                                                |
-| `docs.access.mode`         | `'off' \| 'visibility-only' \| 'enforce'` | `'off'`                    | Docs menu / operation access mode                                                                                                                                                                             |
-| `docs.access.openapiJson`  | `'filtered' \| 'public'`                  | `'filtered'`               | Whether canonical `/openapi.json` is filtered by docs access rules or remains public                                                                                                                          |
-| `docs.sources`             | `Array`                                   | `[]`                       | Optional source surfaces for multi API / multi version docs. Every source requires `match`; non-`All` code docs need explicit `code.include` / `code.exclude`                                                 |
-| `docs.tryItOut.hookScript` | `string`                                  | `undefined`                | Optional browser script loaded for Try it out request / response hooks                                                                                                                                        |
-| `docs.tryItOut.hookGlobal` | `string`                                  | `'VextDocsHooks'`          | Browser global lookup name for Try it out `beforeRequest` / `afterResponse` hooks                                                                                                                             |
-| `docs.tryItOut.defaultServer` | `string`                               | `undefined`                | Initial Try it out server: `"first"`, `"same-origin"`, `"custom"`, or an exact OpenAPI server URL                                                                                                             |
-| `docs.tryItOut.sameOrigin` | `boolean \| 'auto'`                       | `'auto'`                   | Whether to show the Same origin Try it out server option. `auto` shows it only when no OpenAPI servers are configured                                                                                         |
-| `docs.tryItOut.customServer` | `boolean`                               | `true`                     | Whether visitors can temporarily enter a custom Try it out base URL in the browser                                                                                                                            |
-| `docs.tryItOut.customServerUrl` | `string`                            | `undefined`                | Optional default value for the Custom server input                                                                                                                                                            |
-| `docsPath`                 | `string`                                  | `'/docs'`                  | Compatibility field; prefer `docs.path` in new projects                                                                                                                                                       |
-| `jsonPath`                 | `string`                                  | `'/openapi.json'`          | OpenAPI JSON path                                                                                                                                                                                             |
-| `jsonPublicPath`           | `string`                                  | Same as `jsonPath`         | Public canonical spec path for links and external tools. Built-in source-aware docs data uses `docs.assetsPublicPath` / `docs.assetsPath`; [see the guide](/guide/openapi#reverse-proxy-path-prefix-scenario) |
-| `contact`                  | `object`                                  | `undefined`                | Contact information                                                                                                                                                                                           |
-| `license`                  | `object`                                  | `undefined`                | License information                                                                                                                                                                                           |
-| `servers`                  | `array`                                   | `undefined`                | Server address list                                                                                                                                                                                           |
-| `tags`                     | `array`                                   | `undefined`                | Global tag definition                                                                                                                                                                                         |
-| `guardSecurityMap`         | `Record<string, string>`                  | `undefined`                | Guard to Security Scheme mapping                                                                                                                                                                              |
-| `securitySchemes`          | `object`                                  | `undefined`                | Security scheme definition                                                                                                                                                                                    |
-| `scalar`                   | `object`                                  | `{}`                       | Deprecated compatibility field. It only triggers a warning and does not affect the built-in Vext Docs page                                                                                                    |
-| ~~`tryItOutEnabled`~~      | `boolean`                                 | `true`                     | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
-| ~~`docExpansion`~~         | `'none' \| 'list' \| 'full'`              | `'list'`                   | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
+| Field                           | Type                                      | Default Value              | Description                                                                                                                                                                                                   |
+| ------------------------------- | ----------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                       | `boolean`                                 | dev enabled, prod disabled | Whether to enable OpenAPI generation                                                                                                                                                                          |
+| `title`                         | `string`                                  | `undefined`                | Document title                                                                                                                                                                                                |
+| `version`                       | `string`                                  | `undefined`                | Document version                                                                                                                                                                                              |
+| `description`                   | `string`                                  | `undefined`                | Document description                                                                                                                                                                                          |
+| `docs.path`                     | `string`                                  | `'/docs'`                  | Vext Docs path                                                                                                                                                                                                |
+| `docs.assetsPath`               | `string`                                  | `'/_vext/docs'`            | Vext Docs built-in asset and data endpoint prefix                                                                                                                                                             |
+| `docs.assetsPublicPath`         | `string`                                  | Same as `docs.assetsPath`  | Browser-facing docs asset/data prefix for prefix-stripping reverse proxies                                                                                                                                    |
+| `docs.renderer`                 | `'vext'`                                  | `'vext'`                   | Built-in Vext Docs renderer. Third-party renderer objects are no longer supported; external tools should consume `/openapi.json`                                                                              |
+| `docs.ui.theme`                 | `'system' \| 'light' \| 'dark'`           | `'system'`                 | Built-in Vext Docs color theme. Visitors can override it locally in the UI                                                                                                                                    |
+| `docs.ui.density`               | `'comfortable' \| 'compact'`              | `'comfortable'`            | Built-in Vext Docs spacing density. Visitors can override it locally in the UI                                                                                                                                |
+| `docs.code.enabled`             | `boolean \| 'auto'`                       | `'auto'`                   | Whether to generate code docs from services / utils / models / components / plugins / middlewares and explicitly enabled optional static sources                                                              |
+| `docs.code.components`          | `boolean \| object`                       | `true`                     | Component JSDoc source. Defaults to `src/frontend/components/**`; only discovered entries appear in the UI                                                                                                    |
+| `docs.code.plugins`             | `boolean \| object`                       | `true`                     | Plugin JSDoc/runtime source. Defaults to `src/plugins/**`; only discovered entries appear in the UI                                                                                                           |
+| `docs.code.middlewares`         | `boolean \| object`                       | `true`                     | Middleware JSDoc/runtime source. Defaults to `src/middlewares/**`; only discovered entries appear in the UI                                                                                                   |
+| `docs.code.locales`             | `boolean \| object`                       | `false`                    | Optional locale source. When enabled, scans `src/locales/**` and `src/frontend/locales/**`; set `dir` to scan one custom locale root                                                                          |
+| `docs.code.config`              | `boolean \| object`                       | `false`                    | Optional runtime config source. When enabled, scans `src/config/**`                                                                                                                                           |
+| `docs.code.styles`              | `boolean \| object`                       | `false`                    | Optional frontend style source. When enabled, scans `src/frontend/styles/**`                                                                                                                                  |
+| `docs.code.preload`             | `boolean \| object`                       | `false`                    | Optional project preload source. When enabled, scans project-root `preload/**`                                                                                                                                |
+| `docs.access.mode`              | `'off' \| 'visibility-only' \| 'enforce'` | `'off'`                    | Docs menu / operation access mode                                                                                                                                                                             |
+| `docs.access.openapiJson`       | `'filtered' \| 'public'`                  | `'filtered'`               | Whether canonical `/openapi.json` is filtered by docs access rules or remains public                                                                                                                          |
+| `docs.sources`                  | `Array`                                   | `[]`                       | Optional source surfaces for multi API / multi version docs. Every source requires `match`; non-`All` code docs need explicit `code.include` / `code.exclude`                                                 |
+| `docs.tryItOut.hookScript`      | `string`                                  | `undefined`                | Optional browser script loaded for Try it out request / response hooks                                                                                                                                        |
+| `docs.tryItOut.hookGlobal`      | `string`                                  | `'VextDocsHooks'`          | Browser global lookup name for Try it out `beforeRequest` / `afterResponse` hooks                                                                                                                             |
+| `docs.tryItOut.defaultServer`   | `string`                                  | `undefined`                | Initial Try it out server: `"first"`, `"same-origin"`, `"custom"`, or an exact OpenAPI server URL                                                                                                             |
+| `docs.tryItOut.sameOrigin`      | `boolean \| 'auto'`                       | `'auto'`                   | Whether to show the Same origin Try it out server option. `auto` shows it only when no OpenAPI servers are configured                                                                                         |
+| `docs.tryItOut.customServer`    | `boolean`                                 | `true`                     | Whether visitors can temporarily enter a custom Try it out base URL in the browser                                                                                                                            |
+| `docs.tryItOut.customServerUrl` | `string`                                  | `undefined`                | Optional default value for the Custom server input                                                                                                                                                            |
+| `docsPath`                      | `string`                                  | `'/docs'`                  | Compatibility field; prefer `docs.path` in new projects                                                                                                                                                       |
+| `jsonPath`                      | `string`                                  | `'/openapi.json'`          | OpenAPI JSON path                                                                                                                                                                                             |
+| `jsonPublicPath`                | `string`                                  | Same as `jsonPath`         | Public canonical spec path for links and external tools. Built-in source-aware docs data uses `docs.assetsPublicPath` / `docs.assetsPath`; [see the guide](/guide/openapi#reverse-proxy-path-prefix-scenario) |
+| `contact`                       | `object`                                  | `undefined`                | Contact information                                                                                                                                                                                           |
+| `license`                       | `object`                                  | `undefined`                | License information                                                                                                                                                                                           |
+| `servers`                       | `array`                                   | `undefined`                | Server address list                                                                                                                                                                                           |
+| `tags`                          | `array`                                   | `undefined`                | Global tag definition                                                                                                                                                                                         |
+| `guardSecurityMap`              | `Record<string, string>`                  | `undefined`                | Guard to Security Scheme mapping                                                                                                                                                                              |
+| `securitySchemes`               | `object`                                  | `undefined`                | Security scheme definition                                                                                                                                                                                    |
+| `scalar`                        | `object`                                  | `{}`                       | Deprecated compatibility field. It only triggers a warning and does not affect the built-in Vext Docs page                                                                                                    |
+| ~~`tryItOutEnabled`~~           | `boolean`                                 | `true`                     | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
+| ~~`docExpansion`~~              | `'none' \| 'list' \| 'full'`              | `'list'`                   | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
 
 For fixed local or deployed API targets, set `servers[].url` to the complete base URL including its port, for example `http://127.0.0.1:3000`. Use `servers[].variables` only for genuinely variable URL segments such as environment, region, tenant, or API version. `docs.tryItOut.defaultServer` controls the initial Try it out selection, while `docs.tryItOut.customServer` lets users temporarily enter another browser-side target without changing project config.
 
@@ -715,6 +716,8 @@ Supported security scheme types:
 | `apiKey`        | API Key             | `name`, `in` (`header` / `query` / `cookie`) |
 | `oauth2`        | OAuth 2.0           | —                                            |
 | `openIdConnect` | OpenID Connect      | —                                            |
+
+For `apiKey` schemes with `in: "cookie"` and for `validate.cookie` parameters, built-in docs can display the fields but browser Try it out cannot set the forbidden `Cookie` header directly. Use same-origin browser cookies or an HTTP client for manual cookie values.
 
 ---
 
@@ -1036,6 +1039,20 @@ import { DEFAULT_CONFIG } from 'vextjs';
     hideInternalErrors: true,
     wrap: true,
   },
+  session: {
+    enabled: true,
+    name: 'vext.sid',
+    ttl: 86400,
+    rolling: false,
+    autoCommit: true,
+    idLength: 32,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: 'auto',
+    },
+  },
   bodyParser: {
     enabled: true,
     maxBodySize: '1mb',
@@ -1073,6 +1090,27 @@ const config: VextUserConfig = {
 
 export default config;
 ```
+
+---
+
+### `VextSessionConfig`
+
+`config.session` is consumed by the explicit `session()` middleware. It does not enable sessions globally by itself.
+
+| Field        | Type                       | Default      | Description                                                  |
+| ------------ | -------------------------- | ------------ | ------------------------------------------------------------ |
+| `enabled`    | `boolean`                  | `true`       | Set to `false` to make `session()` a no-op                   |
+| `name`       | `string`                   | `'vext.sid'` | Session cookie name                                          |
+| `ttl`        | `number`                   | `86400`      | Store TTL in seconds                                         |
+| `rolling`    | `boolean`                  | `false`      | Refresh the store TTL and cookie on each request             |
+| `autoCommit` | `boolean`                  | `true`       | Persist dirty session data before response send              |
+| `idLength`   | `number`                   | `32`         | Random byte length for the CSPRNG session id; must be 16-128 |
+| `cookie`     | `VextSessionCookieOptions` | See below    | Session cookie attributes                                    |
+| `store`      | `VextSessionStore`         | memory store | Custom async store for shared deployments                    |
+
+`VextSessionCookieOptions` follows `CookieSerializeOptions` and adds `secure: boolean | "auto"`. Cookie options include `domain`, `path`, `expires`, `maxAge`, `httpOnly`, `secure`, `sameSite`, `priority`, `partitioned`, and `encode`.
+
+`VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. If you pass a custom store with `close()`, close it from `app.onClose()` or plugin teardown.
 
 ---
 

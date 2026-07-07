@@ -242,6 +242,9 @@ app.post("/example", async (req, res) => {
   req.body; // 请求体（由 body-parser 中间件解析）
   req.params; // 路径参数 { id: '123' }
   req.headers; // 请求头（小写 key）
+  req.cookies; // 已解析 cookies（只读，重复 key first-wins）
+  req.cookie("theme"); // 读取单个 cookie 值
+  req.session; // 注册 session() 后可用
   req.requestId; // 请求唯一标识（自动生成或从 X-Request-Id 透传）
   req.ip; // 客户端 IP
   req.protocol; // 'http' | 'https'
@@ -274,14 +277,15 @@ app.get(
 );
 ```
 
-`req.valid()` 支持四个位置：
+`req.valid()` 支持五个位置：
 
-| 参数       | 数据来源      | 说明         |
-| ---------- | ------------- | ------------ |
-| `'query'`  | `req.query`   | URL 查询参数 |
-| `'body'`   | `req.body`    | 请求体       |
-| `'param'`  | `req.params`  | 路径动态参数 |
-| `'header'` | `req.headers` | 请求头       |
+| 参数       | 数据来源      | 说明             |
+| ---------- | ------------- | ---------------- |
+| `'query'`  | `req.query`   | URL 查询参数     |
+| `'body'`   | `req.body`    | 请求体           |
+| `'param'`  | `req.params`  | 路径动态参数     |
+| `'header'` | `req.headers` | 请求头           |
+| `'cookie'` | `req.cookies` | 已解析 Cookie 值 |
 
 :::tip 类型提示
 可以使用泛型获取更精确的类型提示：
@@ -592,7 +596,7 @@ export default defineRoutes((app) => {
 
 - **静态/稳定字段** → 闭包 `app` 可继续使用
 - **运行期动态替换字段** → 优先使用 `req.app`
-:::
+  :::
 
 ## 错误处理
 

@@ -37,16 +37,17 @@ After passing the verification, obtain the type-converted data through `req.vali
 
 ## Check location
 
-`validate` supports four locations, corresponding to different data sources requested:
+`validate` supports five locations, corresponding to different data sources requested:
 
-| Location | Data Source | Description |
-| -------- | ------------- | ---------------------------- |
-| `param` | `req.params` | Path dynamic parameters (such as `/:id`) |
-| `query` | `req.query` | URL query parameters (such as `?page=1`) |
-| `header` | `req.headers` | Request headers |
-| `body` | `req.body` | Request body (JSON/URL-encoded) |
+| Location | Data Source   | Description                              |
+| -------- | ------------- | ---------------------------------------- |
+| `param`  | `req.params`  | Path dynamic parameters (such as `/:id`) |
+| `query`  | `req.query`   | URL query parameters (such as `?page=1`) |
+| `header` | `req.headers` | Request headers                          |
+| `cookie` | `req.cookies` | Parsed Cookie values                     |
+| `body`   | `req.body`    | Request body (JSON/URL-encoded)          |
 
-The verification is executed in the order of `param` → `query` → `header` → `body`. If the verification fails at any position, an error will be returned immediately.
+The verification is executed in the order of `param` → `query` → `header` → `cookie` → `body`. If the verification fails at any position, an error will be returned immediately.
 
 ```typescript
 app.put(
@@ -62,6 +63,9 @@ app.put(
       header: {
         "x-api-version": "string?",
       },
+      cookie: {
+        sid: "string?",
+      },
       body: {
         name: "string:1-50?",
         email: "email?",
@@ -70,6 +74,7 @@ app.put(
   },
   async (req, res) => {
     const { id } = req.valid("param");
+    const cookies = req.valid("cookie");
     const body = req.valid("body");
     const user = await app.services.user.update(id, body);
     res.json(user);
@@ -87,23 +92,23 @@ schema-dsl uses concise string expressions to describe data types and constraint
 
 ### Basic types
 
-| DSL expression | Meaning | Example values |
-| ----------- | ---------- | ----------------------- |
-| `'string'' | string | `"hello"` |
-| `'number'` | Number | `42`, `3.14` |
-| `'boolean'` | Boolean value | `true`, `false` |
-| `'email'' | Email format | `"user@example.com"` |
-| `'url'` | URL format | `"https://example.com"` |
-| `'date'' | Date string | `"2026-01-15"` |
+| DSL expression | Meaning       | Example values          |
+| -------------- | ------------- | ----------------------- |
+| `'string''     | string        | `"hello"`               |
+| `'number'`     | Number        | `42`, `3.14`            |
+| `'boolean'`    | Boolean value | `true`, `false`         |
+| `'email''      | Email format  | `"user@example.com"`    |
+| `'url'`        | URL format    | `"https://example.com"` |
+| `'date''       | Date string   | `"2026-01-15"`          |
 
 ### Required and optional
 
 Add a `!` or `?` tag at the end of the type expression:
 
-| Suffix | Meaning | Example |
-| ------ | ---------------- | ---------------------------------- |
-| `!` | required | `'string!'' — required string |
-| `?` | Optional | `'string?'' — Optional string |
+| Suffix    | Meaning            | Example                                |
+| --------- | ------------------ | -------------------------------------- |
+| `!`       | required           | `'string!'' — required string          |
+| `?`       | Optional           | `'string?'' — Optional string          |
 | no suffix | optional (default) | `'string'` — equivalent to `'string?'` |
 
 ```typescript
@@ -175,13 +180,13 @@ validate: {
 schema-dsl automatically performs type conversion during validation, which is especially useful for `query` and `param` data (their original values are always strings):
 
 | declared type | original value | converted |
-| ----------- | --------- | ------- |
-| `'number'` | `"42"` | `42` |
-| `'number'` | `"3.14"` | `3.14` |
-| `'boolean'` | `"true"` | `true` |
-| `'boolean'` | `"false"` | `false` |
-| `'boolean'' | `"1"` | `true` |
-| `'boolean'` | `"0"` | `false` |
+| ------------- | -------------- | --------- |
+| `'number'`    | `"42"`         | `42`      |
+| `'number'`    | `"3.14"`       | `3.14`    |
+| `'boolean'`   | `"true"`       | `true`    |
+| `'boolean'`   | `"false"`      | `false`   |
+| `'boolean''   | `"1"`          | `true`    |
+| `'boolean'`   | `"0"`          | `false`   |
 
 ```typescript
 app.get(
@@ -385,7 +390,9 @@ app.post(
             code: "string:1-64!".description("target language code"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description("output format"),
+        format: "enum:plain_text,preserve_line_breaks".description(
+          "output format",
+        ),
       },
     },
     docs: { summary: "Perform text translation" },

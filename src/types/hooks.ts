@@ -2,6 +2,7 @@ import type { VextApp } from "./app.js";
 import type { VextRequest } from "./request.js";
 import type { VextResponse } from "./response.js";
 import type { RouteOptions } from "./app.js";
+import type { VextHeaders } from "./headers.js";
 
 export type VextHookName =
   | "request:start"
@@ -49,7 +50,7 @@ export interface VextRouteHookInfo {
 }
 
 export interface VextValidationLocationResult {
-  location: "param" | "query" | "header" | "body";
+  location: "param" | "query" | "header" | "cookie" | "body";
   data: unknown;
 }
 
@@ -64,7 +65,7 @@ export type VextResponseKind =
 export interface VextResponseBeforePatch {
   data?: unknown;
   status?: number;
-  headers?: Record<string, string>;
+  headers?: VextHeaders;
 }
 
 export interface VextErrorBeforeResponsePatch {
@@ -131,14 +132,14 @@ export interface VextHookPayloadMap {
     kind: VextResponseKind;
     data?: unknown;
     status: number;
-    headers: Record<string, string>;
+    headers: VextHeaders;
     wrapped: boolean;
     requestId: string;
   };
   "response:after": {
     kind: VextResponseKind;
     status: number;
-    headers: Record<string, string>;
+    headers: VextHeaders;
     requestId: string;
     durationMs: number;
   };

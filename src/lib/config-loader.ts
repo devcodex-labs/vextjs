@@ -674,6 +674,9 @@ function validateConfig(config: Record<string, unknown>): void {
     }
   }
 
+  // ── session ────────────────────────────────────────────
+  validateSessionConfig(config.session, "config.session");
+
   // ── fetch ──────────────────────────────────────────────
   validateFetchConfig(config.fetch, "config.fetch");
 
@@ -1149,7 +1152,10 @@ function validateDocsTryItOutConfig(value: unknown, pathName: string): void {
   validateOptionalString(tryItOut.hookGlobal, `${pathName}.hookGlobal`);
   validateOptionalString(tryItOut.defaultServer, `${pathName}.defaultServer`);
   validateOptionalBoolean(tryItOut.customServer, `${pathName}.customServer`);
-  validateOptionalString(tryItOut.customServerUrl, `${pathName}.customServerUrl`);
+  validateOptionalString(
+    tryItOut.customServerUrl,
+    `${pathName}.customServerUrl`,
+  );
   if (
     tryItOut.sameOrigin !== undefined &&
     typeof tryItOut.sameOrigin !== "boolean" &&
@@ -1619,6 +1625,111 @@ function validateFetchConfig(value: unknown, path: string): void {
     }
     validateRetryDelay(target.retryDelay, `${itemPath}.retryDelay`);
   });
+}
+
+function validateSessionConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const session = value as Record<string, unknown>;
+  validateOptionalBoolean(session.enabled, `${path}.enabled`);
+  validateOptionalString(session.name, `${path}.name`);
+  if (session.ttl !== undefined) {
+    validatePositiveNumber(session.ttl, `${path}.ttl`);
+  }
+  validateOptionalBoolean(session.rolling, `${path}.rolling`);
+  validateOptionalBoolean(session.autoCommit, `${path}.autoCommit`);
+  if (session.idLength !== undefined) {
+    validatePositiveInteger(session.idLength, `${path}.idLength`);
+    const idLength = session.idLength as number;
+    if (idLength < 16 || idLength > 128) {
+      throw new Error(
+        `[vextjs] ${path}.idLength must be an integer from 16 to 128.`,
+      );
+    }
+  }
+
+  validateSessionCookieConfig(session.cookie, `${path}.cookie`);
+  validateSessionStoreConfig(session.store, `${path}.store`);
+}
+
+function validateSessionCookieConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const cookie = value as Record<string, unknown>;
+  validateOptionalString(cookie.domain, `${path}.domain`);
+  validateOptionalString(cookie.path, `${path}.path`);
+  validateOptionalBoolean(cookie.httpOnly, `${path}.httpOnly`);
+  if (
+    cookie.secure !== undefined &&
+    typeof cookie.secure !== "boolean" &&
+    cookie.secure !== "auto"
+  ) {
+    throw new Error(`[vextjs] ${path}.secure must be a boolean or "auto".`);
+  }
+  if (
+    cookie.sameSite !== undefined &&
+    typeof cookie.sameSite !== "boolean" &&
+    !["lax", "strict", "none"].includes(String(cookie.sameSite))
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.sameSite must be a boolean, "lax", "strict", or "none".`,
+    );
+  }
+  if (
+    cookie.priority !== undefined &&
+    !["low", "medium", "high"].includes(String(cookie.priority))
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.priority must be "low", "medium", or "high".`,
+    );
+  }
+  validateOptionalBoolean(cookie.partitioned, `${path}.partitioned`);
+  if (cookie.maxAge !== undefined) {
+    validatePositiveNumber(cookie.maxAge, `${path}.maxAge`);
+  }
+  if (
+    cookie.expires !== undefined &&
+    !(
+      cookie.expires instanceof Date &&
+      Number.isFinite(cookie.expires.valueOf())
+    )
+  ) {
+    throw new Error(`[vextjs] ${path}.expires must be a valid Date.`);
+  }
+  if (cookie.encode !== undefined && typeof cookie.encode !== "function") {
+    throw new Error(`[vextjs] ${path}.encode must be a function.`);
+  }
+}
+
+function validateSessionStoreConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const store = value as Record<string, unknown>;
+  for (const key of ["get", "set", "delete"]) {
+    if (typeof store[key] !== "function") {
+      throw new Error(`[vextjs] ${path}.${key} must be a function.`);
+    }
+  }
+  for (const key of ["touch", "clearExpired", "close"]) {
+    if (store[key] !== undefined && typeof store[key] !== "function") {
+      throw new Error(`[vextjs] ${path}.${key} must be a function.`);
+    }
+  }
 }
 
 function validateRetryDelay(value: unknown, path: string): void {

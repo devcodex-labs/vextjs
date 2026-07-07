@@ -1,6 +1,8 @@
 import type { FastifyRequest } from "fastify";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
+import type { VextCookieJar } from "../../types/cookies.js";
+import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 
 /**
@@ -62,6 +64,13 @@ export function createVextRequest(
   // 本身是稳定引用，但 Buffer.toString 每次都会创建新字符串，缓存更高效）。
   //
   let _rawBodyCache: string | undefined;
+  let _cookiesCache: VextCookieJar | undefined;
+
+  function getCookies(): VextCookieJar {
+    if (_cookiesCache !== undefined) return _cookiesCache;
+    _cookiesCache = parseCookies(request.headers.cookie);
+    return _cookiesCache;
+  }
 
   function getRawBody(maxBytes?: number): Promise<string> {
     if (_rawBodyCache !== undefined) {
@@ -98,7 +107,8 @@ export function createVextRequest(
 
   function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
     const body = request.body;
-    if (body === undefined || body === null) return Promise.resolve(Buffer.alloc(0));
+    if (body === undefined || body === null)
+      return Promise.resolve(Buffer.alloc(0));
     if (Buffer.isBuffer(body)) {
       assertBodySize(body.byteLength, maxBytes);
       return Promise.resolve(body);
@@ -155,6 +165,12 @@ export function createVextRequest(
     body: undefined, // body-parser 中间件负责填充
     params: (request.params as Record<string, string>) ?? {},
     headers: request.headers as Record<string, string | undefined>,
+    get cookies(): VextCookieJar {
+      return getCookies();
+    },
+    cookie(name: string): string | undefined {
+      return getCookies()[name];
+    },
     method: request.method.toUpperCase(),
     url: request.url,
     path: urlPath,
@@ -177,7 +193,7 @@ export function createVextRequest(
     // valid() 方法从对应的 key 中读取数据返回。
     //
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header",
+      location: "query" | "body" | "param" | "header" | "cookie",
     ): T {
       return (req as Record<string, any>)[`_validated_${location}`] as T;
     },
@@ -188,7 +204,8 @@ export function createVextRequest(
     // 从 Fastify request.body（Buffer，由通用 content-type parser 提供）
     // 转为 string，供 body-parser 中间件解析。
     //
-    _getRawBody: getRawBody, _getRawBodyBuffer: getRawBodyBuffer,
+    _getRawBody: getRawBody,
+    _getRawBodyBuffer: getRawBodyBuffer,
   };
 
   // ── 请求结束时执行 onClose hooks ─────────────────────────

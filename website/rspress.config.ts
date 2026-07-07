@@ -102,7 +102,8 @@ const navSource: NavItemSource[] = [
     en: "Data",
     zh: "数据",
     link: "/guide/validation",
-    activeMatch: "^/guide/(validation|cache|database|fetch|openapi)",
+    activeMatch:
+      "^/guide/(validation|cookies-session|cache|database|fetch|openapi)",
   },
   {
     en: "Production",
@@ -196,6 +197,7 @@ const englishSidebar: SidebarGroup[] = [
     text: "Data and APIs",
     items: [
       { text: "Validation", link: "/guide/validation" },
+      { text: "Cookies & Sessions", link: "/guide/cookies-session" },
       { text: "Response Cache", link: "/guide/cache" },
       { text: "Database", link: "/guide/database" },
       { text: "HTTP Client", link: "/guide/fetch" },
@@ -264,7 +266,10 @@ const englishFrontendSidebar: SidebarGroup[] = [
       { text: "Routing and Pages", link: "/frontend/routing-and-pages" },
       { text: "Rendering Modes", link: "/frontend/rendering-modes" },
       { text: "Data Flow", link: "/frontend/data-flow" },
-      { text: "Layouts and Components", link: "/frontend/layouts-and-components" },
+      {
+        text: "Layouts and Components",
+        link: "/frontend/layouts-and-components",
+      },
       { text: "Styles and Assets", link: "/frontend/styles-and-assets" },
     ],
   },
@@ -354,6 +359,7 @@ const chineseSidebar: SidebarGroup[] = [
     text: "数据与接口",
     items: [
       { text: "参数校验", link: "/zh/guide/validation" },
+      { text: "Cookies 与 Sessions", link: "/zh/guide/cookies-session" },
       { text: "响应缓存", link: "/zh/guide/cache" },
       { text: "数据库 (MonSQLize)", link: "/zh/guide/database" },
       { text: "内置 HTTP 客户端", link: "/zh/guide/fetch" },

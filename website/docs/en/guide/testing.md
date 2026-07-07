@@ -219,8 +219,17 @@ interface TestResponse {
   /** HTTP status code */
   status: number;
 
-  /** Response header (lowercase key) */
-  headers: Record<string, string>;
+  /** Response headers (lowercase key, Set-Cookie may be string[]) */
+  headers: Record<string, string | string[]>;
+
+  /** Set-Cookie response headers */
+  cookies: string[];
+
+  /** Read the first value of a response header */
+  header(name: string): string | undefined;
+
+  /** Read all values of a response header */
+  headerValues(name: string): string[];
 
   /** Parsed response body (JSON is automatically parsed into an object) */
   body: any;
@@ -244,8 +253,9 @@ expect(res.body).toEqual({
 });
 
 // Assert response header
-expect(res.headers["content-type"]).toContain("application/json");
+expect(res.header("content-type")).toContain("application/json");
 expect(res.headers["x-request-id"]).toBeDefined();
+expect(res.headerValues("set-cookie")).toEqual(res.cookies);
 
 // Assert the original text
 expect(res.text).toContain('"code":0');
@@ -255,13 +265,13 @@ expect(res.text).toContain('"code":0');
 
 The application created by `createTestApp()` is in test mode (`_testMode: true`), which has the following differences from production mode:
 
-| Features | Test Mode | Production Mode |
-|---------------- | ----------------- | ------------- |
-| HTTP Listening | ❌ Not Starting | ✅ Listening Port |
-| `process.exit()` | ❌ Not called | ✅ Called on shutdown |
-| Log level | Default `silent` | Determined by configuration |
-| Current limit | Relaxed to 100000 by default | Determined by configuration |
-| Shutdown timeout | Default 1 second | Determined by configuration |
+| Features         | Test Mode                    | Production Mode             |
+| ---------------- | ---------------------------- | --------------------------- |
+| HTTP Listening   | ❌ Not Starting              | ✅ Listening Port           |
+| `process.exit()` | ❌ Not called                | ✅ Called on shutdown       |
+| Log level        | Default `silent`             | Determined by configuration |
+| Current limit    | Relaxed to 100000 by default | Determined by configuration |
+| Shutdown timeout | Default 1 second             | Determined by configuration |
 
 ## Practical example
 
@@ -323,7 +333,8 @@ describe("Users API", () => {
       expect(res.status).toBe(422);
       expect(res.body.errors).toBeDefined();
       expect(res.body.errors.length).toBeGreaterThan(0);
-    });it("should return 401 without token", async () => {
+    });
+    it("should return 401 without token", async () => {
       const res = await app.request
         .post("/users")
         .send({ name: "Bob", email: "bob@example.com" });
@@ -463,7 +474,8 @@ describe("Users API with mock services", () => {
     const res = await app.request
       .post("/users")
       .set("Authorization", "Bearer test-token")
-      .send({ name: "Bob", email: "bob@example.com" });expect(res.status).toBe(201);
+      .send({ name: "Bob", email: "bob@example.com" });
+    expect(res.status).toBe(201);
     expect(mockUserService.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Bob", email: "bob@example.com" }),
     );
@@ -599,10 +611,10 @@ describe("Request headers", () => {
 
 ### TypeScript service files and ESM loading
 
-When `services: true` (default), `createTestApp()` scans `src/services/` and loads `.ts` source files. `service-loader` automatically uses **esbuild** internally to compile and load each `.ts` file bundle, completely solving two native problems:| Problem | Cause | Solution |
-| ---------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js native ESM does not support the `.ts` extension | esbuild compiles to `.mjs` and then `import()` |
-| `.js → .ts` remapping is missing | TypeScript ESM convention is to write `.js` in `import`, and Node.js/Vite resolver does not automatically fall back to `.ts` | esbuild `bundle: true` fully resolves all local dependencies during the compilation phase |
+| When `services: true` (default), `createTestApp()` scans `src/services/` and loads `.ts` source files. `service-loader` automatically uses **esbuild** internally to compile and load each `.ts` file bundle, completely solving two native problems: | Problem                                                                                                                      | Cause                                                                                     | Solution |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts`                                                                                                                                                                                                                     | Node.js native ESM does not support the `.ts` extension                                                                      | esbuild compiles to `.mjs` and then `import()`                                            |
+| `.js → .ts` remapping is missing                                                                                                                                                                                                                      | TypeScript ESM convention is to write `.js` in `import`, and Node.js/Vite resolver does not automatically fall back to `.ts` | esbuild `bundle: true` fully resolves all local dependencies during the compilation phase |
 
 **Scenarios not affected by this restriction**:
 
@@ -810,9 +822,9 @@ const app = await createTestApp({
 });
 ```
 
-| Test type | `services` | `mockServices` | Applicable scenarios |
-| -------- | :------------: | :------------: | ------------------------------- |
-| Unit testing | `false` | Valid | Routing logic, middleware, error response format |
+| Test type           |    `services`    |  `mockServices`   | Applicable scenarios                                  |
+| ------------------- | :--------------: | :---------------: | ----------------------------------------------------- |
+| Unit testing        |     `false`      |       Valid       | Routing logic, middleware, error response format      |
 | Integration testing | `true` (default) | Optional coverage | Complete business process, inter-service dependencies |
 
 ## Next step

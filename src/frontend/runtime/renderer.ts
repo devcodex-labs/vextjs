@@ -13,6 +13,7 @@ import type {
   VextRenderHeadOptions,
   VextRenderOptions,
 } from "../../types/response.js";
+import type { VextHeaders } from "../../types/headers.js";
 import type { VextMiddleware } from "../../types/middleware.js";
 import { normalizeErrorForResponse } from "../../lib/error-response.js";
 
@@ -40,7 +41,7 @@ export interface VextRenderCacheEntry {
 export interface VextRenderedHtml {
   html: string;
   status: number;
-  headers: Record<string, string>;
+  headers: VextHeaders;
   payload: VextRenderPayload;
 }
 
@@ -66,7 +67,7 @@ export interface VextFrontendRenderer {
   renderCached(
     payload: unknown,
     status: number,
-    headers: Record<string, string>,
+    headers: VextHeaders,
   ): VextRenderedHtml;
 }
 
@@ -249,7 +250,7 @@ function renderCachedDocument(input: {
   assets: FrontendRendererAssets;
   payload: unknown;
   status: number;
-  headers: Record<string, string>;
+  headers: VextHeaders;
 }): VextRenderedHtml {
   const cacheEntry = assertRenderCacheEntry(input.payload);
   if (cacheEntry.payload.buildId !== input.assets.manifest.buildId) {

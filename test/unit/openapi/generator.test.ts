@@ -833,17 +833,48 @@ describe("OpenAPIGenerator", () => {
             param: { id: "objectId!" },
             query: { expand: "string?" },
             header: { "x-tenant-id": "string!" },
+            cookie: { sid: "string?" },
           },
         }),
       ]);
 
       const op = doc.paths["/users/{id}"].get!;
-      expect(op.parameters).toHaveLength(3);
+      expect(op.parameters).toHaveLength(4);
       expect(op.parameters!.map((p) => p.in)).toEqual([
         "path",
         "query",
         "header",
+        "cookie",
       ]);
+    });
+  });
+
+  describe("parameters — Cookie 参数", () => {
+    it("validate.cookie 中的字段映射为 cookie 参数", () => {
+      const doc = generate([
+        createRoute("GET", "/session/profile", {
+          validate: {
+            cookie: {
+              sid: "string!",
+              theme: "string?",
+            },
+          },
+        }),
+      ]);
+
+      const op = doc.paths["/session/profile"].get!;
+      expect(op.parameters).toHaveLength(2);
+
+      const sid = op.parameters!.find((p) => p.name === "sid")!;
+      expect(sid).toMatchObject({
+        in: "cookie",
+        required: true,
+        schema: { type: "string" },
+      });
+
+      const theme = op.parameters!.find((p) => p.name === "theme")!;
+      expect(theme.in).toBe("cookie");
+      expect(theme.required).toBe(false);
     });
   });
 

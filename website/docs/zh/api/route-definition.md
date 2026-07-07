@@ -167,6 +167,7 @@ interface RouteOptions {
     body?: Record<string, VextSchemaField>;
     param?: Record<string, VextSchemaField>;
     header?: Record<string, VextSchemaField>;
+    cookie?: Record<string, VextSchemaField>;
   };
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
@@ -252,9 +253,10 @@ app.post(
 | `param`  | `req.params`  | 路径动态参数（如 `/:id`） |
 | `query`  | `req.query`   | URL 查询参数              |
 | `header` | `req.headers` | 请求头                    |
+| `cookie` | `req.cookies` | 已解析的 Cookie 值        |
 | `body`   | `req.body`    | 请求体                    |
 
-**校验执行顺序**：`param` → `query` → `header` → `body`
+**校验执行顺序**：`param` → `query` → `header` → `cookie` → `body`
 
 ### 基本用法
 
@@ -460,13 +462,14 @@ route({
 
 常用写法：
 
-| 配置 | 说明 |
-|------|------|
-| `cache: false` | 禁用该路由响应缓存 |
-| `cache: 30000` | 启用响应缓存，TTL 为 30000 毫秒 |
-| `cache: { ttl: 30000 }` | 使用完整配置对象 |
-| `headers: ["accept-language"]` | 指定参与缓存 key 的请求头；不建议把所有请求头都纳入 key |
-| `partitionKey` | 生成用户、租户或区域隔离维度，避免不同访问者共享同一缓存响应 |
+| 配置                           | 说明                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `cache: false`                 | 禁用该路由响应缓存                                                                  |
+| `cache: 30000`                 | 启用响应缓存，TTL 为 30000 毫秒                                                     |
+| `cache: { ttl: 30000 }`        | 使用完整配置对象                                                                    |
+| `headers: ["accept-language"]` | 指定参与缓存 key 的请求头；不建议把所有请求头都纳入 key                             |
+| `partitionKey`                 | 生成用户、租户或区域隔离维度，避免不同访问者共享同一缓存响应                        |
+| `allowCookieCache`             | 允许带 `Cookie` 请求头的请求参与缓存；只有 cookie 输入已纳入安全缓存 key 时才应开启 |
 
 详见 [响应缓存指南](/guide/cache)。
 
@@ -495,17 +498,17 @@ interface RouteDocsConfig {
 
 ### 字段说明
 
-| 字段          | 类型       | 默认值              | 说明                          |
-| ------------- | ---------- | ------------------- | ----------------------------- |
-| `summary`     | `string`   | —                   | 接口一句话摘要                |
-| `description` | `string`   | —                   | 接口详细描述（支持 Markdown） |
+| 字段          | 类型       | 默认值              | 说明                                                 |
+| ------------- | ---------- | ------------------- | ---------------------------------------------------- |
+| `summary`     | `string`   | —                   | 接口一句话摘要                                       |
+| `description` | `string`   | —                   | 接口详细描述（支持 Markdown）                        |
 | `tags`        | `string[]` | 已忽略              | 已废弃。operation tags 会从路由 path/source 自动推断 |
-| `operationId` | `string`   | 自动推断            | 操作标识（全局唯一）          |
-| `hidden`      | `boolean`  | `false`             | 是否从文档中隐藏              |
-| `deprecated`  | `boolean`  | `false`             | 是否标记为已废弃              |
-| `security`    | `array`    | 从 middlewares 推断 | 安全方案覆盖                  |
-| `extensions`  | `object`   | —                   | 自定义 `x-*` 扩展字段         |
-| `responses`   | `object`   | —                   | 响应定义                      |
+| `operationId` | `string`   | 自动推断            | 操作标识（全局唯一）                                 |
+| `hidden`      | `boolean`  | `false`             | 是否从文档中隐藏                                     |
+| `deprecated`  | `boolean`  | `false`             | 是否标记为已废弃                                     |
+| `security`    | `array`    | 从 middlewares 推断 | 安全方案覆盖                                         |
+| `extensions`  | `object`   | —                   | 自定义 `x-*` 扩展字段                                |
+| `responses`   | `object`   | —                   | 响应定义                                             |
 
 ### 完整示例
 

@@ -776,7 +776,9 @@ describe("validateConfig", () => {
         _validateConfig({
           openapi: { docs: { tryItOut: { sameOrigin: "yes" } } },
         }),
-      ).toThrow('config.openapi.docs.tryItOut.sameOrigin must be a boolean or "auto"');
+      ).toThrow(
+        'config.openapi.docs.tryItOut.sameOrigin must be a boolean or "auto"',
+      );
     });
 
     it("rejects invalid docs source access fields", () => {
@@ -936,6 +938,90 @@ describe("validateConfig", () => {
       expect(() => _validateConfig({ requestContext: null })).toThrow(
         "config.requestContext must be an object",
       );
+    });
+  });
+
+  // ── session ─────────────────────────────────────────────
+
+  describe("session validation", () => {
+    it("accepts valid session config", () => {
+      const store = {
+        get: () => null,
+        set: () => undefined,
+        delete: () => undefined,
+        touch: () => undefined,
+        clearExpired: () => undefined,
+        close: () => undefined,
+      };
+
+      expect(() =>
+        _validateConfig({
+          session: {
+            enabled: true,
+            name: "vext.sid",
+            ttl: 3600,
+            rolling: true,
+            autoCommit: true,
+            idLength: 32,
+            store,
+            cookie: {
+              httpOnly: true,
+              secure: "auto",
+              sameSite: "lax",
+              path: "/",
+              maxAge: 3600,
+              priority: "high",
+              partitioned: true,
+              encode: encodeURIComponent,
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects invalid session scalar fields", () => {
+      expect(() => _validateConfig({ session: "on" })).toThrow(
+        "config.session must be an object",
+      );
+      expect(() => _validateConfig({ session: { ttl: 0 } })).toThrow(
+        "config.session.ttl",
+      );
+      expect(() => _validateConfig({ session: { idLength: 8 } })).toThrow(
+        "config.session.idLength",
+      );
+      expect(() => _validateConfig({ session: { rolling: "true" } })).toThrow(
+        "config.session.rolling must be a boolean",
+      );
+    });
+
+    it("rejects invalid session cookie options", () => {
+      expect(() =>
+        _validateConfig({ session: { cookie: { secure: "always" } } }),
+      ).toThrow('config.session.cookie.secure must be a boolean or "auto"');
+      expect(() =>
+        _validateConfig({ session: { cookie: { sameSite: "loose" } } }),
+      ).toThrow("config.session.cookie.sameSite");
+      expect(() =>
+        _validateConfig({ session: { cookie: { encode: "uri" } } }),
+      ).toThrow("config.session.cookie.encode must be a function");
+    });
+
+    it("rejects invalid session store contract", () => {
+      expect(() =>
+        _validateConfig({ session: { store: { get: () => null } } }),
+      ).toThrow("config.session.store.set must be a function");
+      expect(() =>
+        _validateConfig({
+          session: {
+            store: {
+              get: () => null,
+              set: () => undefined,
+              delete: () => undefined,
+              close: true,
+            },
+          },
+        }),
+      ).toThrow("config.session.store.close must be a function");
     });
   });
 

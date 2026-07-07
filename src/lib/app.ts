@@ -1,4 +1,8 @@
-import { createLogger, getLoggerLifecycle, normalizeVextLogger } from "./logger.js";
+import {
+  createLogger,
+  getLoggerLifecycle,
+  normalizeVextLogger,
+} from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { createHookManager } from "./hooks.js";
 import { schemaAdapter } from "./schema-adapter.js";
@@ -522,6 +526,20 @@ export const DEFAULT_CONFIG: VextConfig = {
   response: {
     hideInternalErrors: true,
     wrap: true,
+  },
+  session: {
+    enabled: true,
+    name: "vext.sid",
+    ttl: 86400,
+    rolling: false,
+    autoCommit: true,
+    idLength: 32,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: "auto",
+    },
   },
   bodyParser: {
     enabled: true,

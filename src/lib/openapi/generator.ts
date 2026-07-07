@@ -5,7 +5,7 @@
  *
  * 核心职责：
  *   1. 遍历路由元信息，为每条路由构建 Operation 对象
- *   2. 将 validate.param / query / header → parameters
+ *   2. 将 validate.param / query / header / cookie → parameters
  *   3. 将 validate.body → requestBody
  *   4. 将 docs.responses → responses（成功响应自动包装为 { code, data, requestId }）
  *   5. 从 middlewares 推断 security（auth → bearerAuth）
@@ -221,11 +221,12 @@ export class OpenAPIGenerator {
    *   2. 路径参数（validate.param → parameters[in=path]）
    *   3. 查询参数（validate.query → parameters[in=query]）
    *   4. 请求头（validate.header → parameters[in=header]）
-   *   5. 请求体（validate.body → requestBody，仅 POST/PUT/PATCH）
-   *   6. 响应（docs.responses → responses，成功响应自动包装）
-   *   7. 默认响应（未声明时添加 200 OK）
-   *   8. 安全方案（从 middlewares 或 docs.security 推断）
-   *   9. 自定义扩展（docs.extensions → x-* 字段）
+   *   5. Cookie（validate.cookie → parameters[in=cookie]）
+   *   6. 请求体（validate.body → requestBody，仅 POST/PUT/PATCH）
+   *   7. 响应（docs.responses → responses，成功响应自动包装）
+   *   8. 默认响应（未声明时添加 200 OK）
+   *   9. 安全方案（从 middlewares 或 docs.security 推断）
+   *   10. 自定义扩展（docs.extensions → x-* 字段）
    *   10. 速率限制（从 rate-limit 中间件推断 x-rate-limit）
    *   11. 清空空参数数组
    *
@@ -301,6 +302,23 @@ export class OpenAPIGenerator {
         operation.parameters!.push({
           name,
           in: "header",
+          required: isRequired,
+          schema,
+        });
+      }
+    }
+
+    // ── Cookie 参数（cookie）────────────────────────────────
+    // validate.cookie 与 validate.query/header 一样属于请求输入契约，
+    // 映射到 OpenAPI parameters[in=cookie]。
+    if (options.validate?.cookie) {
+      const cookies = options.validate.cookie as Record<string, string>;
+      for (const [name, dsl] of Object.entries(cookies)) {
+        if (typeof dsl !== "string") continue;
+        const { schema, isRequired } = this.converter.convertDSLString(dsl);
+        operation.parameters!.push({
+          name,
+          in: "cookie",
           required: isRequired,
           schema,
         });

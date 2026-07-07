@@ -1,7 +1,12 @@
 import type { Context } from "hono";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
-import { assertBodySize, createPayloadTooLargeError } from "../../lib/middlewares/body-parser.js";
+import type { VextCookieJar } from "../../types/cookies.js";
+import { parseCookies } from "../../lib/cookies.js";
+import {
+  assertBodySize,
+  createPayloadTooLargeError,
+} from "../../lib/middlewares/body-parser.js";
 
 /**
  * HonoContext → VextRequest 转换
@@ -38,6 +43,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   let _queryCache: Record<string, string> | undefined;
   let _headersCache: Record<string, string | undefined> | undefined;
   let _paramsCache: Record<string, string> | undefined;
+  let _cookiesCache: VextCookieJar | undefined;
 
   // ── 缓存原始请求体（body-parser 用）───────────────────────
   // 使用 Buffer 作为主缓存（arrayBuffer() 读取一次），字符串从中惰性派生。
@@ -143,6 +149,12 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     return _paramsCache;
   }
 
+  function getCookies(): VextCookieJar {
+    if (_cookiesCache !== undefined) return _cookiesCache;
+    _cookiesCache = parseCookies(parseHeaders().cookie);
+    return _cookiesCache;
+  }
+
   // ── 构造 VextRequest 对象 ────────────────────────────────
   //
   // 🆕 性能优化：query / headers / params 使用 Object.defineProperty
@@ -158,6 +170,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     // ── 占位符（立即被 defineProperty 覆盖）─────────────
     query: null as unknown as Record<string, string>,
     headers: null as unknown as Record<string, string | undefined>,
+    cookies: null as unknown as VextCookieJar,
     params: null as unknown as Record<string, string>,
 
     // ── 立即可用字段 ────────────────────────────────────
@@ -180,10 +193,14 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
 
     // ── 校验数据 ────────────────────────────────────────
     valid<T = Record<string, any>>(
-      location: "query" | "body" | "param" | "header",
+      location: "query" | "body" | "param" | "header" | "cookie",
     ): T {
       // validate 中间件将校验后的数据存储在 req._validated_<location> 上
       return (req as Record<string, any>)[`_validated_${location}`] as T;
+    },
+
+    cookie(name: string): string | undefined {
+      return getCookies()[name];
     },
 
     // ── 内部方法（body-parser 中间件使用）───────────────────
@@ -196,7 +213,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     // c.req.raw.formData()，跳过 Buffer 中转，性能更优。
     // 仅供框架内部使用，不建议用户代码直接调用。
     _getHonoRawRequest(): Request {
-      return c.req.raw
+      return c.req.raw;
     },
   };
 
@@ -249,7 +266,32 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     },
     set(v: Record<string, string | undefined>) {
       _headersCache = v;
+      _cookiesCache = undefined;
       Object.defineProperty(req, "headers", {
+        value: v,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(req, "cookies", {
+    get() {
+      const value = getCookies();
+      Object.defineProperty(req, "cookies", {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+      return value;
+    },
+    set(v: VextCookieJar) {
+      _cookiesCache = v;
+      Object.defineProperty(req, "cookies", {
         value: v,
         writable: true,
         configurable: true,

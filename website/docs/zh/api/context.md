@@ -23,7 +23,7 @@
 | `ip`        | `string`                              | 客户端 IP                                                                                             |
 | `protocol`  | `'http' \| 'https'`                   | 请求协议                                                                                              |
 | `t`         | `Function \| undefined`               | i18n 翻译函数（插件注入）                                                                             |
-| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（multipart 插件解析后填充）                                                 |
+| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（multipart 插件解析后填充）                                                              |
 
 ---
 
@@ -252,24 +252,25 @@ app.get("/info", async (req, res) => {
 
 ```typescript
 function valid<T = Record<string, any>>(
-  location: "query" | "body" | "param" | "header",
+  location: "query" | "body" | "param" | "header" | "cookie",
 ): T;
 ```
 
 **参数**：
 
-| 参数       | 类型                                       | 说明         |
-| ---------- | ------------------------------------------ | ------------ |
-| `location` | `'query' \| 'body' \| 'param' \| 'header'` | 校验数据位置 |
+| 参数       | 类型                                                   | 说明         |
+| ---------- | ------------------------------------------------------ | ------------ |
+| `location` | `'query' \| 'body' \| 'param' \| 'header' \| 'cookie'` | 校验数据位置 |
 
 **`location` 与数据源映射**：
 
-| location   | 数据源        | 说明         |
-| ---------- | ------------- | ------------ |
-| `'query'`  | `req.query`   | URL 查询参数 |
-| `'body'`   | `req.body`    | 请求体       |
-| `'param'`  | `req.params`  | 路径动态参数 |
-| `'header'` | `req.headers` | 请求头       |
+| location   | 数据源        | 说明             |
+| ---------- | ------------- | ---------------- |
+| `'query'`  | `req.query`   | URL 查询参数     |
+| `'body'`   | `req.body`    | 请求体           |
+| `'param'`  | `req.params`  | 路径动态参数     |
+| `'header'` | `req.headers` | 请求头           |
+| `'cookie'` | `req.cookies` | 已解析 Cookie 值 |
 
 :::tip
 注意 `location` 使用**单数** `'param'`（与 `validate` 配置的 key 一致），但底层数据源是**复数** `req.params`。框架内部已正确映射。
@@ -391,11 +392,11 @@ app.get("/greeting", async (req, res) => {
 
 ```typescript
 interface ParsedFile {
-  fieldname: string;  // 表单字段名称
-  filename: string;   // 上传文件名
-  mimetype: string;   // MIME 类型，如 'image/png'
-  buffer: Buffer;     // 文件原始内容
-  size: number;       // 文件字节数
+  fieldname: string; // 表单字段名称
+  filename: string; // 上传文件名
+  mimetype: string; // MIME 类型，如 'image/png'
+  buffer: Buffer; // 文件原始内容
+  size: number; // 文件字节数
 }
 ```
 
@@ -425,13 +426,16 @@ _getRawBodyBuffer(): Promise<Buffer>
 
 ```typescript
 // 插件示例（使用 busboy 解析 multipart/form-data）
-import { createBusboy } from 'busboy';
-import type { ParsedFile } from 'vextjs';
+import { createBusboy } from "busboy";
+import type { ParsedFile } from "vextjs";
 
 export default definePlugin(async (app) => {
   app.use(async (req, _res, next) => {
-    const ct = req.headers['content-type'] ?? '';
-    if (!ct.startsWith('multipart/form-data')) { await next(); return; }
+    const ct = req.headers["content-type"] ?? "";
+    if (!ct.startsWith("multipart/form-data")) {
+      await next();
+      return;
+    }
 
     const rawBuffer = await req._getRawBodyBuffer();
     const files: ParsedFile[] = await parseMultipart(rawBuffer, ct);

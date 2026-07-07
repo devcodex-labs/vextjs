@@ -1,4 +1,6 @@
 import type { VextApp } from "./app.js";
+import type { VextCookieJar } from "./cookies.js";
+import type { VextSession } from "./session.js";
 
 /**
  * ParsedFile — 已解析的上传文件
@@ -16,15 +18,15 @@ import type { VextApp } from "./app.js";
  */
 export interface ParsedFile {
   /** 表单字段名（<input name="avatar"> 中的 "avatar"） */
-  fieldname: string
+  fieldname: string;
   /** 原始文件名（客户端文件系统中的名称，可能含路径，需自行处理安全） */
-  filename: string
+  filename: string;
   /** MIME 类型（如 'image/jpeg'、'application/pdf'） */
-  mimetype: string
+  mimetype: string;
   /** 文件二进制数据 */
-  buffer: Buffer
+  buffer: Buffer;
   /** 文件大小（字节数） */
-  size: number
+  size: number;
 }
 
 /**
@@ -51,6 +53,12 @@ export interface VextRequest {
 
   /** 请求头（全部小写 key） */
   headers: Record<string, string | undefined>;
+
+  /** Cookie 参数（从 Cookie 请求头解析，first-wins） */
+  cookies: VextCookieJar;
+
+  /** 读取单个 cookie 值 */
+  cookie(name: string): string | undefined;
 
   /** HTTP 方法（大写，如 'GET'、'POST'） */
   method: string;
@@ -149,6 +157,7 @@ export interface VextRequest {
    *   'body'   → req.body    （请求体）
    *   'param'  → req.params  （路径动态参数，如 /:id）
    *   'header' → req.headers （请求头）
+   *   'cookie' → req.cookies （Cookie 参数）
    *
    * 注意：location 使用单数 'param'（与 validate 配置的 key 一致），
    * 但底层数据源是复数 req.params。框架内部已正确映射。
@@ -166,7 +175,7 @@ export interface VextRequest {
    * param.id  // IDE 知道是 string
    */
   valid<T = Record<string, any>>(
-    location: "query" | "body" | "param" | "header",
+    location: "query" | "body" | "param" | "header" | "cookie",
   ): T;
 
   // ── 国际化（插件注入，可选）────────────────────────────
@@ -194,7 +203,10 @@ export interface VextRequest {
    *   // 处理 file.buffer ...
    * })
    */
-  files?: ParsedFile[]
+  files?: ParsedFile[];
+
+  /** Session 对象（注册 session middleware 后可用） */
+  session?: VextSession;
 
   // ── 内部方法（框架/插件使用）────────────────────────────
 
@@ -207,7 +219,7 @@ export interface VextRequest {
    *
    * @internal 由各 adapter 注入实现
    */
-  _getRawBody(maxBytes?: number): Promise<string>
+  _getRawBody(maxBytes?: number): Promise<string>;
 
   /**
    * 获取原始请求体 Buffer（插件使用）
@@ -223,7 +235,7 @@ export interface VextRequest {
    *
    * @internal 由各 adapter 注入实现
    */
-  _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>
+  _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>;
 
   // ── 中间件 / 插件扩展字段 ────────────────────────────────
 

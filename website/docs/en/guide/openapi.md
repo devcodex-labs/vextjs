@@ -317,6 +317,8 @@ export default {
 };
 ```
 
+`apiKey` schemes may use `in: "cookie"`, and `validate.cookie` is rendered as OpenAPI cookie parameters. Browser Try it out cannot set the forbidden `Cookie` header directly; use same-origin browser cookies or an HTTP client such as cURL when you need manual cookie values.
+
 Code docs scan `src/services`, `src/utils`, the configured models directory, `src/frontend/components`, `src/plugins`, and `src/middlewares` without importing or executing user code. Services, utils, and components require standard JSDoc on exported symbols. Models are listed from recognizable model files even without JSDoc, and JSDoc above the default export enriches the generated entry. Supported model definitions also expose schema fields, enums, options, indexes, methods, hooks, and a usage snippet in the default UI. Plugins expose inferred plugin name, dependencies, lifecycle hooks, global middleware registration, app extensions, and setup usage. Middlewares expose inferred middleware/factory type and route usage snippets. When `vext start` runs built output, Vext prefers `<project>/src` if source files are present so top-level JSDoc and local source links are preserved; if the source tree is not deployed, it falls back to the runtime directory.
 
 ### Routing level document configuration

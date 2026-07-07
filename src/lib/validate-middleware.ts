@@ -15,17 +15,17 @@ import { VextValidationError } from "../types/errors.js";
  *
  * 核心流程：
  *   1. 启动时预编译（buildValidateMiddleware 调用时）：
- *      对 validate 配置的每个位置（query/body/param/header）调用
+ *      对 validate 配置的每个位置（query/body/param/header/cookie）调用
  *      schemaAdapter.compile() 将 DSL 定义编译为 JSON Schema。
  *      这只在路由注册时执行一次，而非每次请求都编译，性能最优。
  *
  *   2. 请求时校验（中间件被调用时）：
- *      按 param → query → header → body 顺序依次校验。
+ *      按 param → query → header → cookie → body 顺序依次校验。
  *      - 全部通过 → 将校验后的数据写入 req._validated_<location>，调用 next()
  *      - 校验失败 → 抛出 VextValidationError(422, errors)
  *
  * 校验顺序说明：
- *   param → query → header → body
+ *   param → query → header → cookie → body
  *   路径参数最简单（通常只校验格式），body 最复杂。
  *   按复杂度递增排列，越简单的越先检测，快速失败。
  *   第一个失败的位置立即抛出，后续位置不再校验。
@@ -52,7 +52,13 @@ import { VextValidationError } from "../types/errors.js";
  *
  * 按校验执行顺序排列：param → query → header → body
  */
-const VALIDATE_LOCATIONS = ["param", "query", "header", "body"] as const;
+const VALIDATE_LOCATIONS = [
+  "param",
+  "query",
+  "header",
+  "cookie",
+  "body",
+] as const;
 
 type ValidateLocation = (typeof VALIDATE_LOCATIONS)[number];
 
@@ -67,6 +73,7 @@ export interface ValidateConfig {
   body?: Record<string, unknown>;
   param?: Record<string, unknown>;
   header?: Record<string, unknown>;
+  cookie?: Record<string, unknown>;
 }
 
 /**
@@ -206,6 +213,7 @@ export function buildValidateMiddleware(
  *   'body'   → req.body    （请求体，由 body-parser 中间件填充）
  *   'param'  → req.params  （路径动态参数，如 /:id）
  *   'header' → req.headers （请求头）
+ *   'cookie' → req.cookies （Cookie 参数）
  *
  * 注意：location 使用单数 'param'（与 validate 配置的 key 一致），
  * 但底层数据源是复数 req.params。框架内部已正确映射。
@@ -224,5 +232,7 @@ function getRawData(req: VextRequest, loc: ValidateLocation): unknown {
       return req.params;
     case "header":
       return req.headers;
+    case "cookie":
+      return req.cookies;
   }
 }

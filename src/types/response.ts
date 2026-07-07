@@ -1,3 +1,6 @@
+import type { CookieSerializeOptions } from "./cookies.js";
+import type { VextHeaderValue, VextHeaders } from "./headers.js";
+
 /**
  * VextResponse — 框架统一响应对象接口
  *
@@ -39,7 +42,7 @@ export interface VextRenderOptions {
    * HTML response status. Defaults to the current response status or 200.
    */
   status?: number;
-  headers?: Record<string, string>;
+  headers?: VextHeaders;
   head?: VextRenderHeadOptions;
   nonce?: string;
   locale?: string;
@@ -192,7 +195,19 @@ export interface VextResponse {
    * @example
    * res.setHeader('X-Custom', 'value').json(data)
    */
-  setHeader(name: string, value: string): this;
+  setHeader(name: string, value: VextHeaderValue): this;
+
+  /**
+   * 追加 Set-Cookie 响应头（链式调用）。
+   *
+   * 多次调用会生成多个 Set-Cookie header，不会用逗号合并。
+   */
+  cookie(name: string, value: string, options?: CookieSerializeOptions): this;
+
+  /**
+   * 清除 cookie（追加一个过期的 Set-Cookie header）。
+   */
+  clearCookie(name: string, options?: CookieSerializeOptions): this;
 
   // ── 状态码（只读）─────────────────────────────────────
 
@@ -237,11 +252,7 @@ export interface VextResponse {
    * @internal
    * @see 15-route-cache.md §4.3（_onSend 钩子设计）
    */
-  _onSend?: (
-    data: unknown,
-    statusCode: number,
-    headers?: Record<string, string>,
-  ) => void;
+  _onSend?: (data: unknown, statusCode: number, headers?: VextHeaders) => void;
 
   /**
    * Hook Manager 引用（内部方法）
@@ -263,7 +274,7 @@ export interface VextResponse {
   _sendHtml?(
     html: string,
     status: number,
-    headers: Record<string, string>,
+    headers: VextHeaders,
     kind: "html" | "render",
     data?: unknown,
   ): void;
@@ -276,11 +287,7 @@ export interface VextResponse {
    *
    * @internal
    */
-  _renderCached?(
-    payload: unknown,
-    status: number,
-    headers: Record<string, string>,
-  ): void;
+  _renderCached?(payload: unknown, status: number, headers: VextHeaders): void;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 
