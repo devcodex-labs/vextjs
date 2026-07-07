@@ -125,6 +125,7 @@ export default {
 | `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置              |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                              |
 | `session`        | `VextSessionConfig`                                     | 见指南               | 显式 `session()` 中间件使用的默认配置 |
+| `csrf`           | `VextCsrfConfig`                                        | 见下方               | CSRF 中间件配置                       |
 | `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                         |
 | `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                          |
 | `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                          |
@@ -1124,6 +1125,26 @@ export default config;
 `VextSessionCookieOptions` 基于 `CookieSerializeOptions`，并额外支持 `secure: boolean | "auto"`。Cookie 选项包含 `domain`、`path`、`expires`、`maxAge`、`httpOnly`、`secure`、`sameSite`、`priority`、`partitioned` 与 `encode`。
 
 `VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。如果自定义 store 暴露 `close()`，请通过 `app.onClose()` 或插件 teardown 主动关闭。
+
+---
+
+### `VextCsrfConfig`
+
+`config.csrf` 用于配置内置 CSRF 中间件。`enabled: true` 会在 body parsing 与插件全局中间件之后自动全局注册 CSRF；也可以保持禁用，并手动注册 `csrf()` 保护指定路径。
+
+| 字段            | 类型                                | 默认值                                            | 说明                                                     |
+| --------------- | ----------------------------------- | ------------------------------------------------- | -------------------------------------------------------- |
+| `enabled`       | `boolean`                           | 应用配置默认 `false`；手动 `csrf()` 默认 `true`   | 是否启用全局自动注册                                     |
+| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                     | token 存储模式                                           |
+| `secret`        | `string`                            | `undefined`                                       | `signed-cookie` 模式必填                                 |
+| `methods`       | `string[]`                          | `["POST", "PUT", "PATCH", "DELETE"]`            | 需要 CSRF 校验的 unsafe methods                          |
+| `headerNames`   | `string[]`                          | `["x-csrf-token", "x-xsrf-token"]`               | 接收 token 的请求头名称                                  |
+| `bodyField`     | `string \| false`                   | `"_csrf"`                                        | 接收 token 的 body 字段；`false` 表示禁用 body token     |
+| `cookie`        | `CookieSerializeOptions`            | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | 签名 double-submit cookie 属性                       |
+| `fetchMetadata` | `boolean`                           | `true`                                           | 拒绝 `Sec-Fetch-Site: cross-site` unsafe 请求            |
+| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                      | 可选 Origin/Referer 同源校验                             |
+
+路由可通过 route options `{ csrf: false }` 跳过 CSRF。
 
 ---
 

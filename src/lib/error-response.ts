@@ -38,18 +38,19 @@ export function normalizeErrorForResponse(
     );
   }
 
-  if (errorOrStatus instanceof HttpError) {
+  const httpError = readHttpError(errorOrStatus);
+  if (httpError) {
     const body: Record<string, unknown> = {
-      code: errorOrStatus.code ?? errorOrStatus.status,
-      message: errorOrStatus.message,
+      code: httpError.code ?? httpError.status,
+      message: httpError.message,
       requestId: options.requestId,
     };
-    const details = sanitizeErrorDetails(errorOrStatus.details);
+    const details = sanitizeErrorDetails(httpError.details);
     if (details !== undefined) {
       body.details = details;
     }
     return applyErrorOverrides(
-      { error: errorOrStatus, status: errorOrStatus.status, body },
+      { error: httpError.error, status: httpError.status, body },
       options,
     );
   }
@@ -153,6 +154,52 @@ function applyErrorOverrides(
     error: normalized.error,
     status: normalizeHttpStatus(options.status, normalized.status),
     body,
+  };
+}
+
+function readHttpError(
+  value: unknown,
+):
+  | {
+      error: Error;
+      status: number;
+      code?: number | string;
+      details?: unknown;
+      message: string;
+    }
+  | undefined {
+  if (value instanceof HttpError) {
+    return {
+      error: value,
+      status: value.status,
+      code: value.code,
+      details: value.details,
+      message: value.message,
+    };
+  }
+
+  if (!(value instanceof Error) || value.name !== "HttpError") {
+    return undefined;
+  }
+
+  const maybe = value as Error & {
+    status?: unknown;
+    code?: unknown;
+    details?: unknown;
+  };
+  if (typeof maybe.status !== "number") {
+    return undefined;
+  }
+
+  return {
+    error: value,
+    status: maybe.status,
+    code:
+      typeof maybe.code === "number" || typeof maybe.code === "string"
+        ? maybe.code
+        : undefined,
+    details: maybe.details,
+    message: value.message,
   };
 }
 

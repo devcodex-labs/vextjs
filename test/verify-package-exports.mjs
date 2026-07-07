@@ -31,6 +31,7 @@ const esmEntrypoints = [
   dist("adapters", "native", "index.js"),
 ];
 const namedExports = {
+  vextjs: ["createCsrfMiddleware", "csrf"],
   "vextjs/frontend": [
     "VextApiError",
     "createVextApiClient",
@@ -52,6 +53,7 @@ const namedExports = {
   "vextjs/adapters/native": ["createNativeAdapter", "nativeAdapter"],
 };
 const esmNamedExports = new Map([
+  [dist("index.js"), namedExports.vextjs],
   [dist("frontend", "index.js"), namedExports["vextjs/frontend"]],
   [dist("frontend", "style", "index.js"), namedExports["vextjs/style"]],
   [dist("adapters", "hono", "index.js"), namedExports["vextjs/adapters/hono"]],

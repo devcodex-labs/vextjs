@@ -27,6 +27,7 @@ import { createCorsMiddleware } from "../lib/middlewares/cors.js";
 import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
+import { createCsrfMiddleware } from "../lib/csrf.js";
 import {
   createRequestHookMiddleware,
   emitNotFoundRequestHooks,
@@ -434,6 +435,10 @@ export async function createTestApp(
   // 插件全局中间件
   for (const mw of internals.getGlobalMiddlewares()) {
     app.adapter.registerMiddleware(mw);
+  }
+
+  if (finalConfig.csrf?.enabled === true) {
+    app.adapter.registerMiddleware(createCsrfMiddleware(finalConfig.csrf));
   }
 
   // 错误处理 + 404 兜底

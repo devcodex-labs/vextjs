@@ -28,6 +28,13 @@ export type {
   VextSessionData,
   VextSessionStore,
 } from "./session.js";
+export type {
+  VextCsrfConfig,
+  VextCsrfCookieConfig,
+  VextCsrfErrorCode,
+  VextCsrfMode,
+  VextCsrfOriginConfig,
+} from "./csrf.js";
 
 // ── 错误类型 ────────────────────────────────────────────────
 export { HttpError, VextValidationError } from "./errors.js";

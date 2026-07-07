@@ -203,6 +203,12 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
       return getCookies()[name];
     },
 
+    csrfToken(): string {
+      throw new Error(
+        "[vextjs] req.csrfToken() requires CSRF middleware. Enable config.csrf.enabled or register csrf().",
+      );
+    },
+
     // ── 内部方法（body-parser 中间件使用）───────────────────
     // 从 Hono Context 读取原始请求体，带缓存（流只能消费一次）。
     _getRawBody: getRawBody,

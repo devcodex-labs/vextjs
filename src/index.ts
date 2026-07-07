@@ -30,6 +30,11 @@ export type {
   VextSessionCookieOptions,
   VextSessionData,
   VextSessionStore,
+  VextCsrfConfig,
+  VextCsrfCookieConfig,
+  VextCsrfErrorCode,
+  VextCsrfMode,
+  VextCsrfOriginConfig,
 
   // 错误类型
   HttpErrorOptions,
@@ -152,6 +157,7 @@ export {
   session,
 } from "./lib/session.js";
 export type { VextMemorySessionStore } from "./lib/session.js";
+export { createCsrfMiddleware, csrf } from "./lib/csrf.js";
 
 // 中间件定义辅助函数（用户使用）
 export {

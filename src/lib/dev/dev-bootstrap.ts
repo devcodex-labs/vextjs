@@ -36,6 +36,7 @@ import { createBodyParserMiddleware } from "../middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
 import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
+import { createCsrfMiddleware } from "../csrf.js";
 import { createErrorHandler } from "../middlewares/error-handler.js";
 import {
   createRequestHookMiddleware,
@@ -793,6 +794,10 @@ export async function devBootstrap(
       app.adapter.registerMiddleware(mw);
     }
 
+    if (config.csrf?.enabled === true) {
+      app.adapter.registerMiddleware(createCsrfMiddleware(config.csrf));
+    }
+
     // 错误处理 + 404
     // 🆕 Dev 错误覆盖层：读取 config.dev.errorOverlay 配置，enabled !== false 时注入
     const devOverlayConfig = (config as Record<string, unknown>).dev as
@@ -992,6 +997,11 @@ export async function devBootstrap(
                 (cfg.accessLog ?? {}) as any,
                 app.logger,
               )) as any)
+          : undefined,
+      createCsrfMiddleware:
+        config.csrf?.enabled === true
+          ? (((cfg: Record<string, unknown>) =>
+              createCsrfMiddleware((cfg as any).csrf)) as any)
           : undefined,
     };
 

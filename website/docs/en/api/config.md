@@ -125,6 +125,7 @@ export default {
 | `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                        |
 | `response`       | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                   |
 | `session`        | `VextSessionConfig`                                     | See guide            | Defaults consumed by the explicit `session()` middleware |
+| `csrf`           | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                            |
 | `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                               |
 | `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                |
 | `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                 |
@@ -1111,6 +1112,26 @@ export default config;
 `VextSessionCookieOptions` follows `CookieSerializeOptions` and adds `secure: boolean | "auto"`. Cookie options include `domain`, `path`, `expires`, `maxAge`, `httpOnly`, `secure`, `sameSite`, `priority`, `partitioned`, and `encode`.
 
 `VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. If you pass a custom store with `close()`, close it from `app.onClose()` or plugin teardown.
+
+---
+
+### `VextCsrfConfig`
+
+`config.csrf` configures the built-in CSRF middleware. `enabled: true` auto-registers CSRF globally after body parsing and plugin global middleware. You can also keep it disabled and register `csrf()` manually for scoped paths.
+
+| Field           | Type                                | Default                                           | Description                                                           |
+| --------------- | ----------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
+| `enabled`       | `boolean`                           | `false` in app config; `true` for manual `csrf()` | Whether global auto-registration is enabled                           |
+| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                     | Token storage mode                                                     |
+| `secret`        | `string`                            | `undefined`                                       | Required for `signed-cookie` mode                                      |
+| `methods`       | `string[]`                          | `["POST", "PUT", "PATCH", "DELETE"]`            | Unsafe methods that require CSRF validation                            |
+| `headerNames`   | `string[]`                          | `["x-csrf-token", "x-xsrf-token"]`               | Header names accepted for submitted tokens                             |
+| `bodyField`     | `string \| false`                   | `"_csrf"`                                        | Request body field accepted for submitted tokens; `false` disables it |
+| `cookie`        | `CookieSerializeOptions`            | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | Signed double-submit cookie attributes                              |
+| `fetchMetadata` | `boolean`                           | `true`                                           | Reject `Sec-Fetch-Site: cross-site` unsafe requests                    |
+| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                      | Optional Origin/Referer same-origin enforcement                        |
+
+Routes can opt out with route options `{ csrf: false }`.
 
 ---
 

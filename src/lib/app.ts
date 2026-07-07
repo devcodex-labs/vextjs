@@ -541,6 +541,22 @@ export const DEFAULT_CONFIG: VextConfig = {
       secure: "auto",
     },
   },
+  csrf: {
+    enabled: false,
+    mode: "auto",
+    methods: ["POST", "PUT", "PATCH", "DELETE"],
+    headerNames: ["x-csrf-token", "x-xsrf-token"],
+    bodyField: "_csrf",
+    cookie: {
+      name: "vext.csrf",
+      httpOnly: false,
+      sameSite: "lax",
+      path: "/",
+      secure: "auto",
+    },
+    fetchMetadata: true,
+    origin: false,
+  },
   bodyParser: {
     enabled: true,
     maxBodySize: "1mb",

@@ -39,6 +39,7 @@ import { createBodyParserMiddleware } from "./middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
+import { createCsrfMiddleware } from "./csrf.js";
 import { createErrorHandler } from "./middlewares/error-handler.js";
 import {
   createRequestHookMiddleware,
@@ -569,6 +570,10 @@ export async function bootstrap(
     // 在内置中间件之后、路由级中间件之前执行
     for (const mw of internals.getGlobalMiddlewares()) {
       app.adapter.registerMiddleware(mw);
+    }
+
+    if (config.csrf?.enabled === true) {
+      app.adapter.registerMiddleware(createCsrfMiddleware(config.csrf));
     }
 
     // ── 注册错误处理 + 404 兜底 ──────────────────────────

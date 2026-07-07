@@ -677,6 +677,9 @@ function validateConfig(config: Record<string, unknown>): void {
   // ── session ────────────────────────────────────────────
   validateSessionConfig(config.session, "config.session");
 
+  // ── csrf ───────────────────────────────────────────────
+  validateCsrfConfig(config.csrf, "config.csrf");
+
   // ── fetch ──────────────────────────────────────────────
   validateFetchConfig(config.fetch, "config.fetch");
 
@@ -1730,6 +1733,70 @@ function validateSessionStoreConfig(value: unknown, path: string): void {
       throw new Error(`[vextjs] ${path}.${key} must be a function.`);
     }
   }
+}
+
+function validateCsrfConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const csrf = value as Record<string, unknown>;
+  validateOptionalBoolean(csrf.enabled, `${path}.enabled`);
+  if (
+    csrf.mode !== undefined &&
+    !["auto", "session", "signed-cookie"].includes(String(csrf.mode))
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.mode must be "auto", "session", or "signed-cookie".`,
+    );
+  }
+  validateOptionalString(csrf.secret, `${path}.secret`);
+  if (csrf.mode === "signed-cookie") {
+    validateRequiredString(csrf.secret, `${path}.secret`);
+  }
+  validateOptionalStringArray(csrf.methods, `${path}.methods`);
+  validateOptionalStringArray(csrf.headerNames, `${path}.headerNames`);
+  if (
+    csrf.bodyField !== undefined &&
+    csrf.bodyField !== false &&
+    typeof csrf.bodyField !== "string"
+  ) {
+    throw new Error(`[vextjs] ${path}.bodyField must be a string or false.`);
+  }
+  validateOptionalBoolean(csrf.fetchMetadata, `${path}.fetchMetadata`);
+  validateCsrfCookieConfig(csrf.cookie, `${path}.cookie`);
+  validateCsrfOriginConfig(csrf.origin, `${path}.origin`);
+}
+
+function validateCsrfCookieConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const cookie = value as Record<string, unknown>;
+  validateOptionalString(cookie.name, `${path}.name`);
+  validateSessionCookieConfig(value, path);
+}
+
+function validateCsrfOriginConfig(value: unknown, path: string): void {
+  if (value === undefined || value === false) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be false or an object.`);
+  }
+
+  const origin = value as Record<string, unknown>;
+  validateOptionalStringArray(
+    origin.trustedOrigins,
+    `${path}.trustedOrigins`,
+  );
 }
 
 function validateRetryDelay(value: unknown, path: string): void {

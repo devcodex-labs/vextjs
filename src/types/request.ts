@@ -60,6 +60,13 @@ export interface VextRequest {
   /** 读取单个 cookie 值 */
   cookie(name: string): string | undefined;
 
+  /**
+   * 获取当前请求的 CSRF token。
+   *
+   * 仅在 `config.csrf.enabled` 或手动 `csrf()` middleware 生效的请求中保证可用。
+   */
+  csrfToken(): string;
+
   /** HTTP 方法（大写，如 'GET'、'POST'） */
   method: string;
 

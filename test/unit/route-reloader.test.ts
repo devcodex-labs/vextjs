@@ -385,6 +385,7 @@ describe("reloadRoutes", () => {
       const frontendRenderMw = createMockMiddleware("frontendRender");
       const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
       const accessLogMw = createMockMiddleware("accessLog");
+      const csrfMw = createMockMiddleware("csrf");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
@@ -395,6 +396,7 @@ describe("reloadRoutes", () => {
         createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
         frontendDevEvents: frontendDevEventsMw,
         createAccessLogMiddleware: vi.fn(() => accessLogMw),
+        createCsrfMiddleware: vi.fn(() => csrfMw),
       };
 
       const freshAdapter = createMockAdapter();
@@ -421,6 +423,7 @@ describe("reloadRoutes", () => {
         [frontendDevEventsMw],
       );
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(accessLogMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(csrfMw);
     });
 
     it("应按正确顺序注册内置中间件与 dev events route", async () => {
@@ -434,6 +437,7 @@ describe("reloadRoutes", () => {
       const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
       const accessLogMw = createMockMiddleware("accessLog");
       const globalMw = createMockMiddleware("globalPlugin");
+      const csrfMw = createMockMiddleware("csrf");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
@@ -444,6 +448,7 @@ describe("reloadRoutes", () => {
         createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
         frontendDevEvents: frontendDevEventsMw,
         createAccessLogMiddleware: vi.fn(() => accessLogMw),
+        createCsrfMiddleware: vi.fn(() => csrfMw),
       };
 
       const freshAdapter = createMockAdapter({
@@ -457,6 +462,7 @@ describe("reloadRoutes", () => {
             registrationOrder.push("frontendRender");
           else if (mw === accessLogMw) registrationOrder.push("accessLog");
           else if (mw === globalMw) registrationOrder.push("global");
+          else if (mw === csrfMw) registrationOrder.push("csrf");
         }),
         registerRoute: vi.fn(
           (method: string, path: string, chain: RouteReloaderMiddleware[]) => {
@@ -489,6 +495,7 @@ describe("reloadRoutes", () => {
         "frontendDevEventsRoute",
         "accessLog",
         "global",
+        "csrf",
       ]);
     });
 

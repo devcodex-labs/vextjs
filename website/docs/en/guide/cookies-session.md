@@ -136,6 +136,30 @@ app.use(session({ store }));
 
 If a custom store exposes `close()`, Vext treats it as store-owned lifecycle. Register an `app.onClose()` hook or close it in your plugin teardown; the session middleware does not automatically close stores it did not create.
 
+## CSRF Protection
+
+CSRF protection is available through `csrf()` and `config.csrf`. In `mode: "auto"` Vext uses the existing `req.session` when the explicit `session()` middleware is present; if no session exists, it can use a signed double-submit cookie when `config.csrf.secret` is configured.
+
+```typescript
+import { csrf, definePlugin, session } from "vextjs";
+
+export default definePlugin({
+  name: "security",
+  setup(app) {
+    app.use(session());
+    app.use(csrf());
+  },
+});
+
+app.get("/csrf-token", {}, async (req, res) => {
+  res.json({ token: req.csrfToken() });
+});
+```
+
+Unsafe methods default to `POST`, `PUT`, `PATCH`, and `DELETE`. Submit the token through `x-csrf-token`, `x-xsrf-token`, or body field `_csrf`. Use route options `{ csrf: false }` for public endpoints that must accept unsafe methods without a CSRF token.
+
+Global auto-registration is available with `config.csrf.enabled: true`. It runs after body parsing and plugin global middleware so session data is available before CSRF validation. For scoped protection, register `csrf()` manually inside a plugin and call it only for selected paths.
+
 ## Cache Safety
 
 Route cache is conservative around cookies:

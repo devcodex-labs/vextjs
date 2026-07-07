@@ -1025,6 +1025,75 @@ describe("validateConfig", () => {
     });
   });
 
+  // ── csrf ──────────────────────────────────────────────
+
+  describe("csrf validation", () => {
+    it("accepts valid csrf config", () => {
+      expect(() =>
+        _validateConfig({
+          csrf: {
+            enabled: true,
+            mode: "signed-cookie",
+            secret: "csrf-secret",
+            methods: ["POST", "PUT", "PATCH", "DELETE"],
+            headerNames: ["x-csrf-token", "x-xsrf-token"],
+            bodyField: "_csrf",
+            fetchMetadata: true,
+            cookie: {
+              name: "XSRF-TOKEN",
+              httpOnly: false,
+              secure: "auto",
+              sameSite: "lax",
+              path: "/",
+            },
+            origin: {
+              trustedOrigins: ["https://example.com"],
+            },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects invalid csrf scalar fields", () => {
+      expect(() => _validateConfig({ csrf: "on" })).toThrow(
+        "config.csrf must be an object",
+      );
+      expect(() => _validateConfig({ csrf: { enabled: "true" } })).toThrow(
+        "config.csrf.enabled must be a boolean",
+      );
+      expect(() => _validateConfig({ csrf: { mode: "cookie" } })).toThrow(
+        'config.csrf.mode must be "auto", "session", or "signed-cookie"',
+      );
+      expect(() =>
+        _validateConfig({ csrf: { bodyField: 123 } }),
+      ).toThrow("config.csrf.bodyField must be a string or false");
+    });
+
+    it("requires secret for signed-cookie mode", () => {
+      expect(() =>
+        _validateConfig({ csrf: { mode: "signed-cookie" } }),
+      ).toThrow("config.csrf.secret must be a non-empty string");
+      expect(() =>
+        _validateConfig({ csrf: { mode: "signed-cookie", secret: "" } }),
+      ).toThrow("config.csrf.secret must be a non-empty string");
+    });
+
+    it("rejects invalid csrf arrays and nested options", () => {
+      expect(() =>
+        _validateConfig({ csrf: { methods: "POST" } }),
+      ).toThrow("config.csrf.methods must be an array of strings");
+      expect(() =>
+        _validateConfig({ csrf: { headerNames: ["x-csrf-token", 1] } }),
+      ).toThrow("config.csrf.headerNames[] items must be strings");
+      expect(() =>
+        _validateConfig({ csrf: { cookie: { secure: "always" } } }),
+      ).toThrow('config.csrf.cookie.secure must be a boolean or "auto"');
+      expect(() =>
+        _validateConfig({ csrf: { origin: { trustedOrigins: [1] } } }),
+      ).toThrow("config.csrf.origin.trustedOrigins[] items must be strings");
+    });
+  });
+
   // ── frontend ───────────────────────────────────────────
 
   describe("frontend validation", () => {

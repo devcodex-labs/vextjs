@@ -111,6 +111,29 @@ describe("createErrorHandler — logger 日志行为", () => {
       );
     });
 
+    it("HttpError-like errors from another package boundary should preserve code", () => {
+      const handler = createErrorHandler({ hideInternalErrors: true });
+      const req = createMockReq();
+      const res = createMockRes();
+      const error = new Error("CSRF token missing") as Error & {
+        status: number;
+        code: string;
+      };
+      error.name = "HttpError";
+      error.status = 403;
+      error.code = "CSRF_TOKEN_MISSING";
+
+      handler(error, req as any, res as any);
+
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "CSRF_TOKEN_MISSING",
+          message: "CSRF token missing",
+        }),
+        403,
+      );
+    });
+
     it("error:beforeResponse can patch body/status and afterResponse observes send", () => {
       const hooks = createHookManager(createMockLogger() as any);
       const after = vi.fn();

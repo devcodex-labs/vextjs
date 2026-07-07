@@ -252,6 +252,16 @@ export interface BuiltinMiddlewareCreators {
   createAccessLogMiddleware?: (
     config: Record<string, unknown>,
   ) => RouteReloaderMiddleware;
+
+  /**
+   * 创建 CSRF 中间件
+   *
+   * 依赖 body-parser 和用户/插件注册的 session 中间件，
+   * 因此在插件全局中间件之后注册。
+   */
+  createCsrfMiddleware?: (
+    config: Record<string, unknown>,
+  ) => RouteReloaderMiddleware;
 }
 
 /**
@@ -463,6 +473,14 @@ export async function reloadRoutes(
   //
   for (const mw of globalMiddlewares) {
     freshAdapter.registerMiddleware(mw);
+  }
+
+  if (builtinMiddlewares?.createCsrfMiddleware) {
+    freshAdapter.registerMiddleware(
+      builtinMiddlewares.createCsrfMiddleware(
+        app.config as Record<string, unknown>,
+      ),
+    );
   }
 
   // ── 4. 注册错误处理 + 404 兜底 ────────────────────────

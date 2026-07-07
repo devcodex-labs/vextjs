@@ -179,6 +179,11 @@ export function createVextRequest(
     cookie(name: string): string | undefined {
       return getCookies()[name];
     },
+    csrfToken(): string {
+      throw new Error(
+        "[vextjs] req.csrfToken() requires CSRF middleware. Enable config.csrf.enabled or register csrf().",
+      );
+    },
     method: ctx.method.toUpperCase(),
     url: ctx.originalUrl ?? ctx.url,
     path: urlPath,

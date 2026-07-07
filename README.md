@@ -428,6 +428,28 @@ app.post("/login", {}, async (req, res) => {
 
 The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments; use the `VextSessionStore` interface for production shared stores. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
 
+## CSRF Protection
+
+Vext includes a zero-dependency CSRF middleware that works with the explicit `session()` middleware by default and can fall back to signed double-submit cookies when `config.csrf.secret` is provided.
+
+```ts
+import { csrf, definePlugin, session } from "vextjs";
+
+export default definePlugin({
+  name: "security",
+  setup(app) {
+    app.use(session());
+    app.use(csrf());
+  },
+});
+
+app.get("/csrf-token", {}, async (req, res) => {
+  res.json({ token: req.csrfToken() });
+});
+```
+
+Set `config.csrf.enabled: true` to auto-register CSRF globally after body parsing and plugin global middleware, or register `csrf()` manually when you need a scoped path. Unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`) must submit a token through `x-csrf-token`, `x-xsrf-token`, or body field `_csrf`. Route options can opt out with `{ csrf: false }`.
+
 ## Error Handling
 
 VextJS catches exceptions thrown from routes, services, and middleware through a built-in global `error-handler`.

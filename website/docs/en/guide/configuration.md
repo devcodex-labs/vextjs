@@ -138,6 +138,9 @@ export default {
       secure: "auto",
     },
   },
+  csrf: {
+    enabled: false,
+  },
 };
 ```
 
@@ -164,6 +167,8 @@ export default {
 ```
 
 `config.session` only provides defaults for the explicit `session()` middleware. The built-in memory store is single-process; production shared stores should implement `VextSessionStore` and be passed through config or `session({ store })`.
+
+`config.csrf.enabled: true` auto-registers the built-in CSRF middleware after body parsing and plugin global middleware. Keep it disabled and register `csrf()` manually when you need scoped protection for selected paths.
 
 ### Middlewares Patch Strategy
 

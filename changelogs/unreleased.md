@@ -4,6 +4,7 @@
 
 - **Cookies and sessions** Added first-party cookie parsing, response cookie helpers, `validate.cookie`, OpenAPI cookie parameters, and explicit `session()` middleware with a memory store / `VextSessionStore` contract. Request adapters now expose `req.cookies` and `req.cookie(name)`, response adapters preserve multiple `Set-Cookie` headers through `res.cookie()` / `res.clearCookie()`, route cache bypasses requests with `Cookie` by default and never stores `Set-Cookie` responses, and `vext-test verify:core` now covers Cookies / Session #227-#230.
 - **Cookies and sessions review hardening** Made parsed cookie jars readonly, added fail-fast validation for `config.session`, ensured cookie/session route-cache safety writes `Cache-Control: no-store` to the real response, avoided duplicate session cookies after explicit `save()` plus rolling auto-commit, and clarified cookie/session behavior across README, OpenAPI, configuration, routing, context, and i18n docs.
+- **CSRF protection** Added `csrf()` / `createCsrfMiddleware()`, `config.csrf`, `req.csrfToken()`, route-level `csrf: false`, session-mode and signed-cookie token storage, Fetch Metadata / optional Origin checks, stable CSRF error codes, and `vext-test verify:core` coverage for CSRF #231-#234. Error responses now preserve HttpError-like business codes across package boundaries instead of falling back to the HTTP status number.
 
 ## 2026-06-30
 

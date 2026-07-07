@@ -15,6 +15,7 @@ import type {
 } from "response-cache-kit";
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 import type { VextSessionConfig } from "./session.js";
+import type { VextCsrfConfig } from "./csrf.js";
 
 declare global {
   interface String {
@@ -1078,6 +1079,9 @@ export interface VextConfig {
   /** Session middleware 默认配置（显式注册 session() 后生效） */
   session?: VextSessionConfig;
 
+  /** CSRF 防护配置（默认关闭；启用后自动保护 unsafe methods） */
+  csrf?: VextCsrfConfig;
+
   /** Body 解析配置 */
   bodyParser: VextBodyParserConfig;
 
@@ -1623,6 +1627,13 @@ export interface RouteOptions {
    * @see 15-route-cache.md §3.1
    */
   cache?: false | number | RouteCacheOptions;
+
+  /**
+   * 路由级 CSRF 跳过开关。
+   *
+   * 仅支持 `false`，用于 webhook、第三方回调或纯 bearer API 等明确不走 CSRF 的路由。
+   */
+  csrf?: false;
 
   /**
    * 路由级覆盖（覆盖 config/default.ts 中的全局配置）

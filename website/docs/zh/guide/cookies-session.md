@@ -136,6 +136,30 @@ app.use(session({ store }));
 
 如果自定义 store 暴露 `close()`，Vext 将其视为 store 自身生命周期。请在 `app.onClose()` 或插件 teardown 中主动关闭；session middleware 不会自动关闭用户传入的 store。
 
+## CSRF 防护
+
+CSRF 防护通过 `csrf()` 与 `config.csrf` 提供。`mode: "auto"` 下，若显式 `session()` 中间件已写入 `req.session`，Vext 会使用 session 同步 token；若没有 session，则可在配置 `config.csrf.secret` 后使用签名 double-submit cookie。
+
+```typescript
+import { csrf, definePlugin, session } from "vextjs";
+
+export default definePlugin({
+  name: "security",
+  setup(app) {
+    app.use(session());
+    app.use(csrf());
+  },
+});
+
+app.get("/csrf-token", {}, async (req, res) => {
+  res.json({ token: req.csrfToken() });
+});
+```
+
+默认保护 `POST`、`PUT`、`PATCH`、`DELETE`。客户端可通过 `x-csrf-token`、`x-xsrf-token` 或 body 字段 `_csrf` 提交 token。必须开放的 unsafe 路由可在 route options 中设置 `{ csrf: false }` 跳过。
+
+设置 `config.csrf.enabled: true` 可自动全局注册 CSRF。它会在 body parsing 与插件全局中间件之后执行，因此 session 数据会先于 CSRF 校验可用。若只想保护部分路径，请在插件里手动注册 `csrf()` 并按路径调用。
+
 ## 缓存安全
 
 路由缓存对 cookie 采取保守默认：
