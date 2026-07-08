@@ -41,6 +41,16 @@ export type {
   VextPermissionsPolicyConfig,
   VextSecurityHeadersConfig,
   VextSecurityHeadersPreset,
+  VextAuthAssert,
+  VextAuthCan,
+  VextAuthContext,
+  VextAuthContextSnapshot,
+  VextAuthErrorCode,
+  VextAuthMiddlewareOptions,
+  VextAuthRequirement,
+  VextAuthResult,
+  VextAuthSource,
+  VextPermissionRequirement,
 
   // 错误类型
   HttpErrorOptions,
@@ -168,6 +178,19 @@ export {
   createSecurityHeadersMiddleware,
   securityHeaders,
 } from "./lib/security-headers.js";
+export {
+  assertRouteAuth,
+  auth,
+  authRequirementToOpenApiSecurity,
+  buildRouteAuthGuardMiddleware,
+  createAnonymousAuthContext,
+  createAuthContext,
+  createAuthContextMiddleware,
+  createAuthMiddleware,
+  createInvalidAuthContext,
+  normalizeAuthRequirement,
+  setRequestAuth,
+} from "./lib/auth.js";
 
 // 中间件定义辅助函数（用户使用）
 export {

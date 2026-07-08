@@ -32,6 +32,9 @@ const esmEntrypoints = [
 ];
 const namedExports = {
   vextjs: [
+    "auth",
+    "createAuthContextMiddleware",
+    "createAuthMiddleware",
     "createCsrfMiddleware",
     "createSecurityHeadersMiddleware",
     "csrf",

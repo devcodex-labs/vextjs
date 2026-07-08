@@ -1,4 +1,5 @@
 import type { VextApp } from "./app.js";
+import type { VextAuthContext } from "./auth.js";
 import type { VextCookieJar } from "./cookies.js";
 import type { VextSession } from "./session.js";
 
@@ -66,6 +67,14 @@ export interface VextRequest {
    * 仅在 `config.csrf.enabled` 或手动 `csrf()` middleware 生效的请求中保证可用。
    */
   csrfToken(): string;
+
+  /**
+   * Request authentication context.
+   *
+   * Defaults to an anonymous context on every request. Register `auth()` to
+   * populate identity metadata, then protect routes with `RouteOptions.auth`.
+   */
+  auth: VextAuthContext;
 
   /** HTTP 方法（大写，如 'GET'、'POST'） */
   method: string;

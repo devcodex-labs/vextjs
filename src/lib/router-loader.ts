@@ -15,6 +15,7 @@ import {
   normalizeCacheOptions,
   buildRouteCacheMiddleware,
 } from "./middlewares/route-cache.js";
+import { buildRouteAuthGuardMiddleware } from "./auth.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
@@ -279,19 +280,28 @@ function registerRouteDefinition(
       routeMiddlewares.push(...resolved);
     }
 
-    // ── 2.5 auth+cache 安全警告 ──────────────────────────
-    if (route.options?.cache && route.options?.middlewares) {
-      const hasAuth = (
-        route.options.middlewares as Array<string | { name: string }>
-      ).some((m) =>
-        (typeof m === "string" ? m : m.name).toLowerCase().includes("auth"),
+    // ── 2.5 auth guard + auth/cache 安全警告 ─────────────
+    const authGuard = buildRouteAuthGuardMiddleware(route.options?.auth);
+    if (authGuard) {
+      routeMiddlewares.push(authGuard);
+    }
+
+    if (route.options?.cache) {
+      const hasRouteAuth =
+        route.options.auth !== undefined && route.options.auth !== false;
+      const hasLegacyAuth = Boolean(
+        route.options.middlewares?.some((m) =>
+          (typeof m === "string" ? m : m.name)
+            .toLowerCase()
+            .includes("auth"),
+        ),
       );
       const cacheOpts = normalizeCacheOptions(
         route.options.cache,
         app.config.cache?.defaultTtl,
       );
       if (
-        hasAuth &&
+        (hasRouteAuth || hasLegacyAuth) &&
         cacheOpts &&
         !cacheOpts.partitionKey &&
         !cacheOpts.allowAuthorizationCache

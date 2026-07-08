@@ -6,6 +6,7 @@ import type { PreparedMethod } from "route-core";
 import { createVextRequest, type ParsedUrl } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
+import { createAuthContextSnapshot } from "../../lib/auth.js";
 import type {
   VextAdapter,
   VextAdapterListenOptions,
@@ -345,9 +346,16 @@ export function createNativeAdapter(
     // 直接执行中间件链，预估 +3-8% RPS。
     //
     if (alsEnabled) {
-      requestContext.run({ requestId: "", locale: undefined }, () => {
-        void runMatchedChain(chain, req, res, nodeRes);
-      });
+      requestContext.run(
+        {
+          requestId: "",
+          locale: undefined,
+          auth: createAuthContextSnapshot(req.auth),
+        },
+        () => {
+          void runMatchedChain(chain, req, res, nodeRes);
+        },
+      );
     } else {
       void runMatchedChain(chain, req, res, nodeRes);
     }
@@ -459,7 +467,11 @@ export function createNativeAdapter(
 
     if (alsEnabled) {
       requestContext.run(
-        { requestId: req.requestId, locale: undefined },
+        {
+          requestId: req.requestId,
+          locale: undefined,
+          auth: createAuthContextSnapshot(req.auth),
+        },
         runNotFound,
       );
     } else {

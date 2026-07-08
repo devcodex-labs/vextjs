@@ -387,9 +387,11 @@ describe("reloadRoutes", () => {
       const accessLogMw = createMockMiddleware("accessLog");
       const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
+      const authContextMw = createMockMiddleware("authContext");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
+        authContextMiddleware: authContextMw,
         createSecurityHeadersMiddleware: vi.fn(() => securityHeadersMw),
         createCorsMiddleware: vi.fn(() => corsMw),
         createBodyParserMiddleware: vi.fn(() => bodyMw),
@@ -412,6 +414,9 @@ describe("reloadRoutes", () => {
 
       // 所有内置中间件都应被注册
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(reqIdMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(
+        authContextMw,
+      );
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(
         securityHeadersMw,
       );
@@ -444,9 +449,11 @@ describe("reloadRoutes", () => {
       const globalMw = createMockMiddleware("globalPlugin");
       const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
+      const authContextMw = createMockMiddleware("authContext");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
+        authContextMiddleware: authContextMw,
         createSecurityHeadersMiddleware: vi.fn(() => securityHeadersMw),
         createCorsMiddleware: vi.fn(() => corsMw),
         createBodyParserMiddleware: vi.fn(() => bodyMw),
@@ -461,6 +468,7 @@ describe("reloadRoutes", () => {
       const freshAdapter = createMockAdapter({
         registerMiddleware: vi.fn((mw: RouteReloaderMiddleware) => {
           if (mw === reqIdMw) registrationOrder.push("requestId");
+          else if (mw === authContextMw) registrationOrder.push("authContext");
           else if (mw === securityHeadersMw)
             registrationOrder.push("securityHeaders");
           else if (mw === corsMw) registrationOrder.push("cors");
@@ -496,6 +504,7 @@ describe("reloadRoutes", () => {
 
       expect(registrationOrder).toEqual([
         "requestId",
+        "authContext",
         "securityHeaders",
         "cors",
         "bodyParser",

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { VextAuthContextSnapshot } from "../types/auth.js";
 
 /**
  * 请求上下文存储（Request-scoped Store）
@@ -86,6 +87,15 @@ export interface RequestContextStore {
    * // app.fetch 出站请求自动携带 x-trace-id: abc123
    */
   propagatedHeaders?: Record<string, string>;
+
+  /**
+   * Safe auth metadata for the current request.
+   *
+   * This deliberately excludes raw credentials and claims. The full auth
+   * context stays on req.auth so request-scoped infrastructure does not
+   * accidentally propagate sensitive provider data.
+   */
+  auth?: VextAuthContextSnapshot;
 
   // ── F-03：OpenTelemetry trace context（可观测性扩展点）──────────
 

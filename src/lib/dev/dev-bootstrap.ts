@@ -37,6 +37,7 @@ import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
 import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createCsrfMiddleware } from "../csrf.js";
+import { createAuthContextMiddleware } from "../auth.js";
 import {
   createSecurityHeadersMiddleware,
   withSecurityHeadersErrorHandler,
@@ -717,7 +718,7 @@ export async function devBootstrap(
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
     //
     // 与生产 bootstrap 保持一致的中间件注册顺序和条件守卫：
-    //   requestId → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
+    //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
     //   → frontend render → frontend dev events route → access-log
     //   → 插件全局中间件 → 错误处理 → 404
     //
@@ -741,6 +742,8 @@ export async function devBootstrap(
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
+
+    app.adapter.registerMiddleware(createAuthContextMiddleware());
 
     app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 
@@ -978,6 +981,7 @@ export async function devBootstrap(
                 cfg.locale as any, // D3 修复：补传 localeConfig
               )) as any)
           : undefined,
+      authContextMiddleware: createAuthContextMiddleware() as any,
       createCorsMiddleware:
         config.cors?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>

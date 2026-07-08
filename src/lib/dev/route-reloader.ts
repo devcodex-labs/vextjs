@@ -201,6 +201,11 @@ export interface BuiltinMiddlewareCreators {
   ) => RouteReloaderMiddleware;
 
   /**
+   * Initializes req.auth and syncs safe auth metadata into requestContext.
+   */
+  authContextMiddleware?: RouteReloaderMiddleware;
+
+  /**
    * 创建 cors 中间件
    */
   createCorsMiddleware?: (
@@ -409,7 +414,7 @@ export async function reloadRoutes(
   // ── 2. 注册内置中间件（如果提供）─────────────────────
   //
   // 与 dev-bootstrap.ts 中的中间件注册顺序和条件守卫保持一致：
-  //   requestId → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
+  //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
   //   → frontend render → frontend dev events route → access-log
   //
   // 注意：builtinMwCreators 中对应 creator 为 undefined 时表示该中间件被禁用，
@@ -422,6 +427,9 @@ export async function reloadRoutes(
           app.config as Record<string, unknown>,
         ),
       );
+    }
+    if (builtinMiddlewares.authContextMiddleware) {
+      freshAdapter.registerMiddleware(builtinMiddlewares.authContextMiddleware);
     }
     if (app.hooks) {
       freshAdapter.registerMiddleware(

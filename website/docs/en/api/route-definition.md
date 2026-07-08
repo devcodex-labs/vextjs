@@ -172,6 +172,7 @@ interface RouteOptions {
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
+  auth?: false | true | VextAuthRequirement;
   csrf?: false;
   securityHeaders?: false;
   multipart?: {
@@ -204,6 +205,7 @@ app.put(
       },
     },
     middlewares: ["auth"],
+    auth: true,
     cache: false,
     docs: {
       summary: "Update user",
@@ -442,6 +444,69 @@ registered in config.middlewares whitelist.
 
 ---
 
+## auth
+
+`RouteOptions.auth` is the route guard contract. It is separate from identity parsing:
+
+- `auth()` middleware reads the request credential and fills `req.auth`.
+- `auth: true` requires an authenticated request.
+- Object form can require roles, scopes, permissions, or a custom `check`.
+- `auth: false` marks the route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
+
+```typescript
+// src/middlewares/auth.ts
+import { auth, defineMiddleware } from "vextjs";
+
+export default defineMiddleware(auth({
+  provider: "app",
+  async verify(token) {
+    if (token !== "demo-token") return false;
+    return {
+      subject: "user:1",
+      userId: "1",
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      can(action, resource) {
+        return action === "post:update" && resource === "post-1";
+      },
+    };
+  },
+}));
+```
+
+```typescript
+app.post(
+  "/posts/:id",
+  {
+    middlewares: ["auth"],
+    auth: {
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      permissions: [
+        { action: "post:update", resource: (req) => req.params.id },
+      ],
+      mode: "all",
+      security: "bearerAuth",
+    },
+  },
+  handler,
+);
+```
+
+Guard failures use stable error codes:
+
+| Code | HTTP status | Meaning |
+| ---- | ----------- | ------- |
+| `AUTH_REQUIRED` | `401` | No authenticated identity is present |
+| `AUTH_INVALID` | `401` | A credential was present but invalid |
+| `AUTH_FORBIDDEN` | `403` | Authenticated identity failed role, scope, permission, or custom checks |
+| `AUTH_CONFIG_ERROR` | `500` | The auth middleware or permission provider is misconfigured |
+| `AUTH_PROVIDER_ERROR` | `500` | The auth provider or custom check threw unexpectedly |
+
+`requestContext.getStore()?.auth` stores only a safe snapshot of identity metadata. It intentionally excludes raw credentials and `claims`; use `req.auth` inside the route when provider claims are needed.
+
+---
+
 ## cache
 
 Route-level response cache configuration. Response caching occurs on the server side and caches interface response content; it is not custom middleware, nor is it the browser `Cache-Control` response header.
@@ -510,7 +575,7 @@ interface RouteDocsConfig {
 | `operationId` | `string`   | Automatic inference        | Operation ID (globally unique)                                                    |
 | `hidden`      | `boolean`  | `false`                    | Whether to hide from the document                                                 |
 | `deprecated`  | `boolean`  | `false`                    | Whether to mark it as deprecated                                                  |
-| `security`    | `array`    | Inference from middlewares | Security scheme overrides                                                         |
+| `security`    | `array`    | Inference from `auth` / middlewares | Security scheme overrides                                                         |
 | `extensions`  | `object`   | —                          | Custom `x-*` extension fields                                                     |
 | `responses`   | `object`   | —                          | response definition                                                               |
 
@@ -600,7 +665,15 @@ app.get(
 
 ### Security solution coverage
 
-By default, security schemes are automatically inferred from `middlewares` (map via `config.openapi.guardSecurityMap`). Can be manually overridden:
+By default, security schemes are inferred in this order:
+
+1. `docs.security` if explicitly set, including `[]`.
+2. `RouteOptions.auth` when it is `true` or an object.
+3. Legacy `middlewares` inference through `config.openapi.guardSecurityMap`.
+
+`auth:false` disables the legacy fallback for that route.
+
+Can be manually overridden:
 
 ```typescript
 //Explicit declaration requires bearerAuth

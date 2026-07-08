@@ -2,6 +2,7 @@ import type { Request as ExpressRequest } from "express";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
 import type { VextCookieJar } from "../../types/cookies.js";
+import { createAnonymousAuthContext } from "../../lib/auth.js";
 import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 
@@ -181,6 +182,7 @@ export function createVextRequest(
         "[vextjs] req.csrfToken() requires CSRF middleware. Enable config.csrf.enabled or register csrf().",
       );
     },
+    auth: createAnonymousAuthContext(),
     method: expressReq.method.toUpperCase(),
     url: expressReq.originalUrl ?? expressReq.url,
     path: urlPath,

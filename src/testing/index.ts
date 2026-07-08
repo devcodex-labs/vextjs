@@ -28,6 +28,7 @@ import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
 import { createCsrfMiddleware } from "../lib/csrf.js";
+import { createAuthContextMiddleware } from "../lib/auth.js";
 import {
   createSecurityHeadersMiddleware,
   withSecurityHeadersErrorHandler,
@@ -393,7 +394,7 @@ export async function createTestApp(
   // ── 7. 注册内置中间件（与 bootstrap 步骤⑥ 一致）────
   //
   // 测试环境也需要注册内置中间件以保证行为与生产一致：
-  //   requestId → requestHook → securityHeaders → cors → body-parser → response-wrapper
+  //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → response-wrapper
   //   + 错误处理 + 404 兜底
   //
   // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
@@ -414,6 +415,8 @@ export async function createTestApp(
     );
     app.adapter.registerMiddleware(requestIdMiddleware);
   }
+
+  app.adapter.registerMiddleware(createAuthContextMiddleware());
 
   app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 

@@ -1484,6 +1484,61 @@ describe("OpenAPIGenerator", () => {
       expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
     });
 
+    it("RouteOptions.auth = true → security: [{ bearerAuth: [] }]", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          auth: true,
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
+    });
+
+    it("RouteOptions.auth.security supports string, string[] and object array", () => {
+      const doc = generate([
+        createRoute("GET", "/bearer", {
+          auth: { security: "bearerAuth" },
+        }),
+        createRoute("GET", "/either", {
+          auth: { security: ["bearerAuth", "apiKeyAuth"] },
+        }),
+        createRoute("GET", "/oauth", {
+          auth: { security: [{ oauth2: ["posts:write"] }] },
+        }),
+      ]);
+
+      expect(doc.paths["/bearer"].get!.security).toEqual([{ bearerAuth: [] }]);
+      expect(doc.paths["/either"].get!.security).toEqual([
+        { bearerAuth: [] },
+        { apiKeyAuth: [] },
+      ]);
+      expect(doc.paths["/oauth"].get!.security).toEqual([
+        { oauth2: ["posts:write"] },
+      ]);
+    });
+
+    it("RouteOptions.auth 优先于 legacy middlewares 推断", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          auth: { security: "sessionAuth" },
+          middlewares: ["auth"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toEqual([{ sessionAuth: [] }]);
+    });
+
+    it("RouteOptions.auth = false 阻止 legacy middlewares 推断", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          auth: false,
+          middlewares: ["auth"],
+        }),
+      ]);
+
+      expect(doc.paths["/users"].get!.security).toBeUndefined();
+    });
+
     it("middlewares 中含 'api-key' → security: [{ apiKeyAuth: [] }]", () => {
       const doc = generate([
         createRoute("GET", "/users", {

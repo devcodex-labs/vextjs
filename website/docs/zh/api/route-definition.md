@@ -172,6 +172,7 @@ interface RouteOptions {
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
+  auth?: false | true | VextAuthRequirement;
   csrf?: false;
   securityHeaders?: false;
   multipart?: {
@@ -204,6 +205,7 @@ app.put(
       },
     },
     middlewares: ["auth"],
+    auth: true,
     cache: false,
     docs: {
       summary: "更新用户",
@@ -440,6 +442,69 @@ registered in config.middlewares whitelist.
 
 ---
 
+## auth
+
+`RouteOptions.auth` 是路由保护契约，和身份解析分离：
+
+- `auth()` 中间件读取请求凭据并填充 `req.auth`。
+- `auth: true` 要求请求已经认证。
+- 对象形式可以要求 roles、scopes、permissions 或自定义 `check`。
+- `auth: false` 表示路由显式公开，并禁用从 `middlewares` 回退推断 OpenAPI security 的旧逻辑。
+
+```typescript
+// src/middlewares/auth.ts
+import { auth, defineMiddleware } from "vextjs";
+
+export default defineMiddleware(auth({
+  provider: "app",
+  async verify(token) {
+    if (token !== "demo-token") return false;
+    return {
+      subject: "user:1",
+      userId: "1",
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      can(action, resource) {
+        return action === "post:update" && resource === "post-1";
+      },
+    };
+  },
+}));
+```
+
+```typescript
+app.post(
+  "/posts/:id",
+  {
+    middlewares: ["auth"],
+    auth: {
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      permissions: [
+        { action: "post:update", resource: (req) => req.params.id },
+      ],
+      mode: "all",
+      security: "bearerAuth",
+    },
+  },
+  handler,
+);
+```
+
+Guard 失败会使用稳定错误码：
+
+| 错误码 | HTTP 状态 | 含义 |
+| ------ | --------- | ---- |
+| `AUTH_REQUIRED` | `401` | 当前请求没有已认证身份 |
+| `AUTH_INVALID` | `401` | 请求携带了凭据，但凭据无效 |
+| `AUTH_FORBIDDEN` | `403` | 已认证身份未通过 role、scope、permission 或自定义检查 |
+| `AUTH_CONFIG_ERROR` | `500` | auth 中间件或 permission provider 配置错误 |
+| `AUTH_PROVIDER_ERROR` | `500` | auth provider 或自定义检查异常抛错 |
+
+`requestContext.getStore()?.auth` 只保存安全身份快照，不包含原始凭据和 `claims`。需要读取 provider claims 时，请在路由内使用完整的 `req.auth`。
+
+---
+
 ## cache
 
 路由级响应缓存配置。响应缓存发生在服务端，会缓存接口响应内容；它不是自定义中间件，也不是浏览器 `Cache-Control` 响应头。
@@ -508,7 +573,7 @@ interface RouteDocsConfig {
 | `operationId` | `string`   | 自动推断            | 操作标识（全局唯一）                                 |
 | `hidden`      | `boolean`  | `false`             | 是否从文档中隐藏                                     |
 | `deprecated`  | `boolean`  | `false`             | 是否标记为已废弃                                     |
-| `security`    | `array`    | 从 middlewares 推断 | 安全方案覆盖                                         |
+| `security`    | `array`    | 从 `auth` / middlewares 推断 | 安全方案覆盖                                         |
 | `extensions`  | `object`   | —                   | 自定义 `x-*` 扩展字段                                |
 | `responses`   | `object`   | —                   | 响应定义                                             |
 
@@ -597,7 +662,15 @@ app.get(
 
 ### 安全方案覆盖
 
-默认情况下，安全方案从 `middlewares` 自动推断（通过 `config.openapi.guardSecurityMap` 映射）。可手动覆盖：
+默认情况下，安全方案按以下顺序推断：
+
+1. 显式设置的 `docs.security`，包括 `[]`。
+2. `RouteOptions.auth` 为 `true` 或对象时。
+3. 旧的 `middlewares` 推断，通过 `config.openapi.guardSecurityMap` 映射。
+
+`auth:false` 会禁用该路由的旧 `middlewares` 回退推断。
+
+也可以手动覆盖：
 
 ```typescript
 // 显式声明需要 bearerAuth

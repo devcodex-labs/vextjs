@@ -474,6 +474,63 @@ export default config;
 
 `basic` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: SAMEORIGIN`. `strict` also opts into HTTPS-only HSTS, a minimal `Permissions-Policy`, COOP, and CORP; CSP and COEP remain explicit because they depend on each app's assets and cross-origin resource model. Routes can opt out with `{ securityHeaders: false }`, and handlers can still override individual headers with `res.setHeader()`.
 
+## Auth Guard and Context
+
+Every request has an anonymous `req.auth` context by default. Register the first-party `auth()` middleware to populate identity metadata, then protect individual routes with `RouteOptions.auth`:
+
+```ts
+// src/middlewares/auth.ts
+import { auth, defineMiddleware } from "vextjs";
+
+export default defineMiddleware(auth({
+  provider: "app",
+  async verify(token) {
+    if (token !== "demo-token") return false;
+
+    return {
+      subject: "user:1",
+      userId: "1",
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      claims: { tier: "internal" },
+      can(action, resource) {
+        return action === "post:update" && resource === "post-1";
+      },
+    };
+  },
+}));
+```
+
+```ts
+app.get(
+  "/me",
+  { middlewares: ["auth"], auth: true },
+  async (req, res) => {
+    res.json({ userId: req.auth.userId, roles: req.auth.roles });
+  },
+);
+
+app.post(
+  "/posts/:id",
+  {
+    middlewares: ["auth"],
+    auth: {
+      roles: ["admin"],
+      scopes: ["posts:write"],
+      permissions: [
+        { action: "post:update", resource: (req) => req.params.id },
+      ],
+      mode: "all",
+    },
+  },
+  handler,
+);
+```
+
+`auth()` identifies a request but does not protect routes by itself. `auth: true` requires an authenticated request; object form can require roles, scopes, permissions, or a custom `check`. `auth: false` marks a route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
+
+Stable guard error codes are `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_FORBIDDEN` (403), `AUTH_CONFIG_ERROR` (500), and `AUTH_PROVIDER_ERROR` (500). `requestContext.getStore()?.auth` contains only safe metadata such as `userId`, roles, scopes, scheme, and provider; raw credentials and claims stay out of the request context snapshot.
+
 ## Error Handling
 
 VextJS catches exceptions thrown from routes, services, and middleware through a built-in global `error-handler`.

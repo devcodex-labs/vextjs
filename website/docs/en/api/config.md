@@ -178,6 +178,7 @@ Route-level middleware whitelist declaration. Only middleware declared here can 
 export default {
   middlewares: [
     { name: "auth" },
+    { name: "framework-auth" },
     { name: "admin", options: { role: "admin" } },
     { name: "client-cache", options: { maxAge: 60 } },
   ],
@@ -187,6 +188,19 @@ export default {
 :::tip
 Global middleware (such as CORS, body-parser) is automatically registered by the framework and does not need to be declared here. Only **routing-level optional middleware** is declared here.
 :::
+
+The first-party `auth()` helper is still registered as a route-level middleware file, then routes opt into protection with `RouteOptions.auth`:
+
+```typescript
+// src/middlewares/framework-auth.ts
+import { auth, defineMiddleware } from "vextjs";
+
+export default defineMiddleware(auth({
+  async verify(token) {
+    return token === "demo-token" ? { userId: "1" } : false;
+  },
+}));
+```
 
 ---
 

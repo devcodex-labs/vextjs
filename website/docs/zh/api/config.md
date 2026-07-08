@@ -178,6 +178,7 @@ export default {
 export default {
   middlewares: [
     { name: "auth" },
+    { name: "framework-auth" },
     { name: "admin", options: { role: "admin" } },
     { name: "client-cache", options: { maxAge: 60 } },
   ],
@@ -187,6 +188,19 @@ export default {
 :::tip
 全局中间件（如 CORS、body-parser）由框架自动注册，无需在此声明。此处只声明**路由级可选中间件**。
 :::
+
+Vext 内置 `auth()` helper 仍然以路由级中间件文件注册，路由再通过 `RouteOptions.auth` 选择是否保护：
+
+```typescript
+// src/middlewares/framework-auth.ts
+import { auth, defineMiddleware } from "vextjs";
+
+export default defineMiddleware(auth({
+  async verify(token) {
+    return token === "demo-token" ? { userId: "1" } : false;
+  },
+}));
+```
 
 ---
 

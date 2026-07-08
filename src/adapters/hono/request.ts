@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { VextRequest } from "../../types/request.js";
 import type { VextApp } from "../../types/app.js";
 import type { VextCookieJar } from "../../types/cookies.js";
+import { createAnonymousAuthContext } from "../../lib/auth.js";
 import { parseCookies } from "../../lib/cookies.js";
 import {
   assertBodySize,
@@ -175,6 +176,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
 
     // ── 立即可用字段 ────────────────────────────────────
     body: undefined, // body-parser 中间件负责填充
+    auth: createAnonymousAuthContext(),
     method: c.req.method.toUpperCase(),
     url: c.req.url,
     path: c.req.path,

@@ -17,6 +17,7 @@ import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 import type { VextSessionConfig } from "./session.js";
 import type { VextCsrfConfig } from "./csrf.js";
 import type { VextSecurityHeadersConfig } from "./security-headers.js";
+import type { VextAuthRequirement } from "./auth.js";
 
 declare global {
   interface String {
@@ -1631,6 +1632,18 @@ export interface RouteOptions {
    * @see 15-route-cache.md §3.1
    */
   cache?: false | number | RouteCacheOptions;
+
+  /**
+   * Route-level auth guard.
+   *
+   * - `true`: require an authenticated request.
+   * - object: require roles, scopes, permissions or a custom check.
+   * - `false`: explicitly public, and OpenAPI auth inference is disabled.
+   *
+   * Identity is filled by `auth()` middleware or user middleware that assigns
+   * `req.auth`; this option only protects the route.
+   */
+  auth?: false | true | VextAuthRequirement;
 
   /**
    * 路由级 CSRF 跳过开关。

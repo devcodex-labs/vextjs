@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createVextFetch } from "../../../src/lib/fetch.js";
 import { createHookManager } from "../../../src/lib/hooks.js";
 import { requestContext } from "../../../src/lib/request-context.js";
+import { createAnonymousAuthContext } from "../../../src/lib/auth.js";
 import type { VextLogger } from "../../../src/types/app.js";
 import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
@@ -82,6 +83,7 @@ function createProxyRequest(
     body: undefined,
     params: {},
     headers: {},
+    auth: createAnonymousAuthContext(),
     method: "GET",
     url: "/proxy",
     path: "/proxy",

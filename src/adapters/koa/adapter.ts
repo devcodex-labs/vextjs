@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
+import { createAuthContextSnapshot } from "../../lib/auth.js";
 import type {
   VextAdapter,
   VextAdapterListenOptions,
@@ -343,7 +344,11 @@ export function createKoaAdapter(
 
       if (alsEnabled) {
         await requestContext.run(
-          { requestId: "", locale: undefined },
+          {
+            requestId: "",
+            locale: undefined,
+            auth: createAuthContextSnapshot(req.auth),
+          },
           runChain,
         );
       } else {
@@ -397,7 +402,11 @@ export function createKoaAdapter(
 
       if (alsEnabled) {
         await requestContext.run(
-          { requestId: req.requestId, locale: undefined },
+          {
+            requestId: req.requestId,
+            locale: undefined,
+            auth: createAuthContextSnapshot(req.auth),
+          },
           runNotFound,
         );
       } else {

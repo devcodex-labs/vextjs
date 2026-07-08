@@ -17,6 +17,7 @@ import type {
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import { requestContext } from "../../lib/request-context.js";
+import { createAuthContextSnapshot } from "../../lib/auth.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
 import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 import {
@@ -217,7 +218,11 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
         if (alsEnabled) {
           return requestContext.run(
-            { requestId: "", locale: undefined },
+            {
+              requestId: "",
+              locale: undefined,
+              auth: createAuthContextSnapshot(req.auth),
+            },
             runChain,
           );
         } else {
@@ -254,7 +259,11 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
         if (alsEnabled) {
           await requestContext.run(
-            { requestId: req.requestId, locale: undefined },
+            {
+              requestId: req.requestId,
+              locale: undefined,
+              auth: createAuthContextSnapshot(req.auth),
+            },
             runNotFound,
           );
         } else {

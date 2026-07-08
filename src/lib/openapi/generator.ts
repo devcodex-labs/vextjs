@@ -32,6 +32,7 @@ import type {
 } from "./types.js";
 import { SchemaConverter } from "./schema-converter.js";
 import { inferOperationId } from "./operation-id.js";
+import { authRequirementToOpenApiSecurity } from "../auth.js";
 
 const DOCS_TAGS_WARNING_SAMPLE_LIMIT = 3;
 
@@ -544,11 +545,14 @@ export class OpenAPIGenerator {
       };
     }
 
-    // ── 安全方案（从 middlewares 推断或使用 docs.security）────
+    // ── 安全方案（docs.security → RouteOptions.auth → legacy middlewares）────
     if (docs.security !== undefined) {
       // 显式指定 security（包括空数组 = 无需认证）
       operation.security = docs.security as Array<Record<string, string[]>>;
+    } else if (options.auth !== undefined && options.auth !== false) {
+      operation.security = authRequirementToOpenApiSecurity(options.auth);
     } else if (
+      options.auth !== false &&
       options.middlewares &&
       (options.middlewares as unknown[]).length > 0
     ) {

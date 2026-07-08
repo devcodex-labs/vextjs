@@ -30,6 +30,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadRoutes } from "../../src/lib/router-loader.js";
 import { createHookManager } from "../../src/lib/hooks.js";
+import { createAnonymousAuthContext } from "../../src/lib/auth.js";
+import { HttpError } from "../../src/types/errors.js";
 import type { VextApp, VextConfig } from "../../src/types/app.js";
 import type { VextAdapter, VextServerHandle } from "../../src/types/adapter.js";
 import type {
@@ -50,6 +52,8 @@ function createMockAdapter(): VextAdapter & {
     method: string;
     path: string;
     chainLength: number;
+    chain: VextMiddleware[];
+    routeOptions: unknown;
   }>;
   registeredMiddlewares: VextMiddleware[];
 } {
@@ -57,6 +61,8 @@ function createMockAdapter(): VextAdapter & {
     method: string;
     path: string;
     chainLength: number;
+    chain: VextMiddleware[];
+    routeOptions: unknown;
   }> = [];
   const registeredMiddlewares: VextMiddleware[] = [];
 
@@ -65,11 +71,18 @@ function createMockAdapter(): VextAdapter & {
     registeredRoutes,
     registeredMiddlewares,
 
-    registerRoute(method: string, path: string, chain: VextMiddleware[]): void {
+    registerRoute(
+      method: string,
+      path: string,
+      chain: VextMiddleware[],
+      routeOptions?: unknown,
+    ): void {
       registeredRoutes.push({
         method: method.toUpperCase(),
         path,
         chainLength: chain.length,
+        chain,
+        routeOptions,
       });
     },
 
@@ -212,6 +225,7 @@ function makeRouteFileContent(
     method: string;
     path: string;
     middlewares?: string[];
+    options?: string;
   }>,
 ): string {
   // 生成 collector 方法
@@ -242,6 +256,8 @@ function makeRouteFileContent(
     .map((r) => {
       const opts = r.middlewares
         ? `{ middlewares: [${r.middlewares.map((m) => `'${m}'`).join(", ")}] }`
+        : r.options
+          ? r.options
         : "{}";
       return `    collector.${r.method.toLowerCase()}('${r.path}', ${opts}, async (req, res) => { res.json({ ok: true }); });`;
     })
@@ -732,6 +748,56 @@ describe("router-loader", () => {
       for (const route of routes) {
         expect(route.chainLength).toBeGreaterThanOrEqual(1);
       }
+    });
+  });
+
+  describe("route auth guard", () => {
+    it("inserts auth guard before route cache and warns about unpartitioned auth cache", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        "secure.mjs",
+        makeRouteFileContent([
+          {
+            method: "get",
+            path: "/",
+            options: "{ auth: true, cache: 1000 }",
+          },
+        ]),
+      );
+
+      const app = createMockApp();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      const route = app.mockAdapter.registeredRoutes.find(
+        (item) => item.path === "/secure",
+      );
+      expect(route).toBeDefined();
+      expect(app.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("has both cache and auth"),
+      );
+
+      let error: unknown;
+      try {
+        await route!.chain[1]!(
+          {
+            auth: createAnonymousAuthContext(),
+            params: {},
+            requestId: "req-router-auth",
+          } as any,
+          {} as any,
+          async () => undefined,
+        );
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toBeInstanceOf(HttpError);
+      expect((error as HttpError).code).toBe("AUTH_REQUIRED");
+      expect((error as HttpError).status).toBe(401);
     });
   });
 

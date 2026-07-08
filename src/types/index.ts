@@ -43,6 +43,18 @@ export type {
   VextSecurityHeadersConfig,
   VextSecurityHeadersPreset,
 } from "./security-headers.js";
+export type {
+  VextAuthAssert,
+  VextAuthCan,
+  VextAuthContext,
+  VextAuthContextSnapshot,
+  VextAuthErrorCode,
+  VextAuthMiddlewareOptions,
+  VextAuthRequirement,
+  VextAuthResult,
+  VextAuthSource,
+  VextPermissionRequirement,
+} from "./auth.js";
 
 // ── 错误类型 ────────────────────────────────────────────────
 export { HttpError, VextValidationError } from "./errors.js";
