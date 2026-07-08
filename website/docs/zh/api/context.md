@@ -755,9 +755,10 @@ res.setHeader("Cache-Control", "public, max-age=3600");
 // 内容处理
 res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
 
-// 安全相关
-res.setHeader("X-Content-Type-Options", "nosniff");
-res.setHeader("X-Frame-Options", "DENY");
+// 路由专属响应元数据
+res.setHeader("X-Request-Scope", "public");
+
+// 标准浏览器安全响应头请使用 config.securityHeaders。
 
 // 自定义业务头
 res.setHeader("X-RateLimit-Remaining", "95");

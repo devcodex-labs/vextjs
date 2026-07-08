@@ -35,6 +35,14 @@ export type {
   VextCsrfMode,
   VextCsrfOriginConfig,
 } from "./csrf.js";
+export type {
+  VextContentSecurityPolicyConfig,
+  VextCspDirectiveValue,
+  VextHstsConfig,
+  VextPermissionsPolicyConfig,
+  VextSecurityHeadersConfig,
+  VextSecurityHeadersPreset,
+} from "./security-headers.js";
 
 // ── 错误类型 ────────────────────────────────────────────────
 export { HttpError, VextValidationError } from "./errors.js";

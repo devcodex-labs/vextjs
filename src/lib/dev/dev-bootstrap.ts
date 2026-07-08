@@ -37,6 +37,11 @@ import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
 import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createCsrfMiddleware } from "../csrf.js";
+import {
+  createSecurityHeadersMiddleware,
+  withSecurityHeadersErrorHandler,
+  withSecurityHeadersNotFoundHandler,
+} from "../security-headers.js";
 import { createErrorHandler } from "../middlewares/error-handler.js";
 import {
   createRequestHookMiddleware,
@@ -712,7 +717,7 @@ export async function devBootstrap(
     // ── 步骤 8: 注册内置中间件 ───────────────────────────
     //
     // 与生产 bootstrap 保持一致的中间件注册顺序和条件守卫：
-    //   requestId → cors → body-parser → rate-limit → response-wrapper
+    //   requestId → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
     //   → frontend render → frontend dev events route → access-log
     //   → 插件全局中间件 → 错误处理 → 404
     //
@@ -738,6 +743,12 @@ export async function devBootstrap(
     }
 
     app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
+
+    if (config.securityHeaders?.enabled === true) {
+      app.adapter.registerMiddleware(
+        createSecurityHeadersMiddleware(config.securityHeaders),
+      );
+    }
 
     // 2. cors（config.cors.enabled，默认 true）
     if (config.cors?.enabled !== false) {
@@ -825,17 +836,23 @@ export async function devBootstrap(
       app.logger,
       hooks,
     );
-    app.adapter.registerErrorHandler(errorHandler);
+    app.adapter.registerErrorHandler(
+      withSecurityHeadersErrorHandler(errorHandler, config.securityHeaders),
+    );
+    const frontendNotFoundHandler = createFrontendNotFoundHandler({
+      rootDir: projectRoot,
+      mode: "development",
+      config: config.frontend,
+      fallbackHandler: createNotFoundHandler(hooks),
+      onNotFound: async (req) => {
+        await emitNotFoundRequestHooks(hooks, req);
+      },
+    });
     app.adapter.registerNotFound(
-      createFrontendNotFoundHandler({
-        rootDir: projectRoot,
-        mode: "development",
-        config: config.frontend,
-        fallbackHandler: createNotFoundHandler(hooks),
-        onNotFound: async (req) => {
-          await emitNotFoundRequestHooks(hooks, req);
-        },
-      }),
+      withSecurityHeadersNotFoundHandler(
+        frontendNotFoundHandler,
+        config.securityHeaders,
+      ),
     );
     startupProfiler.mark(
       "worker.builtinMiddlewares",
@@ -966,6 +983,13 @@ export async function devBootstrap(
           ? (((cfg: Record<string, unknown>) =>
               createCorsMiddleware(cfg.cors as any)) as any)
           : undefined,
+      createSecurityHeadersMiddleware:
+        config.securityHeaders?.enabled === true
+          ? (((cfg: Record<string, unknown>) =>
+              createSecurityHeadersMiddleware(
+                (cfg as any).securityHeaders,
+              )) as any)
+          : undefined,
       createBodyParserMiddleware:
         config.bodyParser?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>
@@ -1014,27 +1038,33 @@ export async function devBootstrap(
       resolveAdapter: resolveAdapter as any,
       loadRoutes: loadRoutes as any,
       loadMiddlewares: loadMiddlewares as any,
-      createErrorHandler: ((cfg: Record<string, unknown>) =>
-        createErrorHandler(
-          (cfg as any).response ?? {},
-          // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
-          overlayEnabled
-            ? (err: unknown) =>
-                renderDevErrorPage(err, projectRoot, overlayOptions)
-            : undefined,
-          app.logger, // 🆕 soft reload 后重建的错误处理器同样传入 logger
-          hooks,
+      createErrorHandler: ((responseConfig: Record<string, unknown>) =>
+        withSecurityHeadersErrorHandler(
+          createErrorHandler(
+            responseConfig,
+            // 🆕 soft reload 后重建的错误处理器同样包含 overlay 注入
+            overlayEnabled
+              ? (err: unknown) =>
+                  renderDevErrorPage(err, projectRoot, overlayOptions)
+              : undefined,
+            app.logger, // 🆕 soft reload 后重建的错误处理器同样传入 logger
+            hooks,
+          ),
+          (app.config as any).securityHeaders,
         )) as any,
       createNotFoundHandler: (() =>
-        createFrontendNotFoundHandler({
-          rootDir: projectRoot,
-          mode: "development",
-          config: config.frontend,
-          fallbackHandler: createNotFoundHandler(hooks),
-          onNotFound: async (req) => {
-            await emitNotFoundRequestHooks(hooks, req);
-          },
-        })) as any,
+        withSecurityHeadersNotFoundHandler(
+          createFrontendNotFoundHandler({
+            rootDir: projectRoot,
+            mode: "development",
+            config: config.frontend,
+            fallbackHandler: createNotFoundHandler(hooks),
+            onNotFound: async (req) => {
+              await emitNotFoundRequestHooks(hooks, req);
+            },
+          }),
+          (app.config as any).securityHeaders,
+        )) as any,
       builtinMiddlewares: builtinMwCreators,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
       // 🆕 monSQLize 热重载：传递 reloadModels 闭包（仅当 monsqlize 已加载）

@@ -5,7 +5,7 @@
  *   - reloadRoutes：Fresh Adapter 策略
  *     - 创建全新 adapter 实例（通过 resolveAdapter 调用）
  *     - 注册插件全局中间件到新 adapter
- *     - 注册内置中间件（requestId / cors / body-parser / rate-limit / response-wrapper）
+ *     - 注册内置中间件（requestId / securityHeaders / cors / body-parser / rate-limit / response-wrapper）
  *     - 调用 loadRoutes 加载路由到新 adapter
  *     - 注册错误处理 + 404 兜底
  *     - 调用 buildHandler 获取新 handler
@@ -385,10 +385,12 @@ describe("reloadRoutes", () => {
       const frontendRenderMw = createMockMiddleware("frontendRender");
       const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
       const accessLogMw = createMockMiddleware("accessLog");
+      const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
+        createSecurityHeadersMiddleware: vi.fn(() => securityHeadersMw),
         createCorsMiddleware: vi.fn(() => corsMw),
         createBodyParserMiddleware: vi.fn(() => bodyMw),
         createRateLimitMiddleware: vi.fn(() => rateMw),
@@ -410,6 +412,9 @@ describe("reloadRoutes", () => {
 
       // 所有内置中间件都应被注册
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(reqIdMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(
+        securityHeadersMw,
+      );
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(corsMw);
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(bodyMw);
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(rateMw);
@@ -437,10 +442,12 @@ describe("reloadRoutes", () => {
       const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
       const accessLogMw = createMockMiddleware("accessLog");
       const globalMw = createMockMiddleware("globalPlugin");
+      const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
+        createSecurityHeadersMiddleware: vi.fn(() => securityHeadersMw),
         createCorsMiddleware: vi.fn(() => corsMw),
         createBodyParserMiddleware: vi.fn(() => bodyMw),
         createRateLimitMiddleware: vi.fn(() => rateMw),
@@ -454,6 +461,8 @@ describe("reloadRoutes", () => {
       const freshAdapter = createMockAdapter({
         registerMiddleware: vi.fn((mw: RouteReloaderMiddleware) => {
           if (mw === reqIdMw) registrationOrder.push("requestId");
+          else if (mw === securityHeadersMw)
+            registrationOrder.push("securityHeaders");
           else if (mw === corsMw) registrationOrder.push("cors");
           else if (mw === bodyMw) registrationOrder.push("bodyParser");
           else if (mw === rateMw) registrationOrder.push("rateLimit");
@@ -487,6 +496,7 @@ describe("reloadRoutes", () => {
 
       expect(registrationOrder).toEqual([
         "requestId",
+        "securityHeaders",
         "cors",
         "bodyParser",
         "rateLimit",

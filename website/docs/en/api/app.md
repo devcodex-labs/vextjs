@@ -677,21 +677,17 @@ use(middleware: VextMiddleware): void;
 Effective for all routes, executed before route-level middlewares. It can only be called in plug-in `setup()`. The call will throw an error after the route registration is completed.
 
 ```typescript
-import { definePlugin, defineMiddleware } from "vextjs";
-
-const securityHeaders = defineMiddleware(async (_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  await next();
-});
+import { definePlugin, securityHeaders } from "vextjs";
 
 export default definePlugin({
   name: "security",
   setup(app) {
-    app.use(securityHeaders);
+    app.use(securityHeaders({ preset: "strict" }));
   },
 });
 ```
+
+For app-wide browser security headers, prefer `config.securityHeaders` because it also covers errors, 404 responses, testing helpers, and dev soft reload. Manual `app.use(securityHeaders())` is a scoped plugin entry.
 
 :::warning
 `app.use()` will be locked after route registration (`router-loader`) is completed. Calls after this will throw an error:

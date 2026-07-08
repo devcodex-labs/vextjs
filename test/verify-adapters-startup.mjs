@@ -6,7 +6,8 @@
  *   2. 响应 GET / 请求（返回正确的 JSON 格式）
  *   3. 响应 GET /health 请求
  *   4. 404 处理
- *   5. 优雅关闭
+ *   5. Security Headers basic 响应头
+ *   6. 优雅关闭
  *
  * 用法：
  *   node test/verify-adapters-startup.mjs
@@ -94,6 +95,10 @@ function setupTempProject(adapterName, port) {
   adapter: "${adapterName}",
   logger: {
     level: "warn",
+  },
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
   },
   server: {
     requestTimeout: 120000,
@@ -304,6 +309,54 @@ const TEST_CASES = [
       );
       await res.text(); // consume body
       return { contentType: ct, requestId: rid };
+    },
+  },
+  {
+    name: "Security Headers basic 响应头检查",
+    run: async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/`, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+      assert(
+        res.headers.get("x-content-type-options") === "nosniff",
+        `期望 X-Content-Type-Options=nosniff，实际 "${res.headers.get(
+          "x-content-type-options",
+        )}"`,
+      );
+      assert(
+        res.headers.get("referrer-policy") ===
+          "strict-origin-when-cross-origin",
+        `期望 Referrer-Policy=strict-origin-when-cross-origin，实际 "${res.headers.get(
+          "referrer-policy",
+        )}"`,
+      );
+      assert(
+        res.headers.get("x-frame-options") === "SAMEORIGIN",
+        `期望 X-Frame-Options=SAMEORIGIN，实际 "${res.headers.get(
+          "x-frame-options",
+        )}"`,
+      );
+      assert(
+        res.headers.get("strict-transport-security") == null,
+        "basic 预设不应在 HTTP 响应发送 HSTS",
+      );
+      await res.text();
+
+      const missing = await fetch(`${baseUrl}/security-headers-missing`, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+      });
+      assert(
+        missing.status === 404,
+        `期望 404 fallback，实际 ${missing.status}`,
+      );
+      assert(
+        missing.headers.get("x-content-type-options") === "nosniff",
+        `404 fallback 期望 X-Content-Type-Options=nosniff，实际 "${missing.headers.get(
+          "x-content-type-options",
+        )}"`,
+      );
+      await missing.text();
+      return { basic: "ok", notFound: "ok" };
     },
   },
   {

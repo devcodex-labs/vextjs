@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { createErrorHandler } from "../../../src/lib/middlewares/error-handler.js";
+import { withSecurityHeadersErrorHandler } from "../../../src/lib/security-headers.js";
 import { HttpError, VextValidationError } from "../../../src/types/errors.js";
 import type { DevOverlayFn } from "../../../src/lib/middlewares/error-handler.js";
 
@@ -214,12 +215,12 @@ describe("soft reload 兼容性 — createErrorHandler 工厂函数含 overlay �
     const overlay = vi.fn(() => "<html>overlay</html>");
 
     // 模拟 SoftReloader 中的工厂包装方式：
-    // ((cfg) => createErrorHandler(cfg.response ?? {}, overlayFn)) as any
-    const factory = (cfg: Record<string, unknown>) =>
-      createErrorHandler((cfg as any).response ?? {}, overlay);
+    // route-reloader 会把 app.config.response 子配置传给 factory。
+    const factory = (responseConfig: Record<string, unknown>) =>
+      createErrorHandler(responseConfig, overlay);
 
     // SoftReloader 用新 config 重建错误处理器
-    const handler = factory({ response: {} });
+    const handler = factory({});
     const req = createMockReq("text/html");
     const res = createMockRes();
 
@@ -232,10 +233,10 @@ describe("soft reload 兼容性 — createErrorHandler 工厂函数含 overlay �
 
   it("工厂函数在 overlay 为 undefined 时不调用 devOverlay", () => {
     // 模拟 overlayEnabled = false 时的工厂
-    const factory = (cfg: Record<string, unknown>) =>
-      createErrorHandler((cfg as any).response ?? {}, undefined);
+    const factory = (responseConfig: Record<string, unknown>) =>
+      createErrorHandler(responseConfig, undefined);
 
-    const handler = factory({ response: {} });
+    const handler = factory({});
     const req = createMockReq("text/html");
     const res = createMockRes();
 
@@ -243,5 +244,53 @@ describe("soft reload 兼容性 — createErrorHandler 工厂函数含 overlay �
 
     const jsonCall = res.calls.find((c) => c.method === "rawJson");
     expect(jsonCall).toBeDefined();
+  });
+
+  it("工厂函数只读取 response 子配置，避免 full app config 误传", () => {
+    const factory = (responseConfig: Record<string, unknown>) =>
+      createErrorHandler(responseConfig, undefined);
+
+    const handler = factory({ hideInternalErrors: false });
+    const req = createMockReq("application/json");
+    const res = createMockRes();
+
+    handler(new Error("soft reload visible error"), req as any, res as any);
+
+    const jsonCall = res.calls.find((c) => c.method === "rawJson");
+    const body = jsonCall?.args[0] as Record<string, unknown>;
+    expect(body.message).toBe("soft reload visible error");
+  });
+
+  it("factory 保持 route-reloader responseConfig 契约，同时从 app config 捕获 securityHeaders", () => {
+    const appConfig = {
+      securityHeaders: { enabled: true },
+    };
+    const factory = (responseConfig: Record<string, unknown>) =>
+      withSecurityHeadersErrorHandler(
+        createErrorHandler(responseConfig, undefined),
+        appConfig.securityHeaders,
+      );
+
+    const handler = factory({ hideInternalErrors: false });
+    const req = {
+      ...createMockReq("application/json"),
+      path: "/dev-error",
+    };
+    const res = createMockRes();
+
+    handler(new Error("soft reload secured error"), req as any, res as any);
+
+    expect(res.setHeader).toHaveBeenCalledWith(
+      "X-Content-Type-Options",
+      "nosniff",
+    );
+    expect(res.setHeader).toHaveBeenCalledWith(
+      "Referrer-Policy",
+      "strict-origin-when-cross-origin",
+    );
+    expect(res.setHeader).toHaveBeenCalledWith("X-Frame-Options", "SAMEORIGIN");
+    const jsonCall = res.calls.find((c) => c.method === "rawJson");
+    const body = jsonCall?.args[0] as Record<string, unknown>;
+    expect(body.message).toBe("soft reload secured error");
   });
 });

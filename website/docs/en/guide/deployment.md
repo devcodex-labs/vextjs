@@ -698,7 +698,7 @@ onFatalError: async (error, origin) => {
 | 1   | **HTTPS**                 | Terminates TLS via Nginx/CDN, does not handle SSL at the Node.js layer                                                                     |
 | 2   | **CORS**                  | Configure `config.cors` to limit allowed source domain names                                                                               |
 | 3   | **Rate Limit**            | Configure `config.rateLimit` to set stricter rate limits for sensitive interfaces such as login                                            |
-| 4   | **Helmet**                | Set security response headers through middleware (X-Frame-Options, CSP, etc.)                                                              |
+| 4   | **Security Headers**      | Configure `config.securityHeaders` for low-impact defaults and opt-in strict/custom browser response headers                               |
 | 5   | **Environment variables** | Sensitive information (database password, API Key) is passed in through environment variables and is not written to the configuration file |
 | 6   | **config/local.ts**       | Make sure `.gitignore` contains `config/local.*`                                                                                           |
 | 7   | **Log**                   | Do not output sensitive data (password, token, etc.) to the log                                                                            |

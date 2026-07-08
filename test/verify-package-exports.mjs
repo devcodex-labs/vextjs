@@ -31,7 +31,12 @@ const esmEntrypoints = [
   dist("adapters", "native", "index.js"),
 ];
 const namedExports = {
-  vextjs: ["createCsrfMiddleware", "csrf"],
+  vextjs: [
+    "createCsrfMiddleware",
+    "createSecurityHeadersMiddleware",
+    "csrf",
+    "securityHeaders",
+  ],
   "vextjs/frontend": [
     "VextApiError",
     "createVextApiClient",

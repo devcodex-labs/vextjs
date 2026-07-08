@@ -19,6 +19,7 @@ import {
   defaultCacheKey,
   buildRouteCacheMiddleware,
 } from "../../src/lib/middlewares/route-cache.js";
+import { applySecurityHeaders } from "../../src/lib/security-headers.js";
 import { createResponseCache } from "response-cache-kit";
 import type { VextRequest } from "../../src/types/request.js";
 import type { VextResponse } from "../../src/types/response.js";
@@ -140,6 +141,17 @@ function createMockRes(): VextResponse & {
   return res;
 }
 
+function getMockHeader(
+  res: { _headers: Record<string, string | string[]> },
+  name: string,
+): string | string[] | undefined {
+  const wanted = name.toLowerCase();
+  const found = Object.entries(res._headers).find(
+    ([key]) => key.toLowerCase() === wanted,
+  );
+  return found?.[1];
+}
+
 // ── normalizeCacheOptions 测试 ────────────────────────────
 
 describe("normalizeCacheOptions", () => {
@@ -223,6 +235,34 @@ describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
       data: { value: "origin" },
       status: 200,
     });
+  });
+
+  it("MISS 写入的 Security Headers 会在下一次 HIT 响应中保留", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq({ path: "/products/security-headers" });
+    const firstRes = createMockRes();
+    const hitRes = createMockRes();
+    const next = vi.fn(async () => {
+      applySecurityHeaders(req, firstRes, {
+        enabled: true,
+        preset: "basic",
+      });
+      firstRes.json({ value: "origin" }, 200);
+    });
+    const hitNext = vi.fn();
+
+    await middleware(req, firstRes, next);
+    await middleware(req, hitRes, hitNext);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(getMockHeader(firstRes, "X-Content-Type-Options")).toBe("nosniff");
+    expect(getMockHeader(hitRes, "X-Content-Type-Options")).toBe("nosniff");
+    expect(getMockHeader(hitRes, "Referrer-Policy")).toBe(
+      "strict-origin-when-cross-origin",
+    );
+    expect(getMockHeader(hitRes, "X-Frame-Options")).toBe("SAMEORIGIN");
+    expect(getMockHeader(hitRes, "X-Cache")).toBe("HIT");
   });
 
   it("默认跳过带 Cookie 的请求缓存", async () => {

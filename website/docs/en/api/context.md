@@ -755,9 +755,10 @@ res.setHeader("Cache-Control", "public, max-age=3600");
 //Content processing
 res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
 
-// security related
-res.setHeader("X-Content-Type-Options", "nosniff");
-res.setHeader("X-Frame-Options", "DENY");
+// route-specific response metadata
+res.setHeader("X-Request-Scope", "public");
+
+// Use config.securityHeaders for standard browser security headers.
 
 // Custom business header
 res.setHeader("X-RateLimit-Remaining", "95");

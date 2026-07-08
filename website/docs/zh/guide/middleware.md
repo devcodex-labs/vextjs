@@ -242,20 +242,30 @@ app.post(
 插件可以通过 `app.use()` 注册全局中间件，对所有路由生效。这些中间件在内置全局中间件之后、路由级中间件之前执行：
 
 ```typescript
-// src/plugins/security-headers.ts
+// src/plugins/request-timing.ts
 import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: "security-headers",
+  name: "request-timing",
   setup(app) {
     app.use(async (req, res, next) => {
+      const startedAt = Date.now();
       await next();
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "DENY");
-      res.setHeader("X-XSS-Protection", "1; mode=block");
+      res.setHeader("Server-Timing", `app;dur=${Date.now() - startedAt}`);
     });
   },
 });
+```
+
+浏览器安全响应头请优先使用内置 `config.securityHeaders`。它会一致覆盖普通响应、错误响应、404、测试辅助和 dev soft reload：
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+  },
+};
 ```
 
 :::warning 注意

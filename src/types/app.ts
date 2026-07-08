@@ -16,6 +16,7 @@ import type {
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
 import type { VextSessionConfig } from "./session.js";
 import type { VextCsrfConfig } from "./csrf.js";
+import type { VextSecurityHeadersConfig } from "./security-headers.js";
 
 declare global {
   interface String {
@@ -1082,6 +1083,9 @@ export interface VextConfig {
   /** CSRF 防护配置（默认关闭；启用后自动保护 unsafe methods） */
   csrf?: VextCsrfConfig;
 
+  /** Security Headers 配置（默认关闭；启用后自动写入低破坏安全响应头） */
+  securityHeaders?: VextSecurityHeadersConfig;
+
   /** Body 解析配置 */
   bodyParser: VextBodyParserConfig;
 
@@ -1429,8 +1433,8 @@ export interface VextApp {
    * @param middleware 标准 VextMiddleware
    *
    * @example
-   * // 在插件中注册全局安全头中间件
-   * app.use(securityHeaders)
+   * // 在插件中注册局部安全头中间件
+   * app.use(securityHeaders({ preset: "strict" }))
    */
   use(middleware: VextMiddleware): void;
 
@@ -1634,6 +1638,13 @@ export interface RouteOptions {
    * 仅支持 `false`，用于 webhook、第三方回调或纯 bearer API 等明确不走 CSRF 的路由。
    */
   csrf?: false;
+
+  /**
+   * 路由级 Security Headers 跳过开关。
+   *
+   * 仅支持 `false`，用于嵌入页面、第三方回调或需要自定义响应头的路由。
+   */
+  securityHeaders?: false;
 
   /**
    * 路由级覆盖（覆盖 config/default.ts 中的全局配置）

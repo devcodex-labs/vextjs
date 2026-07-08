@@ -241,20 +241,30 @@ app.post(
 Plug-ins can register global middleware through `app.use()`, which will take effect on all routes. These middlewares are executed after the built-in global middleware and before the route-level middleware:
 
 ```typescript
-// src/plugins/security-headers.ts
+// src/plugins/request-timing.ts
 import { definePlugin } from "vextjs";
 
 export default definePlugin({
-  name: "security-headers",
+  name: "request-timing",
   setup(app) {
     app.use(async (req, res, next) => {
+      const startedAt = Date.now();
       await next();
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "DENY");
-      res.setHeader("X-XSS-Protection", "1; mode=block");
+      res.setHeader("Server-Timing", `app;dur=${Date.now() - startedAt}`);
     });
   },
 });
+```
+
+For browser security response headers, prefer the built-in `config.securityHeaders` path. It covers normal responses, errors, 404, testing helpers, and dev soft reload consistently:
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+  },
+};
 ```
 
 :::warning note

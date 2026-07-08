@@ -141,6 +141,10 @@ export default {
   csrf: {
     enabled: false,
   },
+  securityHeaders: {
+    enabled: false,
+    preset: "basic",
+  },
 };
 ```
 
@@ -169,6 +173,8 @@ export default {
 `config.session` 只为显式注册的 `session()` 中间件提供默认值。内置 memory store 仅适合单进程；生产共享 store 应实现 `VextSessionStore`，再通过配置或 `session({ store })` 传入。
 
 `config.csrf.enabled: true` 会在 body parsing 与插件全局中间件之后自动注册内置 CSRF 中间件。若只想保护指定路径，请保持禁用并手动注册 `csrf()`。
+
+`config.securityHeaders.enabled: true` 会自动注册低破坏浏览器安全响应头。默认建议使用 `preset: "basic"`；启用 `strict` 或显式 CSP/COEP 前，请先检查前端资源、CDN、iframe 嵌入和 OAuth popup 流程。
 
 ### Middlewares Patch 策略
 
@@ -438,6 +444,32 @@ app.get(
 ```
 
 :::
+
+### Security Headers 配置 (`securityHeaders`)
+
+| 配置项                                  | 类型                              | 默认值             | 说明                          |
+| --------------------------------------- | --------------------------------- | ------------------ | ----------------------------- |
+| `securityHeaders.enabled`               | `boolean`                         | `false`            | 是否自动注册安全响应头        |
+| `securityHeaders.preset`                | `"basic" \| "strict" \| "custom"` | `"basic"`          | 响应头预设                    |
+| `securityHeaders.hsts`                  | `false \| object`                 | basic 中为 `false` | HTTPS-only HSTS 配置          |
+| `securityHeaders.contentSecurityPolicy` | `false \| string \| object`       | `false`            | CSP 或 CSP report-only 配置   |
+| `securityHeaders.permissionsPolicy`     | `false \| string \| object`       | basic 中为 `false` | Permissions-Policy 配置       |
+| `securityHeaders.headers`               | `Record<string, string>`          | `{}`               | preset 字段之后合并的自定义头 |
+| `securityHeaders.skipPaths`             | `string[]`                        | `[]`               | 精确路径或尾部 `*` 前缀跳过   |
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+    headers: {
+      "X-App-Security": "vext",
+    },
+  },
+};
+```
+
+`basic` 发送 `X-Content-Type-Options`、`Referrer-Policy` 与 `X-Frame-Options`。`strict` 额外启用 HTTPS-only HSTS、最小 `Permissions-Policy`、COOP 和 CORP；CSP 与 COEP 仍需显式配置。路由可通过 `{ securityHeaders: false }` 跳过。
 
 ### 请求 ID 配置 (`requestId`)
 

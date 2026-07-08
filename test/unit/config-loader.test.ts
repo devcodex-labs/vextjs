@@ -1064,9 +1064,9 @@ describe("validateConfig", () => {
       expect(() => _validateConfig({ csrf: { mode: "cookie" } })).toThrow(
         'config.csrf.mode must be "auto", "session", or "signed-cookie"',
       );
-      expect(() =>
-        _validateConfig({ csrf: { bodyField: 123 } }),
-      ).toThrow("config.csrf.bodyField must be a string or false");
+      expect(() => _validateConfig({ csrf: { bodyField: 123 } })).toThrow(
+        "config.csrf.bodyField must be a string or false",
+      );
     });
 
     it("requires secret for signed-cookie mode", () => {
@@ -1079,9 +1079,9 @@ describe("validateConfig", () => {
     });
 
     it("rejects invalid csrf arrays and nested options", () => {
-      expect(() =>
-        _validateConfig({ csrf: { methods: "POST" } }),
-      ).toThrow("config.csrf.methods must be an array of strings");
+      expect(() => _validateConfig({ csrf: { methods: "POST" } })).toThrow(
+        "config.csrf.methods must be an array of strings",
+      );
       expect(() =>
         _validateConfig({ csrf: { headerNames: ["x-csrf-token", 1] } }),
       ).toThrow("config.csrf.headerNames[] items must be strings");
@@ -1091,6 +1091,134 @@ describe("validateConfig", () => {
       expect(() =>
         _validateConfig({ csrf: { origin: { trustedOrigins: [1] } } }),
       ).toThrow("config.csrf.origin.trustedOrigins[] items must be strings");
+    });
+  });
+
+  // ── securityHeaders ───────────────────────────────────
+
+  describe("securityHeaders validation", () => {
+    it("accepts valid securityHeaders config", () => {
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            enabled: true,
+            preset: "strict",
+            contentTypeOptions: "nosniff",
+            referrerPolicy: "strict-origin-when-cross-origin",
+            frameOptions: "SAMEORIGIN",
+            hsts: {
+              enabled: true,
+              maxAge: 15_552_000,
+              includeSubDomains: true,
+              preload: true,
+              force: true,
+            },
+            contentSecurityPolicy: {
+              reportOnly: true,
+              directives: {
+                "default-src": ["'self'"],
+                "upgrade-insecure-requests": true,
+                "object-src": false,
+              },
+            },
+            permissionsPolicy: {
+              geolocation: false,
+              camera: [],
+              fullscreen: ["self"],
+            },
+            crossOriginOpenerPolicy: "same-origin",
+            crossOriginEmbedderPolicy: "credentialless",
+            crossOriginResourcePolicy: "same-site",
+            headers: {
+              "X-App-Security": "vext",
+            },
+            skipPaths: ["/healthz", "/public/*"],
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects invalid securityHeaders scalar and enum fields", () => {
+      expect(() => _validateConfig({ securityHeaders: true })).toThrow(
+        "config.securityHeaders must be an object",
+      );
+      expect(() =>
+        _validateConfig({ securityHeaders: { enabled: "true" } }),
+      ).toThrow("config.securityHeaders.enabled must be a boolean");
+      expect(() =>
+        _validateConfig({ securityHeaders: { preset: "helmet" } }),
+      ).toThrow(
+        'config.securityHeaders.preset must be "basic" or "strict" or "custom"',
+      );
+      expect(() =>
+        _validateConfig({
+          securityHeaders: { crossOriginEmbedderPolicy: "same-origin" },
+        }),
+      ).toThrow(
+        'config.securityHeaders.crossOriginEmbedderPolicy must be "require-corp" or "credentialless" or "unsafe-none"',
+      );
+    });
+
+    it("rejects invalid securityHeaders nested options", () => {
+      expect(() =>
+        _validateConfig({ securityHeaders: { hsts: { maxAge: -1 } } }),
+      ).toThrow("config.securityHeaders.hsts.maxAge must be a non-negative");
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            contentSecurityPolicy: {
+              directives: { "default-src": [1] },
+            },
+          },
+        }),
+      ).toThrow(
+        "config.securityHeaders.contentSecurityPolicy.directives.default-src must be a string, string array, boolean true, or false",
+      );
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            permissionsPolicy: {
+              geolocation: "self",
+            },
+          },
+        }),
+      ).toThrow(
+        "config.securityHeaders.permissionsPolicy.geolocation must be a boolean or an array of strings",
+      );
+    });
+
+    it("rejects header injection and invalid skipPaths", () => {
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            headers: {
+              "X-App-Security": "ok\r\nX-Injected: yes",
+            },
+          },
+        }),
+      ).toThrow(
+        "config.securityHeaders.headers.X-App-Security must not contain control characters",
+      );
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            headers: {
+              "Bad Header": "value",
+            },
+          },
+        }),
+      ).toThrow(
+        "config.securityHeaders.headers.Bad Header must be a non-empty HTTP header token",
+      );
+      expect(() =>
+        _validateConfig({
+          securityHeaders: {
+            skipPaths: ["/public/*/nested"],
+          },
+        }),
+      ).toThrow(
+        'config.securityHeaders.skipPaths[0] may only use "*" as the final character',
+      );
     });
   });
 

@@ -680,6 +680,12 @@ function validateConfig(config: Record<string, unknown>): void {
   // ── csrf ───────────────────────────────────────────────
   validateCsrfConfig(config.csrf, "config.csrf");
 
+  // ── securityHeaders ───────────────────────────────────
+  validateSecurityHeadersConfig(
+    config.securityHeaders,
+    "config.securityHeaders",
+  );
+
   // ── fetch ──────────────────────────────────────────────
   validateFetchConfig(config.fetch, "config.fetch");
 
@@ -1793,10 +1799,248 @@ function validateCsrfOriginConfig(value: unknown, path: string): void {
   }
 
   const origin = value as Record<string, unknown>;
-  validateOptionalStringArray(
-    origin.trustedOrigins,
-    `${path}.trustedOrigins`,
+  validateOptionalStringArray(origin.trustedOrigins, `${path}.trustedOrigins`);
+}
+
+function validateSecurityHeadersConfig(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+
+  const config = value as Record<string, unknown>;
+  validateOptionalBoolean(config.enabled, `${path}.enabled`);
+  validateEnum(config.preset, `${path}.preset`, ["basic", "strict", "custom"]);
+  validateEnumOrFalse(config.contentTypeOptions, `${path}.contentTypeOptions`, [
+    "nosniff",
+  ]);
+  validateOptionalStringOrFalse(
+    config.referrerPolicy,
+    `${path}.referrerPolicy`,
   );
+  validateEnumOrFalse(config.frameOptions, `${path}.frameOptions`, [
+    "DENY",
+    "SAMEORIGIN",
+  ]);
+  validateSecurityHeadersHsts(config.hsts, `${path}.hsts`);
+  validateSecurityHeadersCsp(
+    config.contentSecurityPolicy,
+    `${path}.contentSecurityPolicy`,
+  );
+  validateSecurityHeadersPermissionsPolicy(
+    config.permissionsPolicy,
+    `${path}.permissionsPolicy`,
+  );
+  validateEnumOrFalse(
+    config.crossOriginOpenerPolicy,
+    `${path}.crossOriginOpenerPolicy`,
+    ["same-origin", "same-origin-allow-popups", "unsafe-none"],
+  );
+  validateEnumOrFalse(
+    config.crossOriginEmbedderPolicy,
+    `${path}.crossOriginEmbedderPolicy`,
+    ["require-corp", "credentialless", "unsafe-none"],
+  );
+  validateEnumOrFalse(
+    config.crossOriginResourcePolicy,
+    `${path}.crossOriginResourcePolicy`,
+    ["same-origin", "same-site", "cross-origin"],
+  );
+  validateSecurityHeaderMap(config.headers, `${path}.headers`);
+  validateSecurityHeadersSkipPaths(config.skipPaths, `${path}.skipPaths`);
+}
+
+function validateOptionalStringOrFalse(value: unknown, path: string): void {
+  if (value === undefined || value === false) {
+    return;
+  }
+  if (typeof value === "string") {
+    validateNoHeaderControlChars(value, path);
+    return;
+  }
+  throw new Error(`[vextjs] ${path} must be a string or false.`);
+}
+
+function validateEnumOrFalse(
+  value: unknown,
+  path: string,
+  allowed: readonly string[],
+): void {
+  if (value === false) {
+    return;
+  }
+  validateEnum(value, path, allowed);
+}
+
+function validateSecurityHeadersHsts(value: unknown, path: string): void {
+  if (value === undefined || value === false) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be false or an object.`);
+  }
+  const hsts = value as Record<string, unknown>;
+  validateOptionalBoolean(hsts.enabled, `${path}.enabled`);
+  validateOptionalBoolean(hsts.includeSubDomains, `${path}.includeSubDomains`);
+  validateOptionalBoolean(hsts.preload, `${path}.preload`);
+  validateOptionalBoolean(hsts.force, `${path}.force`);
+  if (hsts.maxAge !== undefined) {
+    validateNonNegativeInteger(hsts.maxAge, `${path}.maxAge`);
+  }
+}
+
+function validateSecurityHeadersCsp(value: unknown, path: string): void {
+  if (value === undefined || value === false) {
+    return;
+  }
+  if (typeof value === "string") {
+    validateNoHeaderControlChars(value, path);
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be false, a string, or an object.`);
+  }
+  const csp = value as Record<string, unknown>;
+  validateOptionalBoolean(csp.reportOnly, `${path}.reportOnly`);
+  if (csp.directives === undefined) {
+    return;
+  }
+  if (
+    typeof csp.directives !== "object" ||
+    csp.directives === null ||
+    Array.isArray(csp.directives)
+  ) {
+    throw new Error(`[vextjs] ${path}.directives must be an object.`);
+  }
+  for (const [name, directiveValue] of Object.entries(
+    csp.directives as Record<string, unknown>,
+  )) {
+    validateSecurityHeaderToken(name, `${path}.directives.${name}`);
+    if (
+      directiveValue === true ||
+      directiveValue === false ||
+      typeof directiveValue === "string"
+    ) {
+      if (typeof directiveValue === "string") {
+        validateNoHeaderControlChars(
+          directiveValue,
+          `${path}.directives.${name}`,
+        );
+      }
+      continue;
+    }
+    if (
+      Array.isArray(directiveValue) &&
+      directiveValue.every((item) => typeof item === "string")
+    ) {
+      directiveValue.forEach((item, index) =>
+        validateNoHeaderControlChars(
+          item,
+          `${path}.directives.${name}[${index}]`,
+        ),
+      );
+      continue;
+    }
+    throw new Error(
+      `[vextjs] ${path}.directives.${name} must be a string, string array, boolean true, or false.`,
+    );
+  }
+}
+
+function validateSecurityHeadersPermissionsPolicy(
+  value: unknown,
+  path: string,
+): void {
+  if (value === undefined || value === false) {
+    return;
+  }
+  if (typeof value === "string") {
+    validateNoHeaderControlChars(value, path);
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be false, a string, or an object.`);
+  }
+  for (const [feature, allowList] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    validateSecurityHeaderToken(feature, `${path}.${feature}`);
+    if (typeof allowList === "boolean") {
+      continue;
+    }
+    if (
+      Array.isArray(allowList) &&
+      allowList.every((item) => typeof item === "string")
+    ) {
+      allowList.forEach((item, index) =>
+        validateNoHeaderControlChars(item, `${path}.${feature}[${index}]`),
+      );
+      continue;
+    }
+    throw new Error(
+      `[vextjs] ${path}.${feature} must be a boolean or an array of strings.`,
+    );
+  }
+}
+
+function validateSecurityHeaderMap(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an object.`);
+  }
+  for (const [name, headerValue] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    validateSecurityHeaderToken(name, `${path}.${name}`);
+    if (typeof headerValue !== "string") {
+      throw new Error(`[vextjs] ${path}.${name} must be a string.`);
+    }
+    validateNoHeaderControlChars(headerValue, `${path}.${name}`);
+  }
+}
+
+function validateSecurityHeadersSkipPaths(value: unknown, path: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`[vextjs] ${path} must be an array of strings.`);
+  }
+  value.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`;
+    if (
+      typeof item !== "string" ||
+      !item.startsWith("/") ||
+      item.startsWith("//") ||
+      item.length === 0
+    ) {
+      throw new Error(
+        `[vextjs] ${itemPath} must be a URL path starting with "/".`,
+      );
+    }
+    const firstStar = item.indexOf("*");
+    if (firstStar !== -1 && firstStar !== item.length - 1) {
+      throw new Error(
+        `[vextjs] ${itemPath} may only use "*" as the final character.`,
+      );
+    }
+  });
+}
+
+function validateSecurityHeaderToken(value: string, path: string): void {
+  if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(value)) {
+    throw new Error(`[vextjs] ${path} must be a non-empty HTTP header token.`);
+  }
+}
+
+function validateNoHeaderControlChars(value: string, path: string): void {
+  if (/[\u0000-\u001F\u007F]/.test(value)) {
+    throw new Error(`[vextjs] ${path} must not contain control characters.`);
+  }
 }
 
 function validateRetryDelay(value: unknown, path: string): void {

@@ -34,7 +34,7 @@ import { VEXT_FRONTEND_DEV_EVENT_PATH } from "../../frontend/runtime/dev-events.
  * 核心流程：
  *
  *   1. resolveAdapter(config, app) → 创建全新 adapter 实例
- *   2. 注册内置中间件（requestId / cors / body-parser / rate-limit / response-wrapper）
+ *   2. 注册内置中间件（requestId / requestHook / securityHeaders / cors / body-parser / rate-limit / response-wrapper）
  *   3. 注册插件全局中间件
  *   4. 注册路由（从 outDir/routes/ 重新加载路由文件并注册到新 adapter）
  *   5. 注册错误处理 + 404 兜底
@@ -204,6 +204,15 @@ export interface BuiltinMiddlewareCreators {
    * 创建 cors 中间件
    */
   createCorsMiddleware?: (
+    config: Record<string, unknown>,
+  ) => RouteReloaderMiddleware;
+
+  /**
+   * 创建 Security Headers 中间件
+   *
+   * 放在 request hooks 后、CORS 前，以覆盖预检和后续短路响应。
+   */
+  createSecurityHeadersMiddleware?: (
     config: Record<string, unknown>,
   ) => RouteReloaderMiddleware;
 
@@ -400,7 +409,7 @@ export async function reloadRoutes(
   // ── 2. 注册内置中间件（如果提供）─────────────────────
   //
   // 与 dev-bootstrap.ts 中的中间件注册顺序和条件守卫保持一致：
-  //   requestId → cors → body-parser → rate-limit → response-wrapper
+  //   requestId → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
   //   → frontend render → frontend dev events route → access-log
   //
   // 注意：builtinMwCreators 中对应 creator 为 undefined 时表示该中间件被禁用，
@@ -419,6 +428,13 @@ export async function reloadRoutes(
         createRequestHookMiddleware(
           app.hooks,
         ) as unknown as RouteReloaderMiddleware,
+      );
+    }
+    if (builtinMiddlewares.createSecurityHeadersMiddleware) {
+      freshAdapter.registerMiddleware(
+        builtinMiddlewares.createSecurityHeadersMiddleware(
+          app.config as Record<string, unknown>,
+        ),
       );
     }
     if (builtinMiddlewares.createCorsMiddleware) {

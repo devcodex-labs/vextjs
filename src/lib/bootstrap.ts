@@ -40,6 +40,11 @@ import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
 import { createCsrfMiddleware } from "./csrf.js";
+import {
+  createSecurityHeadersMiddleware,
+  withSecurityHeadersErrorHandler,
+  withSecurityHeadersNotFoundHandler,
+} from "./security-headers.js";
 import { createErrorHandler } from "./middlewares/error-handler.js";
 import {
   createRequestHookMiddleware,
@@ -483,11 +488,13 @@ export async function bootstrap(
     //
     // 注册顺序决定执行顺序：
     //   1. requestId — 生成/透传请求唯一标识
-    //   2. cors      — 处理跨域预检和响应头
-    //   3. body-parser — 解析 JSON / URL-encoded 请求体
-    //   4. rate-limit — 速率限制
-    //   5. response-wrapper — 开启出口包装标志
-    //   6. access-log — 洋葱模型 after-middleware（记录耗时/状态码/路径）
+    //   2. requestHook — 请求生命周期 hook
+    //   3. securityHeaders — 安全响应头（可选，放在 CORS 前）
+    //   4. cors      — 处理跨域预检和响应头
+    //   5. body-parser — 解析 JSON / URL-encoded 请求体
+    //   6. rate-limit — 速率限制
+    //   7. response-wrapper — 开启出口包装标志
+    //   8. access-log — 洋葱模型 after-middleware（记录耗时/状态码/路径）
     //
     // 🆕 性能优化：每个中间件仅在 enabled !== false 时注册。
     // 禁用的中间件完全不进入中间件链，实现真正的零开销（之前是
@@ -513,6 +520,12 @@ export async function bootstrap(
     }
 
     app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
+
+    if (config.securityHeaders?.enabled === true) {
+      app.adapter.registerMiddleware(
+        createSecurityHeadersMiddleware(config.securityHeaders),
+      );
+    }
 
     // 2. cors（config.cors.enabled，默认 true）
     if (config.cors?.enabled !== false) {
@@ -583,7 +596,9 @@ export async function bootstrap(
       app.logger,
       hooks,
     );
-    app.adapter.registerErrorHandler(errorHandler);
+    app.adapter.registerErrorHandler(
+      withSecurityHeadersErrorHandler(errorHandler, config.securityHeaders),
+    );
 
     const notFoundHandler = createNotFoundHandler(hooks);
     assertFrontendOutputReady({
@@ -592,16 +607,20 @@ export async function bootstrap(
       config: config.frontend,
       fallbackHandler: notFoundHandler,
     });
+    const frontendNotFoundHandler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: config.frontend,
+      fallbackHandler: notFoundHandler,
+      onNotFound: async (req) => {
+        await emitNotFoundRequestHooks(hooks, req);
+      },
+    });
     app.adapter.registerNotFound(
-      createFrontendNotFoundHandler({
-        rootDir,
-        mode: "production",
-        config: config.frontend,
-        fallbackHandler: notFoundHandler,
-        onNotFound: async (req) => {
-          await emitNotFoundRequestHooks(hooks, req);
-        },
-      }),
+      withSecurityHeadersNotFoundHandler(
+        frontendNotFoundHandler,
+        config.securityHeaders,
+      ),
     );
     startupProfiler.mark(
       "start.builtinMiddlewares",

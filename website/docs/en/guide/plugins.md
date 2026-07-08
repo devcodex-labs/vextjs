@@ -165,23 +165,18 @@ When extended `app.mailer.send()` will get IDE auto-completion without the need 
 Register global middleware in the plug-in and it will take effect on all routes. These middleware are executed after the built-in global middleware and before the route-level middleware.
 
 ```typescript
+import { definePlugin, securityHeaders } from "vextjs";
+
 export default definePlugin({
   name: "security-headers",
 
   setup(app) {
-    app.use(async (req, res, next) => {
-      await next();
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "DENY");
-      res.setHeader("X-XSS-Protection", "1; mode=block");
-      res.setHeader(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains",
-      );
-    });
+    app.use(securityHeaders({ preset: "strict" }));
   },
 });
 ```
+
+For application-wide browser security headers, prefer `config.securityHeaders` so errors, 404 responses, testing helpers, and dev soft reload use the same behavior. The plugin form is useful for scoped or migration-only stacks.
 
 :::warning note
 `app.use()` can only be called in `setup()`. Calling after route registration is complete will throw an error.
@@ -469,7 +464,8 @@ export default definePlugin({
 
     app.logger.info("Database plugin initialized");
   },
-});async function createPool(config: any) {
+});
+async function createPool(config: any) {
   //In actual implementation, pg, mysql2 and other drivers are used
   return {
     query: async (sql: string, params?: unknown[]) => ({ rows: [] }),
@@ -573,8 +569,8 @@ export default definePlugin({
 
 VextJS has the following built-in plugins:
 
-| Plug-in name | Description | Conditional loading |
-|-------------|-------------------------|---------------------------------|
+| Plug-in name  | Description                        | Conditional loading                                        |
+| ------------- | ---------------------------------- | ---------------------------------------------------------- |
 | **monsqlize** | MonSQLize database ORM integration | Automatically load when `monsqlize` dependency is detected |
 
 The built-in plug-in detects whether it should be loaded through `shouldLoadMonSQLize()`, achieving zero configuration and zero overhead - it will not be loaded at all when the corresponding dependencies are not installed.
@@ -619,9 +615,12 @@ export default defineRoutes((app) => {
       if (!avatarFile) {
         res.json({ code: 400, message: "File not uploaded" }, 400);
         return;
-      }// Verify file type
+      } // Verify file type
       if (!avatarFile.mimetype.startsWith("image/")) {
-        res.json({ code: 400, message: "Only image formats are supported" }, 400);
+        res.json(
+          { code: 400, message: "Only image formats are supported" },
+          400,
+        );
         return;
       }
 
@@ -637,13 +636,13 @@ export default defineRoutes((app) => {
 
 ### ParsedFile structure
 
-| Field | Type | Description |
-| ----------- | -------- | -------------------------------------------------- |
+| Field       | Type     | Description                                           |
+| ----------- | -------- | ----------------------------------------------------- |
 | `fieldname` | `string` | Form field name (`avatar` of `<input name="avatar">`) |
-| `filename` | `string` | Client original file name |
-| `mimetype` | `string` | MIME type (such as `image/jpeg`) |
-| `buffer` | `Buffer` | Complete binary content of file |
-| `size` | `number` | File size (bytes) |
+| `filename`  | `string` | Client original file name                             |
+| `mimetype`  | `string` | MIME type (such as `image/jpeg`)                      |
+| `buffer`    | `Buffer` | Complete binary content of file                       |
+| `size`      | `number` | File size (bytes)                                     |
 
 :::tip Fastify users
 `multipart.maxFileSize` only limits the size of a single file; the total request body read limit is controlled by `bodyParser.maxBodySize`. When using Fastify, if adapter `bodyLimit` is additionally configured, the actual read boundary will be the smaller of the overall upper limit of adapter `bodyLimit` and body-parser.
@@ -722,14 +721,14 @@ Control the individual file size through `app.config.multipart.maxFileSize` (byt
 
 ## Plug-ins vs middleware vs services
 
-| Aspects | Plugins | Middleware | Services |
-| ---------- | ----------------------- | ------------------ | ----------------------- |
-| Placement directory | `src/plugins/` | `src/middlewares/` | `src/services/` |
-| Definition method | `definePlugin()` | `defineMiddleware()` | `export default class` |
-| Execution time | At startup (one-time) | Each request | Each method call |
-| Visit `app` | `setup(app)` | `req.app` | `constructor(app)` |
-| Main responsibilities | Extended framework capabilities | Request interception/processing | Business logic |
-| Typical use cases | Database connection, caching, monitoring | Authentication, logging, current limiting | CRUD, calculation, external API |
+| Aspects               | Plugins                                  | Middleware                                | Services                        |
+| --------------------- | ---------------------------------------- | ----------------------------------------- | ------------------------------- |
+| Placement directory   | `src/plugins/`                           | `src/middlewares/`                        | `src/services/`                 |
+| Definition method     | `definePlugin()`                         | `defineMiddleware()`                      | `export default class`          |
+| Execution time        | At startup (one-time)                    | Each request                              | Each method call                |
+| Visit `app`           | `setup(app)`                             | `req.app`                                 | `constructor(app)`              |
+| Main responsibilities | Extended framework capabilities          | Request interception/processing           | Business logic                  |
+| Typical use cases     | Database connection, caching, monitoring | Authentication, logging, current limiting | CRUD, calculation, external API |
 
 **Selection Guide:**
 

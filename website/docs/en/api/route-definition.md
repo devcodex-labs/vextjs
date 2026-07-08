@@ -172,6 +172,8 @@ interface RouteOptions {
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
+  csrf?: false;
+  securityHeaders?: false;
   multipart?: {
     files?: Record<
       string,
@@ -766,6 +768,8 @@ app.get(
 | `timeout`     | `number`           | Request timeout (milliseconds)                                  |
 | `maxBodySize` | `string \| number` | Maximum request body size                                       |
 | `cors`        | `VextCorsConfig`   | Route-level CORS configuration                                  |
+
+Routes can also set top-level `{ securityHeaders: false }` when an embeddable page, webhook callback, or fully custom response header stack must skip the global Security Headers preset.
 
 ---
 

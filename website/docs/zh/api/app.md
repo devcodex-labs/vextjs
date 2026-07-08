@@ -678,21 +678,17 @@ use(middleware: VextMiddleware): void;
 对所有路由生效，在路由级 middlewares 之前执行。只能在插件 `setup()` 中调用，路由注册完成后调用将抛出错误。
 
 ```typescript
-import { definePlugin, defineMiddleware } from "vextjs";
-
-const securityHeaders = defineMiddleware(async (_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  await next();
-});
+import { definePlugin, securityHeaders } from "vextjs";
 
 export default definePlugin({
   name: "security",
   setup(app) {
-    app.use(securityHeaders);
+    app.use(securityHeaders({ preset: "strict" }));
   },
 });
 ```
+
+应用级浏览器安全响应头请优先使用 `config.securityHeaders`，因为它也覆盖错误响应、404、测试辅助和 dev soft reload。手动 `app.use(securityHeaders())` 是局部插件入口。
 
 :::warning
 `app.use()` 在路由注册（`router-loader`）完成后会被锁定。此后调用将抛出错误：

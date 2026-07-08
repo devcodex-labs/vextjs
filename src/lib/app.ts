@@ -557,6 +557,10 @@ export const DEFAULT_CONFIG: VextConfig = {
     fetchMetadata: true,
     origin: false,
   },
+  securityHeaders: {
+    enabled: false,
+    preset: "basic",
+  },
   bodyParser: {
     enabled: true,
     maxBodySize: "1mb",

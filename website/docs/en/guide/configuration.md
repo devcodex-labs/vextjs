@@ -141,6 +141,10 @@ export default {
   csrf: {
     enabled: false,
   },
+  securityHeaders: {
+    enabled: false,
+    preset: "basic",
+  },
 };
 ```
 
@@ -169,6 +173,8 @@ export default {
 `config.session` only provides defaults for the explicit `session()` middleware. The built-in memory store is single-process; production shared stores should implement `VextSessionStore` and be passed through config or `session({ store })`.
 
 `config.csrf.enabled: true` auto-registers the built-in CSRF middleware after body parsing and plugin global middleware. Keep it disabled and register `csrf()` manually when you need scoped protection for selected paths.
+
+`config.securityHeaders.enabled: true` auto-registers low-impact browser security response headers. Use `preset: "basic"` for the default baseline, and opt into `strict` or explicit CSP/COEP only after checking your frontend, CDN, iframe, and OAuth popup flows.
 
 ### Middlewares Patch Strategy
 
@@ -436,6 +442,32 @@ app.get(
 ```
 
 :::
+
+### Security Headers configuration (`securityHeaders`)
+
+| Configuration item                      | Type                              | Default value    | Description                                  |
+| --------------------------------------- | --------------------------------- | ---------------- | -------------------------------------------- |
+| `securityHeaders.enabled`               | `boolean`                         | `false`          | Whether to auto-register security headers    |
+| `securityHeaders.preset`                | `"basic" \| "strict" \| "custom"` | `"basic"`        | Header preset                                |
+| `securityHeaders.hsts`                  | `false \| object`                 | `false` in basic | HTTPS-only HSTS configuration                |
+| `securityHeaders.contentSecurityPolicy` | `false \| string \| object`       | `false`          | CSP or CSP report-only configuration         |
+| `securityHeaders.permissionsPolicy`     | `false \| string \| object`       | `false` in basic | Permissions-Policy configuration             |
+| `securityHeaders.headers`               | `Record<string, string>`          | `{}`             | Custom headers merged after preset fields    |
+| `securityHeaders.skipPaths`             | `string[]`                        | `[]`             | Exact paths or trailing-`*` prefixes to skip |
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+    headers: {
+      "X-App-Security": "vext",
+    },
+  },
+};
+```
+
+`basic` sends `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. `strict` additionally enables HTTPS-only HSTS, minimal `Permissions-Policy`, COOP, and CORP; CSP and COEP remain explicit. Routes can opt out with `{ securityHeaders: false }`.
 
 ### Request ID configuration (`requestId`)
 

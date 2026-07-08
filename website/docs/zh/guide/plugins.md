@@ -165,23 +165,18 @@ declare module "vextjs" {
 在插件中注册全局中间件，对所有路由生效。这些中间件在内置全局中间件之后、路由级中间件之前执行。
 
 ```typescript
+import { definePlugin, securityHeaders } from "vextjs";
+
 export default definePlugin({
   name: "security-headers",
 
   setup(app) {
-    app.use(async (req, res, next) => {
-      await next();
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "DENY");
-      res.setHeader("X-XSS-Protection", "1; mode=block");
-      res.setHeader(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains",
-      );
-    });
+    app.use(securityHeaders({ preset: "strict" }));
   },
 });
 ```
+
+应用级浏览器安全响应头请优先使用 `config.securityHeaders`，这样错误响应、404、测试辅助和 dev soft reload 会保持一致。插件形式更适合局部迁移或特殊组合。
 
 :::warning 注意
 `app.use()` 只能在 `setup()` 中调用。路由注册完成后再调用将抛出错误。

@@ -110,30 +110,31 @@ export default {
 
 ### `VextConfig`
 
-| Field            | Type                                                    | Default Value        | Description                                              |
-| ---------------- | ------------------------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `port`           | `number`                                                | `3000`               | HTTP listening port                                      |
-| `host`           | `string`                                                | `'0.0.0.0'`          | HTTP listening address                                   |
-| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`           | Low-level adapter                                        |
-| `trustProxy`     | `boolean`                                               | `false`              | Whether to trust the proxy                               |
-| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                         |
-| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                       |
-| `rateLimit`      | [`VextRateLimitConfig`](#veextratelimitconfig)          | See below            | Rate limit configuration                                 |
-| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                 |
-| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                        |
-| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                          |
-| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                        |
-| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                   |
-| `session`        | `VextSessionConfig`                                     | See guide            | Defaults consumed by the explicit `session()` middleware |
-| `csrf`           | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                            |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                               |
-| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                |
-| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                 |
-| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below            | OpenAPI documentation configuration                      |
-| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below            | Request context configuration                            |
-| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration             |
-| `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration |
-| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                      |
+| Field             | Type                                                    | Default Value        | Description                                              |
+| ----------------- | ------------------------------------------------------- | -------------------- | -------------------------------------------------------- |
+| `port`            | `number`                                                | `3000`               | HTTP listening port                                      |
+| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP listening address                                   |
+| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | Low-level adapter                                        |
+| `trustProxy`      | `boolean`                                               | `false`              | Whether to trust the proxy                               |
+| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                         |
+| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                       |
+| `rateLimit`       | [`VextRateLimitConfig`](#veextratelimitconfig)          | See below            | Rate limit configuration                                 |
+| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                 |
+| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                        |
+| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                          |
+| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                        |
+| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                   |
+| `session`         | `VextSessionConfig`                                     | See guide            | Defaults consumed by the explicit `session()` middleware |
+| `csrf`            | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                            |
+| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | Browser security response headers                        |
+| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                               |
+| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                |
+| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                 |
+| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below            | OpenAPI documentation configuration                      |
+| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below            | Request context configuration                            |
+| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration             |
+| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration |
+| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                      |
 
 ---
 
@@ -1119,19 +1120,59 @@ export default config;
 
 `config.csrf` configures the built-in CSRF middleware. `enabled: true` auto-registers CSRF globally after body parsing and plugin global middleware. You can also keep it disabled and register `csrf()` manually for scoped paths.
 
-| Field           | Type                                | Default                                           | Description                                                           |
-| --------------- | ----------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
-| `enabled`       | `boolean`                           | `false` in app config; `true` for manual `csrf()` | Whether global auto-registration is enabled                           |
-| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                     | Token storage mode                                                     |
-| `secret`        | `string`                            | `undefined`                                       | Required for `signed-cookie` mode                                      |
-| `methods`       | `string[]`                          | `["POST", "PUT", "PATCH", "DELETE"]`            | Unsafe methods that require CSRF validation                            |
-| `headerNames`   | `string[]`                          | `["x-csrf-token", "x-xsrf-token"]`               | Header names accepted for submitted tokens                             |
-| `bodyField`     | `string \| false`                   | `"_csrf"`                                        | Request body field accepted for submitted tokens; `false` disables it |
-| `cookie`        | `CookieSerializeOptions`            | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | Signed double-submit cookie attributes                              |
-| `fetchMetadata` | `boolean`                           | `true`                                           | Reject `Sec-Fetch-Site: cross-site` unsafe requests                    |
-| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                      | Optional Origin/Referer same-origin enforcement                        |
+| Field           | Type                                     | Default                                             | Description                                                           |
+| --------------- | ---------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
+| `enabled`       | `boolean`                                | `false` in app config; `true` for manual `csrf()`   | Whether global auto-registration is enabled                           |
+| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                            | Token storage mode                                                    |
+| `secret`        | `string`                                 | `undefined`                                         | Required for `signed-cookie` mode                                     |
+| `methods`       | `string[]`                               | `["POST", "PUT", "PATCH", "DELETE"]`                | Unsafe methods that require CSRF validation                           |
+| `headerNames`   | `string[]`                               | `["x-csrf-token", "x-xsrf-token"]`                  | Header names accepted for submitted tokens                            |
+| `bodyField`     | `string \| false`                        | `"_csrf"`                                           | Request body field accepted for submitted tokens; `false` disables it |
+| `cookie`        | `CookieSerializeOptions`                 | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | Signed double-submit cookie attributes                                |
+| `fetchMetadata` | `boolean`                                | `true`                                              | Reject `Sec-Fetch-Site: cross-site` unsafe requests                   |
+| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                             | Optional Origin/Referer same-origin enforcement                       |
 
 Routes can opt out with route options `{ csrf: false }`.
+
+---
+
+### `VextSecurityHeadersConfig`
+
+`config.securityHeaders` enables Vext's built-in browser security response headers. It is disabled by default. `preset: "basic"` is the low-impact path for most apps; `strict` and `custom` are explicit opt-ins.
+
+| Field                       | Type                                                                                                               | Default           | Description                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------ |
+| `enabled`                   | `boolean`                                                                                                          | `false`           | Auto-register the built-in Security Headers middleware                         |
+| `preset`                    | `"basic" \| "strict" \| "custom"`                                                                                  | `"basic"`         | Header preset                                                                  |
+| `contentTypeOptions`        | `"nosniff" \| false`                                                                                               | preset controlled | Controls `X-Content-Type-Options`                                              |
+| `referrerPolicy`            | `string \| false`                                                                                                  | preset controlled | Controls `Referrer-Policy`                                                     |
+| `frameOptions`              | `"DENY" \| "SAMEORIGIN" \| false`                                                                                  | preset controlled | Controls `X-Frame-Options`                                                     |
+| `hsts`                      | `false \| { enabled?: boolean; maxAge?: number; includeSubDomains?: boolean; preload?: boolean; force?: boolean }` | `false` in basic  | Controls `Strict-Transport-Security`; sent only for HTTPS unless `force: true` |
+| `contentSecurityPolicy`     | `false \| string \| object`                                                                                        | `false`           | Controls CSP or CSP report-only                                                |
+| `permissionsPolicy`         | `false \| string \| Record<string, boolean \| string[]>`                                                           | `false` in basic  | Controls `Permissions-Policy`                                                  |
+| `crossOriginOpenerPolicy`   | `false \| "same-origin" \| "same-origin-allow-popups" \| "unsafe-none"`                                            | `false` in basic  | Controls COOP                                                                  |
+| `crossOriginEmbedderPolicy` | `false \| "require-corp" \| "credentialless" \| "unsafe-none"`                                                     | `false`           | Controls COEP; not enabled by `strict`                                         |
+| `crossOriginResourcePolicy` | `false \| "same-origin" \| "same-site" \| "cross-origin"`                                                          | `false` in basic  | Controls CORP                                                                  |
+| `headers`                   | `Record<string, string>`                                                                                           | `{}`              | Custom headers merged last                                                     |
+| `skipPaths`                 | `string[]`                                                                                                         | `[]`              | Exact paths or trailing-`*` prefixes to skip                                   |
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+    contentSecurityPolicy: {
+      reportOnly: true,
+      directives: {
+        "default-src": ["'self'"],
+        "upgrade-insecure-requests": true,
+      },
+    },
+  },
+};
+```
+
+`basic` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: SAMEORIGIN`. `strict` adds HTTPS-only HSTS, a minimal `Permissions-Policy`, COOP, and CORP, but still leaves CSP and COEP explicit. `custom` sends only fields you configure. Routes can opt out with `{ securityHeaders: false }`.
 
 ---
 

@@ -35,6 +35,12 @@ export type {
   VextCsrfErrorCode,
   VextCsrfMode,
   VextCsrfOriginConfig,
+  VextContentSecurityPolicyConfig,
+  VextCspDirectiveValue,
+  VextHstsConfig,
+  VextPermissionsPolicyConfig,
+  VextSecurityHeadersConfig,
+  VextSecurityHeadersPreset,
 
   // 错误类型
   HttpErrorOptions,
@@ -158,6 +164,10 @@ export {
 } from "./lib/session.js";
 export type { VextMemorySessionStore } from "./lib/session.js";
 export { createCsrfMiddleware, csrf } from "./lib/csrf.js";
+export {
+  createSecurityHeadersMiddleware,
+  securityHeaders,
+} from "./lib/security-headers.js";
 
 // 中间件定义辅助函数（用户使用）
 export {

@@ -29,6 +29,11 @@ import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
 import { createCsrfMiddleware } from "../lib/csrf.js";
 import {
+  createSecurityHeadersMiddleware,
+  withSecurityHeadersErrorHandler,
+  withSecurityHeadersNotFoundHandler,
+} from "../lib/security-headers.js";
+import {
   createRequestHookMiddleware,
   emitNotFoundRequestHooks,
 } from "../lib/middlewares/request-hook.js";
@@ -388,7 +393,7 @@ export async function createTestApp(
   // ── 7. 注册内置中间件（与 bootstrap 步骤⑥ 一致）────
   //
   // 测试环境也需要注册内置中间件以保证行为与生产一致：
-  //   requestId → cors → body-parser → (rate-limit 通常 disabled) → response-wrapper
+  //   requestId → requestHook → securityHeaders → cors → body-parser → response-wrapper
   //   + 错误处理 + 404 兜底
   //
   // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
@@ -411,6 +416,12 @@ export async function createTestApp(
   }
 
   app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
+
+  if (finalConfig.securityHeaders?.enabled === true) {
+    app.adapter.registerMiddleware(
+      createSecurityHeadersMiddleware(finalConfig.securityHeaders),
+    );
+  }
 
   // cors（config.cors.enabled，默认 true）
   if (finalConfig.cors?.enabled !== false) {
@@ -448,10 +459,17 @@ export async function createTestApp(
     app.logger,
     hooks,
   );
-  app.adapter.registerErrorHandler(errorHandler);
+  app.adapter.registerErrorHandler(
+    withSecurityHeadersErrorHandler(errorHandler, finalConfig.securityHeaders),
+  );
 
   const notFoundHandler = createNotFoundHandler(hooks);
-  app.adapter.registerNotFound(notFoundHandler);
+  app.adapter.registerNotFound(
+    withSecurityHeadersNotFoundHandler(
+      notFoundHandler,
+      finalConfig.securityHeaders,
+    ),
+  );
 
   // ── 8. 构造 TestRequest ──────────────────────────────
   //

@@ -697,18 +697,18 @@ onFatalError: async (error, origin) => {
 
 ### 生产环境清单
 
-| #   | 检查项              | 说明                                                            |
-| --- | ------------------- | --------------------------------------------------------------- |
-| 1   | **HTTPS**           | 通过 Nginx/CDN 终结 TLS，不在 Node.js 层处理 SSL                |
-| 2   | **CORS**            | 配置 `config.cors` 限制允许的来源域名                           |
-| 3   | **限流**            | 配置 `config.rateLimit`，对登录等敏感接口设更严格限流           |
-| 4   | **Helmet**          | 通过中间件设置安全响应头（X-Frame-Options, CSP 等）             |
-| 5   | **环境变量**        | 敏感信息（数据库密码、API Key）通过环境变量传入，不写入配置文件 |
-| 6   | **config/local.ts** | 确保 `.gitignore` 中包含 `config/local.*`                       |
-| 7   | **日志**            | 不输出敏感数据（密码、token 等）到日志                          |
-| 8   | **依赖审计**        | 定期 `npm audit`，及时修复已知漏洞                              |
-| 9   | **非 root**         | Docker 容器中使用非 root 用户运行                               |
-| 10  | **优雅关闭**        | 确保 `SIGTERM` 信号被正确处理（VextJS 内置支持）                |
+| #   | 检查项               | 说明                                                                                       |
+| --- | -------------------- | ------------------------------------------------------------------------------------------ |
+| 1   | **HTTPS**            | 通过 Nginx/CDN 终结 TLS，不在 Node.js 层处理 SSL                                           |
+| 2   | **CORS**             | 配置 `config.cors` 限制允许的来源域名                                                      |
+| 3   | **限流**             | 配置 `config.rateLimit`，对登录等敏感接口设更严格限流                                      |
+| 4   | **Security Headers** | 配置 `config.securityHeaders`，启用低破坏默认头，并按需选择 strict/custom 浏览器安全响应头 |
+| 5   | **环境变量**         | 敏感信息（数据库密码、API Key）通过环境变量传入，不写入配置文件                            |
+| 6   | **config/local.ts**  | 确保 `.gitignore` 中包含 `config/local.*`                                                  |
+| 7   | **日志**             | 不输出敏感数据（密码、token 等）到日志                                                     |
+| 8   | **依赖审计**         | 定期 `npm audit`，及时修复已知漏洞                                                         |
+| 9   | **非 root**          | Docker 容器中使用非 root 用户运行                                                          |
+| 10  | **优雅关闭**         | 确保 `SIGTERM` 信号被正确处理（VextJS 内置支持）                                           |
 
 ### 环境变量管理
 

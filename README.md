@@ -204,6 +204,10 @@ const config: VextUserConfig = {
   openapi: {
     enabled: true,
   },
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+  },
   frontend: {
     enabled: true,
     framework: "react",
@@ -449,6 +453,26 @@ app.get("/csrf-token", {}, async (req, res) => {
 ```
 
 Set `config.csrf.enabled: true` to auto-register CSRF globally after body parsing and plugin global middleware, or register `csrf()` manually when you need a scoped path. Unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`) must submit a token through `x-csrf-token`, `x-xsrf-token`, or body field `_csrf`. Route options can opt out with `{ csrf: false }`.
+
+## Security Headers
+
+Vext can write common browser security response headers from configuration without adding Helmet or a custom plugin. The feature is disabled by default; `basic` adds only the low-impact baseline headers.
+
+```ts
+// src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
+const config: VextUserConfig = {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+  },
+};
+
+export default config;
+```
+
+`basic` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: SAMEORIGIN`. `strict` also opts into HTTPS-only HSTS, a minimal `Permissions-Policy`, COOP, and CORP; CSP and COEP remain explicit because they depend on each app's assets and cross-origin resource model. Routes can opt out with `{ securityHeaders: false }`, and handlers can still override individual headers with `res.setHeader()`.
 
 ## Error Handling
 

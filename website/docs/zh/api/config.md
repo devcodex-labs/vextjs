@@ -110,30 +110,31 @@ export default {
 
 ### `VextConfig`
 
-| 字段             | 类型                                                    | 默认值               | 说明                                  |
-| ---------------- | ------------------------------------------------------- | -------------------- | ------------------------------------- |
-| `port`           | `number`                                                | `3000`               | HTTP 监听端口                         |
-| `host`           | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                         |
-| `adapter`        | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                            |
-| `trustProxy`     | `boolean`                                               | `false`              | 是否信任代理                          |
-| `middlewares`    | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单                    |
-| `cors`           | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                             |
-| `rateLimit`      | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置                          |
-| `requestId`      | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置                          |
-| `logger`         | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                              |
-| `shutdown`       | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置                          |
-| `server`         | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置              |
-| `response`       | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                              |
-| `session`        | `VextSessionConfig`                                     | 见指南               | 显式 `session()` 中间件使用的默认配置 |
-| `csrf`           | `VextCsrfConfig`                                        | 见下方               | CSRF 中间件配置                       |
-| `bodyParser`     | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                         |
-| `multipart`      | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                          |
-| `accessLog`      | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                          |
-| `openapi`        | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置                      |
-| `requestContext` | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置                        |
-| `fetch`          | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置            |
-| `frontend`       | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置            |
-| `cluster`        | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                    |
+| 字段              | 类型                                                    | 默认值               | 说明                                  |
+| ----------------- | ------------------------------------------------------- | -------------------- | ------------------------------------- |
+| `port`            | `number`                                                | `3000`               | HTTP 监听端口                         |
+| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                         |
+| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                            |
+| `trustProxy`      | `boolean`                                               | `false`              | 是否信任代理                          |
+| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单                    |
+| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                             |
+| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置                          |
+| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置                          |
+| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                              |
+| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置                          |
+| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置              |
+| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                              |
+| `session`         | `VextSessionConfig`                                     | 见指南               | 显式 `session()` 中间件使用的默认配置 |
+| `csrf`            | `VextCsrfConfig`                                        | 见下方               | CSRF 中间件配置                       |
+| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | 浏览器安全响应头配置                  |
+| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                         |
+| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                          |
+| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                          |
+| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置                      |
+| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置                        |
+| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置            |
+| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置            |
+| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                    |
 
 ---
 
@@ -1132,19 +1133,59 @@ export default config;
 
 `config.csrf` 用于配置内置 CSRF 中间件。`enabled: true` 会在 body parsing 与插件全局中间件之后自动全局注册 CSRF；也可以保持禁用，并手动注册 `csrf()` 保护指定路径。
 
-| 字段            | 类型                                | 默认值                                            | 说明                                                     |
-| --------------- | ----------------------------------- | ------------------------------------------------- | -------------------------------------------------------- |
-| `enabled`       | `boolean`                           | 应用配置默认 `false`；手动 `csrf()` 默认 `true`   | 是否启用全局自动注册                                     |
-| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                     | token 存储模式                                           |
-| `secret`        | `string`                            | `undefined`                                       | `signed-cookie` 模式必填                                 |
-| `methods`       | `string[]`                          | `["POST", "PUT", "PATCH", "DELETE"]`            | 需要 CSRF 校验的 unsafe methods                          |
-| `headerNames`   | `string[]`                          | `["x-csrf-token", "x-xsrf-token"]`               | 接收 token 的请求头名称                                  |
-| `bodyField`     | `string \| false`                   | `"_csrf"`                                        | 接收 token 的 body 字段；`false` 表示禁用 body token     |
-| `cookie`        | `CookieSerializeOptions`            | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | 签名 double-submit cookie 属性                       |
-| `fetchMetadata` | `boolean`                           | `true`                                           | 拒绝 `Sec-Fetch-Site: cross-site` unsafe 请求            |
-| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                      | 可选 Origin/Referer 同源校验                             |
+| 字段            | 类型                                     | 默认值                                              | 说明                                                 |
+| --------------- | ---------------------------------------- | --------------------------------------------------- | ---------------------------------------------------- |
+| `enabled`       | `boolean`                                | 应用配置默认 `false`；手动 `csrf()` 默认 `true`     | 是否启用全局自动注册                                 |
+| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                            | token 存储模式                                       |
+| `secret`        | `string`                                 | `undefined`                                         | `signed-cookie` 模式必填                             |
+| `methods`       | `string[]`                               | `["POST", "PUT", "PATCH", "DELETE"]`                | 需要 CSRF 校验的 unsafe methods                      |
+| `headerNames`   | `string[]`                               | `["x-csrf-token", "x-xsrf-token"]`                  | 接收 token 的请求头名称                              |
+| `bodyField`     | `string \| false`                        | `"_csrf"`                                           | 接收 token 的 body 字段；`false` 表示禁用 body token |
+| `cookie`        | `CookieSerializeOptions`                 | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | 签名 double-submit cookie 属性                       |
+| `fetchMetadata` | `boolean`                                | `true`                                              | 拒绝 `Sec-Fetch-Site: cross-site` unsafe 请求        |
+| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                             | 可选 Origin/Referer 同源校验                         |
 
 路由可通过 route options `{ csrf: false }` 跳过 CSRF。
+
+---
+
+### `VextSecurityHeadersConfig`
+
+`config.securityHeaders` 用于启用 Vext 内置浏览器安全响应头。默认关闭。`preset: "basic"` 是多数应用的低破坏主路径；`strict` 与 `custom` 都是显式 opt-in。
+
+| 字段                        | 类型                                                                                                               | 默认值             | 说明                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------ | --------------------------------------------------------------------------- |
+| `enabled`                   | `boolean`                                                                                                          | `false`            | 自动注册内置 Security Headers 中间件                                        |
+| `preset`                    | `"basic" \| "strict" \| "custom"`                                                                                  | `"basic"`          | 响应头预设                                                                  |
+| `contentTypeOptions`        | `"nosniff" \| false`                                                                                               | 由 preset 决定     | 控制 `X-Content-Type-Options`                                               |
+| `referrerPolicy`            | `string \| false`                                                                                                  | 由 preset 决定     | 控制 `Referrer-Policy`                                                      |
+| `frameOptions`              | `"DENY" \| "SAMEORIGIN" \| false`                                                                                  | 由 preset 决定     | 控制 `X-Frame-Options`                                                      |
+| `hsts`                      | `false \| { enabled?: boolean; maxAge?: number; includeSubDomains?: boolean; preload?: boolean; force?: boolean }` | basic 中为 `false` | 控制 `Strict-Transport-Security`；默认仅 HTTPS 请求发送，除非 `force: true` |
+| `contentSecurityPolicy`     | `false \| string \| object`                                                                                        | `false`            | 控制 CSP 或 CSP report-only                                                 |
+| `permissionsPolicy`         | `false \| string \| Record<string, boolean \| string[]>`                                                           | basic 中为 `false` | 控制 `Permissions-Policy`                                                   |
+| `crossOriginOpenerPolicy`   | `false \| "same-origin" \| "same-origin-allow-popups" \| "unsafe-none"`                                            | basic 中为 `false` | 控制 COOP                                                                   |
+| `crossOriginEmbedderPolicy` | `false \| "require-corp" \| "credentialless" \| "unsafe-none"`                                                     | `false`            | 控制 COEP；`strict` 也不会默认开启                                          |
+| `crossOriginResourcePolicy` | `false \| "same-origin" \| "same-site" \| "cross-origin"`                                                          | basic 中为 `false` | 控制 CORP                                                                   |
+| `headers`                   | `Record<string, string>`                                                                                           | `{}`               | 最后合并的自定义响应头                                                      |
+| `skipPaths`                 | `string[]`                                                                                                         | `[]`               | 精确路径或尾部 `*` 前缀跳过                                                 |
+
+```typescript
+export default {
+  securityHeaders: {
+    enabled: true,
+    preset: "basic",
+    contentSecurityPolicy: {
+      reportOnly: true,
+      directives: {
+        "default-src": ["'self'"],
+        "upgrade-insecure-requests": true,
+      },
+    },
+  },
+};
+```
+
+`basic` 发送 `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin` 与 `X-Frame-Options: SAMEORIGIN`。`strict` 额外开启 HTTPS-only HSTS、最小 `Permissions-Policy`、COOP 和 CORP，但 CSP 与 COEP 仍需显式配置。`custom` 只发送你配置的字段。路由可通过 `{ securityHeaders: false }` 跳过。
 
 ---
 

@@ -172,6 +172,8 @@ interface RouteOptions {
   cache?: false | number | RouteCacheOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
+  csrf?: false;
+  securityHeaders?: false;
   multipart?: {
     files?: Record<
       string,
@@ -763,6 +765,8 @@ app.get(
 | `timeout`     | `number`           | 请求超时（毫秒）             |
 | `maxBodySize` | `string \| number` | 最大请求体大小               |
 | `cors`        | `VextCorsConfig`   | 路由级 CORS 配置             |
+
+当可嵌入页面、第三方回调或完全自定义响应头栈需要跳过全局 Security Headers 预设时，路由也可以设置顶层 `{ securityHeaders: false }`。
 
 ---
 
