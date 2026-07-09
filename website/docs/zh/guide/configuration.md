@@ -170,7 +170,7 @@ export default {
 };
 ```
 
-`config.session` 只为显式注册的 `session()` 中间件提供默认值。内置 memory store 仅适合单进程；生产共享 store 应实现 `VextSessionStore`，再通过配置或 `session({ store })` 传入。
+`config.session` 只为显式注册的 `session()` 中间件提供默认值。内置 memory store 仅适合单进程；生产共享 store 推荐使用 `createCacheSessionStore(cacheLike)`，或直接实现底层 `VextSessionStore`，再通过配置或 `session({ store })` 传入。
 
 `config.csrf.enabled: true` 会在 body parsing 与插件全局中间件之后自动注册内置 CSRF 中间件。若只想保护指定路径，请保持禁用并手动注册 `csrf()`。
 

@@ -81,7 +81,7 @@ export default {
 };
 ```
 
-The response cache runtime is handled by `response-cache-kit`, and the underlying cache is managed by `cache-hub`. Vext does not open custom Store; if you need to adjust the underlying runtime, please configure `cache.cacheHub`.
+The response cache runtime is handled by `response-cache-kit`, and the underlying cache is managed by `cache-hub`. Vext does not open custom Store for response cache; if you need to adjust the underlying runtime, please configure `cache.cacheHub`. Session Store is separate: use `createCacheSessionStore(cacheLike)` with its own prefix instead of reusing `app.cache` or `config.cache.cacheHub`.
 
 #### config.cache field
 

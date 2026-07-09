@@ -26,10 +26,13 @@ export type {
   VextCookiePriority,
   VextCookieSameSite,
   VextSession,
+  VextCacheLike,
+  VextCacheSessionStoreOptions,
   VextSessionConfig,
   VextSessionCookieOptions,
   VextSessionData,
   VextSessionStore,
+  VextSessionStoreSerializer,
   VextCsrfConfig,
   VextCsrfCookieConfig,
   VextCsrfErrorCode,
@@ -173,6 +176,7 @@ export {
   session,
 } from "./lib/session.js";
 export type { VextMemorySessionStore } from "./lib/session.js";
+export { createCacheSessionStore } from "./lib/session-store-adapters.js";
 export { createCsrfMiddleware, csrf } from "./lib/csrf.js";
 export {
   createSecurityHeadersMiddleware,

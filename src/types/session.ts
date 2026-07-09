@@ -15,6 +15,23 @@ export interface VextSessionStore {
   close?(): void | Promise<void>;
 }
 
+export interface VextCacheLike {
+  get<T = unknown>(key: string): T | undefined | Promise<T | undefined>;
+  set<T = unknown>(key: string, value: T, ttlMs?: number): void | Promise<void>;
+  del(key: string): boolean | void | Promise<boolean | void>;
+}
+
+export interface VextSessionStoreSerializer {
+  serialize(data: VextSessionData): unknown;
+  deserialize(value: unknown): VextSessionData;
+}
+
+export interface VextCacheSessionStoreOptions {
+  prefix?: string;
+  serializer?: VextSessionStoreSerializer;
+  close?: () => void | Promise<void>;
+}
+
 export interface VextSessionCookieOptions extends Omit<
   CookieSerializeOptions,
   "secure"

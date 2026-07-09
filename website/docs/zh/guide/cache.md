@@ -81,7 +81,7 @@ export default {
 };
 ```
 
-响应缓存运行时由 `response-cache-kit` 承接，底层缓存由 `cache-hub` 管理。Vext 不开放自定义 Store；需要调整底层运行时，请配置 `cache.cacheHub`。
+响应缓存运行时由 `response-cache-kit` 承接，底层缓存由 `cache-hub` 管理。Vext 不为响应缓存开放自定义 Store；需要调整底层运行时，请配置 `cache.cacheHub`。Session Store 是独立链路，请使用带独立 prefix 的 `createCacheSessionStore(cacheLike)`，不要复用 `app.cache` 或 `config.cache.cacheHub`。
 
 #### config.cache 字段
 

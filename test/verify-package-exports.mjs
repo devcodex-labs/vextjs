@@ -35,6 +35,7 @@ const namedExports = {
     "auth",
     "createAuthContextMiddleware",
     "createAuthMiddleware",
+    "createCacheSessionStore",
     "createCsrfMiddleware",
     "createSecurityHeadersMiddleware",
     "csrf",

@@ -195,11 +195,13 @@ The first-party `auth()` helper is still registered as a route-level middleware 
 // src/middlewares/framework-auth.ts
 import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(auth({
-  async verify(token) {
-    return token === "demo-token" ? { userId: "1" } : false;
-  },
-}));
+export default defineMiddleware(
+  auth({
+    async verify(token) {
+      return token === "demo-token" ? { userId: "1" } : false;
+    },
+  }),
+);
 ```
 
 ---
@@ -1127,6 +1129,8 @@ export default config;
 `VextSessionCookieOptions` follows `CookieSerializeOptions` and adds `secure: boolean | "auto"`. Cookie options include `domain`, `path`, `expires`, `maxAge`, `httpOnly`, `secure`, `sameSite`, `priority`, `partitioned`, and `encode`.
 
 `VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. If you pass a custom store with `close()`, close it from `app.onClose()` or plugin teardown.
+
+For cache-backed production sessions, prefer `createCacheSessionStore(cacheLike, options?)` from `vextjs`. It accepts a structural `VextCacheLike` with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, stores JSON strings by default, and exposes `close()` only when `options.close` is provided. `config.cache.cacheHub` remains route response cache configuration and does not inject a Session Store.
 
 ---
 

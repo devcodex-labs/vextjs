@@ -114,27 +114,27 @@ export default {
 };
 ```
 
-`secure: "auto"` sends `Secure` only for HTTPS requests. The default memory store is suitable for development, tests, and single-process deployments. Use `VextSessionStore` for shared production stores:
+`secure: "auto"` sends `Secure` only for HTTPS requests. The default memory store is suitable for development, tests, and single-process deployments. For shared production stores, pass a cache-like backend through the official adapter:
 
 ```typescript
-import { session, type VextSessionStore } from "vextjs";
+import { createCacheSessionStore, session } from "vextjs";
+import { createRedisCacheAdapter } from "cache-hub/redis";
 
-const store: VextSessionStore = {
-  async get(id) {
-    return await redisJsonGet(id);
-  },
-  async set(id, data, ttlSeconds) {
-    await redisJsonSet(id, data, ttlSeconds);
-  },
-  async delete(id) {
-    await redisDel(id);
-  },
-};
+const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
 
-app.use(session({ store }));
+app.use(
+  session({
+    store: createCacheSessionStore(sessionCache, {
+      prefix: "my-app:sess:",
+      close: () => sessionCache.close?.(),
+    }),
+  }),
+);
 ```
 
-If a custom store exposes `close()`, Vext treats it as store-owned lifecycle. Register an `app.onClose()` hook or close it in your plugin teardown; the session middleware does not automatically close stores it did not create.
+`createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`. It converts `VextSessionStore` TTL seconds to cache milliseconds, stores JSON strings by default, and implements rolling `touch()` as a cache `get` plus `set`. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app.
+
+`config.cache.cacheHub` and `app.cache` are only for route response cache. They are not a Session Store shortcut and should use a different namespace from sessions. If you provide `close`, Vext exposes it on the returned store so you can close it from `app.onClose()` or plugin teardown. Advanced users can still implement `VextSessionStore` directly for custom persistence contracts.
 
 ## CSRF Protection
 

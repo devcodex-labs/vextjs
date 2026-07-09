@@ -430,7 +430,25 @@ app.post("/login", {}, async (req, res) => {
 });
 ```
 
-The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments; use the `VextSessionStore` interface for production shared stores. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
+The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments. For shared production stores, pass a cache-like backend through the official adapter:
+
+```ts
+import { createCacheSessionStore, session } from "vextjs";
+import { createRedisCacheAdapter } from "cache-hub/redis";
+
+const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
+
+app.use(
+  session({
+    store: createCacheSessionStore(sessionCache, {
+      prefix: "my-app:sess:",
+      close: () => sessionCache.close?.(),
+    }),
+  }),
+);
+```
+
+`createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, and stores JSON strings by default. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app. `config.cache.cacheHub` and `app.cache` are for route response cache only; they are not a Session Store shortcut. Advanced users can still implement `VextSessionStore` directly when they need a custom persistence contract. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
 
 ## CSRF Protection
 
@@ -482,23 +500,25 @@ Every request has an anonymous `req.auth` context by default. Register the first
 // src/middlewares/auth.ts
 import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(auth({
-  provider: "app",
-  async verify(token) {
-    if (token !== "demo-token") return false;
+export default defineMiddleware(
+  auth({
+    provider: "app",
+    async verify(token) {
+      if (token !== "demo-token") return false;
 
-    return {
-      subject: "user:1",
-      userId: "1",
-      roles: ["admin"],
-      scopes: ["posts:write"],
-      claims: { tier: "internal" },
-      can(action, resource) {
-        return action === "post:update" && resource === "post-1";
-      },
-    };
-  },
-}));
+      return {
+        subject: "user:1",
+        userId: "1",
+        roles: ["admin"],
+        scopes: ["posts:write"],
+        claims: { tier: "internal" },
+        can(action, resource) {
+          return action === "post:update" && resource === "post-1";
+        },
+      };
+    },
+  }),
+);
 ```
 
 ```ts
@@ -528,19 +548,11 @@ function requirePostUpdate(options: RouteOptions = {}): RouteOptions {
   };
 }
 
-app.get(
-  "/me",
-  requireAuth(),
-  async (req, res) => {
-    res.json({ userId: req.auth.userId, roles: req.auth.roles });
-  },
-);
+app.get("/me", requireAuth(), async (req, res) => {
+  res.json({ userId: req.auth.userId, roles: req.auth.roles });
+});
 
-app.post(
-  "/posts/:id",
-  requirePostUpdate(),
-  handler,
-);
+app.post("/posts/:id", requirePostUpdate(), handler);
 ```
 
 `auth()` identifies a request but does not protect routes by itself. `auth: true` requires an authenticated request; object form can require roles, scopes, permissions, or a custom `check`. Most applications should wrap those route options in helpers like `requireAuth()` / `requirePostUpdate()` so middleware names, security schemes, and permission resources stay in one place. `auth: false` marks a route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.

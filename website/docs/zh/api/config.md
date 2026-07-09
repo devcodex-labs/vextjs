@@ -195,11 +195,13 @@ Vext 内置 `auth()` helper 仍然以路由级中间件文件注册，路由再�
 // src/middlewares/framework-auth.ts
 import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(auth({
-  async verify(token) {
-    return token === "demo-token" ? { userId: "1" } : false;
-  },
-}));
+export default defineMiddleware(
+  auth({
+    async verify(token) {
+      return token === "demo-token" ? { userId: "1" } : false;
+    },
+  }),
+);
 ```
 
 ---
@@ -1140,6 +1142,8 @@ export default config;
 `VextSessionCookieOptions` 基于 `CookieSerializeOptions`，并额外支持 `secure: boolean | "auto"`。Cookie 选项包含 `domain`、`path`、`expires`、`maxAge`、`httpOnly`、`secure`、`sameSite`、`priority`、`partitioned` 与 `encode`。
 
 `VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。如果自定义 store 暴露 `close()`，请通过 `app.onClose()` 或插件 teardown 主动关闭。
+
+生产 cache-backed session 推荐使用 `vextjs` 根入口导出的 `createCacheSessionStore(cacheLike, options?)`。它接收具备 `get`、`set`、`del` 的结构型 `VextCacheLike`，把 session TTL 秒转换为 cache 毫秒，默认写入 JSON string，且只有传入 `options.close` 时才暴露 `close()`。`config.cache.cacheHub` 仍然只是路由响应缓存配置，不会注入 Session Store。
 
 ---
 

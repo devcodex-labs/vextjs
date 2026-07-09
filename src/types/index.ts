@@ -23,10 +23,13 @@ export type {
 } from "./cookies.js";
 export type {
   VextSession,
+  VextCacheLike,
+  VextCacheSessionStoreOptions,
   VextSessionConfig,
   VextSessionCookieOptions,
   VextSessionData,
   VextSessionStore,
+  VextSessionStoreSerializer,
 } from "./session.js";
 export type {
   VextCsrfConfig,

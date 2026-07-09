@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMemorySessionStore, session } from "../../../src/lib/session.js";
+import { createCacheSessionStore } from "../../../src/lib/session-store-adapters.js";
 import {
   serializeClearCookie,
   serializeCookie,
@@ -88,6 +89,45 @@ describe("session middleware", () => {
       expect(secondReq.session!.userId).toBe("u1");
     });
     expect(secondRes.setCookies).toEqual([]);
+  });
+
+  it("persists sessions through the cache session store adapter", async () => {
+    const entries = new Map<string, { value: unknown; ttlMs?: number }>();
+    const cache = {
+      get: vi.fn(async (key: string) => entries.get(key)?.value),
+      set: vi.fn(async (key: string, value: unknown, ttlMs?: number) => {
+        entries.set(key, { value, ttlMs });
+      }),
+      del: vi.fn(async (key: string) => {
+        entries.delete(key);
+      }),
+    };
+    const store = createCacheSessionStore(cache, { prefix: "test:sess:" });
+    const middleware = session({ store, ttl: 30, rolling: true });
+    const firstReq = createReq();
+    const firstRes = createRes();
+
+    await middleware(firstReq, firstRes, async () => {
+      firstReq.session!.userId = "u1";
+    });
+
+    const sid = extractSessionId(firstRes.setCookies[0]!);
+    expect(entries.get(`test:sess:${sid}`)).toEqual({
+      value: '{"userId":"u1"}',
+      ttlMs: 30000,
+    });
+
+    const secondReq = createReq({ "vext.sid": sid });
+    const secondRes = createRes();
+    await middleware(secondReq, secondRes, async () => {
+      expect(secondReq.session!.userId).toBe("u1");
+    });
+
+    expect(cache.set).toHaveBeenLastCalledWith(
+      `test:sess:${sid}`,
+      '{"userId":"u1"}',
+      30000,
+    );
   });
 
   it("auto-commits before immediate response sends", async () => {

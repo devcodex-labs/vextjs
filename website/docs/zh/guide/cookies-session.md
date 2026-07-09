@@ -114,27 +114,27 @@ export default {
 };
 ```
 
-`secure: "auto"` 只会在 HTTPS 请求中发送 `Secure`。默认 memory store 适合开发、测试和单进程部署；生产共享 store 可通过 `VextSessionStore` 接入：
+`secure: "auto"` 只会在 HTTPS 请求中发送 `Secure`。默认 memory store 适合开发、测试和单进程部署；生产共享 store 推荐通过官方 adapter 接入用户自有 cache-like 后端：
 
 ```typescript
-import { session, type VextSessionStore } from "vextjs";
+import { createCacheSessionStore, session } from "vextjs";
+import { createRedisCacheAdapter } from "cache-hub/redis";
 
-const store: VextSessionStore = {
-  async get(id) {
-    return await redisJsonGet(id);
-  },
-  async set(id, data, ttlSeconds) {
-    await redisJsonSet(id, data, ttlSeconds);
-  },
-  async delete(id) {
-    await redisDel(id);
-  },
-};
+const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
 
-app.use(session({ store }));
+app.use(
+  session({
+    store: createCacheSessionStore(sessionCache, {
+      prefix: "my-app:sess:",
+      close: () => sessionCache.close?.(),
+    }),
+  }),
+);
 ```
 
-如果自定义 store 暴露 `close()`，Vext 将其视为 store 自身生命周期。请在 `app.onClose()` 或插件 teardown 中主动关闭；session middleware 不会自动关闭用户传入的 store。
+`createCacheSessionStore()` 接收具备 `get`、`set`、`del` 的结构型 cache，把 `VextSessionStore` 的 TTL 秒转换为 cache 毫秒，默认把 session data 写成 JSON string，并用 cache `get` + `set` 实现 rolling `touch()`。消费项目需要自行安装 `cache-hub` 和选用的后端 client，例如 `ioredis`。
+
+`config.cache.cacheHub` 与 `app.cache` 只服务路由响应缓存，不是 Session Store 捷径，也应与 session 使用不同 namespace。若传入 `close`，Vext 会在返回的 store 上暴露 `close()`，便于在 `app.onClose()` 或插件 teardown 中关闭。需要特殊持久化契约时，仍可直接实现底层 `VextSessionStore`。
 
 ## CSRF 防护
 
