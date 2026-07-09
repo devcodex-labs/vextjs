@@ -237,14 +237,12 @@ const englishSidebar: SidebarGroup[] = [
     items: [
       { text: "Hello World", link: "/examples/hello-world" },
       { text: "CRUD API", link: "/examples/crud-api" },
-      { text: "Zod Validation", link: "/examples/zod-validation" },
-      { text: "Drizzle ORM", link: "/examples/drizzle-orm" },
-      { text: "Prisma ORM", link: "/examples/prisma-orm" },
     ],
   },
   {
     text: "Ecosystem Integrations",
     items: [
+      { text: "permission-core Auth", link: "/examples/permission-core-auth" },
       { text: "Nacos", link: "/examples/nacos-integration" },
       { text: "OpenTelemetry", link: "/examples/opentelemetry" },
     ],
@@ -399,14 +397,12 @@ const chineseSidebar: SidebarGroup[] = [
     items: [
       { text: "Hello World", link: "/zh/examples/hello-world" },
       { text: "CRUD API", link: "/zh/examples/crud-api" },
-      { text: "Zod 校验集成", link: "/zh/examples/zod-validation" },
-      { text: "Drizzle ORM 集成", link: "/zh/examples/drizzle-orm" },
-      { text: "Prisma ORM 集成", link: "/zh/examples/prisma-orm" },
     ],
   },
   {
     text: "生态集成",
     items: [
+      { text: "permission-core Auth 接入", link: "/zh/examples/permission-core-auth" },
       { text: "Nacos 接入", link: "/zh/examples/nacos-integration" },
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
     ],

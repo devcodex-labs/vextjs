@@ -72,9 +72,6 @@ export default {
         description: "Use Bearer Token authentication",
       },
     },
-    guardSecurityMap: {
-      auth: "bearerAuth",
-    },
   },
   // Routing-level middleware whitelist
   middlewares: [{ name: "auth" }],
@@ -82,14 +79,14 @@ export default {
 ```
 
 :::tip
-`config.openapi.guardSecurityMap` maps the routing middleware name `'auth'` to the OpenAPI security scheme `bearerAuth`. When a route declares `middlewares: ['auth']`, the OpenAPI documentation automatically marks the interface as requiring Bearer Token authentication.
+`auth()` only parses the credential and fills `req.auth`. Routes opt into protection with `RouteOptions.auth`; OpenAPI security is generated from that route option first, with legacy middleware-name inference kept only for older examples.
 :::
 
 ## 3. Authentication middleware
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
+import { auth, defineMiddleware } from "vextjs";
 
 /**
  * Simple authentication middleware
@@ -97,51 +94,28 @@ import { defineMiddleware } from "vextjs";
  * A JWT library (such as jose) should be used for token validation in production environments.
  * This is simplified to static token verification for demonstration purposes.
  */
-export default defineMiddleware(async (req, _res, next) => {
-  const authorization = req.headers.authorization;
+export default defineMiddleware(
+  auth({
+    provider: "crud-demo",
+    verify(token) {
+      if (!token || token === "undefined") return false;
 
-  if (!authorization) {
-    req.app.throw(401, "Authentication token not provided");
-  }
+      // Simple example: token format is "user-{id}-{role}"
+      // Production code should verify a real JWT with jose/jsonwebtoken.
+      const parts = token.split("-");
+      if (parts.length < 3 || parts[0] !== "user") return false;
 
-  const token = authorization.replace("Bearer ", "");
-
-  if (!token || token === "undefined") {
-    req.app.throw(401, "Authentication token format is invalid");
-  }
-
-  // Simulate JWT decoding (production environment should use libraries such as jose/jsonwebtoken)
-  try {
-    // Simple example: token format is "user-{id}-{role}"
-    const parts = token.split("-");
-    if (parts.length < 3 || parts[0] !== "user") {
-      req.app.throw(401, "Authentication token is invalid");
-    }
-
-    req.user = {
-      id: parts[1],
-      role: parts[2],
-    };
-  } catch {
-    req.app.throw(401, "Authentication token parsing failed");
-  }
-
-  await next();
-});
-```
-
-Add a type declaration for `req.user`:
-
-```typescript
-// types/vext.d.ts
-declare module "vextjs" {
-  interface VextRequest {
-    user?: {
-      id: string;
-      role: string;
-    };
-  }
-}
+      const [, userId, role] = parts;
+      return {
+        subject: `user:${userId}`,
+        userId,
+        roles: [role],
+        provider: "crud-demo",
+        claims: { role },
+      };
+    },
+  }),
+);
 ```
 
 ## 4. Service layer
@@ -167,7 +141,7 @@ interface User {
  * User service
  *
  * Demonstrate CRUD operations using in-memory storage.
- * Should be replaced with database operations (such as Drizzle ORM / Prisma) in production environments.
+ * Should be replaced with real database operations in production environments.
  */
 export default class UserService {
   private logger: VextLogger;
@@ -472,6 +446,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "Create user",
         description: "Create a new user. Bearer Token authentication is required.",
@@ -497,9 +472,11 @@ export default defineRoutes((app) => {
       const body = req.valid("body");
 
       app.logger.info(
-        { operator: req.user?.id, email: body.email },
+        { operator: req.auth.userId, email: body.email },
         "Operator creates user",
-      );const user = await app.services.user.create(body);
+      );
+
+      const user = await app.services.user.create(body);
       res.json(user, 201);
     },
   );
@@ -519,6 +496,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "Update user",
         description:
@@ -537,7 +515,7 @@ export default defineRoutes((app) => {
       const body = req.valid("body");
 
       app.logger.info(
-        { operator: req.user?.id, targetUser: id },
+        { operator: req.auth.userId, targetUser: id },
         "Operator update user",
       );
 
@@ -556,6 +534,7 @@ export default defineRoutes((app) => {
         param: { id: "string:1-" },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "Delete user",
         description: "Delete the specified user. Bearer Token authentication is required. This operation is irreversible.",
@@ -570,7 +549,7 @@ export default defineRoutes((app) => {
       const { id } = req.valid("param");
 
       app.logger.info(
-        { operator: req.user?.id, targetUser: id },
+        { operator: req.auth.userId, targetUser: id },
         "Operator delete user",
       );
 
@@ -899,7 +878,7 @@ client request
   → access-log middleware (logging start time)
   → rate-limit middleware (rate limit check)
   → response-wrapper middleware (open export packaging)
-  → auth middleware (validate token, inject req.user) ← protected routes only
+  → auth middleware (validate token, inject req.auth) ← protected routes only
   → validate middleware (parameter verification) ← When validate is configured
   → handler (business logic)
   → export package ({ code: 0, data, requestId })
@@ -924,6 +903,7 @@ app.throw(404, 'User does not exist') in handler
 | **Three-stage routing** | `app.method(path, options, handler)` — Declarative configuration |
 | **Service layer separation** | Business logic is encapsulated in `src/services/`, routing is only arranged |
 | **Middleware whitelist** | Route-level middleware must be declared in `config.middlewares` |
+| **Auth guard** | `auth()` fills `req.auth`; `RouteOptions.auth` protects routes and drives OpenAPI security |
 | **Declarative validation** | `validate` uses schema-dsl DSL syntax, automatic type conversion |
 | **Unified error handling** | `app.throw()` throws an error, and the framework automatically converts to a standard format |
 | **Export packaging** | All successful responses are automatically packaged as `{ code: 0, data, requestId }` |
@@ -931,8 +911,6 @@ app.throw(404, 'User does not exist') in handler
 
 ## Next step
 
-- 📖[Zod Validation Integration](/examples/zod-validation) — Use Zod to replace the built-in schema-dsl validation
-- 📖[Drizzle ORM integration](/examples/drizzle-orm) — Connect to Drizzle ORM to implement real database operations
-- 📖[Prisma ORM integration](/examples/prisma-orm) — Connect to Prisma ORM to implement real database operations
+- 📖 [permission-core Auth](/examples/permission-core-auth) — Connect a fine-grained authorization core to Vext Auth
 - 📖 [Testing](/guide/testing) — Learn more about advanced usage of VextJS testing tools
 - 📖 [OpenAPI Documentation](/guide/openapi) — Learn more about OpenAPI’s auto-generated configuration options

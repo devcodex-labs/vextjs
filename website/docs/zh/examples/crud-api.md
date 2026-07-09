@@ -72,9 +72,6 @@ export default {
         description: "使用 Bearer Token 认证",
       },
     },
-    guardSecurityMap: {
-      auth: "bearerAuth",
-    },
   },
   // 路由级中间件白名单
   middlewares: [{ name: "auth" }],
@@ -82,14 +79,14 @@ export default {
 ```
 
 :::tip
-`config.openapi.guardSecurityMap` 将路由中间件名称 `'auth'` 映射到 OpenAPI 安全方案 `bearerAuth`。当路由声明 `middlewares: ['auth']` 时，OpenAPI 文档会自动标记该接口需要 Bearer Token 认证。
+`auth()` 只负责解析凭据并填充 `req.auth`。路由通过 `RouteOptions.auth` 选择是否受保护；OpenAPI security 会优先由该路由选项生成，按 middleware 名称回退推断只保留给历史示例兼容。
 :::
 
 ## 3. 认证中间件
 
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
+import { auth, defineMiddleware } from "vextjs";
 
 /**
  * 简易认证中间件
@@ -97,51 +94,28 @@ import { defineMiddleware } from "vextjs";
  * 生产环境中应使用 JWT 库（如 jose）进行令牌验证。
  * 此处为了演示简化为静态 token 校验。
  */
-export default defineMiddleware(async (req, _res, next) => {
-  const authorization = req.headers.authorization;
+export default defineMiddleware(
+  auth({
+    provider: "crud-demo",
+    verify(token) {
+      if (!token || token === "undefined") return false;
 
-  if (!authorization) {
-    req.app.throw(401, "未提供认证令牌");
-  }
+      // 简单示例：token 格式为 "user-{id}-{role}"
+      // 生产代码应使用 jose/jsonwebtoken 校验真实 JWT。
+      const parts = token.split("-");
+      if (parts.length < 3 || parts[0] !== "user") return false;
 
-  const token = authorization.replace("Bearer ", "");
-
-  if (!token || token === "undefined") {
-    req.app.throw(401, "认证令牌格式无效");
-  }
-
-  // 模拟 JWT 解码（生产环境应使用 jose/jsonwebtoken 等库）
-  try {
-    // 简单示例：token 格式为 "user-{id}-{role}"
-    const parts = token.split("-");
-    if (parts.length < 3 || parts[0] !== "user") {
-      req.app.throw(401, "认证令牌无效");
-    }
-
-    req.user = {
-      id: parts[1],
-      role: parts[2],
-    };
-  } catch {
-    req.app.throw(401, "认证令牌解析失败");
-  }
-
-  await next();
-});
-```
-
-为 `req.user` 添加类型声明：
-
-```typescript
-// types/vext.d.ts
-declare module "vextjs" {
-  interface VextRequest {
-    user?: {
-      id: string;
-      role: string;
-    };
-  }
-}
+      const [, userId, role] = parts;
+      return {
+        subject: `user:${userId}`,
+        userId,
+        roles: [role],
+        provider: "crud-demo",
+        claims: { role },
+      };
+    },
+  }),
+);
 ```
 
 ## 4. 服务层
@@ -167,7 +141,7 @@ interface User {
  * 用户服务
  *
  * 使用内存存储演示 CRUD 操作。
- * 生产环境中应替换为数据库操作（如 Drizzle ORM / Prisma）。
+ * 生产环境中应替换为真实数据库操作。
  */
 export default class UserService {
   private logger: VextLogger;
@@ -476,6 +450,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "创建用户",
         description: "创建一个新用户。需要 Bearer Token 认证。",
@@ -501,7 +476,7 @@ export default defineRoutes((app) => {
       const body = req.valid("body");
 
       app.logger.info(
-        { operator: req.user?.id, email: body.email },
+        { operator: req.auth.userId, email: body.email },
         "操作员创建用户",
       );
 
@@ -525,6 +500,7 @@ export default defineRoutes((app) => {
         },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "更新用户",
         description:
@@ -543,7 +519,7 @@ export default defineRoutes((app) => {
       const body = req.valid("body");
 
       app.logger.info(
-        { operator: req.user?.id, targetUser: id },
+        { operator: req.auth.userId, targetUser: id },
         "操作员更新用户",
       );
 
@@ -562,6 +538,7 @@ export default defineRoutes((app) => {
         param: { id: "string:1-" },
       },
       middlewares: ["auth"],
+      auth: true,
       docs: {
         summary: "删除用户",
         description: "删除指定用户。需要 Bearer Token 认证。此操作不可逆。",
@@ -576,7 +553,7 @@ export default defineRoutes((app) => {
       const { id } = req.valid("param");
 
       app.logger.info(
-        { operator: req.user?.id, targetUser: id },
+        { operator: req.auth.userId, targetUser: id },
         "操作员删除用户",
       );
 
@@ -909,7 +886,7 @@ curl -X POST http://localhost:3000/users \
   → access-log 中间件（记录开始时间）
   → rate-limit 中间件（速率限制检查）
   → response-wrapper 中间件（开启出口包装）
-  → auth 中间件（验证 token，注入 req.user）  ← 仅受保护路由
+  → auth 中间件（验证 token，注入 req.auth）  ← 仅受保护路由
   → validate 中间件（参数校验）              ← 有 validate 配置时
   → handler（业务逻辑）
   → 出口包装（{ code: 0, data, requestId }）
@@ -934,6 +911,7 @@ handler 中 app.throw(404, '用户不存在')
 | **三段式路由**       | `app.method(path, options, handler)` — 声明式配置     |
 | **服务层分离**       | 业务逻辑封装在 `src/services/` 中，路由只做编排       |
 | **中间件白名单**     | 路由级中间件必须在 `config.middlewares` 中声明        |
+| **Auth 保护**        | `auth()` 填充 `req.auth`，`RouteOptions.auth` 保护路由并驱动 OpenAPI security |
 | **声明式校验**       | `validate` 使用 schema-dsl DSL 语法，自动类型转换     |
 | **统一错误处理**     | `app.throw()` 抛出错误，框架自动转为标准格式          |
 | **出口包装**         | 所有成功响应自动包装为 `{ code: 0, data, requestId }` |
@@ -941,8 +919,6 @@ handler 中 app.throw(404, '用户不存在')
 
 ## 下一步
 
-- 📖 [Zod 校验集成](/examples/zod-validation) — 使用 Zod 替换内置的 schema-dsl 校验
-- 📖 [Drizzle ORM 集成](/examples/drizzle-orm) — 接入 Drizzle ORM 实现真实数据库操作
-- 📖 [Prisma ORM 集成](/examples/prisma-orm) — 接入 Prisma ORM 实现真实数据库操作
+- 📖 [permission-core Auth 接入](/zh/examples/permission-core-auth) — 将细粒度授权内核接入 Vext Auth
 - 📖 [测试](/guide/testing) — 深入了解 VextJS 测试工具的高级用法
 - 📖 [OpenAPI 文档](/guide/openapi) — 深入了解 OpenAPI 自动生成的配置选项

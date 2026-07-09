@@ -295,10 +295,6 @@ export default {
         in: "header",
         name: "X-API-Key",
       },
-    }, //Middleware name → security scheme mapping
-    guardSecurityMap: {
-      auth: "bearerAuth",
-      "api-key": "apiKeyAuth",
     },
 
     //Contact information
@@ -475,23 +471,32 @@ app.get(
 
 ### `security` — security solution
 
-By default, the framework automatically infers the security scheme from the route's `middlewares`. Configure the mapping of middleware names to security schemes through `guardSecurityMap`:
+For new applications, declare route protection with `RouteOptions.auth`. OpenAPI security is generated from `auth` before the legacy middleware-name fallback:
 
 ```typescript
-//config/default.ts
+// src/config/default.ts
 export default {
   openapi: {
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
-    guardSecurityMap: {
-      auth: "bearerAuth", // middlewares contains 'auth' → mapped to bearerAuth
-    },
   },
 };
 ```
 
-When routing uses `middlewares: ['auth']`, OpenAPI documents are automatically marked as requiring Bearer Token authentication.
+```typescript
+app.get(
+  "/profile",
+  {
+    middlewares: ["auth"],
+    auth: true,
+    docs: { summary: "Get current profile" },
+  },
+  handler,
+);
+```
+
+Use `auth: { security: "bearerAuth" }` when you want to choose the security scheme explicitly. `config.openapi.guardSecurityMap` is still supported for legacy middleware-only routes, but it should not be the primary source for new Auth examples.
 
 Manual override:
 

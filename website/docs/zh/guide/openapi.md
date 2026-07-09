@@ -289,12 +289,6 @@ export default {
       },
     },
 
-    // 中间件名 → 安全方案映射
-    guardSecurityMap: {
-      auth: "bearerAuth",
-      "api-key": "apiKeyAuth",
-    },
-
     // 联系方式
     contact: {
       name: "API Support",
@@ -469,7 +463,7 @@ app.get(
 
 ### `security` — 安全方案
 
-默认情况下，框架会从路由的 `middlewares` 自动推断安全方案。通过 `guardSecurityMap` 配置中间件名到安全方案的映射：
+新应用推荐用 `RouteOptions.auth` 声明路由保护。OpenAPI security 会优先从 `auth` 生成，然后才回退到历史的 middleware 名称推断：
 
 ```typescript
 // config/default.ts
@@ -478,14 +472,23 @@ export default {
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
-    guardSecurityMap: {
-      auth: "bearerAuth", // middlewares 中包含 'auth' → 映射为 bearerAuth
-    },
   },
 };
 ```
 
-路由使用 `middlewares: ['auth']` 时，OpenAPI 文档自动标注需要 Bearer Token 认证。
+```typescript
+app.get(
+  "/profile",
+  {
+    middlewares: ["auth"],
+    auth: true,
+    docs: { summary: "获取当前用户" },
+  },
+  handler,
+);
+```
+
+如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
 
 手动覆盖：
 
