@@ -472,7 +472,7 @@ export default defineMiddleware(async (req, _res, next) => {
 });
 
 // used in handler
-app.get("/profile", { middlewares: ["auth"] }, async (req, res) => {
+app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
   res.json(req.user); // IDE knows the type is { id: string; role: 'admin' | 'user' }
 });
 ```

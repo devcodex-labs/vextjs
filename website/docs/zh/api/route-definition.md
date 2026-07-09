@@ -58,7 +58,7 @@ export default defineRoutes((app) => {
       validate: {
         body: { name: "string:1-50", email: "email" },
       },
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
       docs: {
         summary: "创建用户",
       },
@@ -193,9 +193,19 @@ interface RouteOptions {
 ### 完整示例
 
 ```typescript
+import type { RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
 app.put(
   "/users/:id",
-  {
+  requireAuth({
     validate: {
       param: { id: "string:1-" },
       body: {
@@ -204,8 +214,6 @@ app.put(
         age: "number:0-200?",
       },
     },
-    middlewares: ["auth"],
-    auth: true,
     cache: false,
     docs: {
       summary: "更新用户",
@@ -218,7 +226,7 @@ app.put(
       rateLimit: { max: 10, window: 60 },
       maxBodySize: "5mb",
     },
-  },
+  }),
   handler,
 );
 ```
@@ -368,7 +376,7 @@ const body = req.valid<CreateUserBody>("body");
 app.get(
   "/profile",
   {
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
   },
   handler,
 );
@@ -380,7 +388,10 @@ app.get(
 app.get(
   "/admin/users",
   {
-    middlewares: ["auth", { name: "role", options: { required: "admin" } }],
+    middlewares: [
+      "audit-log",
+      { name: "rate-limit", options: { window: 60_000, max: 30 } },
+    ],
   },
   handler,
 );
@@ -473,9 +484,12 @@ export default defineMiddleware(auth({
 ```
 
 ```typescript
-app.post(
-  "/posts/:id",
-  {
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requirePostUpdate(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
     middlewares: ["auth"],
     auth: {
       roles: ["admin"],
@@ -486,10 +500,21 @@ app.post(
       mode: "all",
       security: "bearerAuth",
     },
-  },
+  };
+}
+```
+
+```typescript
+app.post(
+  "/posts/:id",
+  requirePostUpdate({
+    docs: { summary: "更新文章" },
+  }),
   handler,
 );
 ```
+
+只有一次性路由或底层 API reference 示例才建议直接写原始 `auth` 对象。真实应用里应把 middleware 名称、安全方案、角色、scope 和权限资源集中在本地 helper 中。
 
 Guard 失败会使用稳定错误码：
 
@@ -590,10 +615,10 @@ app.post(
         role: "enum:admin,user?",
       },
     },
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
     docs: {
       summary: "创建用户",
-      description: "创建一个新用户账号。需要管理员权限。",
+      description: "创建一个新用户账号，并记录操作审计日志。",
       operationId: "createUser",
       responses: {
         201: {
@@ -612,7 +637,6 @@ app.post(
           },
         },
         422: { description: "请求参数校验失败" },
-        401: { description: "未认证" },
         409: { description: "邮箱已注册" },
       },
     },
@@ -933,7 +957,15 @@ export default defineRoutes((app) => {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   // GET /users/list
@@ -972,13 +1004,12 @@ export default defineRoutes((app) => {
   // POST /users
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: { name: "string:1-50", email: "email" },
       },
-      middlewares: ["auth"],
       docs: { summary: "创建用户" },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const user = await app.services.user.create(data);
@@ -989,14 +1020,13 @@ export default defineRoutes((app) => {
   // PUT /users/:id
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
         body: { name: "string:1-50?", email: "email?" },
       },
-      middlewares: ["auth"],
       docs: { summary: "更新用户" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -1008,13 +1038,12 @@ export default defineRoutes((app) => {
   // DELETE /users/:id
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
       },
-      middlewares: ["auth"],
       docs: { summary: "删除用户" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.user.delete(id);

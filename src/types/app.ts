@@ -1590,7 +1590,7 @@ export interface RouteDocsConfig {
  * @example
  * app.post('/users', {
  *   validate: { body: { name: 'string:1-50', email: 'email' } },
- *   middlewares: ['auth'],
+ *   middlewares: ['audit-log'],
  *   docs: { summary: '创建用户' },
  * }, handler)
  */

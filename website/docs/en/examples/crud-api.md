@@ -118,6 +118,23 @@ export default defineMiddleware(
 );
 ```
 
+### Reusable route guard helper
+
+Keep the route-level auth shape in one helper instead of copying `middlewares: ["auth"]` and `auth: true` into every protected route:
+
+```typescript
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+```
+
 ## 4. Service layer
 
 ```typescript
@@ -329,7 +346,9 @@ The constructor of the service receives the `app: VextApp` parameter and can acc
 
 ```typescript
 // src/routes/index.ts
-import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
   // GET / → health check
   app.get(
     "/",
@@ -356,6 +375,7 @@ import { defineRoutes } from "vextjs";export default defineRoutes((app) => {
 ```typescript
 // src/routes/users.ts
 import { defineRoutes } from "vextjs";
+import { requireAuth } from "../auth/route-guards";
 
 export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
@@ -436,7 +456,7 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           name: "string:1-50", // required, length 1-50
@@ -445,8 +465,6 @@ export default defineRoutes((app) => {
           role: "enum:admin,user?", // optional, enumeration value
         },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "Create user",
         description: "Create a new user. Bearer Token authentication is required.",
@@ -467,7 +485,7 @@ export default defineRoutes((app) => {
           409: { description: "Email has been registered" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const body = req.valid("body");
 
@@ -486,7 +504,7 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
         body: {
@@ -495,8 +513,6 @@ export default defineRoutes((app) => {
           age: "number:0-200?", // optional
         },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "Update user",
         description:
@@ -509,7 +525,7 @@ export default defineRoutes((app) => {
           409: { description: "The mailbox is already used by another user" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const body = req.valid("body");
@@ -529,12 +545,10 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "Delete user",
         description: "Delete the specified user. Bearer Token authentication is required. This operation is irreversible.",
@@ -544,7 +558,7 @@ export default defineRoutes((app) => {
           404: { description: "User does not exist" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
 

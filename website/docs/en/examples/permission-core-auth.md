@@ -4,7 +4,7 @@ This example shows how to connect [permission-core](https://vextjs.github.io/per
 
 - `auth()` parses the Bearer token and fills `req.auth`.
 - `permission-core` owns authorization decisions such as `invoke + GET:/api/posts`.
-- `RouteOptions.auth` declares the guard that Vext should enforce for a route.
+- A small route helper maps business permissions to `RouteOptions.auth` so each route does not repeat the auth middleware and resource strings.
 
 The verified consumer project is `vext-test`: `src/plugins/permission.ts`, `src/middlewares/permission-core-auth.ts`, `src/routes/auth-context.ts`, and `verify.mjs` cases `#246-#250`.
 
@@ -130,23 +130,67 @@ export default {
 };
 ```
 
-## 4. Protect routes with `RouteOptions.auth`
+## 4. Centralize route guard helpers
+
+Do not repeat `middlewares: ["permission-core-auth"]` and raw resource strings in every route. Keep the bridge middleware registered once, then put the route guard shape in a small policy helper:
+
+```typescript
+// src/auth/permission-policies.ts
+import type { RouteDocsConfig, RouteOptions } from "vextjs";
+
+const postPermissionResources = {
+  read: "GET:/api/posts",
+  create: "POST:/api/posts",
+  delete: "DELETE:/api/posts",
+} as const;
+
+type PostPermission = keyof typeof postPermissionResources;
+
+export function permissionCoreAuth(docs: RouteDocsConfig): RouteOptions {
+  return {
+    middlewares: ["permission-core-auth"],
+    auth: { required: true, security: "bearerAuth" },
+    docs,
+  };
+}
+
+export function requirePostPermission(
+  permission: PostPermission,
+  docs: RouteDocsConfig,
+): RouteOptions {
+  return {
+    middlewares: ["permission-core-auth"],
+    auth: {
+      permissions: [
+        {
+          action: "invoke",
+          resource: postPermissionResources[permission],
+          context: (req) => ({ route: req.route }),
+        },
+      ],
+      security: "bearerAuth",
+    },
+    docs,
+  };
+}
+```
+
+This keeps the policy vocabulary in one place. If your project has multiple resource families, create helpers such as `requireUserPermission()` and `requireBillingPermission()` instead of copying raw permission tuples across handlers.
+
+## 5. Protect routes with the policy helper
 
 ```typescript
 // src/routes/posts.ts
 import { defineRoutes } from "vextjs";
+import { requirePostPermission } from "../auth/permission-policies";
 
 export default defineRoutes((app) => {
   app.get(
     "/posts",
-    {
-      middlewares: ["permission-core-auth"],
-      auth: {
-        permissions: [{ action: "invoke", resource: "GET:/api/posts" }],
-        security: "bearerAuth",
-      },
-      docs: { summary: "List posts", tags: ["Posts"] },
-    },
+    requirePostPermission("read", {
+      summary: "List posts",
+      tags: ["Posts"],
+    }),
     async (req, res) => {
       res.json({ ok: true, userId: req.auth.userId });
     },
@@ -154,14 +198,10 @@ export default defineRoutes((app) => {
 
   app.post(
     "/posts",
-    {
-      middlewares: ["permission-core-auth"],
-      auth: {
-        permissions: [{ action: "invoke", resource: "POST:/api/posts" }],
-        security: "bearerAuth",
-      },
-      docs: { summary: "Create post", tags: ["Posts"] },
-    },
+    requirePostPermission("create", {
+      summary: "Create post",
+      tags: ["Posts"],
+    }),
     async (req, res) => {
       res.json({ ok: true, userId: req.auth.userId }, 201);
     },
@@ -169,20 +209,18 @@ export default defineRoutes((app) => {
 });
 ```
 
-`RouteOptions.auth` is the preferred guard contract. The older `openapi.guardSecurityMap` fallback still exists for legacy middleware-only examples, but new code should put security on `auth.security` so runtime protection and OpenAPI output share the same source.
+`RouteOptions.auth` remains the guard contract, but most applications should route through local helpers so middleware names, security schemes, and permission resources do not drift. The older `openapi.guardSecurityMap` fallback still exists for legacy middleware-only routes, but new code should put security on `auth.security` inside the helper so runtime protection and OpenAPI output share the same source.
 
-## 5. Direct `assert()` in handlers
+## 6. Direct `assert()` in handlers
 
-Use `req.auth.assert()` when a route has additional runtime decisions that are easier to express inside the handler:
+Use `req.auth.assert()` only when a route has additional runtime decisions that are easier to express inside the handler:
 
 ```typescript
+import { permissionCoreAuth } from "../auth/permission-policies";
+
 app.delete(
   "/posts/:id",
-  {
-    middlewares: ["permission-core-auth"],
-    auth: true,
-    docs: { summary: "Delete post", tags: ["Posts"] },
-  },
+  permissionCoreAuth({ summary: "Delete post", tags: ["Posts"] }),
   async (req, res) => {
     const assertPermission = req.auth.assert;
     if (!assertPermission) {
@@ -205,7 +243,7 @@ app.delete(
 
 If permission-core denies the operation, Vext returns `AUTH_FORBIDDEN` through the Auth guard path.
 
-## 6. Verify
+## 7. Verify
 
 The same flow is covered by `vext-test`:
 

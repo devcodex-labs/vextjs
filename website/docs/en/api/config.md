@@ -712,12 +712,12 @@ export default {
 };
 ```
 
-### `guardSecurityMap`
+### `guardSecurityMap` legacy fallback
 
-Automatically map routing middleware names to OpenAPI Security Scheme:
+Automatically map routing middleware names to OpenAPI Security Scheme for legacy middleware-only routes. New Auth examples should prefer `RouteOptions.auth` through a local route guard helper so runtime protection and OpenAPI security share the same source:
 
 ```typescript
-//Use auth middleware in route declaration
+// Legacy only: middleware-name inference without RouteOptions.auth
 app.get("/profile", { middlewares: ["auth"] }, handler);
 // ↑ OpenAPI automatically infers that this route requires bearerAuth authentication
 ```

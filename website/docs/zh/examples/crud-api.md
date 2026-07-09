@@ -118,6 +118,23 @@ export default defineMiddleware(
 );
 ```
 
+### 可复用路由保护 helper
+
+把路由级认证形状集中到一个 helper 里，不要在每条受保护路由上复制 `middlewares: ["auth"]` 和 `auth: true`：
+
+```typescript
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+```
+
 ## 4. 服务层
 
 ```typescript
@@ -360,6 +377,7 @@ export default defineRoutes((app) => {
 ```typescript
 // src/routes/users.ts
 import { defineRoutes } from "vextjs";
+import { requireAuth } from "../auth/route-guards";
 
 export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -440,7 +458,7 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           name: "string:1-50", // 必填，长度 1-50
@@ -449,8 +467,6 @@ export default defineRoutes((app) => {
           role: "enum:admin,user?", // 可选，枚举值
         },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "创建用户",
         description: "创建一个新用户。需要 Bearer Token 认证。",
@@ -471,7 +487,7 @@ export default defineRoutes((app) => {
           409: { description: "邮箱已注册" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const body = req.valid("body");
 
@@ -490,7 +506,7 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
         body: {
@@ -499,8 +515,6 @@ export default defineRoutes((app) => {
           age: "number:0-200?", // 可选
         },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "更新用户",
         description:
@@ -513,7 +527,7 @@ export default defineRoutes((app) => {
           409: { description: "邮箱已被其他用户使用" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const body = req.valid("body");
@@ -533,12 +547,10 @@ export default defineRoutes((app) => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
       },
-      middlewares: ["auth"],
-      auth: true,
       docs: {
         summary: "删除用户",
         description: "删除指定用户。需要 Bearer Token 认证。此操作不可逆。",
@@ -548,7 +560,7 @@ export default defineRoutes((app) => {
           404: { description: "用户不存在" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
 

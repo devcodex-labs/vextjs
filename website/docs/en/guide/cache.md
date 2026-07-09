@@ -379,17 +379,26 @@ app.get(
 `partitionKey` is the cache partition. It does not change the business response, but only isolates the underlying cache keys by user, tenant, region and other dimensions.
 
 ```typescript
+import type { RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
 app.get(
   "/tenant/products",
-  {
-    middlewares: ["auth"],
+  requireAuth({
     cache: {
       ttl: 60_000,
       key: "tenant:products",
       partitionKey: (req) => req.headers["x-tenant-id"],
       tags: ["products"],
     },
-  },
+  }),
   handler,
 );
 ```
@@ -434,26 +443,24 @@ The framework detects this scenario and issues a warning on startup. Solution:
 // Recommendation: Use partitionKey for tenant isolation
 app.get(
   "/my-orders",
-  {
-    middlewares: ["auth"],
+  requireAuth({
     cache: {
       ttl: 60_000,
       partitionKey: (req) => req.headers["x-user-id"],
     },
-  },
+  }),
   handler,
 );
 
 //Also: authenticated users do not go through the cache
 app.get(
   "/products",
-  {
-    middlewares: ["auth"],
+  requireAuth({
     cache: {
       ttl: 60_000,
       condition: (req) => !req.headers.authorization,
     },
-  },
+  }),
   handler,
 );
 ```

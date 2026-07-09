@@ -152,6 +152,8 @@ export default {
 
 通过 `options.middlewares` 为路由指定中间件：
 
+生产认证建议优先使用内置 `auth()` 中间件，并通过本地 route guard helper 封装 `RouteOptions.auth`。本节只演示更底层的 middleware 引用机制。
+
 ```typescript
 // src/routes/admin.ts
 import { defineRoutes } from "vextjs";
@@ -161,10 +163,10 @@ export default defineRoutes((app) => {
   app.get(
     "/profile",
     {
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
     },
     async (req, res) => {
-      res.json((req as any).user);
+      res.json({ ok: true });
     },
   );
 

@@ -476,7 +476,7 @@ export default config;
 
 ## Auth Guard and Context
 
-Every request has an anonymous `req.auth` context by default. Register the first-party `auth()` middleware to populate identity metadata, then protect individual routes with `RouteOptions.auth`:
+Every request has an anonymous `req.auth` context by default. Register the first-party `auth()` middleware to populate identity metadata, then protect routes through small local helpers that map your business policy to `RouteOptions.auth`:
 
 ```ts
 // src/middlewares/auth.ts
@@ -502,17 +502,19 @@ export default defineMiddleware(auth({
 ```
 
 ```ts
-app.get(
-  "/me",
-  { middlewares: ["auth"], auth: true },
-  async (req, res) => {
-    res.json({ userId: req.auth.userId, roles: req.auth.roles });
-  },
-);
+import type { RouteOptions } from "vextjs";
 
-app.post(
-  "/posts/:id",
-  {
+function requireAuth(options: RouteOptions = {}): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
+function requirePostUpdate(options: RouteOptions = {}): RouteOptions {
+  return {
+    ...options,
     middlewares: ["auth"],
     auth: {
       roles: ["admin"],
@@ -521,13 +523,27 @@ app.post(
         { action: "post:update", resource: (req) => req.params.id },
       ],
       mode: "all",
+      security: "bearerAuth",
     },
+  };
+}
+
+app.get(
+  "/me",
+  requireAuth(),
+  async (req, res) => {
+    res.json({ userId: req.auth.userId, roles: req.auth.roles });
   },
+);
+
+app.post(
+  "/posts/:id",
+  requirePostUpdate(),
   handler,
 );
 ```
 
-`auth()` identifies a request but does not protect routes by itself. `auth: true` requires an authenticated request; object form can require roles, scopes, permissions, or a custom `check`. `auth: false` marks a route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
+`auth()` identifies a request but does not protect routes by itself. `auth: true` requires an authenticated request; object form can require roles, scopes, permissions, or a custom `check`. Most applications should wrap those route options in helpers like `requireAuth()` / `requirePostUpdate()` so middleware names, security schemes, and permission resources stay in one place. `auth: false` marks a route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
 
 Stable guard error codes are `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_FORBIDDEN` (403), `AUTH_CONFIG_ERROR` (500), and `AUTH_PROVIDER_ERROR` (500). `requestContext.getStore()?.auth` contains only safe metadata such as `userId`, roles, scopes, scheme, and provider; raw credentials and claims stay out of the request context snapshot.
 

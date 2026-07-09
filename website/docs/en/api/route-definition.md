@@ -58,7 +58,7 @@ export default defineRoutes((app) => {
       validate: {
         body: { name: "string:1-50", email: "email" },
       },
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
       docs: {
         summary: "Create user",
       },
@@ -193,9 +193,19 @@ interface RouteOptions {
 ### Complete example
 
 ```typescript
+import type { RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
 app.put(
   "/users/:id",
-  {
+  requireAuth({
     validate: {
       param: { id: "string:1-" },
       body: {
@@ -204,8 +214,6 @@ app.put(
         age: "number:0-200?",
       },
     },
-    middlewares: ["auth"],
-    auth: true,
     cache: false,
     docs: {
       summary: "Update user",
@@ -218,7 +226,7 @@ app.put(
       rateLimit: { max: 10, window: 60 },
       maxBodySize: "5mb",
     },
-  },
+  }),
   handler,
 );
 ```
@@ -370,7 +378,7 @@ Route-level middleware reference. The referenced middleware must first be declar
 app.get(
   "/profile",
   {
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
   },
   handler,
 );
@@ -382,7 +390,10 @@ app.get(
 app.get(
   "/admin/users",
   {
-    middlewares: ["auth", { name: "role", options: { required: "admin" } }],
+    middlewares: [
+      "audit-log",
+      { name: "rate-limit", options: { window: 60_000, max: 30 } },
+    ],
   },
   handler,
 );
@@ -475,9 +486,12 @@ export default defineMiddleware(auth({
 ```
 
 ```typescript
-app.post(
-  "/posts/:id",
-  {
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requirePostUpdate(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
     middlewares: ["auth"],
     auth: {
       roles: ["admin"],
@@ -488,10 +502,21 @@ app.post(
       mode: "all",
       security: "bearerAuth",
     },
-  },
+  };
+}
+```
+
+```typescript
+app.post(
+  "/posts/:id",
+  requirePostUpdate({
+    docs: { summary: "Update post" },
+  }),
   handler,
 );
 ```
+
+Use the raw `auth` object directly only for a one-off route or low-level API reference examples. In real applications, keep middleware names, security schemes, roles, scopes, and permission resources in local helpers.
 
 Guard failures use stable error codes:
 
@@ -592,11 +617,11 @@ app.post(
         role: "enum:admin,user?",
       },
     },
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
     docs: {
       summary: "Create user",
       description:
-        "Create a new user account. Requires administrator privileges.",
+        "Create a new user account and record the operation in the audit log.",
       operationId: "createUser",
       responses: {
         201: {
@@ -615,7 +640,6 @@ app.post(
           },
         },
         422: { description: "Request parameter verification failed" },
-        401: { description: "Not authenticated" },
         409: { description: "Email has been registered" },
       },
     },
@@ -936,7 +960,15 @@ Multiple routes can be registered in a routing file:
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   // GET /users/list
@@ -975,13 +1007,12 @@ export default defineRoutes((app) => {
   // POST /users
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: { name: "string:1-50", email: "email" },
       },
-      middlewares: ["auth"],
       docs: { summary: "Create user" },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const user = await app.services.user.create(data);
@@ -992,14 +1023,13 @@ export default defineRoutes((app) => {
   // PUT /users/:id
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
         body: { name: "string:1-50?", email: "email?" },
       },
-      middlewares: ["auth"],
       docs: { summary: "Update user" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -1011,13 +1041,12 @@ export default defineRoutes((app) => {
   // DELETE /users/:id
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string:1-" },
       },
-      middlewares: ["auth"],
       docs: { summary: "Delete user" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.user.delete(id);

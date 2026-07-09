@@ -27,7 +27,7 @@ app.get(
   "/list",
   {
     validate: { query: { page: "number:1-", limit: "number:1-100" } },
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
     docs: { summary: "用户列表" },
   },
   async (req, res) => {
@@ -48,6 +48,7 @@ app.get("/health", async (_req, res) => {
 | ------------- | --------------------------------------------- |
 | `validate`    | 参数校验规则（query / body / param / header） |
 | `middlewares` | 路由级中间件引用                              |
+| `auth`        | 路由保护契约，通常由本地 helper 统一封装      |
 | `docs`        | OpenAPI 文档配置                              |
 | `override`    | 路由级配置覆盖（限流、超时等）                |
 
@@ -57,7 +58,15 @@ app.get("/health", async (_req, res) => {
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   // GET /users
@@ -90,7 +99,7 @@ export default defineRoutes((app) => {
   // POST /users
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           name: "string:1-50!",
@@ -98,9 +107,8 @@ export default defineRoutes((app) => {
           age: "number?",
         },
       },
-      middlewares: ["auth"],
       docs: { summary: "创建用户" },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const user = await app.services.user.create(data);
@@ -111,14 +119,13 @@ export default defineRoutes((app) => {
   // PUT /users/:id
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: { name: "string:1-50?", email: "email?" },
       },
-      middlewares: ["auth"],
       docs: { summary: "更新用户" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -130,11 +137,10 @@ export default defineRoutes((app) => {
   // DELETE /users/:id
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
       docs: { summary: "删除用户" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.user.delete(id);
@@ -481,7 +487,10 @@ app.post(
 ```typescript
 // src/config/default.ts
 export default {
-  middlewares: ["auth", { name: "check-role", options: { roles: ["admin"] } }],
+  middlewares: [
+    "audit-log",
+    { name: "rate-limit", options: { window: 60_000, max: 120 } },
+  ],
 };
 ```
 
@@ -492,7 +501,7 @@ export default defineRoutes((app) => {
   app.get(
     "/dashboard",
     {
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
     },
     handler,
   );
@@ -502,8 +511,8 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       middlewares: [
-        "auth",
-        { name: "check-role", options: { roles: ["superadmin"] } },
+        "audit-log",
+        { name: "rate-limit", options: { window: 60_000, max: 10 } },
       ],
     },
     handler,
@@ -665,7 +674,15 @@ src/routes/
 
 ```typescript
 // src/routes/posts.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   // GET /posts — 分页列表
@@ -708,7 +725,7 @@ export default defineRoutes((app) => {
   // POST /posts — 创建文章（需要认证）
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           title: "string:1-200!",
@@ -716,7 +733,6 @@ export default defineRoutes((app) => {
           tags: "string?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "创建文章",
         responses: {
@@ -724,12 +740,12 @@ export default defineRoutes((app) => {
           401: { description: "未认证" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const post = await app.services.post.create({
         ...data,
-        authorId: (req as any).user.id,
+        authorId: req.auth.userId,
       });
       res.json(post, 201);
     },
@@ -738,7 +754,7 @@ export default defineRoutes((app) => {
   // PATCH /posts/:id — 更新文章
   app.patch(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: {
@@ -747,9 +763,8 @@ export default defineRoutes((app) => {
           status: "draft|published|archived",
         },
       },
-      middlewares: ["auth"],
       docs: { summary: "更新文章" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -761,11 +776,10 @@ export default defineRoutes((app) => {
   // DELETE /posts/:id — 删除文章
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
       docs: { summary: "删除文章" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.post.delete(id);

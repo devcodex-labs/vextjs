@@ -56,7 +56,7 @@ export default defineRoutes((app) => {
           age: "number:0-150?",
         },
       },
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
       docs: {
         summary: "创建用户",
       },
@@ -477,13 +477,24 @@ export default {
 ```
 
 ```typescript
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+```
+
+```typescript
 app.get(
   "/profile",
-  {
-    middlewares: ["auth"],
-    auth: true,
+  requireAuth({
     docs: { summary: "获取当前用户" },
-  },
+  }),
   handler,
 );
 ```
@@ -1479,13 +1490,21 @@ export default {
 
 ```typescript
 // src/routes/orders.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   // 获取订单列表
   app.get(
     "/",
-    {
+    requireAuth({
       validate: {
         query: {
           page: "number:1-",
@@ -1495,7 +1514,6 @@ export default defineRoutes((app) => {
           endDate: "date?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "获取订单列表",
         description: "分页获取当前用户的订单列表，支持按状态和日期范围筛选。",
@@ -1511,7 +1529,7 @@ export default defineRoutes((app) => {
           },
         },
       },
-    },
+    }),
     async (req, res) => {
       const filters = req.valid("query");
       const orders = await app.services.order.findAll(filters);
@@ -1522,7 +1540,7 @@ export default defineRoutes((app) => {
   // 创建订单
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           productId: "string!",
@@ -1531,7 +1549,6 @@ export default defineRoutes((app) => {
           couponCode: "string?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "创建订单",
         responses: {
@@ -1547,7 +1564,7 @@ export default defineRoutes((app) => {
           401: { description: "未认证" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const order = await app.services.order.create(data);
@@ -1558,12 +1575,11 @@ export default defineRoutes((app) => {
   // 取消订单
   app.post(
     "/:id/cancel",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: { reason: "string:1-500?" },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "取消订单",
         responses: {
@@ -1572,7 +1588,7 @@ export default defineRoutes((app) => {
           404: { description: "订单不存在" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const { reason } = req.valid("body");

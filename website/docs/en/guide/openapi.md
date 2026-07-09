@@ -56,7 +56,7 @@ export default defineRoutes((app) => {
           age: "number:0-150?",
         },
       },
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
       docs: {
         summary: "Create user",
       },
@@ -485,13 +485,24 @@ export default {
 ```
 
 ```typescript
+// src/auth/route-guards.ts
+import type { RouteOptions } from "vextjs";
+
+export function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+```
+
+```typescript
 app.get(
   "/profile",
-  {
-    middlewares: ["auth"],
-    auth: true,
+  requireAuth({
     docs: { summary: "Get current profile" },
-  },
+  }),
   handler,
 );
 ```
@@ -1497,12 +1508,21 @@ No need to restart the dev server, refresh the document page to see the updated 
 
 ```typescript
 // src/routes/orders.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
 export default defineRoutes((app) => {
   // Get order list
   app.get(
     "/",
-    {
+    requireAuth({
       validate: {
         query: {
           page: "number:1-",
@@ -1512,7 +1532,6 @@ export default defineRoutes((app) => {
           endDate: "date?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "Get order list",
         description:
@@ -1529,7 +1548,7 @@ export default defineRoutes((app) => {
           },
         },
       },
-    },
+    }),
     async (req, res) => {
       const filters = req.valid("query");
       const orders = await app.services.order.findAll(filters);
@@ -1540,7 +1559,7 @@ export default defineRoutes((app) => {
   //Create order
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           productId: "string!",
@@ -1549,7 +1568,6 @@ export default defineRoutes((app) => {
           couponCode: "string?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "Create order",
         responses: {
@@ -1565,7 +1583,7 @@ export default defineRoutes((app) => {
           401: { description: "Not authenticated" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const order = await app.services.order.create(data);
@@ -1576,12 +1594,11 @@ export default defineRoutes((app) => {
   // Cancel order
   app.post(
     "/:id/cancel",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: { reason: "string:1-500?" },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "Cancel order",
         responses: {
@@ -1590,7 +1607,7 @@ export default defineRoutes((app) => {
           404: { description: "Order does not exist" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const { reason } = req.valid("body");

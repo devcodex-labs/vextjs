@@ -27,7 +27,7 @@ app.get(
   "/list",
   {
     validate: { query: { page: "number:1-", limit: "number:1-100" } },
-    middlewares: ["auth"],
+    middlewares: ["audit-log"],
     docs: { summary: "User List" },
   },
   async (req, res) => {
@@ -48,6 +48,7 @@ The second parameter `options` in the three-part expression is a declarative con
 | ------------- | -------------------------------------------------------------------- |
 | `validate`    | Parameter validation rules (query / body / param / header)           |
 | `middlewares` | Route-level middleware reference                                     |
+| `auth`        | Route protection contract, usually wrapped by a local helper          |
 | `docs`        | OpenAPI documentation configuration                                  |
 | `override`    | Route-level configuration override (current limiting, timeout, etc.) |
 
@@ -57,7 +58,15 @@ Each route file uses `defineRoutes()` to export route definitions:
 
 ```typescript
 // src/routes/users.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
 
 export default defineRoutes((app) => {
   //GET /users
@@ -90,7 +99,7 @@ export default defineRoutes((app) => {
   // POST /users
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           name: "string:1-50!",
@@ -98,9 +107,8 @@ export default defineRoutes((app) => {
           age: "number?",
         },
       },
-      middlewares: ["auth"],
       docs: { summary: "Create User" },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const user = await app.services.user.create(data);
@@ -111,14 +119,13 @@ export default defineRoutes((app) => {
   // PUT /users/:id
   app.put(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: { name: "string:1-50?", email: "email?" },
       },
-      middlewares: ["auth"],
       docs: { summary: "Update user" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -130,11 +137,10 @@ export default defineRoutes((app) => {
   // DELETE /users/:id
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
       docs: { summary: "Delete user" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.user.delete(id);
@@ -479,7 +485,10 @@ Specify middleware for routes via `options.middlewares`. Middleware must first b
 ```typescript
 // src/config/default.ts
 export default {
-  middlewares: ["auth", { name: "check-role", options: { roles: ["admin"] } }],
+  middlewares: [
+    "audit-log",
+    { name: "rate-limit", options: { window: 60_000, max: 120 } },
+  ],
 };
 ```
 
@@ -490,7 +499,7 @@ export default defineRoutes((app) => {
   app.get(
     "/dashboard",
     {
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
     },
     handler,
   );
@@ -500,8 +509,8 @@ export default defineRoutes((app) => {
     "/users/:id",
     {
       middlewares: [
-        "auth",
-        { name: "check-role", options: { roles: ["superadmin"] } },
+        "audit-log",
+        { name: "rate-limit", options: { window: 60_000, max: 10 } },
       ],
     },
     handler,
@@ -663,7 +672,16 @@ src/routes/
 
 ```typescript
 // src/routes/posts.ts
-import { defineRoutes } from "vextjs";
+import { defineRoutes, type RouteOptions } from "vextjs";
+
+function requireAuth(options: RouteOptions): RouteOptions {
+  return {
+    ...options,
+    middlewares: ["auth"],
+    auth: { required: true, security: "bearerAuth" },
+  };
+}
+
 export default defineRoutes((app) => {
   // GET /posts — paginated list
   app.get(
@@ -705,7 +723,7 @@ export default defineRoutes((app) => {
   // POST /posts — create posts (authentication required)
   app.post(
     "/",
-    {
+    requireAuth({
       validate: {
         body: {
           title: "string:1-200!",
@@ -713,7 +731,6 @@ export default defineRoutes((app) => {
           tags: "string?",
         },
       },
-      middlewares: ["auth"],
       docs: {
         summary: "Create article",
         responses: {
@@ -721,12 +738,12 @@ export default defineRoutes((app) => {
           401: { description: "Not authenticated" },
         },
       },
-    },
+    }),
     async (req, res) => {
       const data = req.valid("body");
       const post = await app.services.post.create({
         ...data,
-        authorId: (req as any).user.id,
+        authorId: req.auth.userId,
       });
       res.json(post, 201);
     },
@@ -735,7 +752,7 @@ export default defineRoutes((app) => {
   // PATCH /posts/:id — update post
   app.patch(
     "/:id",
-    {
+    requireAuth({
       validate: {
         param: { id: "string!" },
         body: {
@@ -744,9 +761,8 @@ export default defineRoutes((app) => {
           status: "draft|published|archived",
         },
       },
-      middlewares: ["auth"],
       docs: { summary: "Update article" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       const data = req.valid("body");
@@ -758,11 +774,10 @@ export default defineRoutes((app) => {
   // DELETE /posts/:id — delete post
   app.delete(
     "/:id",
-    {
+    requireAuth({
       validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
       docs: { summary: "Delete article" },
-    },
+    }),
     async (req, res) => {
       const { id } = req.valid("param");
       await app.services.post.delete(id);

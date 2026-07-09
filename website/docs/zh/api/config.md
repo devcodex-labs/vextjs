@@ -723,12 +723,12 @@ export default {
 };
 ```
 
-### `guardSecurityMap`
+### `guardSecurityMap` 历史回退
 
-将路由中间件名称自动映射为 OpenAPI Security Scheme：
+用于把只声明 middleware 的历史路由映射到 OpenAPI Security Scheme。新的 Auth 示例应优先通过本地 route guard helper 使用 `RouteOptions.auth`，让运行时保护和 OpenAPI security 共用同一个真相源：
 
 ```typescript
-// 路由声明中使用 auth 中间件
+// 仅用于历史兼容：没有 RouteOptions.auth 的 middleware 名称推断
 app.get("/profile", { middlewares: ["auth"] }, handler);
 // ↑ OpenAPI 自动推断该路由需要 bearerAuth 认证
 ```

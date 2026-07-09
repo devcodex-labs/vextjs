@@ -152,6 +152,8 @@ Benefits of the whitelist mechanism:
 
 Specify middleware for routes via `options.middlewares`:
 
+For production authentication, prefer the built-in `auth()` middleware plus `RouteOptions.auth` wrapped in a local route guard helper. This section only demonstrates the lower-level middleware reference mechanism.
+
 ```typescript
 // src/routes/admin.ts
 import { defineRoutes } from "vextjs";
@@ -160,10 +162,10 @@ export default defineRoutes((app) => {
   app.get(
     "/profile",
     {
-      middlewares: ["auth"],
+      middlewares: ["audit-log"],
     },
     async (req, res) => {
-      res.json((req as any).user);
+      res.json({ ok: true });
     },
   );
 

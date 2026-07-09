@@ -472,7 +472,7 @@ export default defineMiddleware(async (req, _res, next) => {
 });
 
 // handler 中使用
-app.get("/profile", { middlewares: ["auth"] }, async (req, res) => {
+app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
   res.json(req.user); // IDE 知道类型是 { id: string; role: 'admin' | 'user' }
 });
 ```

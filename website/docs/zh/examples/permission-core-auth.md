@@ -4,7 +4,7 @@
 
 - `auth()` 负责解析 Bearer token，并填充 `req.auth`。
 - `permission-core` 负责 `invoke + GET:/api/posts` 这类授权判断。
-- `RouteOptions.auth` 声明某条路由需要 Vext 执行的保护规则。
+- 一个轻量 route helper 负责把业务权限映射为 `RouteOptions.auth`，避免每个路由重复写认证中间件和资源字符串。
 
 已验证的外部消费者项目是 `vext-test`：对应 `src/plugins/permission.ts`、`src/middlewares/permission-core-auth.ts`、`src/routes/auth-context.ts`，以及 `verify.mjs` 的 `#246-#250`。
 
@@ -130,23 +130,67 @@ export default {
 };
 ```
 
-## 4. 使用 `RouteOptions.auth` 保护路由
+## 4. 集中封装路由权限策略
+
+不要在每个 route 里重复写 `middlewares: ["permission-core-auth"]` 和裸资源字符串。认证桥接中间件只注册一次，然后把路由保护形状集中到一个策略 helper：
+
+```typescript
+// src/auth/permission-policies.ts
+import type { RouteDocsConfig, RouteOptions } from "vextjs";
+
+const postPermissionResources = {
+  read: "GET:/api/posts",
+  create: "POST:/api/posts",
+  delete: "DELETE:/api/posts",
+} as const;
+
+type PostPermission = keyof typeof postPermissionResources;
+
+export function permissionCoreAuth(docs: RouteDocsConfig): RouteOptions {
+  return {
+    middlewares: ["permission-core-auth"],
+    auth: { required: true, security: "bearerAuth" },
+    docs,
+  };
+}
+
+export function requirePostPermission(
+  permission: PostPermission,
+  docs: RouteDocsConfig,
+): RouteOptions {
+  return {
+    middlewares: ["permission-core-auth"],
+    auth: {
+      permissions: [
+        {
+          action: "invoke",
+          resource: postPermissionResources[permission],
+          context: (req) => ({ route: req.route }),
+        },
+      ],
+      security: "bearerAuth",
+    },
+    docs,
+  };
+}
+```
+
+这样权限词汇和资源命名只有一个真相源。项目里如果还有用户、账单等资源族，继续扩展 `requireUserPermission()`、`requireBillingPermission()`，而不是把裸 permission tuple 散落到 handler 周围。
+
+## 5. 用策略 helper 保护路由
 
 ```typescript
 // src/routes/posts.ts
 import { defineRoutes } from "vextjs";
+import { requirePostPermission } from "../auth/permission-policies";
 
 export default defineRoutes((app) => {
   app.get(
     "/posts",
-    {
-      middlewares: ["permission-core-auth"],
-      auth: {
-        permissions: [{ action: "invoke", resource: "GET:/api/posts" }],
-        security: "bearerAuth",
-      },
-      docs: { summary: "文章列表", tags: ["Posts"] },
-    },
+    requirePostPermission("read", {
+      summary: "文章列表",
+      tags: ["Posts"],
+    }),
     async (req, res) => {
       res.json({ ok: true, userId: req.auth.userId });
     },
@@ -154,14 +198,10 @@ export default defineRoutes((app) => {
 
   app.post(
     "/posts",
-    {
-      middlewares: ["permission-core-auth"],
-      auth: {
-        permissions: [{ action: "invoke", resource: "POST:/api/posts" }],
-        security: "bearerAuth",
-      },
-      docs: { summary: "创建文章", tags: ["Posts"] },
-    },
+    requirePostPermission("create", {
+      summary: "创建文章",
+      tags: ["Posts"],
+    }),
     async (req, res) => {
       res.json({ ok: true, userId: req.auth.userId }, 201);
     },
@@ -169,20 +209,18 @@ export default defineRoutes((app) => {
 });
 ```
 
-`RouteOptions.auth` 是推荐的路由保护契约。旧的 `openapi.guardSecurityMap` 仍可兼容只靠 middleware 名称推断 security 的历史示例，但新代码应把 security 写在 `auth.security`，让运行时保护和 OpenAPI 输出共用同一个真相源。
+`RouteOptions.auth` 仍然是路由保护契约，但大多数应用应通过本地 helper 间接使用它，避免 middleware 名称、安全方案和权限资源漂移。旧的 `openapi.guardSecurityMap` 仍可兼容只靠 middleware 名称推断 security 的历史路由，但新代码应把 security 写在 helper 内的 `auth.security`，让运行时保护和 OpenAPI 输出共用同一个真相源。
 
-## 5. 在 handler 内直接 `assert()`
+## 6. 在 handler 内直接 `assert()`
 
-当某条路由还需要在 handler 内做额外判断时，可以使用 `req.auth.assert()`：
+只有当某条路由需要在 handler 内做额外动态判断时，才使用 `req.auth.assert()`：
 
 ```typescript
+import { permissionCoreAuth } from "../auth/permission-policies";
+
 app.delete(
   "/posts/:id",
-  {
-    middlewares: ["permission-core-auth"],
-    auth: true,
-    docs: { summary: "删除文章", tags: ["Posts"] },
-  },
+  permissionCoreAuth({ summary: "删除文章", tags: ["Posts"] }),
   async (req, res) => {
     const assertPermission = req.auth.assert;
     if (!assertPermission) {
@@ -205,7 +243,7 @@ app.delete(
 
 如果 permission-core 拒绝该操作，Vext 会沿 Auth guard 路径返回 `AUTH_FORBIDDEN`。
 
-## 6. 验证
+## 7. 验证
 
 同一接入链路已经由 `vext-test` 覆盖：
 
