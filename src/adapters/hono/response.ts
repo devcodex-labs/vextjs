@@ -337,18 +337,47 @@ export function createVextResponse(
       if (checkSent("download")) return;
 
       const ct = contentType ?? "application/octet-stream";
+      const headers = cloneHeaders(_headers);
+      setBufferedHeader(headers, "Content-Type", ct);
+      setBufferedHeader(
+        headers,
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      const sendState = beginResponseSend(res, {
+        kind: "download",
+        status: _status,
+        headers,
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      replaceHeaders(_headers, sendState.headers);
       c.status(_status as any);
-      c.header("Content-Type", ct);
-      c.header("Content-Disposition", `attachment; filename="${filename}"`);
       applyHeaders();
       captureResponse(c.body(readable as any));
+      finishResponseSend(res, sendState);
     },
 
     redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
       if (checkSent("redirect")) return;
 
+      const headers = cloneHeaders(_headers);
+      setBufferedHeader(headers, "Location", url);
+      const sendState = beginResponseSend(res, {
+        kind: "redirect",
+        data: url,
+        status,
+        headers,
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      replaceHeaders(_headers, sendState.headers);
+      c.status(_status as any);
       applyHeaders();
-      captureResponse(c.redirect(url, status as any));
+      captureResponse(c.body(null));
+      finishResponseSend(res, sendState);
     },
 
     status(code: number): VextResponse {
@@ -377,6 +406,10 @@ export function createVextResponse(
 
     _enableWrap(): void {
       _wrapEnabled = true;
+    },
+
+    _isSent(): boolean {
+      return _sent;
     },
   };
 

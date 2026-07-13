@@ -167,6 +167,8 @@ export type RoutesLoader = (
   options: {
     middlewareDefs: MiddlewareRegistry | Map<string, RouteReloaderMiddleware>;
     globalMiddlewares: RouteReloaderMiddleware[];
+    sessionMiddleware?: RouteReloaderMiddleware;
+    corsMiddleware?: RouteReloaderMiddleware;
   },
   collector?: RouteMetadataCollector | null,
 ) => Promise<void>;
@@ -211,6 +213,9 @@ export interface BuiltinMiddlewareCreators {
   createCorsMiddleware?: (
     config: Record<string, unknown>,
   ) => RouteReloaderMiddleware;
+
+  /** 应用级 Session Runtime；soft reload 必须复用同一个 Store。 */
+  sessionMiddleware?: RouteReloaderMiddleware;
 
   /**
    * 创建 Security Headers 中间件
@@ -397,6 +402,7 @@ export async function reloadRoutes(
   } = options;
 
   const routesDir = path.join(outDir, "routes");
+  let routeCorsMiddleware: RouteReloaderMiddleware | undefined;
 
   // ── 1. 创建全新的 adapter 实例 ────────────────────────
   //
@@ -446,11 +452,13 @@ export async function reloadRoutes(
       );
     }
     if (builtinMiddlewares.createCorsMiddleware) {
-      freshAdapter.registerMiddleware(
-        builtinMiddlewares.createCorsMiddleware(
-          app.config as Record<string, unknown>,
-        ),
+      routeCorsMiddleware = builtinMiddlewares.createCorsMiddleware(
+        app.config as Record<string, unknown>,
       );
+      const corsConfig = app.config.cors as { enabled?: boolean } | undefined;
+      if (corsConfig?.enabled !== false) {
+        freshAdapter.registerMiddleware(routeCorsMiddleware);
+      }
     }
     if (builtinMiddlewares.createBodyParserMiddleware) {
       freshAdapter.registerMiddleware(
@@ -488,6 +496,14 @@ export async function reloadRoutes(
         ),
       );
     }
+  }
+
+  const sessionConfig = app.config.session as { enabled?: boolean } | undefined;
+  if (
+    sessionConfig?.enabled === true &&
+    builtinMiddlewares?.sessionMiddleware
+  ) {
+    freshAdapter.registerMiddleware(builtinMiddlewares.sessionMiddleware);
   }
 
   // ── 3. 注册插件全局中间件 ─────────────────────────────
@@ -557,6 +573,8 @@ export async function reloadRoutes(
         {
           middlewareDefs,
           globalMiddlewares,
+          sessionMiddleware: builtinMiddlewares?.sessionMiddleware,
+          corsMiddleware: routeCorsMiddleware,
         },
         collector,
       );

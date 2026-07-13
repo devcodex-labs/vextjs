@@ -122,12 +122,14 @@ testApp = await createTestApp({
     message: 'Too Many Requests',
     keyBy: 'ip',
   },
+  accessLog: { enabled: false }, // 关闭请求日志噪声
+  session: { enabled: false },   // 与应用运行时保持相同的显式启用默认值
   shutdown: { timeout: 1 },  // 快速关闭（1 秒）
   _testMode: true,            // 阻止 process.exit()
 }
 ```
 
-配置合并优先级：`测试默认值` → `DEFAULT_CONFIG` → `config 参数`
+配置合并优先级从低到高为：`DEFAULT_CONFIG` → `测试默认值` → `config 参数`。显式设置 `rateLimit.enabled`、`accessLog.enabled` 或 `session.enabled` 为 `true` 时，会注册与生产、开发环境相同的内置运行时。
 
 ---
 

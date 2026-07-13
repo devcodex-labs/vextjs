@@ -25,9 +25,15 @@ import { loadRoutes } from "../lib/router-loader.js";
 import { createRequestIdMiddleware } from "../lib/middlewares/request-id.js";
 import { createCorsMiddleware } from "../lib/middlewares/cors.js";
 import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
+import { createRateLimitMiddleware } from "../lib/middlewares/rate-limit.js";
+import { createAccessLogMiddleware } from "../lib/middlewares/access-log.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
 import { createCsrfMiddleware } from "../lib/csrf.js";
+import {
+  createConfiguredSessionRuntime,
+  isSessionMiddleware,
+} from "../lib/session.js";
 import { createAuthContextMiddleware } from "../lib/auth.js";
 import {
   createSecurityHeadersMiddleware,
@@ -44,7 +50,7 @@ import type { VextInternalHooks } from "../types/hooks.js";
 import { createVextFetch, type VextFetchConfig } from "../lib/fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
 
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { join } from "node:path";
 import { type IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
@@ -236,6 +242,11 @@ const TEST_DEFAULTS: Partial<VextConfig> = {
     message: "Too Many Requests",
     keyBy: "ip",
   },
+  accessLog: {
+    enabled: false,
+    level: "info",
+    skipPaths: [],
+  },
   shutdown: {
     timeout: 1,
   },
@@ -341,6 +352,9 @@ export async function createTestApp(
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
   const hooks = app.hooks as VextInternalHooks;
+  const sessionRuntime = createConfiguredSessionRuntime(finalConfig.session);
+  app.onClose(sessionRuntime.close);
+  const corsMiddleware = createCorsMiddleware(finalConfig.cors);
 
   // ── 2a. resolveAdapter（异步按需加载）─────────────────
   app.adapter = await resolveAdapter(finalConfig, app);
@@ -387,6 +401,8 @@ export async function createTestApp(
     await loadRoutes(app, join(srcDir, "routes"), {
       middlewareDefs: middlewareRegistry ?? {},
       globalMiddlewares: internals.getGlobalMiddlewares(),
+      sessionMiddleware: sessionRuntime.middleware,
+      corsMiddleware,
     });
     internals.lockUse(); // 测试环境也需锁定，保持行为一致
   }
@@ -428,7 +444,6 @@ export async function createTestApp(
 
   // cors（config.cors.enabled，默认 true）
   if (finalConfig.cors?.enabled !== false) {
-    const corsMiddleware = createCorsMiddleware(finalConfig.cors);
     app.adapter.registerMiddleware(corsMiddleware);
   }
 
@@ -441,9 +456,32 @@ export async function createTestApp(
     app.adapter.registerMiddleware(bodyParserMiddleware);
   }
 
+  if (finalConfig.rateLimit?.enabled !== false) {
+    app.adapter.registerMiddleware(
+      createRateLimitMiddleware(finalConfig.rateLimit, () =>
+        internals.getRateLimiter(),
+      ),
+    );
+  }
+
   // response-wrapper（config.response.wrap，默认 true）
   if (finalConfig.response?.wrap !== false) {
     app.adapter.registerMiddleware(responseWrapper);
+  }
+
+  if (finalConfig.accessLog?.enabled !== false) {
+    app.adapter.registerMiddleware(
+      createAccessLogMiddleware(finalConfig.accessLog ?? {}, app.logger),
+    );
+  }
+
+  if (finalConfig.session?.enabled === true) {
+    if (internals.getGlobalMiddlewares().some(isSessionMiddleware)) {
+      app.logger.warn(
+        "[vextjs] config.session.enabled already auto-registers Session; remove manual app.use(session()) to avoid redundant middleware.",
+      );
+    }
+    app.adapter.registerMiddleware(sessionRuntime.middleware);
   }
 
   // 插件全局中间件
@@ -727,9 +765,10 @@ function executeRequest(
       // 创建 writable stream 作为 mock ServerResponse
       const mockRes = new ServerResponse(mockReq);
 
-      // 使用一个不会真正发送数据的 socket
-      // 让 ServerResponse 认为连接已建立
-      const resSocket = new Socket();
+      // 使用可写的内存流承接 ServerResponse 输出，避免异步响应写入
+      // 尚未连接的 net.Socket 时触发 ERR_SOCKET_CLOSED。
+      const resSocket = new PassThrough() as unknown as Socket;
+      resSocket.resume();
       mockRes.assignSocket(resSocket);
 
       // 拦截 writeHead

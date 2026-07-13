@@ -175,6 +175,13 @@ interface RouteOptions {
   auth?: false | true | VextAuthRequirement;
   csrf?: false;
   securityHeaders?: false;
+  session?:
+    | boolean
+    | {
+        enabled?: boolean;
+        rolling?: boolean;
+        autoCommit?: boolean;
+      };
   multipart?: {
     files?: Record<
       string,
@@ -466,21 +473,23 @@ registered in config.middlewares whitelist.
 // src/middlewares/auth.ts
 import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(auth({
-  provider: "app",
-  async verify(token) {
-    if (token !== "demo-token") return false;
-    return {
-      subject: "user:1",
-      userId: "1",
-      roles: ["admin"],
-      scopes: ["posts:write"],
-      can(action, resource) {
-        return action === "post:update" && resource === "post-1";
-      },
-    };
-  },
-}));
+export default defineMiddleware(
+  auth({
+    provider: "app",
+    async verify(token) {
+      if (token !== "demo-token") return false;
+      return {
+        subject: "user:1",
+        userId: "1",
+        roles: ["admin"],
+        scopes: ["posts:write"],
+        can(action, resource) {
+          return action === "post:update" && resource === "post-1";
+        },
+      };
+    },
+  }),
+);
 ```
 
 ```typescript
@@ -518,13 +527,13 @@ app.post(
 
 Guard 失败会使用稳定错误码：
 
-| 错误码 | HTTP 状态 | 含义 |
-| ------ | --------- | ---- |
-| `AUTH_REQUIRED` | `401` | 当前请求没有已认证身份 |
-| `AUTH_INVALID` | `401` | 请求携带了凭据，但凭据无效 |
-| `AUTH_FORBIDDEN` | `403` | 已认证身份未通过 role、scope、permission 或自定义检查 |
-| `AUTH_CONFIG_ERROR` | `500` | auth 中间件或 permission provider 配置错误 |
-| `AUTH_PROVIDER_ERROR` | `500` | auth provider 或自定义检查异常抛错 |
+| 错误码                | HTTP 状态 | 含义                                                  |
+| --------------------- | --------- | ----------------------------------------------------- |
+| `AUTH_REQUIRED`       | `401`     | 当前请求没有已认证身份                                |
+| `AUTH_INVALID`        | `401`     | 请求携带了凭据，但凭据无效                            |
+| `AUTH_FORBIDDEN`      | `403`     | 已认证身份未通过 role、scope、permission 或自定义检查 |
+| `AUTH_CONFIG_ERROR`   | `500`     | auth 中间件或 permission provider 配置错误            |
+| `AUTH_PROVIDER_ERROR` | `500`     | auth provider 或自定义检查异常抛错                    |
 
 `requestContext.getStore()?.auth` 只保存安全身份快照，不包含原始凭据和 `claims`。需要读取 provider claims 时，请在路由内使用完整的 `req.auth`。
 
@@ -590,17 +599,17 @@ interface RouteDocsConfig {
 
 ### 字段说明
 
-| 字段          | 类型       | 默认值              | 说明                                                 |
-| ------------- | ---------- | ------------------- | ---------------------------------------------------- |
-| `summary`     | `string`   | —                   | 接口一句话摘要                                       |
-| `description` | `string`   | —                   | 接口详细描述（支持 Markdown）                        |
-| `tags`        | `string[]` | 已忽略              | 已废弃。operation tags 会从路由 path/source 自动推断 |
-| `operationId` | `string`   | 自动推断            | 操作标识（全局唯一）                                 |
-| `hidden`      | `boolean`  | `false`             | 是否从文档中隐藏                                     |
-| `deprecated`  | `boolean`  | `false`             | 是否标记为已废弃                                     |
+| 字段          | 类型       | 默认值                       | 说明                                                 |
+| ------------- | ---------- | ---------------------------- | ---------------------------------------------------- |
+| `summary`     | `string`   | —                            | 接口一句话摘要                                       |
+| `description` | `string`   | —                            | 接口详细描述（支持 Markdown）                        |
+| `tags`        | `string[]` | 已忽略                       | 已废弃。operation tags 会从路由 path/source 自动推断 |
+| `operationId` | `string`   | 自动推断                     | 操作标识（全局唯一）                                 |
+| `hidden`      | `boolean`  | `false`                      | 是否从文档中隐藏                                     |
+| `deprecated`  | `boolean`  | `false`                      | 是否标记为已废弃                                     |
 | `security`    | `array`    | 从 `auth` / middlewares 推断 | 安全方案覆盖                                         |
-| `extensions`  | `object`   | —                   | 自定义 `x-*` 扩展字段                                |
-| `responses`   | `object`   | —                   | 响应定义                                             |
+| `extensions`  | `object`   | —                            | 自定义 `x-*` 扩展字段                                |
+| `responses`   | `object`   | —                            | 响应定义                                             |
 
 ### 完整示例
 
@@ -824,6 +833,22 @@ app.post(
 
 ---
 
+## session
+
+控制单个路由的 Session。`false` 跳过已全局启用的 Session；`true` 在全局关闭时单路由启用。对象形式还可覆盖 `rolling` 与 `autoCommit`；Store、cookie name 和 session id 长度仍保持应用级配置。
+
+```typescript
+app.get("/health", { session: false }, healthHandler);
+
+app.post(
+  "/preview",
+  { session: { enabled: true, rolling: true } },
+  previewHandler,
+);
+```
+
+---
+
 ## override
 
 路由级配置覆盖，覆盖 `src/config/default.ts` 中的全局配置。
@@ -856,12 +881,12 @@ app.get(
 );
 ```
 
-| 字段          | 类型               | 说明                         |
-| ------------- | ------------------ | ---------------------------- |
-| `rateLimit`   | `object \| false`  | 路由级限流配置，`false` 禁用 |
-| `timeout`     | `number`           | 请求超时（毫秒）             |
-| `maxBodySize` | `string \| number` | 最大请求体大小               |
-| `cors`        | `VextCorsConfig`   | 路由级 CORS 配置             |
+| 字段          | 类型               | 说明                                      |
+| ------------- | ------------------ | ----------------------------------------- |
+| `rateLimit`   | `object \| false`  | 路由级限流配置，`false` 禁用              |
+| `timeout`     | `number`           | 正整数请求期限（毫秒），超时返回 HTTP 504 |
+| `maxBodySize` | `string \| number` | 最大请求体大小                            |
+| `cors`        | `VextCorsConfig`   | 路由级 CORS 配置                          |
 
 当可嵌入页面、第三方回调或完全自定义响应头栈需要跳过全局 Security Headers 预设时，路由也可以设置顶层 `{ securityHeaders: false }`。
 

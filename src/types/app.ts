@@ -14,7 +14,7 @@ import type {
   ResponseCacheStats,
 } from "response-cache-kit";
 import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
-import type { VextSessionConfig } from "./session.js";
+import type { VextRouteSessionOptions, VextSessionConfig } from "./session.js";
 import type { VextCsrfConfig } from "./csrf.js";
 import type { VextSecurityHeadersConfig } from "./security-headers.js";
 import type { VextAuthRequirement } from "./auth.js";
@@ -1078,7 +1078,7 @@ export interface VextConfig {
   /** 响应配置 */
   response: VextResponseConfig;
 
-  /** Session middleware 默认配置（显式注册 session() 后生效） */
+  /** Session 配置（enabled=true 时由框架自动装配） */
   session?: VextSessionConfig;
 
   /** CSRF 防护配置（默认关闭；启用后自动保护 unsafe methods） */
@@ -1660,9 +1660,14 @@ export interface RouteOptions {
   securityHeaders?: false;
 
   /**
-   * 路由级覆盖（覆盖 config/default.ts 中的全局配置）
+   * 路由级 Session 开关或安全行为覆盖。
    *
-   * 第一期类型定稳但暂不实现。
+   * Store、cookie name 和 idLength 保持应用级，不允许按路由切换。
+   */
+  session?: boolean | VextRouteSessionOptions;
+
+  /**
+   * 路由级覆盖（覆盖 config/default.ts 中的全局配置）
    */
   /** 路由级 body 解析配置；优先级高于全局 bodyParser。 */
   bodyParser?: VextBodyParserConfig;

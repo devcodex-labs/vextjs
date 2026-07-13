@@ -794,13 +794,16 @@ export default defineMiddleware(async (req, res, next) => {
 
 ## VextPublicResponse
 
-User-visible response types, excluding internal methods via `Omit`:
+User-visible response type that omits `rawJson()` and every underscore-prefixed internal method:
 
 ```typescript
-type VextPublicResponse = Omit<VextResponse, "_enableWrap" | "rawJson">;
+type VextPublicResponse = Omit<
+  VextResponse,
+  "rawJson" | Extract<keyof VextResponse, `_${string}`>
+>;
 ```
 
-In the route handler's type signature, the `res` parameter actually uses `VextResponse` (containing internal methods), but user code generally does not need to call `_enableWrap()` and `rawJson()` - these are used by the framework's internal `response-wrapper` and `error-handler` middleware.
+Route handlers currently receive `VextResponse`, which includes internal methods. Application code normally does not need those APIs; `VextPublicResponse` is intended for wrappers and extensions that expose only the stable public response surface.
 
 ---
 

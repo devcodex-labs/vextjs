@@ -49,8 +49,10 @@ app.get("/health", async (_req, res) => {
 | `validate`    | 参数校验规则（query / body / param / header） |
 | `middlewares` | 路由级中间件引用                              |
 | `auth`        | 路由保护契约，通常由本地 helper 统一封装      |
+| `session`     | 路由级 Session 启用、关闭或行为覆盖           |
+| `csrf`        | 路由级 CSRF 跳过                              |
 | `docs`        | OpenAPI 文档配置                              |
-| `override`    | 路由级配置覆盖（限流、超时等）                |
+| `override`    | 路由级运行时覆盖（限流、超时、CORS）          |
 
 ## 路由文件写法
 
@@ -250,7 +252,7 @@ app.post("/example", async (req, res) => {
   req.headers; // 请求头（小写 key）
   req.cookies; // 已解析 cookies（只读，重复 key first-wins）
   req.cookie("theme"); // 读取单个 cookie 值
-  req.session; // 注册 session() 后可用
+  req.session; // 全局或路由级 Session 启用后可用
   req.requestId; // 请求唯一标识（自动生成或从 X-Request-Id 透传）
   req.ip; // 客户端 IP
   req.protocol; // 'http' | 'https'

@@ -1,6 +1,6 @@
 # Cookies 与 Sessions
 
-Vext 提供一等 cookie 解析、响应 cookie 辅助方法和显式 session 中间件。该能力零第三方依赖，并覆盖 Native、Hono、Fastify、Express、Koa adapter。
+Vext 提供一等 cookie 解析、响应 cookie 辅助方法和配置驱动的 Session 运行时。该能力零第三方依赖，并覆盖 Native、Hono、Fastify、Express、Koa adapter。
 
 ## Cookies
 
@@ -57,17 +57,15 @@ app.get(
 
 ## Sessions
 
-Session 需要显式安装：
+通过配置启用 Session。Vext 会在生产、开发、测试和软重载链路中自动注册：
 
 ```typescript
-import { definePlugin, session } from "vextjs";
-
-export default definePlugin({
-  name: "session",
-  setup(app) {
-    app.use(session());
+// src/config/default.ts
+export default {
+  session: {
+    enabled: true,
   },
-});
+};
 ```
 
 在 route handler 中使用 `req.session`：
@@ -96,11 +94,12 @@ Session 对象支持：
 
 ## 配置
 
-`config.session` 为 `session()` 提供默认值：
+`config.session.enabled: true` 启用全局 Session 运行时，其余字段用于配置运行时：
 
 ```typescript
 export default {
   session: {
+    enabled: true,
     name: "vext.sid",
     ttl: 86400,
     rolling: false,
@@ -117,39 +116,39 @@ export default {
 `secure: "auto"` 只会在 HTTPS 请求中发送 `Secure`。默认 memory store 适合开发、测试和单进程部署；生产共享 store 推荐通过官方 adapter 接入用户自有 cache-like 后端：
 
 ```typescript
-import { createCacheSessionStore, session } from "vextjs";
+import { createCacheSessionStore } from "vextjs";
 import { createRedisCacheAdapter } from "cache-hub/redis";
 
 const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
 
-app.use(
-  session({
+export default {
+  session: {
+    enabled: true,
     store: createCacheSessionStore(sessionCache, {
       prefix: "my-app:sess:",
       close: () => sessionCache.close?.(),
     }),
-  }),
-);
+  },
+};
 ```
 
 `createCacheSessionStore()` 接收具备 `get`、`set`、`del` 的结构型 cache，把 `VextSessionStore` 的 TTL 秒转换为 cache 毫秒，默认把 session data 写成 JSON string，并用 cache `get` + `set` 实现 rolling `touch()`。消费项目需要自行安装 `cache-hub` 和选用的后端 client，例如 `ioredis`。
 
-`config.cache.cacheHub` 与 `app.cache` 只服务路由响应缓存，不是 Session Store 捷径，也应与 session 使用不同 namespace。若传入 `close`，Vext 会在返回的 store 上暴露 `close()`，便于在 `app.onClose()` 或插件 teardown 中关闭。需要特殊持久化契约时，仍可直接实现底层 `VextSessionStore`。
+`config.cache.cacheHub` 与 `app.cache` 只服务路由响应缓存，不是 Session Store 捷径，也应与 session 使用不同 namespace。若传入 `close`，Vext 会在应用关闭时自动调用。需要特殊持久化契约时，仍可直接实现底层 `VextSessionStore`。
+
+公开路由可设置 `session: false` 跳过 Session。全局运行时关闭时，可通过 `session: true` 或 `{ session: { enabled: true, rolling: true } }` 为单个路由启用。显式 `session()` 中间件仍保留给作用域化或手动注册场景；不要与 `config.session.enabled: true` 重复使用。
 
 ## CSRF 防护
 
-CSRF 防护通过 `csrf()` 与 `config.csrf` 提供。`mode: "auto"` 下，若显式 `session()` 中间件已写入 `req.session`，Vext 会使用 session 同步 token；若没有 session，则可在配置 `config.csrf.secret` 后使用签名 double-submit cookie。
+CSRF 防护通过 `csrf()` 与 `config.csrf` 提供。`mode: "auto"` 下，若配置的 Session 运行时已提供 `req.session`，Vext 会使用 session 同步 token；否则可在配置 `config.csrf.secret` 后使用签名 double-submit cookie。
 
 ```typescript
-import { csrf, definePlugin, session } from "vextjs";
-
-export default definePlugin({
-  name: "security",
-  setup(app) {
-    app.use(session());
-    app.use(csrf());
+export default {
+  session: { enabled: true },
+  csrf: {
+    enabled: true,
   },
-});
+};
 
 app.get("/csrf-token", {}, async (req, res) => {
   res.json({ token: req.csrfToken() });

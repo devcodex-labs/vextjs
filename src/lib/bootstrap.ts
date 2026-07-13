@@ -40,6 +40,10 @@ import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
 import { createCsrfMiddleware } from "./csrf.js";
+import {
+  createConfiguredSessionRuntime,
+  isSessionMiddleware,
+} from "./session.js";
 import { createAuthContextMiddleware } from "./auth.js";
 import {
   createSecurityHeadersMiddleware,
@@ -224,6 +228,9 @@ export async function bootstrap(
     const app = result.app;
     const hooks = app.hooks as VextInternalHooks;
     internals = result.internals;
+    const sessionRuntime = createConfiguredSessionRuntime(config.session);
+    app.onClose(sessionRuntime.close);
+    const corsMiddleware = createCorsMiddleware(config.cors);
     const parentReadyLog = isEnvFlagEnabled(
       process.env.VEXT_START_PARENT_READY_LOG,
     );
@@ -406,6 +413,8 @@ export async function bootstrap(
           {
             middlewareDefs: middlewareRegistry,
             globalMiddlewares: internals!.getGlobalMiddlewares(),
+            sessionMiddleware: sessionRuntime.middleware,
+            corsMiddleware,
           },
           collector,
         ),
@@ -533,7 +542,6 @@ export async function bootstrap(
 
     // 2. cors（config.cors.enabled，默认 true）
     if (config.cors?.enabled !== false) {
-      const corsMiddleware = createCorsMiddleware(config.cors);
       app.adapter.registerMiddleware(corsMiddleware);
     }
 
@@ -580,6 +588,15 @@ export async function bootstrap(
         app.logger,
       );
       app.adapter.registerMiddleware(accessLogMiddleware);
+    }
+
+    if (config.session?.enabled === true) {
+      if (internals.getGlobalMiddlewares().some(isSessionMiddleware)) {
+        app.logger.warn(
+          "[vextjs] config.session.enabled already auto-registers Session; remove manual app.use(session()) to avoid redundant middleware.",
+        );
+      }
+      app.adapter.registerMiddleware(sessionRuntime.middleware);
     }
 
     // ── 注册插件全局中间件（app.use() 收集的）─────────────

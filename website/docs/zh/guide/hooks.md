@@ -101,38 +101,38 @@ app.hooks.on("openapi:afterGenerate", ({ document }) => {
 
 ## 可用 Hook
 
-| 名称                                                      | 触发点                                                                    |
-| --------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `request:start`                                           | requestId 生成后、进入全局中间件链；404 兜底也会触发，`matched=false`     |
-| `route:matched`                                           | adapter 匹配路由后、执行校验和 handler 前                                 |
-| `route:notFound`                                          | 没有路由匹配，404 响应发送前                                              |
-| `validation:success`                                      | 路由 `validate` 全部通过，`next()` 前                                     |
-| `validation:error`                                        | 路由 `validate` 失败，抛出 `VextValidationError` 前                       |
-| `handler:before`                                          | 业务 handler 调用前                                                       |
-| `handler:after`                                           | 业务 handler 成功返回后                                                   |
-| `handler:error`                                           | 业务 handler 抛错后、进入全局错误处理前                                   |
-| `response:before`                                         | `res.json/rawJson/text/stream` 发送前，可同步 patch `data/status/headers` |
-| `response:after`                                          | 响应发送后                                                                |
-| `error:beforeResponse`                                    | `error-handler` 写 JSON 错误响应前，可同步 patch `body/status`            |
-| `error:afterResponse`                                     | 错误响应发送后                                                            |
-| `fetch:before`                                            | `app.fetch` 出站前，可修改 `Headers`                                      |
-| `fetch:after`                                             | `app.fetch` 返回 `Response` 后                                            |
-| `fetch:error`                                             | `app.fetch` 最终失败时                                                    |
-| `proxy:before`                                            | `app.fetch.proxy` 解析上游请求后、发送前                                  |
-| `proxy:after`                                             | `app.fetch.proxy` 收到上游响应后、透传前                                  |
-| `proxy:error`                                             | `app.fetch.proxy` 本地错误、超时或上游网络失败时                          |
-| `service:loaded`                                          | service 冷启动加载并挂载后                                                |
-| `service:reloaded`                                        | dev soft reload 重新实例化 service 后                                     |
-| `service:beforeCall`                                      | service 方法调用前                                                        |
-| `service:afterCall`                                       | service 方法成功返回后                                                    |
-| `service:error`                                           | service 方法抛错或 reject 后                                              |
-| `cache:hit`、`cache:miss`、`cache:write`、`cache:error`   | 路由级响应缓存读写生命周期                                                |
-| `plugin:beforeSetup`、`plugin:afterSetup`、`plugin:error` | 插件 `setup()` 前后和失败；插件不能观察自己的 `beforeSetup`               |
-| `routes:ready`                                            | 路由扫描和注册完成后                                                      |
-| `openapi:beforeGenerate`、`openapi:afterGenerate`         | OpenAPI 文档生成前后；`afterGenerate` 可同步替换 document                 |
-| `server:beforeListen`                                     | HTTP server 开始监听前                                                    |
-| `app:ready`                                               | `onReady` 执行前后                                                        |
-| `app:close`                                               | `onClose` / shutdown 执行前后                                             |
+| 名称                                                      | 触发点                                                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `request:start`                                           | requestId 生成后、进入全局中间件链；404 兜底也会触发，`matched=false`                               |
+| `route:matched`                                           | adapter 匹配路由后、执行校验和 handler 前                                                           |
+| `route:notFound`                                          | 没有路由匹配，404 响应发送前                                                                        |
+| `validation:success`                                      | 路由 `validate` 全部通过，`next()` 前                                                               |
+| `validation:error`                                        | 路由 `validate` 失败，抛出 `VextValidationError` 前                                                 |
+| `handler:before`                                          | 业务 handler 调用前                                                                                 |
+| `handler:after`                                           | 业务 handler 成功返回后                                                                             |
+| `handler:error`                                           | 业务 handler 抛错后、进入全局错误处理前                                                             |
+| `response:before`                                         | `json/rawJson/text/html/render/stream/download/redirect` 发送前，可同步 patch `data/status/headers` |
+| `response:after`                                          | 响应发送后                                                                                          |
+| `error:beforeResponse`                                    | `error-handler` 写 JSON 错误响应前，可同步 patch `body/status`                                      |
+| `error:afterResponse`                                     | 错误响应发送后                                                                                      |
+| `fetch:before`                                            | `app.fetch` 出站前，可修改 `Headers`                                                                |
+| `fetch:after`                                             | `app.fetch` 返回 `Response` 后                                                                      |
+| `fetch:error`                                             | `app.fetch` 最终失败时                                                                              |
+| `proxy:before`                                            | `app.fetch.proxy` 解析上游请求后、发送前                                                            |
+| `proxy:after`                                             | `app.fetch.proxy` 收到上游响应后、透传前                                                            |
+| `proxy:error`                                             | `app.fetch.proxy` 本地错误、超时或上游网络失败时                                                    |
+| `service:loaded`                                          | service 冷启动加载并挂载后                                                                          |
+| `service:reloaded`                                        | dev soft reload 重新实例化 service 后                                                               |
+| `service:beforeCall`                                      | service 方法调用前                                                                                  |
+| `service:afterCall`                                       | service 方法成功返回后                                                                              |
+| `service:error`                                           | service 方法抛错或 reject 后                                                                        |
+| `cache:hit`、`cache:miss`、`cache:write`、`cache:error`   | 路由级响应缓存读写生命周期                                                                          |
+| `plugin:beforeSetup`、`plugin:afterSetup`、`plugin:error` | 插件 `setup()` 前后和失败；插件不能观察自己的 `beforeSetup`                                         |
+| `routes:ready`                                            | 路由扫描和注册完成后                                                                                |
+| `openapi:beforeGenerate`、`openapi:afterGenerate`         | OpenAPI 文档生成前后；`afterGenerate` 可同步替换 document                                           |
+| `server:beforeListen`                                     | HTTP server 开始监听前                                                                              |
+| `app:ready`                                               | `onReady` 执行前后                                                                                  |
+| `app:close`                                               | `onClose` / shutdown 执行前后                                                                       |
 
 ## 更多参考
 

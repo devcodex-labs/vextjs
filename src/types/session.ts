@@ -50,6 +50,13 @@ export interface VextSessionConfig {
   store?: VextSessionStore;
 }
 
+/** Route-safe Session behavior overrides. Store and cookie identity remain app-wide. */
+export interface VextRouteSessionOptions {
+  enabled?: boolean;
+  rolling?: boolean;
+  autoCommit?: boolean;
+}
+
 export interface VextSession {
   readonly id: string;
   readonly isNew: boolean;

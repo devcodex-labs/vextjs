@@ -29,11 +29,17 @@ export function beginResponseSend(
 ): ResponseSendState {
   const startedAt = performance.now();
   const hooks = isInternalHooks(res._hooks) ? res._hooks : undefined;
-  const patch = hooks?.emitSync("response:before", payload) as
+  const nextHeaders = cloneHeaders(payload.headers);
+  res._onBeforeSend?.(payload.kind, payload.data, payload.status, nextHeaders);
+
+  const hookPayload = {
+    ...payload,
+    headers: nextHeaders,
+  };
+  const patch = hooks?.emitSync("response:before", hookPayload) as
     | VextResponseBeforePatch
     | undefined;
 
-  const nextHeaders = cloneHeaders(payload.headers);
   mergeHeaders(nextHeaders, patch?.headers);
 
   return {

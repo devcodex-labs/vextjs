@@ -528,7 +528,7 @@ export const DEFAULT_CONFIG: VextConfig = {
     wrap: true,
   },
   session: {
-    enabled: true,
+    enabled: false,
     name: "vext.sid",
     ttl: 86400,
     rolling: false,

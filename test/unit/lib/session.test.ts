@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMemorySessionStore, session } from "../../../src/lib/session.js";
+import {
+  createConfiguredSessionRuntime,
+  createMemorySessionStore,
+  session,
+} from "../../../src/lib/session.js";
 import { createCacheSessionStore } from "../../../src/lib/session-store-adapters.js";
 import {
   serializeClearCookie,
@@ -26,7 +30,11 @@ function createReq(cookies: VextCookieJar = {}): VextRequest {
       return cookies[name];
     },
     body: undefined,
-    app: { config: {} } as any,
+    app: {
+      config: {},
+      onClose: vi.fn(),
+      logger: { error: vi.fn() },
+    } as any,
     ip: "127.0.0.1",
     protocol: "http",
     valid: vi.fn(),
@@ -138,7 +146,7 @@ describe("session middleware", () => {
     const sentHeaders: Record<string, string | string[]> = {};
 
     res.json = vi.fn((data: unknown, status = 200) => {
-      res._onSend?.(data, status, sentHeaders);
+      res._onBeforeSend?.("json", data, status, sentHeaders);
     });
 
     await middleware(req, res, async () => {
@@ -224,7 +232,7 @@ describe("session middleware", () => {
     const res = createRes();
 
     res.json = vi.fn((data: unknown, status = 200) => {
-      res._onSend?.(data, status, {});
+      res._onBeforeSend?.("json", data, status, {});
     });
 
     await middleware(req, res, async () => {
@@ -250,5 +258,128 @@ describe("session middleware", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("auto runtime follows global and route-level enablement", async () => {
+    const store = createMemorySessionStore();
+    const runtime = createConfiguredSessionRuntime({ enabled: false, store });
+
+    const disabledReq = createReq();
+    disabledReq.app.config.session = { enabled: false, store };
+    await runtime.middleware(disabledReq, createRes(), vi.fn());
+    expect(disabledReq.session).toBeUndefined();
+
+    const enabledReq = createReq();
+    enabledReq.app.config.session = { enabled: false, store };
+    (enabledReq as any)._routeOptions = { session: true };
+    await runtime.middleware(enabledReq, createRes(), async () => {
+      enabledReq.session!.userId = "route-user";
+    });
+    expect(enabledReq.session).toBeDefined();
+
+    const skippedReq = createReq();
+    skippedReq.app.config.session = { enabled: true, store };
+    (skippedReq as any)._routeOptions = { session: false };
+    const globallyEnabled = createConfiguredSessionRuntime({
+      enabled: true,
+      store,
+    });
+    await globallyEnabled.middleware(skippedReq, createRes(), vi.fn());
+    expect(skippedReq.session).toBeUndefined();
+  });
+
+  it("keeps manual session() enabled when app config disables auto runtime", async () => {
+    const req = createReq();
+    req.app.config.session = { enabled: false };
+
+    await session()(req, createRes(), async () => {
+      req.session!.userId = "manual";
+    });
+
+    expect(req.session!.userId).toBe("manual");
+  });
+
+  it("prevents automatic and manual middleware from attaching twice", async () => {
+    const autoStore = createMemorySessionStore();
+    const manualStore = {
+      get: vi.fn(() => null),
+      set: vi.fn(),
+      delete: vi.fn(),
+    };
+    const runtime = createConfiguredSessionRuntime({
+      enabled: true,
+      store: autoStore,
+    });
+    const manual = session({ store: manualStore });
+    const req = createReq();
+    req.app.config.session = { enabled: true, store: autoStore };
+
+    await runtime.middleware(req, createRes(), () =>
+      manual(req, createRes(), async () => {
+        req.session!.userId = "u1";
+      }),
+    );
+
+    expect(manualStore.get).not.toHaveBeenCalled();
+    expect(manualStore.set).not.toHaveBeenCalled();
+  });
+
+  it("closes an app-owned store exactly once", async () => {
+    const close = vi.fn();
+    const runtime = createConfiguredSessionRuntime({
+      store: {
+        get: vi.fn(() => null),
+        set: vi.fn(),
+        delete: vi.fn(),
+        close,
+      },
+    });
+
+    await runtime.close();
+    await runtime.close();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("commits dirty session data before rethrowing route errors", async () => {
+    const store = createMemorySessionStore();
+    const req = createReq();
+    const res = createRes();
+
+    await expect(
+      session({ store })(req, res, async () => {
+        req.session!.userId = "u1";
+        throw new Error("route failed");
+      }),
+    ).rejects.toThrow("route failed");
+
+    const sid = extractSessionId(res.setCookies[0]!);
+    expect(await store.get(sid)).toEqual({ userId: "u1" });
+  });
+
+  it("logs post-send store failures instead of causing a second response", async () => {
+    const req = createReq();
+    const res = createRes();
+    const store = {
+      get: vi.fn(() => null),
+      set: vi.fn(async () => {
+        throw new Error("store unavailable");
+      }),
+      delete: vi.fn(),
+    };
+    res.json = vi.fn((data: unknown, status = 200) => {
+      res._onBeforeSend?.("json", data, status, {});
+    });
+
+    await expect(
+      session({ store })(req, res, async () => {
+        req.session!.userId = "u1";
+        res.json({ ok: true });
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(req.app.logger.error).toHaveBeenCalledWith(
+      { error: "store unavailable" },
+      expect.stringContaining("session commit failed"),
+    );
   });
 });

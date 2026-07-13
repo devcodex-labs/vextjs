@@ -17,18 +17,14 @@ import type { VextHeaderValue, VextHeaders } from "./headers.js";
 /**
  * 用户可见的 VextResponse 接口
  *
- * 通过 Omit 排除内部方法 _enableWrap 和 rawJson，
- * 用户代码中只能访问公开的响应方法。
+ * 通过 Omit 排除 rawJson 和所有下划线前缀的内部方法，
+ * 后续新增内部响应 API 也不会意外进入公共类型。
  */
-export type VextPublicResponse = Omit<
-  VextResponse,
-  | "_enableWrap"
+type VextInternalResponseKey =
   | "rawJson"
-  | "_onSend"
-  | "_hooks"
-  | "_sendHtml"
-  | "_renderCached"
->;
+  | Extract<keyof VextResponse, `_${string}`>;
+
+export type VextPublicResponse = Omit<VextResponse, VextInternalResponseKey>;
 
 export interface VextRenderHeadOptions {
   title?: string;
@@ -241,6 +237,9 @@ export interface VextResponse {
    */
   _enableWrap(): void;
 
+  /** 返回当前响应是否已经开始发送。@internal */
+  _isSent(): boolean;
+
   /**
    * 发送前拦截钩子（内部方法）
    *
@@ -253,6 +252,21 @@ export interface VextResponse {
    * @see 15-route-cache.md §4.3（_onSend 钩子设计）
    */
   _onSend?: (data: unknown, statusCode: number, headers?: VextHeaders) => void;
+
+  /**
+   * 所有响应出口共享的发送前内部钩子。
+   *
+   * 与仅用于 JSON/render cache capture 的 `_onSend` 分离，供 Session 等
+   * 必须在 headers 提交前完成同步 header 注入的 Runtime 使用。
+   *
+   * @internal
+   */
+  _onBeforeSend?: (
+    kind: import("./hooks.js").VextResponseKind,
+    data: unknown,
+    statusCode: number,
+    headers: VextHeaders,
+  ) => void;
 
   /**
    * Hook Manager 引用（内部方法）

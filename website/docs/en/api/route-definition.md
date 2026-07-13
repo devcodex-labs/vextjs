@@ -175,6 +175,13 @@ interface RouteOptions {
   auth?: false | true | VextAuthRequirement;
   csrf?: false;
   securityHeaders?: false;
+  session?:
+    | boolean
+    | {
+        enabled?: boolean;
+        rolling?: boolean;
+        autoCommit?: boolean;
+      };
   multipart?: {
     files?: Record<
       string,
@@ -468,21 +475,23 @@ registered in config.middlewares whitelist.
 // src/middlewares/auth.ts
 import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(auth({
-  provider: "app",
-  async verify(token) {
-    if (token !== "demo-token") return false;
-    return {
-      subject: "user:1",
-      userId: "1",
-      roles: ["admin"],
-      scopes: ["posts:write"],
-      can(action, resource) {
-        return action === "post:update" && resource === "post-1";
-      },
-    };
-  },
-}));
+export default defineMiddleware(
+  auth({
+    provider: "app",
+    async verify(token) {
+      if (token !== "demo-token") return false;
+      return {
+        subject: "user:1",
+        userId: "1",
+        roles: ["admin"],
+        scopes: ["posts:write"],
+        can(action, resource) {
+          return action === "post:update" && resource === "post-1";
+        },
+      };
+    },
+  }),
+);
 ```
 
 ```typescript
@@ -520,13 +529,13 @@ Use the raw `auth` object directly only for a one-off route or low-level API ref
 
 Guard failures use stable error codes:
 
-| Code | HTTP status | Meaning |
-| ---- | ----------- | ------- |
-| `AUTH_REQUIRED` | `401` | No authenticated identity is present |
-| `AUTH_INVALID` | `401` | A credential was present but invalid |
-| `AUTH_FORBIDDEN` | `403` | Authenticated identity failed role, scope, permission, or custom checks |
-| `AUTH_CONFIG_ERROR` | `500` | The auth middleware or permission provider is misconfigured |
-| `AUTH_PROVIDER_ERROR` | `500` | The auth provider or custom check threw unexpectedly |
+| Code                  | HTTP status | Meaning                                                                 |
+| --------------------- | ----------- | ----------------------------------------------------------------------- |
+| `AUTH_REQUIRED`       | `401`       | No authenticated identity is present                                    |
+| `AUTH_INVALID`        | `401`       | A credential was present but invalid                                    |
+| `AUTH_FORBIDDEN`      | `403`       | Authenticated identity failed role, scope, permission, or custom checks |
+| `AUTH_CONFIG_ERROR`   | `500`       | The auth middleware or permission provider is misconfigured             |
+| `AUTH_PROVIDER_ERROR` | `500`       | The auth provider or custom check threw unexpectedly                    |
 
 `requestContext.getStore()?.auth` stores only a safe snapshot of identity metadata. It intentionally excludes raw credentials and `claims`; use `req.auth` inside the route when provider claims are needed.
 
@@ -592,17 +601,17 @@ interface RouteDocsConfig {
 
 ### Field description
 
-| Field         | Type       | Default Value              | Description                                                                       |
-| ------------- | ---------- | -------------------------- | --------------------------------------------------------------------------------- |
-| `summary`     | `string`   | —                          | One sentence summary of the interface                                             |
-| `description` | `string`   | —                          | Detailed description of the interface (supports Markdown)                         |
-| `tags`        | `string[]` | Ignored                    | Deprecated. Operation tags are inferred automatically from the route path/source. |
-| `operationId` | `string`   | Automatic inference        | Operation ID (globally unique)                                                    |
-| `hidden`      | `boolean`  | `false`                    | Whether to hide from the document                                                 |
-| `deprecated`  | `boolean`  | `false`                    | Whether to mark it as deprecated                                                  |
+| Field         | Type       | Default Value                       | Description                                                                       |
+| ------------- | ---------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| `summary`     | `string`   | —                                   | One sentence summary of the interface                                             |
+| `description` | `string`   | —                                   | Detailed description of the interface (supports Markdown)                         |
+| `tags`        | `string[]` | Ignored                             | Deprecated. Operation tags are inferred automatically from the route path/source. |
+| `operationId` | `string`   | Automatic inference                 | Operation ID (globally unique)                                                    |
+| `hidden`      | `boolean`  | `false`                             | Whether to hide from the document                                                 |
+| `deprecated`  | `boolean`  | `false`                             | Whether to mark it as deprecated                                                  |
 | `security`    | `array`    | Inference from `auth` / middlewares | Security scheme overrides                                                         |
-| `extensions`  | `object`   | —                          | Custom `x-*` extension fields                                                     |
-| `responses`   | `object`   | —                          | response definition                                                               |
+| `extensions`  | `object`   | —                                   | Custom `x-*` extension fields                                                     |
+| `responses`   | `object`   | —                                   | response definition                                                               |
 
 ### Complete example
 
@@ -827,6 +836,22 @@ app.post(
 
 ---
 
+## session
+
+Controls Session for one route. `false` opts out of a globally enabled Session runtime. `true` opts in when the global runtime is disabled. The object form also overrides `rolling` and `autoCommit`; Store identity, cookie name, and session id length remain application-level settings.
+
+```typescript
+app.get("/health", { session: false }, healthHandler);
+
+app.post(
+  "/preview",
+  { session: { enabled: true, rolling: true } },
+  previewHandler,
+);
+```
+
+---
+
 ## override
 
 Route-level configuration override, overrides the global configuration in `src/config/default.ts`.
@@ -862,7 +887,7 @@ app.get(
 | Field         | Type               | Description                                                     |
 | ------------- | ------------------ | --------------------------------------------------------------- |
 | `rateLimit`   | `object \| false`  | Route-level current limiting configuration, `false` is disabled |
-| `timeout`     | `number`           | Request timeout (milliseconds)                                  |
+| `timeout`     | `number`           | Positive request deadline in milliseconds; sends HTTP 504       |
 | `maxBodySize` | `string \| number` | Maximum request body size                                       |
 | `cors`        | `VextCorsConfig`   | Route-level CORS configuration                                  |
 

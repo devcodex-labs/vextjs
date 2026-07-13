@@ -60,7 +60,9 @@ export type VextResponseKind =
   | "text"
   | "html"
   | "render"
-  | "stream";
+  | "stream"
+  | "download"
+  | "redirect";
 
 export interface VextResponseBeforePatch {
   data?: unknown;

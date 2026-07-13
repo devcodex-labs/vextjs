@@ -499,37 +499,37 @@ off();
 | `response:before`, `error:beforeResponse`, `service:beforeCall`, `service:afterCall`, `service:error`, `openapi:*`                                                                           | Synchronous life cycle, return of Promise is not allowed                                |
 | `handler:after`, `handler:error`, `response:after`, `error:afterResponse`, `fetch:after/error`, `proxy:after/error`, `cache:*`, `plugin:afterSetup/error`, `routes:ready`, `app:ready/close` | safe emit, hook errors will be recorded but will not change the main process            |
 
-| **Available hooks**:                                      | Name                                                                                                             | Trigger Point |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------- | -------------- | --------------------------------------------------- |
-| `request:start`                                           | After requestId is generated, it enters the global middleware chain; 404 will also be triggered, `matched=false` |
-| `route:matched`                                           | After the adapter matches the route and before executing the checksum handler                                    |
-| `route:notFound`                                          | No route matching, 404 response before sending                                                                   |
-| `validation:success`                                      | Route `validate` all passed, before `next()`                                                                     |
-| `validation:error`                                        | Route `validate` fails and throws `VextValidationError` before                                                   |
-| `handler:before`                                          | Before the business handler is called                                                                            |
-| `handler:after`                                           | After the business handler returns successfully                                                                  |
-| `handler:error`                                           | After the business handler throws an error and before entering global error handling                             |
-| `response:before`                                         | `res.json/rawJson/text/stream` can be synchronized before sending. patch `data/status/headers`                   |
-| `response:after`                                          | After the response is sent                                                                                       |
-| `error:beforeResponse`                                    | `error-handler` can synchronize patch `body/status` before writing JSON error response                           |
-| `error:afterResponse`                                     | After the error response is sent                                                                                 |
-| `fetch:before`                                            | `app.fetch` can be modified before leaving the website `Headers`                                                 |
-| `fetch:after`                                             | `app.fetch` returns `Response` after                                                                             |
-| `fetch:error`                                             | `app.fetch` finally fails                                                                                        |
-| `proxy:before`                                            | `app.fetch.proxy` After parsing the upstream request and before sending it                                       |
-| `proxy:after`                                             | `app.fetch.proxy` after receiving the upstream response and before transparent transmission                      |
-| `proxy:error`                                             | `app.fetch.proxy` on local error, timeout or upstream network failure                                            |
-| `service:loaded`                                          | After service is loaded and mounted during cold start                                                            |
-| `service:reloaded`                                        | dev soft reload after re-instantiating service                                                                   |
-| `service:beforeCall`                                      | Before the service method is called                                                                              |
-| `service:afterCall`                                       | After the service method returns successfully                                                                    |
-| `service:error`                                           | After the service method throws an error or rejects                                                              |
-| `cache:hit`, `cache:miss`, `cache:write`, `cache:error`   | Route-level response cache read and write life cycle                                                             |
-| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup`                    |               | `routes:ready` | After route scanning and registration are completed |
-| `openapi:beforeGenerate`, `openapi:afterGenerate`         | Before and after OpenAPI document generation; `afterGenerate` can replace document synchronously                 |
-| `server:beforeListen`                                     | Before HTTP server starts listening                                                                              |
-| `app:ready`                                               | `onReady` before and after execution                                                                             |
-| `app:close`                                               | `onClose`/shutdown before and after execution                                                                    |
+| **Available hooks**:                                      | Name                                                                                                              | Trigger Point |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------- | -------------- | --------------------------------------------------- |
+| `request:start`                                           | After requestId is generated, it enters the global middleware chain; 404 will also be triggered, `matched=false`  |
+| `route:matched`                                           | After the adapter matches the route and before executing the checksum handler                                     |
+| `route:notFound`                                          | No route matching, 404 response before sending                                                                    |
+| `validation:success`                                      | Route `validate` all passed, before `next()`                                                                      |
+| `validation:error`                                        | Route `validate` fails and throws `VextValidationError` before                                                    |
+| `handler:before`                                          | Before the business handler is called                                                                             |
+| `handler:after`                                           | After the business handler returns successfully                                                                   |
+| `handler:error`                                           | After the business handler throws an error and before entering global error handling                              |
+| `response:before`                                         | Runs before `json/rawJson/text/html/render/stream/download/redirect`; synchronously patches `data/status/headers` |
+| `response:after`                                          | After the response is sent                                                                                        |
+| `error:beforeResponse`                                    | `error-handler` can synchronize patch `body/status` before writing JSON error response                            |
+| `error:afterResponse`                                     | After the error response is sent                                                                                  |
+| `fetch:before`                                            | `app.fetch` can be modified before leaving the website `Headers`                                                  |
+| `fetch:after`                                             | `app.fetch` returns `Response` after                                                                              |
+| `fetch:error`                                             | `app.fetch` finally fails                                                                                         |
+| `proxy:before`                                            | `app.fetch.proxy` After parsing the upstream request and before sending it                                        |
+| `proxy:after`                                             | `app.fetch.proxy` after receiving the upstream response and before transparent transmission                       |
+| `proxy:error`                                             | `app.fetch.proxy` on local error, timeout or upstream network failure                                             |
+| `service:loaded`                                          | After service is loaded and mounted during cold start                                                             |
+| `service:reloaded`                                        | dev soft reload after re-instantiating service                                                                    |
+| `service:beforeCall`                                      | Before the service method is called                                                                               |
+| `service:afterCall`                                       | After the service method returns successfully                                                                     |
+| `service:error`                                           | After the service method throws an error or rejects                                                               |
+| `cache:hit`, `cache:miss`, `cache:write`, `cache:error`   | Route-level response cache read and write life cycle                                                              |
+| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup`                     |               | `routes:ready` | After route scanning and registration are completed |
+| `openapi:beforeGenerate`, `openapi:afterGenerate`         | Before and after OpenAPI document generation; `afterGenerate` can replace document synchronously                  |
+| `server:beforeListen`                                     | Before HTTP server starts listening                                                                               |
+| `app:ready`                                               | `onReady` before and after execution                                                                              |
+| `app:close`                                               | `onClose`/shutdown before and after execution                                                                     |
 
 :::tip
 If you only want to record "requests that pass parameter verification", use `validation:success`. In this way, requests that fail verification will not enter this hook, which is more direct than manually excluding `VextValidationError` in ordinary global middleware.

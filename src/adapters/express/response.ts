@@ -343,16 +343,28 @@ export function createVextResponse(
       if (checkSent("download")) return;
 
       const ct = contentType ?? "application/octet-stream";
-
-      expressRes.statusCode = _status;
-      expressRes.setHeader("Content-Type", ct);
-      expressRes.setHeader(
+      const headers = cloneHeaders(_headers);
+      setBufferedHeader(headers, "Content-Type", ct);
+      setBufferedHeader(
+        headers,
         "Content-Disposition",
         `attachment; filename="${filename}"`,
       );
+      const sendState = beginResponseSend(res, {
+        kind: "download",
+        status: _status,
+        headers,
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      replaceHeaders(_headers, sendState.headers);
+
+      expressRes.statusCode = _status;
       applyHeaders();
 
       readable.pipe(expressRes);
+      finishResponseSend(res, sendState);
     },
 
     /**
@@ -364,10 +376,22 @@ export function createVextResponse(
     redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
       if (checkSent("redirect")) return;
 
+      const headers = cloneHeaders(_headers);
+      setBufferedHeader(headers, "Location", url);
+      const sendState = beginResponseSend(res, {
+        kind: "redirect",
+        data: url,
+        status,
+        headers,
+        wrapped: false,
+        requestId: getRequestId(),
+      });
+      _status = sendState.status;
+      replaceHeaders(_headers, sendState.headers);
       applyHeaders();
-      expressRes.statusCode = status;
-      expressRes.setHeader("Location", url);
+      expressRes.statusCode = _status;
       expressRes.end();
+      finishResponseSend(res, sendState);
     },
 
     /**
@@ -419,6 +443,10 @@ export function createVextResponse(
      */
     _enableWrap(): void {
       _wrapEnabled = true;
+    },
+
+    _isSent(): boolean {
+      return _sent;
     },
   };
 

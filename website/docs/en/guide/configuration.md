@@ -170,7 +170,7 @@ export default {
 };
 ```
 
-`config.session` only provides defaults for the explicit `session()` middleware. The built-in memory store is single-process; production shared stores should use `createCacheSessionStore(cacheLike)` or implement `VextSessionStore` directly, then pass the store through config or `session({ store })`.
+`config.session.enabled: true` auto-registers Session across production, development, testing, and soft reload. It defaults to `false`; the built-in memory store is suitable for single-process deployments. Shared deployments should set `config.session.store` to `createCacheSessionStore(cacheLike)` or a custom `VextSessionStore`. Route options can use `session: false` to opt out or `session: true` to opt in while the global runtime is disabled. The explicit `session()` middleware remains available for scoped/manual registration.
 
 `config.csrf.enabled: true` auto-registers the built-in CSRF middleware after body parsing and plugin global middleware. Keep it disabled and register `csrf()` manually when you need scoped protection for selected paths.
 

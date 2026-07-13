@@ -794,13 +794,16 @@ export default defineMiddleware(async (req, res, next) => {
 
 ## VextPublicResponse
 
-用户可见的响应类型，通过 `Omit` 排除了内部方法：
+用户可见的响应类型，通过 `Omit` 排除 `rawJson()` 和所有 `_` 前缀的内部方法：
 
 ```typescript
-type VextPublicResponse = Omit<VextResponse, "_enableWrap" | "rawJson">;
+type VextPublicResponse = Omit<
+  VextResponse,
+  "rawJson" | Extract<keyof VextResponse, `_${string}`>
+>;
 ```
 
-在路由 handler 的类型签名中，`res` 参数实际使用 `VextResponse`（包含内部方法），但用户代码通常不需要调用 `_enableWrap()` 和 `rawJson()` —— 这些由框架内部的 `response-wrapper` 和 `error-handler` 中间件使用。
+在路由 handler 的类型签名中，`res` 参数实际使用 `VextResponse`（包含内部方法），但用户代码通常不需要调用这些内部 API；`VextPublicResponse` 适合只希望暴露稳定公共响应面的封装和扩展类型。
 
 ---
 

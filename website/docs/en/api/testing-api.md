@@ -122,12 +122,14 @@ testApp = await createTestApp({
     message: 'Too Many Requests',
     keyBy: 'ip',
   },
+  accessLog: { enabled: false }, // Disable request log noise
+  session: { enabled: false }, // Same opt-in default as the app runtime
   shutdown: { timeout: 1 }, // Quick shutdown (1 second)
   _testMode: true, // prevent process.exit()
 }
 ```
 
-Configure merge priority: `test defaults` → `DEFAULT_CONFIG` → `config parameters`
+Merge priority from lowest to highest is `DEFAULT_CONFIG` → `test defaults` → `config parameters`. Explicitly setting `rateLimit.enabled`, `accessLog.enabled`, or `session.enabled` to `true` registers the same built-in runtime used by production and development.
 
 ---
 

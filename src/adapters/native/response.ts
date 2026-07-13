@@ -442,14 +442,29 @@ class NativeVextResponse implements VextResponse {
     if (this._checkSent("download")) return;
 
     const ct = contentType ?? "application/octet-stream";
+    const headers = cloneHeaders(this._headers);
+    setBufferedHeader(headers, "Content-Type", ct);
+    setBufferedHeader(
+      headers,
+      "Content-Disposition",
+      `attachment; filename="${filename}"`,
+    );
+    const sendState = beginResponseSend(this, {
+      kind: "download",
+      status: this._status,
+      headers,
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    this._status = sendState.status;
+    replaceHeaders(this._headers, sendState.headers);
     const sr = this._serverResponse;
 
     sr.statusCode = this._status;
-    sr.setHeader("Content-Type", ct);
-    sr.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     this._applyHeaders();
 
     (readable as NodeJS.ReadableStream).pipe(sr);
+    finishResponseSend(this, sendState);
   }
 
   /**
@@ -461,11 +476,23 @@ class NativeVextResponse implements VextResponse {
   redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
     if (this._checkSent("redirect")) return;
 
+    const headers = cloneHeaders(this._headers);
+    setBufferedHeader(headers, "Location", url);
+    const sendState = beginResponseSend(this, {
+      kind: "redirect",
+      data: url,
+      status,
+      headers,
+      wrapped: false,
+      requestId: this._resolveRequestId(),
+    });
+    this._status = sendState.status;
+    replaceHeaders(this._headers, sendState.headers);
     const sr = this._serverResponse;
-    sr.statusCode = status;
-    sr.setHeader("Location", url);
+    sr.statusCode = this._status;
     this._applyHeaders();
     sr.end();
+    finishResponseSend(this, sendState);
   }
 
   /**
@@ -517,6 +544,10 @@ class NativeVextResponse implements VextResponse {
    */
   _enableWrap(): void {
     this._wrapEnabled = true;
+  }
+
+  _isSent(): boolean {
+    return this._sent;
   }
 }
 

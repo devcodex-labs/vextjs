@@ -110,31 +110,31 @@ export default {
 
 ### `VextConfig`
 
-| 字段              | 类型                                                    | 默认值               | 说明                                  |
-| ----------------- | ------------------------------------------------------- | -------------------- | ------------------------------------- |
-| `port`            | `number`                                                | `3000`               | HTTP 监听端口                         |
-| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                         |
-| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                            |
-| `trustProxy`      | `boolean`                                               | `false`              | 是否信任代理                          |
-| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单                    |
-| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                             |
-| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置                          |
-| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置                          |
-| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                              |
-| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置                          |
-| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置              |
-| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                              |
-| `session`         | `VextSessionConfig`                                     | 见指南               | 显式 `session()` 中间件使用的默认配置 |
-| `csrf`            | `VextCsrfConfig`                                        | 见下方               | CSRF 中间件配置                       |
-| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | 浏览器安全响应头配置                  |
-| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                         |
-| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                          |
-| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                          |
-| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置                      |
-| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置                        |
-| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置            |
-| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置            |
-| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                    |
+| 字段              | 类型                                                    | 默认值               | 说明                                   |
+| ----------------- | ------------------------------------------------------- | -------------------- | -------------------------------------- |
+| `port`            | `number`                                                | `3000`               | HTTP 监听端口                          |
+| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                          |
+| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                             |
+| `trustProxy`      | `boolean`                                               | `false`              | 是否信任代理                           |
+| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | 路由级中间件白名单                     |
+| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | 见下方               | CORS 配置                              |
+| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | 见下方               | 速率限制配置                           |
+| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | 见下方               | 请求 ID 配置                           |
+| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | 见下方               | 日志配置                               |
+| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | 见下方               | 优雅关闭配置                           |
+| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server 配置               |
+| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | 见下方               | 响应配置                               |
+| `session`         | `VextSessionConfig`                                     | 见下方               | Session 自动注册、store 与 cookie 配置 |
+| `csrf`            | `VextCsrfConfig`                                        | 见下方               | CSRF 中间件配置                        |
+| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | 浏览器安全响应头配置                   |
+| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | 见下方               | Body 解析配置                          |
+| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | 文件上传配置                           |
+| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | 见下方               | 访问日志配置                           |
+| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | 见下方               | OpenAPI 文档配置                       |
+| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | 见下方               | 请求上下文配置                         |
+| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置             |
+| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置             |
+| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                     |
 
 ---
 
@@ -1126,11 +1126,11 @@ export default config;
 
 ### `VextSessionConfig`
 
-`config.session` 由显式注册的 `session()` 中间件消费；它本身不会全局启用 session。
+`config.session.enabled: true` 会在生产、开发、测试和软重载链路中自动注册 Session。显式 `session()` 中间件仅用于作用域化或手动注册场景。
 
 | 字段         | 类型                       | 默认值       | 说明                                          |
 | ------------ | -------------------------- | ------------ | --------------------------------------------- |
-| `enabled`    | `boolean`                  | `true`       | 设为 `false` 时让 `session()` 成为 no-op      |
+| `enabled`    | `boolean`                  | `false`      | 是否自动全局注册 Session                      |
 | `name`       | `string`                   | `'vext.sid'` | session cookie 名称                           |
 | `ttl`        | `number`                   | `86400`      | store TTL，单位秒                             |
 | `rolling`    | `boolean`                  | `false`      | 每次请求刷新 store TTL 与 cookie              |
@@ -1141,9 +1141,11 @@ export default config;
 
 `VextSessionCookieOptions` 基于 `CookieSerializeOptions`，并额外支持 `secure: boolean | "auto"`。Cookie 选项包含 `domain`、`path`、`expires`、`maxAge`、`httpOnly`、`secure`、`sameSite`、`priority`、`partitioned` 与 `encode`。
 
-`VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。如果自定义 store 暴露 `close()`，请通过 `app.onClose()` 或插件 teardown 主动关闭。
+`VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。配置 Store 和已启用的手动 Session 运行时会在应用关闭时调用 `close()`。
 
 生产 cache-backed session 推荐使用 `vextjs` 根入口导出的 `createCacheSessionStore(cacheLike, options?)`。它接收具备 `get`、`set`、`del` 的结构型 `VextCacheLike`，把 session TTL 秒转换为 cache 毫秒，默认写入 JSON string，且只有传入 `options.close` 时才暴露 `close()`。`config.cache.cacheHub` 仍然只是路由响应缓存配置，不会注入 Session Store。
+
+`RouteOptions.session` 接受 `false`、`true` 或 `{ enabled?, rolling?, autoCommit? }`，可为单个路由关闭 Session，也可在全局运行时关闭时单独启用。
 
 ---
 

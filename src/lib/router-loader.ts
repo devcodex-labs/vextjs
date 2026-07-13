@@ -17,6 +17,7 @@ import {
 } from "./middlewares/route-cache.js";
 import { buildRouteAuthGuardMiddleware } from "./auth.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
+import { createRouteTimeoutMiddleware } from "./middlewares/route-timeout.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
 import type { VextInternalHooks, VextRouteHookInfo } from "../types/hooks.js";
@@ -82,6 +83,12 @@ export interface LoadRoutesOptions {
 
   /** 全局中间件列表（插件通过 app.use() 注册的） */
   globalMiddlewares: VextMiddleware[];
+
+  /** 应用级 Session Runtime middleware，供全局关闭时的 route opt-in 复用。 */
+  sessionMiddleware?: VextMiddleware;
+
+  /** 应用级 CORS middleware，供全局关闭时的 route override 复用。 */
+  corsMiddleware?: VextMiddleware;
 }
 
 /**
@@ -188,7 +195,7 @@ export async function loadRoutes(
       app,
       entry.prefix,
       registry,
-      options.globalMiddlewares,
+      options,
       collector,
     );
 
@@ -253,7 +260,7 @@ function registerRouteDefinition(
   app: VextApp,
   prefix: string,
   registry: MiddlewareRegistry,
-  _globalMiddlewares: VextMiddleware[],
+  options: LoadRoutesOptions,
   collector?: RouteMetadataCollector | null,
 ): void {
   const hooks = app.hooks as VextInternalHooks;
@@ -291,9 +298,7 @@ function registerRouteDefinition(
         route.options.auth !== undefined && route.options.auth !== false;
       const hasLegacyAuth = Boolean(
         route.options.middlewares?.some((m) =>
-          (typeof m === "string" ? m : m.name)
-            .toLowerCase()
-            .includes("auth"),
+          (typeof m === "string" ? m : m.name).toLowerCase().includes("auth"),
         ),
       );
       const cacheOpts = normalizeCacheOptions(
@@ -349,6 +354,36 @@ function registerRouteDefinition(
         app.config.bodyParser,
       );
       routeMiddlewares.unshift(routeMultipartMW);
+    }
+
+    const builtinRouteMiddlewares: VextMiddleware[] = [];
+    const routeTimeout = route.options?.override?.timeout;
+    if (routeTimeout !== undefined) {
+      builtinRouteMiddlewares.push(createRouteTimeoutMiddleware(routeTimeout));
+    }
+
+    const routeCors = route.options?.override?.cors;
+    if (
+      app.config.cors?.enabled === false &&
+      routeCors?.enabled !== false &&
+      options.corsMiddleware
+    ) {
+      builtinRouteMiddlewares.push(options.corsMiddleware);
+    }
+
+    const routeSession = route.options?.session;
+    if (
+      app.config.session?.enabled !== true &&
+      routeSession !== undefined &&
+      routeSession !== false &&
+      (routeSession === true || routeSession.enabled !== false) &&
+      options.sessionMiddleware
+    ) {
+      builtinRouteMiddlewares.push(options.sessionMiddleware);
+    }
+
+    if (builtinRouteMiddlewares.length > 0) {
+      routeMiddlewares.unshift(...builtinRouteMiddlewares);
     }
 
     // ── 3. 构建 validate 中间件（Phase 1 升级）──────────

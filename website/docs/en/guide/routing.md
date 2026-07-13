@@ -44,13 +44,15 @@ app.get("/health", async (_req, res) => {
 
 The second parameter `options` in the three-part expression is a declarative configuration object, including:
 
-| Field         | Description                                                          |
-| ------------- | -------------------------------------------------------------------- |
-| `validate`    | Parameter validation rules (query / body / param / header)           |
-| `middlewares` | Route-level middleware reference                                     |
-| `auth`        | Route protection contract, usually wrapped by a local helper          |
-| `docs`        | OpenAPI documentation configuration                                  |
-| `override`    | Route-level configuration override (current limiting, timeout, etc.) |
+| Field         | Description                                                   |
+| ------------- | ------------------------------------------------------------- |
+| `validate`    | Parameter validation rules (query / body / param / header)    |
+| `middlewares` | Route-level middleware reference                              |
+| `auth`        | Route protection contract, usually wrapped by a local helper  |
+| `session`     | Route-level Session opt-in, opt-out, or behavior override     |
+| `csrf`        | Route-level CSRF opt-out                                      |
+| `docs`        | OpenAPI documentation configuration                           |
+| `override`    | Route-level runtime override (`rateLimit`, `timeout`, `cors`) |
 
 ## How to write routing files
 
@@ -248,7 +250,7 @@ app.post("/example", async (req, res) => {
   req.headers; // Request headers (lowercase key)
   req.cookies; // Parsed cookies (readonly, first-wins)
   req.cookie("theme"); // Read one cookie value
-  req.session; // Available after registering session()
+  req.session; // Available when global or route-level Session is enabled
   req.requestId; //Request unique identifier (automatically generated or transparently transmitted from X-Request-Id)
   req.ip; // Client IP
   req.protocol; // 'http' | 'https'

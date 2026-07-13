@@ -388,6 +388,7 @@ describe("reloadRoutes", () => {
       const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
       const authContextMw = createMockMiddleware("authContext");
+      const sessionMw = createMockMiddleware("session");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
@@ -400,12 +401,16 @@ describe("reloadRoutes", () => {
         createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
         frontendDevEvents: frontendDevEventsMw,
         createAccessLogMiddleware: vi.fn(() => accessLogMw),
+        sessionMiddleware: sessionMw,
         createCsrfMiddleware: vi.fn(() => csrfMw),
       };
 
       const freshAdapter = createMockAdapter();
 
       const options = createDefaultOptions({
+        app: createMockApp({
+          config: { session: { enabled: true } },
+        }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
       });
@@ -433,6 +438,7 @@ describe("reloadRoutes", () => {
         [frontendDevEventsMw],
       );
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(accessLogMw);
+      expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(sessionMw);
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(csrfMw);
     });
 
@@ -450,6 +456,7 @@ describe("reloadRoutes", () => {
       const securityHeadersMw = createMockMiddleware("securityHeaders");
       const csrfMw = createMockMiddleware("csrf");
       const authContextMw = createMockMiddleware("authContext");
+      const sessionMw = createMockMiddleware("session");
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
@@ -462,6 +469,7 @@ describe("reloadRoutes", () => {
         createFrontendRenderMiddleware: vi.fn(() => frontendRenderMw),
         frontendDevEvents: frontendDevEventsMw,
         createAccessLogMiddleware: vi.fn(() => accessLogMw),
+        sessionMiddleware: sessionMw,
         createCsrfMiddleware: vi.fn(() => csrfMw),
       };
 
@@ -478,6 +486,7 @@ describe("reloadRoutes", () => {
           else if (mw === frontendRenderMw)
             registrationOrder.push("frontendRender");
           else if (mw === accessLogMw) registrationOrder.push("accessLog");
+          else if (mw === sessionMw) registrationOrder.push("session");
           else if (mw === globalMw) registrationOrder.push("global");
           else if (mw === csrfMw) registrationOrder.push("csrf");
         }),
@@ -495,6 +504,9 @@ describe("reloadRoutes", () => {
       });
 
       const options = createDefaultOptions({
+        app: createMockApp({
+          config: { session: { enabled: true } },
+        }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
         globalMiddlewares: [globalMw],
@@ -513,6 +525,7 @@ describe("reloadRoutes", () => {
         "frontendRender",
         "frontendDevEventsRoute",
         "accessLog",
+        "session",
         "global",
         "csrf",
       ]);

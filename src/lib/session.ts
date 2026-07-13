@@ -9,8 +9,10 @@ import type {
   VextSessionConfig,
   VextSessionCookieOptions,
   VextSessionData,
+  VextRouteSessionOptions,
   VextSessionStore,
 } from "../types/session.js";
+import type { RouteOptions } from "../types/app.js";
 import {
   appendSetCookie,
   serializeClearCookie,
@@ -22,6 +24,7 @@ export type {
   VextSessionConfig,
   VextSessionCookieOptions,
   VextSessionData,
+  VextRouteSessionOptions,
   VextSessionStore,
 } from "../types/session.js";
 
@@ -148,31 +151,90 @@ const RESERVED_SESSION_KEYS = new Set([
   "destroy",
 ]);
 
+const SESSION_ATTACHED_SYMBOL = Symbol("vext.session.attached");
+const SESSION_MIDDLEWARE_SYMBOL = Symbol.for("vext.session.middleware");
+
+export interface VextSessionRuntime {
+  middleware: VextMiddleware;
+  close(): Promise<void>;
+}
+
+type SessionRuntimeMode = "configured" | "manual";
+
+export function createConfiguredSessionRuntime(
+  options: VextSessionConfig = {},
+): VextSessionRuntime {
+  return createSessionRuntime(options, "configured");
+}
+
 export function createSessionMiddleware(
   options: VextSessionConfig = {},
 ): VextMiddleware {
-  const middlewareStore = options.store ?? createMemorySessionStore();
+  return createSessionRuntime(options, "manual").middleware;
+}
 
-  return async (req, res, next) => {
-    const config = resolveSessionConfig(
-      req.app.config.session,
-      options,
-      middlewareStore,
-    );
+export function isSessionMiddleware(value: unknown): value is VextMiddleware {
+  return Boolean(
+    typeof value === "function" &&
+    (value as unknown as Record<PropertyKey, unknown>)[
+      SESSION_MIDDLEWARE_SYMBOL
+    ] === true,
+  );
+}
 
-    if (!config.enabled) {
+function createSessionRuntime(
+  options: VextSessionConfig,
+  mode: SessionRuntimeMode,
+): VextSessionRuntime {
+  let runtimeStore = options.store;
+  let closeRegistered = false;
+  let closed = false;
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    await runtimeStore?.close?.();
+  };
+
+  const middleware: VextMiddleware = async (req, res, next) => {
+    const routeOptions = getRouteSessionOptions(req);
+    if (
+      !isSessionEnabled(req.app.config.session, options, routeOptions, mode)
+    ) {
       await next();
       return;
     }
 
+    const requestState = req as unknown as Record<PropertyKey, unknown>;
+    if (requestState[SESSION_ATTACHED_SYMBOL] === true) {
+      await next();
+      return;
+    }
+
+    runtimeStore ??=
+      options.store ??
+      req.app.config.session?.store ??
+      createMemorySessionStore();
+
+    if (mode === "manual" && !closeRegistered && runtimeStore.close) {
+      closeRegistered = true;
+      req.app.onClose(close);
+    }
+
+    const config = resolveSessionConfig(
+      req.app.config.session,
+      mergeRouteSessionOptions(options, routeOptions),
+      runtimeStore,
+    );
     assertSessionConfig(config);
 
     const state = await createSessionState(req, config);
+    requestState[SESSION_ATTACHED_SYMBOL] = true;
     req.session = createSessionProxy(req, res, config, state);
     let committedOnSend = false;
-    const previousOnSend = res._onSend;
+    const previousOnBeforeSend = res._onBeforeSend;
 
-    res._onSend = (data, statusCode, headers = {}) => {
+    res._onBeforeSend = (kind, data, statusCode, headers) => {
       if (config.autoCommit) {
         commitSessionForSend(req, res, config, state, {
           force: config.rolling,
@@ -180,20 +242,89 @@ export function createSessionMiddleware(
         });
         committedOnSend = true;
       }
-      previousOnSend?.(data, statusCode, headers);
+      previousOnBeforeSend?.(kind, data, statusCode, headers);
     };
 
-    await next();
-
-    if (config.autoCommit && committedOnSend) {
-      await state.pendingCommit;
-    } else if (config.autoCommit) {
-      await commitSession(req, res, config, state, { force: config.rolling });
+    let downstreamError: unknown;
+    try {
+      await next();
+    } catch (error) {
+      downstreamError = error;
     }
+
+    let commitError: unknown;
+    if (config.autoCommit) {
+      try {
+        if (committedOnSend) {
+          await state.pendingCommit;
+        } else {
+          await commitSession(req, res, config, state, {
+            force: config.rolling,
+          });
+        }
+      } catch (error) {
+        commitError = error;
+      }
+    }
+
+    if (commitError && (downstreamError || committedOnSend)) {
+      req.app.logger.error(
+        { error: toErrorMessage(commitError) },
+        "[vextjs] session commit failed after response processing started",
+      );
+    }
+    if (downstreamError) throw downstreamError;
+    if (commitError && !committedOnSend) throw commitError;
   };
+
+  Object.defineProperty(middleware, SESSION_MIDDLEWARE_SYMBOL, {
+    value: true,
+  });
+
+  return { middleware, close };
 }
 
 export const session = createSessionMiddleware;
+
+function getRouteSessionOptions(
+  req: VextRequest,
+): boolean | VextRouteSessionOptions | undefined {
+  const routeOptions = (req as { _routeOptions?: RouteOptions })._routeOptions;
+  return routeOptions?.session;
+}
+
+function isSessionEnabled(
+  appConfig: VextSessionConfig | undefined,
+  options: VextSessionConfig,
+  routeOptions: boolean | VextRouteSessionOptions | undefined,
+  mode: SessionRuntimeMode,
+): boolean {
+  if (routeOptions === false) return false;
+  if (routeOptions === true) return true;
+  if (routeOptions && typeof routeOptions === "object") {
+    return routeOptions.enabled ?? true;
+  }
+  return mode === "manual"
+    ? (options.enabled ?? true)
+    : (options.enabled ?? appConfig?.enabled ?? false);
+}
+
+function mergeRouteSessionOptions(
+  options: VextSessionConfig,
+  routeOptions: boolean | VextRouteSessionOptions | undefined,
+): VextSessionConfig {
+  const routeConfig =
+    routeOptions && typeof routeOptions === "object" ? routeOptions : {};
+  return {
+    ...options,
+    ...routeConfig,
+    enabled: true,
+  };
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function createSessionState(
   req: VextRequest,

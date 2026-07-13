@@ -28,6 +28,7 @@ export type {
   VextSessionConfig,
   VextSessionCookieOptions,
   VextSessionData,
+  VextRouteSessionOptions,
   VextSessionStore,
   VextSessionStoreSerializer,
 } from "./session.js";

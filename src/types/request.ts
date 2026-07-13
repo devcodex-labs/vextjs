@@ -221,7 +221,7 @@ export interface VextRequest {
    */
   files?: ParsedFile[];
 
-  /** Session 对象（注册 session middleware 后可用） */
+  /** Session 对象（全局或路由级 Session 启用后可用） */
   session?: VextSession;
 
   // ── 内部方法（框架/插件使用）────────────────────────────

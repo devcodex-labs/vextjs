@@ -1,5 +1,16 @@
 import type { VextMiddleware } from "../../types/middleware.js";
-import type { VextCorsConfig } from "../../types/app.js";
+import type { RouteOptions, VextCorsConfig } from "../../types/app.js";
+
+interface ResolvedCorsConfig {
+  enabled: boolean;
+  origins: string[];
+  methodsStr: string;
+  headersStr: string;
+  credentials: boolean;
+  maxAgeStr: string;
+  isWildcard: boolean;
+  originsSet: Set<string> | null;
+}
 
 /**
  * createCorsMiddleware — CORS 跨域中间件工厂
@@ -30,34 +41,25 @@ import type { VextCorsConfig } from "../../types/app.js";
  * @returns VextMiddleware
  */
 export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
-  const enabled = config.enabled ?? true;
-  const origins = config.origins ?? ["*"];
-  const methods = config.methods ?? [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ];
-  const allowHeaders = config.headers ?? ["Content-Type", "Authorization"];
-  const credentials = config.credentials ?? false;
-  const maxAge = config.maxAge ?? 86400;
-
-  // 预计算不变的头值字符串，避免每次请求重复 join
-  const methodsStr = methods.join(", ");
-  const headersStr = allowHeaders.join(", ");
-  const maxAgeStr = String(maxAge);
-
-  // 是否为通配符模式
-  const isWildcard = origins.includes("*");
-
-  // 将 origins 转为 Set 提升查找性能（非通配符模式）
-  const originsSet = isWildcard ? null : new Set(origins);
+  const globalConfig = resolveCorsConfig(config);
+  const routeConfigCache = new WeakMap<object, ResolvedCorsConfig>();
 
   return async (req, res, next) => {
-    if (!enabled) {
+    const routeOptions = (req as { _routeOptions?: RouteOptions })
+      ._routeOptions;
+    const routeOverride = routeOptions?.override?.cors;
+    let effective = globalConfig;
+    if (routeOverride) {
+      effective =
+        routeConfigCache.get(routeOverride) ??
+        resolveCorsConfig({
+          ...config,
+          ...routeOverride,
+        });
+      routeConfigCache.set(routeOverride, effective);
+    }
+
+    if (!effective.enabled) {
       await next();
       return;
     }
@@ -73,14 +75,14 @@ export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
     //
     let allowOrigin: string | null = null;
 
-    if (isWildcard) {
-      if (credentials && requestOrigin) {
+    if (effective.isWildcard) {
+      if (effective.credentials && requestOrigin) {
         // credentials 模式不允许 '*'，回显请求 Origin
         allowOrigin = requestOrigin;
       } else {
         allowOrigin = "*";
       }
-    } else if (requestOrigin && originsSet!.has(requestOrigin)) {
+    } else if (requestOrigin && effective.originsSet!.has(requestOrigin)) {
       allowOrigin = requestOrigin;
     }
 
@@ -93,7 +95,7 @@ export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
     // ── 注入 CORS 响应头（对所有请求生效）────────────────
     res.setHeader("Access-Control-Allow-Origin", allowOrigin);
 
-    if (credentials) {
+    if (effective.credentials) {
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
 
@@ -106,9 +108,9 @@ export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
     // ── Preflight 请求处理（OPTIONS）─────────────────────
     if (req.method === "OPTIONS") {
       // preflight 额外需要这些头
-      res.setHeader("Access-Control-Allow-Methods", methodsStr);
-      res.setHeader("Access-Control-Allow-Headers", headersStr);
-      res.setHeader("Access-Control-Max-Age", maxAgeStr);
+      res.setHeader("Access-Control-Allow-Methods", effective.methodsStr);
+      res.setHeader("Access-Control-Allow-Headers", effective.headersStr);
+      res.setHeader("Access-Control-Max-Age", effective.maxAgeStr);
 
       // 直接返回 204 No Content，不进入后续中间件链
       // preflight 不需要响应体，204 是标准做法
@@ -118,5 +120,31 @@ export function createCorsMiddleware(config: VextCorsConfig): VextMiddleware {
 
     // ── 非 preflight 请求：继续中间件链 ──────────────────
     await next();
+  };
+}
+
+function resolveCorsConfig(config: VextCorsConfig): ResolvedCorsConfig {
+  const origins = config.origins ?? ["*"];
+  const methods = config.methods ?? [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+  ];
+  const allowHeaders = config.headers ?? ["Content-Type", "Authorization"];
+  const isWildcard = origins.includes("*");
+
+  return {
+    enabled: config.enabled ?? true,
+    origins,
+    methodsStr: methods.join(", "),
+    headersStr: allowHeaders.join(", "),
+    credentials: config.credentials ?? false,
+    maxAgeStr: String(config.maxAge ?? 86400),
+    isWildcard,
+    originsSet: isWildcard ? null : new Set(origins),
   };
 }

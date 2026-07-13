@@ -258,7 +258,7 @@ function makeRouteFileContent(
         ? `{ middlewares: [${r.middlewares.map((m) => `'${m}'`).join(", ")}] }`
         : r.options
           ? r.options
-        : "{}";
+          : "{}";
       return `    collector.${r.method.toLowerCase()}('${r.path}', ${opts}, async (req, res) => { res.json({ ok: true }); });`;
     })
     .join("\n");
@@ -976,6 +976,76 @@ export default "not a route definition";
           globalMiddlewares: [],
         }),
       ).rejects.toThrow();
+    });
+  });
+
+  // ── 路由级运行时能力 ─────────────────────────────────────
+
+  describe("route runtime options", () => {
+    it("injects timeout, CORS, and Session middleware for route opt-in", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        "runtime.mjs",
+        makeRouteFileContent([
+          {
+            method: "get",
+            path: "/enabled",
+            options:
+              "{ session: true, override: { timeout: 25, cors: { enabled: true, origins: ['https://example.com'] } } }",
+          },
+        ]),
+      );
+
+      const app = createMockApp();
+      const corsMiddleware: VextMiddleware = async (_req, _res, next) => next();
+      const sessionMiddleware: VextMiddleware = async (_req, _res, next) =>
+        next();
+
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+        corsMiddleware,
+        sessionMiddleware,
+      });
+
+      const route = app.mockAdapter.registeredRoutes.find(
+        (entry) => entry.path === "/runtime/enabled",
+      );
+      expect(route).toBeDefined();
+      expect(route!.chain).toContain(corsMiddleware);
+      expect(route!.chain).toContain(sessionMiddleware);
+      expect(route!.chain.indexOf(corsMiddleware)).toBeLessThan(
+        route!.chain.indexOf(sessionMiddleware),
+      );
+      expect(route!.routeOptions).toEqual(
+        expect.objectContaining({
+          session: true,
+          override: expect.objectContaining({ timeout: 25 }),
+        }),
+      );
+    });
+
+    it("fails fast when route timeout is invalid", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        "runtime.mjs",
+        makeRouteFileContent([
+          {
+            method: "get",
+            path: "/invalid",
+            options: "{ override: { timeout: 0 } }",
+          },
+        ]),
+      );
+
+      await expect(
+        loadRoutes(createMockApp(), routesDir, {
+          middlewareDefs: {},
+          globalMiddlewares: [],
+        }),
+      ).rejects.toThrow("must be a positive integer");
     });
   });
 

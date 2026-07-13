@@ -1,6 +1,6 @@
 # Cookies and Sessions
 
-Vext provides first-party cookie parsing, response cookie helpers, and an explicit session middleware. The feature is zero-dependency and works across Native, Hono, Fastify, Express, and Koa adapters.
+Vext provides first-party cookie parsing, response cookie helpers, and a configuration-driven Session runtime. The feature is zero-dependency and works across Native, Hono, Fastify, Express, and Koa adapters.
 
 ## Cookies
 
@@ -57,17 +57,16 @@ Built-in OpenAPI docs can display `validate.cookie` as cookie parameters. Browse
 
 ## Sessions
 
-Session support is installed explicitly:
+Enable Session through configuration. Vext auto-registers it in production,
+development, tests, and soft reloads:
 
 ```typescript
-import { definePlugin, session } from "vextjs";
-
-export default definePlugin({
-  name: "session",
-  setup(app) {
-    app.use(session());
+// src/config/default.ts
+export default {
+  session: {
+    enabled: true,
   },
-});
+};
 ```
 
 Use `req.session` in route handlers:
@@ -96,11 +95,13 @@ Session metadata such as `id`, `isNew`, `save`, `regenerate`, and `destroy` is n
 
 ## Configuration
 
-`config.session` provides defaults consumed by `session()`:
+`config.session.enabled: true` enables the global Session runtime and the
+remaining fields configure it:
 
 ```typescript
 export default {
   session: {
+    enabled: true,
     name: "vext.sid",
     ttl: 86400,
     rolling: false,
@@ -117,39 +118,43 @@ export default {
 `secure: "auto"` sends `Secure` only for HTTPS requests. The default memory store is suitable for development, tests, and single-process deployments. For shared production stores, pass a cache-like backend through the official adapter:
 
 ```typescript
-import { createCacheSessionStore, session } from "vextjs";
+import { createCacheSessionStore } from "vextjs";
 import { createRedisCacheAdapter } from "cache-hub/redis";
 
 const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
 
-app.use(
-  session({
+export default {
+  session: {
+    enabled: true,
     store: createCacheSessionStore(sessionCache, {
       prefix: "my-app:sess:",
       close: () => sessionCache.close?.(),
     }),
-  }),
-);
+  },
+};
 ```
 
 `createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`. It converts `VextSessionStore` TTL seconds to cache milliseconds, stores JSON strings by default, and implements rolling `touch()` as a cache `get` plus `set`. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app.
 
-`config.cache.cacheHub` and `app.cache` are only for route response cache. They are not a Session Store shortcut and should use a different namespace from sessions. If you provide `close`, Vext exposes it on the returned store so you can close it from `app.onClose()` or plugin teardown. Advanced users can still implement `VextSessionStore` directly for custom persistence contracts.
+`config.cache.cacheHub` and `app.cache` are only for route response cache. They are not a Session Store shortcut and should use a different namespace from sessions. If you provide `close`, Vext calls it during app shutdown. Advanced users can still implement `VextSessionStore` directly for custom persistence contracts.
+
+Use route options `session: false` to skip Session on a public route. When the
+global runtime is disabled, `session: true` or `{ session: { enabled: true,
+rolling: true } }` enables it for one route. The explicit `session()` middleware
+remains available for scoped/manual registration; do not combine it with
+`config.session.enabled: true`.
 
 ## CSRF Protection
 
-CSRF protection is available through `csrf()` and `config.csrf`. In `mode: "auto"` Vext uses the existing `req.session` when the explicit `session()` middleware is present; if no session exists, it can use a signed double-submit cookie when `config.csrf.secret` is configured.
+CSRF protection is available through `csrf()` and `config.csrf`. In `mode: "auto"` Vext uses the configured Session runtime when `req.session` is available; otherwise it can use a signed double-submit cookie when `config.csrf.secret` is configured.
 
 ```typescript
-import { csrf, definePlugin, session } from "vextjs";
-
-export default definePlugin({
-  name: "security",
-  setup(app) {
-    app.use(session());
-    app.use(csrf());
+export default {
+  session: { enabled: true },
+  csrf: {
+    enabled: true,
   },
-});
+};
 
 app.get("/csrf-token", {}, async (req, res) => {
   res.json({ token: req.csrfToken() });

@@ -412,17 +412,16 @@ app.get("/preferences", {}, async (req, res) => {
 });
 ```
 
-Register session support explicitly with the built-in middleware:
+Enable session support through configuration. Vext auto-registers the built-in
+runtime in production, development, tests, and soft reloads:
 
 ```ts
-import { session } from "vextjs";
-
-export default definePlugin({
-  name: "session",
-  setup(app) {
-    app.use(session());
+// src/config/default.ts
+export default {
+  session: {
+    enabled: true,
   },
-});
+};
 
 app.post("/login", {}, async (req, res) => {
   req.session!.userId = "u_123";
@@ -433,37 +432,36 @@ app.post("/login", {}, async (req, res) => {
 The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments. For shared production stores, pass a cache-like backend through the official adapter:
 
 ```ts
-import { createCacheSessionStore, session } from "vextjs";
+import { createCacheSessionStore } from "vextjs";
 import { createRedisCacheAdapter } from "cache-hub/redis";
 
 const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
 
-app.use(
-  session({
+export default {
+  session: {
+    enabled: true,
     store: createCacheSessionStore(sessionCache, {
       prefix: "my-app:sess:",
       close: () => sessionCache.close?.(),
     }),
-  }),
-);
+  },
+};
 ```
 
-`createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, and stores JSON strings by default. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app. `config.cache.cacheHub` and `app.cache` are for route response cache only; they are not a Session Store shortcut. Advanced users can still implement `VextSessionStore` directly when they need a custom persistence contract. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
+`createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, and stores JSON strings by default. Vext closes a configured store during app shutdown. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app. `config.cache.cacheHub` and `app.cache` are for route response cache only; they are not a Session Store shortcut. Advanced users can still implement `VextSessionStore` directly when they need a custom persistence contract. Routes can use `session: false` to opt out, or `session: true` to opt in when the global runtime is disabled. The explicit `session()` middleware remains available for scoped/manual registration; do not combine it with `config.session.enabled: true`. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
 
 ## CSRF Protection
 
-Vext includes a zero-dependency CSRF middleware that works with the explicit `session()` middleware by default and can fall back to signed double-submit cookies when `config.csrf.secret` is provided.
+Vext includes a zero-dependency CSRF middleware that uses the configured Session runtime by default and can fall back to signed double-submit cookies when `config.csrf.secret` is provided.
 
 ```ts
-import { csrf, definePlugin, session } from "vextjs";
-
-export default definePlugin({
-  name: "security",
-  setup(app) {
-    app.use(session());
-    app.use(csrf());
+// src/config/default.ts
+export default {
+  session: { enabled: true },
+  csrf: {
+    enabled: true,
   },
-});
+};
 
 app.get("/csrf-token", {}, async (req, res) => {
   res.json({ token: req.csrfToken() });
@@ -981,7 +979,7 @@ VextJS exports testing helpers through `vextjs/testing`:
 import { createTestApp } from "vextjs/testing";
 ```
 
-Use the testing entry for integration tests that need the framework runtime without starting a real production process.
+Use the testing entry for integration tests that need the framework runtime without starting a real production process. Rate limiting, access logs, and Session are quiet/disabled by default, but explicit `config.*.enabled: true` values run the same built-in middleware contracts as production and development.
 
 ## Documentation
 

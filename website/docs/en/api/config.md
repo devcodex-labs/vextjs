@@ -110,31 +110,31 @@ export default {
 
 ### `VextConfig`
 
-| Field             | Type                                                    | Default Value        | Description                                              |
-| ----------------- | ------------------------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `port`            | `number`                                                | `3000`               | HTTP listening port                                      |
-| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP listening address                                   |
-| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | Low-level adapter                                        |
-| `trustProxy`      | `boolean`                                               | `false`              | Whether to trust the proxy                               |
-| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                         |
-| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                       |
-| `rateLimit`       | [`VextRateLimitConfig`](#veextratelimitconfig)          | See below            | Rate limit configuration                                 |
-| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                 |
-| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                        |
-| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                          |
-| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                        |
-| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                   |
-| `session`         | `VextSessionConfig`                                     | See guide            | Defaults consumed by the explicit `session()` middleware |
-| `csrf`            | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                            |
-| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | Browser security response headers                        |
-| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                               |
-| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                |
-| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                 |
-| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below            | OpenAPI documentation configuration                      |
-| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below            | Request context configuration                            |
-| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration             |
-| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration |
-| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                      |
+| Field             | Type                                                    | Default Value        | Description                                                |
+| ----------------- | ------------------------------------------------------- | -------------------- | ---------------------------------------------------------- |
+| `port`            | `number`                                                | `3000`               | HTTP listening port                                        |
+| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP listening address                                     |
+| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | Low-level adapter                                          |
+| `trustProxy`      | `boolean`                                               | `false`              | Whether to trust the proxy                                 |
+| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                           |
+| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                         |
+| `rateLimit`       | [`VextRateLimitConfig`](#veextratelimitconfig)          | See below            | Rate limit configuration                                   |
+| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                   |
+| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                          |
+| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                            |
+| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                          |
+| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                     |
+| `session`         | `VextSessionConfig`                                     | See below            | Session auto-registration, store, and cookie configuration |
+| `csrf`            | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                              |
+| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | Browser security response headers                          |
+| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                                 |
+| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                  |
+| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                   |
+| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below            | OpenAPI documentation configuration                        |
+| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below            | Request context configuration                              |
+| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration               |
+| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration   |
+| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                        |
 
 ---
 
@@ -1113,11 +1113,13 @@ export default config;
 
 ### `VextSessionConfig`
 
-`config.session` is consumed by the explicit `session()` middleware. It does not enable sessions globally by itself.
+`config.session.enabled: true` auto-registers Session in production,
+development, testing, and soft reload. The explicit `session()` middleware is
+reserved for scoped/manual registration.
 
 | Field        | Type                       | Default      | Description                                                  |
 | ------------ | -------------------------- | ------------ | ------------------------------------------------------------ |
-| `enabled`    | `boolean`                  | `true`       | Set to `false` to make `session()` a no-op                   |
+| `enabled`    | `boolean`                  | `false`      | Auto-register Session globally                               |
 | `name`       | `string`                   | `'vext.sid'` | Session cookie name                                          |
 | `ttl`        | `number`                   | `86400`      | Store TTL in seconds                                         |
 | `rolling`    | `boolean`                  | `false`      | Refresh the store TTL and cookie on each request             |
@@ -1128,9 +1130,11 @@ export default config;
 
 `VextSessionCookieOptions` follows `CookieSerializeOptions` and adds `secure: boolean | "auto"`. Cookie options include `domain`, `path`, `expires`, `maxAge`, `httpOnly`, `secure`, `sameSite`, `priority`, `partitioned`, and `encode`.
 
-`VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. If you pass a custom store with `close()`, close it from `app.onClose()` or plugin teardown.
+`VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. Vext calls `close()` during app shutdown for configured stores and active manual Session runtimes.
 
 For cache-backed production sessions, prefer `createCacheSessionStore(cacheLike, options?)` from `vextjs`. It accepts a structural `VextCacheLike` with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, stores JSON strings by default, and exposes `close()` only when `options.close` is provided. `config.cache.cacheHub` remains route response cache configuration and does not inject a Session Store.
+
+`RouteOptions.session` accepts `false`, `true`, or `{ enabled?, rolling?, autoCommit? }`. It can disable Session for one route or enable it while the global runtime is disabled.
 
 ---
 
