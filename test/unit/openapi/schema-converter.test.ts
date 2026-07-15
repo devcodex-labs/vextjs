@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SchemaConverter } from "../../../src/lib/openapi/schema-converter.js";
-import { dsl } from "schema-dsl";
+import { schemaAdapter } from "../../../src/lib/schema-adapter.js";
 
 // ── 测试辅助 ────────────────────────────────────────────────
 
@@ -143,42 +143,74 @@ describe("SchemaConverter", () => {
     });
   });
 
-  // ── convertDSLString：可选标记 (?) / nullable ─────────────
+  // ── convertDSLString：optional 与显式 nullable 分离 ───────
 
-  describe("convertDSLString — 可选标记 (?) / nullable", () => {
-    it("string? → nullable: true, isRequired = false", () => {
+  describe("convertDSLString — optional 与显式 nullable 分离", () => {
+    it("string? → 非必填且不自动 nullable", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString("string?");
-      expect(schema).toMatchObject({ type: "string", nullable: true });
+      expect(schema).toMatchObject({ type: "string" });
+      expect(schema.nullable).toBeUndefined();
       expect(isRequired).toBe(false);
     });
 
-    it("url? → nullable: true, format: 'uri'", () => {
+    it("url? → 非必填且保留 format", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString("url?");
       expect(schema).toMatchObject({
         type: "string",
         format: "uri",
-        nullable: true,
       });
+      expect(schema.nullable).toBeUndefined();
       expect(isRequired).toBe(false);
     });
 
-    it("number? → nullable: true", () => {
+    it("number? → 非必填且不自动 nullable", () => {
       const c = createConverter();
       const { schema } = c.convertDSLString("number?");
-      expect(schema).toMatchObject({ type: "number", nullable: true });
+      expect(schema).toMatchObject({ type: "number" });
+      expect(schema.nullable).toBeUndefined();
     });
 
-    it("date? → nullable: true, format: 'date'", () => {
+    it("date? → 非必填且保留 date format", () => {
       const c = createConverter();
       const { schema } = c.convertDSLString("date?");
       // schema-dsl: date → format: 'date'
       expect(schema).toMatchObject({
         type: "string",
         format: "date",
-        nullable: true,
       });
+      expect(schema.nullable).toBeUndefined();
+    });
+
+    it("types:string|null → 显式 nullable", () => {
+      const c = createConverter();
+      const { schema, isRequired } = c.convertDSLString("types:string|null");
+      expect(schema).toMatchObject({ type: "string", nullable: true });
+      expect(isRequired).toBe(false);
+    });
+
+    it("raw type union → 显式 nullable 且保留约束", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        nickname: { type: ["string", "null"], minLength: 2 },
+      });
+      expect(result.schema.properties!.nickname).toMatchObject({
+        type: "string",
+        nullable: true,
+        minLength: 2,
+      });
+    });
+
+    it("复杂 null union 无法无损投影时明确失败", () => {
+      const c = createConverter();
+      expect(() =>
+        c.convertValidateObject({
+          value: {
+            oneOf: [{ type: "string" }, { type: "integer" }, { type: "null" }],
+          },
+        }),
+      ).toThrow(/Cannot losslessly convert/);
     });
   });
 
@@ -235,7 +267,7 @@ describe("SchemaConverter", () => {
       });
     });
 
-    it("string:0-500? → minLength: 0, maxLength: 500, nullable: true", () => {
+    it("string:0-500? → 范围保留且不自动 nullable", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString("string:0-500?");
 
@@ -243,8 +275,8 @@ describe("SchemaConverter", () => {
         type: "string",
         minLength: 0,
         maxLength: 500,
-        nullable: true,
       });
+      expect(schema.nullable).toBeUndefined();
       expect(isRequired).toBe(false);
     });
 
@@ -362,7 +394,7 @@ describe("SchemaConverter", () => {
       expect(isRequired).toBe(true);
     });
 
-    it("enum:active,inactive? → nullable: true", () => {
+    it("enum:active,inactive? → 非必填且不自动 nullable", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString(
         "enum:active,inactive?",
@@ -370,8 +402,8 @@ describe("SchemaConverter", () => {
       expect(schema).toMatchObject({
         type: "string",
         enum: ["active", "inactive"],
-        nullable: true,
       });
+      expect(schema.nullable).toBeUndefined();
       expect(isRequired).toBe(false);
     });
 
@@ -449,13 +481,13 @@ describe("SchemaConverter", () => {
         format: "email",
       });
 
-      // age（可选 / nullable）
+      // age（可选，但不自动 nullable）
       expect(result.schema.properties!.age).toMatchObject({
         type: "integer",
         minimum: 0,
         maximum: 150,
-        nullable: true,
       });
+      expect(result.schema.properties!.age.nullable).toBeUndefined();
 
       // bio（非必填 / 非 nullable）
       expect(result.schema.properties!.bio).toMatchObject({
@@ -482,13 +514,15 @@ describe("SchemaConverter", () => {
       expect(result.required).toEqual([]);
     });
 
-    it("String 扩展 DslBuilder 字段保留业务 description", () => {
+    it("无副作用 DslBuilder 字段保留业务 description", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
-        content: "string:1-20000!".description(
-          "待翻译文本，长度 1-20000 个字符",
-        ),
-        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("待翻译文本，长度 1-20000 个字符"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("输出格式"),
       });
 
       const props = result.schema.properties!;
@@ -508,11 +542,15 @@ describe("SchemaConverter", () => {
       expectNoDslInternalFields(props.format as Record<string, unknown>);
     });
 
-    it("dsl() DslBuilder 字段保留业务 description", () => {
+    it("compileField() DslBuilder 字段保留业务 description", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
-        sourceLanguage: dsl("string:1-64").description("源语言代码"),
-        targetLanguage: dsl("string:1-64!").description("目标语言代码"),
+        sourceLanguage: schemaAdapter
+          .compileField("string:1-64")
+          .description("源语言代码"),
+        targetLanguage: schemaAdapter
+          .compileField("string:1-64!")
+          .description("目标语言代码"),
       });
 
       const props = result.schema.properties!;
@@ -524,21 +562,25 @@ describe("SchemaConverter", () => {
       );
     });
 
-    it("DslBuilder 可选标记 ? 保留 nullable，普通非必填不标记 nullable", () => {
+    it("DslBuilder 可选标记 ? 与普通非必填都不自动 nullable", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
-        nullableLanguage: dsl("string:1-64?").description("可空语言代码"),
-        sourceLanguage: dsl("string:1-64").description("源语言代码"),
+        optionalLanguage: schemaAdapter
+          .compileField("string:1-64?")
+          .description("可选语言代码"),
+        sourceLanguage: schemaAdapter
+          .compileField("string:1-64")
+          .description("源语言代码"),
       });
 
       const props = result.schema.properties!;
-      expect(props.nullableLanguage).toMatchObject({
+      expect(props.optionalLanguage).toMatchObject({
         type: "string",
         minLength: 1,
         maxLength: 64,
-        nullable: true,
-        description: "可空语言代码",
+        description: "可选语言代码",
       });
+      expect(props.optionalLanguage.nullable).toBeUndefined();
       expect(props.sourceLanguage.nullable).toBeUndefined();
       expect(result.required).toEqual([]);
     });
@@ -546,7 +588,7 @@ describe("SchemaConverter", () => {
     it("DslBuilder 未设置 description 时仍生成兜底描述", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
-        name: dsl("string:1-50!"),
+        name: schemaAdapter.compileField("string:1-50!"),
       });
 
       const name = result.schema.properties!.name;
@@ -576,14 +618,33 @@ describe("SchemaConverter", () => {
       expect(profile.properties!.avatar).toMatchObject({
         type: "string",
         format: "uri",
-        nullable: true,
       });
+      expect(profile.properties!.avatar.nullable).toBeUndefined();
       // bio
       expect(profile.properties!.bio).toMatchObject({
         type: "string",
         minLength: 0,
         maxLength: 500,
-        nullable: true,
+      });
+      expect(profile.properties!.bio.nullable).toBeUndefined();
+    });
+
+    it("名为 type 的普通 DSL 字段不会被误判为 raw JSON Schema", () => {
+      const c = createConverter();
+      const result = c.convertValidateObject({
+        metadata: {
+          type: "string",
+          label: "string!",
+        },
+      });
+
+      expect(result.schema.properties!.metadata).toMatchObject({
+        type: "object",
+        required: ["label"],
+        properties: {
+          type: { type: "string" },
+          label: { type: "string" },
+        },
       });
     });
 
@@ -641,7 +702,9 @@ describe("SchemaConverter", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
         translation: {
-          content: "string:1-20000!".description("待翻译文本"),
+          content: schemaAdapter
+            .compileField("string:1-20000!")
+            .description("待翻译文本"),
         },
       });
 
@@ -725,7 +788,9 @@ describe("SchemaConverter", () => {
       const result = c.convertValidateObject({
         targetLanguages: [
           {
-            code: "string:1-64!".description("目标语言代码"),
+            code: schemaAdapter
+              .compileField("string:1-64!")
+              .description("目标语言代码"),
           },
         ],
       });
@@ -764,7 +829,7 @@ describe("SchemaConverter", () => {
       expect(result.schema.properties!.name.type).toBe("string");
       expect(result.schema.properties!.email.format).toBe("email");
       expect(result.schema.properties!.password.minLength).toBe(8);
-      expect(result.schema.properties!.role.nullable).toBe(true);
+      expect(result.schema.properties!.role.nullable).toBeUndefined();
       expect(result.schema.properties!.role.enum).toEqual([
         "admin",
         "user",
@@ -827,7 +892,9 @@ describe("SchemaConverter", () => {
     it("response schema 支持 DslBuilder description", () => {
       const c = createConverter();
       const result = c.convertResponseSchema({
-        translatedText: "string!".description("翻译后的文本"),
+        translatedText: schemaAdapter
+          .compileField("string!")
+          .description("翻译后的文本"),
       });
 
       const translatedText = result.properties!.translatedText;
@@ -971,12 +1038,12 @@ describe("SchemaConverter", () => {
       });
 
       const search = c.convertDSLString(queryDsl.search);
-      expect(search.schema.nullable).toBe(true);
+      expect(search.schema.nullable).toBeUndefined();
       expect(search.schema.minLength).toBe(1);
 
       const role = c.convertDSLString(queryDsl.role);
       expect(role.schema.enum).toEqual(["admin", "user", "guest"]);
-      expect(role.schema.nullable).toBe(true);
+      expect(role.schema.nullable).toBeUndefined();
     });
 
     it("用户创建请求体", () => {
@@ -989,7 +1056,7 @@ describe("SchemaConverter", () => {
       });
 
       expect(result.required).toEqual(["name", "email", "password"]);
-      expect(result.schema.properties!.role.nullable).toBe(true);
+      expect(result.schema.properties!.role.nullable).toBeUndefined();
     });
 
     it("路径参数转换", () => {

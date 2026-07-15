@@ -5,7 +5,7 @@ import {
   createDeprecatedRouteDocsTagsWarning,
 } from "../../../src/lib/openapi/generator.js";
 import { RouteMetadataCollector } from "../../../src/lib/openapi/collector.js";
-import { dsl } from "schema-dsl";
+import { schemaAdapter } from "../../../src/lib/schema-adapter.js";
 import type {
   RouteMetadata,
   OpenAPIDocument,
@@ -930,17 +930,19 @@ describe("OpenAPIGenerator", () => {
         createRoute("POST", "/translate", {
           validate: {
             body: {
-              content: "string:1-20000!".description(
-                "待翻译文本，长度 1-20000 个字符",
-              ),
+              content: schemaAdapter
+                .compileField("string:1-20000!")
+                .description("待翻译文本，长度 1-20000 个字符"),
               targetLanguages: [
                 {
-                  code: dsl("string:1-64!").description("目标语言代码"),
+                  code: schemaAdapter
+                    .compileField("string:1-64!")
+                    .description("目标语言代码"),
                 },
               ],
-              format: "enum:plain_text,preserve_line_breaks".description(
-                "输出格式",
-              ),
+              format: schemaAdapter
+                .compileField("enum:plain_text,preserve_line_breaks")
+                .description("输出格式"),
             },
           },
         }),

@@ -247,15 +247,19 @@ app.put(
 字段类型为 `VextSchemaField`，支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。字段级 DslBuilder 常用于给 OpenAPI 文档补充业务描述：
 
 ```typescript
+import { schemaAdapter } from "vextjs";
+
 app.post(
   "/translate",
   {
     validate: {
       body: {
-        content: "string:1-20000!".description(
-          "待翻译文本，长度 1-20000 个字符",
-        ),
-        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("待翻译文本，长度 1-20000 个字符"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("输出格式"),
       },
     },
   },

@@ -396,6 +396,24 @@ app.post(
 
 Validation errors use HTTP `422` by default and can be localized through `src/locales/`.
 
+With the v1 source adaptation, `?` means that a property may be absent; it does
+not make the value nullable. Use `types:string|null` or raw JSON Schema
+`{ type: ["string", "null"] }` when `null` is explicitly allowed. Field
+descriptions use the side-effect-free builder instead of a global String method:
+
+```ts
+import { schemaAdapter } from "vextjs";
+
+const userSchema = {
+  name: schemaAdapter.compileField("string!").description("User name"),
+  nickname: "string?",
+};
+```
+
+See [Preparing for vextjs v1](./MIGRATION.md) for the complete schema-dsl v3 and
+monsqlize 3.1 migration contract. The repository remains on `0.3.26` during
+source validation; no intermediate vextjs version is published.
+
 ## Cookies and Sessions
 
 Vext parses the request `Cookie` header for every adapter and exposes it through readonly `req.cookies` and `req.cookie(name)` with first-wins duplicate semantics. Responses can append multiple cookies without collapsing them into a comma-joined header:

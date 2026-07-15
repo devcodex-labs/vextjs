@@ -692,23 +692,29 @@ app.post(
 }
 ```
 
-字段级业务描述可以直接写在 DSL 上，生成器会把它输出为 OpenAPI schema 的 `description`：
+字段级业务描述使用显式、无全局副作用的 builder，生成器会把它输出为 OpenAPI schema 的 `description`：
 
 ```typescript
+import { schemaAdapter } from "vextjs";
+
 app.post(
   "/translate",
   {
     validate: {
       body: {
-        content: "string:1-20000!".description(
-          "待翻译文本，长度 1-20000 个字符",
-        ),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("待翻译文本，长度 1-20000 个字符"),
         targetLanguages: [
           {
-            code: "string:1-64!".description("目标语言代码"),
+            code: schemaAdapter
+              .compileField("string:1-64!")
+              .description("目标语言代码"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("输出格式"),
       },
     },
   },

@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       schema_dsl_version:
-        description: "schema-dsl version to test (e.g. 1.2.5, latest)"
+        description: "schema-dsl v3 version to test (e.g. 3.0.0, latest)"
         required: false
         default: "latest"
 
@@ -103,10 +103,10 @@ jobs:
           }
           echo ""
           echo "✅ Installed version:"
-          node -e "console.log(require('schema-dsl/package.json').version)"
+          node -e "console.log(require('./node_modules/schema-dsl/package.json').version)"
           echo ""
           echo "📦 Installed dependency tree:"
-          npm ls schema-dsl
+          npm ls schema-dsl monsqlize --all
 
       # TypeScript 编译检查
       - name: TypeScript type check
@@ -115,6 +115,9 @@ jobs:
       # 构建验证
       - name: Build
         run: npm run build
+
+      - name: Verify v3 boundary and String side effects
+        run: npm run verify:schema-v3
 
       # 单元测试（包含 OpenAPI schema-converter 测试）
       - name: Unit tests
@@ -145,7 +148,7 @@ jobs:
             echo "可能原因："
             echo "  1. schema-dsl 新版本引入了破坏性变更"
             echo "  2. schema-dsl 的类型定义发生了不兼容修改"
-            echo "  3. toJsonSchema() / toSchema() 输出格式变更"
+            echo "  3. clean toJsonSchema() / required[] / null projection 输出格式变更"
             echo ""
             echo "建议操作："
             echo "  1. 检查 schema-dsl CHANGELOG 了解变更内容"

@@ -374,23 +374,29 @@ app.get(
 
 访问 `/docs` 即可在 Vext Docs 中查看自动生成的参数文档。
 
-如果希望 OpenAPI 文档展示字段的业务含义，可以在字段 DSL 后追加 `.description()`：
+如果希望 OpenAPI 文档展示字段的业务含义，请使用显式、无全局副作用的 builder。Vext 不再安装全局 String `.description()` 方法：
 
 ```typescript
+import { schemaAdapter } from "vextjs";
+
 app.post(
   "/translate",
   {
     validate: {
       body: {
-        content: "string:1-20000!".description(
-          "待翻译文本，长度 1-20000 个字符",
-        ),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("待翻译文本，长度 1-20000 个字符"),
         targetLanguages: [
           {
-            code: "string:1-64!".description("目标语言代码"),
+            code: schemaAdapter
+              .compileField("string:1-64!")
+              .description("目标语言代码"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("输出格式"),
       },
     },
     docs: { summary: "执行文本翻译" },
@@ -400,6 +406,9 @@ app.post(
 ```
 
 生成的 OpenAPI schema 会保留这些 description，同时继续保留 `required`、`enum`、`minLength`、`maxLength` 等约束。没有手写 description 的字段仍会使用框架生成的兜底描述。
+
+`?` 只表示字段可缺省，不会生成 `nullable: true`。需要显式允许 `null` 时，
+使用 `types:string|null` 或 raw `{ type: ["string", "null"] }`。
 
 ## 高级用法
 

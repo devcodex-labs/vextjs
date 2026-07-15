@@ -247,17 +247,19 @@ Declarative parameter validation, based on `schema-dsl` DSL syntax. The framewor
 The field type is `VextSchemaField`, which supports schema-dsl strings, field-level DslBuilders, nested objects, and object arrays. Field-level DslBuilder is often used to add business descriptions to OpenAPI documents:
 
 ```typescript
+import { schemaAdapter } from "vextjs";
+
 app.post(
   "/translate",
   {
     validate: {
       body: {
-        content: "string:1-20000!".description(
-          "Text to be translated, length 1-20000 characters",
-        ),
-        format: "enum:plain_text,preserve_line_breaks".description(
-          "output format",
-        ),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("Text to be translated, length 1-20000 characters"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("output format"),
       },
     },
   },

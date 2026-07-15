@@ -1,5 +1,12 @@
 # Unreleased
 
+## 2026-07-15
+
+- **v1 schema source adaptation (not released)** Adapted validation and OpenAPI generation to exact registry `schema-dsl@3.0.0` and `monsqlize@3.1.0` while keeping the vextjs package identity at `0.3.26`. Root imports no longer depend on or declare `String.prototype.description`; field descriptions now use `schemaAdapter.compileField(...).description(...)` explicitly.
+- **Clean schema contract** Complete object nodes are compiled through schema-dsl v3 clean JSON Schema output and standard `required[]`. Vext does not add `isRequired()` / `isOptional()` and no longer reads `_required` / `_optional` markers.
+- **Optional/null and validation boundaries** `?` now means optional only. Explicit `types:string|null` and raw `{ type: ["string", "null"] }` inputs project losslessly to OpenAPI 3.0 `nullable: true`; unsupported complex null unions fail clearly. Validation keeps normalized `result.data` for `req.valid()` and hooks, while upstream canonical `path/message` errors map to Vext's public `field/message` shape.
+- **Non-publishing release gate** Added source and final release preflight modes covering metadata, dependency closure, String side-effect probes, full tests/coverage, exports/adapters/CLI, docs, audit, pack and isolated install. Final prepublish additionally requires a stable v1+ identity, stable exact upstream dependencies, a clean `main` worktree and a versioned changelog. Both upstream GA packages are now locked and verified; this source commit still does not publish vextjs and the future `vextjs@1.0.0` remains gated on its own identity-bound external consumer acceptance.
+
 ## 2026-07-07
 
 - **Configuration-driven Session runtime** `config.session.enabled: true` now auto-registers Session consistently in production, development, testing, and soft reload, while `RouteOptions.session` supports per-route opt-in, opt-out, `rolling`, and `autoCommit`. Session commits now run for every response exit rather than JSON only, configured stores close with the app lifecycle, and duplicate manual plus configured registration is detected. The same runtime-contract review also wired existing `RouteOptions.override.timeout` and `override.cors` declarations, aligned explicit testing rate-limit/access-log behavior, and kept all underscore-prefixed response internals out of `VextPublicResponse`.

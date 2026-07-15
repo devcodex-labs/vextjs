@@ -25,6 +25,7 @@
 import { describe, it, expect } from "vitest";
 import { SchemaConverter } from "../../src/lib/openapi/schema-converter.js";
 import type { JsonSchema } from "../../src/lib/openapi/types.js";
+import { schemaAdapter } from "../../src/lib/schema-adapter.js";
 import { dsl } from "schema-dsl";
 
 // ── 辅助函数 ────────────────────────────────────────────────
@@ -115,11 +116,7 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
         "string:3-32!",
       );
 
-      // 对比 toSchema()（应包含 _required）
-      const raw = builder.toSchema();
-      expect(raw._required).toBe(true);
-
-      // toJsonSchema() 不应包含 _required
+      // Vext 只消费 clean toJsonSchema()，不查询上游内部 required 状态。
       expect("_required" in schema).toBe(false);
     });
 
@@ -254,14 +251,32 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       );
     });
 
-    it("nullable 标记（?后缀）", () => {
+    it("? 后缀仅表示 optional，不自动 nullable", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString("string:0-500?");
 
       expect(schema.type).toBe("string");
-      expect(schema.nullable).toBe(true);
+      expect(schema.nullable).toBeUndefined();
       expect(isRequired).toBe(false);
-      expect(schema.description).toContain("nullable");
+      expect(schema.description).toContain("Optional");
+    });
+
+    it("显式 null union 投影为 OpenAPI 3.0 nullable", () => {
+      const c = createConverter();
+      const dslUnion = c.convertDSLString("types:string|null");
+      const rawUnion = c.convertValidateObject({
+        nickname: { type: ["string", "null"], minLength: 2 },
+      });
+
+      expect(dslUnion.schema).toMatchObject({
+        type: "string",
+        nullable: true,
+      });
+      expect(rawUnion.schema.properties!.nickname).toMatchObject({
+        type: "string",
+        nullable: true,
+        minLength: 2,
+      });
     });
   });
 
@@ -294,7 +309,7 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       );
     });
 
-    it("enum:active,inactive? → 可选枚举 + nullable", () => {
+    it("enum:active,inactive? → 可选枚举且不自动 nullable", () => {
       const c = createConverter();
       const { schema, isRequired } = c.convertDSLString(
         "enum:active,inactive?",
@@ -303,7 +318,7 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       expect(schema.type).toBe("string");
       expect(schema.enum).toEqual(["active", "inactive"]);
       expect(isRequired).toBe(false);
-      expect(schema.nullable).toBe(true);
+      expect(schema.nullable).toBeUndefined();
     });
 
     it("enum:number:1,2,3 → 数字枚举（类型前缀）", () => {
@@ -373,7 +388,7 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       // age: integer:0-150?
       const age = expectSchemaProperty(props, "age");
       expect(age.type).toBe("integer");
-      expect(age.nullable).toBe(true);
+      expect(age.nullable).toBeUndefined();
       expect(age.minimum).toBe(0);
       expect(age.maximum).toBe(150);
 
@@ -385,9 +400,9 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       const bio = expectSchemaProperty(profileProps, "bio");
       expect(avatar.type).toBe("string");
       expect(avatar.format).toBe("uri");
-      expect(avatar.nullable).toBe(true);
+      expect(avatar.nullable).toBeUndefined();
       expect(bio.type).toBe("string");
-      expect(bio.nullable).toBe(true);
+      expect(bio.nullable).toBeUndefined();
     });
 
     it("对象数组 — items 正确转换", () => {
@@ -452,15 +467,19 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
     it("字段级 DslBuilder 业务 description 贯穿转换管道", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
-        content: "string:1-20000!".description(
-          "待翻译文本，长度 1-20000 个字符",
-        ),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("待翻译文本，长度 1-20000 个字符"),
         targetLanguages: [
           {
-            code: dsl("string:1-64!").description("目标语言代码"),
+            code: schemaAdapter
+              .compileField("string:1-64!")
+              .description("目标语言代码"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description("输出格式"),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("输出格式"),
       });
 
       const props = result.schema.properties!;
@@ -652,9 +671,7 @@ describe("OpenAPI Pipeline — DSL → JSON Schema 端到端", () => {
       );
 
       // age
-      expect(vextAge.type).toBe(
-        (dslProps.age as Record<string, unknown>).type,
-      );
+      expect(vextAge.type).toBe((dslProps.age as Record<string, unknown>).type);
 
       // required 字段一致
       expect(converterResult.required).toContain("username");

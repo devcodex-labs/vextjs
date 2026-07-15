@@ -20,13 +20,18 @@
  */
 
 import { createRequire } from "node:module";
-import { dsl, validate as schemaDslValidate, I18nError } from "schema-dsl";
+import {
+  dsl,
+  validate as schemaDslValidate,
+  I18nError,
+  ObjectDslBuilder,
+} from "schema-dsl";
 import type {
   JSONSchema,
   ValidationResult,
   ValidateOptions,
   DslDefinition,
-  DslBuilder,
+  IDslBuilder,
   SchemaIOOptions,
   DslConfigOptions,
   ErrorMessages,
@@ -49,11 +54,13 @@ export type {
   ValidationResult,
   ValidateOptions,
   DslDefinition,
-  DslBuilder,
   SchemaIOOptions,
   DslConfigOptions,
   ErrorMessages,
 };
+
+/** vext 对外保留的 builder 类型名，绑定 schema-dsl 公开结构接口而非实现类。 */
+export type DslBuilder = IDslBuilder;
 
 export { I18nError };
 
@@ -64,9 +71,9 @@ export { I18nError };
  *
  * 封装 `dsl()` 主入口函数。
  *
- * @param definition DSL 定义（字符串或对象）
+ * @param definition 完整对象 DSL 定义
  * @param options    编译选项（可选）
- * @returns JSON Schema 对象（对象定义）或 DslBuilder（字符串定义）
+ * @returns JSON Schema 对象
  *
  * @example
  * ```typescript
@@ -83,10 +90,11 @@ export { I18nError };
  * ```
  */
 function compile(
-  definition: Record<string, DslDefinition>,
+  definition: DslDefinition,
   options?: SchemaIOOptions,
 ): JSONSchema {
-  return dsl(definition, options);
+  const internalSchema = dsl(definition, options);
+  return new ObjectDslBuilder(internalSchema).toJsonSchema();
 }
 
 /**
@@ -102,7 +110,7 @@ function compileField(definition: string): DslBuilder {
 /**
  * 判断值是否为 schema-dsl DslBuilder。
  *
- * OpenAPI 生成器需要识别 `"string!".description("...")` 这类字段级 builder，
+ * OpenAPI 生成器需要识别 `compileField("string!").description("...")` 字段级 builder，
  * 但不应直接依赖 schema-dsl 的私有字段结构。
  */
 function isDslBuilder(value: unknown): value is DslBuilder {
@@ -121,20 +129,23 @@ function toJsonSchema(builder: DslBuilder): JSONSchema {
   return builder.toJsonSchema();
 }
 
-/**
- * 判断字段是否必填。
- */
-function isFieldRequired(builder: DslBuilder): boolean {
-  // schema-dsl 的 toJsonSchema() 会清理内部状态；OpenAPI 仍需读取字段级标记。
-  return (builder as DslBuilder & { _required?: boolean })._required === true;
+export interface VextSchemaValidationError {
+  field: string;
+  message: string;
 }
 
 /**
- * 判断字段是否显式使用 `?` 标记为 nullable。
+ * 将 schema-dsl canonical error 映射为 vext 的公开错误形状。
+ *
+ * 上游只依赖 path/message；field/type/expected 等兼容别名不会进入 vext 边界。
  */
-function isFieldOptional(builder: DslBuilder): boolean {
-  // `_optional` 只存在于 builder 实例本体，用于区分 `string?` 与普通 `string`。
-  return (builder as DslBuilder & { _optional?: boolean })._optional === true;
+function mapValidationErrors(
+  errors: ReadonlyArray<{ path?: string; message?: string }> | null | undefined,
+): VextSchemaValidationError[] {
+  return (errors ?? []).map((error) => ({
+    field: error.path ?? "",
+    message: error.message ?? "Validation failed",
+  }));
 }
 
 /**
@@ -178,10 +189,7 @@ function getI18nParams(
   return undefined;
 }
 
-function getParamValue(
-  params: Record<string, unknown>,
-  path: string,
-): unknown {
+function getParamValue(params: Record<string, unknown>, path: string): unknown {
   let current: unknown = params;
   for (const segment of path.split(".")) {
     if (
@@ -354,11 +362,8 @@ export const schemaAdapter = {
   /** 将 DslBuilder 转为纯净 JSON Schema */
   toJsonSchema,
 
-  /** 判断 DslBuilder 字段是否必填 */
-  isFieldRequired,
-
-  /** 判断 DslBuilder 字段是否显式使用 `?` 标记 */
-  isFieldOptional,
+  /** 将 canonical path/message 映射为 vext field/message */
+  mapValidationErrors,
 
   /** 同步校验数据 */
   validate,

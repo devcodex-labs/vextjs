@@ -1,0 +1,8 @@
+{
+  "accepted": true,
+  "artifactVersion": "1.0.0",
+  "artifactSha256": "replace-with-64-character-sha256",
+  "consumerRepo": "replace-with-consumer-repository-identity",
+  "consumerCommit": "replace-with-full-40-character-commit-sha",
+  "runId": "replace-with-external-validation-run-id"
+}

@@ -19,18 +19,6 @@ import type { VextCsrfConfig } from "./csrf.js";
 import type { VextSecurityHeadersConfig } from "./security-headers.js";
 import type { VextAuthRequirement } from "./auth.js";
 
-declare global {
-  interface String {
-    /**
-     * 为 schema-dsl 字符串字段追加业务描述。
-     *
-     * 主要用于 `RouteOptions.validate` 和 `docs.responses[].schema` 的 OpenAPI 输出：
-     * `"string:1-50!".description("用户名")`。
-     */
-    description(description: string): DslBuilder;
-  }
-}
-
 /**
  * VextServices — 服务集合类型
  *
@@ -1490,7 +1478,7 @@ export type VextMiddlewareRef = string | { name: string; options?: unknown };
  *
  * 支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。
  * DslBuilder 主要用于字段级业务描述：
- * `"string:1-50!".description("用户名")`。
+ * `schemaAdapter.compileField("string:1-50!").description("用户名")`。
  */
 export type VextSchemaField =
   | string

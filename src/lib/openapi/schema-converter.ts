@@ -4,8 +4,8 @@
  * 将 vext 路由 options 中的 schema-dsl DSL 字符串转换为标准 JSON Schema 格式，
  * 供 OpenAPIGenerator 嵌入 OpenAPI 3.0 文档的 parameters / requestBody / responses。
  *
- * ⚡ v2.1 重构：使用 schema-dsl 的 toJsonSchema() 替代 toSchema() + 手动清理，
- * schema-dsl 现在直接输出纯净 JSON Schema（无 _required / _customMessages 等内部标记），
+ * ⚡ v3 适配：使用 schema-dsl 的对象级 toJsonSchema() 输出完整 clean schema，
+ * schema-dsl 现在直接输出纯净 JSON Schema（无内部 required / custom-message 标记），
  * vext 无需再维护 cleanInternalMarkers() 和 SCHEMA_DSL_INTERNAL_KEYS。
  * 仅保留 OpenAPI 特有的 description / example 富化作为后处理步骤。
  *
@@ -13,7 +13,8 @@
  *   - 基础类型：string / number / integer / boolean / email / url / date / objectId / array / object / any
  *   - 范围约束：string:1-50 / number:1-100 / integer:1- / string:8-!
  *   - 必填标记：string:1-50! / email! / objectId!（后缀 `!`）
- *   - 可选标记：url? / string:0-500?（后缀 `?`，映射为 nullable: true）
+ *   - 可选标记：url? / string:0-500?（后缀 `?`，仅表示非必填）
+ *   - 显式可空：types:string|null / { type: ['string', 'null'] }
  *   - 枚举类型：enum:a,b,c / enum:admin,user,guest!
  *   - 嵌套对象：{ avatar: 'url?', bio: 'string:0-500?' }
  *   - 嵌套数组：[{ productId: 'objectId!', name: 'string!' }]
@@ -26,14 +27,14 @@
  */
 
 import { schemaAdapter } from "../schema-adapter.js";
-import type { DslBuilder } from "../schema-adapter.js";
+import type { DslBuilder, DslDefinition } from "../schema-adapter.js";
 import type { JsonSchema, ConvertResult } from "./types.js";
 
 // 注意：schema-dsl 的 DslBuilder.toJsonSchema() 已内置内部标记清理，
 // vext 不再需要维护 SCHEMA_DSL_INTERNAL_KEYS 或 cleanInternalMarkers()。
 
 /**
- * SchemaConverter — schema-dsl DSL → JSON Schema 转换器（v2.1 toJsonSchema 模式）
+ * SchemaConverter — schema-dsl DSL → JSON Schema 转换器（v3 toJsonSchema 模式）
  *
  * 核心转换委托给 schemaAdapter（schema-dsl 防腐层），
  * 本类仅负责：
@@ -74,7 +75,7 @@ export class SchemaConverter {
    *   3. 嵌套对象：{ avatar: 'url?', bio: 'string:0-500?' }
    *
    * 实现策略：
-   *   - 字符串 DSL → 委托 schemaAdapter.compileField().toSchema() + 富化
+   *   - 字符串 DSL → 归一化为对象节点后委托 schemaAdapter.compile() + 富化
    *   - 嵌套对象 → 委托 schemaAdapter.compile() 获取完整 schema + 逐字段富化
    *   - 数组 DSL → 自行处理（schema-dsl DslDefinition 不支持数组语法）
    *
@@ -82,152 +83,246 @@ export class SchemaConverter {
    * @returns ConvertResult { schema, required }
    */
   convertValidateObject(dslObj: Record<string, unknown>): ConvertResult {
-    const properties: Record<string, JsonSchema> = {};
-    const required: string[] = [];
+    const normalizedNode: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(dslObj)) {
-      if (typeof value === "string") {
-        // ── 字符串 DSL：'string:1-50!' / 'email!' / 'number:1-100' ──
-        const { schema, isRequired } = this.convertDSLString(value);
-        properties[key] = schema;
-        if (isRequired) required.push(key);
-      } else if (schemaAdapter.isDslBuilder(value)) {
-        // ── 字段级 DslBuilder：'string!'.description('业务含义') ──
-        const { schema, isRequired } = this.convertDSLBuilder(value);
-        properties[key] = schema;
-        if (isRequired) required.push(key);
-      } else if (Array.isArray(value)) {
-        // ── 数组类型：[{ productId: 'objectId!', name: 'string!' }] ──
-        // schema-dsl 的 DslDefinition 不支持数组语法，自行处理
-        if (
-          value.length > 0 &&
-          typeof value[0] === "object" &&
-          value[0] !== null
-        ) {
-          const itemResult = this.convertValidateObject(
-            value[0] as Record<string, unknown>,
-          );
-          properties[key] = {
-            type: "array",
-            items: {
-              type: "object",
-              properties: itemResult.schema.properties,
-              ...(itemResult.required.length > 0
-                ? { required: itemResult.required }
-                : {}),
-            },
-          };
-        } else {
-          // 空数组或非对象元素 → 纯 array 类型
-          properties[key] = { type: "array" };
-        }
-      } else if (typeof value === "object" && value !== null) {
-        // ── 嵌套对象：{ avatar: 'url?', bio: 'string:0-500?' } ──
-        const nested = this.convertValidateObject(
-          value as Record<string, unknown>,
-        );
-        properties[key] = {
-          type: "object",
-          properties: nested.schema.properties,
-          ...(nested.required.length > 0 ? { required: nested.required } : {}),
-        };
+      const normalized = this.normalizeFieldValue(value, `$.${key}`);
+      if (normalized !== SKIP_SCHEMA_FIELD) {
+        normalizedNode[key] = normalized;
       }
-      // 其他类型（number / boolean / function 等）跳过
     }
 
-    return {
-      schema: {
-        type: "object",
-        properties,
-        ...(required.length > 0 ? { required } : {}),
-      },
-      required,
-    };
+    // schema-dsl 的 DslDefinition 类型不公开 raw JSON Schema field，但运行时已支持。
+    // 该窄化只存在于 vext 对象数组 / 显式 raw schema 的内部归一化边界。
+    const compiled = schemaAdapter.compile(
+      normalizedNode as unknown as DslDefinition,
+    );
+    const schema = this.projectOpenApi30Schema(compiled as JsonSchema, "$root");
+    const required = Array.isArray(schema.required)
+      ? schema.required.filter((key): key is string => typeof key === "string")
+      : [];
+    const properties = schema.properties ?? {};
+
+    for (const [rawKey, sourceValue] of Object.entries(dslObj)) {
+      const key = rawKey.endsWith("!") ? rawKey.slice(0, -1) : rawKey;
+      const property = properties[key];
+      if (!property) continue;
+      properties[key] = this.enrichFieldSchema(
+        property,
+        sourceValue,
+        required.includes(key),
+      );
+    }
+
+    schema.properties = properties;
+    return { schema, required };
   }
 
   /**
    * 转换单个 DSL 字符串
    *
-   * 委托 schemaAdapter.compileField() 获取 DslBuilder，
-   * 调用 .toSchema() 获取基础 JSON Schema，
-   * 然后叠加 OpenAPI 特有的 description / example 富化。
+   * 将字段包装成完整对象节点，委托 schemaAdapter.compile() 获取标准
+   * JSON Schema required[]，再叠加 OpenAPI 特有的 description / example 富化。
    *
    * @param dsl schema-dsl 字符串（如 'string:1-50!' / 'email?' / 'enum:a,b,c'）
    * @returns { schema: JsonSchema, isRequired: boolean }
    */
   convertDSLString(dsl: string): { schema: JsonSchema; isRequired: boolean } {
-    const trimmed = dsl.trim();
-
-    // ── 检测必填 / 可选后缀 ──────────────────────────────────
-    const isRequired = trimmed.endsWith("!");
-    const isNullable = trimmed.endsWith("?") && !isRequired;
-
-    // ── 委托 schema-dsl 进行核心转换 ────────────────────────
-    // compileField 接收完整 DSL 字符串（含 ! / ? 后缀），
-    // 内部会正确解析类型、约束、required 标记。
-    // toJsonSchema() 直接返回纯净 JSON Schema，
-    // 已自动清理 _required / _customMessages 等内部标记。
-    const builder = schemaAdapter.compileField(trimmed);
-    const schema: JsonSchema = builder.toJsonSchema() as JsonSchema;
-
-    // ── 应用 nullable 标记 ──────────────────────────────────
-    if (isNullable) {
-      schema.nullable = true;
+    if (dsl.trim() === "") {
+      throw new Error("[vextjs] DSL string is required");
     }
-
-    // ── 获取不含后缀的 DSL（用于 description 生成） ──────────
-    let cleanDsl = trimmed;
-    if (isRequired || isNullable) {
-      cleanDsl = trimmed.slice(0, -1);
-    }
-
-    // ── OpenAPI 富化：description + example ─────────────────
-    if (!schema.description) {
-      schema.description = this.buildDescription(
-        cleanDsl,
-        isRequired,
-        isNullable,
-      );
-    }
-
-    if (schema.example === undefined) {
-      schema.example = this.inferExample(schema, cleanDsl);
-    }
-
-    return { schema, isRequired };
+    const result = this.convertValidateObject({ value: dsl });
+    return {
+      schema: result.schema.properties?.value ?? {},
+      isRequired: result.required.includes("value"),
+    };
   }
 
   /**
    * 转换字段级 DslBuilder。
    *
-   * 支持 schema-dsl 的 String 扩展写法：
-   * `"string:1-50!".description("用户名")`，以及 `dsl("string!").description(...)`。
+   * 支持显式、无全局副作用的 builder 写法：
+   * `schemaAdapter.compileField("string:1-50!").description("用户名")`。
    */
   convertDSLBuilder(builder: DslBuilder): {
     schema: JsonSchema;
     isRequired: boolean;
   } {
-    const schema = schemaAdapter.toJsonSchema(builder) as JsonSchema;
-    const isRequired = schemaAdapter.isFieldRequired(builder);
-    const isNullable = schemaAdapter.isFieldOptional(builder) && !isRequired;
+    const result = this.convertValidateObject({ value: builder });
+    return {
+      schema: result.schema.properties?.value ?? {},
+      isRequired: result.required.includes("value"),
+    };
+  }
 
-    if (isNullable) {
-      schema.nullable = true;
+  private normalizeFieldValue(value: unknown, _path: string): unknown {
+    if (typeof value === "string" || schemaAdapter.isDslBuilder(value)) {
+      return value;
     }
 
-    if (!schema.description) {
-      schema.description = this.buildSchemaDescription(
-        schema,
-        isRequired,
-        isNullable,
+    if (Array.isArray(value)) {
+      if (
+        value.length > 0 &&
+        typeof value[0] === "object" &&
+        value[0] !== null &&
+        !Array.isArray(value[0])
+      ) {
+        return {
+          type: "array",
+          items: this.convertValidateObject(value[0] as Record<string, unknown>)
+            .schema,
+        };
+      }
+      return { type: "array" };
+    }
+
+    if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      if (isRawJsonSchemaFragment(record)) {
+        return record;
+      }
+      return this.convertValidateObject(record).schema;
+    }
+
+    return SKIP_SCHEMA_FIELD;
+  }
+
+  private enrichFieldSchema(
+    schema: JsonSchema,
+    sourceValue: unknown,
+    isRequired: boolean,
+  ): JsonSchema {
+    const enriched = { ...schema };
+    const isNullable = enriched.nullable === true;
+
+    if (typeof sourceValue === "string") {
+      const trimmed = sourceValue.trim();
+      const cleanDsl = /[!?]$/.test(trimmed) ? trimmed.slice(0, -1) : trimmed;
+      if (!enriched.description) {
+        enriched.description = this.buildDescription(
+          cleanDsl,
+          isRequired,
+          isNullable,
+        );
+      }
+      if (enriched.example === undefined) {
+        enriched.example = this.inferExample(enriched, cleanDsl);
+      }
+      return enriched;
+    }
+
+    if (schemaAdapter.isDslBuilder(sourceValue)) {
+      if (!enriched.description) {
+        enriched.description = this.buildSchemaDescription(
+          enriched,
+          isRequired,
+          isNullable,
+        );
+      }
+      if (enriched.example === undefined) {
+        enriched.example = this.inferExample(enriched, "");
+      }
+    }
+
+    return enriched;
+  }
+
+  private projectOpenApi30Schema(schema: JsonSchema, path: string): JsonSchema {
+    let projected: JsonSchema = { ...schema };
+
+    if (projected.properties) {
+      projected.properties = Object.fromEntries(
+        Object.entries(projected.properties).map(([key, value]) => [
+          key,
+          this.projectOpenApi30Schema(value, `${path}.properties.${key}`),
+        ]),
+      );
+    }
+    if (projected.items) {
+      projected.items = this.projectOpenApi30Schema(
+        projected.items,
+        `${path}.items`,
       );
     }
 
-    if (schema.example === undefined) {
-      schema.example = this.inferExample(schema, "");
+    const rawType = projected.type as unknown;
+    if (Array.isArray(rawType)) {
+      if (!rawType.every((value) => typeof value === "string")) {
+        throw new Error(
+          `[vextjs] Cannot convert ${path}: JSON Schema type union contains a non-string member.`,
+        );
+      }
+      const nullCount = rawType.filter((value) => value === "null").length;
+      const nonNullTypes = rawType.filter((value) => value !== "null");
+      if (nullCount !== 1 || nonNullTypes.length !== 1) {
+        throw new Error(
+          `[vextjs] Cannot losslessly convert ${path}: OpenAPI 3.0 nullable requires exactly one null and one non-null type.`,
+        );
+      }
+      projected.type = nonNullTypes[0];
+      projected.nullable = true;
     }
 
-    return { schema, isRequired };
+    for (const keyword of ["oneOf", "anyOf"] as const) {
+      const branches = projected[keyword];
+      if (!Array.isArray(branches)) continue;
+
+      const nullBranches = branches.filter(isPlainNullSchema);
+      const containsOtherNullShape = branches.some(
+        (branch) => isSchemaWithNullType(branch) && !isPlainNullSchema(branch),
+      );
+      if (containsOtherNullShape) {
+        throw new Error(
+          `[vextjs] Cannot losslessly convert ${path}.${keyword}: null branch carries unsupported sibling constraints.`,
+        );
+      }
+
+      if (nullBranches.length > 0) {
+        const nonNullBranches = branches.filter(
+          (branch) => !isPlainNullSchema(branch),
+        );
+        if (nullBranches.length !== 1 || nonNullBranches.length !== 1) {
+          throw new Error(
+            `[vextjs] Cannot losslessly convert ${path}.${keyword}: nullable union must contain exactly one null branch and one non-null branch.`,
+          );
+        }
+        const nonNull = this.projectOpenApi30Schema(
+          nonNullBranches[0],
+          `${path}.${keyword}[non-null]`,
+        );
+        if (typeof nonNull.type !== "string" || nonNull.type === "null") {
+          throw new Error(
+            `[vextjs] Cannot losslessly convert ${path}.${keyword}: non-null branch must expose one concrete type.`,
+          );
+        }
+        const outer = { ...projected } as Record<string, unknown>;
+        delete outer[keyword];
+        projected = mergeNullableSchema(
+          outer as JsonSchema,
+          nonNull,
+          `${path}.${keyword}`,
+        );
+        continue;
+      }
+
+      projected[keyword] = branches.map((branch, index) =>
+        this.projectOpenApi30Schema(branch, `${path}.${keyword}[${index}]`),
+      );
+    }
+
+    if (Array.isArray(projected.allOf)) {
+      projected.allOf = projected.allOf.map((branch, index) =>
+        this.projectOpenApi30Schema(branch, `${path}.allOf[${index}]`),
+      );
+    }
+
+    if (projected.type === "null") {
+      throw new Error(
+        `[vextjs] Cannot convert ${path}: standalone null is not representable in OpenAPI 3.0.`,
+      );
+    }
+
+    return projected;
   }
 
   /**
@@ -510,3 +605,108 @@ const EXAMPLE_BY_FORMAT: Record<string, unknown> = {
   ipv4: "192.168.1.1",
   ipv6: "2001:0db8:85a3::8a2e:0370:7334",
 };
+
+const SKIP_SCHEMA_FIELD = Symbol("skip-schema-field");
+
+const JSON_SCHEMA_TYPES = new Set([
+  "null",
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "object",
+  "array",
+]);
+
+function isRawJsonSchemaFragment(value: Record<string, unknown>): boolean {
+  if (typeof value.$ref === "string") return true;
+  if (
+    Array.isArray(value.oneOf) ||
+    Array.isArray(value.anyOf) ||
+    Array.isArray(value.allOf)
+  ) {
+    return true;
+  }
+  if (value.properties && typeof value.properties === "object") return true;
+  if (value.items && typeof value.items === "object") return true;
+
+  const type = value.type;
+  if (
+    Array.isArray(type) &&
+    type.length > 0 &&
+    type.every(
+      (item) => typeof item === "string" && JSON_SCHEMA_TYPES.has(item),
+    )
+  ) {
+    return true;
+  }
+
+  if (typeof type !== "string" || !JSON_SCHEMA_TYPES.has(type)) return false;
+
+  // `{ type: "string" }` is ambiguous in Vext DSL because it can mean a
+  // nested object whose field is literally named `type`. Only treat a
+  // single-type object as raw JSON Schema when another value has a shape that
+  // cannot be a Vext field declaration.
+  return Object.entries(value).some(([key, candidate]) => {
+    if (key === "type") return false;
+    if (
+      [
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minItems",
+        "maxItems",
+        "minProperties",
+        "maxProperties",
+        "multipleOf",
+      ].includes(key)
+    ) {
+      return typeof candidate === "number";
+    }
+    if (key === "enum" || key === "required") return Array.isArray(candidate);
+    if (key === "nullable" || key === "readOnly" || key === "writeOnly") {
+      return typeof candidate === "boolean";
+    }
+    if (key === "additionalProperties") {
+      return typeof candidate === "boolean" || isRecord(candidate);
+    }
+    return false;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSchemaWithNullType(schema: JsonSchema): boolean {
+  const type = schema.type as unknown;
+  return type === "null" || (Array.isArray(type) && type.includes("null"));
+}
+
+function isPlainNullSchema(schema: JsonSchema): boolean {
+  return schema.type === "null" && Object.keys(schema).length === 1;
+}
+
+function mergeNullableSchema(
+  outer: JsonSchema,
+  branch: JsonSchema,
+  path: string,
+): JsonSchema {
+  const merged: Record<string, unknown> = { ...outer };
+  for (const [key, value] of Object.entries(branch)) {
+    if (
+      key in merged &&
+      JSON.stringify(merged[key]) !== JSON.stringify(value)
+    ) {
+      throw new Error(
+        `[vextjs] Cannot losslessly convert ${path}: conflicting ${key} constraints.`,
+      );
+    }
+    merged[key] = value;
+  }
+  merged.nullable = true;
+  return merged as JsonSchema;
+}

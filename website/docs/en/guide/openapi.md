@@ -700,25 +700,29 @@ Generated requestBody schema:
 }
 ```
 
-Field-level business descriptions can be written directly on DSL, and the generator will output it as `description` of OpenAPI schema:
+Field-level business descriptions use the explicit side-effect-free builder, and the generator outputs them as OpenAPI schema `description` values:
 
 ```typescript
+import { schemaAdapter } from "vextjs";
+
 app.post(
   "/translate",
   {
     validate: {
       body: {
-        content: "string:1-20000!".description(
-          "Text to be translated, length 1-20000 characters",
-        ),
+        content: schemaAdapter
+          .compileField("string:1-20000!")
+          .description("Text to be translated, length 1-20000 characters"),
         targetLanguages: [
           {
-            code: "string:1-64!".description("target language code"),
+            code: schemaAdapter
+              .compileField("string:1-64!")
+              .description("target language code"),
           },
         ],
-        format: "enum:plain_text,preserve_line_breaks".description(
-          "output format",
-        ),
+        format: schemaAdapter
+          .compileField("enum:plain_text,preserve_line_breaks")
+          .description("output format"),
       },
     },
   },

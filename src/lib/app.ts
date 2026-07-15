@@ -462,9 +462,7 @@ function createSchemaAdapterValidator(): VextValidator {
   return {
     compile(schema: Record<string, unknown>) {
       // 将 DSL 定义编译为 JSON Schema（通过防腐层）
-      const compiledSchema = schemaAdapter.compile(
-        schema as Record<string, DslDefinition>,
-      );
+      const compiledSchema = schemaAdapter.compile(schema as DslDefinition);
 
       // 返回校验函数
       return (data: unknown) => {
@@ -475,10 +473,7 @@ function createSchemaAdapterValidator(): VextValidator {
           data: result.valid ? result.data : undefined,
           errors: result.valid
             ? undefined
-            : (result.errors ?? []).map((e) => ({
-                field: e.field ?? e.path ?? "",
-                message: e.message ?? "Validation failed",
-              })),
+            : schemaAdapter.mapValidationErrors(result.errors),
         };
       };
     },

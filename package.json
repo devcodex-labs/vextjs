@@ -59,6 +59,7 @@
     "dist",
     "scripts",
     "README.md",
+    "MIGRATION.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -84,10 +85,14 @@
     "format:changed": "node scripts/format-check.mjs --write",
     "format:check": "node scripts/format-check.mjs",
     "format:check:all": "prettier --check .",
-    "prepublishOnly": "npm run build",
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "release:preflight:final": "node scripts/release-preflight.mjs --final",
+    "prepublishOnly": "npm run release:preflight:final",
     "test:audit": "npm run verify:exports && npm run verify:adapters",
     "verify:exports": "node test/verify-package-exports.mjs",
-    "verify:adapters": "node test/verify-adapters-startup.mjs"
+    "verify:adapters": "node test/verify-adapters-startup.mjs",
+    "verify:schema-v3": "node scripts/validation/check-schema-v3-adaptation.mjs",
+    "verify:pack-install": "node scripts/validation/verify-packed-install.mjs"
   },
   "keywords": [
     "vext",
@@ -126,13 +131,13 @@
     "esbuild": "0.28.1",
     "fast-glob": "3.3.3",
     "flex-rate-limit": "2.2.4",
-    "monsqlize": "2.0.6",
+    "monsqlize": "3.1.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-refresh": "0.18.0",
     "response-cache-kit": "1.2.1",
     "route-core": "0.0.7",
-    "schema-dsl": "2.0.11"
+    "schema-dsl": "3.0.0"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.14.1",

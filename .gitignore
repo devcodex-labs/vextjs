@@ -74,6 +74,9 @@ web_modules/
 # Output of 'npm pack'
 *.tgz
 
+# Retained isolated release-preflight evidence
+test/.tmp-release-preflight-*/
+
 # Yarn Integrity file
 .yarn-integrity
 

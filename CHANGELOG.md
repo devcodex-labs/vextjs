@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | — | Pending changes [查看](./changelogs/unreleased.md) |
+| [Unreleased] | — | — | v1 source adaptation for side-effect-free schema-dsl v3 and monsqlize 3.1 [查看](./changelogs/unreleased.md) |
 | [0.3.26] | 2026-06-15 | Patch | Built-in frontend runtime plus schema-dsl ESM/CJS custom type registry compatibility [查看](./changelogs/v0.3.26.md) |
 | [0.3.25] | 2026-06-13 | Patch | Logger wrapper normalization, release-chain latest runtime dependencies, and documentation theme/version convergence [查看](./changelogs/v0.3.25.md) |
 | [0.3.24] | 2026-06-11 | Patch | Logger pretty level labels can opt into ANSI color while JSON output stays color-free [查看](./changelogs/v0.3.24.md) |
