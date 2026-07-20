@@ -82,7 +82,13 @@ describe("resolvePreloads", () => {
       pathToFileURL(path.join(rootDir, "preload", "01-project.mjs")).href,
       pathToFileURL(path.join(rootDir, "preload", "02-project.js")).href,
       pathToFileURL(
-        path.join(rootDir, "node_modules", "dep-a", "dist", "instrumentation.js"),
+        path.join(
+          rootDir,
+          "node_modules",
+          "dep-a",
+          "dist",
+          "instrumentation.js",
+        ),
       ).href,
     ]);
   });
@@ -93,7 +99,9 @@ describe("resolvePreloads", () => {
 
     fs.writeFileSync(
       path.join(rootDir, "tsconfig.json"),
-      JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" } }),
+      JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "ESNext" },
+      }),
       "utf-8",
     );
 
@@ -144,7 +152,11 @@ describe("resolvePreloads", () => {
     writeProjectPackageJson(rootDir);
 
     fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
-    fs.writeFileSync(path.join(rootDir, "preload", "01-ignore.txt"), "noop\n", "utf-8");
+    fs.writeFileSync(
+      path.join(rootDir, "preload", "01-ignore.txt"),
+      "noop\n",
+      "utf-8",
+    );
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -188,7 +200,9 @@ describe("resolvePreloads", () => {
         preload: "../../preload/01-shared.mjs",
       },
     });
-    fs.mkdirSync(path.join(rootDir, "node_modules", "dup"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "node_modules", "dup"), {
+      recursive: true,
+    });
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([
       pathToFileURL(path.join(rootDir, "preload", "01-shared.mjs")).href,
@@ -228,12 +242,30 @@ describe("resolvePreloads", () => {
         preload: ["./a.js", "./b.js"],
       },
     });
-    fs.mkdirSync(path.join(rootDir, "node_modules", "dep-b"), { recursive: true });
-    fs.writeFileSync(path.join(rootDir, "node_modules", "dep-b", "a.js"), "export {}\n", "utf-8");
-    fs.writeFileSync(path.join(rootDir, "node_modules", "dep-b", "b.js"), "export {}\n", "utf-8");
+    fs.mkdirSync(path.join(rootDir, "node_modules", "dep-b"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "dep-b", "a.js"),
+      "export {}\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "dep-b", "b.js"),
+      "export {}\n",
+      "utf-8",
+    );
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([
-      pathToFileURL(path.join(rootDir, "node_modules", "dep-a", "dist", "instrumentation.js")).href,
+      pathToFileURL(
+        path.join(
+          rootDir,
+          "node_modules",
+          "dep-a",
+          "dist",
+          "instrumentation.js",
+        ),
+      ).href,
       pathToFileURL(path.join(rootDir, "node_modules", "dep-b", "a.js")).href,
       pathToFileURL(path.join(rootDir, "node_modules", "dep-b", "b.js")).href,
     ]);
@@ -257,14 +289,114 @@ describe("resolvePreloads", () => {
     });
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([]);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("file not found"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("file not found"),
+    );
+  });
+
+  it("skips invalid scalar package preload metadata and continues with valid packages", async () => {
+    const rootDir = createTmpProject();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    writeJson(path.join(rootDir, "package.json"), {
+      dependencies: {
+        bad: "1.0.0",
+        good: "1.0.0",
+      },
+    });
+
+    writeJson(path.join(rootDir, "node_modules", "bad", "package.json"), {
+      name: "bad",
+      vext: {
+        preload: 42,
+      },
+    });
+
+    writeJson(path.join(rootDir, "node_modules", "good", "package.json"), {
+      name: "good",
+      vext: {
+        preload: "./dist/instrumentation.js",
+      },
+    });
+    fs.mkdirSync(path.join(rootDir, "node_modules", "good", "dist"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "good", "dist", "instrumentation.js"),
+      "export {}\n",
+      "utf-8",
+    );
+
+    await expect(resolvePreloads(rootDir)).resolves.toEqual([
+      pathToFileURL(
+        path.join(
+          rootDir,
+          "node_modules",
+          "good",
+          "dist",
+          "instrumentation.js",
+        ),
+      ).href,
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("bad/package.json vext.preload"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("received number"),
+    );
+  });
+
+  it("skips non-string entries in package preload arrays and keeps valid entries", async () => {
+    const rootDir = createTmpProject();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    writeJson(path.join(rootDir, "package.json"), {
+      dependencies: {
+        mixed: "1.0.0",
+      },
+    });
+
+    writeJson(path.join(rootDir, "node_modules", "mixed", "package.json"), {
+      name: "mixed",
+      vext: {
+        preload: ["./a.js", 42, null, "./b.js"],
+      },
+    });
+    fs.mkdirSync(path.join(rootDir, "node_modules", "mixed"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "mixed", "a.js"),
+      "export {}\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(rootDir, "node_modules", "mixed", "b.js"),
+      "export {}\n",
+      "utf-8",
+    );
+
+    await expect(resolvePreloads(rootDir)).resolves.toEqual([
+      pathToFileURL(path.join(rootDir, "node_modules", "mixed", "a.js")).href,
+      pathToFileURL(path.join(rootDir, "node_modules", "mixed", "b.js")).href,
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("mixed/package.json vext.preload[1]"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("mixed/package.json vext.preload[2]"),
+    );
   });
 
   it("returns [] and warns when project package.json is invalid", async () => {
     const rootDir = createTmpProject();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    fs.writeFileSync(path.join(rootDir, "package.json"), "{ invalid json", "utf-8");
+    fs.writeFileSync(
+      path.join(rootDir, "package.json"),
+      "{ invalid json",
+      "utf-8",
+    );
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -283,7 +415,9 @@ describe("resolvePreloads", () => {
       },
     });
 
-    fs.mkdirSync(path.join(rootDir, "node_modules", "bad"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "node_modules", "bad"), {
+      recursive: true,
+    });
     fs.writeFileSync(
       path.join(rootDir, "node_modules", "bad", "package.json"),
       "{ invalid json",
@@ -307,7 +441,15 @@ describe("resolvePreloads", () => {
 
     const result = await resolvePreloads(rootDir);
     expect(result).toEqual([
-      pathToFileURL(path.join(rootDir, "node_modules", "good", "dist", "instrumentation.js")).href,
+      pathToFileURL(
+        path.join(
+          rootDir,
+          "node_modules",
+          "good",
+          "dist",
+          "instrumentation.js",
+        ),
+      ).href,
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("failed to parse bad/package.json"),

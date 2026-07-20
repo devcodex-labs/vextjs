@@ -158,16 +158,18 @@ function resolvePackagePreloads(rootDir: string): string[] {
     }
 
     // 提取 vext.preload（string | string[]）
-    const vextField = depPkg.vext as Record<string, unknown> | undefined;
-    if (!vextField?.preload) continue;
+    const vextField =
+      typeof depPkg.vext === "object" && depPkg.vext !== null
+        ? (depPkg.vext as Record<string, unknown>)
+        : undefined;
+    if (
+      !vextField ||
+      !Object.prototype.hasOwnProperty.call(vextField, "preload")
+    ) {
+      continue;
+    }
 
-    const preloadField = vextField.preload;
-    const relPaths: string[] =
-      typeof preloadField === "string"
-        ? [preloadField]
-        : Array.isArray(preloadField)
-          ? (preloadField as string[])
-          : [];
+    const relPaths = normalizePackagePreloadPaths(depName, vextField.preload);
 
     for (const relPath of relPaths) {
       const depDir = join(rootDir, "node_modules", depName);
@@ -186,6 +188,42 @@ function resolvePackagePreloads(rootDir: string): string[] {
   }
 
   return preloads;
+}
+
+function normalizePackagePreloadPaths(
+  depName: string,
+  preloadField: unknown,
+): string[] {
+  if (typeof preloadField === "string") {
+    return [preloadField];
+  }
+
+  if (!Array.isArray(preloadField)) {
+    console.warn(
+      `[vextjs] preload: invalid ${depName}/package.json vext.preload: expected string or string[], received ${describePreloadValue(preloadField)}, skipping`,
+    );
+    return [];
+  }
+
+  const relPaths: string[] = [];
+  for (const [index, entry] of preloadField.entries()) {
+    if (typeof entry === "string") {
+      relPaths.push(entry);
+      continue;
+    }
+
+    console.warn(
+      `[vextjs] preload: invalid ${depName}/package.json vext.preload[${index}]: expected string, received ${describePreloadValue(entry)}, skipping`,
+    );
+  }
+
+  return relPaths;
+}
+
+function describePreloadValue(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
 }
 
 async function compileProjectTypeScriptPreload(
