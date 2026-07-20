@@ -387,23 +387,30 @@ export default {
 
 Master 和 Worker 之间通过 IPC 消息通信。VextJS 定义了标准化的消息协议：
 
+下表中的消息类型是 IPC payload 中 `type` 字段的精确字符串字面量，不包含方向前缀。
+
 ### Worker → Master 消息
 
-| 消息类型                 | 说明                                    |
-| ------------------------ | --------------------------------------- |
-| `worker:ready`           | Worker 初始化完成，开始接受请求         |
-| `worker:heartbeat`       | 心跳响应                                |
-| `worker:metrics`         | Worker 上报运行指标（请求数、内存等）   |
-| `worker:request-restart` | Worker 请求自身重启（如检测到内存泄漏） |
+| 消息类型          | 说明                                    |
+| ----------------- | --------------------------------------- |
+| `ready`           | Worker 初始化完成，开始接受请求         |
+| `heartbeat`       | 心跳响应                                |
+| `metrics`         | Worker 上报运行指标（请求数、内存等）   |
+| `request-restart` | Worker 请求自身重启（如检测到内存泄漏） |
 
 ### Master → Worker 消息
 
-| 消息类型              | 说明                  |
-| --------------------- | --------------------- |
-| `master:set-title`    | 设置 Worker 进程标题  |
-| `master:shutdown`     | 通知 Worker 优雅关闭  |
-| `master:health-check` | 心跳探测              |
-| `master:broadcast`    | 广播消息到所有 Worker |
+| 消息类型       | 说明                  |
+| -------------- | --------------------- |
+| `set-title`    | 设置 Worker 进程标题  |
+| `shutdown`     | 通知 Worker 优雅关闭  |
+| `health-check` | 心跳探测              |
+| `broadcast`    | 广播消息到所有 Worker |
+
+```typescript
+process.send?.({ type: "ready", pid: process.pid, workerId: "1" });
+worker.send({ type: "shutdown", timeout: 10000 });
+```
 
 ## 与 Docker 部署
 

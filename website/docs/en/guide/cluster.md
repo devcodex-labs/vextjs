@@ -379,23 +379,30 @@ It is recommended to use `vext dev` (hot reload mode) instead of Cluster mode fo
 
 Master and Worker communicate through IPC messages. VextJS defines a standardized messaging protocol:
 
+The message types below are the exact string literals of the IPC payload `type` field, without direction prefixes.
+
 ### Worker → Master message
 
-| Message type             | Description                                                       |
-| ------------------------ | ----------------------------------------------------------------- |
-| `worker:ready`           | Worker initialization is completed and starts accepting requests  |
-| `worker:heartbeat`       | Heartbeat response                                                |
-| `worker:metrics`         | Worker reports running metrics (number of requests, memory, etc.) |
-| `worker:request-restart` | Worker requests itself to restart (if a memory leak is detected)  |
+| Message type      | Description                                                       |
+| ----------------- | ----------------------------------------------------------------- |
+| `ready`           | Worker initialization is completed and starts accepting requests  |
+| `heartbeat`       | Heartbeat response                                                |
+| `metrics`         | Worker reports running metrics (number of requests, memory, etc.) |
+| `request-restart` | Worker requests itself to restart (if a memory leak is detected)  |
 
 ### Master → Worker message
 
-| Message type          | Description                           |
-| --------------------- | ------------------------------------- |
-| `master:set-title`    | Set Worker process title              |
-| `master:shutdown`     | Notify Worker to shut down gracefully |
-| `master:health-check` | Heartbeat detection                   |
-| `master:broadcast`    | Broadcast messages to all Workers     |
+| Message type   | Description                           |
+| -------------- | ------------------------------------- |
+| `set-title`    | Set Worker process title              |
+| `shutdown`     | Notify Worker to shut down gracefully |
+| `health-check` | Heartbeat detection                   |
+| `broadcast`    | Broadcast messages to all Workers     |
+
+```typescript
+process.send?.({ type: "ready", pid: process.pid, workerId: "1" });
+worker.send({ type: "shutdown", timeout: 10000 });
+```
 
 ## Deploying with Docker
 
