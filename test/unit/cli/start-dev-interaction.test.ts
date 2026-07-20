@@ -312,7 +312,11 @@ describe("cli interaction: start/dev", () => {
     mocks.inspectDistBuild.mockReturnValueOnce({
       valid: false,
       hasDistDir: true,
-      missing: ["dist/config/default.js"],
+      missing: [
+        "dist/config/default.js",
+        "dist/routes/user.js",
+        "dist/preload/01-env.mjs",
+      ],
     });
 
     await expect(startCommand([])).rejects.toThrow("process.exit");
@@ -320,6 +324,12 @@ describe("cli interaction: start/dev", () => {
     expect(mocks.fork).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("Cannot run TypeScript project with vext start"),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("dist/routes/user.js"),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("dist/preload/01-env.mjs"),
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Run "vext build" first'),

@@ -1,5 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import fg from "fast-glob";
+
+import {
+  SOURCE_GLOB,
+  SOURCE_IGNORE,
+} from "../../lib/build/shared-esbuild-config.js";
 
 /**
  * detect-project.ts — 项目自动检测工具
@@ -55,6 +61,16 @@ export interface DistBuildInspection {
   hasDistDir: boolean;
   missing: string[];
 }
+
+const BUILD_EXTRA_IGNORE = [
+  "**/config/development.{ts,js,mts,mjs,cts,cjs}",
+  "**/config/local.{ts,js,mts,mjs,cts,cjs}",
+  "**/config/test.{ts,js,mts,mjs,cts,cjs}",
+];
+
+const PROJECT_PRELOAD_DIR = "preload";
+const PROJECT_PRELOAD_PATTERN = /\.(ts|mts|js|mjs)$/i;
+const SOURCE_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
 
 // ── 主函数 ──────────────────────────────────────────────────
 
@@ -171,10 +187,7 @@ export function findProjectRoot(cwd: string): string {
  */
 export function inspectDistBuild(rootDir: string): DistBuildInspection {
   const distDir = path.join(rootDir, "dist");
-  const requiredFiles = [
-    path.join(distDir, "package.json"),
-    path.join(distDir, "config", "default.js"),
-  ];
+  const requiredFiles = getDistBuildRequiredFiles(rootDir);
   const missing = requiredFiles.filter((file) => !fs.existsSync(file));
 
   return {
@@ -194,6 +207,57 @@ export function inspectDistBuild(rootDir: string): DistBuildInspection {
  */
 export function hasDistBuild(rootDir: string): boolean {
   return inspectDistBuild(rootDir).valid;
+}
+
+function getDistBuildRequiredFiles(rootDir: string): string[] {
+  const requiredFiles = [
+    path.join(rootDir, "dist", "package.json"),
+    path.join(rootDir, "dist", "config", "default.js"),
+    ...getCompiledSourceOutputFiles(rootDir),
+    ...getCompiledProjectPreloadOutputFiles(rootDir),
+  ];
+
+  return [...new Set(requiredFiles)];
+}
+
+function getCompiledSourceOutputFiles(rootDir: string): string[] {
+  const srcDir = path.join(rootDir, "src");
+  if (!fs.existsSync(srcDir)) {
+    return [];
+  }
+
+  return fg
+    .sync(SOURCE_GLOB, {
+      cwd: srcDir,
+      ignore: [...SOURCE_IGNORE, ...BUILD_EXTRA_IGNORE],
+      onlyFiles: true,
+    })
+    .sort((a, b) => a.localeCompare(b))
+    .map((file) =>
+      path.join(rootDir, "dist", file.replace(SOURCE_EXTENSION_PATTERN, ".js")),
+    );
+}
+
+function getCompiledProjectPreloadOutputFiles(rootDir: string): string[] {
+  const preloadDir = path.join(rootDir, PROJECT_PRELOAD_DIR);
+  if (!fs.existsSync(preloadDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(preloadDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => PROJECT_PRELOAD_PATTERN.test(name))
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) =>
+      path.join(
+        rootDir,
+        "dist",
+        PROJECT_PRELOAD_DIR,
+        name.replace(PROJECT_PRELOAD_PATTERN, ".mjs"),
+      ),
+    );
 }
 
 /**
