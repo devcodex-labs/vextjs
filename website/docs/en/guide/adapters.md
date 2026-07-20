@@ -374,37 +374,81 @@ Regardless of which Adapter is used, user code always operates on the unified `V
 ### VextRequest (unified request object)
 
 ```typescript
+import type {
+  VextApp,
+  VextAuthContext,
+  VextCookieJar,
+  VextSession,
+  ParsedFile,
+} from "vextjs";
+
 interface VextRequest {
   method: string; // HTTP method
   url: string; // Full URL
-  path: string; // path part
+  path: string; // Path part
+  route: string; // Matched route template, empty string for 404
   query: Record<string, string>; // Query parameters
   body: unknown; // Request body
-  params: Record<string, string>; // path parameters
-  headers: Record<string, string>; // Request headers
-  requestId: string; //Request unique identifier
+  params: Record<string, string>; // Path parameters
+  headers: Record<string, string | undefined>; // Lowercase request headers
+  cookies: VextCookieJar; // Parsed cookies
+  cookie(name: string): string | undefined; // Read one cookie
+  csrfToken(): string; // Current request CSRF token
+  auth: VextAuthContext; // Authentication context
+  requestId: string; // Request unique identifier
   ip: string; // Client IP
-  protocol: "http" | "https"; // protocol
-  app: VextApp; // Application example
-  valid<T>(location: string): T; // Get the verified data
+  protocol: "http" | "https"; // Protocol
+  app: VextApp; // Application instance
+  valid<T>(location: "query" | "body" | "param" | "header" | "cookie"): T;
   onClose(handler: () => void): void; // Connection closing hook
+  files?: ParsedFile[]; // Parsed uploaded files, filled by multipart plugins
+  session?: VextSession; // Available when Session is enabled
+  _getRawBody(maxBytes?: number): Promise<string>; // Raw request body text
+  _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>; // Raw request body bytes
 }
 ```
+
+`_getRawBody()` / `_getRawBodyBuffer()` are injected by adapters and primarily used by framework middleware and plugins such as multipart parsers. Application handlers should usually use `req.body`, `req.files`, and `req.valid()`.
 
 ### VextResponse (unified response object)
 
 ```typescript
+import type {
+  CookieSerializeOptions,
+  VextHeaderValue,
+  VextRenderErrorOptions,
+  VextRenderOptions,
+} from "vextjs";
+
 interface VextResponse {
   json(data: unknown, status?: number): void; // JSON response
   text(content: string, status?: number): void; // Text response
-  stream(readable: ReadableStream, type?: string): void; // Streaming response
-  download(readable: ReadableStream, filename: string): void; // File download
-  redirect(url: string, status?: number): void; // Redirect
-  status(code: number): this; //Set status code
-  setHeader(name: string, value: string): this; // Set response header
+  render(
+    page: string,
+    props?: Record<string, unknown>,
+    options?: VextRenderOptions,
+  ): void; // Render a frontend page
+  renderError(
+    errorOrStatus?: Error | number | string,
+    pageOrOptions?: string | VextRenderErrorOptions,
+    options?: VextRenderErrorOptions,
+  ): void; // Render an error page
+  stream(readable: NodeJS.ReadableStream, type?: string): void; // Node.js streaming response
+  download(
+    readable: NodeJS.ReadableStream,
+    filename: string,
+    type?: string,
+  ): void; // File download
+  redirect(url: string, status?: 301 | 302 | 307 | 308): void; // Redirect
+  status(code: number): this; // Set status code
+  setHeader(name: string, value: VextHeaderValue): this; // Set response header
+  cookie(name: string, value: string, options?: CookieSerializeOptions): this; // Append Set-Cookie
+  clearCookie(name: string, options?: CookieSerializeOptions): this; // Clear cookie
   readonly statusCode: number; // Current status code
 }
 ```
+
+`stream()` / `download()` accept Node.js `Readable` / `NodeJS.ReadableStream`, not Web `ReadableStream`. `rawJson()` and underscore-prefixed response methods are framework internals; application code should use the public methods visible through `VextPublicResponse`.
 
 This design means:
 

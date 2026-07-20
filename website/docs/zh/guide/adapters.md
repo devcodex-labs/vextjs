@@ -373,37 +373,81 @@ export default {
 ### VextRequest（统一请求对象）
 
 ```typescript
+import type {
+  VextApp,
+  VextAuthContext,
+  VextCookieJar,
+  VextSession,
+  ParsedFile,
+} from "vextjs";
+
 interface VextRequest {
   method: string; // HTTP 方法
   url: string; // 完整 URL
   path: string; // 路径部分
+  route: string; // 当前匹配的路由模板，404 时为空字符串
   query: Record<string, string>; // 查询参数
   body: unknown; // 请求体
   params: Record<string, string>; // 路径参数
-  headers: Record<string, string>; // 请求头
+  headers: Record<string, string | undefined>; // 请求头（小写 key）
+  cookies: VextCookieJar; // 已解析 Cookie
+  cookie(name: string): string | undefined; // 读取单个 Cookie
+  csrfToken(): string; // 当前请求的 CSRF token
+  auth: VextAuthContext; // 认证上下文
   requestId: string; // 请求唯一标识
   ip: string; // 客户端 IP
   protocol: "http" | "https"; // 协议
   app: VextApp; // 应用实例
-  valid<T>(location: string): T; // 获取校验后数据
+  valid<T>(location: "query" | "body" | "param" | "header" | "cookie"): T;
   onClose(handler: () => void): void; // 连接关闭钩子
+  files?: ParsedFile[]; // 已解析上传文件（由 multipart 插件填充）
+  session?: VextSession; // Session 启用后可用
+  _getRawBody(maxBytes?: number): Promise<string>; // 原始请求体文本
+  _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>; // 原始请求体字节
 }
 ```
+
+`_getRawBody()` / `_getRawBodyBuffer()` 由 Adapter 注入，主要供框架中间件和 multipart 等插件使用；普通业务代码优先使用 `req.body`、`req.files` 和 `req.valid()`。
 
 ### VextResponse（统一响应对象）
 
 ```typescript
+import type {
+  CookieSerializeOptions,
+  VextHeaderValue,
+  VextRenderErrorOptions,
+  VextRenderOptions,
+} from "vextjs";
+
 interface VextResponse {
   json(data: unknown, status?: number): void; // JSON 响应
   text(content: string, status?: number): void; // 文本响应
-  stream(readable: ReadableStream, type?: string): void; // 流式响应
-  download(readable: ReadableStream, filename: string): void; // 文件下载
-  redirect(url: string, status?: number): void; // 重定向
+  render(
+    page: string,
+    props?: Record<string, unknown>,
+    options?: VextRenderOptions,
+  ): void; // 渲染前端页面
+  renderError(
+    errorOrStatus?: Error | number | string,
+    pageOrOptions?: string | VextRenderErrorOptions,
+    options?: VextRenderErrorOptions,
+  ): void; // 渲染错误页
+  stream(readable: NodeJS.ReadableStream, type?: string): void; // Node.js 流式响应
+  download(
+    readable: NodeJS.ReadableStream,
+    filename: string,
+    type?: string,
+  ): void; // 文件下载
+  redirect(url: string, status?: 301 | 302 | 307 | 308): void; // 重定向
   status(code: number): this; // 设置状态码
-  setHeader(name: string, value: string): this; // 设置响应头
+  setHeader(name: string, value: VextHeaderValue): this; // 设置响应头
+  cookie(name: string, value: string, options?: CookieSerializeOptions): this; // 追加 Set-Cookie
+  clearCookie(name: string, options?: CookieSerializeOptions): this; // 清除 Cookie
   readonly statusCode: number; // 当前状态码
 }
 ```
+
+`stream()` / `download()` 接收 Node.js `Readable` / `NodeJS.ReadableStream`，不是 Web `ReadableStream`。`rawJson()` 以及下划线开头的响应方法是框架内部接口，业务代码应使用 `VextPublicResponse` 可见的公共方法。
 
 这种设计意味着：
 

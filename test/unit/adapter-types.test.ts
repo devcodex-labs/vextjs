@@ -127,3 +127,79 @@ void staleAdapter;
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);
   });
 });
+
+describe("VextRequest and VextResponse public types", () => {
+  it("accepts documented request/response fields and rejects Web ReadableStream responses", () => {
+    const diagnostics = compileTypeProbe(`
+import { Readable } from "node:stream";
+import type {
+  VextPublicResponse,
+  VextRequest,
+  VextResponse,
+  VextRenderErrorOptions,
+  VextRenderOptions,
+} from "../../src/index.js";
+
+async function documentedHandler(req: VextRequest, res: VextResponse) {
+  const renderOptions: VextRenderOptions = {
+    status: 200,
+    headers: { "x-page": "dashboard" },
+    head: { title: "Dashboard" },
+  };
+  const renderErrorOptions: VextRenderErrorOptions = {
+    message: "Not Found",
+  };
+  const page = req.valid<{ page: number }>("query").page;
+  const sessionId = req.session?.id;
+  const authRoles = req.auth.roles;
+  const csrf = req.csrfToken();
+  const cookieValue = req.cookie("sid") ?? req.cookies.sid;
+  const files = req.files ?? [];
+  const rawText = await req._getRawBody();
+  const rawBuffer = await req._getRawBodyBuffer();
+
+  req.onClose(() => {
+    void req.requestId;
+  });
+
+  res
+    .status(201)
+    .setHeader("x-route", req.route)
+    .cookie("theme", "dark", { httpOnly: true, sameSite: "lax" })
+    .clearCookie("legacy", { path: "/" });
+
+  res.json({
+    page,
+    sessionId,
+    authRoles,
+    csrf,
+    cookieValue,
+    fileCount: files.length,
+    rawText,
+    rawLength: rawBuffer.length,
+  });
+
+  res.render("dashboard", { requestId: req.requestId }, renderOptions);
+  res.renderError(404, renderErrorOptions);
+  res.stream(Readable.from(["ok"]), "text/plain");
+  res.download(Readable.from(["ok"]), "report.txt", "text/plain");
+
+  const publicRes: VextPublicResponse = res;
+  publicRes.text("ok");
+  // @ts-expect-error rawJson is intentionally omitted from the public response type.
+  publicRes.rawJson({ ok: false }, 500);
+}
+
+const webStream = new ReadableStream();
+declare const response: VextResponse;
+// @ts-expect-error VextResponse.stream expects a NodeJS.ReadableStream, not a Web ReadableStream.
+response.stream(webStream, "text/plain");
+// @ts-expect-error VextResponse.download expects a NodeJS.ReadableStream, not a Web ReadableStream.
+response.download(webStream, "report.txt", "text/plain");
+
+void documentedHandler;
+`);
+
+    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
+  });
+});

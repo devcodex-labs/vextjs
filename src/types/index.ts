@@ -12,7 +12,13 @@ export { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "./middleware.js";
 
 // ── 请求 / 响应类型 ────────────────────────────────────────
 export type { VextRequest, ParsedFile } from "./request.js";
-export type { VextResponse, VextPublicResponse } from "./response.js";
+export type {
+  VextResponse,
+  VextPublicResponse,
+  VextRenderErrorOptions,
+  VextRenderHeadOptions,
+  VextRenderOptions,
+} from "./response.js";
 export type { VextHeaderValue, VextHeaders } from "./headers.js";
 export type {
   CookieParseOptions,
