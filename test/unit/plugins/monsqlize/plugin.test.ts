@@ -344,6 +344,35 @@ describe("resolveModelEntry", () => {
     expect(result!.finalDef).not.toHaveProperty("connection");
   });
 
+  it("depth 0: preserves monSQLize model options and object hooks", () => {
+    const hooks = {
+      beforeInsert(context: { data?: { name?: string; slug?: string } }) {
+        if (context.data?.name) {
+          context.data.slug = context.data.name.toLowerCase();
+        }
+      },
+    };
+    const options = {
+      timestamps: true,
+      softDelete: { enabled: true, field: "deletedAt" },
+    };
+
+    const result = resolveModelEntry("user.ts", {
+      collection: "users",
+      schema: { name: "string:1-50!" },
+      hooks,
+      options,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.finalDef).toMatchObject({
+      collection: "users",
+      schema: { name: "string:1-50!" },
+      hooks,
+      options,
+    });
+  });
+
   // ── depth 1：自动注入 database ────────────────────────────
 
   it("depth 1: derives PascalCase registry key from dir + file", () => {

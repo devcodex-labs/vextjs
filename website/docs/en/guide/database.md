@@ -433,8 +433,10 @@ export default {
 
   // Hook (only for custom logic other than timestamps)
   hooks: {
-    beforeInsert(doc: any) {
+    beforeInsert(context: { data?: any }) {
       // Custom logic example
+      const doc = context.data;
+      if (!doc?.name) return;
       doc.slug = doc.name.toLowerCase().replace(/\s+/g, "-");
     },
   },
@@ -453,6 +455,8 @@ export default {
 | `softDelete` | `boolean \| object` | `undefined` | Soft delete support                           |
 | `version`    | `boolean \| object` | `undefined` | Optimistic locking version number             |
 | `validate`   | `boolean`           | `true`      | Schema validation switch during insert/update |
+
+Object-style `hooks` follow monSQLize and receive a `context` argument; write payloads are commonly available from `context.data`. Use the `(model) => ({ ... })` factory form when the hook needs access to the Model instance.
 
 #### timestamps configuration
 

@@ -1,0 +1,137 @@
+import path from "node:path";
+import ts from "typescript";
+import { describe, expect, it } from "vitest";
+
+const compilerOptions: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ES2022,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  strict: true,
+  skipLibCheck: true,
+  noEmit: true,
+  esModuleInterop: true,
+  allowSyntheticDefaultImports: true,
+  noUncheckedIndexedAccess: true,
+  exactOptionalPropertyTypes: false,
+  types: ["node"],
+};
+
+function compileTypeProbe(source: string): readonly ts.Diagnostic[] {
+  const root = process.cwd();
+  const fileName = path.join(
+    root,
+    "test",
+    "unit",
+    "plugins",
+    "monsqlize-model-definition-probe.ts",
+  );
+  const normalizedFileName = path.normalize(fileName);
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const readFile = host.readFile.bind(host);
+  const fileExists = host.fileExists.bind(host);
+
+  host.fileExists = (file) =>
+    path.normalize(file) === normalizedFileName || fileExists(file);
+  host.readFile = (file) =>
+    path.normalize(file) === normalizedFileName ? source : readFile(file);
+  host.getSourceFile = (file, languageVersion) => {
+    const text =
+      path.normalize(file) === normalizedFileName ? source : readFile(file);
+    return text === undefined
+      ? undefined
+      : ts.createSourceFile(file, text, languageVersion, true);
+  };
+
+  const program = ts.createProgram([fileName], compilerOptions, host);
+  return ts
+    .getPreEmitDiagnostics(program)
+    .filter(
+      (diagnostic) =>
+        diagnostic.file &&
+        path.normalize(diagnostic.file.fileName) === normalizedFileName,
+    );
+}
+
+function formatDiagnostic(diagnostic: ts.Diagnostic): string {
+  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+  if (!diagnostic.file || diagnostic.start === undefined) {
+    return message;
+  }
+  const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
+    diagnostic.start,
+  );
+  return `${diagnostic.file.fileName}:${line + 1}:${character + 1} ${message}`;
+}
+
+describe("VextModelDefinition public type", () => {
+  it("accepts documented monSQLize schema, hooks and options shapes", () => {
+    const diagnostics = compileTypeProbe(`
+import type { VextModelDefinition } from "../../../src/lib/plugins/monsqlize/types.js";
+
+const docStyleModel = {
+  collection: "users",
+  schema: {
+    name: "string:1-50!",
+    email: "email!",
+  },
+  hooks: {
+    beforeInsert(context) {
+      const doc = context.data as { name?: string; slug?: string };
+      if (doc.name) {
+        doc.slug = doc.name.toLowerCase();
+      }
+    },
+  },
+  options: {
+    timestamps: true,
+    softDelete: { enabled: true, field: "deletedAt" },
+    version: true,
+    validate: true,
+  },
+} satisfies VextModelDefinition<{ name: string; slug?: string }>;
+
+const factoryStyleModel = {
+  collection: "legacy_users",
+  schema: (s) => s({ name: "string!", active: "boolean" }),
+  hooks: (model) => ({
+    insert: {
+      before: (_ctx, doc) => doc,
+    },
+  }),
+  methods: (model) => ({
+    instance: {
+      label() {
+        return String(this.name);
+      },
+    },
+    static: {
+      findActive() {
+        return model.find({ active: true });
+      },
+    },
+  }),
+} satisfies VextModelDefinition<{ name: string; active: boolean }>;
+
+const invalidHookModel = {
+  collection: "bad_hooks",
+  // @ts-expect-error hooks must be an object or a factory.
+  hooks: "beforeInsert",
+} satisfies VextModelDefinition;
+
+const invalidOptionsModel = {
+  collection: "bad_options",
+  options: {
+    // @ts-expect-error timestamps must be boolean or a field map.
+    timestamps: "yes",
+  },
+} satisfies VextModelDefinition;
+
+void docStyleModel;
+void factoryStyleModel;
+void invalidHookModel;
+void invalidOptionsModel;
+`);
+
+    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
+  });
+});

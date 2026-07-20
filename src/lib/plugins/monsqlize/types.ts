@@ -9,6 +9,8 @@
  * @see 13-monsqlize-plugin.md §2.1（类型扩展）
  */
 
+import type { ModelDefinition } from "monsqlize";
+
 // ── 扩展 VextApp / VextConfig ───────────────────────────────
 declare module "../../../types/app.js" {
   interface VextApp {
@@ -96,7 +98,9 @@ export interface MonSQLizeConnection {
  *
  * 在 src/models/ 下的 Model 文件中 export default 此对象。
  */
-export interface VextModelDefinition {
+export interface VextModelDefinition<
+  TDocument = Record<string, unknown>,
+> extends ModelDefinition<TDocument> {
   /**
    * 自定义注册别名（R5 新增）
    *
@@ -126,15 +130,14 @@ export interface VextModelDefinition {
     /** 数据库名称（对应 MonSQLize 实例的 databaseName） */
     database?: string;
   };
-  schema?: (dsl: unknown) => unknown;
-  relations?: Record<string, unknown>;
-  hooks?: (model: unknown) => Record<string, unknown>;
-  methods?: (model: unknown) => {
-    instance?: Record<string, unknown>;
-    static?: Record<string, unknown>;
-  };
-  indexes?: Array<Record<string, unknown>>;
-  enums?: Record<string, unknown>;
+  /** schema-dsl 简洁语法、对象格式或 monSQLize 支持的 SchemaDSL */
+  schema?: ModelDefinition<TDocument>["schema"];
+  /** monSQLize 对象式 hooks 或 v1 hooks factory */
+  hooks?: ModelDefinition<TDocument>["hooks"];
+  /** monSQLize 模型方法定义或 v1 methods factory */
+  methods?: ModelDefinition<TDocument>["methods"];
+  /** monSQLize 模型选项，如 timestamps、softDelete、version、validate */
+  options?: ModelDefinition<TDocument>["options"];
 }
 
 /**

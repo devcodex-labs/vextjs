@@ -434,8 +434,10 @@ export default {
 
   // 钩子（仅用于非 timestamps 的自定义逻辑）
   hooks: {
-    beforeInsert(doc: any) {
+    beforeInsert(context: { data?: any }) {
       // 自定义逻辑示例
+      const doc = context.data;
+      if (!doc?.name) return;
       doc.slug = doc.name.toLowerCase().replace(/\s+/g, "-");
     },
   },
@@ -454,6 +456,8 @@ export default {
 | `softDelete` | `boolean \| object` | `undefined` | 软删除支持                    |
 | `version`    | `boolean \| object` | `undefined` | 乐观锁版本号                  |
 | `validate`   | `boolean`           | `true`      | 插入/更新时的 schema 校验开关 |
+
+对象式 `hooks` 与 monSQLize 保持一致，接收 `context` 参数；常见写入文档可从 `context.data` 读取。需要访问 Model 实例时，也可以使用 `(model) => ({ ... })` 的 factory 形式。
 
 #### timestamps 配置
 
