@@ -681,6 +681,57 @@ describe("frontend client build", () => {
     expect(html).not.toContain("{vext.");
   });
 
+  it("skips locale scanning and imports when frontend i18n is disabled", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "src", "frontend", "locales"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "locales", "en-US.ts"),
+      "export default { title: 'Hello' };\n",
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: false, defaultLocale: "en-US" },
+      },
+    });
+    const messagesManifest = JSON.parse(
+      await readFile(result.messagesManifestPath!, "utf-8"),
+    );
+    const renderManifest = JSON.parse(
+      await readFile(result.renderManifestPath!, "utf-8"),
+    );
+    const generatedRegistry = await readFile(
+      path.join(result.generatedDir!, "page-registry.ts"),
+      "utf-8",
+    );
+    const browserEntry = await readFile(
+      path.join(result.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const serverEntry = await readFile(
+      path.join(result.generatedDir!, "server-renderer.ts"),
+      "utf-8",
+    );
+
+    expect(messagesManifest.locales).toEqual([]);
+    expect(renderManifest.i18n).toMatchObject({
+      enabled: false,
+      locales: [],
+    });
+    expect(generatedRegistry).toContain("export const locales = [] as const;");
+    expect(browserEntry).not.toContain("localeModule0");
+    expect(serverEntry).not.toContain("localeModule0");
+    expect(browserEntry).not.toContain("locales/en-US");
+    expect(serverEntry).not.toContain("locales/en-US");
+  });
+
   it("generates i18n clientLoad mode and hydration telemetry in the browser entry", async () => {
     const currentRootDir = await tempRoot();
     await createMinimalFrontend(currentRootDir);

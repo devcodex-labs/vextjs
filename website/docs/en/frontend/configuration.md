@@ -145,7 +145,7 @@ React-related browser externals must define `externalRuntime` mappings. Otherwis
 
 | Field                         | Default                | Meaning                                           |
 | ----------------------------- | ---------------------- | ------------------------------------------------- |
-| `frontend.i18n.enabled`       | `true`                 | Enable frontend page copy                         |
+| `frontend.i18n.enabled`       | `true`                 | Scan and bundle frontend page copy                |
 | `frontend.i18n.defaultLocale` | backend default locale | Fallback frontend locale                          |
 | `frontend.i18n.clientLoad`    | `"current"`            | Browser locale loading mode                       |
 | `frontend.i18n.htmlLang`      | `true`                 | Write request-aware `{vext.lang}` / `<html lang>` |

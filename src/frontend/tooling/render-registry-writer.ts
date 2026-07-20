@@ -46,7 +46,9 @@ export async function writeFrontendRenderRegistry(
     scanPages(options.rootDir, options.config),
     scanLayouts(options.rootDir, options.config),
     scanErrorPages(options.rootDir, options.config),
-    scanLocales(options.rootDir, options.config),
+    options.config.i18n.enabled
+      ? scanLocales(options.rootDir, options.config)
+      : Promise.resolve([]),
   ]);
 
   const registryPath = path.join(generatedDir, "page-registry.ts");

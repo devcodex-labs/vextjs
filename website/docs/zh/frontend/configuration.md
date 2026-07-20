@@ -145,7 +145,7 @@ React 相关 browser external 必须提供 `externalRuntime` 映射，否则构�
 
 | 字段                          | 默认值          | 含义                                     |
 | ----------------------------- | --------------- | ---------------------------------------- |
-| `frontend.i18n.enabled`       | `true`          | 启用前端页面文案                         |
+| `frontend.i18n.enabled`       | `true`          | 扫描并打包前端页面文案                   |
 | `frontend.i18n.defaultLocale` | 后端默认 locale | 前端 fallback locale                     |
 | `frontend.i18n.clientLoad`    | `"current"`     | 浏览器 locale 加载模式                   |
 | `frontend.i18n.htmlLang`      | `true`          | 写入请求级 `{vext.lang}` / `<html lang>` |
