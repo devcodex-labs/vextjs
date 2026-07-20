@@ -323,6 +323,8 @@ Read `dist/client/deploy-manifest.json` and upload JavaScript, CSS, images, font
 vext deploy assets [options]
 ```
 
+`vext deploy assets` does not support positional arguments. Value options such as `--manifest`, `--adapter`, `--target-dir`, `--prefix`, and `--state-file` must be followed by a non-option value, for example `--manifest dist/client/deploy-manifest.json`; `--manifest --dry-run` fails as a missing-value error.
+
 ### Options
 
 | Options               | Description                                    | Default                            |

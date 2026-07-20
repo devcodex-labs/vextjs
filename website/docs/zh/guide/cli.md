@@ -324,6 +324,8 @@ vext build && vext start
 vext deploy assets [options]
 ```
 
+`vext deploy assets` 不支持位置参数。`--manifest`、`--adapter`、`--target-dir`、`--prefix`、`--state-file` 等取值参数必须跟随非 option 值，例如 `--manifest dist/client/deploy-manifest.json`；`--manifest --dry-run` 会作为缺值错误失败。
+
 ### 选项
 
 | 选项                  | 说明                                    | 默认值                             |

@@ -39,6 +39,8 @@ vext deploy assets --dry-run
 vext deploy assets
 ```
 
+`vext deploy assets` accepts options only and rejects extra positional arguments. Options that require values must receive non-option values; for example, `--manifest --dry-run` and `--target-dir --dry-run` fail instead of treating the next flag as a path.
+
 ## Deploy Manifest
 
 `deploy-manifest.json` records static assets that can be uploaded:

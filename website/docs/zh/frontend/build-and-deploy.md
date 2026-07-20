@@ -39,6 +39,8 @@ vext deploy assets --dry-run
 vext deploy assets
 ```
 
+`vext deploy assets` 只接受 option 参数，不接受额外位置参数。需要取值的参数必须提供非 option 值；例如 `--manifest --dry-run`、`--target-dir --dry-run` 会直接失败，而不是把后一个 flag 当作路径。
+
 ## Deploy Manifest
 
 `deploy-manifest.json` 记录可上传静态资源：

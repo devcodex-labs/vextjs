@@ -13,6 +13,7 @@ import type {
   VextFrontendDeployUploadAdapterName,
   VextFrontendUserConfig,
 } from "../frontend/contract/types.js";
+import { readRequiredOptionValue } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
 
 interface DeployAssetsCommandOptions {
@@ -106,32 +107,54 @@ export function parseDeployAssetsArgs(
     const arg = args[i];
     switch (arg) {
       case "--outdir":
-        options.outdir = readRequiredValue(args, ++i, "--outdir");
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<path>");
+          options.outdir = parsed.value;
+          i = parsed.nextIndex;
+        }
         break;
       case "--manifest":
-        options.manifest = readRequiredValue(args, ++i, "--manifest");
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<path>");
+          options.manifest = parsed.value;
+          i = parsed.nextIndex;
+        }
         break;
       case "--config":
         markUniqueOption(seenOptions, "--config");
-        options.configProfile = readRequiredValue(args, ++i, "--config");
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<name>");
+          options.configProfile = parsed.value;
+          i = parsed.nextIndex;
+        }
         break;
       case "--adapter":
-        options.adapter = readRequiredValue(
-          args,
-          ++i,
-          "--adapter",
-        ) as VextFrontendDeployUploadAdapterName;
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<name>");
+          options.adapter = parsed.value as VextFrontendDeployUploadAdapterName;
+          i = parsed.nextIndex;
+        }
         break;
       case "--target-dir":
-        options.targetDir = readRequiredValue(args, ++i, "--target-dir");
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<path>");
+          options.targetDir = parsed.value;
+          i = parsed.nextIndex;
+        }
         break;
       case "--prefix":
-        options.prefix = normalizeDeployPrefix(
-          readRequiredValue(args, ++i, "--prefix"),
-        );
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<path>");
+          options.prefix = normalizeDeployPrefix(parsed.value);
+          i = parsed.nextIndex;
+        }
         break;
       case "--state-file":
-        options.stateFile = readRequiredValue(args, ++i, "--state-file");
+        {
+          const parsed = readDeployOptionValue(args, i, arg, "<path>");
+          options.stateFile = parsed.value;
+          i = parsed.nextIndex;
+        }
         break;
       case "--dry-run":
         options.dryRun = true;
@@ -147,6 +170,9 @@ export function parseDeployAssetsArgs(
           printDeployAssetsHelp();
           process.exit(1);
         }
+        console.error(`[vextjs] Unknown argument: "${arg}"\n`);
+        printDeployAssetsHelp();
+        process.exit(1);
         break;
     }
   }
@@ -217,17 +243,18 @@ function withDeployCliOverrides(
   };
 }
 
-function readRequiredValue(
+function readDeployOptionValue(
   args: string[],
   index: number,
-  option: string,
-): string {
-  const value = args[index];
-  if (!value) {
-    console.error(`[vextjs] ${option} requires a value`);
+  optionName: string,
+  valueLabel: string,
+) {
+  try {
+    return readRequiredOptionValue(args, index, optionName, valueLabel);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
     process.exit(1);
   }
-  return value;
 }
 
 function normalizeDeployPrefix(value: string): string {
@@ -255,6 +282,9 @@ function printDeployHelp(): void {
 function printDeployAssetsHelp(): void {
   console.log(`
   Usage: vext deploy assets [options]
+
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
 
   Options:
     --outdir <path>       Build output directory (default: "dist")
