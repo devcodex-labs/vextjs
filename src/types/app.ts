@@ -798,6 +798,8 @@ export interface MultipartRouteConfig {
    * 文件字段列表，键为表单字段名
    *
    * 字符串值为字段说明，对象形式可配置 required 等选项。
+   * required=true 会在运行时强制至少上传一个同名文件；未声明字段仍允许上传，
+   * 并继续受 maxFiles / maxFileSize / allowedMimeTypes 限制。
    * @example { avatar: 'Profile avatar image', doc: { description: 'PDF document', required: true } }
    */
   files?: Record<string, string | MultipartFileFieldConfig>;

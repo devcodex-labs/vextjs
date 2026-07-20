@@ -839,7 +839,9 @@ app.post(
 | --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `files`               | `Record<string, string \| object>` | File field mapping; the string value is the description, and the object can be configured with more |
 | `files[].description` | `string`                           | Field description (for OpenAPI documentation)                                                       |
-| `files[].required`    | `boolean`                          | Whether it is required (default `false`)                                                            |
+| `files[].required`    | `boolean`                          | Whether at least one file for this field is required at runtime (default `false`)                   |
+
+When a required file field is missing, Vext returns `400` with the missing field names. Optional fields and undeclared upload fields are accepted; they are still limited by `maxFiles`, `maxFileSize`, and `allowedMimeTypes`.
 
 :::warning note
 `multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes priority in OpenAPI document generation.

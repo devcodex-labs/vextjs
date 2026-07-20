@@ -798,6 +798,8 @@ app.post(
 }
 ```
 
+`required: true` 同时是运行时契约和 OpenAPI 提示。请求缺少 required 上传字段时，Vext 会返回 `400` 并包含缺失字段名。optional 和未声明的文件字段允许上传，除非违反 `maxFiles`、`maxFileSize` 或 `allowedMimeTypes`。
+
 :::tip 和 validate.body 的关系
 `multipart.files` 和 `validate.body` 互斥。同时配置时，`multipart.files` 优先。
 :::

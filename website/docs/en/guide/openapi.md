@@ -806,6 +806,8 @@ Generated OpenAPI snippet:
 }
 ```
 
+`required: true` is a runtime contract as well as an OpenAPI hint. If the request omits a required upload field, Vext responds with `400` and the missing field names. Optional and undeclared file fields are accepted unless they violate `maxFiles`, `maxFileSize`, or `allowedMimeTypes`.
+
 :::tip Relationship with validate.body
 `multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes precedence.
 :::

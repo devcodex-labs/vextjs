@@ -1158,6 +1158,42 @@ describe("OpenAPIGenerator", () => {
       expect(schema.required).toEqual(["name", "email", "password"]);
     });
 
+    it("multipart.files required fields are emitted for runtime-enforced upload fields", () => {
+      const doc = generate([
+        createRoute("POST", "/upload/avatar", {
+          multipart: {
+            files: {
+              avatar: {
+                description: "Avatar image",
+                required: true,
+              },
+              thumbnail: "Optional thumbnail",
+            },
+          },
+        }),
+      ]);
+
+      const schema =
+        doc.paths["/upload/avatar"].post!.requestBody!.content[
+          "multipart/form-data"
+        ].schema;
+
+      expect(doc.paths["/upload/avatar"].post!.requestBody!.required).toBe(
+        true,
+      );
+      expect(schema.required).toEqual(["avatar"]);
+      expect(schema.properties!.avatar).toMatchObject({
+        type: "string",
+        format: "binary",
+        description: "Avatar image",
+      });
+      expect(schema.properties!.thumbnail).toMatchObject({
+        type: "string",
+        format: "binary",
+        description: "Optional thumbnail",
+      });
+    });
+
     it("validate.body 支持 DslBuilder 字段业务 description", () => {
       const doc = generate([
         createRoute("POST", "/translate", {

@@ -834,11 +834,13 @@ app.post(
 );
 ```
 
-| 子字段                | 类型                               | 说明                                         |
-| --------------------- | ---------------------------------- | -------------------------------------------- |
-| `files`               | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多 |
-| `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                |
-| `files[].required`    | `boolean`                          | 是否必传（默认 `false`）                     |
+| 子字段                | 类型                               | 说明                                               |
+| --------------------- | ---------------------------------- | -------------------------------------------------- |
+| `files`               | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多       |
+| `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                      |
+| `files[].required`    | `boolean`                          | 运行时是否要求至少上传一个同名文件（默认 `false`） |
+
+缺少 required 文件字段时，Vext 返回 `400`，响应中包含缺失字段名。optional 字段和未声明上传字段仍允许上传；它们继续受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。
 
 :::warning 注意
 `multipart.files` 与 `validate.body` 互斥，同时配置时 `multipart.files` 优先生效于 OpenAPI 文档生成。

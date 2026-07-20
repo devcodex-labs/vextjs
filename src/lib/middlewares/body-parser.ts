@@ -466,6 +466,7 @@ export function createRouteMultipartMiddleware(
             };
           }
         }
+        assertRequiredMultipartFiles(req.files, routeConfig);
       } else {
         // 全局未解析 → 路由级解析
         const routeBodyParser = (
@@ -481,6 +482,7 @@ export function createRouteMultipartMiddleware(
           mergedConfig,
           maxBodyBytes,
         );
+        assertRequiredMultipartFiles(req.files, routeConfig);
       }
     } catch (err: unknown) {
       const httpErr = err as { status?: number; message?: string };
@@ -497,4 +499,31 @@ export function createRouteMultipartMiddleware(
 
     await next();
   };
+}
+
+function assertRequiredMultipartFiles(
+  files: ParsedFile[],
+  routeConfig: MultipartRouteConfig,
+): void {
+  const requiredFields = getRequiredMultipartFileFields(routeConfig);
+  if (requiredFields.length === 0) return;
+
+  const presentFields = new Set(files.map((file) => file.fieldname));
+  const missing = requiredFields.filter((field) => !presentFields.has(field));
+  if (missing.length === 0) return;
+
+  throw {
+    status: 400,
+    message: `Missing required multipart file field(s): ${missing.join(", ")}`,
+  };
+}
+
+function getRequiredMultipartFileFields(
+  routeConfig: MultipartRouteConfig,
+): string[] {
+  return Object.entries(routeConfig.files ?? {})
+    .filter(([, fieldConfig]) => {
+      return typeof fieldConfig === "object" && fieldConfig.required === true;
+    })
+    .map(([field]) => field);
 }
