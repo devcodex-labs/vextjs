@@ -349,6 +349,8 @@ app.setRequestIdGenerator(() => myCustomId());
 | `propagateHeaders` | `string[]`                              | `[]`    | 普通 `app.fetch` 自动透传的请求头白名单   |
 | `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`    | `app.fetch.proxy.<name>()` 的上游目标列表 |
 
+`timeout` 必须是大于 0 且不超过 `2147483647` 毫秒的有限数字；`retryDelay` 必须是 0 或正数且不超过 `2147483647` 毫秒，函数形式的返回值也会在运行时校验。
+
 ```typescript
 export default {
   fetch: {

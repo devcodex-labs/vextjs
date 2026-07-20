@@ -174,6 +174,10 @@ export default {
 | `propagateHeaders` | `string[]`                      | `[]`    | 需要从入站请求自动透传到出站请求的头名称列表 |
 | `proxy`            | `VextFetchProxyTargetConfig[]`  | `[]`    | `app.fetch.proxy.<name>()` 的上游目标列表    |
 
+:::warning 计时器边界
+`timeout` 必须是大于 0 且不超过 `2147483647` 毫秒的有限数字；`retryDelay` 必须是 0 或正数且不超过 `2147483647` 毫秒。函数形式的 `retryDelay` 每次返回值也必须满足这个范围，否则框架会在进入原生 timer 前 fail fast。
+:::
+
 :::tip propagateHeaders 工作原理
 配置后，`requestId` 中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
 写入 `requestContext.store.propagatedHeaders`。`app.fetch` 出站请求时自动从 store 中读取并注入。
@@ -476,6 +480,8 @@ try {
 ```
 
 如果请求同时传入了 `signal`（如用户手动取消），`app.fetch` 会合并两个 signal——任一触发都会中止请求。
+
+`init.timeout`、`create({ timeout })`、`config.fetch.timeout` 和 proxy 的 `timeout` 都遵循同一边界：必须是大于 0 且不超过 `2147483647` 毫秒的有限数字。`retryDelay` 可以为 0，但也必须是有限数字且不超过 `2147483647` 毫秒；函数返回值会在每次重试前校验。
 
 ## 自动重试
 

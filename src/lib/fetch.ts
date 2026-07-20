@@ -53,13 +53,13 @@ import type { VextResponse } from "../types/response.js";
  *   - propagateHeaders:    额外需要传播的请求头
  */
 export interface VextFetchInit extends RequestInit {
-  /** 请求超时（毫秒），默认使用全局配置 config.fetch.timeout */
+  /** 请求超时（毫秒），必须 > 0 且 <= 2147483647，默认使用全局配置 config.fetch.timeout */
   timeout?: number;
 
   /** 重试次数（仅对幂等方法 GET/HEAD/OPTIONS/PUT/DELETE 生效），默认 0 */
   retry?: number;
 
-  /** 重试间隔（毫秒），默认 1000；支持函数形式实现指数退避 */
+  /** 重试间隔（毫秒），必须 >= 0 且 <= 2147483647；支持函数形式实现指数退避 */
   retryDelay?: number | ((attempt: number) => number);
 
   /**
@@ -85,13 +85,13 @@ export interface VextFetchClientOptions {
   /** 默认请求头 */
   headers?: Record<string, string>;
 
-  /** 默认超时 */
+  /** 默认超时（毫秒），必须 > 0 且 <= 2147483647 */
   timeout?: number;
 
   /** 默认重试 */
   retry?: number;
 
-  /** 默认重试间隔（毫秒）或指数退避函数 */
+  /** 默认重试间隔（毫秒）或指数退避函数，返回值必须 >= 0 且 <= 2147483647 */
   retryDelay?: number | ((attempt: number) => number);
 }
 
@@ -146,13 +146,13 @@ export interface VextFetchProxyTargetConfig {
   /** 是否允许从当前请求透传原始 Authorization header */
   allowAuthorizationForward?: boolean;
 
-  /** 目标级超时（毫秒） */
+  /** 目标级超时（毫秒），必须 > 0 且 <= 2147483647 */
   timeout?: number;
 
   /** 目标级重试次数，表示额外尝试次数 */
   retry?: number;
 
-  /** 目标级重试间隔（毫秒）或指数退避函数 */
+  /** 目标级重试间隔（毫秒）或指数退避函数，返回值必须 >= 0 且 <= 2147483647 */
   retryDelay?: number | ((attempt: number) => number);
 }
 
@@ -190,13 +190,13 @@ export interface VextFetchProxyOptions {
   /** 调用级是否允许透传原始 Authorization header */
   allowAuthorizationForward?: boolean;
 
-  /** 调用级超时（毫秒） */
+  /** 调用级超时（毫秒），必须 > 0 且 <= 2147483647 */
   timeout?: number;
 
   /** 调用级重试次数，表示额外尝试次数 */
   retry?: number;
 
-  /** 调用级重试间隔（毫秒）或指数退避函数 */
+  /** 调用级重试间隔（毫秒）或指数退避函数，返回值必须 >= 0 且 <= 2147483647 */
   retryDelay?: number | ((attempt: number) => number);
 }
 
@@ -280,6 +280,83 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 const BODYLESS_STATUS = new Set([204, 304]);
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+type FetchRetryDelay = number | ((attempt: number) => number);
+
+function describeFetchOptionValue(value: unknown): string {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? "NaN" : String(value);
+  }
+  if (typeof value === "function") {
+    return "function";
+  }
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function createFetchOptionError(
+  name: string,
+  expected: string,
+  value: unknown,
+): Error {
+  return new Error(
+    `[vextjs] app.fetch ${name} must be ${expected}, got: ${describeFetchOptionValue(value)}.`,
+  );
+}
+
+function normalizeFetchTimeout(value: unknown, name: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw createFetchOptionError(
+      name,
+      `a finite positive number no greater than ${MAX_TIMER_DELAY_MS} milliseconds`,
+      value,
+    );
+  }
+  return value;
+}
+
+function normalizeFetchRetry(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw createFetchOptionError(name, "a non-negative integer", value);
+  }
+  return value;
+}
+
+function normalizeFetchRetryDelayValue(value: unknown, name: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw createFetchOptionError(
+      name,
+      `a finite non-negative number no greater than ${MAX_TIMER_DELAY_MS} milliseconds`,
+      value,
+    );
+  }
+  return value;
+}
+
+function normalizeFetchRetryDelay(
+  value: unknown,
+  name: string,
+): FetchRetryDelay {
+  if (typeof value === "function") {
+    const resolveDelay = value as (attempt: number) => unknown;
+    return (attempt: number) =>
+      normalizeFetchRetryDelayValue(resolveDelay(attempt), `${name} result`);
+  }
+  return normalizeFetchRetryDelayValue(value, name);
+}
 
 // ── 核心实现 ────────────────────────────────────────────────
 
@@ -299,9 +376,18 @@ export function createVextFetch(
   requestIdHeader: string = "x-request-id",
   hooks?: VextInternalHooks,
 ): VextFetch {
-  const globalTimeout = fetchConfig.timeout ?? 10_000;
-  const globalRetry = fetchConfig.retry ?? 0;
-  const globalRetryDelay = fetchConfig.retryDelay ?? 1000;
+  const globalTimeout = normalizeFetchTimeout(
+    fetchConfig.timeout ?? 10_000,
+    "config.fetch.timeout",
+  );
+  const globalRetry = normalizeFetchRetry(
+    fetchConfig.retry ?? 0,
+    "config.fetch.retry",
+  );
+  const globalRetryDelay = normalizeFetchRetryDelay(
+    fetchConfig.retryDelay ?? 1000,
+    "config.fetch.retryDelay",
+  );
   const globalPropagateHeaders = fetchConfig.propagateHeaders ?? [];
   const proxyTargets = fetchConfig.proxy ?? [];
 
@@ -319,7 +405,10 @@ export function createVextFetch(
           ? input.href
           : input.url;
     const method = (init?.method ?? "GET").toUpperCase();
-    const timeout = init?.timeout ?? globalTimeout;
+    const timeout =
+      init?.timeout === undefined
+        ? globalTimeout
+        : normalizeFetchTimeout(init.timeout, "init.timeout");
     const propagate = init?.propagateRequestId !== false;
 
     // ── 1. 构建请求头（注入追踪头）────────────────────────
@@ -351,10 +440,15 @@ export function createVextFetch(
     }
 
     // ── 2. 确定重试配置 ──────────────────────────────────
-    const maxRetries = IDEMPOTENT_METHODS.has(method)
-      ? (init?.retry ?? globalRetry)
-      : 0;
-    const retryDelay = init?.retryDelay ?? globalRetryDelay;
+    const configuredRetries =
+      init?.retry === undefined
+        ? globalRetry
+        : normalizeFetchRetry(init.retry, "init.retry");
+    const maxRetries = IDEMPOTENT_METHODS.has(method) ? configuredRetries : 0;
+    const retryDelay =
+      init?.retryDelay === undefined
+        ? globalRetryDelay
+        : normalizeFetchRetryDelay(init.retryDelay, "init.retryDelay");
     const requestId = store?.requestId;
 
     await hooks?.emit("fetch:before", {
@@ -575,9 +669,18 @@ export function createVextFetch(
 
   vextFetch.create = (options: VextFetchClientOptions): VextFetchClient => {
     const childFetchConfig: FetchConfig = {
-      timeout: options.timeout ?? globalTimeout,
-      retry: options.retry ?? globalRetry,
-      retryDelay: options.retryDelay ?? globalRetryDelay,
+      timeout:
+        options.timeout === undefined
+          ? globalTimeout
+          : normalizeFetchTimeout(options.timeout, "create.timeout"),
+      retry:
+        options.retry === undefined
+          ? globalRetry
+          : normalizeFetchRetry(options.retry, "create.retry"),
+      retryDelay:
+        options.retryDelay === undefined
+          ? globalRetryDelay
+          : normalizeFetchRetryDelay(options.retryDelay, "create.retryDelay"),
       propagateHeaders: globalPropagateHeaders,
     };
 
@@ -1043,11 +1146,16 @@ async function resolveProxyBody(
 }
 
 function normalizeProxyTimeout(value: unknown, name: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
     throw new ProxyLocalError(
       400,
       "FETCH_PROXY_INVALID_TIMEOUT",
-      `[app.fetch.proxy] ${name} must be a positive number.`,
+      `[app.fetch.proxy] ${name} must be a finite positive number no greater than ${MAX_TIMER_DELAY_MS} milliseconds.`,
     );
   }
   return value;
@@ -1064,21 +1172,45 @@ function normalizeProxyRetry(value: unknown, name: string): number {
   return value;
 }
 
+function normalizeProxyRetryDelayValue(value: unknown, name: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw new ProxyLocalError(
+      400,
+      "FETCH_PROXY_INVALID_RETRY_DELAY",
+      `[app.fetch.proxy] ${name} must be a finite non-negative number no greater than ${MAX_TIMER_DELAY_MS} milliseconds or a function that returns one.`,
+    );
+  }
+  return value;
+}
+
 function normalizeProxyRetryDelay(
   value: unknown,
   name: string,
 ): number | ((attempt: number) => number) {
   if (typeof value === "function") {
-    return value as (attempt: number) => number;
+    const resolveDelay = value as (attempt: number) => unknown;
+    return (attempt: number) => {
+      let delay: unknown;
+      try {
+        delay = resolveDelay(attempt);
+      } catch (err) {
+        throw new ProxyLocalError(
+          400,
+          "FETCH_PROXY_INVALID_RETRY_DELAY",
+          err instanceof Error
+            ? err.message
+            : `[app.fetch.proxy] ${name} function must return a finite non-negative number no greater than ${MAX_TIMER_DELAY_MS} milliseconds.`,
+        );
+      }
+      return normalizeProxyRetryDelayValue(delay, `${name} result`);
+    };
   }
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new ProxyLocalError(
-      400,
-      "FETCH_PROXY_INVALID_RETRY_DELAY",
-      `[app.fetch.proxy] ${name} must be a non-negative number or function.`,
-    );
-  }
-  return value;
+  return normalizeProxyRetryDelayValue(value, name);
 }
 
 function isReplayableProxyBody(body: ProxyRequestBody | undefined): boolean {

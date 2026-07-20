@@ -347,6 +347,8 @@ Built-in HTTP client and request proxy configuration.
 | `propagateHeaders` | `string[]`                              | `[]`          | Common `app.fetch` request header whitelist for automatic transparent transmission |
 | `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`          | List of upstream targets for `app.fetch.proxy.<name>()`                            |
 
+`timeout` must be a finite positive number no greater than `2147483647` milliseconds. `retryDelay` must be a finite non-negative number no greater than `2147483647` milliseconds, and function return values are validated at runtime.
+
 ```typescript
 export default {
   fetch: {

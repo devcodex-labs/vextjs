@@ -1519,6 +1519,8 @@ describe("validateConfig", () => {
   // ── fetch ───────────────────────────────────────────────
 
   describe("fetch validation", () => {
+    const maxTimerDelay = 2_147_483_647;
+
     it("accepts fetch proxy target config", () => {
       expect(() =>
         _validateConfig({
@@ -1543,6 +1545,69 @@ describe("validateConfig", () => {
           },
         }),
       ).not.toThrow();
+    });
+
+    it("accepts fetch timer fractional and boundary values", () => {
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            timeout: maxTimerDelay,
+            retryDelay: 0.5,
+            proxy: [
+              {
+                name: "userService",
+                baseURL: "https://users.example.com/api",
+                timeout: maxTimerDelay,
+                retryDelay: maxTimerDelay,
+              },
+            ],
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects fetch timer values that native timers would overflow or coerce", () => {
+      expect(() => _validateConfig({ fetch: { timeout: 0 } })).toThrow(
+        "config.fetch.timeout",
+      );
+      expect(() =>
+        _validateConfig({ fetch: { timeout: Number.POSITIVE_INFINITY } }),
+      ).toThrow("config.fetch.timeout");
+      expect(() =>
+        _validateConfig({ fetch: { timeout: maxTimerDelay + 1 } }),
+      ).toThrow("config.fetch.timeout");
+      expect(() =>
+        _validateConfig({ fetch: { retryDelay: Number.NaN } }),
+      ).toThrow("config.fetch.retryDelay");
+      expect(() =>
+        _validateConfig({ fetch: { retryDelay: maxTimerDelay + 1 } }),
+      ).toThrow("config.fetch.retryDelay");
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [
+              {
+                name: "userService",
+                baseURL: "https://users.example.com/api",
+                timeout: maxTimerDelay + 1,
+              },
+            ],
+          },
+        }),
+      ).toThrow("config.fetch.proxy[0].timeout");
+      expect(() =>
+        _validateConfig({
+          fetch: {
+            proxy: [
+              {
+                name: "userService",
+                baseURL: "https://users.example.com/api",
+                retryDelay: Number.POSITIVE_INFINITY,
+              },
+            ],
+          },
+        }),
+      ).toThrow("config.fetch.proxy[0].retryDelay");
     });
 
     it("rejects non-array fetch.proxy", () => {

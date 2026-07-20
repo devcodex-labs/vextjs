@@ -44,6 +44,7 @@ import { importUserModule } from "./user-module-loader.js";
 // ── 常量 ────────────────────────────────────────────────────
 
 const FETCH_PROXY_RESERVED_TARGET_NAMES = new Set(["then"]);
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const OPENAPI_DOCS_ACCESS_MODES = ["off", "visibility-only", "enforce"];
 const OPENAPI_DOCS_DEFAULT_VIEWS = ["overview", "api", "code"];
 const OPENAPI_DOCS_THEMES = ["system", "light", "dark"];
@@ -1840,7 +1841,7 @@ function validateFetchConfig(value: unknown, path: string): void {
 
   const fetchConfig = value as Record<string, unknown>;
   if (fetchConfig.timeout !== undefined) {
-    validatePositiveNumber(fetchConfig.timeout, `${path}.timeout`);
+    validatePositiveTimerNumber(fetchConfig.timeout, `${path}.timeout`);
   }
   if (fetchConfig.retry !== undefined) {
     validateNonNegativeInteger(fetchConfig.retry, `${path}.retry`);
@@ -1904,7 +1905,7 @@ function validateFetchConfig(value: unknown, path: string): void {
       );
     }
     if (target.timeout !== undefined) {
-      validatePositiveNumber(target.timeout, `${itemPath}.timeout`);
+      validatePositiveTimerNumber(target.timeout, `${itemPath}.timeout`);
     }
     if (target.retry !== undefined) {
       validateNonNegativeInteger(target.retry, `${itemPath}.retry`);
@@ -2324,7 +2325,7 @@ function validateRetryDelay(value: unknown, path: string): void {
   if (value === undefined || typeof value === "function") {
     return;
   }
-  validateNonNegativeNumber(value, path);
+  validateNonNegativeTimerNumber(value, path);
 }
 
 function validateProxyHeaderSource(value: unknown, path: string): void {
@@ -2625,6 +2626,32 @@ function validateNonNegativeNumber(value: unknown, path: string): void {
   if (typeof value !== "number" || value < 0) {
     throw new Error(
       `[vextjs] ${path} must be a non-negative number, got: ${value}`,
+    );
+  }
+}
+
+function validatePositiveTimerNumber(value: unknown, path: string): void {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value <= 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `[vextjs] ${path} must be a finite positive number no greater than ${MAX_TIMER_DELAY_MS}, got: ${value}`,
+    );
+  }
+}
+
+function validateNonNegativeTimerNumber(value: unknown, path: string): void {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `[vextjs] ${path} must be a finite non-negative number no greater than ${MAX_TIMER_DELAY_MS}, got: ${value}`,
     );
   }
 }

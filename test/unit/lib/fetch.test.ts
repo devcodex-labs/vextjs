@@ -26,6 +26,8 @@ import type { VextResponse } from "../../../src/types/response.js";
 
 // ── 测试工具 ────────────────────────────────────────────────
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /**
  * 创建模拟的 VextLogger
  */
@@ -507,6 +509,133 @@ describe("超时控制", () => {
 
     // signal 存在（说明 AbortController 已创建）
     expect(capturedSignal).not.toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// timer 边界校验
+// ════════════════════════════════════════════════════════════
+
+describe("timer 边界校验", () => {
+  it("拒绝非法全局 timeout 和 retryDelay，避免进入原生 timer", () => {
+    const logger = createMockLogger();
+    const invalidTimeoutValues = [
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      MAX_TIMER_DELAY_MS + 1,
+      "1000",
+    ];
+    const invalidRetryDelayValues = [
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      MAX_TIMER_DELAY_MS + 1,
+      "1000",
+    ];
+
+    for (const value of invalidTimeoutValues) {
+      expect(() =>
+        createVextFetch(logger, { timeout: value as number }, "x-request-id"),
+      ).toThrow("config.fetch.timeout");
+    }
+
+    for (const value of invalidRetryDelayValues) {
+      expect(() =>
+        createVextFetch(
+          logger,
+          { retryDelay: value as number },
+          "x-request-id",
+        ),
+      ).toThrow("config.fetch.retryDelay");
+    }
+  });
+
+  it("拒绝非法 init timeout/retryDelay，且不会发出首次请求", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    const vextFetch = createVextFetch(logger, {}, "x-request-id");
+
+    await expect(
+      vextFetch("https://example.com/api", {
+        timeout: MAX_TIMER_DELAY_MS + 1,
+      }),
+    ).rejects.toThrow("init.timeout");
+
+    await expect(
+      vextFetch("https://example.com/api", {
+        method: "GET",
+        retry: 1,
+        retryDelay: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toThrow("init.retryDelay");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("拒绝 retryDelay 回调的非法返回值，且不会发起后续重试", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 1,
+        retryDelay: () => Number.POSITIVE_INFINITY,
+      },
+      "x-request-id",
+    );
+
+    await expect(
+      vextFetch("https://example.com/api", { method: "GET" }),
+    ).rejects.toThrow("config.fetch.retryDelay result");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("create() 子客户端配置同样执行 timer 边界校验", () => {
+    const logger = createMockLogger();
+    const vextFetch = createVextFetch(logger, {}, "x-request-id");
+
+    expect(() =>
+      vextFetch.create({
+        baseURL: "https://api.example.com",
+        timeout: MAX_TIMER_DELAY_MS + 1,
+      }),
+    ).toThrow("create.timeout");
+
+    expect(() =>
+      vextFetch.create({
+        baseURL: "https://api.example.com",
+        retryDelay: MAX_TIMER_DELAY_MS + 1,
+      }),
+    ).toThrow("create.retryDelay");
+  });
+
+  it("允许合法边界值，响应完成后会清理 timeout timer", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        timeout: MAX_TIMER_DELAY_MS,
+        retryDelay: MAX_TIMER_DELAY_MS,
+      },
+      "x-request-id",
+    );
+
+    const response = await vextFetch("https://example.com/api");
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 
@@ -1038,6 +1167,36 @@ describe("app.fetch.proxy 代理", () => {
     });
   });
 
+  it("proxy 调用级非法 timeout 在本地 400 失败，且不触达上游", async () => {
+    const logger = createMockLogger();
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, {
+      path: "/health",
+      timeout: MAX_TIMER_DELAY_MS + 1,
+    });
+
+    expect(globalFetchMock).not.toHaveBeenCalled();
+    expect(state.statusCode).toBe(400);
+    expect(state.body).toMatchObject({
+      code: "FETCH_PROXY_INVALID_TIMEOUT",
+      requestId: "proxy-req-1",
+    });
+  });
+
   it("GET 上游 5xx 会按 retry 合同重试，最终响应直接透传", async () => {
     const logger = createMockLogger();
     const fetchMock = vi
@@ -1073,6 +1232,41 @@ describe("app.fetch.proxy 代理", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(state.statusCode).toBe(200);
     expect(state.body).toBe("ready");
+  });
+
+  it("proxy retryDelay 回调返回非法值时本地 400 失败，且不会继续重试", async () => {
+    const logger = createMockLogger();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(new Response("ready", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        retry: 1,
+        retryDelay: () => Number.POSITIVE_INFINITY,
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com",
+          },
+        ],
+      },
+      "x-request-id",
+    );
+    const req = createProxyRequest({ method: "GET" });
+    const { res, state } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.statusCode).toBe(400);
+    expect(state.body).toMatchObject({
+      code: "FETCH_PROXY_INVALID_RETRY_DELAY",
+      requestId: "proxy-req-1",
+    });
   });
 
   it("客户端在 retry delay 期间断开时不再发起后续重试", async () => {

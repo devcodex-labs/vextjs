@@ -4,15 +4,15 @@ VextJS has a built-in enhanced HTTP client `app.fetch`, which is based on the No
 
 ## Function overview
 
-| Capabilities | Description |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- |
-| **requestId propagation** | Automatically read `requestId` from `requestContext` and inject it into the `x-request-id` header of outbound requests to achieve cross-service request tracking |
-| **Timeout Control** | Based on `AbortController` + `setTimeout`, supports global default + single request override |
-| **AUTO-RETRY** | Automatically retry on 5xx or network error only for idempotent methods (GET/HEAD/OPTIONS/PUT/DELETE) |
-| **Structured Log** | Automatically record outbound requests to method/url/status/duration/requestId, unified with `app.logger` |
-| **Shortcut methods** | `get` / `post` / `put` / `patch` / `delete` shortcut calls |
-| **create() factory** | Create a preconfigured sub-client (fixed baseURL + default headers), suitable for docking multiple microservices |
-| **proxy proxy** | Configure the upstream target through `config.fetch.proxy[]`, and directly transparently transmit the response through `app.fetch.proxy.userService(req, res, options)` in routing |
+| Capabilities              | Description                                                                                                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **requestId propagation** | Automatically read `requestId` from `requestContext` and inject it into the `x-request-id` header of outbound requests to achieve cross-service request tracking                   |
+| **Timeout Control**       | Based on `AbortController` + `setTimeout`, supports global default + single request override                                                                                       |
+| **AUTO-RETRY**            | Automatically retry on 5xx or network error only for idempotent methods (GET/HEAD/OPTIONS/PUT/DELETE)                                                                              |
+| **Structured Log**        | Automatically record outbound requests to method/url/status/duration/requestId, unified with `app.logger`                                                                          |
+| **Shortcut methods**      | `get` / `post` / `put` / `patch` / `delete` shortcut calls                                                                                                                         |
+| **create() factory**      | Create a preconfigured sub-client (fixed baseURL + default headers), suitable for docking multiple microservices                                                                   |
+| **proxy proxy**           | Configure the upstream target through `config.fetch.proxy[]`, and directly transparently transmit the response through `app.fetch.proxy.userService(req, res, options)` in routing |
 
 ## Basic usage
 
@@ -121,16 +121,16 @@ const response = await app.fetch.delete(`https://api.example.com/users/${id}`);
 
 ### List of method signatures
 
-| Method | Signature | Description |
-|------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------- |
-| `app.fetch(input, init?)` | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | Universal call (compatible with native fetch) |
-| `app.fetch.get(url, init?)` | `(url: string, init?: VextFetchInit) => Promise<Response>` | GET request |
-| `app.fetch.post(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | POST request, body automatically serialized |
-| `app.fetch.put(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | PUT request, body is automatically serialized |
-| `app.fetch.patch(url, body?, init?)` | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>` | PATCH request, body automatically serialized |
-| `app.fetch.delete(url, init?)` | `(url: string, init?: VextFetchInit) => Promise<Response>` | DELETE request |
-| `app.fetch.create(options)` | `(options: VextFetchClientOptions) => VextFetchClient` | Create subclient (without proxy) |
-| `app.fetch.proxy.<name>(req,res,options)` | `(req, res, options) => Promise<void>` | Configure the request proxy and transparently transmit the response |
+| Method                                    | Signature                                                                      | Description                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `app.fetch(input, init?)`                 | `(input: string \| URL \| Request, init?: VextFetchInit) => Promise<Response>` | Universal call (compatible with native fetch)                       |
+| `app.fetch.get(url, init?)`               | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | GET request                                                         |
+| `app.fetch.post(url, body?, init?)`       | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | POST request, body automatically serialized                         |
+| `app.fetch.put(url, body?, init?)`        | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PUT request, body is automatically serialized                       |
+| `app.fetch.patch(url, body?, init?)`      | `(url: string, body?: unknown, init?: VextFetchInit) => Promise<Response>`     | PATCH request, body automatically serialized                        |
+| `app.fetch.delete(url, init?)`            | `(url: string, init?: VextFetchInit) => Promise<Response>`                     | DELETE request                                                      |
+| `app.fetch.create(options)`               | `(options: VextFetchClientOptions) => VextFetchClient`                         | Create subclient (without proxy)                                    |
+| `app.fetch.proxy.<name>(req,res,options)` | `(req, res, options) => Promise<void>`                                         | Configure the request proxy and transparently transmit the response |
 
 ## Configuration
 
@@ -166,13 +166,17 @@ export default {
 };
 ```
 
-| Configuration item | Type | Default value | Description |
-| ------------------ | ---------------------------------- | ------- | ----------------------------------------------- |
-| `timeout` | `number` | `10000` | Global default request timeout (milliseconds) |
-| `retry` | `number` | `0` | Default number of retries (only idempotent methods take effect) |
-| `retryDelay` | `number \| (attempt) => number` | `1000` | Default retry interval (milliseconds), supports function form |
-| `propagateHeaders` | `string[]` | `[]` | A list of header names that need to be automatically passed through from inbound requests to outbound requests |
-| `proxy` | `VextFetchProxyTargetConfig[]` | `[]` | List of upstream targets for `app.fetch.proxy.<name>()` |
+| Configuration item | Type                            | Default value | Description                                                                                                    |
+| ------------------ | ------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `timeout`          | `number`                        | `10000`       | Global default request timeout (milliseconds)                                                                  |
+| `retry`            | `number`                        | `0`           | Default number of retries (only idempotent methods take effect)                                                |
+| `retryDelay`       | `number \| (attempt) => number` | `1000`        | Default retry interval (milliseconds), supports function form                                                  |
+| `propagateHeaders` | `string[]`                      | `[]`          | A list of header names that need to be automatically passed through from inbound requests to outbound requests |
+| `proxy`            | `VextFetchProxyTargetConfig[]`  | `[]`          | List of upstream targets for `app.fetch.proxy.<name>()`                                                        |
+
+:::warning Timer bounds
+`timeout` must be a finite positive number no greater than `2147483647` milliseconds. `retryDelay` must be a finite non-negative number no greater than `2147483647` milliseconds. Function-form `retryDelay` return values are checked before each native timer is created.
+:::
 
 :::tip propagateHeaders working principle
 After configuration, the `requestId` middleware will read the header value specified in the list from the inbound request header when each request comes in.
@@ -196,13 +200,13 @@ const response = await app.fetch.get("https://api.example.com/data", {
 
 #### VextFetchInit complete field
 
-`VextFetchInit` inherits from the standard `RequestInit` and extends the following fields:| Field | Type | Default Value | Description |
-| -------------------- | ------------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------- |
-| `timeout` | `number` | Global `config.fetch.timeout` | Request timeout (milliseconds) |
-| `retry` | `number` | global `config.fetch.retry` | Number of retries (idempotent methods only) |
-| `retryDelay` | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval, supports exponential backoff in functional form |
-| `propagateRequestId` | `boolean` | `true` | Whether to automatically inject the `x-request-id` header (`propagatedHeaders` will still be transparently transmitted when disabled) |
-| `propagateHeaders` | `string[]` | — | Additional headers that need to be transparently transmitted in this request (must be declared in `config.fetch.propagateHeaders` to have a value) |
+| `VextFetchInit` inherits from the standard `RequestInit` and extends the following fields: | Field                                   | Type                             | Default Value                                                                                                                                      | Description |
+| ------------------------------------------------------------------------------------------ | --------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `timeout`                                                                                  | `number`                                | Global `config.fetch.timeout`    | Request timeout (milliseconds)                                                                                                                     |
+| `retry`                                                                                    | `number`                                | global `config.fetch.retry`      | Number of retries (idempotent methods only)                                                                                                        |
+| `retryDelay`                                                                               | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval, supports exponential backoff in functional form                                                                                    |
+| `propagateRequestId`                                                                       | `boolean`                               | `true`                           | Whether to automatically inject the `x-request-id` header (`propagatedHeaders` will still be transparently transmitted when disabled)              |
+| `propagateHeaders`                                                                         | `string[]`                              | —                                | Additional headers that need to be transparently transmitted in this request (must be declared in `config.fetch.propagateHeaders` to have a value) |
 
 :::tip priority
 Single request `init.timeout` > `options.timeout` of `create()` > Global `config.fetch.timeout`
@@ -285,12 +289,12 @@ export default defineRoutes((app) => {
 
 ### VextFetchClientOptions
 
-| Field | Type | Required | Description |
-| --------- | ------------------------ | ---- | ---------------------------------------- |
-| `baseURL` | `string` | ✅ | Base URL, all request paths are automatically spliced |
-| `headers` | `Record<string, string>` | ❌ | Default request headers (merged with single request headers) |
-| `timeout` | `number` | ❌ | Subclient default timeout |
-| `retry` | `number` | ❌ | The default number of retries for subclients |
+| Field     | Type                     | Required | Description                                                  |
+| --------- | ------------------------ | -------- | ------------------------------------------------------------ |
+| `baseURL` | `string`                 | ✅       | Base URL, all request paths are automatically spliced        |
+| `headers` | `Record<string, string>` | ❌       | Default request headers (merged with single request headers) |
+| `timeout` | `number`                 | ❌       | Subclient default timeout                                    |
+| `retry`   | `number`                 | ❌       | The default number of retries for subclients                 |
 
 :::info nested create
 Subclients also support calling `create()` again to create more fine-grained clients:
@@ -475,6 +479,8 @@ try {
 
 If the request is passed in `signal` at the same time (such as manual cancellation by the user), `app.fetch` will merge the two signals - either trigger will abort the request.
 
+`init.timeout`, `create({ timeout })`, `config.fetch.timeout`, and proxy `timeout` follow the same boundary: a finite positive number no greater than `2147483647` milliseconds. `retryDelay` may be `0`, but it must also be finite and no greater than `2147483647` milliseconds; function return values are validated before every retry.
+
 ## Automatic retry
 
 Retry only takes effect for **idempotent methods** (GET / HEAD / OPTIONS / PUT / DELETE), POST / PATCH will not be retried (to avoid repeated execution of side effects).
@@ -483,25 +489,25 @@ Retry only takes effect for **idempotent methods** (GET / HEAD / OPTIONS / PUT /
 
 The following methods are considered idempotent and allow automatic retries:
 
-| Method | Idempotent | Retryable |
-| ------- | :--: | :----: |
-| GET | ✅ | ✅ |
-| HEAD | ✅ | ✅ |
-| OPTIONS | ✅ | ✅ |
-| PUT | ✅ | ✅ |
-| DELETE | ✅ | ✅ |
-| POST | ❌ | ❌ |
-| PATCH | ❌ | ❌ |
+| Method  | Idempotent | Retryable |
+| ------- | :--------: | :-------: |
+| GET     |     ✅     |    ✅     |
+| HEAD    |     ✅     |    ✅     |
+| OPTIONS |     ✅     |    ✅     |
+| PUT     |     ✅     |    ✅     |
+| DELETE  |     ✅     |    ✅     |
+| POST    |     ❌     |    ❌     |
+| PATCH   |     ❌     |    ❌     |
 
 ### Trigger conditions
 
-| Condition | Whether to retry | Description |
-| ------------------------------------ | :------: | -------------------------------- |
-| HTTP 5xx response | ✅ | Server error, retry may restore |
-| Network error (connection failure, DNS resolution failure, etc.) | ✅ | Transient network problem, retry may succeed |
-| HTTP 4xx response | ❌ | Client error, retrying is meaningless |
-| Timeout (AbortError) | ❌ | Throw `Error` directly without retrying |
-| Non-idempotent method (POST / PATCH) | ❌ | Do not retry any errors to avoid repeated side effects |
+| Condition                                                        | Whether to retry | Description                                            |
+| ---------------------------------------------------------------- | :--------------: | ------------------------------------------------------ |
+| HTTP 5xx response                                                |        ✅        | Server error, retry may restore                        |
+| Network error (connection failure, DNS resolution failure, etc.) |        ✅        | Transient network problem, retry may succeed           |
+| HTTP 4xx response                                                |        ❌        | Client error, retrying is meaningless                  |
+| Timeout (AbortError)                                             |        ❌        | Throw `Error` directly without retrying                |
+| Non-idempotent method (POST / PATCH)                             |        ❌        | Do not retry any errors to avoid repeated side effects |
 
 ### Retry decision process
 
@@ -530,11 +536,11 @@ request issued
 
 This is the most important detail - the final behavior of 5xx and network errors is different:
 
-| Scenario | Final Action | Description |
-| ----------------------- | ------------------ | --------------------------------------------------------------- |
-| 5xx + all retries are exhausted | **Return Response** | The caller needs to check `response.ok` or `response.status` to handle errors by itself |
-| Network error + all retries exhausted | **Throw Error** | The caller needs to try/catch to capture |
-| Timeout | **Throws Error** | `[app.fetch] GET /api/xxx timed out after 10000ms` |
+| Scenario                              | Final Action        | Description                                                                             |
+| ------------------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
+| 5xx + all retries are exhausted       | **Return Response** | The caller needs to check `response.ok` or `response.status` to handle errors by itself |
+| Network error + all retries exhausted | **Throw Error**     | The caller needs to try/catch to capture                                                |
+| Timeout                               | **Throws Error**    | `[app.fetch] GET /api/xxx timed out after 10000ms`                                      |
 
 ```typescript
 // 5xx ultimately fails → returns Response (does not throw)
@@ -589,25 +595,25 @@ The default `retryDelay` is fixed `1000ms` (1 second).
 
 Structured logs are automatically recorded for each outbound request, containing the following fields:
 
-| Field | Description |
-| ----------- | ----------------------- |
-| `type` | Fixed to `"outbound"` |
-| `method` | HTTP method |
-| `url` | Request URL |
-| `status` | Response status code (when successful) |
-| `duration` | Time taken (milliseconds) |
-| `requestId` | requestId of the current request |
-| `error` | Error message (on failure) |
-| `attempt` | Current number of retries (when retrying) |
+| Field       | Description                               |
+| ----------- | ----------------------------------------- |
+| `type`      | Fixed to `"outbound"`                     |
+| `method`    | HTTP method                               |
+| `url`       | Request URL                               |
+| `status`    | Response status code (when successful)    |
+| `duration`  | Time taken (milliseconds)                 |
+| `requestId` | requestId of the current request          |
+| `error`     | Error message (on failure)                |
+| `attempt`   | Current number of retries (when retrying) |
 
 Log levels automatically adjust based on response status:
 
-| Conditions | Log Level |
-| --------------- | -------- |
-| 2xx / 3xx | `debug` |
-| 4xx | `warn` |
-| 5xx | `error` |
-| Network error/timeout | `error` |
+| Conditions            | Log Level |
+| --------------------- | --------- |
+| 2xx / 3xx             | `debug`   |
+| 4xx                   | `warn`    |
+| 5xx                   | `error`   |
+| Network error/timeout | `error`   |
 
 Example of log output:
 
@@ -705,7 +711,7 @@ export class OrderService {
 
     if (stock.available < quantity) {
       this.app.throw(400, "Insufficient Stock", "INSUFFICIENT_STOCK");
-    }// 3. Deduct inventory
+    } // 3. Deduct inventory
     await this.app.inventoryClient.post(`/api/stock/${productId}/deduct`, {
       quantity,
       orderId: `order-${Date.now()}`,
