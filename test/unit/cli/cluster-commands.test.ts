@@ -246,17 +246,19 @@ describe("vext stop (stopCommand)", () => {
 
   // ── readPidFile 返回 ok 但 pid 为 undefined（边界情况） ─
 
-  it("should exit(1) when readPidFile returns ok but no pid", async () => {
+  it("should exit(1) on invalid PID content without probing or signaling parsed prefixes", async () => {
     mockReadPidFile.mockReturnValue({
       ok: false,
       path: ".vext.pid",
-      error: "PID file contains invalid content",
+      error: 'PID file ".vext.pid" contains invalid content: "123 extra\\n"',
     });
 
     await expect(stopCommand([])).rejects.toThrow("process.exit(1)");
 
+    expect(mockIsProcessAlive).not.toHaveBeenCalled();
+    expect(processKillSpy).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("invalid content"),
+      expect.stringContaining("123 extra"),
     );
   });
 });
@@ -292,6 +294,23 @@ describe("vext reload (reloadCommand)", () => {
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("not found"),
+    );
+  });
+
+  it("should exit(1) on invalid PID content without probing or signaling parsed prefixes", async () => {
+    setPlatform("linux");
+    mockReadPidFile.mockReturnValue(
+      failPidResult(
+        'PID file ".vext.pid" contains invalid content: "123.99\\n"',
+      ),
+    );
+
+    await expect(reloadCommand([])).rejects.toThrow("process.exit(1)");
+
+    expect(mockIsProcessAlive).not.toHaveBeenCalled();
+    expect(processKillSpy).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("123.99"),
     );
   });
 
@@ -451,6 +470,26 @@ describe("vext status (statusCommand)", () => {
       expect.stringContaining("not found"),
     );
     // 不应调用 process.exit
+    expect(processExitSpy).not.toHaveBeenCalled();
+  });
+
+  it("should show invalid PID file diagnostics without probing parsed prefixes", async () => {
+    mockReadPidFile.mockReturnValue(
+      failPidResult(
+        'PID file "/abs/.vext.pid" contains invalid content: "123 extra\\n"',
+        "/abs/.vext.pid",
+      ),
+    );
+
+    await statusCommand([]);
+
+    expect(getConsoleLogMessages()).toEqual([
+      "Status: ⚠️ invalid PID file",
+      "  PID file: /abs/.vext.pid",
+      '  Error:    PID file "/abs/.vext.pid" contains invalid content: "123 extra\\n"',
+    ]);
+    expect(mockIsProcessAlive).not.toHaveBeenCalled();
+    expect(processKillSpy).not.toHaveBeenCalled();
     expect(processExitSpy).not.toHaveBeenCalled();
   });
 

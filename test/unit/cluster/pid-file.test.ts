@@ -337,11 +337,37 @@ describe("pid-file", () => {
       expect(result.pid).toBe(process.pid);
     });
 
-    it("should handle whitespace around PID", () => {
+    it("should reject whitespace around PID other than the optional trailing newline", () => {
       const filePath = tmpPidFile("read-whitespace");
       const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(filePath, `  ${process.pid}  \n`, "utf-8");
+
+      const result = readPidFile(filePath);
+
+      expect(result.ok).toBe(false);
+      expect(result.pid).toBeUndefined();
+      expect(result.error).toContain("invalid content");
+      expect(result.error).toContain(`  ${process.pid}  \\n`);
+    });
+
+    it("should accept PID without a trailing newline", () => {
+      const filePath = tmpPidFile("read-no-newline");
+      const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, String(process.pid), "utf-8");
+
+      const result = readPidFile(filePath);
+
+      expect(result.ok).toBe(true);
+      expect(result.pid).toBe(process.pid);
+    });
+
+    it("should accept PID with Windows CRLF trailing newline", () => {
+      const filePath = tmpPidFile("read-crlf");
+      const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, `${process.pid}\r\n`, "utf-8");
 
       const result = readPidFile(filePath);
 
@@ -539,7 +565,7 @@ describe("pid-file", () => {
       expect(writeResult.ok).toBe(true);
     });
 
-    it("should handle very large PID numbers", () => {
+    it("should handle large safe PID numbers", () => {
       const filePath = tmpPidFile("edge-large-pid");
       const largePid = 2147483647; // MAX_INT32
       const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
@@ -551,27 +577,40 @@ describe("pid-file", () => {
       expect(readResult.pid).toBe(largePid);
     });
 
-    it("should handle PID file with trailing content after number", () => {
+    it("should reject PID values beyond JavaScript safe integer range", () => {
+      const filePath = tmpPidFile("edge-unsafe-pid");
+      const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, "9007199254740992\n", "utf-8");
+
+      const readResult = readPidFile(filePath, false);
+      expect(readResult.ok).toBe(false);
+      expect(readResult.pid).toBeUndefined();
+      expect(readResult.error).toContain("9007199254740992");
+    });
+
+    it("should reject PID file with trailing content after number", () => {
       const filePath = tmpPidFile("edge-trailing");
       const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
       mkdirSync(dir, { recursive: true });
-      // parseInt 会解析前导数字，忽略后续内容
       writeFileSync(filePath, `${process.pid} extra stuff\n`, "utf-8");
 
-      const readResult = readPidFile(filePath);
-      expect(readResult.ok).toBe(true);
-      expect(readResult.pid).toBe(process.pid);
+      const readResult = readPidFile(filePath, false);
+      expect(readResult.ok).toBe(false);
+      expect(readResult.pid).toBeUndefined();
+      expect(readResult.error).toContain(`${process.pid} extra stuff`);
     });
 
-    it("should handle float-like PID (parseInt truncates)", () => {
+    it("should reject decimal-like PID values", () => {
       const filePath = tmpPidFile("edge-float");
       const dir = join(tmpdir(), `vext-pid-test-${process.pid}`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(filePath, `${process.pid}.99\n`, "utf-8");
 
-      const readResult = readPidFile(filePath);
-      expect(readResult.ok).toBe(true);
-      expect(readResult.pid).toBe(process.pid);
+      const readResult = readPidFile(filePath, false);
+      expect(readResult.ok).toBe(false);
+      expect(readResult.pid).toBeUndefined();
+      expect(readResult.error).toContain(`${process.pid}.99`);
     });
   });
 });

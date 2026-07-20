@@ -76,7 +76,14 @@ export async function statusCommand(args: string[] = []): Promise<void> {
   const result = readPidFile(options.pidFile, false);
 
   if (!result.ok || result.pid === undefined) {
-    // PID 文件不存在或无法读取
+    if (result.error && !result.error.includes("not found")) {
+      console.log("Status: ⚠️ invalid PID file");
+      console.log(`  PID file: ${result.path}`);
+      console.log(`  Error:    ${result.error}`);
+      return;
+    }
+
+    // PID 文件不存在
     console.log("Status: ⚪ not running");
     console.log(`  PID file: ${result.path} (not found)`);
     return;

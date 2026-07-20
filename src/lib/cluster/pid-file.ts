@@ -76,12 +76,11 @@ export function writePidFile(
   // ── 冲突检测 ──────────────────────────────────────────
   if (existsSync(absolutePath)) {
     try {
-      const existingPid = parseInt(
-        readFileSync(absolutePath, "utf-8").trim(),
-        10,
+      const existingPid = parsePidFileContent(
+        readFileSync(absolutePath, "utf-8"),
       );
 
-      if (!Number.isNaN(existingPid) && existingPid > 0) {
+      if (existingPid !== null) {
         if (isProcessAlive(existingPid)) {
           return {
             ok: false,
@@ -154,7 +153,7 @@ export function readPidFile(
 
   let content: string;
   try {
-    content = readFileSync(absolutePath, "utf-8").trim();
+    content = readFileSync(absolutePath, "utf-8");
   } catch (err) {
     return {
       ok: false,
@@ -163,12 +162,12 @@ export function readPidFile(
     };
   }
 
-  const pid = parseInt(content, 10);
-  if (Number.isNaN(pid) || pid <= 0) {
+  const pid = parsePidFileContent(content);
+  if (pid === null) {
     return {
       ok: false,
       path: absolutePath,
-      error: `PID file "${absolutePath}" contains invalid content: "${content}"`,
+      error: invalidPidFileContent(absolutePath, content),
     };
   }
 
@@ -221,10 +220,10 @@ export function removePidFile(
 
   // ── 安全校验：验证 PID 一致性 ────────────────────────
   try {
-    const content = readFileSync(absolutePath, "utf-8").trim();
-    const filePid = parseInt(content, 10);
+    const content = readFileSync(absolutePath, "utf-8");
+    const filePid = parsePidFileContent(content);
 
-    if (!Number.isNaN(filePid) && filePid > 0 && filePid !== expectedPid) {
+    if (filePid !== null && filePid !== expectedPid) {
       // PID 不一致 → 可能已被其他实例覆盖，不删除
       return {
         ok: false,
@@ -283,4 +282,23 @@ export function isProcessAlive(pid: number): boolean {
     // ESRCH = 进程不存在
     return false;
   }
+}
+
+function parsePidFileContent(content: string): number | null {
+  if (!/^[1-9]\d*(?:\r?\n)?$/u.test(content)) {
+    return null;
+  }
+
+  const normalized = content.replace(/\r?\n$/u, "");
+  const pid = Number(normalized);
+
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    return null;
+  }
+
+  return pid;
+}
+
+function invalidPidFileContent(absolutePath: string, content: string): string {
+  return `PID file "${absolutePath}" contains invalid content: ${JSON.stringify(content)}`;
 }
