@@ -314,6 +314,38 @@ describe("frontend client contract", () => {
 
     expect(contract.routes.map((route) => route.method)).toEqual(methods);
   });
+
+  it("keeps frontend API client docs aligned with public exports", async () => {
+    const docs = await Promise.all([
+      readFile(
+        path.join(
+          process.cwd(),
+          "website",
+          "docs",
+          "en",
+          "frontend",
+          "api-client-and-contracts.md",
+        ),
+        "utf-8",
+      ),
+      readFile(
+        path.join(
+          process.cwd(),
+          "website",
+          "docs",
+          "zh",
+          "frontend",
+          "api-client-and-contracts.md",
+        ),
+        "utf-8",
+      ),
+    ]);
+
+    for (const content of docs) {
+      expect(content).toContain("createVextApiClient");
+      expect(content).not.toContain("createVextFetchAdapter");
+    }
+  });
 });
 
 describe("frontend client build", () => {

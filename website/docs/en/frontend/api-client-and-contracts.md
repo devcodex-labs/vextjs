@@ -31,10 +31,7 @@ These artifacts are useful for:
 The frontend public entry exposes contract helpers:
 
 ```ts
-import {
-  createVextApiClient,
-  createVextFetchAdapter,
-} from "vextjs/frontend";
+import { createVextApiClient } from "vextjs/frontend";
 ```
 
 Use them when you need a typed client boundary. Do not add them to simple pages just to read first-screen data.

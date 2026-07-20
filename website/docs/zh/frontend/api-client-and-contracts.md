@@ -31,10 +31,7 @@ api.generated.ts
 前端公开入口暴露契约 helper：
 
 ```ts
-import {
-  createVextApiClient,
-  createVextFetchAdapter,
-} from "vextjs/frontend";
+import { createVextApiClient } from "vextjs/frontend";
 ```
 
 只有需要 typed client 边界时才使用。简单页面不要为了读取首屏数据而引入它们。
