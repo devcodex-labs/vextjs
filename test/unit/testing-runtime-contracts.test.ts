@@ -16,6 +16,14 @@ const collector = {
       handler: typeof optionsOrHandler === "function" ? optionsOrHandler : handler,
     });
   },
+  head(path, optionsOrHandler, handler) {
+    routes.push({
+      method: "HEAD",
+      path,
+      options: typeof optionsOrHandler === "function" ? {} : optionsOrHandler || {},
+      handler: typeof optionsOrHandler === "function" ? optionsOrHandler : handler,
+    });
+  },
 };
 
 function factory() {
@@ -47,6 +55,14 @@ function factory() {
     res.json({ late: true });
   });
   collector.get("/limited", {}, async (_req, res) => {
+    res.json({ ok: true });
+  });
+  collector.head("/head-json", {}, async (_req, res) => {
+    res.setHeader("x-head-route", "yes");
+    res.json({ ok: true });
+  });
+  collector.get("/head-json", {}, async (_req, res) => {
+    res.setHeader("x-head-route", "yes");
     res.json({ ok: true });
   });
 }
@@ -201,6 +217,31 @@ describe("createTestApp runtime contract parity", () => {
 
       expect(response.status).toBe(200);
       expect(events).toEqual(["before", "after"]);
+    } finally {
+      await t.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves HEAD status and headers while exposing no response body", async () => {
+    const rootDir = await createFixture();
+    const t = await createTestApp({
+      services: false,
+      rootDir,
+    });
+
+    try {
+      const head = await t.request.head("/runtime/head-json");
+      expect(head.status).toBe(200);
+      expect(head.header("x-head-route")).toBe("yes");
+      expect(head.header("content-type")).toContain("application/json");
+      expect(head.text).toBe("");
+      expect(head.body).toBe("");
+
+      const get = await t.request.get("/runtime/head-json");
+      expect(get.status).toBe(200);
+      expect(get.body.data).toEqual({ ok: true });
+      expect(get.text).toContain('"ok":true');
     } finally {
       await t.close();
       await rm(rootDir, { recursive: true, force: true });

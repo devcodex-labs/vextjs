@@ -378,6 +378,10 @@ interface TestRequest {
 
 每个方法返回 `TestRequestBuilder`，支持链式配置后通过 `await` 执行请求。
 
+:::note HEAD 响应
+`request.head(path)` 遵守 HTTP HEAD 语义。响应状态码和响应头会保留，但即使路由处理器写入响应体，`TestResponse.text` 和 `TestResponse.body` 也为空。需要断言响应体时，请使用对应的 `GET` 路由。
+:::
+
 ### 基本用法
 
 ```typescript

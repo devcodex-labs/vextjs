@@ -760,6 +760,7 @@ function executeRequest(
       // ── 构造 mock ServerResponse ─────────────────────
       //
       // 收集 handler 写入的响应头和响应体。
+      const shouldCollectResponseBody = method.toUpperCase() !== "HEAD";
       const responseChunks: Buffer[] = [];
       const responseHeaders: Record<string, TestResponseHeaderValue> = {};
       let statusCode = 200;
@@ -810,14 +811,8 @@ function executeRequest(
       // 拦截 write
       const originalWrite = mockRes.write.bind(mockRes);
       (mockRes as any).write = (chunk: any, ...args: any[]): boolean => {
-        if (chunk) {
-          if (Buffer.isBuffer(chunk)) {
-            responseChunks.push(chunk);
-          } else if (typeof chunk === "string") {
-            responseChunks.push(Buffer.from(chunk, "utf-8"));
-          } else if (chunk instanceof Uint8Array) {
-            responseChunks.push(Buffer.from(chunk));
-          }
+        if (shouldCollectResponseBody) {
+          appendResponseChunk(responseChunks, chunk);
         }
         return originalWrite(chunk, ...args);
       };
@@ -825,14 +820,8 @@ function executeRequest(
       // 拦截 end
       const originalEnd = mockRes.end.bind(mockRes);
       (mockRes as any).end = (chunk?: any, ...args: any[]): ServerResponse => {
-        if (chunk) {
-          if (Buffer.isBuffer(chunk)) {
-            responseChunks.push(chunk);
-          } else if (typeof chunk === "string") {
-            responseChunks.push(Buffer.from(chunk, "utf-8"));
-          } else if (chunk instanceof Uint8Array) {
-            responseChunks.push(Buffer.from(chunk));
-          }
+        if (shouldCollectResponseBody) {
+          appendResponseChunk(responseChunks, chunk);
         }
 
         // 响应完成后收集结果
@@ -913,6 +902,20 @@ function executeRequest(
       reject(err);
     }
   });
+}
+
+function appendResponseChunk(chunks: Buffer[], chunk: unknown): void {
+  if (!chunk) {
+    return;
+  }
+
+  if (Buffer.isBuffer(chunk)) {
+    chunks.push(chunk);
+  } else if (typeof chunk === "string") {
+    chunks.push(Buffer.from(chunk, "utf-8"));
+  } else if (chunk instanceof Uint8Array) {
+    chunks.push(Buffer.from(chunk));
+  }
 }
 
 function firstHeaderValue(

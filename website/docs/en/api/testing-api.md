@@ -376,6 +376,10 @@ interface TestRequest {
 
 Each method returns `TestRequestBuilder`, which supports chain configuration and execution of requests through `await`.
 
+:::note HEAD responses
+`request.head(path)` follows HTTP HEAD semantics. The response status and headers are preserved, but `TestResponse.text` and `TestResponse.body` are empty even when the route handler writes a body. Use the matching `GET` route when you need to assert the response body.
+:::
+
 ### Basic usage
 
 ```typescript
