@@ -357,11 +357,14 @@ function renderPageDocument(input: {
     buildId: input.assets.manifest.buildId,
     mode: input.mode,
   };
-  const ssr = input.assets.serverRenderer.renderPage({
-    page: input.page,
-    props: input.props,
-    options: input.options,
-  });
+  const shouldRenderServerBody = input.options.ssr ?? true;
+  const ssr = shouldRenderServerBody
+    ? input.assets.serverRenderer.renderPage({
+        page: input.page,
+        props: input.props,
+        options: input.options,
+      })
+    : {};
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,

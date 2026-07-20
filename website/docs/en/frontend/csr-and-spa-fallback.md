@@ -34,6 +34,8 @@ export default {
 
 `scopes[]` defaults to an empty array. Nothing falls back unless you opt in.
 
+When `ssr: false`, Vext returns the configured page as a client shell: the document, assets, and hydration payload are present, but the server-rendered page body is empty. Set `ssr: true` when the fallback shell should include server-rendered HTML.
+
 ## Request Matching
 
 Fallback only applies when all of these are true:

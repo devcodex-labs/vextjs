@@ -1188,6 +1188,44 @@ describe("frontend render middleware", () => {
     expect(res.sent?.html).toContain("<nav>Overview</nav>");
   });
 
+  it("renders a client shell without server body when ssr is false", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'export default function Page() { return <main data-ssr-body="yes">Server body</main>; }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/client-only"),
+      res as any,
+      async () => {},
+    );
+    res.render("index", {}, { ssr: false });
+
+    expect(res.sent?.html).toContain(
+      '<div id="root" data-vext-root data-vext-page="index"></div>',
+    );
+    expect(res.sent?.html).not.toContain("data-ssr-body");
+    expect(res.sent?.html).not.toContain("Server body");
+    expect(res.onSendPayload?.payload.options.ssr).toBe(false);
+  });
+
   it("caches production render assets after the first render", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);
@@ -1411,6 +1449,60 @@ describe("frontend static mount", () => {
     expect(res.sent?.status).toBe(200);
     expect(res.sent?.headers.Vary).toBe("Accept");
     expect(res.sent?.html).toContain('data-vext-page="app/shell"');
+  });
+
+  it("separates scoped SPA fallback SSR and CSR shell modes", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "src", "frontend", "pages", "app"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "app", "shell.tsx"),
+      'export default function AppShell() { return <main data-shell-ssr="yes">Shell SSR</main>; }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        spaFallback: {
+          scopes: [
+            { basePath: "/app", page: "app/shell", ssr: false },
+            { basePath: "/ssr-app", page: "app/shell", ssr: true },
+          ],
+        },
+      },
+      fallbackHandler: async (_req, res) => {
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+
+    const csrRes = createRenderMockResponse();
+    await handler(
+      createMockRequest("/app/settings", { accept: "text/html" }),
+      csrRes as any,
+      async () => {},
+    );
+
+    const ssrRes = createRenderMockResponse();
+    await handler(
+      createMockRequest("/ssr-app/settings", { accept: "text/html" }),
+      ssrRes as any,
+      async () => {},
+    );
+
+    expect(csrRes.sent?.html).toContain('data-vext-page="app/shell"');
+    expect(csrRes.sent?.html).not.toContain("data-shell-ssr");
+    expect((csrRes.sent?.data as any).options.ssr).toBe(false);
+    expect(ssrRes.sent?.html).toContain("data-shell-ssr");
+    expect((ssrRes.sent?.data as any).options.ssr).toBe(true);
   });
 
   it("does not serve SPA fallback for Vext docs system routes", async () => {

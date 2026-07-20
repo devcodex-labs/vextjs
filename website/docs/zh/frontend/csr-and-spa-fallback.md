@@ -34,6 +34,8 @@ export default {
 
 `scopes[]` 默认是空数组。不显式配置，就不会 fallback。
 
+当 `ssr: false` 时，Vext 会把配置的页面作为客户端 shell 返回：document、资源和 hydration payload 仍存在，但服务端渲染的页面 body 为空。需要 fallback shell 输出服务端 HTML 时，把 `ssr` 设为 `true`。
+
 ## 请求匹配
 
 只有同时满足以下条件才 fallback：
