@@ -84,6 +84,8 @@ app.put(
 
 ::::tip 注意
 `validate` 中使用单数 `param`（与路径参数概念对应），但底层数据源是 `req.params`（复数）。框架内部已做正确映射，你无需关心。
+
+如果动态路径使用了 `:id` 或 `*path`，但没有声明 `validate.param`，OpenAPI 仍会为该路径段生成 `required: true` 的 string path parameter，保证路径模板合法。需要更精确的类型、长度或格式约束时，请显式声明 `validate.param`。
 ::::
 
 ## DSL 语法详解

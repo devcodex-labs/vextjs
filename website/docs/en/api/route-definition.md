@@ -131,6 +131,8 @@ app.get(
 );
 ```
 
+If a dynamic path reads from `req.params` without declaring `validate.param`, OpenAPI automatically adds a `required: true` string path parameter for `:paramName` or `*paramName` so the generated path template is valid. Declare `validate.param` when you need format constraints.
+
 ### Wildcard
 
 ```typescript

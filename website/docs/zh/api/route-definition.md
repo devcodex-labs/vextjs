@@ -131,6 +131,8 @@ app.get(
 );
 ```
 
+如果动态路径只通过 `req.params` 读取而没有声明 `validate.param`，OpenAPI 会自动为 `:paramName` 或 `*paramName` 补一个 `required: true` 的 string path parameter，避免生成非法路径模板。需要约束格式时仍建议声明 `validate.param`。
+
 ### 通配符
 
 ```typescript

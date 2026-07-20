@@ -50,6 +50,40 @@ function readRepoFile(filePath: string): string {
   return readFileSync(resolve(filePath), "utf8");
 }
 
+function expectPathTemplateParametersAreDeclared(doc: OpenAPIDocument): void {
+  const failures: string[] = [];
+
+  for (const [path, methods] of Object.entries(doc.paths)) {
+    const templateParamNames = [...path.matchAll(/\{([^}]+)\}/g)].map(
+      (match) => match[1],
+    );
+    if (templateParamNames.length === 0) {
+      continue;
+    }
+
+    for (const [method, operation] of Object.entries(methods)) {
+      const pathParameters = new Map(
+        (operation.parameters ?? [])
+          .filter((parameter) => parameter.in === "path")
+          .map((parameter) => [parameter.name, parameter]),
+      );
+
+      for (const name of templateParamNames) {
+        const parameter = pathParameters.get(name);
+        if (!parameter) {
+          failures.push(`${method.toUpperCase()} ${path} missing ${name}`);
+        } else if (parameter.required !== true) {
+          failures.push(
+            `${method.toUpperCase()} ${path} parameter ${name} is not required`,
+          );
+        }
+      }
+    }
+  }
+
+  expect(failures).toEqual([]);
+}
+
 // ═════════════════════════════════════════════════════════════
 // RouteMetadataCollector 单元测试
 // ═════════════════════════════════════════════════════════════
@@ -803,6 +837,107 @@ describe("OpenAPIGenerator", () => {
 
       const op = doc.paths["/users/{id}"].get!;
       expect(op.parameters![0].schema.type).toBe("string");
+    });
+
+    it("未声明 validate.param 时为动态路径自动补 string path 参数", () => {
+      const doc = generate([createRoute("GET", "/users/:id")]);
+
+      const op = doc.paths["/users/{id}"].get!;
+      expect(op.parameters).toEqual([
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+      ]);
+    });
+
+    it("未声明 validate.param 时为通配符路径自动补 string path 参数", () => {
+      const doc = generate([createRoute("GET", "/files/*path")]);
+
+      const op = doc.paths["/files/{path}"].get!;
+      expect(op.parameters).toEqual([
+        {
+          name: "path",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+      ]);
+    });
+
+    it("多个动态路径参数缺少 validate.param 时按路径顺序补全", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:userId/posts/:postId"),
+      ]);
+
+      const op = doc.paths["/users/{userId}/posts/{postId}"].get!;
+      expect(op.parameters).toEqual([
+        {
+          name: "userId",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+        {
+          name: "postId",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+      ]);
+    });
+
+    it("validate.param 部分声明时只补缺失的路径参数", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:userId/posts/:postId", {
+          validate: { param: { userId: "objectId!" } },
+        }),
+      ]);
+
+      const op = doc.paths["/users/{userId}/posts/{postId}"].get!;
+      expect(op.parameters).toHaveLength(2);
+      expect(op.parameters![0]).toMatchObject({
+        name: "userId",
+        in: "path",
+        required: true,
+        schema: { type: "string", pattern: "^[0-9a-fA-F]{24}$" },
+      });
+      expect(op.parameters![1]).toEqual({
+        name: "postId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      });
+    });
+
+    it("生成的 path template 都声明对应 required path parameter", () => {
+      const doc = generate([
+        createRoute("GET", "/users/:id"),
+        createRoute("GET", "/files/*path"),
+        createRoute("GET", "/orgs/:orgId/users/:userId", {
+          validate: { param: { orgId: "string:1-" } },
+        }),
+      ]);
+
+      expectPathTemplateParametersAreDeclared(doc);
+    });
+
+    it("文档说明未声明 validate.param 时的 OpenAPI path parameter 默认策略", () => {
+      const zhValidation = readRepoFile("website/docs/zh/guide/validation.md");
+      const enValidation = readRepoFile("website/docs/en/guide/validation.md");
+      const zhRoute = readRepoFile("website/docs/zh/api/route-definition.md");
+      const enRoute = readRepoFile("website/docs/en/api/route-definition.md");
+
+      expect(zhValidation).toContain(
+        "OpenAPI 仍会为该路径段生成 `required: true` 的 string path parameter",
+      );
+      expect(enValidation).toContain(
+        "OpenAPI still emits a `required: true` string path parameter",
+      );
+      expect(zhRoute).toContain("避免生成非法路径模板");
+      expect(enRoute).toContain("so the generated path template is valid");
     });
   });
 

@@ -319,12 +319,14 @@ export class OpenAPIGenerator {
     const validateParams =
       (options.validate as Record<string, unknown>)?.params ??
       options.validate?.param;
+    const documentedPathParams = new Set<string>();
     if (validateParams) {
       const params = validateParams as Record<string, string>;
       for (const [name, dsl] of Object.entries(params)) {
         const { schema } = this.converter.convertDSLString(
           typeof dsl === "string" ? dsl : "string",
         );
+        documentedPathParams.add(name);
         operation.parameters!.push({
           name,
           in: "path",
@@ -332,6 +334,17 @@ export class OpenAPIGenerator {
           schema,
         });
       }
+    }
+    for (const name of this.extractPathParameterNames(path)) {
+      if (documentedPathParams.has(name)) {
+        continue;
+      }
+      operation.parameters!.push({
+        name,
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      });
     }
 
     // ── 查询参数（query） ───────────────────────────────────
@@ -746,6 +759,23 @@ export class OpenAPIGenerator {
    */
   private convertPath(path: string): string {
     return path.replace(/:(\w+)/g, "{$1}").replace(/\*(\w+)/g, "{$1}");
+  }
+
+  private extractPathParameterNames(path: string): string[] {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    const pattern = /[:*](\w+)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(path)) !== null) {
+      const name = match[1];
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    }
+
+    return names;
   }
 
   /**

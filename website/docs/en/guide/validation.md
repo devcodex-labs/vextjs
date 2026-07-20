@@ -84,6 +84,8 @@ app.put(
 
 ::::tip note
 The singular `param` is used in `validate` (corresponding to the concept of path parameters), but the underlying data source is `req.params` (plural). The mapping has been done correctly inside the framework, you don’t need to worry about it.
+
+If a dynamic path uses `:id` or `*path` without `validate.param`, OpenAPI still emits a `required: true` string path parameter for that segment so the path template remains valid. Declare `validate.param` when you need stricter type, length, or format constraints.
 ::::
 
 ## Detailed explanation of DSL syntax
