@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   describe,
   it,
@@ -38,6 +41,11 @@ const mockReadPidFile = readPidFile as ReturnType<typeof vi.fn>;
 const mockIsProcessAlive = isProcessAlive as ReturnType<typeof vi.fn>;
 const mockRemovePidFile = removePidFile as ReturnType<typeof vi.fn>;
 
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+
 // ── 全局 Spy ───────────────────────────────────────────────
 
 let consoleLogSpy: MockInstance<(...args: unknown[]) => void>;
@@ -77,6 +85,14 @@ function failPidResult(
   pid?: number,
 ): PidFileResult {
   return { ok: false, error, path, pid };
+}
+
+function getConsoleLogMessages(): string[] {
+  return consoleLogSpy.mock.calls.map((call) => String(call[0]));
+}
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
 // ════════════════════════════════════════════════════════════
@@ -426,6 +442,10 @@ describe("vext status (statusCommand)", () => {
 
     await statusCommand([]);
 
+    expect(getConsoleLogMessages()).toEqual([
+      "Status: ⚪ not running",
+      "  PID file: /abs/.vext.pid (not found)",
+    ]);
     expect(consoleLogSpy).toHaveBeenCalledWith("Status: ⚪ not running");
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringContaining("not found"),
@@ -442,6 +462,13 @@ describe("vext status (statusCommand)", () => {
 
     await statusCommand([]);
 
+    expect(getConsoleLogMessages()).toEqual([
+      "Status: 🔴 stale (PID file exists but process is dead)",
+      "  PID file: /abs/.vext.pid",
+      "  PID:      23456 (not running)",
+      "",
+      '  Tip: Run "vext stop" to clean up the stale PID file.',
+    ]);
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringContaining("🔴 stale"),
     );
@@ -467,6 +494,12 @@ describe("vext status (statusCommand)", () => {
       globalThis.fetch = originalFetch;
     }
 
+    expect(getConsoleLogMessages()).toEqual([
+      "Status: 🟢 running",
+      "  Master PID: 23456",
+      "  PID file:   /abs/.vext.pid",
+      "  Health:     (endpoint unreachable at http://127.0.0.1:3000/health)",
+    ]);
     expect(consoleLogSpy).toHaveBeenCalledWith("Status: 🟢 running");
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringContaining("Master PID: 23456"),
@@ -484,8 +517,8 @@ describe("vext status (statusCommand)", () => {
     mockIsProcessAlive.mockReturnValue(true);
 
     const healthData = {
-      pid: 23457,
-      uptime: 3661, // 1h 1m 1s
+      pid: 12346,
+      uptime: 9312, // 2h 35m 12s
       memory: {
         heapUsed: 67_108_864, // 64 MB
         rss: 134_217_728, // 128 MB
@@ -504,9 +537,35 @@ describe("vext status (statusCommand)", () => {
       globalThis.fetch = originalFetch;
     }
 
+    const expectedOutput = [
+      "Status: 🟢 running",
+      "  Master PID: 23456",
+      "  PID file:   .vext.pid",
+      "  Worker PID: 12346",
+      "  Uptime:     2h 35m 12s",
+      "  Heap Used:  64.0 MB",
+      "  RSS:        128.0 MB",
+    ];
+    const expectedDocsOutput = [
+      "Status: 🟢 running",
+      "  Master PID: 12345",
+      "  PID file:   .vext.pid",
+      "  Worker PID: 12346",
+      "  Uptime:     2h 35m 12s",
+      "  Heap Used:  64.0 MB",
+      "  RSS:        128.0 MB",
+    ];
+
+    expect(getConsoleLogMessages()).toEqual(expectedOutput);
+    expect(readRepoFile("website/docs/zh/guide/cluster.md")).toContain(
+      expectedDocsOutput.join("\n"),
+    );
+    expect(readRepoFile("website/docs/en/guide/cluster.md")).toContain(
+      expectedDocsOutput.join("\n"),
+    );
     expect(consoleLogSpy).toHaveBeenCalledWith("Status: 🟢 running");
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Worker PID: 23457"),
+      expect.stringContaining("Worker PID: 12346"),
     );
     expect(consoleLogSpy).toHaveBeenCalledWith(
       expect.stringContaining("Uptime:"),
@@ -682,6 +741,23 @@ describe("vext status (statusCommand)", () => {
 
     // 仅应输出 running 状态，无 Worker 详情
     expect(consoleLogSpy).toHaveBeenCalledWith("Status: 🟢 running");
+  });
+
+  it("should keep Cluster docs aligned with simplified status output", () => {
+    const zhDocs = readRepoFile("website/docs/zh/guide/cluster.md");
+    const enDocs = readRepoFile("website/docs/en/guide/cluster.md");
+
+    for (const doc of [zhDocs, enDocs]) {
+      expect(doc).not.toContain("Cluster Status\n");
+      expect(doc).not.toMatch(/Workers:\s+\d/u);
+      expect(doc).not.toMatch(/Worker\s+PID\s+Status\s+Uptime\s+Requests/u);
+      expect(doc).not.toContain("45,230");
+    }
+
+    expect(zhDocs).toContain("当前命令不会输出 worker 表或请求数");
+    expect(enDocs).toContain(
+      "The current command does not print a worker table",
+    );
   });
 });
 

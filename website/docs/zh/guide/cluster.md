@@ -218,21 +218,19 @@ Worker 3:                               [运行中] → [关闭] → [重启] �
 vext status
 ```
 
-输出示例：
+输出示例（Master 进程存活且 `/health` 可达）：
 
 ```
-Cluster Status
-──────────────────────────────
-Master PID:  12345
-Workers:     4 / 4 (all healthy)
-Uptime:      2h 35m 12s
-
-Worker  PID    Status   Uptime      Requests
-  1     12346  healthy  2h 35m 12s  45,230
-  2     12347  healthy  2h 35m 11s  44,891
-  3     12348  healthy  2h 35m 10s  45,102
-  4     12349  healthy  2h 35m 09s  44,975
+Status: 🟢 running
+  Master PID: 12345
+  PID file:   .vext.pid
+  Worker PID: 12346
+  Uptime:     2h 35m 12s
+  Heap Used:  64.0 MB
+  RSS:        128.0 MB
 ```
+
+如果 `/health` 不可达，`vext status` 仍会报告 Master 进程状态，并提示健康端点不可达。当前命令不会输出 worker 表或请求数；如需多 Worker 指标，请接入 Prometheus 或其他监控系统。
 
 ## 自动故障恢复
 
@@ -470,7 +468,7 @@ services:
 
 ### 如何监控各 Worker 的状态？
 
-使用 `vext status` 命令查看各 Worker 的运行状态、PID、存活时间和请求计数。在生产环境中，建议配合 Prometheus 或其他监控工具收集更详细的指标。
+使用 `vext status` 查看 Master PID、PID 文件状态，以及 `/health` 可达时的单个健康端点详情。当前命令不输出各 Worker 的表格或请求计数；生产环境建议配合 Prometheus 或其他监控工具收集更详细的多 Worker 指标。
 
 ### 与 PM2 有何区别？
 

@@ -210,21 +210,19 @@ Applicable scenarios:
 vext status
 ```
 
-Output example:
+Output example when the Master process is alive and `/health` is reachable:
 
 ```
-Cluster Status
-─────────────────────────────
-Master PID: 12345
-Workers: 4 / 4 (all healthy)
-Uptime: 2h 35m 12s
-
-Worker PID Status Uptime Requests
-  1 12346 healthy 2h 35m 12s 45,230
-  2 12347 healthy 2h 35m 11s 44,891
-  3 12348 healthy 2h 35m 10s 45,102
-  4 12349 healthy 2h 35m 09s 44,975
+Status: 🟢 running
+  Master PID: 12345
+  PID file:   .vext.pid
+  Worker PID: 12346
+  Uptime:     2h 35m 12s
+  Heap Used:  64.0 MB
+  RSS:        128.0 MB
 ```
+
+If `/health` is unreachable, `vext status` still reports the Master process state and notes that the health endpoint could not be reached. The current command does not print a worker table or request counts; use Prometheus or another monitoring system for multi-worker metrics.
 
 ## Automatic failure recovery
 
@@ -462,7 +460,7 @@ Long connections (WebSocket, SSE) need to consider sticky session in Cluster mod
 
 ### How to monitor the status of each Worker?
 
-Use the `vext status` command to view the running status, PID, survival time and request count of each Worker. In a production environment, it is recommended to use Prometheus or other monitoring tools to collect more detailed indicators.
+Use `vext status` to view the Master PID, PID file state, and single health endpoint details when `/health` is reachable. The current command does not emit a table for each Worker or per-worker request counts; production environments should use Prometheus or another monitoring system for richer multi-worker metrics.
 
 ### How is it different from PM2?
 
