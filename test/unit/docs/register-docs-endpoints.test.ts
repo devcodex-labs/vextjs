@@ -141,6 +141,7 @@ describe("registerDocsEndpoints", () => {
     expect(paths).toContain("/_vext/docs/search.json");
     expect(paths).toContain("/_vext/docs/app.js");
     expect(paths).toContain("/_vext/docs/style.css");
+    expect(paths).toContain("/_vext/docs/favicon.svg");
     expect(paths).not.toContain("/_vext/scalar.js");
 
     const docsRoute = app.routes.find((route) => route.path === "/docs");
@@ -152,7 +153,10 @@ describe("registerDocsEndpoints", () => {
     expect(response.body).toContain(
       '<html lang="en" data-vext-docs-theme="system" data-vext-docs-density="comfortable">',
     );
-    expect(response.body).toContain('<link rel="icon" href="data:,">');
+    expect(response.body).toContain(
+      '<link rel="icon" type="image/svg+xml" href="/_vext/docs/favicon.svg?v=',
+    );
+    expect(response.body).not.toContain('href="data:,"');
     expect(response.body).toContain('id="vext-docs-critical-boot"');
     expect(response.body).toContain('localStorage.getItem("vext-docs-theme")');
     expect(response.body).toContain('id="vext-docs-critical-style"');
@@ -168,8 +172,12 @@ describe("registerDocsEndpoints", () => {
     const styleAssetVersion = response.body.match(
       /\/_vext\/docs\/style\.css\?v=([^"]+)/,
     )?.[1];
+    const faviconAssetVersion = response.body.match(
+      /\/_vext\/docs\/favicon\.svg\?v=([^"]+)/,
+    )?.[1];
     expect(appAssetVersion).toBeTruthy();
     expect(styleAssetVersion).toBe(appAssetVersion);
+    expect(faviconAssetVersion).toBe(appAssetVersion);
     expect(response.body).toContain('"theme":"system"');
     expect(response.body).toContain('"density":"comfortable"');
     expect(response.body).toContain(`"assetVersion":"${appAssetVersion}"`);
@@ -201,6 +209,9 @@ describe("registerDocsEndpoints", () => {
     );
     const styleCssRoute = app.routes.find(
       (route) => route.path === "/_system/docs/style.css",
+    );
+    const faviconRoute = app.routes.find(
+      (route) => route.path === "/_system/docs/favicon.svg",
     );
 
     const configResponse = createMockResponse();
@@ -249,6 +260,17 @@ describe("registerDocsEndpoints", () => {
     expect(styleCssResponse.headers["Cache-Control"]).toBe(
       "no-cache, max-age=0, must-revalidate",
     );
+
+    const faviconResponse = createMockResponse();
+    await faviconRoute!.chain[0]({}, faviconResponse);
+    expect(faviconResponse.headers["Content-Type"]).toBe(
+      "image/svg+xml; charset=utf-8",
+    );
+    expect(faviconResponse.headers["Cache-Control"]).toBe(
+      "no-cache, max-age=0, must-revalidate",
+    );
+    expect(faviconResponse.body).toContain("<svg");
+    expect(faviconResponse.body).toContain("Vext Docs");
   });
 
   it("uses assetsPublicPath only for browser-facing docs URLs", async () => {
@@ -264,8 +286,10 @@ describe("registerDocsEndpoints", () => {
     const paths = app.routes.map((route) => route.path);
     expect(paths).toContain("/_vext/docs/app.js");
     expect(paths).toContain("/_vext/docs/style.css");
+    expect(paths).toContain("/_vext/docs/favicon.svg");
     expect(paths).toContain("/_vext/docs/openapi.json");
     expect(paths).not.toContain("/admin/_vext/docs/app.js");
+    expect(paths).not.toContain("/admin/_vext/docs/favicon.svg");
     expect(paths).not.toContain("/admin/_vext/docs/openapi.json");
 
     const docsRoute = app.routes.find((route) => route.path === "/docs");
@@ -273,6 +297,7 @@ describe("registerDocsEndpoints", () => {
     await docsRoute!.chain[0]({}, docsResponse);
     expect(docsResponse.body).toContain("/admin/_vext/docs/app.js?v=");
     expect(docsResponse.body).toContain("/admin/_vext/docs/style.css?v=");
+    expect(docsResponse.body).toContain("/admin/_vext/docs/favicon.svg?v=");
     expect(docsResponse.body).toContain('"assetsPath":"/admin/_vext/docs"');
     expect(docsResponse.body).toContain(
       '"openapi":"/admin/_vext/docs/openapi.json"',
@@ -287,9 +312,22 @@ describe("registerDocsEndpoints", () => {
       assetsPath: "/admin/_vext/docs",
       endpoints: expect.objectContaining({
         appJs: "/admin/_vext/docs/app.js",
+        faviconSvg: "/admin/_vext/docs/favicon.svg",
         openapi: "/admin/_vext/docs/openapi.json",
       }),
     });
+  });
+
+  it("documents docs asset endpoints including favicon", () => {
+    const zhApi = readRepoFile("website/docs/zh/api/config.md");
+    const enApi = readRepoFile("website/docs/en/api/config.md");
+    const zhGuide = readRepoFile("website/docs/zh/guide/configuration.md");
+    const enGuide = readRepoFile("website/docs/en/guide/configuration.md");
+
+    expect(zhApi).toContain("app.js / style.css / favicon.svg");
+    expect(enApi).toContain("app.js / style.css / favicon.svg");
+    expect(zhGuide).toContain("app.js / style.css / favicon.svg");
+    expect(enGuide).toContain("app.js / style.css / favicon.svg");
   });
 
   it("exposes automatic version sources and filters source data endpoints", async () => {

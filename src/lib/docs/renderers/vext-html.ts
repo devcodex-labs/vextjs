@@ -204,7 +204,7 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="${escapeHtml(versionedAssetUrl(config.publicEndpoints.faviconSvg))}">
   ${renderCriticalBootScript()}
   ${renderCriticalStyle()}
   <link rel="stylesheet" href="${escapeHtml(versionedAssetUrl(config.publicEndpoints.styleCss))}">

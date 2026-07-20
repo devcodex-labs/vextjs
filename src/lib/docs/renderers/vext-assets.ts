@@ -1637,6 +1637,11 @@ body {
 }
 `;
 
+export const VEXT_DOCS_FAVICON_SVG: string = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vext Docs">
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <path d="M16 18h9l7 21 7-21h9L36.5 48h-9L16 18Z" fill="#f8fafc"/>
+</svg>`;
+
 export const VEXT_DOCS_APP_JS: string = `
 (() => {
   const configEl = document.getElementById("vext-docs-config");

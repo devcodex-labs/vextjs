@@ -47,6 +47,7 @@ function createEndpointMap(base: string): ResolvedVextDocsConfig["endpoints"] {
     source: joinAssetPath(base, "source"),
     appJs: joinAssetPath(base, "app.js"),
     styleCss: joinAssetPath(base, "style.css"),
+    faviconSvg: joinAssetPath(base, "favicon.svg"),
   };
 }
 

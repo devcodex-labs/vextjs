@@ -12,6 +12,7 @@ import { normalizeDocsConfig } from "./normalize-config.js";
 import { renderVextDocsHTML } from "./renderers/vext-html.js";
 import {
   VEXT_DOCS_APP_JS,
+  VEXT_DOCS_FAVICON_SVG,
   VEXT_DOCS_STYLE_CSS,
 } from "./renderers/vext-assets.js";
 import {
@@ -226,6 +227,14 @@ function registerVextDocsAssets(
       res.setHeader("Content-Type", "text/css; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
       res.text(VEXT_DOCS_STYLE_CSS);
+    },
+  ]);
+
+  app.adapter.registerRoute("GET", config.endpoints.faviconSvg, [
+    async (_req, res) => {
+      res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
+      res.text(VEXT_DOCS_FAVICON_SVG);
     },
   ]);
 }

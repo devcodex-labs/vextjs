@@ -32,6 +32,7 @@ export interface VextDocsEndpointMap {
   source: string;
   appJs: string;
   styleCss: string;
+  faviconSvg: string;
 }
 
 export interface VextDocsRequestContext {
