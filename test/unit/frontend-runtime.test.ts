@@ -1853,19 +1853,59 @@ describe("frontend static mount", () => {
     const firstRes = createMockResponse();
     await handler(createMockRequest("/index.html"), firstRes, async () => {});
     expect(firstRes.headers.ETag).toBeDefined();
+    expect(firstRes.headers["Last-Modified"]).toBeDefined();
     expect(firstRes.headers["Content-Length"]).toBe("16");
 
-    const conditionalRes = createMockResponse();
+    const etagRes = createMockResponse();
     await handler(
       createMockRequest("/index.html", {
         "if-none-match": firstRes.headers.ETag,
       }),
-      conditionalRes,
+      etagRes,
       async () => {},
     );
 
-    expect(conditionalRes.statusCode).toBe(304);
-    expect(conditionalRes.headers["Content-Length"]).not.toBe("16");
+    expect(etagRes.statusCode).toBe(304);
+    expect(etagRes.headers["Content-Length"]).not.toBe("16");
+    expect(etagRes.streamed).toBe(false);
+
+    const modifiedSinceRes = createMockResponse();
+    await handler(
+      createMockRequest("/index.html", {
+        "if-modified-since": firstRes.headers["Last-Modified"],
+      }),
+      modifiedSinceRes,
+      async () => {},
+    );
+
+    expect(modifiedSinceRes.statusCode).toBe(304);
+    expect(modifiedSinceRes.headers["Content-Length"]).not.toBe("16");
+    expect(modifiedSinceRes.streamed).toBe(false);
+
+    const headReq = createMockRequest("/index.html", {
+      "if-modified-since": firstRes.headers["Last-Modified"],
+    });
+    headReq.method = "HEAD";
+    const headRes = createMockResponse();
+    await handler(headReq, headRes, async () => {});
+
+    expect(headRes.statusCode).toBe(304);
+    expect(headRes.headers["Content-Length"]).not.toBe("16");
+    expect(headRes.streamed).toBe(false);
+
+    const mismatchedEtagRes = createMockResponse();
+    await handler(
+      createMockRequest("/index.html", {
+        "if-none-match": 'W/"stale"',
+        "if-modified-since": firstRes.headers["Last-Modified"],
+      }),
+      mismatchedEtagRes,
+      async () => {},
+    );
+
+    expect(mismatchedEtagRes.statusCode).toBe(200);
+    expect(mismatchedEtagRes.headers["Content-Length"]).toBe("16");
+    expect(mismatchedEtagRes.streamed).toBe(true);
   });
 });
 

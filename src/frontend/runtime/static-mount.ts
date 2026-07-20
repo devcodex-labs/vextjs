@@ -140,7 +140,13 @@ function serveFile(
     .setHeader("Cache-Control", cacheControlFor(filePath))
     .setHeader("Content-Type", forcedContentType ?? mimeTypeFor(filePath));
 
-  if (req.headers["if-none-match"] === etag) {
+  const ifNoneMatch = req.headers["if-none-match"];
+  if (ifNoneMatch !== undefined) {
+    if (ifNoneMatch === etag) {
+      res.status(304).text("");
+      return true;
+    }
+  } else if (isNotModifiedSince(req.headers["if-modified-since"], stat)) {
     res.status(304).text("");
     return true;
   }
@@ -157,6 +163,16 @@ function serveFile(
     forcedContentType ?? mimeTypeFor(filePath),
   );
   return true;
+}
+
+function isNotModifiedSince(
+  header: string | undefined,
+  stat: { mtimeMs: number },
+): boolean {
+  if (!header) return false;
+  const sinceMs = Date.parse(header);
+  if (!Number.isFinite(sinceMs)) return false;
+  return Math.trunc(stat.mtimeMs / 1000) <= Math.trunc(sinceMs / 1000);
 }
 
 function resolveSpaFallbackScope(
