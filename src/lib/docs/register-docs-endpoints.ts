@@ -122,6 +122,7 @@ function registerDocsDataEndpoints(
       const resolvedSpec = await resolveOpenAPISpecForEndpoint(spec, config, {
         request,
         source: selected.source,
+        filterOptions: { includeVisibilityOnly: true },
       });
       res.setHeader("Content-Type", "application/json");
       res.rawJson(resolvedSpec);
@@ -170,6 +171,7 @@ function registerDocsDataEndpoints(
       const resolvedSpec = await resolveOpenAPISpecForEndpoint(spec, config, {
         request,
         source: selected.source,
+        filterOptions: { includeVisibilityOnly: true },
       });
       const codeDocs = await resolveCodeDocsForView(
         codeDocsProvider,
@@ -540,6 +542,7 @@ async function resolveVisibleDocsSources(
 ): Promise<ResolvedVextDocsSource[]> {
   const document = await resolveOpenAPISpecForEndpoint(spec, config, {
     request,
+    filterOptions: { includeVisibilityOnly: true },
   });
   const visible: ResolvedVextDocsSource[] = [];
   for (const source of resolveDocsSources(document, config)) {

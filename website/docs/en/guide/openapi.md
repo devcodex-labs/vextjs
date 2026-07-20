@@ -856,7 +856,7 @@ export default {
 };
 ```
 
-`visibility-only` keeps the public `/openapi.json` complete while the Vext Docs page, code docs, search data, and menu receive visibility-filtered data. Use `enforce` when hidden operations or code docs must also be removed from canonical docs data.
+`visibility-only` keeps the public `/openapi.json` complete while the Vext Docs page, docs OpenAPI/config source data, code docs, search data, and menu receive visibility-filtered data. Use `enforce` when hidden operations or code docs must also be removed from canonical docs data.
 
 ## Custom document path
 

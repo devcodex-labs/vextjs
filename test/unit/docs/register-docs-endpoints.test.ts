@@ -845,4 +845,97 @@ describe("registerDocsEndpoints", () => {
     await docsOpenAPIRoute!.chain[0]({}, docsResponse);
     expect((docsResponse.body as typeof spec).paths["/admin"]).toBeUndefined();
   });
+
+  it("filters docs UI OpenAPI, search and source data in visibility-only mode", async () => {
+    const app = createMockApp();
+    const docsSpec = {
+      ...spec,
+      tags: [{ name: "users" }, { name: "admin" }],
+      "x-tagGroups": [
+        { name: "Public", tags: ["users"] },
+        { name: "Admin", tags: ["admin"] },
+      ],
+      paths: {
+        "/users": {
+          get: {
+            tags: ["users"],
+            operationId: "listUsers",
+            summary: "List users",
+            responses: { 200: { description: "OK" } },
+          },
+        },
+        "/admin": {
+          get: {
+            tags: ["admin"],
+            operationId: "adminStats",
+            summary: "Admin stats",
+            responses: { 200: { description: "OK" } },
+          },
+        },
+      },
+    };
+    registerDocsEndpoints(app, docsSpec, {
+      title: "Test API",
+      docs: {
+        access: {
+          mode: "visibility-only",
+          resolver: ({ descriptor }) => descriptor.path !== "/admin",
+        },
+      },
+    });
+
+    const canonicalRoute = app.routes.find(
+      (route) => route.path === "/openapi.json",
+    );
+    const configRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/config.json",
+    );
+    const docsOpenAPIRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/openapi.json",
+    );
+    const searchRoute = app.routes.find(
+      (route) => route.path === "/_vext/docs/search.json",
+    );
+
+    const canonicalResponse = createMockResponse();
+    await canonicalRoute!.chain[0]({}, canonicalResponse);
+    expect(
+      (canonicalResponse.body as typeof docsSpec).paths["/admin"],
+    ).toBeDefined();
+
+    const configResponse = createMockResponse();
+    await configRoute!.chain[0]({}, configResponse);
+    expect(configResponse.body).toMatchObject({
+      sources: [
+        expect.objectContaining({
+          id: "all",
+          operationCount: 1,
+        }),
+      ],
+    });
+
+    const docsOpenAPIResponse = createMockResponse();
+    await docsOpenAPIRoute!.chain[0]({}, docsOpenAPIResponse);
+    expect(
+      (docsOpenAPIResponse.body as typeof docsSpec).paths["/users"],
+    ).toBeDefined();
+    expect(
+      (docsOpenAPIResponse.body as typeof docsSpec).paths["/admin"],
+    ).toBeUndefined();
+    expect(docsOpenAPIResponse.body).toMatchObject({
+      tags: [{ name: "users" }],
+      "x-tagGroups": [{ name: "Public", tags: ["users"] }],
+    });
+
+    const searchResponse = createMockResponse();
+    await searchRoute!.chain[0]({}, searchResponse);
+    expect(searchResponse.body).toEqual(
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ kind: "openapi", path: "/users" }),
+        ]),
+      }),
+    );
+    expect(JSON.stringify(searchResponse.body)).not.toContain("/admin");
+  });
 });

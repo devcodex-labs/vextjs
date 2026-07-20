@@ -848,7 +848,7 @@ export default {
 };
 ```
 
-`visibility-only` 会保持公开 `/openapi.json` 完整，但 Vext Docs 页面、code docs、search 数据和菜单会收到按可见性过滤后的数据。若隐藏的 operations 或 code docs 也必须从 canonical docs data 中移除，应使用 `enforce`。
+`visibility-only` 会保持公开 `/openapi.json` 完整，但 Vext Docs 页面、文档 OpenAPI 数据、config source 数据、code docs、search 数据和菜单会收到按可见性过滤后的数据。若隐藏的 operations 或 code docs 也必须从 canonical docs data 中移除，应使用 `enforce`。
 
 ## 自定义文档路径
 
