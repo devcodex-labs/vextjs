@@ -79,6 +79,8 @@ npx vextjs create my-api --template api --frontend none
 npx vextjs create my-app --skip-install
 ```
 
+命令只接受一个项目名；多余的位置参数会在创建目标目录前直接失败。自动安装依赖失败时，`create` 以非零状态退出但保留已生成文件，可执行 `cd <project-name>` 后重新运行 `npm install`。生成的 TypeScript 全栈项目会为内置的 `@frontend`、`@pages`、`@components`、`@styles` 和 `@assets` 提供兼容 NodeNext 的路径映射。
+
 ### 生成的目录结构
 
 ```

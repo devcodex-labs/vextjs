@@ -178,9 +178,12 @@ export async function createCommand(args: string[] = []): Promise<void> {
       });
       console.log("");
     } catch {
-      console.warn(
-        "\n  ⚠️  npm install failed. You can run it manually later.\n",
+      console.error(
+        "\n  ❌ npm install failed. Project files were generated, but dependencies were not installed.\n\n" +
+          `  Retry:\n\n    cd ${options.name}\n    npm install\n`,
       );
+      process.exitCode = 1;
+      return;
     }
   }
 
@@ -225,6 +228,19 @@ function parseCreateArgs(args: string[]): CreateOptions | null {
         "\n  ❌ Project name is required.\n\n" +
           "  Usage: vext create <project-name> [options]\n\n" +
           "  Run 'vext create --help' for more information.\n",
+      );
+      process.exit(1);
+      return null;
+    }
+
+    if (positionals.length > 1) {
+      console.error(
+        `\n  ❌ Unexpected positional arguments: ${positionals
+          .slice(1)
+          .map((value) => `"${value}"`)
+          .join(", ")}\n\n` +
+          "  Usage: vext create <project-name> [options]\n\n" +
+          "  Only one project name is accepted.\n",
       );
       process.exit(1);
       return null;
@@ -523,7 +539,7 @@ function generatePackageJson(
     ...(isFullstack && isTs
       ? { "@types/react": "^19.2.17", "@types/react-dom": "^19.2.3" }
       : {}),
-    ...ADAPTER_DEV_DEPS[adapter],
+    ...(isTs ? ADAPTER_DEV_DEPS[adapter] : {}),
   };
 
   // 按 key 排序
@@ -777,6 +793,38 @@ function generateTsconfig(isFullstack: boolean): string {
       declaration: true,
       sourceMap: true,
       ...(isFullstack ? { jsx: "react-jsx" } : {}),
+      ...(isFullstack
+        ? {
+            baseUrl: ".",
+            paths: {
+              "@frontend/*": [
+                "src/frontend/*",
+                "src/frontend/*.js",
+                "src/frontend/*/index.js",
+              ],
+              "@pages/*": [
+                "src/frontend/pages/*",
+                "src/frontend/pages/*.js",
+                "src/frontend/pages/*/index.js",
+              ],
+              "@components/*": [
+                "src/frontend/components/*",
+                "src/frontend/components/*.js",
+                "src/frontend/components/*/index.js",
+              ],
+              "@styles/*": [
+                "src/frontend/styles/*",
+                "src/frontend/styles/*.js",
+                "src/frontend/styles/*/index.js",
+              ],
+              "@assets/*": [
+                "src/frontend/assets/*",
+                "src/frontend/assets/*.js",
+                "src/frontend/assets/*/index.js",
+              ],
+            },
+          }
+        : {}),
       strict: true,
       noUncheckedIndexedAccess: true,
       forceConsistentCasingInFileNames: true,

@@ -606,6 +606,47 @@ describe("E2E: CLI help and version", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Project name is required");
   });
+
+  it("default command fails promptly at a non-Vext package boundary", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "vext-cli-non-project-"));
+
+    try {
+      await writeFile(
+        join(rootDir, "package.json"),
+        `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`,
+        "utf-8",
+      );
+
+      const result = await runProcess("node", [CLI_ENTRY], {
+        cwd: rootDir,
+        timeout: 10_000,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("src/ directory not found");
+      expect(existsSync(join(rootDir, "src"))).toBe(false);
+    } finally {
+      await cleanupDir(rootDir);
+    }
+  });
+
+  it("create rejects extra positional arguments without writing a project", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "vext-cli-extra-positional-"));
+
+    try {
+      const result = await runProcess(
+        "node",
+        [CLI_ENTRY, "create", "first-project", "second-project", "--skip-install"],
+        { cwd: rootDir, timeout: 10_000 },
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unexpected positional arguments");
+      expect(existsSync(join(rootDir, "first-project"))).toBe(false);
+    } finally {
+      await cleanupDir(rootDir);
+    }
+  });
 });
 
 // ── 测试：vext build ────────────────────────────────────────

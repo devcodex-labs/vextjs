@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
+import * as ts from "typescript";
 
 // ── Mock 模块 ──────────────────────────────────────────────
 //
@@ -54,6 +55,7 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let processExitSpy: any;
+let originalExitCode: number | undefined;
 
 // ── 辅助函数 ────────────────────────────────────────────────
 
@@ -105,6 +107,8 @@ function setupFreshProject(): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  originalExitCode = process.exitCode;
+  process.exitCode = undefined;
   consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -118,6 +122,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.exitCode = originalExitCode;
   consoleLogSpy.mockRestore();
   consoleErrorSpy.mockRestore();
   consoleWarnSpy.mockRestore();
@@ -542,6 +547,93 @@ describe("vext create", () => {
         expect(tsconfig.exclude).toContain("node_modules");
         expect(tsconfig.exclude).toContain("dist");
       });
+
+      it("fullstack TS 模板生成与运行时一致的前端 alias", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        const tsconfig = JSON.parse(files["tsconfig.json"]);
+
+        expect(tsconfig.compilerOptions.baseUrl).toBe(".");
+        expect(tsconfig.compilerOptions.paths).toEqual({
+          "@frontend/*": [
+            "src/frontend/*",
+            "src/frontend/*.js",
+            "src/frontend/*/index.js",
+          ],
+          "@pages/*": [
+            "src/frontend/pages/*",
+            "src/frontend/pages/*.js",
+            "src/frontend/pages/*/index.js",
+          ],
+          "@components/*": [
+            "src/frontend/components/*",
+            "src/frontend/components/*.js",
+            "src/frontend/components/*/index.js",
+          ],
+          "@styles/*": [
+            "src/frontend/styles/*",
+            "src/frontend/styles/*.js",
+            "src/frontend/styles/*/index.js",
+          ],
+          "@assets/*": [
+            "src/frontend/assets/*",
+            "src/frontend/assets/*.js",
+            "src/frontend/assets/*/index.js",
+          ],
+        });
+      });
+
+      it("fullstack alias 可按 NodeNext ESM 规则解析 TSX 源文件", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        const tsconfig = JSON.parse(files["tsconfig.json"]);
+        const projectRoot = "E:/generated-vext-app";
+        const generatedPaths = new Set(
+          Object.keys(files).map((file) => `${projectRoot}/${file}`),
+        );
+        const result = ts.resolveModuleName(
+          "@components/AppShell",
+          `${projectRoot}/src/frontend/pages/layout.tsx`,
+          {
+            module: ts.ModuleKind.NodeNext,
+            moduleResolution: ts.ModuleResolutionKind.NodeNext,
+            baseUrl: projectRoot,
+            paths: tsconfig.compilerOptions.paths,
+          },
+          {
+            fileExists: (file) =>
+              generatedPaths.has(file.replaceAll("\\", "/")),
+            readFile: () => "",
+            directoryExists: () => true,
+            getCurrentDirectory: () => projectRoot,
+            getDirectories: () => [],
+          },
+          undefined,
+          undefined,
+          ts.ModuleKind.ESNext,
+        );
+
+        expect(result.resolvedModule?.resolvedFileName.replaceAll("\\", "/"))
+          .toBe(`${projectRoot}/src/frontend/components/AppShell.tsx`);
+      });
+
+      it("API-only TS 模板不生成前端 alias", async () => {
+        await createCommand([
+          "test-app",
+          "--template",
+          "api",
+          "--frontend",
+          "none",
+          "--skip-install",
+        ]);
+
+        const files = getWrittenFiles();
+        const tsconfig = JSON.parse(files["tsconfig.json"]);
+
+        expect(tsconfig.compilerOptions.paths).toBeUndefined();
+      });
     });
 
     describe(".gitignore", () => {
@@ -919,10 +1011,7 @@ describe("vext create", () => {
       const pkg = JSON.parse(files["package.json"]);
 
       expect(pkg.dependencies.express).toBeDefined();
-      // JS 模式没有 devDependencies（无 typescript + 无 @types）
-      // 但 ADAPTER_DEV_DEPS 仍会添加 @types —— 这取决于实现
-      // 检查实际行为：即使 JS 模式也会添加 @types（因为模板生成器不过滤）
-      // 这是可接受的行为，用户可以手动删除
+      expect(pkg.devDependencies?.["@types/express"]).toBeUndefined();
     });
 
     it("--adapter koa 添加 koa、@koa/router 依赖和 @types/koa", async () => {
@@ -935,6 +1024,23 @@ describe("vext create", () => {
       expect(pkg.dependencies.koa).toBeDefined();
       expect(pkg.devDependencies["@types/koa"]).toBeDefined();
       expect(files["src/config/default.ts"]).toContain("adapter: 'koa'");
+    });
+
+    it("--adapter koa --js 不添加 @types/koa", async () => {
+      await createCommand([
+        "test-app",
+        "--adapter",
+        "koa",
+        "--js",
+        "--skip-install",
+      ]);
+
+      const files = getWrittenFiles();
+      const pkg = JSON.parse(files["package.json"]);
+
+      expect(pkg.dependencies.koa).toBeDefined();
+      expect(pkg.dependencies["@koa/router"]).toBeDefined();
+      expect(pkg.devDependencies?.["@types/koa"]).toBeUndefined();
     });
 
     it("--adapter native 无额外依赖", async () => {
@@ -995,18 +1101,26 @@ describe("vext create", () => {
       expect(mockExecSync).not.toHaveBeenCalled();
     });
 
-    it("npm install 失败不阻塞项目创建", async () => {
+    it("npm install 失败保留项目并返回非零状态", async () => {
       mockExecSync.mockImplementation(() => {
         throw new Error("npm ERR!");
       });
 
       await createCommand(["test-app"]);
 
-      // 应输出警告但不退出
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
+      const files = getWrittenFiles();
+      expect(files["package.json"]).toBeDefined();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("npm install failed"),
       );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("npm install"),
+      );
+      expect(process.exitCode).toBe(1);
       expect(processExitSpy).not.toHaveBeenCalled();
+      expect(consoleLogSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('Project "test-app" created successfully'),
+      );
     });
   });
 
@@ -1217,12 +1331,15 @@ describe("vext create", () => {
   // ────────────────────────────────────────────────────────
 
   describe("边界场景", () => {
-    it("多个 positional 参数只取第一个作为项目名", async () => {
+    it("多个 positional 参数会被拒绝且不创建项目", async () => {
       await createCommand(["my-app", "extra-arg", "--skip-install"]);
 
-      const files = getWrittenFiles();
-      const pkg = JSON.parse(files["package.json"]);
-      expect(pkg.name).toBe("my-app");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Unexpected positional arguments"),
+      );
+      expect(mockMkdirSync).not.toHaveBeenCalled();
+      expect(getWrittenFiles()).toEqual({});
     });
 
     it("项目名中的特殊合法字符（下划线、点号、连字符）", async () => {

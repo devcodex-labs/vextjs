@@ -1,5 +1,10 @@
 # Unreleased
 
+## 2026-07-20
+
+- **CLI create failure contracts** Reject extra positional arguments before filesystem writes, keep generated files but return a non-zero status when automatic dependency installation fails, and avoid TypeScript-only adapter dependencies in JavaScript Express and Koa scaffolds.
+- **Full-stack TypeScript aliases** Generate NodeNext-compatible TypeScript path targets for the built-in frontend aliases so the default React scaffold can resolve `@components/AppShell` during typecheck.
+
 ## 2026-07-15
 
 - **v1 schema source adaptation (not released)** Adapted validation and OpenAPI generation to exact registry `schema-dsl@3.0.0` and `monsqlize@3.1.0` while keeping the vextjs package identity at `0.3.26`. Root imports no longer depend on or declare `String.prototype.description`; field descriptions now use `schemaAdapter.compileField(...).description(...)` explicitly.

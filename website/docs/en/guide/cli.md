@@ -78,6 +78,8 @@ npx vextjs create my-api --template api --frontend none
 npx vextjs create my-app --skip-install
 ```
 
+The command accepts exactly one project name. Extra positional arguments fail before any target directory is created. If automatic dependency installation fails, `create` exits non-zero and keeps the generated files; run `cd <project-name>` followed by `npm install` to retry. Generated TypeScript full-stack projects include NodeNext-compatible mappings for the built-in `@frontend`, `@pages`, `@components`, `@styles`, and `@assets` aliases.
+
 ### Generated directory structure
 
 ```

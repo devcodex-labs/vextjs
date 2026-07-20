@@ -175,6 +175,8 @@ vext create my-app --skip-install
 vext create my-app --force
 ```
 
+`vext create` accepts exactly one project name. Extra positional arguments are rejected before the target directory is written. If the automatic `npm install` step fails, the command exits non-zero but keeps the generated project so you can enter it and run `npm install` again. TypeScript full-stack projects include NodeNext-compatible mappings for `@frontend`, `@pages`, `@components`, `@styles`, and `@assets`.
+
 ## Configuration
 
 Configuration is loaded and merged in this order:
