@@ -4,6 +4,7 @@ import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
   beginResponseSend,
   finishResponseSend,
+  finishResponseSendAfterStreamSettlement,
 } from "../../lib/response-hooks.js";
 import {
   cloneHeaders,
@@ -325,8 +326,8 @@ export function createVextResponse(
       c.status(_status as any);
       c.header("Content-Type", contentType);
       applyHeaders();
+      finishResponseSendAfterStreamSettlement(res, sendState, readable);
       captureResponse(c.body(readable as any));
-      finishResponseSend(res, sendState);
     },
 
     download(
@@ -355,8 +356,8 @@ export function createVextResponse(
       replaceHeaders(_headers, sendState.headers);
       c.status(_status as any);
       applyHeaders();
+      finishResponseSendAfterStreamSettlement(res, sendState, readable);
       captureResponse(c.body(readable as any));
-      finishResponseSend(res, sendState);
     },
 
     redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {

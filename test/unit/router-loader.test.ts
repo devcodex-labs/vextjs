@@ -28,11 +28,13 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadRoutes } from "../../src/lib/router-loader.js";
 import { createHookManager } from "../../src/lib/hooks.js";
 import { createAnonymousAuthContext } from "../../src/lib/auth.js";
+import { createVextResponse as createNativeResponse } from "../../src/adapters/native/response.js";
 import { HttpError } from "../../src/types/errors.js";
 import type { VextApp, VextConfig } from "../../src/types/app.js";
 import type { VextAdapter, VextServerHandle } from "../../src/types/adapter.js";
@@ -337,6 +339,63 @@ function makeMultiRouteFile(
   return makeRouteFileContent(routes);
 }
 
+function makeStreamRouteFile(): string {
+  return `
+const routes = [];
+const collector = {
+  get(path, optionsOrHandler, handler) {
+    routes.push({
+      method: "GET",
+      path,
+      options: typeof optionsOrHandler === "function" ? {} : optionsOrHandler || {},
+      handler: typeof optionsOrHandler === "function" ? optionsOrHandler : handler,
+    });
+  },
+};
+
+function factory() {
+  collector.get("/stream", {}, async (req, res) => {
+    req.app.streamControl.events.push("handler");
+    res.stream(req.app.streamControl.readable, "text/plain");
+  });
+}
+
+function normalizePath(prefix, subPath) {
+  const cleanPrefix = prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
+  const cleanSubPath = subPath.startsWith("/") ? subPath.slice(1) : subPath;
+  if (!cleanSubPath) return cleanPrefix || "/";
+  if (cleanPrefix === "/") return "/" + cleanSubPath;
+  return cleanPrefix + "/" + cleanSubPath;
+}
+
+export default {
+  routes,
+  sourceFile: "",
+  register(adapter, prefix) {
+    for (const route of routes) {
+      adapter.registerRoute(route.method, normalizePath(prefix, route.path), [
+        async (req, res, _next) => route.handler(req, res),
+      ], route.options);
+    }
+  },
+  _factory: factory,
+  _collector: collector,
+};
+`;
+}
+
+async function executeTestChain(
+  chain: VextMiddleware[],
+  req: any,
+  res: any,
+): Promise<void> {
+  async function dispatch(index: number): Promise<void> {
+    if (index >= chain.length) return;
+    await chain[index]!(req, res, () => dispatch(index + 1));
+  }
+  await dispatch(0);
+}
+
 // ── 临时目录管理 ────────────────────────────────────────────
 
 let tmpDir: string;
@@ -352,6 +411,72 @@ afterEach(async () => {
 // ── 测试用例 ────────────────────────────────────────────────
 
 describe("router-loader", () => {
+  it("waits for stream response settlement before handler and middleware after phases", async () => {
+    const routesDir = join(tmpDir, "routes");
+    await writeRouteFile(routesDir, "files.mjs", makeStreamRouteFile());
+
+    const app = createMockApp();
+    const events: string[] = [];
+    const readable = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(),
+    }) as unknown as NodeJS.ReadableStream;
+    (app as any).streamControl = { readable, events };
+    app.hooks.on("handler:after", () => {
+      events.push("handler:after");
+    });
+
+    await loadRoutes(app, routesDir, {
+      middlewareDefs: {},
+      globalMiddlewares: [],
+    });
+
+    const route = app.mockAdapter.registeredRoutes.find(
+      (entry) => entry.path === "/files/stream",
+    );
+    expect(route).toBeDefined();
+
+    const nodeRes = Object.assign(new EventEmitter(), {
+      statusCode: 200,
+      setHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      end: vi.fn(),
+    });
+    const res = createNativeResponse(nodeRes as any, () => "req-1");
+    res._hooks = app.hooks;
+    const req = {
+      method: "GET",
+      requestId: "req-1",
+      params: {},
+      app,
+    };
+    const outerMiddleware: VextMiddleware = async (_req, _res, next) => {
+      events.push("middleware:before");
+      await next();
+      events.push("middleware:after");
+    };
+
+    const running = executeTestChain(
+      [outerMiddleware, ...route!.chain],
+      req,
+      res,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(readable.pipe).toHaveBeenCalledWith(nodeRes);
+    expect(events).toEqual(["middleware:before", "handler"]);
+
+    nodeRes.emit("finish");
+    await running;
+
+    expect(events).toEqual([
+      "middleware:before",
+      "handler",
+      "handler:after",
+      "middleware:after",
+    ]);
+  });
+
   // ── 空目录 / 不存在的目录 ────────────────────────────────
 
   describe("empty / missing directory", () => {

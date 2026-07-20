@@ -18,6 +18,7 @@ import {
 import { buildRouteAuthGuardMiddleware } from "./auth.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import { createRouteTimeoutMiddleware } from "./middlewares/route-timeout.js";
+import { waitForResponseSend } from "./response-hooks.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
 import type { VextInternalHooks, VextRouteHookInfo } from "../types/hooks.js";
@@ -441,6 +442,7 @@ function prepareRouteDefinitionRegistrations(
       });
       try {
         await route.handler(req, res);
+        await waitForResponseSend(res);
         await hooks.emitSafe("handler:after", {
           req,
           res,

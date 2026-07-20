@@ -6,6 +6,7 @@ import type { CookieSerializeOptions } from "../../types/cookies.js";
 import {
   beginResponseSend,
   finishResponseSend,
+  finishResponseSendAfterStreamSettlement,
 } from "../../lib/response-hooks.js";
 import {
   cloneHeaders,
@@ -424,8 +425,8 @@ class NativeVextResponse implements VextResponse {
     this._applyHeaders();
 
     // 使用 pipe 自动处理背压（backpressure）
+    finishResponseSendAfterStreamSettlement(this, sendState, readable, sr);
     (readable as NodeJS.ReadableStream).pipe(sr);
-    finishResponseSend(this, sendState);
   }
 
   /**
@@ -463,8 +464,8 @@ class NativeVextResponse implements VextResponse {
     sr.statusCode = this._status;
     this._applyHeaders();
 
+    finishResponseSendAfterStreamSettlement(this, sendState, readable, sr);
     (readable as NodeJS.ReadableStream).pipe(sr);
-    finishResponseSend(this, sendState);
   }
 
   /**

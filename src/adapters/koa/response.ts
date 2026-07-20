@@ -4,6 +4,7 @@ import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
   beginResponseSend,
   finishResponseSend,
+  finishResponseSendAfterStreamSettlement,
 } from "../../lib/response-hooks.js";
 import {
   cloneHeaders,
@@ -326,8 +327,13 @@ export function createVextResponse(
       ctx.res.setHeader("Content-Type", contentType);
       applyHeaders();
 
+      finishResponseSendAfterStreamSettlement(
+        res,
+        sendState,
+        readable,
+        ctx.res,
+      );
       readable.pipe(ctx.res);
-      finishResponseSend(res, sendState);
     },
 
     /**
@@ -364,8 +370,13 @@ export function createVextResponse(
       ctx.res.statusCode = _status;
       applyHeaders();
 
+      finishResponseSendAfterStreamSettlement(
+        res,
+        sendState,
+        readable,
+        ctx.res,
+      );
       readable.pipe(ctx.res);
-      finishResponseSend(res, sendState);
     },
 
     /**

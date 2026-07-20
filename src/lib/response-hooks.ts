@@ -16,6 +16,21 @@ export interface ResponseSendState {
   startedAt: number;
 }
 
+type EventEmitterLike = {
+  once?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  off?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  removeListener?: (
+    event: string,
+    listener: (...args: unknown[]) => void,
+  ) => unknown;
+  destroy?: (error?: Error) => unknown;
+  destroyed?: boolean;
+  writableEnded?: boolean;
+  readableEnded?: boolean;
+};
+
+const responseCompletions = new WeakMap<VextResponse, Promise<void>>();
+
 export function beginResponseSend(
   res: VextResponse,
   payload: {
@@ -64,4 +79,112 @@ export function finishResponseSend(
     requestId: state.requestId,
     durationMs: Math.round(performance.now() - state.startedAt),
   });
+}
+
+export function finishResponseSendAfterStreamSettlement(
+  res: VextResponse,
+  state: ResponseSendState,
+  readable: NodeJS.ReadableStream,
+  target?: EventEmitterLike,
+): void {
+  const completion = waitForStreamSettlement(readable, target).then(() => {
+    finishResponseSend(res, state);
+  });
+  responseCompletions.set(res, completion);
+  void completion;
+}
+
+export async function waitForResponseSend(res: VextResponse): Promise<void> {
+  await responseCompletions.get(res);
+}
+
+function waitForStreamSettlement(
+  readable: NodeJS.ReadableStream,
+  target?: EventEmitterLike,
+): Promise<void> {
+  const source = readable as EventEmitterLike;
+  const observedTarget = target && hasOnce(target) ? target : undefined;
+  const observedSource = hasOnce(source) ? source : undefined;
+
+  return new Promise((resolve) => {
+    if (!observedTarget && !observedSource) {
+      queueMicrotask(resolve);
+      return;
+    }
+
+    let settled = false;
+    const listeners: Array<{
+      emitter: EventEmitterLike;
+      event: string;
+      listener: (...args: unknown[]) => void;
+    }> = [];
+
+    const cleanup = () => {
+      for (const item of listeners) {
+        removeListener(item.emitter, item.event, item.listener);
+      }
+    };
+
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const fail = (error?: unknown) => {
+      destroyTarget(observedTarget, error);
+      settle();
+    };
+
+    const on = (
+      emitter: EventEmitterLike,
+      event: string,
+      listener: (...args: unknown[]) => void,
+    ) => {
+      emitter.once?.(event, listener);
+      listeners.push({ emitter, event, listener });
+    };
+
+    if (observedTarget) {
+      on(observedTarget, "finish", settle);
+      on(observedTarget, "close", settle);
+      on(observedTarget, "error", fail);
+      if (observedTarget.writableEnded || observedTarget.destroyed) {
+        queueMicrotask(settle);
+      }
+    } else if (observedSource) {
+      on(observedSource, "end", settle);
+      on(observedSource, "close", settle);
+      if (observedSource.readableEnded || observedSource.destroyed) {
+        queueMicrotask(settle);
+      }
+    }
+
+    if (observedSource) {
+      on(observedSource, "error", fail);
+    }
+  });
+}
+
+function hasOnce(value: EventEmitterLike): boolean {
+  return typeof value.once === "function";
+}
+
+function removeListener(
+  emitter: EventEmitterLike,
+  event: string,
+  listener: (...args: unknown[]) => void,
+): void {
+  if (typeof emitter.off === "function") {
+    emitter.off(event, listener);
+    return;
+  }
+  emitter.removeListener?.(event, listener);
+}
+
+function destroyTarget(target: EventEmitterLike | undefined, error: unknown) {
+  if (!target || typeof target.destroy !== "function") return;
+  if (target.destroyed || target.writableEnded) return;
+  target.destroy(error instanceof Error ? error : undefined);
 }
