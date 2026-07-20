@@ -77,6 +77,8 @@ src/                          dist/
 | `--minify`        | 压缩输出代码                                    | `false`      |
 | `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
 
+普通重复构建会自动清理已删除或重命名服务端源码留下的 `dist/**/*.js` 与 `dist/**/*.js.map` 后端 stale 产物，并保留 `dist/client/` 前端产物；`--clean` 用于在编译前彻底清空整个输出目录。
+
 ## 前端构建
 
 当 `config.frontend.enabled` 为 true 时，浏览器流水线使用 esbuild bundle 模式：

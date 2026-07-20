@@ -882,6 +882,53 @@ describe("BuildCompiler", () => {
       expect(content2).toContain("2.0.0");
     });
 
+    it("重新编译时应清理已删除源码留下的后端 dist 产物", async () => {
+      const compiler = createCompiler(projectRoot);
+      await compiler.build();
+
+      const staleRouteJs = path.join(projectRoot, "dist", "routes", "user.js");
+      const staleRouteMap = `${staleRouteJs}.map`;
+      const clientAsset = path.join(projectRoot, "dist", "client", "app.js");
+
+      fs.mkdirSync(path.dirname(clientAsset), { recursive: true });
+      fs.writeFileSync(clientAsset, "console.log('client asset');\n");
+      expect(fs.existsSync(staleRouteJs)).toBe(true);
+      expect(fs.existsSync(staleRouteMap)).toBe(true);
+
+      fs.rmSync(path.join(projectRoot, "src", "routes", "user.ts"));
+      await compiler.build();
+
+      expect(fs.existsSync(staleRouteJs)).toBe(false);
+      expect(fs.existsSync(staleRouteMap)).toBe(false);
+      expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(
+        true,
+      );
+      expect(
+        fs.existsSync(path.join(projectRoot, "dist", "package.json")),
+      ).toBe(true);
+      expect(fs.existsSync(clientAsset)).toBe(true);
+    });
+
+    it("关闭 sourcemap 重新编译时应清理旧的后端 .js.map 产物", async () => {
+      const compilerWithSourcemap = createCompiler(projectRoot, {
+        sourcemap: true,
+      });
+      await compilerWithSourcemap.build();
+
+      const indexMap = path.join(projectRoot, "dist", "index.js.map");
+      expect(fs.existsSync(indexMap)).toBe(true);
+
+      const compilerWithoutSourcemap = createCompiler(projectRoot, {
+        sourcemap: false,
+      });
+      await compilerWithoutSourcemap.build();
+
+      expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(
+        true,
+      );
+      expect(fs.existsSync(indexMap)).toBe(false);
+    });
+
     it("重新编译时应清理 dist/preload 中已删除的项目级 preload 产物", async () => {
       fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
       fs.writeFileSync(

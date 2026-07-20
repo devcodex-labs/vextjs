@@ -292,6 +292,7 @@ vext build && vext start
 - 输出目录默认为 `dist/`
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
+- 重复构建会自动移除已删除或重命名服务端源码留下的后端 stale 产物；`--clean` 表示先清空整个输出目录
 - 启用前端时，会生成 `dist/client/index.html`、`manifest.json`、`deploy-manifest.json`、`size-report.json`、静态资源与 client contract 产物
 - 使用 `--upload-assets` 时，会读取 `dist/client/deploy-manifest.json`，按 sha256 和 `frontend.deploy.upload.stateFile` 增量上传静态资源
 

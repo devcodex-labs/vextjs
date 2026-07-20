@@ -79,6 +79,8 @@ src/dist/
 | `--upload-assets`  | Upload frontend static assets after the frontend build       | `false`       |
 | `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false`       |
 
+Normal repeated builds automatically remove stale backend `dist/**/*.js` and `dist/**/*.js.map` outputs left by deleted or renamed server source files while preserving `dist/client/` frontend assets. Use `--clean` when you want to clear the entire output directory before compilation.
+
 ## Frontend build
 
 When `config.frontend.enabled` is true, the browser pipeline uses esbuild in bundle mode:

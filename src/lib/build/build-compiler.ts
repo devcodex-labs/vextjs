@@ -131,6 +131,9 @@ const BUILD_EXTRA_IGNORE = [
 
 const PROJECT_PRELOAD_DIR = "preload";
 const PROJECT_PRELOAD_PATTERN = /\.(ts|mts|js|mjs)$/i;
+const SOURCE_ENTRY_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
+const OWNED_BACKEND_OUTPUT_GLOBS = ["**/*.js", "**/*.js.map"];
+const OWNED_BACKEND_OUTPUT_IGNORE = [`${PROJECT_PRELOAD_DIR}/**`, "client/**"];
 
 // ── BuildCompiler 类 ────────────────────────────────────────
 
@@ -177,6 +180,8 @@ export class BuildCompiler {
           `         Expected .ts or .js files in src/ directory.`,
       );
     }
+
+    await this.cleanStaleBackendOutputs(entryPoints, sourcemap);
 
     // ── 2. 构建 esbuild 配置 ────────────────────────────────
     //
@@ -366,6 +371,63 @@ export class BuildCompiler {
     });
   }
 
+  private async cleanStaleBackendOutputs(
+    entryPoints: string[],
+    sourcemap: boolean,
+  ): Promise<void> {
+    const { outDir } = this.options;
+    if (!fs.existsSync(outDir)) {
+      return;
+    }
+
+    const expectedOutputs = this.createExpectedBackendOutputs(
+      entryPoints,
+      sourcemap,
+    );
+    const candidates = await fg.glob(OWNED_BACKEND_OUTPUT_GLOBS, {
+      cwd: outDir,
+      ignore: OWNED_BACKEND_OUTPUT_IGNORE,
+      onlyFiles: true,
+      dot: true,
+    });
+    const staleDirs = new Set<string>();
+
+    await Promise.all(
+      candidates.map(async (relativeOutput) => {
+        const outputPath = path.resolve(outDir, relativeOutput);
+        if (expectedOutputs.has(outputPath)) {
+          return;
+        }
+
+        await fs.promises.rm(outputPath, { force: true });
+        staleDirs.add(path.dirname(outputPath));
+      }),
+    );
+
+    await pruneEmptyDirectories(staleDirs, outDir);
+  }
+
+  private createExpectedBackendOutputs(
+    entryPoints: string[],
+    sourcemap: boolean,
+  ): Set<string> {
+    const expectedOutputs = new Set<string>();
+
+    for (const entryPoint of entryPoints) {
+      const outputPath = path.resolve(
+        this.options.outDir,
+        entryPoint.replace(SOURCE_ENTRY_EXTENSION_PATTERN, ".js"),
+      );
+      expectedOutputs.add(outputPath);
+
+      if (sourcemap) {
+        expectedOutputs.add(`${outputPath}.map`);
+      }
+    }
+
+    return expectedOutputs;
+  }
+
   // ── Getter 方法 ──────────────────────────────────────────
 
   /** 获取源码目录 */
@@ -400,5 +462,39 @@ function isBuildFailure(
     err !== null &&
     "errors" in err &&
     Array.isArray((err as Record<string, unknown>).errors)
+  );
+}
+
+async function pruneEmptyDirectories(
+  directories: Set<string>,
+  outDir: string,
+): Promise<void> {
+  const sortedDirectories = [...directories].sort(
+    (a, b) => b.length - a.length,
+  );
+
+  for (const directory of sortedDirectories) {
+    if (path.resolve(directory) === path.resolve(outDir)) {
+      continue;
+    }
+
+    try {
+      await fs.promises.rmdir(directory);
+    } catch (err) {
+      if (!isIgnorableDirectoryPruneError(err)) {
+        throw err;
+      }
+    }
+  }
+}
+
+function isIgnorableDirectoryPruneError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    ["ENOTEMPTY", "ENOENT", "EPERM"].includes(
+      String((err as NodeJS.ErrnoException).code),
+    )
   );
 }
