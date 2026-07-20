@@ -3,6 +3,18 @@ import type { VextMiddleware, VextHandler } from "../types/middleware.js";
 import type { VextAdapter } from "../types/adapter.js";
 import type { RouteDefinition, RouteFactory } from "../types/route.js";
 
+const ROUTE_INTERNALS_SYMBOL = Symbol.for("vext.routeDefinition.internals");
+
+interface RouteDefinitionInternals {
+  factory: RouteFactory;
+  collector: Record<string, unknown>;
+}
+
+const routeDefinitionInternals = new WeakMap<
+  RouteDefinition,
+  RouteDefinitionInternals
+>();
+
 /**
  * defineRoutes — 路由定义辅助函数
  *
@@ -49,6 +61,10 @@ import type { RouteDefinition, RouteFactory } from "../types/route.js";
  * })
  */
 export function defineRoutes(factory: RouteFactory): RouteDefinition {
+  if (typeof factory !== "function") {
+    throw new Error("[vextjs] defineRoutes(factory) expects a function.");
+  }
+
   const routes: RouteRecord[] = [];
 
   // ── 创建路由收集方法 ────────────────────────────────────
@@ -59,6 +75,8 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
       optionsOrHandler: RouteOptions | VextHandler,
       handler?: VextHandler,
     ): void => {
+      assertRoutePath(method, path);
+
       if (typeof optionsOrHandler === "function") {
         // 两段式：(path, handler) — 无 options
         routes.push({
@@ -69,12 +87,14 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
         });
       } else {
         // 三段式：(path, options, handler)
-        if (!handler) {
+        if (handler === undefined) {
           throw new Error(
             `[vextjs] ${method.toUpperCase()} "${path}": handler is required when options are provided. ` +
               `Usage: app.${method}(path, options, handler) or app.${method}(path, handler)`,
           );
         }
+        assertRouteOptions(method, path, optionsOrHandler);
+        assertRouteHandler(method, path, handler);
         routes.push({
           method: method.toUpperCase(),
           path,
@@ -190,13 +210,20 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
   // 为了让 factory 能访问 app（app.services / app.throw 等），
   // router-loader 会在调用 factory 前将 app 的属性混入 collector。
 
-  // 这里暂时不执行 factory——延迟到 router-loader 传入真正的 app 后执行
-  // 将 factory 和 collector 暴露在 routeDefinition 上供 router-loader 使用
+  // 这里暂时不执行 factory——延迟到 router-loader 传入真正的 app 后执行。
+  // 内部 factory/collector 存在 WeakMap 和非枚举 Symbol 中，避免污染公共对象形状。
+  const internals = {
+    factory,
+    collector,
+  } satisfies RouteDefinitionInternals;
 
-  // @ts-expect-error 内部属性，不在公共类型中暴露
-  routeDefinition._factory = factory;
-  // @ts-expect-error 内部属性，不在公共类型中暴露
-  routeDefinition._collector = collector;
+  routeDefinitionInternals.set(routeDefinition, internals);
+  Object.defineProperty(routeDefinition, ROUTE_INTERNALS_SYMBOL, {
+    value: internals,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
 
   return routeDefinition;
 }
@@ -220,12 +247,9 @@ export function executeRouteFactory(
   routeDefinition: RouteDefinition,
   app: VextApp,
 ): void {
-  const def = routeDefinition as RouteDefinition & {
-    _factory?: RouteFactory;
-    _collector?: Record<string, unknown>;
-  };
+  const internals = getRouteDefinitionInternals(routeDefinition);
 
-  if (!def._factory || !def._collector) {
+  if (!internals) {
     throw new Error(
       "[vextjs] Invalid route definition. Make sure to use defineRoutes() to create route files.",
     );
@@ -239,7 +263,7 @@ export function executeRouteFactory(
   // services / config / throw / logger 等能力。
   // 这里是属性值复制，不是 live proxy；后续若根 app 某个字段被整体替换为新引用，
   // 闭包 app 中的旧引用不会自动更新。
-  const collector = def._collector;
+  const collector = internals.collector;
 
   // 混入 app 的非 HTTP 方法属性
   const httpMethods = new Set([
@@ -265,10 +289,90 @@ export function executeRouteFactory(
   collector.adapter = app.adapter;
 
   // 执行 factory 回调，收集路由
-  def._factory(collector as unknown as VextApp);
+  internals.factory(collector as unknown as VextApp);
 
-  // 不删除 _factory/_collector：允许重复调用 executeRouteFactory
+  // 保留内部 factory/collector：允许重复调用 executeRouteFactory
   // （测试场景多次 createTestApp、Phase 2 热重载都需要重新执行 factory）
+}
+
+function getRouteDefinitionInternals(
+  routeDefinition: RouteDefinition,
+): RouteDefinitionInternals | null {
+  const weakMapInternals = routeDefinitionInternals.get(routeDefinition);
+  if (weakMapInternals) return weakMapInternals;
+
+  const symbolInternals = (
+    routeDefinition as unknown as Record<symbol, unknown>
+  )[ROUTE_INTERNALS_SYMBOL];
+  if (isRouteDefinitionInternals(symbolInternals)) return symbolInternals;
+
+  const legacy = routeDefinition as RouteDefinition & {
+    _factory?: unknown;
+    _collector?: unknown;
+  };
+  if (typeof legacy._factory === "function" && isRecord(legacy._collector)) {
+    return {
+      factory: legacy._factory as RouteFactory,
+      collector: legacy._collector,
+    };
+  }
+
+  return null;
+}
+
+function isRouteDefinitionInternals(
+  value: unknown,
+): value is RouteDefinitionInternals {
+  return (
+    isRecord(value) &&
+    typeof value.factory === "function" &&
+    isRecord(value.collector)
+  );
+}
+
+function assertRoutePath(
+  method: string,
+  path: unknown,
+): asserts path is string {
+  if (typeof path !== "string") {
+    throw new Error(
+      `[vextjs] ${method.toUpperCase()} route path must be a string.`,
+    );
+  }
+}
+
+function assertRouteOptions(
+  method: string,
+  path: string,
+  options: unknown,
+): asserts options is RouteOptions {
+  if (!isPlainRecord(options)) {
+    throw new Error(
+      `[vextjs] ${method.toUpperCase()} "${path}": route options must be a plain object when provided.`,
+    );
+  }
+}
+
+function assertRouteHandler(
+  method: string,
+  path: string,
+  handler: unknown,
+): asserts handler is VextHandler {
+  if (typeof handler !== "function") {
+    throw new Error(
+      `[vextjs] ${method.toUpperCase()} "${path}": handler must be a function.`,
+    );
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /**

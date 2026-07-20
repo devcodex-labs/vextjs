@@ -5,7 +5,7 @@
  *   - 空目录 / 不存在的目录 → 警告但不报错
  *   - 路由前缀推导：目录结构 → URL 前缀（[param] → :param、index → 空）
  *   - 重复路由检测：同 method + path 不允许重复注册
- *   - .test. / .spec. 文件 → Fail Fast 报错
+ *   - .test. / .spec.、点文件、node_modules → 跳过
  *   - _ 开头的文件/目录 → 跳过
  *   - 路由级中间件引用校验：引用未声明的中间件 → Fail Fast 报错
  *   - 正常路由加载 + 注册到 adapter
@@ -18,6 +18,8 @@
  *   由于临时目录中无法 import 'vextjs' 的 defineRoutes，
  *   我们手动构造与 defineRoutes 输出一致的对象结构：
  *     { routes: [], sourceFile: '', register() {...}, _factory, _collector }
+ *   这里的 _factory/_collector 是 legacy 夹具格式；框架自身的 defineRoutes()
+ *   不再把这些内部状态暴露为字符串属性。
  *
  * @see 01-routes.md §2（路由加载规范）
  * @see 10-testing.md §3（单元测试模式）
@@ -214,8 +216,8 @@ async function writeRouteFile(
  * router-loader 通过 loadRouteFile 验证 default export 具有：
  *   - routes: RouteRecord[]
  *   - register: Function
- *   - _factory: Function（内部属性，executeRouteFactory 使用）
- *   - _collector: Object（内部属性，executeRouteFactory 使用）
+ *   - _factory: Function（legacy 内部属性，executeRouteFactory 兼容读取）
+ *   - _collector: Object（legacy 内部属性，executeRouteFactory 兼容读取）
  *
  * 此函数生成内联构造 RouteDefinition 的 ESM 代码，
  * 完全模拟 defineRoutes() 的输出结构。
@@ -595,41 +597,69 @@ describe("router-loader", () => {
     });
   });
 
-  // ── Fail Fast 错误 ───────────────────────────────────────
+  // ── 排除规则 ─────────────────────────────────────────────
 
-  describe("fail fast errors", () => {
-    it("throws when .test. file is found in routes/", async () => {
+  describe("route file exclusion rules", () => {
+    it("skips .test. and .spec. files in routes/", async () => {
       const routesDir = join(tmpDir, "routes");
       await writeRouteFile(
         routesDir,
         "users.test.mjs",
         makeSimpleRouteFile("get", "/"),
       );
-
-      const app = createMockApp();
-      await expect(
-        loadRoutes(app, routesDir, {
-          middlewareDefs: {},
-          globalMiddlewares: [],
-        }),
-      ).rejects.toThrow();
-    });
-
-    it("throws when .spec. file is found in routes/", async () => {
-      const routesDir = join(tmpDir, "routes");
       await writeRouteFile(
         routesDir,
         "users.spec.mjs",
         makeSimpleRouteFile("get", "/"),
       );
+      await writeRouteFile(
+        routesDir,
+        "users.mjs",
+        makeSimpleRouteFile("get", "/list"),
+      );
 
       const app = createMockApp();
-      await expect(
-        loadRoutes(app, routesDir, {
-          middlewareDefs: {},
-          globalMiddlewares: [],
-        }),
-      ).rejects.toThrow();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      expect(app.mockAdapter.registeredRoutes).toHaveLength(1);
+      expect(app.mockAdapter.registeredRoutes[0]?.path).toBe("/users/list");
+    });
+
+    it("skips dot-prefixed files, dot directories, and nested node_modules", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        ".hidden.mjs",
+        makeSimpleRouteFile("get", "/"),
+      );
+      await writeRouteFile(
+        routesDir,
+        ".draft/debug.mjs",
+        makeSimpleRouteFile("get", "/"),
+      );
+      await writeRouteFile(
+        routesDir,
+        "node_modules/pkg/route.mjs",
+        makeSimpleRouteFile("get", "/"),
+      );
+      await writeRouteFile(
+        routesDir,
+        "visible.mjs",
+        makeSimpleRouteFile("get", "/"),
+      );
+
+      const app = createMockApp();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      expect(
+        app.mockAdapter.registeredRoutes.map((route) => route.path),
+      ).toEqual(["/visible"]);
     });
   });
 
@@ -685,6 +715,32 @@ describe("router-loader", () => {
           globalMiddlewares: [],
         }),
       ).rejects.toThrow();
+    });
+
+    it("does not partially register earlier routes when a later route has an invalid middleware", async () => {
+      const routesDir = join(tmpDir, "routes");
+
+      await writeRouteFile(
+        routesDir,
+        "ok.mjs",
+        makeSimpleRouteFile("get", "/"),
+      );
+      await writeRouteFile(
+        routesDir,
+        "bad.mjs",
+        makeSimpleRouteFile("get", "/", ["missing"]),
+      );
+
+      const app = createMockApp();
+
+      await expect(
+        loadRoutes(app, routesDir, {
+          middlewareDefs: {} as MiddlewareRegistry,
+          globalMiddlewares: [],
+        }),
+      ).rejects.toThrow('middleware "missing"');
+
+      expect(app.mockAdapter.registeredRoutes).toHaveLength(0);
     });
 
     it("does not throw when middleware is declared in registry", async () => {

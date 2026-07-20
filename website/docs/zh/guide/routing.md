@@ -658,9 +658,14 @@ throw new Error("Database connection lost");
 
 以下文件不会被当作路由加载：
 
+- 支持的路由文件扩展名为 `.ts`、`.js`、`.mjs`、`.cjs`
 - 测试文件：`*.test.ts`、`*.spec.ts`
+- 类型声明文件：`*.d.ts`
 - 以 `_` 或 `.` 开头的文件或目录
 - `node_modules` 目录
+- 包含 `.__vext_compiled__` 的生成临时文件
+
+这些文件会被跳过，不会作为启动错误处理。运行时路由加载、路由诊断和 manifest 生成共用同一套排除策略。
 
 可以利用 `_` 前缀创建路由共享的工具模块：
 

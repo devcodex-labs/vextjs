@@ -2,7 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadMiddlewares } from "../../src/lib/middleware-loader.js";
+import {
+  loadMiddlewares,
+  resolveMiddleware,
+  validateMiddlewareRefs,
+} from "../../src/lib/middleware-loader.js";
+import type { MiddlewareRegistry } from "../../src/lib/middleware-loader.js";
 import type { VextLogger } from "../../src/types/app.js";
 
 describe("middleware loader declaration contract", () => {
@@ -30,7 +35,7 @@ describe("middleware loader declaration contract", () => {
       logger,
     );
 
-    expect(registry).toEqual({});
+    expect(Object.keys(registry)).toEqual([]);
     expect(logger.info).not.toHaveBeenCalled();
   });
 
@@ -38,6 +43,37 @@ describe("middleware loader declaration contract", () => {
     await expect(
       loadMiddlewares(middlewareDir, ["auth", "auth"], logger),
     ).rejects.toThrow('Middleware "auth" is declared more than once');
+  });
+
+  it("rejects reserved prototype names in middleware declarations", async () => {
+    await expect(
+      loadMiddlewares(middlewareDir, ["__proto__"], logger),
+    ).rejects.toThrow('Middleware "__proto__" uses a reserved middleware name');
+  });
+
+  it("does not resolve inherited prototype keys as registered middleware", () => {
+    const registry = {} as MiddlewareRegistry;
+
+    expect(() => resolveMiddleware("__proto__", registry)).toThrow(
+      'Middleware "__proto__" is not registered',
+    );
+    expect(() =>
+      validateMiddlewareRefs(
+        [
+          {
+            sourceFile: "src/routes/users.ts",
+            routes: [
+              {
+                method: "GET",
+                path: "/users",
+                options: { middlewares: ["constructor"] },
+              },
+            ],
+          },
+        ],
+        registry,
+      ),
+    ).toThrow('middleware "constructor" which is not registered');
   });
 
   it("loads TypeScript middleware without a host TypeScript loader", async () => {

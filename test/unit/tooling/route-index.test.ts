@@ -86,5 +86,52 @@ export default defineRoutes((app) => {
       hidden: false,
     });
   });
-});
 
+  it("uses the same route file exclusion policy as runtime loading", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-index-policy-"));
+
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/.hidden.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", async (_req, res) => res.json({ hidden: true }));
+});
+`,
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/users.test.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", async (_req, res) => res.json({ test: true }));
+});
+`,
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/node_modules/pkg/route.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", async (_req, res) => res.json({ pkg: true }));
+});
+`,
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/users.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", async (_req, res) => res.json({ ok: true }));
+});
+`,
+    );
+
+    const routeEntries = await buildRouteIndex(projectRoot);
+
+    expect(routeEntries.map((entry) => entry.fileRelativePath)).toEqual([
+      "src/routes/users.ts",
+    ]);
+    expect(routeEntries[0]?.path).toBe("/users");
+  });
+});

@@ -899,6 +899,7 @@ app.get(
 ## RouteDefinition
 
 `defineRoutes()` 返回的路由定义对象（内部数据结构，通常不需要直接操作）。
+factory 与 collector 内部状态不属于公共对象形状，应只通过 `defineRoutes()` 与 router-loader 生命周期驱动。
 
 ```typescript
 interface RouteDefinition {

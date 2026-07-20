@@ -900,6 +900,7 @@ Routes can also set top-level `{ securityHeaders: false }` when an embeddable pa
 ## RouteDefinition
 
 The route definition object returned by `defineRoutes()` (internal data structure, usually does not need to be manipulated directly).
+Factory and collector internals are not part of the public object shape and should only be driven through `defineRoutes()` and the router loader lifecycle.
 
 ```typescript
 interface RouteDefinition {

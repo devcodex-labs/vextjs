@@ -1,16 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import fg from "fast-glob";
-
-const ROUTE_SOURCE_PATTERNS = ["**/*.{ts,mts,cts,js,mjs,cjs}"];
-const ROUTE_IGNORE_PATTERNS = [
-  "**/_*/**",
-  "**/_*",
-  "**/*.d.ts",
-  "**/*.test.*",
-  "**/*.spec.*",
-  "**/*.__vext_compiled__*",
-];
+import {
+  ROUTE_IGNORE_PATTERNS,
+  ROUTE_SOURCE_PATTERNS,
+  shouldIncludeRouteFilePath,
+} from "../../lib/route-file-policy.js";
 const HTTP_METHODS = [
   "get",
   "post",
@@ -50,6 +45,7 @@ export async function buildRouteIndex(
   });
 
   return routeFiles
+    .filter((filePath) => shouldIncludeRouteFilePath(filePath, routesDir))
     .flatMap((filePath) => scanRouteEntries(filePath, rootDir, routesDir))
     .sort((a, b) =>
       `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),

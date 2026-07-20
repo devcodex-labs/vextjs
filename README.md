@@ -344,6 +344,8 @@ src/routes/admin/settings.ts -> /admin/settings
 src/routes/users/[id].ts     -> /users/:id
 ```
 
+Route discovery loads `.ts`, `.js`, `.mjs`, and `.cjs` files. It skips `*.test.*`, `*.spec.*`, `*.d.ts`, `node_modules`, generated `.__vext_compiled__` files, and files or directories starting with `_` or `.`. Runtime loading and `vext doctor routes --write-manifest` use the same exclusion policy, so helper modules under `src/routes/_*.ts` and local test files never become routes.
+
 Example:
 
 ```ts

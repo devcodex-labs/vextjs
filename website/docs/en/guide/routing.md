@@ -656,9 +656,14 @@ When there are potentially conflicting routes, `router-loader` handles them acco
 
 The following files will not be loaded as routes:
 
+- Supported route file extensions are `.ts`, `.js`, `.mjs`, and `.cjs`
 - Test files: `*.test.ts`, `*.spec.ts`
+- Type declaration files: `*.d.ts`
 - Files or directories starting with `_` or `.`
 - `node_modules` directory
+- Generated temporary files containing `.__vext_compiled__`
+
+These files are skipped, not treated as startup errors. Runtime route loading, route diagnostics, and manifest generation share this policy.
 
 You can use the `_` prefix to create tool modules for route sharing:
 

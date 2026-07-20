@@ -108,7 +108,7 @@ export async function loadMiddlewares(
   logger: VextLogger,
   lifecycleLevel: "concise" | "verbose" = "concise",
 ): Promise<MiddlewareRegistry> {
-  const registry: MiddlewareRegistry = {};
+  const registry = Object.create(null) as MiddlewareRegistry;
   const declaredNames = new Set<string>();
 
   // 白名单为空 → 无中间件需要加载，直接返回
@@ -118,6 +118,7 @@ export async function loadMiddlewares(
 
   for (const decl of declarations) {
     const name = typeof decl === "string" ? decl : decl.name;
+    assertSafeMiddlewareName(name);
     if (declaredNames.has(name)) {
       throw new Error(
         `[vextjs] Middleware "${name}" is declared more than once in config.middlewares.`,
@@ -237,7 +238,7 @@ export function resolveMiddleware(
   const name = typeof ref === "string" ? ref : ref.name;
   const overrideOpts = typeof ref === "string" ? undefined : ref.options;
 
-  const entry = registry[name];
+  const entry = getOwnRegistryEntry(registry, name);
   if (!entry) {
     throw new Error(
       `[vextjs] Middleware "${name}" is not registered.\n` +
@@ -317,7 +318,7 @@ export function validateMiddlewareRefs(
 
       for (const ref of refs) {
         const name = typeof ref === "string" ? ref : ref.name;
-        if (!registry[name]) {
+        if (!getOwnRegistryEntry(registry, name)) {
           throw new Error(
             `[vextjs] Route ${route.method} references middleware "${name}" which is not registered.\n` +
               `         Source: ${def.sourceFile}\n` +
@@ -327,6 +328,28 @@ export function validateMiddlewareRefs(
         }
       }
     }
+  }
+}
+
+function getOwnRegistryEntry(
+  registry: MiddlewareRegistry,
+  name: string,
+): MiddlewareRegistryEntry | undefined {
+  return Object.prototype.hasOwnProperty.call(registry, name)
+    ? registry[name]
+    : undefined;
+}
+
+function assertSafeMiddlewareName(name: string): void {
+  if (
+    !name ||
+    name === "__proto__" ||
+    name === "prototype" ||
+    name === "constructor"
+  ) {
+    throw new Error(
+      `[vextjs] Middleware "${name}" uses a reserved middleware name.`,
+    );
   }
 }
 

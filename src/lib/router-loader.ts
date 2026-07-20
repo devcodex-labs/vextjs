@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, extname, sep } from "node:path";
-import type { VextApp } from "../types/app.js";
+import type { VextApp, RouteOptions } from "../types/app.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { RouteDefinition } from "../types/route.js";
 import { executeRouteFactory } from "./define-routes.js";
@@ -21,6 +21,10 @@ import { createRouteTimeoutMiddleware } from "./middlewares/route-timeout.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
 import type { VextInternalHooks, VextRouteHookInfo } from "../types/hooks.js";
+import {
+  shouldDescendIntoRouteDirectory,
+  shouldIncludeRouteFileName,
+} from "./route-file-policy.js";
 
 /**
  * router-loader.ts — 路由自动加载器（Phase 1 升级版）
@@ -147,8 +151,7 @@ export async function loadRoutes(
   // ── 5. 排序：静态段优先于动态段 ───────────────────────────
   routeEntries.sort(compareRouteEntries);
 
-  // ── 6. 逐个加载、收集、注册 ───────────────────────────────
-  let loadedRouteCount = 0;
+  // ── 6. 逐个加载、收集、预校验 ─────────────────────────────
   const allRouteDefs: Array<{
     routes: Array<{
       method: string;
@@ -160,6 +163,10 @@ export async function loadRoutes(
 
   // 重复路由检测：'METHOD /path' → sourceFile
   const registeredRoutes = new Map<string, string>();
+  const loadedDefinitions: Array<{
+    routeDefinition: RouteDefinition;
+    entry: RouteEntry;
+  }> = [];
 
   for (const entry of routeEntries) {
     const routeDefinition = await loadRouteFile(entry.filePath, app);
@@ -189,18 +196,6 @@ export async function loadRoutes(
       registeredRoutes.set(routeKey, entry.filePath);
     }
 
-    // ── 6.2 注册到 adapter（含中间件解析 + validate 构建）──
-    registerRouteDefinition(
-      routeDefinition,
-      app,
-      entry.prefix,
-      registry,
-      options,
-      collector,
-    );
-
-    loadedRouteCount += routeDefinition.routes.length;
-
     // 收集用于后续统一验证
     allRouteDefs.push({
       routes: routeDefinition.routes.map((r) => ({
@@ -210,16 +205,48 @@ export async function loadRoutes(
       })),
       sourceFile: entry.filePath,
     });
+    loadedDefinitions.push({ routeDefinition, entry });
   }
 
   // ── 7. 启动时统一验证所有路由的中间件引用 ─────────────────
   validateMiddlewareRefs(allRouteDefs, registry);
 
+  // ── 8. 先构建完整注册计划，全部成功后才写入 adapter / manifest ─────
+  const routeRegistrations = loadedDefinitions.flatMap(
+    ({ routeDefinition, entry }) =>
+      prepareRouteDefinitionRegistrations(
+        routeDefinition,
+        app,
+        entry.prefix,
+        registry,
+        options,
+      ),
+  );
+
+  for (const registration of routeRegistrations) {
+    app.adapter.registerRoute(
+      registration.method,
+      registration.path,
+      registration.chain,
+      registration.routeOptions,
+    );
+
+    if (collector) {
+      collector.addRoute(
+        registration.method,
+        registration.path,
+        registration.routeOptions,
+        registration.sourceFile,
+        registration.handler,
+      );
+    }
+  }
+
   app.logger.info(
-    `[vextjs] ${loadedRouteCount} route(s) loaded from ${routeEntries.length} file(s)`,
+    `[vextjs] ${routeRegistrations.length} route(s) loaded from ${routeEntries.length} file(s)`,
   );
   await hooks.emitSafe("routes:ready", {
-    count: loadedRouteCount,
+    count: routeRegistrations.length,
     routes: allRouteDefs.flatMap(({ routes, sourceFile }) =>
       routes.map((route) => ({
         method: route.method,
@@ -255,15 +282,16 @@ export async function loadRoutes(
  * @param registry          已加载的中间件注册表
  * @param _globalMiddlewares 全局中间件列表（当前由 adapter 内部处理，预留参数）
  */
-function registerRouteDefinition(
+function prepareRouteDefinitionRegistrations(
   routeDef: RouteDefinition,
   app: VextApp,
   prefix: string,
   registry: MiddlewareRegistry,
   options: LoadRoutesOptions,
-  collector?: RouteMetadataCollector | null,
-): void {
+): PreparedRouteRegistration[] {
   const hooks = app.hooks as VextInternalHooks;
+  const registrations: PreparedRouteRegistration[] = [];
+
   for (const route of routeDef.routes) {
     // ── 1. 拼接完整路径 ──────────────────────────────────
     const fullPath = normalizePath(prefix, route.path);
@@ -454,25 +482,17 @@ function registerRouteDefinition(
 
     chain.push(handlerMiddleware);
 
-    // ── 6. 注册到 adapter ──────────────────────────────────
-    app.adapter.registerRoute(
-      route.method,
-      fullPath,
+    registrations.push({
+      method: route.method,
+      path: fullPath,
       chain,
-      route.options ?? {},
-    );
-
-    // ── 7. 🆕 收集路由元信息（用于 OpenAPI 文档生成）────────
-    if (collector) {
-      collector.addRoute(
-        route.method,
-        fullPath,
-        route.options ?? {},
-        routeDef.sourceFile,
-        route.handler,
-      );
-    }
+      routeOptions: route.options ?? {},
+      sourceFile: routeDef.sourceFile,
+      handler: route.handler,
+    });
   }
+
+  return registrations;
 }
 
 // ── 内部类型 ──────────────────────────────────────────────────
@@ -482,36 +502,16 @@ interface RouteEntry {
   prefix: string;
 }
 
+interface PreparedRouteRegistration {
+  method: string;
+  path: string;
+  chain: VextMiddleware[];
+  routeOptions: RouteOptions;
+  sourceFile: string;
+  handler: import("../types/middleware.js").VextHandler;
+}
+
 // ── 文件扫描 ──────────────────────────────────────────────────
-
-/**
- * 支持的路由文件扩展名
- */
-const SUPPORTED_EXTENSIONS = new Set([".ts", ".js", ".mjs", ".cjs"]);
-
-/**
- * 应排除的文件模式
- */
-function shouldExclude(filename: string): boolean {
-  // 排除以 _ 开头的文件（约定：私有/辅助文件）
-  if (filename.startsWith("_")) return true;
-  // 排除类型声明文件
-  if (filename.endsWith(".d.ts")) return true;
-  return false;
-}
-
-/**
- * 检测路由目录内的测试文件（Fail Fast）
- *
- * routes/ 目录内不应包含 .test. 或 .spec. 文件，
- * 这些文件应放到 test/routes/ 目录中。
- *
- * @param filename 文件名
- * @returns true 表示是测试文件
- */
-function isTestFile(filename: string): boolean {
-  return filename.includes(".test.") || filename.includes(".spec.");
-}
 
 /**
  * 递归扫描 routes/ 目录下的所有路由文件
@@ -527,25 +527,13 @@ async function scanRouteFiles(dir: string): Promise<string[]> {
     const fullPath = join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      // 跳过以 _ 或 . 开头的目录
-      if (entry.name.startsWith("_") || entry.name.startsWith(".")) continue;
+      if (!shouldDescendIntoRouteDirectory(entry.name)) continue;
 
       // 递归扫描子目录
       const subFiles = await scanRouteFiles(fullPath);
       files.push(...subFiles);
     } else if (entry.isFile()) {
-      const ext = extname(entry.name);
-      if (!SUPPORTED_EXTENSIONS.has(ext)) continue;
-      if (shouldExclude(entry.name)) continue;
-
-      // Fail Fast：路由目录内不应包含测试文件
-      if (isTestFile(entry.name)) {
-        throw new Error(
-          `[vextjs] Unexpected file in routes/: ${entry.name}\n` +
-            `         routes/ should only contain route files.\n` +
-            `         Move test files to test/routes/ instead.`,
-        );
-      }
+      if (!shouldIncludeRouteFileName(entry.name)) continue;
 
       files.push(fullPath);
     }
@@ -696,7 +684,7 @@ async function loadRouteFile(
   try {
     // 将 Windows 路径转换为 file:// URL（dynamic import 兼容性）
     // 添加 cache-busting query string，避免 ESM 模块缓存导致重复加载时
-    // _factory/_collector 已被 executeRouteFactory 删除。
+    // 复用上一次执行后的 routes 数组状态。
     // 这在测试场景（多次 createTestApp）和 Phase 2 热重载中都是必要的。
     const fileUrl = `${pathToFileUrl(filePath)}?t=${Date.now()}`;
     const mod = await import(fileUrl);
@@ -805,7 +793,7 @@ function normalizeMiddlewareDefs(
 ): MiddlewareRegistry {
   // 如果是 Map 类型（Phase 0 兼容），转换为 Registry 格式
   if (defs instanceof Map) {
-    const registry: MiddlewareRegistry = {};
+    const registry = Object.create(null) as MiddlewareRegistry;
     for (const [name, handler] of defs.entries()) {
       registry[name] = {
         handler,
