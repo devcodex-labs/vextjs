@@ -11,6 +11,7 @@ import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
 import { createAuthContextSnapshot } from "../../lib/auth.js";
+import { markHandlerDone } from "../../lib/handler-completion.js";
 import type {
   VextAdapter,
   VextAdapterListenOptions,
@@ -329,18 +330,20 @@ export function createExpressAdapter(
           await notFoundHandler!(req, res, noop);
         };
 
-        if (alsEnabled) {
-          await requestContext.run(
-            {
-              requestId: req.requestId,
-              locale: undefined,
-              auth: createAuthContextSnapshot(req.auth),
-            },
-            runNotFound,
-          );
-        } else {
-          await runNotFound();
-        }
+        const completion = Promise.resolve().then(() =>
+          alsEnabled
+            ? requestContext.run(
+                {
+                  requestId: req.requestId,
+                  locale: undefined,
+                  auth: createAuthContextSnapshot(req.auth),
+                },
+                runNotFound,
+              )
+            : runNotFound(),
+        );
+        markHandlerDone(expressRes, completion);
+        await completion;
       },
     );
 
@@ -542,18 +545,20 @@ export function createExpressAdapter(
               }
             };
 
-            if (alsEnabled) {
-              await requestContext.run(
-                {
-                  requestId: "",
-                  locale: undefined,
-                  auth: createAuthContextSnapshot(req.auth),
-                },
-                runChain,
-              );
-            } else {
-              await runChain();
-            }
+            const completion = Promise.resolve().then(() =>
+              alsEnabled
+                ? requestContext.run(
+                    {
+                      requestId: "",
+                      locale: undefined,
+                      auth: createAuthContextSnapshot(req.auth),
+                    },
+                    runChain,
+                  )
+                : runChain(),
+            );
+            markHandlerDone(expressRes, completion);
+            await completion;
           } catch (err) {
             // rawBody 收集或其他初始化错误
             next(err);

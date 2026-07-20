@@ -34,6 +34,7 @@ import {
   createConfiguredSessionRuntime,
   isSessionMiddleware,
 } from "../lib/session.js";
+import { getHandlerDone } from "../lib/handler-completion.js";
 import { createAuthContextMiddleware } from "../lib/auth.js";
 import {
   createSecurityHeadersMiddleware,
@@ -370,10 +371,20 @@ export async function createTestApp(
   // ── 3. 插件 ──────────────────────────────────────────
   if (setupPluginsFn) {
     // 用户提供的手动插件注册函数（精确控制依赖）
-    await setupPluginsFn(app);
+    internals.enterPluginSetup();
+    try {
+      await setupPluginsFn(app);
+    } finally {
+      internals.exitPluginSetup();
+    }
   } else if (shouldLoadPlugins) {
     // 自动扫描 src/plugins/
-    await loadPlugins(app, join(srcDir, "plugins"));
+    internals.enterPluginSetup();
+    try {
+      await loadPlugins(app, join(srcDir, "plugins"));
+    } finally {
+      internals.exitPluginSetup();
+    }
   }
 
   // ── 4. 中间件 ────────────────────────────────────────
@@ -827,57 +838,69 @@ function executeRequest(
         // 响应完成后收集结果
         // 使用 queueMicrotask 确保 handler 的 Promise 链完成
         queueMicrotask(() => {
-          // 获取最终 statusCode（ServerResponse 自身也会设置）
-          const finalStatus = mockRes.statusCode ?? statusCode;
+          void (async () => {
+            await getHandlerDone(mockRes);
 
-          // 收集通过 setHeader 设置的 headers
-          const headerNames = mockRes.getHeaderNames();
-          for (const name of headerNames) {
-            const value = mockRes.getHeader(name);
-            if (value !== undefined) {
-              recordResponseHeader(name, value as string | string[]);
+            // 获取最终 statusCode（ServerResponse 自身也会设置）
+            const finalStatus = mockRes.statusCode ?? statusCode;
+
+            // 收集通过 setHeader 设置的 headers
+            const headerNames = mockRes.getHeaderNames();
+            for (const name of headerNames) {
+              const value = mockRes.getHeader(name);
+              if (value !== undefined) {
+                recordResponseHeader(name, value as string | string[]);
+              }
             }
-          }
 
-          // 组合响应体
-          const bodyBuffer = Buffer.concat(responseChunks);
-          const text = bodyBuffer.toString("utf-8");
+            // 组合响应体
+            const bodyBuffer = Buffer.concat(responseChunks);
+            const text = bodyBuffer.toString("utf-8");
 
-          // 尝试解析 JSON
-          let parsedBody: any = text;
-          const ct = firstHeaderValue(responseHeaders, "content-type") ?? "";
-          if (ct.includes("application/json") || ct.includes("+json")) {
+            // 尝试解析 JSON
+            let parsedBody: any = text;
+            const ct = firstHeaderValue(responseHeaders, "content-type") ?? "";
+            if (ct.includes("application/json") || ct.includes("+json")) {
+              try {
+                parsedBody = JSON.parse(text);
+              } catch {
+                // 非法 JSON，保留原始文本
+                parsedBody = text;
+              }
+            }
+
+            // 清理 socket
             try {
-              parsedBody = JSON.parse(text);
+              socket.destroy();
+              resSocket.destroy();
             } catch {
-              // 非法 JSON，保留原始文本
-              parsedBody = text;
+              // 静默忽略
             }
-          }
 
-          // 清理 socket
-          try {
-            socket.destroy();
-            resSocket.destroy();
-          } catch {
-            // 静默忽略
-          }
+            const headersSnapshot = { ...responseHeaders };
+            const cookies = headerValues(headersSnapshot, "set-cookie");
 
-          const headersSnapshot = { ...responseHeaders };
-          const cookies = headerValues(headersSnapshot, "set-cookie");
-
-          resolve({
-            status: finalStatus,
-            headers: headersSnapshot,
-            cookies,
-            header(name: string): string | undefined {
-              return firstHeaderValue(headersSnapshot, name);
-            },
-            headerValues(name: string): string[] {
-              return headerValues(headersSnapshot, name);
-            },
-            body: parsedBody,
-            text,
+            resolve({
+              status: finalStatus,
+              headers: headersSnapshot,
+              cookies,
+              header(name: string): string | undefined {
+                return firstHeaderValue(headersSnapshot, name);
+              },
+              headerValues(name: string): string[] {
+                return headerValues(headersSnapshot, name);
+              },
+              body: parsedBody,
+              text,
+            });
+          })().catch((err: unknown) => {
+            try {
+              socket.destroy();
+              resSocket.destroy();
+            } catch {
+              // 静默忽略
+            }
+            reject(err);
           });
         });
 

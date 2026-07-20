@@ -316,6 +316,7 @@ export async function bootstrap(
         sourceFile: "builtin:monsqlize",
         builtin: true,
       });
+      internals.enterPluginSetup();
       try {
         await startupProfiler.time(
           "start.builtinPlugin.monsqlize",
@@ -337,6 +338,8 @@ export async function bootstrap(
           error,
         });
         throw error;
+      } finally {
+        internals.exitPluginSetup();
       }
       app.logger.info("[vextjs] built-in plugin: monsqlize loaded");
     }
@@ -344,7 +347,12 @@ export async function bootstrap(
     // ── 步骤 ②: plugin-loader ─────────────────────────────
     // 扫描 src/plugins/，拓扑排序（Kahn 算法），依次执行 setup()
     // 此阶段 app.use() 可用，插件可注册全局中间件
-    await loadPlugins(app, join(srcDir, "plugins"), { startupProfiler });
+    internals.enterPluginSetup();
+    try {
+      await loadPlugins(app, join(srcDir, "plugins"), { startupProfiler });
+    } finally {
+      internals.exitPluginSetup();
+    }
 
     // ── 步骤 ③: middleware-loader ─────────────────────────
     // 按 config.middlewares 白名单从 src/middlewares/ 加载路由级中间件定义
@@ -668,12 +676,13 @@ export async function bootstrap(
     // ── 步骤 ⑧: 注册信号处理 ────────────────────────────
     // 通过 shutdown 模块注册 SIGTERM / SIGINT 信号处理器
     // testMode 下跳过注册，由 createTestApp 控制生命周期
-    setupShutdown({
+    const shutdownCleanup = setupShutdown({
       internals,
       serverHandle,
       logger: app.logger,
       testMode: config._testMode,
     });
+    app.onClose(shutdownCleanup);
 
     // ── 步骤 ⑧b: 注册致命错误处理 ──────────────────────
     //
@@ -735,14 +744,20 @@ export async function bootstrap(
         process.exit(1);
       };
 
-      process.on("uncaughtException", (error: Error) => {
-        handleFatal(error, "uncaughtException");
-      });
-
-      process.on("unhandledRejection", (reason: unknown) => {
+      const onUncaughtException = (error: Error) => {
+        void handleFatal(error, "uncaughtException");
+      };
+      const onUnhandledRejection = (reason: unknown) => {
         const error =
           reason instanceof Error ? reason : new Error(String(reason));
-        handleFatal(error, "unhandledRejection");
+        void handleFatal(error, "unhandledRejection");
+      };
+
+      process.on("uncaughtException", onUncaughtException);
+      process.on("unhandledRejection", onUnhandledRejection);
+      app.onClose(() => {
+        process.removeListener("uncaughtException", onUncaughtException);
+        process.removeListener("unhandledRejection", onUnhandledRejection);
       });
     }
 

@@ -7,6 +7,7 @@ import { createVextRequest, type ParsedUrl } from "./request.js";
 import { createVextResponse } from "./response.js";
 import { requestContext } from "../../lib/request-context.js";
 import { createAuthContextSnapshot } from "../../lib/auth.js";
+import { markHandlerDone } from "../../lib/handler-completion.js";
 import type {
   VextAdapter,
   VextAdapterListenOptions,
@@ -345,20 +346,20 @@ export function createNativeAdapter(
     // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
     // 直接执行中间件链，预估 +3-8% RPS。
     //
-    if (alsEnabled) {
-      requestContext.run(
-        {
-          requestId: "",
-          locale: undefined,
-          auth: createAuthContextSnapshot(req.auth),
-        },
-        () => {
-          void runMatchedChain(chain, req, res, nodeRes);
-        },
-      );
-    } else {
-      void runMatchedChain(chain, req, res, nodeRes);
-    }
+    const completion = Promise.resolve().then(() =>
+      alsEnabled
+        ? requestContext.run(
+            {
+              requestId: "",
+              locale: undefined,
+              auth: createAuthContextSnapshot(req.auth),
+            },
+            () => runMatchedChain(chain, req, res, nodeRes),
+          )
+        : runMatchedChain(chain, req, res, nodeRes),
+    );
+    markHandlerDone(nodeRes, completion);
+    void completion;
   }
 
   /**
@@ -465,18 +466,20 @@ export function createNativeAdapter(
       }
     };
 
-    if (alsEnabled) {
-      requestContext.run(
-        {
-          requestId: req.requestId,
-          locale: undefined,
-          auth: createAuthContextSnapshot(req.auth),
-        },
-        runNotFound,
-      );
-    } else {
-      runNotFound();
-    }
+    const completion = Promise.resolve().then(() =>
+      alsEnabled
+        ? requestContext.run(
+            {
+              requestId: req.requestId,
+              locale: undefined,
+              auth: createAuthContextSnapshot(req.auth),
+            },
+            runNotFound,
+          )
+        : runNotFound(),
+    );
+    markHandlerDone(nodeRes, completion);
+    void completion;
   }
 
   function parseUrl(url: string): ParsedUrl {

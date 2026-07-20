@@ -21,13 +21,7 @@ type VextLoggerWithLifecycle = VextLogger & {
 };
 
 type PrettyColorMode = NonNullable<VextLoggerConfig["prettyColor"]>;
-type LoggerMethodName =
-  | "trace"
-  | "info"
-  | "warn"
-  | "error"
-  | "debug"
-  | "fatal";
+type LoggerMethodName = "trace" | "info" | "warn" | "error" | "debug" | "fatal";
 type LoggerMethod = (...args: unknown[]) => void;
 
 function wrapCoreAsVextLogger(core: LoggerCore): VextRuntimeLogger {
@@ -89,7 +83,11 @@ export function normalizeVextLogger(
 ): VextRuntimeLogger {
   const wrapped = candidate ?? {};
   const logger: VextRuntimeLogger = {
-    trace: bindLoggerMethod(wrapped, original, "trace") as VextRuntimeLogger["trace"],
+    trace: bindLoggerMethod(
+      wrapped,
+      original,
+      "trace",
+    ) as VextRuntimeLogger["trace"],
     info: bindLoggerMethod(wrapped, original, "info") as VextLogger["info"],
     warn: bindLoggerMethod(wrapped, original, "warn") as VextLogger["warn"],
     error: bindLoggerMethod(wrapped, original, "error") as VextLogger["error"],
@@ -117,9 +115,12 @@ export function normalizeVextLogger(
       const originalChild = original.child(bindings);
       const createChild = wrapped.child;
       if (typeof createChild === "function") {
-        return normalizeVextLogger(originalChild, createChild.call(wrapped, bindings));
+        return normalizeVextLogger(
+          originalChild,
+          createChild.call(wrapped, bindings),
+        );
       }
-      return originalChild;
+      return normalizeVextLogger(originalChild, wrapped);
     },
   };
 

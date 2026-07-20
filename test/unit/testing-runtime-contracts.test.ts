@@ -179,4 +179,31 @@ describe("createTestApp runtime contract parity", () => {
       await rm(rootDir, { recursive: true, force: true });
     }
   });
+
+  it("waits for after-middleware completion before resolving test responses", async () => {
+    const rootDir = await createFixture();
+    const events: string[] = [];
+    const t = await createTestApp({
+      services: false,
+      rootDir,
+      setupPlugins(app) {
+        app.use(async (_req, _res, next) => {
+          events.push("before");
+          await next();
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          events.push("after");
+        });
+      },
+    });
+
+    try {
+      const response = await t.request.get("/runtime/me");
+
+      expect(response.status).toBe(200);
+      expect(events).toEqual(["before", "after"]);
+    } finally {
+      await t.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
 });

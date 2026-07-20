@@ -40,6 +40,19 @@ export interface AppInternals {
   lockUse(): void;
 
   /**
+   * 标记插件 setup 执行窗口。
+   *
+   * app.use() 只允许在该窗口内调用；bootstrap、dev-bootstrap 和
+   * createTestApp 在执行用户/内置插件 setup 时进入此窗口。
+   */
+  enterPluginSetup(): void;
+
+  /**
+   * 结束插件 setup 执行窗口。
+   */
+  exitPluginSetup(): void;
+
+  /**
    * 执行所有 onReady 钩子
    *
    * 在步骤⑧ HTTP 监听后由 bootstrap 调用。
@@ -120,6 +133,8 @@ export function createApp(config: VextConfig): {
   app: VextApp;
   internals: AppInternals;
 } {
+  assertCreateAppConfig(config);
+
   const closeHooks: Array<() => Promise<void> | void> = [];
   const readyHooks: Array<() => Promise<void> | void> = [];
   const globalMiddlewares: VextMiddleware[] = [];
@@ -128,7 +143,11 @@ export function createApp(config: VextConfig): {
   let _rateLimiter: VextRateLimiter | null = null;
   let _requestIdGenerator: (() => string) | null = null;
   let _locked = false; // 路由注册完成后锁定（步骤⑤之后），禁止 app.use()
-  let _shuttingDown = false; // 防止重复触发 shutdown
+  let _pluginSetupDepth = 0;
+  let _readyState: "pending" | "running" | "completed" = "pending";
+  let _readyPromise: Promise<void> | null = null;
+  let _closeState: "open" | "running" | "closed" = "open";
+  let _shutdownPromise: Promise<void> | null = null;
 
   // ── 创建 logger（内置结构化 logger，Phase 1 升级）────────────
   //
@@ -190,16 +209,23 @@ export function createApp(config: VextConfig): {
 
     // ── 框架扩展 API ──────────────────────────────────────
     extend<K extends string, V>(key: K, value: V) {
-      if (key in app) {
+      assertExtensionKey(key, app);
+      if (Object.hasOwn(app, key)) {
         throw new Error(
           `[vextjs] app.extend("${key}") cannot override an existing app property. ` +
             "Use a different extension name.",
         );
       }
-      (app as Record<string, unknown>)[key] = value;
+      Object.defineProperty(app, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     },
 
     setValidator(v: VextValidator) {
+      assertValidator(v);
       _validator = v;
     },
 
@@ -208,37 +234,63 @@ export function createApp(config: VextConfig): {
     },
 
     setThrow(wrapper: (original: VextApp["throw"]) => VextApp["throw"]) {
-      app.throw = wrapper(app.throw.bind(app));
+      assertFunction(wrapper, "app.setThrow() wrapper");
+      const nextThrow = wrapper(app.throw.bind(app));
+      assertFunction(nextThrow, "app.setThrow() wrapper result");
+      app.throw = nextThrow as VextApp["throw"];
     },
 
     setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike) {
-      app.logger = normalizeVextLogger(app.logger, wrapper(app.logger));
+      assertFunction(wrapper, "app.setLogger() wrapper");
+      const nextLogger = wrapper(app.logger);
+      assertPlainRecord(nextLogger, "app.setLogger() wrapper result");
+      app.logger = normalizeVextLogger(app.logger, nextLogger);
     },
 
     setRateLimiter(limiter: VextRateLimiter) {
+      assertRateLimiter(limiter);
       _rateLimiter = limiter;
       (app as Record<string, unknown>)._rateLimiterOverridden = true;
     },
 
     setRequestIdGenerator(generate: () => string) {
+      assertFunction(generate, "app.setRequestIdGenerator() generator");
       _requestIdGenerator = generate;
     },
 
     onClose(handler: () => Promise<void> | void) {
+      assertFunction(handler, "app.onClose() handler");
+      if (_closeState !== "open") {
+        throw new Error(
+          "[vextjs] app.onClose() cannot be registered after shutdown has started.",
+        );
+      }
       closeHooks.push(handler);
     },
 
     onReady(handler: () => Promise<void> | void) {
+      assertFunction(handler, "app.onReady() handler");
+      if (_readyState !== "pending") {
+        throw new Error(
+          "[vextjs] app.onReady() cannot be registered after readiness has started.",
+        );
+      }
       readyHooks.push(handler);
     },
 
     use(middleware: VextMiddleware) {
+      if (_pluginSetupDepth <= 0) {
+        throw new Error(
+          "[vextjs] app.use() can only be called during plugin setup().",
+        );
+      }
       if (_locked) {
         throw new Error(
           "[vextjs] app.use() is locked after route registration. " +
             "Global middleware must be registered in plugin setup().",
         );
       }
+      assertFunction(middleware, "app.use() middleware");
       globalMiddlewares.push(middleware);
     },
 
@@ -328,18 +380,39 @@ export function createApp(config: VextConfig): {
       _locked = true;
     },
 
-    async runReady() {
-      await hooks.emitSafe("app:ready", { app, phase: "before" });
-      for (const h of readyHooks) {
-        await h();
-      }
-      // 执行完后清空，释放 hooks 持有的闭包引用
-      readyHooks.length = 0;
-      await hooks.emitSafe("app:ready", { app, phase: "after" });
+    enterPluginSetup() {
+      _pluginSetupDepth += 1;
+    },
+
+    exitPluginSetup() {
+      _pluginSetupDepth = Math.max(0, _pluginSetupDepth - 1);
+    },
+
+    runReady() {
+      if (_readyPromise) return _readyPromise;
+      _readyState = "running";
+      _readyPromise = (async () => {
+        await hooks.emitSafe("app:ready", { app, phase: "before" });
+        for (const h of readyHooks) {
+          try {
+            await h();
+          } catch (err) {
+            app.logger.error(
+              { error: (err as Error).message },
+              "[vextjs] onReady hook failed",
+            );
+          }
+        }
+        // 执行完后清空，释放 hooks 持有的闭包引用
+        readyHooks.length = 0;
+        await hooks.emitSafe("app:ready", { app, phase: "after" });
+        _readyState = "completed";
+      })();
+      return _readyPromise;
     },
 
     getGlobalMiddlewares() {
-      return globalMiddlewares;
+      return [...globalMiddlewares];
     },
 
     getRateLimiter() {
@@ -350,78 +423,75 @@ export function createApp(config: VextConfig): {
       return _requestIdGenerator;
     },
 
-    async shutdown(
+    shutdown(
       serverHandle?: VextServerHandle,
       options?: { skipExit?: boolean },
     ) {
-      // guard：防止 SIGTERM + SIGINT 重复触发
-      if (_shuttingDown) return;
-      _shuttingDown = true;
+      if (_shutdownPromise) return _shutdownPromise;
+      _closeState = "running";
+      _shutdownPromise = (async () => {
+        app.logger.info("[vextjs] starting graceful shutdown...");
+        await hooks.emitSafe("app:close", { app, phase: "before" });
 
-      app.logger.info("[vextjs] starting graceful shutdown...");
-      await hooks.emitSafe("app:close", { app, phase: "before" });
+        const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
 
-      const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
+        // ── 步骤 1：停止接受新请求 + 等待飞行中请求完成 ──
+        if (serverHandle) {
+          await closeServerWithTimeout(
+            serverHandle,
+            shutdownTimeout,
+            app.logger,
+          );
+        }
 
-      // ── 步骤 1：停止接受新请求 + 等待飞行中请求完成 ──
-      if (serverHandle) {
-        await Promise.race([
-          serverHandle.close(),
-          new Promise<void>((resolve) =>
-            setTimeout(() => {
-              app.logger.warn(
-                "[vextjs] in-flight request wait timed out, forcing shutdown",
-              );
-              resolve();
-            }, shutdownTimeout),
-          ),
-        ]);
-      }
+        // ── 步骤 2：按 LIFO 顺序执行 onClose 钩子 ──
+        for (const h of [...closeHooks].reverse()) {
+          try {
+            await h();
+          } catch (err) {
+            app.logger.error(
+              { error: (err as Error).message },
+              "[vextjs] onClose hook failed",
+            );
+          }
+        }
+        // 执行完后清空，释放 hooks 持有的资源引用
+        closeHooks.length = 0;
 
-      // ── 步骤 2：按 LIFO 顺序执行 onClose 钩子 ──
-      for (const h of [...closeHooks].reverse()) {
+        // ── 步骤 3：关闭响应缓存运行时资源 ──
         try {
-          await h();
+          await responseCache.close?.();
         } catch (err) {
           app.logger.error(
             { error: (err as Error).message },
-            "[vextjs] onClose hook failed",
+            "[vextjs] response cache close failed",
           );
         }
-      }
-      // 执行完后清空，释放 hooks 持有的资源引用
-      closeHooks.length = 0;
+        await hooks.emitSafe("app:close", { app, phase: "after" });
 
-      // ── 步骤 3：关闭响应缓存运行时资源 ──
-      try {
-        await responseCache.close?.();
-      } catch (err) {
-        app.logger.error(
-          { error: (err as Error).message },
-          "[vextjs] response cache close failed",
-        );
-      }
-      await hooks.emitSafe("app:close", { app, phase: "after" });
+        // 默认 logger 可能持有异步 sink，必须在所有 close hook 和 app:close after 之后收尾。
+        try {
+          await loggerLifecycle?.close();
+        } catch (err) {
+          console.error(
+            `[vextjs] logger close failed: ${(err as Error).message}`,
+          );
+        }
 
-      // 默认 logger 可能持有异步 sink，必须在所有 close hook 和 app:close after 之后收尾。
-      try {
-        await loggerLifecycle?.close();
-      } catch (err) {
-        console.error(
-          `[vextjs] logger close failed: ${(err as Error).message}`,
-        );
-      }
+        _closeState = "closed";
 
-      // ── 步骤 4：退出进程 ──
-      //
-      // 跳过 process.exit 的场景：
-      //   - _testMode: 测试模式，由 createTestApp 控制生命周期
-      //   - skipExit:  bootstrap catch 块中调用，仅需清理资源，
-      //                不应 exit（否则吞掉启动错误 + 退出码 0 掩盖失败）
-      //
-      if (!config._testMode && !options?.skipExit) {
-        process.exit(0);
-      }
+        // ── 步骤 4：退出进程 ──
+        //
+        // 跳过 process.exit 的场景：
+        //   - _testMode: 测试模式，由 createTestApp 控制生命周期
+        //   - skipExit:  bootstrap catch 块中调用，仅需清理资源，
+        //                不应 exit（否则吞掉启动错误 + 退出码 0 掩盖失败）
+        //
+        if (!config._testMode && !options?.skipExit) {
+          process.exit(0);
+        }
+      })();
+      return _shutdownPromise;
     },
   };
 
@@ -429,6 +499,126 @@ export function createApp(config: VextConfig): {
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────
+
+const RESERVED_EXTENSION_KEYS = new Set([
+  "__proto__",
+  "prototype",
+  "constructor",
+  "then",
+  "toString",
+  "valueOf",
+  "hasOwnProperty",
+]);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function assertPlainRecord(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (!isPlainRecord(value)) {
+    throw new TypeError(`[vextjs] ${label} must be an object.`);
+  }
+}
+
+function assertFunction(
+  value: unknown,
+  label: string,
+): asserts value is Function {
+  if (typeof value !== "function") {
+    throw new TypeError(`[vextjs] ${label} must be a function.`);
+  }
+}
+
+function assertCreateAppConfig(value: unknown): asserts value is VextConfig {
+  assertPlainRecord(value, "createApp() config");
+  const config = value as Record<string, unknown>;
+  for (const key of [
+    "logger",
+    "requestContext",
+    "shutdown",
+    "cache",
+    "response",
+    "requestId",
+  ]) {
+    if (config[key] !== undefined) {
+      assertPlainRecord(config[key], `createApp() config.${key}`);
+    }
+  }
+  if (config.middlewares !== undefined && !Array.isArray(config.middlewares)) {
+    throw new TypeError(
+      "[vextjs] createApp() config.middlewares must be an array.",
+    );
+  }
+}
+
+function assertExtensionKey(key: unknown, app: VextApp): asserts key is string {
+  if (typeof key !== "string" || key.length === 0) {
+    throw new TypeError(
+      "[vextjs] app.extend() key must be a non-empty string.",
+    );
+  }
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key)) {
+    throw new Error(
+      `[vextjs] app.extend("${key}") key must be a valid JavaScript identifier.`,
+    );
+  }
+  if (RESERVED_EXTENSION_KEYS.has(key) || key in Object.prototype) {
+    throw new Error(
+      `[vextjs] app.extend("${key}") uses a reserved app extension key.`,
+    );
+  }
+  if (key in app && !Object.hasOwn(app, key)) {
+    throw new Error(
+      `[vextjs] app.extend("${key}") cannot shadow an inherited app property.`,
+    );
+  }
+}
+
+function assertValidator(value: unknown): asserts value is VextValidator {
+  assertPlainRecord(value, "app.setValidator() validator");
+  assertFunction(value.compile, "app.setValidator() validator.compile");
+}
+
+function assertRateLimiter(value: unknown): asserts value is VextRateLimiter {
+  assertPlainRecord(value, "app.setRateLimiter() limiter");
+  assertFunction(value.check, "app.setRateLimiter() limiter.check");
+}
+
+async function closeServerWithTimeout(
+  serverHandle: VextServerHandle,
+  timeoutMs: number,
+  logger: VextRuntimeLogger,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      serverHandle.close(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          timer = undefined;
+          logger.warn(
+            "[vextjs] in-flight request wait timed out, forcing shutdown",
+          );
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    logger.error(
+      { error: (err as Error).message },
+      "[vextjs] server close failed during shutdown",
+    );
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * 创建 HTTP 方法占位函数

@@ -72,9 +72,10 @@ export function createRequestIdMiddleware(
 
     // ── 步骤 1：获取或生成 requestId ──────────────────────
     // 优先从请求头透传（网关注入），不存在则调用 generate()
-    const fromHeader = req.headers[headerName];
+    const fromHeader = firstHeaderValue(req.headers[headerName]);
     const generate = getGenerator() ?? config.generate ?? randomUUID;
-    const requestId = fromHeader || generate();
+    const generated = fromHeader || generate();
+    const requestId = assertValidRequestId(generated);
 
     // ── 步骤 2：挂载到 req.requestId ─────────────────────
     req.requestId = requestId;
@@ -184,4 +185,25 @@ function parseAcceptLanguage(
 
   // 3. 无匹配 → 默认值
   return defaultLocale;
+}
+
+function firstHeaderValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function assertValidRequestId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("[vextjs] requestId must be a string.");
+  }
+  if (value.length === 0 || value.length > 512) {
+    throw new Error(
+      "[vextjs] requestId must be a non-empty string up to 512 characters.",
+    );
+  }
+  if (/[\u0000-\u001F\u007F]/u.test(value)) {
+    throw new Error("[vextjs] requestId must not contain control characters.");
+  }
+  return value;
 }

@@ -18,6 +18,7 @@ import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
 import { requestContext } from "../../lib/request-context.js";
 import { createAuthContextSnapshot } from "../../lib/auth.js";
+import { markHandlerDone } from "../../lib/handler-completion.js";
 import type { RouteOptions, VextBodyParserConfig } from "../../types/app.js";
 import { resolveRouteBodyParserConfig } from "../../lib/middlewares/body-parser.js";
 import {
@@ -398,7 +399,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         const responsePromise =
           result instanceof Promise ? result : Promise.resolve(result);
 
-        responsePromise
+        const completion = responsePromise
           .then(async (webResponse: Response) => {
             // 将 Web Response 写入 Node.js ServerResponse
             nodeRes.statusCode = webResponse.status;
@@ -439,6 +440,8 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
               );
             }
           });
+        markHandlerDone(nodeRes, completion);
+        void completion;
       };
     },
   };

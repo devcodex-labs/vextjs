@@ -1309,7 +1309,11 @@ export interface VextApp {
    *   interface VextApp { redis: RedisCache }
    * }
    */
-  extend<K extends string, V>(key: K, value: V): void;
+  extend<K extends keyof VextApp>(key: K, value: VextApp[K]): void;
+  extend<K extends string, V>(
+    key: K extends keyof VextApp ? never : K,
+    value: V,
+  ): void;
 
   /**
    * 替换全局校验引擎（插件专用）
@@ -1422,8 +1426,12 @@ export interface VextApp {
    * @param middleware 标准 VextMiddleware
    *
    * @example
-   * // 在插件中注册局部安全头中间件
-   * app.use(securityHeaders({ preset: "strict" }))
+   * definePlugin({
+   *   name: "security",
+   *   setup(app) {
+   *     app.use(securityHeaders({ preset: "strict" }))
+   *   },
+   * })
    */
   use(middleware: VextMiddleware): void;
 

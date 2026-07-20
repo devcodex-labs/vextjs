@@ -519,6 +519,7 @@ export async function devBootstrap(
         sourceFile: "builtin:monsqlize",
         builtin: true,
       });
+      internals.enterPluginSetup();
       try {
         await setupMonSQLize(app, outDir, { startupProfiler });
         hooks.emitSafeSync("plugin:afterSetup", {
@@ -536,6 +537,8 @@ export async function devBootstrap(
           error,
         });
         throw error;
+      } finally {
+        internals.exitPluginSetup();
       }
       app.logger.info("[vext dev] built-in plugin: monsqlize loaded");
     }
@@ -547,7 +550,12 @@ export async function devBootstrap(
     //
     const pluginsDir = path.join(outDir, "plugins");
     if (existsSync(pluginsDir)) {
-      await loadPlugins(app, pluginsDir, { startupProfiler });
+      internals.enterPluginSetup();
+      try {
+        await loadPlugins(app, pluginsDir, { startupProfiler });
+      } finally {
+        internals.exitPluginSetup();
+      }
     }
 
     // ════════════════════════════════════════════════════════
