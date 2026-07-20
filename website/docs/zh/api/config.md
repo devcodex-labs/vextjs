@@ -888,18 +888,18 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 
 ### 基础字段
 
-| 字段               | 类型                           | 默认值        | 说明                                                                                                   |
-| ------------------ | ------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------ |
-| `enabled`          | `boolean`                      | `false`       | 是否启用 Cluster 模式（也可通过 `VEXT_CLUSTER=1` 开启）                                                |
-| `workers`          | `'auto' \| 'auto-1' \| number` | `'auto'`      | Worker 数量（`'auto'` = CPU 核心数；`'auto-1'` = CPU 核心数 - 1；number = 固定数量，clamp 到 [1, 64]） |
-| `autoRestart`      | `boolean`                      | `true`        | Worker 崩溃后自动重启                                                                                  |
-| `maxRestarts`      | `number`                       | `5`           | 快速重启检测窗口内允许的最大重启次数                                                                   |
-| `restartWindow`    | `number`                       | `60000`       | 快速重启检测窗口（毫秒）                                                                               |
-| `restartBaseDelay` | `number`                       | `1000`        | 重启间隔退避基数（毫秒）                                                                               |
-| `restartMaxDelay`  | `number`                       | `30000`       | 重启间隔上限（毫秒）                                                                                   |
-| `pidFile`          | `string`                       | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程）                                                |
-| `titlePrefix`      | `string`                       | `'vext'`      | Worker 进程标题前缀                                                                                    |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | 粘性会话模式（`'ip'` 基于客户端 IP 分配固定 Worker，适用于 WebSocket / SSE）                           |
+| 字段               | 类型                           | 默认值        | 说明                                                                                                             |
+| ------------------ | ------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `enabled`          | `boolean`                      | `false`       | 是否启用 Cluster 模式（也可通过 `VEXT_CLUSTER=1` 开启）                                                          |
+| `workers`          | `'auto' \| 'auto-1' \| number` | `'auto'`      | Worker 数量（`'auto'` = 检测到的可用 CPU 数；`'auto-1'` = 可用 CPU 数 - 1；number = 固定数量，clamp 到 [1, 64]） |
+| `autoRestart`      | `boolean`                      | `true`        | Worker 崩溃后自动重启                                                                                            |
+| `maxRestarts`      | `number`                       | `5`           | 快速重启检测窗口内允许的最大重启次数                                                                             |
+| `restartWindow`    | `number`                       | `60000`       | 快速重启检测窗口（毫秒）                                                                                         |
+| `restartBaseDelay` | `number`                       | `1000`        | 重启间隔退避基数（毫秒）                                                                                         |
+| `restartMaxDelay`  | `number`                       | `30000`       | 重启间隔上限（毫秒）                                                                                             |
+| `pidFile`          | `string`                       | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程）                                                          |
+| `titlePrefix`      | `string`                       | `'vext'`      | Worker 进程标题前缀                                                                                              |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | 粘性会话模式（`'ip'` 基于客户端 IP 分配固定 Worker，适用于 WebSocket / SSE）                                     |
 
 ### `healthCheck` — 心跳检测
 
@@ -921,7 +921,7 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 export default {
   cluster: {
     enabled: true,
-    workers: "auto", // 充分利用所有 CPU 核心
+    workers: "auto", // 使用 availableParallelism / cgroup v1 / os.cpus 检测可用 CPU
     autoRestart: true,
     maxRestarts: 5,
     healthCheck: {

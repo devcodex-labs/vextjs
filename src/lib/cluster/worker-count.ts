@@ -1,4 +1,4 @@
-import { cpus } from "node:os";
+import * as os from "node:os";
 import { readFileSync, existsSync } from "node:fs";
 
 /**
@@ -30,6 +30,24 @@ const MAX_WORKERS = 64;
 /** cgroup v1 CPU 配额路径（Docker 旧版本 / 部分云平台） */
 const CGROUP_V1_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
 const CGROUP_V1_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
+
+interface CpuCountSources {
+  availableParallelism?: () => number;
+  cpus: () => ReturnType<typeof os.cpus>;
+  platform: NodeJS.Platform;
+  existsSync: (path: string) => boolean;
+  readFileSync: (path: string, encoding: BufferEncoding) => string;
+}
+
+function getDefaultCpuCountSources(): CpuCountSources {
+  return {
+    availableParallelism: os.availableParallelism,
+    cpus: os.cpus,
+    platform: process.platform,
+    existsSync,
+    readFileSync,
+  };
+}
 
 // ── 主函数 ──────────────────────────────────────────────────
 
@@ -86,25 +104,19 @@ export function resolveWorkerCount(config: "auto" | "auto-1" | number): number {
  *
  * @returns 可用 CPU 核心数（至少 1）
  */
-function detectCpuCount(): number {
+function detectCpuCount(
+  sources: CpuCountSources = getDefaultCpuCountSources(),
+): number {
   // ── 策略 1: os.availableParallelism() ──────────────────
   //
   // Node.js 19.4+ / 20.x+ 提供此 API，
   // 原生感知 Docker cgroups v2 的 CPU 限制。
   //
-  // 使用 import('node:os') 的方式获取，
-  // 因为 TypeScript 的 @types/node 可能没有此函数声明。
-  //
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const os = require("node:os") as typeof import("node:os") & {
-      availableParallelism?: () => number;
-    };
-
-    if (typeof os.availableParallelism === "function") {
-      const count = os.availableParallelism();
-      if (count > 0) {
-        return Math.min(count, MAX_WORKERS);
+    if (typeof sources.availableParallelism === "function") {
+      const count = sources.availableParallelism();
+      if (Number.isFinite(count) && count > 0) {
+        return Math.min(Math.floor(count), MAX_WORKERS);
       }
     }
   } catch {
@@ -112,8 +124,8 @@ function detectCpuCount(): number {
   }
 
   // ── 策略 2 + 3: os.cpus() + cgroup v1 降级 ────────────
-  const osCpuCount = cpus().length || 1;
-  const adjusted = adjustForCgroupV1(osCpuCount);
+  const osCpuCount = sources.cpus().length || 1;
+  const adjusted = adjustForCgroupV1(osCpuCount, sources);
 
   return Math.min(adjusted, MAX_WORKERS);
 }
@@ -134,26 +146,29 @@ function detectCpuCount(): number {
  * @param fallback os.cpus().length 的值（当 cgroup 不适用时使用）
  * @returns 调整后的 CPU 核心数
  */
-function adjustForCgroupV1(fallback: number): number {
+function adjustForCgroupV1(
+  fallback: number,
+  sources: CpuCountSources = getDefaultCpuCountSources(),
+): number {
   try {
     // 仅 Linux 支持 cgroup 文件系统
-    if (process.platform !== "linux") {
+    if (sources.platform !== "linux") {
       return fallback;
     }
 
     if (
-      !existsSync(CGROUP_V1_QUOTA_PATH) ||
-      !existsSync(CGROUP_V1_PERIOD_PATH)
+      !sources.existsSync(CGROUP_V1_QUOTA_PATH) ||
+      !sources.existsSync(CGROUP_V1_PERIOD_PATH)
     ) {
       return fallback;
     }
 
     const quota = parseInt(
-      readFileSync(CGROUP_V1_QUOTA_PATH, "utf-8").trim(),
+      sources.readFileSync(CGROUP_V1_QUOTA_PATH, "utf-8").trim(),
       10,
     );
     const period = parseInt(
-      readFileSync(CGROUP_V1_PERIOD_PATH, "utf-8").trim(),
+      sources.readFileSync(CGROUP_V1_PERIOD_PATH, "utf-8").trim(),
       10,
     );
 

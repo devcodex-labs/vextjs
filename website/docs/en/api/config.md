@@ -877,18 +877,18 @@ Cluster multi-process configuration. For the complete interface definition, see 
 
 ### Basic fields
 
-| Field              | Type                           | Default Value | Description                                                                                                                         |
-| ------------------ | ------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`          | `boolean`                      | `false`       | Whether to enable Cluster mode (can also be enabled by `VEXT_CLUSTER=1`)                                                            |
-| `workers`          | `'auto' \| 'auto-1' \| number` | `'auto'`      | Number of Workers (`'auto'` = number of CPU cores; `'auto-1'` = number of CPU cores - 1; number = fixed number, clamped to [1, 64]) |
-| `autoRestart`      | `boolean`                      | `true`        | Worker automatically restarts after crash                                                                                           |
-| `maxRestarts`      | `number`                       | `5`           | The maximum number of restarts allowed within the fast restart detection window                                                     |
-| `restartWindow`    | `number`                       | `60000`       | Fast restart detection window (milliseconds)                                                                                        |
-| `restartBaseDelay` | `number`                       | `1000`        | Restart interval backoff base (milliseconds)                                                                                        |
-| `restartMaxDelay`  | `number`                       | `30000`       | Upper limit of restart interval (milliseconds)                                                                                      |
-| `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                               |
-| `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                         |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | Sticky session mode (`'ip'` allocates fixed Worker based on client IP, suitable for WebSocket/SSE)                                  |
+| Field              | Type                           | Default Value | Description                                                                                                                                  |
+| ------------------ | ------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`          | `boolean`                      | `false`       | Whether to enable Cluster mode (can also be enabled by `VEXT_CLUSTER=1`)                                                                     |
+| `workers`          | `'auto' \| 'auto-1' \| number` | `'auto'`      | Number of Workers (`'auto'` = detected available CPU count; `'auto-1'` = available CPU count - 1; number = fixed number, clamped to [1, 64]) |
+| `autoRestart`      | `boolean`                      | `true`        | Worker automatically restarts after crash                                                                                                    |
+| `maxRestarts`      | `number`                       | `5`           | The maximum number of restarts allowed within the fast restart detection window                                                              |
+| `restartWindow`    | `number`                       | `60000`       | Fast restart detection window (milliseconds)                                                                                                 |
+| `restartBaseDelay` | `number`                       | `1000`        | Restart interval backoff base (milliseconds)                                                                                                 |
+| `restartMaxDelay`  | `number`                       | `30000`       | Upper limit of restart interval (milliseconds)                                                                                               |
+| `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                                        |
+| `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                                  |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | Sticky session mode (`'ip'` allocates fixed Worker based on client IP, suitable for WebSocket/SSE)                                           |
 
 ### `healthCheck` — heartbeat detection
 
@@ -910,7 +910,7 @@ Cluster multi-process configuration. For the complete interface definition, see 
 export default {
   cluster: {
     enabled: true,
-    workers: "auto", // Take full advantage of all CPU cores
+    workers: "auto", // Detect available CPUs via availableParallelism / cgroup v1 / os.cpus
     autoRestart: true,
     maxRestarts: 5,
     healthCheck: {

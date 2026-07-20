@@ -12,7 +12,7 @@ export default {
   port: 3000,
   cluster: {
     enabled: true,
-    workers: "auto", // Automatically detect the number of CPU cores
+    workers: "auto", // Detect available CPUs (availableParallelism / cgroup-aware)
   },
 };
 ```
@@ -68,8 +68,8 @@ export default {
     enabled: true,
 
     // Worker quantity
-    // 'auto' — equal to the number of CPU cores (default recommended)
-    // 'auto-1' — equal to the number of CPU cores - 1 (one core is reserved for the Master)
+    // 'auto' — equal to the detected available CPU count (default recommended)
+    // 'auto-1' — equal to detected available CPU count - 1 (one core is reserved for the Master)
     // number — fixed number
     workers: "auto",
 
@@ -118,15 +118,15 @@ export default {
 
 ### Worker quantity strategy
 
-| Value      | Meaning                 | Applicable scenarios                                          |
-| ---------- | ----------------------- | ------------------------------------------------------------- |
-| `'auto'`   | Number of CPU cores     | Production environment (default recommended)                  |
-| `'auto-1'` | Number of CPU cores - 1 | Single-machine mixed deployment (reserve one core for Master) |
-| `2`        | Fixed 2 Workers         | Development environment test Cluster                          |
-| `1`        | Fixed 1 Worker          | Debugging Cluster logic                                       |
+| Value      | Meaning                          | Applicable scenarios                                          |
+| ---------- | -------------------------------- | ------------------------------------------------------------- |
+| `'auto'`   | Detected available CPU count     | Production environment (default recommended)                  |
+| `'auto-1'` | Detected available CPU count - 1 | Single-machine mixed deployment (reserve one core for Master) |
+| `2`        | Fixed 2 Workers                  | Development environment test Cluster                          |
+| `1`        | Fixed 1 Worker                   | Debugging Cluster logic                                       |
 
 ```typescript
-// Production environment: fully utilize all CPU cores
+// Production environment: use the CPU quota available to this runtime
 cluster: {
   workers: "auto";
 }
@@ -429,7 +429,7 @@ CMD ["npm", "start"]
 
 ### Suggestions
 
-- **Worker number**: In Docker containers, it is recommended to set `workers` according to the allocated CPU resources instead of using `'auto'` (`'auto'` will detect the total number of CPU cores of the host)
+- **Worker count**: `workers: "auto"` first uses `os.availableParallelism()` (modern Node runtimes usually account for Docker/Kubernetes CPU limits), then falls back to cgroup v1 `cpu.cfs_quota_us` / `cpu.cfs_period_us`, and finally to `os.cpus().length`. If the runtime cannot read cgroup limits, or if the worker count must strictly match a Pod/container quota, set an explicit number.
 - **PID file**: No special configuration is required for the PID file path in the container, just use the default `.vext.pid`
 - **Graceful shutdown**: Make sure Docker's `stop_grace_period` is greater than VextJS's `shutdown.timeout`
 - **Single container, multiple processes**: Cluster mode is a reasonable approach to run multiple Workers in a single container, but if you use orchestration tools such as Kubernetes, you can also choose single-process mode + multiple Pod replicas
@@ -454,9 +454,9 @@ Long connections (WebSocket, SSE) need to consider sticky session in Cluster mod
 
 ### What is the appropriate number of Workers?
 
-- **CPU intensive**: set to the number of CPU cores (`'auto'`)
-- **I/O intensive**: can be set to 1-2 times the number of CPU cores
-- **Mixed load**: Start with the number of CPU cores and adjust based on actual monitoring data
+- **CPU intensive**: set to the detected available CPU count (`'auto'`)
+- **I/O intensive**: start by evaluating 1-2 times the available CPU count
+- **Mixed load**: start with the available CPU count and adjust based on actual monitoring data
 
 ### How to monitor the status of each Worker?
 

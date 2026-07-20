@@ -9,11 +9,67 @@
  * @see 12a-master.md §2（Worker 数量计算）
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   resolveWorkerCount,
   _internals,
 } from "../../../src/lib/cluster/worker-count.js";
+
+type CpuCountSources = NonNullable<
+  Parameters<typeof _internals.detectCpuCount>[0]
+>;
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+
+function createCpuList(count: number): ReturnType<CpuCountSources["cpus"]> {
+  return Array.from({ length: count }, () => ({
+    model: "test-cpu",
+    speed: 1000,
+    times: {
+      user: 0,
+      nice: 0,
+      sys: 0,
+      idle: 0,
+      irq: 0,
+    },
+  }));
+}
+
+function createCpuSources(
+  overrides: Partial<CpuCountSources> = {},
+): CpuCountSources {
+  return {
+    availableParallelism: undefined,
+    cpus: () => createCpuList(8),
+    platform: "linux",
+    existsSync: () => false,
+    readFileSync: () => "",
+    ...overrides,
+  };
+}
+
+function createCgroupSources(options: {
+  fallbackCpus: number;
+  quota: string;
+  period: string;
+}): CpuCountSources {
+  return createCpuSources({
+    cpus: () => createCpuList(options.fallbackCpus),
+    existsSync: () => true,
+    readFileSync: (filePath) =>
+      filePath.includes("cpu.cfs_quota_us") ? options.quota : options.period,
+  });
+}
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
 
 // ── resolveWorkerCount ──────────────────────────────────────
 
@@ -139,6 +195,50 @@ describe("_internals", () => {
       const count = _internals.detectCpuCount();
       expect(count).toBeLessThanOrEqual(_internals.MAX_WORKERS);
     });
+
+    it("should prefer os.availableParallelism when available", () => {
+      const count = _internals.detectCpuCount(
+        createCpuSources({
+          availableParallelism: () => 3,
+          cpus: () => createCpuList(16),
+        }),
+      );
+
+      expect(count).toBe(3);
+    });
+
+    it("should cap os.availableParallelism at MAX_WORKERS", () => {
+      const count = _internals.detectCpuCount(
+        createCpuSources({
+          availableParallelism: () => 128,
+          cpus: () => createCpuList(128),
+        }),
+      );
+
+      expect(count).toBe(_internals.MAX_WORKERS);
+    });
+
+    it("should fall back when os.availableParallelism is invalid", () => {
+      const count = _internals.detectCpuCount(
+        createCpuSources({
+          availableParallelism: () => 0,
+          cpus: () => createCpuList(6),
+        }),
+      );
+
+      expect(count).toBe(6);
+    });
+
+    it("should fall back to os.cpus length when no cgroup limit exists", () => {
+      const count = _internals.detectCpuCount(
+        createCpuSources({
+          cpus: () => createCpuList(12),
+          existsSync: () => false,
+        }),
+      );
+
+      expect(count).toBe(12);
+    });
   });
 
   describe("adjustForCgroupV1", () => {
@@ -162,6 +262,85 @@ describe("_internals", () => {
       expect(_internals.adjustForCgroupV1(1)).toBeGreaterThanOrEqual(1);
       expect(_internals.adjustForCgroupV1(16)).toBeLessThanOrEqual(16);
       expect(_internals.adjustForCgroupV1(64)).toBeLessThanOrEqual(64);
+    });
+
+    it("should use cgroup v1 quota when it is lower than os.cpus fallback", () => {
+      expect(
+        _internals.adjustForCgroupV1(
+          16,
+          createCgroupSources({
+            fallbackCpus: 16,
+            quota: "200000",
+            period: "100000",
+          }),
+        ),
+      ).toBe(2);
+    });
+
+    it("should ceil fractional cgroup v1 quotas", () => {
+      expect(
+        _internals.adjustForCgroupV1(
+          16,
+          createCgroupSources({
+            fallbackCpus: 16,
+            quota: "150000",
+            period: "100000",
+          }),
+        ),
+      ).toBe(2);
+    });
+
+    it("should keep fallback when cgroup v1 quota is unlimited", () => {
+      expect(
+        _internals.adjustForCgroupV1(
+          16,
+          createCgroupSources({
+            fallbackCpus: 16,
+            quota: "-1",
+            period: "100000",
+          }),
+        ),
+      ).toBe(16);
+    });
+
+    it("should keep fallback on non-Linux platforms even if cgroup files exist", () => {
+      expect(
+        _internals.adjustForCgroupV1(
+          8,
+          createCpuSources({
+            platform: "win32",
+            existsSync: () => true,
+            readFileSync: () => "100000",
+          }),
+        ),
+      ).toBe(8);
+    });
+  });
+
+  describe("docs contract", () => {
+    it("should document cgroup-aware worker auto detection without stale host CPU warning", () => {
+      const zhClusterDocs = readRepoFile("website/docs/zh/guide/cluster.md");
+      const enClusterDocs = readRepoFile("website/docs/en/guide/cluster.md");
+      const zhConfigDocs = readRepoFile("website/docs/zh/api/config.md");
+      const enConfigDocs = readRepoFile("website/docs/en/api/config.md");
+
+      for (const doc of [
+        zhClusterDocs,
+        enClusterDocs,
+        zhConfigDocs,
+        enConfigDocs,
+      ]) {
+        expect(doc).toContain("availableParallelism");
+        expect(doc).toContain("cgroup v1");
+        expect(doc).toContain("os.cpus");
+      }
+
+      expect(zhClusterDocs).not.toContain("宿主机的全部 CPU 核心数");
+      expect(enClusterDocs).not.toContain(
+        "total number of CPU cores of the host",
+      );
+      expect(zhClusterDocs).toContain("无法读取 cgroup 限制");
+      expect(enClusterDocs).toContain("cannot read cgroup limits");
     });
   });
 });

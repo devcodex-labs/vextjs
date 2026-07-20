@@ -12,7 +12,7 @@ export default {
   port: 3000,
   cluster: {
     enabled: true,
-    workers: "auto", // 自动检测 CPU 核数
+    workers: "auto", // 自动检测可用 CPU（availableParallelism / cgroup-aware）
   },
 };
 ```
@@ -68,8 +68,8 @@ export default {
     enabled: true,
 
     // Worker 数量
-    // 'auto'   — 等于 CPU 核数（默认推荐）
-    // 'auto-1' — 等于 CPU 核数 - 1（为 Master 预留一个核心）
+    // 'auto'   — 等于检测到的可用 CPU 数（默认推荐）
+    // 'auto-1' — 等于检测到的可用 CPU 数 - 1（为 Master 预留一个核心）
     // number   — 固定数量
     workers: "auto",
 
@@ -118,15 +118,15 @@ export default {
 
 ### Worker 数量策略
 
-| 值         | 含义             | 适用场景                           |
-| ---------- | ---------------- | ---------------------------------- |
-| `'auto'`   | CPU 核数         | 生产环境（默认推荐）               |
-| `'auto-1'` | CPU 核数 - 1     | 单机混部（为 Master 预留一个核心） |
-| `2`        | 固定 2 个 Worker | 开发环境测试 Cluster               |
-| `1`        | 固定 1 个 Worker | 调试 Cluster 逻辑                  |
+| 值         | 含义                    | 适用场景                           |
+| ---------- | ----------------------- | ---------------------------------- |
+| `'auto'`   | 检测到的可用 CPU 数     | 生产环境（默认推荐）               |
+| `'auto-1'` | 检测到的可用 CPU 数 - 1 | 单机混部（为 Master 预留一个核心） |
+| `2`        | 固定 2 个 Worker        | 开发环境测试 Cluster               |
+| `1`        | 固定 1 个 Worker        | 调试 Cluster 逻辑                  |
 
 ```typescript
-// 生产环境：充分利用所有 CPU 核心
+// 生产环境：使用当前运行环境可用 CPU 配额
 cluster: {
   workers: "auto";
 }
@@ -437,7 +437,7 @@ CMD ["npm", "start"]
 
 ### 建议
 
-- **Worker 数量**：Docker 容器中建议根据分配的 CPU 资源设置 `workers`，而非使用 `'auto'`（`'auto'` 会检测宿主机的全部 CPU 核心数）
+- **Worker 数量**：`workers: "auto"` 会优先使用 `os.availableParallelism()`（现代 Node 运行时通常可感知 Docker/Kubernetes CPU 限制），再降级读取 cgroup v1 的 `cpu.cfs_quota_us` / `cpu.cfs_period_us`，最后才回退到 `os.cpus().length`。如果运行时无法读取 cgroup 限制，或需要与 Pod/容器配额严格一致，建议显式设置数字。
 - **PID 文件**：容器中 PID 文件路径无需特别配置，使用默认的 `.vext.pid` 即可
 - **优雅关闭**：确保 Docker 的 `stop_grace_period` 大于 VextJS 的 `shutdown.timeout`
 - **单容器多进程**：Cluster 模式在单容器中运行多个 Worker 是合理的做法，但如果使用 Kubernetes 等编排工具，也可以选择单进程模式 + 多 Pod 副本
@@ -462,9 +462,9 @@ services:
 
 ### Worker 数量设多少合适？
 
-- **CPU 密集型**：设置为 CPU 核数（`'auto'`）
-- **I/O 密集型**：可以设置为 CPU 核数的 1-2 倍
-- **混合负载**：从 CPU 核数开始，根据实际监控数据调整
+- **CPU 密集型**：设置为检测到的可用 CPU 数（`'auto'`）
+- **I/O 密集型**：可以从可用 CPU 数的 1-2 倍开始评估
+- **混合负载**：从可用 CPU 数开始，根据实际监控数据调整
 
 ### 如何监控各 Worker 的状态？
 
