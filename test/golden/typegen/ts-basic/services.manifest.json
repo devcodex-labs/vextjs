@@ -3,7 +3,7 @@
   "kind": "services-manifest",
   "target": "services",
   "serviceCount": 5,
-  "appExtensionCount": 2,
+  "appExtensionCount": 5,
   "summary": {
     "topLevelServices": 4,
     "nestedServices": 2,
@@ -58,6 +58,30 @@
   ],
   "appExtensions": [
     {
+      "propertyKey": "dash-key",
+      "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"dash-key\"]",
+      "pluginRelativePaths": [
+        "src/plugins/mailer.ts"
+      ],
+      "sourceKinds": [
+        "declaration"
+      ],
+      "confidence": "high",
+      "conflict": false
+    },
+    {
+      "propertyKey": "default",
+      "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"default\"]",
+      "pluginRelativePaths": [
+        "src/plugins/mailer.ts"
+      ],
+      "sourceKinds": [
+        "declaration"
+      ],
+      "confidence": "high",
+      "conflict": false
+    },
+    {
       "propertyKey": "mailer",
       "inferredTypeText": "{ send(to: string, subject: string, body: string): Promise<void>; }",
       "pluginRelativePaths": [
@@ -67,6 +91,18 @@
         "setup"
       ],
       "confidence": "medium",
+      "conflict": false
+    },
+    {
+      "propertyKey": "metrics.v2",
+      "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"metrics.v2\"]",
+      "pluginRelativePaths": [
+        "src/plugins/mailer.ts"
+      ],
+      "sourceKinds": [
+        "declaration"
+      ],
+      "confidence": "high",
       "conflict": false
     },
     {

@@ -5,6 +5,7 @@ import {
   type GeneratedFileResult,
 } from "./write-generated-file.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
+import { renderTypePropertyKey } from "./property-key.js";
 
 export interface AppExtensionsGenerationResult {
   file: GeneratedFileResult;
@@ -28,7 +29,8 @@ export async function generateAppExtensionsDts(
     'declare module "vextjs" {',
     "  interface VextApp {",
     ...merged.entries.map(
-      (entry) => `    ${entry.propertyKey}: ${entry.inferredTypeText};`,
+      (entry) =>
+        `    ${renderTypePropertyKey(entry.propertyKey)}: ${entry.inferredTypeText};`,
     ),
     "  }",
     "}",

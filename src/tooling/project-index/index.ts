@@ -6,6 +6,10 @@ import {
   toGeneratedImportPath,
 } from "../../shared/service-paths.js";
 import { getTypegenGeneratedPaths } from "../typegen/generated-paths.js";
+import {
+  isRuntimeAppExtensionKey,
+  renderTypeStringLiteral,
+} from "../typegen/property-key.js";
 
 export type ExtensionSourceKind =
   | "setup"
@@ -130,7 +134,7 @@ function scanDeclaredAppExtensions(
       entries.push({
         pluginFile,
         propertyKey,
-        inferredTypeText: `typeof import("${importPath}").appExtensions["${propertyKey}"]`,
+        inferredTypeText: `typeof import("${importPath}").appExtensions[${renderTypeStringLiteral(propertyKey)}]`,
         sourceKind: "declaration",
         confidence: "high",
       });
@@ -156,6 +160,7 @@ function scanLegacyAppExtendCalls(
       for (const match of block.body.matchAll(callPattern)) {
         const propertyKey = match[2];
         if (!propertyKey) continue;
+        if (!isRuntimeAppExtensionKey(propertyKey)) continue;
 
         const valueStart = match.index + match[0].length;
         const valueExpression = readCallArgument(block.body, valueStart);
@@ -340,14 +345,14 @@ function extractObjectTypeKeys(body: string): string[] {
       index = skipTypeWhitespaceAndDelimiters(body, index + "readonly".length);
     }
 
-    const keyMatch = /^[A-Za-z_$][\w$]*/u.exec(body.slice(index));
-    if (!keyMatch) {
+    const keyToken = readTypePropertyKey(body, index);
+    if (!keyToken) {
       index++;
       continue;
     }
 
-    const key = keyMatch[0];
-    index += key.length;
+    const key = keyToken.key;
+    index = keyToken.end;
     index = skipTypeWhitespaceAndDelimiters(body, index);
     if (body[index] === "?") {
       index++;
@@ -364,6 +369,54 @@ function extractObjectTypeKeys(body: string): string[] {
   }
 
   return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
+}
+
+function readTypePropertyKey(
+  body: string,
+  index: number,
+): { key: string; end: number } | null {
+  const char = body[index];
+  if (char === '"' || char === "'") {
+    return readQuotedTypePropertyKey(body, index, char);
+  }
+
+  const keyMatch = /^[A-Za-z_$][\w$]*/u.exec(body.slice(index));
+  if (!keyMatch) return null;
+
+  const key = keyMatch[0];
+  return { key, end: index + key.length };
+}
+
+function readQuotedTypePropertyKey(
+  body: string,
+  index: number,
+  quote: '"' | "'",
+): { key: string; end: number } | null {
+  let key = "";
+  let escaped = false;
+
+  for (let current = index + 1; current < body.length; current++) {
+    const char = body[current]!;
+
+    if (escaped) {
+      key += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === quote) {
+      return { key, end: current + 1 };
+    }
+
+    key += char;
+  }
+
+  return null;
 }
 
 function skipTypeWhitespaceAndDelimiters(body: string, index: number): number {

@@ -75,6 +75,16 @@ describe("typegenCommand", () => {
       '"stripe.v2": import("../../src/services/payment/stripe.v2.js").default;',
     );
     expect(appExtensionsGenerated).toBe(expectedAppExtensions);
+    expect(appExtensionsGenerated).toContain(
+      '"dash-key": typeof import("../../src/plugins/mailer.js").appExtensions["dash-key"];',
+    );
+    expect(appExtensionsGenerated).toContain(
+      '"default": typeof import("../../src/plugins/mailer.js").appExtensions["default"];',
+    );
+    expect(appExtensionsGenerated).toContain(
+      '"metrics.v2": typeof import("../../src/plugins/mailer.js").appExtensions["metrics.v2"];',
+    );
+    expect(appExtensionsGenerated).not.toContain("bad-key");
     expect(servicesManifest).toBe(expectedServicesManifest);
     expect(shimGenerated).toContain(".vext/types/services.generated.d.ts");
     expect(shimGenerated).toContain(

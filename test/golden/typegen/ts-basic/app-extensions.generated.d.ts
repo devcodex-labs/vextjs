@@ -4,9 +4,11 @@ import "vextjs";
 
 declare module "vextjs" {
   interface VextApp {
+    "dash-key": typeof import("../../src/plugins/mailer.js").appExtensions["dash-key"];
+    "default": typeof import("../../src/plugins/mailer.js").appExtensions["default"];
     mailer: { send(to: string, subject: string, body: string): Promise<void>; };
+    "metrics.v2": typeof import("../../src/plugins/mailer.js").appExtensions["metrics.v2"];
     readyState: { value: boolean; };
   }
 }
-
 

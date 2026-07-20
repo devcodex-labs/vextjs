@@ -4,67 +4,12 @@ import {
   type GeneratedFileResult,
 } from "./write-generated-file.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
+import { renderTypePropertyKey } from "./property-key.js";
 
 interface ServiceTreeNode {
   children: Map<string, ServiceTreeNode>;
   typeText?: string;
 }
-
-const IDENTIFIER_PROPERTY_NAME = /^[A-Za-z_$][\w$]*$/u;
-const RESERVED_PROPERTY_NAMES = new Set([
-  "break",
-  "case",
-  "catch",
-  "class",
-  "const",
-  "continue",
-  "debugger",
-  "default",
-  "delete",
-  "do",
-  "else",
-  "enum",
-  "export",
-  "extends",
-  "false",
-  "finally",
-  "for",
-  "function",
-  "if",
-  "import",
-  "in",
-  "instanceof",
-  "new",
-  "null",
-  "return",
-  "super",
-  "switch",
-  "this",
-  "throw",
-  "true",
-  "try",
-  "typeof",
-  "var",
-  "void",
-  "while",
-  "with",
-  "as",
-  "async",
-  "await",
-  "from",
-  "get",
-  "implements",
-  "interface",
-  "let",
-  "of",
-  "package",
-  "private",
-  "protected",
-  "public",
-  "set",
-  "static",
-  "yield",
-]);
 
 export async function generateServicesDts(
   rootDir: string,
@@ -120,7 +65,7 @@ function renderServiceTree(node: ServiceTreeNode, indentLevel: number): string {
   for (const [key, child] of [...node.children.entries()].sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
-    const propertyKey = renderServicePropertyKey(key);
+    const propertyKey = renderTypePropertyKey(key);
     const hasChildren = child.children.size > 0;
     if (child.typeText && !hasChildren) {
       lines.push(`${indent}${propertyKey}: ${child.typeText};`);
@@ -142,12 +87,4 @@ function renderServiceTree(node: ServiceTreeNode, indentLevel: number): string {
   }
 
   return lines.join("\n");
-}
-
-function renderServicePropertyKey(key: string): string {
-  if (IDENTIFIER_PROPERTY_NAME.test(key) && !RESERVED_PROPERTY_NAMES.has(key)) {
-    return key;
-  }
-
-  return JSON.stringify(key);
 }
