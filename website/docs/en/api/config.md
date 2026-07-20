@@ -900,6 +900,8 @@ Cluster multi-process configuration. For the complete interface definition, see 
 
 ### `reload` — Zero-downtime rolling restart
 
+`cluster.reload` only configures timing for rolling restarts triggered by `vext reload` / `SIGHUP`. Omitting `cluster.reload` does not disable rolling restart; Vext uses the defaults.
+
 | Field                    | Type     | Default Value | Description                                                  |
 | ------------------------ | -------- | ------------- | ------------------------------------------------------------ |
 | `reload.workerDelay`     | `number` | `2000`        | Time to wait before replacing the next Worker (milliseconds) |

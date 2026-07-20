@@ -208,7 +208,7 @@ Worker 3:                               [运行中] → [关闭] → [重启] �
 - 热修复
 
 :::warning 前提条件
-`vext reload` 要求 `cluster.reload` 已配置（默认启用）。如需禁用滚动重启，移除 `reload` 配置项即可。
+`vext reload` 在 Unix/macOS 上向 Master 发送 `SIGHUP`，由 Master 执行滚动重启。`cluster.reload` 只配置替换间隔、Worker 就绪超时和关闭超时；省略 `cluster.reload` 不会禁用滚动重启，框架会使用默认值。如需在生产流程中禁止 reload，请在部署/运维层禁用 `vext reload` 调用或相关信号。
 :::
 
 ### `vext status` — 查看状态

@@ -911,6 +911,8 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 
 ### `reload` — 零停机滚动重启
 
+`cluster.reload` 只配置 `vext reload` / `SIGHUP` 触发滚动重启时的时间参数。省略 `cluster.reload` 不会禁用滚动重启，框架会使用默认值。
+
 | 字段                     | 类型     | 默认值  | 说明                                   |
 | ------------------------ | -------- | ------- | -------------------------------------- |
 | `reload.workerDelay`     | `number` | `2000`  | 替换下一个 Worker 前的等待时间（毫秒） |

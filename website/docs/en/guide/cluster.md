@@ -200,7 +200,7 @@ Applicable scenarios:
 - Hot fix
 
 :::warning Prerequisites
-`vext reload` requires `cluster.reload` to be configured (enabled by default). To disable rolling restart, remove the `reload` configuration item.
+On Unix/macOS, `vext reload` sends `SIGHUP` to the Master, and the Master performs the rolling restart. `cluster.reload` only configures the replacement delay, worker readiness timeout, and shutdown timeout. Omitting `cluster.reload` does not disable rolling restart; Vext uses the defaults. To block reload in production operations, disable the `vext reload` command or related signals at your deployment/operations layer.
 :::
 
 ### `vext status` — View status

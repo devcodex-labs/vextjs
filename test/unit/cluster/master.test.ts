@@ -17,6 +17,9 @@
  * @see 12c-lifecycle.md（进程生命周期管理）
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   ClusterMaster,
@@ -25,6 +28,15 @@ import {
 } from "../../../src/lib/cluster/master.js";
 import { applyClusterWorkerEnv } from "../../../src/lib/bootstrap.js";
 import { EventEmitter } from "node:events";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
 
 // ── DEFAULT_CLUSTER_CONFIG ──────────────────────────────────
 
@@ -367,6 +379,13 @@ describe("ClusterMaster", () => {
       expect(master.config.reload.workerDelay).toBe(2_000);
       expect(master.config.reload.readyTimeout).toBe(30_000);
       expect(master.config.reload.shutdownTimeout).toBe(10_000);
+    });
+
+    it("should treat omitted reload as default timing, not a disabled state", () => {
+      const master = new ClusterMaster({ workers: 2 });
+
+      expect(master.config.reload).toEqual(DEFAULT_CLUSTER_CONFIG.reload);
+      expect(master.config.reload).not.toHaveProperty("enabled");
     });
 
     // ── 组合覆盖 ────────────────────────────────────────
@@ -901,5 +920,30 @@ describe("ClusterMaster", () => {
       expect(master.config.healthCheck.enabled).toBe(false);
       expect(master.config.reload.workerDelay).toBe(100);
     });
+  });
+});
+
+describe("cluster reload documentation contract", () => {
+  it("should document that omitting cluster.reload keeps defaults instead of disabling reload", () => {
+    const zhCluster = readRepoFile("website/docs/zh/guide/cluster.md");
+    const enCluster = readRepoFile("website/docs/en/guide/cluster.md");
+    const zhConfig = readRepoFile("website/docs/zh/api/config.md");
+    const enConfig = readRepoFile("website/docs/en/api/config.md");
+
+    expect(zhCluster).toContain("省略 `cluster.reload` 不会禁用滚动重启");
+    expect(zhConfig).toContain("省略 `cluster.reload` 不会禁用滚动重启");
+    expect(enCluster).toContain(
+      "Omitting `cluster.reload` does not disable rolling restart",
+    );
+    expect(enConfig).toContain(
+      "Omitting `cluster.reload` does not disable rolling restart",
+    );
+
+    for (const doc of [zhCluster, zhConfig]) {
+      expect(doc).not.toContain("移除 `reload` 配置项即可");
+    }
+    for (const doc of [enCluster, enConfig]) {
+      expect(doc).not.toContain("remove the `reload` configuration item");
+    }
   });
 });
