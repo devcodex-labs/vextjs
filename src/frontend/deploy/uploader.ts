@@ -36,6 +36,7 @@ export async function deployFrontendAssets(
   );
   const adapter = options.adapter ?? resolveDeployAdapter(options.config);
   const uploadedAssets: VextFrontendDeployManifestAsset[] = [];
+  const confirmedStateUploadKeys = new Set<string>();
   const assets: VextFrontendDeployResult["assets"] = [];
 
   await runWithConcurrency(
@@ -48,6 +49,7 @@ export async function deployFrontendAssets(
           uploadKey: item.asset.uploadKey,
           status: "skipped",
         });
+        confirmedStateUploadKeys.add(item.asset.uploadKey);
         return;
       }
       const result = await adapter.upload({
@@ -64,6 +66,7 @@ export async function deployFrontendAssets(
       });
       if (!dryRun && result.uploaded) {
         uploadedAssets.push(item.asset);
+        confirmedStateUploadKeys.add(item.asset.uploadKey);
       }
     },
   );
@@ -71,7 +74,9 @@ export async function deployFrontendAssets(
   if (!dryRun) {
     await writeFrontendDeployState(
       options.config.deploy.upload.stateFile,
-      manifest.assets,
+      manifest.assets.filter((asset) =>
+        confirmedStateUploadKeys.has(asset.uploadKey),
+      ),
     );
   }
 

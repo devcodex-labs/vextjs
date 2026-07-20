@@ -532,6 +532,108 @@ describe("frontend client build", () => {
     });
     expect(secondUpload.uploaded).toBe(0);
     expect(secondUpload.skipped).toBe(deployManifest.assets.length);
+
+    const deployState = JSON.parse(
+      await readFile(result.config.deploy.upload.stateFile, "utf-8"),
+    );
+    expect(Object.keys(deployState.assets)).toHaveLength(
+      deployManifest.assets.length,
+    );
+    expect(deployState.assets["app/v1/static/logo.txt"]).toMatchObject({
+      sha256: expect.any(String),
+      bytes: "logo-v1".length,
+    });
+  });
+
+  it("does not persist deploy state for unconfirmed custom adapter uploads", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        deploy: {
+          upload: {
+            enabled: true,
+            adapter: "mock",
+          },
+        },
+      },
+    });
+    const deployManifest = JSON.parse(
+      await readFile(result.deployManifestPath!, "utf-8"),
+    );
+    const stateFile = result.config.deploy.upload.stateFile;
+    const declinedAdapter = {
+      name: "declined",
+      async upload() {
+        return { uploaded: false };
+      },
+    };
+
+    const dryRun = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath!,
+      dryRun: true,
+      adapter: declinedAdapter,
+    });
+
+    expect(dryRun.dryRun).toBe(true);
+    expect(dryRun.uploaded).toBe(0);
+    expect(existsSync(stateFile)).toBe(false);
+
+    const declined = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath!,
+      adapter: declinedAdapter,
+    });
+    const emptyState = JSON.parse(await readFile(stateFile, "utf-8"));
+
+    expect(declined.uploaded).toBe(0);
+    expect(declined.skipped).toBe(deployManifest.assets.length);
+    expect(Object.keys(emptyState.assets)).toHaveLength(0);
+
+    let successCalls = 0;
+    const successful = await deployFrontendAssets({
+      config: result.config,
+      manifestPath: result.deployManifestPath!,
+      adapter: {
+        name: "successful",
+        async upload() {
+          successCalls += 1;
+          return { uploaded: true };
+        },
+      },
+    });
+    const populatedState = await readFile(stateFile, "utf-8");
+
+    expect(successful.uploaded).toBe(deployManifest.assets.length);
+    expect(successCalls).toBe(deployManifest.assets.length);
+    expect(Object.keys(JSON.parse(populatedState).assets)).toHaveLength(
+      deployManifest.assets.length,
+    );
+
+    const staleState = JSON.parse(populatedState);
+    const staleUploadKey = Object.keys(staleState.assets)[0];
+    staleState.assets[staleUploadKey].sha256 = "stale";
+    const staleStateText = `${JSON.stringify(staleState, null, 2)}\n`;
+    await writeFile(stateFile, staleStateText, "utf-8");
+
+    await expect(
+      deployFrontendAssets({
+        config: result.config,
+        manifestPath: result.deployManifestPath!,
+        adapter: {
+          name: "throwing",
+          async upload() {
+            throw new Error("upload failed");
+          },
+        },
+      }),
+    ).rejects.toThrow("upload failed");
+    expect(await readFile(stateFile, "utf-8")).toBe(staleStateText);
   });
 
   it("renders an import map for configured browser external runtime modules", async () => {
