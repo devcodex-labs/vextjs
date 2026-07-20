@@ -28,3 +28,27 @@ export function readRequiredOptionValue(
     nextIndex: index + 1,
   };
 }
+
+export function readRequiredOptionValueOrExit(
+  args: string[],
+  index: number,
+  optionName: string,
+  valueLabel: string,
+): RequiredOptionValue {
+  try {
+    return readRequiredOptionValue(args, index, optionName, valueLabel);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+}
+
+export function failUnknownCliArgument(
+  arg: string,
+  printHelp: () => void,
+): never {
+  const kind = arg.startsWith("-") ? "option" : "argument";
+  console.error(`[vextjs] Unknown ${kind}: "${arg}"\n`);
+  printHelp();
+  process.exit(1);
+}

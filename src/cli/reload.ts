@@ -4,6 +4,10 @@ import {
   removePidFile,
   DEFAULT_PID_FILE,
 } from "../lib/cluster/pid-file.js";
+import {
+  failUnknownCliArgument,
+  readRequiredOptionValueOrExit,
+} from "./utils/command-args.js";
 
 /**
  * reload.ts — vext reload CLI 命令
@@ -141,17 +145,17 @@ function parseReloadArgs(args: string[]): ReloadOptions {
   };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]!;
 
-    if (arg === "--pid-file" && i + 1 < args.length) {
-      options.pidFile = args[++i]!;
+    if (arg === "--pid-file") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+      options.pidFile = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--help" || arg === "-h") {
       printReloadHelp();
       process.exit(0);
-    } else if (arg?.startsWith("--")) {
-      console.error(`[vextjs] Unknown option: "${arg}"\n`);
-      printReloadHelp();
-      process.exit(1);
+    } else {
+      failUnknownCliArgument(arg, printReloadHelp);
     }
   }
 
@@ -166,6 +170,8 @@ function printReloadHelp(): void {
   Usage: vext reload [options]
 
   Trigger a zero-downtime rolling restart (cluster mode).
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
 
   Sends SIGHUP to the master process, which replaces workers one by one.
   At least N-1 workers remain available during the restart process.

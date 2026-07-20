@@ -4,6 +4,10 @@ import {
   removePidFile,
   DEFAULT_PID_FILE,
 } from "../lib/cluster/pid-file.js";
+import {
+  failUnknownCliArgument,
+  readRequiredOptionValueOrExit,
+} from "./utils/command-args.js";
 
 /**
  * stop.ts — vext stop CLI 命令
@@ -165,17 +169,17 @@ function parseStopArgs(args: string[]): StopOptions {
   };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]!;
 
-    if (arg === "--pid-file" && i + 1 < args.length) {
-      options.pidFile = args[++i]!;
+    if (arg === "--pid-file") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+      options.pidFile = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--help" || arg === "-h") {
       printStopHelp();
       process.exit(0);
-    } else if (arg?.startsWith("--")) {
-      console.error(`[vextjs] Unknown option: "${arg}"\n`);
-      printStopHelp();
-      process.exit(1);
+    } else {
+      failUnknownCliArgument(arg, printStopHelp);
     }
   }
 
@@ -190,6 +194,8 @@ function printStopHelp(): void {
   Usage: vext stop [options]
 
   Stop the running vext server (cluster mode).
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
 
   Sends SIGTERM to the master process and waits for graceful shutdown.
   The master will notify all workers to drain connections before exiting.

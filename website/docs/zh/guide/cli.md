@@ -469,6 +469,8 @@ vext doctor routes --write-inspect --write-manifest --json
 vext start [options]
 ```
 
+`vext start` 不支持位置参数。`--port`、`--host`、`--config`、`--port-conflict`、`--startup-profile-json` 等取值参数必须跟随非 option 值。
+
 ### 选项
 
 | 选项                         | 说明                                     | 默认值         |
@@ -595,6 +597,8 @@ profile 名匹配 `src/config/{profile}.ts`（build 后对应 `dist/config/{prof
 vext stop [options]
 ```
 
+`vext stop` 不支持位置参数。`--pid-file` 必须跟随非 option 路径值。
+
 ### 选项
 
 | 选项                | 说明                | 默认值      |
@@ -630,11 +634,15 @@ vext stop --pid-file /var/run/myapp.pid
 vext reload [options]
 ```
 
+`vext reload` 不支持位置参数。`--pid-file` 必须跟随非 option 路径值。
+
 ### 选项
 
 | 选项                | 说明         | 默认值      |
 | ------------------- | ------------ | ----------- |
 | `--pid-file <path>` | PID 文件路径 | `.vext.pid` |
+| `--port <number>`   | 健康探测端口 | `3000`      |
+| `--host <address>`  | 健康探测主机 | `127.0.0.1` |
 | `-h, --help`        | 显示帮助     | —           |
 
 ### 示例
@@ -670,6 +678,8 @@ vext reload
 ```bash
 vext status [options]
 ```
+
+`vext status` 不支持位置参数。`--pid-file`、`--port`、`--host` 等取值参数必须跟随非 option 值。
 
 ### 选项
 

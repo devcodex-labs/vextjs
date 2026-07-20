@@ -468,6 +468,8 @@ Start the project in production mode. TypeScript projects load compiled code fro
 vext start [options]
 ```
 
+`vext start` does not support positional arguments. Value options such as `--port`, `--host`, `--config`, `--port-conflict`, and `--startup-profile-json` must be followed by a non-option value.
+
 ### Options
 
 | Options                      | Description                                                              | Default                         |
@@ -592,6 +594,8 @@ Stop a running Cluster mode service. Send a stop signal by reading the PID file.
 vext stop [options]
 ```
 
+`vext stop` does not support positional arguments. `--pid-file` must be followed by a non-option path value.
+
 ### Options
 
 | Options             | Description                  | Default     |
@@ -627,12 +631,16 @@ Triggers a zero-downtime rolling restart in Cluster mode. Restart Worker process
 vext reload [options]
 ```
 
+`vext reload` does not support positional arguments. `--pid-file` must be followed by a non-option path value.
+
 ### Options
 
-| Options             | Description   | Default     |
-| ------------------- | ------------- | ----------- |
-| `--pid-file <path>` | PID file path | `.vext.pid` |
-| `-h, --help`        | Show help     | —           |
+| Options             | Description       | Default     |
+| ------------------- | ----------------- | ----------- |
+| `--pid-file <path>` | PID file path     | `.vext.pid` |
+| `--port <number>`   | Health probe port | `3000`      |
+| `--host <address>`  | Health probe host | `127.0.0.1` |
+| `-h, --help`        | Show help         | —           |
 
 ### Example
 
@@ -667,6 +675,8 @@ View the service running status in Cluster mode, including information about the
 ```bash
 vext status [options]
 ```
+
+`vext status` does not support positional arguments. Value options such as `--pid-file`, `--port`, and `--host` must be followed by a non-option value.
 
 ### Options
 

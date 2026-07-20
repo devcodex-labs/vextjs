@@ -3,6 +3,23 @@ import { parseDevArgs } from "../../../src/cli/dev.js";
 import { parseStartArgs } from "../../../src/cli/start.js";
 
 describe("CLI config profile options", () => {
+  function expectCliArgsToExit(fn: () => unknown, expectedError: string): void {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit(${code})`);
+    }) as typeof process.exit);
+
+    try {
+      expect(fn).toThrow("process.exit(1)");
+      expect(error).toHaveBeenCalledWith(expectedError);
+    } finally {
+      error.mockRestore();
+      exit.mockRestore();
+    }
+  }
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -14,13 +31,24 @@ describe("CLI config profile options", () => {
   });
 
   it("rejects vext start --config without a value", () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-      throw new Error(`process.exit(${code})`);
-    }) as typeof process.exit);
+    expectCliArgsToExit(
+      () => parseStartArgs(["--config"]),
+      '[vextjs] Option "--config" requires a value: <name>',
+    );
+  });
 
-    expect(() => parseStartArgs(["--config"])).toThrow("process.exit(1)");
-    expect(error).toHaveBeenCalledWith("[vextjs] --config requires a value");
+  it("rejects vext start --startup-profile-json with a following flag", () => {
+    expectCliArgsToExit(
+      () => parseStartArgs(["--startup-profile-json", "--port", "3000"]),
+      '[vextjs] Option "--startup-profile-json" requires a value: <path>; received option-like value "--port"',
+    );
+  });
+
+  it("rejects vext start unknown positional arguments", () => {
+    expectCliArgsToExit(
+      () => parseStartArgs(["extra"]),
+      '[vextjs] Unknown argument: "extra"\n',
+    );
   });
 
   it("rejects duplicate vext start --config options", () => {

@@ -244,6 +244,26 @@ describe("vext stop (stopCommand)", () => {
     );
   });
 
+  it("should exit(1) with unknown positional argument", async () => {
+    await expect(stopCommand(["extra"])).rejects.toThrow("process.exit(1)");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown argument: "extra"'),
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
+  });
+
+  it("should reject --pid-file when the next token is another flag", async () => {
+    await expect(stopCommand(["--pid-file", "--help"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[vextjs] Option "--pid-file" requires a value: <path>; received option-like value "--help"',
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
+  });
+
   // ── readPidFile 返回 ok 但 pid 为 undefined（边界情况） ─
 
   it("should exit(1) on invalid PID content without probing or signaling parsed prefixes", async () => {
@@ -421,6 +441,30 @@ describe("vext reload (reloadCommand)", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Unknown option: "--foo"'),
     );
+  });
+
+  it("should exit(1) with unknown positional argument", async () => {
+    setPlatform("linux");
+
+    await expect(reloadCommand(["extra"])).rejects.toThrow("process.exit(1)");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown argument: "extra"'),
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
+  });
+
+  it("should reject --pid-file when the next token is another flag", async () => {
+    setPlatform("linux");
+
+    await expect(reloadCommand(["--pid-file", "--help"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[vextjs] Option "--pid-file" requires a value: <path>; received option-like value "--help"',
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
   });
 
   // ── 发送 SIGHUP 失败（非 EPERM 错误） ────────────────
@@ -728,6 +772,37 @@ describe("vext status (statusCommand)", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Unknown option: "--verbose"'),
     );
+  });
+
+  it("should exit(1) with unknown positional argument", async () => {
+    await expect(statusCommand(["extra"])).rejects.toThrow("process.exit(1)");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown argument: "extra"'),
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
+  });
+
+  it("should reject --pid-file when the next token is another flag", async () => {
+    await expect(
+      statusCommand(["--pid-file", "--port", "8080"]),
+    ).rejects.toThrow("process.exit(1)");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[vextjs] Option "--pid-file" requires a value: <path>; received option-like value "--port"',
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
+  });
+
+  it("should reject --host when the next token is another flag", async () => {
+    await expect(statusCommand(["--host", "--port", "8080"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[vextjs] Option "--host" requires a value: <string>; received option-like value "--port"',
+    );
+    expect(mockReadPidFile).not.toHaveBeenCalled();
   });
 
   // ── health 部分字段缺失（仅有 pid） ──────────────────

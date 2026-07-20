@@ -3,6 +3,10 @@ import {
   isProcessAlive,
   DEFAULT_PID_FILE,
 } from "../lib/cluster/pid-file.js";
+import {
+  failUnknownCliArgument,
+  readRequiredOptionValueOrExit,
+} from "./utils/command-args.js";
 
 /**
  * status.ts — vext status CLI 命令
@@ -227,27 +231,31 @@ function parseStatusArgs(args: string[]): StatusOptions {
   };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]!;
 
-    if (arg === "--pid-file" && i + 1 < args.length) {
-      options.pidFile = args[++i]!;
-    } else if (arg === "--port" && i + 1 < args.length) {
-      const portStr = args[++i]!;
+    if (arg === "--pid-file") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+      options.pidFile = parsed.value;
+      i = parsed.nextIndex;
+    } else if (arg === "--port") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<number>");
+      const portStr = parsed.value;
       const port = parseInt(portStr, 10);
       if (Number.isNaN(port) || port < 0 || port > 65535) {
         console.error(`[vextjs] Invalid port number: "${portStr}"`);
         process.exit(1);
       }
       options.port = port;
-    } else if (arg === "--host" && i + 1 < args.length) {
-      options.host = args[++i]!;
+      i = parsed.nextIndex;
+    } else if (arg === "--host") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<string>");
+      options.host = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--help" || arg === "-h") {
       printStatusHelp();
       process.exit(0);
-    } else if (arg?.startsWith("--")) {
-      console.error(`[vextjs] Unknown option: "${arg}"\n`);
-      printStatusHelp();
-      process.exit(1);
+    } else {
+      failUnknownCliArgument(arg, printStatusHelp);
     }
   }
 
@@ -262,6 +270,8 @@ function printStatusHelp(): void {
   Usage: vext status [options]
 
   Show the status of the running vext server (cluster mode).
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
 
   Reads the PID file to check if the master process is alive,
   and optionally probes the /health endpoint for worker details.

@@ -19,6 +19,10 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import {
+  failUnknownCliArgument,
+  readRequiredOptionValueOrExit,
+} from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
@@ -384,27 +388,35 @@ export function parseStartArgs(args: string[]): StartOptions {
   const seenOptions = new Set<string>();
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]!;
 
-    if (arg === "--port" && i + 1 < args.length) {
-      const portStr = args[++i]!;
+    if (arg === "--port") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<number>");
+      const portStr = parsed.value;
       const port = parseInt(portStr, 10);
       if (Number.isNaN(port) || port < 0 || port > 65535) {
         console.error(`[vextjs] Invalid port number: "${portStr}"`);
         process.exit(1);
       }
       options.port = port;
-    } else if (arg === "--host" && i + 1 < args.length) {
-      options.host = args[++i]!;
-    } else if (arg === "--config" && i + 1 < args.length) {
-      markUniqueOption(seenOptions, "--config");
-      options.configProfile = args[++i]!;
+      i = parsed.nextIndex;
+    } else if (arg === "--host") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<string>");
+      options.host = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--config") {
       markUniqueOption(seenOptions, "--config");
-      console.error("[vextjs] --config requires a value");
-      process.exit(1);
-    } else if (arg === "--port-conflict" && i + 1 < args.length) {
-      const strategy = args[++i]!;
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<name>");
+      options.configProfile = parsed.value;
+      i = parsed.nextIndex;
+    } else if (arg === "--port-conflict") {
+      const parsed = readRequiredOptionValueOrExit(
+        args,
+        i,
+        arg,
+        "<error|prompt|kill|next>",
+      );
+      const strategy = parsed.value;
       if (
         strategy !== "error" &&
         strategy !== "prompt" &&
@@ -415,19 +427,20 @@ export function parseStartArgs(args: string[]): StartOptions {
         process.exit(1);
       }
       options.portConflict = strategy;
+      i = parsed.nextIndex;
     } else if (arg === "--startup-profile") {
       options.startupProfile = true;
-    } else if (arg === "--startup-profile-json" && i + 1 < args.length) {
-      options.startupProfileJson = args[++i]!;
+    } else if (arg === "--startup-profile-json") {
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+      options.startupProfileJson = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--verbose-lifecycle") {
       options.verboseLifecycle = true;
     } else if (arg === "--help" || arg === "-h") {
       printStartHelp();
       process.exit(0);
-    } else if (arg?.startsWith("--")) {
-      console.error(`[vextjs] Unknown option: "${arg}"\n`);
-      printStartHelp();
-      process.exit(1);
+    } else {
+      failUnknownCliArgument(arg, printStartHelp);
     }
   }
 
@@ -484,6 +497,8 @@ function printStartHelp(): void {
   Usage: vext start [options]
 
   Start the application in production mode.
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
 
   Options:
     --port <number>   Override the listening port
