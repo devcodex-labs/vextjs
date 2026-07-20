@@ -216,4 +216,22 @@ describe("Vext docs vanilla assets", () => {
   it("keeps the vanilla app script syntactically valid", () => {
     expect(() => new Function(VEXT_DOCS_APP_JS)).not.toThrow();
   });
+
+  it("keeps Authorize credential clearing explicit and state-synchronized", () => {
+    expect(VEXT_DOCS_APP_JS).toContain(
+      'clearButton.textContent = "Clear credentials";',
+    );
+    expect(VEXT_DOCS_APP_JS).toContain('clearButton.type = "button";');
+    expect(VEXT_DOCS_APP_JS).toContain('clearButton.addEventListener("click"');
+    expect(VEXT_DOCS_APP_JS).toContain('state.auth[name] = "";');
+    expect(VEXT_DOCS_APP_JS).toContain('input.value = "";');
+    expect(VEXT_DOCS_APP_JS).toContain('writeStoredAuth(name, "");');
+    expect(VEXT_DOCS_APP_JS).toContain(
+      'status.textContent = "Credentials cleared.";',
+    );
+    expect(VEXT_DOCS_APP_JS).toContain('status.setAttribute("role", "status")');
+    expect(VEXT_DOCS_APP_JS).toContain("emitAuthChange()");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-auth-clear");
+    expect(VEXT_DOCS_STYLE_CSS).toContain("vext-docs-auth-status");
+  });
 });

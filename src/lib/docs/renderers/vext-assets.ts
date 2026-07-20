@@ -322,6 +322,28 @@ body {
   font: inherit;
 }
 
+.vext-docs-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.vext-docs-auth-clear {
+  min-height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.vext-docs-auth-status {
+  margin: 0;
+  color: var(--vext-muted);
+  font-size: 12px;
+}
+
 .vext-docs-status {
   color: var(--vext-muted);
   margin-bottom: 12px;
@@ -2884,6 +2906,11 @@ export const VEXT_DOCS_APP_JS: string = `
     details.appendChild(summary);
     const body = document.createElement("div");
     body.className = "vext-docs-auth-body";
+    const inputs = [];
+    const status = document.createElement("p");
+    status.className = "vext-docs-auth-status";
+    status.setAttribute("role", "status");
+    status.textContent = "Credentials are stored in this browser session.";
     for (const { name, scheme } of schemes) {
       const label = document.createElement("label");
       const labelText = document.createElement("span");
@@ -2898,12 +2925,32 @@ export const VEXT_DOCS_APP_JS: string = `
       input.addEventListener("input", () => {
         state.auth[name] = input.value;
         writeStoredAuth(name, input.value);
+        status.textContent = input.value ? name + " credentials saved." : name + " credentials cleared.";
         emitAuthChange();
       });
       label.appendChild(labelText);
       label.appendChild(input);
       body.appendChild(label);
+      inputs.push({ name, input });
     }
+    const actions = document.createElement("div");
+    actions.className = "vext-docs-auth-actions";
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "vext-docs-auth-clear vext-docs-secondary-button";
+    clearButton.textContent = "Clear credentials";
+    clearButton.addEventListener("click", () => {
+      for (const { name, input } of inputs) {
+        state.auth[name] = "";
+        input.value = "";
+        writeStoredAuth(name, "");
+      }
+      status.textContent = "Credentials cleared.";
+      emitAuthChange();
+    });
+    actions.appendChild(clearButton);
+    actions.appendChild(status);
+    body.appendChild(actions);
     details.appendChild(body);
     header.appendChild(details);
   };
