@@ -1,9 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type {
-  ResolvedVextDocsConfig,
-  VextCodeDocsDocument,
-} from "../types.js";
+import type { ResolvedVextDocsConfig, VextCodeDocsDocument } from "../types.js";
 import { loadComponentCodeDocs } from "./component-source.js";
 import { loadMiddlewareCodeDocs } from "./middleware-source.js";
 import { loadModelCodeDocs } from "./model-source.js";
@@ -29,12 +26,28 @@ export type CodeDocsProvider = () => Promise<VextCodeDocsDocument>;
 export function createCodeDocsProvider(
   options: CodeDocsProviderOptions,
 ): CodeDocsProvider {
-  let cache: VextCodeDocsDocument | undefined;
+  if (options.config.code.scan !== "background") {
+    return () => loadCodeDocs(options);
+  }
+
+  let cached: VextCodeDocsDocument | undefined;
+  let pending: Promise<VextCodeDocsDocument> | undefined;
+  const load = () => {
+    pending = loadCodeDocs(options)
+      .then((document) => {
+        cached = document;
+        return document;
+      })
+      .finally(() => {
+        pending = undefined;
+      });
+    pending.catch(() => undefined);
+    return pending;
+  };
+
+  load();
   return async () => {
-    if (!cache) {
-      cache = await loadCodeDocs(options);
-    }
-    return cache;
+    return cached ?? pending ?? load();
   };
 }
 

@@ -1,9 +1,12 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeDocsConfig } from "../../../src/lib/docs/index.js";
-import { loadCodeDocs } from "../../../src/lib/docs/sources/code-jsdoc-source.js";
+import {
+  createCodeDocsProvider,
+  loadCodeDocs,
+} from "../../../src/lib/docs/sources/code-jsdoc-source.js";
 
 describe("loadCodeDocs", () => {
   let rootDir: string;
@@ -204,59 +207,61 @@ export const dashboardRoot = "dashboard-root"
       sourceLocation: { file: "utils/date.ts", line: 2 },
       summary: "Format a date.",
     });
-    expect(docs.items.find((item) => item.id === "model:TenantOrder#default"))
-      .toMatchObject({
-        model: {
-          registryKey: "TenantOrder",
-          name: "Order",
-          collection: "orders",
-          connection: { database: "tenant" },
-          fields: expect.arrayContaining([
-            expect.objectContaining({
-              name: "orderNo",
-              required: true,
-              raw: "string:1-64!",
-            }),
-            expect.objectContaining({
-              name: "amount",
-              required: true,
-              raw: "number:0-!",
-            }),
-          ]),
-          enums: [{ name: "status", values: ["draft", "paid"] }],
-          options: [{ name: "timestamps", value: "true" }],
-          indexes: [
-            expect.objectContaining({
-              keys: "{ orderNo: 1 }",
-              unique: true,
-            }),
-          ],
-          usage: 'const Model = app.db.use("tenant").model("Order");',
-        },
-      });
-    expect(docs.items.find((item) => item.id === "plugin:hello#default"))
-      .toMatchObject({
-        kind: "plugin",
-        title: "plugins.hello",
-        plugin: {
-          name: "hello",
-          dependencies: ["database"],
-          lifecycle: { setup: true, onReady: true, onClose: true },
-          extensions: ["hello"],
-          globalMiddlewares: true,
-        },
-      });
-    expect(docs.items.find((item) => item.id === "middleware:check-role#default"))
-      .toMatchObject({
-        kind: "middleware",
-        title: "middlewares.check-role",
-        middleware: {
-          name: "check-role",
-          type: "factory",
-          usage:
-            'middlewares: [{ name: "check-role", options: { /* ... */ } }]',
-        },
-      });
+    expect(
+      docs.items.find((item) => item.id === "model:TenantOrder#default"),
+    ).toMatchObject({
+      model: {
+        registryKey: "TenantOrder",
+        name: "Order",
+        collection: "orders",
+        connection: { database: "tenant" },
+        fields: expect.arrayContaining([
+          expect.objectContaining({
+            name: "orderNo",
+            required: true,
+            raw: "string:1-64!",
+          }),
+          expect.objectContaining({
+            name: "amount",
+            required: true,
+            raw: "number:0-!",
+          }),
+        ]),
+        enums: [{ name: "status", values: ["draft", "paid"] }],
+        options: [{ name: "timestamps", value: "true" }],
+        indexes: [
+          expect.objectContaining({
+            keys: "{ orderNo: 1 }",
+            unique: true,
+          }),
+        ],
+        usage: 'const Model = app.db.use("tenant").model("Order");',
+      },
+    });
+    expect(
+      docs.items.find((item) => item.id === "plugin:hello#default"),
+    ).toMatchObject({
+      kind: "plugin",
+      title: "plugins.hello",
+      plugin: {
+        name: "hello",
+        dependencies: ["database"],
+        lifecycle: { setup: true, onReady: true, onClose: true },
+        extensions: ["hello"],
+        globalMiddlewares: true,
+      },
+    });
+    expect(
+      docs.items.find((item) => item.id === "middleware:check-role#default"),
+    ).toMatchObject({
+      kind: "middleware",
+      title: "middlewares.check-role",
+      middleware: {
+        name: "check-role",
+        type: "factory",
+        usage: 'middlewares: [{ name: "check-role", options: { /* ... */ } }]',
+      },
+    });
   });
 
   it("loads optional static docs sources when explicitly enabled", async () => {
@@ -334,36 +339,41 @@ export const dashboardRoot = "dashboard-root"
         "style:dashboard.style#file",
       ]),
     );
-    expect(docs.items.find((item) => item.id === "locale:common/en-US#default"))
-      .toMatchObject({
-        kind: "locale",
-        sourceFile: "locales/common/en-US.ts",
-        summary: "Backend locale resource for en-US.",
-      });
-    expect(docs.items.find((item) => item.id === "locale:frontend/en-US#default"))
-      .toMatchObject({
-        kind: "locale",
-        sourceFile: "frontend/locales/en-US.ts",
-        summary: "Frontend locale resource for en-US.",
-      });
-    expect(docs.items.find((item) => item.id === "config:default#default"))
-      .toMatchObject({
-        kind: "config",
-        sourceFile: "config/default.ts",
-        description: expect.stringContaining("logger"),
-      });
-    expect(docs.items.find((item) => item.id === "preload:bootstrap#file"))
-      .toMatchObject({
-        kind: "preload",
-        sourceFile: "preload/bootstrap.ts",
-        description: expect.stringContaining("bootstrap"),
-      });
-    expect(docs.items.find((item) => item.id === "style:dashboard.style#file"))
-      .toMatchObject({
-        kind: "style",
-        sourceFile: "frontend/styles/dashboard.style.ts",
-        description: expect.stringContaining("dashboardRoot"),
-      });
+    expect(
+      docs.items.find((item) => item.id === "locale:common/en-US#default"),
+    ).toMatchObject({
+      kind: "locale",
+      sourceFile: "locales/common/en-US.ts",
+      summary: "Backend locale resource for en-US.",
+    });
+    expect(
+      docs.items.find((item) => item.id === "locale:frontend/en-US#default"),
+    ).toMatchObject({
+      kind: "locale",
+      sourceFile: "frontend/locales/en-US.ts",
+      summary: "Frontend locale resource for en-US.",
+    });
+    expect(
+      docs.items.find((item) => item.id === "config:default#default"),
+    ).toMatchObject({
+      kind: "config",
+      sourceFile: "config/default.ts",
+      description: expect.stringContaining("logger"),
+    });
+    expect(
+      docs.items.find((item) => item.id === "preload:bootstrap#file"),
+    ).toMatchObject({
+      kind: "preload",
+      sourceFile: "preload/bootstrap.ts",
+      description: expect.stringContaining("bootstrap"),
+    });
+    expect(
+      docs.items.find((item) => item.id === "style:dashboard.style#file"),
+    ).toMatchObject({
+      kind: "style",
+      sourceFile: "frontend/styles/dashboard.style.ts",
+      description: expect.stringContaining("dashboardRoot"),
+    });
   });
 
   it("uses MonSQLize model loader scan and depth rules", async () => {
@@ -395,7 +405,10 @@ export default {}
 export default {}
 `,
     );
-    await writeFile(join(srcDir, "models", "log-entry.ts"), `export default {}`);
+    await writeFile(
+      join(srcDir, "models", "log-entry.ts"),
+      `export default {}`,
+    );
 
     const docs = await loadCodeDocs({
       rootDir,
@@ -415,11 +428,12 @@ export default {}
       "model:AOrder#default",
       "model:LogEntry#default",
     ]);
-    expect(docs.items.find((item) => item.id === "model:LogEntry#default"))
-      .toMatchObject({
-        sourceFile: "models/log-entry.ts",
-        summary: "Model entry for models.LogEntry.",
-      });
+    expect(
+      docs.items.find((item) => item.id === "model:LogEntry#default"),
+    ).toMatchObject({
+      sourceFile: "models/log-entry.ts",
+      summary: "Model entry for models.LogEntry.",
+    });
   });
 
   it("prefers root src for JSDoc when runtime srcDir points to built output", async () => {
@@ -431,7 +445,10 @@ export default {}
       join(distDir, "utils", "date.js"),
       `export function formatDate(value) { return String(value) }`,
     );
-    await writeFile(join(distDir, "models", "product.js"), `module.exports = {}`);
+    await writeFile(
+      join(distDir, "models", "product.js"),
+      `module.exports = {}`,
+    );
     await writeFile(
       join(srcDir, "utils", "date.ts"),
       `
@@ -495,5 +512,124 @@ export function formatDate() {}
     });
 
     expect(docs.items).toEqual([]);
+  });
+
+  it("rescans source files on each lazy provider call", async () => {
+    const file = join(srcDir, "utils", "date.ts");
+    await writeFile(
+      file,
+      `
+/**
+ * Format the original date.
+ */
+export function formatDate() {}
+`,
+    );
+    const provider = createCodeDocsProvider({
+      rootDir,
+      srcDir,
+      config: normalizeDocsConfig({
+        docs: {
+          code: {
+            services: false,
+            utils: true,
+            models: false,
+            components: false,
+            plugins: false,
+            middlewares: false,
+            scan: "lazy",
+          },
+        },
+      }),
+    });
+
+    const first = await provider();
+    expect(first.items[0]).toMatchObject({
+      id: "utils:date#formatDate",
+      summary: "Format the original date.",
+    });
+
+    await writeFile(
+      file,
+      `
+/**
+ * Format the refreshed date.
+ */
+export function formatDate() {}
+`,
+    );
+
+    const second = await provider();
+    expect(second.items[0]).toMatchObject({
+      id: "utils:date#formatDate",
+      summary: "Format the refreshed date.",
+    });
+  });
+
+  it("warms and reuses a background provider snapshot", async () => {
+    const file = join(srcDir, "utils", "date.ts");
+    await writeFile(
+      file,
+      `
+/**
+ * Format the warmed date.
+ */
+export function formatDate() {}
+`,
+    );
+    const provider = createCodeDocsProvider({
+      rootDir,
+      srcDir,
+      config: normalizeDocsConfig({
+        docs: {
+          code: {
+            services: false,
+            utils: true,
+            models: false,
+            components: false,
+            plugins: false,
+            middlewares: false,
+            scan: "background",
+          },
+        },
+      }),
+    });
+
+    const first = await provider();
+    expect(first.items[0]).toMatchObject({
+      id: "utils:date#formatDate",
+      summary: "Format the warmed date.",
+    });
+
+    await writeFile(
+      file,
+      `
+/**
+ * Format the later date.
+ */
+export function formatDate() {}
+`,
+    );
+
+    const second = await provider();
+    expect(second).toBe(first);
+    expect(second.items[0]).toMatchObject({
+      id: "utils:date#formatDate",
+      summary: "Format the warmed date.",
+    });
+  });
+
+  it("documents code docs scan lifecycle in config guides", async () => {
+    for (const file of [
+      "website/docs/en/api/config.md",
+      "website/docs/zh/api/config.md",
+      "website/docs/en/guide/configuration.md",
+      "website/docs/zh/guide/configuration.md",
+    ]) {
+      const content = await readFile(file, "utf8");
+      expect(content).toContain("docs.code.scan");
+      expect(content).toContain("background");
+      expect(content).toContain("lazy");
+    }
   });
 });
