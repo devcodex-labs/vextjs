@@ -54,18 +54,22 @@ JSCSS 是 Vext 默认动态样式 facade，面向组件级动态样式和构建�
 
 ```ts
 // src/frontend/styles/button.style.ts
-import { recipe, style, vars } from "vextjs/style";
+import { createVar, recipe, style } from "vextjs/style";
+
+const colorText = createVar("color-text", "#111827");
+const colorPrimary = createVar("color-primary", "#2563eb");
+const colorDanger = createVar("color-danger", "#dc2626");
 
 export const button = recipe({
   base: style({
     borderRadius: 8,
     padding: "8px 12px",
-    color: vars.color.text,
+    color: colorText,
   }),
   variants: {
     intent: {
-      primary: style({ background: vars.color.primary }),
-      danger: style({ background: vars.color.danger }),
+      primary: style({ background: colorPrimary }),
+      danger: style({ background: colorDanger }),
     },
   },
 });
@@ -80,12 +84,12 @@ extractor 会把样式写入构建产物。不需要默认引入 Emotion 或 sty
 主题、租户或运行时状态需要动态改变值时，使用 CSS variables。
 
 ```ts
-import { createVar, setVar, style } from "vextjs/style";
+import { createVar, setVar, style, vars } from "vextjs/style";
 
 export const accent = createVar("accent");
 
 export const panel = style({
-  [setVar(accent)]: "#4f46e5",
+  ...vars(setVar(accent, "#4f46e5")),
   borderColor: accent,
 });
 ```

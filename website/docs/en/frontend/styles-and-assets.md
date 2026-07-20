@@ -54,18 +54,22 @@ JSCSS is Vext's default dynamic style facade. It is designed for component-level
 
 ```ts
 // src/frontend/styles/button.style.ts
-import { recipe, style, vars } from "vextjs/style";
+import { createVar, recipe, style } from "vextjs/style";
+
+const colorText = createVar("color-text", "#111827");
+const colorPrimary = createVar("color-primary", "#2563eb");
+const colorDanger = createVar("color-danger", "#dc2626");
 
 export const button = recipe({
   base: style({
     borderRadius: 8,
     padding: "8px 12px",
-    color: vars.color.text,
+    color: colorText,
   }),
   variants: {
     intent: {
-      primary: style({ background: vars.color.primary }),
-      danger: style({ background: vars.color.danger }),
+      primary: style({ background: colorPrimary }),
+      danger: style({ background: colorDanger }),
     },
   },
 });
@@ -80,12 +84,12 @@ The extractor writes CSS into the build output. You do not need Emotion or style
 Use CSS variables when values need to be changed by theme, tenant, or runtime state.
 
 ```ts
-import { createVar, setVar, style } from "vextjs/style";
+import { createVar, setVar, style, vars } from "vextjs/style";
 
 export const accent = createVar("accent");
 
 export const panel = style({
-  [setVar(accent)]: "#4f46e5",
+  ...vars(setVar(accent, "#4f46e5")),
   borderColor: accent,
 });
 ```
