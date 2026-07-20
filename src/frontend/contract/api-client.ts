@@ -1,7 +1,4 @@
-import type {
-  VextClientContract,
-  VextClientRouteMethod,
-} from "./types.js";
+import type { VextClientContract, VextClientRouteMethod } from "./types.js";
 
 type VextHeadersInit = ConstructorParameters<typeof Headers>[0];
 
@@ -88,6 +85,14 @@ export interface VextApiClient<TContract extends VextClientContract> {
     path: PathFor<TContract, "DELETE">,
     options?: VextApiRequestOptions,
   ): Promise<unknown>;
+  HEAD(
+    path: PathFor<TContract, "HEAD">,
+    options?: VextApiRequestOptions,
+  ): Promise<unknown>;
+  OPTIONS(
+    path: PathFor<TContract, "OPTIONS">,
+    options?: VextApiRequestOptions,
+  ): Promise<unknown>;
 }
 
 export function createVextApiClient<const TContract extends VextClientContract>(
@@ -114,7 +119,11 @@ export function createVextApiClient<const TContract extends VextClientContract>(
       signal: requestOptions.signal,
     };
 
-    if (requestOptions.body !== undefined && method !== "GET" && method !== "HEAD") {
+    if (
+      requestOptions.body !== undefined &&
+      method !== "GET" &&
+      method !== "HEAD"
+    ) {
       if (!headers.has("content-type")) {
         headers.set("content-type", "application/json");
       }
@@ -151,6 +160,8 @@ export function createVextApiClient<const TContract extends VextClientContract>(
     PUT: (path, requestOptions) => request("PUT", path, requestOptions),
     PATCH: (path, requestOptions) => request("PATCH", path, requestOptions),
     DELETE: (path, requestOptions) => request("DELETE", path, requestOptions),
+    HEAD: (path, requestOptions) => request("HEAD", path, requestOptions),
+    OPTIONS: (path, requestOptions) => request("OPTIONS", path, requestOptions),
   };
 }
 
@@ -194,7 +205,10 @@ function getGlobalLocationOrigin(): string {
   return maybeGlobal.location?.origin ?? "http://localhost";
 }
 
-function mergeHeaders(target: Headers, source: VextHeadersInit | undefined): void {
+function mergeHeaders(
+  target: Headers,
+  source: VextHeadersInit | undefined,
+): void {
   if (!source) return;
   new Headers(source).forEach((value, key) => target.set(key, value));
 }

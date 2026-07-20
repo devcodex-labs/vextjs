@@ -293,6 +293,27 @@ describe("frontend client contract", () => {
     expect(contract.routes).toHaveLength(1);
     expect(contract.routes[0]?.path).toBe("/api/hello");
   });
+
+  it("keeps every supported route method in the public client contract", () => {
+    const methods = [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "HEAD",
+      "OPTIONS",
+    ] as const;
+    const contract = buildClientContract({
+      routes: methods.map((method) => ({
+        method,
+        path: `/api/${method.toLowerCase()}`,
+        operationId: `${method.toLowerCase()}Api`,
+      })),
+    });
+
+    expect(contract.routes.map((route) => route.method)).toEqual(methods);
+  });
 });
 
 describe("frontend client build", () => {
@@ -453,7 +474,9 @@ describe("frontend client build", () => {
           },
         },
       }),
-    ).rejects.toThrow("frontend browser external runtime mapping is incomplete");
+    ).rejects.toThrow(
+      "frontend browser external runtime mapping is incomplete",
+    );
   });
 
   it("generates page, layout, error, i18n, and render manifests", async () => {
@@ -535,9 +558,9 @@ describe("frontend client build", () => {
     });
     expect(renderManifest.serverRenderer).toBe("server/renderer.cjs");
     expect(renderManifest.routeAssets.schemaVersion).toBe(1);
-    expect(renderManifest.routeAssets.routes.map((route: any) => route.page)).toContain(
-      "admin/index",
-    );
+    expect(
+      renderManifest.routeAssets.routes.map((route: any) => route.page),
+    ).toContain("admin/index");
     expect(
       renderManifest.routeAssets.routes.find(
         (route: any) => route.page === "admin/index",
@@ -583,7 +606,7 @@ describe("frontend client build", () => {
     expect(currentEntry).toContain('const clientLoad = "current";');
     expect(currentEntry).toContain("markVextHydrationStart(root)");
     expect(currentEntry).toContain('root.dataset.vextHydration = "done"');
-    expect(currentEntry).toContain('performance.measure(name, start, end)');
+    expect(currentEntry).toContain("performance.measure(name, start, end)");
 
     const allRootDir = await tempRoot();
     await createMinimalFrontend(allRootDir);
@@ -938,11 +961,7 @@ describe("frontend render middleware", () => {
     });
     const res = createRenderMockResponse();
 
-    await middleware(
-      createMockRequest("/dashboard"),
-      res,
-      async () => {},
-    );
+    await middleware(createMockRequest("/dashboard"), res, async () => {});
     res.render(
       "index",
       { title: "<Dashboard>" },
@@ -1172,6 +1191,50 @@ describe("frontend api client", () => {
       expect(isVextApiError(error)).toBe(true);
       expect((error as VextApiError).status).toBe(404);
     }
+  });
+
+  it("exposes HEAD and OPTIONS helpers for generated route methods", async () => {
+    const methodContract = {
+      schemaVersion: 1,
+      kind: "client-contract",
+      source: "routes-manifest",
+      generatedAt: "test",
+      routes: [
+        { method: "HEAD", path: "/api/ping", operationId: "headApiPing" },
+        {
+          method: "OPTIONS",
+          path: "/api/options",
+          operationId: "optionsApiOptions",
+        },
+      ],
+      warnings: [],
+    } as const;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const api = createVextApiClient(methodContract, {
+      baseUrl: "https://example.test",
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), init });
+        return new Response(null, { status: 204 });
+      },
+    });
+
+    await expect(
+      api.HEAD("/api/ping", { body: { ignored: true } }),
+    ).resolves.toBeNull();
+    await expect(
+      api.OPTIONS("/api/options", {
+        body: { ok: true },
+        query: { preflight: "1" },
+      }),
+    ).resolves.toBeNull();
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toBe("https://example.test/api/ping");
+    expect(calls[0]?.init?.method).toBe("HEAD");
+    expect(calls[0]?.init?.body).toBeUndefined();
+    expect(calls[1]?.url).toBe("https://example.test/api/options?preflight=1");
+    expect(calls[1]?.init?.method).toBe("OPTIONS");
+    expect(calls[1]?.init?.body).toBe(JSON.stringify({ ok: true }));
   });
 });
 
