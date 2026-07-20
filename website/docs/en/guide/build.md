@@ -67,6 +67,8 @@ src/dist/
 
 ### CLI parameters
 
+`vext build` does not support positional arguments. Value options such as `--outdir` and `--config` must be followed by a non-option value, for example `--outdir dist`; `--outdir --minify` or `--config --clean` fails as a missing-value error.
+
 | Parameters         | Description                                                  | Default value |
 | ------------------ | ------------------------------------------------------------ | ------------- |
 | `--outdir <path>`  | Output directory                                             | `dist`        |

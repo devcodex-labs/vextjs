@@ -67,6 +67,8 @@ src/                          dist/
 
 ### CLI 参数
 
+`vext build` 不支持位置参数。`--outdir`、`--config` 等取值参数必须紧跟非 option 值，例如 `--outdir dist`；`--outdir --minify` 或 `--config --clean` 会作为缺值错误失败。
+
 | 参数              | 说明                                            | 默认值       |
 | ----------------- | ----------------------------------------------- | ------------ |
 | `--outdir <path>` | 输出目录                                        | `dist`       |

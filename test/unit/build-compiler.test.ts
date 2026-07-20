@@ -962,12 +962,30 @@ describe("parseBuildArgs", () => {
   // 保存和恢复环境变量
   const originalEnv = { ...process.env };
 
+  function expectBuildArgsToExit(args: string[], expectedError: string): void {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit(${code})`);
+    }) as typeof process.exit);
+
+    try {
+      expect(() => parseBuildArgs(args)).toThrow("process.exit(1)");
+      expect(error).toHaveBeenCalledWith(expectedError);
+    } finally {
+      error.mockRestore();
+      exit.mockRestore();
+    }
+  }
+
   afterEach(() => {
     // 恢复环境变量
     delete process.env.VEXT_BUILD_OUTDIR;
     delete process.env.VEXT_BUILD_SOURCEMAP;
     delete process.env.VEXT_BUILD_MINIFY;
     Object.assign(process.env, originalEnv);
+    vi.restoreAllMocks();
   });
 
   describe("默认值", () => {
@@ -996,17 +1014,42 @@ describe("parseBuildArgs", () => {
     });
 
     it("重复 --config 应失败而不是采用最后一个值", () => {
-      const error = vi.spyOn(console, "error").mockImplementation(() => {});
-      vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-        throw new Error(`process.exit(${code})`);
-      }) as typeof process.exit);
-
-      expect(() =>
-        parseBuildArgs(["--config", "one", "--config", "two"]),
-      ).toThrow("process.exit(1)");
-      expect(error).toHaveBeenCalledWith(
+      expectBuildArgsToExit(
+        ["--config", "one", "--config", "two"],
         "[vextjs] --config may only be specified once",
       );
+    });
+
+    it("--outdir 缺少值时应失败", () => {
+      expectBuildArgsToExit(
+        ["--outdir"],
+        '[vextjs] Option "--outdir" requires a value: <path>',
+      );
+    });
+
+    it("--outdir 后跟另一个 flag 时应失败", () => {
+      expectBuildArgsToExit(
+        ["--outdir", "--minify"],
+        '[vextjs] Option "--outdir" requires a value: <path>; received option-like value "--minify"',
+      );
+    });
+
+    it("--config 缺少值时应失败", () => {
+      expectBuildArgsToExit(
+        ["--config"],
+        '[vextjs] Option "--config" requires a value: <name>',
+      );
+    });
+
+    it("--config 后跟另一个 flag 时应失败", () => {
+      expectBuildArgsToExit(
+        ["--config", "--clean"],
+        '[vextjs] Option "--config" requires a value: <name>; received option-like value "--clean"',
+      );
+    });
+
+    it("未知位置参数应失败", () => {
+      expectBuildArgsToExit(["extra"], '[vextjs] Unknown argument: "extra"\n');
     });
 
     it("--clean 应设置清理标志", () => {

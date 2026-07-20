@@ -13,6 +13,7 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import { readRequiredOptionValue } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
@@ -363,6 +364,7 @@ function resolveCliConfigProfile(
  *
  * 支持的参数：
  *   --outdir <path>    输出目录（默认 'dist'）
+ *   --config <name>    选择 build-time 配置 profile（默认 production）
  *   --clean            编译前清理（默认 false）
  *   --sourcemap        生成 source map（默认 true）
  *   --no-sourcemap     不生成 source map
@@ -391,20 +393,20 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
 
     switch (arg) {
       case "--outdir":
-        if (i + 1 >= args.length) {
-          console.error("[vextjs] --outdir requires a value");
-          process.exit(1);
+        {
+          const parsed = readBuildOptionValue(args, i, arg, "<path>");
+          options.outdir = parsed.value;
+          i = parsed.nextIndex;
         }
-        options.outdir = args[++i]!;
         break;
 
       case "--config":
         markUniqueOption(seenOptions, "--config");
-        if (i + 1 >= args.length) {
-          console.error("[vextjs] --config requires a value");
-          process.exit(1);
+        {
+          const parsed = readBuildOptionValue(args, i, arg, "<name>");
+          options.configProfile = parsed.value;
+          i = parsed.nextIndex;
         }
-        options.configProfile = args[++i]!;
         break;
 
       case "--clean":
@@ -447,11 +449,28 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
           printBuildHelp();
           process.exit(1);
         }
+        console.error(`[vextjs] Unknown argument: "${arg}"\n`);
+        printBuildHelp();
+        process.exit(1);
         break;
     }
   }
 
   return options;
+}
+
+function readBuildOptionValue(
+  args: string[],
+  index: number,
+  optionName: string,
+  valueLabel: string,
+) {
+  try {
+    return readRequiredOptionValue(args, index, optionName, valueLabel);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
 
 // ── 帮助输出 ────────────────────────────────────────────────
@@ -464,6 +483,8 @@ function printBuildHelp(): void {
   Usage: vext build [options]
 
   Compile TypeScript source to JavaScript for production deployment.
+  Positional arguments are not supported.
+  Options that take values, such as --outdir/--config, require a non-option value.
 
   Options:
     --outdir <path>    Output directory (default: "dist")

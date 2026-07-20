@@ -289,6 +289,7 @@ vext build && vext start
 - 先刷新 `.vext/types/*.generated.d.ts`、`src/types/generated/index.d.ts`、`.vext/manifest/services.json` 与 `.vext/manifest/routes.json`
 - `--typecheck` 开启时，在 generated / manifest 刷新后执行 `tsc --noEmit`
 - 使用 esbuild 进行服务端编译与前端打包
+- 不支持位置参数；`--outdir`、`--config` 等取值参数必须提供非 option 值
 - 输出目录默认为 `dist/`
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
