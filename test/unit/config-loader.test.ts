@@ -751,7 +751,12 @@ describe("validateConfig", () => {
   describe("openapi validation", () => {
     it("accepts valid openapi config", () => {
       expect(() =>
-        _validateConfig({ openapi: { enabled: true } }),
+        _validateConfig({
+          openapi: {
+            enabled: true,
+            tagGroups: [{ name: "Public API", tags: ["Users", "Orders"] }],
+          },
+        }),
       ).not.toThrow();
     });
 

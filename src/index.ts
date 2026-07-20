@@ -90,6 +90,7 @@ export type {
   VextResponseConfig,
   VextLogErrorsConfig,
   VextOpenAPIConfig,
+  VextOpenAPITagGroup,
   VextBodyParserConfig,
   VextAccessLogConfig,
   VextClusterConfig,

@@ -614,6 +614,11 @@ export interface VextResponseConfig {
 /**
  * OpenAPI 文档配置
  */
+export interface VextOpenAPITagGroup {
+  name: string;
+  tags: string[];
+}
+
 export interface VextOpenAPIConfig {
   /** 是否启用 OpenAPI 文档生成（默认：dev 启用，production 关闭） */
   enabled?: boolean;
@@ -671,6 +676,14 @@ export interface VextOpenAPIConfig {
   }>;
   /** 全局标签定义 */
   tags?: Array<{ name: string; description?: string }>;
+
+  /**
+   * 显式 x-tagGroups vendor extension。
+   *
+   * 默认 Vext Docs 使用 OpenAPI path segment 生成递归导航；此字段仅在
+   * 下游 OpenAPI 工具明确消费 x-tagGroups 时作为 vendor extension 原样输出。
+   */
+  tagGroups?: VextOpenAPITagGroup[];
 
   /**
    * Guard → Security Scheme 映射

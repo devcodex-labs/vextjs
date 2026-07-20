@@ -2469,6 +2469,20 @@ describe("OpenAPIGenerator", () => {
         expect(doc["x-tagGroups"]).toEqual(customGroups);
       });
 
+      it("config API 文档公开 tagGroups vendor extension 契约", () => {
+        const zhConfig = readRepoFile("website/docs/zh/api/config.md");
+        const enConfig = readRepoFile("website/docs/en/api/config.md");
+
+        expect(zhConfig).toContain("| `tagGroups`");
+        expect(zhConfig).toContain(
+          "显式输出 OpenAPI `x-tagGroups` vendor extension",
+        );
+        expect(enConfig).toContain("| `tagGroups`");
+        expect(enConfig).toContain(
+          "Explicit OpenAPI `x-tagGroups` vendor extension output",
+        );
+      });
+
       it("config.tagGroups 空数组 → 不生成 x-tagGroups（显式禁用）", () => {
         const generator = createGenerator({ tagGroups: [] });
         const doc = generator.generate([

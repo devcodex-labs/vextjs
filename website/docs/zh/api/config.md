@@ -683,6 +683,7 @@ OpenAPI 文档自动生成配置。
 | `license`                       | `object`                                  | `undefined`          | 许可证信息                                                                                                                                                              |
 | `servers`                       | `array`                                   | `undefined`          | 服务器地址列表                                                                                                                                                          |
 | `tags`                          | `array`                                   | `undefined`          | 全局标签定义                                                                                                                                                            |
+| `tagGroups`                     | `Array<{ name: string; tags: string[] }>` | `undefined`          | 显式输出 OpenAPI `x-tagGroups` vendor extension；内置 Vext Docs 默认导航不依赖它                                                                                        |
 | `guardSecurityMap`              | `Record<string, string>`                  | `undefined`          | Guard → Security Scheme 映射                                                                                                                                            |
 | `securitySchemes`               | `object`                                  | `undefined`          | 安全方案定义                                                                                                                                                            |
 | `scalar`                        | `object`                                  | `{}`                 | 已废弃兼容字段；仅触发 warning，不影响内置 Vext Docs 页面                                                                                                               |
@@ -690,6 +691,8 @@ OpenAPI 文档自动生成配置。
 | ~~`docExpansion`~~              | `'none' \| 'list' \| 'full'`              | `'list'`             | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
 
 固定本地或部署 API 目标时，`servers[].url` 建议直接写带端口的完整 base URL，例如 `http://127.0.0.1:3000`。只有环境名、区域、租户或 API 版本这类真正会变化的 URL 片段，才建议使用 `servers[].variables`。`docs.tryItOut.defaultServer` 用于控制 Try it out 初始选中的 server，`docs.tryItOut.customServer` 用于允许用户在浏览器里临时输入其他目标地址，不需要修改项目配置。
+
+`tagGroups` 只有在显式配置时才会透传为 `x-tagGroups`。默认 Vext Docs renderer 使用 OpenAPI path segment 构建递归导航；`tagGroups` 主要用于下游 OpenAPI 工具明确消费该 vendor extension 的场景。
 
 默认 Vext Docs renderer 会从 code docs 数据生成 Services / Utils / Models / Components / Plugins / Middlewares。Model 条目可展示静态 schema fields、enums、options、indexes、methods、hooks 和 usage；Plugins 与 Middlewares 可展示可推断的 lifecycle/bootstrap、app extension、middleware 类型、route usage 和源码链接；Locales / Config / Styles / Preload 属于可选高级静态来源，可在 `docs.code` 下显式开启，但不进入默认顶层文档入口；本地 loopback 文档页还可为 code docs 条目展示 `Open source` 链接，不需要新增单独配置项。
 

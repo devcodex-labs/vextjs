@@ -13,7 +13,11 @@
  *   - v0.3.x: 默认 /docs 切换为 Vext Docs；Scalar 配置仅保留历史 warning
  */
 
-import type { RouteOptions, VextSchemaField } from "../../types/app.js";
+import type {
+  RouteOptions,
+  VextOpenAPITagGroup,
+  VextSchemaField,
+} from "../../types/app.js";
 import type { VextDocsConfig } from "../docs/types.js";
 
 // ── 路由元信息收集 ──────────────────────────────────────────
@@ -175,7 +179,7 @@ export interface OpenAPIConfig {
    * ```
    *
    */
-  tagGroups?: Array<{ name: string; tags: string[] }>;
+  tagGroups?: VextOpenAPITagGroup[];
 }
 
 /**
@@ -211,7 +215,7 @@ export interface OpenAPIDocument {
    * 仅当 openapi.tagGroups 显式配置时由 OpenAPIGenerator 原样输出；
    * Vext Docs 默认导航不依赖该字段。
    */
-  "x-tagGroups"?: Array<{ name: string; tags: string[] }>;
+  "x-tagGroups"?: VextOpenAPITagGroup[];
 
   /** 允许其他 vendor extensions (x-*) */
   [key: `x-${string}`]: unknown;
