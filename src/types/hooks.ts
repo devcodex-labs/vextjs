@@ -79,6 +79,11 @@ export interface VextOpenAPIAfterGeneratePatch {
   document?: unknown;
 }
 
+export interface VextOpenAPIDocumentPatch {
+  openapi: string;
+  [key: string]: unknown;
+}
+
 export interface VextHookPayloadMap {
   "request:start": {
     req: VextRequest;
@@ -302,12 +307,16 @@ export type VextHookReturn<K extends VextHookName> = K extends "response:before"
   : K extends "error:beforeResponse"
     ? VextErrorBeforeResponsePatch | void
     : K extends "openapi:afterGenerate"
-      ? VextOpenAPIAfterGeneratePatch | unknown | void
+      ? VextOpenAPIAfterGeneratePatch | VextOpenAPIDocumentPatch | void
       : void;
+
+type VextSyncOnlyHookName = "openapi:beforeGenerate" | "openapi:afterGenerate";
 
 export type VextHookHandler<K extends VextHookName> = (
   payload: VextHookPayloadMap[K],
-) => VextHookReturn<K> | Promise<VextHookReturn<K>>;
+) => K extends VextSyncOnlyHookName
+  ? VextHookReturn<K>
+  : VextHookReturn<K> | Promise<VextHookReturn<K>>;
 
 export interface VextHooks {
   on<K extends VextHookName>(name: K, handler: VextHookHandler<K>): () => void;
