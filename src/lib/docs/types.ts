@@ -332,6 +332,7 @@ export type VextDocsAccessDescriptor =
       path: string;
       tags?: string[];
       operationId?: string;
+      access?: VextRouteDocsAccessConfig | string;
     }
   | {
       kind: "service";

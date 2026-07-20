@@ -1,6 +1,7 @@
 import type {
   VextDocsAccessDescriptor,
   VextDocsOpenAPIDocument,
+  VextRouteDocsAccessConfig,
 } from "../types.js";
 
 export const OPENAPI_HTTP_METHODS = [
@@ -46,6 +47,9 @@ export function createOpenAPIOperationDescriptor(
     typeof operationRecord.operationId === "string"
       ? operationRecord.operationId
       : undefined;
+  const access = readOpenAPIOperationAccess(
+    operationRecord["x-vext-docs-access"],
+  );
 
   return {
     kind: "operation",
@@ -54,10 +58,25 @@ export function createOpenAPIOperationDescriptor(
     path,
     tags: getOpenAPIOperationTags(operation),
     operationId,
+    ...(access !== undefined ? { access } : {}),
   };
 }
 
-export function collectOpenAPITags(document: VextDocsOpenAPIDocument): Set<string> {
+function readOpenAPIOperationAccess(
+  value: unknown,
+): VextRouteDocsAccessConfig | string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as VextRouteDocsAccessConfig;
+  }
+  return undefined;
+}
+
+export function collectOpenAPITags(
+  document: VextDocsOpenAPIDocument,
+): Set<string> {
   const tags = new Set<string>();
   const paths = document.paths ?? {};
   for (const pathItem of Object.values(paths)) {

@@ -597,6 +597,7 @@ interface RouteDocsConfig {
   tags?: string[];
   operationId?: string;
   hidden?: boolean;
+  access?: VextRouteDocsAccessConfig | string;
   deprecated?: boolean;
   security?: Array<Record<string, string[]>>;
   extensions?: Record<string, unknown>;
@@ -606,17 +607,20 @@ interface RouteDocsConfig {
 
 ### 字段说明
 
-| 字段          | 类型       | 默认值                       | 说明                                                 |
-| ------------- | ---------- | ---------------------------- | ---------------------------------------------------- |
-| `summary`     | `string`   | —                            | 接口一句话摘要                                       |
-| `description` | `string`   | —                            | 接口详细描述（支持 Markdown）                        |
-| `tags`        | `string[]` | 已忽略                       | 已废弃。operation tags 会从路由 path/source 自动推断 |
-| `operationId` | `string`   | 自动推断                     | 操作标识（全局唯一；冲突时生成报错）                 |
-| `hidden`      | `boolean`  | `false`                      | 是否从文档中隐藏                                     |
-| `deprecated`  | `boolean`  | `false`                      | 是否标记为已废弃                                     |
-| `security`    | `array`    | 从 `auth` / middlewares 推断 | 安全方案覆盖                                         |
-| `extensions`  | `object`   | —                            | 自定义 `x-*` 扩展字段                                |
-| `responses`   | `object`   | —                            | 响应定义                                             |
+| 字段          | 类型               | 默认值                       | 说明                                                                                                                       |
+| ------------- | ------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `summary`     | `string`           | —                            | 接口一句话摘要                                                                                                             |
+| `description` | `string`           | —                            | 接口详细描述（支持 Markdown）                                                                                              |
+| `tags`        | `string[]`         | 已忽略                       | 已废弃。operation tags 会从路由 path/source 自动推断                                                                       |
+| `operationId` | `string`           | 自动推断                     | 操作标识（全局唯一；冲突时生成报错）                                                                                       |
+| `hidden`      | `boolean`          | `false`                      | 是否从文档中隐藏                                                                                                           |
+| `access`      | `object \| string` | —                            | 文档访问 metadata，会传给 `openapi.docs.access.resolver`；`visible: false` 会直接隐藏，`tryItOut: false` 会禁用 Try it out |
+| `deprecated`  | `boolean`          | `false`                      | 是否标记为已废弃                                                                                                           |
+| `security`    | `array`            | 从 `auth` / middlewares 推断 | 安全方案覆盖                                                                                                               |
+| `extensions`  | `object`           | —                            | 自定义 `x-*` 扩展字段                                                                                                      |
+| `responses`   | `object`           | —                            | 响应定义                                                                                                                   |
+
+`docs.access` 会写入 OpenAPI operation 的 `x-vext-docs-access` vendor extension，并在 Vext Docs 过滤阶段作为 `kind: "operation"` descriptor 的 `access` 字段传给 `openapi.docs.access.resolver`。字符串值通常用于角色、租户或分组标识；对象值可以携带 `roles`、`permissions`、`group`、`visible` 和 `tryItOut` metadata。
 
 ### 完整示例
 

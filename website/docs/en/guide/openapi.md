@@ -172,7 +172,7 @@ export default {
 };
 ```
 
-`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items; without them, non-`All` sources only expose OpenAPI entries. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
+`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `options.docs.access` is emitted as `x-vext-docs-access` and passed to the same resolver as the `access` field of a `kind: "operation"` descriptor; `visible: false` hides the operation directly, and `tryItOut: false` disables Try it out for that operation. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items; without them, non-`All` sources only expose OpenAPI entries. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
 
 ### Try it out request hook
 

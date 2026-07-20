@@ -1536,7 +1536,7 @@ export interface RouteDocsConfig {
   hidden?: boolean;
 
   /** 文档菜单权限 metadata，仅作用于未 hidden 的文档项 */
-  access?: VextRouteDocsAccessConfig;
+  access?: VextRouteDocsAccessConfig | string;
 
   /** 是否已废弃，映射到 OpenAPI operation.deprecated @default false */
   deprecated?: boolean;

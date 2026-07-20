@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildDocsMenu,
   createDocsSearchIndex,
@@ -88,6 +88,115 @@ describe("filterOpenAPIDocumentForDocs", () => {
       unknown
     >;
     expect(operation["x-vext-docs-tryItOut"]).toBe(false);
+  });
+
+  it("passes route string access metadata to operation descriptors", async () => {
+    const resolver = vi.fn(({ descriptor }) => {
+      if (descriptor.kind === "operation" && descriptor.access === "admin") {
+        return false;
+      }
+      return true;
+    });
+    const filtered = await filterOpenAPIDocumentForDocs(
+      {
+        ...spec,
+        paths: {
+          "/admin": {
+            get: {
+              tags: ["admin"],
+              operationId: "adminStats",
+              "x-vext-docs-access": "admin",
+              responses: { 200: { description: "OK" } },
+            },
+          },
+        },
+      },
+      access({ mode: "enforce", resolver }),
+    );
+
+    expect(filtered.paths?.["/admin"]).toBeUndefined();
+    expect(resolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descriptor: expect.objectContaining({
+          kind: "operation",
+          path: "/admin",
+          access: "admin",
+        }),
+      }),
+    );
+  });
+
+  it("hides operations with route access visible false before resolver", async () => {
+    const resolver = vi.fn(() => true);
+    const filtered = await filterOpenAPIDocumentForDocs(
+      {
+        ...spec,
+        paths: {
+          "/internal": {
+            get: {
+              tags: ["admin"],
+              operationId: "internalStats",
+              "x-vext-docs-access": { visible: false },
+              responses: { 200: { description: "OK" } },
+            },
+          },
+        },
+      },
+      access({ mode: "enforce", resolver }),
+    );
+
+    expect(filtered.paths?.["/internal"]).toBeUndefined();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it("passes route object access metadata and applies try it out restriction", async () => {
+    const resolver = vi.fn(({ descriptor }) => {
+      if (
+        descriptor.kind === "operation" &&
+        typeof descriptor.access === "object" &&
+        descriptor.access?.group === "admin"
+      ) {
+        return true;
+      }
+      return false;
+    });
+    const filtered = await filterOpenAPIDocumentForDocs(
+      {
+        ...spec,
+        paths: {
+          "/admin": {
+            get: {
+              tags: ["admin"],
+              operationId: "adminStats",
+              "x-vext-docs-access": {
+                group: "admin",
+                tryItOut: false,
+              },
+              responses: { 200: { description: "OK" } },
+            },
+          },
+        },
+      },
+      access({ mode: "enforce", resolver }),
+    );
+
+    const operation = filtered.paths?.["/admin"]?.get as Record<
+      string,
+      unknown
+    >;
+    expect(operation["x-vext-docs-tryItOut"]).toBe(false);
+    expect(resolver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        descriptor: expect.objectContaining({
+          kind: "operation",
+          path: "/admin",
+          access: expect.objectContaining({
+            group: "admin",
+            tryItOut: false,
+          }),
+        }),
+      }),
+    );
   });
 
   it("filters docs view data in visibility-only mode", async () => {

@@ -164,7 +164,7 @@ export default {
 };
 ```
 
-`source.access` 会作为 `kind: "source"` descriptor 传给 `openapi.docs.access.resolver`。`source.access.visible: false` 会在 resolver 执行前隐藏该 source。`source.code.include` / `source.code.exclude` 用于让非 `All` source 纳入 Code JSDoc 条目；不配置时，非 `All` source 只暴露 OpenAPI 条目。Code 过滤会同时匹配条目的 id、title 与 source file，因此 `models/*`、`services/sdk/**` 这类路径风格模式可用于常见源码范围。
+`source.access` 会作为 `kind: "source"` descriptor 传给 `openapi.docs.access.resolver`。`source.access.visible: false` 会在 resolver 执行前隐藏该 source。`options.docs.access` 会写入 `x-vext-docs-access`，并作为 `kind: "operation"` descriptor 的 `access` 字段传给同一个 resolver；`visible: false` 会直接隐藏该 operation，`tryItOut: false` 会禁用该 operation 的 Try it out。`source.code.include` / `source.code.exclude` 用于让非 `All` source 纳入 Code JSDoc 条目；不配置时，非 `All` source 只暴露 OpenAPI 条目。Code 过滤会同时匹配条目的 id、title 与 source file，因此 `models/*`、`services/sdk/**` 这类路径风格模式可用于常见源码范围。
 
 ### Try it out 请求 Hook
 

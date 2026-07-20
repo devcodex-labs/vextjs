@@ -1997,6 +1997,72 @@ describe("OpenAPIGenerator", () => {
       const op = doc.paths["/frontend/render"].get! as Record<string, unknown>;
       expect(op["x-vext-docs-kind"]).toBe("frontend-route");
     });
+
+    it("docs.access 映射为 Vext Docs 权限扩展字段", () => {
+      const doc = generate([
+        createRoute("GET", "/admin", {
+          docs: { access: "admin" },
+        }),
+        createRoute("GET", "/internal", {
+          docs: {
+            access: {
+              visible: false,
+              tryItOut: false,
+              group: "internal",
+            },
+          },
+        }),
+      ]);
+
+      expect(
+        (doc.paths["/admin"].get! as Record<string, unknown>)[
+          "x-vext-docs-access"
+        ],
+      ).toBe("admin");
+      expect(
+        (doc.paths["/internal"].get! as Record<string, unknown>)[
+          "x-vext-docs-access"
+        ],
+      ).toEqual({
+        visible: false,
+        tryItOut: false,
+        group: "internal",
+      });
+    });
+
+    it("docs.access 覆盖同名自定义扩展以保持权限 metadata 稳定", () => {
+      const doc = generate([
+        createRoute("GET", "/admin", {
+          docs: {
+            access: "admin",
+            extensions: { "x-vext-docs-access": "custom" },
+          },
+        }),
+      ]);
+
+      expect(
+        (doc.paths["/admin"].get! as Record<string, unknown>)[
+          "x-vext-docs-access"
+        ],
+      ).toBe("admin");
+    });
+
+    it("文档说明 route docs.access 会进入 docs access descriptor", () => {
+      const zhGuide = readRepoFile("website/docs/zh/guide/openapi.md");
+      const enGuide = readRepoFile("website/docs/en/guide/openapi.md");
+      const zhApi = readRepoFile("website/docs/zh/api/route-definition.md");
+      const enApi = readRepoFile("website/docs/en/api/route-definition.md");
+
+      expect(zhGuide).toContain(
+        "`options.docs.access` 会写入 `x-vext-docs-access`",
+      );
+      expect(enGuide).toContain(
+        "`options.docs.access` is emitted as `x-vext-docs-access`",
+      );
+      expect(zhApi).toContain("`access`");
+      expect(zhApi).toContain("传给 `openapi.docs.access.resolver`");
+      expect(enApi).toContain("passed to `openapi.docs.access.resolver`");
+    });
   });
 
   // ── x-rate-limit 推断 ─────────────────────────────────────

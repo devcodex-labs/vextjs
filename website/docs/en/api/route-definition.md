@@ -597,6 +597,7 @@ interface RouteDocsConfig {
   tags?: string[];
   operationId?: string;
   hidden?: boolean;
+  access?: VextRouteDocsAccessConfig | string;
   deprecated?: boolean;
   security?: Array<Record<string, string[]>>;
   extensions?: Record<string, unknown>;
@@ -606,17 +607,20 @@ interface RouteDocsConfig {
 
 ### Field description
 
-| Field         | Type       | Default Value                       | Description                                                                       |
-| ------------- | ---------- | ----------------------------------- | --------------------------------------------------------------------------------- |
-| `summary`     | `string`   | —                                   | One sentence summary of the interface                                             |
-| `description` | `string`   | —                                   | Detailed description of the interface (supports Markdown)                         |
-| `tags`        | `string[]` | Ignored                             | Deprecated. Operation tags are inferred automatically from the route path/source. |
-| `operationId` | `string`   | Automatic inference                 | Operation ID (globally unique; generation fails on conflicts)                     |
-| `hidden`      | `boolean`  | `false`                             | Whether to hide from the document                                                 |
-| `deprecated`  | `boolean`  | `false`                             | Whether to mark it as deprecated                                                  |
-| `security`    | `array`    | Inference from `auth` / middlewares | Security scheme overrides                                                         |
-| `extensions`  | `object`   | —                                   | Custom `x-*` extension fields                                                     |
-| `responses`   | `object`   | —                                   | response definition                                                               |
+| Field         | Type               | Default Value                       | Description                                                                                                                               |
+| ------------- | ------------------ | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `summary`     | `string`           | —                                   | One sentence summary of the interface                                                                                                     |
+| `description` | `string`           | —                                   | Detailed description of the interface (supports Markdown)                                                                                 |
+| `tags`        | `string[]`         | Ignored                             | Deprecated. Operation tags are inferred automatically from the route path/source.                                                         |
+| `operationId` | `string`           | Automatic inference                 | Operation ID (globally unique; generation fails on conflicts)                                                                             |
+| `hidden`      | `boolean`          | `false`                             | Whether to hide from the document                                                                                                         |
+| `access`      | `object \| string` | —                                   | Docs access metadata passed to `openapi.docs.access.resolver`; `visible: false` hides directly, and `tryItOut: false` disables Try it out |
+| `deprecated`  | `boolean`          | `false`                             | Whether to mark it as deprecated                                                                                                          |
+| `security`    | `array`            | Inference from `auth` / middlewares | Security scheme overrides                                                                                                                 |
+| `extensions`  | `object`           | —                                   | Custom `x-*` extension fields                                                                                                             |
+| `responses`   | `object`           | —                                   | response definition                                                                                                                       |
+
+`docs.access` is emitted on the OpenAPI operation as the `x-vext-docs-access` vendor extension and passed to `openapi.docs.access.resolver` as the `access` field of a `kind: "operation"` descriptor during Vext Docs filtering. String values are useful for role, tenant, or group labels; object values can carry `roles`, `permissions`, `group`, `visible`, and `tryItOut` metadata.
 
 ### Complete example
 

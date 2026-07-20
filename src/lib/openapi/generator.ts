@@ -287,8 +287,9 @@ export class OpenAPIGenerator {
    *   8. 默认响应（未声明时添加 200 OK）
    *   9. 安全方案（从 middlewares 或 docs.security 推断）
    *   10. 自定义扩展（docs.extensions → x-* 字段）
-   *   10. 速率限制（从 rate-limit 中间件推断 x-rate-limit）
-   *   11. 清空空参数数组
+   *   11. 文档权限 metadata（docs.access → x-vext-docs-access）
+   *   12. 速率限制（从 rate-limit 中间件推断 x-rate-limit）
+   *   13. 清空空参数数组
    *
    * @param route 单条路由的元信息
    * @returns OpenAPIOperation 对象
@@ -647,6 +648,11 @@ export class OpenAPIGenerator {
         const xKey = key.startsWith("x-") ? key : `x-${key}`;
         (operation as Record<string, unknown>)[xKey] = value;
       }
+    }
+
+    if (docs.access !== undefined) {
+      (operation as Record<string, unknown>)["x-vext-docs-access"] =
+        docs.access;
     }
 
     // ── 速率限制扩展（从 rate-limit 中间件推断 x-rate-limit）──

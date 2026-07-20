@@ -13,6 +13,7 @@ import type {
   VextDocsMenuItem,
   VextDocsOpenAPIDocument,
   VextDocsRequestContext,
+  VextRouteDocsAccessConfig,
   VextDocsSourceKind,
 } from "../types.js";
 import { resolveDocsAccess } from "./resolver.js";
@@ -68,12 +69,17 @@ export async function filterOpenAPIDocumentForDocs(
         method,
         operation,
       );
+      const routeAccess = readRouteDocsAccessConfig(descriptor.access);
+      if (routeAccess?.visible === false) {
+        continue;
+      }
       const accessResult = await resolveDocsAccess(access, descriptor, request);
       if (!accessResult.visible) {
         continue;
       }
+      const tryItOut = accessResult.tryItOut && routeAccess?.tryItOut !== false;
 
-      nextPath[method] = accessResult.tryItOut
+      nextPath[method] = tryItOut
         ? operation
         : {
             ...(typeof operation === "object" && operation !== null
@@ -492,6 +498,15 @@ function resolveOpenAPIDocsKind(
     return "frontend-route";
   }
   return "backend-api";
+}
+
+function readRouteDocsAccessConfig(
+  access: VextRouteDocsAccessConfig | string | undefined,
+): VextRouteDocsAccessConfig | undefined {
+  if (typeof access === "object" && access !== null && !Array.isArray(access)) {
+    return access;
+  }
+  return undefined;
 }
 
 function extractOperationSummary(operation: unknown): string | undefined {
