@@ -3,6 +3,7 @@ export type VextJscssPrimitive = string | number | boolean;
 export interface VextJscssVariable {
   name: string;
   ref: string;
+  fallback?: string;
 }
 
 export type VextJscssValue =
@@ -39,7 +40,22 @@ type StyleSheetRecord = {
   css: string;
 };
 
+type VextJscssRuntimeAdapter = "css-variables" | "none" | false;
+
+interface VextJscssRuntimeConfig {
+  runtimeAdapter: VextJscssRuntimeAdapter;
+  dynamicVars: boolean;
+  recipes: boolean;
+}
+
+declare const __VEXT_JSCSS_RUNTIME_ADAPTER__:
+  | VextJscssRuntimeAdapter
+  | undefined;
+declare const __VEXT_JSCSS_DYNAMIC_VARS__: boolean | undefined;
+declare const __VEXT_JSCSS_RECIPES__: boolean | undefined;
+
 const sheet = new Map<string, StyleSheetRecord>();
+const runtimeConfig = readRuntimeConfig();
 
 export function style(
   rule: VextJscssRule,
@@ -63,6 +79,14 @@ export function recipe(config: VextRecipeConfig): VextRecipe {
   const baseClass = style(config.base ?? {}, {
     name: config.name ?? "recipe",
   });
+  if (!runtimeConfig.recipes) {
+    const resolveBaseRecipe = () => baseClass;
+    return Object.assign(resolveBaseRecipe, {
+      className: baseClass,
+      variants: {},
+    });
+  }
+
   const variants: Record<string, Record<string, string>> = {};
 
   for (const [variantName, values] of Object.entries(config.variants ?? {})) {
@@ -99,6 +123,7 @@ export function createVar(name: string, fallback?: string): VextJscssVariable {
   const variableName = name.startsWith("--") ? name : `--vext-${slugify(name)}`;
   return {
     name: variableName,
+    fallback,
     ref: fallback
       ? `var(${variableName}, ${fallback})`
       : `var(${variableName})`,
@@ -109,6 +134,7 @@ export function setVar(
   variable: VextJscssVariable | string,
   value: string | number,
 ): Record<string, string | number> {
+  if (!areDynamicVarsEnabled()) return {};
   const name =
     typeof variable === "string"
       ? variable.startsWith("--")
@@ -151,9 +177,9 @@ function renderRule(selector: string, rule: VextJscssRule): string {
       nested.push(renderNestedRule(selector, property, rawValue));
       continue;
     }
-    declarations.push(
-      `${toKebabCase(property)}:${toCssValue(property, rawValue)};`,
-    );
+    const value = toCssValue(property, rawValue);
+    if (value === undefined) continue;
+    declarations.push(`${toKebabCase(property)}:${value};`);
   }
 
   const current = declarations.length
@@ -189,8 +215,13 @@ function isJscssVariable(value: unknown): value is VextJscssVariable {
   );
 }
 
-function toCssValue(property: string, value: VextJscssValue): string {
-  if (isJscssVariable(value)) return value.ref;
+function toCssValue(
+  property: string,
+  value: VextJscssValue,
+): string | undefined {
+  if (isJscssVariable(value)) {
+    return areDynamicVarsEnabled() ? value.ref : value.fallback;
+  }
   if (typeof value === "number") {
     return isUnitlessProperty(property) ? String(value) : `${value}px`;
   }
@@ -213,6 +244,30 @@ const unitlessProperties = new Set([
 
 function isUnitlessProperty(property: string): boolean {
   return property.startsWith("--") || unitlessProperties.has(property);
+}
+
+function areDynamicVarsEnabled(): boolean {
+  return (
+    runtimeConfig.dynamicVars &&
+    runtimeConfig.runtimeAdapter === "css-variables"
+  );
+}
+
+function readRuntimeConfig(): VextJscssRuntimeConfig {
+  return {
+    runtimeAdapter:
+      typeof __VEXT_JSCSS_RUNTIME_ADAPTER__ === "undefined"
+        ? "css-variables"
+        : __VEXT_JSCSS_RUNTIME_ADAPTER__,
+    dynamicVars:
+      typeof __VEXT_JSCSS_DYNAMIC_VARS__ === "undefined"
+        ? true
+        : __VEXT_JSCSS_DYNAMIC_VARS__,
+    recipes:
+      typeof __VEXT_JSCSS_RECIPES__ === "undefined"
+        ? true
+        : __VEXT_JSCSS_RECIPES__,
+  };
 }
 
 function createClassName(

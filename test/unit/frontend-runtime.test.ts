@@ -1026,6 +1026,122 @@ describe("frontend client build", () => {
     expect(bundledCss).toContain(".vext-action-tone-primary-");
   });
 
+  it("honors Vext JSCSS runtime adapter, dynamic vars, and recipes flags", async () => {
+    async function buildJscssCase(
+      jscss: NonNullable<
+        NonNullable<
+          Parameters<typeof buildFrontendClient>[0]["config"]
+        >["styles"]
+      >["jscss"],
+    ) {
+      const rootDir = await tempRoot();
+      const frontendDir = path.join(rootDir, "src", "frontend");
+      await mkdir(path.join(frontendDir, "pages"), { recursive: true });
+      await mkdir(path.join(frontendDir, "styles"), { recursive: true });
+      await writeFile(
+        path.join(frontendDir, "pages", "_document.html"),
+        "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+      );
+      await writeFile(
+        path.join(frontendDir, "styles", "card.style.ts"),
+        [
+          'import { createVar, recipe, setVar, style, vars } from "vextjs/style";',
+          'const accent = createVar("accent", "#0f766e");',
+          "export const card = style({",
+          "  ...vars(setVar(accent, '#123456')),",
+          "  color: accent,",
+          "  padding: 12,",
+          '}, "card");',
+          "export const action = recipe({",
+          '  name: "action",',
+          "  base: { borderRadius: 6 },",
+          "  variants: {",
+          "    tone: {",
+          '      primary: { backgroundColor: "black", color: "white" },',
+          "    },",
+          "  },",
+          '  defaultVariants: { tone: "primary" },',
+          "});",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        path.join(frontendDir, "pages", "index.tsx"),
+        [
+          'import { action, card } from "../styles/card.style";',
+          "export default function Page() {",
+          "  return <main className={`${card} ${action()}`}>JSCSS</main>;",
+          "}",
+          "",
+        ].join("\n"),
+      );
+
+      const result = await buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          apiClient: false,
+          styles: {
+            jscss,
+          },
+        },
+      });
+      const generatedCss = await readFile(
+        path.join(result.generatedDir!, "vext-jscss.css"),
+        "utf-8",
+      );
+      const middleware = createFrontendRenderMiddleware({
+        rootDir,
+        mode: "production",
+        config: { enabled: true },
+      });
+      const res = createRenderMockResponse();
+      await middleware(createMockRequest("/"), res, async () => {});
+      res.render("index");
+
+      return {
+        generatedCss,
+        html: res.sent?.html ?? "",
+      };
+    }
+
+    const defaultCase = await buildJscssCase({ enabled: true });
+    expect(defaultCase.generatedCss).toContain("--vext-accent:#123456");
+    expect(defaultCase.generatedCss).toContain(
+      "color:var(--vext-accent, #0f766e)",
+    );
+    expect(defaultCase.generatedCss).toContain(".vext-action-tone-primary-");
+    expect(defaultCase.html).toContain("vext-action-tone-primary-");
+
+    const noRuntimeAdapterCase = await buildJscssCase({
+      enabled: true,
+      runtimeAdapter: "none",
+    });
+    expect(noRuntimeAdapterCase.generatedCss).toContain("color:#0f766e");
+    expect(noRuntimeAdapterCase.generatedCss).not.toContain("--vext-accent");
+    expect(noRuntimeAdapterCase.generatedCss).not.toContain("var(--vext");
+
+    const noDynamicVarsCase = await buildJscssCase({
+      enabled: true,
+      dynamicVars: false,
+    });
+    expect(noDynamicVarsCase.generatedCss).toContain("color:#0f766e");
+    expect(noDynamicVarsCase.generatedCss).not.toContain("--vext-accent");
+    expect(noDynamicVarsCase.generatedCss).not.toContain("var(--vext");
+
+    const noRecipesCase = await buildJscssCase({
+      enabled: true,
+      recipes: false,
+    });
+    expect(noRecipesCase.generatedCss).toContain(".vext-action-");
+    expect(noRecipesCase.generatedCss).not.toContain(
+      ".vext-action-tone-primary-",
+    );
+    expect(noRecipesCase.html).toContain("vext-action-");
+    expect(noRecipesCase.html).not.toContain("vext-action-tone-primary-");
+  });
+
   it("honors the frontend size report diagnostics flag", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);

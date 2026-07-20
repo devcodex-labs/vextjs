@@ -18,6 +18,17 @@ export interface ExtractJscssResult {
   cssText: string;
 }
 
+export function createJscssBuildDefines(
+  config: ResolvedVextFrontendConfig,
+): Record<string, string> {
+  const jscss = config.styles.jscss;
+  return {
+    __VEXT_JSCSS_RUNTIME_ADAPTER__: JSON.stringify(jscss.runtimeAdapter),
+    __VEXT_JSCSS_DYNAMIC_VARS__: JSON.stringify(jscss.dynamicVars),
+    __VEXT_JSCSS_RECIPES__: JSON.stringify(jscss.recipes),
+  };
+}
+
 export async function extractJscssStyles(
   options: ExtractJscssOptions,
 ): Promise<ExtractJscssResult> {
@@ -49,6 +60,7 @@ export async function extractJscssStyles(
     format: "esm",
     target: "node20",
     logLevel: "silent",
+    define: createJscssBuildDefines(options.config),
     plugins: [createJscssResolverPlugin(options.config)],
   });
 

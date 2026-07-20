@@ -73,6 +73,8 @@ export const button = recipe({
 
 extractor 会把样式写入构建产物。不需要默认引入 Emotion 或 styled-components 作为 runtime 依赖。
 
+`frontend.styles.jscss.runtimeAdapter` 默认为 `css-variables`，因此 `createVar()` 会输出 CSS custom property 引用，`setVar()` 会输出 custom property 声明。设置 `runtimeAdapter: "none"` 或 `dynamicVars: false` 时，变量会编译为静态 fallback 值。设置 `recipes: false` 时不会生成 recipe variant class。
+
 ## CSS Variables
 
 主题、租户或运行时状态需要动态改变值时，使用 CSS variables。
@@ -140,4 +142,3 @@ export default {
 ```
 
 `assetBaseUrl` 影响生成的资源 URL。上传由 `frontend.deploy.upload`、`vext build --upload-assets` 或 `vext deploy assets` 单独控制。
-

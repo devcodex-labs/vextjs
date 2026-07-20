@@ -112,6 +112,17 @@ export default {
 | `frontend.publicDir`  | `"public"`                                    | 公共静态资源目录          |
 | `frontend.publicPath` | `"/"`                                         | 公开资源 URL 前缀         |
 
+## Style 字段
+
+| 字段                                   | 默认值                                          | 含义                                                                   |
+| -------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `frontend.styles.entry`                | `styles/index.css`                              | 从 `frontend.root` 解析的全局 CSS 入口                                 |
+| `frontend.styles.jscss.enabled`        | `true`                                          | 启用 Vext JSCSS 抽取                                                   |
+| `frontend.styles.jscss.files`          | `**/*.style.ts`, `**/*.style.js`, `**/*.css.ts` | JSCSS source globs                                                     |
+| `frontend.styles.jscss.runtimeAdapter` | `css-variables`                                 | 以 CSS custom properties 输出动态变量；`none`/`false` 使用 fallback 值 |
+| `frontend.styles.jscss.dynamicVars`    | `true`                                          | 输出 custom property 声明与 `var(...)` 引用                            |
+| `frontend.styles.jscss.recipes`        | `true`                                          | 输出 recipe variant class 与 rules                                     |
+
 ## Build 字段
 
 | 字段                                           | 默认值                | 含义                                            |

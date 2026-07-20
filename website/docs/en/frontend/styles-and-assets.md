@@ -73,6 +73,8 @@ export const button = recipe({
 
 The extractor writes CSS into the build output. You do not need Emotion or styled-components as default runtime dependencies.
 
+`frontend.styles.jscss.runtimeAdapter` defaults to `css-variables`, so `createVar()` emits CSS custom property references and `setVar()` emits custom property declarations. Set `runtimeAdapter: "none"` or `dynamicVars: false` to compile variable values to their static fallbacks instead. Set `recipes: false` when recipe variant classes should not be emitted.
+
 ## CSS Variables
 
 Use CSS variables when values need to be changed by theme, tenant, or runtime state.
@@ -140,4 +142,3 @@ export default {
 ```
 
 `assetBaseUrl` affects generated asset URLs. Upload is controlled separately by `frontend.deploy.upload`, `vext build --upload-assets`, or `vext deploy assets`.
-

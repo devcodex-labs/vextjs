@@ -29,6 +29,7 @@ import {
   buildFrontendSizeReport,
 } from "./size-report.js";
 import { buildFrontendRouteAssets } from "./route-assets.js";
+import { createJscssBuildDefines } from "./jscss-extractor.js";
 
 export interface BuildFrontendClientOptions {
   rootDir: string;
@@ -146,6 +147,7 @@ export async function buildFrontendClient(
     define: {
       "process.env.NODE_ENV":
         options.mode === "production" ? '"production"' : '"development"',
+      ...createJscssBuildDefines(config),
     },
     plugins: [
       createAssetInlineLimitPlugin(config),
@@ -185,6 +187,7 @@ export async function buildFrontendClient(
     define: {
       "process.env.NODE_ENV":
         options.mode === "production" ? '"production"' : '"development"',
+      ...createJscssBuildDefines(config),
     },
     plugins: [createFrontendServerResolverPlugin(config)],
     nodePaths,

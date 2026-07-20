@@ -112,6 +112,17 @@ export default {
 | `frontend.publicDir`  | `"public"`                                    | Static public directory                    |
 | `frontend.publicPath` | `"/"`                                         | Public asset URL prefix                    |
 
+## Style Fields
+
+| Field                                  | Default                                         | Meaning                                                                              |
+| -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `frontend.styles.entry`                | `styles/index.css`                              | Global CSS entry resolved from `frontend.root`                                       |
+| `frontend.styles.jscss.enabled`        | `true`                                          | Enable Vext JSCSS extraction                                                         |
+| `frontend.styles.jscss.files`          | `**/*.style.ts`, `**/*.style.js`, `**/*.css.ts` | JSCSS source globs                                                                   |
+| `frontend.styles.jscss.runtimeAdapter` | `css-variables`                                 | Emit dynamic variables as CSS custom properties; `none`/`false` uses fallback values |
+| `frontend.styles.jscss.dynamicVars`    | `true`                                          | Emit custom property declarations and `var(...)` references                          |
+| `frontend.styles.jscss.recipes`        | `true`                                          | Emit recipe variant classes and rules                                                |
+
 ## Build Fields
 
 | Field                                          | Default               | Meaning                                          |
