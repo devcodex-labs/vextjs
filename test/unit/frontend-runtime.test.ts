@@ -24,7 +24,10 @@ import {
   deployFrontendAssets,
   isVextApiError,
 } from "../../src/frontend/index.js";
-import { createFrontendNotFoundHandler } from "../../src/frontend/runtime/static-mount.js";
+import {
+  assertFrontendOutputReady,
+  createFrontendNotFoundHandler,
+} from "../../src/frontend/runtime/static-mount.js";
 
 const tempDirs: string[] = [];
 const pendingStreams: Promise<void>[] = [];
@@ -1600,6 +1603,73 @@ describe("frontend api client", () => {
 });
 
 describe("frontend static mount", () => {
+  it("fails production output readiness for incomplete SSR artifacts", async () => {
+    const rootDir = await tempRoot();
+    const outDir = path.join(rootDir, "dist", "client");
+    await mkdir(outDir, { recursive: true });
+    const options = {
+      rootDir,
+      mode: "production" as const,
+      config: { enabled: true },
+      fallbackHandler: async () => {},
+    };
+
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "frontend output is missing",
+    );
+
+    await writeFile(path.join(outDir, "index.html"), "<main>app</main>");
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "frontend render-manifest.json is missing",
+    );
+
+    await writeFile(path.join(outDir, "render-manifest.json"), "{");
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "frontend render-manifest.json is invalid",
+    );
+
+    await writeFile(
+      path.join(outDir, "render-manifest.json"),
+      JSON.stringify({
+        kind: "frontend-render-manifest",
+        buildId: "test",
+        generatedAt: "test",
+        pages: [],
+        layouts: [],
+        errorPages: [],
+        serverRenderer: "server/renderer.cjs",
+      }),
+    );
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "frontend render-manifest.json is missing routeAssets",
+    );
+
+    await writeFile(
+      path.join(outDir, "render-manifest.json"),
+      JSON.stringify({
+        kind: "frontend-render-manifest",
+        buildId: "test",
+        generatedAt: "test",
+        pages: [],
+        layouts: [],
+        errorPages: [],
+        serverRenderer: "server/renderer.cjs",
+        routeAssets: { schemaVersion: 1, routes: [] },
+      }),
+    );
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "frontend server renderer is missing",
+    );
+
+    await mkdir(path.join(outDir, "server"), { recursive: true });
+    await writeFile(
+      path.join(outDir, "server", "renderer.cjs"),
+      "exports.renderPage = () => ({ html: '' });\n",
+    );
+
+    expect(() => assertFrontendOutputReady(options)).not.toThrow();
+  });
+
   it("does not serve SPA fallback without an explicit scope", async () => {
     const rootDir = await tempRoot();
     const outDir = path.join(rootDir, "dist", "client");

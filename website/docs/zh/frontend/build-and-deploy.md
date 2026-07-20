@@ -18,7 +18,7 @@ dist/
     assets/
 ```
 
-`vext start` 会服务已构建的 client assets，并使用 `render-manifest.json` 做 SSR。
+`vext start` 会服务已构建的 client assets，并使用 `render-manifest.json` 做 SSR。生产模式会在 listen 前检查 `index.html`、`render-manifest.json`、route asset metadata 和 server renderer 文件；缺失或无效时会失败，并提示重新运行 `vext build`。
 
 ## 构建命令
 

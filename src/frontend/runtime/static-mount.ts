@@ -1,9 +1,10 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { VextMiddleware } from "../../types/middleware.js";
 import type {
   ResolvedVextFrontendConfig,
   ResolvedVextFrontendSpaFallbackScope,
+  VextFrontendRenderManifest,
   VextFrontendMode,
   VextFrontendUserConfig,
 } from "../contract/types.js";
@@ -74,6 +75,7 @@ export function assertFrontendOutputReady(
     mode: options.mode,
   });
   if (!config.enabled) return;
+  if (options.mode !== "production") return;
 
   const indexPath = path.join(config.outDir, "index.html");
   if (!existsSync(indexPath)) {
@@ -81,6 +83,88 @@ export function assertFrontendOutputReady(
       `[vextjs] frontend output is missing: ${path.relative(options.rootDir, indexPath)}. Run "vext build" first.`,
     );
   }
+
+  const manifestPath = path.join(config.outDir, "render-manifest.json");
+  if (!existsSync(manifestPath)) {
+    throw new Error(
+      `[vextjs] frontend render-manifest.json is missing: ${path.relative(options.rootDir, manifestPath)}. Run "vext build" first.`,
+    );
+  }
+
+  const manifest = readFrontendRenderManifest(
+    options.rootDir,
+    config.outDir,
+    manifestPath,
+  );
+  if (!manifest.routeAssets) {
+    throw new Error(
+      `[vextjs] frontend render-manifest.json is missing routeAssets. Run "vext build" again before starting production SSR.`,
+    );
+  }
+
+  const rendererPath = resolveManifestFilePath(
+    config.outDir,
+    manifest.serverRenderer,
+    "render-manifest.json serverRenderer",
+  );
+  if (!existsSync(rendererPath)) {
+    throw new Error(
+      `[vextjs] frontend server renderer is missing: ${path.relative(options.rootDir, rendererPath)}. Run "vext build" first.`,
+    );
+  }
+}
+
+function readFrontendRenderManifest(
+  rootDir: string,
+  outDir: string,
+  manifestPath: string,
+): VextFrontendRenderManifest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `[vextjs] frontend render-manifest.json is invalid: ${path.relative(rootDir, manifestPath)}. Run "vext build" again before starting production SSR. ${message}`,
+    );
+  }
+
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    (parsed as { kind?: unknown }).kind !== "frontend-render-manifest" ||
+    typeof (parsed as { serverRenderer?: unknown }).serverRenderer !==
+      "string" ||
+    !(parsed as { serverRenderer: string }).serverRenderer
+  ) {
+    throw new Error(
+      `[vextjs] frontend render-manifest.json is invalid: ${path.relative(rootDir, manifestPath)}. Run "vext build" again before starting production SSR.`,
+    );
+  }
+
+  resolveManifestFilePath(
+    outDir,
+    (parsed as { serverRenderer: string }).serverRenderer,
+    "render-manifest.json serverRenderer",
+  );
+  return parsed as VextFrontendRenderManifest;
+}
+
+function resolveManifestFilePath(
+  outDir: string,
+  value: string,
+  label: string,
+): string {
+  const resolved = path.resolve(outDir, value);
+  const relative = path.relative(outDir, resolved);
+  if (
+    relative === "" ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(`[vextjs] frontend ${label} must resolve inside outDir.`);
+  }
+  return resolved;
 }
 
 function isStaticMethod(method: string): boolean {

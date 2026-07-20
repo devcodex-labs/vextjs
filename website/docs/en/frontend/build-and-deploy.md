@@ -18,7 +18,7 @@ dist/
     assets/
 ```
 
-`vext start` serves the built client assets and uses `render-manifest.json` for SSR.
+`vext start` serves the built client assets and uses `render-manifest.json` for SSR. In production, startup fails before listening when `index.html`, `render-manifest.json`, route asset metadata, or the server renderer file is missing or invalid; run `vext build` again to regenerate them.
 
 ## Build Command
 
