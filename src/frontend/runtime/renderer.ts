@@ -78,6 +78,8 @@ interface FrontendRendererAssets {
   serverRendererPath: string;
 }
 
+type FrontendRenderPolicy = ResolvedVextFrontendConfig["render"];
+
 interface VextServerRendererModule {
   renderPage(request?: Record<string, unknown>): {
     html?: string;
@@ -154,6 +156,7 @@ export function createFrontendRenderer(
       renderPageDocument({
         mode: options.mode,
         assets: loadAssets(),
+        render: config.render,
         page,
         props: props ?? {},
         options: renderOptions ?? {},
@@ -180,6 +183,7 @@ export function createFrontendRenderer(
       renderCachedDocument({
         mode: options.mode,
         assets: loadAssets(),
+        render: config.render,
         payload,
         status,
         headers,
@@ -248,6 +252,7 @@ function createRenderCacheEntry(
 function renderCachedDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
+  render: FrontendRenderPolicy;
   payload: unknown;
   status: number;
   headers: VextHeaders;
@@ -262,6 +267,7 @@ function renderCachedDocument(input: {
   const rendered = renderPageDocument({
     mode: input.mode,
     assets: input.assets,
+    render: input.render,
     page: cacheEntry.payload.page,
     props: cacheEntry.payload.props,
     options: cacheEntry.payload.options,
@@ -338,6 +344,7 @@ function sendRenderedHtml(
 function renderPageDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
+  render: FrontendRenderPolicy;
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -357,14 +364,7 @@ function renderPageDocument(input: {
     buildId: input.assets.manifest.buildId,
     mode: input.mode,
   };
-  const shouldRenderServerBody = input.options.ssr ?? true;
-  const ssr = shouldRenderServerBody
-    ? input.assets.serverRenderer.renderPage({
-        page: input.page,
-        props: input.props,
-        options: input.options,
-      })
-    : {};
+  const ssr = renderServerPageBody(input);
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
@@ -376,6 +376,46 @@ function renderPageDocument(input: {
   });
 
   return { html, status, headers, payload };
+}
+
+function renderServerPageBody(input: {
+  assets: FrontendRendererAssets;
+  render: FrontendRenderPolicy;
+  page: string;
+  props: Record<string, unknown>;
+  options: VextRenderOptions;
+}): { html?: string; head?: string } {
+  const shouldRenderServerBody = input.options.ssr ?? input.render.ssr;
+  if (!shouldRenderServerBody) return {};
+
+  const timeoutMs = Math.max(0, input.render.timeoutMs);
+  const startedAt = Date.now();
+  try {
+    const rendered = input.assets.serverRenderer.renderPage({
+      page: input.page,
+      props: input.props,
+      options: input.options,
+    });
+    // Server rendering is synchronous, so timeoutMs is enforced after renderPage returns.
+    if (timeoutMs > 0 && Date.now() - startedAt > timeoutMs) {
+      return handleServerRenderFailure(
+        new Error(`[vextjs] SSR render timed out after ${timeoutMs}ms.`),
+        input.render,
+      );
+    }
+    return rendered;
+  } catch (error) {
+    return handleServerRenderFailure(error, input.render);
+  }
+}
+
+function handleServerRenderFailure(
+  error: unknown,
+  render: FrontendRenderPolicy,
+): { html?: string; head?: string } {
+  if (render.fallback === "client") return {};
+  if (error instanceof Error) throw error;
+  throw new Error("[vextjs] SSR render failed.");
 }
 
 function renderErrorDocument(input: {
@@ -431,6 +471,7 @@ function renderErrorDocument(input: {
   return renderPageDocument({
     mode: input.mode,
     assets: input.assets,
+    render: input.config.render,
     page,
     props,
     options: { ...options, status: normalized.status },

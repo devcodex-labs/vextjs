@@ -12,6 +12,8 @@ route handler -> service data -> res.render() -> HTML -> hydration
 
 Use this when the first screen needs data, SEO-friendly HTML, shared layouts, or authenticated server decisions.
 
+`frontend.render.timeoutMs` marks SSR work that took longer than the configured budget. Because the current renderer is synchronous, Vext cannot interrupt a render already running inside React, but it will apply `frontend.render.fallback` after the render returns or throws. With `fallback: "client"`, Vext returns the client shell; with `fallback: "error"`, the SSR error is surfaced to the normal error path.
+
 ## Hydrated Interactions
 
 After SSR, the browser hydrates the React tree. The same props and locale messages written into the document are reused by the client entry.
@@ -42,10 +44,10 @@ Use [Render Data and Cache](/frontend/render-data-and-cache) for cache keys, inv
 
 ## Choosing a Mode
 
-| Need | Recommended mode |
-|------|------------------|
-| Server data on first screen | SSR + hydration |
-| SEO or public content | SSR + hydration |
-| Authenticated admin shell | SSR for entry, optional scoped CSR inside |
+| Need                              | Recommended mode                            |
+| --------------------------------- | ------------------------------------------- |
+| Server data on first screen       | SSR + hydration                             |
+| SEO or public content             | SSR + hydration                             |
+| Authenticated admin shell         | SSR for entry, optional scoped CSR inside   |
 | Highly interactive client routing | `spaFallback.scopes[]` for that route range |
-| API-only service | Disable frontend |
+| API-only service                  | Disable frontend                            |

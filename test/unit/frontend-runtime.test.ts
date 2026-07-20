@@ -1226,6 +1226,147 @@ describe("frontend render middleware", () => {
     expect(res.onSendPayload?.payload.options.ssr).toBe(false);
   });
 
+  it("honors global render.ssr=false for client shell rendering", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'export default function Page() { return <main data-global-ssr="yes">Global SSR body</main>; }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, render: { ssr: false } },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/global-csr"),
+      res as any,
+      async () => {},
+    );
+    res.render("index");
+
+    expect(res.sent?.html).toContain(
+      '<div id="root" data-vext-root data-vext-page="index"></div>',
+    );
+    expect(res.sent?.html).not.toContain("data-global-ssr");
+    expect(res.sent?.html).not.toContain("Global SSR body");
+  });
+
+  it("falls back to a client shell when SSR exceeds render.timeoutMs", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'export default function Page() { const started = Date.now(); while (Date.now() - started < 20) {} return <main data-slow-ssr="yes">Slow SSR body</main>; }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        render: { timeoutMs: 1, fallback: "client" },
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(createMockRequest("/slow"), res as any, async () => {});
+    res.render("index");
+
+    expect(res.sent?.html).toContain('data-vext-page="index"');
+    expect(res.sent?.html).not.toContain("data-slow-ssr");
+    expect(res.sent?.html).not.toContain("Slow SSR body");
+  });
+
+  it("falls back to a client shell when SSR throws and fallback is client", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'export default function Page() { throw new Error("SSR boom"); }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        render: { fallback: "client" },
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/throw-client"),
+      res as any,
+      async () => {},
+    );
+    expect(() => res.render("index")).not.toThrow();
+    expect(res.sent?.html).toContain('data-vext-page="index"');
+  });
+
+  it("throws when SSR fails and render.fallback is error", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      'export default function Page() { throw new Error("SSR boom"); }\n',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        render: { fallback: "error" },
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/throw-error"),
+      res as any,
+      async () => {},
+    );
+
+    expect(() => res.render("index")).toThrow("SSR boom");
+  });
+
   it("caches production render assets after the first render", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);

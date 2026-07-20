@@ -12,6 +12,8 @@ route handler -> service data -> res.render() -> HTML -> hydration
 
 首屏需要数据、SEO HTML、共享 layout 或鉴权判断时，优先使用该模式。
 
+`frontend.render.timeoutMs` 用于标记超过预算的 SSR。当前 renderer 是同步执行，Vext 不能中断已经进入 React 的 render，但会在 render 返回或抛错后应用 `frontend.render.fallback`。`fallback: "client"` 会返回客户端 shell；`fallback: "error"` 会把 SSR 错误交给正常错误链路。
+
 ## Hydration 交互
 
 SSR 后浏览器会 hydrate React tree。写入 document 的 props 和 locale messages 会被 client entry 复用。
@@ -42,10 +44,10 @@ route response cache 可以缓存 `res.render()` 的 render payload：props、la
 
 ## 如何选择
 
-| 需求 | 推荐模式 |
-|------|----------|
-| 首屏需要服务端数据 | SSR + hydration |
-| SEO 或公开内容 | SSR + hydration |
-| 鉴权后台壳层 | SSR 入口，内部可局部 CSR |
+| 需求                  | 推荐模式                            |
+| --------------------- | ----------------------------------- |
+| 首屏需要服务端数据    | SSR + hydration                     |
+| SEO 或公开内容        | SSR + hydration                     |
+| 鉴权后台壳层          | SSR 入口，内部可局部 CSR            |
 | 高交互 client routing | 为该范围配置 `spaFallback.scopes[]` |
-| 纯 API 服务 | 关闭 frontend |
+| 纯 API 服务           | 关闭 frontend                       |
