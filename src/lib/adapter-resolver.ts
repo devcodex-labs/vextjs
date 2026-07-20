@@ -12,12 +12,141 @@ export const BUILT_IN_ADAPTER_NAMES = [
   "koa",
 ] as const;
 
+type BuiltInAdapterName = (typeof BUILT_IN_ADAPTER_NAMES)[number];
+
+export interface AdapterPeerDiagnostic {
+  peerPackages: readonly string[];
+  requiresText: string;
+  installText: string;
+}
+
 export function createUnknownAdapterError(name: string): Error {
   return new Error(
     `[vextjs] config.adapter "${name}" is not a built-in adapter.\n` +
       `         Available: ${BUILT_IN_ADAPTER_NAMES.join(", ")}\n` +
       `         For third-party adapters, pass an adapter object or factory function instead of a string.`,
   );
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function messageMentionsPackage(message: string, packageName: string): boolean {
+  return (
+    message.includes(`'${packageName}'`) ||
+    message.includes(`"${packageName}"`) ||
+    message.includes(` ${packageName} `) ||
+    message.includes(`${packageName}/`)
+  );
+}
+
+function messageMentionsMissingPackage(
+  message: string,
+  packageName: string,
+): boolean {
+  return (
+    message.includes(`Cannot find package '${packageName}'`) ||
+    message.includes(`Cannot find package "${packageName}"`) ||
+    message.includes(`Cannot find module '${packageName}'`) ||
+    message.includes(`Cannot find module "${packageName}"`)
+  );
+}
+
+export function isMissingAdapterPeerDependencyError(
+  error: unknown,
+  peerPackages: readonly string[],
+): boolean {
+  const code = getErrorCode(error);
+  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
+    return false;
+  }
+
+  const message = getErrorMessage(error);
+  return peerPackages.some((packageName) =>
+    messageMentionsMissingPackage(message, packageName),
+  );
+}
+
+export function isIncompatibleAdapterPeerDependencyError(
+  error: unknown,
+  peerPackages: readonly string[],
+): boolean {
+  const code = getErrorCode(error);
+  if (
+    code !== "ERR_PACKAGE_PATH_NOT_EXPORTED" &&
+    code !== "ERR_PACKAGE_IMPORT_NOT_DEFINED" &&
+    code !== "ERR_INVALID_PACKAGE_CONFIG"
+  ) {
+    return false;
+  }
+
+  const message = getErrorMessage(error);
+  return peerPackages.some((packageName) =>
+    messageMentionsPackage(message, packageName),
+  );
+}
+
+export function createMissingAdapterPeerDependencyError(
+  name: string,
+  diagnostic: AdapterPeerDiagnostic,
+  cause: unknown,
+): Error {
+  return new Error(
+    `[vextjs] Adapter "${name}" requires ${diagnostic.requiresText}.\n` +
+      `         ${diagnostic.installText}`,
+    { cause },
+  );
+}
+
+export function createIncompatibleAdapterPeerDependencyError(
+  name: string,
+  cause: unknown,
+): Error {
+  return new Error(
+    `[vextjs] Adapter "${name}" found optional peer packages, but they could not be loaded through the expected package entry.\n` +
+      `         Check that the installed peer versions are compatible with vextjs.\n` +
+      `         Cause: ${getErrorMessage(cause)}`,
+    { cause },
+  );
+}
+
+export function createAdapterInternalFailureError(
+  name: string,
+  cause: unknown,
+): Error {
+  return new Error(
+    `[vextjs] Adapter "${name}" failed while loading or initializing.\n` +
+      `         This is not a missing optional peer dependency diagnostic.\n` +
+      `         Cause: ${getErrorMessage(cause)}`,
+    { cause },
+  );
+}
+
+async function loadBuiltInAdapterWithDiagnostics(
+  name: Exclude<BuiltInAdapterName, "native">,
+  diagnostic: AdapterPeerDiagnostic,
+  create: () => Promise<VextAdapter> | VextAdapter,
+): Promise<VextAdapter> {
+  try {
+    return await create();
+  } catch (error) {
+    if (isMissingAdapterPeerDependencyError(error, diagnostic.peerPackages)) {
+      throw createMissingAdapterPeerDependencyError(name, diagnostic, error);
+    }
+    if (
+      isIncompatibleAdapterPeerDependencyError(error, diagnostic.peerPackages)
+    ) {
+      throw createIncompatibleAdapterPeerDependencyError(name, error);
+    }
+    throw createAdapterInternalFailureError(name, error);
+  }
 }
 
 /**
@@ -47,53 +176,67 @@ async function loadBuiltInAdapter(
     }
 
     case "hono": {
-      try {
-        const { createHonoAdapter } = await import("../adapters/hono/index.js");
-        return createHonoAdapter(app);
-      } catch {
-        throw new Error(
-          `[vextjs] Adapter "hono" requires "hono" and "@hono/node-server" packages.\n` +
-            `         Install them with: npm install hono @hono/node-server`,
-        );
-      }
+      return loadBuiltInAdapterWithDiagnostics(
+        "hono",
+        {
+          peerPackages: ["hono", "@hono/node-server"],
+          requiresText: `"hono" and "@hono/node-server" packages`,
+          installText: `Install them with: npm install hono @hono/node-server`,
+        },
+        async () => {
+          const { createHonoAdapter } =
+            await import("../adapters/hono/index.js");
+          return createHonoAdapter(app);
+        },
+      );
     }
 
     case "fastify": {
-      try {
-        const { createFastifyAdapter } =
-          await import("../adapters/fastify/adapter.js");
-        return createFastifyAdapter({}, app);
-      } catch {
-        throw new Error(
-          `[vextjs] Adapter "fastify" requires the "fastify" package.\n` +
-            `         Install it with: npm install fastify`,
-        );
-      }
+      return loadBuiltInAdapterWithDiagnostics(
+        "fastify",
+        {
+          peerPackages: ["fastify"],
+          requiresText: `the "fastify" package`,
+          installText: `Install it with: npm install fastify`,
+        },
+        async () => {
+          const { createFastifyAdapter } =
+            await import("../adapters/fastify/adapter.js");
+          return createFastifyAdapter({}, app);
+        },
+      );
     }
 
     case "express": {
-      try {
-        const { createExpressAdapter } =
-          await import("../adapters/express/adapter.js");
-        return createExpressAdapter({}, app);
-      } catch {
-        throw new Error(
-          `[vextjs] Adapter "express" requires the "express" package.\n` +
-            `         Install it with: npm install express`,
-        );
-      }
+      return loadBuiltInAdapterWithDiagnostics(
+        "express",
+        {
+          peerPackages: ["express"],
+          requiresText: `the "express" package`,
+          installText: `Install it with: npm install express`,
+        },
+        async () => {
+          const { createExpressAdapter } =
+            await import("../adapters/express/adapter.js");
+          return createExpressAdapter({}, app);
+        },
+      );
     }
 
     case "koa": {
-      try {
-        const { createKoaAdapter } = await import("../adapters/koa/adapter.js");
-        return createKoaAdapter({}, app);
-      } catch {
-        throw new Error(
-          `[vextjs] Adapter "koa" requires "koa" and "@koa/router" packages.\n` +
-            `         Install them with: npm install koa @koa/router`,
-        );
-      }
+      return loadBuiltInAdapterWithDiagnostics(
+        "koa",
+        {
+          peerPackages: ["koa", "@koa/router"],
+          requiresText: `"koa" and "@koa/router" packages`,
+          installText: `Install them with: npm install koa @koa/router`,
+        },
+        async () => {
+          const { createKoaAdapter } =
+            await import("../adapters/koa/adapter.js");
+          return createKoaAdapter({}, app);
+        },
+      );
     }
 
     default:
