@@ -254,29 +254,42 @@ Koa 是 Express 团队打造的下一代 Web 框架，以轻量和优雅著称�
 所有 Adapter 实现统一的 `VextAdapter` 接口：
 
 ```typescript
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 interface VextAdapter {
-  /** 创建底层 HTTP 服务器 */
-  createServer(): void;
+  /** adapter 名称标识 */
+  readonly name: string;
 
   /** 注册全局中间件 */
   registerMiddleware(middleware: VextMiddleware): void;
 
   /** 注册路由 */
-  registerRoute(method: string, path: string, chain: VextMiddleware[]): void;
+  registerRoute(
+    method: string,
+    path: string,
+    chain: VextMiddleware[],
+    options?: RouteOptions,
+  ): void;
 
   /** 注册错误处理器 */
   registerErrorHandler(handler: VextErrorMiddleware): void;
 
   /** 注册 404 处理器 */
-  registerNotFoundHandler(handler: VextMiddleware): void;
+  registerNotFound(handler: VextMiddleware): void;
 
   /** 启动监听 */
-  listen(port: number, host: string): Promise<VextServerHandle>;
+  listen(
+    port: number,
+    host?: string,
+    options?: VextAdapterListenOptions,
+  ): Promise<VextServerHandle>;
 
-  /** 注册 OpenAPI 文档路由（可选） */
-  registerOpenAPIRoutes?(config: OpenAPIRoutesConfig): void;
+  /** 构建 Node.js 请求处理函数，不启动 server */
+  buildHandler(): (req: IncomingMessage, res: ServerResponse) => void;
 }
 ```
+
+OpenAPI / Docs 路由由框架通过 `registerRoute()` 注册，Adapter 不再提供单独的 `registerOpenAPIRoutes()`。
 
 ### 自定义 Adapter
 
@@ -284,40 +297,65 @@ interface VextAdapter {
 
 ```typescript
 // src/config/default.ts
+import { createServer } from "node:http";
 import type { VextAdapter, VextApp } from "vextjs";
 
 function myCustomAdapter(): (app: VextApp) => VextAdapter {
-  return (app) => ({
-    createServer() {
-      // 创建底层服务器
-    },
+  return (app) => {
+    const adapter: VextAdapter = {
+      name: "my-custom",
 
-    registerMiddleware(middleware) {
-      // 注册全局中间件
-    },
+      registerMiddleware(middleware) {
+        // 注册全局中间件
+      },
 
-    registerRoute(method, path, chain) {
-      // 注册路由
-    },
+      registerRoute(method, path, chain, options) {
+        // 注册路由
+      },
 
-    registerErrorHandler(handler) {
-      // 注册错误处理
-    },
+      registerErrorHandler(handler) {
+        // 注册错误处理
+      },
 
-    registerNotFoundHandler(handler) {
-      // 注册 404 处理
-    },
+      registerNotFound(handler) {
+        // 注册 404 处理
+      },
 
-    async listen(port, host) {
-      // 启动监听
-      return {
-        close: async () => {
-          /* 关闭服务器 */
-        },
-        address: { port, host },
-      };
-    },
-  });
+      buildHandler() {
+        return (req, res) => {
+          // 将 Node.js req/res 转换为底层框架请求，并执行中间件链
+          res.statusCode = 501;
+          res.end("custom adapter bridge not implemented");
+        };
+      },
+
+      async listen(port, host = "0.0.0.0") {
+        const server = createServer(adapter.buildHandler());
+
+        await new Promise<void>((resolve) => {
+          server.listen(port, host, resolve);
+        });
+
+        const address = server.address();
+        const actualPort =
+          typeof address === "object" && address ? address.port : port;
+
+        return {
+          port: actualPort,
+          host,
+          close: () =>
+            new Promise<void>((resolve, reject) => {
+              server.close((error) => {
+                if (error) reject(error);
+                else resolve();
+              });
+            }),
+        };
+      },
+    };
+
+    return adapter;
+  };
 }
 
 export default {

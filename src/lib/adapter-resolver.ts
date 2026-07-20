@@ -193,7 +193,7 @@ function validateAdapterInterface(
   if (typeof obj.name !== "string" || obj.name.length === 0) {
     throw new Error(
       `[vextjs] Custom adapter is missing required property: "name" (must be a non-empty string).\n` +
-        `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
+        `         Adapter must implement the VextAdapter interface (see the adapters guide).`,
     );
   }
 
@@ -203,7 +203,7 @@ function validateAdapterInterface(
       throw new Error(
         `[vextjs] Custom adapter "${obj.name ?? "unknown"}" is missing required method: "${method}".\n` +
           `         Expected: function, received: ${typeof obj[method]}.\n` +
-          `         Adapter must implement the VextAdapter interface (see 08-adapter.md).`,
+          `         Adapter must implement the VextAdapter interface (see the adapters guide).`,
       );
     }
   }

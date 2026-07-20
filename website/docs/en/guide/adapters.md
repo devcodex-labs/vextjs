@@ -24,25 +24,25 @@ Adapter is responsible for:
 
 VextJS has 5 built-in Adapters, covering the mainstream Node.js HTTP framework:
 
-| Adapter | Underlying framework | Features | Applicable scenarios | Additional dependencies |
-| ------------------ | ---------------------------------- | ---------------------------------- | ------------------ | ---------------------------------- |
-| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance | None |
-| **Hono** | Hono | Web Standards API, lightweight | Full stack / edge runtime | `hono` `@hono/node-server` |
-| **Fastify** | Fastify | Rich ecology, JSON serialization optimization | Large-scale projects | `fastify` |
-| **Express** | Express v5 | The largest middleware ecosystem | Migration project | `express` |
-| **Koa** | Koa v3 | Lightweight and elegant | Small and medium-sized projects | `koa` |
+| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            | Additional dependencies    |
+| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- | -------------------------- |
+| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   | None                       |
+| **Hono**             | Hono                               | Web Standards API, lightweight                                 | Full stack / edge runtime       | `hono` `@hono/node-server` |
+| **Fastify**          | Fastify                            | Rich ecology, JSON serialization optimization                  | Large-scale projects            | `fastify`                  |
+| **Express**          | Express v5                         | The largest middleware ecosystem                               | Migration project               | `express`                  |
+| **Koa**              | Koa v3                             | Lightweight and elegant                                        | Small and medium-sized projects | `koa`                      |
 
 ### Performance comparison
 
 Historical benchmark snapshot (JSON response scenario, median of 5 rounds):
 
 | Adapter | Raw RPS | Vext RPS | Framework overhead |
-| ------- | ------: | -------: | -------: |
-| Native | 44,932 | 36,819 | 18.1% |
-| Express | 29,868 | 30,974 | -3.7% |
-| Fastify | 45,619 | 29,203 | 36.0% |
-| Koa | 31,833 | 22,488 | 29.4% |
-| Hono | 20,703 | 15,684 | 24.2% |
+| ------- | ------: | -------: | -----------------: |
+| Native  |  44,932 |   36,819 |              18.1% |
+| Express |  29,868 |   30,974 |              -3.7% |
+| Fastify |  45,619 |   29,203 |              36.0% |
+| Koa     |  31,833 |   22,488 |              29.4% |
+| Hono    |  20,703 |   15,684 |              24.2% |
 
 > Vext overhead includes: body parser, response wrapper, request/response abstraction, AsyncLocalStorage context, middleware chain executor, etc. **complete functions**.
 >
@@ -254,29 +254,42 @@ To switch Adapter, you only need to modify the `adapter` field in `src/config/de
 All Adapters implement the unified `VextAdapter` interface:
 
 ```typescript
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 interface VextAdapter {
-  /** Create the underlying HTTP server */
-  createServer(): void;
+  /** Adapter name */
+  readonly name: string;
 
   /** Register global middleware */
   registerMiddleware(middleware: VextMiddleware): void;
 
   /** Register route */
-  registerRoute(method: string, path: string, chain: VextMiddleware[]): void;
+  registerRoute(
+    method: string,
+    path: string,
+    chain: VextMiddleware[],
+    options?: RouteOptions,
+  ): void;
 
   /** Register error handler */
   registerErrorHandler(handler: VextErrorMiddleware): void;
 
   /** Register 404 handler */
-  registerNotFoundHandler(handler: VextMiddleware): void;
+  registerNotFound(handler: VextMiddleware): void;
 
-  /** Start monitoring */
-  listen(port: number, host: string): Promise<VextServerHandle>;
+  /** Start listening */
+  listen(
+    port: number,
+    host?: string,
+    options?: VextAdapterListenOptions,
+  ): Promise<VextServerHandle>;
 
-  /** Register OpenAPI document route (optional) */
-  registerOpenAPIRoutes?(config: OpenAPIRoutesConfig): void;
+  /** Build a Node.js request handler without starting a server */
+  buildHandler(): (req: IncomingMessage, res: ServerResponse) => void;
 }
 ```
+
+OpenAPI / Docs routes are registered by the framework through `registerRoute()`. Adapters no longer expose a separate `registerOpenAPIRoutes()` method.
 
 ### Custom Adapter
 
@@ -284,40 +297,66 @@ If the five built-in Adapters cannot meet your needs, you can implement a custom
 
 ```typescript
 // src/config/default.ts
+import { createServer } from "node:http";
 import type { VextAdapter, VextApp } from "vextjs";
 
 function myCustomAdapter(): (app: VextApp) => VextAdapter {
-  return (app) => ({
-    createServer() {
-      //Create the underlying server
-    },
+  return (app) => {
+    const adapter: VextAdapter = {
+      name: "my-custom",
 
-    registerMiddleware(middleware) {
-      //Register global middleware
-    },
+      registerMiddleware(middleware) {
+        // Register global middleware
+      },
 
-    registerRoute(method, path, chain) {
-      //Register route
-    },
+      registerRoute(method, path, chain, options) {
+        // Register route
+      },
 
-    registerErrorHandler(handler) {
-      //Register error handling
-    },
+      registerErrorHandler(handler) {
+        // Register error handling
+      },
 
-    registerNotFoundHandler(handler) {
-      //Register 404 processing
-    },
+      registerNotFound(handler) {
+        // Register 404 processing
+      },
 
-    async listen(port, host) {
-      // Start listening
-      return {
-        close: async () => {
-          /* Shut down the server */
-        },
-        address: { port, host },
-      };
-    },
-  });
+      buildHandler() {
+        return (req, res) => {
+          // Convert Node.js req/res into the underlying framework request
+          // and execute the middleware chain.
+          res.statusCode = 501;
+          res.end("custom adapter bridge not implemented");
+        };
+      },
+
+      async listen(port, host = "0.0.0.0") {
+        const server = createServer(adapter.buildHandler());
+
+        await new Promise<void>((resolve) => {
+          server.listen(port, host, resolve);
+        });
+
+        const address = server.address();
+        const actualPort =
+          typeof address === "object" && address ? address.port : port;
+
+        return {
+          port: actualPort,
+          host,
+          close: () =>
+            new Promise<void>((resolve, reject) => {
+              server.close((error) => {
+                if (error) reject(error);
+                else resolve();
+              });
+            }),
+        };
+      },
+    };
+
+    return adapter;
+  };
 }
 
 export default {
