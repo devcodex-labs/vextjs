@@ -160,11 +160,12 @@ React-related browser externals must define `externalRuntime` mappings. Otherwis
 
 ## SPA Fallback Fields
 
-| Field                         | Default  | Meaning                                        |
-| ----------------------------- | -------- | ---------------------------------------------- |
-| `frontend.spaFallback.scopes` | `[]`     | Explicit client-router sub-app fallback scopes |
-| `scopes[].basePath`           | required | URL prefix handled by the shell                |
-| `scopes[].page`               | required | Shell page id from `src/frontend/pages/**`     |
-| `scopes[].ssr`                | `false`  | Whether the shell should be SSR-rendered       |
-| `scopes[].exclude`            | `[]`     | Paths that must not be handled by fallback     |
-| `scopes[].status`             | `200`    | HTTP status for matched fallback               |
+| Field                          | Default                                                      | Meaning                                        |
+| ------------------------------ | ------------------------------------------------------------ | ---------------------------------------------- |
+| `frontend.spaFallback.scopes`  | `[]`                                                         | Explicit client-router sub-app fallback scopes |
+| `frontend.spaFallback.exclude` | `["/api/**", "/openapi.json", "/docs/**", "/_vext/docs/**"]` | Global paths that fallback never captures      |
+| `scopes[].basePath`            | required                                                     | URL prefix handled by the shell                |
+| `scopes[].page`                | required                                                     | Shell page id from `src/frontend/pages/**`     |
+| `scopes[].ssr`                 | `false`                                                      | Whether the shell should be SSR-rendered       |
+| `scopes[].exclude`             | `[]`                                                         | Paths that must not be handled by fallback     |
+| `scopes[].status`              | `200`                                                        | HTTP status for matched fallback               |

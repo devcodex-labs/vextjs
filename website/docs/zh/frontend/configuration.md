@@ -160,11 +160,12 @@ React 相关 browser external 必须提供 `externalRuntime` 映射，否则构�
 
 ## SPA Fallback 字段
 
-| 字段                          | 默认值  | 含义                                       |
-| ----------------------------- | ------- | ------------------------------------------ |
-| `frontend.spaFallback.scopes` | `[]`    | 显式 client-router 子应用 fallback 范围    |
-| `scopes[].basePath`           | 必填    | shell 负责的 URL 前缀                      |
-| `scopes[].page`               | 必填    | `src/frontend/pages/**` 下的 shell page id |
-| `scopes[].ssr`                | `false` | shell 是否 SSR 渲染                        |
-| `scopes[].exclude`            | `[]`    | 不进入 fallback 的路径                     |
-| `scopes[].status`             | `200`   | fallback 命中后的 HTTP status              |
+| 字段                           | 默认值                                                       | 含义                                       |
+| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------ |
+| `frontend.spaFallback.scopes`  | `[]`                                                         | 显式 client-router 子应用 fallback 范围    |
+| `frontend.spaFallback.exclude` | `["/api/**", "/openapi.json", "/docs/**", "/_vext/docs/**"]` | fallback 永远不会接管的全局路径            |
+| `scopes[].basePath`            | 必填                                                         | shell 负责的 URL 前缀                      |
+| `scopes[].page`                | 必填                                                         | `src/frontend/pages/**` 下的 shell page id |
+| `scopes[].ssr`                 | `false`                                                      | shell 是否 SSR 渲染                        |
+| `scopes[].exclude`             | `[]`                                                         | 不进入 fallback 的路径                     |
+| `scopes[].status`              | `200`                                                        | fallback 命中后的 HTTP status              |

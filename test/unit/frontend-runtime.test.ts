@@ -96,6 +96,23 @@ describe("frontend config resolver", () => {
     expect(config.build.diagnostics.leakScan).toBe(true);
   });
 
+  it("documents the default SPA fallback exclusions from the resolver", async () => {
+    const rootDir = await tempRoot();
+    const config = resolveFrontendConfig(true, {
+      rootDir,
+      mode: "production",
+    });
+    const docs = await Promise.all([
+      readFile(path.join("website", "docs", "en", "api", "config.md"), "utf-8"),
+      readFile(path.join("website", "docs", "zh", "api", "config.md"), "utf-8"),
+    ]);
+
+    for (const exclude of config.spaFallback.exclude) {
+      expect(docs[0]).toContain(exclude);
+      expect(docs[1]).toContain(exclude);
+    }
+  });
+
   it("normalizes B1 frontend page, alias, i18n, and scoped fallback config", async () => {
     const rootDir = await tempRoot();
     const config = resolveFrontendConfig(
