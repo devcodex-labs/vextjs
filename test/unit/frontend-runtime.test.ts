@@ -1263,6 +1263,101 @@ describe("frontend render middleware", () => {
     expect(res.sent?.html).not.toContain("Global SSR body");
   });
 
+  it("updates document html lang from the render locale", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "_document.html"),
+      '<!doctype html><html lang="{vext.lang}"><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>',
+    );
+    await mkdir(path.join(rootDir, "src", "frontend", "locales"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "locales", "en-US.ts"),
+      "export default { common: { title: 'Hello' } };\n",
+    );
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "locales", "zh-CN.ts"),
+      "export default { common: { title: '你好' } };\n",
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+    const zhRes = createRenderMockResponse();
+    await middleware(createMockRequest("/zh"), zhRes as any, async () => {});
+    zhRes.render("index", {}, { locale: "zh-CN" });
+
+    expect(zhRes.sent?.html).toContain('<html lang="zh-CN">');
+    expect(zhRes.sent?.html).not.toContain("data-vext-lang");
+    expect(zhRes.sent?.html).not.toContain("{vext.lang}");
+
+    const defaultRes = createRenderMockResponse();
+    await middleware(
+      createMockRequest("/default"),
+      defaultRes as any,
+      async () => {},
+    );
+    defaultRes.render("index");
+
+    expect(defaultRes.sent?.html).toContain('<html lang="en-US">');
+  });
+
+  it("removes the document html lang marker when htmlLang is false", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "_document.html"),
+      '<!doctype html><html lang="{vext.lang}"><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>',
+    );
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US", htmlLang: false },
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        i18n: { enabled: true, defaultLocale: "en-US", htmlLang: false },
+      },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(
+      createMockRequest("/html-lang-off"),
+      res as any,
+      async () => {},
+    );
+    res.render("index", {}, { locale: "zh-CN" });
+
+    expect(res.sent?.html).toContain("<html>");
+    expect(res.sent?.html).not.toMatch(/\s+lang=/u);
+    expect(res.sent?.html).not.toContain("data-vext-lang");
+    expect(res.sent?.html).not.toContain("{vext.lang}");
+  });
+
   it("falls back to a client shell when SSR exceeds render.timeoutMs", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);

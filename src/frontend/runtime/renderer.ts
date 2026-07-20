@@ -157,6 +157,7 @@ export function createFrontendRenderer(
         mode: options.mode,
         assets: loadAssets(),
         render: config.render,
+        i18n: config.i18n,
         page,
         props: props ?? {},
         options: renderOptions ?? {},
@@ -184,6 +185,7 @@ export function createFrontendRenderer(
         mode: options.mode,
         assets: loadAssets(),
         render: config.render,
+        i18n: config.i18n,
         payload,
         status,
         headers,
@@ -253,6 +255,7 @@ function renderCachedDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
   render: FrontendRenderPolicy;
+  i18n: ResolvedVextFrontendConfig["i18n"];
   payload: unknown;
   status: number;
   headers: VextHeaders;
@@ -268,6 +271,7 @@ function renderCachedDocument(input: {
     mode: input.mode,
     assets: input.assets,
     render: input.render,
+    i18n: input.i18n,
     page: cacheEntry.payload.page,
     props: cacheEntry.payload.props,
     options: cacheEntry.payload.options,
@@ -345,6 +349,7 @@ function renderPageDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
   render: FrontendRenderPolicy;
+  i18n: ResolvedVextFrontendConfig["i18n"];
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -368,6 +373,7 @@ function renderPageDocument(input: {
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
+    i18n: input.i18n,
     head: input.options.head,
     headHtml: ssr.head,
     nonce: input.options.nonce,
@@ -461,6 +467,7 @@ function renderErrorDocument(input: {
     return renderBuiltinErrorDocument({
       mode: input.mode,
       assets: input.assets,
+      i18n: input.config.i18n,
       page: `error/${normalized.status}`,
       props,
       options: { ...options, status: normalized.status },
@@ -472,6 +479,7 @@ function renderErrorDocument(input: {
     mode: input.mode,
     assets: input.assets,
     render: input.config.render,
+    i18n: input.config.i18n,
     page,
     props,
     options: { ...options, status: normalized.status },
@@ -559,6 +567,7 @@ function selectErrorPage(
 function renderBuiltinErrorDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
+  i18n: ResolvedVextFrontendConfig["i18n"];
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -585,6 +594,7 @@ function renderBuiltinErrorDocument(input: {
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
+    i18n: input.i18n,
     head: input.options.head ?? { title: `${input.status} ${message}` },
     nonce: input.options.nonce,
     payload,
@@ -698,6 +708,7 @@ function renderDocument(
   input: {
     page: string;
     manifest: VextFrontendRenderManifest;
+    i18n: ResolvedVextFrontendConfig["i18n"];
     head?: VextRenderHeadOptions;
     headHtml?: string;
     nonce?: string;
@@ -714,10 +725,7 @@ function renderDocument(
     .filter(Boolean)
     .join("\n");
   let html = template;
-  html = html.replaceAll(
-    "{vext.lang}",
-    escapeAttribute(input.payload.options.locale ?? ""),
-  );
+  html = renderDocumentLang(html, input.i18n, input.payload.options.locale);
 
   html = html.replace(
     /<div\s+id=["']root["'][^>]*data-vext-root[^>]*><\/div>/iu,
@@ -738,6 +746,37 @@ function renderDocument(
   }
 
   return html;
+}
+
+function renderDocumentLang(
+  html: string,
+  i18n: ResolvedVextFrontendConfig["i18n"],
+  locale: string | undefined,
+): string {
+  const markedHtmlLang =
+    /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*?\sdata-vext-lang(?:=(["'])[^"']*\4)?[^>]*)>/iu;
+  const tokenLangAttribute = /\s+lang=(["'])\{vext\.lang\}\1/giu;
+
+  if (!i18n.htmlLang) {
+    return html
+      .replace(markedHtmlLang, "<html$1$3>")
+      .replace(tokenLangAttribute, "")
+      .replace(/\s+data-vext-lang(?:=(["'])[^"']*\1)?/giu, "")
+      .replaceAll("{vext.lang}", "");
+  }
+
+  const resolvedLang =
+    locale && locale.length > 0
+      ? locale
+      : i18n.defaultLocale === "inherit"
+        ? ""
+        : i18n.defaultLocale;
+  const langAttribute = escapeAttribute(resolvedLang);
+  return html
+    .replace(markedHtmlLang, `<html$1 lang="${langAttribute}"$3>`)
+    .replace(tokenLangAttribute, ` lang="${langAttribute}"`)
+    .replace(/\s+data-vext-lang(?:=(["'])[^"']*\1)?/giu, "")
+    .replaceAll("{vext.lang}", langAttribute);
 }
 
 function addNonceToVextScripts(html: string, nonce: string): string {

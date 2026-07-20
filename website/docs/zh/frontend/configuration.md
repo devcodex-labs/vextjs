@@ -102,69 +102,69 @@ export default {
 
 ## 核心字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.enabled` | `false` | 启用内置前端流水线 |
-| `frontend.framework` | `"react"` | 内置 React 支持的框架标签 |
-| `frontend.root` | `"src/frontend"` | 用户前端源码根目录 |
-| `frontend.indexHtml` | `src/frontend/pages/_document.html` | Document 模板 |
-| `frontend.outDir` | dev 为 `.vext/client`，build 为 `dist/client` | 前端输出目录 |
-| `frontend.publicDir` | `"public"` | 公共静态资源目录 |
-| `frontend.publicPath` | `"/"` | 公开资源 URL 前缀 |
+| 字段                  | 默认值                                        | 含义                      |
+| --------------------- | --------------------------------------------- | ------------------------- |
+| `frontend.enabled`    | `false`                                       | 启用内置前端流水线        |
+| `frontend.framework`  | `"react"`                                     | 内置 React 支持的框架标签 |
+| `frontend.root`       | `"src/frontend"`                              | 用户前端源码根目录        |
+| `frontend.indexHtml`  | `src/frontend/pages/_document.html`           | Document 模板             |
+| `frontend.outDir`     | dev 为 `.vext/client`，build 为 `dist/client` | 前端输出目录              |
+| `frontend.publicDir`  | `"public"`                                    | 公共静态资源目录          |
+| `frontend.publicPath` | `"/"`                                         | 公开资源 URL 前缀         |
 
 ## Build 字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.build.target` | `"es2022"` | 传给 esbuild 的浏览器目标 |
-| `frontend.build.minify` | 生产期 `true` | 压缩浏览器产物 |
-| `frontend.build.sourcemap` | 开发期 `true` | 生成 source map |
-| `frontend.build.client.external` | `[]` | 浏览器 external 模块 |
-| `frontend.build.client.externalRuntime` | `{}` | 浏览器 external 的 import-map URL |
-| `frontend.build.vendorChunks` | enabled | 共享 runtime chunk 策略 |
-| `frontend.build.assets.inlineLimit` | `0` | 小于该字节数的 import 型资源内联 |
-| `frontend.build.css.modules` | `true` | 启用 CSS Modules |
-| `frontend.build.diagnostics.leakScan` | `true` | 阻断服务端模块进入浏览器 graph |
-| `frontend.build.diagnostics.performanceReport` | `true` | 写入 raw/gzip/brotli size report |
+| 字段                                           | 默认值        | 含义                              |
+| ---------------------------------------------- | ------------- | --------------------------------- |
+| `frontend.build.target`                        | `"es2022"`    | 传给 esbuild 的浏览器目标         |
+| `frontend.build.minify`                        | 生产期 `true` | 压缩浏览器产物                    |
+| `frontend.build.sourcemap`                     | 开发期 `true` | 生成 source map                   |
+| `frontend.build.client.external`               | `[]`          | 浏览器 external 模块              |
+| `frontend.build.client.externalRuntime`        | `{}`          | 浏览器 external 的 import-map URL |
+| `frontend.build.vendorChunks`                  | enabled       | 共享 runtime chunk 策略           |
+| `frontend.build.assets.inlineLimit`            | `0`           | 小于该字节数的 import 型资源内联  |
+| `frontend.build.css.modules`                   | `true`        | 启用 CSS Modules                  |
+| `frontend.build.diagnostics.leakScan`          | `true`        | 阻断服务端模块进入浏览器 graph    |
+| `frontend.build.diagnostics.performanceReport` | `true`        | 写入 raw/gzip/brotli size report  |
 
 React 相关 browser external 必须提供 `externalRuntime` 映射，否则构建会用友好诊断失败。
 
 ## Deploy 字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.deploy.assetBaseUrl` | 无 | CDN / public asset base URL |
-| `frontend.deploy.crossOrigin` | 无 | 生成标签的 `crossorigin` 值 |
-| `frontend.deploy.integrity` | `false` | 为生成 JS/CSS 添加 SRI integrity |
-| `frontend.deploy.upload.enabled` | `false` | 启用 `vext build --upload-assets` / `vext deploy assets` 上传 |
-| `frontend.deploy.upload.adapter` | 无 | `filesystem`、`mock` 或自定义 adapter |
-| `frontend.deploy.upload.stateFile` | `.vext/deploy/...` | 增量上传状态文件 |
-| `frontend.deploy.upload.exclude` | `["**/*.map"]` | 不上传的文件 |
+| 字段                               | 默认值             | 含义                                                          |
+| ---------------------------------- | ------------------ | ------------------------------------------------------------- |
+| `frontend.deploy.assetBaseUrl`     | 无                 | CDN / public asset base URL                                   |
+| `frontend.deploy.crossOrigin`      | 无                 | 生成标签的 `crossorigin` 值                                   |
+| `frontend.deploy.integrity`        | `false`            | 为生成 JS/CSS 添加 SRI integrity                              |
+| `frontend.deploy.upload.enabled`   | `false`            | 启用 `vext build --upload-assets` / `vext deploy assets` 上传 |
+| `frontend.deploy.upload.adapter`   | 无                 | `filesystem`、`mock` 或自定义 adapter                         |
+| `frontend.deploy.upload.stateFile` | `.vext/deploy/...` | 增量上传状态文件                                              |
+| `frontend.deploy.upload.exclude`   | `["**/*.map"]`     | 不上传的文件                                                  |
 
 ## I18n 字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.i18n.enabled` | `true` | 启用前端页面文案 |
-| `frontend.i18n.defaultLocale` | 后端默认 locale | 前端 fallback locale |
-| `frontend.i18n.clientLoad` | `"current"` | 浏览器 locale 加载模式 |
+| 字段                          | 默认值          | 含义                                     |
+| ----------------------------- | --------------- | ---------------------------------------- |
+| `frontend.i18n.enabled`       | `true`          | 启用前端页面文案                         |
+| `frontend.i18n.defaultLocale` | 后端默认 locale | 前端 fallback locale                     |
+| `frontend.i18n.clientLoad`    | `"current"`     | 浏览器 locale 加载模式                   |
+| `frontend.i18n.htmlLang`      | `true`          | 写入请求级 `{vext.lang}` / `<html lang>` |
 
 ## Dev 字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.dev.hot` | `true` | 启用前端 dev events |
-| `frontend.dev.fastRefresh` | `true` | 尽可能启用 React Fast Refresh |
+| 字段                         | 默认值     | 含义                                   |
+| ---------------------------- | ---------- | -------------------------------------- |
+| `frontend.dev.hot`           | `true`     | 启用前端 dev events                    |
+| `frontend.dev.fastRefresh`   | `true`     | 尽可能启用 React Fast Refresh          |
 | `frontend.dev.renderRefresh` | `"prompt"` | render-data 后端 reload 后的浏览器行为 |
 
 ## SPA Fallback 字段
 
-| 字段 | 默认值 | 含义 |
-|------|--------|------|
-| `frontend.spaFallback.scopes` | `[]` | 显式 client-router 子应用 fallback 范围 |
-| `scopes[].basePath` | 必填 | shell 负责的 URL 前缀 |
-| `scopes[].page` | 必填 | `src/frontend/pages/**` 下的 shell page id |
-| `scopes[].ssr` | `false` | shell 是否 SSR 渲染 |
-| `scopes[].exclude` | `[]` | 不进入 fallback 的路径 |
-| `scopes[].status` | `200` | fallback 命中后的 HTTP status |
-
+| 字段                          | 默认值  | 含义                                       |
+| ----------------------------- | ------- | ------------------------------------------ |
+| `frontend.spaFallback.scopes` | `[]`    | 显式 client-router 子应用 fallback 范围    |
+| `scopes[].basePath`           | 必填    | shell 负责的 URL 前缀                      |
+| `scopes[].page`               | 必填    | `src/frontend/pages/**` 下的 shell page id |
+| `scopes[].ssr`                | `false` | shell 是否 SSR 渲染                        |
+| `scopes[].exclude`            | `[]`    | 不进入 fallback 的路径                     |
+| `scopes[].status`             | `200`   | fallback 命中后的 HTTP status              |

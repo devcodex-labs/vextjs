@@ -42,14 +42,14 @@ Put the page id in the second argument or in `options.page`. Do not use `renderE
 
 Vext does not turn every 404 into the same HTML page. The output depends on request type and route ownership.
 
-| Situation | Result |
-|-----------|--------|
-| API route missing or API request asks for JSON | JSON 404 |
-| Static asset missing | static 404 |
-| Handler calls `res.renderError(404)` | HTML error page |
-| HTML page id is missing | page registry diagnostic |
-| `spaFallback.scopes[]` matches HTML navigation | configured shell page |
-| Unknown HTML navigation without fallback | normal route 404 |
+| Situation                                      | Result                   |
+| ---------------------------------------------- | ------------------------ |
+| API route missing or API request asks for JSON | JSON 404                 |
+| Static asset missing                           | static 404               |
+| Handler calls `res.renderError(404)`           | HTML error page          |
+| HTML page id is missing                        | page registry diagnostic |
+| `spaFallback.scopes[]` matches HTML navigation | configured shell page    |
+| Unknown HTML navigation without fallback       | normal route 404         |
 
 This keeps API clients and static assets from accidentally receiving application HTML.
 
@@ -67,18 +67,18 @@ Use reserved Vext tokens:
 <!doctype html>
 <html lang="{vext.lang}">
   <head>
-    {vext.head}
-    {vext.styles}
+    {vext.head} {vext.styles}
   </head>
   <body>
     <div id="root">{vext.app}</div>
-    {vext.data}
-    {vext.scripts}
+    {vext.data} {vext.scripts}
   </body>
 </html>
 ```
 
 The template does not evaluate arbitrary expressions. Pass data through `props`, `layoutData`, `messages`, or `head`.
+
+`{vext.lang}` is request-aware when `frontend.i18n.htmlLang` is enabled. `res.render(page, props, { locale })` updates the final `<html lang>` value during SSR; `htmlLang: false` removes Vext's generated lang marker.
 
 ## Head and CSP Nonce
 
@@ -89,12 +89,8 @@ res.render("dashboard", props, {
   nonce: req.cspNonce,
   head: {
     title: "Dashboard",
-    meta: [
-      { name: "description", content: "Team dashboard" },
-    ],
-    links: [
-      { rel: "canonical", href: "https://example.com/dashboard" },
-    ],
+    meta: [{ name: "description", content: "Team dashboard" }],
+    links: [{ rel: "canonical", href: "https://example.com/dashboard" }],
   },
 });
 ```
@@ -106,4 +102,3 @@ When `nonce` is provided, Vext applies it to generated script/data tags.
 `props`, `layoutData`, `messages`, and render metadata must be JSON-safe. Do not pass functions, class instances, streams, database connections, or raw request objects.
 
 Vext escapes serialized data before injecting it into `{vext.data}`. Put user input into data fields or head objects instead of writing it directly into `_document.html`.
-

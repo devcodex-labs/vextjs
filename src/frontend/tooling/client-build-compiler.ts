@@ -650,8 +650,7 @@ async function renderIndexHtml(
     output = output.replace("</head>", `  ${externalRuntimeTags}\n</head>`);
   }
 
-  output = output
-    .replaceAll("{vext.lang}", config.i18n.defaultLocale)
+  output = renderDocumentLangPlaceholder(output, config)
     .replaceAll("{vext.head}", externalRuntimeTags)
     .replaceAll("{vext.root}", rootTag)
     .replaceAll("{vext.data}", dataTag);
@@ -668,6 +667,27 @@ async function renderIndexHtml(
   return `${output}\n${[styleTags, scriptTag].filter(Boolean).join("\n")}\n`;
 }
 
+function renderDocumentLangPlaceholder(
+  template: string,
+  config: ResolvedVextFrontendConfig,
+): string {
+  const tokenLangAttribute = /\s+lang=(["'])\{vext\.lang\}\1/giu;
+  if (!config.i18n.htmlLang) {
+    return template
+      .replace(tokenLangAttribute, "")
+      .replaceAll("{vext.lang}", "");
+  }
+
+  const lang =
+    config.i18n.defaultLocale === "inherit" ? "" : config.i18n.defaultLocale;
+  return template
+    .replace(
+      tokenLangAttribute,
+      ` lang="${escapeAttribute(lang)}" data-vext-lang`,
+    )
+    .replaceAll("{vext.lang}", escapeAttribute(lang));
+}
+
 function renderAssetAttrs(
   config: ResolvedVextFrontendConfig,
   asset: VextFrontendManifestAsset,
@@ -680,6 +700,15 @@ function renderAssetAttrs(
     attrs.push(`integrity="${asset.integrity}"`);
   }
   return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
 }
 
 function renderExternalRuntimeTags(config: ResolvedVextFrontendConfig): string {

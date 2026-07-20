@@ -102,69 +102,69 @@ export default {
 
 ## Core Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.enabled` | `false` | Enable built-in frontend pipeline |
-| `frontend.framework` | `"react"` | Framework label for built-in React support |
-| `frontend.root` | `"src/frontend"` | User frontend source root |
-| `frontend.indexHtml` | `src/frontend/pages/_document.html` | Document template |
-| `frontend.outDir` | `.vext/client` in dev, `dist/client` in build | Frontend output directory |
-| `frontend.publicDir` | `"public"` | Static public directory |
-| `frontend.publicPath` | `"/"` | Public asset URL prefix |
+| Field                 | Default                                       | Meaning                                    |
+| --------------------- | --------------------------------------------- | ------------------------------------------ |
+| `frontend.enabled`    | `false`                                       | Enable built-in frontend pipeline          |
+| `frontend.framework`  | `"react"`                                     | Framework label for built-in React support |
+| `frontend.root`       | `"src/frontend"`                              | User frontend source root                  |
+| `frontend.indexHtml`  | `src/frontend/pages/_document.html`           | Document template                          |
+| `frontend.outDir`     | `.vext/client` in dev, `dist/client` in build | Frontend output directory                  |
+| `frontend.publicDir`  | `"public"`                                    | Static public directory                    |
+| `frontend.publicPath` | `"/"`                                         | Public asset URL prefix                    |
 
 ## Build Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.build.target` | `"es2022"` | Browser target passed to esbuild |
-| `frontend.build.minify` | production `true` | Minify browser output |
-| `frontend.build.sourcemap` | dev `true` | Emit source maps |
-| `frontend.build.client.external` | `[]` | Browser external modules |
-| `frontend.build.client.externalRuntime` | `{}` | Import-map URLs for browser externals |
-| `frontend.build.vendorChunks` | enabled | Shared runtime chunk strategy |
-| `frontend.build.assets.inlineLimit` | `0` | Inline imported assets below this byte size |
-| `frontend.build.css.modules` | `true` | Enable CSS Modules |
-| `frontend.build.diagnostics.leakScan` | `true` | Block server-only imports from browser graph |
-| `frontend.build.diagnostics.performanceReport` | `true` | Write raw/gzip/brotli size report |
+| Field                                          | Default           | Meaning                                      |
+| ---------------------------------------------- | ----------------- | -------------------------------------------- |
+| `frontend.build.target`                        | `"es2022"`        | Browser target passed to esbuild             |
+| `frontend.build.minify`                        | production `true` | Minify browser output                        |
+| `frontend.build.sourcemap`                     | dev `true`        | Emit source maps                             |
+| `frontend.build.client.external`               | `[]`              | Browser external modules                     |
+| `frontend.build.client.externalRuntime`        | `{}`              | Import-map URLs for browser externals        |
+| `frontend.build.vendorChunks`                  | enabled           | Shared runtime chunk strategy                |
+| `frontend.build.assets.inlineLimit`            | `0`               | Inline imported assets below this byte size  |
+| `frontend.build.css.modules`                   | `true`            | Enable CSS Modules                           |
+| `frontend.build.diagnostics.leakScan`          | `true`            | Block server-only imports from browser graph |
+| `frontend.build.diagnostics.performanceReport` | `true`            | Write raw/gzip/brotli size report            |
 
 React-related browser externals must define `externalRuntime` mappings. Otherwise the build fails with a friendly diagnostic.
 
 ## Deploy Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.deploy.assetBaseUrl` | none | CDN/public base URL for assets |
-| `frontend.deploy.crossOrigin` | none | `crossorigin` value for generated tags |
-| `frontend.deploy.integrity` | `false` | Add SRI integrity for generated JS/CSS |
-| `frontend.deploy.upload.enabled` | `false` | Enable `vext build --upload-assets` / `vext deploy assets` upload |
-| `frontend.deploy.upload.adapter` | none | `filesystem`, `mock`, or custom adapter |
-| `frontend.deploy.upload.stateFile` | `.vext/deploy/...` | Incremental upload state |
-| `frontend.deploy.upload.exclude` | `["**/*.map"]` | Files excluded from upload |
+| Field                              | Default            | Meaning                                                           |
+| ---------------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `frontend.deploy.assetBaseUrl`     | none               | CDN/public base URL for assets                                    |
+| `frontend.deploy.crossOrigin`      | none               | `crossorigin` value for generated tags                            |
+| `frontend.deploy.integrity`        | `false`            | Add SRI integrity for generated JS/CSS                            |
+| `frontend.deploy.upload.enabled`   | `false`            | Enable `vext build --upload-assets` / `vext deploy assets` upload |
+| `frontend.deploy.upload.adapter`   | none               | `filesystem`, `mock`, or custom adapter                           |
+| `frontend.deploy.upload.stateFile` | `.vext/deploy/...` | Incremental upload state                                          |
+| `frontend.deploy.upload.exclude`   | `["**/*.map"]`     | Files excluded from upload                                        |
 
 ## I18n Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.i18n.enabled` | `true` | Enable frontend page copy |
-| `frontend.i18n.defaultLocale` | backend default locale | Fallback frontend locale |
-| `frontend.i18n.clientLoad` | `"current"` | Browser locale loading mode |
+| Field                         | Default                | Meaning                                           |
+| ----------------------------- | ---------------------- | ------------------------------------------------- |
+| `frontend.i18n.enabled`       | `true`                 | Enable frontend page copy                         |
+| `frontend.i18n.defaultLocale` | backend default locale | Fallback frontend locale                          |
+| `frontend.i18n.clientLoad`    | `"current"`            | Browser locale loading mode                       |
+| `frontend.i18n.htmlLang`      | `true`                 | Write request-aware `{vext.lang}` / `<html lang>` |
 
 ## Dev Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.dev.hot` | `true` | Enable frontend dev events |
-| `frontend.dev.fastRefresh` | `true` | Enable React Fast Refresh when possible |
+| Field                        | Default    | Meaning                                           |
+| ---------------------------- | ---------- | ------------------------------------------------- |
+| `frontend.dev.hot`           | `true`     | Enable frontend dev events                        |
+| `frontend.dev.fastRefresh`   | `true`     | Enable React Fast Refresh when possible           |
 | `frontend.dev.renderRefresh` | `"prompt"` | Browser behavior after render-data backend reload |
 
 ## SPA Fallback Fields
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `frontend.spaFallback.scopes` | `[]` | Explicit client-router sub-app fallback scopes |
-| `scopes[].basePath` | required | URL prefix handled by the shell |
-| `scopes[].page` | required | Shell page id from `src/frontend/pages/**` |
-| `scopes[].ssr` | `false` | Whether the shell should be SSR-rendered |
-| `scopes[].exclude` | `[]` | Paths that must not be handled by fallback |
-| `scopes[].status` | `200` | HTTP status for matched fallback |
-
+| Field                         | Default  | Meaning                                        |
+| ----------------------------- | -------- | ---------------------------------------------- |
+| `frontend.spaFallback.scopes` | `[]`     | Explicit client-router sub-app fallback scopes |
+| `scopes[].basePath`           | required | URL prefix handled by the shell                |
+| `scopes[].page`               | required | Shell page id from `src/frontend/pages/**`     |
+| `scopes[].ssr`                | `false`  | Whether the shell should be SSR-rendered       |
+| `scopes[].exclude`            | `[]`     | Paths that must not be handled by fallback     |
+| `scopes[].status`             | `200`    | HTTP status for matched fallback               |

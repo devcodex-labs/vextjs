@@ -42,14 +42,14 @@ res.renderError(error, "error/default", {
 
 Vext 不会把所有 404 都变成同一个 HTML 页面。输出取决于请求类型和 route 归属。
 
-| 场景 | 结果 |
-|------|------|
-| API route 缺失或 API 请求要求 JSON | JSON 404 |
-| 静态资源缺失 | 静态 404 |
-| handler 调用 `res.renderError(404)` | HTML 错误页 |
-| HTML page id 缺失 | page registry 诊断 |
-| HTML 导航命中 `spaFallback.scopes[]` | 配置的 shell 页面 |
-| 未配置 fallback 的未知 HTML 导航 | 普通 route 404 |
+| 场景                                 | 结果               |
+| ------------------------------------ | ------------------ |
+| API route 缺失或 API 请求要求 JSON   | JSON 404           |
+| 静态资源缺失                         | 静态 404           |
+| handler 调用 `res.renderError(404)`  | HTML 错误页        |
+| HTML page id 缺失                    | page registry 诊断 |
+| HTML 导航命中 `spaFallback.scopes[]` | 配置的 shell 页面  |
+| 未配置 fallback 的未知 HTML 导航     | 普通 route 404     |
 
 这样 API 客户端和静态资源请求不会误收到应用 HTML。
 
@@ -67,18 +67,18 @@ src/frontend/pages/_document.html
 <!doctype html>
 <html lang="{vext.lang}">
   <head>
-    {vext.head}
-    {vext.styles}
+    {vext.head} {vext.styles}
   </head>
   <body>
     <div id="root">{vext.app}</div>
-    {vext.data}
-    {vext.scripts}
+    {vext.data} {vext.scripts}
   </body>
 </html>
 ```
 
 模板不会执行任意表达式。数据通过 `props`、`layoutData`、`messages` 或 `head` 传入。
+
+启用 `frontend.i18n.htmlLang` 时，`{vext.lang}` 是请求级的。`res.render(page, props, { locale })` 会在 SSR 阶段更新最终 `<html lang>`；`htmlLang: false` 会移除 Vext 生成的 lang marker。
 
 ## Head 与 CSP Nonce
 
@@ -89,12 +89,8 @@ res.render("dashboard", props, {
   nonce: req.cspNonce,
   head: {
     title: "Dashboard",
-    meta: [
-      { name: "description", content: "Team dashboard" },
-    ],
-    links: [
-      { rel: "canonical", href: "https://example.com/dashboard" },
-    ],
+    meta: [{ name: "description", content: "Team dashboard" }],
+    links: [{ rel: "canonical", href: "https://example.com/dashboard" }],
   },
 });
 ```
@@ -106,4 +102,3 @@ res.render("dashboard", props, {
 `props`、`layoutData`、`messages` 和 render metadata 必须是 JSON-safe 数据。不要传函数、class instance、stream、数据库连接或原始 request 对象。
 
 Vext 会在注入 `{vext.data}` 前转义序列化数据。用户输入应该放进 data 字段或 head 对象，不要直接写进 `_document.html`。
-
