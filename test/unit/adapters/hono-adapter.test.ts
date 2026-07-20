@@ -350,6 +350,62 @@ describe("Hono Adapter — VextAdapter 接口合规性", () => {
       expect(response.headers["x-custom"]).toBe("my-value");
     });
 
+    it("cookie() 与 clearCookie() 应保留多个独立 Set-Cookie 响应头", async () => {
+      adapter.registerRoute("GET", "/multi-cookie", [
+        async (_req, res) => {
+          res.cookie("theme", "dark", { path: "/" });
+          res.cookie("partition", "enabled", {
+            path: "/",
+            secure: true,
+            sameSite: "none",
+            partitioned: true,
+          });
+          res.cookie("expiring", "soon", {
+            path: "/",
+            expires: new Date("2030-10-21T07:28:00.000Z"),
+          });
+          res.clearCookie("gone", { path: "/" });
+          res.json({ ok: true });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/multi-cookie",
+      });
+      const setCookies = response.headers["set-cookie"];
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(setCookies)).toBe(true);
+      const cookies = setCookies as string[];
+      expect(cookies).toHaveLength(4);
+      expect(cookies.some((value) => value.startsWith("theme=dark;"))).toBe(
+        true,
+      );
+      expect(
+        cookies.some(
+          (value) =>
+            value.startsWith("partition=enabled;") &&
+            value.includes("Partitioned"),
+        ),
+      ).toBe(true);
+      expect(
+        cookies.some(
+          (value) =>
+            value.startsWith("expiring=soon;") &&
+            value.includes("Expires=Mon, 21 Oct 2030 07:28:00 GMT"),
+        ),
+      ).toBe(true);
+      expect(
+        cookies.some(
+          (value) =>
+            value.startsWith("gone=;") &&
+            value.includes("Expires=Thu, 01 Jan 1970 00:00:00 GMT"),
+        ),
+      ).toBe(true);
+    });
+
     it("redirect() 应返回正确的重定向响应", async () => {
       adapter.registerRoute("GET", "/old", [
         async (req, res) => {

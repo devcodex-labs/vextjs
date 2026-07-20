@@ -95,6 +95,33 @@ async function executeChain(
 
 const _noop = async (): Promise<void> => {};
 
+function writeWebResponseHeaders(
+  nodeRes: ServerResponse,
+  webHeaders: Headers,
+): void {
+  const headersWithSetCookie = webHeaders as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const setCookieValues =
+    typeof headersWithSetCookie.getSetCookie === "function"
+      ? headersWithSetCookie.getSetCookie()
+      : [];
+
+  webHeaders.forEach((value, key) => {
+    if (key.toLowerCase() === "set-cookie") {
+      if (setCookieValues.length === 0) {
+        setCookieValues.push(value);
+      }
+      return;
+    }
+    nodeRes.setHeader(key, value);
+  });
+
+  if (setCookieValues.length > 0) {
+    nodeRes.setHeader("Set-Cookie", setCookieValues);
+  }
+}
+
 /**
  * createHonoAdapter — 创建基于 Hono 的 VextAdapter 实例
  *
@@ -404,10 +431,9 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             // 将 Web Response 写入 Node.js ServerResponse
             nodeRes.statusCode = webResponse.status;
 
-            // 设置响应头
-            webResponse.headers.forEach((value, key) => {
-              nodeRes.setHeader(key, value);
-            });
+            // 设置响应头。Set-Cookie 必须保留为独立 header 行，不能让
+            // Web Headers forEach + Node setHeader 的覆盖语义丢失多值。
+            writeWebResponseHeaders(nodeRes, webResponse.headers);
 
             // 写入响应体
             if (webResponse.body) {
