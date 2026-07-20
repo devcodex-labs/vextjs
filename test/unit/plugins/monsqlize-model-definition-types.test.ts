@@ -135,3 +135,50 @@ void invalidOptionsModel;
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);
   });
 });
+
+describe("MonSQLizeDatabaseConfig public type", () => {
+  it("accepts documented Redis cache uri and rejects misspelled connection fields", () => {
+    const diagnostics = compileTypeProbe(`
+import type { MonSQLizeDatabaseConfig } from "../../../src/lib/plugins/monsqlize/types.js";
+
+const docStyleRedisCache = {
+  config: { uri: "mongodb://localhost:27017/myapp" },
+  cache: {
+    redis: {
+      enabled: true,
+      uri: "redis://localhost:6379",
+      prefix: "myapp:",
+      ttl: 3600,
+    },
+  },
+} satisfies MonSQLizeDatabaseConfig;
+
+const legacyRedisCache = {
+  config: { uri: "mongodb://localhost:27017/myapp" },
+  cache: {
+    redis: {
+      enabled: true,
+      url: "redis://localhost:6379",
+    },
+  },
+} satisfies MonSQLizeDatabaseConfig;
+
+const invalidRedisCache = {
+  config: { uri: "mongodb://localhost:27017/myapp" },
+  cache: {
+    redis: {
+      enabled: true,
+      // @ts-expect-error Redis cache uses uri; url remains a deprecated alias.
+      connection: "redis://localhost:6379",
+    },
+  },
+} satisfies MonSQLizeDatabaseConfig;
+
+void docStyleRedisCache;
+void legacyRedisCache;
+void invalidRedisCache;
+`);
+
+    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
+  });
+});

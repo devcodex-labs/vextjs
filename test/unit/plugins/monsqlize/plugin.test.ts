@@ -987,7 +987,7 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
         cache: {
           redis: {
             enabled: true,
-            url: "redis://localhost:6379",
+            uri: "redis://localhost:6379",
             prefix: "myapp:",
             ttl: 3600,
           },
@@ -999,10 +999,52 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
 
     const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
     expect(passedConfig.cache.redis).toEqual({
-      url: "redis://localhost:6379",
+      uri: "redis://localhost:6379",
       prefix: "myapp:",
       ttl: 3600,
     });
+  });
+
+  it("maps deprecated Redis cache url to uri", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/db" },
+        cache: {
+          redis: {
+            enabled: true,
+            url: "redis://localhost:6380",
+          },
+        },
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
+    expect(passedConfig.cache.redis).toEqual({
+      uri: "redis://localhost:6380",
+      prefix: undefined,
+      ttl: undefined,
+    });
+  });
+
+  it("fails fast when Redis cache is enabled without uri or url", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/db" },
+        cache: {
+          redis: {
+            enabled: true,
+            connection: "redis://localhost:6379",
+          },
+        },
+      },
+    });
+
+    await expect(setupMonSQLize(app, "/tmp/src")).rejects.toThrow(
+      "database.cache.redis.uri must be a non-empty Redis connection string",
+    );
+    expect(mockMonSQLizeConstructor).not.toHaveBeenCalled();
   });
 
   it("skips Redis cache when not enabled", async () => {

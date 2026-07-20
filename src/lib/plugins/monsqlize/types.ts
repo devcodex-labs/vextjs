@@ -227,6 +227,9 @@ export interface MonSQLizeDatabaseConfig {
     /** L2 Redis 缓存（可选） */
     redis?: {
       enabled?: boolean;
+      /** Redis 连接 URI（主要字段） */
+      uri?: string;
+      /** Redis 连接 URL（已废弃，请使用 uri） @deprecated 使用 uri 替代 */
       url?: string;
       /** 缓存 key 前缀 */
       prefix?: string;

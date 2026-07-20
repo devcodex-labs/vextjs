@@ -54,7 +54,7 @@ export async function setupMonSQLize(
         "  Add database config to src/config/default.ts:\n" +
         "  export default {\n" +
         "    database: {\n" +
-        '      config: { url: "mongodb://localhost:27017/mydb" }\n' +
+        '      config: { uri: "mongodb://localhost:27017/mydb" }\n' +
         "    }\n" +
         "  }",
     );
@@ -62,7 +62,7 @@ export async function setupMonSQLize(
 
   if (!config.config) {
     throw new Error(
-      '[monsqlize] Missing "database.config" — at minimum provide { url: "..." }.',
+      '[monsqlize] Missing "database.config" — at minimum provide { uri: "..." }.',
     );
   }
 
@@ -324,7 +324,6 @@ function buildMonSQLizeConfig(
   app: VextPluginContext,
 ): Record<string, unknown> {
   // ── 映射 config.config（vext 用户配置 → MonSQLize 配置）────
-  // vext 类型定义使用 `url` 字段，MonSQLize 期望 `uri` 字段。
   // N1: 同时支持 uri（主要）和 url（已废弃），做字段名映射。
   const mongoConfig: Record<string, unknown> = { ...config.config };
   if (
@@ -382,8 +381,9 @@ function buildMonSQLizeConfig(
     }
 
     if (config.cache.redis?.enabled) {
+      const redisUri = resolveRedisCacheUri(config.cache.redis);
       cacheConfig.redis = {
-        url: config.cache.redis.url,
+        uri: redisUri,
         prefix: config.cache.redis.prefix,
         ttl: config.cache.redis.ttl,
       };
@@ -434,6 +434,20 @@ function buildMonSQLizeConfig(
   }
 
   return result;
+}
+
+type RedisCacheConfig = NonNullable<
+  NonNullable<MonSQLizeDatabaseConfig["cache"]>["redis"]
+>;
+
+function resolveRedisCacheUri(redis: RedisCacheConfig): string {
+  const value = redis.uri ?? redis.url;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      '[monsqlize] database.cache.redis.uri must be a non-empty Redis connection string when database.cache.redis.enabled is true. Use uri: "redis://..." (url is a deprecated alias).',
+    );
+  }
+  return value.trim();
 }
 
 function toEventNamePart(value: string): string {

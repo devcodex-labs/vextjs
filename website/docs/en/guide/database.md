@@ -187,6 +187,8 @@ export default {
 };
 ```
 
+Use `uri` as the Redis cache connection field. `url` is kept only as a compatibility alias for older configs; new projects should use `uri`.
+
 ### Multiple environment configuration
 
 Use VextJS's three-tier configuration merging mechanism to configure different databases for different environments:
