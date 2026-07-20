@@ -13,7 +13,7 @@ A complete frontend production smoke should check:
 - route-specific `modulepreload` exists
 - hydration marker reaches `done`
 - `performance.measure("vext:hydration")` exists
-- `size-report.json` contains route metrics
+- `size-report.json` contains route metrics when `frontend.build.diagnostics.performanceReport` is enabled
 
 ## Browser Probe
 
@@ -38,9 +38,9 @@ These are intended for tests and diagnostics. They should stay quiet in producti
 
 ## Common Failures
 
-| Failure | Likely cause |
-|---------|--------------|
-| JS 404 | Asset public path or static mount mismatch. |
-| No hydration marker | Client entry did not run or failed early. |
-| Hydration mismatch | Non-deterministic SSR/client render output. |
+| Failure               | Likely cause                                 |
+| --------------------- | -------------------------------------------- |
+| JS 404                | Asset public path or static mount mismatch.  |
+| No hydration marker   | Client entry did not run or failed early.    |
+| Hydration mismatch    | Non-deterministic SSR/client render output.  |
 | Missing route preload | Stale render manifest; rebuild before start. |

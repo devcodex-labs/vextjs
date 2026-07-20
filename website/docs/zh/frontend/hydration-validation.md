@@ -13,7 +13,7 @@ Hydration 验证证明构建出的页面能在真实浏览器工作，而不只�
 - 存在 route-specific `modulepreload`
 - hydration marker 到达 `done`
 - 存在 `performance.measure("vext:hydration")`
-- `size-report.json` 包含 route metrics
+- 启用 `frontend.build.diagnostics.performanceReport` 时，`size-report.json` 包含 route metrics
 
 ## 浏览器探针
 
@@ -38,9 +38,9 @@ performance.measure("vext:hydration")
 
 ## 常见失败
 
-| 失败 | 可能原因 |
-|------|----------|
-| JS 404 | asset public path 或 static mount 不一致。 |
-| 没有 hydration marker | client entry 未运行或过早失败。 |
-| Hydration mismatch | SSR/client render 输出不确定。 |
-| 缺少 route preload | render manifest 过旧，start 前需要 rebuild。 |
+| 失败                  | 可能原因                                     |
+| --------------------- | -------------------------------------------- |
+| JS 404                | asset public path 或 static mount 不一致。   |
+| 没有 hydration marker | client entry 未运行或过早失败。              |
+| Hydration mismatch    | SSR/client render 输出不确定。               |
+| 缺少 route preload    | render manifest 过旧，start 前需要 rebuild。 |

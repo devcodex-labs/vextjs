@@ -203,11 +203,14 @@ export async function buildFrontendClient(
     metafile: buildResult.metafile,
     registry,
   });
+  const manifestRouteAssets = config.build.diagnostics.performanceReport
+    ? routeAssets
+    : stripRouteAssetPerformanceMetrics(routeAssets);
   const buildId = createBuildId({
     manifest,
     mode: options.mode,
     registry,
-    routeAssets,
+    routeAssets: manifestRouteAssets,
   });
   const renderManifest = buildRenderManifest({
     config,
@@ -216,7 +219,7 @@ export async function buildFrontendClient(
     manifestPath,
     mode: options.mode,
     rootDir: options.rootDir,
-    routeAssets,
+    routeAssets: manifestRouteAssets,
   });
   const renderManifestPath = path.join(config.outDir, "render-manifest.json");
   const messagesManifest = buildMessagesManifest({
@@ -261,9 +264,12 @@ export async function buildFrontendClient(
   });
   assertFrontendBudgets(config, sizeReport);
   if (config.build.diagnostics.sizeReport) {
+    const persistedSizeReport = config.build.diagnostics.performanceReport
+      ? sizeReport
+      : stripSizeReportRouteMetrics(sizeReport);
     await writeFile(
       path.join(config.outDir, "size-report.json"),
-      `${JSON.stringify(sizeReport, null, 2)}\n`,
+      `${JSON.stringify(persistedSizeReport, null, 2)}\n`,
       "utf-8",
     );
   }
@@ -540,6 +546,30 @@ function buildMessagesManifest(input: {
     defaultLocale: input.config.i18n.defaultLocale,
     locales: input.registry.locales,
   };
+}
+
+function stripRouteAssetPerformanceMetrics(
+  routeAssets: VextFrontendRouteAssetsManifest,
+): VextFrontendRouteAssetsManifest {
+  return {
+    schemaVersion: routeAssets.schemaVersion,
+    routes: routeAssets.routes.map(
+      ({
+        initialJsBytes: _initialJsBytes,
+        initialJsGzipBytes: _initialJsGzipBytes,
+        initialJsBrotliBytes: _initialJsBrotliBytes,
+        appOwnedInitialJsBrotliBytes: _appOwnedInitialJsBrotliBytes,
+        ...route
+      }) => route,
+    ),
+  };
+}
+
+function stripSizeReportRouteMetrics(
+  report: Awaited<ReturnType<typeof buildFrontendSizeReport>>,
+): Awaited<ReturnType<typeof buildFrontendSizeReport>> {
+  const { routes: _routes, ...sanitizedReport } = report;
+  return sanitizedReport;
 }
 
 function toPublicAssetPath(

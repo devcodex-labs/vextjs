@@ -128,7 +128,8 @@ export default {
 | `frontend.build.assets.inlineLimit`            | `0`                   | 小于该字节数的 import 型资源内联                |
 | `frontend.build.css.modules`                   | `true`                | 启用 CSS Modules                                |
 | `frontend.build.diagnostics.leakScan`          | `true`                | 阻断服务端模块进入浏览器 graph                  |
-| `frontend.build.diagnostics.performanceReport` | `true`                | 写入 raw/gzip/brotli size report                |
+| `frontend.build.diagnostics.sizeReport`        | `true`                | 写入 `size-report.json`                         |
+| `frontend.build.diagnostics.performanceReport` | `true`                | 包含路由级性能指标                              |
 
 React 相关 browser external 必须提供 `externalRuntime` 映射，否则构建会用友好诊断失败。
 

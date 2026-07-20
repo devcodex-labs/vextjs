@@ -1079,6 +1079,67 @@ describe("frontend client build", () => {
     ).toBe(false);
   });
 
+  it("honors the frontend performance report diagnostics flag", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    const defaultResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const defaultRenderManifest = JSON.parse(
+      await readFile(defaultResult.renderManifestPath!, "utf-8"),
+    );
+    const defaultSizeReport = JSON.parse(
+      await readFile(
+        path.join(defaultResult.config.outDir, "size-report.json"),
+        "utf-8",
+      ),
+    );
+    expect(
+      defaultRenderManifest.routeAssets.routes[0].initialJsBrotliBytes,
+    ).toBeGreaterThan(0);
+    expect(defaultSizeReport.routes[0].initialJsBrotliBytes).toBeGreaterThan(0);
+
+    const disabledRootDir = await tempRoot();
+    await createMinimalFrontend(disabledRootDir);
+
+    const disabledResult = await buildFrontendClient({
+      rootDir: disabledRootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        build: {
+          diagnostics: {
+            performanceReport: false,
+          },
+        },
+      },
+    });
+    const disabledRenderManifest = JSON.parse(
+      await readFile(disabledResult.renderManifestPath!, "utf-8"),
+    );
+    const disabledSizeReport = JSON.parse(
+      await readFile(
+        path.join(disabledResult.config.outDir, "size-report.json"),
+        "utf-8",
+      ),
+    );
+    expect(disabledRenderManifest.routeAssets.routes[0].scripts).toEqual(
+      expect.any(Array),
+    );
+    expect(disabledRenderManifest.routeAssets.routes[0]).not.toHaveProperty(
+      "initialJsBrotliBytes",
+    );
+    expect(disabledSizeReport.initialJsBrotliBytes).toBeGreaterThan(0);
+    expect(disabledSizeReport).not.toHaveProperty("routes");
+  });
+
   it("writes byte-stable frontend build manifest artifacts for identical inputs", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);

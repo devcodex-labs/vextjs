@@ -128,7 +128,8 @@ export default {
 | `frontend.build.assets.inlineLimit`            | `0`                   | Inline imported assets below this byte size      |
 | `frontend.build.css.modules`                   | `true`                | Enable CSS Modules                               |
 | `frontend.build.diagnostics.leakScan`          | `true`                | Block server-only imports from browser graph     |
-| `frontend.build.diagnostics.performanceReport` | `true`                | Write raw/gzip/brotli size report                |
+| `frontend.build.diagnostics.sizeReport`        | `true`                | Write `size-report.json`                         |
+| `frontend.build.diagnostics.performanceReport` | `true`                | Include route-level performance metrics          |
 
 React-related browser externals must define `externalRuntime` mappings. Otherwise the build fails with a friendly diagnostic.
 

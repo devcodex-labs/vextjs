@@ -94,7 +94,7 @@ export function assertFrontendBudgets(
       report.routes && report.routes.length > 0
         ? report.routes.map((route) => ({
             label: route.page,
-            bytes: route.initialJsBrotliBytes,
+            bytes: route.initialJsBrotliBytes ?? report.initialJsBrotliBytes,
           }))
         : [{ label: "initial JS", bytes: report.initialJsBrotliBytes }];
     for (const route of routeSets) {

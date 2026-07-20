@@ -860,7 +860,7 @@ export default {
 | `build.css.modules`                             | `boolean`                            | `true`                                                       | 是否支持 CSS Modules 约定                                           |
 | `build.diagnostics.metafile`                    | `boolean`                            | `true`                                                       | 是否保留内部 esbuild metafile 诊断，供 size report / leak scan 使用 |
 | `build.diagnostics.sizeReport`                  | `boolean`                            | `true`                                                       | 是否生成体积报告                                                    |
-| `build.diagnostics.performanceReport`           | `boolean`                            | `true`                                                       | 是否保留 route initial assets、压缩预算和浏览器性能探针所需报告数据 |
+| `build.diagnostics.performanceReport`           | `boolean`                            | `true`                                                       | 是否在构建报告中保留路由级 initial JS 指标                          |
 | `build.diagnostics.leakScan`                    | `boolean`                            | `true`                                                       | 阻断浏览器 bundle 误引入服务端模块                                  |
 | `deploy.assetBaseUrl`                           | `string`                             | 无                                                           | CDN 静态资源绝对前缀                                                |
 | `deploy.crossOrigin`                            | `'anonymous' \| 'use-credentials'`   | 无                                                           | 注入 script/link 时的 crossorigin 值                                |

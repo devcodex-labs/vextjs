@@ -518,10 +518,10 @@ export interface VextFrontendRouteInitialAssets {
   styles: string[];
   assets: string[];
   externalScripts: string[];
-  initialJsBytes: number;
-  initialJsGzipBytes: number;
-  initialJsBrotliBytes: number;
-  appOwnedInitialJsBrotliBytes: number;
+  initialJsBytes?: number;
+  initialJsGzipBytes?: number;
+  initialJsBrotliBytes?: number;
+  appOwnedInitialJsBrotliBytes?: number;
 }
 
 export interface VextFrontendRouteAssetsManifest {

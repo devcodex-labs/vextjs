@@ -50,5 +50,5 @@ If a route initial chunk grows too large:
 
 - check whether a heavy component should be imported later
 - move admin-only dependencies out of public pages
-- review route assets in `size-report.json`
+- review route metrics in `size-report.json` when `frontend.build.diagnostics.performanceReport` is enabled
 - use external runtime only when your deployment can serve it reliably

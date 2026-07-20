@@ -50,5 +50,5 @@ Render manifest 会把 route 映射到 initial assets。SSR 使用该 graph 注�
 
 - 检查重型组件是否可以延后 import
 - 把后台专用依赖移出公开页面
-- 查看 `size-report.json` 中的 route assets
+- 在启用 `frontend.build.diagnostics.performanceReport` 时查看 `size-report.json` 中的 route metrics
 - 只有部署环境能可靠服务时才使用 external runtime
