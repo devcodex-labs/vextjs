@@ -1,4 +1,5 @@
 import * as esbuild from "esbuild";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -22,6 +23,7 @@ import {
 import { buildFrontendDeployManifest } from "../deploy/manifest.js";
 import { getFrontendContentType } from "../deploy/content-type.js";
 import { createSha256, createSriSha256 } from "../deploy/integrity.js";
+import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 import {
   assertFrontendBudgets,
   buildFrontendSizeReport,
@@ -189,7 +191,6 @@ export async function buildFrontendClient(
     logLevel: "warning",
   });
 
-  const buildId = createBuildId();
   const manifest = await attachManifestAssetMetadata(
     config,
     buildManifest(config, buildResult.metafile, options.mode),
@@ -201,6 +202,12 @@ export async function buildFrontendClient(
     manifest,
     metafile: buildResult.metafile,
     registry,
+  });
+  const buildId = createBuildId({
+    manifest,
+    mode: options.mode,
+    registry,
+    routeAssets,
   });
   const renderManifest = buildRenderManifest({
     config,
@@ -438,7 +445,7 @@ function buildManifest(
   return {
     schemaVersion: 1,
     kind: "frontend-manifest",
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     mode,
     publicPath: getAssetBase(config),
     indexHtml: joinPublicPath(config.publicPath, "index.html"),
@@ -487,7 +494,7 @@ function buildRenderManifest(input: {
     schemaVersion: 1,
     kind: "frontend-render-manifest",
     buildId: input.buildId,
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     mode: input.mode,
     framework: input.config.framework,
     root: toProjectRelativePath(input.rootDir, input.config.root),
@@ -529,7 +536,7 @@ function buildMessagesManifest(input: {
     schemaVersion: 1,
     kind: "frontend-messages-manifest",
     buildId: input.buildId,
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     defaultLocale: input.config.i18n.defaultLocale,
     locales: input.registry.locales,
   };
@@ -599,8 +606,45 @@ function isPathInside(filePath: string, parentDir: string): boolean {
   );
 }
 
-function createBuildId(): string {
-  return `vext-${Date.now().toString(36)}`;
+function createBuildId(input: {
+  manifest: VextFrontendManifest;
+  mode: VextFrontendMode;
+  registry: FrontendRenderRegistryResult;
+  routeAssets: VextFrontendRouteAssetsManifest;
+}): string {
+  const digest = createHash("sha256")
+    .update(
+      stableStringify({
+        manifest: input.manifest,
+        mode: input.mode,
+        pages: input.registry.pages,
+        layouts: input.registry.layouts,
+        errorPages: input.registry.errorPages,
+        locales: input.registry.locales,
+        routeAssets: input.routeAssets,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  return `vext-${digest}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return "null";
+  }
+  if (!value || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return `{${entries
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+    .join(",")}}`;
 }
 
 async function renderIndexHtml(

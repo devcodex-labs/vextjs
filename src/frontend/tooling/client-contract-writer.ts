@@ -6,9 +6,7 @@ import type {
   VextClientRouteContract,
   VextClientRouteMethod,
 } from "../contract/types.js";
-
-// Keep generated artifacts byte-stable for identical route manifests.
-const STABLE_CLIENT_CONTRACT_GENERATED_AT = "1970-01-01T00:00:00.000Z";
+import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 
 interface RoutesManifestPayload {
   routes?: Array<{
@@ -100,7 +98,7 @@ export function buildClientContract(
     schemaVersion: 1,
     kind: "client-contract",
     source: "routes-manifest",
-    generatedAt: STABLE_CLIENT_CONTRACT_GENERATED_AT,
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     routes,
     warnings,
   };

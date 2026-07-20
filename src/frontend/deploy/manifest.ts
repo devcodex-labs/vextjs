@@ -9,6 +9,7 @@ import type {
   VextFrontendManifest,
   VextFrontendMode,
 } from "../contract/types.js";
+import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
 
@@ -63,7 +64,7 @@ export async function buildFrontendDeployManifest(
   return {
     schemaVersion: 1,
     kind: "frontend-deploy-manifest",
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     mode: options.mode,
     outDir: toProjectRelativePath(options.rootDir, options.config.outDir),
     publicPath: options.config.publicPath,

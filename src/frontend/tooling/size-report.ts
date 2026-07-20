@@ -10,6 +10,7 @@ import type {
   VextFrontendSizeMetric,
   VextFrontendSizeReport,
 } from "../contract/types.js";
+import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 
 export interface BuildFrontendSizeReportOptions {
   config: ResolvedVextFrontendConfig;
@@ -31,7 +32,7 @@ export async function buildFrontendSizeReport(
   return {
     schemaVersion: 1,
     kind: "frontend-size-report",
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
     totalBytes: sumBy(assets, "bytes"),
     totalGzipBytes: sumBy(assets, "gzipBytes"),
     totalBrotliBytes: sumBy(assets, "brotliBytes"),

@@ -937,6 +937,67 @@ describe("frontend client build", () => {
     ).toBe(false);
   });
 
+  it("writes byte-stable frontend build manifest artifacts for identical inputs", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+
+    const firstResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const firstArtifacts = await readFrontendManifestFamily(
+      firstResult.config.outDir,
+    );
+    const firstRenderManifest = JSON.parse(
+      firstArtifacts["render-manifest.json"],
+    );
+
+    const secondResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const secondArtifacts = await readFrontendManifestFamily(
+      secondResult.config.outDir,
+    );
+    const secondRenderManifest = JSON.parse(
+      secondArtifacts["render-manifest.json"],
+    );
+
+    expect(secondArtifacts).toEqual(firstArtifacts);
+    expect(secondRenderManifest.buildId).toBe(firstRenderManifest.buildId);
+    for (const content of Object.values(firstArtifacts)) {
+      expect(JSON.parse(content).generatedAt).toBe("1970-01-01T00:00:00.000Z");
+    }
+
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      "export default function Page() { return <main>Changed</main>; }\n",
+    );
+    const changedResult = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+    const changedRenderManifest = JSON.parse(
+      (await readFrontendManifestFamily(changedResult.config.outDir))[
+        "render-manifest.json"
+      ],
+    );
+
+    expect(changedRenderManifest.buildId).not.toBe(firstRenderManifest.buildId);
+  });
+
   it("fails with a friendly error when compressed frontend budgets are exceeded", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);
@@ -2075,6 +2136,25 @@ async function createMinimalFrontend(rootDir: string): Promise<void> {
     path.join(frontendDir, "styles", "index.css"),
     "body { margin: 0; }\n",
   );
+}
+
+async function readFrontendManifestFamily(
+  outDir: string,
+): Promise<Record<string, string>> {
+  const files = [
+    "manifest.json",
+    "render-manifest.json",
+    "messages-manifest.json",
+    "deploy-manifest.json",
+    "size-report.json",
+  ];
+  const entries = await Promise.all(
+    files.map(async (file) => [
+      file,
+      await readFile(path.join(outDir, file), "utf-8"),
+    ]),
+  );
+  return Object.fromEntries(entries);
 }
 
 async function readTextFiles(
