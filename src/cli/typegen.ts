@@ -1,4 +1,5 @@
 import { detectProject } from "./utils/detect-project.js";
+import { readRequiredOptionValue } from "./utils/command-args.js";
 
 interface TypegenOptions {
   rootDir: string;
@@ -92,8 +93,10 @@ function parseTypegenArgs(args: string[]): TypegenOptions {
       options.verbose = true;
     } else if (arg === "--write-manifest") {
       options.writeManifest = true;
-    } else if ((arg === "--root" || arg === "-C") && i + 1 < args.length) {
-      options.rootDir = args[++i]!;
+    } else if (arg === "--root" || arg === "-C") {
+      const parsed = readRequiredOptionValue(args, i, arg, "<path>");
+      options.rootDir = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg?.startsWith("--")) {
@@ -112,6 +115,7 @@ function printTypegenHelp(): void {
 
   Generate type declarations and run tooling-only diagnostics (experimental).
   Positional arguments are not supported.
+  Options that take values, such as --root/-C, require a non-option value.
 
   Options:
     --services          Only generate services declarations

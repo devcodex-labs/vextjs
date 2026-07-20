@@ -1,4 +1,5 @@
 import { detectProject } from "./utils/detect-project.js";
+import { readRequiredOptionValue } from "./utils/command-args.js";
 
 interface DoctorOptions {
   target: "routes" | "all";
@@ -87,8 +88,10 @@ function parseDoctorArgs(args: string[]): DoctorOptions {
 
     if (arg === "routes" || arg === "all") {
       options.target = arg;
-    } else if ((arg === "--root" || arg === "-C") && i + 1 < args.length) {
-      options.rootDir = args[++i]!;
+    } else if (arg === "--root" || arg === "-C") {
+      const parsed = readRequiredOptionValue(args, i, arg, "<path>");
+      options.rootDir = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === "--json") {
       options.json = true;
     } else if (arg === "--write-inspect") {
@@ -114,6 +117,7 @@ function printDoctorHelp(): void {
   Usage: vext doctor <target> [options]
 
   Preview tooling-only diagnostics (experimental).
+  Options that take values, such as --root/-C, require a non-option value.
 
   Targets:
     routes              Analyze static route metadata and duplicate definitions

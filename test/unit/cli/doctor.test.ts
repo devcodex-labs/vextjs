@@ -39,6 +39,22 @@ describe("doctorCommand", () => {
     );
   });
 
+  it("rejects missing and flag-shaped root option values", async () => {
+    await expect(doctorCommand(["routes", "--root"])).rejects.toThrow(
+      '[vextjs] Option "--root" requires a value: <path>',
+    );
+    await expect(doctorCommand(["routes", "-C"])).rejects.toThrow(
+      '[vextjs] Option "-C" requires a value: <path>',
+    );
+    await expect(doctorCommand(["routes", "--root", "--json"])).rejects.toThrow(
+      '[vextjs] Option "--root" requires a value: <path>; received option-like value "--json"',
+    );
+
+    expect(consoleLog).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
   it("outputs JSON diagnostics for static route metadata checks", async () => {
     projectRoot = await mkdtemp(join(tmpdir(), "vext-doctor-"));
 

@@ -360,7 +360,7 @@ vext deploy assets --target-dir .deploy/cdn --prefix my-app/v1
 vext typegen [options]
 ```
 
-`vext typegen` 不接受位置参数。未知参数会立即失败，并输出可操作的诊断信息。
+`vext typegen` 不接受位置参数。未知参数会立即失败，并输出可操作的诊断信息。`--root` / `-C` 这类取值选项必须跟随非 option 值；`--root --json` 会被拒绝，不会把 `--json` 当成路径。
 
 ### 选项
 
@@ -412,6 +412,8 @@ vext typegen --services --root ./examples/hello-world
 ```bash
 vext doctor <target> [options]
 ```
+
+`--root` / `-C` 这类取值选项必须跟随非 option 值；`--root --json` 会被拒绝，不会把 `--json` 当成路径。
 
 ### Targets
 

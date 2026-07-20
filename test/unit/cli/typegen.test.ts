@@ -166,4 +166,19 @@ describe("typegenCommand", () => {
     expect(consoleLog).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
   });
+
+  it("rejects missing and flag-shaped --root values", async () => {
+    await expect(typegenCommand(["--root"])).rejects.toThrow(
+      '[vextjs] Option "--root" requires a value: <path>',
+    );
+    await expect(typegenCommand(["-C"])).rejects.toThrow(
+      '[vextjs] Option "-C" requires a value: <path>',
+    );
+    await expect(typegenCommand(["--root", "--json"])).rejects.toThrow(
+      '[vextjs] Option "--root" requires a value: <path>; received option-like value "--json"',
+    );
+
+    expect(consoleLog).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
 });

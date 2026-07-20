@@ -359,7 +359,7 @@ Provide generated declarations for `app.services` and `app.extend()` / `defineAp
 vext typegen [options]
 ```
 
-`vext typegen` does not accept positional arguments. Unknown arguments fail fast with an actionable diagnostic.
+`vext typegen` does not accept positional arguments. Unknown arguments fail fast with an actionable diagnostic. Value options such as `--root` / `-C` require a non-option value; `--root --json` is rejected instead of treating `--json` as a path.
 
 ### Options
 
@@ -411,6 +411,8 @@ Scan the static route metadata in `src/routes/`, output diagnostics such as dupl
 ```bash
 vext doctor <target> [options]
 ```
+
+Value options such as `--root` / `-C` require a non-option value; `--root --json` is rejected instead of treating `--json` as a path.
 
 ### Targets
 
