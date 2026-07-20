@@ -10,6 +10,7 @@ import type {
   VextFrontendMode,
 } from "../contract/types.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
+import { isImmutableFrontendBundleAsset } from "../asset-cache-policy.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
 
@@ -57,7 +58,10 @@ export async function buildFrontendDeployManifest(
       contentType: getFrontendContentType(file),
       source,
       entry: entryFiles.has(file),
-      immutable: source === "bundle" && !file.endsWith(".map"),
+      immutable: isImmutableFrontendBundleAsset(
+        file,
+        options.config.build.client.assetsDir,
+      ),
     });
   }
 

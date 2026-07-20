@@ -21,7 +21,7 @@ export function Logo() {
 }
 ```
 
-生产构建会输出内容哈希文件，方便浏览器和 CDN 长缓存。
+生产构建会输出内容哈希文件，方便浏览器和 CDN 长缓存。带内容哈希的 bundle 资源会使用长期 immutable 缓存响应头。
 
 前端 static mount 会发送 `ETag` 和 `Last-Modified` validator。条件请求 `If-None-Match` 与 `If-Modified-Since` 可返回无实体 body 的 `304`。
 
@@ -33,6 +33,14 @@ public/docs/openapi.json -> /docs/openapi.json
 ```
 
 Public 文件会进入 deploy manifest，可以和其它前端资源一起上传。
+
+Public 文件保持稳定 URL，因此运行时默认使用重新验证缓存响应头：
+
+```http
+Cache-Control: no-cache, max-age=0, must-revalidate
+```
+
+需要 immutable 长缓存的文件请通过 import 型 assets 进入内容哈希输出。Source map 与未带内容哈希的文件同样使用重新验证缓存响应头。
 
 ## CDN URL
 

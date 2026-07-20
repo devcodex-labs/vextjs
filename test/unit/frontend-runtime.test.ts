@@ -554,6 +554,16 @@ describe("frontend client build", () => {
           asset.uploadKey === "app/v1/static/logo.txt",
       ),
     ).toBe(true);
+    expect(
+      deployManifest.assets.find(
+        (asset: any) => asset.file === "static/logo.txt",
+      )?.immutable,
+    ).toBe(false);
+    expect(
+      deployManifest.assets.find(
+        (asset: any) => asset.source === "bundle" && asset.file.endsWith(".js"),
+      )?.immutable,
+    ).toBe(true);
 
     const firstUpload = await deployFrontendAssets({
       config: result.config,
@@ -2374,6 +2384,66 @@ describe("frontend static mount", () => {
     expect(fallbackCalled).toBe(1);
     expect(res.statusCode).toBe(404);
     expect(res.streamed).toBe(false);
+  });
+
+  it("uses immutable cache only for content-hashed bundle assets", async () => {
+    const rootDir = await tempRoot();
+    const outDir = path.join(rootDir, "dist", "client");
+    await mkdir(path.join(outDir, "assets"), { recursive: true });
+    await writeFile(path.join(outDir, "index.html"), "<main>app</main>");
+    await writeFile(path.join(outDir, "favicon.svg"), "<svg />");
+    await writeFile(path.join(outDir, "assets", "main-Q3BPGNZI.js"), "app");
+    await writeFile(path.join(outDir, "assets", "main.js"), "app");
+    await writeFile(path.join(outDir, "assets", "main-Q3BPGNZI.js.map"), "{}");
+
+    const handler = createFrontendNotFoundHandler({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+      fallbackHandler: async (_req, res) => {
+        res.rawJson({ code: 404 }, 404);
+      },
+    });
+
+    const indexRes = createMockResponse();
+    await handler(createMockRequest("/index.html"), indexRes, async () => {});
+    expect(indexRes.headers["Cache-Control"]).toBe("no-cache");
+
+    const publicRes = createMockResponse();
+    await handler(createMockRequest("/favicon.svg"), publicRes, async () => {});
+    expect(publicRes.headers["Cache-Control"]).toBe(
+      "no-cache, max-age=0, must-revalidate",
+    );
+
+    const hashedBundleRes = createMockResponse();
+    await handler(
+      createMockRequest("/assets/main-Q3BPGNZI.js"),
+      hashedBundleRes,
+      async () => {},
+    );
+    expect(hashedBundleRes.headers["Cache-Control"]).toBe(
+      "public, max-age=31536000, immutable",
+    );
+
+    const unhashedBundleRes = createMockResponse();
+    await handler(
+      createMockRequest("/assets/main.js"),
+      unhashedBundleRes,
+      async () => {},
+    );
+    expect(unhashedBundleRes.headers["Cache-Control"]).toBe(
+      "no-cache, max-age=0, must-revalidate",
+    );
+
+    const sourceMapRes = createMockResponse();
+    await handler(
+      createMockRequest("/assets/main-Q3BPGNZI.js.map"),
+      sourceMapRes,
+      async () => {},
+    );
+    expect(sourceMapRes.headers["Cache-Control"]).toBe(
+      "no-cache, max-age=0, must-revalidate",
+    );
   });
 
   it("serves conditional static requests without source entity length on 304", async () => {

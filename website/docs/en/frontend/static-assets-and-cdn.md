@@ -21,7 +21,7 @@ export function Logo() {
 }
 ```
 
-Production builds use content-hashed output so browsers and CDNs can cache aggressively.
+Production builds use content-hashed output so browsers and CDNs can cache aggressively. Content-hashed bundle assets are served with long-lived immutable cache headers.
 
 The frontend static mount sends `ETag` and `Last-Modified` validators. Conditional `If-None-Match` and `If-Modified-Since` requests can return `304` without an entity body.
 
@@ -33,6 +33,14 @@ public/docs/openapi.json -> /docs/openapi.json
 ```
 
 Public files are included in the deploy manifest so release tooling can upload them with the rest of the frontend assets.
+
+Public files keep stable URLs, so the runtime serves them with revalidation headers by default:
+
+```http
+Cache-Control: no-cache, max-age=0, must-revalidate
+```
+
+Use imported assets for files that should receive immutable long-cache headers after content hashing. Source maps and non-hashed files are also served with revalidation headers.
 
 ## CDN URL
 

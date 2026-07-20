@@ -8,6 +8,7 @@ import type {
   VextFrontendMode,
   VextFrontendUserConfig,
 } from "../contract/types.js";
+import { getFrontendStaticCacheControl } from "../asset-cache-policy.js";
 import { resolveFrontendConfig } from "../tooling/config-resolver.js";
 import { createFrontendRenderer } from "./renderer.js";
 
@@ -42,7 +43,12 @@ export function createFrontendNotFoundHandler(
       req.path,
     );
     if (assetPath) {
-      const served = serveFile(req, res, assetPath);
+      const served = serveFile(
+        req,
+        res,
+        assetPath,
+        getAssetCacheControl(config, assetPath),
+      );
       if (served) return;
     }
 
@@ -210,6 +216,7 @@ function serveFile(
   req: { method: string; headers: Record<string, string | undefined> },
   res: Parameters<VextMiddleware>[1],
   filePath: string,
+  cacheControl: string,
   forcedContentType?: string,
 ): boolean {
   if (!existsSync(filePath)) return false;
@@ -221,7 +228,7 @@ function serveFile(
   res
     .setHeader("ETag", etag)
     .setHeader("Last-Modified", stat.mtime.toUTCString())
-    .setHeader("Cache-Control", cacheControlFor(filePath))
+    .setHeader("Cache-Control", cacheControl)
     .setHeader("Content-Type", forcedContentType ?? mimeTypeFor(filePath));
 
   const ifNoneMatch = req.headers["if-none-match"];
@@ -401,10 +408,14 @@ function safeDecodePath(value: string): string | null {
   }
 }
 
-function cacheControlFor(filePath: string): string {
-  return path.basename(filePath) === "index.html"
-    ? "no-cache"
-    : "public, max-age=31536000, immutable";
+function getAssetCacheControl(
+  config: ResolvedVextFrontendConfig,
+  filePath: string,
+): string {
+  return getFrontendStaticCacheControl(
+    path.relative(config.outDir, filePath),
+    config.build.client.assetsDir,
+  );
 }
 
 function mimeTypeFor(filePath: string): string {
