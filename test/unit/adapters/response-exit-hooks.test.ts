@@ -167,5 +167,19 @@ describe.each(adapters)(
         }),
       );
     });
+
+    it("uses a deterministic safe Content-Disposition for unsafe download filenames", () => {
+      const { res, headers } = createHarness();
+      const readable = {
+        pipe: vi.fn(),
+      } as unknown as NodeJS.ReadableStream;
+
+      res.download(readable, 'report-张三"\r\n.csv', "text/csv");
+
+      expect(headers["content-disposition"]).toBe(
+        "attachment; filename=\"report-_____.csv\"; filename*=UTF-8''report-%E5%BC%A0%E4%B8%89%22__.csv",
+      );
+      expect(String(headers["content-disposition"])).not.toMatch(/[\r\n]/);
+    });
   },
 );

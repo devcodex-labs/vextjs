@@ -149,10 +149,10 @@ export interface VextResponse {
    * 文件下载（触发浏览器下载行为）
    *
    * 自动设置 Content-Disposition: attachment 头，
-   * 触发浏览器的文件下载对话框。
+   * 并为非 ASCII 或危险字符文件名生成安全 fallback / filename*。
    *
    * @param readable    文件流
-   * @param filename    下载文件名（浏览器显示）
+   * @param filename    下载文件名（浏览器显示，会进行响应头安全编码）
    * @param contentType MIME 类型，默认 'application/octet-stream'
    */
   download(

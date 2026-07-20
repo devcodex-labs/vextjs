@@ -22,6 +22,7 @@ import {
   renderErrorUnavailable,
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
+import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
 
 /**
  * 共享 Response 容器
@@ -343,7 +344,7 @@ export function createVextResponse(
       setBufferedHeader(
         headers,
         "Content-Disposition",
-        `attachment; filename="${filename}"`,
+        buildAttachmentContentDisposition(filename),
       );
       const sendState = beginResponseSend(res, {
         kind: "download",

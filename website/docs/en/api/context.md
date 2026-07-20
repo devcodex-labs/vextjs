@@ -637,7 +637,7 @@ app.get("/events", async (req, res) => {
 
 ### `download(readable, filename, contentType?)`
 
-In file download response, the `Content-Disposition: attachment` header is automatically set.
+In file download responses, the `Content-Disposition: attachment` header is automatically set. ASCII-safe filenames keep the plain `filename` output; filenames containing non-ASCII characters, quotes, path separators, or control characters get a safe fallback plus a UTF-8 `filename*` value.
 
 ```typescript
 function download(
@@ -649,11 +649,11 @@ function download(
 
 **Parameters**:
 
-| Parameters    | Type                    | Default value                | Description                               |
-| ------------- | ----------------------- | ---------------------------- | ----------------------------------------- |
-| `readable`    | `NodeJS.ReadableStream` | —                            | File stream                               |
-| `filename`    | `string`                | —                            | Download file name (displayed by browser) |
-| `contentType` | `string`                | `'application/octet-stream'` | MIME type                                 |
+| Parameters    | Type                    | Default value                | Description                                                                       |
+| ------------- | ----------------------- | ---------------------------- | --------------------------------------------------------------------------------- |
+| `readable`    | `NodeJS.ReadableStream` | —                            | File stream                                                                       |
+| `filename`    | `string`                | —                            | Download file name (displayed by browser and safely encoded for response headers) |
+| `contentType` | `string`                | `'application/octet-stream'` | MIME type                                                                         |
 
 ```typescript
 import { createReadStream } from "node:fs";

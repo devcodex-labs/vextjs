@@ -23,6 +23,7 @@ import {
   renderErrorUnavailable,
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
+import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
 
 type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
@@ -448,7 +449,7 @@ class NativeVextResponse implements VextResponse {
     setBufferedHeader(
       headers,
       "Content-Disposition",
-      `attachment; filename="${filename}"`,
+      buildAttachmentContentDisposition(filename),
     );
     const sendState = beginResponseSend(this, {
       kind: "download",

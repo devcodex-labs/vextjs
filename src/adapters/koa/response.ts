@@ -21,6 +21,7 @@ import {
   renderErrorUnavailable,
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
+import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
 
 /**
  * Koa Context → VextResponse 转换
@@ -355,7 +356,7 @@ export function createVextResponse(
       setBufferedHeader(
         headers,
         "Content-Disposition",
-        `attachment; filename="${filename}"`,
+        buildAttachmentContentDisposition(filename),
       );
       const sendState = beginResponseSend(res, {
         kind: "download",

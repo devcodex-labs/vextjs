@@ -387,6 +387,8 @@ app.get("/export", async (_req, res) => {
 });
 ```
 
+`download()` 会自动设置安全的 `Content-Disposition`：ASCII 文件名直接写入 `filename`，非 ASCII 或危险字符文件名会生成 fallback 并写入 UTF-8 `filename*`。
+
 ### `res.redirect()` — 重定向
 
 ```typescript

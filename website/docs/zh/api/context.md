@@ -637,7 +637,7 @@ app.get("/events", async (req, res) => {
 
 ### `download(readable, filename, contentType?)`
 
-文件下载响应，自动设置 `Content-Disposition: attachment` 头。
+文件下载响应，自动设置 `Content-Disposition: attachment` 头。ASCII 安全文件名保持 `filename` 输出；包含非 ASCII、引号、路径分隔符或控制字符的文件名会生成安全 fallback，并通过 `filename*` 提供 UTF-8 文件名。
 
 ```typescript
 function download(
@@ -649,11 +649,11 @@ function download(
 
 **参数**：
 
-| 参数          | 类型                    | 默认值                       | 说明                     |
-| ------------- | ----------------------- | ---------------------------- | ------------------------ |
-| `readable`    | `NodeJS.ReadableStream` | —                            | 文件流                   |
-| `filename`    | `string`                | —                            | 下载文件名（浏览器显示） |
-| `contentType` | `string`                | `'application/octet-stream'` | MIME 类型                |
+| 参数          | 类型                    | 默认值                       | 说明                                           |
+| ------------- | ----------------------- | ---------------------------- | ---------------------------------------------- |
+| `readable`    | `NodeJS.ReadableStream` | —                            | 文件流                                         |
+| `filename`    | `string`                | —                            | 下载文件名（浏览器显示，会进行响应头安全编码） |
+| `contentType` | `string`                | `'application/octet-stream'` | MIME 类型                                      |
 
 ```typescript
 import { createReadStream } from "node:fs";
