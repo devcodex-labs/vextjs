@@ -169,11 +169,14 @@ Browser output is directory-based and uses `frontend.outDir`; `frontend.build.cl
 
 ## Dev Fields
 
-| Field                        | Default    | Meaning                                           |
-| ---------------------------- | ---------- | ------------------------------------------------- |
-| `frontend.dev.hot`           | `true`     | Enable frontend dev events                        |
-| `frontend.dev.fastRefresh`   | `true`     | Enable React Fast Refresh when possible           |
-| `frontend.dev.renderRefresh` | `"prompt"` | Browser behavior after render-data backend reload |
+| Field                        | Default    | Meaning                                                                |
+| ---------------------------- | ---------- | ---------------------------------------------------------------------- |
+| `frontend.dev.hot`           | `true`     | Enable frontend dev events                                             |
+| `frontend.dev.fastRefresh`   | `true`     | Enable React Fast Refresh when possible                                |
+| `frontend.dev.overlay`       | `true`     | Show browser UI for frontend rebuild errors and render refresh prompts |
+| `frontend.dev.renderRefresh` | `"prompt"` | Browser behavior after render-data backend reload                      |
+
+`frontend.dev.overlay` only controls frontend browser development UI. Backend exception HTML overlays are configured separately through top-level `dev.errorOverlay`.
 
 ## SPA Fallback Fields
 

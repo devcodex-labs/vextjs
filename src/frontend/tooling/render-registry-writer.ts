@@ -400,7 +400,7 @@ function renderBrowserEntryModule(
     ? 'import * as RefreshRuntime from "react-refresh/runtime";\n'
     : "";
   const devRuntime = useDevEvents
-    ? renderDevBrowserRuntime(useFastRefresh)
+    ? renderDevBrowserRuntime(useFastRefresh, config.dev.overlay)
     : "";
   const mountCall = useDevEvents
     ? "mountVextTree(root, tree);\n  connectVextDevEvents();"
@@ -524,7 +524,10 @@ export function renderError(request = {}) {
 `;
 }
 
-function renderDevBrowserRuntime(useFastRefresh: boolean): string {
+function renderDevBrowserRuntime(
+  useFastRefresh: boolean,
+  useOverlay: boolean,
+): string {
   const refreshGlobal = useFastRefresh
     ? `
   $RefreshReg$?: (type: unknown, id: string) => void;
@@ -544,6 +547,53 @@ __vextGlobal.$RefreshSig$ ??= RefreshRuntime.createSignatureFunctionForTransform
       RefreshRuntime.performReactRefresh();
       return;
     }
+`
+    : "";
+  const clearOverlayHandler = useOverlay
+    ? `
+    clearVextDevErrorOverlay();`
+    : "";
+  const frontendErrorOverlayHandler = useOverlay
+    ? `
+    showVextDevErrorOverlay(payload.message);`
+    : "";
+  const renderRefreshPromptHandler = useOverlay
+    ? `
+      showVextRenderRefreshPrompt();`
+    : `
+      console.info("[vext dev] render data changed; refresh the page to update.");`;
+  const overlayHelpers = useOverlay
+    ? `
+function showVextDevErrorOverlay(message) {
+  const id = "__vext_dev_error_overlay__";
+  let panel = document.getElementById(id);
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = id;
+    panel.setAttribute("role", "alert");
+    panel.style.cssText =
+      "position:fixed;inset:16px;z-index:2147483647;max-width:720px;margin:auto 0 0 auto;background:#111827;color:white;border:1px solid rgba(255,255,255,.14);border-radius:8px;box-shadow:0 18px 48px rgba(0,0,0,.32);padding:16px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+    document.body.appendChild(panel);
+  }
+  panel.textContent = "[vext dev] frontend rebuild failed\\n\\n" + String(message ?? "Unknown error");
+}
+
+function clearVextDevErrorOverlay() {
+  document.getElementById("__vext_dev_error_overlay__")?.remove();
+}
+
+function showVextRenderRefreshPrompt() {
+  const id = "__vext_render_refresh__";
+  if (document.getElementById(id)) return;
+  const button = document.createElement("button");
+  button.id = id;
+  button.type = "button";
+  button.textContent = "Refresh server data";
+  button.style.cssText =
+    "position:fixed;right:16px;bottom:16px;z-index:2147483647;border:0;border-radius:6px;background:#111827;color:white;padding:10px 14px;font:500 13px/1.2 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18);cursor:pointer";
+  button.onclick = () => window.location.reload();
+  document.body.appendChild(button);
+}
 `
     : "";
   return `const __vextGlobal = globalThis as typeof globalThis & {
@@ -581,6 +631,7 @@ function connectVextDevEvents() {
 
 async function handleVextDevEvent(payload) {
   if (payload.type === "frontend:built") {
+${clearOverlayHandler}
     updateVextStyleLinks(payload.styles ?? [], payload.buildId);
     if (payload.action === "style") return;
 ${refreshHandler}
@@ -590,6 +641,7 @@ ${refreshHandler}
 
   if (payload.type === "frontend:error") {
     console.error("[vext dev] frontend rebuild failed:", payload.message);
+${frontendErrorOverlayHandler}
     return;
   }
 
@@ -599,7 +651,7 @@ ${refreshHandler}
       return;
     }
     if (payload.action === "prompt") {
-      showVextRenderRefreshPrompt();
+${renderRefreshPromptHandler}
     }
   }
 }
@@ -626,19 +678,7 @@ function withVextDevQuery(url, buildId) {
   const joiner = String(url).includes("?") ? "&" : "?";
   return String(url) + joiner + "vext_hmr=" + encodeURIComponent(buildId ?? Date.now());
 }
-
-function showVextRenderRefreshPrompt() {
-  const id = "__vext_render_refresh__";
-  if (document.getElementById(id)) return;
-  const button = document.createElement("button");
-  button.id = id;
-  button.type = "button";
-  button.textContent = "Refresh server data";
-  button.style.cssText =
-    "position:fixed;right:16px;bottom:16px;z-index:2147483647;border:0;border-radius:6px;background:#111827;color:white;padding:10px 14px;font:500 13px/1.2 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18);cursor:pointer";
-  button.onclick = () => window.location.reload();
-  document.body.appendChild(button);
-}
+${overlayHelpers}
 `;
 }
 

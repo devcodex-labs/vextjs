@@ -169,11 +169,14 @@ React 相关 browser external 必须提供 `externalRuntime` 映射，否则构�
 
 ## Dev 字段
 
-| 字段                         | 默认值     | 含义                                   |
-| ---------------------------- | ---------- | -------------------------------------- |
-| `frontend.dev.hot`           | `true`     | 启用前端 dev events                    |
-| `frontend.dev.fastRefresh`   | `true`     | 尽可能启用 React Fast Refresh          |
-| `frontend.dev.renderRefresh` | `"prompt"` | render-data 后端 reload 后的浏览器行为 |
+| 字段                         | 默认值     | 含义                                                 |
+| ---------------------------- | ---------- | ---------------------------------------------------- |
+| `frontend.dev.hot`           | `true`     | 启用前端 dev events                                  |
+| `frontend.dev.fastRefresh`   | `true`     | 尽可能启用 React Fast Refresh                        |
+| `frontend.dev.overlay`       | `true`     | 显示前端 rebuild 错误与 render refresh 浏览器提示 UI |
+| `frontend.dev.renderRefresh` | `"prompt"` | render-data 后端 reload 后的浏览器行为               |
+
+`frontend.dev.overlay` 只控制前端浏览器开发 UI。后端异常 HTML overlay 由顶层 `dev.errorOverlay` 单独配置。
 
 ## SPA Fallback 字段
 

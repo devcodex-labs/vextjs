@@ -837,7 +837,7 @@ export default {
 | `dev.hot`                                       | `boolean`                            | `true`                                                       | 开发期前端热更新通道                                                |
 | `dev.fastRefresh`                               | `boolean`                            | `true`                                                       | React Fast Refresh                                                  |
 | `dev.transport`                                 | `'sse'`                              | `'sse'`                                                      | Vext dev event bus 传输方式                                         |
-| `dev.overlay`                                   | `boolean`                            | `true`                                                       | 是否启用开发错误覆盖层                                              |
+| `dev.overlay`                                   | `boolean`                            | `true`                                                       | 是否显示前端 dev browser rebuild 错误与 render refresh 提示 UI      |
 | `dev.debounceMs`                                | `number`                             | `50`                                                         | 文件变更事件防抖时间                                                |
 | `dev.renderRefresh`                             | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                                   | route/service 等 render 相关后端变更后的浏览器动作                  |
 | `build.target`                                  | `string \| string[]`                 | `'es2022'`                                                   | 浏览器构建目标                                                      |

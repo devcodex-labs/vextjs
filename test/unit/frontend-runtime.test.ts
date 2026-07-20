@@ -1361,6 +1361,8 @@ describe("frontend client build", () => {
     expect(devBrowserEntry).toContain("react-refresh/runtime");
     expect(devBrowserEntry).toContain('EventSource("/__vext/dev/events")');
     expect(devBrowserEntry).toContain("performReactRefresh");
+    expect(devBrowserEntry).toContain("showVextDevErrorOverlay");
+    expect(devBrowserEntry).toContain("showVextRenderRefreshPrompt");
     expect(devBundle).toContain("src/frontend/pages/index.tsx Page");
 
     const productionResult = await buildFrontendClient({
@@ -1402,6 +1404,27 @@ describe("frontend client build", () => {
     expect(disabledBrowserEntry).toContain('EventSource("/__vext/dev/events")');
     expect(disabledBrowserEntry).not.toContain("react-refresh/runtime");
     expect(disabledBundle).not.toContain("react-refresh");
+
+    const overlayOffResult = await buildFrontendClient({
+      rootDir,
+      mode: "development",
+      config: {
+        enabled: true,
+        apiClient: false,
+        dev: { overlay: false },
+      },
+    });
+    const overlayOffBrowserEntry = await readFile(
+      path.join(overlayOffResult.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+
+    expect(overlayOffBrowserEntry).toContain(
+      'EventSource("/__vext/dev/events")',
+    );
+    expect(overlayOffBrowserEntry).toContain("frontend rebuild failed");
+    expect(overlayOffBrowserEntry).not.toContain("showVextDevErrorOverlay");
+    expect(overlayOffBrowserEntry).not.toContain("showVextRenderRefreshPrompt");
 
     const hotOffResult = await buildFrontendClient({
       rootDir,

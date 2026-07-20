@@ -29,13 +29,13 @@ npm run dev
 
 仅前端变更会重建浏览器输出，不重启后端进程。
 
-| 变更 | 预期动作 |
-|------|----------|
-| page/component/layout | 前端重建 |
-| `.module.css` | 前端重建 / CSS 更新 |
-| JSCSS style 文件 | JSCSS 抽取 + CSS 更新 |
-| `public/**` | 复制 + 前端重建 |
-| locale 文件 | registry 重建与 hydration 数据更新 |
+| 变更                  | 预期动作                           |
+| --------------------- | ---------------------------------- |
+| page/component/layout | 前端重建                           |
+| `.module.css`         | 前端重建 / CSS 更新                |
+| JSCSS style 文件      | JSCSS 抽取 + CSS 更新              |
+| `public/**`           | 复制 + 前端重建                    |
+| locale 文件           | registry 重建与 hydration 数据更新 |
 
 ## React Fast Refresh
 
@@ -66,11 +66,11 @@ frontend: {
 }
 ```
 
-| 值 | 行为 |
-|----|------|
+| 值         | 行为                 |
+| ---------- | -------------------- |
 | `"prompt"` | 在浏览器显示刷新提示 |
-| `"auto"` | 自动刷新 |
-| `"off"` | 只记录事件 |
+| `"auto"`   | 自动刷新             |
+| `"off"`    | 只记录事件           |
 
 admin 或表单较多的页面建议用 `"prompt"`，避免自动刷新打断操作。
 
@@ -98,5 +98,4 @@ Vext 无法安全保留状态时，整页刷新是正常行为。
 - Fast Refresh 拒绝某个模块
 - config 变更重建前端 runtime 边界
 
-如果每次组件变更都会整页刷新，检查 `frontend.dev.hot`、`frontend.dev.fastRefresh`，以及组件是否 import 了服务端代码。
-
+如果每次组件变更都会整页刷新，检查 `frontend.dev.hot`、`frontend.dev.fastRefresh`，以及组件是否 import 了服务端代码。设置 `frontend.dev.overlay: false` 可以保留 SSE 刷新行为，但关闭浏览器 overlay 提示。

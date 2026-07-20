@@ -29,13 +29,13 @@ In dev mode Vext watches:
 
 Frontend-only changes rebuild the browser output without restarting the backend process.
 
-| Change | Expected action |
-|--------|-----------------|
-| page/component/layout | frontend rebuild |
-| `.module.css` | frontend rebuild / CSS update |
-| JSCSS style file | JSCSS extraction + CSS update |
-| `public/**` | copy + frontend rebuild |
-| locale file | registry rebuild and hydration data update |
+| Change                | Expected action                            |
+| --------------------- | ------------------------------------------ |
+| page/component/layout | frontend rebuild                           |
+| `.module.css`         | frontend rebuild / CSS update              |
+| JSCSS style file      | JSCSS extraction + CSS update              |
+| `public/**`           | copy + frontend rebuild                    |
+| locale file           | registry rebuild and hydration data update |
 
 ## React Fast Refresh
 
@@ -66,11 +66,11 @@ frontend: {
 }
 ```
 
-| Value | Behavior |
-|-------|----------|
+| Value      | Behavior                         |
+| ---------- | -------------------------------- |
 | `"prompt"` | show a browser prompt to refresh |
-| `"auto"` | reload automatically |
-| `"off"` | only log/record the event |
+| `"auto"`   | reload automatically             |
+| `"off"`    | only log/record the event        |
 
 Use `"prompt"` for admin or form-heavy pages where automatic reload might interrupt work.
 
@@ -98,5 +98,4 @@ Common triggers:
 - Fast Refresh rejects a module
 - config changes rebuild frontend runtime boundaries
 
-If every component change causes full reload, check `frontend.dev.hot`, `frontend.dev.fastRefresh`, and whether the component imports server-only code.
-
+If every component change causes full reload, check `frontend.dev.hot`, `frontend.dev.fastRefresh`, and whether the component imports server-only code. Set `frontend.dev.overlay: false` to keep SSE refresh behavior while suppressing browser overlay prompts.
