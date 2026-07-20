@@ -471,6 +471,7 @@ registered in config.middlewares whitelist.
 - `auth()` middleware reads the request credential and fills `req.auth`.
 - `auth: true` requires an authenticated request.
 - Object form can require roles, scopes, permissions, or a custom `check`.
+- `auth: { required: false }` makes identity optional; without roles, scopes, permissions, or `check`, OpenAPI marks the route as public.
 - `auth: false` marks the route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
 
 ```typescript
@@ -705,10 +706,10 @@ app.get(
 By default, security schemes are inferred in this order:
 
 1. `docs.security` if explicitly set, including `[]`.
-2. `RouteOptions.auth` when it is `true` or an object.
+2. `RouteOptions.auth` when it is `true` or an object; `auth: { required: false }` without roles/scopes/permissions/check emits public security.
 3. Legacy `middlewares` inference through `config.openapi.guardSecurityMap`.
 
-`auth:false` disables the legacy fallback for that route.
+`auth:false` disables the legacy fallback for that route. If `auth: { required: false }` also declares roles, scopes, permissions, or `check`, runtime still requires authentication and OpenAPI emits authentication security.
 
 Can be manually overridden:
 

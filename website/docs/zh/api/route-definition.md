@@ -471,6 +471,7 @@ registered in config.middlewares whitelist.
 - `auth()` 中间件读取请求凭据并填充 `req.auth`。
 - `auth: true` 要求请求已经认证。
 - 对象形式可以要求 roles、scopes、permissions 或自定义 `check`。
+- `auth: { required: false }` 表示身份可选；没有 roles、scopes、permissions 或 `check` 时，OpenAPI 会把该路由标记为公开。
 - `auth: false` 表示路由显式公开，并禁用从 `middlewares` 回退推断 OpenAPI security 的旧逻辑。
 
 ```typescript
@@ -704,10 +705,10 @@ app.get(
 默认情况下，安全方案按以下顺序推断：
 
 1. 显式设置的 `docs.security`，包括 `[]`。
-2. `RouteOptions.auth` 为 `true` 或对象时。
+2. `RouteOptions.auth` 为 `true` 或对象时；`auth: { required: false }` 且没有 roles/scopes/permissions/check 时会输出公开 security。
 3. 旧的 `middlewares` 推断，通过 `config.openapi.guardSecurityMap` 映射。
 
-`auth:false` 会禁用该路由的旧 `middlewares` 回退推断。
+`auth:false` 会禁用该路由的旧 `middlewares` 回退推断。`auth: { required: false }` 如果同时声明 roles、scopes、permissions 或 `check`，运行时仍会要求认证，OpenAPI 也会输出认证 security。
 
 也可以手动覆盖：
 

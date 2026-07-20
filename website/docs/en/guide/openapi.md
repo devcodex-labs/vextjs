@@ -509,7 +509,7 @@ app.get(
 );
 ```
 
-Use `auth: { security: "bearerAuth" }` when you want to choose the security scheme explicitly. `config.openapi.guardSecurityMap` is still supported for legacy middleware-only routes, but it should not be the primary source for new Auth examples.
+Use `auth: { security: "bearerAuth" }` when you want to choose the security scheme explicitly. `auth: { required: false }` without roles, scopes, permissions, or `check` marks the route as public in OpenAPI; if those authorization rules are present, runtime still requires authentication and OpenAPI emits authentication security. `config.openapi.guardSecurityMap` is still supported for legacy middleware-only routes, but it should not be the primary source for new Auth examples.
 
 Manual override:
 

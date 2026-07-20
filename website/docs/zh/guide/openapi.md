@@ -501,7 +501,7 @@ app.get(
 );
 ```
 
-如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
+如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。`auth: { required: false }` 且没有 roles、scopes、permissions 或 `check` 时，OpenAPI 会把该路由标记为公开；如果同时声明这些授权规则，运行时仍会要求认证，OpenAPI 也会输出认证 security。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
 
 手动覆盖：
 

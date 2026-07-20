@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertRouteAuth,
   auth,
+  authRequirementToOpenApiSecurity,
   createAnonymousAuthContext,
   createAuthContextMiddleware,
   createAuthMiddleware,
@@ -14,12 +15,14 @@ import type { VextCookieJar } from "../../../src/types/cookies.js";
 import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
 
-function createReq(options: {
-  headers?: Record<string, string | undefined>;
-  cookies?: VextCookieJar;
-  session?: Record<string, unknown>;
-  routeOptions?: RouteOptions;
-} = {}): VextRequest {
+function createReq(
+  options: {
+    headers?: Record<string, string | undefined>;
+    cookies?: VextCookieJar;
+    session?: Record<string, unknown>;
+    routeOptions?: RouteOptions;
+  } = {},
+): VextRequest {
   const cookies = options.cookies ?? {};
   return {
     requestId: "req-auth",
@@ -237,5 +240,21 @@ describe("auth middleware and route guard", () => {
     await createAuthContextMiddleware()(req, res, async () => undefined);
 
     expect(req.auth.isAuthenticated).toBe(false);
+  });
+
+  it("maps optional auth to public OpenAPI security unless rules or explicit schemes are present", () => {
+    expect(authRequirementToOpenApiSecurity({ required: false })).toEqual([]);
+    expect(
+      authRequirementToOpenApiSecurity({
+        required: false,
+        roles: ["admin"],
+      }),
+    ).toEqual([{ bearerAuth: [] }]);
+    expect(
+      authRequirementToOpenApiSecurity({
+        required: false,
+        security: "sessionAuth",
+      }),
+    ).toEqual([{ sessionAuth: [] }]);
   });
 });

@@ -1594,6 +1594,45 @@ describe("OpenAPIGenerator", () => {
       expect(doc.paths["/users"].get!.security).toEqual([{ bearerAuth: [] }]);
     });
 
+    it("RouteOptions.auth.required = false 且无授权规则 → 显式 public security", () => {
+      const doc = generate([
+        createRoute("GET", "/optional", {
+          auth: { required: false },
+          middlewares: ["auth"],
+        }),
+      ]);
+
+      expect(doc.paths["/optional"].get!.security).toEqual([]);
+    });
+
+    it("RouteOptions.auth.required = false 但存在授权规则 → security: [{ bearerAuth: [] }]", () => {
+      const doc = generate([
+        createRoute("GET", "/by-role", {
+          auth: { required: false, roles: ["admin"] },
+        }),
+        createRoute("GET", "/by-scope", {
+          auth: { required: false, scopes: ["posts:write"] },
+        }),
+        createRoute("GET", "/by-permission", {
+          auth: { required: false, permissions: ["posts:update"] },
+        }),
+        createRoute("GET", "/by-check", {
+          auth: { required: false, check: () => true },
+        }),
+      ]);
+
+      expect(doc.paths["/by-role"].get!.security).toEqual([{ bearerAuth: [] }]);
+      expect(doc.paths["/by-scope"].get!.security).toEqual([
+        { bearerAuth: [] },
+      ]);
+      expect(doc.paths["/by-permission"].get!.security).toEqual([
+        { bearerAuth: [] },
+      ]);
+      expect(doc.paths["/by-check"].get!.security).toEqual([
+        { bearerAuth: [] },
+      ]);
+    });
+
     it("RouteOptions.auth.security supports string, string[] and object array", () => {
       const doc = generate([
         createRoute("GET", "/bearer", {
@@ -1626,6 +1665,24 @@ describe("OpenAPIGenerator", () => {
       ]);
 
       expect(doc.paths["/users"].get!.security).toEqual([{ sessionAuth: [] }]);
+    });
+
+    it("docs.security 覆盖 required=false 的 auth 推断", () => {
+      const doc = generate([
+        createRoute("GET", "/optional-api-key", {
+          auth: { required: false },
+          docs: { security: [{ apiKeyAuth: [] }] },
+        }),
+        createRoute("GET", "/protected-public-docs", {
+          auth: { roles: ["admin"] },
+          docs: { security: [] },
+        }),
+      ]);
+
+      expect(doc.paths["/optional-api-key"].get!.security).toEqual([
+        { apiKeyAuth: [] },
+      ]);
+      expect(doc.paths["/protected-public-docs"].get!.security).toEqual([]);
     });
 
     it("RouteOptions.auth = false 阻止 legacy middlewares 推断", () => {
@@ -1704,6 +1761,22 @@ describe("OpenAPIGenerator", () => {
       ]);
 
       expect(doc.paths["/users"].get!.security).toEqual([]);
+    });
+
+    it("文档说明 auth.required=false 的 OpenAPI security 契约", () => {
+      const zhGuide = readRepoFile("website/docs/zh/guide/openapi.md");
+      const enGuide = readRepoFile("website/docs/en/guide/openapi.md");
+      const zhApi = readRepoFile("website/docs/zh/api/route-definition.md");
+      const enApi = readRepoFile("website/docs/en/api/route-definition.md");
+
+      expect(zhGuide).toContain(
+        "`auth: { required: false }` 且没有 roles、scopes、permissions 或 `check` 时",
+      );
+      expect(enGuide).toContain(
+        "`auth: { required: false }` without roles, scopes, permissions, or `check`",
+      );
+      expect(zhApi).toContain("OpenAPI 会把该路由标记为公开");
+      expect(enApi).toContain("OpenAPI marks the route as public");
     });
 
     it("对象格式 middlewares（{ name, options }）推断 security", () => {

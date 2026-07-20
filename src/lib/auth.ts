@@ -154,11 +154,7 @@ export function createAuthMiddleware(
     try {
       result = await options.verify(credential.credential, req);
     } catch {
-      throwAuthError(
-        "AUTH_PROVIDER_ERROR",
-        "Auth provider failed",
-        500,
-      );
+      throwAuthError("AUTH_PROVIDER_ERROR", "Auth provider failed", 500);
     }
 
     if (!result) {
@@ -207,7 +203,8 @@ export async function assertRouteAuth(
   requirementInput: VextAuthRequirement,
 ): Promise<void> {
   const requirement = normalizeAuthRequirement(requirementInput) ?? {};
-  const authContext = req.auth ?? setRequestAuth(req, createAnonymousAuthContext());
+  const authContext =
+    req.auth ?? setRequestAuth(req, createAnonymousAuthContext());
 
   if (authContext.error) {
     throwAuthError(
@@ -219,11 +216,7 @@ export async function assertRouteAuth(
     );
   }
 
-  const hasAuthorizationRule =
-    hasItems(requirement.roles) ||
-    hasItems(requirement.scopes) ||
-    hasItems(requirement.permissions) ||
-    typeof requirement.check === "function";
+  const hasAuthorizationRule = hasAuthorizationRules(requirement);
   const requiresAuth = requirement.required !== false || hasAuthorizationRule;
 
   if (requiresAuth && !authContext.isAuthenticated) {
@@ -253,7 +246,8 @@ export async function assertRouteAuth(
         evaluatePermission(req, authContext, permission),
       ),
     );
-    const allowed = mode === "all" ? results.every(Boolean) : results.some(Boolean);
+    const allowed =
+      mode === "all" ? results.every(Boolean) : results.some(Boolean);
     if (!allowed) {
       throwAuthError("AUTH_FORBIDDEN", "Forbidden", 403);
     }
@@ -264,11 +258,7 @@ export async function assertRouteAuth(
     try {
       allowed = await requirement.check(req, authContext);
     } catch {
-      throwAuthError(
-        "AUTH_PROVIDER_ERROR",
-        "Auth check failed",
-        500,
-      );
+      throwAuthError("AUTH_PROVIDER_ERROR", "Auth check failed", 500);
     }
     if (!allowed) {
       throwAuthError("AUTH_FORBIDDEN", "Forbidden", 403);
@@ -281,6 +271,16 @@ export function authRequirementToOpenApiSecurity(
 ): Array<Record<string, string[]>> {
   const requirement = normalizeAuthRequirement(value);
   if (!requirement) return [];
+
+  const hasAuthorizationRule = hasAuthorizationRules(requirement);
+  const hasExplicitSecurity = requirement.security !== undefined;
+  if (
+    requirement.required === false &&
+    !hasAuthorizationRule &&
+    !hasExplicitSecurity
+  ) {
+    return [];
+  }
 
   const security = requirement.security;
   if (typeof security === "string") {
@@ -432,6 +432,15 @@ function matchesRequiredValues(
 
 function hasItems<T>(value: T[] | undefined): value is T[] {
   return Array.isArray(value) && value.length > 0;
+}
+
+function hasAuthorizationRules(requirement: VextAuthRequirement): boolean {
+  return (
+    hasItems(requirement.roles) ||
+    hasItems(requirement.scopes) ||
+    hasItems(requirement.permissions) ||
+    typeof requirement.check === "function"
+  );
 }
 
 function normalizeStringArray(value: string[] | undefined): string[] {

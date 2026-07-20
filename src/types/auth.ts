@@ -25,9 +25,7 @@ export type VextPermissionRequirement =
   | string
   | {
       action: string;
-      resource?:
-        | string
-        | ((req: VextRequest) => string | undefined);
+      resource?: string | ((req: VextRequest) => string | undefined);
       context?:
         | Record<string, unknown>
         | ((req: VextRequest) => Record<string, unknown> | undefined);
@@ -77,6 +75,10 @@ export interface VextAuthMiddlewareOptions {
 }
 
 export interface VextAuthRequirement {
+  /**
+   * Defaults to true. `false` keeps the route public/optional unless roles,
+   * scopes, permissions or check are present.
+   */
   required?: boolean;
   roles?: string[];
   scopes?: string[];

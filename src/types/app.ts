@@ -1634,7 +1634,9 @@ export interface RouteOptions {
    * Route-level auth guard.
    *
    * - `true`: require an authenticated request.
-   * - object: require roles, scopes, permissions or a custom check.
+   * - object: require an authenticated request by default; `required: false`
+   *   keeps the route public/optional unless roles, scopes, permissions or a
+   *   custom check are present.
    * - `false`: explicitly public, and OpenAPI auth inference is disabled.
    *
    * Identity is filled by `auth()` middleware or user middleware that assigns
