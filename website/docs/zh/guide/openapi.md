@@ -421,6 +421,8 @@ docs: {
 }
 ```
 
+`operationId` 必须在整个 OpenAPI 文档中保持唯一。Vext 在生成阶段会校验显式 `docs.operationId` 和自动推断值：重复的显式值、显式值撞上自动推断值、或不同路由自动推断出同一值都会直接报错。处理方式是为其中一条路由设置唯一的 `docs.operationId`，或调整路由 method/path 让自动推断结果不同。
+
 ### `hidden` — 隐藏路由
 
 不希望出现在文档中的路由（如内部接口）：

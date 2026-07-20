@@ -429,6 +429,8 @@ docs: {
 }
 ```
 
+`operationId` must remain unique across the whole OpenAPI document. During generation, Vext validates both explicit `docs.operationId` values and inferred values: duplicate explicit values, explicit values that collide with inferred values, or different routes that infer the same value all fail generation. Fix the conflict by setting a unique `docs.operationId` on one route or by changing the route method/path so inferred values differ.
+
 ### `hidden` — hide route
 
 Routes you don't want to appear in the document (such as internal interfaces):

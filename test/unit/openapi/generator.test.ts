@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   OpenAPIGenerator,
@@ -42,6 +44,10 @@ function generate(
   config: OpenAPIConfig = {},
 ): OpenAPIDocument {
   return createGenerator(config).generate(routes);
+}
+
+function readRepoFile(filePath: string): string {
+  return readFileSync(resolve(filePath), "utf8");
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -595,6 +601,98 @@ describe("OpenAPIGenerator", () => {
         }),
       ]);
       expect(doc.paths["/users"].get!.operationId).toBe("listAllUsers");
+    });
+
+    it("拒绝重复的显式 docs.operationId", () => {
+      expect(() =>
+        generate([
+          createRoute(
+            "GET",
+            "/users",
+            { docs: { operationId: "listUsers" } },
+            "routes/users/list.ts",
+          ),
+          createRoute(
+            "GET",
+            "/accounts",
+            { docs: { operationId: "listUsers" } },
+            "routes/accounts/list.ts",
+          ),
+        ]),
+      ).toThrowError(
+        /Duplicate OpenAPI operationId "listUsers".*GET \/accounts.*explicit docs\.operationId.*GET \/users.*explicit docs\.operationId/s,
+      );
+    });
+
+    it("拒绝显式 operationId 与自动推断 operationId 冲突", () => {
+      expect(() =>
+        generate([
+          createRoute("GET", "/users", {}, "routes/users.ts"),
+          createRoute(
+            "POST",
+            "/accounts",
+            { docs: { operationId: "getUsers" } },
+            "routes/accounts.ts",
+          ),
+        ]),
+      ).toThrowError(
+        /Duplicate OpenAPI operationId "getUsers".*POST \/accounts.*explicit docs\.operationId.*GET \/users.*inferred from method\/path/s,
+      );
+    });
+
+    it("拒绝自动推断出的重复 operationId", () => {
+      expect(() =>
+        generate([
+          createRoute("GET", "/users/:id", {}, "routes/users/[id].ts"),
+          createRoute("GET", "/users/byId", {}, "routes/users/byId.ts"),
+        ]),
+      ).toThrowError(
+        /Duplicate OpenAPI operationId "getUsersById".*GET \/users\/byId.*inferred from method\/path.*GET \/users\/:id.*inferred from method\/path/s,
+      );
+    });
+
+    it("允许方法和路径变体生成稳定且唯一的 operationId", () => {
+      const doc = generate([
+        createRoute("GET", "/users"),
+        createRoute("POST", "/users"),
+        createRoute("GET", "/users/:id"),
+        createRoute("GET", "/accounts", {
+          docs: { operationId: "listAccounts" },
+        }),
+      ]);
+
+      const operationIds = [
+        doc.paths["/users"].get!.operationId,
+        doc.paths["/users"].post!.operationId,
+        doc.paths["/users/{id}"].get!.operationId,
+        doc.paths["/accounts"].get!.operationId,
+      ];
+
+      expect(operationIds).toEqual([
+        "getUsers",
+        "createUsers",
+        "getUsersById",
+        "listAccounts",
+      ]);
+      expect(new Set(operationIds).size).toBe(operationIds.length);
+    });
+
+    it("文档说明 operationId 全局唯一和冲突处理", () => {
+      const zhGuide = readRepoFile("website/docs/zh/guide/openapi.md");
+      const enGuide = readRepoFile("website/docs/en/guide/openapi.md");
+      const zhApi = readRepoFile("website/docs/zh/api/route-definition.md");
+      const enApi = readRepoFile("website/docs/en/api/route-definition.md");
+
+      expect(zhGuide).toContain(
+        "Vext 在生成阶段会校验显式 `docs.operationId` 和自动推断值",
+      );
+      expect(zhGuide).toContain("重复的显式值");
+      expect(enGuide).toContain(
+        "`operationId` must remain unique across the whole OpenAPI document",
+      );
+      expect(enGuide).toContain("all fail generation");
+      expect(zhApi).toContain("冲突时生成报错");
+      expect(enApi).toContain("generation fails on conflicts");
     });
 
     it("默认 deprecated = false", () => {

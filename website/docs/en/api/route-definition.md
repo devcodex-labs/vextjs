@@ -608,7 +608,7 @@ interface RouteDocsConfig {
 | `summary`     | `string`   | —                                   | One sentence summary of the interface                                             |
 | `description` | `string`   | —                                   | Detailed description of the interface (supports Markdown)                         |
 | `tags`        | `string[]` | Ignored                             | Deprecated. Operation tags are inferred automatically from the route path/source. |
-| `operationId` | `string`   | Automatic inference                 | Operation ID (globally unique)                                                    |
+| `operationId` | `string`   | Automatic inference                 | Operation ID (globally unique; generation fails on conflicts)                     |
 | `hidden`      | `boolean`  | `false`                             | Whether to hide from the document                                                 |
 | `deprecated`  | `boolean`  | `false`                             | Whether to mark it as deprecated                                                  |
 | `security`    | `array`    | Inference from `auth` / middlewares | Security scheme overrides                                                         |
@@ -670,6 +670,8 @@ When `operationId` is not specified, the framework is automatically generated ba
 | `GET /users/:id`    | `getUsersById`       |
 | `PUT /users/:id`    | `updateUsersById`    |
 | `DELETE /users/:id` | `deleteUsersById`    |
+
+Explicit `docs.operationId` values and inferred `operationId` values share the same global uniqueness constraint. If a conflict exists, OpenAPI generation fails; set a unique `docs.operationId` on the conflicting route or change the route method/path so inferred values differ.
 
 ### Hidden route
 

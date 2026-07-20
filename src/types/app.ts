@@ -1515,6 +1515,7 @@ export interface RouteDocsConfig {
   /**
    * 操作标识（全局唯一），映射到 OpenAPI operation.operationId。
    * 默认自动推断：POST /users → 'createUsers'
+   * 显式值或自动推断值重复时，OpenAPI 生成会报错。
    */
   operationId?: string;
 

@@ -39,6 +39,15 @@ const DOCS_TAGS_WARNING_SAMPLE_LIMIT = 3;
 export const DEPRECATED_ROUTE_DOCS_TAGS_WARNING =
   "[openapi] route docs.tags is deprecated and ignored. Tags are inferred automatically from route path/source.";
 
+type OperationIdSource = "explicit" | "inferred";
+
+interface SeenOperationId {
+  method: string;
+  path: string;
+  sourceFile: string;
+  source: OperationIdSource;
+}
+
 export interface DeprecatedRouteDocsTagsUsage {
   method: string;
   path: string;
@@ -134,15 +143,23 @@ export class OpenAPIGenerator {
     };
 
     // ── 遍历路由，生成 paths ────────────────────────────────
+    const seenOperationIds = new Map<string, SeenOperationId>();
     for (const route of routes) {
       const openApiPath = this.convertPath(route.path);
       const method = route.method.toLowerCase();
+      const operation = this.buildOperation(route);
+
+      this.assertUniqueOperationId(
+        operation.operationId,
+        route,
+        seenOperationIds,
+      );
 
       if (!doc.paths[openApiPath]) {
         doc.paths[openApiPath] = {};
       }
 
-      doc.paths[openApiPath][method] = this.buildOperation(route);
+      doc.paths[openApiPath][method] = operation;
     }
 
     // ── 添加通用错误响应 schema ─────────────────────────────
@@ -213,6 +230,48 @@ export class OpenAPIGenerator {
   }
 
   // ── 私有方法 ──────────────────────────────────────────────
+
+  private assertUniqueOperationId(
+    operationId: string | undefined,
+    route: RouteMetadata,
+    seenOperationIds: Map<string, SeenOperationId>,
+  ): void {
+    if (operationId === undefined) {
+      return;
+    }
+
+    const current = this.describeOperationIdRoute(route);
+    const existing = seenOperationIds.get(operationId);
+    if (existing) {
+      throw new Error(
+        `[vextjs] Duplicate OpenAPI operationId "${operationId}" for ` +
+          `${this.formatOperationIdRoute(current)} conflicts with ` +
+          `${this.formatOperationIdRoute(existing)}. ` +
+          "Set a unique route options.docs.operationId or change the route method/path so inferred operationId values differ.",
+      );
+    }
+
+    seenOperationIds.set(operationId, current);
+  }
+
+  private describeOperationIdRoute(route: RouteMetadata): SeenOperationId {
+    return {
+      method: route.method.toUpperCase(),
+      path: route.path,
+      sourceFile: route.sourceFile,
+      source:
+        route.options.docs?.operationId === undefined ? "inferred" : "explicit",
+    };
+  }
+
+  private formatOperationIdRoute(route: SeenOperationId): string {
+    const source =
+      route.source === "explicit"
+        ? "explicit docs.operationId"
+        : "inferred from method/path";
+
+    return `${route.method} ${route.path} (${source}, ${route.sourceFile})`;
+  }
 
   /**
    * 构建单个路由的 Operation 对象

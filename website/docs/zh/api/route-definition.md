@@ -608,7 +608,7 @@ interface RouteDocsConfig {
 | `summary`     | `string`   | —                            | 接口一句话摘要                                       |
 | `description` | `string`   | —                            | 接口详细描述（支持 Markdown）                        |
 | `tags`        | `string[]` | 已忽略                       | 已废弃。operation tags 会从路由 path/source 自动推断 |
-| `operationId` | `string`   | 自动推断                     | 操作标识（全局唯一）                                 |
+| `operationId` | `string`   | 自动推断                     | 操作标识（全局唯一；冲突时生成报错）                 |
 | `hidden`      | `boolean`  | `false`                      | 是否从文档中隐藏                                     |
 | `deprecated`  | `boolean`  | `false`                      | 是否标记为已废弃                                     |
 | `security`    | `array`    | 从 `auth` / middlewares 推断 | 安全方案覆盖                                         |
@@ -669,6 +669,8 @@ app.post(
 | `GET /users/:id`    | `getUsersById`     |
 | `PUT /users/:id`    | `updateUsersById`  |
 | `DELETE /users/:id` | `deleteUsersById`  |
+
+显式 `docs.operationId` 和自动推断出的 `operationId` 共用同一个全局唯一约束。若重复，OpenAPI 生成会直接报错；请为冲突路由设置唯一的 `docs.operationId`，或调整路由 method/path 让自动推断结果不同。
 
 ### 隐藏路由
 
