@@ -98,6 +98,8 @@ function parseTypegenArgs(args: string[]): TypegenOptions {
       options.help = true;
     } else if (arg?.startsWith("--")) {
       throw new Error(`[vextjs] Unknown option: "${arg}"`);
+    } else {
+      throw new Error(`[vextjs] Unknown argument: "${arg}"`);
     }
   }
 
@@ -109,6 +111,7 @@ function printTypegenHelp(): void {
   Usage: vext typegen [options]
 
   Generate type declarations and run tooling-only diagnostics (experimental).
+  Positional arguments are not supported.
 
   Options:
     --services          Only generate services declarations

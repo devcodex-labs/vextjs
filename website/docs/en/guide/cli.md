@@ -359,6 +359,8 @@ Provide generated declarations for `app.services` and `app.extend()` / `defineAp
 vext typegen [options]
 ```
 
+`vext typegen` does not accept positional arguments. Unknown arguments fail fast with an actionable diagnostic.
+
 ### Options
 
 | Options            | Description                                       | Default           |

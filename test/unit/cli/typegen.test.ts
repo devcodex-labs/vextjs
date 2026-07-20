@@ -148,4 +148,22 @@ describe("typegenCommand", () => {
       typegenCommand(["--root", projectRoot, "--services", "--check"]),
     ).rejects.toThrow(/typegen found blocking issues/);
   });
+
+  it("rejects unknown positional arguments in text mode", async () => {
+    await expect(typegenCommand(["extra"])).rejects.toThrow(
+      '[vextjs] Unknown argument: "extra"',
+    );
+
+    expect(consoleLog).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown positional arguments in JSON mode", async () => {
+    await expect(typegenCommand(["--json", "extra"])).rejects.toThrow(
+      '[vextjs] Unknown argument: "extra"',
+    );
+
+    expect(consoleLog).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
 });

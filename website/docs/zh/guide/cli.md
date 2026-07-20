@@ -360,6 +360,8 @@ vext deploy assets --target-dir .deploy/cdn --prefix my-app/v1
 vext typegen [options]
 ```
 
+`vext typegen` 不接受位置参数。未知参数会立即失败，并输出可操作的诊断信息。
+
 ### 选项
 
 | 选项               | 说明                                   | 默认值   |
