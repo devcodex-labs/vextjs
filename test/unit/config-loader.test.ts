@@ -111,6 +111,36 @@ describe("deepMerge", () => {
     expect(b.d).toBe(2); // 未覆盖
     expect(a.e).toBe(3); // 未覆盖
   });
+
+  it("clones nested values introduced by both inputs", () => {
+    const target = { stable: { list: [{ value: 1 }] } };
+    const source = { added: { list: [{ value: 2 }] } };
+    const result = _deepMerge(
+      target as unknown as Record<string, unknown>,
+      source as unknown as Record<string, unknown>,
+    ) as typeof target & typeof source;
+
+    expect(result.stable).not.toBe(target.stable);
+    expect(result.stable.list).not.toBe(target.stable.list);
+    expect(result.added).not.toBe(source.added);
+    expect(result.added.list).not.toBe(source.added.list);
+
+    _deepFreeze(result);
+    expect(Object.isFrozen(target.stable)).toBe(false);
+    expect(Object.isFrozen(source.added)).toBe(false);
+  });
+
+  it("preserves bounded cycles without sharing source references", () => {
+    const source: Record<string, unknown> = {};
+    source.self = source;
+
+    const result = _deepMerge({}, { cyclic: source }) as {
+      cyclic: Record<string, unknown>;
+    };
+
+    expect(result.cyclic).not.toBe(source);
+    expect(result.cyclic.self).toBe(result.cyclic);
+  });
 });
 
 // ── patchMiddlewares ────────────────────────────────────────
@@ -121,6 +151,22 @@ describe("patchMiddlewares", () => {
     const result = _patchMiddlewares(base, []);
     expect(result).toEqual(base);
     expect(result).not.toBe(base); // 新数组
+  });
+
+  it("clones nested middleware options", () => {
+    const override = [{ name: "auth", options: { policy: { role: "admin" } } }];
+    const result = _patchMiddlewares([], override);
+
+    expect(result[0]).not.toBe(override[0]);
+    expect((result[0] as { options: unknown }).options).not.toBe(
+      override[0]!.options,
+    );
+  });
+
+  it("rejects duplicate names within one configuration layer", () => {
+    expect(() =>
+      _patchMiddlewares([], ["auth", { name: "auth", enabled: false }]),
+    ).toThrow('duplicate name "auth"');
   });
 
   it("appends new middleware not found in base", () => {
@@ -315,6 +361,23 @@ describe("validateConfig", () => {
     it("accepts valid port", () => {
       expect(() => _validateConfig({ port: 8080 })).not.toThrow();
     });
+
+    it("rejects non-finite and fractional ports", () => {
+      expect(() => _validateConfig({ port: Number.NaN })).toThrow(
+        "config.port",
+      );
+      expect(() => _validateConfig({ port: Number.POSITIVE_INFINITY })).toThrow(
+        "config.port",
+      );
+      expect(() => _validateConfig({ port: 3000.5 })).toThrow("config.port");
+    });
+
+    it("validates host and trustProxy scalar types", () => {
+      expect(() => _validateConfig({ host: 127 })).toThrow("config.host");
+      expect(() => _validateConfig({ trustProxy: "yes" })).toThrow(
+        "config.trustProxy",
+      );
+    });
   });
 
   // ── adapter ─────────────────────────────────────────────
@@ -337,6 +400,15 @@ describe("validateConfig", () => {
       expect(() =>
         _validateConfig({ adapter: function myAdapter() {} }),
       ).not.toThrow();
+    });
+
+    it("accepts an adapter object and gives custom-adapter guidance for unknown strings", () => {
+      expect(() =>
+        _validateConfig({ adapter: { name: "custom" } }),
+      ).not.toThrow();
+      expect(() => _validateConfig({ adapter: "custom" })).toThrow(
+        "pass an adapter object or factory function",
+      );
     });
 
     it("rejects non-string non-function adapter", () => {
@@ -376,6 +448,59 @@ describe("validateConfig", () => {
     it("rejects object without name", () => {
       expect(() => _validateConfig({ middlewares: [{ options: {} }] })).toThrow(
         "config.middlewares[0]",
+      );
+    });
+
+    it("rejects empty names, invalid options/enabled, and duplicate names", () => {
+      expect(() => _validateConfig({ middlewares: [""] })).toThrow(
+        "non-empty string",
+      );
+      expect(() =>
+        _validateConfig({ middlewares: [{ name: "auth", options: [] }] }),
+      ).toThrow(".options must be an object");
+      expect(() =>
+        _validateConfig({ middlewares: [{ name: "auth", enabled: "no" }] }),
+      ).toThrow(".enabled must be a boolean");
+      expect(() => _validateConfig({ middlewares: ["auth", "auth"] })).toThrow(
+        'duplicate name "auth"',
+      );
+    });
+  });
+
+  describe("HTTP middleware configuration validation", () => {
+    it("validates CORS and requestId objects and fields", () => {
+      expect(() => _validateConfig({ cors: true })).toThrow(
+        "config.cors must be an object",
+      );
+      expect(() => _validateConfig({ cors: { enabled: "yes" } })).toThrow(
+        "config.cors.enabled must be a boolean",
+      );
+      expect(() => _validateConfig({ cors: { origins: "*" } })).toThrow(
+        "config.cors.origins must be an array of strings",
+      );
+      expect(() => _validateConfig({ requestId: false })).toThrow(
+        "config.requestId must be an object",
+      );
+      expect(() => _validateConfig({ requestId: { enabled: "yes" } })).toThrow(
+        "config.requestId.enabled must be a boolean",
+      );
+      expect(() => _validateConfig({ requestId: { header: "" } })).toThrow(
+        "config.requestId.header must be a non-empty string",
+      );
+    });
+
+    it("validates body parser and multipart object fields", () => {
+      expect(() => _validateConfig({ bodyParser: true })).toThrow(
+        "config.bodyParser must be an object",
+      );
+      expect(() => _validateConfig({ bodyParser: { enabled: "yes" } })).toThrow(
+        "config.bodyParser.enabled must be a boolean",
+      );
+      expect(() => _validateConfig({ multipart: true })).toThrow(
+        "config.multipart must be an object",
+      );
+      expect(() => _validateConfig({ multipart: { enabled: "yes" } })).toThrow(
+        "config.multipart.enabled must be a boolean",
       );
     });
   });
@@ -504,6 +629,15 @@ describe("validateConfig", () => {
       expect(() => _validateConfig({ shutdown: { timeout: -5 } })).toThrow(
         "config.shutdown.timeout",
       );
+    });
+
+    it("rejects NaN and Infinity timeout values", () => {
+      expect(() =>
+        _validateConfig({ shutdown: { timeout: Number.NaN } }),
+      ).toThrow("finite non-negative");
+      expect(() =>
+        _validateConfig({ shutdown: { timeout: Number.POSITIVE_INFINITY } }),
+      ).toThrow("finite non-negative");
     });
   });
 
@@ -1685,6 +1819,12 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
     expect(config.port).toBe(3000);
   });
 
+  it("VEXT_PORT 数字前缀后含非法字符时应整体拒绝覆盖", async () => {
+    process.env.VEXT_PORT = "3000x";
+    const config = await loadConfig(tmpDir);
+    expect(config.port).toBe(3000);
+  });
+
   it("VEXT_PORT=0 应被忽略（port < 1）", async () => {
     process.env.VEXT_PORT = "0";
     const config = await loadConfig(tmpDir);
@@ -1984,5 +2124,80 @@ describe("loadConfig — bootstrap config provider", () => {
         command: "start",
       }),
     ).rejects.toThrow('Bootstrap config provider "required-provider" failed');
+  });
+
+  it("loads TypeScript config and bootstrap files with local imports", async () => {
+    fs.rmSync(path.join(configDir, "default.js"));
+    fs.writeFileSync(
+      path.join(configDir, "shared.ts"),
+      `export const port: number = 3210;\n`,
+    );
+    fs.writeFileSync(
+      path.join(configDir, "default.ts"),
+      `import { port } from "./shared.js";\nexport default { port, host: "ts.local" } satisfies Record<string, unknown>;\n`,
+    );
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.ts"),
+      `type Patch = Record<string, unknown>;\nexport default { providers: [{ name: "ts-provider", load(): Patch { return { logger: { level: "debug" } }; } }] };\n`,
+    );
+
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "dev",
+    });
+
+    expect(config.port).toBe(3210);
+    expect(config.logger.level).toBe("debug");
+    expect(
+      fs
+        .readdirSync(configDir)
+        .some((name) => name.includes(".__vext_compiled__")),
+    ).toBe(false);
+  });
+
+  it("validates every provider before reading provider fields", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = { providers: [null] };\n`,
+    );
+    await expect(
+      loadConfig(configDir, { rootDir: tmpRoot, command: "dev" }),
+    ).rejects.toThrow("providers[0] must be an object");
+
+    const timeoutConfigDir = path.join(tmpRoot, "src", "config-timeout");
+    fs.mkdirSync(timeoutConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(timeoutConfigDir, "default.ts"),
+      `export default {};\n`,
+    );
+    fs.writeFileSync(
+      path.join(timeoutConfigDir, "bootstrap.ts"),
+      `export default { providers: [{ name: "bad-timeout", timeoutMs: -1, load() { return {}; } }] };\n`,
+    );
+    await expect(
+      loadConfig(timeoutConfigDir, { rootDir: tmpRoot, command: "dev" }),
+    ).rejects.toThrow("timeoutMs must be a finite non-negative number");
+  });
+
+  it("deeply merges sequential provider patches", async () => {
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = { providers: [
+        { name: "one", load() { return { logger: { level: "debug", redactValue: "one" }, custom: { a: 1 }, list: [1] }; } },
+        { name: "two", load() { return { logger: { lifecycleLevel: "verbose" }, custom: { b: 2 }, list: [2] }; } }
+      ] };\n`,
+    );
+
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "dev",
+    });
+    expect(config.logger.level).toBe("debug");
+    expect(config.logger.lifecycleLevel).toBe("verbose");
+    expect((config as unknown as { custom: unknown }).custom).toEqual({
+      a: 1,
+      b: 2,
+    });
+    expect((config as unknown as { list: unknown }).list).toEqual([2]);
   });
 });

@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import type { RuntimeMode } from "./config-profile.js";
+import { importUserModule } from "./user-module-loader.js";
 
 const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
+const resolvedBootstrapFiles = new Map<string, string | null>();
 
 export const CLUSTER_BOOTSTRAP_PATCH_ENV = "VEXT_CLUSTER_BOOTSTRAP_PATCH";
 
@@ -54,12 +55,17 @@ export function defineBootstrapConfig(
 }
 
 function resolveBootstrapConfigFile(configDir: string): string | null {
+  if (resolvedBootstrapFiles.has(configDir)) {
+    return resolvedBootstrapFiles.get(configDir) ?? null;
+  }
   for (const ext of EXTENSIONS) {
     const filePath = path.join(configDir, `bootstrap${ext}`);
     if (existsSync(filePath)) {
+      resolvedBootstrapFiles.set(configDir, filePath);
       return filePath;
     }
   }
+  resolvedBootstrapFiles.set(configDir, null);
   return null;
 }
 
@@ -97,29 +103,69 @@ function normalizeDefinition(
   rawExport: unknown,
   filePath: string,
 ): BootstrapConfigDefinition {
-  if (Array.isArray(rawExport)) {
-    return { providers: rawExport as BootstrapConfigProvider[] };
-  }
+  const definition = Array.isArray(rawExport)
+    ? { providers: rawExport as BootstrapConfigProvider[] }
+    : rawExport;
 
   if (
-    !rawExport ||
-    typeof rawExport !== "object" ||
-    !Array.isArray((rawExport as { providers?: unknown[] }).providers)
+    !definition ||
+    typeof definition !== "object" ||
+    !Array.isArray((definition as { providers?: unknown[] }).providers)
   ) {
     throw new Error(
       `[vextjs] Bootstrap config file "${filePath}" must export defineBootstrapConfig({ providers: [...] }).`,
     );
   }
 
-  return rawExport as BootstrapConfigDefinition;
+  const providers = (definition as { providers: unknown[] }).providers;
+  providers.forEach((provider, index) =>
+    validateProviderDefinition(provider, index),
+  );
+  return definition as BootstrapConfigDefinition;
+}
+
+function validateProviderDefinition(
+  provider: unknown,
+  index: number,
+): asserts provider is BootstrapConfigProvider {
+  const pathName = `providers[${index}]`;
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+    throw new Error(`[vextjs] Bootstrap config ${pathName} must be an object.`);
+  }
+
+  const value = provider as Record<string, unknown>;
+  if (typeof value.name !== "string" || value.name.trim().length === 0) {
+    throw new Error(
+      `[vextjs] Bootstrap config ${pathName}.name must be a non-empty string.`,
+    );
+  }
+  if (typeof value.load !== "function") {
+    throw new Error(
+      `[vextjs] Bootstrap config provider "${value.name}" must implement load(ctx).`,
+    );
+  }
+  if (value.required !== undefined && typeof value.required !== "boolean") {
+    throw new Error(
+      `[vextjs] Bootstrap config provider "${value.name}" required must be a boolean.`,
+    );
+  }
+  if (
+    value.timeoutMs !== undefined &&
+    (typeof value.timeoutMs !== "number" ||
+      !Number.isFinite(value.timeoutMs) ||
+      value.timeoutMs < 0)
+  ) {
+    throw new Error(
+      `[vextjs] Bootstrap config provider "${value.name}" timeoutMs must be a finite non-negative number.`,
+    );
+  }
 }
 
 async function importBootstrapDefinition(
   filePath: string,
 ): Promise<BootstrapConfigDefinition> {
   const { resolveModuleDefault } = await import("./interop.js");
-  const fileUrl = pathToFileURL(filePath).href;
-  const mod = (await import(fileUrl)) as Record<string, unknown>;
+  const mod = await importUserModule(filePath);
   const rawExport = resolveModuleDefault<unknown>(mod);
   return normalizeDefinition(rawExport, filePath);
 }
@@ -128,20 +174,6 @@ async function executeProvider(
   provider: BootstrapConfigProvider,
   ctx: Omit<BootstrapConfigContext, "signal">,
 ): Promise<Record<string, unknown> | null> {
-  if (!provider || typeof provider !== "object") {
-    throw new Error("[vextjs] Invalid bootstrap config provider definition.");
-  }
-  if (!provider.name || typeof provider.name !== "string") {
-    throw new Error(
-      "[vextjs] Bootstrap config provider must have a non-empty name.",
-    );
-  }
-  if (typeof provider.load !== "function") {
-    throw new Error(
-      `[vextjs] Bootstrap config provider "${provider.name}" must implement load(ctx).`,
-    );
-  }
-
   const timeoutMs = provider.timeoutMs ?? 10_000;
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -217,7 +249,7 @@ export async function loadBootstrapConfigPatch(
   }
 
   const definition = await importBootstrapDefinition(bootstrapFile);
-  const mergedPatch: Record<string, unknown> = {};
+  let mergedPatch: Record<string, unknown> = {};
 
   for (const provider of definition.providers) {
     const required =
@@ -236,7 +268,7 @@ export async function loadBootstrapConfigPatch(
       });
 
       if (patch) {
-        Object.assign(mergedPatch, patch);
+        mergedPatch = mergeProviderPatches(mergedPatch, patch);
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -251,4 +283,29 @@ export async function loadBootstrapConfigPatch(
   }
 
   return mergedPatch;
+}
+
+function mergeProviderPatches(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    const previous = base[key];
+    result[key] =
+      isPlainObject(previous) && isPlainObject(value)
+        ? mergeProviderPatches(previous, value)
+        : Array.isArray(value)
+          ? value.map((item) => cloneJsonValue(item))
+          : isPlainObject(value)
+            ? mergeProviderPatches({}, value)
+            : value;
+  }
+  return result;
+}
+
+function cloneJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => cloneJsonValue(item));
+  if (isPlainObject(value)) return mergeProviderPatches({}, value);
+  return value;
 }

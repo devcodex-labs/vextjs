@@ -574,6 +574,7 @@ Cluster 模式下，Master 会把本轮 provider patch 传递给 Worker 复用�
 - 环境变量：`VEXT_CONFIG=sg-sit vext start`
 
 profile 名匹配 `src/config/{profile}.ts`（build 后对应 `dist/config/{profile}.js`）。
+每条命令最多传入一次 `--config`。`start`、`dev`、`build` 与 `deploy assets` 遇到重复参数时会直接失败，不会静默采用最后一个值。
 :::
 
 ## `vext stop` — 停止服务

@@ -19,6 +19,7 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
  * vext start — 生产模式启动命令（Phase 1）
@@ -380,6 +381,7 @@ function resolveCliConfigProfile(
  */
 export function parseStartArgs(args: string[]): StartOptions {
   const options: StartOptions = {};
+  const seenOptions = new Set<string>();
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -395,8 +397,10 @@ export function parseStartArgs(args: string[]): StartOptions {
     } else if (arg === "--host" && i + 1 < args.length) {
       options.host = args[++i]!;
     } else if (arg === "--config" && i + 1 < args.length) {
+      markUniqueOption(seenOptions, "--config");
       options.configProfile = args[++i]!;
     } else if (arg === "--config") {
+      markUniqueOption(seenOptions, "--config");
       console.error("[vextjs] --config requires a value");
       process.exit(1);
     } else if (arg === "--port-conflict" && i + 1 < args.length) {

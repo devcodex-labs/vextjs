@@ -13,6 +13,7 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
  * vext build — 生产编译命令（Phase 2A）
@@ -383,6 +384,7 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
     uploadAssets: false,
     deployDryRun: false,
   };
+  const seenOptions = new Set<string>();
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -397,6 +399,7 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
         break;
 
       case "--config":
+        markUniqueOption(seenOptions, "--config");
         if (i + 1 >= args.length) {
           console.error("[vextjs] --config requires a value");
           process.exit(1);

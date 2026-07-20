@@ -13,6 +13,7 @@ import type {
   VextFrontendDeployUploadAdapterName,
   VextFrontendUserConfig,
 } from "../frontend/contract/types.js";
+import { markUniqueOption } from "./utils/option-occurrence.js";
 
 interface DeployAssetsCommandOptions {
   outdir: string;
@@ -100,6 +101,7 @@ export function parseDeployAssetsArgs(
     outdir: process.env.VEXT_BUILD_OUTDIR || "dist",
     dryRun: false,
   };
+  const seenOptions = new Set<string>();
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
@@ -110,6 +112,7 @@ export function parseDeployAssetsArgs(
         options.manifest = readRequiredValue(args, ++i, "--manifest");
         break;
       case "--config":
+        markUniqueOption(seenOptions, "--config");
         options.configProfile = readRequiredValue(args, ++i, "--config");
         break;
       case "--adapter":

@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 import { isMiddleware, isMiddlewareFactory } from "./define-middleware.js";
 import { resolveModuleDefault } from "./interop.js";
+import { importUserModule } from "./user-module-loader.js";
 import type { VextMiddleware } from "../types/middleware.js";
 import type { VextLogger } from "../types/app.js";
-import { pathToFileURL } from "node:url";
 
 /**
  * middleware-loader.ts — 路由级中间件白名单加载器
@@ -44,7 +44,11 @@ import { pathToFileURL } from "node:url";
  */
 export type MiddlewareDecl =
   | string
-  | { name: string; options?: Record<string, unknown> };
+  | {
+      name: string;
+      options?: Record<string, unknown>;
+      enabled?: boolean;
+    };
 
 /**
  * 中间件注册表中的单条记录
@@ -105,6 +109,7 @@ export async function loadMiddlewares(
   lifecycleLevel: "concise" | "verbose" = "concise",
 ): Promise<MiddlewareRegistry> {
   const registry: MiddlewareRegistry = {};
+  const declaredNames = new Set<string>();
 
   // 白名单为空 → 无中间件需要加载，直接返回
   if (!declarations || declarations.length === 0) {
@@ -113,7 +118,21 @@ export async function loadMiddlewares(
 
   for (const decl of declarations) {
     const name = typeof decl === "string" ? decl : decl.name;
+    if (declaredNames.has(name)) {
+      throw new Error(
+        `[vextjs] Middleware "${name}" is declared more than once in config.middlewares.`,
+      );
+    }
+    declaredNames.add(name);
+  }
+
+  for (const decl of declarations) {
+    const name = typeof decl === "string" ? decl : decl.name;
     const defaultOptions = typeof decl === "string" ? undefined : decl.options;
+
+    if (typeof decl !== "string" && decl.enabled === false) {
+      continue;
+    }
 
     // ── 1. 查找文件（多扩展名）─────────────────────────────
     const fullPath = resolveFile(middlewaresDir, name);
@@ -346,8 +365,7 @@ async function importMiddlewareFile(
   name: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const fileUrl = pathToFileUrl(fullPath);
-    return await import(fileUrl);
+    return await importUserModule(fullPath);
   } catch (err) {
     throw new Error(
       `[vextjs] Failed to import middleware "${name}".\n` +
@@ -355,13 +373,4 @@ async function importMiddlewareFile(
         `         ${(err as Error).message}`,
     );
   }
-}
-
-/**
- * 将文件系统路径转为 file:// URL
- *
- * dynamic import 在 Windows 上需要 file:// 协议前缀才能正确加载。
- */
-function pathToFileUrl(filePath: string): string {
-  return pathToFileURL(filePath).href;
 }

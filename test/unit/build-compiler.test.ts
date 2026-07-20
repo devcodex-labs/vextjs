@@ -948,6 +948,20 @@ describe("parseBuildArgs", () => {
       expect(options.configProfile).toBe("sg-sit");
     });
 
+    it("重复 --config 应失败而不是采用最后一个值", () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+        throw new Error(`process.exit(${code})`);
+      }) as typeof process.exit);
+
+      expect(() =>
+        parseBuildArgs(["--config", "one", "--config", "two"]),
+      ).toThrow("process.exit(1)");
+      expect(error).toHaveBeenCalledWith(
+        "[vextjs] --config may only be specified once",
+      );
+    });
+
     it("--clean 应设置清理标志", () => {
       const options = parseBuildArgs(["--clean"]);
       expect(options.clean).toBe(true);

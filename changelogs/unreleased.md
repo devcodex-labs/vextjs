@@ -4,6 +4,8 @@
 
 - **CLI create failure contracts** Reject extra positional arguments before filesystem writes, keep generated files but return a non-zero status when automatic dependency installation fails, and avoid TypeScript-only adapter dependencies in JavaScript Express and Koa scaffolds.
 - **Full-stack TypeScript aliases** Generate NodeNext-compatible TypeScript path targets for the built-in frontend aliases so the default React scaffold can resolve `@components/AppShell` during typecheck.
+- **Configuration loading contracts** Load TypeScript config, bootstrap provider, and middleware modules in linked and packed Node runtimes; reject duplicate CLI `--config` options and invalid config shapes with actionable diagnostics; honor disabled middleware declarations; deep-merge provider and middleware patches without freezing caller-owned values; and cache warm config discovery so repeated loads stay within the verification performance budget.
+- **Configuration documentation parity** Align the English and Chinese `DEFAULT_CONFIG`, environment variable, middleware layering, and CLI profile documentation with runtime behavior, with an automated source-to-document contract test to prevent drift.
 
 ## 2026-07-17
 

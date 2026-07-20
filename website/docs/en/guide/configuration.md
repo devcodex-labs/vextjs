@@ -180,6 +180,8 @@ export default {
 
 The `middlewares` array uses smart merging, matching by middleware `name`:
 
+Each configuration layer may declare a middleware name only once. Repeating a name in the same file fails fast; a later profile/local layer may declare the name once to patch the earlier declaration. `{ name, enabled: false }` removes that declaration from the runtime registry.
+
 ```typescript
 // src/config/default.ts
 export default {
@@ -843,9 +845,9 @@ Console logging is **not affected by overlay** - logging configured with `logErr
 
 ### Middleware whitelist (`middlewares`)
 
-| Configuration item | Type                                 | Default value | Description                      |
-| ------------------ | ------------------------------------ | ------------- | -------------------------------- |
-| `middlewares`      | `Array<string \| { name, options }>` | `[]`          | Route-level middleware whitelist |
+| Configuration item | Type                                            | Default value | Description                      |
+| ------------------ | ----------------------------------------------- | ------------- | -------------------------------- |
+| `middlewares`      | `Array<string \| { name, options?, enabled? }>` | `[]`          | Route-level middleware whitelist |
 
 ```typescript
 export default {

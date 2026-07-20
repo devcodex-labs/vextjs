@@ -24,6 +24,7 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
  * cli/dev.ts — vext dev 命令实现
@@ -806,6 +807,7 @@ function resolveCliConfigProfile(
  */
 export function parseDevArgs(args: string[]): DevCommandOptions {
   const options: DevCommandOptions = {};
+  const seenOptions = new Set<string>();
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -836,6 +838,7 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       case "--config":
+        markUniqueOption(seenOptions, "--config");
         if (i + 1 >= args.length) {
           console.error("[vextjs] --config requires a value");
           process.exit(1);

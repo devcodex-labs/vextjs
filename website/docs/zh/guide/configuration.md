@@ -180,6 +180,8 @@ export default {
 
 `middlewares` 数组使用智能合并，按中间件 `name` 匹配：
 
+同一个配置层中，每个中间件名称只能声明一次；同文件重名会在启动时失败。后续 profile/local 层可以声明一次同名项来 patch 前一层；`{ name, enabled: false }` 不会进入运行时 registry。
+
 ```typescript
 // src/config/default.ts
 export default {
@@ -847,9 +849,9 @@ Dev 错误覆盖层基于 **Accept 内容协商**，而非 HTTP 方法：
 
 ### 中间件白名单 (`middlewares`)
 
-| 配置项        | 类型                                 | 默认值 | 说明               |
-| ------------- | ------------------------------------ | ------ | ------------------ |
-| `middlewares` | `Array<string \| { name, options }>` | `[]`   | 路由级中间件白名单 |
+| 配置项        | 类型                                            | 默认值 | 说明               |
+| ------------- | ----------------------------------------------- | ------ | ------------------ |
+| `middlewares` | `Array<string \| { name, options?, enabled? }>` | `[]`   | 路由级中间件白名单 |
 
 ```typescript
 export default {

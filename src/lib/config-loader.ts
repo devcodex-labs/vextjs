@@ -23,9 +23,12 @@
 
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import type { VextConfig, VextMiddlewareConfig } from "../types/app.js";
 import { DEFAULT_CONFIG } from "./app.js";
+import {
+  BUILT_IN_ADAPTER_NAMES,
+  createUnknownAdapterError,
+} from "./adapter-resolver.js";
 import {
   loadBootstrapConfigPatch,
   type BootstrapCommand,
@@ -36,6 +39,7 @@ import {
   validateConfigProfileName,
   type RuntimeMode,
 } from "./config-profile.js";
+import { importUserModule } from "./user-module-loader.js";
 
 // ── 常量 ────────────────────────────────────────────────────
 
@@ -53,6 +57,7 @@ const OPENAPI_DOCS_OPENAPI_JSON_MODES = ["filtered", "public"];
  * 优先 .ts（TypeScript 项目推荐），其次 .js / .mjs / .cjs（兼容纯 JS 项目）。
  */
 const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
+const resolvedConfigFiles = new Map<string, string | null>();
 
 // ── 中间件声明类型 ──────────────────────────────────────────
 
@@ -89,10 +94,19 @@ export interface LoadConfigOptions {
  * @returns 完整文件路径，或 null（不存在）
  */
 function resolveConfigFile(configDir: string, name: string): string | null {
+  const cacheKey = `${configDir}\0${name}`;
+  if (resolvedConfigFiles.has(cacheKey)) {
+    return resolvedConfigFiles.get(cacheKey) ?? null;
+  }
+
   for (const ext of EXTENSIONS) {
     const full = path.join(configDir, `${name}${ext}`);
-    if (existsSync(full)) return full;
+    if (existsSync(full)) {
+      resolvedConfigFiles.set(cacheKey, full);
+      return full;
+    }
   }
+  resolvedConfigFiles.set(cacheKey, null);
   return null;
 }
 
@@ -116,37 +130,105 @@ function deepMerge<T extends Record<string, unknown>>(
   target: T,
   source: Partial<T>,
 ): T {
-  const result = { ...target };
+  return deepMergeRecords(target, source, new WeakMap(), true) as T;
+}
 
-  for (const key of Object.keys(source) as (keyof T)[]) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function cloneConfigValue<T>(
+  value: T,
+  seen = new WeakMap<object, unknown>(),
+): T {
+  if (value === null || typeof value !== "object") return value;
+  if (Object.isFrozen(value)) return value;
+  if (!Array.isArray(value) && !isPlainObject(value)) return value;
+
+  const cached = seen.get(value);
+  if (cached !== undefined) return cached as T;
+
+  if (Array.isArray(value)) {
+    const result: unknown[] = [];
+    seen.set(value, result);
+    for (const item of value) result.push(cloneConfigValue(item, seen));
+    return result as T;
+  }
+
+  const result: Record<string, unknown> = {};
+  seen.set(value, result);
+  for (const [key, item] of Object.entries(value)) {
+    result[key] = cloneConfigValue(item, seen);
+  }
+  return result as T;
+}
+
+function deepMergeRecords(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  sourceSeen: WeakMap<object, unknown>,
+  skipMiddlewares: boolean,
+): Record<string, unknown> {
+  const cached = sourceSeen.get(source);
+  if (cached !== undefined) return cached as Record<string, unknown>;
+
+  const result = cloneConfigValue(target);
+  sourceSeen.set(source, result);
+
+  for (const key of Object.keys(source)) {
     const sv = source[key];
     const tv = target[key];
 
     // 跳过 middlewares — 由 patchMiddlewares 专门处理
-    if (key === "middlewares") continue;
+    if (skipMiddlewares && key === "middlewares") continue;
 
-    if (
-      sv !== null &&
-      sv !== undefined &&
-      typeof sv === "object" &&
-      !Array.isArray(sv) &&
-      tv !== null &&
-      tv !== undefined &&
-      typeof tv === "object" &&
-      !Array.isArray(tv)
-    ) {
+    if (isPlainObject(sv) && isPlainObject(tv)) {
       // 两边都是普通对象 → 递归深度合并
-      result[key] = deepMerge(
-        tv as Record<string, unknown>,
-        sv as Record<string, unknown>,
-      ) as T[keyof T];
+      result[key] = deepMergeRecords(tv, sv, sourceSeen, false);
     } else {
-      // 标量、数组、null → 直接覆盖
-      result[key] = sv as T[keyof T];
+      // 标量、数组、null → 独立克隆后覆盖
+      result[key] = cloneConfigValue(sv, sourceSeen);
     }
   }
 
   return result;
+}
+
+function mergeIntoOwnedRecord(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  sourceSeen = new WeakMap<object, unknown>(),
+  skipMiddlewares = true,
+): Record<string, unknown> {
+  sourceSeen.set(source, target);
+  for (const [key, sourceValue] of Object.entries(source)) {
+    if (skipMiddlewares && key === "middlewares") continue;
+
+    const targetValue = target[key];
+    if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
+      const cached = sourceSeen.get(sourceValue);
+      if (cached !== undefined) {
+        target[key] = cached;
+        continue;
+      }
+      const nestedTarget = Object.isFrozen(targetValue)
+        ? { ...targetValue }
+        : targetValue;
+      target[key] = mergeIntoOwnedRecord(
+        nestedTarget,
+        sourceValue,
+        sourceSeen,
+        false,
+      );
+    } else {
+      target[key] = cloneConfigValue(sourceValue, sourceSeen);
+    }
+  }
+  return target;
 }
 
 // ── middlewares patch 合并 ───────────────────────────────────
@@ -176,12 +258,17 @@ function patchMiddlewares(
   override: MiddlewareDecl[],
 ): MiddlewareDecl[] {
   // 拷贝 base，统一为独立引用
-  const result: MiddlewareDecl[] = base.map((d) =>
-    typeof d === "string" ? d : { ...d },
-  );
+  const result = cloneConfigValue(base);
+  const layerNames = new Set<string>();
 
   for (const item of override) {
     const name = getMiddlewareName(item);
+    if (layerNames.has(name)) {
+      throw new Error(
+        `[vextjs] config.middlewares contains duplicate name "${name}" in the same configuration layer.`,
+      );
+    }
+    layerNames.add(name);
     const idx = result.findIndex((d) => getMiddlewareName(d) === name);
 
     if (idx !== -1) {
@@ -191,10 +278,15 @@ function patchMiddlewares(
         typeof existing === "string" ? { name: existing } : { ...existing };
       const overrideObj =
         typeof item === "string" ? { name: item } : { ...item };
-      result[idx] = { ...baseObj, ...overrideObj };
+      result[idx] = deepMergeRecords(
+        baseObj,
+        overrideObj,
+        new WeakMap(),
+        false,
+      ) as unknown as VextMiddlewareConfig;
     } else {
       // 未匹配到 → 追加
-      result.push(item);
+      result.push(cloneConfigValue(item));
     }
   }
 
@@ -206,13 +298,15 @@ function applyConfigLayer(
   override: Record<string, unknown>,
 ): Record<string, unknown> {
   const beforeOverride = { ...base };
-  const merged = deepMerge(base, override);
+  const merged = mergeIntoOwnedRecord(base, override);
 
-  if (override.middlewares && Array.isArray(override.middlewares)) {
-    merged.middlewares = patchMiddlewares(
-      (beforeOverride.middlewares as MiddlewareDecl[] | undefined) ?? [],
-      override.middlewares as MiddlewareDecl[],
-    );
+  if (override.middlewares !== undefined) {
+    merged.middlewares = Array.isArray(override.middlewares)
+      ? patchMiddlewares(
+          (beforeOverride.middlewares as MiddlewareDecl[] | undefined) ?? [],
+          override.middlewares as MiddlewareDecl[],
+        )
+      : override.middlewares;
   }
 
   return merged;
@@ -223,8 +317,14 @@ function applyCliOverrides(
   env: NodeJS.ProcessEnv,
 ): Record<string, unknown> {
   if (env.VEXT_PORT) {
-    const cliPort = parseInt(env.VEXT_PORT, 10);
-    if (!Number.isNaN(cliPort) && cliPort >= 1 && cliPort <= 65535) {
+    const rawPort = env.VEXT_PORT.trim();
+    const cliPort = Number(rawPort);
+    if (
+      /^\d+$/.test(rawPort) &&
+      Number.isInteger(cliPort) &&
+      cliPort >= 1 &&
+      cliPort <= 65535
+    ) {
       merged.port = cliPort;
     }
   }
@@ -298,6 +398,15 @@ function deepFreeze<T>(obj: T): T {
   return obj;
 }
 
+let internalDefaultConfig: Readonly<Record<string, unknown>> | undefined;
+
+function getInternalDefaultConfig(): Readonly<Record<string, unknown>> {
+  internalDefaultConfig ??= deepFreeze(
+    cloneConfigValue(DEFAULT_CONFIG as unknown as Record<string, unknown>),
+  );
+  return internalDefaultConfig;
+}
+
 // ── 配置校验（Fail Fast）───────────────────────────────────
 
 /**
@@ -314,27 +423,45 @@ function validateConfig(config: Record<string, unknown>): void {
   const port = config.port as number | undefined;
   if (
     port !== undefined &&
-    (typeof port !== "number" || port < 1 || port > 65535)
+    (typeof port !== "number" ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535)
   ) {
     throw new Error(
-      `[vextjs] config.port must be a number between 1 and 65535, got: ${port}`,
+      `[vextjs] config.port must be an integer between 1 and 65535, got: ${port}`,
     );
+  }
+
+  if (config.host !== undefined && typeof config.host !== "string") {
+    throw new Error("[vextjs] config.host must be a string.");
+  }
+  if (
+    config.trustProxy !== undefined &&
+    typeof config.trustProxy !== "boolean"
+  ) {
+    throw new Error("[vextjs] config.trustProxy must be a boolean.");
   }
 
   // ── adapter（字符串标识 | 工厂函数）──────────────────
   const adapter = config.adapter;
   if (adapter !== undefined) {
-    const knownAdapters = ["hono", "fastify", "express", "koa", "native"];
     if (typeof adapter === "string") {
-      if (!knownAdapters.includes(adapter)) {
-        throw new Error(
-          `[vextjs] config.adapter "${adapter}" is not a built-in adapter.\n` +
-            `         Available: ${knownAdapters.join(", ")}`,
-        );
+      if (
+        !BUILT_IN_ADAPTER_NAMES.includes(
+          adapter as (typeof BUILT_IN_ADAPTER_NAMES)[number],
+        )
+      ) {
+        throw createUnknownAdapterError(adapter);
       }
-    } else if (typeof adapter !== "function") {
+    } else if (
+      typeof adapter !== "function" &&
+      (typeof adapter !== "object" ||
+        adapter === null ||
+        Array.isArray(adapter))
+    ) {
       throw new Error(
-        `[vextjs] config.adapter must be a string (built-in name) or a factory function,` +
+        `[vextjs] config.adapter must be a string (built-in name), a factory function, or an adapter object,` +
           ` got: ${typeof adapter}`,
       );
     }
@@ -346,18 +473,51 @@ function validateConfig(config: Record<string, unknown>): void {
     if (!Array.isArray(middlewares)) {
       throw new Error("[vextjs] config.middlewares must be an array.");
     }
+    const names = new Set<string>();
     for (let i = 0; i < middlewares.length; i++) {
       const m = middlewares[i];
-      if (
-        typeof m !== "string" &&
-        (typeof m !== "object" || m === null || !("name" in m))
-      ) {
+      if (typeof m === "string") {
+        if (m.trim().length === 0) {
+          throw new Error(
+            `[vextjs] config.middlewares[${i}] must be a non-empty string.`,
+          );
+        }
+      } else if (!isPlainObject(m)) {
         throw new Error(
           `[vextjs] config.middlewares[${i}] must be a string or { name, options?, enabled? } object.`,
         );
+      } else {
+        if (typeof m.name !== "string" || m.name.trim().length === 0) {
+          throw new Error(
+            `[vextjs] config.middlewares[${i}].name must be a non-empty string.`,
+          );
+        }
+        if (m.options !== undefined && !isPlainObject(m.options)) {
+          throw new Error(
+            `[vextjs] config.middlewares[${i}].options must be an object.`,
+          );
+        }
+        if (m.enabled !== undefined && typeof m.enabled !== "boolean") {
+          throw new Error(
+            `[vextjs] config.middlewares[${i}].enabled must be a boolean.`,
+          );
+        }
       }
+
+      const name = typeof m === "string" ? m : (m.name as string);
+      if (names.has(name)) {
+        throw new Error(
+          `[vextjs] config.middlewares contains duplicate name "${name}".`,
+        );
+      }
+      names.add(name);
     }
   }
+
+  validateCorsConfig(config.cors, "config.cors");
+  validateRequestIdConfig(config.requestId, "config.requestId");
+  validateBodyParserConfig(config.bodyParser, "config.bodyParser");
+  validateMultipartConfig(config.multipart, "config.multipart");
 
   // ── rateLimit ─────────────────────────────────────────
   const rateLimit = config.rateLimit as Record<string, unknown> | undefined;
@@ -603,9 +763,12 @@ function validateConfig(config: Record<string, unknown>): void {
       throw new Error("[vextjs] config.shutdown must be an object.");
     }
     const timeout = shutdown.timeout;
-    if (timeout !== undefined && (typeof timeout !== "number" || timeout < 0)) {
+    if (
+      timeout !== undefined &&
+      (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout < 0)
+    ) {
       throw new Error(
-        `[vextjs] config.shutdown.timeout must be a non-negative number (seconds), got: ${timeout}`,
+        `[vextjs] config.shutdown.timeout must be a finite non-negative number (seconds), got: ${timeout}`,
       );
     }
   }
@@ -737,6 +900,120 @@ function validateConfig(config: Record<string, unknown>): void {
       );
     }
     validateCacheHubConfig(cache.cacheHub, "config.cache.cacheHub");
+  }
+}
+
+function validateCorsConfig(value: unknown, pathName: string): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an object.`);
+  }
+  for (const field of ["enabled", "credentials"] as const) {
+    if (value[field] !== undefined && typeof value[field] !== "boolean") {
+      throw new Error(`[vextjs] ${pathName}.${field} must be a boolean.`);
+    }
+  }
+  for (const field of ["origins", "methods", "headers"] as const) {
+    const items = value[field];
+    if (
+      items !== undefined &&
+      (!Array.isArray(items) || items.some((item) => typeof item !== "string"))
+    ) {
+      throw new Error(
+        `[vextjs] ${pathName}.${field} must be an array of strings.`,
+      );
+    }
+  }
+  if (
+    value.maxAge !== undefined &&
+    (typeof value.maxAge !== "number" ||
+      !Number.isFinite(value.maxAge) ||
+      value.maxAge < 0)
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.maxAge must be a finite non-negative number.`,
+    );
+  }
+}
+
+function validateRequestIdConfig(value: unknown, pathName: string): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an object.`);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${pathName}.enabled must be a boolean.`);
+  }
+  for (const field of ["header", "responseHeader"] as const) {
+    if (
+      value[field] !== undefined &&
+      (typeof value[field] !== "string" || value[field].trim().length === 0)
+    ) {
+      throw new Error(
+        `[vextjs] ${pathName}.${field} must be a non-empty string.`,
+      );
+    }
+  }
+  if (value.generate !== undefined && typeof value.generate !== "function") {
+    throw new Error(`[vextjs] ${pathName}.generate must be a function.`);
+  }
+}
+
+function validateBodyParserConfig(value: unknown, pathName: string): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an object.`);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${pathName}.enabled must be a boolean.`);
+  }
+  const maxBodySize = value.maxBodySize;
+  if (
+    maxBodySize !== undefined &&
+    ((typeof maxBodySize !== "string" && typeof maxBodySize !== "number") ||
+      (typeof maxBodySize === "number" &&
+        (!Number.isFinite(maxBodySize) || maxBodySize <= 0)))
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.maxBodySize must be a size string or a positive finite number.`,
+    );
+  }
+}
+
+function validateMultipartConfig(value: unknown, pathName: string): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) {
+    throw new Error(`[vextjs] ${pathName} must be an object.`);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error(`[vextjs] ${pathName}.enabled must be a boolean.`);
+  }
+  if (
+    value.maxFileSize !== undefined &&
+    (typeof value.maxFileSize !== "number" ||
+      !Number.isFinite(value.maxFileSize) ||
+      value.maxFileSize <= 0)
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.maxFileSize must be a positive finite number.`,
+    );
+  }
+  if (
+    value.maxFiles !== undefined &&
+    (!Number.isInteger(value.maxFiles) || (value.maxFiles as number) < 1)
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.maxFiles must be a positive integer.`,
+    );
+  }
+  if (
+    value.allowedMimeTypes !== undefined &&
+    (!Array.isArray(value.allowedMimeTypes) ||
+      value.allowedMimeTypes.some((item) => typeof item !== "string"))
+  ) {
+    throw new Error(
+      `[vextjs] ${pathName}.allowedMimeTypes must be an array of strings.`,
+    );
   }
 }
 
@@ -2377,8 +2654,7 @@ async function importConfigFile(
   // 延迟导入 interop 工具（避免循环依赖风险）
   const { resolveModuleDefault } = await import("./interop.js");
 
-  const fileUrl = pathToFileURL(filePath).href;
-  const mod = (await import(fileUrl)) as Record<string, unknown>;
+  const mod = await importUserModule(filePath);
 
   const defaultExport = resolveModuleDefault<Record<string, unknown>>(mod);
 
@@ -2444,8 +2720,8 @@ export async function loadRawConfig(
   // 这确保 requestId / rateLimit / cors 等必要配置始终有值，
   // 即使用户未显式声明也不会导致 bootstrap 崩溃。
   //
-  const defaultConfig = deepMerge(
-    DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  const defaultConfig = mergeIntoOwnedRecord(
+    { ...getInternalDefaultConfig() },
     userDefaultConfig,
   );
 
@@ -2458,12 +2734,12 @@ export async function loadRawConfig(
   // 🐛 修复：BUG-004 — middlewares 在 deepMerge(DEFAULT_CONFIG, userDefaultConfig) 中被跳过，
   //    导致 loadMiddlewares 收到空数组，路由引用中间件时报 "not registered"。
   //
-  if (
-    userDefaultConfig.middlewares &&
-    Array.isArray(userDefaultConfig.middlewares)
-  ) {
-    (defaultConfig as Record<string, unknown>).middlewares =
-      userDefaultConfig.middlewares;
+  if (userDefaultConfig.middlewares !== undefined) {
+    (defaultConfig as Record<string, unknown>).middlewares = Array.isArray(
+      userDefaultConfig.middlewares,
+    )
+      ? patchMiddlewares([], userDefaultConfig.middlewares as MiddlewareDecl[])
+      : userDefaultConfig.middlewares;
   }
 
   // ── 2. 加载 profile 文件（可选）──────────────────────────

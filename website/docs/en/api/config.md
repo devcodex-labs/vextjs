@@ -1053,12 +1053,13 @@ import { DEFAULT_CONFIG } from 'vextjs';
   shutdown: {
     timeout: 10,
   },
+  server: {},
   response: {
     hideInternalErrors: true,
     wrap: true,
   },
   session: {
-    enabled: true,
+    enabled: false,
     name: 'vext.sid',
     ttl: 86400,
     rolling: false,
@@ -1070,6 +1071,26 @@ import { DEFAULT_CONFIG } from 'vextjs';
       path: '/',
       secure: 'auto',
     },
+  },
+  csrf: {
+    enabled: false,
+    mode: 'auto',
+    methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
+    headerNames: ['x-csrf-token', 'x-xsrf-token'],
+    bodyField: '_csrf',
+    cookie: {
+      name: 'vext.csrf',
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+      secure: 'auto',
+    },
+    fetchMetadata: true,
+    origin: false,
+  },
+  securityHeaders: {
+    enabled: false,
+    preset: 'basic',
   },
   bodyParser: {
     enabled: true,
@@ -1222,16 +1243,16 @@ Usually there is no need to call it manually, `bootstrap()` will automatically c
 
 Some configurations support overriding through environment variables:
 
-| Environment variables | Corresponding configuration | Description                                   |
-| --------------------- | --------------------------- | --------------------------------------------- |
-| `PORT`                | `port`                      | HTTP listening port                           |
-| `HOST`                | `host`                      | HTTP listening address                        |
-| `VEXT_CONFIG`         | —                           | Select the config profile to load             |
-| `NODE_ENV`            | —                           | Runtime mode; `vext start` runs as production |
-| `VEXT_CLUSTER`        | `cluster.enabled`           | Set to `1` to enable clustering               |
+| Environment variables | Corresponding configuration | Description                                                 |
+| --------------------- | --------------------------- | ----------------------------------------------------------- |
+| `VEXT_PORT`           | `port`                      | Strict whole-value port override from CLI/runtime transport |
+| `VEXT_HOST`           | `host`                      | Host override from CLI/runtime transport                    |
+| `VEXT_CONFIG`         | —                           | Select the config profile to load                           |
+| `NODE_ENV`            | —                           | Runtime mode; `vext start` runs as production               |
+| `VEXT_CLUSTER`        | `cluster.enabled`           | Set to `1` to enable clustering                             |
 
 ```bash
-PORT=8080 VEXT_CONFIG=sg-sit vext start
+VEXT_PORT=8080 VEXT_CONFIG=sg-sit vext start
 ```
 
 ---

@@ -1066,12 +1066,13 @@ import { DEFAULT_CONFIG } from 'vextjs';
   shutdown: {
     timeout: 10,
   },
+  server: {},
   response: {
     hideInternalErrors: true,
     wrap: true,
   },
   session: {
-    enabled: true,
+    enabled: false,
     name: 'vext.sid',
     ttl: 86400,
     rolling: false,
@@ -1083,6 +1084,26 @@ import { DEFAULT_CONFIG } from 'vextjs';
       path: '/',
       secure: 'auto',
     },
+  },
+  csrf: {
+    enabled: false,
+    mode: 'auto',
+    methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
+    headerNames: ['x-csrf-token', 'x-xsrf-token'],
+    bodyField: '_csrf',
+    cookie: {
+      name: 'vext.csrf',
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+      secure: 'auto',
+    },
+    fetchMetadata: true,
+    origin: false,
+  },
+  securityHeaders: {
+    enabled: false,
+    preset: 'basic',
   },
   bodyParser: {
     enabled: true,
@@ -1235,14 +1256,14 @@ const config = await loadConfig(join(process.cwd(), "src/config"), {
 
 | 环境变量       | 对应配置          | 说明                                       |
 | -------------- | ----------------- | ------------------------------------------ |
-| `PORT`         | `port`            | HTTP 监听端口                              |
-| `HOST`         | `host`            | HTTP 监听地址                              |
+| `VEXT_PORT`    | `port`            | CLI/运行时传递的严格整值端口覆盖           |
+| `VEXT_HOST`    | `host`            | CLI/运行时传递的监听地址覆盖               |
 | `VEXT_CONFIG`  | —                 | 选择要加载的配置 profile                   |
 | `NODE_ENV`     | —                 | 运行时模式；`vext start` 固定为 production |
 | `VEXT_CLUSTER` | `cluster.enabled` | 设为 `1` 启用集群                          |
 
 ```bash
-PORT=8080 VEXT_CONFIG=sg-sit vext start
+VEXT_PORT=8080 VEXT_CONFIG=sg-sit vext start
 ```
 
 ---

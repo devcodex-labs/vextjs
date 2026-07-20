@@ -571,6 +571,7 @@ In Cluster mode, the Master will pass the current round of provider patches to t
 - Environment variable: `VEXT_CONFIG=sg-sit vext start`
 
 The profile name maps to `src/config/{profile}.ts` and, after build, `dist/config/{profile}.js`.
+Pass `--config` at most once per command. `start`, `dev`, `build`, and `deploy assets` reject duplicate occurrences instead of silently using the last value.
 :::
 
 ## `vext stop` — stop the service

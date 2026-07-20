@@ -23,6 +23,20 @@ describe("CLI config profile options", () => {
     expect(error).toHaveBeenCalledWith("[vextjs] --config requires a value");
   });
 
+  it("rejects duplicate vext start --config options", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as typeof process.exit);
+
+    expect(() =>
+      parseStartArgs(["--config", "one", "--config", "two"]),
+    ).toThrow("process.exit(1)");
+    expect(error).toHaveBeenCalledWith(
+      "[vextjs] --config may only be specified once",
+    );
+  });
+
   it("parses vext dev --config", () => {
     const options = parseDevArgs(["--config", "sg-sit"]);
 
@@ -37,5 +51,19 @@ describe("CLI config profile options", () => {
 
     expect(() => parseDevArgs(["--config"])).toThrow("process.exit(1)");
     expect(error).toHaveBeenCalledWith("[vextjs] --config requires a value");
+  });
+
+  it("rejects duplicate vext dev --config options", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as typeof process.exit);
+
+    expect(() => parseDevArgs(["--config", "one", "--config", "two"])).toThrow(
+      "process.exit(1)",
+    );
+    expect(error).toHaveBeenCalledWith(
+      "[vextjs] --config may only be specified once",
+    );
   });
 });

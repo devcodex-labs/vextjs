@@ -4,7 +4,21 @@ import type { VextApp, VextConfig } from "../types/app.js";
 /**
  * 内置 adapter 名称列表（用于错误提示）
  */
-const BUILT_IN_ADAPTER_NAMES = ["native", "hono", "fastify", "express", "koa"];
+export const BUILT_IN_ADAPTER_NAMES = [
+  "native",
+  "hono",
+  "fastify",
+  "express",
+  "koa",
+] as const;
+
+export function createUnknownAdapterError(name: string): Error {
+  return new Error(
+    `[vextjs] config.adapter "${name}" is not a built-in adapter.\n` +
+      `         Available: ${BUILT_IN_ADAPTER_NAMES.join(", ")}\n` +
+      `         For third-party adapters, pass an adapter object or factory function instead of a string.`,
+  );
+}
 
 /**
  * 动态加载内置 adapter 工厂函数
@@ -83,11 +97,7 @@ async function loadBuiltInAdapter(
     }
 
     default:
-      throw new Error(
-        `[vextjs] config.adapter "${name}" is not a built-in adapter.\n` +
-          `         Available: ${BUILT_IN_ADAPTER_NAMES.join(", ")}\n` +
-          `         For third-party adapters, pass an adapter object or factory function instead of a string.`,
-      );
+      throw createUnknownAdapterError(name);
   }
 }
 
