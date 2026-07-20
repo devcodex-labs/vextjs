@@ -95,6 +95,12 @@ export function resolveRouteBodyParserConfig(routeOptions?: {
   return undefined;
 }
 
+export function resolveRouteMultipartConfig(routeOptions?: {
+  multipart?: MultipartRouteConfig;
+}): MultipartRouteConfig | undefined {
+  return routeOptions?.multipart;
+}
+
 export function resolveAdapterBodyLimitBytes(args: {
   globalBodyParser?: VextBodyParserConfig;
   routeBodyParser?: VextBodyParserConfig;
@@ -272,6 +278,10 @@ export function createBodyParserMiddleware(
     }
     const routeBodyParser = (req as { _routeBodyParser?: VextBodyParserConfig })
       ._routeBodyParser;
+    const routeMultipart = resolveRouteMultipartConfig(
+      (req as { _routeOptions?: { multipart?: MultipartRouteConfig } })
+        ._routeOptions,
+    );
     const effectiveConfig = routeBodyParser
       ? { ...config, ...routeBodyParser }
       : config;
@@ -291,6 +301,11 @@ export function createBodyParserMiddleware(
 
     // ── 内置 multipart 解析（enabled 时自动填充 req.files）──────
     if (contentType.startsWith("multipart/form-data")) {
+      if (routeMultipart?.enabled === false) {
+        await next();
+        return;
+      }
+
       if (multipartConfig?.enabled) {
         try {
           req.files = await parseMultipart(

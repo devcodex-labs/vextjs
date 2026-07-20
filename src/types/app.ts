@@ -773,7 +773,7 @@ export interface MultipartRouteConfig {
    * 是否为此路由启用 multipart 解析（覆盖全局 multipart.enabled）
    *
    * - `true`：即使全局 `multipart.enabled = false`，此路由也启用内置解析
-   * - `false`：即使全局 `multipart.enabled = true`，此路由也跳过全局解析的二次校验
+   * - `false`：即使全局 `multipart.enabled = true`，此路由也跳过内置解析
    * - 未设置：跟随全局 `multipart.enabled`
    */
   enabled?: boolean;

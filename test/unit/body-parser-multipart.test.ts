@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRouteMultipartMiddleware } from "../../src/lib/middlewares/body-parser.js";
+import {
+  createBodyParserMiddleware,
+  createRouteMultipartMiddleware,
+} from "../../src/lib/middlewares/body-parser.js";
 import type { ParsedFile, VextRequest } from "../../src/types/request.js";
 
 function createFile(
@@ -68,6 +71,49 @@ function createRes() {
 }
 
 describe("route multipart middleware", () => {
+  it("skips global multipart parsing when the route disables multipart", async () => {
+    const middleware = createBodyParserMiddleware(
+      { enabled: true },
+      { enabled: true },
+    );
+    const req = createReq({
+      _routeOptions: { multipart: { enabled: false } },
+    } as Partial<VextRequest>);
+    const res = createRes();
+    const next = vi.fn();
+
+    await middleware(req, res as any, next);
+
+    expect(req._getRawBodyBuffer).not.toHaveBeenCalled();
+    expect(req.files).toBeUndefined();
+    expect(res.rawJson).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps global multipart parsing when the route does not opt out", async () => {
+    const middleware = createBodyParserMiddleware(
+      { enabled: true },
+      { enabled: true },
+    );
+    const req = createReq();
+    const res = createRes();
+    const next = vi.fn();
+
+    await middleware(req, res as any, next);
+
+    expect(req._getRawBodyBuffer).toHaveBeenCalledTimes(1);
+    expect(req.files).toEqual([
+      expect.objectContaining({
+        fieldname: "avatar",
+        filename: "avatar.txt",
+        mimetype: "text/plain",
+        size: 5,
+      }),
+    ]);
+    expect(res.rawJson).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects missing required file fields after global multipart parsing", async () => {
     const middleware = createRouteMultipartMiddleware({
       enabled: true,
