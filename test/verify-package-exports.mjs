@@ -1,12 +1,20 @@
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import {
+  assertNoBundledRuntimeDependencies,
+  runtimeDependencyNames,
+} from "../scripts/validation/verify-package-composition.mjs";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = (...parts) =>
   pathToFileURL(path.join(root, "dist", ...parts)).href;
+const packageJson = JSON.parse(
+  readFileSync(path.join(root, "package.json"), "utf8"),
+);
 
 const cjsEntrypoints = [
   "vextjs",
@@ -102,10 +110,85 @@ for (const entry of cjsEntrypoints) {
   const mod = require(entry);
   if (!mod || typeof mod !== "object")
     throw new Error(`CJS export did not load: ${entry}`);
+  assert.strictEqual(
+    require(entry),
+    mod,
+    `CJS repeat identity changed: ${entry}`,
+  );
   for (const name of namedExports[entry] ?? []) {
     if (!(name in mod)) throw new Error(`CJS export missing ${name}: ${entry}`);
   }
 }
+
+const packageTargets = Object.values(packageJson.exports).flatMap(
+  (conditions) => Object.values(conditions),
+);
+assert.equal(
+  packageTargets.length,
+  27,
+  "package exports must expose 27 targets",
+);
+for (const target of packageTargets) {
+  assert.ok(
+    existsSync(path.join(root, target.replace(/^\.\//, ""))),
+    `package export target is missing: ${target}`,
+  );
+}
+assert.ok(
+  existsSync(path.join(root, packageJson.bin.vext)),
+  `CLI target is missing: ${packageJson.bin.vext}`,
+);
+
+const runtimePackages = runtimeDependencyNames(packageJson);
+for (const dependency of [
+  ...Object.keys(packageJson.dependencies),
+  ...Object.keys(packageJson.peerDependencies),
+  "mongodb-memory-server-core",
+]) {
+  assert.ok(
+    runtimePackages.includes(dependency),
+    `external is missing: ${dependency}`,
+  );
+}
+assert.doesNotThrow(() =>
+  assertNoBundledRuntimeDependencies(
+    { inputs: { "src/index.ts": {}, "node_modules/vitest/index.js": {} } },
+    runtimePackages,
+    "synthetic safe bundle",
+  ),
+);
+assert.throws(
+  () =>
+    assertNoBundledRuntimeDependencies(
+      {
+        inputs: {
+          "src/index.ts": {},
+          "node_modules/react/index.js": {},
+          "node_modules/.pnpm/react-dom@19.2.7/node_modules/react-dom/index.js":
+            {},
+        },
+      },
+      runtimePackages,
+      "synthetic invalid bundle",
+    ),
+  /react, react-dom|react-dom, react/,
+);
+
+const docsDeclaration = path.join(
+  root,
+  "dist/lib/docs/renderers/vext-assets.d.ts",
+);
+const docsDeclarationText = readFileSync(docsDeclaration, "utf8");
+assert.ok(
+  statSync(docsDeclaration).size < 1024,
+  "Docs declaration exceeds 1 KiB",
+);
+assert.match(docsDeclarationText, /VEXT_DOCS_STYLE_CSS: string/);
+assert.match(docsDeclarationText, /VEXT_DOCS_APP_JS: string/);
+assert.doesNotMatch(
+  docsDeclarationText,
+  /color-scheme|document\.getElementById/,
+);
 for (const entry of esmEntrypoints) {
   const mod = await import(entry);
   if (!mod || typeof mod !== "object")

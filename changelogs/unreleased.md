@@ -5,6 +5,11 @@
 - **CLI create failure contracts** Reject extra positional arguments before filesystem writes, keep generated files but return a non-zero status when automatic dependency installation fails, and avoid TypeScript-only adapter dependencies in JavaScript Express and Koa scaffolds.
 - **Full-stack TypeScript aliases** Generate NodeNext-compatible TypeScript path targets for the built-in frontend aliases so the default React scaffold can resolve `@components/AppShell` during typecheck.
 
+## 2026-07-17
+
+- **Package composition and CJS distribution** Kept all runtime and peer dependencies external in the nine CJS entry bundles using package-manifest-derived inputs and an esbuild metafile guard, while applying syntax/whitespace-only minification with identifiers and stack names preserved.
+- **Published package boundary** Removed repository maintenance scripts from the npm artifact, widened the two built-in Docs asset exports to compact `string` declarations, and added `verify:package-composition` to validate all export/bin targets, forbidden source/tooling paths, declaration size, and pack inventory before isolated install. This is a source fix only: `B01-F11` remains open until a fresh identity-bound B01/PERF run is accepted.
+
 ## 2026-07-15
 
 - **v1 schema source adaptation (not released)** Adapted validation and OpenAPI generation to exact registry `schema-dsl@3.0.0` and `monsqlize@3.1.0` while keeping the vextjs package identity at `0.3.26`. Root imports no longer depend on or declare `String.prototype.description`; field descriptions now use `schemaAdapter.compileField(...).description(...)` explicitly.

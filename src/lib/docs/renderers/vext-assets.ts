@@ -1,4 +1,4 @@
-export const VEXT_DOCS_STYLE_CSS = `
+export const VEXT_DOCS_STYLE_CSS: string = `
 :root {
   color-scheme: light;
   --vext-bg: #f7f8fb;
@@ -1637,7 +1637,7 @@ body {
 }
 `;
 
-export const VEXT_DOCS_APP_JS = `
+export const VEXT_DOCS_APP_JS: string = `
 (() => {
   const configEl = document.getElementById("vext-docs-config");
   const rootEl = document.getElementById("vext-docs-root");

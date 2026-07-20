@@ -34,13 +34,20 @@
  */
 
 import { build } from "esbuild";
-import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertNoBundledRuntimeDependencies,
+  runtimeDependencyNames,
+} from "./validation/verify-package-composition.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = resolve(__dirname, "..");
+const packageJson = JSON.parse(
+  readFileSync(resolve(projectRoot, "package.json"), "utf8"),
+);
 
 /**
  * 所有外部依赖（不打包进 CJS bundle）
@@ -48,44 +55,8 @@ const projectRoot = resolve(__dirname, "..");
  * 这些包自身支持 CJS require()，无需内联。
  * 只有 vextjs 自身的代码需要从 ESM 转为 CJS。
  */
-const externalDeps = [
-  // 生产依赖
-  "esbuild",
-  "fast-glob",
-  "flex-rate-limit",
-  "monsqlize",
-  "response-cache-kit",
-  "route-core",
-  "schema-dsl",
-  // 可选的 peer 依赖（adapter 框架）
-  "hono",
-  "@hono/node-server",
-  "fastify",
-  "express",
-  "koa",
-  "@koa/router",
-  // 测试辅助依赖（useMemoryServer 路径按需安装，不进入 CJS bundle）
-  "mongodb-memory-server-core",
-  // Node.js 内置模块
-  "node:*",
-  "fs",
-  "path",
-  "url",
-  "http",
-  "https",
-  "net",
-  "os",
-  "crypto",
-  "stream",
-  "events",
-  "util",
-  "child_process",
-  "cluster",
-  "module",
-  "assert",
-  "async_hooks",
-  "worker_threads",
-];
+const runtimePackages = runtimeDependencyNames(packageJson);
+const externalDeps = [...runtimePackages, "node:*"];
 
 /**
  * CJS 构建入口列表
@@ -136,6 +107,19 @@ const entries = [
   },
 ];
 
+function listCjsOutputs(directory) {
+  if (!existsSync(directory)) return [];
+  const outputs = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const absolute = resolve(directory, entry.name);
+    if (entry.isDirectory()) outputs.push(...listCjsOutputs(absolute));
+    if (entry.isFile() && entry.name.endsWith(".cjs")) {
+      outputs.push(relative(projectRoot, absolute).replaceAll("\\", "/"));
+    }
+  }
+  return outputs.sort();
+}
+
 async function buildCjs() {
   const startTime = Date.now();
   let built = 0;
@@ -144,13 +128,12 @@ async function buildCjs() {
     const inputPath = resolve(projectRoot, entry.input);
 
     if (!existsSync(inputPath)) {
-      console.warn(
-        `⚠️  [build-cjs] Skipping ${entry.name}: ${entry.input} not found (run \`tsc\` first)`,
+      throw new Error(
+        `[build-cjs] Missing ${entry.name} input: ${entry.input} (run \`tsc\` first)`,
       );
-      continue;
     }
 
-    await build({
+    const result = await build({
       entryPoints: [inputPath],
       outfile: resolve(projectRoot, entry.output),
 
@@ -170,8 +153,12 @@ async function buildCjs() {
       // ── 优化选项 ────────────────────────────────────
       treeShaking: true,
       keepNames: true,
+      minifyWhitespace: true,
+      minifySyntax: true,
+      minifyIdentifiers: false,
       charset: "utf8",
       sourcemap: false,
+      metafile: true,
 
       // ── 日志 ────────────────────────────────────────
       logLevel: "warning",
@@ -193,9 +180,28 @@ async function buildCjs() {
       },
     });
 
+    assertNoBundledRuntimeDependencies(
+      result.metafile,
+      runtimePackages,
+      `[build-cjs] ${entry.name}`,
+    );
+
     built++;
     console.log(
       `✅ [build-cjs] ${entry.name}: ${entry.input} → ${entry.output}`,
+    );
+  }
+
+  if (built !== entries.length) {
+    throw new Error(
+      `[build-cjs] Expected ${entries.length} outputs, generated ${built}`,
+    );
+  }
+  const expectedOutputs = entries.map((entry) => entry.output).sort();
+  const actualOutputs = listCjsOutputs(resolve(projectRoot, "dist"));
+  if (JSON.stringify(actualOutputs) !== JSON.stringify(expectedOutputs)) {
+    throw new Error(
+      `[build-cjs] CJS output set mismatch: expected ${expectedOutputs.join(", ")}; found ${actualOutputs.join(", ")}`,
     );
   }
 

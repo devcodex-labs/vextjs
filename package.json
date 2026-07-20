@@ -57,7 +57,6 @@
   },
   "files": [
     "dist",
-    "scripts",
     "README.md",
     "MIGRATION.md",
     "CHANGELOG.md",
@@ -90,6 +89,7 @@
     "prepublishOnly": "npm run release:preflight:final",
     "test:audit": "npm run verify:exports && npm run verify:adapters",
     "verify:exports": "node test/verify-package-exports.mjs",
+    "verify:package-composition": "node scripts/validation/verify-package-composition.mjs",
     "verify:adapters": "node test/verify-adapters-startup.mjs",
     "verify:schema-v3": "node scripts/validation/check-schema-v3-adaptation.mjs",
     "verify:pack-install": "node scripts/validation/verify-packed-install.mjs"

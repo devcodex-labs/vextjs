@@ -353,9 +353,9 @@ export class SchemaConverter {
    *
    * 示例：
    *   'string:1-50'  + required  → "Required. String, 1-50 chars."
-   *   'email'        + optional  → "Optional (nullable). Email address."
+   *   'email'        + optional  → "Optional. Email address."
    *   'enum:a,b,c'              → "Optional. Enum: a, b, c."
-   *   'integer:0-150' + optional → "Optional (nullable). Integer, range 0-150."
+   *   'integer:0-150' + optional → "Optional. Integer, range 0-150."
    *
    * @param dsl      不含后缀标记的 DSL 字符串
    * @param required 是否必填

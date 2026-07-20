@@ -168,6 +168,7 @@ const checks = [
   ["E2E tests", npm, ["run", "test:e2e"]],
   ["coverage", npm, ["run", "test:cov"]],
   ["ESM/CJS build", npm, ["run", "build"]],
+  ["package composition", npm, ["run", "verify:package-composition"]],
   ["schema-dsl v3 boundary", npm, ["run", "verify:schema-v3"]],
   ["exports and adapter startup", npm, ["run", "test:audit"]],
   ["CLI smoke", process.execPath, ["dist/cli/index.js", "--help"]],
