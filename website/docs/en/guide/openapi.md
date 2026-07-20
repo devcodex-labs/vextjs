@@ -363,6 +363,8 @@ app.post('/users', {
 }, handler);
 ```
 
+`x-rate-limit` is generated automatically only when the `rate-limit` object middleware provides positive numeric `max` and `window` options. String middleware references, missing options, partial options, and malformed option values do not emit an empty `x-rate-limit`, so OpenAPI consumers are not given a misleading rate-limit contract.
+
 ## docs Configuration details
 
 ### `summary` — interface summary

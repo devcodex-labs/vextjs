@@ -2098,6 +2098,94 @@ describe("OpenAPIGenerator", () => {
       expect(op["x-rate-limit"]).toBeUndefined();
     });
 
+    it("rate-limit 对象中间件缺少 options → 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          middlewares: [{ name: "rate-limit" }] as unknown as string[],
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toBeUndefined();
+    });
+
+    it("rate-limit options 缺少 max 或 window → 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/max-only", {
+          middlewares: [
+            { name: "rate-limit", options: { max: 10 } },
+          ] as unknown as string[],
+        }),
+        createRoute("POST", "/window-only", {
+          middlewares: [
+            { name: "rate-limit", options: { window: 60000 } },
+          ] as unknown as string[],
+        }),
+      ]);
+
+      expect(
+        (doc.paths["/max-only"].post! as Record<string, unknown>)[
+          "x-rate-limit"
+        ],
+      ).toBeUndefined();
+      expect(
+        (doc.paths["/window-only"].post! as Record<string, unknown>)[
+          "x-rate-limit"
+        ],
+      ).toBeUndefined();
+    });
+
+    it("rate-limit options 非正数或非数字 → 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/string-values", {
+          middlewares: [
+            { name: "rate-limit", options: { max: "10", window: 60000 } },
+          ] as unknown as string[],
+        }),
+        createRoute("POST", "/zero-values", {
+          middlewares: [
+            { name: "rate-limit", options: { max: 0, window: 60000 } },
+          ] as unknown as string[],
+        }),
+      ]);
+
+      expect(
+        (doc.paths["/string-values"].post! as Record<string, unknown>)[
+          "x-rate-limit"
+        ],
+      ).toBeUndefined();
+      expect(
+        (doc.paths["/zero-values"].post! as Record<string, unknown>)[
+          "x-rate-limit"
+        ],
+      ).toBeUndefined();
+    });
+
+    it("名称相似但非官方 rate-limit 中间件 → 不添加 x-rate-limit", () => {
+      const doc = generate([
+        createRoute("POST", "/users", {
+          middlewares: [
+            { name: "rate-limit-api", options: { max: 10, window: 60000 } },
+          ] as unknown as string[],
+        }),
+      ]);
+
+      const op = doc.paths["/users"].post! as Record<string, unknown>;
+      expect(op["x-rate-limit"]).toBeUndefined();
+    });
+
+    it("文档说明自动 x-rate-limit 只来自完整 rate-limit options", () => {
+      const zhGuide = readRepoFile("website/docs/zh/guide/openapi.md");
+      const enGuide = readRepoFile("website/docs/en/guide/openapi.md");
+
+      expect(zhGuide).toContain(
+        "`x-rate-limit` 只有在 `rate-limit` 对象中间件同时提供正数 `max` 和 `window` 时才会自动生成",
+      );
+      expect(enGuide).toContain(
+        "`x-rate-limit` is generated automatically only when the `rate-limit` object middleware provides positive numeric `max` and `window` options",
+      );
+    });
+
     it("无 rate-limit 中间件 → 不添加 x-rate-limit", () => {
       const doc = generate([
         createRoute("POST", "/users", {

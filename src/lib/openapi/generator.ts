@@ -656,25 +656,12 @@ export class OpenAPIGenerator {
     }
 
     // ── 速率限制扩展（从 rate-limit 中间件推断 x-rate-limit）──
-    if (options.middlewares) {
-      const rateLimitMw = (options.middlewares as unknown[]).find(
-        (mw: unknown) =>
-          (typeof mw === "string" ? mw : (mw as { name: string }).name) ===
-          "rate-limit",
-      );
-      if (
-        rateLimitMw &&
-        typeof rateLimitMw === "object" &&
-        rateLimitMw !== null &&
-        (rateLimitMw as { options?: unknown }).options
-      ) {
-        const mwOptions = (rateLimitMw as { options: Record<string, unknown> })
-          .options;
-        (operation as Record<string, unknown>)["x-rate-limit"] = {
-          max: mwOptions.max,
-          window: mwOptions.window,
-        };
-      }
+    const rateLimitExtension = this.buildRateLimitExtension(
+      options.middlewares,
+    );
+    if (rateLimitExtension) {
+      (operation as Record<string, unknown>)["x-rate-limit"] =
+        rateLimitExtension;
     }
 
     // ── 清空空参数数组 ──────────────────────────────────────
@@ -683,6 +670,45 @@ export class OpenAPIGenerator {
     }
 
     return operation;
+  }
+
+  private buildRateLimitExtension(
+    middlewares: unknown,
+  ): { max: number; window: number } | undefined {
+    if (!Array.isArray(middlewares)) {
+      return undefined;
+    }
+
+    const rateLimitMw = middlewares.find(
+      (mw): mw is { name: string; options?: unknown } =>
+        typeof mw === "object" &&
+        mw !== null &&
+        !Array.isArray(mw) &&
+        (mw as { name?: unknown }).name === "rate-limit",
+    );
+    if (
+      !rateLimitMw ||
+      typeof rateLimitMw.options !== "object" ||
+      rateLimitMw.options === null ||
+      Array.isArray(rateLimitMw.options)
+    ) {
+      return undefined;
+    }
+
+    const options = rateLimitMw.options as Record<string, unknown>;
+    const max = options.max;
+    const window = options.window;
+    if (
+      this.isPositiveFiniteNumber(max) &&
+      this.isPositiveFiniteNumber(window)
+    ) {
+      return { max, window };
+    }
+    return undefined;
+  }
+
+  private isPositiveFiniteNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
   }
 
   /**

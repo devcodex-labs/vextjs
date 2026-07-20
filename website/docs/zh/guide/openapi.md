@@ -355,6 +355,8 @@ app.post('/users', {
 }, handler);
 ```
 
+`x-rate-limit` 只有在 `rate-limit` 对象中间件同时提供正数 `max` 和 `window` 时才会自动生成。字符串中间件、缺失 options、只提供部分字段或字段类型不合法时，Vext 不会输出空的 `x-rate-limit`，以免 OpenAPI 消费者误读限流契约。
+
 ## docs 配置详解
 
 ### `summary` — 接口摘要
