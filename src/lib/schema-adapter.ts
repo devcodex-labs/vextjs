@@ -47,6 +47,171 @@ let cjsSchemaDsl:
   | null
   | undefined;
 
+const COMPILED_SCHEMA_CACHE_MAX_SIZE = 256;
+const DSL_BUILDER_CACHE_KEY = "__vextDslBuilder";
+const compiledSchemaCache = new Map<string, JSONSchema>();
+
+type CompileCacheValue =
+  | null
+  | string
+  | number
+  | boolean
+  | CompileCacheValue[]
+  | { [key: string]: CompileCacheValue };
+
+function rememberCompiledSchema(
+  cacheKey: string,
+  schema: JSONSchema,
+): JSONSchema {
+  deepFreezeSchema(schema);
+  compiledSchemaCache.set(cacheKey, schema);
+  if (compiledSchemaCache.size > COMPILED_SCHEMA_CACHE_MAX_SIZE) {
+    const oldestKey = compiledSchemaCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      compiledSchemaCache.delete(oldestKey);
+    }
+  }
+  return schema;
+}
+
+function getRememberedCompiledSchema(cacheKey: string): JSONSchema | undefined {
+  const schema = compiledSchemaCache.get(cacheKey);
+  if (!schema) {
+    return undefined;
+  }
+  compiledSchemaCache.delete(cacheKey);
+  compiledSchemaCache.set(cacheKey, schema);
+  return schema;
+}
+
+function clearCompiledSchemaCache(): void {
+  compiledSchemaCache.clear();
+}
+
+function getCompileCacheKey(
+  definition: DslDefinition,
+  options?: SchemaIOOptions,
+): string | null {
+  const normalizedDefinition = normalizeCompileCacheValue(
+    definition,
+    new WeakSet<object>(),
+  );
+  if (normalizedDefinition === undefined) {
+    return null;
+  }
+
+  const normalizedOptions =
+    options === undefined
+      ? null
+      : normalizeCompileCacheValue(options, new WeakSet<object>());
+  if (normalizedOptions === undefined) {
+    return null;
+  }
+
+  return JSON.stringify([normalizedDefinition, normalizedOptions]);
+}
+
+function normalizeCompileCacheValue(
+  value: unknown,
+  seen: WeakSet<object>,
+): CompileCacheValue | undefined {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (
+    value === undefined ||
+    typeof value === "function" ||
+    typeof value === "symbol" ||
+    typeof value === "bigint"
+  ) {
+    return undefined;
+  }
+
+  if (isDslBuilder(value)) {
+    try {
+      const normalizedSchema = normalizeCompileCacheValue(
+        toJsonSchema(value),
+        seen,
+      );
+      return normalizedSchema === undefined
+        ? undefined
+        : { [DSL_BUILDER_CACHE_KEY]: normalizedSchema };
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+    const normalized: CompileCacheValue[] = [];
+    for (const item of value) {
+      const normalizedItem = normalizeCompileCacheValue(item, seen);
+      if (normalizedItem === undefined) {
+        seen.delete(value);
+        return undefined;
+      }
+      normalized.push(normalizedItem);
+    }
+    seen.delete(value);
+    return normalized;
+  }
+
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Object.getOwnPropertySymbols(value).length > 0 ||
+      seen.has(value)
+    ) {
+      return undefined;
+    }
+
+    seen.add(value);
+    const source = value as Record<string, unknown>;
+    const normalized: { [key: string]: CompileCacheValue } = {};
+    for (const key of Object.keys(source)) {
+      const normalizedItem = normalizeCompileCacheValue(source[key], seen);
+      if (normalizedItem === undefined) {
+        seen.delete(value);
+        return undefined;
+      }
+      normalized[key] = normalizedItem;
+    }
+    seen.delete(value);
+    return normalized;
+  }
+
+  return undefined;
+}
+
+function deepFreezeSchema<T extends object>(
+  value: T,
+  seen = new WeakSet<object>(),
+): T {
+  if (seen.has(value)) {
+    return value;
+  }
+  seen.add(value);
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    if (child && typeof child === "object") {
+      deepFreezeSchema(child as object, seen);
+    }
+  }
+  return Object.freeze(value);
+}
+
 // ── 重导出类型（vext 内部模块可直接使用）────────────────────────
 
 export type {
@@ -93,8 +258,17 @@ function compile(
   definition: DslDefinition,
   options?: SchemaIOOptions,
 ): JSONSchema {
+  const cacheKey = getCompileCacheKey(definition, options);
+  if (cacheKey) {
+    const cached = getRememberedCompiledSchema(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const internalSchema = dsl(definition, options);
-  return new ObjectDslBuilder(internalSchema).toJsonSchema();
+  const compiled = new ObjectDslBuilder(internalSchema).toJsonSchema();
+  return cacheKey ? rememberCompiledSchema(cacheKey, compiled) : compiled;
 }
 
 /**
@@ -322,6 +496,7 @@ function createI18nError(
 function configure(options: Parameters<typeof dsl.config>[0]): void {
   dsl.config(options);
   configureCjsSchemaDsl(options);
+  clearCompiledSchemaCache();
 }
 
 // ── 统一导出 ────────────────────────────────────────────────

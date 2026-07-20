@@ -74,3 +74,47 @@ describe("schemaAdapter v3 boundary", () => {
     ).toBeUndefined();
   });
 });
+
+describe("schemaAdapter compile cache", () => {
+  it("reuses equivalent serializable definitions across object identities", () => {
+    const first = schemaAdapter.compile({
+      page: "integer!",
+      nested: { name: "string?" },
+    });
+    const second = schemaAdapter.compile({
+      page: "integer!",
+      nested: { name: "string?" },
+    });
+
+    expect(second).toBe(first);
+    expect(Object.isFrozen(second)).toBe(true);
+    expect(Object.isFrozen(second.properties)).toBe(true);
+  });
+
+  it("keys DslBuilder fields by their public JSON Schema shape", () => {
+    const first = schemaAdapter.compile({
+      name: schemaAdapter.compileField("string!").description("Name"),
+    });
+    const second = schemaAdapter.compile({
+      name: schemaAdapter.compileField("string!").description("Name"),
+    });
+    const differentDescription = schemaAdapter.compile({
+      name: schemaAdapter.compileField("string!").description("Other"),
+    });
+
+    expect(second).toBe(first);
+    expect(differentDescription).not.toBe(first);
+    expect(differentDescription.properties?.name).toMatchObject({
+      description: "Other",
+    });
+  });
+
+  it("clears remembered schemas after global schema-dsl configuration changes", () => {
+    const before = schemaAdapter.compile({ code: "string!" });
+
+    schemaAdapter.configure({ cache: true });
+    const after = schemaAdapter.compile({ code: "string!" });
+
+    expect(after).not.toBe(before);
+  });
+});
