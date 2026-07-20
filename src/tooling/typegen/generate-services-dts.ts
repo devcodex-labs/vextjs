@@ -10,6 +10,62 @@ interface ServiceTreeNode {
   typeText?: string;
 }
 
+const IDENTIFIER_PROPERTY_NAME = /^[A-Za-z_$][\w$]*$/u;
+const RESERVED_PROPERTY_NAMES = new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "as",
+  "async",
+  "await",
+  "from",
+  "get",
+  "implements",
+  "interface",
+  "let",
+  "of",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "set",
+  "static",
+  "yield",
+]);
+
 export async function generateServicesDts(
   rootDir: string,
   entries: ServiceIndexEntry[],
@@ -64,25 +120,34 @@ function renderServiceTree(node: ServiceTreeNode, indentLevel: number): string {
   for (const [key, child] of [...node.children.entries()].sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
+    const propertyKey = renderServicePropertyKey(key);
     const hasChildren = child.children.size > 0;
     if (child.typeText && !hasChildren) {
-      lines.push(`${indent}${key}: ${child.typeText};`);
+      lines.push(`${indent}${propertyKey}: ${child.typeText};`);
       continue;
     }
 
     if (hasChildren && !child.typeText) {
-      lines.push(`${indent}${key}: {`);
+      lines.push(`${indent}${propertyKey}: {`);
       lines.push(renderServiceTree(child, indentLevel + 1));
       lines.push(`${indent}};`);
       continue;
     }
 
     if (child.typeText && hasChildren) {
-      lines.push(`${indent}${key}: ${child.typeText} & {`);
+      lines.push(`${indent}${propertyKey}: ${child.typeText} & {`);
       lines.push(renderServiceTree(child, indentLevel + 1));
       lines.push(`${indent}};`);
     }
   }
 
   return lines.join("\n");
+}
+
+function renderServicePropertyKey(key: string): string {
+  if (IDENTIFIER_PROPERTY_NAME.test(key) && !RESERVED_PROPERTY_NAMES.has(key)) {
+    return key;
+  }
+
+  return JSON.stringify(key);
 }

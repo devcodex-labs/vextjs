@@ -65,6 +65,15 @@ describe("typegenCommand", () => {
     );
 
     expect(servicesGenerated).toBe(expectedServices);
+    expect(servicesGenerated).toContain(
+      '"2026Report": import("../../src/services/2026-report.js").default;',
+    );
+    expect(servicesGenerated).toContain(
+      '"default": import("../../src/services/default.js").default;',
+    );
+    expect(servicesGenerated).toContain(
+      '"stripe.v2": import("../../src/services/payment/stripe.v2.js").default;',
+    );
     expect(appExtensionsGenerated).toBe(expectedAppExtensions);
     expect(servicesManifest).toBe(expectedServicesManifest);
     expect(shimGenerated).toContain(".vext/types/services.generated.d.ts");

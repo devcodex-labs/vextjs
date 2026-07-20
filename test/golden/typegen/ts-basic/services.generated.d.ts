@@ -4,8 +4,11 @@ import "vextjs";
 
 declare module "vextjs" {
   interface VextServices {
+    "2026Report": import("../../src/services/2026-report.js").default;
+    "default": import("../../src/services/default.js").default;
     payment: {
       stripe: import("../../src/services/payment/stripe.js").default;
+      "stripe.v2": import("../../src/services/payment/stripe.v2.js").default;
     };
     userProfile: import("../../src/services/user-profile.js").default;
   }

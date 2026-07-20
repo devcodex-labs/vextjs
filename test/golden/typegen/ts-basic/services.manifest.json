@@ -2,17 +2,33 @@
   "schemaVersion": 1,
   "kind": "services-manifest",
   "target": "services",
-  "serviceCount": 2,
+  "serviceCount": 5,
   "appExtensionCount": 2,
   "summary": {
-    "topLevelServices": 2,
-    "nestedServices": 1,
+    "topLevelServices": 4,
+    "nestedServices": 2,
     "dependencyEdges": 0,
     "dependencyCycles": 0,
     "conflictingAppExtensions": 0,
     "lowConfidenceAppExtensions": 2
   },
   "services": [
+    {
+      "serviceKey": "2026Report",
+      "keySegments": [
+        "2026Report"
+      ],
+      "fileRelativePath": "src/services/2026-report.ts",
+      "importPath": "../../src/services/2026-report.js"
+    },
+    {
+      "serviceKey": "default",
+      "keySegments": [
+        "default"
+      ],
+      "fileRelativePath": "src/services/default.ts",
+      "importPath": "../../src/services/default.js"
+    },
     {
       "serviceKey": "payment.stripe",
       "keySegments": [
@@ -21,6 +37,15 @@
       ],
       "fileRelativePath": "src/services/payment/stripe.ts",
       "importPath": "../../src/services/payment/stripe.js"
+    },
+    {
+      "serviceKey": "payment.stripe.v2",
+      "keySegments": [
+        "payment",
+        "stripe.v2"
+      ],
+      "fileRelativePath": "src/services/payment/stripe.v2.ts",
+      "importPath": "../../src/services/payment/stripe.v2.js"
     },
     {
       "serviceKey": "userProfile",
