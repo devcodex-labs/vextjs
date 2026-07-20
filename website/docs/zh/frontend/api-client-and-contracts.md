@@ -26,6 +26,12 @@ api.generated.ts
 - hydration 后的客户端 API 调用
 - 文档或工具链
 
+## 契约稳定性与 Schema
+
+`client-contract.json` 和 `api.generated.ts` 对相同 route manifest 会稳定生成。`generatedAt` 字段是稳定标记，便于在 CI 中比较生成产物。
+
+契约 schema reference 当前会输出为 `unknown`，因为 route manifest 还没有携带路由校验或响应 schema metadata。在 manifest 增加 schema metadata 前，请把该契约用于 route method、path、operation id、summary 和 tags。
+
 ## 公开入口
 
 前端公开入口暴露契约 helper：

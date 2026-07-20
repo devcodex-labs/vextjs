@@ -11,7 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolver.js";
-import { buildClientContract } from "../../src/frontend/tooling/client-contract-writer.js";
+import {
+  buildClientContract,
+  writeClientContractFromRouteManifest,
+} from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
 import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
 import { createFrontendDevEventBus } from "../../src/frontend/runtime/dev-events.js";
@@ -315,6 +318,54 @@ describe("frontend client contract", () => {
     expect(contract.routes.map((route) => route.method)).toEqual(methods);
   });
 
+  it("writes byte-stable client contract artifacts for identical route manifests", async () => {
+    const rootDir = await tempRoot();
+    const manifestDir = path.join(rootDir, ".vext", "manifest");
+    const outDir = path.join(rootDir, ".vext", "client");
+    await mkdir(manifestDir, { recursive: true });
+    await writeFile(
+      path.join(manifestDir, "routes.json"),
+      JSON.stringify(
+        {
+          routes: [
+            {
+              method: "GET",
+              path: "/api/stable",
+              operationId: "getApiStable",
+              docsSummary: "Stable",
+              tags: ["contract"],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    await writeClientContractFromRouteManifest({ rootDir, outDir });
+    const firstContract = await readFile(
+      path.join(outDir, "client-contract.json"),
+      "utf-8",
+    );
+    const firstModule = await readFile(
+      path.join(outDir, "api.generated.ts"),
+      "utf-8",
+    );
+
+    await writeClientContractFromRouteManifest({ rootDir, outDir });
+
+    expect(
+      await readFile(path.join(outDir, "client-contract.json"), "utf-8"),
+    ).toBe(firstContract);
+    expect(await readFile(path.join(outDir, "api.generated.ts"), "utf-8")).toBe(
+      firstModule,
+    );
+    expect(JSON.parse(firstContract).generatedAt).toBe(
+      "1970-01-01T00:00:00.000Z",
+    );
+  });
+
   it("keeps frontend API client docs aligned with public exports", async () => {
     const docs = await Promise.all([
       readFile(
@@ -345,6 +396,10 @@ describe("frontend client contract", () => {
       expect(content).toContain("createVextApiClient");
       expect(content).not.toContain("createVextFetchAdapter");
     }
+    expect(docs[0]).toContain(
+      "Contract schema references are currently emitted as `unknown`",
+    );
+    expect(docs[1]).toContain("契约 schema reference 当前会输出为 `unknown`");
   });
 });
 

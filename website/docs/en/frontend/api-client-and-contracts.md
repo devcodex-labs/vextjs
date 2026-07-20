@@ -26,6 +26,12 @@ These artifacts are useful for:
 - client-side API calls after hydration
 - documentation or tooling
 
+## Contract Stability and Schemas
+
+`client-contract.json` and `api.generated.ts` are deterministic for identical route manifests. The `generatedAt` field is a stable marker so generated artifacts can be compared in CI.
+
+Contract schema references are currently emitted as `unknown` because the route manifest does not carry route validation or response schema metadata yet. Use the contract for route method, path, operation id, summary, and tags until schema metadata is added to the manifest.
+
 ## Public Entry
 
 The frontend public entry exposes contract helpers:

@@ -7,6 +7,9 @@ import type {
   VextClientRouteMethod,
 } from "../contract/types.js";
 
+// Keep generated artifacts byte-stable for identical route manifests.
+const STABLE_CLIENT_CONTRACT_GENERATED_AT = "1970-01-01T00:00:00.000Z";
+
 interface RoutesManifestPayload {
   routes?: Array<{
     method?: string;
@@ -38,14 +41,20 @@ export async function writeClientContractFromRouteManifest(
     options.routeManifestPath ??
     path.join(options.rootDir, ".vext", "manifest", "routes.json");
   const payload = existsSync(routeManifestPath)
-    ? (JSON.parse(await readFile(routeManifestPath, "utf-8")) as RoutesManifestPayload)
+    ? (JSON.parse(
+        await readFile(routeManifestPath, "utf-8"),
+      ) as RoutesManifestPayload)
     : ({ routes: [] } satisfies RoutesManifestPayload);
   const contract = buildClientContract(payload);
   const contractPath = path.join(options.outDir, "client-contract.json");
   const modulePath = path.join(options.outDir, "api.generated.ts");
 
   await mkdir(options.outDir, { recursive: true });
-  await writeFile(contractPath, `${JSON.stringify(contract, null, 2)}\n`, "utf-8");
+  await writeFile(
+    contractPath,
+    `${JSON.stringify(contract, null, 2)}\n`,
+    "utf-8",
+  );
   await writeFile(modulePath, renderApiModule(contract), "utf-8");
 
   return {
@@ -91,13 +100,15 @@ export function buildClientContract(
     schemaVersion: 1,
     kind: "client-contract",
     source: "routes-manifest",
-    generatedAt: new Date().toISOString(),
+    generatedAt: STABLE_CLIENT_CONTRACT_GENERATED_AT,
     routes,
     warnings,
   };
 }
 
-function normalizeMethod(value: string | undefined): VextClientRouteMethod | null {
+function normalizeMethod(
+  value: string | undefined,
+): VextClientRouteMethod | null {
   const method = value?.toUpperCase();
   if (
     method === "GET" ||
