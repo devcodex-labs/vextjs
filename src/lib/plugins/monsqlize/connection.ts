@@ -78,6 +78,11 @@ function applySoftDeleteCompat<T>(model: T): T {
   return model;
 }
 
+function assertPoolExists(monsqlize: MonSQLize, poolName: string): void {
+  // Reuse monSQLize's pool manager diagnostics so vext matches upstream timing and error metadata.
+  monsqlize.pool(poolName);
+}
+
 /**
  * 创建数据库连接
  *
@@ -119,6 +124,7 @@ export async function createConnection(
 
     // R3：新增 pool()
     pool(poolName: string) {
+      assertPoolExists(monsqlize, poolName);
       return {
         model: (key: string) =>
           applySoftDeleteCompat(monsqlize.scopedModel(key, { pool: poolName })),
@@ -175,7 +181,7 @@ export async function createConnection(
       if (!client) {
         throw new Error(
           "[monsqlize] MongoDB client is not available. " +
-          "Ensure the database connection is established before accessing the client.",
+            "Ensure the database connection is established before accessing the client.",
         );
       }
       return client;

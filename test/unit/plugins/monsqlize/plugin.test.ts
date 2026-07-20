@@ -117,6 +117,10 @@ function createMockMonSQLize() {
   const mockScopedModel = vi
     .fn()
     .mockReturnValue({ find: vi.fn(), create: vi.fn() });
+  const mockPool = vi.fn().mockReturnValue({
+    collection: mockScopedCollection,
+    model: mockScopedModel,
+  });
   const mockConnect = vi.fn().mockResolvedValue({ collection: mockCollection });
   const mockClose = vi.fn().mockResolvedValue(undefined);
 
@@ -125,6 +129,7 @@ function createMockMonSQLize() {
     close: mockClose,
     collection: mockCollection,
     model: mockModel,
+    pool: mockPool,
     scopedCollection: mockScopedCollection,
     scopedModel: mockScopedModel,
     _adapter: { client: { db: vi.fn(), close: vi.fn() } }, // mock MongoDB client via _adapter
@@ -136,6 +141,7 @@ function createMockMonSQLize() {
     mockClose,
     mockCollection,
     mockModel,
+    mockPool,
     mockScopedCollection,
     mockScopedModel,
   };
@@ -1947,6 +1953,42 @@ describe("createConnection", () => {
     expect(typeof poolAccessor.collection).toBe("function");
     expect(typeof poolAccessor.model).toBe("function");
     expect(typeof poolAccessor.use).toBe("function");
+    expect(mock.mockPool).toHaveBeenCalledWith("cn");
+  });
+
+  it("pool() throws immediately when the pool is missing", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+    const err: any = new Error("Pool 'missing' not found");
+    err.code = "POOL_NOT_FOUND";
+    err.available = ["cn", "billing"];
+    mock.mockPool.mockImplementation(() => {
+      throw err;
+    });
+
+    const conn = await createConnection(mock.instance as any, app);
+
+    expect(() => conn.pool("missing")).toThrow("Pool 'missing' not found");
+    expect(mock.mockScopedCollection).not.toHaveBeenCalled();
+    expect(mock.mockScopedModel).not.toHaveBeenCalled();
+  });
+
+  it("pool() throws immediately when no pool manager is configured", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+    const err: any = new Error(
+      "No pool manager configured. Add pools to MonSQLize constructor options.",
+    );
+    err.code = "NO_POOL_MANAGER";
+    mock.mockPool.mockImplementation(() => {
+      throw err;
+    });
+
+    const conn = await createConnection(mock.instance as any, app);
+
+    expect(() => conn.pool("cn")).toThrow("No pool manager configured");
+    expect(mock.mockScopedCollection).not.toHaveBeenCalled();
+    expect(mock.mockScopedModel).not.toHaveBeenCalled();
   });
 
   it("pool().collection() delegates to scopedCollection with pool opt", async () => {
