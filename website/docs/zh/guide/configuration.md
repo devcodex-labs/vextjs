@@ -378,6 +378,8 @@ export default {
 };
 ```
 
+生产或容器环境可使用 `host: "0.0.0.0"` 监听 IPv4 all interfaces，也可使用 `host: "::"` 监听 IPv6 all interfaces。`host: "::"` 的 ready 日志会额外显示 `http://[::1]:PORT` 和 bracketed IPv6 Network URL；具体 IPv6 host 也会按 `http://[IPv6]:PORT` 输出。
+
 ### CORS 配置 (`cors`)
 
 | 配置项             | 类型       | 默认值                                                   | 说明                 |

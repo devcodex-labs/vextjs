@@ -9,7 +9,24 @@ interface ReadyLogOptions {
   suffix?: string;
 }
 
+type NetworkAddressFamily = "IPv4" | "IPv6";
+
 // ── 工具函数 ────────────────────────────────────────────────
+
+function getNetworkAddressesByFamily(family: NetworkAddressFamily): string[] {
+  const nets = networkInterfaces();
+  const result: string[] = [];
+
+  for (const ifaces of Object.values(nets)) {
+    for (const iface of ifaces ?? []) {
+      if (iface.family === family && !iface.internal) {
+        result.push(iface.address);
+      }
+    }
+  }
+
+  return result;
+}
 
 /**
  * 获取本机所有非 loopback 的 IPv4 地址
@@ -22,18 +39,22 @@ interface ReadyLogOptions {
  * @returns 非 loopback IPv4 地址列表（可能为空数组，如纯 loopback 环境）
  */
 export function getNetworkAddresses(): string[] {
-  const nets = networkInterfaces();
-  const result: string[] = [];
+  return getNetworkAddressesByFamily("IPv4");
+}
 
-  for (const ifaces of Object.values(nets)) {
-    for (const iface of ifaces ?? []) {
-      if (iface.family === "IPv4" && !iface.internal) {
-        result.push(iface.address);
-      }
-    }
+function formatUrlHost(host: string): string {
+  const unwrapped =
+    host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+
+  if (!unwrapped.includes(":")) {
+    return host;
   }
 
-  return result;
+  return `[${unwrapped.replace(/%(?![0-9A-Fa-f]{2})/gu, "%25")}]`;
+}
+
+function formatHttpUrl(host: string, port: number): string {
+  return `http://${formatUrlHost(host)}:${port}`;
 }
 
 /**
@@ -45,9 +66,11 @@ export function getNetworkAddresses(): string[] {
  *     [prefix] ready [suffix]
  *       ➜  Local:   http://localhost:PORT
  *       ➜  Local:   http://127.0.0.1:PORT
- *       ➜  Network: http://<实际IP>:PORT  （每个非 loopback 网卡各一行）
+ *       ➜  Local:   http://[::1]:PORT       （host=:: 时）
+ *       ➜  Network: http://<实际IPv4>:PORT  （每个非 loopback IPv4 网卡各一行）
+ *       ➜  Network: http://[实际IPv6]:PORT  （host=:: 时，每个非 loopback IPv6 网卡各一行）
  *
- * - 其他 host（具体 IP）→ 单行原样输出：
+ * - 其他 host（具体 IP 或主机名）→ 单行合法 URL 输出：
  *     [prefix] ready on http://HOST:PORT [suffix]
  *
  * 无可用网卡时（如纯 Docker loopback 环境）优雅降级，
@@ -70,14 +93,25 @@ export function printReadyLog(
 
   if (isAllInterfaces) {
     logger.info(`${prefix} ready${suffixPart}`);
-    logger.info(`  ➜  Local:   http://localhost:${port}`);
-    logger.info(`  ➜  Local:   http://127.0.0.1:${port}`);
+    logger.info(`  ➜  Local:   ${formatHttpUrl("localhost", port)}`);
+    logger.info(`  ➜  Local:   ${formatHttpUrl("127.0.0.1", port)}`);
+
+    if (host === "::") {
+      logger.info(`  ➜  Local:   ${formatHttpUrl("::1", port)}`);
+    }
 
     const networkAddrs = getNetworkAddresses();
     for (const addr of networkAddrs) {
-      logger.info(`  ➜  Network: http://${addr}:${port}`);
+      logger.info(`  ➜  Network: ${formatHttpUrl(addr, port)}`);
+    }
+
+    if (host === "::") {
+      const ipv6NetworkAddrs = getNetworkAddressesByFamily("IPv6");
+      for (const addr of ipv6NetworkAddrs) {
+        logger.info(`  ➜  Network: ${formatHttpUrl(addr, port)}`);
+      }
     }
   } else {
-    logger.info(`${prefix} ready on http://${host}:${port}${suffixPart}`);
+    logger.info(`${prefix} ready on ${formatHttpUrl(host, port)}${suffixPart}`);
   }
 }

@@ -272,9 +272,13 @@ Options:
   -h, --help display help information
 ```
 
+`--host ::` listens on IPv6 all interfaces; the ready log prints `http://[::1]:PORT` and bracketed IPv6 Network URLs. Explicit IPv6 hosts are printed as `http://[IPv6]:PORT`.
+
 ```bash
 # Use custom port
-vext dev --port 8080# Specify the listening address
+vext dev --port 8080
+
+# Specify the listening address
 vext dev --host 127.0.0.1
 
 # Turn on 50ms anti-shake (merged into one reload when saving in quick succession)

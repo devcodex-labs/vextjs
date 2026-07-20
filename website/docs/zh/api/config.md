@@ -136,6 +136,8 @@ export default {
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置             |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                     |
 
+`host` 支持 `"0.0.0.0"`、`"::"`、具体 IPv4、具体 IPv6 和主机名。配置为 `"::"` 时，ready 日志会同时展示 IPv4 local URL 与 bracketed IPv6 local/network URL（例如 `http://[::1]:3000`）；具体 IPv6 host 也会以方括号 URL 格式输出。
+
 ---
 
 ### `adapter`

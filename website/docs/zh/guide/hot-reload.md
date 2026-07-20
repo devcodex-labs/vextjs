@@ -272,6 +272,8 @@ Options:
   -h, --help           显示帮助信息
 ```
 
+`--host ::` 会监听 IPv6 all interfaces；ready 日志会输出 `http://[::1]:PORT` 与 bracketed IPv6 Network URL。具体 IPv6 host 也会按 `http://[IPv6]:PORT` 展示。
+
 ```bash
 # 使用自定义端口
 vext dev --port 8080

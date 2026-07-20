@@ -136,6 +136,8 @@ export default {
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration   |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                        |
 
+`host` accepts `"0.0.0.0"`, `"::"`, an explicit IPv4 address, an explicit IPv6 address, or a hostname. With `"::"`, the ready log prints IPv4 local URLs plus bracketed IPv6 local/network URLs such as `http://[::1]:3000`; explicit IPv6 hosts are printed with brackets too.
+
 ---
 
 ### `adapter`

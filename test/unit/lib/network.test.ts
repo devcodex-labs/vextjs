@@ -4,7 +4,7 @@
  * 测试覆盖：
  *   - getNetworkAddresses(): 正常获取、无网卡时空数组、过滤 loopback、过滤 IPv6、多网卡
  *   - printReadyLog(): host=0.0.0.0 多行展示（localhost + 127.0.0.1 + Network）
- *                      host=:: 触发多行、无外部网卡降级、具体 IP 单行、suffix 处理
+ *                      host=:: 输出 bracketed IPv6 URL、无外部网卡降级、具体 IP 单行、suffix 处理
  *
  * @see src/lib/utils/network.ts
  * @see requirements/启动日志网络地址增强/02-技术方案.md §8 测试策略
@@ -169,14 +169,25 @@ describe("printReadyLog — host=0.0.0.0 多行展示", () => {
     expect(messages[3]).toContain("Network");
   });
 
-  it("host=:: 同样触发多行展示", () => {
+  it("host=:: 输出 IPv4 local、bracketed IPv6 local 与 IPv4/IPv6 Network", () => {
+    vi.mocked(networkInterfaces).mockReturnValue(
+      buildNetIfaces([
+        { address: "192.168.1.158", family: "IPv4", internal: false },
+        { address: "fe80::1234%eth0", family: "IPv6", internal: false },
+      ]) as ReturnType<typeof networkInterfaces>,
+    );
+
     const { logger, messages } = createLogCapture();
 
     printReadyLog(logger, "::", 8080, { prefix: "[vextjs]" });
 
+    expect(messages).toHaveLength(6);
     expect(messages[0]).toBe("[vextjs] ready");
-    expect(messages[1]).toContain("localhost:8080");
-    expect(messages[2]).toContain("127.0.0.1:8080");
+    expect(messages[1]).toBe("  ➜  Local:   http://localhost:8080");
+    expect(messages[2]).toBe("  ➜  Local:   http://127.0.0.1:8080");
+    expect(messages[3]).toBe("  ➜  Local:   http://[::1]:8080");
+    expect(messages[4]).toBe("  ➜  Network: http://192.168.1.158:8080");
+    expect(messages[5]).toBe("  ➜  Network: http://[fe80::1234%25eth0]:8080");
   });
 
   it("无外部网卡时仅输出 ready + Local 双行，无 Network 行", () => {
@@ -187,6 +198,20 @@ describe("printReadyLog — host=0.0.0.0 多行展示", () => {
     printReadyLog(logger, "0.0.0.0", 3000, { prefix: "[vextjs]" });
 
     expect(messages).toHaveLength(3); // ready + localhost + 127.0.0.1
+    expect(messages.every((m) => !m.includes("Network"))).toBe(true);
+  });
+
+  it("host=:: 无外部网卡时保留 IPv4 与 IPv6 local 行，无 Network 行", () => {
+    vi.mocked(networkInterfaces).mockReturnValue({});
+
+    const { logger, messages } = createLogCapture();
+
+    printReadyLog(logger, "::", 3000, { prefix: "[vextjs]" });
+
+    expect(messages).toHaveLength(4); // ready + localhost + 127.0.0.1 + ::1
+    expect(messages[1]).toBe("  ➜  Local:   http://localhost:3000");
+    expect(messages[2]).toBe("  ➜  Local:   http://127.0.0.1:3000");
+    expect(messages[3]).toBe("  ➜  Local:   http://[::1]:3000");
     expect(messages.every((m) => !m.includes("Network"))).toBe(true);
   });
 
@@ -270,6 +295,15 @@ describe("printReadyLog — 具体 IP 单行输出", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]).toBe("[vextjs] ready on http://localhost:4000");
+  });
+
+  it("host=::1 → 单行输出 bracketed IPv6 URL", () => {
+    const { logger, messages } = createLogCapture();
+
+    printReadyLog(logger, "::1", 3000, { prefix: "[vextjs]" });
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toBe("[vextjs] ready on http://[::1]:3000");
   });
 
   it("suffix 正确追加到单行输出末尾", () => {

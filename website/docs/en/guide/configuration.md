@@ -376,6 +376,8 @@ export default {
 };
 ```
 
+Production or container deployments can use `host: "0.0.0.0"` for IPv4 all interfaces, or `host: "::"` for IPv6 all interfaces. When `host: "::"` is used, the ready log also prints `http://[::1]:PORT` and bracketed IPv6 Network URLs; explicit IPv6 hosts are printed as `http://[IPv6]:PORT`.
+
 ### CORS configuration (`cors`)
 
 | Configuration item | Type       | Default value                                            | Description                           |
