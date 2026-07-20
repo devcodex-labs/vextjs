@@ -812,14 +812,14 @@ docs: {
 
 ## multipart
 
-路由级文件上传配置。配置后 OpenAPI 生成器自动输出 `multipart/form-data` requestBody，无需手动编写 `docs.requestBody`。
+路由级文件上传配置。`multipart.files` 会自动输出 OpenAPI `multipart/form-data` requestBody，无需手动编写 `docs.requestBody`。全局 `config.multipart.enabled` 关闭时，可通过 `multipart.enabled: true` 让单个路由启用内置解析；全局开启时，也可通过 `multipart.enabled: false` 让单个路由跳过内置解析。
 
 ```typescript
 app.post(
   "/upload/avatar",
   {
-    middlewares: ["upload"],
     multipart: {
+      enabled: true,
       files: {
         avatar: { description: "头像图片（JPEG/PNG）", required: true },
         thumbnail: "可选缩略图",
@@ -834,11 +834,15 @@ app.post(
 );
 ```
 
-| 子字段                | 类型                               | 说明                                               |
-| --------------------- | ---------------------------------- | -------------------------------------------------- |
-| `files`               | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多       |
-| `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                      |
-| `files[].required`    | `boolean`                          | 运行时是否要求至少上传一个同名文件（默认 `false`） |
+| 子字段                | 类型                               | 说明                                                                      |
+| --------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
+| `enabled`             | `boolean`                          | 路由级解析开关。`true` 单路由启用；`false` 单路由跳过；省略则跟随全局配置 |
+| `maxFileSize`         | `number`                           | 此路由单文件字节上限，覆盖全局 `multipart.maxFileSize`                    |
+| `maxFiles`            | `number`                           | 此路由最多文件数，覆盖全局 `multipart.maxFiles`                           |
+| `allowedMimeTypes`    | `string[]`                         | 此路由 MIME 白名单，覆盖全局 `multipart.allowedMimeTypes`                 |
+| `files`               | `Record<string, string \| object>` | 文件字段映射；字符串值为说明，对象可配置更多                              |
+| `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                                             |
+| `files[].required`    | `boolean`                          | 运行时是否要求至少上传一个同名文件（默认 `false`）                        |
 
 缺少 required 文件字段时，Vext 返回 `400`，响应中包含缺失字段名。optional 字段和未声明上传字段仍允许上传；它们继续受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。
 

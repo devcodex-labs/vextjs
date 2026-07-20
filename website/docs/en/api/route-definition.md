@@ -813,14 +813,14 @@ docs: {
 
 ## multipart
 
-Route-level file upload configuration. After configuration, the OpenAPI generator automatically outputs `multipart/form-data` requestBody, without the need to manually write `docs.requestBody`.
+Route-level file upload configuration. `multipart.files` automatically outputs an OpenAPI `multipart/form-data` requestBody without manually writing `docs.requestBody`. Set `multipart.enabled: true` to opt one route into built-in parsing when global `config.multipart.enabled` is off; set `multipart.enabled: false` to opt one route out when global parsing is on.
 
 ```typescript
 app.post(
   "/upload/avatar",
   {
-    middlewares: ["upload"],
     multipart: {
+      enabled: true,
       files: {
         avatar: { description: "Avatar image (JPEG/PNG)", required: true },
         thumbnail: "optional thumbnail",
@@ -837,6 +837,10 @@ app.post(
 
 | Subfield              | Type                               | Description                                                                                         |
 | --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `enabled`             | `boolean`                          | Route-level parser switch. `true` opts in; `false` opts out; omitted follows global config          |
+| `maxFileSize`         | `number`                           | Per-file byte limit for this route, overriding global `multipart.maxFileSize`                       |
+| `maxFiles`            | `number`                           | Maximum file count for this route, overriding global `multipart.maxFiles`                           |
+| `allowedMimeTypes`    | `string[]`                         | MIME allowlist for this route, overriding global `multipart.allowedMimeTypes`                       |
 | `files`               | `Record<string, string \| object>` | File field mapping; the string value is the description, and the object can be configured with more |
 | `files[].description` | `string`                           | Field description (for OpenAPI documentation)                                                       |
 | `files[].required`    | `boolean`                          | Whether at least one file for this field is required at runtime (default `false`)                   |

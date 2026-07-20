@@ -604,6 +604,7 @@ export default defineRoutes((app) => {
     "/upload",
     {
       multipart: {
+        enabled: true,
         files: {
           avatar: "User avatar",
           resume: { description: "Resume file", required: true },
@@ -633,6 +634,8 @@ export default defineRoutes((app) => {
   );
 });
 ```
+
+Use `multipart.enabled: true` for route-level opt-in when global parsing is disabled. When global parsing is enabled, a route can set `multipart.enabled: false` to skip built-in parsing. The `files` map also feeds OpenAPI `multipart/form-data` generation and required-file runtime checks.
 
 ### ParsedFile structure
 

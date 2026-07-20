@@ -6,12 +6,12 @@ import type { VextSession } from "./session.js";
 /**
  * ParsedFile — 已解析的上传文件
  *
- * 由 multipart 解析插件解析后填充到 req.files。
- * 框架本身不包含 multipart 解析逻辑，仅提供类型定义。
- * 具体解析由用户通过插件引入 busboy / formidable 等库实现。
+ * 由内置 multipart 解析器或自定义上传插件填充到 req.files。
+ * 内置解析通过 config.multipart 或 RouteOptions.multipart 启用；
+ * 需要流式落盘等高级场景时，也可以由插件引入 busboy / formidable 等库接管。
  *
  * @example
- * // 在 multipart 解析插件中：
+ * // 内置解析或自定义上传插件填充后：
  * req.files = parsedFiles  // ParsedFile[]
  * // 在路由 handler 中：
  * const avatar = req.files?.[0]
@@ -206,14 +206,15 @@ export interface VextRequest {
   // ── 文件上传 ────────────────────────────────────────────
 
   /**
-   * 已解析的上传文件列表（由 multipart 解析插件填充）
+   * 已解析的上传文件列表（由内置 multipart 解析或自定义上传插件填充）
    *
-   * 需在路由或全局注册 multipart 解析插件后方可访问。
-   * 插件解析 multipart/form-data 请求体，将文件写入此字段。
+   * 全局 `config.multipart.enabled = true` 时自动解析 multipart/form-data；
+   * 单个路由可通过 `multipart.enabled = true/false` 覆盖启用或跳过。
+   * 自定义插件也可以在内置解析关闭或 `req.files === undefined` 时填充此字段。
    * 非文件上传请求此字段为 undefined。
    *
    * @example
-   * app.post('/upload', {}, async (req, res) => {
+   * app.post('/upload', { multipart: { enabled: true } }, async (req, res) => {
    *   const file = req.files?.[0]
    *   if (!file) return res.json({ error: '未收到文件' })
    *   // 处理 file.buffer ...
@@ -238,14 +239,14 @@ export interface VextRequest {
   _getRawBody(maxBytes?: number): Promise<string>;
 
   /**
-   * 获取原始请求体 Buffer（插件使用）
+   * 获取原始请求体 Buffer（框架/插件使用）
    *
-   * 返回未经任何编码转换的原始字节，是实现 multipart 解析的前提。
+   * 返回未经任何编码转换的原始字节，是内置 multipart 与自定义解析插件的基础。
    * 多次调用返回相同 Buffer 实例（带缓存，流只消费一次）。
    * GET / HEAD / OPTIONS 等无 body 方法返回空 Buffer（length = 0）。
    *
    * @example
-   * // 在 multipart 解析插件中：
+   * // 在自定义 multipart 解析插件中：
    * const buffer = await req._getRawBodyBuffer()
    * // 将 buffer 传递给 busboy / formidable 解析
    *

@@ -23,7 +23,7 @@
 | `ip`        | `string`                              | 客户端 IP                                                                                             |
 | `protocol`  | `'http' \| 'https'`                   | 请求协议                                                                                              |
 | `t`         | `Function \| undefined`               | i18n 翻译函数（插件注入）                                                                             |
-| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（multipart 插件解析后填充）                                                              |
+| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（由内置 multipart 解析或自定义上传插件填充）                                             |
 
 ---
 
@@ -388,7 +388,7 @@ app.get("/greeting", async (req, res) => {
 
 ### `files`
 
-文件上传列表，初始状态为 `undefined`。需配合文件上传插件（如 busboy 插件）设置。每个元素符合 `ParsedFile` 接口：
+文件上传列表，初始状态为 `undefined`。全局 `config.multipart.enabled` 开启后，内置 body-parser 会自动解析 `multipart/form-data` 并填充此字段；单个路由也可以通过 `multipart.enabled: true` 单独启用，或通过 `multipart.enabled: false` 跳过全局解析。需要流式落盘或第三方解析器时，自定义上传插件也可以填充此字段。
 
 ```typescript
 interface ParsedFile {
@@ -401,16 +401,25 @@ interface ParsedFile {
 ```
 
 ```typescript
-app.post("/upload", { middlewares: ["upload"] }, async (req, res) => {
-  const file = req.files?.[0];
-  if (!file) {
-    res.json({ code: 400, message: "未上传文件" }, 400);
-    return;
-  }
-  // file.buffer 包含文件内容的完整 Buffer
-  res.json({ filename: file.filename, size: file.size });
-});
+app.post(
+  "/upload",
+  {
+    multipart: {
+      enabled: true,
+      maxFileSize: 10 * 1024 * 1024,
+      files: {
+        file: { description: "文档文件", required: true },
+      },
+    },
+  },
+  async (req, res) => {
+    const file = req.files?.find((item) => item.fieldname === "file");
+    res.json({ filename: file?.filename, size: file?.size });
+  },
+);
 ```
+
+`multipart.files` 同时用于生成 OpenAPI `multipart/form-data` requestBody，并在运行时校验 required 文件字段。上传仍受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。
 
 ---
 
@@ -422,7 +431,7 @@ app.post("/upload", { middlewares: ["upload"] }, async (req, res) => {
 _getRawBodyBuffer(): Promise<Buffer>
 ```
 
-返回原始请求体的 `Buffer`。每个 adapter 保证只消费一次数据流，结果内部缓存。阿这是实现文件上传插件的基础方法：
+返回原始请求体的 `Buffer`。每个 adapter 保证只消费一次数据流，结果内部缓存。内置 multipart 会在框架内部使用它；插件作者也可以用它实现自定义上传解析器：
 
 ```typescript
 // 插件示例（使用 busboy 解析 multipart/form-data）

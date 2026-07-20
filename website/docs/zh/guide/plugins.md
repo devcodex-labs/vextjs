@@ -605,6 +605,7 @@ export default defineRoutes((app) => {
     "/upload",
     {
       multipart: {
+        enabled: true,
         files: {
           avatar: "用户头像",
           resume: { description: "简历文件", required: true },
@@ -633,6 +634,8 @@ export default defineRoutes((app) => {
   );
 });
 ```
+
+全局解析关闭时，使用 `multipart.enabled: true` 可让单个路由启用内置解析。全局解析开启时，路由也可以设置 `multipart.enabled: false` 跳过内置解析。`files` 字段还会用于生成 OpenAPI `multipart/form-data` 文档，并在运行时校验 required 文件字段。
 
 ### ParsedFile 结构
 

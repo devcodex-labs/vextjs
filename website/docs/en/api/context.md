@@ -23,7 +23,7 @@ This page details the complete API of VextJS's request object `VextRequest` and 
 | `ip`        | `string`                              | Client IP                                                                                                                                                                   |
 | `protocol`  | `'http' \| 'https'`                   | Request protocol                                                                                                                                                            |
 | `t`         | `Function \| undefined`               | i18n translation function (plug-in injection)                                                                                                                               |
-| `files`     | `ParsedFile[] \| undefined`           | File upload list (populated after multipart plug-in parses)                                                                                                                 |
+| `files`     | `ParsedFile[] \| undefined`           | File upload list (populated by built-in multipart parsing or a custom upload plugin)                                                                                        |
 
 ---
 
@@ -388,7 +388,7 @@ app.get("/greeting", async (req, res) => {
 
 ### `files`
 
-File upload list, initial status is `undefined`. It needs to be set up with a file upload plug-in (such as the busboy plug-in). Each element conforms to the `ParsedFile` interface:
+File upload list, initially `undefined`. Vext populates it when built-in multipart parsing is enabled globally through `config.multipart.enabled` or for one route through `multipart.enabled: true`. A route may set `multipart.enabled: false` to opt out even when global parsing is enabled. Custom upload plugins can also populate this field when they need streaming writes or third-party parsers.
 
 ```typescript
 interface ParsedFile {
@@ -401,16 +401,25 @@ interface ParsedFile {
 ```
 
 ```typescript
-app.post("/upload", { middlewares: ["upload"] }, async (req, res) => {
-  const file = req.files?.[0];
-  if (!file) {
-    res.json({ code: 400, message: "File not uploaded" }, 400);
-    return;
-  }
-  // file.buffer complete Buffer containing file content
-  res.json({ filename: file.filename, size: file.size });
-});
+app.post(
+  "/upload",
+  {
+    multipart: {
+      enabled: true,
+      maxFileSize: 10 * 1024 * 1024,
+      files: {
+        file: { description: "Document file", required: true },
+      },
+    },
+  },
+  async (req, res) => {
+    const file = req.files?.find((item) => item.fieldname === "file");
+    res.json({ filename: file?.filename, size: file?.size });
+  },
+);
 ```
+
+`multipart.files` also drives OpenAPI `multipart/form-data` requestBody generation and required-file runtime checks. Uploads still obey `maxFiles`, `maxFileSize`, and `allowedMimeTypes`.
 
 ---
 
@@ -422,7 +431,7 @@ app.post("/upload", { middlewares: ["upload"] }, async (req, res) => {
 _getRawBodyBuffer(): Promise<Buffer>
 ```
 
-Returns a `Buffer` of the original request body. Each adapter is guaranteed to consume the data stream only once, and the results are cached internally. This is the basic method to implement the file upload plug-in:
+Returns a `Buffer` of the original request body. Each adapter is guaranteed to consume the data stream only once, and the results are cached internally. Built-in multipart parsing uses this internally; plugin authors can use it to implement a custom upload parser:
 
 ```typescript
 // Plug-in example (use busboy to parse multipart/form-data)
