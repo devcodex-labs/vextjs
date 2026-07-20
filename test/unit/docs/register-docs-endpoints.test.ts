@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { registerDocsEndpoints } from "../../../src/lib/docs/register-docs-endpoints.js";
 import type { VextApp } from "../../../src/types/app.js";
@@ -58,6 +59,10 @@ function createMockApp(): VextApp & { routes: RegisteredRoute[] } {
       }),
     },
   } as unknown as VextApp & { routes: RegisteredRoute[] };
+}
+
+function readRepoFile(filePath: string): string {
+  return readFileSync(resolve(filePath), "utf8");
 }
 
 const spec = {
@@ -603,6 +608,31 @@ describe("registerDocsEndpoints", () => {
     expect(JSON.stringify(searchResponse.body)).not.toContain("utils:");
   });
 
+  it("does not warn when legacy scalar config is absent", () => {
+    const app = createMockApp();
+
+    registerDocsEndpoints(app, spec, {
+      title: "Test API",
+    });
+
+    expect(app.logger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("openapi.scalar is deprecated"),
+    );
+  });
+
+  it("warns when legacy scalar config is an empty object", () => {
+    const app = createMockApp();
+
+    registerDocsEndpoints(app, spec, {
+      title: "Test API",
+      scalar: {},
+    });
+
+    expect(app.logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("openapi.scalar is deprecated"),
+    );
+  });
+
   it("warns when legacy scalar config is still present", () => {
     const app = createMockApp();
 
@@ -613,6 +643,30 @@ describe("registerDocsEndpoints", () => {
 
     expect(app.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("openapi.scalar is deprecated"),
+    );
+  });
+
+  it("documents legacy scalar as explicitly configured warning-only config", () => {
+    const zhApi = readRepoFile("website/docs/zh/api/config.md");
+    const enApi = readRepoFile("website/docs/en/api/config.md");
+    const zhGuide = readRepoFile("website/docs/zh/guide/configuration.md");
+    const enGuide = readRepoFile("website/docs/en/guide/configuration.md");
+
+    expect(zhApi).toContain(
+      "| `scalar`                        | `object`                                  | `undefined`",
+    );
+    expect(enApi).toContain(
+      "| `scalar`                        | `object`                                  | `undefined`",
+    );
+    expect(zhGuide).toContain(
+      "| `openapi.scalar`                        | `object`                 | `undefined`",
+    );
+    expect(enGuide).toContain(
+      "| `openapi.scalar`                        | `object`                 | `undefined`",
+    );
+    expect(zhApi).toContain("仅显式配置时触发 warning");
+    expect(enApi).toContain(
+      "only triggers a warning when explicitly configured",
     );
   });
 
