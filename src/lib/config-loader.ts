@@ -1133,8 +1133,8 @@ function validateFrontendConfig(value: unknown, path: string): void {
         `[vextjs] ${path}.build.target must be a string or string array.`,
       );
     }
-    validateFrontendBuildTarget(typed.client, `${path}.build.client`);
-    validateFrontendBuildTarget(typed.server, `${path}.build.server`);
+    validateFrontendClientBuildTarget(typed.client, `${path}.build.client`);
+    validateFrontendServerBuildTarget(typed.server, `${path}.build.server`);
     validateFrontendVendorChunks(
       typed.vendorChunks,
       `${path}.build.vendorChunks`,
@@ -1667,19 +1667,18 @@ function validateSpaFallbackScopes(value: unknown, path: string): void {
   });
 }
 
-function validateFrontendBuildTarget(value: unknown, path: string): void {
+function validateFrontendClientBuildTarget(value: unknown, path: string): void {
   const target = validateOptionalFrontendObject(value, path);
   if (!target) {
     return;
   }
-  for (const key of [
-    "outDir",
-    "outFile",
-    "assetsDir",
-    "entryNames",
-    "chunkNames",
-    "assetNames",
-  ]) {
+  rejectUnsupportedFrontendBuildKeys(
+    target,
+    path,
+    ["outDir", "outFile", "manifest"],
+    "Browser builds write to config.frontend.outDir and always emit the Vext manifest family.",
+  );
+  for (const key of ["assetsDir", "entryNames", "chunkNames", "assetNames"]) {
     validateOptionalString(target[key], `${path}.${key}`);
   }
   if (
@@ -1692,7 +1691,7 @@ function validateFrontendBuildTarget(value: unknown, path: string): void {
       `[vextjs] ${path}.target must be a string or string array.`,
     );
   }
-  for (const key of ["minify", "sourcemap", "splitting", "manifest"]) {
+  for (const key of ["minify", "sourcemap", "splitting"]) {
     validateOptionalBoolean(target[key], `${path}.${key}`);
   }
   validateOptionalStringArray(target.external, `${path}.external`);
@@ -1700,6 +1699,56 @@ function validateFrontendBuildTarget(value: unknown, path: string): void {
     target.externalRuntime,
     `${path}.externalRuntime`,
   );
+}
+
+function validateFrontendServerBuildTarget(value: unknown, path: string): void {
+  const target = validateOptionalFrontendObject(value, path);
+  if (!target) {
+    return;
+  }
+  rejectUnsupportedFrontendBuildKeys(
+    target,
+    path,
+    [
+      "outDir",
+      "assetsDir",
+      "entryNames",
+      "chunkNames",
+      "assetNames",
+      "splitting",
+      "manifest",
+      "externalRuntime",
+    ],
+    "The frontend SSR renderer supports outFile, target, minify, sourcemap, and external.",
+  );
+  validateOptionalString(target.outFile, `${path}.outFile`);
+  if (
+    target.target !== undefined &&
+    typeof target.target !== "string" &&
+    (!Array.isArray(target.target) ||
+      target.target.some((item) => typeof item !== "string"))
+  ) {
+    throw new Error(
+      `[vextjs] ${path}.target must be a string or string array.`,
+    );
+  }
+  for (const key of ["minify", "sourcemap"]) {
+    validateOptionalBoolean(target[key], `${path}.${key}`);
+  }
+  validateOptionalStringArray(target.external, `${path}.external`);
+}
+
+function rejectUnsupportedFrontendBuildKeys(
+  target: Record<string, unknown>,
+  path: string,
+  keys: string[],
+  guidance: string,
+): void {
+  for (const key of keys) {
+    if (target[key] !== undefined) {
+      throw new Error(`[vextjs] ${path}.${key} is not supported. ${guidance}`);
+    }
+  }
 }
 
 function validateFrontendExternalRuntime(value: unknown, path: string): void {

@@ -114,20 +114,25 @@ export default {
 
 ## Build 字段
 
-| 字段                                           | 默认值        | 含义                              |
-| ---------------------------------------------- | ------------- | --------------------------------- |
-| `frontend.build.target`                        | `"es2022"`    | 传给 esbuild 的浏览器目标         |
-| `frontend.build.minify`                        | 生产期 `true` | 压缩浏览器产物                    |
-| `frontend.build.sourcemap`                     | 开发期 `true` | 生成 source map                   |
-| `frontend.build.client.external`               | `[]`          | 浏览器 external 模块              |
-| `frontend.build.client.externalRuntime`        | `{}`          | 浏览器 external 的 import-map URL |
-| `frontend.build.vendorChunks`                  | enabled       | 共享 runtime chunk 策略           |
-| `frontend.build.assets.inlineLimit`            | `0`           | 小于该字节数的 import 型资源内联  |
-| `frontend.build.css.modules`                   | `true`        | 启用 CSS Modules                  |
-| `frontend.build.diagnostics.leakScan`          | `true`        | 阻断服务端模块进入浏览器 graph    |
-| `frontend.build.diagnostics.performanceReport` | `true`        | 写入 raw/gzip/brotli size report  |
+| 字段                                           | 默认值                | 含义                                            |
+| ---------------------------------------------- | --------------------- | ----------------------------------------------- |
+| `frontend.build.target`                        | `"es2022"`            | 传给 esbuild 的浏览器目标                       |
+| `frontend.build.minify`                        | 生产期 `true`         | 压缩浏览器产物                                  |
+| `frontend.build.sourcemap`                     | 开发期 `true`         | 生成 source map                                 |
+| `frontend.build.client.assetsDir`              | `"assets"`            | 浏览器 bundle 资源子目录                        |
+| `frontend.build.client.splitting`              | `true`                | 启用浏览器代码拆分                              |
+| `frontend.build.client.external`               | `[]`                  | 浏览器 external 模块                            |
+| `frontend.build.client.externalRuntime`        | `{}`                  | 浏览器 external 的 import-map URL               |
+| `frontend.build.server.outFile`                | `server/renderer.cjs` | `frontend.outDir` 下的 SSR renderer bundle 文件 |
+| `frontend.build.vendorChunks`                  | enabled               | 共享 runtime chunk 策略                         |
+| `frontend.build.assets.inlineLimit`            | `0`                   | 小于该字节数的 import 型资源内联                |
+| `frontend.build.css.modules`                   | `true`                | 启用 CSS Modules                                |
+| `frontend.build.diagnostics.leakScan`          | `true`                | 阻断服务端模块进入浏览器 graph                  |
+| `frontend.build.diagnostics.performanceReport` | `true`                | 写入 raw/gzip/brotli size report                |
 
 React 相关 browser external 必须提供 `externalRuntime` 映射，否则构建会用友好诊断失败。
+
+浏览器输出采用目录模式，通过 `frontend.outDir` 配置；不支持 `frontend.build.client.outFile`。Vext 始终生成 SSR、preload、deploy 和验证所需的 frontend manifest family，因此 `build.client.manifest` / `build.server.manifest` 不是配置字段。
 
 ## Deploy 字段
 

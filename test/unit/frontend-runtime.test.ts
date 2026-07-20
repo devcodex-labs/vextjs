@@ -213,6 +213,46 @@ describe("frontend config resolver", () => {
       ),
     ).toThrow('config.frontend.i18n.clientLoad must be "current" or "all"');
   });
+
+  it("rejects unsupported frontend build target fields before build", async () => {
+    const rootDir = await tempRoot();
+
+    expect(() =>
+      resolveFrontendConfig(
+        {
+          enabled: true,
+          build: {
+            client: { outFile: "dist/client/app.js" } as any,
+          },
+        },
+        { rootDir, mode: "production" },
+      ),
+    ).toThrow("config.frontend.build.client.outFile is not supported");
+
+    expect(() =>
+      resolveFrontendConfig(
+        {
+          enabled: true,
+          build: {
+            client: { manifest: false } as any,
+          },
+        },
+        { rootDir, mode: "production" },
+      ),
+    ).toThrow("config.frontend.build.client.manifest is not supported");
+
+    expect(() =>
+      resolveFrontendConfig(
+        {
+          enabled: true,
+          build: {
+            server: { manifest: false } as any,
+          },
+        },
+        { rootDir, mode: "production" },
+      ),
+    ).toThrow("config.frontend.build.server.manifest is not supported");
+  });
 });
 
 describe("frontend dev event bus", () => {

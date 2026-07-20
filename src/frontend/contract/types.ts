@@ -37,8 +37,6 @@ export interface VextFrontendStylesConfig {
 }
 
 export interface VextFrontendBuildTargetConfig {
-  outDir?: string;
-  outFile?: string;
   assetsDir?: string;
   target?: string | string[];
   minify?: boolean;
@@ -47,9 +45,16 @@ export interface VextFrontendBuildTargetConfig {
   entryNames?: string;
   chunkNames?: string;
   assetNames?: string;
-  manifest?: boolean;
   external?: string[];
   externalRuntime?: Record<string, string | VextFrontendExternalRuntimeEntry>;
+}
+
+export interface VextFrontendServerBuildTargetConfig {
+  outFile?: string;
+  target?: string | string[];
+  minify?: boolean;
+  sourcemap?: boolean;
+  external?: string[];
 }
 
 export interface VextFrontendExternalRuntimeEntry {
@@ -84,7 +89,7 @@ export interface VextFrontendBuildConfig {
   sourcemap?: boolean;
   target?: string | string[];
   client?: VextFrontendBuildTargetConfig;
-  server?: VextFrontendBuildTargetConfig;
+  server?: VextFrontendServerBuildTargetConfig;
   vendorChunks?: boolean | VextFrontendVendorChunksConfig;
   budgets?: VextFrontendBuildBudgetsConfig;
   assets?: {
@@ -271,17 +276,14 @@ export interface ResolvedVextFrontendConfig {
   > & {
     target: string[];
     client: Required<
-      Omit<VextFrontendBuildTargetConfig, "outFile" | "externalRuntime">
+      Omit<VextFrontendBuildTargetConfig, "target" | "externalRuntime">
     > & {
+      outDir: string;
       target: string[];
-      outFile?: string;
       externalRuntime: Record<string, VextFrontendExternalRuntimeEntry>;
     };
-    server: Required<
-      Omit<VextFrontendBuildTargetConfig, "outDir" | "externalRuntime">
-    > & {
+    server: Required<Omit<VextFrontendServerBuildTargetConfig, "target">> & {
       target: string[];
-      outDir?: string;
     };
     vendorChunks: Required<VextFrontendVendorChunksConfig>;
     budgets: Required<VextFrontendBuildBudgetsConfig>;

@@ -114,20 +114,25 @@ export default {
 
 ## Build Fields
 
-| Field                                          | Default           | Meaning                                      |
-| ---------------------------------------------- | ----------------- | -------------------------------------------- |
-| `frontend.build.target`                        | `"es2022"`        | Browser target passed to esbuild             |
-| `frontend.build.minify`                        | production `true` | Minify browser output                        |
-| `frontend.build.sourcemap`                     | dev `true`        | Emit source maps                             |
-| `frontend.build.client.external`               | `[]`              | Browser external modules                     |
-| `frontend.build.client.externalRuntime`        | `{}`              | Import-map URLs for browser externals        |
-| `frontend.build.vendorChunks`                  | enabled           | Shared runtime chunk strategy                |
-| `frontend.build.assets.inlineLimit`            | `0`               | Inline imported assets below this byte size  |
-| `frontend.build.css.modules`                   | `true`            | Enable CSS Modules                           |
-| `frontend.build.diagnostics.leakScan`          | `true`            | Block server-only imports from browser graph |
-| `frontend.build.diagnostics.performanceReport` | `true`            | Write raw/gzip/brotli size report            |
+| Field                                          | Default               | Meaning                                          |
+| ---------------------------------------------- | --------------------- | ------------------------------------------------ |
+| `frontend.build.target`                        | `"es2022"`            | Browser target passed to esbuild                 |
+| `frontend.build.minify`                        | production `true`     | Minify browser output                            |
+| `frontend.build.sourcemap`                     | dev `true`            | Emit source maps                                 |
+| `frontend.build.client.assetsDir`              | `"assets"`            | Browser bundle asset subdirectory                |
+| `frontend.build.client.splitting`              | `true`                | Enable browser code splitting                    |
+| `frontend.build.client.external`               | `[]`                  | Browser external modules                         |
+| `frontend.build.client.externalRuntime`        | `{}`                  | Import-map URLs for browser externals            |
+| `frontend.build.server.outFile`                | `server/renderer.cjs` | SSR renderer bundle file under `frontend.outDir` |
+| `frontend.build.vendorChunks`                  | enabled               | Shared runtime chunk strategy                    |
+| `frontend.build.assets.inlineLimit`            | `0`                   | Inline imported assets below this byte size      |
+| `frontend.build.css.modules`                   | `true`                | Enable CSS Modules                               |
+| `frontend.build.diagnostics.leakScan`          | `true`                | Block server-only imports from browser graph     |
+| `frontend.build.diagnostics.performanceReport` | `true`                | Write raw/gzip/brotli size report                |
 
 React-related browser externals must define `externalRuntime` mappings. Otherwise the build fails with a friendly diagnostic.
+
+Browser output is directory-based and uses `frontend.outDir`; `frontend.build.client.outFile` is not supported. Vext always emits the frontend manifest family required by SSR, preload, deploy, and verification, so `build.client.manifest` / `build.server.manifest` are not configuration fields.
 
 ## Deploy Fields
 

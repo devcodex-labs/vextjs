@@ -1411,7 +1411,6 @@ describe("validateConfig", () => {
               client: {
                 target: ["es2022"],
                 splitting: true,
-                manifest: true,
                 external: ["react"],
                 externalRuntime: {
                   react: "https://cdn.example.com/react.mjs",
@@ -1504,6 +1503,48 @@ describe("validateConfig", () => {
           },
         }),
       ).not.toThrow();
+    });
+
+    it("rejects unsupported frontend build target fields", () => {
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            build: {
+              client: { outFile: "dist/client/app.js" },
+            },
+          },
+        }),
+      ).toThrow("config.frontend.build.client.outFile is not supported");
+
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            build: {
+              client: { manifest: false },
+            },
+          },
+        }),
+      ).toThrow("config.frontend.build.client.manifest is not supported");
+
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            build: {
+              server: { manifest: false },
+            },
+          },
+        }),
+      ).toThrow("config.frontend.build.server.manifest is not supported");
+
+      expect(() =>
+        _validateConfig({
+          frontend: {
+            build: {
+              server: { outDir: "dist/client/server" },
+            },
+          },
+        }),
+      ).toThrow("config.frontend.build.server.outDir is not supported");
     });
 
     it("rejects invalid scoped SPA fallback page with a field-level message", () => {

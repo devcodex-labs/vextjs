@@ -105,6 +105,27 @@ export function resolveFrontendConfig(
   const clientTarget = normalizeTarget(clientBuild.target, "es2022");
   const serverBuild = build.server ?? {};
   const serverTarget = normalizeTarget(serverBuild.target, "node20");
+  assertSupportedBuildTargetKeys(
+    clientBuild,
+    "config.frontend.build.client",
+    ["outDir", "outFile", "manifest"],
+    "Browser builds write to config.frontend.outDir and always emit the Vext manifest family.",
+  );
+  assertSupportedBuildTargetKeys(
+    serverBuild,
+    "config.frontend.build.server",
+    [
+      "outDir",
+      "assetsDir",
+      "entryNames",
+      "chunkNames",
+      "assetNames",
+      "splitting",
+      "manifest",
+      "externalRuntime",
+    ],
+    "The frontend SSR renderer supports config.frontend.build.server.outFile, target, minify, sourcemap, and external.",
+  );
 
   return {
     enabled,
@@ -157,7 +178,6 @@ export function resolveFrontendConfig(
       target,
       client: {
         outDir,
-        outFile: clientBuild.outFile,
         assetsDir: clientBuild.assetsDir ?? "assets",
         target: clientTarget,
         minify:
@@ -170,7 +190,6 @@ export function resolveFrontendConfig(
         entryNames: clientBuild.entryNames ?? "[name]-[hash]",
         chunkNames: clientBuild.chunkNames ?? "[name]-[hash]",
         assetNames: clientBuild.assetNames ?? "[name]-[hash]",
-        manifest: clientBuild.manifest ?? true,
         external: clientBuild.external ?? [],
         externalRuntime: normalizeExternalRuntime(
           clientBuild.externalRuntime,
@@ -180,16 +199,9 @@ export function resolveFrontendConfig(
       server: {
         outFile:
           serverBuild.outFile ?? path.join(outDir, "server", "renderer.cjs"),
-        outDir: serverBuild.outDir,
-        assetsDir: serverBuild.assetsDir ?? "assets",
         target: serverTarget,
         minify: serverBuild.minify ?? false,
         sourcemap: serverBuild.sourcemap ?? options.mode === "development",
-        splitting: serverBuild.splitting ?? false,
-        entryNames: serverBuild.entryNames ?? "[name]",
-        chunkNames: serverBuild.chunkNames ?? "[name]",
-        assetNames: serverBuild.assetNames ?? "[name]",
-        manifest: serverBuild.manifest ?? true,
         external: serverBuild.external ?? [],
       },
       vendorChunks: normalizeVendorChunks(build.vendorChunks),
@@ -298,6 +310,20 @@ function normalizeBudgets(
     maxTotalBytes: value?.maxTotalBytes ?? 0,
     warnOnly: value?.warnOnly ?? false,
   };
+}
+
+function assertSupportedBuildTargetKeys(
+  value: object,
+  path: string,
+  unsupportedKeys: string[],
+  guidance: string,
+): void {
+  const target = value as Record<string, unknown>;
+  for (const key of unsupportedKeys) {
+    if (target[key] !== undefined) {
+      throw new Error(`[vextjs] ${path}.${key} is not supported. ${guidance}`);
+    }
+  }
 }
 
 function normalizeI18nClientLoad(
