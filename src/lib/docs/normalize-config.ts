@@ -168,7 +168,6 @@ export function normalizeDocsConfig(
     mode: openapi.docs?.access?.mode ?? "off",
     openapiJson: openapi.docs?.access?.openapiJson ?? "filtered",
     resolver: openapi.docs?.access?.resolver,
-    cacheKey: openapi.docs?.access?.cacheKey,
   };
   const tryItOut: ResolvedVextDocsTryItOutConfig = {
     hookScript: openapi.docs?.tryItOut?.hookScript,

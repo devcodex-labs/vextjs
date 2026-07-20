@@ -198,7 +198,6 @@ export interface ResolvedVextDocsAccessConfig {
   mode: VextDocsAccessMode;
   openapiJson: "filtered" | "public";
   resolver?: VextDocsAccessResolver;
-  cacheKey?: VextDocsAccessCacheKeyResolver | string;
 }
 
 export type VextDocsSameOriginServerMode = boolean | "auto";
@@ -410,14 +409,9 @@ export type VextDocsAccessResolver = (
   context: VextDocsAccessContext,
 ) => VextDocsAccessResult | Promise<VextDocsAccessResult>;
 
-export type VextDocsAccessCacheKeyResolver = (
-  context: Pick<VextDocsAccessContext, "request" | "viewer">,
-) => string | undefined;
-
 export interface VextDocsAccessConfig {
   mode?: VextDocsAccessMode;
   resolver?: VextDocsAccessResolver;
-  cacheKey?: VextDocsAccessCacheKeyResolver | string;
   openapiJson?: "filtered" | "public";
 }
 

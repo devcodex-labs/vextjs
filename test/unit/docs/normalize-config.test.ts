@@ -146,6 +146,7 @@ describe("docs public contract", () => {
     expect(config.code.scan).toBe("background");
     expect(config.access.mode).toBe("visibility-only");
     expect(config.access.openapiJson).toBe("public");
+    expect("cacheKey" in config.access).toBe(false);
     expect(config.tryItOut.hookScript).toBe("/docs-hook.js");
     expect(config.tryItOut.hookGlobal).toBe("CustomDocsHooks");
     expect(config.tryItOut.defaultServer).toBe("first");

@@ -716,6 +716,8 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.contact`                       | `object`                 | `{}`                  | 联系方式                                                                                                                                                                           |
 | `openapi.license`                       | `object`                 | `{}`                  | 许可证信息                                                                                                                                                                         |
 
+`openapi.docs.access.cacheKey` 当前版本不支持，并会被配置校验拒绝。请直接配置 resolver；后续若引入文档缓存层，应由独立缓存契约重新定义。
+
 固定本地或部署 API 目标时，`openapi.servers[].url` 建议直接写带端口的完整 base URL，例如 `http://127.0.0.1:3000`。只有环境名、区域、租户或 API 版本这类真正会变化的 URL 片段，才建议使用 `openapi.servers[].variables`。`openapi.docs.tryItOut.defaultServer` 用于控制 Try it out 初始选中的 server，`openapi.docs.tryItOut.customServer` 用于允许用户在浏览器里临时输入其他目标地址，不需要修改项目配置。
 
 ```typescript

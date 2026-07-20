@@ -712,6 +712,8 @@ GET /api/users 200 12ms | 127.0.0.1
 | `openapi.contact`                       | `object`                 | `{}`                  | Contact information                                                                                                                                                                                                             |
 | `openapi.license`                       | `object`                 | `{}`                  | License information                                                                                                                                                                                                             |
 
+`openapi.docs.access.cacheKey` is not supported in this release and is rejected by config validation. Add a resolver directly; a future docs caching layer should define its own explicit cache contract.
+
 For fixed local or deployed API targets, configure `openapi.servers[].url` as the complete base URL including its port, for example `http://127.0.0.1:3000`. Reserve `openapi.servers[].variables` for truly variable URL segments such as environment, region, tenant, or API version. `openapi.docs.tryItOut.defaultServer` selects the initial Try it out server, and `openapi.docs.tryItOut.customServer` allows a temporary browser-side override without changing project config.
 
 ```typescript

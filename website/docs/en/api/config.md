@@ -679,6 +679,8 @@ OpenAPI documentation generation configuration.
 | ~~`tryItOutEnabled`~~           | `boolean`                                 | `true`                     | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
 | ~~`docExpansion`~~              | `'none' \| 'list' \| 'full'`              | `'list'`                   | ~~Deprecated~~ Compatibility only; it does not affect the default Vext Docs implementation                                                                                                                    |
 
+`docs.access.cacheKey` is not a supported configuration field in this release. Vext rejects it to avoid implying response or access-result caching that the docs access pipeline does not currently provide.
+
 For fixed local or deployed API targets, set `servers[].url` to the complete base URL including its port, for example `http://127.0.0.1:3000`. Use `servers[].variables` only for genuinely variable URL segments such as environment, region, tenant, or API version. `docs.tryItOut.defaultServer` controls the initial Try it out selection, while `docs.tryItOut.customServer` lets users temporarily enter another browser-side target without changing project config.
 
 `tagGroups` is passed through as `x-tagGroups` only when explicitly configured. The default Vext Docs renderer builds recursive navigation from OpenAPI path segments; `tagGroups` is mainly for downstream OpenAPI tools that explicitly consume this vendor extension.

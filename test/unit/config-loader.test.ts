@@ -811,7 +811,6 @@ describe("validateConfig", () => {
                 mode: "enforce",
                 openapiJson: "filtered",
                 resolver: () => true,
-                cacheKey: "admin",
               },
               tryItOut: {
                 hookScript: "/docs-hook.js",
@@ -908,6 +907,29 @@ describe("validateConfig", () => {
           openapi: { docs: { access: { mode: "hidden-only" } } },
         }),
       ).toThrow("config.openapi.docs.access.mode");
+    });
+
+    it("rejects unsupported docs access cacheKey", () => {
+      expect(() =>
+        _validateConfig({
+          openapi: { docs: { access: { cacheKey: "admin" } } },
+        }),
+      ).toThrow("config.openapi.docs.access.cacheKey is not supported");
+    });
+
+    it("documents unsupported docs access cacheKey in config guides", () => {
+      for (const file of [
+        "website/docs/en/api/config.md",
+        "website/docs/zh/api/config.md",
+        "website/docs/en/guide/configuration.md",
+        "website/docs/zh/guide/configuration.md",
+      ]) {
+        const content = fs.readFileSync(file, "utf8");
+        expect(content).toContain("docs.access.cacheKey");
+        expect(content).toMatch(
+          /not (?:a )?supported|不是当前版本支持|不支持/u,
+        );
+      }
     });
 
     it("rejects invalid docs try it out server mode", () => {

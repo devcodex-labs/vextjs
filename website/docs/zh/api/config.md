@@ -690,6 +690,8 @@ OpenAPI 文档自动生成配置。
 | ~~`tryItOutEnabled`~~           | `boolean`                                 | `true`               | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
 | ~~`docExpansion`~~              | `'none' \| 'list' \| 'full'`              | `'list'`             | ~~已废弃~~ 保留兼容，不影响 Vext Docs 默认实现                                                                                                                          |
 
+`docs.access.cacheKey` 不是当前版本支持的配置字段。Vext 会拒绝该字段，避免让用户误以为文档访问链路已经提供 response cache 或 access result cache。
+
 固定本地或部署 API 目标时，`servers[].url` 建议直接写带端口的完整 base URL，例如 `http://127.0.0.1:3000`。只有环境名、区域、租户或 API 版本这类真正会变化的 URL 片段，才建议使用 `servers[].variables`。`docs.tryItOut.defaultServer` 用于控制 Try it out 初始选中的 server，`docs.tryItOut.customServer` 用于允许用户在浏览器里临时输入其他目标地址，不需要修改项目配置。
 
 `tagGroups` 只有在显式配置时才会透传为 `x-tagGroups`。默认 Vext Docs renderer 使用 OpenAPI path segment 构建递归导航；`tagGroups` 主要用于下游 OpenAPI 工具明确消费该 vendor extension 的场景。

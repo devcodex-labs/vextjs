@@ -1419,13 +1419,9 @@ function validateDocsAccessConfig(value: unknown, pathName: string): void {
   if (access.resolver !== undefined && typeof access.resolver !== "function") {
     throw new Error(`[vextjs] ${pathName}.resolver must be a function.`);
   }
-  if (
-    access.cacheKey !== undefined &&
-    typeof access.cacheKey !== "function" &&
-    typeof access.cacheKey !== "string"
-  ) {
+  if (access.cacheKey !== undefined) {
     throw new Error(
-      `[vextjs] ${pathName}.cacheKey must be a function or string.`,
+      `[vextjs] ${pathName}.cacheKey is not supported by the current docs access pipeline.`,
     );
   }
 }
