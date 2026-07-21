@@ -108,6 +108,25 @@ interface Closeable {
   close(): void;
 }
 
+const ROOT_COLD_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  "tsconfig.json",
+]);
+
+const ENV_FILE_PATTERN = /^\.env(\..+)?$/;
+
+function isRootColdFile(fileName: string): boolean {
+  const normalized = fileName.replace(/\\/g, "/");
+  if (normalized.includes("/")) return false;
+  return ROOT_COLD_FILES.has(normalized) || ENV_FILE_PATTERN.test(normalized);
+}
+
 // ── VextFileWatcher 类 ──────────────────────────────────────
 
 export class VextFileWatcher extends EventEmitter {
@@ -185,8 +204,8 @@ export class VextFileWatcher extends EventEmitter {
    *      - polling = true → 使用 setInterval 定期扫描
    *
    * 监听目标：
-     *   - src/ 目录（递归，所有源码文件变更）
-     *   - preload/ 目录（非递归，项目级 preload 文件变更）
+   *   - src/ 目录（递归，所有源码文件变更）
+   *   - preload/ 目录（非递归，项目级 preload 文件变更）
    *   - public/ 目录（递归，前端静态资源）
    *   - 根目录配置文件（package.json, tsconfig.json）
    *   - .env 文件（.env, .env.local, .env.production 等）
@@ -260,7 +279,7 @@ export class VextFileWatcher extends EventEmitter {
     this.attachPreloadWatcher(root);
     this.attachPublicWatcher(root);
 
-    // ── 项目根目录监听（补足 preload/public 动态创建/删除）────
+    // ── 项目根目录监听（补足 preload/public 和根冷重启文件动态变化）────
     try {
       const watcher = watch(
         root,
@@ -268,10 +287,18 @@ export class VextFileWatcher extends EventEmitter {
           recursive: false,
           persistent: true,
         },
-        (_eventType, filename) => {
+        (eventType, filename) => {
           if (!filename) return;
 
           const normalized = String(filename).replace(/\\/g, "/");
+          if (isRootColdFile(normalized)) {
+            const changeType = this.detectChangeType(
+              eventType,
+              normalized,
+              join(root, normalized),
+            );
+            this.onFileChange(normalized, changeType);
+          }
           if (normalized.startsWith("preload")) {
             void this.reconcilePreloadWatcher(root);
           }
@@ -300,31 +327,13 @@ export class VextFileWatcher extends EventEmitter {
     // 配置文件变更触发 Cold Restart，需要在 src/ 外单独监听。
     // 这些文件通常在项目根目录（与 src/ 同级）。
     //
-    const rootConfigFiles = ["package.json", "tsconfig.json"];
-
-    // .env 文件（含 .env.local, .env.production 等）
-    const envFiles = this.findEnvFiles(root);
-
-    for (const configFile of rootConfigFiles) {
+    for (const configFile of this.findRootColdFiles(root)) {
       const fullPath = join(root, configFile);
       try {
         statSync(fullPath);
         const watcher = watch(fullPath, () => {
           // 配置文件只关心内容修改，不关心 add/delete
           this.onFileChange(configFile, "modify");
-        });
-        this.watchers.push(watcher);
-      } catch {
-        // 文件不存在，跳过
-      }
-    }
-
-    // .env 文件监听
-    for (const envFile of envFiles) {
-      const fullPath = join(root, envFile);
-      try {
-        const watcher = watch(fullPath, () => {
-          this.onFileChange(envFile, "modify");
         });
         this.watchers.push(watcher);
       } catch {
@@ -363,20 +372,27 @@ export class VextFileWatcher extends EventEmitter {
   // ── 内部方法 ──────────────────────────────────────────────
 
   /**
-   * findEnvFiles — 查找根目录下所有 .env 文件
+   * findRootColdFiles — 查找根目录下会触发冷重启的文件
    *
-   * 匹配 .env, .env.local, .env.production, .env.development 等。
+   * 覆盖 package.json、主流依赖 lockfile、tsconfig.json，以及
+   * .env、.env.local、.env.production、.env.development 等。
    *
    * @param root 项目根目录
-   * @returns .env 文件名列表
+   * @returns 根目录冷重启文件名列表
    */
-  private findEnvFiles(root: string): string[] {
+  private findRootColdFiles(root: string): string[] {
+    const files = new Set(ROOT_COLD_FILES);
     try {
       const entries = readdirSync(root, { encoding: "utf-8" });
-      return entries.filter((f: string) => /^\.env(\..+)?$/.test(f));
+      for (const entry of entries) {
+        if (isRootColdFile(entry)) {
+          files.add(entry);
+        }
+      }
     } catch {
-      return [".env"]; // fallback: 至少监听 .env
+      files.add(".env"); // fallback: 至少覆盖常见 env 文件
     }
+    return [...files];
   }
 
   /**
@@ -405,6 +421,10 @@ export class VextFileWatcher extends EventEmitter {
     absolutePath: string,
   ): "modify" | "add" | "delete" {
     if (eventType === "change") {
+      if (!this.knownFiles.has(normalizedPath) && existsSync(absolutePath)) {
+        this.knownFiles.add(normalizedPath);
+        return "add";
+      }
       // 内容修改（所有平台一致）
       return "modify";
     }
@@ -444,6 +464,7 @@ export class VextFileWatcher extends EventEmitter {
       ...(await this.walkDirectory(srcDir)),
       ...(await this.listPreloadFiles(root)),
       ...(await this.listPublicFiles(root)),
+      ...this.findExistingRootColdFilePaths(root),
     ];
     for (const file of files) {
       const rel = relative(root, file).replace(/\\/g, "/");
@@ -625,7 +646,10 @@ export class VextFileWatcher extends EventEmitter {
     // 合并到 pending 集合
     // 如果已经有一个 cold，保持 cold（cold 优先级最高）
     const existing = this.pendingChanges.get(relativePath);
-    if (!existing || compareActionPriority(classification.action, existing.action) > 0) {
+    if (
+      !existing ||
+      compareActionPriority(classification.action, existing.action) > 0
+    ) {
       this.pendingChanges.set(relativePath, {
         action: classification.action,
         type: changeType,
@@ -742,36 +766,34 @@ export class VextFileWatcher extends EventEmitter {
         }
       }
 
-      // 检测已删除的文件
-      for (const [trackedPath] of fileStats) {
-        if (!currentPaths.has(trackedPath)) {
-          fileStats.delete(trackedPath);
-          this.onFileChange(trackedPath, "delete");
-        }
-      }
-
-      // 轮询根目录配置文件（package.json, tsconfig.json, .env*）
-      const rootConfigFiles = [
-        "package.json",
-        "tsconfig.json",
-        ...this.findEnvFiles(root),
-      ];
-      for (const configFile of rootConfigFiles) {
+      // 轮询根目录冷重启文件（package.json、lockfile、tsconfig.json、.env*）
+      for (const configFile of this.findRootColdFiles(root)) {
         const fullPath = join(root, configFile);
         try {
           const stat = statSync(fullPath);
           const mtime = stat.mtimeMs;
           const prev = fileStats.get(configFile);
+          currentPaths.add(configFile);
 
           if (prev === undefined) {
-            // 初始记录
             fileStats.set(configFile, mtime);
+            if (initialized) {
+              this.onFileChange(configFile, "add");
+            }
           } else if (prev !== mtime) {
             fileStats.set(configFile, mtime);
             this.onFileChange(configFile, "modify");
           }
         } catch {
           // 文件不存在或 stat 失败
+        }
+      }
+
+      // 检测已删除的文件
+      for (const [trackedPath] of fileStats) {
+        if (!currentPaths.has(trackedPath)) {
+          fileStats.delete(trackedPath);
+          this.onFileChange(trackedPath, "delete");
         }
       }
 
@@ -798,13 +820,8 @@ export class VextFileWatcher extends EventEmitter {
           }
         }
 
-        // 也记录根配置文件的初始 mtime
-        const rootConfigFiles = [
-          "package.json",
-          "tsconfig.json",
-          ...this.findEnvFiles(root),
-        ];
-        for (const configFile of rootConfigFiles) {
+        // 也记录根冷重启文件的初始 mtime
+        for (const configFile of this.findRootColdFiles(root)) {
           try {
             const stat = statSync(join(root, configFile));
             fileStats.set(configFile, stat.mtimeMs);
@@ -851,7 +868,11 @@ export class VextFileWatcher extends EventEmitter {
           if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
             results.push(...(await this.walkDirectory(fullPath)));
           }
-        } else if (/\.(ts|tsx|js|jsx|mjs|cjs|json|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot)$/.test(entry.name)) {
+        } else if (
+          /\.(ts|tsx|js|jsx|mjs|cjs|json|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot)$/.test(
+            entry.name,
+          )
+        ) {
           results.push(fullPath);
         }
       }
@@ -887,6 +908,20 @@ export class VextFileWatcher extends EventEmitter {
 
   private async listPublicFiles(root: string): Promise<string[]> {
     return this.walkDirectory(join(root, "public"));
+  }
+
+  private findExistingRootColdFilePaths(root: string): string[] {
+    const files: string[] = [];
+    for (const fileName of this.findRootColdFiles(root)) {
+      const fullPath = join(root, fileName);
+      try {
+        statSync(fullPath);
+        files.push(fullPath);
+      } catch {
+        // 文件不存在，跳过
+      }
+    }
+    return files;
   }
 }
 

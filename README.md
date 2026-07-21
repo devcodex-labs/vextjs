@@ -973,12 +973,12 @@ The runtime automatically loads locale files during bootstrap. In development, l
 
 `vext dev` chooses the smallest safe reload strategy:
 
-| Change type                                    | Strategy              |
-| ---------------------------------------------- | --------------------- |
-| Route files                                    | Hot route replacement |
-| Service or locale files                        | Service/i18n reload   |
-| Frontend files or public assets                | Frontend rebuild      |
-| Config, plugin, preload, env, or package files | Cold restart          |
+| Change type                                          | Strategy              |
+| ---------------------------------------------------- | --------------------- |
+| Route files                                          | Hot route replacement |
+| Service or locale files                              | Service/i18n reload   |
+| Frontend files or public assets                      | Frontend rebuild      |
+| Config, plugin, preload, env, package, or lock files | Cold restart          |
 
 TypeScript projects are compiled into `.vext/dev/` during development.
 

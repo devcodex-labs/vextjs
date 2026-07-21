@@ -74,7 +74,7 @@ export interface ClassifierOptions {
  *   - config/ — 配置影响 bootstrap 阶段的行为（端口、中间件列表等）
  *   - plugins/ — 插件在 setup() 阶段注册钩子和中间件，无法安全卸载
  *   - preload/ — 项目级 preload 在应用代码前执行，变更后需完整重启才能重新注入
- *   - package.json — 依赖变更需要重新安装和加载
+ *   - package.json / lockfile — 依赖变更需要重新安装和加载
  *   - tsconfig.json — 编译配置变更需要重建 esbuild context
  *   - .env — 环境变量在进程启动时读取，修改后需重启生效
  */
@@ -82,6 +82,7 @@ const COLD_PATTERNS: RegExp[] = [
   /^src\/config\//,
   /^preload\//,
   /^package\.json$/,
+  /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|bun\.lock)$/,
   /^\.env(\..+)?$/,
   /^src\/plugins\//,
   /^tsconfig\.json$/,
@@ -124,8 +125,8 @@ const SOURCE_PATTERN = /^src\/.*\.(ts|mts|cts|js|mjs|cjs)$/;
  * 分类优先级（从高到低）：
  *   1. 用户自定义 ignorePatterns → ignore
  *   2. 用户自定义 coldPatterns → cold
- *   3. 内置 IGNORE_PATTERNS → ignore
- *   4. 内置 COLD_PATTERNS → cold
+ *   3. 内置 COLD_PATTERNS → cold
+ *   4. 内置 IGNORE_PATTERNS → ignore
  *   5. src/frontend 与 public → client
  *   6. src/ 下的源码文件 → soft
  *   7. 其他 → ignore
@@ -177,22 +178,22 @@ export function classifyChange(
     }
   }
 
-  // ── 3. 内置 IGNORE_PATTERNS ────────────────────────────
-  for (const pattern of IGNORE_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return {
-        action: "ignore",
-        reason: `matched ignore pattern: ${pattern}`,
-      };
-    }
-  }
-
-  // ── 4. 内置 COLD_PATTERNS ─────────────────────────────
+  // ── 3. 内置 COLD_PATTERNS ─────────────────────────────
   for (const pattern of COLD_PATTERNS) {
     if (pattern.test(normalized)) {
       return {
         action: "cold",
         reason: `config/plugin change: ${pattern}`,
+      };
+    }
+  }
+
+  // ── 4. 内置 IGNORE_PATTERNS ────────────────────────────
+  for (const pattern of IGNORE_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return {
+        action: "ignore",
+        reason: `matched ignore pattern: ${pattern}`,
       };
     }
   }

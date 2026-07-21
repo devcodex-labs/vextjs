@@ -123,6 +123,18 @@ describe("change-classifier", () => {
       expect(result.action).toBe("cold");
     });
 
+    it.each([
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+    ])("%s 应分类为 cold", (lockfile) => {
+      const result = classifyChange(lockfile);
+      expect(result.action).toBe("cold");
+    });
+
     it(".env 应分类为 cold", () => {
       const result = classifyChange(".env");
       expect(result.action).toBe("cold");
@@ -680,6 +692,77 @@ describe("VextFileWatcher", () => {
       }
     });
 
+    it("修改依赖 lockfile 应触发 cold 事件", async () => {
+      const lockfilePath = path.join(projectRoot, "pnpm-lock.yaml");
+      fs.writeFileSync(lockfilePath, "lockfileVersion: '9.0'\n");
+
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasLockfile = event.files.some(
+            (f) => f.path === "pnpm-lock.yaml",
+          );
+          if (hasLockfile) {
+            resolve(event);
+          }
+        });
+      });
+
+      await sleep(100);
+      fs.writeFileSync(lockfilePath, "lockfileVersion: '9.1'\n");
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.find((f) => f.path === "pnpm-lock.yaml")?.type).toBe(
+          "modify",
+        );
+      }
+    });
+
+    it("新增 .env.* 文件应触发 cold add 事件", async () => {
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasEnvFile = event.files.some((f) => f.path === ".env.staging");
+          if (hasEnvFile) {
+            resolve(event);
+          }
+        });
+      });
+
+      await sleep(100);
+      fs.writeFileSync(path.join(projectRoot, ".env.staging"), "STAGE=1\n");
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.find((f) => f.path === ".env.staging")?.type).toBe(
+          "add",
+        );
+      }
+    });
+
     it("fs.watch 模式下动态创建 preload/ 目录后应监听其中新增文件", async () => {
       fs.rmSync(path.join(projectRoot, "preload"), {
         recursive: true,
@@ -865,6 +948,160 @@ describe("VextFileWatcher", () => {
 
       if (event) {
         expect(event.action).toBe("cold");
+      }
+    });
+
+    it("新增依赖 lockfile 应在 polling 间隔后触发 cold add 事件", async () => {
+      const lockfilePath = path.join(projectRoot, "yarn.lock");
+      fs.rmSync(lockfilePath, { force: true });
+
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        usePolling: true,
+        pollInterval: 200,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      await sleep(600);
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasLockfile = event.files.some((f) => f.path === "yarn.lock");
+          if (hasLockfile) {
+            resolve(event);
+          }
+        });
+      });
+
+      fs.writeFileSync(lockfilePath, "# yarn lockfile\n");
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.find((f) => f.path === "yarn.lock")?.type).toBe(
+          "add",
+        );
+      }
+    });
+
+    it("删除依赖 lockfile 应在 polling 间隔后触发 cold delete 事件", async () => {
+      const lockfilePath = path.join(projectRoot, "package-lock.json");
+      fs.writeFileSync(lockfilePath, '{"lockfileVersion":3}\n');
+
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        usePolling: true,
+        pollInterval: 200,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      await sleep(600);
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasLockfile = event.files.some(
+            (f) => f.path === "package-lock.json",
+          );
+          if (hasLockfile) {
+            resolve(event);
+          }
+        });
+      });
+
+      fs.rmSync(lockfilePath, { force: true });
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(
+          event.files.find((f) => f.path === "package-lock.json")?.type,
+        ).toBe("delete");
+      }
+    });
+
+    it("新增 .env.* 文件应在 polling 间隔后触发 cold add 事件", async () => {
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        usePolling: true,
+        pollInterval: 200,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      await sleep(600);
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasEnvFile = event.files.some((f) => f.path === ".env.staging");
+          if (hasEnvFile) {
+            resolve(event);
+          }
+        });
+      });
+
+      fs.writeFileSync(path.join(projectRoot, ".env.staging"), "STAGE=1\n");
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.find((f) => f.path === ".env.staging")?.type).toBe(
+          "add",
+        );
+      }
+    });
+
+    it("删除 .env.* 文件应在 polling 间隔后触发 cold delete 事件", async () => {
+      const envPath = path.join(projectRoot, ".env.local");
+
+      watcher = new VextFileWatcher({
+        root: projectRoot,
+        usePolling: true,
+        pollInterval: 200,
+        debounce: 50,
+      });
+      await watcher.start();
+
+      await sleep(600);
+
+      const eventPromise = new Promise<FileChangeEvent>((resolve) => {
+        watcher.on("change", (event: FileChangeEvent) => {
+          const hasEnvFile = event.files.some((f) => f.path === ".env.local");
+          if (hasEnvFile) {
+            resolve(event);
+          }
+        });
+      });
+
+      fs.rmSync(envPath, { force: true });
+
+      const event = await Promise.race([
+        eventPromise,
+        sleep(3000).then(() => null),
+      ]);
+
+      expect(event).not.toBeNull();
+      if (event) {
+        expect(event.action).toBe("cold");
+        expect(event.files.find((f) => f.path === ".env.local")?.type).toBe(
+          "delete",
+        );
       }
     });
 
