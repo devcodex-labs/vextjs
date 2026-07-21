@@ -94,6 +94,9 @@ export interface LoadRoutesOptions {
 
   /** 应用级 CORS middleware，供全局关闭时的 route override 复用。 */
   corsMiddleware?: VextMiddleware;
+
+  /** 开发热重载使用 fresh import 读取更新后的路由模块。 */
+  freshImports?: boolean;
 }
 
 /**
@@ -170,7 +173,11 @@ export async function loadRoutes(
   }> = [];
 
   for (const entry of routeEntries) {
-    const routeDefinition = await loadRouteFile(entry.filePath, app);
+    const routeDefinition = await loadRouteFile(
+      entry.filePath,
+      app,
+      options.freshImports === true,
+    );
 
     if (!routeDefinition) {
       continue;
@@ -682,13 +689,15 @@ function compareRouteEntries(a: RouteEntry, b: RouteEntry): number {
 async function loadRouteFile(
   filePath: string,
   app: VextApp,
+  freshImport = false,
 ): Promise<RouteDefinition | null> {
   try {
     // 将 Windows 路径转换为 file:// URL（dynamic import 兼容性）
-    // 添加 cache-busting query string，避免 ESM 模块缓存导致重复加载时
-    // 复用上一次执行后的 routes 数组状态。
-    // 这在测试场景（多次 createTestApp）和 Phase 2 热重载中都是必要的。
-    const fileUrl = `${pathToFileUrl(filePath)}?t=${Date.now()}`;
+    // 普通启动与测试使用稳定 URL，避免重复加载大量临时路由时堆积 ESM module cache；
+    // 开发热重载由调用方显式开启 fresh import，确保读取最新编译产物。
+    const fileUrl = freshImport
+      ? `${pathToFileUrl(filePath)}?t=${Date.now()}`
+      : pathToFileUrl(filePath);
     const mod = await import(fileUrl);
 
     const routeDefinition = resolveModuleDefault<RouteDefinition>(mod);

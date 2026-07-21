@@ -1994,6 +1994,22 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
         ]);
       }).toThrow(/\[vextjs\] Failed to register route: GET \/conflict\/:name/);
     });
+
+    it("静态路由快速表仍应检测大小写和尾斜杠冲突", () => {
+      adapter.registerRoute("GET", "/Static", [
+        async (_req, res) => {
+          res.json({ ok: true });
+        },
+      ]);
+
+      expect(() => {
+        adapter.registerRoute("GET", "/static/", [
+          async (_req, res) => {
+            res.json({ ok: true });
+          },
+        ]);
+      }).toThrow(/\[vextjs\] Failed to register route: GET \/static\//);
+    });
   });
 
   // ── 13. 并发请求隔离 ──────────────────────────────────────

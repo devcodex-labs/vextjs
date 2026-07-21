@@ -169,6 +169,7 @@ export type RoutesLoader = (
     globalMiddlewares: RouteReloaderMiddleware[];
     sessionMiddleware?: RouteReloaderMiddleware;
     corsMiddleware?: RouteReloaderMiddleware;
+    freshImports?: boolean;
   },
   collector?: RouteMetadataCollector | null,
 ) => Promise<void>;
@@ -575,6 +576,7 @@ export async function reloadRoutes(
           globalMiddlewares,
           sessionMiddleware: builtinMiddlewares?.sessionMiddleware,
           corsMiddleware: routeCorsMiddleware,
+          freshImports: true,
         },
         collector,
       );

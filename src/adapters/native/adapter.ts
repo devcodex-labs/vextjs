@@ -232,6 +232,7 @@ export function createNativeAdapter(
     maxParamLength: options.maxParamLength ?? 500,
   });
   const routeStores: RouteStore[] = [];
+  const staticRouteStores = new Map<string, Map<string, RouteStore>>();
   const preparedMethods = new Map<string, PreparedMethod>();
 
   // ── 🆕 5.7: 缓存 ALS 开关（避免热路径重复读取 config）────
@@ -388,7 +389,25 @@ export function createNativeAdapter(
       return;
     }
 
-    const methodHandle = getPreparedMethod(nodeReq.method ?? "GET");
+    const routeMethod = normalizeRouteMethod(nodeReq.method ?? "GET");
+    const matchPathname =
+      typeof preparedPathname === "string"
+        ? preparedPathname
+        : preparedPathname.matchPathname;
+    const staticStore = lookupStaticRoute(routeMethod, matchPathname);
+    if (staticStore) {
+      onRouteMatch(
+        nodeReq,
+        nodeRes,
+        null,
+        staticStore.routePath,
+        staticStore,
+        parsedUrl,
+      );
+      return;
+    }
+
+    const methodHandle = getPreparedMethod(routeMethod);
     const matched = methodHandle.lookup(
       preparedPathname,
       (storeId, params, routePath) => {
@@ -408,6 +427,49 @@ export function createNativeAdapter(
   function normalizeRouteMethod(method: string): string {
     const normalized = method.toUpperCase();
     return normalized === "ALL" ? "ANY" : normalized;
+  }
+
+  function staticRouteKey(path: string): string {
+    let key =
+      (options.ignoreTrailingSlash ?? true) && path.length > 1
+        ? path.replace(/\/+$/u, "") || "/"
+        : path;
+    if ((options.caseSensitive ?? false) !== true) {
+      key = key.toLowerCase();
+    }
+    return key;
+  }
+
+  function lookupStaticRoute(method: string, path: string): RouteStore | null {
+    return staticRouteStores.get(method)?.get(staticRouteKey(path)) ?? null;
+  }
+
+  function isStaticRoutePath(path: string): boolean {
+    return (
+      path.startsWith("/") &&
+      !path.includes(":") &&
+      !path.includes("*") &&
+      !path.includes("(") &&
+      !path.includes(")") &&
+      !path.includes("?")
+    );
+  }
+
+  function addStaticRoute(
+    method: string,
+    path: string,
+    store: RouteStore,
+  ): void {
+    const key = staticRouteKey(path);
+    let byPath = staticRouteStores.get(method);
+    if (!byPath) {
+      byPath = new Map();
+      staticRouteStores.set(method, byPath);
+    }
+    if (byPath.has(key)) {
+      throw new Error("Static route conflict");
+    }
+    byPath.set(key, store);
   }
 
   function getPreparedMethod(method: string): PreparedMethod {
@@ -565,7 +627,11 @@ export function createNativeAdapter(
       routeStores.push(store);
 
       try {
-        router.add(routeMethod, routePath, storeId);
+        if (routeMethod !== "ANY" && isStaticRoutePath(routePath)) {
+          addStaticRoute(routeMethod, routePath, store);
+        } else {
+          router.add(routeMethod, routePath, storeId);
+        }
       } catch (err) {
         routeStores.pop();
         const message = err instanceof Error ? err.message : String(err);
