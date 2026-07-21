@@ -226,16 +226,22 @@ export class ColdRestarter {
         ...this.extraExecArgv,
       ];
 
-      this.child = fork(this.entryScript, [], {
+      const child = fork(this.entryScript, [], {
         env: childEnv,
         stdio: ["inherit", "inherit", "inherit", "ipc"],
         cwd: this.cwd,
         execArgv: devExecArgv,
       });
-      this.setupChildListeners(this.child);
+      this.child = child;
+      this.setupChildListeners(child);
 
       // ── 4. 等待新进程就绪 ──────────────────────────────
-      await this.waitForReady(this.child);
+      try {
+        await this.waitForReady(child);
+      } catch (err) {
+        await this.cleanupFailedStartup(child);
+        throw err;
+      }
     } finally {
       this.isRestarting = false;
     }
@@ -435,6 +441,24 @@ export class ColdRestarter {
       child.once("error", onError);
       child.once("exit", onExit);
     });
+  }
+
+  private async cleanupFailedStartup(child: ChildProcess): Promise<void> {
+    if (this.child !== child) return;
+
+    const isExited = child.exitCode !== null || child.signalCode !== null;
+    if (!child.killed && !isExited) {
+      this.isExpectedKill = true;
+      try {
+        await this.safeKill(child);
+      } finally {
+        this.isExpectedKill = false;
+      }
+    }
+
+    if (this.child === child) {
+      this.child = null;
+    }
   }
 
   /**

@@ -126,6 +126,38 @@ if (mode !== 'crash' && mode !== 'exit-zero') {
   return scriptPath;
 }
 
+function createModeFileWorkerScript(tmpDir: string): string {
+  const scriptPath = path.join(tmpDir, "mode-file-worker.mjs");
+  fs.writeFileSync(
+    scriptPath,
+    `
+import { readFileSync } from 'node:fs';
+
+const mode = readFileSync(process.env.WORKER_MODE_FILE, 'utf8').trim();
+
+if (mode === 'ready') {
+  process.send({ type: 'ready' });
+}
+
+const keepAlive = setInterval(() => {}, 5000);
+
+const shutdown = () => {
+  clearInterval(keepAlive);
+  process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+process.on('message', (msg) => {
+  if (msg && typeof msg === 'object' && msg.type === 'shutdown') {
+    shutdown();
+  }
+});
+`,
+  );
+  return scriptPath;
+}
+
 // ── 测试套件 ────────────────────────────────────────────────
 
 describe("ColdRestarter", () => {
@@ -320,9 +352,39 @@ describe("ColdRestarter", () => {
         readyTimeout: 1000, // 1秒超时（加快测试）
       });
 
+      const restartPromise = restarter.restart("timeout test");
+      await waitFor(() => restarter!.getChildPid() !== null, 1000);
+      const timedOutPid = restarter.getChildPid()!;
+
+      await expect(restartPromise).rejects.toThrow(/worker startup timeout/);
+      expect(restarter.isChildAlive()).toBe(false);
+      expect(restarter.getChildPid()).toBeNull();
+      await waitFor(() => !isProcessAlive(timedOutPid), 3000);
+    }, 10_000);
+
+    it("ready 超时清理后同一 restarter 应可再次启动", async () => {
+      const modeFile = path.join(tmpDir, "worker-mode.txt");
+      const modeFileWorker = createModeFileWorkerScript(tmpDir);
+      fs.writeFileSync(modeFile, "no-ready\n");
+
+      restarter = new ColdRestarter({
+        entryScript: modeFileWorker,
+        env: { WORKER_MODE_FILE: modeFile },
+        readyTimeout: 500,
+        killTimeout: 1000,
+      });
+
       await expect(restarter.restart("timeout test")).rejects.toThrow(
         /worker startup timeout/,
       );
+      expect(restarter.isChildAlive()).toBe(false);
+      expect(restarter.getChildPid()).toBeNull();
+
+      fs.writeFileSync(modeFile, "ready\n");
+      await restarter.restart("retry after timeout");
+
+      expect(restarter.isChildAlive()).toBe(true);
+      expect(restarter.getChildPid()).toBeTypeOf("number");
     }, 10_000);
 
     it("子进程退出 code=0 但未发送 ready 应抛出错误", async () => {
@@ -906,5 +968,14 @@ async function waitFor(
       throw new Error(`waitFor timeout after ${timeoutMs}ms`);
     }
     await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
