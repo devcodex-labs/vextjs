@@ -665,6 +665,9 @@ export async function bootstrap(
           host: config.host ?? "0.0.0.0",
           port: config.port,
           adapter: app.adapter,
+          mode: "production",
+          source: isBuilt ? "built-start" : "source-start",
+          app,
         });
         return app.adapter.listen(config.port, config.host, {
           server: config.server,

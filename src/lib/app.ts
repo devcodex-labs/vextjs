@@ -22,6 +22,20 @@ import type { VextMiddleware } from "../types/middleware.js";
 import type { VextServerHandle } from "../types/adapter.js";
 import { createResponseCache } from "response-cache-kit";
 import { resolveVextResponseCacheOptions } from "./response-cache-config.js";
+import type { VextRuntimeMode } from "../types/hooks.js";
+
+function resolveLifecycleMode(config: VextConfig): VextRuntimeMode {
+  const internalMode = (config as { _runtimeMode?: VextRuntimeMode })
+    ._runtimeMode;
+  if (internalMode) return internalMode;
+  return config._testMode ? "test" : "production";
+}
+
+function resolveLifecycleSource(mode: VextRuntimeMode): string {
+  if (mode === "development") return "dev-worker";
+  if (mode === "test") return "test-app";
+  return "bootstrap";
+}
 
 /**
  * 框架内部方法接口（不暴露给用户，仅 bootstrap 使用）
@@ -134,6 +148,8 @@ export function createApp(config: VextConfig): {
   internals: AppInternals;
 } {
   assertCreateAppConfig(config);
+  const lifecycleMode = resolveLifecycleMode(config);
+  const lifecycleSource = resolveLifecycleSource(lifecycleMode);
 
   const closeHooks: Array<() => Promise<void> | void> = [];
   const readyHooks: Array<() => Promise<void> | void> = [];
@@ -392,7 +408,12 @@ export function createApp(config: VextConfig): {
       if (_readyPromise) return _readyPromise;
       _readyState = "running";
       _readyPromise = (async () => {
-        await hooks.emitSafe("app:ready", { app, phase: "before" });
+        await hooks.emitSafe("app:ready", {
+          app,
+          phase: "before",
+          mode: lifecycleMode,
+          source: lifecycleSource,
+        });
         for (const h of readyHooks) {
           try {
             await h();
@@ -405,7 +426,12 @@ export function createApp(config: VextConfig): {
         }
         // 执行完后清空，释放 hooks 持有的闭包引用
         readyHooks.length = 0;
-        await hooks.emitSafe("app:ready", { app, phase: "after" });
+        await hooks.emitSafe("app:ready", {
+          app,
+          phase: "after",
+          mode: lifecycleMode,
+          source: lifecycleSource,
+        });
         _readyState = "completed";
       })();
       return _readyPromise;
@@ -431,7 +457,12 @@ export function createApp(config: VextConfig): {
       _closeState = "running";
       _shutdownPromise = (async () => {
         app.logger.info("[vextjs] starting graceful shutdown...");
-        await hooks.emitSafe("app:close", { app, phase: "before" });
+        await hooks.emitSafe("app:close", {
+          app,
+          phase: "before",
+          mode: lifecycleMode,
+          source: lifecycleSource,
+        });
 
         const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
 
@@ -467,7 +498,12 @@ export function createApp(config: VextConfig): {
             "[vextjs] response cache close failed",
           );
         }
-        await hooks.emitSafe("app:close", { app, phase: "after" });
+        await hooks.emitSafe("app:close", {
+          app,
+          phase: "after",
+          mode: lifecycleMode,
+          source: lifecycleSource,
+        });
 
         // 默认 logger 可能持有异步 sink，必须在所有 close hook 和 app:close after 之后收尾。
         try {

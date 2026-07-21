@@ -325,6 +325,62 @@ describe("fetch hooks", () => {
       }),
     );
   });
+
+  it("tags parent and child fetch hooks with isolated operation metadata", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const events: Array<{ event: string; payload: Record<string, unknown> }> =
+      [];
+
+    hooks.on("fetch:before", (payload) =>
+      events.push({ event: "before", payload }),
+    );
+    hooks.on("fetch:after", (payload) =>
+      events.push({ event: "after", payload }),
+    );
+
+    globalFetchMock
+      .mockResolvedValueOnce(new Response("root", { status: 200 }))
+      .mockResolvedValueOnce(new Response("retry", { status: 503 }))
+      .mockResolvedValueOnce(new Response("child", { status: 200 }));
+
+    const vextFetch = createVextFetch(
+      logger,
+      { retry: 0 },
+      "x-request-id",
+      hooks,
+    );
+    const child = vextFetch.create({
+      baseURL: "https://child.example.com",
+      retry: 1,
+      retryDelay: 0,
+    });
+
+    await requestContext.run({ requestId: "fetch-rid" }, async () => {
+      await vextFetch("https://root.example.com/ok");
+      await child.get("/retry");
+    });
+
+    const beforeEvents = events.filter((item) => item.event === "before");
+    const afterEvents = events.filter((item) => item.event === "after");
+    expect(beforeEvents).toHaveLength(2);
+    expect(afterEvents).toHaveLength(2);
+
+    const [rootBefore, childBefore] = beforeEvents.map((item) => item.payload);
+    const [rootAfter, childAfter] = afterEvents.map((item) => item.payload);
+
+    expect(rootBefore.operationId).toBe(rootAfter.operationId);
+    expect(childBefore.operationId).toBe(childAfter.operationId);
+    expect(childBefore.operationId).not.toBe(rootBefore.operationId);
+    expect(childBefore.parentClientId).toBe(rootBefore.clientId);
+    expect(childBefore.baseURL).toBe("https://child.example.com");
+    expect(childAfter).toMatchObject({
+      requestId: "fetch-rid",
+      attempt: 1,
+      maxRetries: 1,
+      clientId: childBefore.clientId,
+    });
+  });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -1054,8 +1110,60 @@ describe("app.fetch.proxy 代理", () => {
       expect.objectContaining({
         req,
         target: "userService",
+        url: "https://users.example.com/health",
+        method: "GET",
         status: 200,
         requestId: "proxy-req-1",
+        operationId: before.mock.calls[0]?.[0].operationId,
+        clientId: before.mock.calls[0]?.[0].clientId,
+        attempt: 0,
+        maxRetries: 0,
+        durationMs: expect.any(Number),
+      }),
+    );
+  });
+
+  it("emits proxy retry metadata only on the final after hook", async () => {
+    const logger = createMockLogger();
+    const hooks = createHookManager(logger);
+    const after = vi.fn();
+    hooks.on("proxy:after", after);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("retry", { status: 503 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const vextFetch = createVextFetch(
+      logger,
+      {
+        proxy: [
+          {
+            name: "userService",
+            baseURL: "https://users.example.com",
+            retry: 1,
+            retryDelay: 0,
+          },
+        ],
+      },
+      "x-request-id",
+      hooks,
+    );
+    const req = createProxyRequest();
+    const { res } = createProxyResponse();
+
+    await vextFetch.proxy.userService(req, res, { path: "/health" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: "userService",
+        status: 200,
+        attempt: 1,
+        maxRetries: 1,
+        operationId: expect.stringMatching(/^proxy-/),
       }),
     );
   });

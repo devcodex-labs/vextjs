@@ -95,6 +95,12 @@ export interface VextFetchClientOptions {
   retryDelay?: number | ((attempt: number) => number);
 }
 
+interface FetchClientContext {
+  clientId: string;
+  parentClientId?: string;
+  baseURL?: string;
+}
+
 /**
  * 可写入代理上游的请求头值。
  */
@@ -281,8 +287,15 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 const BODYLESS_STATUS = new Set([204, 304]);
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+let outboundSequence = 0;
 
 type FetchRetryDelay = number | ((attempt: number) => number);
+
+function nextOutboundId(prefix: "fetch" | "fetch-client" | "proxy"): string {
+  outboundSequence =
+    outboundSequence >= Number.MAX_SAFE_INTEGER ? 1 : outboundSequence + 1;
+  return `${prefix}-${outboundSequence.toString(36)}`;
+}
 
 function describeFetchOptionValue(value: unknown): string {
   if (typeof value === "number") {
@@ -375,6 +388,7 @@ export function createVextFetch(
   fetchConfig: FetchConfig = {},
   requestIdHeader: string = "x-request-id",
   hooks?: VextInternalHooks,
+  clientContext?: FetchClientContext,
 ): VextFetch {
   const globalTimeout = normalizeFetchTimeout(
     fetchConfig.timeout ?? 10_000,
@@ -390,6 +404,11 @@ export function createVextFetch(
   );
   const globalPropagateHeaders = fetchConfig.propagateHeaders ?? [];
   const proxyTargets = fetchConfig.proxy ?? [];
+  const context =
+    clientContext ??
+    ({
+      clientId: nextOutboundId("fetch-client"),
+    } satisfies FetchClientContext);
 
   /**
    * 核心 fetch 函数
@@ -450,12 +469,19 @@ export function createVextFetch(
         ? globalRetryDelay
         : normalizeFetchRetryDelay(init.retryDelay, "init.retryDelay");
     const requestId = store?.requestId;
+    const operationId = nextOutboundId("fetch");
 
     await hooks?.emit("fetch:before", {
       url,
       method,
       headers,
       requestId,
+      operationId,
+      clientId: context.clientId,
+      parentClientId: context.parentClientId,
+      baseURL: context.baseURL,
+      attempt: 0,
+      maxRetries,
       init: init as (RequestInit & Record<string, unknown>) | undefined,
     });
 
@@ -529,6 +555,12 @@ export function createVextFetch(
             response,
             durationMs: duration,
             requestId,
+            operationId,
+            clientId: context.clientId,
+            parentClientId: context.parentClientId,
+            baseURL: context.baseURL,
+            attempt,
+            maxRetries,
           });
           return response;
         }
@@ -548,6 +580,12 @@ export function createVextFetch(
           response,
           durationMs: duration,
           requestId,
+          operationId,
+          clientId: context.clientId,
+          parentClientId: context.parentClientId,
+          baseURL: context.baseURL,
+          attempt,
+          maxRetries,
         });
         return response;
       } catch (err: unknown) {
@@ -579,6 +617,12 @@ export function createVextFetch(
             method,
             error: timeoutError,
             requestId,
+            operationId,
+            clientId: context.clientId,
+            parentClientId: context.parentClientId,
+            baseURL: context.baseURL,
+            attempt,
+            maxRetries,
           });
           throw timeoutError;
         }
@@ -607,6 +651,12 @@ export function createVextFetch(
           method,
           error,
           requestId,
+          operationId,
+          clientId: context.clientId,
+          parentClientId: context.parentClientId,
+          baseURL: context.baseURL,
+          attempt,
+          maxRetries,
         });
         throw error;
       }
@@ -620,6 +670,12 @@ export function createVextFetch(
       method,
       error: finalError,
       requestId,
+      operationId,
+      clientId: context.clientId,
+      parentClientId: context.parentClientId,
+      baseURL: context.baseURL,
+      attempt: maxRetries,
+      maxRetries,
     });
     throw finalError;
   }
@@ -668,6 +724,7 @@ export function createVextFetch(
   // ── create() 工厂 ────────────────────────────────────────
 
   vextFetch.create = (options: VextFetchClientOptions): VextFetchClient => {
+    const baseURL = options.baseURL.replace(/\/+$/, "");
     const childFetchConfig: FetchConfig = {
       timeout:
         options.timeout === undefined
@@ -690,10 +747,14 @@ export function createVextFetch(
       childFetchConfig,
       requestIdHeader,
       hooks,
+      {
+        clientId: nextOutboundId("fetch-client"),
+        parentClientId: context.clientId,
+        baseURL,
+      },
     );
 
     // 包装：自动拼接 baseURL + 合并默认 headers
-    const baseURL = options.baseURL.replace(/\/+$/, "");
     const defaultHeaders = options.headers ?? {};
 
     const wrappedFetch: VextFetchClient = ((
@@ -767,6 +828,7 @@ export function createVextFetch(
     retry: globalRetry,
     retryDelay: globalRetryDelay,
     hooks,
+    clientId: context.clientId,
   });
 
   return vextFetch as VextFetch;
@@ -781,6 +843,7 @@ interface FetchProxyRuntime {
   retry: number;
   retryDelay: number | ((attempt: number) => number);
   hooks?: VextInternalHooks;
+  clientId: string;
 }
 
 interface ResolvedProxyRequest {
@@ -794,6 +857,13 @@ interface ResolvedProxyRequest {
   retry: number;
   retryDelay: number | ((attempt: number) => number);
   replayableBody: boolean;
+}
+
+interface ProxyFetchResult {
+  response: Response;
+  attempt: number;
+  maxRetries: number;
+  durationMs: number;
 }
 
 class ProxyLocalError extends Error {
@@ -885,8 +955,11 @@ async function handleProxyRequest(
   target: VextFetchProxyTargetConfig | undefined,
   options: VextFetchProxyOptions | undefined,
 ): Promise<void> {
+  const operationId = nextOutboundId("proxy");
+  let resolved: ResolvedProxyRequest | undefined;
   try {
-    const resolved = await resolveProxyRequest(runtime, req, target, options);
+    resolved = await resolveProxyRequest(runtime, req, target, options);
+    const maxRetries = proxyMaxRetries(resolved);
     await runtime.hooks?.emit("proxy:before", {
       req,
       target: resolved.targetName,
@@ -894,23 +967,39 @@ async function handleProxyRequest(
       method: resolved.method,
       headers: resolved.headers,
       requestId: req.requestId,
+      operationId,
+      clientId: runtime.clientId,
+      attempt: 0,
+      maxRetries,
     });
-    const response = await fetchProxyWithRetry(runtime, req, resolved);
+    const result = await fetchProxyWithRetry(runtime, req, resolved);
     await runtime.hooks?.emitSafe("proxy:after", {
       req,
       target: resolved.targetName,
-      status: response.status,
+      url: resolved.url,
+      method: resolved.method,
+      status: result.response.status,
       requestId: req.requestId,
+      operationId,
+      clientId: runtime.clientId,
+      attempt: result.attempt,
+      maxRetries: result.maxRetries,
+      durationMs: result.durationMs,
     });
-    await writeProxyResponse(response, res);
+    await writeProxyResponse(result.response, res);
   } catch (err) {
-    const proxyTarget = target?.name;
+    const proxyTarget = resolved?.targetName ?? target?.name;
     const proxyError = err instanceof Error ? err : new Error(String(err));
     await runtime.hooks?.emitSafe("proxy:error", {
       req,
       target: proxyTarget,
       error: proxyError,
       requestId: req.requestId,
+      operationId,
+      clientId: runtime.clientId,
+      url: resolved?.url,
+      method: resolved?.method,
+      maxRetries: resolved ? proxyMaxRetries(resolved) : 0,
     });
 
     if (err instanceof ProxyClientAbortError) {
@@ -1227,14 +1316,19 @@ function isReplayableProxyBody(body: ProxyRequestBody | undefined): boolean {
   return false;
 }
 
+function proxyMaxRetries(resolved: ResolvedProxyRequest): number {
+  return IDEMPOTENT_METHODS.has(resolved.method) && resolved.replayableBody
+    ? resolved.retry
+    : 0;
+}
+
 async function fetchProxyWithRetry(
   runtime: FetchProxyRuntime,
   req: VextRequest,
   resolved: ResolvedProxyRequest,
-): Promise<Response> {
+): Promise<ProxyFetchResult> {
   const retryableMethod = IDEMPOTENT_METHODS.has(resolved.method);
-  const maxRetries =
-    retryableMethod && resolved.replayableBody ? resolved.retry : 0;
+  const maxRetries = proxyMaxRetries(resolved);
   let clientAborted = false;
   let currentController: AbortController | null = null;
 
@@ -1331,7 +1425,7 @@ async function fetchProxyWithRetry(
 
       // Keep the controller attached after headers arrive so req.onClose()
       // can still abort an in-flight streamed response body.
-      return response;
+      return { response, attempt, maxRetries, durationMs: duration };
     } catch (err) {
       clearTimeout(timer);
       if (currentController === controller) {

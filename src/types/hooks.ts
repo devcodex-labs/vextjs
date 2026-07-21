@@ -42,6 +42,8 @@ export type VextHookName =
   | "app:ready"
   | "app:close";
 
+export type VextRuntimeMode = "production" | "development" | "test";
+
 export interface VextRouteHookInfo {
   method: string;
   path: string;
@@ -166,6 +168,12 @@ export interface VextHookPayloadMap {
     method: string;
     headers: Headers;
     requestId?: string;
+    operationId?: string;
+    clientId?: string;
+    parentClientId?: string;
+    baseURL?: string;
+    attempt?: number;
+    maxRetries?: number;
     init?: RequestInit & Record<string, unknown>;
   };
   "fetch:after": {
@@ -174,12 +182,24 @@ export interface VextHookPayloadMap {
     response: Response;
     durationMs: number;
     requestId?: string;
+    operationId?: string;
+    clientId?: string;
+    parentClientId?: string;
+    baseURL?: string;
+    attempt?: number;
+    maxRetries?: number;
   };
   "fetch:error": {
     url: string;
     method: string;
     error: Error;
     requestId?: string;
+    operationId?: string;
+    clientId?: string;
+    parentClientId?: string;
+    baseURL?: string;
+    attempt?: number;
+    maxRetries?: number;
   };
   "proxy:before": {
     req: VextRequest;
@@ -188,18 +208,35 @@ export interface VextHookPayloadMap {
     method: string;
     headers: Headers;
     requestId: string;
+    operationId?: string;
+    clientId?: string;
+    attempt?: number;
+    maxRetries?: number;
   };
   "proxy:after": {
     req: VextRequest;
     target?: string;
+    url?: string;
+    method?: string;
     status: number;
     requestId: string;
+    operationId?: string;
+    clientId?: string;
+    attempt?: number;
+    maxRetries?: number;
+    durationMs?: number;
   };
   "proxy:error": {
     req: VextRequest;
     target?: string;
+    url?: string;
+    method?: string;
     error: Error;
     requestId: string;
+    operationId?: string;
+    clientId?: string;
+    attempt?: number;
+    maxRetries?: number;
   };
   "service:loaded": {
     name: string;
@@ -291,14 +328,21 @@ export interface VextHookPayloadMap {
     host: string;
     port: number;
     adapter: unknown;
+    mode?: VextRuntimeMode;
+    source?: string;
+    app?: VextApp;
   };
   "app:ready": {
     app: VextApp;
     phase: "before" | "after";
+    mode?: VextRuntimeMode;
+    source?: string;
   };
   "app:close": {
     app: VextApp;
     phase: "before" | "after";
+    mode?: VextRuntimeMode;
+    source?: string;
   };
 }
 

@@ -1162,6 +1162,15 @@ export interface VextConfig {
   _testMode?: boolean;
 
   /**
+   * 运行时模式标记（内部使用）
+   *
+   * dev bootstrap 设置为 development，生命周期 hook 用它披露稳定运行入口。
+   *
+   * @internal
+   */
+  _runtimeMode?: "production" | "development" | "test";
+
+  /**
    * Dev 模式专属配置（仅在开发模式下读取）
    *
    * 用于控制 Dev Error Overlay 等开发辅助功能。

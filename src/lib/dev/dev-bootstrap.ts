@@ -418,7 +418,7 @@ export async function devBootstrap(
     sendLifecycleLevelToParent(lifecycleLevel);
 
     // ── 步骤 2: createApp ────────────────────────────────
-    const result = createApp(config);
+    const result = createApp({ ...config, _runtimeMode: "development" });
     const app = result.app;
     const hooks = app.hooks as VextInternalHooks;
     internals = result.internals;
@@ -936,6 +936,9 @@ export async function devBootstrap(
       host,
       port,
       adapter: app.adapter,
+      mode: "development",
+      source: "dev-worker",
+      app,
     });
 
     const serverHandle = await startupProfiler.time(

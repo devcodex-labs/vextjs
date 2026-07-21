@@ -183,6 +183,67 @@ describe("createApp", () => {
     await first;
   });
 
+  it("emits ready and close hooks with stable runtime mode metadata", async () => {
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      _testMode: true,
+    });
+    const ready: Array<{ mode?: string; source?: string; phase: string }> = [];
+    const close: Array<{ mode?: string; source?: string; phase: string }> = [];
+
+    app.hooks.on("app:ready", (payload) => ready.push(payload));
+    app.hooks.on("app:close", (payload) => close.push(payload));
+
+    await internals.runReady();
+    await internals.shutdown(undefined, { skipExit: true });
+
+    expect(ready).toEqual([
+      expect.objectContaining({
+        phase: "before",
+        mode: "test",
+        source: "test-app",
+      }),
+      expect.objectContaining({
+        phase: "after",
+        mode: "test",
+        source: "test-app",
+      }),
+    ]);
+    expect(close).toEqual([
+      expect.objectContaining({
+        phase: "before",
+        mode: "test",
+        source: "test-app",
+      }),
+      expect.objectContaining({
+        phase: "after",
+        mode: "test",
+        source: "test-app",
+      }),
+    ]);
+  });
+
+  it("allows dev bootstrap to disclose development lifecycle mode", async () => {
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      _runtimeMode: "development",
+    });
+    const ready: Array<{ mode?: string; source?: string }> = [];
+    app.hooks.on("app:ready", (payload) => ready.push(payload));
+
+    await internals.runReady();
+    await internals.shutdown(undefined, { skipExit: true });
+
+    expect(ready.map((payload) => payload.mode)).toEqual([
+      "development",
+      "development",
+    ]);
+    expect(ready.map((payload) => payload.source)).toEqual([
+      "dev-worker",
+      "dev-worker",
+    ]);
+  });
+
   it("coalesces shutdown, rejects late onClose registration, and continues after server close failure", async () => {
     const { app, internals } = createApp({
       ...DEFAULT_CONFIG,
