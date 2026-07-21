@@ -140,10 +140,14 @@ npm run dev
 vext dev [options]
 ```
 
+`vext dev` 不支持位置参数。`--root`、`--port`、`--host`、`--config`、`--poll-interval`、`--debounce`、`--startup-profile-json`、`--port-conflict` 等取值参数必须跟随非 option 值；数字参数必须是完整整数，`3000x`、`50x` 这类数字前缀会失败。
+
 ### 选项
 
 | 选项                         | 说明                                        | 默认值         |
 | ---------------------------- | ------------------------------------------- | -------------- |
+| `--root <path>`              | 指定项目根目录                              | 当前目录       |
+| `--config <name>`            | 选择 development 配置 profile               | `development`  |
 | `--port <number>`            | 指定端口                                    | 配置文件中的值 |
 | `--host <address>`           | 指定监听地址                                | 配置文件中的值 |
 | `--debounce <ms>`            | 防抖间隔（毫秒，0 = 不开启）                | `0`            |

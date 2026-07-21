@@ -72,13 +72,71 @@ describe("CLI config profile options", () => {
   });
 
   it("rejects vext dev --config without a value", () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-      throw new Error(`process.exit(${code})`);
-    }) as typeof process.exit);
+    expectCliArgsToExit(
+      () => parseDevArgs(["--config"]),
+      '[vextjs] Option "--config" requires a value: <name>',
+    );
+  });
 
-    expect(() => parseDevArgs(["--config"])).toThrow("process.exit(1)");
-    expect(error).toHaveBeenCalledWith("[vextjs] --config requires a value");
+  it.each([
+    ["--root", "<path>"],
+    ["--port", "<number>"],
+    ["--host", "<string>"],
+    ["--poll-interval", "<ms>"],
+    ["--debounce", "<ms>"],
+    ["--startup-profile-json", "<path>"],
+    ["--port-conflict", "<error|prompt|kill|next>"],
+  ])("rejects vext dev %s without a value", (option, valueLabel) => {
+    expectCliArgsToExit(
+      () => parseDevArgs([option]),
+      `[vextjs] Option "${option}" requires a value: ${valueLabel}`,
+    );
+  });
+
+  it.each([
+    ["--root", "<path>"],
+    ["--port", "<number>"],
+    ["--host", "<string>"],
+    ["--poll-interval", "<ms>"],
+    ["--debounce", "<ms>"],
+    ["--startup-profile-json", "<path>"],
+    ["--port-conflict", "<error|prompt|kill|next>"],
+  ])("rejects vext dev %s followed by another flag", (option, valueLabel) => {
+    expectCliArgsToExit(
+      () => parseDevArgs([option, "--poll"]),
+      `[vextjs] Option "${option}" requires a value: ${valueLabel}; received option-like value "--poll"`,
+    );
+  });
+
+  it("rejects vext dev unknown positional arguments", () => {
+    expectCliArgsToExit(
+      () => parseDevArgs(["extra"]),
+      '[vextjs] Unknown argument: "extra"\n',
+    );
+  });
+
+  it.each([
+    [["--port", "3000x"], '[vextjs] Invalid port number value: "3000x"'],
+    [
+      ["--poll-interval", "2000x"],
+      '[vextjs] Invalid --poll-interval value: "2000x"',
+    ],
+    [["--debounce", "50x"], '[vextjs] Invalid --debounce value: "50x"'],
+  ])("rejects malformed vext dev numeric arguments", (args, expectedError) => {
+    expectCliArgsToExit(() => parseDevArgs(args), expectedError);
+  });
+
+  it("rejects malformed VEXT_DEV_DEBOUNCE values", () => {
+    process.env.VEXT_DEV_DEBOUNCE = "50x";
+
+    try {
+      expectCliArgsToExit(
+        () => parseDevArgs([]),
+        '[vextjs] Invalid VEXT_DEV_DEBOUNCE value: "50x"',
+      );
+    } finally {
+      delete process.env.VEXT_DEV_DEBOUNCE;
+    }
   });
 
   it("rejects duplicate vext dev --config options", () => {

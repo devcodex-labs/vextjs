@@ -139,10 +139,14 @@ Start the project in development mode, supporting file monitoring and smart hot 
 vext dev [options]
 ```
 
+`vext dev` does not support positional arguments. Value options such as `--root`, `--port`, `--host`, `--config`, `--poll-interval`, `--debounce`, `--startup-profile-json`, and `--port-conflict` must be followed by a non-option value; numeric options require complete integers, so prefixes such as `3000x` and `50x` fail.
+
 ### Options
 
 | Options                      | Description                                                       | Default                         |
 | ---------------------------- | ----------------------------------------------------------------- | ------------------------------- |
+| `--root <path>`              | Specify the project root directory                                | Current directory               |
+| `--config <name>`            | Select the development config profile                             | `development`                   |
 | `--port <number>`            | Specify port                                                      | Value in configuration file     |
 | `--host <address>`           | Specify the listening address                                     | Value in the configuration file |
 | `--debounce <ms>`            | Debounce interval (milliseconds, 0 = disable)                     | `0`                             |

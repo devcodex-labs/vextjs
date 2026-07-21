@@ -24,6 +24,10 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
+import {
+  failUnknownCliArgument,
+  readRequiredOptionValueOrExit,
+} from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
 
 /**
@@ -810,40 +814,54 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
   const seenOptions = new Set<string>();
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i]!;
 
     switch (arg) {
       case "--root":
-        if (i + 1 < args.length) {
-          options.root = args[++i];
+        {
+          const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+          options.root = parsed.value;
+          i = parsed.nextIndex;
         }
         break;
 
       case "--port":
-        if (i + 1 < args.length) {
-          const portStr = args[++i]!;
-          const port = parseInt(portStr, 10);
-          if (Number.isNaN(port) || port < 1 || port > 65535) {
-            console.error(`[vextjs] Invalid port number: "${portStr}"`);
-            process.exit(1);
-          }
-          options.port = port;
+        {
+          const parsed = readRequiredOptionValueOrExit(
+            args,
+            i,
+            arg,
+            "<number>",
+          );
+          options.port = parseDevIntegerValue(parsed.value, {
+            label: "port number",
+            min: 1,
+            max: 65535,
+          });
+          i = parsed.nextIndex;
         }
         break;
 
       case "--host":
-        if (i + 1 < args.length) {
-          options.host = args[++i]!;
+        {
+          const parsed = readRequiredOptionValueOrExit(
+            args,
+            i,
+            arg,
+            "<string>",
+          );
+          options.host = parsed.value;
+          i = parsed.nextIndex;
         }
         break;
 
       case "--config":
         markUniqueOption(seenOptions, "--config");
-        if (i + 1 >= args.length) {
-          console.error("[vextjs] --config requires a value");
-          process.exit(1);
+        {
+          const parsed = readRequiredOptionValueOrExit(args, i, arg, "<name>");
+          options.configProfile = parsed.value;
+          i = parsed.nextIndex;
         }
-        options.configProfile = args[++i]!;
         break;
 
       case "--poll":
@@ -851,30 +869,24 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       case "--poll-interval":
-        if (i + 1 < args.length) {
-          i++;
-          const val = parseInt(args[i] ?? "", 10);
-          if (!Number.isNaN(val) && val > 0) {
-            options.pollInterval = val;
-          } else {
-            console.error(
-              `[vextjs] Invalid --poll-interval value: "${args[i]}"`,
-            );
-            process.exit(1);
-          }
+        {
+          const parsed = readRequiredOptionValueOrExit(args, i, arg, "<ms>");
+          options.pollInterval = parseDevIntegerValue(parsed.value, {
+            label: "--poll-interval",
+            min: 1,
+          });
+          i = parsed.nextIndex;
         }
         break;
 
       case "--debounce":
-        if (i + 1 < args.length) {
-          i++;
-          const val = parseInt(args[i] ?? "", 10);
-          if (!Number.isNaN(val) && val >= 0) {
-            options.debounce = val;
-          } else {
-            console.error(`[vextjs] Invalid --debounce value: "${args[i]}"`);
-            process.exit(1);
-          }
+        {
+          const parsed = readRequiredOptionValueOrExit(args, i, arg, "<ms>");
+          options.debounce = parseDevIntegerValue(parsed.value, {
+            label: "--debounce",
+            min: 0,
+          });
+          i = parsed.nextIndex;
         }
         break;
 
@@ -891,8 +903,10 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       case "--startup-profile-json":
-        if (i + 1 < args.length) {
-          options.startupProfileJson = args[++i]!;
+        {
+          const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+          options.startupProfileJson = parsed.value;
+          i = parsed.nextIndex;
         }
         break;
 
@@ -901,8 +915,14 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       case "--port-conflict":
-        if (i + 1 < args.length) {
-          const strategy = args[++i]!;
+        {
+          const parsed = readRequiredOptionValueOrExit(
+            args,
+            i,
+            arg,
+            "<error|prompt|kill|next>",
+          );
+          const strategy = parsed.value;
           if (
             strategy !== "error" &&
             strategy !== "prompt" &&
@@ -915,6 +935,7 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
             process.exit(1);
           }
           options.portConflict = strategy;
+          i = parsed.nextIndex;
         }
         break;
 
@@ -929,11 +950,7 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
         break;
 
       default:
-        if (arg?.startsWith("--")) {
-          console.error(`[vextjs] Unknown option: "${arg}"\n`);
-          printDevHelp();
-          process.exit(1);
-        }
+        failUnknownCliArgument(arg, printDevHelp);
         break;
     }
   }
@@ -955,10 +972,10 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
     options.strictPreflight = true;
   }
   if (options.debounce === undefined && process.env.VEXT_DEV_DEBOUNCE) {
-    const val = parseInt(process.env.VEXT_DEV_DEBOUNCE, 10);
-    if (!Number.isNaN(val) && val >= 0) {
-      options.debounce = val;
-    }
+    options.debounce = parseDevIntegerValue(process.env.VEXT_DEV_DEBOUNCE, {
+      label: "VEXT_DEV_DEBOUNCE",
+      min: 0,
+    });
   }
   if (
     options.verboseLifecycle === undefined &&
@@ -985,6 +1002,22 @@ export function parseDevArgs(args: string[]): DevCommandOptions {
   }
 
   return options;
+}
+
+function parseDevIntegerValue(
+  value: string,
+  options: { label: string; min: number; max?: number },
+): number {
+  const isInteger = /^[+-]?\d+$/u.test(value);
+  const parsed = isInteger ? Number(value) : Number.NaN;
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+
+  if (!Number.isSafeInteger(parsed) || parsed < options.min || parsed > max) {
+    console.error(`[vextjs] Invalid ${options.label} value: "${value}"`);
+    process.exit(1);
+  }
+
+  return parsed;
 }
 
 // ── 输出函数 ────────────────────────────────────────────────
@@ -1041,6 +1074,9 @@ function printDevHelp(): void {
   Usage: vext dev [options]
 
   Start the application in development mode with hot reload.
+  Positional arguments are not supported.
+  Options that take values require a non-option value.
+  Numeric options require complete integer values (for example, 3000x is invalid).
 
   Reload strategy (Tier 1/2/3):
     T1  Code changes (modify)    → soft reload via esbuild.transform()
