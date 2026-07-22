@@ -111,6 +111,60 @@ describe("createErrorHandler — logger 日志行为", () => {
       );
     });
 
+    it("HttpError details with throwing getters should not crash response rendering", () => {
+      const handler = createErrorHandler({ hideInternalErrors: true });
+      const req = createMockReq();
+      const res = createMockRes();
+      const details = Object.defineProperty({}, "fault", {
+        enumerable: true,
+        get() {
+          throw new Error("getter-fault");
+        },
+      });
+
+      expect(() =>
+        handler(
+          new HttpError(400, "Bad details", { details }),
+          req as any,
+          res as any,
+        ),
+      ).not.toThrow();
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: { fault: "[Unserializable]" },
+        }),
+        400,
+      );
+    });
+
+    it("HttpError details with a throwing ownKeys proxy should fail closed", () => {
+      const handler = createErrorHandler({ hideInternalErrors: true });
+      const req = createMockReq();
+      const res = createMockRes();
+      const details = new Proxy(
+        {},
+        {
+          ownKeys() {
+            throw new Error("ownKeys-fault");
+          },
+        },
+      );
+
+      expect(() =>
+        handler(
+          new HttpError(400, "Proxy details", { details }),
+          req as any,
+          res as any,
+        ),
+      ).not.toThrow();
+      expect(res.rawJson).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: { value: "[Unserializable]" },
+        }),
+        400,
+      );
+    });
+
     it("HttpError-like errors from another package boundary should preserve code", () => {
       const handler = createErrorHandler({ hideInternalErrors: true });
       const req = createMockReq();

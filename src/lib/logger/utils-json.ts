@@ -23,8 +23,17 @@ export function appendRecordString(
   }
 
   let next = line;
-  for (const entry of getShape(record)) {
-    const value = record[entry.key];
+  const shape = getShape(record);
+  if (!shape) {
+    return `${next},"value":${quote("[Unserializable]")}`;
+  }
+  for (const entry of shape) {
+    let value: unknown;
+    try {
+      value = record[entry.key];
+    } catch {
+      value = "[Unserializable]";
+    }
     if (value === undefined) {
       continue;
     }
@@ -146,8 +155,19 @@ function normalizeObject(
 ): Record<string, unknown> {
   const normalized: Record<string, unknown> = {};
   const record = value as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    const next = normalizeValue(record[key], seen);
+  const keys = safeEnumerableKeys(record);
+  if (!keys) {
+    return { value: "[Unserializable]" };
+  }
+  for (const key of keys) {
+    let raw: unknown;
+    try {
+      raw = record[key];
+    } catch {
+      normalized[key] = "[Unserializable]";
+      continue;
+    }
+    const next = normalizeValue(raw, seen);
     if (next !== undefined) {
       normalized[key] = next;
     }
@@ -170,9 +190,20 @@ function serializeObject(value: object, seen: WeakSet<object>): string {
   let line = "{";
   let needsComma = false;
   const record = value as Record<string, unknown>;
+  const shape = getShape(record);
+  if (!shape) {
+    seen.delete(value);
+    return quote("[Unserializable]");
+  }
 
-  for (const entry of getShape(record)) {
-    const serialized = serializeNestedValue(record[entry.key], seen, false);
+  for (const entry of shape) {
+    let raw: unknown;
+    try {
+      raw = record[entry.key];
+    } catch {
+      raw = "[Unserializable]";
+    }
+    const serialized = serializeNestedValue(raw, seen, false);
     if (serialized !== undefined) {
       if (needsComma) {
         line += ",";
@@ -230,8 +261,13 @@ function serializeNestedValue(
   }
 }
 
-function getShape(record: Record<string, unknown>): readonly ShapeEntry[] {
-  const keys = Object.keys(record);
+function getShape(
+  record: Record<string, unknown>,
+): readonly ShapeEntry[] | null {
+  const keys = safeEnumerableKeys(record);
+  if (!keys) {
+    return null;
+  }
   const cacheKey = keys.join("\u001f");
   const cached = shapeCache.get(cacheKey);
   if (cached) {
@@ -250,4 +286,16 @@ function getShape(record: Record<string, unknown>): readonly ShapeEntry[] {
   }
   shapeCache.set(cacheKey, entries);
   return entries;
+}
+
+function safeEnumerableKeys(record: object): string[] | null {
+  try {
+    return Reflect.ownKeys(record).filter(
+      (key): key is string =>
+        typeof key === "string" &&
+        Object.prototype.propertyIsEnumerable.call(record, key),
+    );
+  } catch {
+    return null;
+  }
 }

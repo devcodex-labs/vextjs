@@ -139,6 +139,7 @@ export function createLogger(
   config: VextLoggerConfig = {},
   options?: CreateLoggerOptions,
 ): VextRuntimeLogger {
+  validateLoggerConfig(config);
   const level = config.level ?? "info";
   const pretty = config.pretty ?? process.env.NODE_ENV !== "production";
   const alsEnabled = options?.requestContextEnabled !== false;
@@ -224,6 +225,60 @@ export function createLogger(
 
   core = createdCore;
   return wrapCoreAsVextLogger(createdCore);
+}
+
+function validateLoggerConfig(config: VextLoggerConfig): void {
+  if (!isRecord(config) || Array.isArray(config)) {
+    throw new Error("[vextjs] logger config must be an object.");
+  }
+  if (config.pretty !== undefined && typeof config.pretty !== "boolean") {
+    throw new Error("[vextjs] logger.pretty must be a boolean.");
+  }
+  if (
+    config.prettyColor !== undefined &&
+    (typeof config.prettyColor !== "string" ||
+      !["auto", "always", "never"].includes(config.prettyColor))
+  ) {
+    throw new Error(
+      '[vextjs] logger.prettyColor must be one of: "auto", "always", "never".',
+    );
+  }
+  if (
+    config.prettyIgnore !== undefined &&
+    typeof config.prettyIgnore !== "string"
+  ) {
+    throw new Error("[vextjs] logger.prettyIgnore must be a string.");
+  }
+  if (
+    config.prettySingleLine !== undefined &&
+    typeof config.prettySingleLine !== "boolean"
+  ) {
+    throw new Error("[vextjs] logger.prettySingleLine must be a boolean.");
+  }
+  assertStringArray(config.redactKeys, "logger.redactKeys");
+  assertStringArray(config.redactPaths, "logger.redactPaths");
+  if (
+    config.redactValue !== undefined &&
+    typeof config.redactValue !== "string"
+  ) {
+    throw new Error("[vextjs] logger.redactValue must be a string.");
+  }
+  if (config.mixin !== undefined && typeof config.mixin !== "function") {
+    throw new Error("[vextjs] logger.mixin must be a synchronous function.");
+  }
+}
+
+function assertStringArray(value: unknown, name: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`[vextjs] ${name} must be an array of strings.`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function resolvePrettyColor({

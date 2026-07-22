@@ -73,13 +73,38 @@ function sanitizeValue(
   }
 
   const output: Record<string, VextJsonValue> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+  const keys = safeEnumerableKeys(value);
+  if (!keys) {
+    return "[Unserializable]";
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    let child: unknown;
+    try {
+      child = record[key];
+    } catch {
+      output[key] = "[Unserializable]";
+      continue;
+    }
     const sanitized = sanitizeValue(child, seen, depth + 1);
     if (sanitized !== undefined) {
       output[key] = sanitized;
     }
   }
   return output;
+}
+
+function safeEnumerableKeys(value: object): string[] | null {
+  try {
+    return Reflect.ownKeys(value).filter(
+      (key): key is string =>
+        typeof key === "string" &&
+        Object.prototype.propertyIsEnumerable.call(value, key),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function isPlainJsonObject(

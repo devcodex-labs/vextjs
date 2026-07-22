@@ -124,6 +124,30 @@ describe("createLogger", () => {
     expect(records()[0]!.msg).toBe("visible");
   });
 
+  it("fails fast for invalid logger configuration fields", () => {
+    expect(() => createLogger(null as never)).toThrow(
+      "logger config must be an object",
+    );
+    expect(() => createLogger({ redactKeys: [123] as never })).toThrow(
+      "logger.redactKeys must be an array of strings",
+    );
+    expect(() => createLogger({ redactPaths: "token" as never })).toThrow(
+      "logger.redactPaths must be an array of strings",
+    );
+    expect(() => createLogger({ redactValue: 7 as never })).toThrow(
+      "logger.redactValue must be a string",
+    );
+    expect(() => createLogger({ prettyColor: "sometimes" as never })).toThrow(
+      "logger.prettyColor must be one of",
+    );
+    expect(() => createLogger({ prettyIgnore: ["pid"] as never })).toThrow(
+      "logger.prettyIgnore must be a string",
+    );
+    expect(() => createLogger({ prettySingleLine: "yes" as never })).toThrow(
+      "logger.prettySingleLine must be a boolean",
+    );
+  });
+
   it("supports silent level", () => {
     const { logger, records } = createCapturedLogger({ level: "silent" });
 
@@ -248,6 +272,22 @@ describe("createLogger", () => {
       at: "2026-01-02T03:04:05.000Z",
       circular: { name: "root", self: "[Circular]" },
       msg: "complex",
+    });
+  });
+
+  it("serializes throwing getters without failing the log write", () => {
+    const { logger, records } = createCapturedLogger();
+    const payload = Object.defineProperty({ label: "safe" }, "fault", {
+      enumerable: true,
+      get() {
+        throw new Error("getter failed");
+      },
+    });
+
+    expect(() => logger.info({ payload }, "getter safe")).not.toThrow();
+    expect(records()[0]).toMatchObject({
+      payload: { label: "safe", fault: "[Unserializable]" },
+      msg: "getter safe",
     });
   });
 
