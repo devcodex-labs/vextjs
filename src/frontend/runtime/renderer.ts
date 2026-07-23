@@ -358,10 +358,13 @@ function renderPageDocument(input: {
   assertPageExists(input.page, input.assets.manifest);
 
   const status = input.options.status ?? input.currentStatus ?? 200;
-  const headers = {
+  const headers: Record<string, string> = {
     "Content-Type": "text/html; charset=utf-8",
     ...(input.options.headers ?? {}),
   };
+  if (input.mode === "development" && !hasHeader(headers, "Cache-Control")) {
+    headers["Cache-Control"] = "no-store";
+  }
   const payload: VextRenderPayload = {
     page: input.page,
     props: input.props,
@@ -413,6 +416,14 @@ function renderServerPageBody(input: {
   } catch (error) {
     return handleServerRenderFailure(error, input.render);
   }
+}
+
+function hasHeader(
+  headers: Record<string, unknown>,
+  name: string,
+): boolean {
+  const lowerName = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lowerName);
 }
 
 function handleServerRenderFailure(
@@ -755,6 +766,9 @@ function renderDocumentLang(
 ): string {
   const markedHtmlLang =
     /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*?\sdata-vext-lang(?:=(["'])[^"']*\4)?[^>]*)>/iu;
+  const htmlLangAttribute =
+    /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*)>/iu;
+  const htmlWithoutLang = /<html\b((?:(?!\slang=)[^>])*)>/iu;
   const tokenLangAttribute = /\s+lang=(["'])\{vext\.lang\}\1/giu;
 
   if (!i18n.htmlLang) {
@@ -774,6 +788,8 @@ function renderDocumentLang(
   const langAttribute = escapeAttribute(resolvedLang);
   return html
     .replace(markedHtmlLang, `<html$1 lang="${langAttribute}"$3>`)
+    .replace(htmlLangAttribute, `<html$1 lang="${langAttribute}"$3>`)
+    .replace(htmlWithoutLang, `<html lang="${langAttribute}"$1>`)
     .replace(tokenLangAttribute, ` lang="${langAttribute}"`)
     .replace(/\s+data-vext-lang(?:=(["'])[^"']*\1)?/giu, "")
     .replaceAll("{vext.lang}", langAttribute);

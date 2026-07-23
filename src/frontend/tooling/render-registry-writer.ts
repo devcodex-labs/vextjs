@@ -634,6 +634,7 @@ async function handleVextDevEvent(payload) {
 ${clearOverlayHandler}
     updateVextStyleLinks(payload.styles ?? [], payload.buildId);
     if (payload.action === "style") return;
+    if (payload.replay === true && payload.action === "reload" && isCurrentVextBuild(payload)) return;
 ${refreshHandler}
     window.location.reload();
     return;
@@ -677,6 +678,36 @@ function updateVextStyleLinks(styles, buildId) {
 function withVextDevQuery(url, buildId) {
   const joiner = String(url).includes("?") ? "&" : "?";
   return String(url) + joiner + "vext_hmr=" + encodeURIComponent(buildId ?? Date.now());
+}
+
+function isCurrentVextBuild(payload) {
+  const currentBuildId = getCurrentVextBuildId();
+  if (payload?.buildId && currentBuildId) {
+    return payload.buildId === currentBuildId;
+  }
+  return isCurrentVextEntry(payload?.entry);
+}
+
+function getCurrentVextBuildId() {
+  const dataScript = document.getElementById("__VEXT_DATA__");
+  if (!dataScript?.textContent) return "";
+  try {
+    const payload = JSON.parse(dataScript.textContent);
+    return typeof payload?.buildId === "string" ? payload.buildId : "";
+  } catch {
+    return "";
+  }
+}
+
+function isCurrentVextEntry(entry) {
+  if (!entry) return false;
+  const current = document.querySelector("script[data-vext-entry]")?.getAttribute("src");
+  if (!current) return false;
+  try {
+    return new URL(entry, location.href).pathname === new URL(current, location.href).pathname;
+  } catch {
+    return String(entry).split("?")[0] === String(current).split("?")[0];
+  }
 }
 ${overlayHelpers}
 `;

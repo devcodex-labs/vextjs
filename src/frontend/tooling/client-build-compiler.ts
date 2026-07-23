@@ -748,6 +748,9 @@ function renderDocumentLangPlaceholder(
   template: string,
   config: ResolvedVextFrontendConfig,
 ): string {
+  const htmlLangAttribute =
+    /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*)>/iu;
+  const htmlWithoutLang = /<html\b((?:(?!\slang=)[^>])*)>/iu;
   const tokenLangAttribute = /\s+lang=(["'])\{vext\.lang\}\1/giu;
   if (!config.i18n.htmlLang) {
     return template
@@ -757,12 +760,18 @@ function renderDocumentLangPlaceholder(
 
   const lang =
     config.i18n.defaultLocale === "inherit" ? "" : config.i18n.defaultLocale;
+  const langAttribute = escapeAttribute(lang);
   return template
     .replace(
-      tokenLangAttribute,
-      ` lang="${escapeAttribute(lang)}" data-vext-lang`,
+      htmlLangAttribute,
+      `<html$1 lang="${langAttribute}" data-vext-lang$3>`,
     )
-    .replaceAll("{vext.lang}", escapeAttribute(lang));
+    .replace(htmlWithoutLang, `<html lang="${langAttribute}" data-vext-lang$1>`)
+    .replace(
+      tokenLangAttribute,
+      ` lang="${langAttribute}" data-vext-lang`,
+    )
+    .replaceAll("{vext.lang}", langAttribute);
 }
 
 function renderAssetAttrs(

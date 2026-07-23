@@ -314,6 +314,55 @@ describe("frontend dev event bus", () => {
     bus.close();
   });
 
+  it("replays the latest frontend build event to late dev SSE clients", async () => {
+    const bus = createFrontendDevEventBus();
+    const chunks: string[] = [];
+    let closeHandler: (() => void) | undefined;
+
+    bus.publish({
+      type: "frontend:built",
+      action: "reload",
+      entry: "/assets/browser-entry-next.js",
+      styles: [],
+      buildId: "late-build",
+      files: ["src/frontend/locales/zh-CN.ts"],
+    });
+
+    await bus.middleware(
+      {
+        method: "GET",
+        path: "/__vext/dev/events",
+        onClose(handler: () => void) {
+          closeHandler = handler;
+        },
+      } as any,
+      {
+        setHeader() {
+          return this;
+        },
+        stream(readable: NodeJS.ReadableStream) {
+          readable.on("data", (chunk) => {
+            chunks.push(Buffer.from(chunk).toString("utf-8"));
+          });
+        },
+      } as any,
+      async () => {
+        throw new Error("next should not be called for dev SSE endpoint");
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const frame = chunks.join("");
+    expect(frame).toContain("retry: 500");
+    expect(frame).toContain('"type":"frontend:built"');
+    expect(frame).toContain('"replay":true');
+    expect(frame).toContain('"entry":"/assets/browser-entry-next.js"');
+    expect(frame).toContain("src/frontend/locales/zh-CN.ts");
+
+    closeHandler?.();
+    bus.close();
+  });
+
   it("passes non-SSE requests to the next middleware", async () => {
     const bus = createFrontendDevEventBus();
     let nextCalled = false;
@@ -1371,6 +1420,11 @@ describe("frontend client build", () => {
     expect(devBrowserEntry).toContain("react-refresh/runtime");
     expect(devBrowserEntry).toContain('EventSource("/__vext/dev/events")');
     expect(devBrowserEntry).toContain("performReactRefresh");
+    expect(devBrowserEntry).toContain("isCurrentVextBuild");
+    expect(devBrowserEntry).toContain("getCurrentVextBuildId");
+    expect(devBrowserEntry).toContain("payload.buildId === currentBuildId");
+    expect(devBrowserEntry).toContain("isCurrentVextEntry");
+    expect(devBrowserEntry).toContain("payload.replay === true");
     expect(devBrowserEntry).toContain("showVextDevErrorOverlay");
     expect(devBrowserEntry).toContain("showVextRenderRefreshPrompt");
     expect(devBundle).toContain("src/frontend/pages/index.tsx Page");
@@ -1558,6 +1612,38 @@ describe("frontend render middleware", () => {
     expect(res.sent?.html).toContain("\\u003cDashboard\\u003e");
     expect(res.onSendPayload?.__vextResponseKind).toBe("render");
     expect(res.onSendPayload?.payload.page).toBe("index");
+  });
+
+  it("marks development frontend renders as no-store by default", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "development",
+      config: {
+        enabled: true,
+        apiClient: false,
+      },
+    });
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "development",
+      config: { enabled: true },
+    });
+    const res = createRenderMockResponse();
+
+    await middleware(createMockRequest("/dashboard"), res, async () => {});
+    res.render("index");
+
+    expect(res.sent?.headers["Cache-Control"]).toBe("no-store");
+
+    const explicitRes = createRenderMockResponse();
+    await middleware(createMockRequest("/dashboard"), explicitRes, async () => {});
+    explicitRes.render("index", {}, { headers: { "cache-control": "private" } });
+
+    expect(explicitRes.sent?.headers["cache-control"]).toBe("private");
+    expect(explicitRes.sent?.headers["Cache-Control"]).toBeUndefined();
   });
 
   it("binds res.renderError() to configured error pages", async () => {
@@ -1800,6 +1886,60 @@ describe("frontend render middleware", () => {
     defaultRes.render("index");
 
     expect(defaultRes.sent?.html).toContain('<html lang="en-US">');
+  });
+
+  it("updates static document html lang when htmlLang is managed", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "_document.html"),
+      '<!doctype html><html lang="en"><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>',
+    );
+    await mkdir(path.join(rootDir, "src", "frontend", "locales"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "locales", "en-US.ts"),
+      "export default { title: 'Hello' };\n",
+    );
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "locales", "zh-CN.ts"),
+      "export default { title: '你好' };\n",
+    );
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        apiClient: false,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+    const builtDocument = await readFile(
+      path.join(result.config.outDir, "index.html"),
+      "utf-8",
+    );
+
+    expect(builtDocument).toContain('<html lang="en-US" data-vext-lang>');
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: {
+        enabled: true,
+        i18n: { enabled: true, defaultLocale: "en-US" },
+      },
+    });
+    const res = createRenderMockResponse();
+    await middleware(
+      createMockRequest("/static-lang"),
+      res as any,
+      async () => {},
+    );
+    res.render("index", {}, { locale: "zh-CN" });
+
+    expect(res.sent?.html).toContain('<html lang="zh-CN">');
+    expect(res.sent?.html).not.toContain("data-vext-lang");
   });
 
   it("removes the document html lang marker when htmlLang is false", async () => {
