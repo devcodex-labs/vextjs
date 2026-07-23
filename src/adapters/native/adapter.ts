@@ -511,11 +511,20 @@ export function createNativeAdapter(
     const res = createVextResponse(nodeRes, req);
     res._hooks = app.hooks;
 
-    // 内联生成 requestId（notFound 不走中间件链）
+    // 内联生成并写出 requestId（notFound 不走中间件链，HEAD 404 也需要响应头）
     if (!req.requestId) {
-      const headerName = app.config.requestId?.header ?? "x-request-id";
+      const requestIdConfig = app.config.requestId;
+      const headerName = (
+        requestIdConfig?.header ?? "x-request-id"
+      ).toLowerCase();
+      const fromHeader = req.headers[headerName];
       req.requestId =
-        (req.headers[headerName] as string) || crypto.randomUUID();
+        (Array.isArray(fromHeader) ? fromHeader[0] : fromHeader) ||
+        crypto.randomUUID();
+      res.setHeader(
+        requestIdConfig?.responseHeader ?? "x-request-id",
+        req.requestId,
+      );
     }
 
     // 🆕 5.7: ALS 可配置跳过

@@ -623,6 +623,31 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
       expect(capturedRequestId).toBe("custom-req-id-123");
     });
 
+    it("HEAD 404 应通过响应头暴露 requestId", async () => {
+      adapter.registerRoute("GET", "/only", [
+        async (_req, res) => {
+          res.json({ hit: true });
+        },
+      ]);
+      adapter.registerNotFound(async (req, res) => {
+        res.rawJson(
+          { code: 404, message: "Not Found", requestId: req.requestId },
+          404,
+        );
+      });
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        method: "HEAD",
+        path: "/only",
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toBe("");
+      expect(response.headers["x-request-id"]).toBeTruthy();
+    });
+
     it("无 notFoundHandler 时应返回默认 404 JSON", async () => {
       // 不注册 notFoundHandler
       adapter.registerRoute("GET", "/exists", [
