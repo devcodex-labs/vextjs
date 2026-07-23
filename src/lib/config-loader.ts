@@ -51,6 +51,11 @@ const OPENAPI_DOCS_THEMES = ["system", "light", "dark"];
 const OPENAPI_DOCS_DENSITIES = ["comfortable", "compact"];
 const OPENAPI_DOCS_SCAN_MODES = ["lazy", "background"];
 const OPENAPI_DOCS_OPENAPI_JSON_MODES = ["filtered", "public"];
+const PROTOTYPE_POLLUTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 /**
  * 支持的配置文件扩展名（按优先级排序）
@@ -142,6 +147,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function isPrototypePollutionKey(key: string): boolean {
+  return PROTOTYPE_POLLUTION_KEYS.has(key);
+}
+
 function cloneConfigValue<T>(
   value: T,
   seen = new WeakMap<object, unknown>(),
@@ -163,6 +172,7 @@ function cloneConfigValue<T>(
   const result: Record<string, unknown> = {};
   seen.set(value, result);
   for (const [key, item] of Object.entries(value)) {
+    if (isPrototypePollutionKey(key)) continue;
     result[key] = cloneConfigValue(item, seen);
   }
   return result as T;
@@ -181,6 +191,8 @@ function deepMergeRecords(
   sourceSeen.set(source, result);
 
   for (const key of Object.keys(source)) {
+    if (isPrototypePollutionKey(key)) continue;
+
     const sv = source[key];
     const tv = target[key];
 
@@ -207,6 +219,7 @@ function mergeIntoOwnedRecord(
 ): Record<string, unknown> {
   sourceSeen.set(source, target);
   for (const [key, sourceValue] of Object.entries(source)) {
+    if (isPrototypePollutionKey(key)) continue;
     if (skipMiddlewares && key === "middlewares") continue;
 
     const targetValue = target[key];

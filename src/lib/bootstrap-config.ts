@@ -5,6 +5,11 @@ import { importUserModule } from "./user-module-loader.js";
 
 const EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"] as const;
 const resolvedBootstrapFiles = new Map<string, string | null>();
+const PROTOTYPE_POLLUTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 export const CLUSTER_BOOTSTRAP_PATCH_ENV = "VEXT_CLUSTER_BOOTSTRAP_PATCH";
 
@@ -76,6 +81,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function isPrototypePollutionKey(key: string): boolean {
+  return PROTOTYPE_POLLUTION_KEYS.has(key);
 }
 
 function isJsonLike(value: unknown): boolean {
@@ -291,6 +300,7 @@ function mergeProviderPatches(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(patch)) {
+    if (isPrototypePollutionKey(key)) continue;
     const previous = base[key];
     result[key] =
       isPlainObject(previous) && isPlainObject(value)

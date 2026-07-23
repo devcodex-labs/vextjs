@@ -141,6 +141,27 @@ describe("deepMerge", () => {
     expect(result.cyclic).not.toBe(source);
     expect(result.cyclic.self).toBe(result.cyclic);
   });
+
+  it("drops prototype pollution keys while cloning and merging config values", () => {
+    delete (Object.prototype as Record<string, unknown>).polluted;
+    delete (Object.prototype as Record<string, unknown>).pollutedCtor;
+
+    const target = JSON.parse(
+      '{"safe":{"keep":true},"constructor":{"existing":true}}',
+    ) as Record<string, unknown>;
+    const source = JSON.parse(
+      '{"__proto__":{"polluted":true},"constructor":{"prototype":{"pollutedCtor":true}},"safe":{"prototype":{"nested":true},"next":true}}',
+    ) as Record<string, unknown>;
+
+    const result = _deepMerge(target, source);
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).pollutedCtor).toBeUndefined();
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(Object.hasOwn(result, "__proto__")).toBe(false);
+    expect(Object.hasOwn(result, "constructor")).toBe(false);
+    expect(result.safe).toEqual({ keep: true, next: true });
+  });
 });
 
 // ── patchMiddlewares ────────────────────────────────────────
@@ -1992,6 +2013,24 @@ describe("loadConfig — VEXT_PORT / VEXT_HOST 环境变量覆盖", () => {
     }).toThrow();
   });
 
+  it("配置文件中的原型链危险键不会污染全局或配置对象原型", async () => {
+    delete (Object.prototype as Record<string, unknown>).polluted;
+    delete (Object.prototype as Record<string, unknown>).pollutedCtor;
+
+    fs.writeFileSync(
+      path.join(tmpDir, "default.js"),
+      `const value = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"pollutedCtor":true}},"port":3000}');\nmodule.exports = value;\n`,
+    );
+
+    const config = await loadConfig(tmpDir);
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).pollutedCtor).toBeUndefined();
+    expect(Object.getPrototypeOf(config)).toBe(Object.prototype);
+    expect(Object.hasOwn(config, "__proto__")).toBe(false);
+    expect(Object.hasOwn(config, "constructor")).toBe(false);
+  });
+
   it("VEXT_LIFECYCLE_LEVEL 应覆盖 logger.lifecycleLevel", async () => {
     delete process.env.VEXT_PORT;
     delete process.env.VEXT_HOST;
@@ -2332,5 +2371,36 @@ describe("loadConfig — bootstrap config provider", () => {
       b: 2,
     });
     expect((config as unknown as { list: unknown }).list).toEqual([2]);
+  });
+
+  it("filters prototype pollution keys from bootstrap provider patches", async () => {
+    delete (Object.prototype as Record<string, unknown>).polluted;
+    delete (Object.prototype as Record<string, unknown>).pollutedCtor;
+    fs.writeFileSync(
+      path.join(configDir, "bootstrap.js"),
+      `module.exports = { providers: [{
+        name: "pollution-provider",
+        load() {
+          return JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"pollutedCtor":true}},"custom":{"safe":true,"prototype":{"nested":true}}}');
+        }
+      }] };\n`,
+    );
+
+    const meta: { providerPatch?: Record<string, unknown> } = {};
+    const config = await loadConfig(configDir, {
+      rootDir: tmpRoot,
+      command: "dev",
+      meta,
+    });
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).pollutedCtor).toBeUndefined();
+    expect(Object.getPrototypeOf(meta.providerPatch!)).toBe(Object.prototype);
+    expect(Object.hasOwn(meta.providerPatch!, "__proto__")).toBe(false);
+    expect(Object.hasOwn(meta.providerPatch!, "constructor")).toBe(false);
+    expect(meta.providerPatch!.custom).toEqual({ safe: true });
+    expect((config as unknown as { custom: unknown }).custom).toEqual({
+      safe: true,
+    });
   });
 });
