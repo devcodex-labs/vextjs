@@ -135,10 +135,12 @@ function readRouteEntriesFromManifest(
   const payload = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
     routes?: Array<{
       fileRelativePath?: string;
+      source?: string;
       prefix?: string;
       method?: string;
       path?: string;
       docsSummary?: string | null;
+      summary?: string | null;
       operationId?: string | null;
       operationIdSource?: "explicit" | "inferred";
       tags?: string[];
@@ -148,7 +150,8 @@ function readRouteEntriesFromManifest(
 
   return (payload.routes ?? [])
     .map((route) => {
-      const fileRelativePath = route.fileRelativePath ?? "";
+      const fileRelativePath = route.fileRelativePath ?? route.source ?? "";
+      const docsSummary = route.docsSummary ?? route.summary ?? null;
       const operationId =
         route.operationIdSource === "explicit"
           ? (route.operationId ?? null)
@@ -159,8 +162,8 @@ function readRouteEntriesFromManifest(
         prefix: route.prefix ?? "",
         method: route.method ?? "GET",
         path: route.path ?? "/",
-        docsSummary: route.docsSummary ?? null,
-        hasDocsSummary: Boolean(route.docsSummary?.trim()),
+        docsSummary,
+        hasDocsSummary: Boolean(docsSummary?.trim()),
         operationId,
         tags: route.tags ?? [],
         hidden: route.hidden ?? false,
@@ -353,10 +356,12 @@ function buildRouteManifestPayload(
     },
     routes: routes.map((item) => ({
       fileRelativePath: item.fileRelativePath,
+      source: item.fileRelativePath,
       prefix: item.prefix,
       method: item.method,
       path: item.path,
       docsSummary: item.docsSummary,
+      summary: item.docsSummary,
       operationId: item.effectiveOperationId,
       operationIdSource: item.operationIdSource,
       tags: item.tags,

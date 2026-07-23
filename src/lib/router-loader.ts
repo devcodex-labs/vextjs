@@ -26,6 +26,7 @@ import {
   shouldDescendIntoRouteDirectory,
   shouldIncludeRouteFileName,
 } from "./route-file-policy.js";
+import { compareRoutePriority } from "./route-priority.js";
 
 /**
  * router-loader.ts — 路由自动加载器（Phase 1 升级版）
@@ -236,6 +237,10 @@ export async function loadRoutes(
         options,
       ),
   );
+  routeRegistrations.sort((a, b) => {
+    const priority = compareRoutePriority(a, b);
+    return priority !== 0 ? priority : a.order - b.order;
+  });
 
   for (const registration of routeRegistrations) {
     app.adapter.registerRoute(
@@ -306,7 +311,7 @@ function prepareRouteDefinitionRegistrations(
   const hooks = app.hooks as VextInternalHooks;
   const registrations: PreparedRouteRegistration[] = [];
 
-  for (const route of routeDef.routes) {
+  for (const [index, route] of routeDef.routes.entries()) {
     // ── 1. 拼接完整路径 ──────────────────────────────────
     const fullPath = normalizePath(prefix, route.path);
     const routeInfo: VextRouteHookInfo = {
@@ -504,6 +509,7 @@ function prepareRouteDefinitionRegistrations(
       routeOptions: route.options ?? {},
       sourceFile: routeDef.sourceFile,
       handler: route.handler,
+      order: index,
     });
   }
 
@@ -524,6 +530,7 @@ interface PreparedRouteRegistration {
   routeOptions: RouteOptions;
   sourceFile: string;
   handler: import("../types/middleware.js").VextHandler;
+  order: number;
 }
 
 // ── 文件扫描 ──────────────────────────────────────────────────

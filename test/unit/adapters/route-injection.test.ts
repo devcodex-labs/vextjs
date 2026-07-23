@@ -74,7 +74,11 @@ function httpRequest(options: {
   port: number;
   method?: string;
   path?: string;
-}): Promise<{ status: number; body: string }> {
+}): Promise<{
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  body: string;
+}> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
@@ -89,6 +93,7 @@ function httpRequest(options: {
         res.on("end", () => {
           resolve({
             status: res.statusCode ?? 0,
+            headers: res.headers,
             body: Buffer.concat(chunks).toString("utf-8"),
           });
         });
@@ -195,6 +200,55 @@ function makeRouteInjectionSuite(
       expect(res.status).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.route).toBe("/orgs/:orgId/users/:userId");
+    });
+
+    it("具名 wildcard 路由：应保留 vext 模板并归一化剩余路径参数", async () => {
+      adapter.registerRoute("GET", "/files/*path", [
+        async (req: VextRequest, res: VextResponse) => {
+          res.json({ route: req.route, path: req.params.path });
+        },
+      ]);
+      registerNotFoundEcho(adapter);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const res = await httpRequest({
+        port: handle.port,
+        path: "/files/a/b/c",
+      });
+
+      expect(res.status).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body).toEqual({ route: "/files/*path", path: "a/b/c" });
+    });
+
+    it("同路径显式 HEAD 路由：应优先于 GET 的隐式 HEAD fallback", async () => {
+      adapter.registerRoute("HEAD", "/method", [
+        async (_req: VextRequest, res: VextResponse) => {
+          res.setHeader("x-vext-method", "HEAD");
+          res.status(200).json(null);
+        },
+      ]);
+      adapter.registerRoute("GET", "/method", [
+        async (_req: VextRequest, res: VextResponse) => {
+          res.setHeader("x-vext-method", "GET");
+          res.json({ method: "GET" });
+        },
+      ]);
+      registerNotFoundEcho(adapter);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const head = await httpRequest({
+        port: handle.port,
+        method: "HEAD",
+        path: "/method",
+      });
+      const get = await httpRequest({ port: handle.port, path: "/method" });
+
+      expect(head.status).toBe(200);
+      expect(head.body).toBe("");
+      expect(head.headers["x-vext-method"]).toBe("HEAD");
+      expect(JSON.parse(get.body)).toEqual({ method: "GET" });
+      expect(get.headers["x-vext-method"]).toBe("GET");
     });
 
     // ── 场景 4：404 场景 ──────────────────────────────────

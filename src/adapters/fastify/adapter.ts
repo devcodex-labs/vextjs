@@ -208,9 +208,10 @@ export function createFastifyAdapter(
     : undefined;
 
   const fastify: FastifyInstance = Fastify({
-    logger: options.logger ?? false,
-    pluginTimeout: options.pluginTimeout ?? 10000,
-    bodyLimit: defaultBodyLimit,
+      logger: options.logger ?? false,
+      pluginTimeout: options.pluginTimeout ?? 10000,
+      bodyLimit: defaultBodyLimit,
+      exposeHeadRoutes: true,
     ...(serverFactory ? { serverFactory } : {}),
     // Fastify v5 要求路由器选项通过 routerOptions 传递（FSTDEP022）
     // 直接传 ignoreTrailingSlash / caseSensitive 在 v5 仍可用但会触发 deprecation warning，
@@ -311,9 +312,8 @@ export function createFastifyAdapter(
         | "head"
         | "options";
 
-      // vext 路由参数格式（:param）与 Fastify v5 格式一致，无需转换
-      // 通配符 *path 在 Fastify v5 中也支持具名通配符，无需转换
-      const fastifyPath = path;
+      const wildcardName = getNamedWildcardParam(path);
+      const fastifyPath = toFastifyRoutePath(path);
       const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
       const routeBodyLimit = resolveAdapterBodyLimitBytes({
         globalBodyParser: app.config.bodyParser,
@@ -327,6 +327,13 @@ export function createFastifyAdapter(
         { bodyLimit: routeBodyLimit },
         async (request: FastifyRequest, reply: FastifyReply) => {
           const req = createVextRequest(request, app);
+          if (wildcardName) {
+            const params = req.params as Record<string, string | undefined>;
+            const wildcardValue = params["*"];
+            if (wildcardValue !== undefined) {
+              params[wildcardName] = wildcardValue;
+            }
+          }
           (req as { _routeOptions?: RouteOptions })._routeOptions =
             routeOptions;
           if (routeBodyParser) {
@@ -334,9 +341,7 @@ export function createFastifyAdapter(
               req as { _routeBodyParser?: VextBodyParserConfig }
             )._routeBodyParser = routeBodyParser;
           }
-          // F-01: 注入路由模板字符串（低基数，适合 OTEL/Prometheus 指标标签）
-          // fastifyPath 是 registerRoute 的参数，在此 closure 中直接可访问
-          req.route = fastifyPath;
+          req.route = path;
 
           // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
           // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
@@ -607,4 +612,12 @@ export function createFastifyAdapter(
       };
     },
   };
+}
+
+function getNamedWildcardParam(path: string): string | null {
+  return /\/\*([A-Za-z_]\w*)$/u.exec(path)?.[1] ?? null;
+}
+
+function toFastifyRoutePath(path: string): string {
+  return path.replace(/\/\*[A-Za-z_]\w*$/u, "/*");
 }

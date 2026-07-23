@@ -55,6 +55,8 @@ describe("buildDevRouteManifestPayload", () => {
     expect(payload.routes[0]?.fileRelativePath).toBe(
       "src/routes/admin/users.ts",
     );
+    expect(payload.routes[0]?.source).toBe("src/routes/admin/users.ts");
+    expect(payload.routes[0]?.summary).toBe("List users");
     expect(payload.routeFileCount).toBe(1);
     expect(payload.routes[0]?.operationIdSource).toBe("inferred");
   });

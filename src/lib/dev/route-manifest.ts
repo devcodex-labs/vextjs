@@ -22,10 +22,12 @@ export interface DevRouteManifestPayload {
   };
   routes: Array<{
     fileRelativePath: string;
+    source: string;
     prefix: string;
     method: string;
     path: string;
     docsSummary: string | null;
+    summary: string | null;
     operationId: string;
     operationIdSource: "explicit" | "inferred";
     tags: string[];
@@ -54,12 +56,16 @@ export function buildDevRouteManifestPayload(
     const docs = route.options.docs;
     const operationId =
       docs?.operationId ?? inferOperationId(route.method, route.path);
+    const fileRelativePath = toSourceRelativePath(rootDir, route.sourceFile);
+    const docsSummary = docs?.summary ?? null;
     return {
-      fileRelativePath: toSourceRelativePath(rootDir, route.sourceFile),
+      fileRelativePath,
+      source: fileRelativePath,
       prefix: "",
       method: route.method,
       path: route.path,
-      docsSummary: docs?.summary ?? null,
+      docsSummary,
+      summary: docsSummary,
       operationId,
       operationIdSource: docs?.operationId
         ? ("explicit" as const)

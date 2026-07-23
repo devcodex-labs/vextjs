@@ -19,10 +19,12 @@ export interface RouteManifestPayload {
   };
   routes: Array<{
     fileRelativePath: string;
+    source: string;
     prefix: string;
     method: string;
     path: string;
     docsSummary: string | null;
+    summary: string | null;
     operationId: string;
     operationIdSource: "explicit" | "inferred";
     tags: string[];

@@ -169,7 +169,9 @@ export function createVextRequest(
     // ── 原始数据 ────────────────────────────────────────
     query: queryRecord,
     body: undefined, // body-parser 中间件负责填充
-    params: (expressReq.params as Record<string, string>) ?? {},
+    params: normalizeParams(
+      (expressReq.params as Record<string, string | string[]>) ?? {},
+    ),
     headers: expressReq.headers as Record<string, string | undefined>,
     get cookies(): VextCookieJar {
       return getCookies();
@@ -230,4 +232,14 @@ export function createVextRequest(
   });
 
   return req;
+}
+
+function normalizeParams(
+  params: Record<string, string | string[]>,
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params)) {
+    normalized[key] = Array.isArray(value) ? value.join("/") : value;
+  }
+  return normalized;
 }

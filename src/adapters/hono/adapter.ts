@@ -2,8 +2,18 @@ import { Hono } from "hono";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
-import { createVextRequest } from "./request.js";
-import { createVextResponse, createResponseBox } from "./response.js";
+import { createRouter } from "route-core";
+import type { PreparedMethod } from "route-core";
+import { createVextRequest as createHonoRequest } from "./request.js";
+import {
+  createVextResponse as createHonoResponse,
+  createResponseBox,
+} from "./response.js";
+import {
+  createVextRequest as createNodeRequest,
+  type ParsedUrl,
+} from "../native/request.js";
+import { createVextResponse as createNodeResponse } from "../native/response.js";
 import type {
   VextAdapter,
   VextAdapterListenOptions,
@@ -95,6 +105,14 @@ async function executeChain(
 
 const _noop = async (): Promise<void> => {};
 
+interface HeadRouteStore {
+  chain: VextMiddleware[] | null;
+  routeChain: VextMiddleware[];
+  routeOptions: RouteOptions;
+  routeBodyParser?: VextBodyParserConfig;
+  routePath: string;
+}
+
 function writeWebResponseHeaders(
   nodeRes: ServerResponse,
   webHeaders: Headers,
@@ -151,6 +169,12 @@ function writeWebResponseHeaders(
  */
 export function createHonoAdapter(app: VextApp): VextAdapter {
   const hono = new Hono();
+  const explicitHeadRouter = createRouter({
+    ignoreTrailingSlash: true,
+    caseSensitive: false,
+  });
+  const explicitHeadStores: HeadRouteStore[] = [];
+  let explicitHeadMethod: PreparedMethod | null = null;
   const globalMiddlewares: VextMiddleware[] = [];
   let errorHandler: VextErrorMiddleware | null = null;
   /** 全局中间件是否已冻结（listen/buildHandler 后不再变更） */
@@ -175,6 +199,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       // 使用 hono.on() 以支持所有 HTTP 方法（包括 HEAD / OPTIONS）
       // hono.on() 接受方法字符串数组和路径
       const upperMethod = method.toUpperCase();
+      const honoPath = toHonoRoutePath(path);
 
       // 🆕 性能优化：延迟预组装中间件链
       //
@@ -183,9 +208,21 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       // 后续请求直接复用已组装的链，避免每请求 [...spread] 开销。
       //
       let prebuiltChain: VextMiddleware[] | null = null;
+      if (upperMethod === "HEAD") {
+        const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
+        const storeId = explicitHeadStores.length;
+        explicitHeadStores.push({
+          chain: null,
+          routeChain: chain,
+          routeOptions,
+          routeBodyParser,
+          routePath: path,
+        });
+        explicitHeadRouter.add("HEAD", path, storeId);
+      }
 
-      hono.on(upperMethod, path, async (c) => {
-        const req = createVextRequest(c, app);
+      hono.on(upperMethod, honoPath, async (c) => {
+        const req = createHonoRequest(c, app);
         (req as { _routeOptions?: RouteOptions })._routeOptions = routeOptions;
         const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
         if (routeBodyParser) {
@@ -200,7 +237,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         const box = createResponseBox();
         // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
         // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-        const res = createVextResponse(c, () => req.requestId, box);
+        const res = createHonoResponse(c, () => req.requestId, box);
         res._hooks = app.hooks;
 
         // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
@@ -265,7 +302,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
     registerNotFound(handler: VextMiddleware): void {
       hono.notFound(async (c) => {
-        const req = createVextRequest(c, app);
+        const req = createHonoRequest(c, app);
         const box = createResponseBox();
 
         // P2-5 修复：notFound 不经过中间件链，requestId 中间件不会执行。
@@ -276,7 +313,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             (req.headers[headerName] as string) || crypto.randomUUID();
         }
 
-        const res = createVextResponse(c, () => req.requestId, box);
+        const res = createHonoResponse(c, () => req.requestId, box);
         res._hooks = app.hooks;
 
         // 🆕 5.7: ALS 可配置跳过
@@ -359,6 +396,10 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       //   2. 调用 Hono 的 fetch() 处理请求
       //   3. 将返回的 Web Response 写入 Node.js ServerResponse
       return (nodeReq: IncomingMessage, nodeRes: ServerResponse) => {
+        if (tryHandleExplicitHeadRoute(nodeReq, nodeRes)) {
+          return;
+        }
+
         // 构造 Web Request URL
         const protocol = "http";
         const host =
@@ -471,4 +512,117 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       };
     },
   };
+
+  function getExplicitHeadMethod(): PreparedMethod {
+    if (!explicitHeadMethod) {
+      explicitHeadMethod = explicitHeadRouter.prepareMethod("HEAD");
+    }
+    return explicitHeadMethod;
+  }
+
+  function tryHandleExplicitHeadRoute(
+    nodeReq: IncomingMessage,
+    nodeRes: ServerResponse,
+  ): boolean {
+    if ((nodeReq.method ?? "GET").toUpperCase() !== "HEAD") {
+      return false;
+    }
+    if (explicitHeadStores.length === 0) {
+      return false;
+    }
+
+    const parsedUrl = parseNodeUrl(nodeReq.url ?? "/");
+    const preparedPathname = explicitHeadRouter.preparePathname(parsedUrl.path);
+    if (!preparedPathname) {
+      return false;
+    }
+
+    let matched = false;
+    getExplicitHeadMethod().lookup(
+      preparedPathname,
+      (storeId, params, routePath) => {
+        if (matched) return;
+        const store = explicitHeadStores[storeId];
+        if (!store) return;
+        matched = true;
+        handleExplicitHeadRoute(
+          nodeReq,
+          nodeRes,
+          params ?? {},
+          routePath || store.routePath,
+          store,
+          parsedUrl,
+        );
+      },
+    );
+    return matched;
+  }
+
+  function handleExplicitHeadRoute(
+    nodeReq: IncomingMessage,
+    nodeRes: ServerResponse,
+    params: Record<string, string>,
+    routePath: string,
+    store: HeadRouteStore,
+    parsedUrl: ParsedUrl,
+  ): void {
+    const req = createNodeRequest(nodeReq, app, params, parsedUrl);
+    (req as { _routeOptions?: RouteOptions })._routeOptions =
+      store.routeOptions;
+    if (store.routeBodyParser) {
+      (req as { _routeBodyParser?: VextBodyParserConfig })._routeBodyParser =
+        store.routeBodyParser;
+    }
+    req.route = routePath || store.routePath;
+    const res = createNodeResponse(nodeRes, req);
+    res._hooks = app.hooks;
+
+    if (store.chain === null) {
+      store.chain = globalMiddlewares.concat(store.routeChain);
+    }
+
+    const runChain = async () => {
+      try {
+        await executeChain(store.chain!, req, res);
+      } catch (err) {
+        if (errorHandler) {
+          try {
+            errorHandler(err, req, res);
+          } catch {
+            res.rawJson({ code: 500, message: "Internal Server Error" }, 500);
+          }
+        } else {
+          res.rawJson({ code: 500, message: "Internal Server Error" }, 500);
+        }
+      }
+    };
+
+    const completion = Promise.resolve().then(() =>
+      alsEnabled
+        ? requestContext.run(
+            {
+              requestId: "",
+              locale: undefined,
+              auth: createAuthContextSnapshot(req.auth),
+            },
+            runChain,
+          )
+        : runChain(),
+    );
+    markHandlerDone(nodeRes, completion);
+    void completion;
+  }
+
+  function parseNodeUrl(url: string): ParsedUrl {
+    const qIdx = url.indexOf("?");
+    return {
+      rawUrl: url,
+      path: qIdx === -1 ? url : url.slice(0, qIdx),
+      queryString: qIdx === -1 ? "" : url.slice(qIdx + 1),
+    };
+  }
+}
+
+function toHonoRoutePath(path: string): string {
+  return path.replace(/\/\*([A-Za-z_]\w*)$/gu, "/:$1{.+}");
 }

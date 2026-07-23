@@ -1091,6 +1091,48 @@ describe("router-loader", () => {
       expect(methods).toContain("GET");
       expect(methods).toContain("POST");
     });
+
+    it("orders same-path HEAD before GET and specific paths before wildcard", async () => {
+      const routesDir = join(tmpDir, "routes");
+
+      await writeRouteFile(
+        routesDir,
+        "users.mjs",
+        makeMultiRouteFile([
+          { method: "get", path: "/*path" },
+          { method: "get", path: "/:id" },
+          { method: "get", path: "/list" },
+        ]),
+      );
+      await writeRouteFile(
+        routesDir,
+        "index.mjs",
+        makeMultiRouteFile([
+          { method: "get", path: "/method" },
+          { method: "head", path: "/method" },
+        ]),
+      );
+
+      const app = createMockApp();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      const orderedRoutes = app.mockAdapter.registeredRoutes.map(
+        (route) => `${route.method} ${route.path}`,
+      );
+
+      expect(orderedRoutes.indexOf("HEAD /method")).toBeLessThan(
+        orderedRoutes.indexOf("GET /method"),
+      );
+      expect(orderedRoutes.indexOf("GET /users/list")).toBeLessThan(
+        orderedRoutes.indexOf("GET /users/:id"),
+      );
+      expect(orderedRoutes.indexOf("GET /users/:id")).toBeLessThan(
+        orderedRoutes.indexOf("GET /users/*path"),
+      );
+    });
   });
 
   // ── 无效路由文件 ─────────────────────────────────────────

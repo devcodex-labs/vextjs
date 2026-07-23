@@ -185,13 +185,7 @@ function collectRawBody(ctx: KoaContext, maxBytes?: number): Promise<Buffer> {
  * 使用的 path-to-regexp 语法。
  */
 function toKoaRoutePath(path: string): string {
-  if (path === "*") {
-    return "/:wild(.*)";
-  }
-
-  return path
-    .replace(/\/\*([A-Za-z_]\w*)/g, "/:$1(.*)")
-    .replace(/\/\*(?=\/|$)/g, "/:wild(.*)");
+  return path;
 }
 
 function getKoaParams(ctx: KoaContext): Record<string, string> {
