@@ -9,7 +9,7 @@ export function createRouteTimeoutMiddleware(
     timeoutMs <= 0
   ) {
     throw new Error(
-      "[vextjs] RouteOptions.override.timeout must be a positive integer in milliseconds",
+      "[vextjs] RouteOptions.timeout must be a positive integer in milliseconds",
     );
   }
 

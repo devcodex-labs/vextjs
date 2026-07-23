@@ -50,8 +50,12 @@ function factory() {
   }, async (_req, res) => {
     res.json({ ok: true });
   });
-  collector.get("/slow", { override: { timeout: 5, rateLimit: false } }, async (_req, res) => {
+  collector.get("/slow", { timeout: 5, override: { rateLimit: false } }, async (_req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 30));
+    res.json({ late: true });
+  });
+  collector.get("/slow-disabled", { timeout: false, override: { rateLimit: false } }, async (_req, res) => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
     res.json({ late: true });
   });
   collector.get("/limited", {}, async (_req, res) => {
@@ -184,6 +188,10 @@ describe("createTestApp runtime contract parity", () => {
       expect(slow.status).toBe(504);
       expect(slow.body.code).toBe(504);
       await new Promise((resolve) => setTimeout(resolve, 40));
+
+      const disabled = await t.request.get("/runtime/slow-disabled");
+      expect(disabled.status).toBe(200);
+      expect(disabled.body.data).toEqual({ late: true });
 
       const first = await t.request.get("/runtime/limited");
       const second = await t.request.get("/runtime/limited");

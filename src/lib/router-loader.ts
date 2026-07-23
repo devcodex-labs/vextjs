@@ -99,6 +99,12 @@ export interface LoadRoutesOptions {
   freshImports?: boolean;
 }
 
+function resolveRouteTimeout(
+  options?: RouteOptions,
+): number | false | undefined {
+  return options?.timeout ?? options?.override?.timeout;
+}
+
 /**
  * loadRoutes — 扫描 routes/ 目录加载路由文件并注册到 adapter
  *
@@ -393,8 +399,8 @@ function prepareRouteDefinitionRegistrations(
     }
 
     const builtinRouteMiddlewares: VextMiddleware[] = [];
-    const routeTimeout = route.options?.override?.timeout;
-    if (routeTimeout !== undefined) {
+    const routeTimeout = resolveRouteTimeout(route.options);
+    if (routeTimeout !== undefined && routeTimeout !== false) {
       builtinRouteMiddlewares.push(createRouteTimeoutMiddleware(routeTimeout));
     }
 

@@ -1173,7 +1173,7 @@ export default "not a route definition";
             method: "get",
             path: "/enabled",
             options:
-              "{ session: true, override: { timeout: 25, cors: { enabled: true, origins: ['https://example.com'] } } }",
+              "{ session: true, timeout: 25, override: { cors: { enabled: true, origins: ['https://example.com'] } } }",
           },
         ]),
       );
@@ -1202,9 +1202,63 @@ export default "not a route definition";
       expect(route!.routeOptions).toEqual(
         expect.objectContaining({
           session: true,
-          override: expect.objectContaining({ timeout: 25 }),
+          timeout: 25,
         }),
       );
+    });
+
+    it("keeps legacy override timeout as a compatibility fallback", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        "legacy-timeout/index.mjs",
+        makeRouteFileContent([
+          {
+            method: "get",
+            path: "/",
+            options: "{ override: { timeout: 25 } }",
+          },
+        ]),
+      );
+
+      const app = createMockApp();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      const route = app.mockAdapter.registeredRoutes.find(
+        (entry) => entry.path === "/legacy-timeout",
+      );
+      expect(route).toBeDefined();
+      expect(route!.chain.length).toBe(3);
+    });
+
+    it("does not inject timeout middleware when route timeout is disabled", async () => {
+      const routesDir = join(tmpDir, "routes");
+      await writeRouteFile(
+        routesDir,
+        "disabled-timeout/index.mjs",
+        makeRouteFileContent([
+          {
+            method: "get",
+            path: "/",
+            options: "{ timeout: false, override: { timeout: 25 } }",
+          },
+        ]),
+      );
+
+      const app = createMockApp();
+      await loadRoutes(app, routesDir, {
+        middlewareDefs: {},
+        globalMiddlewares: [],
+      });
+
+      const route = app.mockAdapter.registeredRoutes.find(
+        (entry) => entry.path === "/disabled-timeout",
+      );
+      expect(route).toBeDefined();
+      expect(route!.chain.length).toBe(2);
     });
 
     it("fails fast when route timeout is invalid", async () => {
@@ -1216,7 +1270,7 @@ export default "not a route definition";
           {
             method: "get",
             path: "/invalid",
-            options: "{ override: { timeout: 0 } }",
+            options: "{ timeout: 0 }",
           },
         ]),
       );

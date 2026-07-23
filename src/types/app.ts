@@ -1690,13 +1690,22 @@ export interface RouteOptions {
   session?: boolean | VextRouteSessionOptions;
 
   /**
-   * 路由级覆盖（覆盖 config/default.ts 中的全局配置）
+   * 路由级请求超时（毫秒）。
+   *
+   * `false` 表示显式不启用路由超时中间件；顶层配置优先于兼容保留的
+   * `override.timeout`。
    */
+  timeout?: number | false;
+
   /** 路由级 body 解析配置；优先级高于全局 bodyParser。 */
   bodyParser?: VextBodyParserConfig;
 
+  /**
+   * 路由级覆盖（覆盖 config/default.ts 中的全局配置）
+   */
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
+    /** @deprecated 请使用顶层 `timeout`。 */
     timeout?: number;
     maxBodySize?: string | number;
     cors?: VextCorsConfig;

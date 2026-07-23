@@ -184,6 +184,7 @@ interface RouteOptions {
         rolling?: boolean;
         autoCommit?: boolean;
       };
+  timeout?: number | false;
   multipart?: {
     files?: Record<
       string,
@@ -192,6 +193,7 @@ interface RouteOptions {
   };
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
+    /** @deprecated 请使用顶层 timeout。 */
     timeout?: number;
     maxBodySize?: string | number;
     cors?: VextCorsConfig;
@@ -876,10 +878,10 @@ app.post(
 app.post(
   "/upload",
   {
+    timeout: 30000, // 超时 30 秒
     override: {
       maxBodySize: "50mb", // 覆盖全局 body 大小限制
       rateLimit: { max: 5, window: 60 }, // 收紧限流
-      timeout: 30000, // 超时 30 秒
     },
   },
   handler,
@@ -900,12 +902,14 @@ app.get(
 );
 ```
 
-| 字段          | 类型               | 说明                                      |
-| ------------- | ------------------ | ----------------------------------------- |
-| `rateLimit`   | `object \| false`  | 路由级限流配置，`false` 禁用              |
-| `timeout`     | `number`           | 正整数请求期限（毫秒），超时返回 HTTP 504 |
-| `maxBodySize` | `string \| number` | 最大请求体大小                            |
-| `cors`        | `VextCorsConfig`   | 路由级 CORS 配置                          |
+| 字段          | 类型               | 说明                                 |
+| ------------- | ------------------ | ------------------------------------ |
+| `rateLimit`   | `object \| false`  | 路由级限流配置，`false` 禁用         |
+| `timeout`     | `number`           | 兼容保留字段；优先使用顶层 `timeout` |
+| `maxBodySize` | `string \| number` | 最大请求体大小                       |
+| `cors`        | `VextCorsConfig`   | 路由级 CORS 配置                     |
+
+路由可以设置顶层 `{ timeout: number }`，用正整数毫秒值启用请求期限，超时返回 HTTP 504。顶层 `{ timeout: false }` 表示显式不启用路由超时中间件，并优先于兼容保留的 `override.timeout`。
 
 当可嵌入页面、第三方回调或完全自定义响应头栈需要跳过全局 Security Headers 预设时，路由也可以设置顶层 `{ securityHeaders: false }`。
 

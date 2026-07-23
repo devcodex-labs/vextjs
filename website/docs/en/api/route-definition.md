@@ -184,6 +184,7 @@ interface RouteOptions {
         rolling?: boolean;
         autoCommit?: boolean;
       };
+  timeout?: number | false;
   multipart?: {
     files?: Record<
       string,
@@ -192,6 +193,7 @@ interface RouteOptions {
   };
   override?: {
     rateLimit?: { max?: number; window?: number; keyBy?: string } | false;
+    /** @deprecated Use top-level timeout. */
     timeout?: number;
     maxBodySize?: string | number;
     cors?: VextCorsConfig;
@@ -877,10 +879,10 @@ Route-level configuration override, overrides the global configuration in `src/c
 app.post(
   "/upload",
   {
+    timeout: 30000, // timeout 30 seconds
     override: {
       maxBodySize: "50mb", // Override global body size limit
       rateLimit: { max: 5, window: 60 }, // Tighten the current limit
-      timeout: 30000, // timeout 30 seconds
     },
   },
   handler,
@@ -904,9 +906,11 @@ app.get(
 | Field         | Type               | Description                                                     |
 | ------------- | ------------------ | --------------------------------------------------------------- |
 | `rateLimit`   | `object \| false`  | Route-level current limiting configuration, `false` is disabled |
-| `timeout`     | `number`           | Positive request deadline in milliseconds; sends HTTP 504       |
+| `timeout`     | `number`           | Deprecated compatibility field; prefer top-level `timeout`      |
 | `maxBodySize` | `string \| number` | Maximum request body size                                       |
 | `cors`        | `VextCorsConfig`   | Route-level CORS configuration                                  |
+
+Routes can set top-level `{ timeout: number }` to enforce a positive request deadline in milliseconds and send HTTP 504 on timeout. Top-level `{ timeout: false }` explicitly disables the route timeout middleware and takes precedence over the legacy `override.timeout` field.
 
 Routes can also set top-level `{ securityHeaders: false }` when an embeddable page, webhook callback, or fully custom response header stack must skip the global Security Headers preset.
 
