@@ -131,6 +131,15 @@ export function createVextResponse(
     return false;
   }
 
+  function stringifyJson(data: unknown): string {
+    try {
+      return JSON.stringify(data) ?? "";
+    } catch (error) {
+      _sent = false;
+      throw error;
+    }
+  }
+
   const res: VextResponse = {
     /**
      * 返回 JSON 响应
@@ -182,15 +191,15 @@ export function createVextResponse(
           return;
         }
 
+        const body = stringifyJson({
+          code: 0,
+          data,
+          requestId: getRequestId(),
+        });
         // 出口包装：{ code: 0, data, requestId }
         ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
-        ctx.res.end(
-          JSON.stringify({
-            code: 0,
-            data,
-            requestId: getRequestId(),
-          }),
-        );
+        ctx.res.setHeader("Content-Length", Buffer.byteLength(body));
+        ctx.res.end(body);
         finishResponseSend(res, sendState);
         return;
       }
@@ -204,7 +213,9 @@ export function createVextResponse(
       }
 
       ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
-      ctx.res.end(JSON.stringify(data));
+      const body = stringifyJson(data);
+      ctx.res.setHeader("Content-Length", Buffer.byteLength(body));
+      ctx.res.end(body);
       finishResponseSend(res, sendState);
     },
 
@@ -238,7 +249,9 @@ export function createVextResponse(
       applyHeaders();
 
       ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
-      ctx.res.end(JSON.stringify(data));
+      const body = stringifyJson(data);
+      ctx.res.setHeader("Content-Length", Buffer.byteLength(body));
+      ctx.res.end(body);
       finishResponseSend(res, sendState);
     },
 
@@ -269,6 +282,7 @@ export function createVextResponse(
       // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
       ctx.res.setHeader("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
+      ctx.res.setHeader("Content-Length", Buffer.byteLength(content));
       ctx.res.end(content);
       finishResponseSend(res, sendState);
     },
@@ -295,6 +309,7 @@ export function createVextResponse(
       ctx.res.statusCode = finalStatus;
       ctx.res.setHeader("Content-Type", "text/html; charset=utf-8");
       applyHeaders();
+      ctx.res.setHeader("Content-Length", Buffer.byteLength(html));
       ctx.res.end(html);
       finishResponseSend(res, sendState);
     },
@@ -402,6 +417,7 @@ export function createVextResponse(
       });
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
+      setBufferedHeader(_headers, "Content-Length", "0");
       applyHeaders();
       ctx.res.statusCode = _status;
       ctx.res.end();
@@ -445,6 +461,10 @@ export function createVextResponse(
      */
     get statusCode(): number {
       return _status;
+    },
+
+    get headersSent(): boolean {
+      return _sent;
     },
 
     /**

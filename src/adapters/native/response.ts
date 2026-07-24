@@ -193,6 +193,15 @@ class NativeVextResponse implements VextResponse {
     return false;
   }
 
+  private _stringifyJson(data: unknown): string {
+    try {
+      return JSON.stringify(data) ?? "";
+    } catch (error) {
+      this._sent = false;
+      throw error;
+    }
+  }
+
   /**
    * 发送 JSON 字符串响应（内部共用方法）
    *
@@ -275,7 +284,7 @@ class NativeVextResponse implements VextResponse {
 
       // 出口包装：{ code: 0, data, requestId }
       this._sendJsonString(
-        JSON.stringify({
+        this._stringifyJson({
           code: 0,
           data,
           requestId: this._resolveRequestId(),
@@ -293,7 +302,7 @@ class NativeVextResponse implements VextResponse {
       return;
     }
 
-    this._sendJsonString(JSON.stringify(data), finalStatus);
+    this._sendJsonString(this._stringifyJson(data), finalStatus);
     finishResponseSend(this, sendState);
   }
 
@@ -323,7 +332,7 @@ class NativeVextResponse implements VextResponse {
     this._status = finalStatus;
     replaceHeaders(this._headers, sendState.headers);
 
-    this._sendJsonString(JSON.stringify(data), finalStatus);
+    this._sendJsonString(this._stringifyJson(data), finalStatus);
     finishResponseSend(this, sendState);
   }
 
@@ -490,6 +499,7 @@ class NativeVextResponse implements VextResponse {
     });
     this._status = sendState.status;
     replaceHeaders(this._headers, sendState.headers);
+    setBufferedHeader(this._headers, "Content-Length", "0");
     const sr = this._serverResponse;
     sr.statusCode = this._status;
     this._applyHeaders();
@@ -534,6 +544,10 @@ class NativeVextResponse implements VextResponse {
    */
   get statusCode(): number {
     return this._status;
+  }
+
+  get headersSent(): boolean {
+    return this._sent;
   }
 
   /**

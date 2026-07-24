@@ -181,5 +181,47 @@ describe.each(adapters)(
       );
       expect(String(headers["content-disposition"])).not.toMatch(/[\r\n]/);
     });
+
+    it("exposes headersSent and writes deterministic JSON length", () => {
+      const { res, headers } = createHarness();
+      const body = JSON.stringify({ ok: true });
+
+      expect(res.headersSent).toBe(false);
+      expect(res._isSent()).toBe(false);
+
+      res.json({ ok: true });
+
+      expect(res.headersSent).toBe(true);
+      expect(res._isSent()).toBe(true);
+      expect(headers["content-type"]).toBe(
+        "application/json; charset=utf-8",
+      );
+      expect(String(headers["content-length"])).toBe(
+        String(Buffer.byteLength(body)),
+      );
+    });
+
+    it("keeps the response reusable when JSON serialization fails", () => {
+      const { res, headers } = createHarness();
+
+      expect(() => res.json({ value: 1n })).toThrow();
+      expect(res.headersSent).toBe(false);
+      expect(res._isSent()).toBe(false);
+
+      res.rawJson({ ok: true });
+
+      expect(res.headersSent).toBe(true);
+      expect(headers["content-type"]).toBe(
+        "application/json; charset=utf-8",
+      );
+    });
+
+    it("rejects invalid response header names and values before send", () => {
+      const { res } = createHarness();
+
+      expect(() => res.setHeader("bad\r\nname", "value")).toThrow();
+      expect(() => res.setHeader("x-bad", "bad\r\nvalue")).toThrow();
+      expect(res.headersSent).toBe(false);
+    });
   },
 );

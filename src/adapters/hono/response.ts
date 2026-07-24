@@ -152,6 +152,15 @@ export function createVextResponse(
     return false;
   }
 
+  function stringifyJson(data: unknown): string {
+    try {
+      return JSON.stringify(data) ?? "";
+    } catch (error) {
+      _sent = false;
+      throw error;
+    }
+  }
+
   /**
    * 将 Hono 返回的 Response/TypedResponse 存入 box
    *
@@ -201,14 +210,15 @@ export function createVextResponse(
           return;
         }
 
+        const body = stringifyJson({
+          code: 0,
+          data,
+          requestId: getRequestId(),
+        });
         // 出口包装：{ code: 0, data, requestId }
-        captureResponse(
-          c.json({
-            code: 0,
-            data,
-            requestId: getRequestId(),
-          }),
-        );
+        c.header("Content-Type", "application/json; charset=utf-8");
+        c.header("Content-Length", String(Buffer.byteLength(body)));
+        captureResponse(c.body(body));
         finishResponseSend(res, sendState);
         return;
       }
@@ -220,7 +230,10 @@ export function createVextResponse(
         return;
       }
 
-      captureResponse(c.json(data as object));
+      const body = stringifyJson(data);
+      c.header("Content-Type", "application/json; charset=utf-8");
+      c.header("Content-Length", String(Buffer.byteLength(body)));
+      captureResponse(c.body(body));
       finishResponseSend(res, sendState);
     },
 
@@ -243,7 +256,10 @@ export function createVextResponse(
       replaceHeaders(_headers, sendState.headers);
       c.status(finalStatus as any);
       applyHeaders();
-      captureResponse(c.json(data as object));
+      const body = stringifyJson(data);
+      c.header("Content-Type", "application/json; charset=utf-8");
+      c.header("Content-Length", String(Buffer.byteLength(body)));
+      captureResponse(c.body(body));
       finishResponseSend(res, sendState);
     },
 
@@ -274,6 +290,7 @@ export function createVextResponse(
       //   c.body() 不干预 Content-Type，完全尊重已设置的头信息。
       c.header("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
+      c.header("Content-Length", String(Buffer.byteLength(content)));
       captureResponse(c.body(content));
       finishResponseSend(res, sendState);
     },
@@ -300,6 +317,7 @@ export function createVextResponse(
       c.status(finalStatus as any);
       c.header("Content-Type", "text/html; charset=utf-8");
       applyHeaders();
+      c.header("Content-Length", String(Buffer.byteLength(html)));
       captureResponse(c.body(html));
       finishResponseSend(res, sendState);
     },
@@ -376,6 +394,7 @@ export function createVextResponse(
       });
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
+      setBufferedHeader(_headers, "Content-Length", "0");
       c.status(_status as any);
       applyHeaders();
       captureResponse(c.body(null));
@@ -404,6 +423,10 @@ export function createVextResponse(
 
     get statusCode(): number {
       return _status;
+    },
+
+    get headersSent(): boolean {
+      return _sent;
     },
 
     _enableWrap(): void {

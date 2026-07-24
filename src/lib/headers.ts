@@ -1,3 +1,4 @@
+import { validateHeaderName, validateHeaderValue } from "node:http";
 import type { VextHeaderValue, VextHeaders } from "../types/headers.js";
 
 export type { VextHeaderValue, VextHeaders } from "../types/headers.js";
@@ -37,6 +38,7 @@ export function setHeader(
   name: string,
   value: VextHeaderValue,
 ): void {
+  assertValidHeader(name, value);
   const existing = findHeaderName(headers, name);
   if (existing && existing !== name) {
     delete headers[existing];
@@ -49,6 +51,7 @@ export function appendHeader(
   name: string,
   value: string,
 ): void {
+  assertValidHeader(name, value);
   const existing = findHeaderName(headers, name);
   if (!existing) {
     headers[name] = value;
@@ -89,4 +92,12 @@ export function cloneHeaders(headers: VextHeaders): VextHeaders {
     cloned[name] = Array.isArray(value) ? [...value] : value;
   }
   return cloned;
+}
+
+function assertValidHeader(name: string, value: VextHeaderValue): void {
+  validateHeaderName(name);
+  const values = Array.isArray(value) ? value : [value];
+  for (const item of values) {
+    validateHeaderValue(name, String(item));
+  }
 }

@@ -128,6 +128,15 @@ export function createVextResponse(
     return false;
   }
 
+  function stringifyJson(data: unknown): string {
+    try {
+      return JSON.stringify(data) ?? "";
+    } catch (error) {
+      _sent = false;
+      throw error;
+    }
+  }
+
   const res: VextResponse = {
     /**
      * 返回 JSON 响应
@@ -179,15 +188,15 @@ export function createVextResponse(
           return;
         }
 
+        const body = stringifyJson({
+          code: 0,
+          data,
+          requestId: getRequestId(),
+        });
         // 出口包装：{ code: 0, data, requestId }
         expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-        expressRes.end(
-          JSON.stringify({
-            code: 0,
-            data,
-            requestId: getRequestId(),
-          }),
-        );
+        expressRes.setHeader("Content-Length", Buffer.byteLength(body));
+        expressRes.end(body);
         finishResponseSend(res, sendState);
         return;
       }
@@ -201,7 +210,9 @@ export function createVextResponse(
       }
 
       expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-      expressRes.end(JSON.stringify(data));
+      const body = stringifyJson(data);
+      expressRes.setHeader("Content-Length", Buffer.byteLength(body));
+      expressRes.end(body);
       finishResponseSend(res, sendState);
     },
 
@@ -236,7 +247,9 @@ export function createVextResponse(
       applyHeaders();
 
       expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-      expressRes.end(JSON.stringify(data));
+      const body = stringifyJson(data);
+      expressRes.setHeader("Content-Length", Buffer.byteLength(body));
+      expressRes.end(body);
       finishResponseSend(res, sendState);
     },
 
@@ -268,6 +281,7 @@ export function createVextResponse(
       expressRes.setHeader("Content-Type", "text/plain; charset=utf-8");
       applyHeaders();
 
+      expressRes.setHeader("Content-Length", Buffer.byteLength(content));
       expressRes.end(content);
       finishResponseSend(res, sendState);
     },
@@ -294,6 +308,7 @@ export function createVextResponse(
       expressRes.statusCode = finalStatus;
       expressRes.setHeader("Content-Type", "text/html; charset=utf-8");
       applyHeaders();
+      expressRes.setHeader("Content-Length", Buffer.byteLength(html));
       expressRes.end(html);
       finishResponseSend(res, sendState);
     },
@@ -400,6 +415,7 @@ export function createVextResponse(
       });
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
+      setBufferedHeader(_headers, "Content-Length", "0");
       applyHeaders();
       expressRes.statusCode = _status;
       expressRes.end();
@@ -443,6 +459,10 @@ export function createVextResponse(
      */
     get statusCode(): number {
       return _status;
+    },
+
+    get headersSent(): boolean {
+      return _sent;
     },
 
     /**

@@ -197,6 +197,8 @@ export interface VextResponse {
    * 追加 Set-Cookie 响应头（链式调用）。
    *
    * 多次调用会生成多个 Set-Cookie header，不会用逗号合并。
+   * options 支持 `expires`、`maxAge`、`httpOnly`、`secure`、
+   * `sameSite`、`priority`、`partitioned`、`domain` 和 `path`。
    */
   cookie(name: string, value: string, options?: CookieSerializeOptions): this;
 
@@ -223,6 +225,14 @@ export interface VextResponse {
    * }
    */
   readonly statusCode: number;
+
+  /**
+   * 响应是否已经进入终态发送。
+   *
+   * 与内部 `_isSent()` 保持同源，提供更熟悉的 public 只读字段，
+   * 方便用户在复杂中间件中判断响应是否 already sent。
+   */
+  readonly headersSent: boolean;
 
   // ── 内部方法（用户不可见）──────────────────────────────
 
