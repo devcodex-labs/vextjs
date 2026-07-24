@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { Buffer } from "node:buffer";
 import type { VextResponse } from "../../types/response.js";
 import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
@@ -50,6 +51,91 @@ export interface ResponseBox {
  */
 export function createResponseBox(): ResponseBox {
   return { value: null };
+}
+
+type DestroyableReadable = NodeJS.ReadableStream & {
+  on?: (event: string, listener: (...args: any[]) => void) => unknown;
+  destroy?: (error?: Error) => unknown;
+  off?: (event: string, listener: (...args: any[]) => void) => unknown;
+  removeListener?: (
+    event: string,
+    listener: (...args: any[]) => void,
+  ) => unknown;
+  resume?: () => unknown;
+};
+
+function toWebReadable(readable: NodeJS.ReadableStream): ReadableStream {
+  const source = readable as DestroyableReadable;
+  if (
+    typeof source.on !== "function" ||
+    typeof source.once !== "function"
+  ) {
+    return readable as unknown as ReadableStream;
+  }
+  return new ReadableStream({
+    start(controller) {
+      let settled = false;
+      const cleanup = () => {
+        removeReadableListener(source, "data", onData);
+        removeReadableListener(source, "end", onEnd);
+        removeReadableListener(source, "close", onClose);
+        removeReadableListener(source, "error", onError);
+      };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        controller.close();
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        controller.error(error);
+      };
+      const onData = (chunk: unknown) => {
+        if (settled) return;
+        try {
+          controller.enqueue(toUint8Array(chunk));
+        } catch (error) {
+          fail(error);
+        }
+      };
+      const onEnd = () => finish();
+      const onClose = () => finish();
+      const onError = (error: unknown) => fail(error);
+
+      source.on("data", onData);
+      source.once("end", onEnd);
+      source.once("close", onClose);
+      source.once("error", onError);
+      source.resume?.();
+    },
+    cancel(reason) {
+      source.destroy?.(reason instanceof Error ? reason : undefined);
+    },
+  });
+}
+
+function toUint8Array(chunk: unknown): Uint8Array {
+  if (chunk instanceof Uint8Array) return chunk;
+  if (chunk instanceof ArrayBuffer) return new Uint8Array(chunk);
+  if (ArrayBuffer.isView(chunk)) {
+    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+  return Buffer.from(String(chunk));
+}
+
+function removeReadableListener(
+  source: DestroyableReadable,
+  event: string,
+  listener: (...args: any[]) => void,
+): void {
+  if (typeof source.off === "function") {
+    source.off(event, listener);
+    return;
+  }
+  source.removeListener?.(event, listener);
 }
 
 /**
@@ -346,7 +432,7 @@ export function createVextResponse(
       c.header("Content-Type", contentType);
       applyHeaders();
       finishResponseSendAfterStreamSettlement(res, sendState, readable);
-      captureResponse(c.body(readable as any));
+      captureResponse(c.body(toWebReadable(readable) as any));
     },
 
     download(
@@ -376,7 +462,7 @@ export function createVextResponse(
       c.status(_status as any);
       applyHeaders();
       finishResponseSendAfterStreamSettlement(res, sendState, readable);
-      captureResponse(c.body(readable as any));
+      captureResponse(c.body(toWebReadable(readable) as any));
     },
 
     redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {

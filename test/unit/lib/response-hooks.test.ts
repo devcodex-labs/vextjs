@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
+import { PassThrough, Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { createHookManager } from "../../../src/lib/hooks.js";
 import {
@@ -116,7 +119,7 @@ describe("response hook lifecycle helpers", () => {
     );
   });
 
-  it("settles stream response hooks and destroys the target on readable error", async () => {
+  it("settles stream response hooks and closes the target on readable error", async () => {
     const hooks = createHookManager();
     const after = vi.fn();
     hooks.on("response:after", after);
@@ -140,7 +143,7 @@ describe("response hook lifecycle helpers", () => {
     readable.emit("error", error);
     await waitForResponseSend(res);
 
-    expect(target.destroy).toHaveBeenCalledWith(error);
+    expect(target.destroy).toHaveBeenCalledWith();
     expect(after).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "download",
@@ -148,5 +151,56 @@ describe("response hook lifecycle helpers", () => {
         requestId: "req-1",
       }),
     );
+  });
+
+  it("does not forward readable errors into assigned response sockets", async () => {
+    const hooks = createHookManager();
+    const after = vi.fn();
+    hooks.on("response:after", after);
+    const res = { _hooks: hooks } as VextResponse;
+    const readable = new EventEmitter() as NodeJS.ReadableStream;
+    const reqSocket = new Socket();
+    const mockReq = Object.assign(Readable.from(Buffer.alloc(0)), {
+      method: "GET",
+      url: "/stream/error",
+      headers: {},
+      socket: reqSocket,
+    }) as IncomingMessage;
+    const serverResponse = new ServerResponse(mockReq);
+    const resSocket = new PassThrough() as unknown as Socket;
+    const socketError = vi.fn();
+
+    resSocket.on("error", socketError);
+    resSocket.resume();
+    serverResponse.assignSocket(resSocket);
+
+    const state = beginResponseSend(res, {
+      kind: "stream",
+      status: 200,
+      headers: {},
+      wrapped: false,
+      requestId: "req-1",
+    });
+    finishResponseSendAfterStreamSettlement(
+      res,
+      state,
+      readable,
+      serverResponse,
+    );
+
+    readable.emit("error", new Error("stream failed"));
+    await waitForResponseSend(res);
+
+    expect(socketError).not.toHaveBeenCalled();
+    expect(after).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "stream",
+        status: 200,
+        requestId: "req-1",
+      }),
+    );
+
+    reqSocket.destroy();
+    resSocket.destroy();
   });
 });

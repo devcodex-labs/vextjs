@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
@@ -485,10 +486,26 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
                   if (done) break;
                   nodeRes.write(value);
                 }
-              } catch {
-                // 客户端可能已断开
+              } catch (error) {
+                if (!nodeRes.headersSent && !nodeRes.writableEnded) {
+                  const body = JSON.stringify({
+                    code: 500,
+                    message:
+                      error instanceof Error && error.message
+                        ? error.message
+                        : "Stream response failed",
+                  });
+                  nodeRes.statusCode = 500;
+                  nodeRes.setHeader(
+                    "Content-Type",
+                    "application/json; charset=utf-8",
+                  );
+                  nodeRes.setHeader("Content-Length", Buffer.byteLength(body));
+                  nodeRes.end(body);
+                  return;
+                }
               } finally {
-                nodeRes.end();
+                if (!nodeRes.writableEnded) nodeRes.end();
               }
             } else {
               nodeRes.end();

@@ -26,6 +26,10 @@ type EventEmitterLike = {
   destroy?: (error?: Error) => unknown;
   destroyed?: boolean;
   writableEnded?: boolean;
+  headersSent?: boolean;
+  statusCode?: number;
+  setHeader?: (name: string, value: number | string) => unknown;
+  end?: (chunk?: string) => unknown;
   readableEnded?: boolean;
 };
 
@@ -87,9 +91,11 @@ export function finishResponseSendAfterStreamSettlement(
   readable: NodeJS.ReadableStream,
   target?: EventEmitterLike,
 ): void {
-  const completion = waitForStreamSettlement(readable, target).then(() => {
-    finishResponseSend(res, state);
-  });
+  const completion = waitForStreamSettlement(readable, state, target).then(
+    () => {
+      finishResponseSend(res, state);
+    },
+  );
   responseCompletions.set(res, completion);
   void completion;
 }
@@ -100,6 +106,7 @@ export async function waitForResponseSend(res: VextResponse): Promise<void> {
 
 function waitForStreamSettlement(
   readable: NodeJS.ReadableStream,
+  state: ResponseSendState,
   target?: EventEmitterLike,
 ): Promise<void> {
   const source = readable as EventEmitterLike;
@@ -133,7 +140,11 @@ function waitForStreamSettlement(
     };
 
     const fail = (error?: unknown) => {
-      destroyTarget(observedTarget, error);
+      // The source error is already observed here. Closing the response target
+      // with the same Error can re-emit it through an underlying socket.
+      if (!writeStreamFailureResponse(observedTarget, state, error)) {
+        destroyTarget(observedTarget);
+      }
       settle();
     };
 
@@ -183,8 +194,32 @@ function removeListener(
   emitter.removeListener?.(event, listener);
 }
 
-function destroyTarget(target: EventEmitterLike | undefined, error: unknown) {
+function destroyTarget(target: EventEmitterLike | undefined) {
   if (!target || typeof target.destroy !== "function") return;
   if (target.destroyed || target.writableEnded) return;
-  target.destroy(error instanceof Error ? error : undefined);
+  target.destroy();
+}
+
+function writeStreamFailureResponse(
+  target: EventEmitterLike | undefined,
+  state: ResponseSendState,
+  error: unknown,
+): boolean {
+  if (!target || typeof target.end !== "function") return false;
+  if (target.headersSent || target.writableEnded || target.destroyed) {
+    return false;
+  }
+  const body = JSON.stringify({
+    code: 500,
+    message:
+      error instanceof Error && error.message
+        ? error.message
+        : "Stream response failed",
+    requestId: state.requestId,
+  });
+  target.statusCode = 500;
+  target.setHeader?.("Content-Type", "application/json; charset=utf-8");
+  target.setHeader?.("Content-Length", Buffer.byteLength(body));
+  target.end(body);
+  return true;
 }
