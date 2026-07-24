@@ -153,6 +153,7 @@ export interface VextRequest {
    * 主要用于 SSE / WebSocket：客户端断开时清理资源。
    * 内存安全：框架在 hooks 执行完毕后自动清空 hooks 数组，
    * 无需手动移除，不会因闭包引用造成内存泄漏。
+   * 每个 handler 作为底层 close listener 注册，并按 exactly-once 语义调用。
    *
    * @param handler 关闭时执行的回调
    * @example req.onClose(() => sseStream.close())

@@ -318,6 +318,44 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
       expect(body.same).toBe(true);
       expect(firstAccess).toEqual({ a: "1" });
     });
+
+    it("query 首次访问后应暴露稳定的 value descriptor", async () => {
+      adapter.registerRoute("GET", "/query-descriptor", [
+        async (req: VextRequest, res: VextResponse) => {
+          const first = req.query;
+          const descriptor = Object.getOwnPropertyDescriptor(req, "query");
+          const second = req.query;
+
+          res.json({
+            same: first === second,
+            value: first,
+            descriptor: {
+              writable: descriptor?.writable ?? null,
+              enumerable: descriptor?.enumerable ?? null,
+              configurable: descriptor?.configurable ?? null,
+            },
+          });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/query-descriptor?a=1",
+      });
+
+      expect(response.status).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({
+        same: true,
+        value: { a: "1" },
+        descriptor: {
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        },
+      });
+    });
   });
 
   // ── 3. 中间件链执行 ────────────────────────────────────────

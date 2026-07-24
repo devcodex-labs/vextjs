@@ -230,7 +230,7 @@ export interface VextResponse {
    * 响应是否已经进入终态发送。
    *
    * 与内部 `_isSent()` 保持同源，提供更熟悉的 public 只读字段，
-   * 方便用户在复杂中间件中判断响应是否 already sent。
+   * 方便用户在复杂中间件中判断响应是否 already sent / terminal。
    */
   readonly headersSent: boolean;
 

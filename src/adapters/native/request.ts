@@ -80,11 +80,10 @@ export function createVextRequest(
   //
   const { rawUrl, path: urlPath, queryString: rawQueryString } = parsedUrl;
 
-  // ── query 懒解析（对象字面量 getter + 缓存）─────────────
+  // ── query 懒解析（对象字面量 getter + 访问后物化）─────────
   //
-  // P1 优化：使用对象字面量的 get query() 替代 Object.defineProperty。
-  // Object.defineProperty 会破坏 V8 Hidden Class 优化（对象进入慢属性模式），
-  // 对象字面量 getter 在对象创建时即确定形状，V8 可保持快速属性模式。
+  // P1 优化：初始对象形状包含 query getter，首次访问后将 query 物化为
+  // value descriptor，让后续读取零开销，同时保持公开对象描述符稳定。
   //
   // 大量场景（如 GET /json）不需要 query 参数。
   // 使用 getter + 缓存实现懒解析，首次访问时从 URL 解析，结果缓存。
@@ -174,6 +173,24 @@ export function createVextRequest(
     return _cookiesCache;
   }
 
+  function getQuery(): Record<string, string> {
+    if (_queryCache !== undefined) return _queryCache;
+
+    if (!rawQueryString) {
+      _queryCache = {};
+      return _queryCache;
+    }
+
+    // 使用 URLSearchParams 解析（比手动 split 更健壮，处理编码等边界情况）
+    const searchParams = new URLSearchParams(rawQueryString);
+    const result: Record<string, string> = {};
+    for (const [key, value] of searchParams) {
+      result[key] = value;
+    }
+    _queryCache = result;
+    return _queryCache;
+  }
+
   // ── 解析 IP ──────────────────────────────────────────────
   //
   // trustProxy = true 时，从 X-Forwarded-For 请求头读取第一个 IP。
@@ -223,23 +240,16 @@ export function createVextRequest(
 
   const req: VextRequest = {
     // ── 原始数据 ────────────────────────────────────────
-    // P1 优化：query 使用对象字面量 getter（替代 Object.defineProperty）
+    // P1 优化：query 先用 getter 懒解析，首次访问后物化为 value property。
     get query(): Record<string, string> {
-      if (_queryCache !== undefined) return _queryCache;
-
-      if (!rawQueryString) {
-        _queryCache = {};
-        return _queryCache;
-      }
-
-      // 使用 URLSearchParams 解析（比手动 split 更健壮，处理编码等边界情况）
-      const searchParams = new URLSearchParams(rawQueryString);
-      const result: Record<string, string> = {};
-      for (const [key, value] of searchParams) {
-        result[key] = value;
-      }
-      _queryCache = result;
-      return _queryCache;
+      const value = getQuery();
+      Object.defineProperty(req, "query", {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      return value;
     },
     body: undefined, // body-parser 中间件负责填充
     params,
@@ -310,7 +320,7 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // P1 优化：已在对象字面量中使用 get query() 替代 Object.defineProperty
+  // P1 优化：query 首次访问后替换为 value descriptor，后续访问零开销。
   // P4 优化：onClose 'close' 事件监听已改为懒注册（仅调用 onClose 时才注册）
 
   return req;

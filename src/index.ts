@@ -125,6 +125,10 @@ export type {
   RouteFactory,
 } from "./types/index.js";
 
+// Keep the root declaration file visibly tied to the request/response type modules.
+export type {} from "./types/request.js";
+export type {} from "./types/response.js";
+
 // ── 值导出（类 / 函数 / 常量）──────────────────────────────────
 
 // 错误类
