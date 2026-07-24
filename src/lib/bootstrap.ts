@@ -381,10 +381,9 @@ export async function bootstrap(
     // ── 步骤 ④+: 挂载 app.fetch（在 loadRoutes 之前）─────
     //
     // 🐛 修复 BUG-005：app.fetch 必须在 loadRoutes 之前赋值。
-    // 原因：executeRouteFactory 会将 app 的属性拷贝到 collector 代理对象，
-    // 路由 handler 闭包中的 `app` 实际是 collector。如果 app.fetch 在
-    // loadRoutes 之后才赋值，collector.fetch 为 undefined，导致路由中
-    // 调用 app.fetch() 时报 "app.fetch is not a function"。
+    // 原因：executeRouteFactory 会让 route handler 闭包捕获真实 app。
+    // app.fetch 必须在 loadRoutes 前赋值，路由中才能立即访问同一个
+    // 运行时 app 实例上的出站 fetch 能力。
     //
     const fetchConfig = config.fetch as VextFetchConfig | undefined;
     const requestIdHeader = config.requestId?.header ?? "x-request-id";

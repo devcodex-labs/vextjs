@@ -11,9 +11,9 @@ import type { VextMiddleware, VextHandler } from "./middleware.js";
  *
  * 执行流程：
  *   1. defineRoutes(factory) 被调用
- *   2. 内部创建 collector（模拟 VextApp 的 HTTP 方法）
- *   3. 调用 factory(collector)，用户代码注册路由
- *   4. collector 将每条 app.get/post/... 调用推入 routes 数组
+ *   2. 内部创建 HTTP 方法 collector
+ *   3. router-loader 传入真实 app 调用 factory(app)
+ *   4. 临时 HTTP 方法 collector 将每条 app.get/post/... 调用推入 routes 数组
  *   5. 返回 RouteDefinition { routes, register }
  *   6. router-loader 后续调用 register() 注册到 adapter
  */
@@ -55,9 +55,9 @@ export interface RouteDefinition {
 /**
  * 路由收集器接口（内部使用）
  *
- * defineRoutes 内部创建的 collector 实现此接口，
- * 模拟 VextApp 的 HTTP 方法签名，将路由定义收集到数组中。
- * 用户在 factory 回调中调用的 app.get/post/... 实际上是调用此 collector。
+ * defineRoutes 内部创建的 collector 实现此接口。
+ * executeRouteFactory 会在执行 factory 期间临时把真实 app 的
+ * app.get/post/... 指向此 collector，将路由定义收集到数组中。
  */
 export interface RouteCollector {
   get(path: string, options: RouteOptions, handler: VextHandler): void;
@@ -85,7 +85,7 @@ export interface RouteCollector {
 /**
  * defineRoutes 工厂回调函数类型
  *
- * 接收完整的 VextApp 对象（实际上是 RouteCollector + app 引用），
- * 在其上注册路由。
+ * 接收真实的 VextApp 对象，在其上注册路由。
+ * 执行期间 HTTP 方法会临时指向 RouteCollector，其他 app 能力保持真实身份。
  */
 export type RouteFactory = (app: VextApp) => void;

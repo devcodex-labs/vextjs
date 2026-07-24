@@ -78,4 +78,48 @@ describe("defineRoutes runtime boundary", () => {
       path: "/health",
     });
   });
+
+  it("executes route factories with the real app identity and restores HTTP methods", async () => {
+    const app = createMinimalApp();
+    const originalGet = () => {
+      throw new Error("placeholder get");
+    };
+    (app as unknown as Record<string, unknown>).get = originalGet;
+    app.services = { identity: "runtime-service" } as never;
+
+    let factoryApp: VextApp | null = null;
+    const routeDef = defineRoutes((routeApp) => {
+      factoryApp = routeApp;
+      routeApp.get("/identity", async (req, res) => {
+        res.json({
+          sameApp: req.app === routeApp,
+          service: routeApp.services.identity,
+        });
+      });
+    });
+
+    executeRouteFactory(routeDef, app);
+
+    expect(factoryApp).toBe(app);
+    expect((app as unknown as Record<string, unknown>).get).toBe(originalGet);
+    expect(routeDef.routes).toHaveLength(1);
+
+    const route = routeDef.routes[0];
+    expect(route).toBeDefined();
+
+    let body: unknown = null;
+    await route!.handler(
+      { app } as never,
+      {
+        json(value: unknown) {
+          body = value;
+        },
+      } as never,
+    );
+
+    expect(body).toEqual({
+      sameApp: true,
+      service: "runtime-service",
+    });
+  });
 });

@@ -569,8 +569,8 @@ export async function devBootstrap(
 
     // ── 步骤 4+: 挂载 app.fetch（必须在 loadRoutes 之前）────
     //
-    // 路由工厂执行时会复制 app 当前属性到 collector 代理对象。
-    // 若 app.fetch 在 loadRoutes 之后才赋值，路由闭包会捕获未初始化占位对象。
+    // 路由工厂执行时 handler 闭包会捕获真实 app。
+    // 若 app.fetch 在 loadRoutes 之后才赋值，路由中会暂时看不到出站 fetch 能力。
     const requestIdHeader = config.requestId?.header ?? "x-request-id";
     await startupProfiler.time(
       "worker.fetch",

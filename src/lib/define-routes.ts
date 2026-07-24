@@ -23,20 +23,20 @@ const routeDefinitionInternals = new WeakMap<
  * 后续由 router-loader 调用 routeDef.register() 统一注册到底层适配器。
  *
  * 设计说明：
- *   - factory 接收一个 collector 对象（模拟 VextApp 的 HTTP 方法签名）
- *   - collector 将每条 app.get/post/... 调用推入 routes 数组
+ *   - factory 接收真实 VextApp，保证 handler 闭包中的 app 与 req.app 身份一致
+ *   - 执行 factory 时临时把 app.get/post/... 指向 collector，将调用推入 routes 数组
  *   - 返回 RouteDefinition { routes, sourceFile, register }
  *   - register() 负责拼接前缀、组装中间件链、注册到 adapter
  *
  * 执行流程：
  *   1. defineRoutes(factory) 被调用
  *   2. 内部创建 collector（实现 HTTP 方法）
- *   3. 调用 factory(collector as VextApp)，用户代码注册路由
- *   4. collector 将每条路由推入 routes 数组
+ *   3. router-loader 传入真实 app 执行 factory(app)
+ *   4. 临时 HTTP 方法 collector 将每条路由推入 routes 数组
  *   5. 返回 RouteDefinition
  *   6. 稍后 router-loader 调用 routeDef.register(adapter, prefix, ...)
  *
- * @param factory 路由工厂函数，接收 app（实际是 collector）在其上注册路由
+ * @param factory 路由工厂函数，接收真实 app 并在其上注册路由
  * @returns RouteDefinition 对象
  *
  * @example
@@ -105,13 +105,10 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
     };
   }
 
-  // ── 创建 collector（模拟 VextApp 的 HTTP 方法签名）──────
-  // collector 实现了 VextApp 的 HTTP 方法，但不是完整的 VextApp。
-  // factory 回调中除了 HTTP 方法外，还可以通过闭包中捕获的 app 引用
-  // 访问 app.services / app.config / app.throw 等能力。
-  //
-  // 这里只创建 HTTP 方法收集器，其他属性由 router-loader
-  // 在调用 factory 前注入真正的 app 引用。
+  // ── 创建 collector（临时替换 VextApp 的 HTTP 方法）──────
+  // collector 只负责把 app.get/post/... 调用收集到 routes 数组。
+  // executeRouteFactory 会让 factory 接收真实 app，并仅在收集期间
+  // 临时把真实 app 的 HTTP 方法指向这些 collector 方法。
   const collector = {
     get: createMethodCollector("get"),
     post: createMethodCollector("post"),
@@ -203,14 +200,7 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
   //   2. 传入真正的 app 引用调用 factory
   //   3. 调用 routeDefinition.register() 注册到 adapter
   //
-  // 但 defineRoutes 设计为「立即收集」模式：
-  //   factory 在 defineRoutes() 调用时就执行，routes 立即被收集。
-  //   router-loader 拿到的 RouteDefinition 已经包含完整的路由记录。
-  //
-  // 为了让 factory 能访问 app（app.services / app.throw 等），
-  // router-loader 会在调用 factory 前将 app 的属性混入 collector。
-
-  // 这里暂时不执行 factory——延迟到 router-loader 传入真正的 app 后执行。
+  // 这里暂时不执行 factory——延迟到 router-loader 传入真实 app 后执行。
   // 内部 factory/collector 存在 WeakMap 和非枚举 Symbol 中，避免污染公共对象形状。
   const internals = {
     factory,
@@ -231,14 +221,11 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
 /**
  * 执行路由收集（由 router-loader 调用）
  *
- * 将真正的 app 属性混入 collector，然后执行 factory 回调。
+ * 在真实 app 上临时挂载 HTTP 方法 collector，然后执行 factory 回调。
  * 执行后 routeDefinition.routes 就包含了所有收集到的路由记录。
  *
- * ⚠️ 注意：这里是“按执行时刻把属性值复制到 collector”，不是给 factory 提供一个
- * 与根 app 保持实时同步的代理对象。因此对 `config`、`services`、`logger`、`throw`
- * 这类稳定引用通常没问题；但若某字段会在运行期被 `app.extend()` 替换成新对象引用
- * （例如 `remoteConfig`），闭包 `app` 中捕获的旧引用不会自动刷新。此类场景应在
- * handler 中优先使用 `req.app`，或在 service 中通过 `this.app` 读取真实运行期 app。
+ * factory 接收到的 app 与请求期 req.app 是同一对象；收集完成后会恢复 app 原有
+ * HTTP 方法，避免污染运行期 app 形状。
  *
  * @param routeDefinition defineRoutes 返回的路由定义对象
  * @param app             真正的 VextApp 实例
@@ -259,14 +246,11 @@ export function executeRouteFactory(
   // （测试场景中 createTestApp 可能多次加载同一路由文件）
   routeDefinition.routes.length = 0;
 
-  // 将 app 的属性混入 collector，使 factory 回调中能通过 app 访问
-  // services / config / throw / logger 等能力。
-  // 这里是属性值复制，不是 live proxy；后续若根 app 某个字段被整体替换为新引用，
-  // 闭包 app 中的旧引用不会自动更新。
   const collector = internals.collector;
 
-  // 混入 app 的非 HTTP 方法属性
-  const httpMethods = new Set([
+  // 临时把真实 app 的 HTTP 方法替换为 collector 方法，让 factory 闭包仍捕获
+  // 真实 app，同时把注册调用收集到 routeDefinition.routes。
+  const httpMethods = [
     "get",
     "post",
     "put",
@@ -274,22 +258,35 @@ export function executeRouteFactory(
     "delete",
     "head",
     "options",
-  ]);
-  for (const key of Object.keys(app)) {
-    if (!httpMethods.has(key)) {
-      collector[key] = (app as Record<string, unknown>)[key];
-    }
+  ] as const;
+  const appRecord = app as unknown as Record<string, unknown>;
+  const originals = new Map<
+    (typeof httpMethods)[number],
+    { hadOwn: boolean; value: unknown }
+  >();
+
+  for (const method of httpMethods) {
+    originals.set(method, {
+      hadOwn: Object.prototype.hasOwnProperty.call(appRecord, method),
+      value: appRecord[method],
+    });
+    appRecord[method] = collector[method];
   }
 
-  // 确保关键属性存在（即使不在 Object.keys 中，如原型链上的方法）
-  collector.config = app.config;
-  collector.services = app.services;
-  collector.logger = app.logger;
-  collector.throw = app.throw;
-  collector.adapter = app.adapter;
+  try {
+    internals.factory(app);
+  } finally {
+    for (const method of httpMethods) {
+      const original = originals.get(method);
+      if (!original) continue;
 
-  // 执行 factory 回调，收集路由
-  internals.factory(collector as unknown as VextApp);
+      if (original.hadOwn) {
+        appRecord[method] = original.value;
+      } else {
+        delete appRecord[method];
+      }
+    }
+  }
 
   // 保留内部 factory/collector：允许重复调用 executeRouteFactory
   // （测试场景多次 createTestApp、Phase 2 热重载都需要重新执行 factory）
