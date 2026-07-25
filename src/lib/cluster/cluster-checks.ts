@@ -1,5 +1,7 @@
 import type { VextApp } from "../../types/app.js";
 
+const RATE_LIMITER_OVERRIDDEN_KEY = Symbol.for("vextjs.rateLimiterOverridden");
+
 /**
  * cluster-checks.ts — Cluster 模式兼容性检测模块
  *
@@ -117,19 +119,18 @@ function checkRateLimitMemoryStore(
     return { name, warned: false };
   }
 
-  // 检查用户是否通过 app.setRateLimiter() 替换了默认 limiter
-  // 通过检查 app 上是否存在自定义标记来判断
-  // AppInternals.getRateLimiter() 返回非 null 表示用户已设置
-  //
-  // 由于 checkClusterCompatibility 接收的是 VextApp（不含 internals），
-  // 我们使用 (app as any)._rateLimiterOverridden 标记判断。
-  // 这个标记由 createApp 在 setRateLimiter() 调用时设置。
+  // 检查用户是否通过 app.setRateLimiter() 替换了默认 limiter。
+  // checkClusterCompatibility 接收的是 VextApp（不含 internals），
+  // 因此通过 createApp 写入的非枚举 Symbol 标记判断；旧字符串标记仅保留
+  // 兼容历史 Worker 快照与外部 mock。
   //
   // 注意：如果无法访问内部标记，降级为"只要配置了 rateLimit 就警告"。
   // Worker 端可以通过环境变量 VEXT_RATE_LIMITER_OVERRIDDEN 传递此信息。
   //
+  const appWithFlags = app as unknown as Record<string | symbol, unknown>;
   const rateLimiterOverridden =
-    (app as Record<string, unknown>)._rateLimiterOverridden === true;
+    appWithFlags[RATE_LIMITER_OVERRIDDEN_KEY] === true ||
+    appWithFlags._rateLimiterOverridden === true;
 
   if (rateLimiterOverridden) {
     return { name, warned: false };

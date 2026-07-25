@@ -5,7 +5,7 @@
  *   - checkClusterCompatibility：多 Worker 场景下的兼容性检测
  *   - rate-limit 内存 store 警告：触发条件、跳过条件、警告消息内容
  *   - 单 Worker / 无 cluster 场景下不触发检测
- *   - _rateLimiterOverridden 标记对检测行为的影响
+ *   - rate limiter override 内部标记对检测行为的影响
  *
  * 测试策略：
  *   - 构造 mock VextApp 对象（仅需 config + logger）
@@ -20,6 +20,8 @@ import { checkClusterCompatibility } from "../../../src/lib/cluster/cluster-chec
 import { createApp, DEFAULT_CONFIG } from "../../../src/lib/app.js";
 import type { VextApp } from "../../../src/types/app.js";
 
+const RATE_LIMITER_OVERRIDDEN_KEY = Symbol.for("vextjs.rateLimiterOverridden");
+
 // ── Mock 工厂 ────────────────────────────────────────────────
 
 /**
@@ -28,7 +30,7 @@ import type { VextApp } from "../../../src/types/app.js";
  * 仅包含 checkClusterCompatibility 需要的字段：
  *   - config.rateLimit（控制检测行为）
  *   - logger.warn（验证警告输出）
- *   - _rateLimiterOverridden（标记用户是否替换了 rate limiter）
+ *   - rate limiter override 内部标记（标记用户是否替换了 rate limiter）
  */
 function createMockApp(
   options: {
@@ -62,8 +64,14 @@ function createMockApp(
       trace: vi.fn(),
       child: vi.fn(),
     },
-    _rateLimiterOverridden: rateLimiterOverridden,
   } as unknown as VextApp;
+
+  if (rateLimiterOverridden) {
+    Object.defineProperty(app, RATE_LIMITER_OVERRIDDEN_KEY, {
+      value: true,
+      enumerable: false,
+    });
+  }
 
   return app;
 }
@@ -292,10 +300,10 @@ describe("checkClusterCompatibility", () => {
     });
   });
 
-  // ── _rateLimiterOverridden 标记 ──────────────────────
+  // ── rate limiter override 内部标记 ──────────────────────
 
-  describe("_rateLimiterOverridden flag", () => {
-    it("should be set when app.setRateLimiter() is called on a real app", () => {
+  describe("rate limiter override flag", () => {
+    it("should set a non-enumerable symbol when app.setRateLimiter() is called on a real app", () => {
       const { app } = createApp(DEFAULT_CONFIG);
 
       app.setRateLimiter({
@@ -308,12 +316,21 @@ describe("checkClusterCompatibility", () => {
         },
       });
 
+      const appWithFlags = app as Record<string | symbol, unknown>;
+      expect(appWithFlags[RATE_LIMITER_OVERRIDDEN_KEY]).toBe(true);
       expect((app as Record<string, unknown>)._rateLimiterOverridden).toBe(
-        true,
+        undefined,
       );
+      expect(Object.keys(app)).not.toContain("_rateLimiterOverridden");
+
+      const results = checkClusterCompatibility(app, 4);
+      const rateLimitCheck = results.find(
+        (r) => r.name === "rate-limit-memory-store",
+      );
+      expect(rateLimitCheck!.warned).toBe(false);
     });
 
-    it("should check _rateLimiterOverridden on app object", () => {
+    it("should warn when override marker is absent on app object", () => {
       const app = createMockApp({ rateLimiterOverridden: false });
       const results = checkClusterCompatibility(app, 4);
 
@@ -323,7 +340,7 @@ describe("checkClusterCompatibility", () => {
       expect(rateLimitCheck!.warned).toBe(true);
     });
 
-    it("should not warn when _rateLimiterOverridden is true", () => {
+    it("should not warn when the symbol override marker is true", () => {
       const app = createMockApp({ rateLimiterOverridden: true });
       const results = checkClusterCompatibility(app, 4);
 
@@ -334,7 +351,20 @@ describe("checkClusterCompatibility", () => {
       expect(app.logger.warn).not.toHaveBeenCalled();
     });
 
-    it("should treat missing _rateLimiterOverridden as false (not overridden)", () => {
+    it("should retain legacy _rateLimiterOverridden true compatibility", () => {
+      const app = createMockApp();
+      (app as Record<string, unknown>)._rateLimiterOverridden = true;
+
+      const results = checkClusterCompatibility(app, 4);
+
+      const rateLimitCheck = results.find(
+        (r) => r.name === "rate-limit-memory-store",
+      );
+      expect(rateLimitCheck!.warned).toBe(false);
+      expect(app.logger.warn).not.toHaveBeenCalled();
+    });
+
+    it("should treat missing override marker as false (not overridden)", () => {
       const app = createMockApp();
       // 确保标记不存在
       delete (app as Record<string, unknown>)._rateLimiterOverridden;

@@ -19,8 +19,13 @@ describe("createApp", () => {
     const { app } = createApp(DEFAULT_CONFIG);
 
     app.extend("mailer", { send: () => undefined });
+    app.extend("中文能力", { enabled: true });
 
     expect((app as unknown as { mailer: unknown }).mailer).toBeDefined();
+    expect(
+      (app as unknown as Record<"中文能力", { enabled: boolean }>).中文能力
+        .enabled,
+    ).toBe(true);
   });
 
   it("prevents app extensions from overriding built-in properties", () => {
@@ -90,6 +95,10 @@ describe("createApp", () => {
       "[vextjs] app.setLogger() wrapper result must be an object.",
     );
     expect(app.logger).toBe(originalLogger);
+    expect(() => app.setLogger(() => ({ info: 1 as never }))).toThrow(
+      "[vextjs] app.setLogger() wrapper result.info must be a function when provided.",
+    );
+    expect(app.logger).toBe(originalLogger);
 
     expect(() => app.setRateLimiter({} as never)).toThrow(
       "[vextjs] app.setRateLimiter() limiter.check must be a function.",
@@ -100,6 +109,26 @@ describe("createApp", () => {
       "[vextjs] app.setRequestIdGenerator() generator must be a function.",
     );
     expect(internals.getRequestIdGenerator()).toBeNull();
+  });
+
+  it("keeps rate limiter override state out of user extension keys", () => {
+    const { app, internals } = createApp(DEFAULT_CONFIG);
+
+    app.extend("_rateLimiterOverridden", "consumer-value");
+    app.setRateLimiter({
+      async check() {
+        return {
+          allowed: true,
+          remaining: 1,
+          resetAt: Math.ceil(Date.now() / 1000) + 60,
+        };
+      },
+    });
+
+    expect(internals.getRateLimiter()).not.toBeNull();
+    expect((app as Record<string, unknown>)._rateLimiterOverridden).toBe(
+      "consumer-value",
+    );
   });
 
   it("allows app.use only during plugin setup and returns middleware snapshots", () => {
@@ -244,7 +273,7 @@ describe("createApp", () => {
     ]);
   });
 
-  it("coalesces shutdown, rejects late onClose registration, and continues after server close failure", async () => {
+  it("coalesces shutdown, rejects late onClose registration, and reports server close failure after cleanup", async () => {
     const { app, internals } = createApp({
       ...DEFAULT_CONFIG,
       _testMode: true,
@@ -272,7 +301,11 @@ describe("createApp", () => {
     const second = internals.shutdown(serverHandle, { skipExit: true });
 
     expect(second).toBe(first);
-    await first;
+    await expect(first).rejects.toThrow("close failed");
+    await expect(second).rejects.toThrow("close failed");
+    await expect(
+      internals.shutdown(serverHandle, { skipExit: true }),
+    ).resolves.toBeUndefined();
 
     expect(serverHandle.close).toHaveBeenCalledTimes(1);
     expect(closeHook).toHaveBeenCalledTimes(1);

@@ -260,13 +260,19 @@ export function createApp(config: VextConfig): {
       assertFunction(wrapper, "app.setLogger() wrapper");
       const nextLogger = wrapper(app.logger);
       assertPlainRecord(nextLogger, "app.setLogger() wrapper result");
+      assertLoggerLike(nextLogger, "app.setLogger() wrapper result");
       app.logger = normalizeVextLogger(app.logger, nextLogger);
     },
 
     setRateLimiter(limiter: VextRateLimiter) {
       assertRateLimiter(limiter);
       _rateLimiter = limiter;
-      (app as Record<string, unknown>)._rateLimiterOverridden = true;
+      Object.defineProperty(app, RATE_LIMITER_OVERRIDDEN_KEY, {
+        value: true,
+        enumerable: false,
+        configurable: false,
+        writable: true,
+      });
     },
 
     setRequestIdGenerator(generate: () => string) {
@@ -295,15 +301,15 @@ export function createApp(config: VextConfig): {
     },
 
     use(middleware: VextMiddleware) {
-      if (_pluginSetupDepth <= 0) {
-        throw new Error(
-          "[vextjs] app.use() can only be called during plugin setup().",
-        );
-      }
       if (_locked) {
         throw new Error(
           "[vextjs] app.use() is locked after route registration. " +
             "Global middleware must be registered in plugin setup().",
+        );
+      }
+      if (_pluginSetupDepth <= 0) {
+        throw new Error(
+          "[vextjs] app.use() can only be called during plugin setup().",
         );
       }
       assertFunction(middleware, "app.use() middleware");
@@ -453,9 +459,10 @@ export function createApp(config: VextConfig): {
       serverHandle?: VextServerHandle,
       options?: { skipExit?: boolean },
     ) {
+      if (_closeState === "closed") return Promise.resolve();
       if (_shutdownPromise) return _shutdownPromise;
       _closeState = "running";
-      _shutdownPromise = (async () => {
+      const shutdownPromise = (async () => {
         app.logger.info("[vextjs] starting graceful shutdown...");
         await hooks.emitSafe("app:close", {
           app,
@@ -465,14 +472,19 @@ export function createApp(config: VextConfig): {
         });
 
         const shutdownTimeout = (config.shutdown?.timeout ?? 10) * 1000;
+        let shutdownError: unknown = null;
 
         // ── 步骤 1：停止接受新请求 + 等待飞行中请求完成 ──
         if (serverHandle) {
-          await closeServerWithTimeout(
-            serverHandle,
-            shutdownTimeout,
-            app.logger,
-          );
+          try {
+            await closeServerWithTimeout(
+              serverHandle,
+              shutdownTimeout,
+              app.logger,
+            );
+          } catch (err) {
+            shutdownError = err;
+          }
         }
 
         // ── 步骤 2：按 LIFO 顺序执行 onClose 钩子 ──
@@ -516,6 +528,10 @@ export function createApp(config: VextConfig): {
 
         _closeState = "closed";
 
+        if (shutdownError) {
+          throw shutdownError;
+        }
+
         // ── 步骤 4：退出进程 ──
         //
         // 跳过 process.exit 的场景：
@@ -527,6 +543,11 @@ export function createApp(config: VextConfig): {
           process.exit(0);
         }
       })();
+      _shutdownPromise = shutdownPromise.finally(() => {
+        if (_closeState === "closed") {
+          _shutdownPromise = null;
+        }
+      });
       return _shutdownPromise;
     },
   };
@@ -545,6 +566,20 @@ const RESERVED_EXTENSION_KEYS = new Set([
   "valueOf",
   "hasOwnProperty",
 ]);
+const VALID_EXTENSION_KEY_PATTERN =
+  /^[$_\p{ID_Start}][$\u200c\u200d_\p{ID_Continue}]*$/u;
+const RATE_LIMITER_OVERRIDDEN_KEY = Symbol.for("vextjs.rateLimiterOverridden");
+const LOGGER_LIKE_METHODS = [
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "fatal",
+  "child",
+  "getLevel",
+  "setLevel",
+] as const;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -569,6 +604,19 @@ function assertFunction(
 ): asserts value is Function {
   if (typeof value !== "function") {
     throw new TypeError(`[vextjs] ${label} must be a function.`);
+  }
+}
+
+function assertLoggerLike(
+  value: Record<string, unknown>,
+  label: string,
+): asserts value is VextLoggerLike {
+  for (const method of LOGGER_LIKE_METHODS) {
+    if (value[method] !== undefined && typeof value[method] !== "function") {
+      throw new TypeError(
+        `[vextjs] ${label}.${method} must be a function when provided.`,
+      );
+    }
   }
 }
 
@@ -600,7 +648,7 @@ function assertExtensionKey(key: unknown, app: VextApp): asserts key is string {
       "[vextjs] app.extend() key must be a non-empty string.",
     );
   }
-  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key)) {
+  if (!VALID_EXTENSION_KEY_PATTERN.test(key)) {
     throw new Error(
       `[vextjs] app.extend("${key}") key must be a valid JavaScript identifier.`,
     );
@@ -651,6 +699,7 @@ async function closeServerWithTimeout(
       { error: (err as Error).message },
       "[vextjs] server close failed during shutdown",
     );
+    throw err;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
