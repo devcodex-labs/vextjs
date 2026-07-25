@@ -13,6 +13,9 @@ describe("createApp", () => {
     expect(() =>
       createApp({ ...DEFAULT_CONFIG, middlewares: {} as never }),
     ).toThrow("[vextjs] createApp() config.middlewares must be an array.");
+    expect(() => createApp({} as never)).toThrow(
+      "[vextjs] createApp() config.port is required.",
+    );
   });
 
   it("allows plugins to add new app extension properties", () => {

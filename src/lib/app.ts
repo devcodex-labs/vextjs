@@ -580,6 +580,24 @@ const LOGGER_LIKE_METHODS = [
   "getLevel",
   "setLevel",
 ] as const;
+const REQUIRED_CONFIG_KEYS = [
+  "port",
+  "host",
+  "adapter",
+  "trustProxy",
+  "middlewares",
+  "cors",
+  "rateLimit",
+  "requestId",
+  "logger",
+  "shutdown",
+  "server",
+  "response",
+  "bodyParser",
+  "accessLog",
+  "openapi",
+  "requestContext",
+] as const;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -623,6 +641,14 @@ function assertLoggerLike(
 function assertCreateAppConfig(value: unknown): asserts value is VextConfig {
   assertPlainRecord(value, "createApp() config");
   const config = value as Record<string, unknown>;
+  for (const key of REQUIRED_CONFIG_KEYS) {
+    if (config[key] === undefined) {
+      throw new TypeError(
+        `[vextjs] createApp() config.${key} is required. ` +
+          "Pass a fully resolved VextConfig such as DEFAULT_CONFIG or loadConfig() output.",
+      );
+    }
+  }
   for (const key of [
     "logger",
     "requestContext",
