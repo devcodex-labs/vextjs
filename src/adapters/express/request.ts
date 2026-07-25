@@ -5,6 +5,11 @@ import type { VextCookieJar } from "../../types/cookies.js";
 import { createAnonymousAuthContext } from "../../lib/auth.js";
 import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
+import { flattenQueryRecord } from "../../lib/query.js";
+import {
+  addRequestCloseHandler,
+  fireRequestCloseHandlers,
+} from "../../lib/request-close.js";
 
 /**
  * Express Request → VextRequest 转换
@@ -46,24 +51,12 @@ export function createVextRequest(
   rawBody?: Buffer,
 ): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
-  const closeHandlers: Array<() => void> = [];
 
   // ── 解析 query 参数 ──────────────────────────────────────
   //
-  // Express 的 req.query 是 qs 解析的结果，可能包含嵌套对象。
-  // VextRequest.query 期望 Record<string, string>，
-  // 这里做一层浅平展（取第一个值），与 Hono/Fastify adapter 行为对齐。
-  //
-  const queryRecord: Record<string, string> = {};
-  if (expressReq.query && typeof expressReq.query === "object") {
-    for (const [key, value] of Object.entries(expressReq.query)) {
-      if (typeof value === "string") {
-        queryRecord[key] = value;
-      } else if (Array.isArray(value) && typeof value[0] === "string") {
-        queryRecord[key] = value[0];
-      }
-    }
-  }
+  // Express 的 req.query 是 qs 解析的结果，可能包含嵌套对象 / 数组。
+  // VextRequest.query 期望 Record<string, string>，统一 first-wins 扁平化。
+  const queryRecord = flattenQueryRecord(expressReq.query);
 
   // ── 解析 path（不含 query string）────────────────────────
   //
@@ -198,7 +191,7 @@ export function createVextRequest(
 
     // ── 生命周期 ────────────────────────────────────────
     onClose(handler: () => void): void {
-      closeHandlers.push(handler);
+      addRequestCloseHandler(req, handler);
     },
 
     // ── 校验数据 ────────────────────────────────────────
@@ -213,22 +206,9 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // ── 请求结束时执行 onClose hooks ─────────────────────────
-  //
-  // Express 基于 Node.js 原生 HTTP，使用 req.on('close') 事件。
-  // 当客户端断开连接或请求正常结束时触发。
-  //
-  // 内存安全：执行后清空 handlers 数组，防止闭包泄漏。
-  //
+  // Host close + finishResponseSend both fire exactly-once shared handlers.
   expressReq.on("close", () => {
-    for (const h of closeHandlers) {
-      try {
-        h();
-      } catch {
-        // onClose handler 异常不应影响其他 handler
-      }
-    }
-    closeHandlers.length = 0;
+    fireRequestCloseHandlers(req);
   });
 
   return req;

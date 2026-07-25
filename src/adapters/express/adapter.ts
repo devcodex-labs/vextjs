@@ -321,13 +321,17 @@ export function createExpressAdapter(
             (req.headers[headerName] as string) || crypto.randomUUID();
         }
 
-        const res = createVextResponse(expressRes, () => req.requestId);
+        const res = createVextResponse(expressRes, () => req.requestId, req);
         res._hooks = app.hooks;
 
         // 🆕 5.7: ALS 可配置跳过
         const runNotFound = async () => {
           const noop = async (): Promise<void> => {};
-          await notFoundHandler!(req, res, noop);
+          try {
+            await notFoundHandler!(req, res, noop);
+          } finally {
+            res._flush?.();
+          }
         };
 
         const completion = Promise.resolve().then(() =>
@@ -373,10 +377,11 @@ export function createExpressAdapter(
                 (req.headers[headerName] as string) || crypto.randomUUID();
             }
 
-            const res = createVextResponse(expressRes, () => req.requestId);
+            const res = createVextResponse(expressRes, () => req.requestId, req);
             res._hooks = app.hooks;
 
             errorHandler(err, req, res);
+            res._flush?.();
           } catch {
             // errorHandler 自身也失败了，发送最低限度的 500 响应
             if (!expressRes.headersSent) {
@@ -505,7 +510,7 @@ export function createExpressAdapter(
 
             // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
             // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-            const res = createVextResponse(expressRes, () => req.requestId);
+            const res = createVextResponse(expressRes, () => req.requestId, req);
             res._hooks = app.hooks;
 
             // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
@@ -542,6 +547,8 @@ export function createExpressAdapter(
                 } else {
                   next(err);
                 }
+              } finally {
+                res._flush?.();
               }
             };
 

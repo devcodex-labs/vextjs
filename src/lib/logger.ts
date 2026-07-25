@@ -80,6 +80,14 @@ export function getLoggerLifecycle(
 export function normalizeVextLogger(
   original: VextRuntimeLogger,
   candidate: VextLoggerLike | null | undefined,
+  /**
+   * Optional factory that produced `candidate` from `original`.
+   * When present, child loggers re-invoke the factory against the child core
+   * so wrapper methods close over the child (preserving bindings) instead of
+   * the parent logger. Without this, partial wrappers that capture `original`
+   * in setLogger() would drop child bindings on every child.info() call.
+   */
+  wrapperFactory?: (original: VextRuntimeLogger) => VextLoggerLike,
 ): VextRuntimeLogger {
   const wrapped = candidate ?? {};
   const logger: VextRuntimeLogger = {
@@ -115,12 +123,36 @@ export function normalizeVextLogger(
       const originalChild = original.child(bindings);
       const createChild = wrapped.child;
       if (typeof createChild === "function") {
-        return normalizeVextLogger(
-          originalChild,
-          createChild.call(wrapped, bindings),
-        );
+        try {
+          const childCandidate = createChild.call(wrapped, bindings);
+          return normalizeVextLogger(
+            originalChild,
+            childCandidate,
+            wrapperFactory,
+          );
+        } catch {
+          // Fall through to factory re-bind / original child.
+        }
       }
-      return normalizeVextLogger(originalChild, wrapped);
+
+      // Re-apply the setLogger factory against the child so closed-over
+      // `original` references the child core (bindings, level share, sink).
+      if (wrapperFactory) {
+        try {
+          const childCandidate = wrapperFactory(originalChild);
+          return normalizeVextLogger(
+            originalChild,
+            childCandidate,
+            wrapperFactory,
+          );
+        } catch {
+          return originalChild;
+        }
+      }
+
+      // No factory available: reusing parent wrapper methods would call the
+      // parent core and drop child bindings. Prefer the unbound child.
+      return originalChild;
     },
   };
 

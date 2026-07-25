@@ -164,10 +164,13 @@ export interface VextResponse {
   /**
    * 重定向
    *
+   * Non-ASCII Location bytes are percent-encoded; CR/LF/NUL are rejected.
+   * Only 301/302/303/307/308 are honored; other status values coerce to 302.
+   *
    * @param url    目标 URL
-   * @param status 重定向状态码（默认 302）
+   * @param status 重定向状态码（默认 302；允许 301/302/303/307/308）
    */
-  redirect(url: string, status?: 301 | 302 | 307 | 308): void;
+  redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): void;
 
   /**
    * 设置 HTTP 状态码（链式调用）
@@ -251,11 +254,26 @@ export interface VextResponse {
   _isSent(): boolean;
 
   /**
+   * Flush a deferred body/header write after the onion middleware chain unwinds.
+   *
+   * Buffered sends (`json` / `rawJson` / `text` / `_sendHtml` / empty redirects)
+   * stage the payload on first call so post-`await next()` middleware can still
+   * mutate headers (e.g. `X-Response-Time`, audit order). Adapters must call
+   * `_flush()` once after `executeChain` (and after error/404 handlers).
+   * Streaming exits flush eagerly and make this a no-op.
+   *
+   * @internal
+   */
+  _flush?(): void;
+
+  /**
    * 发送前拦截钩子（内部方法）
    *
-   * cache MISS 时由响应缓存中间件注册，json()/render() 发送前回调以捕获
+   * cache MISS 时由响应缓存中间件注册，json()/render() 发送时回调以捕获
    * 原始 JSON data 或 render payload。
    * JSON 在包装逻辑（_wrapEnabled）之前调用，缓存的是原始 data 而非包装后的响应体。
+   * Adapter 在 `_onBeforeSend`（Session Set-Cookie 注入）之后调用本钩子，
+   * 并把 post-session headers 传入，以便 route-cache 识别 Set-Cookie 并拒绝缓存。
    * 当前单钩子设计（覆盖赋值）。
    *
    * @internal
@@ -268,6 +286,7 @@ export interface VextResponse {
    *
    * 与仅用于 JSON/render cache capture 的 `_onSend` 分离，供 Session 等
    * 必须在 headers 提交前完成同步 header 注入的 Runtime 使用。
+   * 在 `beginResponseSend` 内先于 `response:before` 与 `_onSend` 执行。
    *
    * @internal
    */

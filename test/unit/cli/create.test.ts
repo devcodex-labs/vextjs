@@ -501,6 +501,102 @@ describe("vext create", () => {
         expect(pkg.dependencies.vextjs).toBeDefined();
       });
 
+      it("默认将 vextjs 写成框架版本的 caret 范围（公共 npm 安装）", async () => {
+        const previous = process.env.VEXT_PACKAGE;
+        delete process.env.VEXT_PACKAGE;
+        try {
+          await createCommand(["test-app", "--skip-install"]);
+
+          const files = getWrittenFiles();
+          const pkg = JSON.parse(files["package.json"]);
+          const { createRequire } = await import("node:module");
+          const require = createRequire(import.meta.url);
+          const framework = require("../../../package.json") as {
+            version: string;
+          };
+
+          expect(pkg.dependencies.vextjs).toBe(`^${framework.version}`);
+        } finally {
+          if (previous === undefined) delete process.env.VEXT_PACKAGE;
+          else process.env.VEXT_PACKAGE = previous;
+        }
+      });
+
+      it("fullstack 将 react/react-dom 钉到与 vextjs 一致的精确版本", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        const pkg = JSON.parse(files["package.json"]);
+        const { createRequire } = await import("node:module");
+        const require = createRequire(import.meta.url);
+        const framework = require("../../../package.json") as {
+          dependencies: Record<string, string>;
+        };
+
+        // Exact pins — floating carets nest a second react under node_modules/vextjs
+        // when the registry has a newer patch than vextjs's exact dependency.
+        expect(pkg.dependencies.react).toBe(framework.dependencies.react);
+        expect(pkg.dependencies["react-dom"]).toBe(
+          framework.dependencies["react-dom"],
+        );
+        expect(pkg.dependencies.react).not.toMatch(/^[\^~]/);
+        expect(pkg.dependencies["react-dom"]).not.toMatch(/^[\^~]/);
+      });
+
+      it("api 模板不声明 react/react-dom", async () => {
+        await createCommand([
+          "test-app",
+          "--template",
+          "api",
+          "--skip-install",
+        ]);
+
+        const files = getWrittenFiles();
+        const pkg = JSON.parse(files["package.json"]);
+
+        expect(pkg.dependencies.react).toBeUndefined();
+        expect(pkg.dependencies["react-dom"]).toBeUndefined();
+      });
+
+      it("VEXT_PACKAGE 覆盖生成的 vextjs 依赖（file: 候选包）", async () => {
+        const previous = process.env.VEXT_PACKAGE;
+        process.env.VEXT_PACKAGE =
+          "file:E:/Worker/vext-test/candidate/vextjs-0.3.26.tgz";
+        try {
+          await createCommand(["test-app", "--skip-install"]);
+
+          const files = getWrittenFiles();
+          const pkg = JSON.parse(files["package.json"]);
+
+          expect(pkg.dependencies.vextjs).toBe(
+            "file:E:/Worker/vext-test/candidate/vextjs-0.3.26.tgz",
+          );
+        } finally {
+          if (previous === undefined) delete process.env.VEXT_PACKAGE;
+          else process.env.VEXT_PACKAGE = previous;
+        }
+      });
+
+      it("VEXT_PACKAGE 相对路径规范化为 file: 绝对路径", async () => {
+        const previous = process.env.VEXT_PACKAGE;
+        process.env.VEXT_PACKAGE = "../vext";
+        try {
+          await createCommand(["test-app", "--skip-install"]);
+
+          const files = getWrittenFiles();
+          const pkg = JSON.parse(files["package.json"]);
+          const path = await import("node:path");
+          const expected = `file:${path
+            .resolve("../vext")
+            .replaceAll("\\", "/")}`;
+
+          expect(pkg.dependencies.vextjs).toBe(expected);
+        } finally {
+          if (previous === undefined) delete process.env.VEXT_PACKAGE;
+          else process.env.VEXT_PACKAGE = previous;
+        }
+      });
+
       it("TS 模式 devDependencies 包含 typescript", async () => {
         await createCommand(["test-app", "--skip-install"]);
 

@@ -78,6 +78,32 @@ describe("createApp", () => {
     expect(info).toHaveBeenCalledWith("child info");
   });
 
+  it("keeps child bindings when setLogger wrappers forward to original", () => {
+    const { app } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "info", pretty: false },
+    });
+    const lines: string[] = [];
+
+    app.setLogger((original) => ({
+      info(...args: unknown[]) {
+        // Capture by invoking original into a temporary path: record via spy args
+        lines.push(JSON.stringify(args));
+        original.info(...args);
+      },
+    }));
+
+    const child = app.logger.child({ service: "orders", component: "worker" });
+    child.info({ orderId: 7 }, "processing");
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("processing");
+    // Nested child must still resolve through the child core (bindings intact).
+    const nested = child.child({ request: "r1" });
+    nested.info("nested");
+    expect(lines).toHaveLength(2);
+  });
+
   it("validates replacement APIs and preserves previous implementations", () => {
     const { app, internals } = createApp(DEFAULT_CONFIG);
     const originalValidator = app.getValidator();

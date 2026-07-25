@@ -1075,6 +1075,122 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
       expect(response.headers.location).toBe("/destination");
     });
 
+    it("redirect() percent-encodes non-ASCII Location", async () => {
+      adapter.registerRoute("GET", "/redir-unicode", [
+        async (_req, res) => {
+          res.redirect("/中文", 302);
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const response = await new Promise<{
+        status: number;
+        headers: http.IncomingHttpHeaders;
+      }>((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: handle!.port,
+            method: "GET",
+            path: "/redir-unicode",
+          },
+          (res) => {
+            res.resume();
+            resolve({ status: res.statusCode ?? 0, headers: res.headers });
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe("/%E4%B8%AD%E6%96%87");
+    });
+
+    it("redirect() coerces invalid status to 302", async () => {
+      adapter.registerRoute("GET", "/redir-bad-status", [
+        async (_req, res) => {
+          // Runtime bypass of the typed union (B06 invalid-status boundary)
+          (res.redirect as (url: string, status?: number) => void)(
+            "/safe",
+            999,
+          );
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const response = await new Promise<{
+        status: number;
+        headers: http.IncomingHttpHeaders;
+      }>((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: handle!.port,
+            method: "GET",
+            path: "/redir-bad-status",
+          },
+          (res) => {
+            res.resume();
+            resolve({ status: res.statusCode ?? 0, headers: res.headers });
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe("/safe");
+    });
+
+    it("redirect() rejects CRLF Location without hanging", async () => {
+      let thrown: unknown;
+      adapter.registerRoute("GET", "/redir-crlf", [
+        async (_req, res) => {
+          try {
+            res.redirect("/a\r\nSet-Cookie: x=1");
+          } catch (error) {
+            thrown = error;
+            res.rawJson({ ok: false }, 500);
+          }
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+
+      const response = await new Promise<{
+        status: number;
+        body: string;
+      }>((resolve, reject) => {
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: handle!.port,
+            method: "GET",
+            path: "/redir-crlf",
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (c) => chunks.push(c));
+            res.on("end", () => {
+              resolve({
+                status: res.statusCode ?? 0,
+                body: Buffer.concat(chunks).toString("utf8"),
+              });
+            });
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+
+      expect(thrown).toBeInstanceOf(TypeError);
+      expect(response.status).toBe(500);
+      expect(response.body).toContain("ok");
+    });
+
     it("重复调用 json() 应被忽略（重复发送保护）", async () => {
       let callCount = 0;
 

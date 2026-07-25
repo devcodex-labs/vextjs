@@ -1,5 +1,24 @@
 # Unreleased
 
+## 2026-07-25
+
+- **Onion deferred response flush (B07-F09)** Buffered body exits (`json` / `rawJson` / `text` / HTML / empty redirects) on native and express now stage the payload until the middleware chain unwinds, so post-`await next()` `setHeader` / `cookie` mutations (documented onion after-logic) appear on the final response. Adapters call `_flush()` after `executeChain` and notFound/error paths. Streaming remains eager. Fastify/Koa/Hono deferred flush is residual.
+- **RateLimit-Reset delay-seconds (B07-F07 MID-009/MID-015)** `RateLimit-Reset` now emits IETF delay-seconds remaining until window reset instead of an absolute Unix timestamp, keeping link/packed consumer semantic parity stable. `Retry-After` continues to use the same remaining-seconds basis.
+- **Logger setLogger child bindings** Partial `app.setLogger()` wrappers now re-bind against each child logger so methods that forward to `original` preserve child bindings (service/component/etc.) instead of writing through the parent core. Root package exports also include `createMemoryLogSink`, `createStdoutSink`, `normalizeVextLogger`, `getLoggerLifecycle`, and related logger types for custom sink / wrapper testing.
+- **B12 Cookie/Session hardening** Memory session store deep-clones snapshots (nested isolation), rejects non-positive/non-finite TTL like the cache adapter, and route-cache now observes Session `Set-Cookie` from `_onBeforeSend` before deciding HIT/MISS (all five adapters). Hono multi `Set-Cookie` with concurrent Session + business cookies remains array-preserving on the Node wire.
+- **Redirect safety** `res.redirect()` now percent-encodes non-ASCII `Location` values (preserving already-encoded sequences), rejects CR/LF/NUL with a bounded `TypeError` before mark-sent, coerces invalid redirect statuses to `302` (allowed: 301/302/303/307/308), and rolls back `_sent` if header/write fails — shared across all five adapters.
+- **HTTP adapter query parity** Multi-value query keys normalize to first-wins `Record<string, string>` across native/hono/express/fastify/koa.
+- **Disabled middleware registration** `enabled: false` middleware declarations stay resolvable as no-op handlers so route refs remain valid without loading or executing middleware files.
+- **Request onClose completion** `req.onClose` fires exactly-once on response send completion and host close/abort (covers inject/test paths).
+- **CLI create React pin** Fullstack scaffolds pin exact `react`/`react-dom` from the framework package; optional `VEXT_PACKAGE` supports local/candidate installs.
+- **Validated header projection** `req.valid('header')` returns declared keys only with stable lowercase order for adapter parity.
+- **Plugin/service hidden files** Convention scanners skip `.`/`_`-prefixed files (not only directories) for plugins and services.
+- **createTestApp onReady** Testing factory now runs `runReady()` before serving requests, matching bootstrap lifecycle.
+- **Deferred response flush** Terminal `json`/`text`/`rawJson` responses flush after the middleware onion unwinds so post-`next()` headers/cookies apply on all adapters.
+- **RateLimit-Reset seconds** Middleware emits remaining delay-seconds (not absolute Unix) for stable multi-channel parity.
+- **Logger setLogger child rebind** Wrapper factories re-apply on `child()` so bindings stay on the child core.
+- **Session memory store isolation** Deep-clone session data snapshots and reject non-finite TTL; route-cache capture runs after session cookie commit.
+
 ## 2026-07-20
 
 - **CLI create failure contracts** Reject extra positional arguments before filesystem writes, keep generated files but return a non-zero status when automatic dependency installation fails, and avoid TypeScript-only adapter dependencies in JavaScript Express and Koa scaffolds.

@@ -19,6 +19,9 @@ import { parseArgs } from "node:util";
  *   --force              目标目录存在时强制覆盖（不询问）
  *   -h, --help           显示帮助信息
  *
+ * 环境变量：
+ *   VEXT_PACKAGE         覆盖生成的 vextjs 依赖（file: 路径、tarball、版本或 npm spec）
+ *
  * 用法示例：
  *   vext create my-app                  创建 TypeScript 项目
  *   vext create my-app --js             创建 JavaScript 项目
@@ -101,23 +104,90 @@ const ADAPTER_DEV_DEPS: Record<string, Record<string, string>> = {
 // ── 版本读取 ──────────────────────────────────────────────────
 
 /**
- * readVextVersion — 读取 vext 框架当前版本号
+ * Scaffold dependency versions derived from the framework package.json.
  *
- * 动态读取框架自身的 package.json，用于脚手架生成项目时写入正确的 vextjs 依赖范围。
- * 与 index.ts 的 printVersion() 使用相同的 createRequire 模式，保持实现一致。
- *
- * @returns `^X.Y.Z` 格式的版本范围字符串；读取失败时降级为 `"latest"`
+ * Full-stack templates must pin react/react-dom to the exact versions that
+ * vextjs itself depends on. Using a floating caret range (e.g. `^19.2.7`) can
+ * resolve a newer patch at install time while vextjs still requires the older
+ * exact version, which nests a second copy under `node_modules/vextjs` and
+ * breaks candidate-artifact tree identity checks (and can cause dual-React
+ * runtime issues for end users).
  */
-async function readVextVersion(): Promise<string> {
+interface ScaffoldPackageVersions {
+  /** Dependency spec written for the `vextjs` package. */
+  vextjs: string;
+  /** Exact react version aligned with vextjs dependencies. */
+  react: string;
+  /** Exact react-dom version aligned with vextjs dependencies. */
+  reactDom: string;
+}
+
+const FALLBACK_SCAFFOLD_VERSIONS: ScaffoldPackageVersions = {
+  vextjs: "latest",
+  react: "19.2.7",
+  reactDom: "19.2.7",
+};
+
+/**
+ * readScaffoldPackageVersions — resolve dependency specs for generated package.json
+ *
+ * - Default public installs: `vextjs: ^<framework-version>` from npm.
+ * - Verification / monorepo installs: when `VEXT_PACKAGE` is set (file path,
+ *   tarball, or any npm dependency spec), write that exact spec instead so
+ *   create/install resolves the frozen candidate rather than the registry.
+ * - Full-stack react/react-dom pins always match the framework's own deps.
+ */
+async function readScaffoldPackageVersions(): Promise<ScaffoldPackageVersions> {
+  let frameworkVersion = FALLBACK_SCAFFOLD_VERSIONS.vextjs;
+  let react = FALLBACK_SCAFFOLD_VERSIONS.react;
+  let reactDom = FALLBACK_SCAFFOLD_VERSIONS.reactDom;
+
   try {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
-    const pkg = require("../../package.json") as { version: string };
-    return `^${pkg.version}`;
+    const pkg = require("../../package.json") as {
+      version?: string;
+      dependencies?: Record<string, string>;
+    };
+    if (pkg.version) {
+      frameworkVersion = `^${pkg.version}`;
+    }
+    if (pkg.dependencies?.react) {
+      react = pkg.dependencies.react;
+    }
+    if (pkg.dependencies?.["react-dom"]) {
+      reactDom = pkg.dependencies["react-dom"];
+    }
   } catch {
-    // package.json 读取失败时降级为 latest，避免写入不存在的版本号
-    return "latest";
+    // package.json 读取失败时使用 FALLBACK_SCAFFOLD_VERSIONS
   }
+
+  // VEXT_PACKAGE overrides the vextjs dependency for candidate/local installs.
+  // Accept absolute/relative paths (normalized to file:) or any npm spec.
+  const packageOverride = process.env.VEXT_PACKAGE?.trim();
+  let vextjs = frameworkVersion;
+  if (packageOverride) {
+    if (
+      packageOverride.startsWith("file:") ||
+      packageOverride.startsWith("link:") ||
+      packageOverride.startsWith("workspace:") ||
+      packageOverride.startsWith("npm:") ||
+      packageOverride.startsWith("git+") ||
+      packageOverride.startsWith("http://") ||
+      packageOverride.startsWith("https://") ||
+      // bare version / tag / range
+      /^[\^~>=<\d*]/.test(packageOverride) ||
+      packageOverride === "latest" ||
+      packageOverride === "next"
+    ) {
+      vextjs = packageOverride;
+    } else {
+      // Treat bare filesystem paths as file: dependencies.
+      vextjs = `file:${path.resolve(packageOverride).replaceAll("\\", "/")}`;
+    }
+  }
+
+  return { vextjs, react, reactDom };
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -165,8 +235,8 @@ export async function createCommand(args: string[] = []): Promise<void> {
       `     Template: ${options.template}\n`,
   );
 
-  const vextVersion = await readVextVersion();
-  await generateProject(targetDir, options, vextVersion);
+  const packageVersions = await readScaffoldPackageVersions();
+  await generateProject(targetDir, options, packageVersions);
 
   // ── npm install ───────────────────────────────────────────
   if (!options.skipInstall) {
@@ -357,7 +427,7 @@ function confirmOverwrite(dirName: string): Promise<boolean> {
 async function generateProject(
   targetDir: string,
   options: CreateOptions,
-  vextVersion: string,
+  packageVersions: ScaffoldPackageVersions,
 ): Promise<void> {
   // ── 1. 创建目录结构 ────────────────────────────────────
   const isTs = options.language === "ts";
@@ -391,7 +461,7 @@ async function generateProject(
   }
 
   // ── 2. 生成所有模板文件 ────────────────────────────────
-  const templates = getTemplateFiles(options, vextVersion);
+  const templates = getTemplateFiles(options, packageVersions);
 
   for (const [filePath, content] of Object.entries(templates)) {
     const fullPath = path.join(targetDir, filePath);
@@ -434,7 +504,7 @@ async function generateProject(
  */
 function getTemplateFiles(
   options: CreateOptions,
-  vextVersion: string,
+  packageVersions: ScaffoldPackageVersions,
 ): Record<string, string> {
   const { name, language, adapter } = options;
   const ext = language === "ts" ? "ts" : "js";
@@ -448,7 +518,7 @@ function getTemplateFiles(
     name,
     language,
     adapter,
-    vextVersion,
+    packageVersions,
     isFullstack,
   );
 
@@ -523,15 +593,18 @@ function generatePackageJson(
   name: string,
   language: "ts" | "js",
   adapter: string,
-  vextVersion: string,
+  packageVersions: ScaffoldPackageVersions,
   isFullstack: boolean,
 ): string {
   const isTs = language === "ts";
 
   const deps: Record<string, string> = {
-    vextjs: vextVersion,
+    vextjs: packageVersions.vextjs,
     ...ADAPTER_DEPS[adapter],
-    ...(isFullstack ? { react: "^19.2.7", "react-dom": "^19.2.7" } : {}),
+    // Pin exact versions to match vextjs runtime deps (no floating caret).
+    ...(isFullstack
+      ? { react: packageVersions.react, "react-dom": packageVersions.reactDom }
+      : {}),
   };
 
   const devDeps: Record<string, string> = {
@@ -1486,6 +1559,12 @@ function printCreateHelp(): void {
     --force               Overwrite existing directory without asking
     -h, --help            Show this help message
 
+  Environment:
+    VEXT_PACKAGE=<spec>   Override the generated vextjs dependency
+                          (file path, tarball, version, or npm spec).
+                          When unset, scaffolds use ^<framework-version>
+                          from the public registry.
+
   Examples:
     $ vext create my-app
     $ vext create my-app --js
@@ -1493,6 +1572,7 @@ function printCreateHelp(): void {
     $ vext create my-app --adapter fastify
     $ vext create my-app --skip-install
     $ vext create my-app --adapter native --js --force
+    $ VEXT_PACKAGE=file:../vext vext create my-app --skip-install
 `);
 }
 

@@ -65,6 +65,13 @@ export function createMemorySessionStore(): VextMemorySessionStore {
   }
 
   function expiresIn(ttlSeconds: number): number {
+    // Match createCacheSessionStore: reject non-positive / non-finite TTL so
+    // NaN never freezes an entry as non-expiring and 0/-1 are fail-fast.
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+      throw new Error(
+        "[vextjs] session memory store ttlSeconds must be a positive finite number.",
+      );
+    }
     return now() + ttlSeconds * 1000;
   }
 
@@ -80,12 +87,13 @@ export function createMemorySessionStore(): VextMemorySessionStore {
         entries.delete(id);
         return null;
       }
-      return { ...entry.data };
+      // Deep snapshot: nested object/array mutations must not alias the store.
+      return cloneSessionData(entry.data);
     },
 
     set(id, data, ttlSeconds) {
       entries.set(id, {
-        data: { ...data },
+        data: cloneSessionData(data),
         expiresAt: expiresIn(ttlSeconds),
       });
     },
@@ -117,6 +125,18 @@ export function createMemorySessionStore(): VextMemorySessionStore {
   };
 
   return store;
+}
+
+/**
+ * Snapshot session data so callers cannot mutate the store through nested refs.
+ * Prefer structuredClone; fall back to JSON for exotic values that clone rejects.
+ */
+function cloneSessionData(data: VextSessionData): VextSessionData {
+  try {
+    return structuredClone(data);
+  } catch {
+    return JSON.parse(JSON.stringify(data)) as VextSessionData;
+  }
 }
 
 interface ResolvedSessionConfig {

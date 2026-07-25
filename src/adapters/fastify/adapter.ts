@@ -345,7 +345,7 @@ export function createFastifyAdapter(
 
           // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
           // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-          const res = createVextResponse(reply, () => req.requestId);
+          const res = createVextResponse(reply, () => req.requestId, req);
           res._hooks = app.hooks;
 
           // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
@@ -382,6 +382,9 @@ export function createFastifyAdapter(
               } else {
                 throw err;
               }
+            } finally {
+              // Flush deferred body so post-next setHeader/cookie still apply.
+              res._flush?.();
             }
           };
 
@@ -426,7 +429,7 @@ export function createFastifyAdapter(
               (req.headers[headerName] as string) || crypto.randomUUID();
           }
 
-          const res = createVextResponse(reply, () => req.requestId);
+          const res = createVextResponse(reply, () => req.requestId, req);
           res._hooks = app.hooks;
 
           const statusCode = (error as { statusCode?: unknown }).statusCode;
@@ -439,6 +442,7 @@ export function createFastifyAdapter(
               },
               413,
             );
+            res._flush?.();
             return;
           }
 
@@ -449,8 +453,10 @@ export function createFastifyAdapter(
               res.rawJson({ code: 500, message: "Internal Server Error" }, 500);
             } catch {
               reply.status(500).send("Internal Server Error");
+              return;
             }
           }
+          res._flush?.();
         },
       );
     },
@@ -477,13 +483,17 @@ export function createFastifyAdapter(
               (req.headers[headerName] as string) || crypto.randomUUID();
           }
 
-          const res = createVextResponse(reply, () => req.requestId);
+          const res = createVextResponse(reply, () => req.requestId, req);
           res._hooks = app.hooks;
 
           // 🆕 5.7: ALS 可配置跳过
           const runNotFound = async () => {
             const noop = async (): Promise<void> => {};
-            await handler(req, res, noop);
+            try {
+              await handler(req, res, noop);
+            } finally {
+              res._flush?.();
+            }
           };
 
           const completion = Promise.resolve().then(() =>

@@ -22,7 +22,7 @@ import type { RouteCacheOptions } from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
 import type { VextHeaders } from "../../types/headers.js";
-import { hasHeader } from "../headers.js";
+import { hasHeader, setHeader } from "../headers.js";
 import {
   VEXT_CACHEABLE_STATUSES,
   createResponseCacheHeaders,
@@ -316,10 +316,13 @@ function createOrigin(
       res._onSend = (data, statusCode, headers = {}) => {
         previousOnSend?.(data, statusCode, headers);
 
+        // headers is the post-_onBeforeSend bag (includes Session Set-Cookie).
+        // Mutate it so adapter replaceHeaders applies Cache-Control to the wire.
         const hasSetCookie = hasHeader(headers, "Set-Cookie");
         const responseHeaders = toCacheHeaderBag(headers);
         if (!options.requestAllowsCache || hasSetCookie) {
           res.setHeader("Cache-Control", "no-store");
+          setHeader(headers, "Cache-Control", "no-store");
           responseHeaders["Cache-Control"] = "no-store";
         } else if (
           options.cacheControl &&
@@ -327,6 +330,7 @@ function createOrigin(
         ) {
           const value = `public, max-age=${Math.ceil(options.ttl / 1000)}`;
           res.setHeader("Cache-Control", value);
+          setHeader(headers, "Cache-Control", value);
           responseHeaders["Cache-Control"] = value;
         }
 

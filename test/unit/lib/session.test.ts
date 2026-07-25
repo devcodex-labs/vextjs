@@ -260,6 +260,54 @@ describe("session middleware", () => {
     }
   });
 
+  it("memory store get/set isolate nested snapshots and reject invalid TTL", () => {
+    const store = createMemorySessionStore();
+    expect(store.get("missing")).toBeNull();
+
+    const nested = { user: { id: "u1" }, roles: ["admin"] };
+    store.set("sid", nested, 60);
+    nested.user.id = "mutated-input";
+    nested.roles.push("x");
+
+    const first = store.get("sid");
+    expect(first).toEqual({ user: { id: "u1" }, roles: ["admin"] });
+    first!.user.id = "mutated-read";
+    first!.roles.push("y");
+
+    expect(store.get("sid")).toEqual({ user: { id: "u1" }, roles: ["admin"] });
+
+    store.delete("sid");
+    store.delete("sid");
+    expect(store.get("sid")).toBeNull();
+
+    for (const ttl of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => store.set("bad", { ok: true }, ttl)).toThrow(
+        /ttlSeconds must be a positive finite number/,
+      );
+    }
+  });
+
+  it("memory store touch keeps data and size clears expired entries", () => {
+    vi.useFakeTimers();
+    try {
+      const store = createMemorySessionStore();
+      store.set("keep", { n: 1 }, 10);
+      store.set("drop", { n: 2 }, 1);
+      store.touch("missing", 5);
+      store.touch("keep", 20);
+
+      vi.advanceTimersByTime(1001);
+      expect(store.get("drop")).toBeNull();
+      expect(store.get("keep")).toEqual({ n: 1 });
+      expect(store.size()).toBe(1);
+
+      store.clearExpired?.();
+      expect(store.size()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auto runtime follows global and route-level enablement", async () => {
     const store = createMemorySessionStore();
     const runtime = createConfiguredSessionRuntime({ enabled: false, store });

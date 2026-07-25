@@ -131,7 +131,17 @@ export async function loadMiddlewares(
     const name = typeof decl === "string" ? decl : decl.name;
     const defaultOptions = typeof decl === "string" ? undefined : decl.options;
 
+    // enabled:false keeps the name registered as a no-op so route middleware
+    // refs remain valid, but the middleware body never runs.
     if (typeof decl !== "string" && decl.enabled === false) {
+      const noop: VextMiddleware = async (_req, _res, next) => {
+        await next();
+      };
+      registry[name] = {
+        handler: noop,
+        defaultOptions: undefined,
+        kind: "middleware",
+      };
       continue;
     }
 

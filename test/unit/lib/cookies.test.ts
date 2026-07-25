@@ -55,6 +55,33 @@ describe("cookies", () => {
     ).toBe("sid=hello+world; Priority=High; Partitioned");
   });
 
+  it("normalizes Priority case-insensitively and rejects illegal enum values", () => {
+    expect(serializeCookie("a", "b", { priority: "LOW" as any })).toBe(
+      "a=b; Priority=Low",
+    );
+    expect(serializeCookie("a", "b", { priority: "Medium" as any })).toBe(
+      "a=b; Priority=Medium",
+    );
+    expect(serializeCookie("a", "b", { priority: "HIGH" as any })).toBe(
+      "a=b; Priority=High",
+    );
+    expect(() => serializeCookie("a", "b", { priority: "urgent" as any })).toThrow(
+      /Invalid cookie priority/,
+    );
+  });
+
+  it("rejects encoded cookie values with CRLF semicolon or comma", () => {
+    expect(() =>
+      serializeCookie("sid", "x", { encode: () => "bad;value" }),
+    ).toThrow(/Invalid cookie value/);
+    expect(() =>
+      serializeCookie("sid", "x", { encode: () => "bad\r\nvalue" }),
+    ).toThrow(/Invalid cookie value/);
+    expect(() => serializeCookie("bad name", "ok")).toThrow(
+      /Invalid cookie name/,
+    );
+  });
+
   it("serializes clear cookie as an expired cookie", () => {
     expect(serializeClearCookie("sid", { path: "/" })).toContain(
       "sid=; Max-Age=0; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT",

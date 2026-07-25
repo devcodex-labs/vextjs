@@ -154,7 +154,21 @@ export type {
 } from "./lib/bootstrap-config.js";
 
 // 日志（Vext 内置 logger kernel）
-export { createLogger } from "./lib/logger.js";
+export {
+  createLogger,
+  getLoggerLifecycle,
+  normalizeVextLogger,
+} from "./lib/logger.js";
+export type { CreateLoggerOptions } from "./lib/logger.js";
+export { createMemoryLogSink } from "./lib/logger/sinks/memory.js";
+export type { MemoryLogSink } from "./lib/logger/sinks/memory.js";
+export { createStdoutSink } from "./lib/logger/sinks/stdout.js";
+export type {
+  LogSink,
+  LoggerLifecycle,
+  LogRecord,
+  LogLevelName,
+} from "./lib/logger/types.js";
 
 // 默认错误抛出（I18nError 联动）
 export { createDefaultThrow } from "./lib/default-throw.js";

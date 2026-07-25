@@ -5,6 +5,11 @@ import type { VextCookieJar } from "../../types/cookies.js";
 import { createAnonymousAuthContext } from "../../lib/auth.js";
 import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
+import { flattenQueryRecord } from "../../lib/query.js";
+import {
+  addRequestCloseHandler,
+  fireRequestCloseHandlers,
+} from "../../lib/request-close.js";
 
 /**
  * Fastify Request → VextRequest 转换
@@ -43,7 +48,6 @@ export function createVextRequest(
   app: VextApp,
 ): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
-  const closeHandlers: Array<() => void> = [];
 
   // ── 解析 path（Fastify 无直接 .path 属性）──────────────
   //
@@ -160,7 +164,8 @@ export function createVextRequest(
 
   const req: VextRequest = {
     // ── 原始数据 ────────────────────────────────────────
-    query: (request.query as Record<string, string>) ?? {},
+    // Flatten host multi-value query (string[]) to first string for Vext parity.
+    query: flattenQueryRecord(request.query),
     body: undefined, // body-parser 中间件负责填充
     params: (request.params as Record<string, string>) ?? {},
     headers: request.headers as Record<string, string | undefined>,
@@ -189,7 +194,7 @@ export function createVextRequest(
 
     // ── 生命周期 ────────────────────────────────────────
     onClose(handler: () => void): void {
-      closeHandlers.push(handler);
+      addRequestCloseHandler(req, handler);
     },
 
     // ── 校验数据 ────────────────────────────────────────
@@ -213,26 +218,9 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // ── 请求结束时执行 onClose hooks ─────────────────────────
-  //
-  // Fastify 提供 request.raw.on('close') 事件（Node.js IncomingMessage 的标准事件），
-  // 当客户端断开连接或请求正常结束时触发。
-  //
-  // 与 Hono Adapter 的差异：
-  //   - Hono 使用 Web Request 的 AbortSignal（c.req.raw.signal.addEventListener('abort')）
-  //   - Fastify 使用 Node.js 原生的 request.raw.on('close')
-  //
-  // 内存安全：执行后清空 handlers 数组，防止闭包泄漏。
-  //
+  // Host close + finishResponseSend both fire exactly-once shared handlers.
   request.raw.on("close", () => {
-    for (const h of closeHandlers) {
-      try {
-        h();
-      } catch {
-        // onClose handler 异常不应影响其他 handler
-      }
-    }
-    closeHandlers.length = 0;
+    fireRequestCloseHandlers(req);
   });
 
   return req;

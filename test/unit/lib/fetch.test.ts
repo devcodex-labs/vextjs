@@ -158,7 +158,7 @@ function createProxyResponse(): {
     download(): void {
       state.sentBy = "download";
     },
-    redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
+    redirect(url: string, status: 301 | 302 | 303 | 307 | 308 = 302): void {
       state.statusCode = status;
       state.headers.location = url;
       state.sentBy = "redirect";

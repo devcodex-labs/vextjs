@@ -6,6 +6,7 @@ import type { VextResponse } from "../types/response.js";
 import type { VextHeaders } from "../types/headers.js";
 import { isInternalHooks } from "./hooks.js";
 import { cloneHeaders, mergeHeaders } from "./headers.js";
+import { fireRequestCloseHandlers } from "./request-close.js";
 
 export interface ResponseSendState {
   kind: VextResponseKind;
@@ -83,6 +84,14 @@ export function finishResponseSend(
     requestId: state.requestId,
     durationMs: Math.round(performance.now() - state.startedAt),
   });
+
+  // Fire req.onClose exactly-once when the response has completed send.
+  // Inject/testing paths may not emit host IncomingMessage 'close'.
+  const closeToken = (res as VextResponse & { _closeToken?: object })
+    ._closeToken;
+  if (closeToken) {
+    fireRequestCloseHandlers(closeToken);
+  }
 }
 
 export function finishResponseSendAfterStreamSettlement(

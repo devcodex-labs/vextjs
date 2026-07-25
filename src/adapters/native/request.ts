@@ -8,6 +8,11 @@ import {
   assertBodySize,
   createPayloadTooLargeError,
 } from "../../lib/middlewares/body-parser.js";
+import { parseQueryString } from "../../lib/query.js";
+import {
+  addRequestCloseHandler,
+  fireRequestCloseHandlers,
+} from "../../lib/request-close.js";
 
 /**
  * 预解析的 URL 信息（由 adapter.ts handleRequest 传入，避免重复解析）
@@ -71,7 +76,6 @@ export function createVextRequest(
   parsedUrl: ParsedUrl,
 ): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
-  let closeHandlers: Array<() => void> | null = null;
 
   // ── 使用预解析的 URL 信息（P2 优化：消除重复 URL 解析）──
   //
@@ -181,13 +185,8 @@ export function createVextRequest(
       return _queryCache;
     }
 
-    // 使用 URLSearchParams 解析（比手动 split 更健壮，处理编码等边界情况）
-    const searchParams = new URLSearchParams(rawQueryString);
-    const result: Record<string, string> = {};
-    for (const [key, value] of searchParams) {
-      result[key] = value;
-    }
-    _queryCache = result;
+    // First-wins multi-value semantics — keep adapter parity with Express/Koa/Fastify.
+    _queryCache = parseQueryString(rawQueryString);
     return _queryCache;
   }
 
@@ -278,26 +277,8 @@ export function createVextRequest(
     protocol,
 
     // ── 生命周期 ────────────────────────────────────────
-    // P4 优化：懒初始化 closeHandlers + 懒注册 'close' 事件监听
     onClose(handler: () => void): void {
-      if (closeHandlers === null) {
-        closeHandlers = [];
-        // 仅在首次调用 onClose 时注册 'close' 事件监听器
-        // 大多数请求不调用 onClose，避免每请求都注册 listener 的开销
-        incoming.on("close", () => {
-          if (closeHandlers) {
-            for (const h of closeHandlers) {
-              try {
-                h();
-              } catch {
-                // onClose handler 异常不应影响其他 handler
-              }
-            }
-            closeHandlers = null;
-          }
-        });
-      }
-      closeHandlers.push(handler);
+      addRequestCloseHandler(req, handler);
     },
 
     // ── 校验数据 ────────────────────────────────────────
@@ -320,8 +301,10 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // P1 优化：query 首次访问后替换为 value descriptor，后续访问零开销。
-  // P4 优化：onClose 'close' 事件监听已改为懒注册（仅调用 onClose 时才注册）
+  // Host close + finishResponseSend both fire exactly-once shared handlers.
+  incoming.on("close", () => {
+    fireRequestCloseHandlers(req);
+  });
 
   return req;
 }

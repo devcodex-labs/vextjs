@@ -238,7 +238,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         const box = createResponseBox();
         // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
         // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-        const res = createHonoResponse(c, () => req.requestId, box);
+        const res = createHonoResponse(c, () => req.requestId, box, req);
         res._hooks = app.hooks;
 
         // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
@@ -275,6 +275,10 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             } else {
               throw err;
             }
+          } finally {
+            // Flush deferred body so post-next setHeader/cookie still apply
+            // before the Response is returned to Hono.
+            res._flush?.();
           }
 
           // 从 ResponseBox 中获取 VextResponse 发送方法捕获的 Response
@@ -318,13 +322,17 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             (req.headers[headerName] as string) || crypto.randomUUID();
         }
 
-        const res = createHonoResponse(c, () => req.requestId, box);
+        const res = createHonoResponse(c, () => req.requestId, box, req);
         res._hooks = app.hooks;
 
         // 🆕 5.7: ALS 可配置跳过
         const runNotFound = async () => {
           const noop = async (): Promise<void> => {};
-          await handler(req, res, noop);
+          try {
+            await handler(req, res, noop);
+          } finally {
+            res._flush?.();
+          }
         };
 
         if (alsEnabled) {
@@ -595,7 +603,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         store.routeBodyParser;
     }
     req.route = routePath || store.routePath;
-    const res = createNodeResponse(nodeRes, req);
+    const res = createNodeResponse(nodeRes, req, req);
     res._hooks = app.hooks;
 
     if (store.chain === null) {
@@ -615,6 +623,9 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         } else {
           res.rawJson({ code: 500, message: "Internal Server Error" }, 500);
         }
+      } finally {
+        // Native-backed HEAD path also uses deferred flush.
+        res._flush?.();
       }
     };
 

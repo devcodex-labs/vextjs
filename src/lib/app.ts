@@ -258,10 +258,14 @@ export function createApp(config: VextConfig): {
 
     setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike) {
       assertFunction(wrapper, "app.setLogger() wrapper");
-      const nextLogger = wrapper(app.logger);
+      const previous = app.logger;
+      const nextLogger = wrapper(previous);
       assertPlainRecord(nextLogger, "app.setLogger() wrapper result");
       assertLoggerLike(nextLogger, "app.setLogger() wrapper result");
-      app.logger = normalizeVextLogger(app.logger, nextLogger);
+      // Pass the factory so child() can re-bind wrapper methods against the
+      // child core. Otherwise partial wrappers that close over `original`
+      // would silently drop child bindings (B04-F05 / LOG-004 / LOG-007).
+      app.logger = normalizeVextLogger(previous, nextLogger, wrapper);
     },
 
     setRateLimiter(limiter: VextRateLimiter) {

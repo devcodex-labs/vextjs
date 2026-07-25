@@ -71,4 +71,27 @@ describe("createRateLimitMiddleware", () => {
       429,
     );
   });
+
+  it("emits RateLimit-Reset as delay-seconds (not absolute unix time)", async () => {
+    const nowSec = Math.ceil(Date.now() / 1000);
+    const middleware = createRateLimitMiddleware(
+      { enabled: true, max: 10, window: 60 },
+      () => ({
+        check: async () => ({
+          allowed: true,
+          remaining: 9,
+          resetAt: nowSec + 42,
+        }),
+      }),
+    );
+    const res = createMockRes();
+    await middleware(createMockReq(), res, vi.fn());
+
+    const reset = Number(res.headers.get("RateLimit-Reset"));
+    expect(Number.isFinite(reset)).toBe(true);
+    // delay-seconds should be near 42, never a wall-clock epoch (~1.7e9)
+    expect(reset).toBeGreaterThanOrEqual(40);
+    expect(reset).toBeLessThanOrEqual(45);
+    expect(res.headers.get("RateLimit-Remaining")).toBe("9");
+  });
 });

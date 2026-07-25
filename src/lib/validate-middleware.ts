@@ -185,10 +185,36 @@ export function buildValidateMiddleware(
       // schema-dsl 校验后的数据可能经过类型转换
       // （如 query 中 '123' → 123），所以存储 result.data 而非原始数据。
       //
-      (req as Record<string, unknown>)[`_validated_${loc}`] = result.data;
+      // Headers: project declared keys only with stable lowercase order so
+      // Node vs Web Headers host bags do not break adapter parity.
+      let storedData = result.data;
+      if (
+        loc === "header" &&
+        storedData &&
+        typeof storedData === "object" &&
+        !Array.isArray(storedData) &&
+        validateConfig.header &&
+        typeof validateConfig.header === "object"
+      ) {
+        const source = storedData as Record<string, unknown>;
+        const projected: Record<string, unknown> = {};
+        for (const key of Object.keys(validateConfig.header).sort((a, b) =>
+          a.toLowerCase().localeCompare(b.toLowerCase()),
+        )) {
+          const lower = key.toLowerCase();
+          if (Object.prototype.hasOwnProperty.call(source, lower)) {
+            projected[lower] = source[lower];
+          } else if (Object.prototype.hasOwnProperty.call(source, key)) {
+            projected[lower] = source[key];
+          }
+        }
+        storedData = projected;
+      }
+
+      (req as Record<string, unknown>)[`_validated_${loc}`] = storedData;
       locationResults.push({
         location: loc,
-        data: result.data,
+        data: storedData,
       });
     }
 

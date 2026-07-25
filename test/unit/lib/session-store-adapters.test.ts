@@ -72,6 +72,41 @@ describe("createCacheSessionStore", () => {
     await expect(store.get("missing")).resolves.toBeNull();
   });
 
+  it("rejects null and non-string cache payloads instead of treating them as misses", async () => {
+    const nullCache: VextCacheLike = {
+      get: async () => null,
+      set: async () => undefined,
+      del: async () => true,
+    };
+    const objectCache: VextCacheLike = {
+      get: async () => ({ userId: "u1" }),
+      set: async () => undefined,
+      del: async () => true,
+    };
+
+    await expect(createCacheSessionStore(nullCache).get("sid")).rejects.toThrow(
+      /session cache store get failed/,
+    );
+    await expect(
+      createCacheSessionStore(objectCache).get("sid"),
+    ).rejects.toThrow(/session cache store get failed/);
+  });
+
+  it("rejects serializer returning undefined before calling cache.set", async () => {
+    const { cache, calls } = createFakeCache();
+    const store = createCacheSessionStore(cache, {
+      serializer: {
+        serialize: () => undefined as unknown as string,
+        deserialize: (value) => value as object,
+      },
+    });
+
+    await expect(store.set("sid", { userId: "u1" }, 60)).rejects.toThrow(
+      /session cache store set failed/,
+    );
+    expect(calls.set).toEqual([]);
+  });
+
   it("deserializes cache hits into detached plain session data", async () => {
     const { cache, entries } = createFakeCache();
     entries.set("vext:session:sid-1", {

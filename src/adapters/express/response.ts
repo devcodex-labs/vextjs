@@ -22,6 +22,7 @@ import {
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
 import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
+import { prepareRedirect } from "../../lib/redirect.js";
 
 /**
  * Express Response → VextResponse 转换
@@ -79,6 +80,7 @@ import { buildAttachmentContentDisposition } from "../../lib/content-disposition
 export function createVextResponse(
   expressRes: ExpressResponse,
   getRequestId: () => string,
+  closeToken?: object,
 ): VextResponse {
   /** 当前 HTTP 状态码（默认 200，可通过 status() 修改） */
   let _status = 200;
@@ -92,6 +94,16 @@ export function createVextResponse(
   /** 重复发送保护标志（防止 handler 中多次调用 json/rawJson/text） */
   let _sent = false;
 
+  type PendingFlush = {
+    status: number;
+    body?: string;
+    defaultContentType?: string | null;
+    contentLengthAfterHeaders?: boolean;
+    sendState: ReturnType<typeof beginResponseSend>;
+  };
+  let _pending: PendingFlush | null = null;
+  let _flushed = false;
+
   /**
    * 将累积的响应头设置到 Express Response 上
    *
@@ -102,6 +114,43 @@ export function createVextResponse(
     for (const [k, v] of Object.entries(_headers)) {
       expressRes.setHeader(k, v);
     }
+  }
+
+  function queuePending(pending: PendingFlush): void {
+    _pending = pending;
+  }
+
+  function flushPending(): void {
+    if (_flushed || !_pending) return;
+    _flushed = true;
+    const pending = _pending;
+    _pending = null;
+
+    expressRes.statusCode = pending.status;
+    if (pending.defaultContentType === null) {
+      expressRes.removeHeader("Content-Type");
+    } else if (pending.defaultContentType) {
+      expressRes.setHeader("Content-Type", pending.defaultContentType);
+    }
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders !== true
+    ) {
+      expressRes.setHeader("Content-Length", Buffer.byteLength(pending.body));
+    }
+    applyHeaders();
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders === true
+    ) {
+      expressRes.setHeader("Content-Length", Buffer.byteLength(pending.body));
+    }
+    if (pending.body !== undefined) {
+      expressRes.end(pending.body);
+    } else {
+      expressRes.end();
+    }
+    finishResponseSend(res, pending.sendState);
   }
 
   /**
@@ -137,7 +186,7 @@ export function createVextResponse(
     }
   }
 
-  const res: VextResponse = {
+  const res: VextResponse & { _closeToken?: object } = {
     /**
      * 返回 JSON 响应
      *
@@ -158,11 +207,10 @@ export function createVextResponse(
       let finalStatus = status ?? _status;
       _status = finalStatus;
 
-      // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
-      if (res._onSend) {
-        res._onSend(data, finalStatus, cloneHeaders(_headers));
-      }
-
+      // Session (_onBeforeSend) must run before route-cache (_onSend) so Set-Cookie
+      // from auto-commit is visible to cache policy. Cache still receives the
+      // original handler data (not response:before patches).
+      const originalData = data;
       const sendState = beginResponseSend(res, {
         kind: "json",
         data,
@@ -171,20 +219,22 @@ export function createVextResponse(
         wrapped: _wrapEnabled,
         requestId: getRequestId(),
       });
+      if (res._onSend) {
+        res._onSend(originalData, sendState.status, sendState.headers);
+      }
       data = sendState.data;
       finalStatus = sendState.status;
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      expressRes.statusCode = finalStatus;
-      applyHeaders();
-
       if (_wrapEnabled) {
         // P1-7: 204 No Content 不能有消息体（RFC 9110 §15.3.5）
         if (finalStatus === 204) {
-          expressRes.removeHeader("Content-Type");
-          expressRes.end();
-          finishResponseSend(res, sendState);
+          queuePending({
+            status: finalStatus,
+            defaultContentType: null,
+            sendState,
+          });
           return;
         }
 
@@ -193,27 +243,31 @@ export function createVextResponse(
           data,
           requestId: getRequestId(),
         });
-        // 出口包装：{ code: 0, data, requestId }
-        expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-        expressRes.setHeader("Content-Length", Buffer.byteLength(body));
-        expressRes.end(body);
-        finishResponseSend(res, sendState);
+        queuePending({
+          status: finalStatus,
+          body,
+          defaultContentType: "application/json; charset=utf-8",
+          sendState,
+        });
         return;
       }
 
       // 未包装模式
       if (finalStatus === 204) {
-        expressRes.removeHeader("Content-Type");
-        expressRes.end();
-        finishResponseSend(res, sendState);
+        queuePending({
+          status: finalStatus,
+          defaultContentType: null,
+          sendState,
+        });
         return;
       }
 
-      expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-      const body = stringifyJson(data);
-      expressRes.setHeader("Content-Length", Buffer.byteLength(body));
-      expressRes.end(body);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: stringifyJson(data),
+        defaultContentType: "application/json; charset=utf-8",
+        sendState,
+      });
     },
 
     /**
@@ -243,14 +297,12 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      expressRes.statusCode = finalStatus;
-      applyHeaders();
-
-      expressRes.setHeader("Content-Type", "application/json; charset=utf-8");
-      const body = stringifyJson(data);
-      expressRes.setHeader("Content-Length", Buffer.byteLength(body));
-      expressRes.end(body);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: stringifyJson(data),
+        defaultContentType: "application/json; charset=utf-8",
+        sendState,
+      });
     },
 
     /**
@@ -275,15 +327,13 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      expressRes.statusCode = finalStatus;
-      // 先设默认 Content-Type: text/plain，再调 applyHeaders()
-      // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
-      expressRes.setHeader("Content-Type", "text/plain; charset=utf-8");
-      applyHeaders();
-
-      expressRes.setHeader("Content-Length", Buffer.byteLength(content));
-      expressRes.end(content);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: content,
+        defaultContentType: "text/plain; charset=utf-8",
+        contentLengthAfterHeaders: true,
+        sendState,
+      });
     },
 
     _sendHtml(html, status, headers, kind, data): void {
@@ -305,12 +355,17 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      expressRes.statusCode = finalStatus;
-      expressRes.setHeader("Content-Type", "text/html; charset=utf-8");
-      applyHeaders();
-      expressRes.setHeader("Content-Length", Buffer.byteLength(html));
-      expressRes.end(html);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: html,
+        defaultContentType: "text/html; charset=utf-8",
+        contentLengthAfterHeaders: true,
+        sendState,
+      });
+    },
+
+    _flush(): void {
+      flushPending();
     },
 
     render: renderUnavailable,
@@ -338,6 +393,8 @@ export function createVextResponse(
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
 
+      _flushed = true;
+      _pending = null;
       expressRes.statusCode = _status;
       expressRes.setHeader("Content-Type", contentType);
       applyHeaders();
@@ -382,6 +439,8 @@ export function createVextResponse(
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
 
+      _flushed = true;
+      _pending = null;
       expressRes.statusCode = _status;
       applyHeaders();
 
@@ -399,27 +458,34 @@ export function createVextResponse(
      *
      * Express 原生支持 res.redirect()，但这里使用手动设置 Location 头 + end()
      * 的方式，与 Hono / Fastify Adapter 行为保持一致。
+     *
+     * Location is normalized (non-ASCII encoded, CRLF rejected) and status is
+     * coerced to an allowed redirect code *before* mark-sent; write failures roll back.
      */
-    redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
+    redirect(url: string, status: 301 | 302 | 303 | 307 | 308 = 302): void {
+      const prepared = prepareRedirect(url, status);
       if (checkSent("redirect")) return;
 
-      const headers = cloneHeaders(_headers);
-      setBufferedHeader(headers, "Location", url);
-      const sendState = beginResponseSend(res, {
-        kind: "redirect",
-        data: url,
-        status,
-        headers,
-        wrapped: false,
-        requestId: getRequestId(),
-      });
-      _status = sendState.status;
-      replaceHeaders(_headers, sendState.headers);
-      setBufferedHeader(_headers, "Content-Length", "0");
-      applyHeaders();
-      expressRes.statusCode = _status;
-      expressRes.end();
-      finishResponseSend(res, sendState);
+      try {
+        const headers = cloneHeaders(_headers);
+        setBufferedHeader(headers, "Location", prepared.location);
+        const sendState = beginResponseSend(res, {
+          kind: "redirect",
+          data: prepared.location,
+          status: prepared.status,
+          headers,
+          wrapped: false,
+          requestId: getRequestId(),
+        });
+        _status = sendState.status;
+        replaceHeaders(_headers, sendState.headers);
+        setBufferedHeader(_headers, "Content-Length", "0");
+        queuePending({ status: _status, sendState });
+      } catch (error) {
+        _sent = false;
+        _pending = null;
+        throw error;
+      }
     },
 
     /**
@@ -481,6 +547,10 @@ export function createVextResponse(
       return _sent;
     },
   };
+
+  if (closeToken) {
+    res._closeToken = closeToken;
+  }
 
   return res;
 }

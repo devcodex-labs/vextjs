@@ -34,10 +34,10 @@ import type { VextRequest } from "../../types/request.js";
  *   当 app.setRateLimiter() 被调用后，本中间件将使用自定义 limiter.check()
  *   代替内置 flex-rate-limit，但 keyBy / enabled / message 等配置仍然生效。
  *
- * 响应头（遵循 IETF RateLimit Header Fields 草案）：
+ * 响应头（遵循 IETF RateLimit Header Fields 草案 delay-seconds 语义）：
  *   - RateLimit-Limit:     窗口期最大请求数
  *   - RateLimit-Remaining: 窗口期剩余请求数
- *   - RateLimit-Reset:     窗口重置时间（Unix 秒）
+ *   - RateLimit-Reset:     距窗口重置的剩余秒数（delay-seconds，非绝对 Unix 时间）
  *   - Retry-After:         超限时，客户端应等待的秒数（仅 429 响应）
  *
  * @param config       rateLimit 配置（从 VextConfig.rateLimit 提取）
@@ -92,14 +92,14 @@ export function createRateLimitMiddleware(
     const customLimiter = getRateLimiter();
     let allowed: boolean;
     let remaining: number;
-    let resetAt: number; // Unix timestamp（秒）
+    let resetAtUnix: number; // absolute Unix timestamp (seconds)
 
     if (customLimiter) {
       // ── 使用自定义 limiter（app.setRateLimiter() 注入）──
       const result = await customLimiter.check(key);
       allowed = result.allowed;
       remaining = result.remaining;
-      resetAt = result.resetAt;
+      resetAtUnix = result.resetAt;
     } else {
       // ── 使用内置 flex-rate-limit ──────────────────────
       const builtinLimiter = getBuiltinLimiter(max, windowSec);
@@ -107,18 +107,23 @@ export function createRateLimitMiddleware(
       allowed = result.allowed;
       remaining = Math.max(0, result.remaining);
       // flex-rate-limit 的 resetTime 是毫秒级 Unix 时间戳
-      resetAt = Math.ceil(result.resetTime / 1000);
+      resetAtUnix = Math.ceil(result.resetTime / 1000);
     }
+
+    // Public RateLimit-Reset uses delay-seconds (IETF draft), not absolute time.
+    // Absolute timestamps differ across link/packed consumer runs and break
+    // semantic parity; remaining-seconds stays stable for the same window.
+    const nowSec = Math.ceil(Date.now() / 1000);
+    const resetDelaySec = Math.max(0, resetAtUnix - nowSec);
 
     // ── 注入响应头（无论是否超限都写入）─────────────────
     res.setHeader("RateLimit-Limit", String(max));
     res.setHeader("RateLimit-Remaining", String(remaining));
-    res.setHeader("RateLimit-Reset", String(resetAt));
+    res.setHeader("RateLimit-Reset", String(resetDelaySec));
 
     // ── 超限处理 → 429 ─────────────────────────────────
     if (!allowed) {
-      const nowSec = Math.ceil(Date.now() / 1000);
-      const retryAfter = Math.max(1, resetAt - nowSec);
+      const retryAfter = Math.max(1, resetDelaySec);
       res.setHeader("Retry-After", String(retryAfter));
 
       res.rawJson(

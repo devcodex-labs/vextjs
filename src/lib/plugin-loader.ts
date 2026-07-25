@@ -417,8 +417,8 @@ const SUPPORTED_EXTENSIONS = new Set([".ts", ".js", ".mjs", ".cjs"]);
  * 应排除的文件
  */
 function shouldExclude(filename: string): boolean {
-  // 排除 _ 开头的文件（约定：辅助/私有文件）
-  if (filename.startsWith("_")) return true;
+  // 排除 _ / . 开头的文件（约定：辅助/私有/隐藏文件）
+  if (filename.startsWith("_") || filename.startsWith(".")) return true;
   // 排除测试文件
   if (filename.includes(".test.") || filename.includes(".spec.")) return true;
   // 排除类型声明文件

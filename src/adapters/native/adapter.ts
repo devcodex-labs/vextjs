@@ -275,6 +275,9 @@ export function createNativeAdapter(
       } else {
         sendFallbackError(nodeRes);
       }
+    } finally {
+      // Flush deferred body so post-next setHeader/cookie still apply.
+      res._flush?.();
     }
   }
 
@@ -326,7 +329,7 @@ export function createNativeAdapter(
     }
     // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
     req.route = routePath || store.routePath;
-    const res = createVextResponse(nodeRes, req);
+    const res = createVextResponse(nodeRes, req, req);
     res._hooks = app.hooks;
 
     // ── 预组装中间件链（首次请求时构建，后续复用）──────────
@@ -508,7 +511,7 @@ export function createNativeAdapter(
     const requestUrl = parsedUrl ?? parseUrl(nodeReq.url ?? "/");
 
     const req = createVextRequest(nodeReq, app, {}, requestUrl);
-    const res = createVextResponse(nodeRes, req);
+    const res = createVextResponse(nodeRes, req, req);
     res._hooks = app.hooks;
 
     // 内联生成并写出 requestId（notFound 不走中间件链，HEAD 404 也需要响应头）
@@ -534,6 +537,8 @@ export function createNativeAdapter(
         await notFoundHandler!(req, res, noop);
       } catch {
         sendFallbackError(nodeRes);
+      } finally {
+        res._flush?.();
       }
     };
 

@@ -5,6 +5,11 @@ import type { VextCookieJar } from "../../types/cookies.js";
 import { createAnonymousAuthContext } from "../../lib/auth.js";
 import { parseCookies } from "../../lib/cookies.js";
 import { assertBodySize } from "../../lib/middlewares/body-parser.js";
+import { flattenQueryRecord } from "../../lib/query.js";
+import {
+  addRequestCloseHandler,
+  fireRequestCloseHandlers,
+} from "../../lib/request-close.js";
 
 /**
  * Koa Context → VextRequest 转换
@@ -50,24 +55,11 @@ export function createVextRequest(
   rawBody?: Buffer,
 ): VextRequest {
   const trustProxy = vextApp.config.trustProxy ?? false;
-  const closeHandlers: Array<() => void> = [];
 
   // ── 解析 query 参数 ──────────────────────────────────────
   //
-  // Koa 的 ctx.query 已是解析好的对象（来自 Node.js querystring 解析），
-  // 值为 string 或 string[]。VextRequest.query 期望 Record<string, string>，
-  // 这里做浅平展（取第一个值），与其他 adapter 行为对齐。
-  //
-  const queryRecord: Record<string, string> = {};
-  if (ctx.query && typeof ctx.query === "object") {
-    for (const [key, value] of Object.entries(ctx.query)) {
-      if (typeof value === "string") {
-        queryRecord[key] = value;
-      } else if (Array.isArray(value) && typeof value[0] === "string") {
-        queryRecord[key] = value[0];
-      }
-    }
-  }
+  // Koa 的 ctx.query 值为 string 或 string[]；统一 first-wins 扁平化。
+  const queryRecord = flattenQueryRecord(ctx.query);
 
   // ── 解析 path（不含 query string）────────────────────────
   //
@@ -199,7 +191,7 @@ export function createVextRequest(
 
     // ── 生命周期 ────────────────────────────────────────
     onClose(handler: () => void): void {
-      closeHandlers.push(handler);
+      addRequestCloseHandler(req, handler);
     },
 
     // ── 校验数据 ────────────────────────────────────────
@@ -222,28 +214,9 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // ── 请求结束时执行 onClose hooks ─────────────────────────
-  //
-  // Koa 基于 Node.js 原生 HTTP，使用 ctx.req.on('close') 事件。
-  // 当客户端断开连接或请求正常结束时触发。
-  //
-  // 与其他 Adapter 的对比：
-  //   - Hono 使用 Web Request 的 AbortSignal（c.req.raw.signal.addEventListener('abort')）
-  //   - Fastify 使用 request.raw.on('close')
-  //   - Express 使用 req.on('close')
-  //   - Koa 使用 ctx.req.on('close')
-  //
-  // 内存安全：执行后清空 handlers 数组，防止闭包泄漏。
-  //
+  // Host close + finishResponseSend both fire exactly-once shared handlers.
   ctx.req.on("close", () => {
-    for (const h of closeHandlers) {
-      try {
-        h();
-      } catch {
-        // onClose handler 异常不应影响其他 handler
-      }
-    }
-    closeHandlers.length = 0;
+    fireRequestCloseHandlers(req);
   });
 
   return req;

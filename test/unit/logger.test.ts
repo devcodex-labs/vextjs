@@ -192,6 +192,8 @@ describe("createLogger", () => {
     normalized.setLevel("trace");
     expect(logger.getLevel()).toBe("trace");
 
+    // Without a factory, child falls back to the unbound child core so
+    // bindings are preserved even when the parent wrapper only overrode info.
     const child = normalized.child({ service: "child" });
     child.trace("child trace");
 
@@ -200,6 +202,35 @@ describe("createLogger", () => {
       level: 10,
       msg: "child trace",
     });
+  });
+
+  it("re-binds setLogger factories so child bindings are not dropped", () => {
+    const { logger, records } = createCapturedLogger({ level: "info" });
+    const seen: unknown[][] = [];
+
+    const factory = (original: typeof logger) => ({
+      info(...args: unknown[]) {
+        seen.push(args);
+        original.info(...args);
+      },
+    });
+
+    const normalized = normalizeVextLogger(logger, factory(logger), factory);
+    const child = normalized.child({ service: "billing", component: "api" });
+    child.info({ request: 1 }, "charge");
+
+    expect(seen).toHaveLength(1);
+    expect(records()[0]).toMatchObject({
+      service: "billing",
+      component: "api",
+      request: 1,
+      msg: "charge",
+    });
+
+    // Parent remains unbound by child fields.
+    normalized.info("parent");
+    expect(records()[1]).toMatchObject({ msg: "parent" });
+    expect(records()[1]!.service).toBeUndefined();
   });
 
   it("rejects invalid runtime levels", () => {

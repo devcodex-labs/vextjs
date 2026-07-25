@@ -24,6 +24,7 @@ import {
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
 import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
+import { prepareRedirect } from "../../lib/redirect.js";
 
 type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
@@ -127,15 +128,45 @@ class NativeVextResponse implements VextResponse {
   /** 重复发送保护标志（防止 handler 中多次调用 json/rawJson/text） */
   private _sent: boolean = false;
 
+  /**
+   * Buffered body exit staged until `_flush()` after onion unwind.
+   * Lets post-`await next()` middleware still mutate headers.
+   */
+  private _pending:
+    | {
+        status: number;
+        body?: string;
+        /** Applied before buffered headers; `null` removes Content-Type (204). */
+        defaultContentType?: string | null;
+        /** When true, Content-Length is set after `_applyHeaders` (text path). */
+        contentLengthAfterHeaders?: boolean;
+        sendState: ReturnType<typeof beginResponseSend>;
+      }
+    | null = null;
+
+  /** True once the underlying ServerResponse has been written/ended. */
+  private _flushed: boolean = false;
+
   /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
   _onSend?: (data: unknown, statusCode: number, headers?: VextHeaders) => void;
+
+  /**
+   * Token for exactly-once req.onClose via finishResponseSend.
+   * Typically the VextRequest for the active request.
+   * @internal
+   */
+  _closeToken?: object;
 
   constructor(
     serverResponse: ServerResponse,
     requestIdSource: RequestIdSource,
+    closeToken?: object,
   ) {
     this._serverResponse = serverResponse;
     this._requestIdSource = requestIdSource;
+    if (closeToken) {
+      this._closeToken = closeToken;
+    }
   }
 
   // ── 内部辅助方法（原型上共享）──────────────────────────
@@ -203,35 +234,83 @@ class NativeVextResponse implements VextResponse {
   }
 
   /**
-   * 发送 JSON 字符串响应（内部共用方法）
-   *
-   * 所有 JSON 发送路径（json / rawJson）最终都走此方法，
-   * 减少代码重复，确保 statusCode / header / end 调用路径统一。
+   * Stage a JSON body for deferred flush (onion post-next headers).
    *
    * @param body   已序列化的 JSON 字符串
    * @param status HTTP 状态码
+   * @param sendState response:before lifecycle state finished at `_flush`
    */
-  private _sendJsonString(body: string, status: number): void {
-    const sr = this._serverResponse;
-    sr.statusCode = status;
-    sr.setHeader("Content-Type", "application/json; charset=utf-8");
-    sr.setHeader("Content-Length", Buffer.byteLength(body));
-    this._applyHeaders();
-    sr.end(body);
+  private _sendJsonString(
+    body: string,
+    status: number,
+    sendState: ReturnType<typeof beginResponseSend>,
+  ): void {
+    this._pending = {
+      status,
+      body,
+      defaultContentType: "application/json; charset=utf-8",
+      contentLengthAfterHeaders: false,
+      sendState,
+    };
   }
 
   /**
-   * 发送 204 No Content（无消息体）
+   * Stage a 204 No Content exit for deferred flush.
    *
    * RFC 9110 §15.3.5 要求 204 不能有消息体。
-   * 移除 Content-Type 避免混淆。
    */
-  private _send204(): void {
+  private _send204(sendState: ReturnType<typeof beginResponseSend>): void {
+    this._pending = {
+      status: 204,
+      defaultContentType: null,
+      sendState,
+    };
+  }
+
+  /**
+   * Write staged body/headers to the underlying ServerResponse.
+   *
+   * Called once by the adapter after the middleware chain (and error handler)
+   * returns so onion after-logic can still `setHeader` / `cookie`.
+   */
+  _flush(): void {
+    if (this._flushed || !this._pending) return;
+    this._flushed = true;
+    const pending = this._pending;
+    this._pending = null;
+
     const sr = this._serverResponse;
-    sr.statusCode = 204;
-    sr.removeHeader("Content-Type");
+    sr.statusCode = pending.status;
+
+    if (pending.defaultContentType === null) {
+      sr.removeHeader("Content-Type");
+    } else if (pending.defaultContentType) {
+      sr.setHeader("Content-Type", pending.defaultContentType);
+    }
+
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders !== true
+    ) {
+      sr.setHeader("Content-Length", Buffer.byteLength(pending.body));
+    }
+
     this._applyHeaders();
-    sr.end();
+
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders === true
+    ) {
+      sr.setHeader("Content-Length", Buffer.byteLength(pending.body));
+    }
+
+    if (pending.body !== undefined) {
+      sr.end(pending.body);
+    } else {
+      sr.end();
+    }
+
+    finishResponseSend(this, pending.sendState);
   }
 
   // ── VextResponse 接口实现（原型方法，所有实例共享）──────
@@ -256,11 +335,10 @@ class NativeVextResponse implements VextResponse {
     let finalStatus = status ?? this._status;
     this._status = finalStatus;
 
-    // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
-    if (this._onSend) {
-      this._onSend(data, finalStatus, cloneHeaders(this._headers));
-    }
-
+    // Session (_onBeforeSend) must run before route-cache (_onSend) so Set-Cookie
+    // from auto-commit is visible to cache policy. Cache still receives the
+    // original handler data (not response:before patches).
+    const originalData = data;
     const sendState = beginResponseSend(this, {
       kind: "json",
       data,
@@ -269,6 +347,9 @@ class NativeVextResponse implements VextResponse {
       wrapped: this._wrapEnabled,
       requestId: this._resolveRequestId(),
     });
+    if (this._onSend) {
+      this._onSend(originalData, sendState.status, sendState.headers);
+    }
     data = sendState.data;
     finalStatus = sendState.status;
     this._status = finalStatus;
@@ -277,8 +358,7 @@ class NativeVextResponse implements VextResponse {
     if (this._wrapEnabled) {
       // 204 No Content 不能有消息体（RFC 9110 §15.3.5）
       if (finalStatus === 204) {
-        this._send204();
-        finishResponseSend(this, sendState);
+        this._send204(sendState);
         return;
       }
 
@@ -290,20 +370,18 @@ class NativeVextResponse implements VextResponse {
           requestId: this._resolveRequestId(),
         }),
         finalStatus,
+        sendState,
       );
-      finishResponseSend(this, sendState);
       return;
     }
 
     // 未包装模式
     if (finalStatus === 204) {
-      this._send204();
-      finishResponseSend(this, sendState);
+      this._send204(sendState);
       return;
     }
 
-    this._sendJsonString(this._stringifyJson(data), finalStatus);
-    finishResponseSend(this, sendState);
+    this._sendJsonString(this._stringifyJson(data), finalStatus, sendState);
   }
 
   /**
@@ -332,8 +410,7 @@ class NativeVextResponse implements VextResponse {
     this._status = finalStatus;
     replaceHeaders(this._headers, sendState.headers);
 
-    this._sendJsonString(this._stringifyJson(data), finalStatus);
-    finishResponseSend(this, sendState);
+    this._sendJsonString(this._stringifyJson(data), finalStatus, sendState);
   }
 
   /**
@@ -358,15 +435,14 @@ class NativeVextResponse implements VextResponse {
     this._status = finalStatus;
     replaceHeaders(this._headers, sendState.headers);
 
-    const sr = this._serverResponse;
-    sr.statusCode = finalStatus;
-    // 先设默认 Content-Type: text/plain，再调 _applyHeaders()
-    // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
-    sr.setHeader("Content-Type", "text/plain; charset=utf-8");
-    this._applyHeaders();
-    sr.setHeader("Content-Length", Buffer.byteLength(content));
-    sr.end(content);
-    finishResponseSend(this, sendState);
+    // Defer write so post-next setHeader can still override Content-Type etc.
+    this._pending = {
+      status: finalStatus,
+      body: content,
+      defaultContentType: "text/plain; charset=utf-8",
+      contentLengthAfterHeaders: true,
+      sendState,
+    };
   }
 
   _sendHtml(
@@ -394,13 +470,13 @@ class NativeVextResponse implements VextResponse {
     this._status = finalStatus;
     replaceHeaders(this._headers, sendState.headers);
 
-    const sr = this._serverResponse;
-    sr.statusCode = finalStatus;
-    sr.setHeader("Content-Type", "text/html; charset=utf-8");
-    sr.setHeader("Content-Length", Buffer.byteLength(html));
-    this._applyHeaders();
-    sr.end(html);
-    finishResponseSend(this, sendState);
+    this._pending = {
+      status: finalStatus,
+      body: html,
+      defaultContentType: "text/html; charset=utf-8",
+      contentLengthAfterHeaders: false,
+      sendState,
+    };
   }
 
   render = renderUnavailable;
@@ -428,6 +504,10 @@ class NativeVextResponse implements VextResponse {
     });
     this._status = sendState.status;
     replaceHeaders(this._headers, sendState.headers);
+
+    // Streams cannot be deferred; mark flushed so `_flush` is a no-op.
+    this._flushed = true;
+    this._pending = null;
 
     const sr = this._serverResponse;
     sr.statusCode = this._status;
@@ -469,8 +549,11 @@ class NativeVextResponse implements VextResponse {
     });
     this._status = sendState.status;
     replaceHeaders(this._headers, sendState.headers);
-    const sr = this._serverResponse;
 
+    this._flushed = true;
+    this._pending = null;
+
+    const sr = this._serverResponse;
     sr.statusCode = this._status;
     this._applyHeaders();
 
@@ -483,28 +566,37 @@ class NativeVextResponse implements VextResponse {
    *
    * 直接设置 Location 响应头和状态码，然后 end()。
    * 不依赖任何框架的 redirect 方法。
+   *
+   * Location is normalized (non-ASCII encoded, CRLF rejected) and status is
+   * coerced to an allowed redirect code *before* mark-sent; write failures roll back.
    */
-  redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
+  redirect(url: string, status: 301 | 302 | 303 | 307 | 308 = 302): void {
+    const prepared = prepareRedirect(url, status);
     if (this._checkSent("redirect")) return;
 
-    const headers = cloneHeaders(this._headers);
-    setBufferedHeader(headers, "Location", url);
-    const sendState = beginResponseSend(this, {
-      kind: "redirect",
-      data: url,
-      status,
-      headers,
-      wrapped: false,
-      requestId: this._resolveRequestId(),
-    });
-    this._status = sendState.status;
-    replaceHeaders(this._headers, sendState.headers);
-    setBufferedHeader(this._headers, "Content-Length", "0");
-    const sr = this._serverResponse;
-    sr.statusCode = this._status;
-    this._applyHeaders();
-    sr.end();
-    finishResponseSend(this, sendState);
+    try {
+      const headers = cloneHeaders(this._headers);
+      setBufferedHeader(headers, "Location", prepared.location);
+      const sendState = beginResponseSend(this, {
+        kind: "redirect",
+        data: prepared.location,
+        status: prepared.status,
+        headers,
+        wrapped: false,
+        requestId: this._resolveRequestId(),
+      });
+      this._status = sendState.status;
+      replaceHeaders(this._headers, sendState.headers);
+      setBufferedHeader(this._headers, "Content-Length", "0");
+      this._pending = {
+        status: this._status,
+        sendState,
+      };
+    } catch (error) {
+      this._sent = false;
+      this._pending = null;
+      throw error;
+    }
   }
 
   /**
@@ -575,11 +667,13 @@ class NativeVextResponse implements VextResponse {
  *
  * @param serverResponse   Node.js ServerResponse 原始响应对象
  * @param requestIdSource  延迟获取 requestId 的来源；优先传入 VextRequest 对象以减少闭包分配
+ * @param closeToken       Optional token for req.onClose (typically the VextRequest)
  * @returns VextResponse 实例（含内部方法 _enableWrap）
  */
 export function createVextResponse(
   serverResponse: ServerResponse,
   requestIdSource: RequestIdSource,
+  closeToken?: object,
 ): VextResponse {
-  return new NativeVextResponse(serverResponse, requestIdSource);
+  return new NativeVextResponse(serverResponse, requestIdSource, closeToken);
 }

@@ -28,15 +28,29 @@ describe("middleware loader declaration contract", () => {
     fs.rmSync(middlewareDir, { recursive: true, force: true });
   });
 
-  it("does not load or register declarations with enabled=false", async () => {
+  it("registers enabled=false declarations as no-op without loading files", async () => {
     const registry = await loadMiddlewares(
       middlewareDir,
       [{ name: "missing", enabled: false }],
       logger,
     );
 
-    expect(Object.keys(registry)).toEqual([]);
-    expect(logger.info).not.toHaveBeenCalled();
+    // Keep the declared name resolvable for route refs, but never load source.
+    expect(Object.keys(registry)).toEqual(["missing"]);
+    expect(registry.missing.kind).toBe("middleware");
+    const calls: string[] = [];
+    await (
+      registry.missing.handler as (
+        req: unknown,
+        res: unknown,
+        next: () => Promise<void>,
+      ) => Promise<void>
+    )({}, {}, async () => {
+      calls.push("next");
+    });
+    expect(calls).toEqual(["next"]);
+    // No-op entries still appear in the registry count for route resolution.
+    expect(logger.info).toHaveBeenCalled();
   });
 
   it("rejects duplicate names before registry overwrite", async () => {

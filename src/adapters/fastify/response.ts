@@ -22,6 +22,7 @@ import {
   renderUnavailable,
 } from "../../lib/response-render-placeholder.js";
 import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
+import { prepareRedirect } from "../../lib/redirect.js";
 
 /**
  * Fastify Reply → VextResponse 转换
@@ -51,6 +52,11 @@ import { buildAttachmentContentDisposition } from "../../lib/content-disposition
  *      避免 Fastify 内置的 fast-json-stringify 自动序列化，
  *      保证与 Hono Adapter 行为一致（跨 Adapter 行为一致性 > 单 Adapter 极限性能）。
  *
+ *   7. Deferred terminal flush
+ *      json/rawJson/text/html/redirect stage into `_pending` and only write the
+ *      host reply in `_flush()` after the onion chain unwinds, so post-`await next()`
+ *      middleware can still `setHeader` / `cookie`.
+ *
  * 与 Hono Adapter 的差异：
  *   - Hono: 通过 ResponseBox 容器捕获 c.json() 返回的 Web Response 对象
  *   - Fastify: 直接调用 reply.status().header().send() 发送响应（Node.js 原生模型）
@@ -63,9 +69,9 @@ import { buildAttachmentContentDisposition } from "../../lib/content-disposition
  *   [responseWrapperMiddleware]  → res._enableWrap()
  *     ↓
  *   [handler] res.status(201).json(data)
- *     → _wrapEnabled = true
- *     → getRequestId() → 'a1b2c3d4...'（已设置）
- *     → reply.send(JSON.stringify({ code: 0, data, requestId }))
+ *     → stage pending body (no host write yet)
+ *     ↓ onion after-middleware setHeader
+ *   res._flush() → reply.send(...)
  *     → HTTP 201 ✅
  *
  * @param reply          Fastify Reply 对象
@@ -78,6 +84,7 @@ import { buildAttachmentContentDisposition } from "../../lib/content-disposition
 export function createVextResponse(
   reply: FastifyReply,
   getRequestId: () => string,
+  closeToken?: object,
 ): VextResponse {
   /** 当前 HTTP 状态码（默认 200，可通过 status() 修改） */
   let _status = 200;
@@ -91,6 +98,18 @@ export function createVextResponse(
   /** 重复发送保护标志（防止 handler 中多次调用 json/rawJson/text） */
   let _sent = false;
 
+  type PendingFlush = {
+    status: number;
+    body?: string;
+    /** Applied before buffered headers; `null` removes Content-Type (204). */
+    defaultContentType?: string | null;
+    /** When true, Content-Length is set after `_applyHeaders` (text path). */
+    contentLengthAfterHeaders?: boolean;
+    sendState: ReturnType<typeof beginResponseSend>;
+  };
+  let _pending: PendingFlush | null = null;
+  let _flushed = false;
+
   /**
    * 将累积的响应头设置到 Fastify Reply 上
    *
@@ -101,6 +120,45 @@ export function createVextResponse(
     for (const [k, v] of Object.entries(_headers)) {
       reply.header(k, v);
     }
+  }
+
+  function queuePending(pending: PendingFlush): void {
+    _pending = pending;
+  }
+
+  function flushPending(): void {
+    if (_flushed || !_pending) return;
+    _flushed = true;
+    const pending = _pending;
+    _pending = null;
+
+    reply.status(pending.status);
+    if (pending.defaultContentType === null) {
+      reply.removeHeader("Content-Type");
+    } else if (pending.defaultContentType) {
+      reply.header("Content-Type", pending.defaultContentType);
+    }
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders !== true
+    ) {
+      reply.header("Content-Length", String(Buffer.byteLength(pending.body)));
+    }
+    applyHeaders();
+    if (
+      pending.body !== undefined &&
+      pending.contentLengthAfterHeaders === true
+    ) {
+      reply.header("Content-Length", String(Buffer.byteLength(pending.body)));
+    }
+    if (pending.body !== undefined) {
+      reply.send(pending.body);
+    } else if (pending.defaultContentType === null) {
+      reply.send(undefined);
+    } else {
+      reply.send();
+    }
+    finishResponseSend(res, pending.sendState);
   }
 
   /**
@@ -136,7 +194,7 @@ export function createVextResponse(
     }
   }
 
-  const res: VextResponse = {
+  const res: VextResponse & { _closeToken?: object } = {
     /**
      * 返回 JSON 响应
      *
@@ -157,11 +215,10 @@ export function createVextResponse(
       let finalStatus = status ?? _status;
       _status = finalStatus;
 
-      // route-cache 捕获必须早于 response:before 用户 patch，缓存的是 handler 原始 data。
-      if (res._onSend) {
-        res._onSend(data, finalStatus, cloneHeaders(_headers));
-      }
-
+      // Session (_onBeforeSend) must run before route-cache (_onSend) so Set-Cookie
+      // from auto-commit is visible to cache policy. Cache still receives the
+      // original handler data (not response:before patches).
+      const originalData = data;
       const sendState = beginResponseSend(res, {
         kind: "json",
         data,
@@ -170,20 +227,22 @@ export function createVextResponse(
         wrapped: _wrapEnabled,
         requestId: getRequestId(),
       });
+      if (res._onSend) {
+        res._onSend(originalData, sendState.status, sendState.headers);
+      }
       data = sendState.data;
       finalStatus = sendState.status;
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      reply.status(finalStatus);
-      applyHeaders();
-
       if (_wrapEnabled) {
         // P1-7: 204 No Content 不能有消息体（RFC 9110 §15.3.5）
         if (finalStatus === 204) {
-          reply.removeHeader("Content-Type");
-          reply.send(undefined);
-          finishResponseSend(res, sendState);
+          queuePending({
+            status: finalStatus,
+            defaultContentType: null,
+            sendState,
+          });
           return;
         }
 
@@ -192,27 +251,31 @@ export function createVextResponse(
           data,
           requestId: getRequestId(),
         });
-        // 出口包装：{ code: 0, data, requestId }
-        reply.header("Content-Type", "application/json; charset=utf-8");
-        reply.header("Content-Length", String(Buffer.byteLength(body)));
-        reply.send(body);
-        finishResponseSend(res, sendState);
+        queuePending({
+          status: finalStatus,
+          body,
+          defaultContentType: "application/json; charset=utf-8",
+          sendState,
+        });
         return;
       }
 
       // 未包装模式
       if (finalStatus === 204) {
-        reply.removeHeader("Content-Type");
-        reply.send(undefined);
-        finishResponseSend(res, sendState);
+        queuePending({
+          status: finalStatus,
+          defaultContentType: null,
+          sendState,
+        });
         return;
       }
 
-      reply.header("Content-Type", "application/json; charset=utf-8");
-      const body = stringifyJson(data);
-      reply.header("Content-Length", String(Buffer.byteLength(body)));
-      reply.send(body);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: stringifyJson(data),
+        defaultContentType: "application/json; charset=utf-8",
+        sendState,
+      });
     },
 
     /**
@@ -241,14 +304,12 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      reply.status(finalStatus);
-      applyHeaders();
-
-      reply.header("Content-Type", "application/json; charset=utf-8");
-      const body = stringifyJson(data);
-      reply.header("Content-Length", String(Buffer.byteLength(body)));
-      reply.send(body);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: stringifyJson(data),
+        defaultContentType: "application/json; charset=utf-8",
+        sendState,
+      });
     },
 
     /**
@@ -273,15 +334,14 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      reply.status(finalStatus);
-      // 先设默认 Content-Type: text/plain，再调 applyHeaders()
-      // 让外部通过 setHeader("Content-Type", "text/html") 的设置能够覆盖默认值。
-      reply.header("Content-Type", "text/plain; charset=utf-8");
-      applyHeaders();
-
-      reply.header("Content-Length", String(Buffer.byteLength(content)));
-      reply.send(content);
-      finishResponseSend(res, sendState);
+      // Defer write so post-next setHeader can still override Content-Type etc.
+      queuePending({
+        status: finalStatus,
+        body: content,
+        defaultContentType: "text/plain; charset=utf-8",
+        contentLengthAfterHeaders: true,
+        sendState,
+      });
     },
 
     _sendHtml(html, status, headers, kind, data): void {
@@ -303,12 +363,17 @@ export function createVextResponse(
       _status = finalStatus;
       replaceHeaders(_headers, sendState.headers);
 
-      reply.status(finalStatus);
-      reply.header("Content-Type", "text/html; charset=utf-8");
-      applyHeaders();
-      reply.header("Content-Length", String(Buffer.byteLength(html)));
-      reply.send(html);
-      finishResponseSend(res, sendState);
+      queuePending({
+        status: finalStatus,
+        body: html,
+        defaultContentType: "text/html; charset=utf-8",
+        contentLengthAfterHeaders: true,
+        sendState,
+      });
+    },
+
+    _flush(): void {
+      flushPending();
     },
 
     render: renderUnavailable,
@@ -336,6 +401,10 @@ export function createVextResponse(
       });
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
+
+      // Streams cannot be deferred; mark flushed so `_flush` is a no-op.
+      _flushed = true;
+      _pending = null;
 
       reply.status(_status);
       reply.header("Content-Type", contentType);
@@ -381,6 +450,9 @@ export function createVextResponse(
       _status = sendState.status;
       replaceHeaders(_headers, sendState.headers);
 
+      _flushed = true;
+      _pending = null;
+
       reply.status(_status);
       applyHeaders();
 
@@ -400,29 +472,33 @@ export function createVextResponse(
      *   - Fastify v4: reply.redirect(url, statusCode?)
      *   - Fastify v5: reply.redirect(url, statusCode?) — 同 v4
      *
-     * 注意：Fastify 的 redirect 内部会自动发送响应，
-     * 不需要额外调用 reply.send()。
+     * Location is normalized (non-ASCII encoded, CRLF rejected) and status is
+     * coerced to an allowed redirect code *before* mark-sent; write failures roll back.
      */
-    redirect(url: string, status: 301 | 302 | 307 | 308 = 302): void {
+    redirect(url: string, status: 301 | 302 | 303 | 307 | 308 = 302): void {
+      const prepared = prepareRedirect(url, status);
       if (checkSent("redirect")) return;
 
-      const headers = cloneHeaders(_headers);
-      setBufferedHeader(headers, "Location", url);
-      const sendState = beginResponseSend(res, {
-        kind: "redirect",
-        data: url,
-        status,
-        headers,
-        wrapped: false,
-        requestId: getRequestId(),
-      });
-      _status = sendState.status;
-      replaceHeaders(_headers, sendState.headers);
-      setBufferedHeader(_headers, "Content-Length", "0");
-      reply.status(_status);
-      applyHeaders();
-      reply.send();
-      finishResponseSend(res, sendState);
+      try {
+        const headers = cloneHeaders(_headers);
+        setBufferedHeader(headers, "Location", prepared.location);
+        const sendState = beginResponseSend(res, {
+          kind: "redirect",
+          data: prepared.location,
+          status: prepared.status,
+          headers,
+          wrapped: false,
+          requestId: getRequestId(),
+        });
+        _status = sendState.status;
+        replaceHeaders(_headers, sendState.headers);
+        setBufferedHeader(_headers, "Content-Length", "0");
+        queuePending({ status: _status, sendState });
+      } catch (error) {
+        _sent = false;
+        _pending = null;
+        throw error;
+      }
     },
 
     /**
@@ -484,6 +560,10 @@ export function createVextResponse(
       return _sent;
     },
   };
+
+  if (closeToken) {
+    res._closeToken = closeToken;
+  }
 
   return res;
 }

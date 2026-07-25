@@ -8,6 +8,11 @@ import {
   assertBodySize,
   createPayloadTooLargeError,
 } from "../../lib/middlewares/body-parser.js";
+import { parseQueryString } from "../../lib/query.js";
+import {
+  addRequestCloseHandler,
+  fireRequestCloseHandlers,
+} from "../../lib/request-close.js";
 
 /**
  * HonoContext → VextRequest 转换
@@ -38,7 +43,6 @@ import {
  */
 export function createVextRequest(c: Context, app: VextApp): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
-  const closeHandlers: Array<() => void> = [];
   const publicUrl = parsePublicUrl(c.req.url);
 
   // ── 懒解析缓存 ──────────────────────────────────────────
@@ -104,12 +108,8 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
    */
   function parseQuery(): Record<string, string> {
     if (_queryCache !== undefined) return _queryCache;
-    const searchParams = new URLSearchParams(publicUrl.queryString);
-    const result: Record<string, string> = {};
-    for (const [key, value] of searchParams) {
-      result[key] = value;
-    }
-    _queryCache = result;
+    // First-wins multi-value semantics — keep adapter parity.
+    _queryCache = parseQueryString(publicUrl.queryString);
     return _queryCache;
   }
 
@@ -190,7 +190,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
 
     // ── 生命周期 ────────────────────────────────────────
     onClose(handler: () => void) {
-      closeHandlers.push(handler);
+      addRequestCloseHandler(req, handler);
     },
 
     // ── 校验数据 ────────────────────────────────────────
@@ -334,32 +334,37 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     enumerable: true,
   });
 
-  // ── 请求结束时执行 onClose hooks ─────────────────────────
-  // 通过 AbortSignal 监听请求中断（客户端断开连接）
-  // 内存安全：执行后清空 handlers 数组，防止闭包泄漏
+  // Host close/abort + finishResponseSend both fire exactly-once shared handlers.
+  // Prefer Node IncomingMessage 'close' when the Node bridge provides
+  // env.incoming (fires on both normal completion and client abort).
+  // Fall back to AbortSignal for pure Web Request environments.
   try {
-    const signal = c.req.raw.signal;
-    if (signal) {
-      const onAbort = () => {
-        for (const h of closeHandlers) {
-          try {
-            h();
-          } catch {
-            // onClose handler 异常不应影响其他 handler
-          }
+    const env = c.env as
+      | { incoming?: { on?: (event: string, cb: () => void) => void } }
+      | undefined;
+    const incoming = env?.incoming;
+    if (incoming && typeof incoming.on === "function") {
+      incoming.on("close", () => {
+        fireRequestCloseHandlers(req);
+      });
+    } else {
+      const signal = c.req.raw.signal;
+      if (signal) {
+        if (signal.aborted) {
+          fireRequestCloseHandlers(req);
+        } else {
+          signal.addEventListener(
+            "abort",
+            () => {
+              fireRequestCloseHandlers(req);
+            },
+            { once: true },
+          );
         }
-        closeHandlers.length = 0;
-      };
-
-      if (signal.aborted) {
-        // 信号已触发，立即执行
-        onAbort();
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
       }
     }
   } catch {
-    // 某些环境下 signal 可能不可用，静默忽略
+    // 某些环境下 close/abort 监听可能不可用，静默忽略
   }
 
   return req;

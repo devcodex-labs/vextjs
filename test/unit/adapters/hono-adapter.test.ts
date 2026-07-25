@@ -8,6 +8,10 @@ import type { VextApp, VextConfig } from "../../../src/types/app.js";
 import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
 import { DEFAULT_CONFIG } from "../../../src/lib/app.js";
+import {
+  createMemorySessionStore,
+  session,
+} from "../../../src/lib/session.js";
 import http from "node:http";
 
 // ── 测试辅助 ─────────────────────────────────────────────────
@@ -404,6 +408,63 @@ describe("Hono Adapter — VextAdapter 接口合规性", () => {
             value.includes("Expires=Thu, 01 Jan 1970 00:00:00 GMT"),
         ),
       ).toBe(true);
+    });
+
+    it("Session auto-commit 与业务 cookie 并发写入时保留全部 Set-Cookie", async () => {
+      const store = createMemorySessionStore();
+      adapter.registerMiddleware(session({ store, ttl: 60 }));
+      adapter.registerRoute("GET", "/session-and-cookies", [
+        async (req, res) => {
+          req.session!.userId = "u1";
+          res.cookie("theme", "dark", { path: "/", httpOnly: true });
+          res.cookie("partition", "yes", {
+            path: "/",
+            secure: true,
+            sameSite: "none",
+            partitioned: true,
+          });
+          res.json({
+            ok: true,
+            sessionId: req.session!.id,
+            theme: req.cookie("theme"),
+          });
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/session-and-cookies",
+        headers: { cookie: "theme=dark; theme=light" },
+      });
+      const setCookies = response.headers["set-cookie"];
+      const body = JSON.parse(response.body) as {
+        ok: boolean;
+        sessionId: string;
+        theme: string;
+      };
+
+      expect(response.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.theme).toBe("dark");
+      expect(Array.isArray(setCookies)).toBe(true);
+      const cookies = setCookies as string[];
+      expect(cookies).toHaveLength(3);
+      expect(cookies.some((value) => value.startsWith("theme=dark;"))).toBe(
+        true,
+      );
+      expect(
+        cookies.some(
+          (value) =>
+            value.startsWith("partition=yes;") && value.includes("Partitioned"),
+        ),
+      ).toBe(true);
+      expect(
+        cookies.some((value) =>
+          value.startsWith(`vext.sid=${body.sessionId};`),
+        ),
+      ).toBe(true);
+      expect(await store.get(body.sessionId)).toEqual({ userId: "u1" });
     });
 
     it("redirect() 应返回正确的重定向响应", async () => {

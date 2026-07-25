@@ -523,7 +523,12 @@ export async function createTestApp(
     ),
   );
 
-  // ── 8. 构造 TestRequest ──────────────────────────────
+  // ── 8. onReady 生命周期 ──────────────────────────────
+  // Match bootstrap: plugins/services that register app.onReady must run
+  // before the first test request (B08 env lifecycle / ready hooks).
+  await internals.runReady();
+
+  // ── 9. 构造 TestRequest ──────────────────────────────
   //
   // 获取 adapter 的 buildHandler() 构建请求处理函数，
   // 通过内存中的 mock IncomingMessage / ServerResponse 模拟 HTTP 请求，

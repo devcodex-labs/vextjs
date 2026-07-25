@@ -306,7 +306,7 @@ export function createKoaAdapter(
           routeBodyParser;
       }
       req.route = entry.pattern;
-      const res = createVextResponse(ctx, () => req.requestId);
+      const res = createVextResponse(ctx, () => req.requestId, req);
       res._hooks = vextApp.hooks;
 
       const runChain = async () => {
@@ -334,6 +334,9 @@ export function createKoaAdapter(
           } else {
             throw err;
           }
+        } finally {
+          // Flush deferred body so post-next setHeader/cookie still apply.
+          res._flush?.();
         }
       };
 
@@ -365,9 +368,10 @@ export function createKoaAdapter(
               (req.headers[headerName] as string) || crypto.randomUUID();
           }
 
-          const res = createVextResponse(ctx, () => req.requestId);
+          const res = createVextResponse(ctx, () => req.requestId, req);
           res._hooks = vextApp.hooks;
           errorHandler(err, req, res);
+          res._flush?.();
           ctx.respond = false;
         } catch {
           sendDefaultError(ctx);
@@ -389,12 +393,16 @@ export function createKoaAdapter(
           (req.headers[headerName] as string) || crypto.randomUUID();
       }
 
-      const res = createVextResponse(ctx, () => req.requestId);
+      const res = createVextResponse(ctx, () => req.requestId, req);
       res._hooks = vextApp.hooks;
 
       const runNotFound = async () => {
         const noop = async (): Promise<void> => {};
-        await notFoundHandler!(req, res, noop);
+        try {
+          await notFoundHandler!(req, res, noop);
+        } finally {
+          res._flush?.();
+        }
       };
 
       const completion = Promise.resolve().then(() =>

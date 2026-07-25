@@ -79,11 +79,14 @@ function createMockRes(): VextResponse & {
     _statusVal: 200,
     _onSend: undefined,
     json(data: unknown, status?: number) {
-      // 模拟 _onSend 调用（在 adapter 中的行为）
+      // Mirror adapter order: _onBeforeSend (session) then _onSend (route-cache).
       const finalStatus = status ?? res._statusVal;
+      const headers = { ...res._headers };
+      res._onBeforeSend?.("json", data, finalStatus, headers);
       if (res._onSend) {
-        res._onSend(data, finalStatus, { ...res._headers });
+        res._onSend(data, finalStatus, headers);
       }
+      Object.assign(res._headers, headers);
       res._jsonCalls.push({ data, status: finalStatus });
     },
     rawJson(data: unknown, status?: number) {
@@ -354,6 +357,44 @@ describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
     });
     expect(firstRes._headers["Cache-Control"]).toBe("no-store");
     expect(secondRes._headers["Cache-Control"]).toBe("no-store");
+  });
+
+  it("Session 在 _onBeforeSend 注入的 Set-Cookie 也不写入缓存", async () => {
+    const { middleware } = createMiddleware();
+    const req = createMockReq();
+    const firstRes = createMockRes();
+    const secondRes = createMockRes();
+    let count = 0;
+
+    const attachSessionCookie = (res: VextResponse) => {
+      res._onBeforeSend = (_kind, _data, _status, headers) => {
+        const cookie = `vext.sid=s${++count}`;
+        const current = headers["Set-Cookie"];
+        headers["Set-Cookie"] = Array.isArray(current)
+          ? [...current, cookie]
+          : current
+            ? [String(current), cookie]
+            : cookie;
+      };
+    };
+
+    await middleware(req, firstRes, async () => {
+      attachSessionCookie(firstRes);
+      firstRes.json({ value: 1 }, 200);
+    });
+    await middleware(req, secondRes, async () => {
+      attachSessionCookie(secondRes);
+      secondRes.json({ value: 2 }, 200);
+    });
+
+    expect(count).toBe(2);
+    expect(secondRes._jsonCalls[0]).toEqual({
+      data: { value: 2 },
+      status: 200,
+    });
+    expect(firstRes._headers["Cache-Control"]).toBe("no-store");
+    expect(secondRes._headers["Cache-Control"]).toBe("no-store");
+    expect(String(firstRes._headers["Set-Cookie"])).toContain("vext.sid=");
   });
 
   it("使用毫秒 TTL，并把 Cache-Control max-age 转成秒", async () => {

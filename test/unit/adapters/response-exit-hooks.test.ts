@@ -125,6 +125,8 @@ describe.each(adapters)(
 
         if (kind === "redirect") {
           res.redirect("/next", 307);
+          // Terminal redirects are deferred until adapter `_flush`.
+          res._flush?.();
           expect(status()).toBe(307);
           expect(headers.location).toBe("/next");
         } else {
@@ -190,9 +192,11 @@ describe.each(adapters)(
       expect(res._isSent()).toBe(false);
 
       res.json({ ok: true });
-
+      // `_sent` flips immediately; host write happens on `_flush`.
       expect(res.headersSent).toBe(true);
       expect(res._isSent()).toBe(true);
+
+      res._flush?.();
       expect(headers["content-type"]).toBe(
         "application/json; charset=utf-8",
       );
@@ -209,8 +213,9 @@ describe.each(adapters)(
       expect(res._isSent()).toBe(false);
 
       res.rawJson({ ok: true });
-
       expect(res.headersSent).toBe(true);
+
+      res._flush?.();
       expect(headers["content-type"]).toBe(
         "application/json; charset=utf-8",
       );
