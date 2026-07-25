@@ -37,31 +37,39 @@ export function setHeader(
   headers: VextHeaders,
   name: string,
   value: VextHeaderValue,
-): void {
-  assertValidHeader(name, value);
+): boolean {
+  // Invalid header tokens/values are ignored (not thrown) so handlers can still
+  // complete a normal response. Cookie APIs keep strict throw semantics.
+  if (!isValidHeader(name, value)) {
+    return false;
+  }
   const existing = findHeaderName(headers, name);
   if (existing && existing !== name) {
     delete headers[existing];
   }
   headers[name] = Array.isArray(value) ? [...value] : String(value);
+  return true;
 }
 
 export function appendHeader(
   headers: VextHeaders,
   name: string,
   value: string,
-): void {
-  assertValidHeader(name, value);
+): boolean {
+  if (!isValidHeader(name, value)) {
+    return false;
+  }
   const existing = findHeaderName(headers, name);
   if (!existing) {
     headers[name] = value;
-    return;
+    return true;
   }
 
   const current = headers[existing];
   headers[existing] = Array.isArray(current)
     ? [...current, value]
     : [String(current), value];
+  return true;
 }
 
 export function mergeHeaders(
@@ -94,10 +102,26 @@ export function cloneHeaders(headers: VextHeaders): VextHeaders {
   return cloned;
 }
 
-function assertValidHeader(name: string, value: VextHeaderValue): void {
-  validateHeaderName(name);
-  const values = Array.isArray(value) ? value : [value];
-  for (const item of values) {
-    validateHeaderValue(name, String(item));
+function isValidHeader(name: string, value: VextHeaderValue): boolean {
+  try {
+    validateHeaderName(name);
+    const values = Array.isArray(value) ? value : [value];
+    for (const item of values) {
+      validateHeaderValue(name, String(item));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function assertValidHeader(name: string, value: VextHeaderValue): void {
+  if (!isValidHeader(name, value)) {
+    // Keep a throw path for callers that need fail-fast (e.g. cookie serialize).
+    validateHeaderName(name);
+    const values = Array.isArray(value) ? value : [value];
+    for (const item of values) {
+      validateHeaderValue(name, String(item));
+    }
   }
 }
