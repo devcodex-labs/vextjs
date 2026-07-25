@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -200,7 +200,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       // 使用 hono.on() 以支持所有 HTTP 方法（包括 HEAD / OPTIONS）
       // hono.on() 接受方法字符串数组和路径
       const upperMethod = method.toUpperCase();
-      const honoPath = toHonoRoutePath(path);
+      const honoPaths = toHonoRoutePaths(path);
 
       // 🆕 性能优化：延迟预组装中间件链
       //
@@ -222,7 +222,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         explicitHeadRouter.add("HEAD", path, storeId);
       }
 
-      hono.on(upperMethod, honoPath, async (c) => {
+      const routeHandler = async (c: Context) => {
         const req = createHonoRequest(c, app);
         (req as { _routeOptions?: RouteOptions })._routeOptions = routeOptions;
         const routeBodyParser = resolveRouteBodyParserConfig(routeOptions);
@@ -294,7 +294,11 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         } else {
           return runChain();
         }
-      });
+      };
+
+      for (const honoPath of honoPaths) {
+        hono.on(upperMethod, honoPath, routeHandler);
+      }
     },
 
     registerErrorHandler(handler: VextErrorMiddleware): void {
@@ -638,6 +642,14 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       queryString: qIdx === -1 ? "" : url.slice(qIdx + 1),
     };
   }
+}
+
+function toHonoRoutePaths(path: string): string[] {
+  const honoPath = toHonoRoutePath(path);
+  if (path === "/" || path.endsWith("/") || /\/\*[A-Za-z_]\w*$/u.test(path)) {
+    return [honoPath];
+  }
+  return [honoPath, `${honoPath}/`];
 }
 
 function toHonoRoutePath(path: string): string {

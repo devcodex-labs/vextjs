@@ -284,6 +284,76 @@ makeRouteInjectionSuite("Express", (app) => createExpressAdapter({}, app));
 
 makeRouteInjectionSuite("Koa", (app) => createKoaAdapter({}, app));
 
+describe("Hono Adapter — request URL parity", () => {
+  let adapter: VextAdapter;
+  let handle: VextServerHandle | null = null;
+
+  beforeEach(() => {
+    adapter = createHonoAdapter(createMockApp());
+  });
+
+  afterEach(async () => {
+    if (handle) {
+      await handle.close().catch(() => {});
+      handle = null;
+    }
+  });
+
+  it("exposes relative req.url, encoded req.path, and trailing-slash route parity", async () => {
+    adapter.registerRoute("GET", "/routing/:id", [
+      async (req: VextRequest, res: VextResponse) => {
+        res.json({
+          params: req.params,
+          path: req.path,
+          route: req.route,
+          url: req.url,
+        });
+      },
+    ]);
+
+    handle = await adapter.listen(0, "127.0.0.1");
+
+    const [plain, encoded, trailing] = await Promise.all([
+      httpRequest({
+        port: handle.port,
+        path: "/routing/plain?x=1",
+      }),
+      httpRequest({
+        port: handle.port,
+        path: "/routing/%E4%B8%AD?encoded=1",
+      }),
+      httpRequest({
+        port: handle.port,
+        path: "/routing/trailing/",
+      }),
+    ]);
+
+    expect(plain.status).toBe(200);
+    expect(JSON.parse(plain.body)).toEqual({
+      params: { id: "plain" },
+      path: "/routing/plain",
+      route: "/routing/:id",
+      url: "/routing/plain?x=1",
+    });
+
+    expect(encoded.status).toBe(200);
+    expect(JSON.parse(encoded.body)).toEqual({
+      params: { id: "中" },
+      path: "/routing/%E4%B8%AD",
+      route: "/routing/:id",
+      url: "/routing/%E4%B8%AD?encoded=1",
+    });
+
+    expect(trailing.status).toBe(200);
+    expect(JSON.parse(trailing.body)).toEqual({
+      params: { id: "trailing" },
+      path: "/routing/trailing/",
+      route: "/routing/:id",
+      url: "/routing/trailing/",
+    });
+  });
+});
+
 // ── 多路由注册验证（Native 代表性测试）───────────────────────
 
 describe("多路由注册 — 不同路由模板互不干扰", () => {

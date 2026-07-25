@@ -39,6 +39,7 @@ import {
 export function createVextRequest(c: Context, app: VextApp): VextRequest {
   const trustProxy = app.config.trustProxy ?? false;
   const closeHandlers: Array<() => void> = [];
+  const publicUrl = parsePublicUrl(c.req.url);
 
   // ── 懒解析缓存 ──────────────────────────────────────────
   let _queryCache: Record<string, string> | undefined;
@@ -103,13 +104,12 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
    */
   function parseQuery(): Record<string, string> {
     if (_queryCache !== undefined) return _queryCache;
-    try {
-      const url = new URL(c.req.url);
-      _queryCache = Object.fromEntries(url.searchParams);
-    } catch {
-      // URL 解析失败时降级为空对象（防御性处理）
-      _queryCache = {};
+    const searchParams = new URLSearchParams(publicUrl.queryString);
+    const result: Record<string, string> = {};
+    for (const [key, value] of searchParams) {
+      result[key] = value;
     }
+    _queryCache = result;
     return _queryCache;
   }
 
@@ -178,8 +178,8 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     body: undefined, // body-parser 中间件负责填充
     auth: createAnonymousAuthContext(),
     method: c.req.method.toUpperCase(),
-    url: c.req.url,
-    path: c.req.path,
+    url: publicUrl.rawUrl,
+    path: publicUrl.path,
     route: "", // registerRoute handler 覆写为真实路由模板（F-01）
 
     // ── 元信息 ──────────────────────────────────────────
@@ -363,6 +363,28 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   }
 
   return req;
+}
+
+function parsePublicUrl(rawUrl: string): {
+  rawUrl: string;
+  path: string;
+  queryString: string;
+} {
+  try {
+    const url = new URL(rawUrl, "http://localhost");
+    return {
+      rawUrl: `${url.pathname}${url.search}`,
+      path: url.pathname,
+      queryString: url.search.startsWith("?") ? url.search.slice(1) : "",
+    };
+  } catch {
+    const queryIndex = rawUrl.indexOf("?");
+    return {
+      rawUrl,
+      path: queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex),
+      queryString: queryIndex === -1 ? "" : rawUrl.slice(queryIndex + 1),
+    };
+  }
 }
 
 /**
