@@ -69,6 +69,17 @@ function factory() {
     res.setHeader("x-head-route", "yes");
     res.json({ ok: true });
   });
+  collector.get("/raw-cache", {}, async (req, res) => {
+    const firstBuffer = await req._getRawBodyBuffer();
+    const rawText = await req._getRawBody();
+    const secondBuffer = await req._getRawBodyBuffer();
+    res.json({
+      hex: secondBuffer.toString("hex"),
+      length: secondBuffer.byteLength,
+      same: firstBuffer === secondBuffer,
+      text: rawText,
+    });
+  });
 }
 
 function normalizePath(prefix, subPath) {
@@ -250,6 +261,31 @@ describe("createTestApp runtime contract parity", () => {
       expect(get.status).toBe(200);
       expect(get.body.data).toEqual({ ok: true });
       expect(get.text).toContain('"ok":true');
+    } finally {
+      await t.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Fastify empty raw body buffer calls cache-stable", async () => {
+    const rootDir = await createFixture();
+    const t = await createTestApp({
+      services: false,
+      rootDir,
+      config: { adapter: "fastify" },
+    });
+
+    try {
+      const response = await t.request.get("/runtime/raw-cache");
+
+      expect(response.status).toBe(200);
+      expect(response.header("content-type")).toContain("application/json");
+      expect(response.body.data).toEqual({
+        hex: "",
+        length: 0,
+        same: true,
+        text: "",
+      });
     } finally {
       await t.close();
       await rm(rootDir, { recursive: true, force: true });

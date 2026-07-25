@@ -64,6 +64,7 @@ export function createVextRequest(
   // 使用缓存确保多次调用返回相同结果（虽然 Fastify 的 request.body
   // 本身是稳定引用，但 Buffer.toString 每次都会创建新字符串，缓存更高效）。
   //
+  let _rawBufferCache: Buffer | undefined;
   let _rawBodyCache: string | undefined;
   let _cookiesCache: VextCookieJar | undefined;
 
@@ -79,42 +80,39 @@ export function createVextRequest(
       return Promise.resolve(_rawBodyCache);
     }
 
-    // Fastify content-type parser 已将 body 解析为 Buffer
-    // 对于 GET/HEAD 等无 body 方法，request.body 为 undefined
-    const body = request.body;
-
-    if (body === undefined || body === null) {
-      _rawBodyCache = "";
-      return Promise.resolve(_rawBodyCache);
-    }
-
-    if (Buffer.isBuffer(body)) {
-      assertBodySize(body.byteLength, maxBytes);
+    return getRawBodyBuffer(maxBytes).then((body) => {
       _rawBodyCache = body.toString("utf-8");
-      return Promise.resolve(_rawBodyCache);
-    }
-
-    // 兜底：如果 body 已经是 string（理论上不会发生，但防御性编码）
-    if (typeof body === "string") {
-      assertBodySize(Buffer.byteLength(body, "utf-8"), maxBytes);
-      _rawBodyCache = body;
-      return Promise.resolve(_rawBodyCache);
-    }
-
-    // 其他类型（不应发生）
-    _rawBodyCache = "";
-    return Promise.resolve(_rawBodyCache);
+      return _rawBodyCache;
+    });
   }
 
   function getRawBodyBuffer(maxBytes?: number): Promise<Buffer> {
+    if (_rawBufferCache !== undefined) {
+      assertBodySize(_rawBufferCache.byteLength, maxBytes);
+      return Promise.resolve(_rawBufferCache);
+    }
+
     const body = request.body;
-    if (body === undefined || body === null)
-      return Promise.resolve(Buffer.alloc(0));
+    if (body === undefined || body === null) {
+      _rawBufferCache = Buffer.alloc(0);
+      return Promise.resolve(_rawBufferCache);
+    }
+
     if (Buffer.isBuffer(body)) {
       assertBodySize(body.byteLength, maxBytes);
-      return Promise.resolve(body);
+      _rawBufferCache = body;
+      return Promise.resolve(_rawBufferCache);
     }
-    return Promise.resolve(Buffer.alloc(0));
+
+    if (typeof body === "string") {
+      const rawBuffer = Buffer.from(body, "utf-8");
+      assertBodySize(rawBuffer.byteLength, maxBytes);
+      _rawBufferCache = rawBuffer;
+      return Promise.resolve(_rawBufferCache);
+    }
+
+    _rawBufferCache = Buffer.alloc(0);
+    return Promise.resolve(_rawBufferCache);
   }
 
   // ── 解析 IP 和 Protocol ──────────────────────────────────
