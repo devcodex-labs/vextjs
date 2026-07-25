@@ -126,9 +126,28 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   function parseHeaders(): Record<string, string | undefined> {
     if (_headersCache !== undefined) return _headersCache;
     const record: Record<string, string | undefined> = {};
-    c.req.raw.headers.forEach((value, key) => {
-      record[key] = value;
-    });
+    // Prefer Node IncomingMessage headers when the Node bridge is present so
+    // empty values (e.g. x-probe: "") survive. Web Headers often drops them.
+    const env = c.env as
+      | { incoming?: { headers?: Record<string, string | string[] | undefined> } }
+      | undefined;
+    const nodeHeaders = env?.incoming?.headers;
+    if (nodeHeaders && typeof nodeHeaders === "object") {
+      for (const [key, value] of Object.entries(nodeHeaders)) {
+        const lower = key.toLowerCase();
+        if (Array.isArray(value)) {
+          record[lower] = value[0] ?? "";
+        } else if (value === undefined) {
+          record[lower] = undefined;
+        } else {
+          record[lower] = value;
+        }
+      }
+    } else {
+      c.req.raw.headers.forEach((value, key) => {
+        record[key] = value;
+      });
+    }
     _headersCache = record;
     return _headersCache;
   }

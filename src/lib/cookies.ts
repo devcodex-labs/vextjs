@@ -27,12 +27,16 @@ const DEFAULT_DECODE = (value: string): string => {
 
 const DEFAULT_ENCODE = (value: string): string => encodeURIComponent(value);
 
+const RESERVED_COOKIE_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+
 export function parseCookies(
   header: string | string[] | undefined,
   options: CookieParseOptions = {},
 ): VextCookieJar {
   const raw = Array.isArray(header) ? header.join("; ") : header;
-  const cookies: Record<string, string> = {};
+  // Null-prototype jar keeps reserved names from becoming prototype pollution
+  // and keeps Object.prototype accessors off the public cookie surface.
+  const cookies: Record<string, string> = Object.create(null);
   if (!raw) return Object.freeze(cookies);
 
   const decode = options.decode ?? DEFAULT_DECODE;
@@ -44,7 +48,13 @@ export function parseCookies(
     if (eq < 0) continue;
 
     const name = trimmed.slice(0, eq).trim();
-    if (!name || Object.prototype.hasOwnProperty.call(cookies, name)) {
+    // Drop reserved names entirely so JSON/round-trip consumers never observe
+    // a polluted or ambiguous `__proto__` cookie field.
+    if (
+      !name ||
+      RESERVED_COOKIE_NAMES.has(name) ||
+      Object.prototype.hasOwnProperty.call(cookies, name)
+    ) {
       continue;
     }
 
