@@ -4,6 +4,7 @@ import {
   normalizeRedirectStatus,
   prepareRedirect,
 } from "../../../src/lib/redirect.js";
+import { HttpError } from "../../../src/types/errors.js";
 
 describe("normalizeRedirectStatus", () => {
   it.each([301, 302, 303, 307, 308] as const)(
@@ -58,6 +59,7 @@ describe("normalizeRedirectLocation", () => {
   });
 
   it("rejects CR/LF/NUL instead of hanging or encoding them away", () => {
+    expect(() => normalizeRedirectLocation("/a\r\nb")).toThrow(HttpError);
     expect(() => normalizeRedirectLocation("/a\r\nb")).toThrow(
       /must not contain CR, LF, or NUL/,
     );
@@ -70,6 +72,31 @@ describe("normalizeRedirectLocation", () => {
     expect(() => normalizeRedirectLocation("x\u0000y")).toThrow(
       /must not contain CR, LF, or NUL/,
     );
+    try {
+      normalizeRedirectLocation("/a\r\nb");
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpError);
+      expect((error as HttpError).status).toBe(400);
+    }
+  });
+
+  it("rejects javascript/data/vbscript/file schemes as open-redirect hazards", () => {
+    for (const location of [
+      "javascript:alert(1)",
+      "JavaScript:alert(1)",
+      " data:text/html,hi",
+      "vbscript:msgbox(1)",
+      "file:///etc/passwd",
+    ]) {
+      expect(() => normalizeRedirectLocation(location)).toThrow(HttpError);
+      try {
+        normalizeRedirectLocation(location);
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpError);
+        expect((error as HttpError).status).toBe(400);
+        expect((error as HttpError).message).toMatch(/scheme is not allowed/);
+      }
+    }
   });
 
   it("rejects non-string locations", () => {

@@ -3,6 +3,7 @@
  *
  * Guarantees:
  *   - Location is free of CR/LF/NUL (header-injection boundary)
+ *   - Dangerous URI schemes (javascript/data/vbscript/file) are rejected
  *   - Non-ASCII / non-header-safe bytes are percent-encoded so
  *     Node's setHeader / validateHeaderValue never throws mid-send
  *   - Already-percent-encoded sequences and ASCII URI structure are preserved
@@ -17,6 +18,14 @@ const ALLOWED_REDIRECT_STATUSES = new Set<number>([301, 302, 303, 307, 308]);
 
 /** CR, LF, or NUL — must be rejected, not percent-encoded away. */
 const UNSAFE_LOCATION_CHARS = /[\r\n\u0000]/;
+
+/**
+ * Open-redirect / XSS schemes that must never be emitted as Location.
+ * Match scheme at the start after optional leading whitespace; allow
+ * optional whitespace after the colon (javascript:alert(1)).
+ */
+const DANGEROUS_LOCATION_SCHEME =
+  /^\s*(?:javascript|data|vbscript|file)\s*:/i;
 
 /**
  * Normalize a redirect status code.
@@ -61,12 +70,13 @@ function encodeLocationHeaderValue(url: string): string {
 /**
  * Normalize a redirect Location value.
  *
- * - Rejects CR/LF/NUL with a TypeError (bounded failure before send)
+ * - Rejects CR/LF/NUL with HttpError 400 (bounded failure before send)
+ * - Rejects javascript/data/vbscript/file schemes with HttpError 400
  * - Percent-encodes non-ASCII so the value is a valid HTTP header token
  *   for Node's validateHeaderValue / setHeader
  * - Leaves already-encoded sequences and URI-reserved ASCII intact
  *
- * @throws {TypeError} when location is not a string or contains CR/LF/NUL
+ * @throws {HttpError} when location is unsafe or not a string
  */
 export function normalizeRedirectLocation(url: string): string {
   if (typeof url !== "string") {
@@ -82,6 +92,14 @@ export function normalizeRedirectLocation(url: string): string {
     throw new HttpError(
       400,
       "redirect location must not contain CR, LF, or NUL characters",
+      400,
+    );
+  }
+
+  if (DANGEROUS_LOCATION_SCHEME.test(url)) {
+    throw new HttpError(
+      400,
+      "redirect location scheme is not allowed",
       400,
     );
   }

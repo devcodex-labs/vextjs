@@ -8,6 +8,7 @@ import type { VextApp, VextConfig } from "../../../src/types/app.js";
 import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
 import { DEFAULT_CONFIG } from "../../../src/lib/app.js";
+import { HttpError } from "../../../src/types/errors.js";
 import http from "node:http";
 
 // ── 测试辅助 ─────────────────────────────────────────────────
@@ -1153,7 +1154,8 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
             res.redirect("/a\r\nSet-Cookie: x=1");
           } catch (error) {
             thrown = error;
-            res.rawJson({ ok: false }, 500);
+            const status = error instanceof HttpError ? error.status : 500;
+            res.rawJson({ ok: false, message: (error as Error).message }, status);
           }
         },
       ]);
@@ -1186,8 +1188,9 @@ describe("Native Adapter — VextAdapter 接口合规性", () => {
         req.end();
       });
 
-      expect(thrown).toBeInstanceOf(TypeError);
-      expect(response.status).toBe(500);
+      expect(thrown).toBeInstanceOf(HttpError);
+      expect((thrown as HttpError).status).toBe(400);
+      expect(response.status).toBe(400);
       expect(response.body).toContain("ok");
     });
 
