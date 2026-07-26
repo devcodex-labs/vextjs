@@ -170,6 +170,25 @@ export type {
   LogLevelName,
 } from "./lib/logger/types.js";
 
+// 启动剖析（LOG-008 / PERF-07-W10 public surface）
+export {
+  createStartupProfiler,
+  createStartupProfilerFromEnv,
+  mergeStartupProfiles,
+  formatStartupSummary,
+  formatStartupProfile,
+  writeStartupProfileJson,
+} from "./lib/startup-profiler.js";
+export type {
+  StartupProfiler,
+  StartupProfilerOptions,
+  StartupProfileEvent,
+  StartupProfileSnapshot,
+  StartupProfileEventOptions,
+  StartupProfileMergeOptions,
+  StartupProfileFormatOptions,
+} from "./lib/startup-profiler.js";
+
 // 默认错误抛出（I18nError 联动）
 export { createDefaultThrow } from "./lib/default-throw.js";
 export type { VextThrowFn, VextThrowOptions } from "./lib/default-throw.js";
