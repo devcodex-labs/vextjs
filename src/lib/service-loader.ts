@@ -238,7 +238,12 @@ function setNestedKey(
     const key = keys[i]!;
     if (cur[key] === undefined) {
       cur[key] = {};
-    } else if (typeof cur[key] !== "object" || cur[key] === null) {
+    } else if (
+      typeof cur[key] !== "object" ||
+      cur[key] === null ||
+      // Class instances are objects; only plain namespace objects may nest further.
+      Object.getPrototypeOf(cur[key]) !== Object.prototype
+    ) {
       // 中间段已经被一个 service 实例占用
       // 例如：services/payment.ts (→ services.payment = instance)
       //       services/payment/stripe.ts (→ services.payment.stripe = ?)
