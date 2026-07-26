@@ -2,6 +2,7 @@
 
 ## 2026-07-25
 
+- **Database pool() fail-fast (B15-F03)** `app.db.pool(name)` validates the pool through monSQLize before creating the accessor, so missing pools throw immediately with `POOL_NOT_FOUND` (`err.available`) or `NO_POOL_MANAGER` instead of returning a lazy accessor that fails only on later model/collection/use calls. zh/en database docs match this timing.
 - **Onion deferred response flush (B07-F09)** Buffered body exits (`json` / `rawJson` / `text` / HTML / empty redirects) on native and express now stage the payload until the middleware chain unwinds, so post-`await next()` `setHeader` / `cookie` mutations (documented onion after-logic) appear on the final response. Adapters call `_flush()` after `executeChain` and notFound/error paths. Streaming remains eager. Fastify/Koa/Hono deferred flush is residual.
 - **RateLimit-Reset delay-seconds (B07-F07 MID-009/MID-015)** `RateLimit-Reset` now emits IETF delay-seconds remaining until window reset instead of an absolute Unix timestamp, keeping link/packed consumer semantic parity stable. `Retry-After` continues to use the same remaining-seconds basis.
 - **Logger setLogger child bindings** Partial `app.setLogger()` wrappers now re-bind against each child logger so methods that forward to `original` preserve child bindings (service/component/etc.) instead of writing through the parent core. Root package exports also include `createMemoryLogSink`, `createStdoutSink`, `normalizeVextLogger`, `getLoggerLifecycle`, and related logger types for custom sink / wrapper testing.

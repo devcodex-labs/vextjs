@@ -1959,7 +1959,9 @@ describe("createConnection", () => {
   it("pool() throws immediately when the pool is missing", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
-    const err: any = new Error("Pool 'missing' not found");
+    const err: any = new Error(
+      "Pool 'missing' not found. Available pools: [cn, billing]",
+    );
     err.code = "POOL_NOT_FOUND";
     err.available = ["cn", "billing"];
     mock.mockPool.mockImplementation(() => {
@@ -1968,7 +1970,17 @@ describe("createConnection", () => {
 
     const conn = await createConnection(mock.instance as any, app);
 
-    expect(() => conn.pool("missing")).toThrow("Pool 'missing' not found");
+    let thrown: any;
+    try {
+      conn.pool("missing");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    expect(thrown.message).toContain("Pool 'missing' not found");
+    expect(thrown.code).toBe("POOL_NOT_FOUND");
+    expect(thrown.available).toEqual(["cn", "billing"]);
+    expect(mock.mockPool).toHaveBeenCalledWith("missing");
     expect(mock.mockScopedCollection).not.toHaveBeenCalled();
     expect(mock.mockScopedModel).not.toHaveBeenCalled();
   });
@@ -1986,7 +1998,41 @@ describe("createConnection", () => {
 
     const conn = await createConnection(mock.instance as any, app);
 
-    expect(() => conn.pool("cn")).toThrow("No pool manager configured");
+    let thrown: any;
+    try {
+      conn.pool("cn");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    expect(thrown.message).toContain("No pool manager configured");
+    expect(thrown.code).toBe("NO_POOL_MANAGER");
+    expect(mock.mockPool).toHaveBeenCalledWith("cn");
+    expect(mock.mockScopedCollection).not.toHaveBeenCalled();
+    expect(mock.mockScopedModel).not.toHaveBeenCalled();
+  });
+
+  it("pool() does not expose accessor methods when validation fails", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+    mock.mockPool.mockImplementation(() => {
+      const err: any = new Error("Pool 'typo' not found");
+      err.code = "POOL_NOT_FOUND";
+      err.available = ["cn"];
+      throw err;
+    });
+
+    const conn = await createConnection(mock.instance as any, app);
+
+    expect(() => conn.pool("typo").collection("orders")).toThrow(
+      "Pool 'typo' not found",
+    );
+    expect(() => conn.pool("typo").model("Order")).toThrow(
+      "Pool 'typo' not found",
+    );
+    expect(() => conn.pool("typo").use("billing").collection("x")).toThrow(
+      "Pool 'typo' not found",
+    );
     expect(mock.mockScopedCollection).not.toHaveBeenCalled();
     expect(mock.mockScopedModel).not.toHaveBeenCalled();
   });

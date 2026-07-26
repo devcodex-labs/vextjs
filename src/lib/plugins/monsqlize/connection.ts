@@ -13,7 +13,7 @@
 
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
-import type { MonSQLizeConnection } from "./types.js";
+import type { MonSQLizeConnection, PoolAccessor } from "./types.js";
 
 const SOFT_DELETE_COMPAT_MARK = Symbol.for("vext.monsqlize.softDeleteCompat");
 
@@ -78,9 +78,72 @@ function applySoftDeleteCompat<T>(model: T): T {
   return model;
 }
 
+/**
+ * Fail-fast pool existence check via monSQLize's own diagnostics.
+ * Throws immediately with monSQLize codes:
+ * - NO_POOL_MANAGER when pools are not configured
+ * - POOL_NOT_FOUND (with err.available) when the named pool is missing
+ */
 function assertPoolExists(monsqlize: MonSQLize, poolName: string): void {
-  // Reuse monSQLize's pool manager diagnostics so vext matches upstream timing and error metadata.
   monsqlize.pool(poolName);
+}
+
+/**
+ * Build a pool-scoped accessor only after the pool has been validated.
+ * Validation runs before the accessor object is created so callers cannot
+ * obtain model/collection/use handles for a missing pool name.
+ */
+function createPoolAccessor(
+  monsqlize: MonSQLize,
+  poolName: string,
+): PoolAccessor {
+  assertPoolExists(monsqlize, poolName);
+
+  return {
+    model: (key: string) =>
+      applySoftDeleteCompat(monsqlize.scopedModel(key, { pool: poolName })),
+
+    collection: (name: string) =>
+      monsqlize.scopedCollection(name, { pool: poolName }),
+
+    use(dbName: string) {
+      const dbPrefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
+      const poolPrefix = poolName.charAt(0).toUpperCase() + poolName.slice(1);
+      return {
+        model: (key: string) => {
+          const tail = key.charAt(0).toUpperCase() + key.slice(1);
+          // Prefer depth-2 keys (Pool+Db+Name) for models/<pool>/<db>/<name>.ts
+          const depth2Key = poolPrefix + dbPrefix + tail;
+          // Fall back to depth-1 keys (Db+Name) for models/<db>/<name>.ts
+          const depth1Key = dbPrefix + tail;
+          try {
+            return applySoftDeleteCompat(
+              monsqlize.scopedModel(depth2Key, {
+                pool: poolName,
+                database: dbName,
+              }),
+            );
+          } catch (err) {
+            const e = err as { code?: string };
+            if (e && e.code === "MODEL_NOT_DEFINED") {
+              return applySoftDeleteCompat(
+                monsqlize.scopedModel(depth1Key, {
+                  pool: poolName,
+                  database: dbName,
+                }),
+              );
+            }
+            throw err;
+          }
+        },
+        collection: (name: string) =>
+          monsqlize.scopedCollection(name, {
+            pool: poolName,
+            database: dbName,
+          }),
+      };
+    },
+  };
 }
 
 /**
@@ -122,55 +185,9 @@ export async function createConnection(
       };
     },
 
-    // R3：新增 pool()
+    // R3：pool(name) validates immediately, then returns a scoped accessor
     pool(poolName: string) {
-      assertPoolExists(monsqlize, poolName);
-      return {
-        model: (key: string) =>
-          applySoftDeleteCompat(monsqlize.scopedModel(key, { pool: poolName })),
-
-        collection: (name: string) =>
-          monsqlize.scopedCollection(name, { pool: poolName }),
-
-        use(dbName: string) {
-          const dbPrefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
-          const poolPrefix =
-            poolName.charAt(0).toUpperCase() + poolName.slice(1);
-          return {
-            model: (key: string) => {
-              const tail = key.charAt(0).toUpperCase() + key.slice(1);
-              // 优先匹配深度-2 注册键（Pool+Db+Name），兼容 models/<pool>/<db>/<name>.ts
-              const depth2Key = poolPrefix + dbPrefix + tail;
-              // 回落到深度-1 注册键（Db+Name），兼容 models/<db>/<name>.ts
-              const depth1Key = dbPrefix + tail;
-              try {
-                return applySoftDeleteCompat(
-                  monsqlize.scopedModel(depth2Key, {
-                    pool: poolName,
-                    database: dbName,
-                  }),
-                );
-              } catch (err) {
-                const e = err as { code?: string };
-                if (e && e.code === "MODEL_NOT_DEFINED") {
-                  return applySoftDeleteCompat(
-                    monsqlize.scopedModel(depth1Key, {
-                      pool: poolName,
-                      database: dbName,
-                    }),
-                  );
-                }
-                throw err;
-              }
-            },
-            collection: (name: string) =>
-              monsqlize.scopedCollection(name, {
-                pool: poolName,
-                database: dbName,
-              }),
-          };
-        },
-      };
+      return createPoolAccessor(monsqlize, poolName);
     },
 
     // 暴露底层 MongoDB Client（事务等高级场景）

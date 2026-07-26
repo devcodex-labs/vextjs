@@ -327,7 +327,7 @@ const Order2 = app.db.pool("cn").use("billing").model("Order"); // Equivalent sh
 // Order1 and Order2 operate on the same collection (cn pool/billing library/orders collection)
 ```
 
-> ⚠️ `pool()` will immediately check whether the connection pool exists, and throw a `POOL_NOT_FOUND` error if it cannot be found (`err.available` contains the list of available pools).
+> ⚠️ `pool()` will immediately check whether the connection pool exists before returning an accessor. If no pool manager is configured, it throws `NO_POOL_MANAGER`. If the named pool cannot be found, it throws `POOL_NOT_FOUND` (`err.available` contains the list of available pools). Model / collection / use are only reachable after this check succeeds.
 
 > ℹ️ **The `dbName` in `pool().use(dbName)` will overwrite the value of `connection.database` in the Model definition**. For example, Model defines `connection.database: "billing"`, and when accessed through `pool("cn").use("archive")`, the actual query will use the `archive` database instead of `billing`.
 > If you want to use the complete key directly and override the database/connection pool, you can access the underlying API through `app.monsqlize.scopedModel(key, { pool, database })`.

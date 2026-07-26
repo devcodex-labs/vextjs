@@ -327,7 +327,7 @@ const Order2 = app.db.pool("cn").use("billing").model("Order"); // 等价短链
 // Order1 与 Order2 操作的是同一 collection（cn 池 / billing 库 / orders 集合）
 ```
 
-> ⚠️ `pool()` 会立即校验连接池是否存在，找不到时抛出 `POOL_NOT_FOUND` 错误（`err.available` 含可用池列表）。
+> ⚠️ `pool()` 会立即校验连接池是否存在，通过后才返回 accessor。未配置连接池管理器时抛出 `NO_POOL_MANAGER`；找不到指定池名时抛出 `POOL_NOT_FOUND`（`err.available` 含可用池列表）。model / collection / use 仅在校验通过后可用。
 
 > ℹ️ **`pool().use(dbName)` 中的 `dbName` 会覆盖 Model 定义中 `connection.database` 的值**。例如，Model 定义了 `connection.database: "billing"`，通过 `pool("cn").use("archive")` 访问时，实际查询将使用 `archive` 数据库而非 `billing`。
 > 如需直接用完整 key 并覆盖数据库/连接池，可通过 `app.monsqlize.scopedModel(key, { pool, database })` 访问底层 API。
