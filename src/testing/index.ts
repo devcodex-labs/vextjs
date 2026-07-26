@@ -80,6 +80,13 @@ export interface CreateTestAppOptions {
   setupPlugins?: (app: VextApp) => Promise<void> | void;
 
   /**
+   * Optional dev error overlay renderer.
+   * When provided, Accept: text/html error responses use this HTML body
+   * (mirrors production createErrorHandler(devOverlay) wiring).
+   */
+  devOverlay?: (error: unknown) => string;
+
+  /**
    * 是否加载 `src/services/`（默认 true）
    *
    * 为 `true` 时，`service-loader` 扫描 `src/services/` 并自动加载所有 `.ts` 服务文件。
@@ -321,6 +328,7 @@ export async function createTestApp(
     routes: shouldLoadRoutes = true,
     middlewares: shouldLoadMiddlewares = true,
     rootDir = process.cwd(),
+    devOverlay,
   } = options;
 
   const srcDir = join(rootDir, "src");
@@ -504,10 +512,10 @@ export async function createTestApp(
     app.adapter.registerMiddleware(createCsrfMiddleware(finalConfig.csrf));
   }
 
-  // 错误处理 + 404 兜底
+  // 错误处理 + 404 兜底（可选 devOverlay 与 CLI/dev bootstrap 对齐）
   const errorHandler = createErrorHandler(
     finalConfig.response ?? {},
-    undefined,
+    devOverlay,
     app.logger,
     hooks,
   );
