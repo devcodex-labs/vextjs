@@ -434,20 +434,23 @@ async function checkServiceCircularDeps(
 
     // 匹配 this.app.services.xxx 或 app.services.xxx
     // 支持嵌套访问如 app.services.payment.stripe
-    const regex = /(?:this\.)?app\.services\.(\w+(?:\.\w+)*)/g;
+    // 注意：访问可能带方法调用（app.services.b.value()），需回退到已知 service key 前缀
+    const regex = /(?:this\.)?app\.services\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(source)) !== null) {
-      const dep = match[1]!;
-      // 跳过自引用
-      if (dep === key) continue;
-      // 只记录已知的 service key（忽略拼写错误或动态 key）
-      if (allKeys.includes(dep)) {
-        deps.add(dep);
+      let dep = match[1]!;
+      // 最长前缀匹配：payment.stripe.charge -> payment.stripe -> payment
+      while (dep && !allKeys.includes(dep)) {
+        const idx = dep.lastIndexOf(".");
+        if (idx < 0) {
+          dep = "";
+          break;
+        }
+        dep = dep.slice(0, idx);
       }
-      // 也检查单层引用是否匹配某个顶层 key
-      // 例如 app.services.payment 引用的可能是命名空间而非 service，
-      // 但 app.services.payment.stripe 需要提取 'payment.stripe'
-      // 上面的正则已经能匹配 payment.stripe，这里不需要额外处理
+      // 跳过自引用与未知 key
+      if (!dep || dep === key) continue;
+      deps.add(dep);
     }
   }
 
