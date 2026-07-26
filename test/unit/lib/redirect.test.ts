@@ -58,21 +58,27 @@ describe("normalizeRedirectLocation", () => {
   });
 
   it("rejects CR/LF/NUL instead of hanging or encoding them away", () => {
-    expect(() => normalizeRedirectLocation("/a\r\nb")).toThrow(TypeError);
+    expect(() => normalizeRedirectLocation("/a\r\nb")).toThrow(
+      /must not contain CR, LF, or NUL/,
+    );
     expect(() => normalizeRedirectLocation("/a\nb")).toThrow(
       /must not contain CR, LF, or NUL/,
     );
-    expect(() => normalizeRedirectLocation("/a\rb")).toThrow(TypeError);
-    expect(() => normalizeRedirectLocation("x\u0000y")).toThrow(TypeError);
+    expect(() => normalizeRedirectLocation("/a\rb")).toThrow(
+      /must not contain CR, LF, or NUL/,
+    );
+    expect(() => normalizeRedirectLocation("x\u0000y")).toThrow(
+      /must not contain CR, LF, or NUL/,
+    );
   });
 
   it("rejects non-string locations", () => {
     expect(() =>
       normalizeRedirectLocation(null as unknown as string),
-    ).toThrow(TypeError);
+    ).toThrow(/redirect location must be a string/);
     expect(() =>
       normalizeRedirectLocation(123 as unknown as string),
-    ).toThrow(TypeError);
+    ).toThrow(/redirect location must be a string/);
   });
 });
 
@@ -90,7 +96,7 @@ describe("prepareRedirect", () => {
 
   it("fails before any adapter mark-sent when Location is unsafe", () => {
     expect(() => prepareRedirect("/evil\r\nSet-Cookie: a=1", 301)).toThrow(
-      TypeError,
+      /must not contain CR, LF, or NUL/,
     );
   });
 });

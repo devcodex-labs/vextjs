@@ -9,6 +9,8 @@
  *   - Only 301/302/303/307/308 are accepted; everything else coerces to 302
  */
 
+import { HttpError } from "../types/errors.js";
+
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
 const ALLOWED_REDIRECT_STATUSES = new Set<number>([301, 302, 303, 307, 308]);
@@ -68,12 +70,19 @@ function encodeLocationHeaderValue(url: string): string {
  */
 export function normalizeRedirectLocation(url: string): string {
   if (typeof url !== "string") {
-    throw new TypeError("redirect location must be a string");
+    throw new HttpError(
+      400,
+      "redirect location must be a string",
+      400,
+    );
   }
 
   if (UNSAFE_LOCATION_CHARS.test(url)) {
-    throw new TypeError(
+    // Public 400 without stack noise so link/packed adapter parity holds.
+    throw new HttpError(
+      400,
       "redirect location must not contain CR, LF, or NUL characters",
+      400,
     );
   }
 
