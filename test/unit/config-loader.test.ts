@@ -211,6 +211,36 @@ describe("patchMiddlewares", () => {
     });
   });
 
+  it("replaces options wholesale instead of deep-merging nested keys", () => {
+    const result = _patchMiddlewares(
+      [
+        {
+          name: "a",
+          options: { nested: { base: true }, value: "base" },
+          enabled: true,
+        },
+      ],
+      [{ name: "a", options: { value: "profile" } }],
+    );
+    expect(result[0]).toEqual({
+      name: "a",
+      options: { value: "profile" },
+      enabled: true,
+    });
+  });
+
+  it("allows empty options objects to clear prior options", () => {
+    const result = _patchMiddlewares(
+      [{ name: "a", enabled: true, options: { nested: { one: 1 } } }],
+      [{ name: "a", enabled: false, options: {} }],
+    );
+    expect(result[0]).toEqual({
+      name: "a",
+      enabled: false,
+      options: {},
+    });
+  });
+
   it("handles string declarations in base", () => {
     const result = _patchMiddlewares(
       ["auth"],
@@ -432,8 +462,18 @@ describe("validateConfig", () => {
       );
     });
 
-    it("rejects non-string non-function adapter", () => {
+    it("rejects incomplete adapter objects and non-union values", () => {
+      expect(() => _validateConfig({ adapter: {} })).toThrow(
+        "incomplete: missing non-empty",
+      );
+      expect(() => _validateConfig({ adapter: { name: "" } })).toThrow(
+        "incomplete: missing non-empty",
+      );
       expect(() => _validateConfig({ adapter: 123 })).toThrow("config.adapter");
+      expect(() => _validateConfig({ adapter: null })).toThrow(
+        "config.adapter",
+      );
+      expect(() => _validateConfig({ adapter: [] })).toThrow("config.adapter");
     });
   });
 

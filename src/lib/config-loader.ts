@@ -286,18 +286,24 @@ function patchMiddlewares(
     const idx = result.findIndex((d) => getMiddlewareName(d) === name);
 
     if (idx !== -1) {
-      // 匹配到 → 浅合并
+      // 匹配到 → 声明级浅合并：options / enabled 等字段整项覆盖，不深度合并 options
       const existing = result[idx]!;
       const baseObj =
-        typeof existing === "string" ? { name: existing } : { ...existing };
+        typeof existing === "string"
+          ? { name: existing }
+          : { ...(existing as VextMiddlewareConfig) };
       const overrideObj =
-        typeof item === "string" ? { name: item } : { ...item };
-      result[idx] = deepMergeRecords(
-        baseObj,
-        overrideObj,
-        new WeakMap(),
-        false,
-      ) as unknown as VextMiddlewareConfig;
+        typeof item === "string"
+          ? { name: item }
+          : { ...(item as VextMiddlewareConfig) };
+      const merged = {
+        ...baseObj,
+        ...overrideObj,
+      } as VextMiddlewareConfig;
+      if (merged.options !== undefined) {
+        merged.options = cloneConfigValue(merged.options);
+      }
+      result[idx] = merged;
     } else {
       // 未匹配到 → 追加
       result.push(cloneConfigValue(item));
@@ -457,7 +463,7 @@ function validateConfig(config: Record<string, unknown>): void {
     throw new Error("[vextjs] config.trustProxy must be a boolean.");
   }
 
-  // ── adapter（字符串标识 | 工厂函数）──────────────────
+  // ── adapter（字符串标识 | 工厂函数 | 适配器对象）──────
   const adapter = config.adapter;
   if (adapter !== undefined) {
     if (typeof adapter === "string") {
@@ -468,15 +474,27 @@ function validateConfig(config: Record<string, unknown>): void {
       ) {
         throw createUnknownAdapterError(adapter);
       }
+    } else if (typeof adapter === "function") {
+      // factory form accepted; resolveAdapter validates the produced instance
     } else if (
-      typeof adapter !== "function" &&
-      (typeof adapter !== "object" ||
-        adapter === null ||
-        Array.isArray(adapter))
+      typeof adapter === "object" &&
+      adapter !== null &&
+      !Array.isArray(adapter)
     ) {
+      // Reject incomplete objects early (e.g. {}). Full method checks stay in
+      // resolveAdapter so documented partial name-only objects still load, but
+      // empty / nameless objects must not pass config validation.
+      const adapterName = (adapter as { name?: unknown }).name;
+      if (typeof adapterName !== "string" || adapterName.trim().length === 0) {
+        throw new Error(
+          `[vextjs] config.adapter object is incomplete: missing non-empty "name".\n` +
+            `         Provide a VextAdapter object (name + adapter methods), a factory function, or a built-in adapter string.`,
+        );
+      }
+    } else {
       throw new Error(
         `[vextjs] config.adapter must be a string (built-in name), a factory function, or an adapter object,` +
-          ` got: ${typeof adapter}`,
+          ` got: ${adapter === null ? "null" : typeof adapter}`,
       );
     }
   }
