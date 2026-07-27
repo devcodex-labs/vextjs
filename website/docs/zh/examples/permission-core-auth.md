@@ -1,6 +1,6 @@
 # permission-core Auth 接入
 
-本示例展示如何把 [permission-core](https://vextjs.github.io/permission-core/) 接入 VextJS Auth。Vext 的认证与路由保护是分层的：
+本示例展示如何把 [permission-core](https://devcodex-labs.github.io/permission-core/) 接入 VextJS Auth。Vext 的认证与路由保护是分层的：
 
 - `auth()` 负责解析 Bearer token，并填充 `req.auth`。
 - `permission-core` 负责 `invoke + GET:/api/posts` 这类授权判断。

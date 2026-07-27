@@ -118,12 +118,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vextjs/vext.git"
+    "url": "git+https://github.com/devcodex-labs/vextjs.git"
   },
   "bugs": {
-    "url": "https://github.com/vextjs/vext/issues"
+    "url": "https://github.com/devcodex-labs/vextjs/issues"
   },
-  "homepage": "https://github.com/vextjs/vext#readme",
+  "homepage": "https://devcodex-labs.github.io/vextjs/",
   "engines": {
     "node": ">=20.19.0"
   },

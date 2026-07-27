@@ -877,7 +877,7 @@ export default definePlugin({
 ```
 
 :::tip
-The `vextjs-opentelemetry` plug-in has this mode built-in. After turning on `logs.bridgeAppLogger: true` (default), `app.setLogger()` is automatically called without manual implementation.
+The `@devcodex/opentelemetry` plug-in has this mode built-in. After turning on `logs.bridgeAppLogger: true` (default), `app.setLogger()` is automatically called without manual implementation.
 :::
 
 ---

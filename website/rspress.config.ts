@@ -2,8 +2,8 @@ import * as path from "node:path";
 import { defineConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
 
-const DEFAULT_DOCS_BASE = "/vext/";
-const DEFAULT_DOCS_SITE_URL = "https://vextjs.github.io/vext";
+const DEFAULT_DOCS_BASE = "/vextjs/";
+const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
 
 function normalizeDocsBase(value?: string) {
   const raw = value?.trim() || DEFAULT_DOCS_BASE;
@@ -137,12 +137,12 @@ const navSource: NavItemSource[] = [
       {
         en: "Changelog",
         zh: "更新日志",
-        link: "https://github.com/vextjs/vext/blob/main/CHANGELOG.md",
+        link: "https://github.com/devcodex-labs/vextjs/blob/main/CHANGELOG.md",
       },
       {
         en: "Contributing",
         zh: "贡献指南",
-        link: "https://github.com/vextjs/vext/blob/main/CONTRIBUTING.md",
+        link: "https://github.com/devcodex-labs/vextjs/blob/main/CONTRIBUTING.md",
       },
     ],
   },
@@ -592,7 +592,7 @@ export default defineConfig({
       {
         icon: "github",
         mode: "link",
-        content: "https://github.com/vextjs/vext",
+        content: "https://github.com/devcodex-labs/vextjs",
       },
     ],
     footer: {

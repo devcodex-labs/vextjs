@@ -1,9 +1,9 @@
 # OpenTelemetry 可观测性
 
-本文档只介绍 **VextJS** 场景下如何接入 `vextjs-opentelemetry`。
+本文档只介绍 **VextJS** 场景下如何接入 `@devcodex/opentelemetry`。
 
 > 其他框架（Egg.js / Koa / Express / Hono / Fastify）的接入说明，请直接查看 GitHub 仓库：
-> [`vextjs/vextjs-plugins`](https://github.com/vextjs/vextjs-plugins)
+> [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
 
 ---
 
@@ -28,10 +28,10 @@
 ### 1. 安装
 
 ```bash
-npm install vextjs-opentelemetry
+npm install @devcodex/opentelemetry
 ```
 
-> `vextjs-opentelemetry` 已内置 `@opentelemetry/api`、`@opentelemetry/sdk-node`、常用 OTLP exporter 与自动检测依赖；
+> `@devcodex/opentelemetry` 已内置 `@opentelemetry/api`、`@opentelemetry/sdk-node`、常用 OTLP exporter 与自动检测依赖；
 > 对于 **VextJS 默认接入**，不需要再重复安装这些包。
 > 只有当你的应用代码要**直接 import** 某个 OTel 包时，才建议把它声明成应用自己的直接依赖。
 
@@ -39,12 +39,12 @@ npm install vextjs-opentelemetry
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
-> **注意**：`opentelemetryPlugin` 通过 `vextjs-opentelemetry/vextjs` 子路径导入（VextJS 专属）。
-> 主入口 `vextjs-opentelemetry` 只导出框架无关工具（`createWithSpan`、`getOtelStatus`）。
+> **注意**：`opentelemetryPlugin` 通过 `@devcodex/opentelemetry/vextjs` 子路径导入（VextJS 专属）。
+> 主入口 `@devcodex/opentelemetry` 只导出框架无关工具（`createWithSpan`、`getOtelStatus`）。
 
 ### 3. 启动
 
@@ -53,7 +53,7 @@ vext start    # 生产模式
 vext dev      # 开发模式
 ```
 
-> `vext start` / `vext dev` 自动运行 OTel SDK 初始化脚本（`vextjs-opentelemetry` 已在其 `package.json` 声明 `"vext.preload": "./dist/instrumentation.js"`，VextJS CLI 自动扫描并以 `--import` 注入，无需手动配置）。
+> `vext start` / `vext dev` 自动运行 OTel SDK 初始化脚本（`@devcodex/opentelemetry` 已在其 `package.json` 声明 `"vext.preload": "./dist/instrumentation.js"`，VextJS CLI 自动扫描并以 `--import` 注入，无需手动配置）。
 > **默认不上报**——SDK 初始化脚本在启动时读取**项目自身 `package.json`** 的 `vext.otel.endpoint` 字段来决定上报地址，未配置时安全 noop（数据被丢弃，不会发送到任何地址）。
 
 ### 4. 验证
@@ -145,7 +145,7 @@ VextJS 下的 OpenTelemetry 配置分为两个正式入口，但职责不同：
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
@@ -260,7 +260,7 @@ docker run -d --name jaeger -p 4318:4318 -p 16686:16686 \
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
@@ -286,12 +286,12 @@ Vext 官网只保留 **VextJS** 场景的接入说明。
 
 请直接查看 GitHub 仓库：
 
-- [`vextjs/vextjs-plugins`](https://github.com/vextjs/vextjs-plugins)
+- [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
 
 建议优先阅读仓库中的：
 
-- `vextjs-opentelemetry/README.md`
-- `vextjs-opentelemetry/changelogs/`
+- `@devcodex/opentelemetry/README.md`
+- `@devcodex/opentelemetry/changelogs/`
 
 ## `/_otel/status` 状态检查接口
 
@@ -385,7 +385,7 @@ curl http://localhost:3000/_otel/status
 
 **结构化日志（Schema A + Schema B）**
 
-当日志需同时落地（Schema A）并上报至 OTLP Collector（Schema B）时，使用 `vextjs-opentelemetry/log` 提供的两个工厂函数：
+当日志需同时落地（Schema A）并上报至 OTLP Collector（Schema B）时，使用 `@devcodex/opentelemetry/log` 提供的两个工厂函数：
 
 - `createStructuredLogFormatter` — Schema A 结构化 JSON 格式化器（固定字段顺序）
 - `createOtelLogBridge` — Schema B OTel LogRecord 桥接（通过 `globalThis._otelLogger`）
@@ -421,7 +421,7 @@ curl http://localhost:3000/_otel/status
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({
   serviceName: "my-app",
@@ -663,7 +663,7 @@ opentelemetryPlugin({
 
 ## 自动检测（Auto-Instrumentation）
 
-默认接入下，`vextjs-opentelemetry` 已自带 `@opentelemetry/auto-instrumentations-node`，SDK 会自动 patch 常见库，**无需修改任何业务代码**即可获得数据库查询、HTTP 外调、消息队列等的链路追踪。
+默认接入下，`@devcodex/opentelemetry` 已自带 `@opentelemetry/auto-instrumentations-node`，SDK 会自动 patch 常见库，**无需修改任何业务代码**即可获得数据库查询、HTTP 外调、消息队列等的链路追踪。
 
 ### 安装
 
@@ -909,7 +909,7 @@ export {};
 
 ## 日志字段规划
 
-VextJS + vextjs-opentelemetry 支持两层日志输出，各有侧重：
+VextJS + @devcodex/opentelemetry 支持两层日志输出，各有侧重：
 
 - **A. 落地日志（stdout / file JSON）**：业务字段清晰可读，便于人工排查和日志聚合（ELK/Loki）
 - **B. OTel Logs（LogRecord → Collector）**：轻量级，通过 `trace_id` 关联完整链路
@@ -996,7 +996,7 @@ export default {
 
 ### B. OTel Logs（LogRecord → Collector）
 
-Vext 默认 logger 不依赖第三方 logger，因此 logger-specific auto instrumentation 不会自动捕获 `app.logger`。如需输出 OTel Logs，可通过 `vextjs-opentelemetry` 的 `app.setLogger()` 桥接，或自定义插件包装当前 logger：
+Vext 默认 logger 不依赖第三方 logger，因此 logger-specific auto instrumentation 不会自动捕获 `app.logger`。如需输出 OTel Logs，可通过 `@devcodex/opentelemetry` 的 `app.setLogger()` 桥接，或自定义插件包装当前 logger：
 
 - **`trace_id` / `span_id`**：从 `requestContext` 或 active span 写入 LogRecord
 - **`severity_text`**：从 Vext logger level 映射
@@ -1051,7 +1051,7 @@ GET /users/:id                        (http, 45ms)  ← user.id, tenant.id 在�
 
 ### Q: `/_otel/status` 返回 `"sdk": "noop"`
 
-① 使用 `vext start/dev` 启动 ② `vextjs-opentelemetry` 在 dependencies 中 ③ SDK 包已安装 ④ `package.json vext.otel` 配置已生效。
+① 使用 `vext start/dev` 启动 ② `@devcodex/opentelemetry` 在 dependencies 中 ③ SDK 包已安装 ④ `package.json vext.otel` 配置已生效。
 
 ### Q: endpoint 显示 localhost 但我配了其他地址
 
@@ -1076,10 +1076,10 @@ GET /users/:id                        (http, 45ms)  ← user.id, tenant.id 在�
 可选做法：
 
 1. **推荐**：继续使用 `vext dev` / `vext start`
-2. **自定义 Node 启动命令**：手动补上 `--import vextjs-opentelemetry/instrumentation`
+2. **自定义 Node 启动命令**：手动补上 `--import @devcodex/opentelemetry/instrumentation`
 
 ```bash
-node --import vextjs-opentelemetry/instrumentation dist/server.js
+node --import @devcodex/opentelemetry/instrumentation dist/server.js
 ```
 
 ### Q: 测试环境如何禁用

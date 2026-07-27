@@ -511,11 +511,11 @@ setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
 
 ### Typical usage: Bridge to OpenTelemetry Logs
 
-When you use the `vextjs-opentelemetry` plugin, it will call `app.setLogger()` in `setup()` to automatically forward all calls to `app.logger` to the OTel Logs SDK without additional configuration:
+When you use the `@devcodex/opentelemetry` plugin, it will call `app.setLogger()` in `setup()` to automatically forward all calls to `app.logger` to the OTel Logs SDK without additional configuration:
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({
   endpoint: "grpc://collector:4317",

@@ -2,12 +2,12 @@
 
 This example demonstrates how to integrate [Nacos](https://nacos.io/) in VextJS to implement **service registration and discovery**, **dynamic configuration during runtime**, and **remote configuration patch during startup**.
 
-VextJS provides the official Nacos plug-in [`vextjs-nacos`](https://www.npmjs.com/package/vextjs-nacos), which encapsulates the registration/discovery and runtime configuration subscription processes. For content that must take effect before the framework configuration is frozen (such as database configuration), the `bootstrap config provider` of `src/config/bootstrap.ts` should be used.
+VextJS provides the official Nacos plug-in [`@devcodex/nacos`](https://www.npmjs.com/package/@devcodex/nacos), which encapsulates the registration/discovery and runtime configuration subscription processes. For content that must take effect before the framework configuration is frozen (such as database configuration), the `bootstrap config provider` of `src/config/bootstrap.ts` should be used.
 
 :::tip Recommended practices
 Recommended to use in layers:
 
-- **Service registration/discovery, dynamic switch during runtime**: directly use the official plug-in `vextjs-nacos`
+- **Service registration/discovery, dynamic switch during runtime**: directly use the official plug-in `@devcodex/nacos`
 - **Boot database/key/infrastructure configuration**: Use `src/config/bootstrap.ts` to pull Nacos configuration and return patch
   :::
 
@@ -17,12 +17,12 @@ Recommended to use in layers:
 - Node.js >= 20.19.0
 - VextJS >= 0.3.2
 
-## 1. Recommendation: Use the `vextjs-nacos` official plug-in
+## 1. Recommendation: Use the `@devcodex/nacos` official plug-in
 
 ### 1. Installation
 
 ```bash
-npm install vextjs-nacos
+npm install @devcodex/nacos
 ```
 
 ### 2. Configuration (`src/config/default.ts`)
@@ -75,14 +75,14 @@ Description:
 ### 3. Register plug-in (src/plugins/nacos.ts)
 
 ```typescript
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 export default nacosPlugin(); // Automatically read app.config.nacos
 ```
 
 Explicit parameter passing is also supported (overriding `app.config.nacos`):
 
 ```typescript
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 export default nacosPlugin({
   serverAddr: "127.0.0.1:8848",
   service: { name: "order-service", ip: "127.0.0.1", port: 3000 },
@@ -97,7 +97,7 @@ If the ports of each environment are different (such as sit: 10019 / prod: 20019
 ```typescript
 // src/plugins/nacos.ts
 import { definePlugin } from "vextjs";
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 
 export default definePlugin({
   name: "nacos",
@@ -129,11 +129,11 @@ Each environment only needs to set `port: 10019` in the corresponding config fil
 
 ### 3.1 It is recommended to use `src/config/bootstrap.ts` for remote configuration during startup
 
-If you want to pull the database configuration from Nacos before **MonSQLize is initialized**, do not put this step in a normal plug-in; it is recommended to use `createNacosBootstrapProvider()` provided by `vextjs-nacos` directly:
+If you want to pull the database configuration from Nacos before **MonSQLize is initialized**, do not put this step in a normal plug-in; it is recommended to use `createNacosBootstrapProvider()` provided by `@devcodex/nacos` directly:
 
 ```typescript
 import { defineBootstrapConfig } from "vextjs";
-import { createNacosBootstrapProvider } from "vextjs-nacos"; // src/config/bootstrap.ts
+import { createNacosBootstrapProvider } from "@devcodex/nacos"; // src/config/bootstrap.ts
 export default defineBootstrapConfig({
   providers: [
     createNacosBootstrapProvider({
@@ -190,7 +190,7 @@ So the recommended bounds are:
 
 ### 3.2 Continue to use `app.remoteConfig` for dynamic configuration during runtime
 
-If the configuration only affects the runtime function switch, grayscale strategy, external API address, etc., and does not need to participate in `database` / `plugins` / `middlewares` initialization, you can directly use the configuration subscription capability of `vextjs-nacos`:
+If the configuration only affects the runtime function switch, grayscale strategy, external API address, etc., and does not need to participate in `database` / `plugins` / `middlewares` initialization, you can directly use the configuration subscription capability of `@devcodex/nacos`:
 
 - After initial startup, the plug-in will pull the Nacos configuration and mount it to `app.remoteConfig`
 - Subsequent configuration changes will automatically update `app.remoteConfig`
@@ -354,7 +354,7 @@ After modification, the vext application will automatically receive the changes 
 
 ## 3. Next step
 
-- 📦 [`vextjs-nacos` npm package](https://www.npmjs.com/package/vextjs-nacos) — Complete API documentation and change log
+- 📦 [`@devcodex/nacos` npm package](https://www.npmjs.com/package/@devcodex/nacos) — Complete API documentation and change log
 - 🔭 [OpenTelemetry access example](/examples/opentelemetry) — Full observability
 - 🔌 [Plugin System](/guide/plugins) — `definePlugin()` Custom plugin
 - 🌐 [app.fetch](/guide/fetch) — built-in HTTP client (timeouts/retries/requestId propagation)

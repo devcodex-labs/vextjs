@@ -13,37 +13,37 @@ const ecosystemLinks = [
     mark: "VX",
     name: "vext",
     description: "High-performance API runtime",
-    href: "https://github.com/vextjs/vext",
+    href: "https://github.com/devcodex-labs/vextjs",
   },
   {
     mark: "S",
     name: "schema-dsl",
     description: "Schema declaration and validation semantics",
-    href: "https://vextjs.github.io/schema-dsl/",
+    href: "https://devcodex-labs.github.io/schema-dsl/",
   },
   {
     mark: "M",
     name: "monSQLize",
     description: "MongoDB modeling for service projects",
-    href: "https://vextjs.github.io/monSQLize/",
+    href: "https://devcodex-labs.github.io/monSQLize/",
   },
   {
     mark: "FR",
     name: "flex-rate-limit",
     description: "Flexible rate limiting for APIs",
-    href: "https://vextjs.github.io/flex-rate-limit/",
+    href: "https://devcodex-labs.github.io/flex-rate-limit/",
   },
   {
     mark: "PC",
     name: "permission-core",
     description: "Permission primitives for application guards",
-    href: "https://vextjs.github.io/permission-core/",
+    href: "https://devcodex-labs.github.io/permission-core/",
   },
   {
     mark: "GH",
     name: "GitHub Org",
     description: "Explore the vextjs organization",
-    href: "https://github.com/vextjs",
+    href: "https://github.com/devcodex-labs",
   },
 ];
 

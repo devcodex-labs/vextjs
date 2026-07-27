@@ -2,12 +2,12 @@
 
 本示例演示如何在 VextJS 中集成 [Nacos](https://nacos.io/)，实现**服务注册与发现**、**运行期动态配置**，以及**启动期远程配置补丁**。
 
-VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/vextjs-nacos)，封装了注册/发现与运行期配置订阅流程。对于必须在框架配置冻结前生效的内容（如数据库配置），应使用 `src/config/bootstrap.ts` 的 `bootstrap config provider`。
+VextJS 提供官方 Nacos 插件 [`@devcodex/nacos`](https://www.npmjs.com/package/@devcodex/nacos)，封装了注册/发现与运行期配置订阅流程。对于必须在框架配置冻结前生效的内容（如数据库配置），应使用 `src/config/bootstrap.ts` 的 `bootstrap config provider`。
 
 :::tip 推荐做法
 推荐分层使用：
 
-- **服务注册/发现、运行期动态开关**：直接使用官方插件 `vextjs-nacos`
+- **服务注册/发现、运行期动态开关**：直接使用官方插件 `@devcodex/nacos`
 - **启动期数据库/密钥/基础设施配置**：使用 `src/config/bootstrap.ts` 拉取 Nacos 配置并返回 patch
   :::
 
@@ -17,12 +17,12 @@ VextJS 提供官方 Nacos 插件 [`vextjs-nacos`](https://www.npmjs.com/package/
 - Node.js >= 20.19.0
 - VextJS >= 0.3.2
 
-## 一、推荐：使用 `vextjs-nacos` 官方插件
+## 一、推荐：使用 `@devcodex/nacos` 官方插件
 
 ### 1. 安装
 
 ```bash
-npm install vextjs-nacos
+npm install @devcodex/nacos
 ```
 
 ### 2. 配置（`src/config/default.ts`）
@@ -75,14 +75,14 @@ export default {
 ### 3. 注册插件（src/plugins/nacos.ts）
 
 ```typescript
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 export default nacosPlugin(); // 自动读取 app.config.nacos
 ```
 
 也支持显式传参（覆盖 `app.config.nacos`）：
 
 ```typescript
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 export default nacosPlugin({
   serverAddr: "127.0.0.1:8848",
   service: { name: "order-service", ip: "127.0.0.1", port: 3000 },
@@ -97,7 +97,7 @@ export default nacosPlugin({
 ```typescript
 // src/plugins/nacos.ts
 import { definePlugin } from "vextjs";
-import { nacosPlugin } from "vextjs-nacos";
+import { nacosPlugin } from "@devcodex/nacos";
 
 export default definePlugin({
   name: "nacos",
@@ -129,11 +129,11 @@ export default definePlugin({
 
 ### 3.1 启动期远程配置推荐走 `src/config/bootstrap.ts`
 
-如果你希望在 **MonSQLize 初始化之前** 就从 Nacos 拉取数据库配置，不要把这一步放在普通插件里；推荐直接使用 `vextjs-nacos` 提供的 `createNacosBootstrapProvider()`：
+如果你希望在 **MonSQLize 初始化之前** 就从 Nacos 拉取数据库配置，不要把这一步放在普通插件里；推荐直接使用 `@devcodex/nacos` 提供的 `createNacosBootstrapProvider()`：
 
 ```typescript
 import { defineBootstrapConfig } from "vextjs";
-import { createNacosBootstrapProvider } from "vextjs-nacos";
+import { createNacosBootstrapProvider } from "@devcodex/nacos";
 
 // src/config/bootstrap.ts
 export default defineBootstrapConfig({
@@ -192,7 +192,7 @@ export default defineBootstrapConfig({
 
 ### 3.2 运行期动态配置继续使用 `app.remoteConfig`
 
-如果配置只影响运行期功能开关、灰度策略、外部 API 地址等，不需要参与 `database` / `plugins` / `middlewares` 初始化，则直接使用 `vextjs-nacos` 的配置订阅能力即可：
+如果配置只影响运行期功能开关、灰度策略、外部 API 地址等，不需要参与 `database` / `plugins` / `middlewares` 初始化，则直接使用 `@devcodex/nacos` 的配置订阅能力即可：
 
 - 初次启动后插件会拉取 Nacos 配置并挂载到 `app.remoteConfig`
 - 后续配置变更会自动更新 `app.remoteConfig`
@@ -356,7 +356,7 @@ export default defineRoutes((app) => {
 
 ## 三、下一步
 
-- 📦 [`vextjs-nacos` npm 包](https://www.npmjs.com/package/vextjs-nacos) — 完整 API 文档与变更日志
+- 📦 [`@devcodex/nacos` npm 包](https://www.npmjs.com/package/@devcodex/nacos) — 完整 API 文档与变更日志
 - 🔭 [OpenTelemetry 接入示例](/examples/opentelemetry) — 完整可观测性
 - 🔌 [插件系统](/guide/plugins) — `definePlugin()` 自定义插件
 - 🌐 [app.fetch](/guide/fetch) — 内置 HTTP 客户端（超时/重试/requestId 传播）

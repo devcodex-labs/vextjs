@@ -2,19 +2,15 @@
 
 This guide explains how to deploy a VextJS application into production, covering practices such as building, Docker containerization, Nginx reverse proxy, PM2 process management, log collection, and health checks.
 
-## Publish the document station to the organization homepage
+## Publish the documentation site
 
-If you want to access the site directly through `https://vextjs.github.io` instead of `https://vextjs.github.io/vext` after building the document in the `vext` repository, the current repository already supports dual-mode publishing:
+The VextJS documentation site is published from this repository to GitHub Pages:
 
-1. Add `VEXTJS_GH_PAGES_TOKEN` in GitHub Secrets of `vext` repository
-   - It is recommended to use Fine-grained PAT
-   - Grant at least `vextjs/vextjs.github.io` repository `Contents: Read and write`
-2. Make sure the GitHub Pages source of the `vextjs.github.io` repository is `main` / `root`
-3. Keep `.github/workflows/docs.yml` using the current default logic:
-   - **Exists** `VEXTJS_GH_PAGES_TOKEN` → After the document is built, it is published to the root directory of `vextjs/vextjs.github.io`, and the access address is `https://vextjs.github.io`
-   - **Does not exist** `VEXTJS_GH_PAGES_TOKEN` → Return to the current warehouse Pages, the access address is `https://vextjs.github.io/vext`
+- URL: `https://devcodex-labs.github.io/vextjs/`
+- Base path: `/vextjs/`
+- Workflow: `.github/workflows/docs.yml`
 
-Implementation details: The workflow will automatically switch the build parameters; use `VEXT_DOCS_BASE=/` in root domain name mode, and use `VEXT_DOCS_BASE=/vext/` in fallback mode.
+The workflow no longer publishes to an external organization homepage repository. The DevCodex Labs organization site is maintained separately in `devcodex-labs/devcodex-labs.github.io`.
 
 ## Build production product
 

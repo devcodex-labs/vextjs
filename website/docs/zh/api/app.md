@@ -879,7 +879,7 @@ export default definePlugin({
 ```
 
 :::tip
-`vextjs-opentelemetry` 插件内置了此模式，开启 `logs.bridgeAppLogger: true`（默认）后自动调用 `app.setLogger()`，无需手动实现。
+`@devcodex/opentelemetry` 插件内置了此模式，开启 `logs.bridgeAppLogger: true`（默认）后自动调用 `app.setLogger()`，无需手动实现。
 :::
 
 ---

@@ -1,6 +1,6 @@
 # VextJS
 
-[Documentation](https://vextjs.github.io)
+[Documentation](https://devcodex-labs.github.io/vextjs)
 
 VextJS is a high-performance full-stack Node.js framework for building maintainable applications. It combines a convention-based backend runtime, file-system routing, typed services, plugins, middleware, validation, OpenAPI generation, route-level caching, an esbuild-powered React frontend pipeline, and a CLI workflow that keeps projects productive from the first command.
 
@@ -280,7 +280,7 @@ Production builds also write `dist/client/deploy-manifest.json` for CDN or stati
 
 For React hydration performance budgets, set fields such as `frontend.build.budgets.maxInitialJsBrotliBytes`, `maxRouteInitialJsBrotliBytes`, or `maxAppOwnedInitialJsBrotliBytes`. The default frontend i18n mode uses `frontend.i18n.clientLoad: "current"` so the browser loads only the SSR locale during hydration; use `"all"` only when a page needs no-reload locale switching. Advanced React CDN/import-map usage remains opt-in through `frontend.build.client.external` plus `externalRuntime`; React-related externals must provide runtime mappings.
 
-For the frontend user guide, start with [Frontend Overview](https://vextjs.github.io/frontend/overview). The Frontend section has its own navigation for getting started, routing/pages, SSR, hydration, CSR fallback, render data cache, Fast Refresh, code splitting, static assets/CDN, performance budgets, configuration, and troubleshooting.
+For the frontend user guide, start with [Frontend Overview](https://devcodex-labs.github.io/vextjs/frontend/overview). The Frontend section has its own navigation for getting started, routing/pages, SSR, hydration, CSR fallback, render data cache, Fast Refresh, code splitting, static assets/CDN, performance budgets, configuration, and troubleshooting.
 
 When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
 
@@ -610,7 +610,7 @@ app.throw({
 
 `details` is sanitized before it is written to the JSON response, so circular references and unsupported values cannot break error serialization.
 
-See the full guide in [Error Handling](https://vextjs.github.io/guide/error-handling) and the [App API](https://vextjs.github.io/api/app).
+See the full guide in [Error Handling](https://devcodex-labs.github.io/vextjs/guide/error-handling) and the [App API](https://devcodex-labs.github.io/vextjs/api/app).
 
 For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
 
@@ -708,7 +708,7 @@ app.hooks.on("service:beforeCall", ({ service, method }) => {
 
 Available lifecycle families include request/route, validation, handler, response, error, fetch/proxy, service, cache, plugin, routes, OpenAPI, server, ready, and close. `app.hooks` is a reserved app property and cannot be overwritten with `app.extend("hooks", ...)`.
 
-See the full guide in [Runtime Hooks](https://vextjs.github.io/guide/hooks) and the [App API](https://vextjs.github.io/api/app).
+See the full guide in [Runtime Hooks](https://devcodex-labs.github.io/vextjs/guide/hooks) and the [App API](https://devcodex-labs.github.io/vextjs/api/app).
 
 ## Adapters
 
@@ -1005,10 +1005,10 @@ Use the testing entry for integration tests that need the framework runtime with
 
 ## Documentation
 
-- Documentation site: <https://vextjs.github.io/vext/>
+- Documentation site: <https://devcodex-labs.github.io/vextjs/>
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 - Detailed release notes: [changelogs/](./changelogs/)
-- Issues: <https://github.com/vextjs/vext/issues>
+- Issues: <https://github.com/devcodex-labs/vextjs/issues>
 
 ## Requirements
 

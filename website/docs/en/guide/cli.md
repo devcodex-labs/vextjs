@@ -547,7 +547,7 @@ VEXT_CLUSTER=1 vext start
 1. `vext.preload` declared in the installed dependency package
 2. `preload/` in the root directory of the application project
 
-These scripts will be injected uniformly through `--import` before the child process is started. For example, `vextjs-opentelemetry` can use the package-level `vext.preload` to automatically initialize the OpenTelemetry SDK before loading the application code; the application project itself can also directly place a script in the root directory `preload/` to bridge the pre-launch environment.First phase project-level preload rules:
+These scripts will be injected uniformly through `--import` before the child process is started. For example, `@devcodex/opentelemetry` can use the package-level `vext.preload` to automatically initialize the OpenTelemetry SDK before loading the application code; the application project itself can also directly place a script in the root directory `preload/` to bridge the pre-launch environment.First phase project-level preload rules:
 
 - The directory is fixed to the project root `preload/`
 - Non-recursive scan

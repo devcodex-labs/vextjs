@@ -1,9 +1,9 @@
 # OpenTelemetry Observability
 
-This document only introduces how to access `vextjs-opentelemetry` in the **VextJS** scenario.
+This document only introduces how to access `@devcodex/opentelemetry` in the **VextJS** scenario.
 
 > For access instructions to other frameworks (Egg.js/Koa/Express/Hono/Fastify), please check the GitHub repository directly:
-> [`vextjs/vextjs-plugins`](https://github.com/vextjs/vextjs-plugins)
+> [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
 
 ---
 
@@ -28,10 +28,10 @@ This document only introduces how to access `vextjs-opentelemetry` in the **Vext
 ### 1. Installation
 
 ```bash
-npm install vextjs-opentelemetry
+npm install @devcodex/opentelemetry
 ```
 
-> `vextjs-opentelemetry` has built-in `@opentelemetry/api`, `@opentelemetry/sdk-node`, commonly used OTLP exporters and automatic detection dependencies;
+> `@devcodex/opentelemetry` has built-in `@opentelemetry/api`, `@opentelemetry/sdk-node`, commonly used OTLP exporters and automatic detection dependencies;
 > For **VextJS default access**, there is no need to repeatedly install these packages.
 > Only when your application code needs to **directly import** an OTel package, it is recommended to declare it as a direct dependency of the application itself.
 
@@ -39,12 +39,12 @@ npm install vextjs-opentelemetry
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
-> **Note**: `opentelemetryPlugin` is imported through the `vextjs-opentelemetry/vextjs` subpath (VextJS specific).
-> The main entrance `vextjs-opentelemetry` only exports framework-independent tools (`createWithSpan`, `getOtelStatus`).
+> **Note**: `opentelemetryPlugin` is imported through the `@devcodex/opentelemetry/vextjs` subpath (VextJS specific).
+> The main entrance `@devcodex/opentelemetry` only exports framework-independent tools (`createWithSpan`, `getOtelStatus`).
 
 ### 3. Start
 
@@ -53,7 +53,7 @@ vext start # production mode
 vext dev # development mode
 ```
 
-> `vext start` / `vext dev` automatically runs the OTel SDK initialization script (`vextjs-opentelemetry` has declared `"vext.preload": "./dist/instrumentation.js"` in its `package.json`, VextJS CLI automatically scans and injects it with `--import`, no manual configuration is required).
+> `vext start` / `vext dev` automatically runs the OTel SDK initialization script (`@devcodex/opentelemetry` has declared `"vext.preload": "./dist/instrumentation.js"` in its `package.json`, VextJS CLI automatically scans and injects it with `--import`, no manual configuration is required).
 > **Not reported by default** - The SDK initialization script reads the `vext.otel.endpoint` field of the **project's own `package.json`** at startup to determine the reporting address. When not configured, it is a safe noop (the data is discarded and will not be sent to any address).
 
 ### 4. Verification
@@ -145,7 +145,7 @@ Create a plug-in (just keep `serviceName` consistent with `package.json`):
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
@@ -260,7 +260,7 @@ Just keep the plugin as simple as possible:
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
@@ -286,12 +286,12 @@ If you need to check out the following:
 
 Please check the GitHub repository directly:
 
-- [`vextjs/vextjs-plugins`](https://github.com/vextjs/vextjs-plugins)
+- [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
 
 It is recommended to read the following in the warehouse first:
 
-- `vextjs-opentelemetry/README.md`
-- `vextjs-opentelemetry/changelogs/`
+- `@devcodex/opentelemetry/README.md`
+- `@devcodex/opentelemetry/changelogs/`
 
 ## `/_otel/status` Status check interface
 
@@ -383,7 +383,7 @@ Logs and links can be correlated in Grafana Loki / ELK via `trace_id`.
 
 **Structured Log (Schema A + Schema B) **
 
-When the log needs to be landed (Schema A) and reported to the OTLP Collector (Schema B) at the same time, use the two factory functions provided by `vextjs-opentelemetry/log`:
+When the log needs to be landed (Schema A) and reported to the OTLP Collector (Schema B) at the same time, use the two factory functions provided by `@devcodex/opentelemetry/log`:
 
 - `createStructuredLogFormatter` — Schema A structured JSON formatter (fixed field order)
 - `createOtelLogBridge` — Schema B OTel LogRecord bridge (via `globalThis._otelLogger`)
@@ -419,7 +419,7 @@ In VextJS, there is usually no need to copy the logger formatter / middleware as
 
 ```typescript
 // src/plugins/otel.ts
-import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 
 export default opentelemetryPlugin({
   serviceName: "my-app",
@@ -659,7 +659,7 @@ opentelemetryPlugin({
 
 ## Auto-Instrumentation
 
-Under default access, `vextjs-opentelemetry` already comes with `@opentelemetry/auto-instrumentations-node`, and the SDK will automatically patch common libraries, and you can obtain link tracking for database queries, HTTP external calls, message queues, etc. without modifying any business code.
+Under default access, `@devcodex/opentelemetry` already comes with `@opentelemetry/auto-instrumentations-node`, and the SDK will automatically patch common libraries, and you can obtain link tracking for database queries, HTTP external calls, message queues, etc. without modifying any business code.
 
 ### Installation
 
@@ -903,7 +903,7 @@ export {};
 
 ## Log field planning
 
-VextJS + vextjs-opentelemetry supports two levels of log output, each with its own emphasis:
+VextJS + @devcodex/opentelemetry supports two levels of log output, each with its own emphasis:
 
 - **A. Implementation log (stdout/file JSON)**: Business fields are clear and readable, which facilitates manual troubleshooting and log aggregation (ELK/Loki)
 - **B. OTel Logs (LogRecord → Collector)**: lightweight, associated with complete links through `trace_id`
@@ -990,7 +990,7 @@ Output example:
 
 ### B. OTel Logs (LogRecord → Collector)
 
-Vext's default logger does not rely on third-party loggers, so logger-specific auto instrumentation will not automatically capture `app.logger`. If you need to output OTel Logs, you can bridge it through `app.setLogger()` of `vextjs-opentelemetry`, or wrap the current logger with a custom plug-in:
+Vext's default logger does not rely on third-party loggers, so logger-specific auto instrumentation will not automatically capture `app.logger`. If you need to output OTel Logs, you can bridge it through `app.setLogger()` of `@devcodex/opentelemetry`, or wrap the current logger with a custom plug-in:
 
 - **`trace_id` / `span_id`**: Write LogRecord from `requestContext` or active span
 - **`severity_text`**: mapped from Vext logger level
@@ -1045,7 +1045,7 @@ Applications (N) ──OTLP──► Collector ──► Jaeger / Prometheus / G
 
 ### Q: `/_otel/status` returns `"sdk": "noop"`
 
-① Use `vext start/dev` to start ② `vextjs-opentelemetry` in dependencies ③ The SDK package has been installed ④ `package.json vext.otel` configuration has taken effect.
+① Use `vext start/dev` to start ② `@devcodex/opentelemetry` in dependencies ③ The SDK package has been installed ④ `package.json vext.otel` configuration has taken effect.
 
 ### Q: The endpoint shows localhost but I assigned another address.
 
@@ -1070,10 +1070,10 @@ Because VextJS's "zero configuration access" relies on the CLI to automatically 
 Optional practices:
 
 1. **Recommended**: Continue to use `vext dev` / `vext start`
-2. **Customized Node startup command**: Manually add `--import vextjs-opentelemetry/instrumentation`
+2. **Customized Node startup command**: Manually add `--import @devcodex/opentelemetry/instrumentation`
 
 ```bash
-node --import vextjs-opentelemetry/instrumentation dist/server.js
+node --import @devcodex/opentelemetry/instrumentation dist/server.js
 ```
 
 ### Q: How to disable the test environment

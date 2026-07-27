@@ -1,6 +1,6 @@
 ﻿# 数据库 (MonSQLize)
 
-VextJS 内置了 [MonSQLize](https://github.com/vextjs/monSQLize) 数据库插件，提供开箱即用的 MongoDB 数据库支持。只需在配置文件中添加 `database` 字段，框架会自动完成连接管理、Model 加载和资源清理。
+VextJS 内置了 [MonSQLize](https://github.com/devcodex-labs/monSQLize) 数据库插件，提供开箱即用的 MongoDB 数据库支持。只需在配置文件中添加 `database` 字段，框架会自动完成连接管理、Model 加载和资源清理。
 
 ## 快速开始
 

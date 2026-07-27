@@ -418,7 +418,7 @@ const timing: VextMiddleware = async (req, res, next) => {
 
 ## Parameter verification
 
-VextJS integrates [schema-dsl](https://github.com/vextjs/schema-dsl), declares validation rules in the route `options.validate`, and the framework automatically performs validation and generates OpenAPI documents.
+VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl), declares validation rules in the route `options.validate`, and the framework automatically performs validation and generates OpenAPI documents.
 
 ### DSL syntax quick check
 

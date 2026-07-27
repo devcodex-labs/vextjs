@@ -65,7 +65,7 @@ Historical benchmark snapshot (JSON response scenario, median of 5 rounds):
 
 ### 🛡️ Declarative parameter verification
 
-Integrate [schema-dsl](https://github.com/vextjs/schema-dsl), declare verification rules in routing `options`, automatically verify + automatically generate OpenAPI documents:
+Integrate [schema-dsl](https://github.com/devcodex-labs/schema-dsl), declare verification rules in routing `options`, automatically verify + automatically generate OpenAPI documents:
 
 ```typescript
 app.post(

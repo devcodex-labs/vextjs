@@ -420,7 +420,7 @@ const timing: VextMiddleware = async (req, res, next) => {
 
 ## 参数校验
 
-VextJS 集成 [schema-dsl](https://github.com/vextjs/schema-dsl)，在路由 `options.validate` 中声明校验规则，框架自动执行校验并生成 OpenAPI 文档。
+VextJS 集成 [schema-dsl](https://github.com/devcodex-labs/schema-dsl)，在路由 `options.validate` 中声明校验规则，框架自动执行校验并生成 OpenAPI 文档。
 
 ### DSL 语法速查
 

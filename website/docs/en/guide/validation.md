@@ -1,6 +1,6 @@
 # Parameter verification
 
-VextJS integrates [schema-dsl](https://github.com/vextjs/schema-dsl) to provide **declarative parameter verification**. Use concise DSL strings to describe verification rules in the route `options.validate`. The framework automatically completes verification, type conversion, and generates OpenAPI documents synchronously.
+VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl) to provide **declarative parameter verification**. Use concise DSL strings to describe verification rules in the route `options.validate`. The framework automatically completes verification, type conversion, and generates OpenAPI documents synchronously.
 
 ## Basic usage
 

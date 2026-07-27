@@ -27,7 +27,7 @@ const TS_PRELOAD_EXTENSIONS = new Set([".ts", ".mts"]);
  *   - 包级 preload 解析失败只 warn，不阻断启动
  *   - 项目级 TS preload 编译失败视为启动前错误，直接抛出
  *
- * 使用示例（vextjs-opentelemetry/package.json）：
+ * 使用示例（@devcodex/opentelemetry/package.json）：
  *   { "vext": { "preload": "./dist/instrumentation.js" } }
  *
  * @param rootDir 用户项目根目录（含 package.json 和 node_modules/）

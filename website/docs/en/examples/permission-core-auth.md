@@ -1,6 +1,6 @@
 # permission-core Auth
 
-This example shows how to connect [permission-core](https://vextjs.github.io/permission-core/) to VextJS Auth. Vext keeps authentication and route guards separate:
+This example shows how to connect [permission-core](https://devcodex-labs.github.io/permission-core/) to VextJS Auth. Vext keeps authentication and route guards separate:
 
 - `auth()` parses the Bearer token and fills `req.auth`.
 - `permission-core` owns authorization decisions such as `invoke + GET:/api/posts`.

@@ -150,11 +150,11 @@ Paths are relative to the package root (`node_modules/<package>/`) and are autom
 
 #### Real example
 
-`vextjs-opentelemetry` has this declaration built in:
+`@devcodex/opentelemetry` has this declaration built in:
 
 ```json
 {
-  "name": "vextjs-opentelemetry",
+  "name": "@devcodex/opentelemetry",
   "vext": {
     "preload": "./dist/instrumentation.js"
   }

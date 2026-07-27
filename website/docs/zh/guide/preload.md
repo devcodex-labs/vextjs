@@ -150,11 +150,11 @@ preload/01-bootstrap-port.ts
 
 #### 真实示例
 
-`vextjs-opentelemetry` 已内置此声明：
+`@devcodex/opentelemetry` 已内置此声明：
 
 ```json
 {
-  "name": "vextjs-opentelemetry",
+  "name": "@devcodex/opentelemetry",
   "vext": {
     "preload": "./dist/instrumentation.js"
   }

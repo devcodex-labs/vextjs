@@ -548,7 +548,7 @@ VEXT_CLUSTER=1 vext start
 1. 已安装依赖包中声明的 `vext.preload`
 2. 应用项目根目录中的 `preload/`
 
-在子进程启动前，这些脚本会统一通过 `--import` 注入。例如 `vextjs-opentelemetry` 可利用包级 `vext.preload` 在应用代码加载前自动初始化 OpenTelemetry SDK；应用项目本身也可以直接在根目录 `preload/` 中放置脚本做启动前环境桥接。
+在子进程启动前，这些脚本会统一通过 `--import` 注入。例如 `@devcodex/opentelemetry` 可利用包级 `vext.preload` 在应用代码加载前自动初始化 OpenTelemetry SDK；应用项目本身也可以直接在根目录 `preload/` 中放置脚本做启动前环境桥接。
 
 首期项目级 preload 规则：
 

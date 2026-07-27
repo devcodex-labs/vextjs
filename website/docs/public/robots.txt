@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://vextjs.github.io/vext/sitemap.xml
+Sitemap: https://devcodex-labs.github.io/vextjs/sitemap.xml

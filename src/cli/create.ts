@@ -481,7 +481,7 @@ async function generateProject(
     fs.writeFileSync(
       readmePath,
       `# ${dirName}\n\nPlace your custom ${dirName} here.\n\n` +
-        `See the [vext documentation](https://github.com/vextjs/vext) for details.\n`,
+        `See the [vext documentation](https://github.com/devcodex-labs/vextjs) for details.\n`,
       "utf-8",
     );
   }
@@ -727,7 +727,7 @@ app.get('/', {}, async (req, res) => {
 
   return `# ${name}
 
-A [vext](https://github.com/vextjs/vext) project.
+A [vext](https://github.com/devcodex-labs/vextjs) project.
 
 ## Getting Started
 
@@ -766,8 +766,8 @@ ${frontendUsage}
 
 ## Learn More
 
-- [vext Documentation](https://github.com/vextjs/vext)
-- [API Reference](https://github.com/vextjs/vext#api)
+- [vext Documentation](https://github.com/devcodex-labs/vextjs)
+- [API Reference](https://github.com/devcodex-labs/vextjs#api)
 `;
 }
 
@@ -1593,6 +1593,6 @@ function printSuccess(options: CreateOptions): void {
     npm run dev      Start development server (with hot reload)
     npm start        Start production server${options.language === "ts" || options.template === "fullstack-react" ? "\n    npm run build    Build for production" : ""}
 
-  📖 Documentation: https://vextjs.github.io
+  📖 Documentation: https://devcodex-labs.github.io/vextjs/
 `);
 }

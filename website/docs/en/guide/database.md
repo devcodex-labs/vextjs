@@ -1,6 +1,6 @@
 ﻿# Database (MonSQLize)
 
-VextJS has a built-in [MonSQLize](https://github.com/vextjs/monSQLize) database plug-in, providing out-of-the-box MongoDB database support. Just add the `database` field in the configuration file, and the framework will automatically complete connection management, model loading and resource cleanup.
+VextJS has a built-in [MonSQLize](https://github.com/devcodex-labs/monSQLize) database plug-in, providing out-of-the-box MongoDB database support. Just add the `database` field in the configuration file, and the framework will automatically complete connection management, model loading and resource cleanup.
 
 ## Quick Start
 

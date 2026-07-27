@@ -81,7 +81,7 @@ export interface ColdRestarterOptions {
    *
    * 格式：["--import", "file:///abs/path/a.js", "--import", "file:///abs/path/b.js"]
    *
-   * 用于注入预加载模块（如 vextjs-opentelemetry SDK 初始化文件）。
+   * 用于注入预加载模块（如 @devcodex/opentelemetry SDK 初始化文件）。
    * Cold Restart 时每次 fork 自动复用，无需重新计算。
    *
    * 由 cli/dev.ts 通过 resolvePreloads() 填充。
@@ -219,7 +219,7 @@ export class ColdRestarter {
 
       // 🆕 合并父进程现有 Node.js 标志（防止覆盖 --inspect、--max-old-space-size 等），
       // 追加 --enable-source-maps 使 Error.stack 自动翻译为 .ts 源码路径（dev 模式调试），
-      // 追加 extraExecArgv（预加载模块 --import，如 vextjs-opentelemetry SDK 初始化）
+      // 追加 extraExecArgv（预加载模块 --import，如 @devcodex/opentelemetry SDK 初始化）
       const devExecArgv = [
         ...process.execArgv.filter((f) => f !== "--enable-source-maps"),
         "--enable-source-maps",

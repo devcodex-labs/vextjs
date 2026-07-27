@@ -412,7 +412,7 @@ button[class*="search"] {
   -webkit-line-clamp: 2;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group {
   right: -48px;
   left: auto;
   display: grid;
@@ -430,7 +430,7 @@ button[class*="search"] {
   transform: none;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group::before {
   position: absolute;
   top: 72px;
   right: 20px;
@@ -440,7 +440,7 @@ button[class*="search"] {
   content: "";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item {
   height: auto;
   min-height: 76px;
   padding: 0 !important;
@@ -455,14 +455,14 @@ button[class*="search"] {
     transform 160ms ease;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item:hover {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item:hover {
   border-color: rgba(94, 233, 135, 0.32);
   background: rgba(12, 36, 42, 0.82);
   opacity: 1;
   transform: translateY(-1px);
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] {
   grid-column: 1 / -1;
   min-height: 54px;
   margin-bottom: 14px;
@@ -470,7 +470,7 @@ button[class*="search"] {
   background: transparent;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link {
   display: grid;
   height: 100%;
   grid-template-columns: 42px minmax(0, 1fr);
@@ -482,7 +482,7 @@ button[class*="search"] {
   text-align: left;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link::before {
   display: inline-flex;
   width: 42px;
   height: 42px;
@@ -500,7 +500,7 @@ button[class*="search"] {
   content: "VX";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item__link::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link::after {
   grid-column: 2;
   margin: 4px 0 0;
   color: var(--rp-c-text-3);
@@ -510,70 +510,70 @@ button[class*="search"] {
   content: "High-performance API runtime";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link {
   grid-template-columns: 48px minmax(0, 1fr);
   padding: 0;
   font-size: 18px;
   font-weight: 800;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::before {
   width: 48px;
   height: 48px;
   content: "VX";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::after {
   color: var(--vext-muted);
   content: "Docs, packages and integration surface";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] .rp-hover-group__item__link {
   font-size: 15px;
   font-weight: 760;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/schema-dsl/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/schema-dsl/"]::before {
   content: "S";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/schema-dsl/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/schema-dsl/"]::after {
   content: "Schema declaration and validation semantics";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/monSQLize/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/monSQLize/"]::before {
   content: "M";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/monSQLize/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/monSQLize/"]::after {
   content: "MongoDB modeling for service projects";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/flex-rate-limit/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::before {
   content: "FR";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/flex-rate-limit/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::after {
   content: "Flexible rate limiting for APIs";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/permission-core/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/permission-core/"]::before {
   content: "PC";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[href="https://vextjs.github.io/permission-core/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/permission-core/"]::after {
   content: "Permission primitives for application guards";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/vextjs"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/devcodex-labs"]::before {
   content: "GH";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/vextjs"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/devcodex-labs"]::after {
   content: "Explore the vextjs organization";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/vextjs/vext"]) a[target="_blank"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[target="_blank"]::after {
   display: block;
 }
 
