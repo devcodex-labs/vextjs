@@ -30,7 +30,8 @@
 ## 2026-07-17
 
 - **Package composition and CJS distribution** Kept all runtime and peer dependencies external in the nine CJS entry bundles using package-manifest-derived inputs and an esbuild metafile guard, while applying syntax/whitespace-only minification with identifiers and stack names preserved.
-- **Published package boundary** Removed repository maintenance scripts from the npm artifact, widened the two built-in Docs asset exports to compact `string` declarations, and added `verify:package-composition` to validate all export/bin targets, forbidden source/tooling paths, declaration size, and pack inventory before isolated install. This is a source fix only: `B01-F11` remains open until a fresh identity-bound B01/PERF run is accepted.
+- **Published package boundary** Removed repository maintenance scripts from the npm artifact, widened the two built-in Docs asset exports to compact `string` declarations, and added `verify:package-composition` to validate all export/bin targets, forbidden source/tooling paths, declaration size, and pack inventory before isolated install. Package-boundary finding `B01-F11` is closed on the verification ledger after identity-bound package probes; keep composition gates in preflight before each publish.
+- **Response header fail-fast (REQ-P0-01)** Invalid response header names/values (including CRLF injection) now throw from buffered `setHeader`/`appendHeader` via Node `validateHeaderName`/`validateHeaderValue`, so all five adapters' `res.setHeader` fail closed before send.
 
 ## 2026-07-15
 

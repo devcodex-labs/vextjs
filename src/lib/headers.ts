@@ -38,11 +38,9 @@ export function setHeader(
   name: string,
   value: VextHeaderValue,
 ): boolean {
-  // Invalid header tokens/values are ignored (not thrown) so handlers can still
-  // complete a normal response. Cookie APIs keep strict throw semantics.
-  if (!isValidHeader(name, value)) {
-    return false;
-  }
+  // Fail-fast on invalid tokens/values (CRLF injection, non-token names, etc.).
+  // Matches Node validateHeaderName/Value and public res.setHeader() contract tests.
+  assertValidHeader(name, value);
   const existing = findHeaderName(headers, name);
   if (existing && existing !== name) {
     delete headers[existing];
@@ -56,9 +54,7 @@ export function appendHeader(
   name: string,
   value: string,
 ): boolean {
-  if (!isValidHeader(name, value)) {
-    return false;
-  }
+  assertValidHeader(name, value);
   const existing = findHeaderName(headers, name);
   if (!existing) {
     headers[name] = value;

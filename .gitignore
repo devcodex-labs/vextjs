@@ -77,6 +77,11 @@ web_modules/
 # Retained isolated release-preflight evidence
 test/.tmp-release-preflight-*/
 
+# Adapter e2e / formal harness scratch (must not dirty release worktrees)
+tmp-deferred-header-test-*/
+tmp-test-*/
+tmp-*.log
+
 # Yarn Integrity file
 .yarn-integrity
 
