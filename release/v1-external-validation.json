@@ -1,0 +1,8 @@
+{
+  "accepted": true,
+  "artifactVersion": "1.0.0",
+  "artifactSha256": "2b76a8f82876e94e54d51283d1dbe61149bdae213b4a2badd20a22c8c70213f6",
+  "consumerRepo": "https://github.com/devcodex-labs/vextjs-test",
+  "consumerCommit": "f342b0238aabed5053053cfa347656d8c82a1829",
+  "runId": "packed-install-smoke-20260728T114449Z+B28-G2-20260728-CLOSE3-01"
+}
