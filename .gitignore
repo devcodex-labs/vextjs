@@ -141,6 +141,15 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# Editor / IDE / local format config (do not commit)
+.vscode/
+.zed/
+.idea/
+.editorconfig
+.prettierrc
+.prettierrc.*
+.prettierignore
+
 # yarn v2
 .yarn/cache
 .yarn/unplugged
@@ -154,10 +163,6 @@ NUL
 
 # Vext dev compiler output
 .vext/
-
-# JetBrains IDE（仅共享 Prettier 配置）
-.idea/*
-!.idea/prettier.xml
 
 # Example project lockfiles (sub-projects)
 examples/*/package-lock.json
