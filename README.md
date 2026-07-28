@@ -75,7 +75,7 @@ npm install vextjs
     "start": "vext start"
   },
   "dependencies": {
-    "vextjs": "^0.3.26"
+    "vextjs": "^1.0.0"
   }
 }
 ```
@@ -414,9 +414,8 @@ const userSchema = {
 };
 ```
 
-See [Preparing for vextjs v1](./MIGRATION.md) for the complete schema-dsl v3 and
-monsqlize 3.1 migration contract. The repository remains on `0.3.26` during
-source validation; no intermediate vextjs version is published.
+See [Migrating to vextjs v1](./MIGRATION.md) for the complete schema-dsl v3 and
+monsqlize 3.1 migration contract for `vextjs@1.0.0`.
 
 ## Cookies and Sessions
 

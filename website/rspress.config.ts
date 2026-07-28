@@ -131,8 +131,8 @@ const navSource: NavItemSource[] = [
     activeMatch: "/benchmark",
   },
   {
-    en: "v0.3.26",
-    zh: "v0.3.26",
+    en: "v1.0.0",
+    zh: "v1.0.0",
     items: [
       {
         en: "Changelog",

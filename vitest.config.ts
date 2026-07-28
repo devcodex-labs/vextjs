@@ -6,7 +6,9 @@ export default defineConfig({
     include: ["test/**/*.test.{ts,js}"],
 
     // 超时（单个测试）
-    testTimeout: 10_000,
+    // 30s: adapter type probes, frontend esbuild fixtures, and dist-linked
+    // deferred-header cases can exceed 10s under preflight/full-suite load.
+    testTimeout: 30_000,
 
     // 并行执行（Service 单元测试可并行，集成测试按需串行）
     pool: "forks",
