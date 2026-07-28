@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createTestApp } from "../../../src/testing/index.js";
@@ -13,7 +13,16 @@ describe("onion post-next header flush", () => {
         process.cwd(),
         `tmp-deferred-header-test-${adapter}`,
       );
-      const esm = pathToFileURL(resolve(process.cwd(), "dist/index.js")).href;
+      const distEntry = resolve(process.cwd(), "dist/index.js");
+      try {
+        await access(distEntry);
+      } catch {
+        throw new Error(
+          `deferred-header-flush requires built dist at ${distEntry}; run npm run build first`,
+        );
+      }
+      const esm = pathToFileURL(distEntry).href;
+      await rm(root, { recursive: true, force: true });
       await mkdir(resolve(root, "src/middlewares"), { recursive: true });
       await mkdir(resolve(root, "src/routes"), { recursive: true });
       await writeFile(
@@ -65,6 +74,7 @@ export default defineRoutes((app) => {
         expect(response.headers["x-after"]).toBe("1");
       } finally {
         await app.close();
+        await rm(root, { recursive: true, force: true });
       }
     });
   }

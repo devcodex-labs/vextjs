@@ -113,6 +113,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # deferred-header-flush and package-layout unit fixtures import dist/ via file URL
+      - name: Build (required for dist-linked unit fixtures)
+        run: npm run build
+
       - name: Run unit tests
         run: npx vitest run test/unit --reporter=verbose
 
