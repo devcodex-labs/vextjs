@@ -91,6 +91,6 @@ throw new VextValidationError([{ field: "email", message: "Invalid email" }]);
 ## 更多参考
 
 - [`app.throw` API](/api/app#appthrowstatus-message-paramsorcode-codeordetails)
-- [中间件中的错误处理](/guide/middleware#错误处理)
+- [中间件中的错误处理](/guide/middleware#错误处理中间件)
 - [路由中的错误处理](/guide/routing#错误处理)
-- [响应配置](/guide/configuration#响应配置)
+- [响应配置](/guide/configuration#响应配置-response)

@@ -250,17 +250,18 @@ vext build [options]
 
 ### Options
 
-| Options            | Description                                                  | Default |
-| ------------------ | ------------------------------------------------------------ | ------- |
-| `--outdir <path>`  | Output directory                                             | `dist`  |
-| `--clean`          | Clean the output directory before compilation                | `false` |
-| `--sourcemap`      | Generate source map                                          | `true`  |
-| `--no-sourcemap`   | Disable source map                                           | —       |
-| `--minify`         | Compress output code                                         | `false` |
-| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest | `false` |
-| `--upload-assets`  | Upload frontend static assets after the frontend build       | `false` |
-| `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false` |
-| `-h, --help`       | Show help                                                    | —       |
+| Options            | Description                                                  | Default      |
+| ------------------ | ------------------------------------------------------------ | ------------ |
+| `--outdir <path>`  | Output directory                                             | `dist`       |
+| `--config <name>`  | Load `src/config/<name>` for build-time configuration        | `production` |
+| `--clean`          | Clean the output directory before compilation                | `false`      |
+| `--sourcemap`      | Generate source map                                          | `true`       |
+| `--no-sourcemap`   | Disable source map                                           | —            |
+| `--minify`         | Compress output code                                         | `false`      |
+| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest | `false`      |
+| `--upload-assets`  | Upload frontend static assets after the frontend build       | `false`      |
+| `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false`      |
+| `-h, --help`       | Show help                                                    | —            |
 
 ### Example
 
@@ -334,6 +335,7 @@ vext deploy assets [options]
 | Options               | Description                                    | Default                            |
 | --------------------- | ---------------------------------------------- | ---------------------------------- |
 | `--outdir <path>`     | Build output directory                         | `dist`                             |
+| `--config <name>`     | Load the named frontend deploy configuration   | `production`                       |
 | `--manifest <path>`   | Deploy manifest path                           | `dist/client/deploy-manifest.json` |
 | `--adapter <name>`    | Upload adapter, such as `filesystem` or `mock` | Config value                       |
 | `--target-dir <path>` | Filesystem adapter target directory            | Config value                       |
@@ -480,6 +482,7 @@ vext start [options]
 | ---------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
 | `--port <number>`            | Specify port                                                             | Value in configuration file     |
 | `--host <address>`           | Specify the listening address                                            | Value in the configuration file |
+| `--config <name>`            | Load `src/config/<name>`                                                 | `production`                    |
 | `--port-conflict <strategy>` | Port conflict strategy (`error/prompt/kill/next`)                        | `error`                         |
 | `--startup-profile`          | Output summary and detailed time consumption of production startup phase | —                               |
 | `--startup-profile-json <p>` | Write the production startup phase time to a JSON file                   | —                               |
@@ -602,11 +605,10 @@ vext stop [options]
 
 ### Options
 
-| Options             | Description                  | Default     |
-| ------------------- | ---------------------------- | ----------- |
-| `--pid-file <path>` | PID file path                | `.vext.pid` |
-| `--force`           | Forced termination (SIGKILL) | `false`     |
-| `-h, --help`        | Show help                    | —           |
+| Options             | Description   | Default     |
+| ------------------- | ------------- | ----------- |
+| `--pid-file <path>` | PID file path | `.vext.pid` |
+| `-h, --help`        | Show help     | —           |
 
 ### Example
 
@@ -614,10 +616,7 @@ vext stop [options]
 # graceful stop
 vext stop
 
-# force stop
-vext stop --force
-
-#Specify PID file
+# Specify PID file
 vext stop --pid-file /var/run/myapp.pid
 ```
 
@@ -639,12 +638,10 @@ vext reload [options]
 
 ### Options
 
-| Options             | Description       | Default     |
-| ------------------- | ----------------- | ----------- |
-| `--pid-file <path>` | PID file path     | `.vext.pid` |
-| `--port <number>`   | Health probe port | `3000`      |
-| `--host <address>`  | Health probe host | `127.0.0.1` |
-| `-h, --help`        | Show help         | —           |
+| Options             | Description   | Default     |
+| ------------------- | ------------- | ----------- |
+| `--pid-file <path>` | PID file path | `.vext.pid` |
+| `-h, --help`        | Show help     | —           |
 
 ### Example
 
@@ -684,15 +681,18 @@ vext status [options]
 
 ### Options
 
-| Options             | Description   | Default     |
-| ------------------- | ------------- | ----------- |
-| `--pid-file <path>` | PID file path | `.vext.pid` |
-| `-h, --help`        | Show help     | —           |
+| Options             | Description       | Default     |
+| ------------------- | ----------------- | ----------- |
+| `--pid-file <path>` | PID file path     | `.vext.pid` |
+| `--port <number>`   | Health probe port | `3000`      |
+| `--host <address>`  | Health probe host | `127.0.0.1` |
+| `-h, --help`        | Show help         | —           |
 
 ### Example
 
 ```bash
 vext status
+vext status --port 8080
 ```
 
 ### Output example

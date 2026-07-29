@@ -118,7 +118,7 @@ export default {
 | `trustProxy`      | `boolean`                                               | `false`              | Whether to trust the proxy                                 |
 | `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                           |
 | `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                         |
-| `rateLimit`       | [`VextRateLimitConfig`](#veextratelimitconfig)          | See below            | Rate limit configuration                                   |
+| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | See below            | Rate limit configuration                                   |
 | `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                   |
 | `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                          |
 | `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                            |
@@ -135,6 +135,8 @@ export default {
 | `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration               |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration   |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                        |
+| `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | See below            | Route-level response cache configuration                   |
+| `dev`             | [`VextDevConfig`](#vextdevconfig)                       | See below            | Development-only tooling configuration                     |
 
 `host` accepts `"0.0.0.0"`, `"::"`, an explicit IPv4 address, an explicit IPv6 address, or a hostname. With `"::"`, the ready log prints IPv4 local URLs plus bracketed IPv6 local/network URLs such as `http://[::1]:3000`; explicit IPv6 hosts are printed with brackets too.
 
@@ -210,14 +212,16 @@ export default defineMiddleware(
 
 ## VextCorsConfig
 
-| Cross-domain resource sharing configuration. | Field      | Type                                                           | Default Value                              | Description |
-| -------------------------------------------- | ---------- | -------------------------------------------------------------- | ------------------------------------------ | ----------- |
-| `enabled`                                    | `boolean`  | `true`                                                         | Whether to enable CORS                     |
-| `origins`                                    | `string[]` | `['*']`                                                        | Allowed origin domain names                |
-| `methods`                                    | `string[]` | `['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']` | Allowed HTTP methods                       |
-| `headers`                                    | `string[]` | `['Content-Type', 'Authorization', 'X-Request-Id']`            | Allowed request headers                    |
-| `credentials`                                | `boolean`  | `false`                                                        | Whether to allow carrying credentials      |
-| `maxAge`                                     | `number`   | `undefined`                                                    | CORS preflight result cache time (seconds) |
+Cross-domain resource sharing configuration.
+
+| Field         | Type       | Default Value                                                  | Description                                |
+| ------------- | ---------- | -------------------------------------------------------------- | ------------------------------------------ |
+| `enabled`     | `boolean`  | `true`                                                         | Whether to enable CORS                     |
+| `origins`     | `string[]` | `['*']`                                                        | Allowed origin domain names                |
+| `methods`     | `string[]` | `['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']` | Allowed HTTP methods                       |
+| `headers`     | `string[]` | `['Content-Type', 'Authorization', 'X-Request-Id']`            | Allowed request headers                    |
+| `credentials` | `boolean`  | `false`                                                        | Whether to allow carrying credentials      |
+| `maxAge`      | `number`   | `undefined`                                                    | CORS preflight result cache time (seconds) |
 
 ```typescript
 export default {
@@ -392,16 +396,20 @@ Proxy request header priority: `target.headers < forwardHeaders < target.default
 
 ## VextLoggerConfig
 
-| Structured log configuration, implemented based on Vext’s built-in logger kernel. | Field                                                                      | Type                           | Default Value                                                                                                                                                                                                                                                                                                                                                                                                                                              | Description |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------- | -------- | -------------- | ------------------------------ |
-| `level`                                                                           | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'`                       | log level                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `lifecycleLevel`                                                                  | `'concise' \| 'verbose'`                                                   | `'concise'`                    | Framework life cycle log detail level, control system log output such as startup, loader, hot reload, cluster, etc.                                                                                                                                                                                                                                                                                                                                        |
-| `pretty`                                                                          | `boolean`                                                                  | Development environment `true` | Whether to use the built-in pretty formatter to output readable format                                                                                                                                                                                                                                                                                                                                                                                     |
-| `prettyIgnore`                                                                    | `string`                                                                   | `'pid,hostname,requestId'`     | Fields to ignore in pretty mode (comma separated). Hiding `requestId` by default prevents mixin-injected fields from being expanded into multi-line noise, and the production environment JSON output is not affected                                                                                                                                                                                                                                      |
-| `prettySingleLine`                                                                | `boolean`                                                                  | `true`                         | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format. Only affects pretty mode, production environment JSON output is not affected                                                                                                                                                                                                                            |
-| `redactKeys`                                                                      | `string[]`                                                                 | `[]`                           | Desensitize structured log fields by exact key at any level. The top level `level` is the log protocol field and will not be overwritten                                                                                                                                                                                                                                                                                                                   |
-| `redactPaths`                                                                     | `string[]`                                                                 | `[]`                           | Desensitize structured log fields by dot notation exact path, support array numeric subscript; do not support wildcard, bracket notation, remove or function censor                                                                                                                                                                                                                                                                                        |             | `redactValue` | `string` | `'[Redacted]'' | Desensitized replacement value |
-| `mixin`                                                                           | `() => Record<string, unknown>`                                            | `undefined`                    | Customized log mixin function, the return value will be merged with the framework's built-in fields and injected into each log. `requestId` is a framework protected field and cannot be overridden by user mixin; other fields such as `trace_id` / `span_id` are given priority by user mixin. Typical use: Inject OpenTelemetry `trace_id` / `span_id` to associate logs with link tracking. User mixin calls will not be executed when not configured. |
+Structured log configuration, implemented by Vext's built-in logger kernel.
+
+| Field              | Type                                                                       | Default Value                  | Description                                                                                                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `level`            | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'`                       | Log level                                                                                                                                                                                                                                                                                              |
+| `lifecycleLevel`   | `'concise' \| 'verbose'`                                                   | `'concise'`                    | Framework lifecycle log detail level for startup, loaders, hot reload, cluster, and other system logs                                                                                                                                                                                                  |
+| `pretty`           | `boolean`                                                                  | Development environment `true` | Whether to use the built-in pretty formatter                                                                                                                                                                                                                                                           |
+| `prettyColor`      | `'auto' \| 'always' \| 'never'`                                            | `'auto'`                       | ANSI color policy for level labels in pretty mode; production JSON never contains ANSI                                                                                                                                                                                                                 |
+| `prettyIgnore`     | `string`                                                                   | `'pid,hostname,requestId'`     | Comma-separated fields to omit in pretty mode. Hiding `requestId` prevents mixin-injected fields from expanding into multiline noise; production JSON output is unaffected                                                                                                                             |
+| `prettySingleLine` | `boolean`                                                                  | `true`                         | Whether to render extra fields as inline JSON on the message line. Set to `false` for multiline expansion. Only affects pretty mode                                                                                                                                                                    |
+| `redactKeys`       | `string[]`                                                                 | `[]`                           | Redact structured log fields by exact key at any level. The top-level `level` protocol field is never overwritten                                                                                                                                                                                      |
+| `redactPaths`      | `string[]`                                                                 | `[]`                           | Redact structured log fields by exact dot-notation path. Array indexes are supported; wildcards, bracket notation, removal, and function censors are not                                                                                                                                               |
+| `redactValue`      | `string`                                                                   | `'[Redacted]'`                 | Replacement value for redacted fields                                                                                                                                                                                                                                                                  |
+| `mixin`            | `() => Record<string, unknown>`                                            | `undefined`                    | Custom structured log mixin. Returned fields are merged with framework fields; `requestId` cannot be overridden, while user `trace_id` / `span_id` fields take precedence. Use this to read an active OpenTelemetry span from the Context API. The function is not called when no mixin is configured. |
 
 ```typescript
 export default {
@@ -435,9 +443,10 @@ The default logger also supports runtime `app.logger.getLevel()` / `app.logger.s
 
 Graceful shutdown of configuration.
 
-| Field     | Type     | Default Value | Description                |
-| --------- | -------- | ------------- | -------------------------- |
-| `timeout` | `number` | `10`          | Shutdown timeout (seconds) |
+| Field          | Type                                       | Default Value | Description                                                       |
+| -------------- | ------------------------------------------ | ------------- | ----------------------------------------------------------------- |
+| `timeout`      | `number`                                   | `10`          | Shutdown timeout in seconds                                       |
+| `onFatalError` | `(error, origin) => void \| Promise<void>` | `undefined`   | Callback before exit for `uncaughtException`/`unhandledRejection` |
 
 After receiving the `SIGTERM` / `SIGINT` signal, the framework will:
 
@@ -490,10 +499,13 @@ export default {
 
 ## VextResponseConfig
 
-| Response format configuration. | Field     | Type   | Default Value                      | Description |
-| ------------------------------ | --------- | ------ | ---------------------------------- | ----------- |
-| `hideInternalErrors`           | `boolean` | `true` | Whether to hide 500 error details  |
-| `wrap`                         | `boolean` | `true` | Whether to enable export packaging |
+Response format configuration.
+
+| Field                | Type                  | Default Value | Description                                                                        |
+| -------------------- | --------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `hideInternalErrors` | `boolean`             | `true`        | Whether to hide 500 error details                                                  |
+| `wrap`               | `boolean`             | `true`        | Whether to enable export packaging                                                 |
+| `logErrors`          | `VextLogErrorsConfig` | See below     | Error logging policy: unknown/5xx default on; 4xx logging requires `http4xx: true` |
 
 ### Export packaging
 
@@ -558,7 +570,7 @@ After disabled, `req.body` is always `undefined`, which is suitable for pure GET
 
 | Format | Example                      | Description                          |
 | ------ | ---------------------------- | ------------------------------------ |
-| String | `'1mb'`, `'512kb'`, `'10mb'' | Support kb/mb/gb unit                |
+| String | `'1mb'`, `'512kb'`, `'10mb'` | Support kb/mb/gb unit                |
 | Number | `1048576`                    | Directly specify the number of bytes |
 
 ---
@@ -598,15 +610,17 @@ export default {
 
 ## VextAccessLogConfig
 
-| Access log configuration, implemented based on onion model after-middleware. | Field      | Type     | Default Value                                                      | Description |
-| ---------------------------------------------------------------------------- | ---------- | -------- | ------------------------------------------------------------------ | ----------- |
-| `enabled`                                                                    | `boolean`  | `true`   | Whether to enable access logs                                      |
-| `level`                                                                      | `string`   | `'info'` | Basic log level, only supports `'info'` or `'debug'`               |
-| `skipPaths`                                                                  | `string[]` | `[]`     | Exact match skipped path list                                      |
-| `skipPathPrefixes`                                                           | `string[]` | `[]`     | List of paths skipped by prefix matching                           |
-| `slowThreshold`                                                              | `number`   | `0`      | Slow request threshold, `0` means not enabled                      |
-| `warnOn4xx`                                                                  | `boolean`  | `false`  | Whether to promote 4xx responses to `warn`                         |
-| `logResponseSize`                                                            | `boolean`  | `false`  | Whether to append the response body size at the end of the message |
+Access log configuration, implemented as onion-style after-middleware.
+
+| Field              | Type       | Default Value | Description                                                        |
+| ------------------ | ---------- | ------------- | ------------------------------------------------------------------ |
+| `enabled`          | `boolean`  | `true`        | Whether to enable access logs                                      |
+| `level`            | `string`   | `'info'`      | Basic log level, only supports `'info'` or `'debug'`               |
+| `skipPaths`        | `string[]` | `[]`          | Exact match skipped path list                                      |
+| `skipPathPrefixes` | `string[]` | `[]`          | List of paths skipped by prefix matching                           |
+| `slowThreshold`    | `number`   | `0`           | Slow request threshold, `0` means not enabled                      |
+| `warnOn4xx`        | `boolean`  | `false`       | Whether to promote 4xx responses to `warn`                         |
+| `logResponseSize`  | `boolean`  | `false`       | Whether to append the response body size at the end of the message |
 
 ```typescript
 export default {
@@ -895,6 +909,7 @@ Cluster multi-process configuration. For the complete interface definition, see 
 | `restartWindow`    | `number`                       | `60000`       | Fast restart detection window (milliseconds)                                                                                                 |
 | `restartBaseDelay` | `number`                       | `1000`        | Restart interval backoff base (milliseconds)                                                                                                 |
 | `restartMaxDelay`  | `number`                       | `30000`       | Upper limit of restart interval (milliseconds)                                                                                               |
+| `memoryThreshold`  | `number`                       | `1073741824`  | Worker heap threshold in bytes; exceeding it triggers diagnostics and worker exit                                                            |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                                        |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                                  |
 | `sticky`           | `'none' \| 'ip'`               | `'none'`      | Sticky session mode (`'ip'` allocates fixed Worker based on client IP, suitable for WebSocket/SSE)                                           |
@@ -948,14 +963,16 @@ VEXT_CLUSTER=1 vext start
 
 ## VextCacheConfig
 
-| Route-level response cache global configuration. | Field     | Type    | Default Value                                                                                                                                                          | Description |
-| ------------------------------------------------ | --------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `enabled`                                        | `boolean` | `true`  | Whether to enable route-level response caching. When set to `false`, the cache middleware will not be installed and the Redis/MultiLevel connection will not be opened |
-| `defaultTtl`                                     | `number`  | `60000` | The default value when the route does not specify a TTL, in milliseconds                                                                                               |
-| `maxEntries`                                     | `number`  | `1000`  | Memory mode quick configuration: maximum number of cache entries                                                                                                       |
-| `maxMemory`                                      | `number`  | —       | Memory mode quick configuration: maximum memory usage bytes                                                                                                            |
-| `cleanupInterval`                                | `number`  | `0`     | Memory mode quick configuration: periodic cleaning interval, `0` means only lazy cleaning                                                                              |
-| `cacheHub`                                       | `object`  | Memory  | Underlying response cache runtime configuration                                                                                                                        |
+Route-level response cache global configuration.
+
+| Field             | Type      | Default Value | Description                                                                                                                                   |
+| ----------------- | --------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | `boolean` | `true`        | Whether to enable route-level response caching. When `false`, the middleware is not installed and Redis/MultiLevel connections are not opened |
+| `defaultTtl`      | `number`  | `60000`       | Default TTL when a route does not specify one, in milliseconds                                                                                |
+| `maxEntries`      | `number`  | `1000`        | Memory-mode shortcut: maximum number of cache entries                                                                                         |
+| `maxMemory`       | `number`  | —             | Memory-mode shortcut: maximum memory usage in bytes                                                                                           |
+| `cleanupInterval` | `number`  | `0`           | Memory-mode shortcut: periodic cleanup interval; `0` means lazy cleanup only                                                                  |
+| `cacheHub`        | `object`  | Memory        | Underlying response-cache runtime configuration                                                                                               |
 
 ```typescript
 export default {
@@ -1026,6 +1043,36 @@ export default {
 ```
 
 `cacheHub` only accepts `response-cache-kit/cache-hub` configuration and does not accept custom Store. Route-level response caching is configured via `RouteOptions.cache`. The public configuration unit is in milliseconds; the `Cache-Control: max-age` in the response header will output seconds according to the HTTP standard. See the [Response Caching Guide](/guide/cache) for details.
+
+---
+
+## VextDevConfig
+
+Development-only configuration. These fields are read by `vext dev` and ignored in production.
+
+| Field          | Type                                            | Default Value | Description                         |
+| -------------- | ----------------------------------------------- | ------------- | ----------------------------------- |
+| `errorOverlay` | [`VextDevOverlayConfig`](#vextdevoverlayconfig) | See below     | Browser error overlay configuration |
+
+### VextDevOverlayConfig
+
+| Field       | Type                | Default Value | Description                               |
+| ----------- | ------------------- | ------------- | ----------------------------------------- |
+| `enabled`   | `boolean`           | `true`        | Enable the browser error overlay          |
+| `theme`     | `'dark' \| 'light'` | `'dark'`      | Error overlay theme                       |
+| `maxFrames` | `number`            | `25`          | Maximum stack frames shown in the overlay |
+
+```typescript
+export default {
+  dev: {
+    errorOverlay: {
+      enabled: true,
+      theme: "light",
+      maxFrames: 10,
+    },
+  },
+};
+```
 
 ---
 

@@ -12,12 +12,12 @@ This document only introduces how to access `@devcodex/opentelemetry` in the **V
 - [Quick Start (VextJS Framework)](#Quick Start vextjs-framework)
 - [Understand first: VextJS dual-entry priority](#Understand vextjs-dual-entry priority first)
 - [Local testing (without Docker)](#Local testing without-docker)
-- [`/_otel/status` status check interface](#_otelstatus-status check interface)
+- [`/_otel/status` status check interface](#\_otelstatus-status check interface)
 - [Configuration method (VextJS)](#Configuration method vextjs)
 - [Declarative capture (`capture`)](#Declarative capture capture)
 - [Complete Configuration Reference](#Complete Configuration Reference)
-- [Production Best Practices](#productionbestpractices)
-- [FAQ](#FAQ)
+- [Production Best Practices](#production-best-practices)
+- [FAQ](#faq)
 
 > This page only retains the official access path of **VextJS**; if you are checking Egg.js / Koa / Express / Hono / Fastify, please jump directly to the GitHub README to get instructions for the corresponding framework version.
 
@@ -82,10 +82,10 @@ curl http://localhost:3000/_otel/status
 
 OpenTelemetry configuration under VextJS is divided into two formal entrances, but with different responsibilities:
 
-| Entrance | Effective stage | What is most suitable to put | What is not recommended |
-| -------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `package.json` → `vext.otel` | preload / before process startup | `serviceName`, `endpoint`, `protocol`, `headers`, `sampling` and other "SDK needs to know from the beginning" default export configuration | `ignorePaths`, `capture`, log bridging, request-level side effects |
-| `src/plugins/otel.ts` → `opentelemetryPlugin()` | plugin setup + request | `tracing`, `metrics`, `lifecycle`, `logs.bridgeAppLogger`, and the addition/override of the exporter in the setup phase | Expect it to write back the SDK that has been started in the preload phase. Resource |
+| Entrance                                        | Effective stage                  | What is most suitable to put                                                                                                               | What is not recommended                                                              |
+| ----------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `package.json` → `vext.otel`                    | preload / before process startup | `serviceName`, `endpoint`, `protocol`, `headers`, `sampling` and other "SDK needs to know from the beginning" default export configuration | `ignorePaths`, `capture`, log bridging, request-level side effects                   |
+| `src/plugins/otel.ts` → `opentelemetryPlugin()` | plugin setup + request           | `tracing`, `metrics`, `lifecycle`, `logs.bridgeAppLogger`, and the addition/override of the exporter in the setup phase                    | Expect it to write back the SDK that has been started in the preload phase. Resource |
 
 ### Recommended order
 
@@ -95,22 +95,22 @@ OpenTelemetry configuration under VextJS is divided into two formal entrances, b
 
 ### `endpoint` / `protocol` quick check
 
-| Target | Recommended configuration | `protocol` | Results |
-| ------------------- | ---------------------------------- | ------------------ | ---------------------------------- |
-| Do not export any data | Do not write `endpoint`, or explicitly write `"none"` | — | SDK security noop / Do not report |
-| Local file debugging | `"./otel-data"` | — | Press `pid` to write `*.jsonl` file |
-| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"` (default) | Escalation via OTLP/HTTP |
-| OTLP gRPC Collector | `"otel-collector.internal:4317"` | `"grpc"` | Report via gRPC h2c |
+| Target                 | Recommended configuration                             | `protocol`         | Results                             |
+| ---------------------- | ----------------------------------------------------- | ------------------ | ----------------------------------- |
+| Do not export any data | Do not write `endpoint`, or explicitly write `"none"` | —                  | SDK security noop / Do not report   |
+| Local file debugging   | `"./otel-data"`                                       | —                  | Press `pid` to write `*.jsonl` file |
+| OTLP HTTP Collector    | `"http://otel-collector.internal:4318"`               | `"http"` (default) | Escalation via OTLP/HTTP            |
+| OTLP gRPC Collector    | `"otel-collector.internal:4317"`                      | `"grpc"`           | Report via gRPC h2c                 |
 
 ---
 
 ## What will happen if the reporting address is not configured?
 
-| scenario | endpoint value | behavior |
-|-------------------------------- | ----------- | ------------------------------------------------------------------------------- |
-| No endpoint configured | `"none"` | **SDK starts but does not export data** (auto-instrumentation still takes effect, but no telemetry output) |
-| The address is configured but the Collector is unreachable | Configuration value | The SDK internal batch is discarded after timeout, and there is no error in the console |
-| `enabled: false` | — | Completely no-op, does not initialize the SDK |
+| scenario                                                   | endpoint value      | behavior                                                                                                   |
+| ---------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| No endpoint configured                                     | `"none"`            | **SDK starts but does not export data** (auto-instrumentation still takes effect, but no telemetry output) |
+| The address is configured but the Collector is unreachable | Configuration value | The SDK internal batch is discarded after timeout, and there is no error in the console                    |
+| `enabled: false`                                           | —                   | Completely no-op, does not initialize the SDK                                                              |
 
 > ✅ **Safe Default** - When the endpoint is not configured, data will not be sent to any address and will not be written to local files.
 > To enable escalation, you can:
@@ -313,15 +313,15 @@ curl http://localhost:3000/_otel/status
 }
 ```
 
-| Field | Description |
-| -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `sdk` | `"initialized"` = SDK OK / `"noop"` = SDK not initialized |
-| `serviceName` | The currently effective service name |
-| `exportMode` | `"otlp-grpc"` = h2c gRPC / `"otlp-http"` = HTTP OTLP / `"file"` = local file / `"none"` = not configured |
-| `exportTarget` | The currently effective reporting target (`"none"` when not configured) |
-| `protocol` | Current export protocol (`"http"` / `"grpc"`) |
-| `autoInstrumentation` | Whether automatic detection is enabled (MongoDB/Redis/MySQL, etc.) |
-| `samplingRatio` | Current sampling rate |
+| Field                 | Description                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `sdk`                 | `"initialized"` = SDK OK / `"noop"` = SDK not initialized                                                |
+| `serviceName`         | The currently effective service name                                                                     |
+| `exportMode`          | `"otlp-grpc"` = h2c gRPC / `"otlp-http"` = HTTP OTLP / `"file"` = local file / `"none"` = not configured |
+| `exportTarget`        | The currently effective reporting target (`"none"` when not configured)                                  |
+| `protocol`            | Current export protocol (`"http"` / `"grpc"`)                                                            |
+| `autoInstrumentation` | Whether automatic detection is enabled (MongoDB/Redis/MySQL, etc.)                                       |
+| `samplingRatio`       | Current sampling rate                                                                                    |
 
 **VextJS**: Automatically registered after startup, no manual configuration required.
 
@@ -333,38 +333,40 @@ curl http://localhost:3000/_otel/status
 
 ### Traces (link tracing)
 
-Each HTTP request generates a Span, containing:| Properties | Example values | Description |
-| ------------------ | ---------------------------------- | ---------------------------------- |
-| `http.method` | `"GET"` | HTTP method |
-| `http.route` | `"/users/:id"` | Route template (low cardinality, safe for metric aggregation) |
-| `http.status_code` | `200` | Response status code |
-| `http.request_id` | `"my-app-a1b2c3d4"` | vext request ID |
-| `vext.service` | `"my-app"` | Service name |
-| `http.url` | `"http://localhost:3000/users/42"` | Full request URL |
-| `net.peer.ip` | `"127.0.0.1"` | Client IP |
+Each HTTP request generates a span containing:
+
+| Properties         | Example values                     | Description                                                   |
+| ------------------ | ---------------------------------- | ------------------------------------------------------------- |
+| `http.method`      | `"GET"`                            | HTTP method                                                   |
+| `http.route`       | `"/users/:id"`                     | Route template (low cardinality, safe for metric aggregation) |
+| `http.status_code` | `200`                              | Response status code                                          |
+| `http.request_id`  | `"my-app-a1b2c3d4"`                | vext request ID                                               |
+| `vext.service`     | `"my-app"`                         | Service name                                                  |
+| `http.url`         | `"http://localhost:3000/users/42"` | Full request URL                                              |
+| `net.peer.ip`      | `"127.0.0.1"`                      | Client IP                                                     |
 
 After installing `@opentelemetry/auto-instrumentations-node`, database operations, HTTP external calls, etc. will automatically generate sub-Spans.
 
 ### Metrics (metric monitoring)
 
-| Indicator name | Type | Label | Description |
-| -------------------------- | ------------------ | -------------------------- | ----------------------------------------------- |
-| `http.server.duration` | Histogram (ms) | method, route, status_code | Request time-consuming distribution |
-| `http.server.request.total` | Counter | method, route, status_code | Total number of requests |
-| `http.server.active_requests` | UpDownCounter | method | Current number of concurrent requests |
-| `http.server.request.size` | Histogram (bytes) | method, route | Request body size distribution (recorded when Content-Length exists) |
-| `http.server.response.size` | Histogram (bytes) | method, status_code | Response body size distribution (recorded when Content-Length exists) |
+| Indicator name                | Type              | Label                      | Description                                                           |
+| ----------------------------- | ----------------- | -------------------------- | --------------------------------------------------------------------- |
+| `http.server.duration`        | Histogram (ms)    | method, route, status_code | Request time-consuming distribution                                   |
+| `http.server.request.total`   | Counter           | method, route, status_code | Total number of requests                                              |
+| `http.server.active_requests` | UpDownCounter     | method                     | Current number of concurrent requests                                 |
+| `http.server.request.size`    | Histogram (bytes) | method, route              | Request body size distribution (recorded when Content-Length exists)  |
+| `http.server.response.size`   | Histogram (bytes) | method, status_code        | Response body size distribution (recorded when Content-Length exists) |
 
 > **`ignorePaths` suppresses both Trace and Metrics** - Ignored paths (such as `/health`) will not produce any span or metric data and will not cause noise in the monitoring panel.
 
 **Node.js Runtime indicators** (automatically reported through `@opentelemetry/instrumentation-runtime-node`):
 
-| Indicator name | Description |
-|---------------------------------------- | ---------------------------------- |
-| `process.cpu.usage` | Process CPU usage |
-| `process.memory.usage` | Heap memory usage (heap_used/rss) |
-| `nodejs.eventloop.lag` | Event loop delay |
-| `nodejs.gc.duration` / `nodejs.gc.count` | GC time and times |
+| Indicator name                           | Description                       |
+| ---------------------------------------- | --------------------------------- |
+| `process.cpu.usage`                      | Process CPU usage                 |
+| `process.memory.usage`                   | Heap memory usage (heap_used/rss) |
+| `nodejs.eventloop.lag`                   | Event loop delay                  |
+| `nodejs.gc.duration` / `nodejs.gc.count` | GC time and times                 |
 
 ### Logs (log correlation)
 
@@ -562,7 +564,7 @@ opentelemetryPlugin({
     endAttributes: (_ctx, req) => ({
       "http.request_id_present": Boolean(req.requestId),
     }),
-  },// ── Indicators ─────────────────────────────────────────
+  }, // ── Indicators ─────────────────────────────────────────
   metrics: {
     enabled: true,
     durationBuckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
@@ -625,12 +627,12 @@ opentelemetryPlugin({
 
 > The following environment variables are natively supported by OpenTelemetry SDK, but in VextJS scenarios it is recommended to solidify and export the configuration through `package.json vext.otel`.
 
-| variable | default value | description |
-| -------------------------- | -------------------------- | -------------------------- |
-| `OTEL_TRACES_SAMPLER` | `"parentbased_always_on"` | Sampling strategy |
-| `OTEL_TRACES_SAMPLER_ARG` | `"1"` | Sampling rate (e.g. `0.1` = 10%) |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Metric export interval (milliseconds) |
-| `OTEL_LOG_LEVEL` | `"info"` | SDK log level |
+| variable                      | default value             | description                           |
+| ----------------------------- | ------------------------- | ------------------------------------- |
+| `OTEL_TRACES_SAMPLER`         | `"parentbased_always_on"` | Sampling strategy                     |
+| `OTEL_TRACES_SAMPLER_ARG`     | `"1"`                     | Sampling rate (e.g. `0.1` = 10%)      |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `15000`                   | Metric export interval (milliseconds) |
+| `OTEL_LOG_LEVEL`              | `"info"`                  | SDK log level                         |
 
 ---
 
@@ -638,20 +640,20 @@ opentelemetryPlugin({
 
 ### Local development
 
-| Backend | Startup method | endpoint configuration |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **None (file export)** | Docker not required | `package.json vext.otel.endpoint: "./otel-data"` |
-| **Jaeger** | `docker run -d -p 4318:4318 -p 16686:16686 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
-| **Grafana LGTM** | `docker run -d -p 3000:3000 -p 4318:4318 grafana/otel-lgtm` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| Backend                | Startup method                                                                                      | endpoint configuration                                     |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **None (file export)** | Docker not required                                                                                 | `package.json vext.otel.endpoint: "./otel-data"`           |
+| **Jaeger**             | `docker run -d -p 4318:4318 -p 16686:16686 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| **Grafana LGTM**       | `docker run -d -p 3000:3000 -p 4318:4318 grafana/otel-lgtm`                                         | `package.json vext.otel.endpoint: "http://localhost:4318"` |
 
 ### Cloud vendors
 
-| Vendor | endpoint | headers |
-| ------------------ | -------------------------------------------------- | ---------------------------------- |
-| **New Relic** | `https://otlp.nr-data.net:4318` | `{ "api-key": "LICENSE_KEY" }` |
-| **Grafana Cloud** | `https://otlp-gateway-....grafana.net/otlp` | `{ "Authorization": "Basic TOKEN" }` |
-| **Datadog** | `http://dd-agent-host:4318` | — |
-| **Alibaba Cloud ARMS** | Reference Alibaba Cloud OTLP access document | Reference document |
+| Vendor                 | endpoint                                     | headers                              |
+| ---------------------- | -------------------------------------------- | ------------------------------------ |
+| **New Relic**          | `https://otlp.nr-data.net:4318`              | `{ "api-key": "LICENSE_KEY" }`       |
+| **Grafana Cloud**      | `https://otlp-gateway-....grafana.net/otlp`  | `{ "Authorization": "Basic TOKEN" }` |
+| **Datadog**            | `http://dd-agent-host:4318`                  | —                                    |
+| **Alibaba Cloud ARMS** | Reference Alibaba Cloud OTLP access document | Reference document                   |
 
 > Cloud vendor token is recommended to be injected through environment variables (K8s Secret) instead of hard-coded into the code.
 
@@ -669,20 +671,20 @@ If your **application code** needs to directly `import { getNodeAutoInstrumentat
 
 ### Supported libraries
 
-| Categories | Library | Automatically track content |
-| -------------------------- | ---------------------------------- | ---------------------------- |
-| **Database** | MongoDB (`mongodb` / `mongoose`) | Query operation, collection name, time consumption |
-| | PostgreSQL (`pg`) | SQL statement, table name, time consumption |
-| | MySQL (`mysql` / `mysql2`) | SQL statement, table name, time consumption |
-| | Redis (`ioredis` / `redis`) | Command, key, time consumption |
-| **HTTP** | Node.js `http` / `https` | External HTTP calls, URLs, status codes |
-| | `undici` / `fetch` | Same as above, Node.js 20+ has built-in fetch |
-| **Message Queue** | `amqplib` (RabbitMQ) | Queue name, message sending/consuming |
-| | `kafkajs` | Topic, message sending/consuming |
-| **Cache** | `memcached` | Operation command, key |
-| **RPC** | `@grpc/grpc-js` | Method name, status code |
-| **Other** | `dns` | DNS resolution |
-| | `net` | TCP connection |
+| Categories        | Library                          | Automatically track content                        |
+| ----------------- | -------------------------------- | -------------------------------------------------- |
+| **Database**      | MongoDB (`mongodb` / `mongoose`) | Query operation, collection name, time consumption |
+|                   | PostgreSQL (`pg`)                | SQL statement, table name, time consumption        |
+|                   | MySQL (`mysql` / `mysql2`)       | SQL statement, table name, time consumption        |
+|                   | Redis (`ioredis` / `redis`)      | Command, key, time consumption                     |
+| **HTTP**          | Node.js `http` / `https`         | External HTTP calls, URLs, status codes            |
+|                   | `undici` / `fetch`               | Same as above, Node.js 20+ has built-in fetch      |
+| **Message Queue** | `amqplib` (RabbitMQ)             | Queue name, message sending/consuming              |
+|                   | `kafkajs`                        | Topic, message sending/consuming                   |
+| **Cache**         | `memcached`                      | Operation command, key                             |
+| **RPC**           | `@grpc/grpc-js`                  | Method name, status code                           |
+| **Other**         | `dns`                            | DNS resolution                                     |
+|                   | `net`                            | TCP connection                                     |
 
 > See [@opentelemetry/auto-instrumentations-node](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node) for a complete list.
 
@@ -783,11 +785,11 @@ export default defineRoutes((app) => {
 
 **Behavioral Description**:
 
-| Scenario | Automatic behavior |
-| ------------ | ------------------------------------------------------------------------------- |
-| The callback returns normally | `span.end()` is automatically called |
+| Scenario                         | Automatic behavior                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| The callback returns normally    | `span.end()` is automatically called                                            |
 | The callback throws an exception | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
-| SDK not initialized | Noop span, zero overhead (OTel API contract guarantee) |
+| SDK not initialized              | Noop span, zero overhead (OTel API contract guarantee)                          |
 
 ### Underlying API (customized SpanKind / Processor and other advanced scenarios)
 
@@ -970,23 +972,23 @@ Output example:
 
 #### Field comparison table
 
-| Field | Source | Configuration Method |
-| ----------------- | --------------------------------- | ------------------------------------------------- |
-| `timestamp` | Vext logger automatically | No configuration required |
-| `level` | Vext logger automatically | No configuration required |
-| `msg` | `logger.info("...")` | No configuration required |
-| `requestId` | Framework ALS → mixin automatic | No configuration required |
-| `trace_id` | otel middleware → ALS → mixin automatic | No configuration required |
-| `span_id` | otel middleware → ALS → mixin automatic | no configuration required |
-| `service_name` | `config.logger.mixin` | User mixin injection |
-| `env` | `config.logger.mixin` | User mixin injection |
-| `host` | `config.logger.mixin` | User mixin injection |
-| `span` | `trace.getActiveSpan().name` | User mixin injection |
-| `endpoint` | `req.route` in access log | Automatically included in request log msg |
-| `latency_ms` | access log | Automatically included in request log msg |
-| `user_id` | Business code | `logger.info({ user_id: "..." }, msg)` |
-| `feature.flag` | Business code | `logger.info({ "feature.flag": "..." }, msg)` |
-| `exception.*` | `logger.error(err)` | Vext logger serializer automatically expands |
+| Field          | Source                                  | Configuration Method                          |
+| -------------- | --------------------------------------- | --------------------------------------------- |
+| `timestamp`    | Vext logger automatically               | No configuration required                     |
+| `level`        | Vext logger automatically               | No configuration required                     |
+| `msg`          | `logger.info("...")`                    | No configuration required                     |
+| `requestId`    | Framework ALS → mixin automatic         | No configuration required                     |
+| `trace_id`     | otel middleware → ALS → mixin automatic | No configuration required                     |
+| `span_id`      | otel middleware → ALS → mixin automatic | no configuration required                     |
+| `service_name` | `config.logger.mixin`                   | User mixin injection                          |
+| `env`          | `config.logger.mixin`                   | User mixin injection                          |
+| `host`         | `config.logger.mixin`                   | User mixin injection                          |
+| `span`         | `trace.getActiveSpan().name`            | User mixin injection                          |
+| `endpoint`     | `req.route` in access log               | Automatically included in request log msg     |
+| `latency_ms`   | access log                              | Automatically included in request log msg     |
+| `user_id`      | Business code                           | `logger.info({ user_id: "..." }, msg)`        |
+| `feature.flag` | Business code                           | `logger.info({ "feature.flag": "..." }, msg)` |
+| `exception.*`  | `logger.error(err)`                     | Vext logger serializer automatically expands  |
 
 ### B. OTel Logs (LogRecord → Collector)
 
@@ -998,7 +1000,7 @@ Vext's default logger does not rely on third-party loggers, so logger-specific a
 - **`service.name`**: from Resource (configured in instrumentation.ts)
 - **`attributes`**: Structured log fields are mapped to LogRecord attributes
 
-Fields injected by user mixin (such as `service_name`, `host`, `span`) will automatically appear in LogRecord.attributes**.
+Fields injected by user mixin (such as `service_name`, `host`, `span`) will automatically appear in LogRecord.attributes\*\*.
 
 ::: tip OTel Logs Best Practices
 Avoid putting all landing log fields in LogRecord attributes. OTel Logs associates Trace with `trace_id` to see the complete context of `endpoint`, `latency_ms`, `user.id`, etc. Keeping LogRecord lightweight helps control Collector traffic.
@@ -1015,12 +1017,12 @@ GET /users/:id (http, 45ms) ← user.id, tenant.id here
 └── HTTP GET https://api.xxx/verify (http, 28ms) ← Automatic
 ```
 
-| Field | Source | Occurrence |
-| -------------- | ---------------------------------- | ---------------------------- |
-| `db.statement` | DB instrumentation automatic | Database sub-Span attributes |
-| `db.system` | DB instrumentation automatic | Database sub-Span attributes |
-| `cache.system` | Redis/Memcached instrumentation automatic | cache sub-Span attributes |
-| `http.url` | HTTP instrumentation automatic | External call sub-Span attributes |
+| Field          | Source                                    | Occurrence                        |
+| -------------- | ----------------------------------------- | --------------------------------- |
+| `db.statement` | DB instrumentation automatic              | Database sub-Span attributes      |
+| `db.system`    | DB instrumentation automatic              | Database sub-Span attributes      |
+| `cache.system` | Redis/Memcached instrumentation automatic | cache sub-Span attributes         |
+| `http.url`     | HTTP instrumentation automatic            | External call sub-Span attributes |
 
 > Correlate these deep fields by viewing the complete call chain in Jaeger / Grafana Tempo via `trace_id`.
 

@@ -19,15 +19,15 @@ Thank you for your interest in contributing to vext! We welcome contributions of
 
 ### Prerequisites
 
-- **Node.js** >= 18.0.0
+- **Node.js** >= 20.19.0
 - **npm** >= 9.0.0
 - **Git**
 
 ### 1. Fork and Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vext.git
-cd vext
+git clone https://github.com/YOUR_USERNAME/vextjs.git
+cd vextjs
 ```
 
 ### 2. Install Dependencies
@@ -373,8 +373,8 @@ If you want to contribute a new adapter:
 
 ## 📄 License
 
-By contributing to vext, you agree that your contributions will be licensed under the [MIT License](./LICENSE).
+By contributing to vextjs, you agree that your contributions will be licensed under the [Apache License 2.0](./LICENSE).
 
 ---
 
-**Thank you for helping make vext better!** 🚀
+**Thank you for helping make vextjs better!** 🚀

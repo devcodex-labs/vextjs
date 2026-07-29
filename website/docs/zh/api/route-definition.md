@@ -1144,4 +1144,4 @@ export const routes = defineRoutes((app) => { ... });
 | `/users`     | `/:id`    | `/users/:id`  |
 | `/`          | `/`       | `/`           |
 | `/`          | `/health` | `/health`     |
-| `/api/users` | ``        | `/api/users`  |
+| `/api/users` | _（空）_  | `/api/users`  |

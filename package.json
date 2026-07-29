@@ -92,7 +92,8 @@
     "verify:package-composition": "node scripts/validation/verify-package-composition.mjs",
     "verify:adapters": "node test/verify-adapters-startup.mjs",
     "verify:schema-v3": "node scripts/validation/check-schema-v3-adaptation.mjs",
-    "verify:pack-install": "node scripts/validation/verify-packed-install.mjs"
+    "verify:pack-install": "node scripts/validation/verify-packed-install.mjs",
+    "verify:docs-contract": "node scripts/validation/verify-documentation-contract.mjs"
   },
   "keywords": [
     "vext",

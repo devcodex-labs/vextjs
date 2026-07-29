@@ -2,7 +2,7 @@
  * hello-world 示例 — 生产模式启动脚本
  *
  * 此脚本模拟真实用户项目中 `vext start` 的启动方式（生产模式）。
- * 在 monorepo 内通过 node_modules/vextjs symlink 解析到框架根目录。
+ * 在仓库内通过 package.json 的 file:../.. dependency 解析当前 vextjs。
  *
  * ─── 生产模式（当前文件） ───────────────────────────────
  *

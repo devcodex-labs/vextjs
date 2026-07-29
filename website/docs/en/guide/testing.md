@@ -611,10 +611,12 @@ describe("Request headers", () => {
 
 ### TypeScript service files and ESM loading
 
-| When `services: true` (default), `createTestApp()` scans `src/services/` and loads `.ts` source files. `service-loader` automatically uses **esbuild** internally to compile and load each `.ts` file bundle, completely solving two native problems: | Problem                                                                                                                      | Cause                                                                                     | Solution |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts`                                                                                                                                                                                                                     | Node.js native ESM does not support the `.ts` extension                                                                      | esbuild compiles to `.mjs` and then `import()`                                            |
-| `.js → .ts` remapping is missing                                                                                                                                                                                                                      | TypeScript ESM convention is to write `.js` in `import`, and Node.js/Vite resolver does not automatically fall back to `.ts` | esbuild `bundle: true` fully resolves all local dependencies during the compilation phase |
+When `services: true` (the default), `createTestApp()` scans `src/services/` and loads `.ts` source files. The service loader uses esbuild internally to solve two native ESM problems:
+
+| Problem                           | Cause                                                                                        | Solution                                                              |
+| --------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js native ESM does not support the `.ts` extension                                      | esbuild compiles to `.mjs` and then calls `import()`                  |
+| `.js → .ts` remapping is missing  | TypeScript ESM imports use `.js`, while Node.js/Vite do not automatically fall back to `.ts` | esbuild `bundle: true` resolves local dependencies during compilation |
 
 **Scenarios not affected by this restriction**:
 

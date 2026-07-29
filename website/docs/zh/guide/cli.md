@@ -251,17 +251,18 @@ vext build [options]
 
 ### 选项
 
-| 选项               | 说明                                            | 默认值  |
-| ------------------ | ----------------------------------------------- | ------- |
-| `--outdir <path>`  | 输出目录                                        | `dist`  |
-| `--clean`          | 编译前清理输出目录                              | `false` |
-| `--sourcemap`      | 生成 source map                                 | `true`  |
-| `--no-sourcemap`   | 禁用 source map                                 | —       |
-| `--minify`         | 压缩输出代码                                    | `false` |
-| `--typecheck`      | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false` |
-| `--upload-assets`  | 前端构建完成后执行静态资源上传                  | `false` |
-| `--deploy-dry-run` | 只输出前端上传计划，不写入目标                  | `false` |
-| `-h, --help`       | 显示帮助                                        | —       |
+| 选项               | 说明                                            | 默认值       |
+| ------------------ | ----------------------------------------------- | ------------ |
+| `--outdir <path>`  | 输出目录                                        | `dist`       |
+| `--config <name>`  | 加载 `src/config/<name>` 作为构建期配置         | `production` |
+| `--clean`          | 编译前清理输出目录                              | `false`      |
+| `--sourcemap`      | 生成 source map                                 | `true`       |
+| `--no-sourcemap`   | 禁用 source map                                 | —            |
+| `--minify`         | 压缩输出代码                                    | `false`      |
+| `--typecheck`      | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
+| `--upload-assets`  | 前端构建完成后执行静态资源上传                  | `false`      |
+| `--deploy-dry-run` | 只输出前端上传计划，不写入目标                  | `false`      |
+| `-h, --help`       | 显示帮助                                        | —            |
 
 ### 示例
 
@@ -335,6 +336,7 @@ vext deploy assets [options]
 | 选项                  | 说明                                    | 默认值                             |
 | --------------------- | --------------------------------------- | ---------------------------------- |
 | `--outdir <path>`     | 构建输出目录                            | `dist`                             |
+| `--config <name>`     | 加载指定的前端部署配置                  | `production`                       |
 | `--manifest <path>`   | 指定 deploy manifest 路径               | `dist/client/deploy-manifest.json` |
 | `--adapter <name>`    | 上传 adapter，例如 `filesystem`、`mock` | 配置值                             |
 | `--target-dir <path>` | `filesystem` adapter 写入目录           | 配置值                             |
@@ -481,6 +483,7 @@ vext start [options]
 | ---------------------------- | ---------------------------------------- | -------------- |
 | `--port <number>`            | 指定端口                                 | 配置文件中的值 |
 | `--host <address>`           | 指定监听地址                             | 配置文件中的值 |
+| `--config <name>`            | 加载 `src/config/<name>`                 | `production`   |
 | `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error`        |
 | `--startup-profile`          | 输出生产启动阶段摘要与详细耗时           | —              |
 | `--startup-profile-json <p>` | 将生产启动阶段耗时写入 JSON 文件         | —              |
@@ -605,20 +608,16 @@ vext stop [options]
 
 ### 选项
 
-| 选项                | 说明                | 默认值      |
-| ------------------- | ------------------- | ----------- |
-| `--pid-file <path>` | PID 文件路径        | `.vext.pid` |
-| `--force`           | 强制终止（SIGKILL） | `false`     |
-| `-h, --help`        | 显示帮助            | —           |
+| 选项                | 说明         | 默认值      |
+| ------------------- | ------------ | ----------- |
+| `--pid-file <path>` | PID 文件路径 | `.vext.pid` |
+| `-h, --help`        | 显示帮助     | —           |
 
 ### 示例
 
 ```bash
 # 优雅停止
 vext stop
-
-# 强制停止
-vext stop --force
 
 # 指定 PID 文件
 vext stop --pid-file /var/run/myapp.pid
@@ -645,8 +644,6 @@ vext reload [options]
 | 选项                | 说明         | 默认值      |
 | ------------------- | ------------ | ----------- |
 | `--pid-file <path>` | PID 文件路径 | `.vext.pid` |
-| `--port <number>`   | 健康探测端口 | `3000`      |
-| `--host <address>`  | 健康探测主机 | `127.0.0.1` |
 | `-h, --help`        | 显示帮助     | —           |
 
 ### 示例
@@ -690,12 +687,15 @@ vext status [options]
 | 选项                | 说明         | 默认值      |
 | ------------------- | ------------ | ----------- |
 | `--pid-file <path>` | PID 文件路径 | `.vext.pid` |
+| `--port <number>`   | 健康探测端口 | `3000`      |
+| `--host <address>`  | 健康探测主机 | `127.0.0.1` |
 | `-h, --help`        | 显示帮助     | —           |
 
 ### 示例
 
 ```bash
 vext status
+vext status --port 8080
 ```
 
 ### 输出示例

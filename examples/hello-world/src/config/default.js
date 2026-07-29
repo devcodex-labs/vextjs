@@ -15,7 +15,8 @@ export default {
   // ── Adapter 配置 ──────────────────────────────────────
   //
   // 内置 adapter（字符串标识，零 import，开箱即用）:
-  //   "hono"     — 默认，基于 Hono 框架（轻量高性能，推荐）
+  //   "native"   — 默认，基于 Node.js http（无额外 HTTP 框架依赖）
+  //   "hono"     — 基于 Hono 框架（需要安装 optional peer hono）
   //   "fastify"  — 基于 Fastify 框架（企业级，丰富插件生态）
   //   "express"  — 基于 Express 框架（最广泛的社区生态）
   //   "koa"      — 基于 Koa 框架（洋葱模型中间件）
@@ -39,9 +40,9 @@ export default {
   // 注意：
   //   - 切换 adapter 不影响业务代码（路由、中间件、服务、插件）
   //   - 所有 adapter 行为一致：统一响应格式、统一错误处理、统一 body 解析
-  //   - 不配置时默认使用 "hono"
+  //   - 不配置时默认使用 "native"
   //
-  // adapter: "hono",
+  // adapter: "native",
 
   // ── 日志配置 ──────────────────────────────────────────
   logger: {
@@ -56,7 +57,7 @@ export default {
 
   // ── OpenAPI 文档 ──────────────────────────────────────
   openapi: {
-    enabled: true, // 启用后自动注册 GET /openapi.json + GET /docs（Swagger UI）
+    enabled: true, // 启用后自动注册 GET /openapi.json + GET /docs（Vext Docs Renderer）
     // title: "My API",          // API 文档标题
     // description: "API docs",  // API 文档描述
     // version: "1.0.0",         // API 版本号

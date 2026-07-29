@@ -70,8 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Links
 
-- [GitHub Repository](https://github.com/vextjs/vext)
-- [Issues](https://github.com/vextjs/vext/issues)
+- [GitHub Repository](https://github.com/devcodex-labs/vextjs)
+- [Issues](https://github.com/devcodex-labs/vextjs/issues)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 

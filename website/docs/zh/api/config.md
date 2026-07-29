@@ -135,6 +135,8 @@ export default {
 | `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | 见下方               | 内置 HTTP 客户端与代理配置             |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置             |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                     |
+| `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | 见下方               | 路由级响应缓存配置                     |
+| `dev`             | [`VextDevConfig`](#vextdevconfig)                       | 见下方               | 仅开发模式使用的工具配置               |
 
 `host` 支持 `"0.0.0.0"`、`"::"`、具体 IPv4、具体 IPv6 和主机名。配置为 `"::"` 时，ready 日志会同时展示 IPv4 local URL 与 bracketed IPv6 local/network URL（例如 `http://[::1]:3000`）；具体 IPv6 host 也会以方括号 URL 格式输出。
 
@@ -328,7 +330,7 @@ export default {
 
 - 内部系统、简单追踪 → 模式一（改 header 名为 `x-trace-id`）
 - 接入 OpenTelemetry / Jaeger / Datadog → 模式二（保留 requestId，配置 propagateHeaders）
-- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系)
+- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceid的关系)
   :::
 
 也可通过插件动态替换生成器：
@@ -403,6 +405,7 @@ export default {
 | `level`            | `'fatal' \| 'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'silent'` | `'info'`                   | 日志级别                                                                                                                                                                                                                                                                             |
 | `lifecycleLevel`   | `'concise' \| 'verbose'`                                                   | `'concise'`                | 框架生命周期日志详细程度，控制启动、loader、hot reload、cluster 等系统日志输出                                                                                                                                                                                                       |
 | `pretty`           | `boolean`                                                                  | 开发环境 `true`            | 是否使用内置 pretty formatter 输出可读格式                                                                                                                                                                                                                                           |
+| `prettyColor`      | `'auto' \| 'always' \| 'never'`                                            | `'auto'`                   | pretty 模式 level label 的 ANSI 颜色策略；生产 JSON 永不包含 ANSI                                                                                                                                                                                                                    |
 | `prettyIgnore`     | `string`                                                                   | `'pid,hostname,requestId'` | pretty 模式下忽略的字段（逗号分隔）。默认隐藏 `requestId` 避免 mixin 注入的字段被展开为多行噪音，生产环境 JSON 输出不受影响                                                                                                                                                          |
 | `prettySingleLine` | `boolean`                                                                  | `true`                     | pretty 模式下是否将额外字段以 JSON 内联形式压缩到消息同一行。设为 `false` 使用多行展开格式。仅影响 pretty 模式，生产环境 JSON 输出不受影响                                                                                                                                           |
 | `redactKeys`       | `string[]`                                                                 | `[]`                       | 按任意层级 exact key 脱敏结构化日志字段。顶层 `level` 为日志协议字段，不会被改写                                                                                                                                                                                                     |
@@ -442,9 +445,10 @@ fatal > error > warn > info > debug > trace
 
 优雅关闭配置。
 
-| 字段      | 类型     | 默认值 | 说明           |
-| --------- | -------- | ------ | -------------- |
-| `timeout` | `number` | `10`   | 关闭超时（秒） |
+| 字段           | 类型                                       | 默认值      | 说明                                   |
+| -------------- | ------------------------------------------ | ----------- | -------------------------------------- |
+| `timeout`      | `number`                                   | `10`        | 关闭超时（秒）                         |
+| `onFatalError` | `(error, origin) => void \| Promise<void>` | `undefined` | 捕获未处理异常后、进程退出前调用的回调 |
 
 收到 `SIGTERM` / `SIGINT` 信号后，框架会：
 
@@ -499,10 +503,11 @@ export default {
 
 响应格式配置。
 
-| 字段                 | 类型      | 默认值 | 说明                  |
-| -------------------- | --------- | ------ | --------------------- |
-| `hideInternalErrors` | `boolean` | `true` | 是否隐藏 500 错误详情 |
-| `wrap`               | `boolean` | `true` | 是否启用出口包装      |
+| 字段                 | 类型                  | 默认值 | 说明                                                 |
+| -------------------- | --------------------- | ------ | ---------------------------------------------------- |
+| `hideInternalErrors` | `boolean`             | `true` | 是否隐藏 500 错误详情                                |
+| `wrap`               | `boolean`             | `true` | 是否启用出口包装                                     |
+| `logErrors`          | `VextLogErrorsConfig` | 见下方 | unknown/5xx 默认记录；4xx 需显式设置 `http4xx: true` |
 
 ### 出口包装
 
@@ -906,6 +911,7 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 | `restartWindow`    | `number`                       | `60000`       | 快速重启检测窗口（毫秒）                                                                                         |
 | `restartBaseDelay` | `number`                       | `1000`        | 重启间隔退避基数（毫秒）                                                                                         |
 | `restartMaxDelay`  | `number`                       | `30000`       | 重启间隔上限（毫秒）                                                                                             |
+| `memoryThreshold`  | `number`                       | `1073741824`  | Worker heap 阈值（bytes），超出后触发诊断并退出 Worker                                                           |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程）                                                          |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker 进程标题前缀                                                                                              |
 | `sticky`           | `'none' \| 'ip'`               | `'none'`      | 粘性会话模式（`'ip'` 基于客户端 IP 分配固定 Worker，适用于 WebSocket / SSE）                                     |
@@ -1039,6 +1045,36 @@ export default {
 ```
 
 `cacheHub` 只接受 `response-cache-kit/cache-hub` 配置，不接受自定义 Store。路由级响应缓存通过 `RouteOptions.cache` 配置。公开配置单位使用毫秒；响应头中的 `Cache-Control: max-age` 会按 HTTP 标准输出秒。详见 [响应缓存指南](/guide/cache)。
+
+---
+
+## VextDevConfig
+
+仅开发模式使用的配置。`vext dev` 会读取这些字段，生产模式会忽略。
+
+| 字段           | 类型                                            | 默认值 | 说明                 |
+| -------------- | ----------------------------------------------- | ------ | -------------------- |
+| `errorOverlay` | [`VextDevOverlayConfig`](#vextdevoverlayconfig) | 见下方 | 浏览器错误覆盖层配置 |
+
+### VextDevOverlayConfig
+
+| 字段        | 类型                | 默认值   | 说明                     |
+| ----------- | ------------------- | -------- | ------------------------ |
+| `enabled`   | `boolean`           | `true`   | 是否启用浏览器错误覆盖层 |
+| `theme`     | `'dark' \| 'light'` | `'dark'` | 错误覆盖层主题           |
+| `maxFrames` | `number`            | `25`     | 覆盖层最多显示的堆栈帧数 |
+
+```typescript
+export default {
+  dev: {
+    errorOverlay: {
+      enabled: true,
+      theme: "light",
+      maxFrames: 10,
+    },
+  },
+};
+```
 
 ---
 

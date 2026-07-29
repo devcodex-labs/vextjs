@@ -265,16 +265,18 @@ When deploying to a production environment, the `.js.map` file can remain on the
 
 ## Comparison with DevCompiler
 
-| `vext build` and `vext dev` share the same esbuild base configuration (`createBaseEsbuildConfig()`), ensuring consistent compilation behavior in development and production environments: | Features                                          | `vext dev` (DevCompiler)                 | `vext build` (BuildCompiler) |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- | ---------------------------- |
-| **Output directory**                                                                                                                                                                      | `.vext/dev/` (temporary, gitignore)               | `dist/` (persistent, deployable)         |
-| **Compilation mode**                                                                                                                                                                      | Incremental compilation + single file compilation | Full compilation (full volume each time) |
-| **Source Map**                                                                                                                                                                            | inline (embedded JS file)                         | external (standalone `.js.map`)          |
-| **Hot reload**                                                                                                                                                                            | Supported (Tier 1/2/3)                            | Not supported (one-time compilation)     |
-| **Extra Exclusions**                                                                                                                                                                      | None                                              | config/development, local, test          |
-| **NODE_ENV injection**                                                                                                                                                                    | None                                              | `"production"`                           |
-| **MetaFile**                                                                                                                                                                              | None                                              | Yes (compile statistics)                 |
-| **Typical time consuming**                                                                                                                                                                | ~23ms (incremental)                               | ~500ms (full)                            |
+`vext build` and `vext dev` share the same esbuild base configuration (`createBaseEsbuildConfig()`), ensuring consistent compilation behavior in development and production:
+
+| Features                 | `vext dev` (DevCompiler)              | `vext build` (BuildCompiler)         |
+| ------------------------ | ------------------------------------- | ------------------------------------ |
+| **Output directory**     | `.vext/dev/` (temporary, gitignored)  | `dist/` (persistent, deployable)     |
+| **Compilation mode**     | Incremental + single-file compilation | Full compilation                     |
+| **Source Map**           | Inline (embedded in JS)               | External (`.js.map`)                 |
+| **Hot reload**           | Supported (Tier 1/2/3)                | Not supported (one-time compilation) |
+| **Extra exclusions**     | None                                  | config/development, local, test      |
+| **NODE_ENV injection**   | None                                  | `"production"`                       |
+| **MetaFile**             | None                                  | Yes (compile statistics)             |
+| **Typical elapsed time** | ~23 ms (incremental)                  | ~500 ms (full)                       |
 
 ### Shared configuration
 

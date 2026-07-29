@@ -459,7 +459,7 @@ await app.fetch.get("https://partner-api.com/data", {
 - **requestId**（vext 内置）：自动生成，用于日志关联和内部服务间追踪
 - **traceId**（APM 系统）：由 OpenTelemetry / Jaeger 等生成，通过 `propagateHeaders` 透传
 
-详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系) 获取完整说明。
+详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceid的关系) 获取完整说明。
 :::
 
 ## 超时控制

@@ -311,15 +311,15 @@ app.get(
 | DSL              | Description                         | Examples                         |
 | ---------------- | ----------------------------------- | -------------------------------- |
 | `'string'`       | Required string                     | `name: 'string'`                 |
-| `'string:1-50''  | A string of length 1-50             | `name: 'string:1-50''            |
+| `'string:1-50'`  | A string of length 1-50             | `name: 'string:1-50'`            |
 | `'string?'`      | Optional string                     | `nickname: 'string?'`            |
 | `'number'`       | Required number                     | `age: 'number'`                  |
 | `'number:0-'`    | A number greater than or equal to 0 | `page: 'number:0-'`              |
-| `'number:1-100'' | A number between 1 and 100          | `limit: 'number:1-100'`          |
+| `'number:1-100'` | A number between 1 and 100          | `limit: 'number:1-100'`          |
 | `'boolean'`      | Required Boolean value              | `active: 'boolean'`              |
 | `'email'`        | Email format                        | `email: 'email'`                 |
 | `'url'`          | URL format                          | `website: 'url'`                 |
-| `'date''         | Date format                         | `birthday: 'date'`               |
+| `'date'`         | Date format                         | `birthday: 'date'`               |
 | `'uuid'`         | UUID format                         | `id: 'uuid'`                     |
 | `'enum:a,b,c'`   | Enumeration value                   | `status: 'enum:active,inactive'` |
 | `'array'`        | array                               | `tags: 'array'`                  |
@@ -1145,4 +1145,4 @@ The framework automatically handles the following path edge cases:
 | `/users`     | `/:id`    | `/users/:id`  |
 | `/`          | `/`       | `/`           |
 | `/`          | `/health` | `/health`     |
-| `/api/users` | ``        | `/api/users`  |
+| `/api/users` | _(empty)_ | `/api/users`  |

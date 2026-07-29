@@ -200,13 +200,15 @@ const response = await app.fetch.get("https://api.example.com/data", {
 
 #### VextFetchInit complete field
 
-| `VextFetchInit` inherits from the standard `RequestInit` and extends the following fields: | Field                                   | Type                             | Default Value                                                                                                                                      | Description |
-| ------------------------------------------------------------------------------------------ | --------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `timeout`                                                                                  | `number`                                | Global `config.fetch.timeout`    | Request timeout (milliseconds)                                                                                                                     |
-| `retry`                                                                                    | `number`                                | global `config.fetch.retry`      | Number of retries (idempotent methods only)                                                                                                        |
-| `retryDelay`                                                                               | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval, supports exponential backoff in functional form                                                                                    |
-| `propagateRequestId`                                                                       | `boolean`                               | `true`                           | Whether to automatically inject the `x-request-id` header (`propagatedHeaders` will still be transparently transmitted when disabled)              |
-| `propagateHeaders`                                                                         | `string[]`                              | —                                | Additional headers that need to be transparently transmitted in this request (must be declared in `config.fetch.propagateHeaders` to have a value) |
+`VextFetchInit` inherits from the standard `RequestInit` and adds:
+
+| Field                | Type                                    | Default Value                    | Description                                                                                                                     |
+| -------------------- | --------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`            | `number`                                | Global `config.fetch.timeout`    | Request timeout in milliseconds                                                                                                 |
+| `retry`              | `number`                                | Global `config.fetch.retry`      | Number of retries for idempotent methods                                                                                        |
+| `retryDelay`         | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval; a function can implement exponential backoff                                                                    |
+| `propagateRequestId` | `boolean`                               | `true`                           | Whether to inject `x-request-id` automatically; configured `propagatedHeaders` are still forwarded when this is disabled        |
+| `propagateHeaders`   | `string[]`                              | —                                | Additional headers to forward for this request; values are available only for names declared by `config.fetch.propagateHeaders` |
 
 :::tip priority
 Single request `init.timeout` > `options.timeout` of `create()` > Global `config.fetch.timeout`

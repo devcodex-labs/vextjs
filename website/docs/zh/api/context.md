@@ -6,24 +6,29 @@
 
 `VextRequest` 是框架统一的请求对象接口。由各 Adapter 负责将底层框架的原始请求转换为此接口，确保切换 Adapter 时业务代码无需改动。
 
-### 属性一览
+### 公开成员一览
 
-| 属性        | 类型                                  | 说明                                                                                                  |
-| ----------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `method`    | `string`                              | HTTP 方法（大写，如 `'GET'`、`'POST'`）                                                               |
-| `url`       | `string`                              | 完整请求 URL                                                                                          |
-| `path`      | `string`                              | 路径部分（不含 query string）                                                                         |
-| `route`     | `string`                              | 当前请求匹配的路由模板（如 `/users/:id`）；静态路由与 `path` 相同；未匹配路由（404）时为空字符串 `''` |
-| `params`    | `Record<string, string>`              | 路径动态参数                                                                                          |
-| `query`     | `Record<string, string>`              | URL 查询参数（已解析）                                                                                |
-| `body`      | `unknown`                             | 请求体（由 body-parser 中间件填充）                                                                   |
-| `headers`   | `Record<string, string \| undefined>` | 请求头（全部小写 key）                                                                                |
-| `app`       | `VextApp`                             | 当前请求所属的应用实例                                                                                |
-| `requestId` | `string`                              | 请求唯一标识                                                                                          |
-| `ip`        | `string`                              | 客户端 IP                                                                                             |
-| `protocol`  | `'http' \| 'https'`                   | 请求协议                                                                                              |
-| `t`         | `Function \| undefined`               | i18n 翻译函数（插件注入）                                                                             |
-| `files`     | `ParsedFile[] \| undefined`           | 文件上传列表（由内置 multipart 解析或自定义上传插件填充）                                             |
+| 属性          | 类型                                    | 说明                                                                                                  |
+| ------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `method`      | `string`                                | HTTP 方法（大写，如 `'GET'`、`'POST'`）                                                               |
+| `url`         | `string`                                | 完整请求 URL                                                                                          |
+| `path`        | `string`                                | 路径部分（不含 query string）                                                                         |
+| `route`       | `string`                                | 当前请求匹配的路由模板（如 `/users/:id`）；静态路由与 `path` 相同；未匹配路由（404）时为空字符串 `''` |
+| `params`      | `Record<string, string>`                | 路径动态参数                                                                                          |
+| `query`       | `Record<string, string>`                | URL 查询参数（已解析）                                                                                |
+| `body`        | `unknown`                               | 请求体（由 body-parser 中间件填充）                                                                   |
+| `headers`     | `Record<string, string \| undefined>`   | 请求头（全部小写 key）                                                                                |
+| `app`         | `VextApp`                               | 当前请求所属的应用实例                                                                                |
+| `requestId`   | `string`                                | 请求唯一标识                                                                                          |
+| `ip`          | `string`                                | 客户端 IP                                                                                             |
+| `protocol`    | `'http' \| 'https'`                     | 请求协议                                                                                              |
+| `cookies`     | `VextCookieJar`                         | 已解析的请求 Cookie                                                                                   |
+| `cookie()`    | `(name: string) => string \| undefined` | 读取一个请求 Cookie                                                                                   |
+| `csrfToken()` | `() => string`                          | 返回当前 CSRF token；需要启用 CSRF 中间件                                                             |
+| `auth`        | `VextAuthContext`                       | 认证上下文；由 auth 中间件填充前为匿名上下文                                                          |
+| `session`     | `VextSession \| undefined`              | 启用 session 中间件后的 Session 状态                                                                  |
+| `t`           | `Function \| undefined`                 | i18n 翻译函数（插件注入）                                                                             |
+| `files`       | `ParsedFile[] \| undefined`             | 文件上传列表（由内置 multipart 解析或自定义上传插件填充）                                             |
 
 ---
 
@@ -494,16 +499,25 @@ app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
 
 ### 方法一览
 
-| 方法                                         | 返回值   | 说明                           |
-| -------------------------------------------- | -------- | ------------------------------ |
-| `json(data, status?)`                        | `void`   | 返回 JSON 响应（经过出口包装） |
-| `text(content, status?)`                     | `void`   | 返回纯文本响应                 |
-| `stream(readable, contentType?)`             | `void`   | 流式响应                       |
-| `download(readable, filename, contentType?)` | `void`   | 文件下载                       |
-| `redirect(url, status?)`                     | `void`   | 重定向                         |
-| `status(code)`                               | `this`   | 设置状态码（链式调用）         |
-| `setHeader(name, value)`                     | `this`   | 设置响应头（链式调用）         |
-| `statusCode`                                 | `number` | 当前状态码（只读）             |
+| 方法                                         | 返回值    | 说明                           |
+| -------------------------------------------- | --------- | ------------------------------ |
+| `json(data, status?)`                        | `void`    | 返回 JSON 响应（经过出口包装） |
+| `render(page, props?, options?)`             | `void`    | 渲染内置前端页面               |
+| `renderError(error?, page?, options?)`       | `void`    | 渲染已配置的前端错误页面       |
+| `text(content, status?)`                     | `void`    | 返回纯文本响应                 |
+| `stream(readable, contentType?)`             | `void`    | 流式响应                       |
+| `download(readable, filename, contentType?)` | `void`    | 文件下载                       |
+| `redirect(url, status?)`                     | `void`    | 重定向                         |
+| `status(code)`                               | `this`    | 设置状态码（链式调用）         |
+| `setHeader(name, value)`                     | `this`    | 设置响应头（链式调用）         |
+| `cookie(name, value, options?)`              | `this`    | 追加 `Set-Cookie` 响应头       |
+| `clearCookie(name, options?)`                | `this`    | 让一个响应 Cookie 过期         |
+| `statusCode`                                 | `number`  | 当前状态码（只读）             |
+| `headersSent`                                | `boolean` | 响应头是否已经发送（只读）     |
+| `sse()`                                      | `unknown` | 可选 SSE 插件扩展              |
+| `upgrade()`                                  | `unknown` | 可选 WebSocket/upgrade 扩展    |
+
+`render()` 与 `renderError()` 由内置前端 renderer 绑定。`sse()` 与 `upgrade()` 是可选扩展点，仅在对应插件安装后可用。Cookie 方法会分别追加 `Set-Cookie` 响应头，不会错误合并多个 Cookie。
 
 ---
 

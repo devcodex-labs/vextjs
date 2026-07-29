@@ -102,7 +102,7 @@ app.hooks.on("openapi:afterGenerate", ({ document }) => {
 ## Available Hooks
 
 | Name                                                      | Trigger Point                                                                                                     |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --- | -------------- | --------------------------------------------------- |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `request:start`                                           | After requestId is generated, it enters the global middleware chain; 404 will also be triggered, `matched=false`  |
 | `route:matched`                                           | After the adapter matches the route and before executing the checksum handler                                     |
 | `route:notFound`                                          | No route matching, 404 response before sending                                                                    |
@@ -127,7 +127,8 @@ app.hooks.on("openapi:afterGenerate", ({ document }) => {
 | `service:afterCall`                                       | After the service method returns successfully                                                                     |
 | `service:error`                                           | After the service method throws an error or rejects                                                               |
 | `cache:hit`, `cache:miss`, `cache:write`, `cache:error`   | Route-level response cache read and write life cycle                                                              |
-| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup`                     |     | `routes:ready` | After route scanning and registration are completed |
+| `plugin:beforeSetup`, `plugin:afterSetup`, `plugin:error` | Plugin `setup()` before and after and failure; plugins cannot observe their own `beforeSetup`                     |
+| `routes:ready`                                            | After route scanning and registration are completed                                                               |
 | `openapi:beforeGenerate`, `openapi:afterGenerate`         | Before and after OpenAPI document generation; `afterGenerate` can replace document synchronously                  |
 | `server:beforeListen`                                     | Before HTTP server starts listening                                                                               |
 | `app:ready`                                               | `onReady` before and after execution                                                                              |

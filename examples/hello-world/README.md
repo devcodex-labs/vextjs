@@ -13,15 +13,19 @@ hello-world/
 │   │   └── default.js      # 应用配置（端口、Adapter、日志、OpenAPI 等）
 │   └── routes/
 │       └── index.js         # 路由定义（GET / + GET /health）
-├── node_modules/
-│   └── vextjs -> ../../     # symlink 指向框架根目录（monorepo 内使用）
-├── package.json             # 项目配置（type: module）
+├── package.json             # 项目配置；通过 file:../.. 消费当前仓库
 ├── start.js                 # 生产模式启动脚本（monorepo 内使用）
 └── README.md                # 本文件
 ```
 
-> 💡 **Monorepo 说明**：`node_modules/vextjs` 是指向框架根目录的 symlink（junction），
-> 使示例中的 `import { ... } from 'vextjs'` 能正确解析。真实用户项目通过 `npm install vextjs` 安装，无需手动创建。
+本示例在 `package.json` 中使用 `"vextjs": "file:../.."` 消费当前仓库。首次运行前先安装依赖：
+
+```bash
+cd examples/hello-world
+npm install
+```
+
+真实用户项目使用 `npm install vextjs`，不需要手动创建 symlink。
 
 ---
 
@@ -59,10 +63,13 @@ console.log(
 
 ```bash
 # 先确保框架已构建
-cd vext
+cd vextjs
 npm run build
 
 # 运行示例
+cd examples/hello-world
+npm install
+cd ../..
 node examples/hello-world/start.js
 ```
 
@@ -90,7 +97,7 @@ npx vext dev --clear               # 每次重载后清空控制台
 
 ```bash
 # 先确保框架已构建
-cd vext
+cd vextjs
 npm run build
 
 # 通过环境变量指定项目根目录，直接运行 dev-entry.js
@@ -98,8 +105,7 @@ cd examples/hello-world
 VEXT_ROOT=$(pwd) VEXT_DEV_MODE=1 NODE_ENV=development node ../../dist/lib/dev/dev-entry.js
 ```
 
-> 💡 monorepo 内不能直接用 `npx vext dev`，因为 CLI 的 `detectProject` 会沿目录树向上查找 `package.json`，
-> 需要 hello-world 有自己的 `package.json` + `node_modules/vextjs` symlink（已配置）。
+> 💡 执行 `npm install` 后，本示例可以直接运行 `npm run dev`。`file:../..` 只用于仓库内示例；发布后的用户项目应安装 registry 中的 `vextjs`。
 
 **三层重载策略：**
 
@@ -150,7 +156,7 @@ export default {
   port: 3000, // 监听端口（1-65535）
   host: "0.0.0.0", // 监听地址（"0.0.0.0" 允许外部访问，"127.0.0.1" 仅本地）
 
-  // adapter: "hono",      // 内置 adapter: "hono"(默认) | "fastify" | "express" | "koa"
+  // adapter: "native",    // 默认；也可选 hono | fastify | express | koa
 
   logger: {
     level: "info", // 日志级别: fatal | error | warn | info | debug | trace | silent
@@ -159,7 +165,7 @@ export default {
     hideInternalErrors: false, // 生产环境建议设为 true，隐藏 500 错误的 stack 信息
   },
   openapi: {
-    enabled: true, // 启用后自动注册 GET /openapi.json + GET /docs（Swagger UI）
+    enabled: true, // 自动注册 GET /openapi.json + GET /docs（Vext Docs Renderer）
   },
 };
 ```
@@ -171,7 +177,7 @@ export default {
 
 ## 🔄 Adapter 切换
 
-VextJS 支持 4 种内置 HTTP Adapter，切换 Adapter **不影响业务代码**（路由、中间件、服务、插件完全通用）。
+VextJS 支持 5 种内置 HTTP Adapter，切换 Adapter **不影响业务代码**（路由、中间件、服务、插件完全通用）。默认使用零额外 HTTP 框架依赖的 Native adapter；Hono、Fastify、Express、Koa 需要安装对应 optional peer。
 
 ### 方式 1 — 字符串标识（推荐，零 import）
 
@@ -179,7 +185,8 @@ VextJS 支持 4 种内置 HTTP Adapter，切换 Adapter **不影响业务代码*
 
 ```js
 export default {
-  adapter: "hono", // 默认值，可省略
+  adapter: "native", // 默认值，可省略
+  // adapter: "hono",
   // adapter: "fastify",
   // adapter: "express",
   // adapter: "koa",
@@ -210,12 +217,13 @@ export default {
 
 ### 各 Adapter 特点
 
-| Adapter   | 底层框架                          | 特点                   | 适用场景                |
-| --------- | --------------------------------- | ---------------------- | ----------------------- |
-| `hono`    | [Hono](https://hono.dev/)         | 轻量高性能，零额外依赖 | 默认推荐，追求极致性能  |
-| `fastify` | [Fastify](https://fastify.dev/)   | 企业级，丰富插件生态   | 需要 Fastify 插件生态   |
-| `express` | [Express](https://expressjs.com/) | 最广泛社区生态         | 复用已有 Express 中间件 |
-| `koa`     | [Koa](https://koajs.com/)         | 洋葱模型中间件         | 偏好 Koa 风格           |
+| Adapter   | 底层框架                          | 依赖边界                 | 适用场景                 |
+| --------- | --------------------------------- | ------------------------ | ------------------------ |
+| `native`  | Node.js `http`                    | 无额外 HTTP 框架依赖     | 默认，性能与最小依赖优先 |
+| `hono`    | [Hono](https://hono.dev/)         | optional peer: `hono`    | Web Standards API        |
+| `fastify` | [Fastify](https://fastify.dev/)   | optional peer: `fastify` | Fastify 插件生态         |
+| `express` | [Express](https://expressjs.com/) | optional peer: `express` | 复用 Express 中间件      |
+| `koa`     | [Koa](https://koajs.com/)         | optional peer: `koa`     | 偏好 Koa 风格            |
 
 > 💡 **一致性保证**：无论选择哪个 Adapter，以下行为完全一致：
 >
@@ -258,5 +266,5 @@ export default defineRoutes((app) => {
 ## 📚 更多信息
 
 - [VextJS README](../../README.md) — 框架完整文档
-- [VextJS CLI 帮助](../../README.md#-cli-命令) — 所有 CLI 命令说明
+- [VextJS CLI 帮助](../../README.md#cli) — 所有 CLI 命令说明
 - [Adapter 设计文档](../../src/adapters/) — 各 Adapter 实现源码

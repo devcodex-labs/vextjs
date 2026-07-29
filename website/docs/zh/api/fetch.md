@@ -334,7 +334,7 @@ export default {
 
 - 全局配置 `config.fetch.propagateHeaders`：声明哪些头需要被捕获和透传
 - 未在全局配置中声明的头：在 `init.headers` 中手动设置即可
-- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceId的关系)
+- 详见 [请求上下文 → 与分布式追踪的关系](/guide/request-context#与分布式追踪traceid的关系)
   :::
 
 ### 优先级

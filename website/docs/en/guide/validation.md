@@ -96,12 +96,12 @@ schema-dsl uses concise string expressions to describe data types and constraint
 
 | DSL expression | Meaning       | Example values          |
 | -------------- | ------------- | ----------------------- |
-| `'string''     | string        | `"hello"`               |
+| `'string'`     | string        | `"hello"`               |
 | `'number'`     | Number        | `42`, `3.14`            |
 | `'boolean'`    | Boolean value | `true`, `false`         |
-| `'email''      | Email format  | `"user@example.com"`    |
+| `'email'`      | Email format  | `"user@example.com"`    |
 | `'url'`        | URL format    | `"https://example.com"` |
-| `'date''       | Date string   | `"2026-01-15"`          |
+| `'date'`       | Date string   | `"2026-01-15"`          |
 
 ### Required and optional
 
@@ -187,7 +187,7 @@ schema-dsl automatically performs type conversion during validation, which is es
 | `'number'`    | `"3.14"`       | `3.14`    |
 | `'boolean'`   | `"true"`       | `true`    |
 | `'boolean'`   | `"false"`      | `false`   |
-| `'boolean''   | `"1"`          | `true`    |
+| `'boolean'`   | `"1"`          | `true`    |
 | `'boolean'`   | `"0"`          | `false`   |
 
 ```typescript

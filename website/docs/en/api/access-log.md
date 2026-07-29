@@ -131,9 +131,9 @@ export default {
 
 ### `enabled`
 
-| Type | Default Value | Description |
-| ---------- | ------ | -------------------------- |
-| `boolean` | `true` | Whether to enable access-log middleware |
+| Type      | Default Value | Description                             |
+| --------- | ------------- | --------------------------------------- |
+| `boolean` | `true`        | Whether to enable access-log middleware |
 
 When set to `false`, the middleware directly calls `next()`, skipping it with zero overhead.
 
@@ -146,17 +146,19 @@ export default {
 
 ### `level`
 
-| type | default value | optional value | description |
-| -------- | -------- | --------------------- | ------------ |
-| `string` | `'info'` | `'info'` \| `'debug'` | Log output level |
+| type     | default value | optional value        | description      |
+| -------- | ------------- | --------------------- | ---------------- |
+| `string` | `'info'`      | `'info'` \| `'debug'` | Log output level |
 
 After setting it to `'debug'`, you can uniformly control whether to output ordinary access logs through the `logger.level` initial threshold or runtime `app.logger.setLevel()` in the production environment. 5xx responses are always promoted to `error`; 4xx responses are only promoted to `warn` if `warnOn4xx: true`.
 
 ### `skipPaths`
 
-| Type | Default Value | Description |
-| ---------- | ------ | ------------------------ |
-| `string[]` | `[]` | List of paths that do not record access logs |Internally uses `Set` to implement O(1) exact search.
+| Type       | Default Value | Description                                  |
+| ---------- | ------------- | -------------------------------------------- |
+| `string[]` | `[]`          | List of paths that do not record access logs |
+
+Internally uses `Set` to implement O(1) exact search.
 
 Common uses: exclude high-frequency paths such as health checks, Kubernetes probes, and Prometheus metrics:
 
@@ -170,9 +172,9 @@ export default {
 
 ### `skipPathPrefixes`
 
-| Type | Default Value | Description |
-| ---------- | ------ | ---------------------------- |
-| `string[]` | `[]` | Path prefix list that does not record access logs |
+| Type       | Default Value | Description                                       |
+| ---------- | ------------- | ------------------------------------------------- |
+| `string[]` | `[]`          | Path prefix list that does not record access logs |
 
 Complementary to exact matching of `skipPaths`, suitable for skipping entire internal path trees:
 
@@ -186,9 +188,9 @@ export default {
 
 ### `slowThreshold`
 
-| Type | Default Value | Description |
-| -------- | ------ | ---------------------------------- |
-| `number` | `0` | Slow request threshold (milliseconds), `0` means not enabled |
+| Type     | Default Value | Description                                                  |
+| -------- | ------------- | ------------------------------------------------------------ |
+| `number` | `0`           | Slow request threshold (milliseconds), `0` means not enabled |
 
 For requests whose response time exceeds this threshold, the log level is automatically raised to `warn`, and a `[SLOW]` tag is appended to the message:
 
@@ -198,9 +200,9 @@ For requests whose response time exceeds this threshold, the log level is automa
 
 ### `logResponseSize`
 
-| Type | Default Value | Description |
-| --------- | ------- | -------------------------- |
-| `boolean` | `false` | Whether to include the response body size in the log |
+| Type      | Default Value | Description                                          |
+| --------- | ------------- | ---------------------------------------------------- |
+| `boolean` | `false`       | Whether to include the response body size in the log |
 
 When enabled, log messages will append `Content-Length` after the IP (if present in the response header):
 
@@ -210,17 +212,17 @@ When enabled, log messages will append `Content-Length` after the IP (if present
 
 ### `warnOn4xx`
 
-| Type | Default Value | Description |
-| --------- | ------- | ---------------------------- |
-| `boolean` | `false` | Whether to raise 4xx responses to `warn` |
+| Type      | Default Value | Description                              |
+| --------- | ------------- | ---------------------------------------- |
+| `boolean` | `false`       | Whether to raise 4xx responses to `warn` |
 
 Level mapping:
 
-| Status code range | Log level | Description |
-| --------------- | -------------------------------------------------- | ------------------ |
-| 1xx / 2xx / 3xx | Configured `level` (default `info`) | Normal request |
-| 4xx | `warn` if `warnOn4xx: true`, otherwise use the configured `level` | Client error |
-| 5xx | `error` | Server-side error, always raised |
+| Status code range | Log level                                                         | Description                      |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------- |
+| 1xx / 2xx / 3xx   | Configured `level` (default `info`)                               | Normal request                   |
+| 4xx               | `warn` if `warnOn4xx: true`, otherwise use the configured `level` | Client error                     |
+| 5xx               | `error`                                                           | Server-side error, always raised |
 
 ```
 [17:53:27.003] WARN: GET /api/users/999 404 2ms | 192.168.1.10

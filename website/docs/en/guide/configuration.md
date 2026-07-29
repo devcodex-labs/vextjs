@@ -504,7 +504,7 @@ When the request carries the `X-Request-Id` header, the framework will transpare
 | `logger.prettyIgnore`     | `string`                        | `'pid,hostname,requestId'`     | Fields to ignore in pretty mode (comma separated); `requestId` is hidden by default to avoid mixin injected fields from expanding into multi-line noise |
 | `logger.redactKeys`       | `string[]`                      | `[]`                           | Desensitize structured log fields by exact key at any level                                                                                             |
 | `logger.redactPaths`      | `string[]`                      | `[]`                           | Desensitize structured log fields by dot notation exact path                                                                                            |
-| `logger.redactValue`      | `string`                        | `'[Redacted]''                 | Desensitized replacement value                                                                                                                          |
+| `logger.redactValue`      | `string`                        | `'[Redacted]'`                 | Desensitized replacement value                                                                                                                          |
 | `logger.mixin`            | `function`                      | `undefined`                    | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields                |
 
 Supported log levels (from low to high): `'trace'` → `'debug'` → `'info'` → `'warn'` → `'error'` → `'fatal'` → `'silent'`
@@ -545,15 +545,17 @@ After receiving the `SIGTERM` / `SIGINT` signal, the framework executes all `onC
 
 ### HTTP Server Configuration (`server`)
 
-| `server` controls the inbound Node.js HTTP server layer behavior, applicable to the built-in Native / Hono / Fastify / Express / Koa adapter, and also applicable to the development server created by `vext dev`. Unconfigured fields retain their current Node.js default values. | Configuration item | Type                  | Default value                                                                  | Description |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------- | ------------------------------------------------------------------------------ | ----------- |
-| `server.requestTimeout`                                                                                                                                                                                                                                                             | `number`           | Node.js default       | Maximum time in milliseconds to receive a complete request, `0` means disabled |
-| `server.headersTimeout`                                                                                                                                                                                                                                                             | `number`           | Node.js default       | Maximum time to receive complete HTTP headers (milliseconds)                   |
-| `server.keepAliveTimeout`                                                                                                                                                                                                                                                           | `number`           | Node.js default value | Keep-alive idle wait time after response completes (milliseconds)              |
-| `server.socketTimeout`                                                                                                                                                                                                                                                              | `number`           | Node.js default value | socket inactivity timeout (milliseconds), `0` means disabled                   |
-| `server.maxHeaderSize`                                                                                                                                                                                                                                                              | `number`           | Node.js default value | Maximum request header size (bytes)                                            |
-| `server.maxRequestsPerSocket`                                                                                                                                                                                                                                                       | `number`           | Node.js default value | The maximum number of requests per socket, `0` means unlimited                 |
-| `server.connectionsCheckingInterval`                                                                                                                                                                                                                                                | `number`           | Node.js default value | Outstanding request timeout check interval (milliseconds)                      |
+`server` controls the inbound Node.js HTTP server layer for the built-in Native, Hono, Fastify, Express, and Koa adapters, including the development server created by `vext dev`. Unconfigured fields retain the current Node.js defaults.
+
+| Configuration item                   | Type     | Default value   | Description                                                 |
+| ------------------------------------ | -------- | --------------- | ----------------------------------------------------------- |
+| `server.requestTimeout`              | `number` | Node.js default | Maximum time to receive a complete request; `0` disables it |
+| `server.headersTimeout`              | `number` | Node.js default | Maximum time to receive complete HTTP headers               |
+| `server.keepAliveTimeout`            | `number` | Node.js default | Keep-alive idle wait after a response completes             |
+| `server.socketTimeout`               | `number` | Node.js default | Socket inactivity timeout; `0` disables it                  |
+| `server.maxHeaderSize`               | `number` | Node.js default | Maximum request header size in bytes                        |
+| `server.maxRequestsPerSocket`        | `number` | Node.js default | Maximum requests per socket; `0` means unlimited            |
+| `server.connectionsCheckingInterval` | `number` | Node.js default | Outstanding-request timeout check interval                  |
 
 ```typescript
 export default {

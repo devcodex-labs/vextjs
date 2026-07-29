@@ -154,15 +154,17 @@ export default defineRoutes((app) => {
 
 ## HTTP method
 
-| The `app` object in the `defineRoutes()` callback supports the following HTTP methods: | Method                 | Usage                                                           | Common scenarios |
-| -------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------- | ---------------- |
-| `app.get()`                                                                            | Query resources        | List query, details acquisition                                 |
-| `app.post()`                                                                           | Create resources       | Form submission, resource creation                              |
-| `app.put()`                                                                            | Full update            | Resource replacement                                            |
-| `app.patch()`                                                                          | Partial update         | Field-level update                                              |
-| `app.delete()`                                                                         | Delete resources       | Resource deletion                                               |
-| `app.head()`                                                                           | Get header information | Resource existence check                                        |
-| `app.options()`                                                                        | Preflight request      | CORS preflight (usually handled automatically by the framework) |
+The `app` object in the `defineRoutes()` callback supports these HTTP methods:
+
+| Method          | Usage                  | Common scenarios                                               |
+| --------------- | ---------------------- | -------------------------------------------------------------- |
+| `app.get()`     | Query resources        | List queries and detail retrieval                              |
+| `app.post()`    | Create resources       | Form submission and resource creation                          |
+| `app.put()`     | Full update            | Resource replacement                                           |
+| `app.patch()`   | Partial update         | Field-level updates                                            |
+| `app.delete()`  | Delete resources       | Resource deletion                                              |
+| `app.head()`    | Get header information | Resource existence checks                                      |
+| `app.options()` | Preflight request      | CORS preflight, usually handled automatically by the framework |
 
 ## Dynamic routing parameters
 
@@ -424,18 +426,18 @@ VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl), dec
 
 | DSL expression         | Meaning                                  |
 | ---------------------- | ---------------------------------------- |
-| `'string!''            | Required string                          |
+| `'string!'`            | Required string                          |
 | `'string?'`            | Optional string                          |
-| `'string:1-50''        | String, length 1-50                      |
-| `'string:1-50!''       | Required string, length 1-50             |
-| `'number!''            | Required number                          |
+| `'string:1-50'`        | String, length 1-50                      |
+| `'string:1-50!'`       | Required string, length 1-50             |
+| `'number!'`            | Required number                          |
 | `'number:1-'`          | Number, minimum value 1 (no upper limit) |
-| `'number:1-100''       | Number, range 1-100                      |
-| `'email!''             | Required, email format                   |
-| `'url?''               | Optional, URL format                     |
-| `'boolean!''           | Required Boolean value                   |
+| `'number:1-100'`       | Number, range 1-100                      |
+| `'email!'`             | Required, email format                   |
+| `'url?'`               | Optional, URL format                     |
+| `'boolean!'`           | Required Boolean value                   |
 | `'admin\|user\|guest'` | Enumeration value                        |
-| `'date!''              | Required date string                     |
+| `'date!'`              | Required date string                     |
 
 ### Verify location
 

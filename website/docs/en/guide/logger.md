@@ -918,7 +918,7 @@ These gaps do not affect the Vext default framework log, access log, requestId/t
 | `logger.prettySingleLine` | `boolean`  | `true`                      | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format |
 | `logger.redactKeys`       | `string[]` | `[]`                        | Desensitize structured log fields by exact key at any level                                                                                       |
 | `logger.redactPaths`      | `string[]` | `[]`                        | Desensitize structured log fields by dot notation exact path                                                                                      |
-| `logger.redactValue`      | `string`   | `'[Redacted]''              | Desensitized replacement value                                                                                                                    |
+| `logger.redactValue`      | `string`   | `'[Redacted]'`              | Desensitized replacement value                                                                                                                    |
 | `logger.mixin`            | `function` | `undefined`                 | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields          |
 
 ## Best Practices

@@ -2,7 +2,7 @@
  * hello-world 示例路由
  *
  * 使用 vextjs 包导出的 defineRoutes 定义路由。
- * 在 monorepo 内通过 node_modules/vextjs symlink 解析到框架根目录。
+ * 在仓库内通过 package.json 的 file:../.. dependency 解析当前 vextjs。
  */
 import { defineRoutes } from "vextjs";
 

@@ -15,10 +15,10 @@ const response: Promise<Response> = app.fetch(
 
 **Parameters**
 
-| Parameters | Type | Description |
-| ------- | -------------------------------- | -------------------------------- |
-| `input` | `string \| URL \| Request` | Request URL or Request object |
-| `init` | `VextFetchInit` | Optional, request configuration (see type definition below) |
+| Parameters | Type                       | Description                                                 |
+| ---------- | -------------------------- | ----------------------------------------------------------- |
+| `input`    | `string \| URL \| Request` | Request URL or Request object                               |
+| `init`     | `VextFetchInit`            | Optional, request configuration (see type definition below) |
 
 **Return value**: `Promise<Response>` — standard Fetch API Response object
 
@@ -78,7 +78,7 @@ Create a preconfigured subclient instance. Subclients have independent `baseURL`
 app.fetch.create(options: VextFetchClientOptions): VextFetchClient
 ```
 
-Complete shortcut methods (`get` / `post` / `put` / `patch` / `delete`) and `create()` are also mounted on the sub-client, but `proxy`** will not be exposed. The proxy capability is only hung on the root `app.fetch.proxy` to avoid additional mental burden caused by `app.fetch.create().proxy`.
+Complete shortcut methods (`get` / `post` / `put` / `patch` / `delete`) and `create()` are also mounted on the sub-client, but `proxy`\*\* will not be exposed. The proxy capability is only hung on the root `app.fetch.proxy` to avoid additional mental burden caused by `app.fetch.create().proxy`.
 
 ```typescript
 const client = app.fetch.create({
@@ -218,13 +218,13 @@ interface VextFetchInit extends RequestInit {
 }
 ```
 
-| Field | Type | Default Value | Description |
-| -------------------- | ------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `timeout` | `number` | `config.fetch.timeout` (10000) | Request timeout (milliseconds) |
-| `retry` | `number` | `config.fetch.retry` (0) | Number of retries (idempotent methods only) |
-| `retryDelay` | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | Retry interval, supports exponential backoff function |
-| `propagateRequestId` | `boolean` | `true` | Whether to automatically inject the `x-request-id` header (`propagatedHeaders` will still be transmitted transparently when disabled) |
-| `propagateHeaders` | `string[]` | — | Additional transparent headers for this request (must be declared in `config.fetch.propagateHeaders` to read the value from the store) |
+| Field                | Type                                    | Default Value                    | Description                                                                                                                            |
+| -------------------- | --------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`            | `number`                                | `config.fetch.timeout` (10000)   | Request timeout (milliseconds)                                                                                                         |
+| `retry`              | `number`                                | `config.fetch.retry` (0)         | Number of retries (idempotent methods only)                                                                                            |
+| `retryDelay`         | `number \| (attempt: number) => number` | `config.fetch.retryDelay` (1000) | Retry interval, supports exponential backoff function                                                                                  |
+| `propagateRequestId` | `boolean`                               | `true`                           | Whether to automatically inject the `x-request-id` header (`propagatedHeaders` will still be transmitted transparently when disabled)  |
+| `propagateHeaders`   | `string[]`                              | —                                | Additional transparent headers for this request (must be declared in `config.fetch.propagateHeaders` to read the value from the store) |
 
 ### VextFetchClientOptions
 
@@ -249,13 +249,13 @@ interface VextFetchClientOptions {
 }
 ```
 
-| Field | Type | Required | Description |
-| -------------------------- | --------------------------------------- | :--: | --------------------------------------- |
-| `baseURL` | `string` | ✅ | Base URL, the request path is automatically spliced to this URL |
-| `headers` | `Record<string, string>` | ❌ | Default request headers |
-| `timeout` | `number` | ❌ | Override global timeout |
-| `retry` | `number` | ❌ | Override global retry |
-| `retryDelay` | `number \| (attempt: number) => number` | ❌ | Override the global retry interval |
+| Field        | Type                                    | Required | Description                                                     |
+| ------------ | --------------------------------------- | :------: | --------------------------------------------------------------- |
+| `baseURL`    | `string`                                |    ✅    | Base URL, the request path is automatically spliced to this URL |
+| `headers`    | `Record<string, string>`                |    ❌    | Default request headers                                         |
+| `timeout`    | `number`                                |    ❌    | Override global timeout                                         |
+| `retry`      | `number`                                |    ❌    | Override global retry                                           |
+| `retryDelay` | `number \| (attempt: number) => number` |    ❌    | Override the global retry interval                              |
 
 ### VextFetch
 
@@ -319,13 +319,15 @@ export default {
 };
 ```
 
-| Configuration item | Type | Default value | Description |
-| ------------------ | -------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `timeout` | `number` | `10000` | Global default timeout (milliseconds) |
-| `retry` | `number` | `0` | Global default number of retries |
-| `retryDelay` | `number \| (attempt: number) => number` | `1000` | Global default retry interval (milliseconds), supports exponential backoff function |
-| `propagateHeaders` | `string[]` | `[]` | Declares a list of header names that need to be automatically captured from inbound requests and transparently passed to outbound requests (such as `traceparent`, `x-tenant-id`) |
-| `proxy` | `VextFetchProxyTargetConfig[]` | `[]` | List of configured upstream targets for `app.fetch.proxy.<name>()` |:::tip propagateHeaders working principle
+| Configuration item | Type                                    | Default value | Description                                                                                                                                                                       |
+| ------------------ | --------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`          | `number`                                | `10000`       | Global default timeout (milliseconds)                                                                                                                                             |
+| `retry`            | `number`                                | `0`           | Global default number of retries                                                                                                                                                  |
+| `retryDelay`       | `number \| (attempt: number) => number` | `1000`        | Global default retry interval (milliseconds), supports exponential backoff function                                                                                               |
+| `propagateHeaders` | `string[]`                              | `[]`          | Declares a list of header names that need to be automatically captured from inbound requests and transparently passed to outbound requests (such as `traceparent`, `x-tenant-id`) |
+| `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`          | List of configured upstream targets for `app.fetch.proxy.<name>()`                                                                                                                |
+
+:::tip propagateHeaders working principle
 Once configured, the framework reads the headers specified in the list from the inbound request headers during the `requestId` middleware stage of each request.
 Write to `requestContext.store.propagatedHeaders`. `app.fetch` automatically reads and injects from the store when outgoing.
 **No need to pass it manually on every call**.
@@ -371,12 +373,12 @@ Proxy request: options > target (config.fetch.proxy[] single item) > global conf
 
 Structured logging is automatically logged for every outbound request:
 
-| Conditions | Log Level |
-| --------------- | -------- |
-| 2xx/3xx responses | `debug` |
-| 4xx response | `warn` |
-| 5xx response | `error` |
-| Network error/timeout | `error` |
+| Conditions            | Log Level |
+| --------------------- | --------- |
+| 2xx/3xx responses     | `debug`   |
+| 4xx response          | `warn`    |
+| 5xx response          | `error`   |
+| Network error/timeout | `error`   |
 
 Log fields: `type: "outbound"` / `method` / `url` / `status` / `duration` / `requestId`
 

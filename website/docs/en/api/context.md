@@ -6,24 +6,29 @@ This page details the complete API of VextJS's request object `VextRequest` and 
 
 `VextRequest` is the unified request object interface of the framework. Each Adapter is responsible for converting the original request of the underlying framework into this interface, ensuring that the business code does not need to be changed when switching Adapters.
 
-### Attribute list
+### Public member list
 
-| Properties  | Type                                  | Description                                                                                                                                                                 |
-| ----------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`    | `string`                              | HTTP method (uppercase, such as `'GET'`, `'POST'`)                                                                                                                          |
-| `url`       | `string`                              | Full request URL                                                                                                                                                            |
-| `path`      | `string`                              | Path part (excluding query string)                                                                                                                                          |
-| `route`     | `string`                              | The route template matched by the current request (such as `/users/:id`); the static route is the same as `path`; it is an empty string when no route is matched (404) `''` |
-| `params`    | `Record<string, string>`              | Path dynamic parameters                                                                                                                                                     |
-| `query`     | `Record<string, string>`              | URL query parameters (parsed)                                                                                                                                               |
-| `body`      | `unknown`                             | Request body (populated by body-parser middleware)                                                                                                                          |
-| `headers`   | `Record<string, string \| undefined>` | Request headers (all lowercase keys)                                                                                                                                        |
-| `app`       | `VextApp`                             | The application instance to which the current request belongs                                                                                                               |
-| `requestId` | `string`                              | Request unique identifier                                                                                                                                                   |
-| `ip`        | `string`                              | Client IP                                                                                                                                                                   |
-| `protocol`  | `'http' \| 'https'`                   | Request protocol                                                                                                                                                            |
-| `t`         | `Function \| undefined`               | i18n translation function (plug-in injection)                                                                                                                               |
-| `files`     | `ParsedFile[] \| undefined`           | File upload list (populated by built-in multipart parsing or a custom upload plugin)                                                                                        |
+| Properties    | Type                                    | Description                                                                                                                                                                 |
+| ------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `string`                                | HTTP method (uppercase, such as `'GET'`, `'POST'`)                                                                                                                          |
+| `url`         | `string`                                | Full request URL                                                                                                                                                            |
+| `path`        | `string`                                | Path part (excluding query string)                                                                                                                                          |
+| `route`       | `string`                                | The route template matched by the current request (such as `/users/:id`); the static route is the same as `path`; it is an empty string when no route is matched (404) `''` |
+| `params`      | `Record<string, string>`                | Path dynamic parameters                                                                                                                                                     |
+| `query`       | `Record<string, string>`                | URL query parameters (parsed)                                                                                                                                               |
+| `body`        | `unknown`                               | Request body (populated by body-parser middleware)                                                                                                                          |
+| `headers`     | `Record<string, string \| undefined>`   | Request headers (all lowercase keys)                                                                                                                                        |
+| `app`         | `VextApp`                               | The application instance to which the current request belongs                                                                                                               |
+| `requestId`   | `string`                                | Request unique identifier                                                                                                                                                   |
+| `ip`          | `string`                                | Client IP                                                                                                                                                                   |
+| `protocol`    | `'http' \| 'https'`                     | Request protocol                                                                                                                                                            |
+| `cookies`     | `VextCookieJar`                         | Parsed request cookies                                                                                                                                                      |
+| `cookie()`    | `(name: string) => string \| undefined` | Read one request cookie                                                                                                                                                     |
+| `csrfToken()` | `() => string`                          | Return the current CSRF token; requires the CSRF middleware                                                                                                                 |
+| `auth`        | `VextAuthContext`                       | Authentication context; anonymous until populated by auth middleware                                                                                                        |
+| `session`     | `VextSession \| undefined`              | Session state when session middleware is enabled                                                                                                                            |
+| `t`           | `Function \| undefined`                 | i18n translation function (plug-in injection)                                                                                                                               |
+| `files`       | `ParsedFile[] \| undefined`             | File upload list (populated by built-in multipart parsing or a custom upload plugin)                                                                                        |
 
 ---
 
@@ -494,16 +499,25 @@ app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
 
 ### List of methods
 
-| Method                                       | Return Value | Description                                  |
-| -------------------------------------------- | ------------ | -------------------------------------------- |
-| `json(data, status?)`                        | `void`       | Returns a JSON response (wrapped for export) |
-| `text(content, status?)`                     | `void`       | Return plain text response                   |
-| `stream(readable, contentType?)`             | `void`       | Streaming response                           |
-| `download(readable, filename, contentType?)` | `void`       | File download                                |
-| `redirect(url, status?)`                     | `void`       | Redirect                                     |
-| `status(code)`                               | `this`       | Set status code (chain call)                 |
-| `setHeader(name, value)`                     | `this`       | Set response header (chain call)             |
-| `statusCode`                                 | `number`     | Current status code (read-only)              |
+| Method                                       | Return Value | Description                                    |
+| -------------------------------------------- | ------------ | ---------------------------------------------- |
+| `json(data, status?)`                        | `void`       | Returns a JSON response (wrapped for export)   |
+| `render(page, props?, options?)`             | `void`       | Render a built-in frontend page                |
+| `renderError(error?, page?, options?)`       | `void`       | Render the configured frontend error page      |
+| `text(content, status?)`                     | `void`       | Return plain text response                     |
+| `stream(readable, contentType?)`             | `void`       | Streaming response                             |
+| `download(readable, filename, contentType?)` | `void`       | File download                                  |
+| `redirect(url, status?)`                     | `void`       | Redirect                                       |
+| `status(code)`                               | `this`       | Set status code (chain call)                   |
+| `setHeader(name, value)`                     | `this`       | Set response header (chain call)               |
+| `cookie(name, value, options?)`              | `this`       | Append a `Set-Cookie` response header          |
+| `clearCookie(name, options?)`                | `this`       | Expire a response cookie                       |
+| `statusCode`                                 | `number`     | Current status code (read-only)                |
+| `headersSent`                                | `boolean`    | Whether response headers were sent (read-only) |
+| `sse()`                                      | `unknown`    | Optional SSE plugin extension                  |
+| `upgrade()`                                  | `unknown`    | Optional WebSocket/upgrade plugin extension    |
+
+`render()` and `renderError()` are bound by the built-in frontend renderer. `sse()` and `upgrade()` are optional extension points and are available only when the corresponding plugin installs them. Cookie methods append separate `Set-Cookie` headers and preserve multiple cookies.
 
 ---
 

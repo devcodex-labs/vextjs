@@ -172,6 +172,7 @@ const checks = [
   ["schema-dsl v3 boundary", npm, ["run", "verify:schema-v3"]],
   ["exports and adapter startup", npm, ["run", "test:audit"]],
   ["CLI smoke", process.execPath, ["dist/cli/index.js", "--help"]],
+  ["documentation source contract", npm, ["run", "verify:docs-contract"]],
   [
     "production dependency audit",
     npm,
@@ -191,6 +192,12 @@ if (!existsSync(websiteModules)) {
   );
 }
 run("website build", npm, ["run", "build"], path.join(root, "website"));
+run("rendered documentation contract", npm, [
+  "run",
+  "verify:docs-contract",
+  "--",
+  "--rendered",
+]);
 run("pack dry-run", npm, ["pack", "--dry-run", "--json", "--ignore-scripts"]);
 run(
   "isolated packed install",
