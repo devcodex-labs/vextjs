@@ -1,8 +1,8 @@
 {
   "accepted": true,
   "artifactVersion": "1.0.0",
-  "artifactSha256": "1a2039deac67d1145a20cb04952528679fa9c9232ff9fd223c9b483fff396a45",
+  "artifactSha256": "6da20c300447bc49d2ca8456ceabcdf839f939617e08fa29468ec43e233e89cf",
   "consumerRepo": "https://github.com/devcodex-labs/vextjs-test",
-  "consumerCommit": "edaa0288f4a07820ad5aa92203f18f1c9e56ea23",
-  "runId": "packed-install-smoke-20260730T001756Z-DOC-CONTRACT-8c69cb1-01"
+  "consumerCommit": "32bd72a4828262eaba3bab47d1a6cc79299146d9",
+  "runId": "I7-final-20260807-10f25a3-32bd72a"
 }
