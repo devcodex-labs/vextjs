@@ -14,26 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
-| [Unreleased] | — | — | (empty after 1.0.0) [查看](./changelogs/unreleased.md) |
-| [1.0.0] | 2026-07-28 | Major | Stable v1 on schema-dsl v3 / monsqlize 3.1 with release preflight and external consumer gate [查看](./changelogs/v1.0.0.md) |
-| [0.3.26] | 2026-06-15 | Patch | Built-in frontend runtime plus schema-dsl ESM/CJS custom type registry compatibility [查看](./changelogs/v0.3.26.md) |
-| [0.3.25] | 2026-06-13 | Patch | Logger wrapper normalization, release-chain latest runtime dependencies, and documentation theme/version convergence [查看](./changelogs/v0.3.25.md) |
-| [0.3.24] | 2026-06-11 | Patch | Logger pretty level labels can opt into ANSI color while JSON output stays color-free [查看](./changelogs/v0.3.24.md) |
-| [0.3.23] | 2026-06-10 | Patch | Stabilize cold-restarter SIGKILL fallback and publish the startup log modes release [查看](./changelogs/v0.3.23.md) |
-| [0.3.22] | 2026-06-10 | Patch | Startup log modes keep dev/start default output minimal while preserving opt-in profiling and cluster ready totals [查看](./changelogs/v0.3.22.md) |
-| [0.3.21] | 2026-06-10 | Patch | Dev fast-ready tooling removes `ts-morph`, moves generated types under `.vext/`, and adds startup profiling / manifest cache paths [查看](./changelogs/v0.3.21.md) |
-| [0.3.20] | 2026-06-09 | Patch | Direct runtime and development dependencies pinned to exact versions for deterministic consumer installs [查看](./changelogs/v0.3.20.md) |
-| [0.3.19] | 2026-06-08 | Patch | Default logger moves to Vext internal zero-runtime-dependency kernel; direct logger package dependencies removed [查看](./changelogs/v0.3.19.md) |
-| [0.3.18] | 2026-06-07 | Patch | Dependency cleanup: Node.js `>=20.19.0`, optional Koa router peer, and controlled MongoDB memory server test binaries [查看](./changelogs/v0.3.18.md) |
-| [0.3.17] | 2026-06-05 | Patch | `app.throw` supports JSON-safe `details`; `app.hooks` adds request/validation/response/fetch/service/plugin/OpenAPI lifecycle hooks [查看](./changelogs/v0.3.17.md) |
-| [0.3.16] | 2026-06-04 | Patch | `config.server` adds inbound Node.js HTTP server timeout/header controls [查看](./changelogs/v0.3.16.md) |
-| [0.3.15] | 2026-06-04 | Patch | `app.fetch.proxy` adds config-driven upstream passthrough; package metadata remains Apache-2.0 [查看](./changelogs/v0.3.15.md) |
-| [0.3.14] | 2026-06-04 | Patch | 响应缓存承接 `response-cache-kit@1.2.0` 的 `cacheHub` 运行时配置，支持 Redis/MultiLevel/lease/distributed 并补齐关闭生命周期 [查看](./changelogs/v0.3.14.md) |
-| [0.3.13] | 2026-06-03 | Patch | 路由级响应缓存运行时接入 `response-cache-kit`，补齐标签失效、租户隔离和并发击穿保护 [查看](./changelogs/v0.3.13.md) |
-| [0.3.12] | 2026-06-02 | Patch | OpenAPI schema fields now support business descriptions via schema-dsl `.description()` [查看](./changelogs/v0.3.12.md) |
-| [0.3.11] | 2026-06-01 | Patch | 补齐 `vext create` 规范目录骨架，并将根 README 切换为英文主版本 [查看](./changelogs/v0.3.11.md) |
-| [0.3.10] | 2026-06-01 | Patch | 文档与 runtime 契约同步：统一 validation `422`、补齐 `honoAdapter()` 导出，并校准 benchmark/middleware/config 文档口径 [查看](./changelogs/v0.3.10.md) |
-| [0.3.9] | 2026-06-01 | Patch | Native adapter 接入 route-core 后继续收口 benchmark 口径与 params 热路径性能，并补充 release format gate 策略 [查看](./changelogs/v0.3.9.md) |
+| [Unreleased] | — | — | — |
 | [0.3.8] | 2026-05-31 | Patch | 发布前收口：补齐 adapter/body-limit/cluster 验证闭环，移除 npm 包 sourcemap 产物，并同步 vext-test 外部消费者验证 [查看](./changelogs/v0.3.8.md) |
 | [0.3.7] | 2026-05-21 | Patch | `vext dev` 补齐 preflight 诊断与 typegen 自动生成：阻断 TS 错误热重载、补全 reload 堆栈，并移除脚手架静态 services 类型声明 [查看](./changelogs/v0.3.7.md) |
 | [0.3.6] | 2026-05-16 | Patch | 项目级 `preload/` 目录正式落地：补齐 TS preload、`build` / built 模式联动、`fs.watch` 动态监听与消费者验收闭环 [查看](./changelogs/v0.3.6.md) |
@@ -75,26 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/devcodex-labs/vextjs/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/devcodex-labs/vextjs/compare/v0.3.26...v1.0.0
-[0.3.26]: https://github.com/devcodex-labs/vextjs/compare/v0.3.25...v0.3.26
-[0.3.25]: https://github.com/vextjs/vext/compare/v0.3.24...v0.3.25
-[0.3.24]: https://github.com/vextjs/vext/compare/v0.3.23...v0.3.24
-[0.3.23]: https://github.com/vextjs/vext/compare/v0.3.22...v0.3.23
-[0.3.22]: https://github.com/vextjs/vext/compare/v0.3.21...v0.3.22
-[0.3.21]: https://github.com/vextjs/vext/compare/v0.3.20...v0.3.21
-[0.3.20]: https://github.com/vextjs/vext/compare/v0.3.19...v0.3.20
-[0.3.19]: https://github.com/vextjs/vext/compare/v0.3.18...v0.3.19
-[0.3.18]: https://github.com/vextjs/vext/compare/v0.3.17...v0.3.18
-[0.3.17]: https://github.com/vextjs/vext/compare/v0.3.16...v0.3.17
-[0.3.16]: https://github.com/vextjs/vext/compare/v0.3.15...v0.3.16
-[0.3.15]: https://github.com/vextjs/vext/compare/v0.3.14...v0.3.15
-[0.3.14]: https://github.com/vextjs/vext/compare/v0.3.13...v0.3.14
-[0.3.13]: https://github.com/vextjs/vext/compare/v0.3.12...v0.3.13
-[0.3.12]: https://github.com/vextjs/vext/compare/v0.3.11...v0.3.12
-[0.3.11]: https://github.com/vextjs/vext/compare/v0.3.10...v0.3.11
-[0.3.10]: https://github.com/vextjs/vext/compare/v0.3.9...v0.3.10
-[0.3.9]: https://github.com/vextjs/vext/compare/v0.3.8...v0.3.9
+[Unreleased]: https://github.com/vextjs/vext/compare/v0.3.8...HEAD
 [0.3.8]: https://github.com/vextjs/vext/compare/v0.3.7...v0.3.8
 [0.3.7]: https://github.com/vextjs/vext/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/vextjs/vext/compare/v0.3.5...v0.3.6

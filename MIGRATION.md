@@ -58,6 +58,19 @@ Vext projects these lossless two-branch unions to OpenAPI 3.0 as the concrete
 type plus `nullable: true`. Complex unions that cannot be represented without
 losing meaning fail with a clear conversion error.
 
+## Frontend runtime additions
+
+The v1 frontend runtime continues to use the existing Route plus
+`res.render()` model. Streaming SSR is opt-in through
+`frontend.render.streaming: "auto"`; the default remains `"buffered"`.
+Same-route navigation, page envelopes, static/revalidate freshness, and local
+`Image` / `defineFont` media output are additive public capabilities.
+
+No migration to file routes, loader/action routes, React Server Components,
+Server Functions, Server Actions, PPR, or a Webpack/Vite/Rollup/Rolldown plugin
+ecosystem is required. Existing document navigation remains the fallback when a
+page-envelope response cannot be used.
+
 ## Validation data and errors
 
 Successful `schema-dsl` validation returns `data`, which contains the value

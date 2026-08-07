@@ -172,6 +172,7 @@ interface RouteOptions {
     cookie?: Record<string, VextSchemaField>;
   };
   cache?: false | number | RouteCacheOptions;
+  frontend?: VextRouteFrontendOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
   auth?: false | true | VextAuthRequirement;
@@ -200,6 +201,31 @@ interface RouteOptions {
   };
 }
 ```
+
+### Frontend freshness
+
+`RouteOptions.frontend` keeps page freshness on the existing route declaration:
+
+```ts
+frontend: {
+  mode: "dynamic" | "static" | "revalidate",
+  revalidate?: number, // seconds; required by revalidate mode
+  staticParams?: Array<Record<string, string | number | boolean>>,
+  clientOnly?: boolean,
+  tags?: string[],
+  page?: string,
+  staticBudget?: {
+    maxParams?: number;
+    maxDurationMs?: number;
+    maxBytes?: number;
+  },
+}
+```
+
+`staticParams` is valid only for `"static"`. `revalidate` is valid only for
+`"revalidate"` and is a positive interval in seconds. `clientOnly` keeps the
+route document/data/assets while intentionally skipping the server page body;
+it is not PPR or a second page route.
 
 ### Complete example
 

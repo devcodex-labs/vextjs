@@ -138,7 +138,9 @@
     "react-refresh": "0.18.0",
     "response-cache-kit": "1.2.1",
     "route-core": "0.0.7",
-    "schema-dsl": "3.0.0"
+    "schema-dsl": "3.0.0",
+    "sharp": "0.35.3",
+    "subset-font": "2.5.0"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.14.1",

@@ -4,6 +4,7 @@ import type { VextResponseConfig, VextLogger } from "../../types/app.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
 import { normalizeErrorForResponse } from "../error-response.js";
 import { isInternalHooks } from "../hooks.js";
+import { VEXT_PAGE_MEDIA_TYPE } from "../../frontend/contract/page-envelope.js";
 
 /**
  * DevOverlayFn — Dev 错误覆盖层渲染函数
@@ -206,19 +207,22 @@ export function createErrorHandler(
 function shouldRenderHtmlError(
   req: Parameters<VextErrorMiddleware>[1],
 ): boolean {
-  if (!acceptsHtml(req.headers.accept)) return false;
+  if (!acceptsRenderedPage(req.headers.accept)) return false;
   const pathname = safePathname(req.path || req.url || "/");
   if (path.extname(pathname)) return false;
   if (pathname === "/api" || pathname.startsWith("/api/")) return false;
   return true;
 }
 
-function acceptsHtml(acceptHeader: string | undefined): boolean {
+function acceptsRenderedPage(acceptHeader: string | undefined): boolean {
   if (!acceptHeader) return false;
   return acceptHeader
     .split(",")
-    .map((entry) => entry.trim().toLowerCase().split(";")[0])
-    .some((type) => type === "text/html");
+    .map((entry) => entry.trim().toLowerCase().replace(/\s+/gu, ""))
+    .some(
+      (type) =>
+        type.split(";")[0] === "text/html" || type === VEXT_PAGE_MEDIA_TYPE,
+    );
 }
 
 function safePathname(value: string): string {

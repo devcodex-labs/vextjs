@@ -422,6 +422,8 @@ export async function bootstrap(
             globalMiddlewares: internals!.getGlobalMiddlewares(),
             sessionMiddleware: sessionRuntime.middleware,
             corsMiddleware,
+            rootDir,
+            frontendMode: "production",
           },
           collector,
         ),

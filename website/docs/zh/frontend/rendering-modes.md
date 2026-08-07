@@ -12,7 +12,58 @@ route handler -> service data -> res.render() -> HTML -> hydration
 
 首屏需要数据、SEO HTML、共享 layout 或鉴权判断时，优先使用该模式。
 
-`frontend.render.timeoutMs` 用于标记超过预算的 SSR。当前 renderer 是同步执行，Vext 不能中断已经进入 React 的 render，但会在 render 返回或抛错后应用 `frontend.render.fallback`。`fallback: "client"` 会返回客户端 shell；`fallback: "error"` 会把 SSR 错误交给正常错误链路。
+默认的 `frontend.render.streaming: "buffered"` 路径使用 `renderToString`，并保留现有 fallback 行为。`frontend.render.timeoutMs` 会在同步 render 返回或抛错后检查。`fallback: "client"` 会返回客户端 shell；`fallback: "error"` 会把 SSR 错误交给正常错误链路。
+
+## 可选 Streaming SSR
+
+页面需要在延迟 boundary 完成前先发送 document shell 与 Suspense fallback 时，设置 `frontend.render.streaming: "auto"`：
+
+```ts
+export default {
+  frontend: {
+    render: {
+      streaming: "auto",
+      timeoutMs: 3000,
+    },
+  },
+};
+```
+
+streaming 生命周期如下：
+
+1. `res.render()` 登记页面渲染意图。发送首字节前，Vext 会冻结 status、headers、document head、nonce、initial assets 与 hydration payload。
+2. 生成的 React renderer 启动 `renderToPipeableStream` 并等待 shell。
+3. shell ready 后，Vext 先发送 document prefix，再 pipe React body，因此 Suspense fallback 可以早于延迟 boundary 到达客户端。
+4. React 完成后，Vext 追加 document suffix 并关闭响应。
+
+`frontend.render.timeoutMs` 会中止尚未完成的 streaming work。shell 前错误沿用现有错误响应链路；headers 或 body bytes 已发送后的错误会终止 stream，因为此时无法再替换 HTTP status 与 headers。客户端断开连接也会 abort React renderer。
+
+Native、Hono、Fastify、Express、Koa 都支持该路径。它不包含 React Server Components、Server Functions 或 Server Actions、partial prerendering（PPR），也不引入 Webpack/Vite/Rollup/Rolldown 插件层；前端构建继续使用 esbuild。
+
+## 静态、再验证与 Client-only 页面
+
+freshness 仍然是路由选项，不会创建第二套页面或路由 DSL。默认是 `mode: "dynamic"`。对已知路径使用 `mode: "static"` 和具体的 `staticParams`，可在构建期 materialize：
+
+```ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/posts/:slug",
+    {
+      frontend: {
+        mode: "static",
+        staticParams: [{ slug: "hello" }, { slug: "release-notes" }],
+        tags: ["posts"],
+        staticBudget: { maxParams: 20, maxBytes: 2 * 1024 * 1024 },
+      },
+    },
+    async (_req, res) => res.render("posts/detail"),
+  );
+});
+```
+
+对 persisted freshness entry 使用 `mode: "revalidate"` 和正数秒级 `revalidate` 间隔。Vext 会对并发刷新 single-flight、原子替换成功输出，并在刷新失败时保留 last-known-good 输出。`tags` 可用于显式 invalidation。`clientOnly: true` 保留 route、document、data 与 asset 行为，但有意不输出服务端 page body。这些策略不是 PPR。
 
 ## Hydration 交互
 
@@ -46,8 +97,8 @@ route response cache 可以缓存 `res.render()` 的 render payload：props、la
 
 | 需求                  | 推荐模式                            |
 | --------------------- | ----------------------------------- |
-| 首屏需要服务端数据    | SSR + hydration                     |
-| SEO 或公开内容        | SSR + hydration                     |
+| 首屏需要服务端数据    | buffered SSR，或可选 streaming SSR  |
+| SEO 或公开内容        | buffered SSR，或可选 streaming SSR  |
 | 鉴权后台壳层          | SSR 入口，内部可局部 CSR            |
 | 高交互 client routing | 为该范围配置 `spaFallback.scopes[]` |
 | 纯 API 服务           | 关闭 frontend                       |

@@ -668,6 +668,38 @@ describe("buildRouteCacheMiddleware response-cache-kit delegation", () => {
     ).toBe("public, max-age=2");
   });
 
+  it("协商后的 page-envelope render payload 在 HIT 时仍由当前 response bridge 回放", async () => {
+    const { middleware } = createMiddleware({ ttl: 2_000 });
+    const req = createMockReq({ path: "/dashboard" });
+    const firstRes = createMockRes();
+    const hitRes = createMockRes();
+    const cachedPayload = {
+      __vextResponseKind: "render",
+      payload: {
+        page: "dashboard",
+        props: { value: "envelope" },
+        options: {},
+        buildId: "test-build",
+        mode: "production",
+      },
+    };
+
+    await middleware(req, firstRes, async () => {
+      firstRes._onSend?.(cachedPayload, 200, {
+        "Content-Type": "application/vnd.vext.page+json;v=1; charset=utf-8",
+      });
+      firstRes.rawJson(cachedPayload, 200);
+    });
+
+    const hitNext = vi.fn();
+    await middleware(req, hitRes, hitNext);
+
+    expect(hitNext).not.toHaveBeenCalled();
+    expect(hitRes._jsonCalls).toHaveLength(0);
+    expect(hitRes._renderCalls).toHaveLength(1);
+    expect(hitRes._renderCalls[0]?.payload).toEqual(cachedPayload);
+  });
+
   it("并发 MISS 使用 single-flight，只调用一次 handler", async () => {
     const { middleware } = createMiddleware();
     const req = createMockReq();

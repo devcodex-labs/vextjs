@@ -16,6 +16,7 @@ When `frontend.apiClient` is enabled, Vext can emit:
 
 ```text
 client-contract.json
+route-contract.json
 api.generated.ts
 ```
 
@@ -30,7 +31,9 @@ These artifacts are useful for:
 
 `client-contract.json` and `api.generated.ts` are deterministic for identical route manifests. The `generatedAt` field is a stable marker so generated artifacts can be compared in CI.
 
-Contract schema references are currently emitted as `unknown` because the route manifest does not carry route validation or response schema metadata yet. Use the contract for route method, path, operation id, summary, and tags until schema metadata is added to the manifest.
+The runtime route manifest projects the existing `RouteOptions.validate` fields (`param`, `query`, `header`, `cookie`, and `body`) and `docs.responses.<status>.schema` into `VextSchemaIRV1`. `api.generated.ts` turns supported JSON-schema primitives, objects, arrays, enums, optional fields, and nullable fields into request and successful-response TypeScript types.
+
+A missing `docs.responses.<status>.schema` remains `unknown` and includes a route/status diagnostic; Vext never guesses a response type. `$ref` values are retained in the contract but currently emit `unknown` in generated TypeScript until a component-reference resolver is available. Cookie schemas are contract metadata only: browser fetch controls cookie transport and the generated client does not offer a writable `Cookie` header.
 
 ## Public Entry
 

@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import { Buffer } from "node:buffer";
+import type { ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 import type { VextResponse } from "../../types/response.js";
 import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
@@ -48,6 +50,11 @@ export interface ResponseBox {
   value: Response | null;
 }
 
+export interface HonoNodeResponseEnvironment {
+  outgoing?: ServerResponse;
+  vextStreamOwned?: boolean;
+}
+
 /**
  * 创建 ResponseBox 容器
  *
@@ -70,11 +77,11 @@ type DestroyableReadable = NodeJS.ReadableStream & {
 };
 
 function toWebReadable(readable: NodeJS.ReadableStream): ReadableStream {
+  if (readable instanceof Readable) {
+    return Readable.toWeb(readable) as unknown as ReadableStream;
+  }
   const source = readable as DestroyableReadable;
-  if (
-    typeof source.on !== "function" ||
-    typeof source.once !== "function"
-  ) {
+  if (typeof source.on !== "function" || typeof source.once !== "function") {
     return readable as unknown as ReadableStream;
   }
   return new ReadableStream({
@@ -201,6 +208,37 @@ export function createVextResponse(
       }
       c.header(k, v);
     }
+  }
+
+  function applyNodeHeaders(target: ServerResponse): void {
+    for (const [name, value] of Object.entries(_headers)) {
+      target.setHeader(name, value);
+    }
+  }
+
+  function nodeResponseTarget(): ServerResponse | undefined {
+    return (c.env as HonoNodeResponseEnvironment | undefined)?.outgoing;
+  }
+
+  function finishNodeStreamFailure(
+    target: ServerResponse,
+    error: unknown,
+  ): void {
+    if (target.headersSent || target.writableEnded || target.destroyed) {
+      target.destroy(error instanceof Error ? error : undefined);
+      return;
+    }
+    const body = JSON.stringify({
+      code: 500,
+      message:
+        error instanceof Error && error.message
+          ? error.message
+          : "Stream response failed",
+    });
+    target.statusCode = 500;
+    target.setHeader("Content-Type", "application/json; charset=utf-8");
+    target.setHeader("Content-Length", Buffer.byteLength(body));
+    target.end(body);
   }
 
   function queuePending(pending: PendingFlush): void {
@@ -467,8 +505,26 @@ export function createVextResponse(
       _flushed = true;
       _pending = null;
 
+      const outgoing = nodeResponseTarget();
+      if (outgoing) {
+        outgoing.statusCode = _status;
+        outgoing.setHeader("Content-Type", contentType);
+        applyNodeHeaders(outgoing);
+        (c.env as HonoNodeResponseEnvironment).vextStreamOwned = true;
+        readable.once("error", (error) => {
+          finishNodeStreamFailure(outgoing, error);
+        });
+        finishResponseSendAfterStreamSettlement(res, sendState, readable);
+        captureResponse(c.body(null));
+        readable.pipe(outgoing);
+        return;
+      }
+
       c.status(_status as any);
       c.header("Content-Type", contentType);
+      // The Web-response fallback is used outside the Node server bridge.
+      // Hono's own streaming response path requires explicit chunking.
+      c.header("Transfer-Encoding", "chunked");
       applyHeaders();
       finishResponseSendAfterStreamSettlement(res, sendState, readable);
       captureResponse(c.body(toWebReadable(readable) as any));

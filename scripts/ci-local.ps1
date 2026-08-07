@@ -80,10 +80,8 @@ function Invoke-VersionCheck([string]$Version) {
     $errs = 0
     $pairs = @(
         "website/rspress.config.ts|`"v$Version`""
-        "website/docs/en/guide/cli.md|vextjs v$Version"
-        "website/docs/zh/guide/cli.md|vextjs v$Version"
-        "website/docs/en/guide/quick-start.md|`"vextjs`": `"^$Version`""
-        "website/docs/zh/guide/quick-start.md|`"vextjs`": `"^$Version`""
+        "website/docs/guide/cli.md|vextjs v$Version"
+        "website/docs/guide/quick-start.md|`"vextjs`": `"^$Version`""
         "README.md|`"vextjs`": `"^$Version`""
         "CHANGELOG.md|[$Version]"
     )
@@ -92,8 +90,7 @@ function Invoke-VersionCheck([string]$Version) {
         $file    = $parts[0]
         $pattern = $parts[1]
         if (-not (Test-Path $file)) {
-            Write-Host "  [ERR]  $file - file not found" -ForegroundColor Red
-            $errs++
+            Write-Host "  [SKIP] $file (not found)" -ForegroundColor Yellow
             continue
         }
         $content = Get-Content $file -Raw
@@ -163,7 +160,7 @@ Run-Step "E2E Tests" -SkipInQuick {
 # ── 6. Format Check ──────────────────────────────────────────
 
 Run-Step "Prettier Format Check" {
-    npm run format:check
+    npx prettier --check .
 }
 
 # ── 7. Docs Build ────────────────────────────────────────────

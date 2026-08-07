@@ -26,8 +26,10 @@ const METADATA_FILES = new Set([
   "index.html",
   "manifest.json",
   "messages-manifest.json",
+  "media-manifest.json",
   "render-manifest.json",
   "size-report.json",
+  "static-manifest.json",
 ]);
 
 export async function buildFrontendDeployManifest(

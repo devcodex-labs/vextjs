@@ -81,4 +81,63 @@ describe("buildDevRouteManifestPayload", () => {
     expect(payload.routes[0]?.operationId).toBe("createUser");
     expect(payload.routes[0]?.operationIdSource).toBe("explicit");
   });
+
+  it("projects the existing route schemas into a stable contract manifest", () => {
+    const rootDir = createTempRoot();
+    const route: RouteMetadata = {
+      method: "POST",
+      path: "/users/:id",
+      options: {
+        validate: {
+          param: { id: "objectId!" },
+          query: { include: "boolean?" },
+          header: { "x-trace-id": "string!" },
+          cookie: { session: "string?" },
+          body: {
+            name: "string!",
+            nickname: { type: ["string", "null"] },
+            tags: ["string!"],
+          },
+        },
+        docs: {
+          responses: {
+            201: {
+              contentType: "application/json",
+              schema: { id: "objectId!", active: "boolean!" },
+            },
+            204: { contentType: "text/plain" },
+          },
+        },
+      },
+      sourceFile: path.join(rootDir, "src", "routes", "users.ts"),
+    };
+
+    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+    const record = payload.routes[0];
+
+    expect(record?.routeId).toMatch(/^route_[a-f0-9]{16}$/);
+    expect(record?.schema.request.params?.sourcePath).toBe("validate.param");
+    expect(
+      record?.schema.request.body?.schema.properties?.nickname,
+    ).toMatchObject({
+      type: "string",
+      nullable: true,
+    });
+    expect(record?.schema.request.cookies?.digest).toHaveLength(64);
+    expect(record?.schema.responses).toHaveLength(2);
+    expect(record?.schema.responses[0]).toMatchObject({
+      status: "201",
+      contentType: "application/json",
+      schema: { sourcePath: "docs.responses.201.schema" },
+    });
+    expect(record?.schema.responses[1]).toEqual({
+      status: "204",
+      contentType: "text/plain",
+    });
+    expect(record?.freshness).toEqual({
+      mode: "dynamic",
+      source: "legacy-default",
+    });
+    expect(record?.layout).toEqual({ state: "unresolved", paths: [] });
+  });
 });

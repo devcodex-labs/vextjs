@@ -6,6 +6,9 @@ import {
   ROUTE_SOURCE_PATTERNS,
   shouldIncludeRouteFilePath,
 } from "../../lib/route-file-policy.js";
+import { createRouteFreshnessIdentity } from "../../frontend/contract/schema-ir.js";
+import type { VextRouteFreshnessIdentity } from "../../frontend/contract/types.js";
+import type { VextRouteFrontendOptions } from "../../types/app.js";
 const HTTP_METHODS = [
   "get",
   "post",
@@ -27,6 +30,7 @@ export interface RouteIndexEntry {
   operationId: string | null;
   tags: string[];
   hidden: boolean;
+  freshness: VextRouteFreshnessIdentity;
 }
 
 export async function buildRouteIndex(
@@ -78,6 +82,7 @@ function scanRouteEntries(
       if (!routePath) continue;
 
       const docs = readRouteDocs(args[1]);
+      const frontend = readRouteFrontend(args[1]);
       const method = match[1]!.toUpperCase();
 
       entries.push({
@@ -91,11 +96,58 @@ function scanRouteEntries(
         operationId: docs.operationId,
         tags: docs.tags,
         hidden: docs.hidden,
+        freshness: createRouteFreshnessIdentity({ frontend }),
       });
     }
   }
 
   return entries;
+}
+
+/**
+ * Statically projects the literal subset of RouteOptions.frontend used by the
+ * build pipeline. Dynamic expressions remain runtime-owned and therefore
+ * retain the legacy dynamic identity until the route is loaded.
+ */
+function readRouteFrontend(
+  optionsArg: string | undefined,
+): VextRouteFrontendOptions | undefined {
+  const options = optionsArg?.trim();
+  if (!options?.startsWith("{")) return undefined;
+
+  const frontendObject = readObjectProperty(options, "frontend");
+  if (!frontendObject) return undefined;
+
+  const mode = readStringProperty(frontendObject, "mode");
+  const revalidate = readNumberProperty(frontendObject, "revalidate");
+  const staticParams = readObjectArrayProperty(frontendObject, "staticParams");
+  const clientOnly = readOptionalBooleanProperty(frontendObject, "clientOnly");
+  const tags = readStringArrayProperty(frontendObject, "tags");
+  const page = readStringProperty(frontendObject, "page");
+  const staticBudgetObject = readObjectProperty(frontendObject, "staticBudget");
+  const staticBudget = staticBudgetObject
+    ? compactObject({
+        maxParams:
+          readNumberProperty(staticBudgetObject, "maxParams") ?? undefined,
+        maxDurationMs:
+          readNumberProperty(staticBudgetObject, "maxDurationMs") ?? undefined,
+        maxBytes:
+          readNumberProperty(staticBudgetObject, "maxBytes") ?? undefined,
+      })
+    : undefined;
+
+  return compactObject({
+    mode: mode ?? undefined,
+    revalidate: revalidate ?? undefined,
+    staticParams: staticParams ?? undefined,
+    clientOnly,
+    tags: tags.length > 0 ? tags : undefined,
+    page: page ?? undefined,
+    staticBudget:
+      staticBudget && Object.keys(staticBudget).length > 0
+        ? staticBudget
+        : undefined,
+  }) as VextRouteFrontendOptions;
 }
 
 function findDefineRoutesBlocks(
@@ -166,6 +218,97 @@ function readStringProperty(objectLiteral: string, key: string): string | null {
     "u",
   );
   return pattern.exec(objectLiteral)?.[2] ?? null;
+}
+
+function readNumberProperty(objectLiteral: string, key: string): number | null {
+  const pattern = new RegExp(
+    `\\b${escapeRegExp(key)}\\s*:\\s*(-?(?:\\d+\\.?\\d*|\\.\\d+))\\b`,
+    "u",
+  );
+  const match = pattern.exec(objectLiteral);
+  return match ? Number(match[1]) : null;
+}
+
+function readOptionalBooleanProperty(
+  objectLiteral: string,
+  key: string,
+): boolean | undefined {
+  const pattern = new RegExp(
+    `\\b${escapeRegExp(key)}\\s*:\\s*(true|false)\\b`,
+    "u",
+  );
+  const value = pattern.exec(objectLiteral)?.[1];
+  return value === "true" ? true : value === "false" ? false : undefined;
+}
+
+function readObjectProperty(objectLiteral: string, key: string): string | null {
+  const pattern = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*\\{`, "u");
+  const match = pattern.exec(objectLiteral);
+  if (!match) return null;
+  return readBalanced(
+    objectLiteral,
+    objectLiteral.indexOf("{", match.index),
+    "{",
+    "}",
+  );
+}
+
+function readObjectArrayProperty(
+  objectLiteral: string,
+  key: string,
+): Array<Record<string, string | number | boolean>> | undefined {
+  const pattern = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*\\[`, "u");
+  const match = pattern.exec(objectLiteral);
+  if (!match) return undefined;
+  const arrayText = readBalanced(
+    objectLiteral,
+    objectLiteral.indexOf("[", match.index),
+    "[",
+    "]",
+  );
+  if (!arrayText) return undefined;
+
+  const members = splitTopLevelArgs(arrayText.slice(1, -1));
+  if (members.length === 1 && !members[0]) return [];
+  const entries: Array<Record<string, string | number | boolean>> = [];
+  for (const member of members) {
+    if (!member.startsWith("{") || !member.endsWith("}")) return undefined;
+    const values: Record<string, string | number | boolean> = {};
+    const properties = splitTopLevelArgs(member.slice(1, -1));
+    if (properties.length === 1 && !properties[0]) {
+      entries.push(values);
+      continue;
+    }
+    for (const property of properties) {
+      const separator = property.indexOf(":");
+      if (separator < 1) return undefined;
+      const rawKey = property.slice(0, separator).trim();
+      const key = readStringLiteral(rawKey) ?? rawKey;
+      const rawValue = property.slice(separator + 1).trim();
+      const value = readLiteralScalar(rawValue);
+      if (!key || value === undefined) return undefined;
+      values[key] = value;
+    }
+    entries.push(values);
+  }
+  return entries;
+}
+
+function readLiteralScalar(
+  value: string,
+): string | number | boolean | undefined {
+  const string = readStringLiteral(value);
+  if (string !== null) return string;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  const number = Number(value);
+  return Number.isFinite(number) && value.trim() !== "" ? number : undefined;
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as T;
 }
 
 function readStringArrayProperty(objectLiteral: string, key: string): string[] {

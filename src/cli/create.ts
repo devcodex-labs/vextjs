@@ -926,6 +926,9 @@ function generateDefaultConfig(
     framework: 'react',
     publicDir: 'public',
     publicPath: '/',
+    render: {
+      streaming: 'auto',
+    },
     i18n: {
       enabled: true,
       defaultLocale: 'en-US',

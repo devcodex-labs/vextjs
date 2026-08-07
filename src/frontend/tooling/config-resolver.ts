@@ -3,6 +3,8 @@ import type {
   VextFrontendDeployUploadAdapter,
   VextFrontendDeployUploadAdapterName,
   VextFrontendExternalRuntimeEntry,
+  VextFrontendImageFormat,
+  VextFrontendMediaConfig,
   ResolvedVextFrontendConfig,
   VextFrontendBuildBudgetsConfig,
   VextFrontendSpaFallbackConfig,
@@ -95,6 +97,7 @@ export function resolveFrontendConfig(
   );
   const spaFallback = normalizeSpaFallback(raw?.spaFallback);
   const apiClient = raw?.apiClient;
+  const media = normalizeMedia(raw?.media);
   const build = raw?.build ?? {};
   const target = build.target
     ? Array.isArray(build.target)
@@ -159,6 +162,7 @@ export function resolveFrontendConfig(
       },
     },
     assetsDir,
+    media,
     entry,
     indexHtml,
     outDir,
@@ -227,6 +231,7 @@ export function resolveFrontendConfig(
     },
     render: {
       ssr: raw?.render?.ssr ?? true,
+      streaming: raw?.render?.streaming ?? "buffered",
       fallback: raw?.render?.fallback ?? "client",
       timeoutMs: raw?.render?.timeoutMs ?? 3000,
       layout: raw?.render?.layout ?? true,
@@ -310,6 +315,75 @@ function normalizeBudgets(
     maxTotalBytes: value?.maxTotalBytes ?? 0,
     warnOnly: value?.warnOnly ?? false,
   };
+}
+
+function normalizeMedia(
+  value: VextFrontendMediaConfig | undefined,
+): ResolvedVextFrontendConfig["media"] {
+  const image = value?.images ?? {};
+  const widths = [...new Set(image.widths ?? [320, 640, 960, 1280, 1600])].sort(
+    (left, right) => left - right,
+  );
+  if (
+    widths.length === 0 ||
+    widths.some((width) => !Number.isInteger(width) || width <= 0)
+  ) {
+    throw new Error(
+      "[vextjs] config.frontend.media.images.widths must contain positive integer widths.",
+    );
+  }
+  const requestedFormats = [
+    ...new Set(image.formats ?? ["original", "webp", "avif"]),
+  ];
+  if (
+    requestedFormats.length === 0 ||
+    requestedFormats.some((format) => !isImageFormat(format))
+  ) {
+    throw new Error(
+      '[vextjs] config.frontend.media.images.formats only supports "original", "webp", and "avif".',
+    );
+  }
+  const formats = requestedFormats as VextFrontendImageFormat[];
+  const quality = image.quality ?? 75;
+  const maxInputPixels = image.maxInputPixels ?? 40_000_000;
+  const maxVariants = image.maxVariants ?? 24;
+  const maxBytes = value?.maxBytes ?? 20 * 1024 * 1024;
+  const fontMaxBytes = value?.fonts?.maxBytes ?? 5 * 1024 * 1024;
+  for (const [label, limit] of [
+    ["quality", quality],
+    ["maxInputPixels", maxInputPixels],
+    ["maxVariants", maxVariants],
+    ["maxBytes", maxBytes],
+    ["fonts.maxBytes", fontMaxBytes],
+  ] as const) {
+    if (!Number.isFinite(limit) || limit <= 0) {
+      throw new Error(
+        `[vextjs] config.frontend.media.${label} must be a positive number.`,
+      );
+    }
+  }
+  if (!Number.isInteger(quality) || quality > 100) {
+    throw new Error(
+      "[vextjs] config.frontend.media.images.quality must be an integer from 1 through 100.",
+    );
+  }
+  return {
+    maxBytes,
+    images: {
+      widths,
+      formats,
+      quality,
+      maxInputPixels,
+      maxVariants,
+    },
+    fonts: {
+      maxBytes: fontMaxBytes,
+    },
+  };
+}
+
+function isImageFormat(value: unknown): value is VextFrontendImageFormat {
+  return value === "original" || value === "webp" || value === "avif";
 }
 
 function assertSupportedBuildTargetKeys(

@@ -9,18 +9,22 @@ import {
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import { describe, expect, it, afterEach } from "vitest";
 import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolver.js";
 import {
+  assertClientContractMatchesRouteManifest,
   buildClientContract,
   writeClientContractFromRouteManifest,
 } from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
+import { writeFrontendMediaArtifacts } from "../../src/frontend/tooling/media-artifact-writer.js";
 import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
 import { createFrontendDevEventBus } from "../../src/frontend/runtime/dev-events.js";
 import {
   VextApiError,
   createVextApiClient,
+  defineFont,
   deployFrontendAssets,
   isVextApiError,
 } from "../../src/frontend/index.js";
@@ -71,6 +75,7 @@ describe("frontend config resolver", () => {
     expect(config.build.budgets.maxRouteInitialJsBrotliBytes).toBe(0);
     expect(config.build.budgets.maxAppOwnedInitialJsBrotliBytes).toBe(0);
     expect(config.build.diagnostics.performanceReport).toBe(true);
+    expect(config.render.streaming).toBe("buffered");
     expect(config.i18n.clientLoad).toBe("current");
     expect(config.deploy.upload.enabled).toBe(false);
     expect(config.deploy.upload.exclude).toEqual(["**/*.map"]);
@@ -94,6 +99,12 @@ describe("frontend config resolver", () => {
     expect(config.spaFallback.scopes).toEqual([]);
     expect(config.dev.fastRefresh).toBe(true);
     expect(config.build.diagnostics.leakScan).toBe(true);
+    expect(
+      resolveFrontendConfig(
+        { enabled: true, render: { streaming: "auto" } },
+        { rootDir, mode: "development" },
+      ).render.streaming,
+    ).toBe("auto");
   });
 
   it("documents the default SPA fallback exclusions from the resolver", async () => {
@@ -475,6 +486,121 @@ describe("frontend client contract", () => {
     );
   });
 
+  it("projects route schema IR, status responses, diagnostics, and generated types", () => {
+    const contract = buildClientContract({
+      routes: [
+        {
+          method: "POST",
+          path: "/users/:id",
+          routeId: "route_create_user",
+          operationId: "createUser",
+          schema: {
+            schemaVersion: 1,
+            request: {
+              params: {
+                schemaVersion: 1,
+                kind: "vext-schema-ir",
+                source: "validate",
+                sourcePath: "validate.param",
+                digest: "a".repeat(64),
+                schema: {
+                  type: "object",
+                  properties: { id: { type: "string" } },
+                  required: ["id"],
+                },
+              },
+              body: {
+                schemaVersion: 1,
+                kind: "vext-schema-ir",
+                source: "validate",
+                sourcePath: "validate.body",
+                digest: "b".repeat(64),
+                schema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    nickname: { type: "string", nullable: true },
+                    tags: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["name"],
+                },
+              },
+            },
+            responses: [
+              {
+                status: "201",
+                contentType: "application/json",
+                schema: {
+                  schemaVersion: 1,
+                  kind: "vext-schema-ir",
+                  source: "docs.responses",
+                  sourcePath: "docs.responses.201.schema",
+                  digest: "c".repeat(64),
+                  schema: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      active: { type: "boolean" },
+                    },
+                    required: ["id", "active"],
+                  },
+                },
+              },
+              { status: "204", contentType: "text/plain" },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(contract.routes[0]).toMatchObject({
+      routeId: "route_create_user",
+      response: { type: "schema", schema: { digest: "c".repeat(64) } },
+      responses: [
+        {
+          status: "201",
+          contentType: "application/json",
+          schema: { type: "schema" },
+        },
+        {
+          status: "204",
+          contentType: "text/plain",
+          schema: { type: "unknown" },
+        },
+      ],
+    });
+    expect(contract.warnings).toContain(
+      "route_create_user:204 is missing docs.responses.204.schema; emitted unknown.",
+    );
+    expect(contract.routeManifestDigest).toHaveLength(64);
+    expect(contract.digest).toHaveLength(64);
+  });
+
+  it("rejects a client contract when the current route manifest has drifted", () => {
+    const payload = {
+      routes: [
+        {
+          method: "GET",
+          path: "/api/contracts",
+          operationId: "getContracts",
+        },
+      ],
+    };
+    const contract = buildClientContract(payload);
+
+    expect(() =>
+      assertClientContractMatchesRouteManifest(contract, {
+        routes: [
+          {
+            method: "GET",
+            path: "/api/contracts",
+            operationId: "getContractsChanged",
+          },
+        ],
+      }),
+    ).toThrow("route manifest digest differs");
+  });
+
   it("keeps frontend API client docs aligned with public exports", async () => {
     const docs = await Promise.all([
       readFile(
@@ -505,14 +631,95 @@ describe("frontend client contract", () => {
       expect(content).toContain("createVextApiClient");
       expect(content).not.toContain("createVextFetchAdapter");
     }
-    expect(docs[0]).toContain(
-      "Contract schema references are currently emitted as `unknown`",
-    );
-    expect(docs[1]).toContain("契约 schema reference 当前会输出为 `unknown`");
+    expect(docs[0]).toContain("VextSchemaIRV1");
+    expect(docs[0]).toContain("`$ref` values are retained in the contract");
+    expect(docs[1]).toContain("VextSchemaIRV1");
+    expect(docs[1]).toContain("`$ref` 会保留在契约中");
   });
 });
 
 describe("frontend client build", () => {
+  it("writes bounded local image variants and fails closed for remote font descriptors", async () => {
+    const rootDir = await tempRoot();
+    const assetsDir = path.join(rootDir, "src", "frontend", "assets");
+    await mkdir(assetsDir, { recursive: true });
+    await writeFile(
+      path.join(assetsDir, "hero.png"),
+      await sharp({
+        create: {
+          width: 1,
+          height: 1,
+          channels: 4,
+          background: { r: 16, g: 32, b: 64, alpha: 1 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const config = resolveFrontendConfig(
+      {
+        enabled: true,
+        media: {
+          maxBytes: 64 * 1024,
+          images: {
+            widths: [1, 320],
+            formats: ["original", "webp"],
+            quality: 70,
+            maxInputPixels: 4,
+            maxVariants: 2,
+          },
+          fonts: { maxBytes: 64 * 1024 },
+        },
+      },
+      { rootDir, mode: "production" },
+    );
+    await mkdir(config.outDir, { recursive: true });
+
+    const result = await writeFrontendMediaArtifacts({
+      rootDir,
+      config,
+      mode: "production",
+    });
+    expect(result.manifest.images).toHaveLength(1);
+    expect(result.manifest.images[0]).toMatchObject({
+      source: "assets/hero.png",
+      width: 1,
+      height: 1,
+      originalFormat: "png",
+    });
+    expect(
+      result.manifest.images[0]!.variants.map((variant) => variant.format),
+    ).toEqual(["png", "webp"]);
+    expect(
+      result.manifest.images[0]!.variants.every(
+        (variant) => variant.width === 1,
+      ),
+    ).toBe(true);
+    expect(
+      result.manifest.images[0]!.variants.every((variant) =>
+        existsSync(path.join(config.outDir, variant.file)),
+      ),
+    ).toBe(true);
+
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "fonts.ts"),
+      'export const blocked = defineFont({ src: "https://fonts.example.test/font.ttf", family: "Blocked", license: "OFL-1.1" });\n',
+    );
+    await expect(
+      writeFrontendMediaArtifacts({ rootDir, config, mode: "production" }),
+    ).rejects.toThrow(/remote source/u);
+  });
+
+  it("rejects remote font declarations before they can become a build input", () => {
+    expect(() =>
+      defineFont({
+        src: "https://fonts.example.test/font.ttf",
+        family: "Blocked",
+        license: "OFL-1.1",
+      }),
+    ).toThrow(/local font source/u);
+  });
+
   it("injects bundled CSS and entry script into index.html", async () => {
     const rootDir = await tempRoot();
     const clientDir = path.join(rootDir, "src", "frontend", "entry");
@@ -555,6 +762,89 @@ describe("frontend client build", () => {
     expect(result.deployManifestPath).toBeDefined();
     expect(result.messagesManifestPath).toBeDefined();
     expect(result.serverRendererPath).toBeDefined();
+  });
+
+  it("materializes static route HTML/data closure into the physical deploy manifest", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "src", "frontend", "pages", "posts"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "posts", "[slug].tsx"),
+      "export default function Post({ params }: { params: { slug: string } }) { return <main>{params.slug}</main>; }\n",
+    );
+    await mkdir(path.join(rootDir, ".vext", "manifest"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, ".vext", "manifest", "routes.json"),
+      `${JSON.stringify(
+        {
+          routes: [
+            {
+              routeId: "route_posts",
+              method: "GET",
+              path: "/posts/:slug",
+              operationId: "getPost",
+              docsSummary: "Post",
+              tags: [],
+              hidden: false,
+              schema: { schemaVersion: 1, request: {}, responses: [] },
+              freshness: {
+                mode: "static",
+                source: "route-options",
+                page: "posts/[slug]",
+                staticParams: [{ slug: "hello" }, { slug: "world" }],
+                tags: ["posts"],
+              },
+              layout: { state: "unresolved", paths: [] },
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const staticManifest = JSON.parse(
+      await readFile(result.staticManifestPath!, "utf-8"),
+    );
+    const deployManifest = JSON.parse(
+      await readFile(result.deployManifestPath!, "utf-8"),
+    );
+
+    expect(staticManifest.artifacts).toHaveLength(2);
+    expect(staticManifest.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routePath: "/posts/hello",
+          html: "posts/hello/index.html",
+          data: "posts/hello/__vext.page.json",
+          params: { slug: "hello" },
+        }),
+      ]),
+    );
+    expect(
+      await readFile(
+        path.join(result.config.outDir, "posts", "hello", "__vext.page.json"),
+        "utf-8",
+      ),
+    ).toContain('"slug": "hello"');
+    expect(
+      deployManifest.assets.map((asset: { file: string }) => asset.file),
+    ).toEqual(
+      expect.arrayContaining([
+        "posts/hello/index.html",
+        "posts/hello/__vext.page.json",
+        "posts/world/index.html",
+        "posts/world/__vext.page.json",
+      ]),
+    );
   });
 
   it("writes deploy manifest, injects SRI, and uploads only changed assets", async () => {
@@ -931,6 +1221,8 @@ describe("frontend client build", () => {
     expect(serverEntry).not.toContain("localeModule0");
     expect(browserEntry).not.toContain("locales/en-US");
     expect(serverEntry).not.toContain("locales/en-US");
+    expect(serverEntry).toContain("renderToPipeableStream");
+    expect(serverEntry).toContain("export function renderPageStream");
   });
 
   it("generates i18n clientLoad mode and hydration telemetry in the browser entry", async () => {
@@ -1564,6 +1856,51 @@ describe("frontend client build", () => {
       }),
     ).rejects.toThrow("src/frontend/pages/index.tsx");
   });
+
+  it("generates the browser navigation runtime without server-only imports", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await writeFile(
+      path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
+      [
+        'import { Image, Link, defineFont, useNavigation, useRouteData } from "vextjs/frontend";',
+        "export default function Page(props) {",
+        "  const navigation = useNavigation();",
+        "  const data = useRouteData() ?? props;",
+        '  return <main data-font-factory={typeof defineFont}><span>{navigation.phase}</span><span>{data.title}</span><Image src="/assets/fixture.png" width={1} height={1} alt="fixture" /><Link href="/next">Next</Link></main>;',
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const runtime = await readFile(
+      path.join(result.generatedDir!, "vext-runtime.tsx"),
+      "utf-8",
+    );
+    const browserEntry = await readFile(
+      path.join(result.generatedDir!, "browser-entry.tsx"),
+      "utf-8",
+    );
+    const browserOutputs = await readTextFiles(result.config.outDir, ".js");
+
+    expect(runtime).toContain('from "vextjs/frontend/navigation-runtime"');
+    expect(runtime).toContain('from "vextjs/frontend/media-runtime"');
+    expect(runtime).toContain("defineImageLoader");
+    expect(runtime).toContain("useRouteData");
+    expect(browserEntry).toContain("configureVextBrowserRuntime");
+    expect(browserEntry).toContain("createInitialVextEnvelope");
+    expect(browserEntry).toContain("rootController.render(nextTree)");
+    for (const output of browserOutputs) {
+      expect(output).not.toMatch(
+        /from["']node:|require\(["']node:|["']src\/(?:routes|services)\/|["'][^"']+\.server\.[cm]?[jt]sx?["']/u,
+      );
+    }
+  });
 });
 
 describe("frontend render middleware", () => {
@@ -1614,6 +1951,131 @@ describe("frontend render middleware", () => {
     expect(res.onSendPayload?.payload.page).toBe("index");
   });
 
+  it("negotiates a page envelope on the same document route", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+
+    const documentReq = createMockRequest("/dashboard?tab=activity", {
+      accept: "text/html",
+    });
+    documentReq.path = "/dashboard";
+    documentReq.route = "/dashboard";
+    const documentRes = createRenderMockResponse();
+    await middleware(documentReq, documentRes as any, async () => {});
+    documentRes.render("index", { count: 1 }, { head: { title: "Dashboard" } });
+
+    const navigationReq = createMockRequest("/dashboard?tab=activity", {
+      accept: "application/vnd.vext.page+json;v=1",
+      "vext-navigation": "1",
+      "vext-build-id": "consumer-build",
+    });
+    navigationReq.path = "/dashboard";
+    navigationReq.route = "/dashboard";
+    const navigationRes = createRenderMockResponse();
+    await middleware(navigationReq, navigationRes as any, async () => {});
+    navigationRes.render(
+      "index",
+      { count: 1 },
+      { head: { title: "Dashboard" } },
+    );
+
+    const documentPayload = documentRes.sent?.data as any;
+    const envelope = navigationRes.rawJsonSent?.data as any;
+    expect(navigationRes.sent).toBeUndefined();
+    expect(navigationRes.rawJsonSent?.status).toBe(200);
+    expect(navigationRes.headers["Content-Type"]).toBe(
+      "application/vnd.vext.page+json;v=1; charset=utf-8",
+    );
+    expect(navigationRes.headers.Vary).toContain("Vext-Navigation");
+    expect(envelope).toMatchObject({
+      protocolVersion: 1,
+      routeId: documentPayload.routeId,
+      url: "/dashboard?tab=activity",
+      result: {
+        kind: "page",
+        page: "index",
+        props: { count: 1 },
+        layouts: [],
+        head: { title: "Dashboard" },
+      },
+      cache: { partition: "public", noStore: false },
+    });
+    expect(envelope.result.assets.length).toBeGreaterThan(0);
+    expect(navigationRes.onSendPayload?.payload.routeId).toBe(
+      documentPayload.routeId,
+    );
+  });
+
+  it("encodes redirect and error results and keeps private envelopes no-store", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true },
+    });
+    const headers = {
+      accept: "application/vnd.vext.page+json;v=1",
+      "vext-navigation": "1",
+    };
+
+    const redirectReq = createMockRequest("/submit", headers);
+    redirectReq.method = "POST";
+    redirectReq.route = "/submit";
+    const redirectRes = createRenderMockResponse();
+    await middleware(redirectReq, redirectRes as any, async () => {});
+    redirectRes.redirect("/done", 303);
+    expect(redirectRes.rawJsonSent?.data).toMatchObject({
+      result: {
+        kind: "redirect",
+        location: "/done",
+        status: 303,
+        replace: true,
+      },
+    });
+    expect(redirectRes.rawJsonSent?.status).toBe(200);
+
+    const errorReq = createMockRequest("/private", headers);
+    errorReq.route = "/private";
+    errorReq.auth = {
+      isAuthenticated: true,
+      subject: "user-1",
+      roles: ["member"],
+      scopes: [],
+      claims: {},
+    };
+    const errorRes = createRenderMockResponse();
+    await middleware(errorReq, errorRes as any, async () => {});
+    errorRes.renderError(403, { message: "Forbidden", code: "DENIED" });
+    const errorEnvelope = errorRes.rawJsonSent?.data as any;
+    expect(errorEnvelope.result).toEqual({
+      kind: "error",
+      status: 403,
+      code: "DENIED",
+      message: "Forbidden",
+      requestId: "req-1",
+    });
+    expect(errorEnvelope.cache.noStore).toBe(true);
+    expect(errorEnvelope.cache.partition).toMatch(/^private-/u);
+    expect(errorEnvelope.cache.partition).not.toContain("user-1");
+    expect(errorRes.headers["Cache-Control"]).toBe("private, no-store");
+  });
+
   it("marks development frontend renders as no-store by default", async () => {
     const rootDir = await tempRoot();
     await createMinimalFrontend(rootDir);
@@ -1639,8 +2101,16 @@ describe("frontend render middleware", () => {
     expect(res.sent?.headers["Cache-Control"]).toBe("no-store");
 
     const explicitRes = createRenderMockResponse();
-    await middleware(createMockRequest("/dashboard"), explicitRes, async () => {});
-    explicitRes.render("index", {}, { headers: { "cache-control": "private" } });
+    await middleware(
+      createMockRequest("/dashboard"),
+      explicitRes,
+      async () => {},
+    );
+    explicitRes.render(
+      "index",
+      {},
+      { headers: { "cache-control": "private" } },
+    );
 
     expect(explicitRes.sent?.headers["cache-control"]).toBe("private");
     expect(explicitRes.sent?.headers["Cache-Control"]).toBeUndefined();
@@ -2735,8 +3205,16 @@ function createMockRequest(
   return {
     method: "GET",
     path: pathname,
+    url: pathname,
+    route: pathname,
     headers,
     requestId: "req-1",
+    auth: {
+      isAuthenticated: false,
+      roles: [],
+      scopes: [],
+      claims: {},
+    },
   } as any;
 }
 
@@ -2770,6 +3248,10 @@ function createMockResponse() {
 function createRenderMockResponse() {
   const res = {
     statusCode: 200,
+    headers: {} as Record<string, any>,
+    rawJsonSent: undefined as
+      | { data: unknown; status: number; headers: Record<string, any> }
+      | undefined,
     sent: undefined as
       | {
           html: string;
@@ -2783,6 +3265,23 @@ function createRenderMockResponse() {
     _onSend(data: any) {
       this.onSendPayload = data;
     },
+    setHeader(name: string, value: any) {
+      this.headers[name] = value;
+      return this;
+    },
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    rawJson(data: unknown, status?: number) {
+      this.statusCode = status ?? this.statusCode;
+      this.rawJsonSent = {
+        data,
+        status: this.statusCode,
+        headers: { ...this.headers },
+      };
+    },
+    redirect() {},
     _sendHtml(
       html: string,
       status: number,

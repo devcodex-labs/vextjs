@@ -711,8 +711,9 @@ describe("vext create", () => {
           ts.ModuleKind.ESNext,
         );
 
-        expect(result.resolvedModule?.resolvedFileName.replaceAll("\\", "/"))
-          .toBe(`${projectRoot}/src/frontend/components/AppShell.tsx`);
+        expect(
+          result.resolvedModule?.resolvedFileName.replaceAll("\\", "/"),
+        ).toBe(`${projectRoot}/src/frontend/components/AppShell.tsx`);
       });
 
       it("API-only TS 模板不生成前端 alias", async () => {
@@ -862,6 +863,7 @@ describe("vext create", () => {
         expect(files["src/config/default.ts"]).not.toContain("src/client");
         expect(files["src/config/default.ts"]).not.toContain("entry:");
         expect(files["src/config/default.ts"]).not.toContain("indexHtml:");
+        expect(files["src/config/default.ts"]).toContain("streaming: 'auto'");
         expect(files["src/config/default.ts"]).toContain("i18n:");
         expect(files["src/config/default.ts"]).toContain(
           "defaultLocale: 'en-US'",

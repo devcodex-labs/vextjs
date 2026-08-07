@@ -621,6 +621,8 @@ export async function devBootstrap(
           globalMiddlewares: internals!.getGlobalMiddlewares(),
           sessionMiddleware: sessionRuntime.middleware,
           corsMiddleware,
+          rootDir: projectRoot,
+          frontendMode: "development",
         },
         collector,
       ),

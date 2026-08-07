@@ -28,12 +28,16 @@ export default function DashboardPage(props: { summary: DashboardSummary }) {
 导航、用户菜单、工作区信息、后台权限等 shell 级数据放在 `options.layoutData`：
 
 ```ts
-res.render("admin/dashboard", { metrics }, {
-  layoutData: {
-    user: req.user,
-    nav: await app.services.nav.admin(req.user.id),
+res.render(
+  "admin/dashboard",
+  { metrics },
+  {
+    layoutData: {
+      user: req.user,
+      nav: await app.services.nav.admin(req.user.id),
+    },
   },
-});
+);
 ```
 
 Layout 不直接 import services，而是消费 route handler 传入的数据。
@@ -58,10 +62,54 @@ const i18n = useVextI18n(locale);
 return <h1>{i18n.settings.title}</h1>;
 ```
 
-## 客户端 API 调用
+## 同路由导航
 
-Hydration 后的普通交互可以使用 `fetch`。生成 API client 主要用于工具、类型探针或外部前端适配；首屏数据通常应该通过 `res.render()` 传入。
+Hydration 后，Vext 可以把同一个 document route 协商为版本化 page result。这里没有第二套 loader/action 注册 API：原 route handler 及其中间件、auth/session、CSRF、validation、cache、timeout、redirect 和 error 行为仍是唯一事实源。
 
-## 缓存边界
+稳定公开面是 `Link`、`Form`、`navigate`、`prefetch`、`revalidate`、`useNavigation`、`useFetcher` 与 `useRouteData`。
 
-当服务端数据可复用时，用 route response cache 缓存 render payload。除非页面真的需要客户端 refetch，否则不要先引入独立浏览器数据缓存。
+```tsx
+import {
+  Form,
+  Link,
+  revalidate,
+  useFetcher,
+  useNavigation,
+  useRouteData,
+} from "vextjs/frontend";
+
+export default function DashboardPage() {
+  const data = useRouteData<{ summary: DashboardSummary }>();
+  const navigation = useNavigation();
+  const details = useFetcher<{ summary: DashboardSummary }>();
+
+  return (
+    <main>
+      <h1>控制台</h1>
+      <p data-state={navigation.phase}>{data?.summary.label}</p>
+      <Link href="/reports" prefetch="click">
+        报表
+      </Link>
+      <Form action="/reports" method="post">
+        <button type="submit">创建报表</button>
+      </Form>
+      <button onClick={() => details.load("/reports?view=compact")}>
+        加载摘要
+      </button>
+      <button onClick={() => revalidate()}>刷新</button>
+    </main>
+  );
+}
+```
+
+`Link` 支持 `prefetch="none" | "click" | "visible"`，默认是 `"click"`。`Form` 保留普通字符串 `action` 与 HTTP method，因此禁用 JavaScript 后仍会正常提交 document 请求。`useFetcher()` 复用相同 route，但不改变浏览器 history。
+
+## 导航生命周期
+
+`useNavigation()` 返回 `idle`、`loading`、`submitting`、`revalidating`、`error` 或 `aborted`。Revalidation 在新结果提交前保留 last-known-good 页面；新导航会取消旧请求，等价 GET 会去重，`revalidate({ routeId, path, tags, keys })` 可在当前 locale 与 auth/session 分区内失效匹配条目。
+
+浏览器只在增强导航时请求 `application/vnd.vext.page+json;v=1`。协议、build id、权限、解码或 route asset 不兼容时会执行且仅执行一次 document navigation。Page envelope 是内部 runtime 协议，不是用户需要实现的 RPC 格式。
+
+## 客户端 API 调用与缓存边界
+
+不是页面导航的 JSON API 调用继续使用生成的 typed API client 或普通 `fetch`。首屏与页面导航数据通常应由 `res.render()` 提供。Vext 浏览器缓存按 route、规范化 URL、locale、auth/session identity、protocol 与 contract digest 分区；认证结果或 `no-store` page result 不会写入共享 public cache。

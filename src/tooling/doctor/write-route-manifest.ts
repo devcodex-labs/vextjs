@@ -1,4 +1,9 @@
 import { join } from "node:path";
+import type {
+  VextRouteFreshnessIdentity,
+  VextRouteLayoutIdentity,
+  VextRouteSchemaContractV1,
+} from "../../frontend/contract/types.js";
 import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
 import { writeGeneratedFile } from "../typegen/write-generated-file.js";
 
@@ -25,10 +30,14 @@ export interface RouteManifestPayload {
     path: string;
     docsSummary: string | null;
     summary: string | null;
+    routeId: string;
     operationId: string;
     operationIdSource: "explicit" | "inferred";
     tags: string[];
     hidden: boolean;
+    schema: VextRouteSchemaContractV1;
+    freshness: VextRouteFreshnessIdentity;
+    layout: VextRouteLayoutIdentity;
   }>;
 }
 

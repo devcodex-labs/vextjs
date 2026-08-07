@@ -422,6 +422,8 @@ export async function createTestApp(
       globalMiddlewares: internals.getGlobalMiddlewares(),
       sessionMiddleware: sessionRuntime.middleware,
       corsMiddleware,
+      rootDir,
+      frontendMode: "development",
     });
     internals.lockUse(); // 测试环境也需锁定，保持行为一致
   }

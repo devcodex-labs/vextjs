@@ -3,6 +3,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { inferOperationId } from "../openapi/operation-id.js";
 import type { RouteMetadata } from "../openapi/types.js";
+import {
+  createRouteFreshnessIdentity,
+  createRouteId,
+  createUnresolvedLayoutIdentity,
+  projectRouteSchemaContract,
+} from "../../frontend/contract/schema-ir.js";
+import type {
+  VextRouteFreshnessIdentity,
+  VextRouteLayoutIdentity,
+  VextRouteSchemaContractV1,
+} from "../../frontend/contract/types.js";
 
 export interface DevRouteManifestPayload {
   schemaVersion: 1;
@@ -28,10 +39,14 @@ export interface DevRouteManifestPayload {
     path: string;
     docsSummary: string | null;
     summary: string | null;
+    routeId: string;
     operationId: string;
     operationIdSource: "explicit" | "inferred";
     tags: string[];
     hidden: boolean;
+    schema: VextRouteSchemaContractV1;
+    freshness: VextRouteFreshnessIdentity;
+    layout: VextRouteLayoutIdentity;
   }>;
 }
 
@@ -66,12 +81,16 @@ export function buildDevRouteManifestPayload(
       path: route.path,
       docsSummary,
       summary: docsSummary,
+      routeId: createRouteId(route.method, route.path),
       operationId,
       operationIdSource: docs?.operationId
         ? ("explicit" as const)
         : ("inferred" as const),
       tags: docs?.tags ?? [],
       hidden: false,
+      schema: projectRouteSchemaContract(route.options),
+      freshness: createRouteFreshnessIdentity(route.options),
+      layout: createUnresolvedLayoutIdentity(),
     };
   });
 

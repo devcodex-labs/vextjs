@@ -78,9 +78,9 @@ res.render("admin/dashboard", props, {
 
 确认引用来源：
 
-| 文件 | 引用方式 |
-|------|----------|
-| `public/logo.png` | `/logo.png` |
+| 文件                           | 引用方式                                 |
+| ------------------------------ | ---------------------------------------- |
+| `public/logo.png`              | `/logo.png`                              |
 | `src/frontend/assets/logo.png` | `import logoUrl from "@assets/logo.png"` |
 
 如果生产 CDN URL 错误，检查 `frontend.deploy.assetBaseUrl`、`publicPath` 和 `deploy-manifest.json`。
@@ -119,10 +119,14 @@ res.render("admin/dashboard", props, {
 - route-specific modulepreload
 - 压缩体积预算
 
+已提供但需要显式开启：
+
+- 使用 `frontend.render.streaming: "auto"` 启用 Streaming SSR；默认仍为 `"buffered"`。
+
 本阶段不作为默认能力：
 
 - React Server Components
-- Server Actions
-- streaming SSR
+- Server Functions 与 Server Actions
+- partial prerendering（PPR）
 - 持久客户端 layout 导航
 - 内置图片/字体优化组件

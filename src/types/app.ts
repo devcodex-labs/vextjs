@@ -1655,6 +1655,14 @@ export interface RouteOptions {
   cache?: false | number | RouteCacheOptions;
 
   /**
+   * Frontend route freshness and static-output policy.
+   *
+   * This remains part of the existing route declaration: it does not create a
+   * second page or route DSL. `revalidate` is expressed in seconds.
+   */
+  frontend?: VextRouteFrontendOptions;
+
+  /**
    * Route-level auth guard.
    *
    * - `true`: require an authenticated request.
@@ -1717,6 +1725,37 @@ export interface RouteOptions {
    * 配置后 OpenAPI 生成器会自动输出 multipart/form-data requestBody。
    */
   multipart?: MultipartRouteConfig;
+}
+
+/**
+ * Route-side frontend policy consumed by the route manifest, renderer and
+ * filesystem freshness store.
+ */
+export interface VextRouteFrontendOptions {
+  /** Dynamic by default; static and revalidate participate in freshness storage. */
+  mode?: "dynamic" | "static" | "revalidate";
+
+  /** Revalidation interval in seconds. Required for `mode: "revalidate"`. */
+  revalidate?: number;
+
+  /** Concrete parameter combinations to materialize for a static route. */
+  staticParams?: ReadonlyArray<Record<string, string | number | boolean>>;
+
+  /** Prevent server page-body rendering while preserving document/data/assets. */
+  clientOnly?: boolean;
+
+  /** Stable invalidation tags for persisted public freshness entries. */
+  tags?: ReadonlyArray<string>;
+
+  /** Frontend page id used by static materialization when route and page paths differ. */
+  page?: string;
+
+  /** Optional build-time limits for one static route closure. */
+  staticBudget?: {
+    maxParams?: number;
+    maxDurationMs?: number;
+    maxBytes?: number;
+  };
 }
 
 // ── 路由内部类型 ────────────────────────────────────────────

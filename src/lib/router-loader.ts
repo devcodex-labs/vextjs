@@ -15,6 +15,7 @@ import {
   normalizeCacheOptions,
   buildRouteCacheMiddleware,
 } from "./middlewares/route-cache.js";
+import { buildFrontendFreshnessMiddleware } from "./middlewares/frontend-freshness.js";
 import { buildRouteAuthGuardMiddleware } from "./auth.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import { createRouteTimeoutMiddleware } from "./middlewares/route-timeout.js";
@@ -98,6 +99,12 @@ export interface LoadRoutesOptions {
 
   /** 开发热重载使用 fresh import 读取更新后的路由模块。 */
   freshImports?: boolean;
+
+  /** Project root used by the persistent frontend freshness store. */
+  rootDir?: string;
+
+  /** Runtime mode used to locate the generated frontend build identity. */
+  frontendMode?: "development" | "production";
 }
 
 function resolveRouteTimeout(
@@ -380,6 +387,27 @@ function prepareRouteDefinitionRegistrations(
       if (cacheMiddleware) {
         routeMiddlewares.push(cacheMiddleware);
       }
+    }
+
+    // ── 2.65 frontend route freshness ──────────────────────
+    // This consumes the existing RouteOptions.frontend declaration after
+    // route-auth/session middleware and after generic response-cache policy.
+    // It owns only public page render payloads; non-render responses fall
+    // through unchanged.
+    const frontendFreshnessMiddleware = buildFrontendFreshnessMiddleware(
+      route.options,
+      {
+        rootDir: options.rootDir ?? process.cwd(),
+        config: app.config.frontend,
+        mode:
+          options.frontendMode ??
+          (process.env.NODE_ENV === "production"
+            ? "production"
+            : "development"),
+      },
+    );
+    if (frontendFreshnessMiddleware) {
+      routeMiddlewares.push(frontendFreshnessMiddleware);
     }
 
     // ── 2.7 路由级 multipart 解析中间件 ──────────────────

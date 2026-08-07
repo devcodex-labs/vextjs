@@ -1,5 +1,14 @@
 export type VextFrontendFramework = "react" | (string & {});
 
+export type {
+  VextPageEnvelopeCacheV1,
+  VextPageEnvelopeErrorResultV1,
+  VextPageEnvelopePageResultV1,
+  VextPageEnvelopeRedirectResultV1,
+  VextPageEnvelopeResultV1,
+  VextPageEnvelopeV1,
+} from "./page-envelope.js";
+
 export type VextFrontendMode = "development" | "production";
 
 export interface VextFrontendPagesConfig {
@@ -106,6 +115,32 @@ export interface VextFrontendBuildConfig {
   };
 }
 
+export type VextFrontendImageFormat = "original" | "webp" | "avif";
+
+export interface VextFrontendMediaImagesConfig {
+  /** Width candidates used for local responsive image variants. */
+  widths?: number[];
+  /** `original` preserves the source codec; modern variants remain local. */
+  formats?: VextFrontendImageFormat[];
+  quality?: number;
+  /** Refuse decoder work for unexpectedly large local image inputs. */
+  maxInputPixels?: number;
+  /** Refuse an image definition that would emit too many local variants. */
+  maxVariants?: number;
+}
+
+export interface VextFrontendMediaFontsConfig {
+  /** Upper bound for one generated local WOFF2 subset. */
+  maxBytes?: number;
+}
+
+export interface VextFrontendMediaConfig {
+  /** Upper bound for the complete generated local image and font closure. */
+  maxBytes?: number;
+  images?: VextFrontendMediaImagesConfig;
+  fonts?: VextFrontendMediaFontsConfig;
+}
+
 export interface VextFrontendDeployConfig {
   assetBaseUrl?: string;
   crossOrigin?: "anonymous" | "use-credentials";
@@ -155,6 +190,11 @@ export interface VextFrontendDeployUploadConfig {
 
 export interface VextFrontendRenderConfig {
   ssr?: boolean;
+  /**
+   * Transport preference only. Existing applications remain buffered until
+   * they opt in; the streaming implementation arrives in the next phase.
+   */
+  streaming?: "auto" | "buffered";
   fallback?: "client" | "error";
   timeoutMs?: number;
   layout?: boolean;
@@ -200,6 +240,7 @@ export interface VextFrontendConfig {
   componentsDir?: string;
   styles?: VextFrontendStylesConfig;
   assetsDir?: string;
+  media?: VextFrontendMediaConfig;
   entry?: string;
   indexHtml?: string;
   outDir?: string;
@@ -249,6 +290,19 @@ export interface ResolvedVextFrontendConfig {
     };
   };
   assetsDir: string;
+  media: {
+    maxBytes: number;
+    images: {
+      widths: number[];
+      formats: VextFrontendImageFormat[];
+      quality: number;
+      maxInputPixels: number;
+      maxVariants: number;
+    };
+    fonts: {
+      maxBytes: number;
+    };
+  };
   entry: string;
   indexHtml: string;
   outDir: string;
@@ -346,24 +400,91 @@ export type VextClientRouteMethod =
   | "HEAD"
   | "OPTIONS";
 
+export interface VextSchemaIRV1 {
+  schemaVersion: 1;
+  kind: "vext-schema-ir";
+  source: "validate" | "docs.responses";
+  sourcePath: string;
+  schema: Record<string, unknown>;
+  digest: string;
+  ref?: string;
+}
+
+export interface VextRouteResponseSchemaV1 {
+  status: string;
+  contentType: string;
+  schema?: VextSchemaIRV1;
+}
+
+export interface VextRouteSchemaContractV1 {
+  schemaVersion: 1;
+  request: {
+    params?: VextSchemaIRV1;
+    query?: VextSchemaIRV1;
+    headers?: VextSchemaIRV1;
+    cookies?: VextSchemaIRV1;
+    body?: VextSchemaIRV1;
+  };
+  responses: VextRouteResponseSchemaV1[];
+}
+
+export interface VextRouteFreshnessIdentity {
+  mode: "dynamic" | "static" | "revalidate";
+  source: "legacy-default" | "route-options";
+  /** Revalidation interval in seconds when `mode` is `revalidate`. */
+  revalidate?: number;
+  /** Normalized, deterministic static parameter combinations. */
+  staticParams?: ReadonlyArray<Record<string, string>>;
+  /** Present only when SSR body rendering is intentionally disabled. */
+  clientOnly?: true;
+  /** Route-side persistent freshness invalidation tags. */
+  tags?: readonly string[];
+  /** Explicit frontend page id for static materialization. */
+  page?: string;
+  /** Bounded static-output budget declared on the existing route. */
+  staticBudget?: {
+    maxParams?: number;
+    maxDurationMs?: number;
+    maxBytes?: number;
+  };
+}
+
+export interface VextRouteLayoutIdentity {
+  state: "unresolved" | "resolved";
+  paths: readonly string[];
+}
+
 export interface VextClientSchemaReference {
   type: "unknown" | "schema";
-  schema?: unknown;
+  schema?: VextSchemaIRV1;
+  diagnostic?: string;
+}
+
+export interface VextClientResponseContract {
+  status: string;
+  contentType: string;
+  schema: VextClientSchemaReference;
 }
 
 export interface VextClientRouteContract {
+  /** Added in contract protocol v1; omitted by legacy generated contracts. */
+  routeId?: string;
   method: VextClientRouteMethod;
   path: string;
   operationId: string;
   summary?: string | null;
-  tags?: string[];
+  tags?: readonly string[];
   input?: {
     params?: VextClientSchemaReference;
     query?: VextClientSchemaReference;
     body?: VextClientSchemaReference;
     headers?: VextClientSchemaReference;
+    cookies?: VextClientSchemaReference;
   };
   response?: VextClientSchemaReference;
+  responses?: readonly VextClientResponseContract[];
+  freshness?: VextRouteFreshnessIdentity;
+  layout?: VextRouteLayoutIdentity;
 }
 
 export interface VextClientContract {
@@ -371,8 +492,11 @@ export interface VextClientContract {
   kind: "client-contract";
   source: "routes-manifest";
   generatedAt: string;
+  protocolVersion?: 1;
+  routeManifestDigest?: string;
+  digest?: string;
   routes: readonly VextClientRouteContract[];
-  warnings: string[];
+  warnings: readonly string[];
 }
 
 export interface VextFrontendManifestAsset {
@@ -572,6 +696,25 @@ export interface VextFrontendRenderManifest {
     leakScan: boolean;
   };
   routeAssets?: VextFrontendRouteAssetsManifest;
+}
+
+export interface VextFrontendStaticArtifact {
+  routeId: string;
+  routePath: string;
+  page: string;
+  params: Record<string, string>;
+  html: string;
+  data: string;
+  bytes: number;
+  assets: string[];
+}
+
+export interface VextFrontendStaticManifest {
+  schemaVersion: 1;
+  kind: "frontend-static-manifest";
+  buildId: string;
+  generatedAt: string;
+  artifacts: VextFrontendStaticArtifact[];
 }
 
 export interface VextFrontendMessagesManifest {

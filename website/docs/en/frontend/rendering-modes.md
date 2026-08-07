@@ -12,7 +12,65 @@ route handler -> service data -> res.render() -> HTML -> hydration
 
 Use this when the first screen needs data, SEO-friendly HTML, shared layouts, or authenticated server decisions.
 
-`frontend.render.timeoutMs` marks SSR work that took longer than the configured budget. Because the current renderer is synchronous, Vext cannot interrupt a render already running inside React, but it will apply `frontend.render.fallback` after the render returns or throws. With `fallback: "client"`, Vext returns the client shell; with `fallback: "error"`, the SSR error is surfaced to the normal error path.
+The default `frontend.render.streaming: "buffered"` path uses `renderToString` and preserves the existing fallback behavior. `frontend.render.timeoutMs` is checked after the synchronous render returns or throws. With `fallback: "client"`, Vext returns the client shell; with `fallback: "error"`, the SSR error is surfaced to the normal error path.
+
+## Opt-in Streaming SSR
+
+Set `frontend.render.streaming: "auto"` when a page should flush its document shell and Suspense fallback before delayed boundaries finish:
+
+```ts
+export default {
+  frontend: {
+    render: {
+      streaming: "auto",
+      timeoutMs: 3000,
+    },
+  },
+};
+```
+
+The streaming lifecycle is:
+
+1. `res.render()` registers the page intent. Before the first byte, Vext freezes the status, headers, document head, nonce, initial assets, and hydration payload.
+2. The generated React renderer starts `renderToPipeableStream` and waits for the shell.
+3. When the shell is ready, Vext sends the document prefix and pipes the React body, so a Suspense fallback can reach the client before a delayed boundary completes.
+4. When React finishes, Vext appends the document suffix and closes the response.
+
+`frontend.render.timeoutMs` aborts unfinished streaming work. An error before the shell follows the existing error-response path; an error after headers or body bytes have been flushed terminates the stream because the HTTP status and headers can no longer be replaced. Closing the client connection also aborts the React renderer.
+
+Native, Hono, Fastify, Express, and Koa support this path. It does not add React Server Components, Server Functions or Server Actions, partial prerendering (PPR), or a Webpack/Vite/Rollup/Rolldown plugin layer. The frontend build remains esbuild-based.
+
+## Static, Revalidate, and Client-only Pages
+
+Freshness remains a route option; it does not create a second page or route
+DSL. The default is `mode: "dynamic"`. Use `mode: "static"` with concrete
+`staticParams` to materialize known paths during the build:
+
+```ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/posts/:slug",
+    {
+      frontend: {
+        mode: "static",
+        staticParams: [{ slug: "hello" }, { slug: "release-notes" }],
+        tags: ["posts"],
+        staticBudget: { maxParams: 20, maxBytes: 2 * 1024 * 1024 },
+      },
+    },
+    async (_req, res) => res.render("posts/detail"),
+  );
+});
+```
+
+Use `mode: "revalidate"` with a positive `revalidate` interval in seconds
+for a persisted freshness entry. Vext single-flights concurrent refreshes,
+atomically replaces successful output, and keeps last-known-good output if a
+refresh fails. `tags` allow explicit invalidation. `clientOnly: true`
+preserves route, document, data, and asset behavior but intentionally omits the
+server page body. These policies are not PPR.
 
 ## Hydrated Interactions
 
@@ -46,8 +104,8 @@ Use [Render Data and Cache](/frontend/render-data-and-cache) for cache keys, inv
 
 | Need                              | Recommended mode                            |
 | --------------------------------- | ------------------------------------------- |
-| Server data on first screen       | SSR + hydration                             |
-| SEO or public content             | SSR + hydration                             |
+| Server data on first screen       | Buffered SSR, or opt-in streaming SSR       |
+| SEO or public content             | Buffered SSR, or opt-in streaming SSR       |
 | Authenticated admin shell         | SSR for entry, optional scoped CSR inside   |
 | Highly interactive client routing | `spaFallback.scopes[]` for that route range |
 | API-only service                  | Disable frontend                            |

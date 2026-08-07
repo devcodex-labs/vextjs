@@ -59,3 +59,72 @@ frontend: {
 ## 增量上传
 
 `deploy-manifest.json` 加 sha256 state 让 Vext 跳过未变化的图片、字体、JS、CSS 和 public 文件。这是企业发布中避免大文件重复上传的默认路径。
+
+## 本地媒体流水线
+
+`config.frontend.media` 只编译 `src/frontend/assets/**` 下的本地栅格图片。它会把内容寻址的图片 variants 与 media manifest 写入普通前端输出，因此这些文件会进入 SRI 和增量 deploy closure。
+
+```ts
+export default {
+  frontend: {
+    media: {
+      maxBytes: 20 * 1024 * 1024,
+      images: {
+        widths: [320, 640, 960, 1280, 1600],
+        formats: ["original", "webp", "avif"],
+        quality: 75,
+        maxInputPixels: 40_000_000,
+        maxVariants: 24,
+      },
+      fonts: {
+        maxBytes: 5 * 1024 * 1024,
+      },
+    },
+  },
+};
+```
+
+所有限制都必须为正数，并在构建期执行。`media.maxBytes` 限定完整生成 closure 的总字节数。不可读的输入、过大的解码像素、过多 variants 或超过总字节预算的 media closure 都会使构建失败。
+
+### 图片
+
+对相对 `src/frontend` 的本地源路径使用 `Image`。组件读取 document 中的 media manifest，输出 width/height、响应式 `srcSet`、`sizes`、多格式 source 与 placeholder。设置 `priority` 会输出 eager/high-priority 图片和对应的 document preload。
+
+```tsx
+import { Image } from "vextjs/frontend";
+
+export function Hero() {
+  return (
+    <Image
+      src="assets/hero.png"
+      alt="产品概览"
+      width={960}
+      height={540}
+      sizes="(max-width: 768px) 100vw, 960px"
+      priority
+    />
+  );
+}
+```
+
+Vext 从不抓取或代理远程图片。远程 `src` 必须显式提供 `defineImageLoader({ allowlist, load })`；loader 自己负责远程 URL，并且必须返回绝对 HTTP(S) URL。
+
+### 字体
+
+在 frontend 源文件中声明本地字体 descriptor。`defineFont` 要求本地 `src`、font family 和许可证标识或应用自有许可证引用。编译器会输出本地 WOFF2 subset 与确定性的 `@font-face` CSS；等价 descriptor 会被去重。
+
+```ts
+import { defineFont } from "vextjs/frontend";
+
+export const brandFont = defineFont({
+  src: "./assets/BrandSans.ttf",
+  family: "Brand Sans",
+  weight: 400,
+  display: "swap",
+  preload: true,
+  fallback: "system-ui",
+  license: "OFL-1.1",
+});
+```
+
+远程 font URL 会被拒绝。本地 media worker 不包含 CDN SDK、远程字体下载器或 bundler plugin 层。

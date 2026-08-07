@@ -134,4 +134,36 @@ export default defineRoutes((app) => {
     ]);
     expect(routeEntries[0]?.path).toBe("/users");
   });
+
+  it("projects literal RouteOptions.frontend into the build manifest identity", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-index-freshness-"));
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/posts/[slug].ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", {
+    frontend: {
+      mode: "static",
+      staticParams: [{ slug: "hello", page: 2 }, {}],
+      tags: ["posts", "news"],
+      page: "posts/detail",
+      staticBudget: { maxParams: 4, maxBytes: 4096 },
+    },
+  }, async (_req, res) => res.render("posts/detail"));
+});
+`,
+    );
+
+    const [entry] = await buildRouteIndex(projectRoot);
+
+    expect(entry?.freshness).toEqual({
+      mode: "static",
+      source: "route-options",
+      staticParams: [{ page: "2", slug: "hello" }, {}],
+      tags: ["news", "posts"],
+      page: "posts/detail",
+      staticBudget: { maxParams: 4, maxBytes: 4096 },
+    });
+  });
 });

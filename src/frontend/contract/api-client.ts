@@ -12,6 +12,22 @@ type PathFor<
   TMethod extends VextClientRouteMethod,
 > = RoutesByMethod<TContract, TMethod>["path"] & string;
 
+type RouteTypeFor<
+  TContract extends VextClientContract,
+  TRouteTypes,
+  TMethod extends VextClientRouteMethod,
+  TPath extends string,
+> =
+  Extract<RoutesByMethod<TContract, TMethod>, { path: TPath }> extends {
+    routeId: infer TRouteId;
+  }
+    ? TRouteId extends keyof TRouteTypes
+      ? TRouteTypes[TRouteId] extends VextApiRouteType
+        ? TRouteTypes[TRouteId]
+        : VextApiRouteType
+      : VextApiRouteType
+    : VextApiRouteType;
+
 export interface VextApiClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
@@ -28,6 +44,27 @@ export interface VextApiRequestOptions {
   headers?: VextHeadersInit;
   signal?: AbortSignal;
 }
+
+/** Type-only route projection emitted by the generated API client. */
+export interface VextApiRouteType {
+  params: unknown;
+  query: unknown;
+  headers: unknown;
+  /** Cookie validation is contract metadata; browser fetch owns cookie transport. */
+  cookies: unknown;
+  body: unknown;
+  response: unknown;
+}
+
+export type VextApiRequestOptionsFor<TRoute extends VextApiRouteType> = Omit<
+  VextApiRequestOptions,
+  "params" | "query" | "headers" | "body"
+> & {
+  params?: TRoute["params"];
+  query?: TRoute["query"];
+  headers?: TRoute["headers"];
+  body?: TRoute["body"];
+};
 
 export class VextApiError extends Error {
   override readonly name = "VextApiError";
@@ -58,69 +95,104 @@ export function isVextApiError(error: unknown): error is VextApiError {
   return error instanceof VextApiError;
 }
 
-export interface VextApiClient<TContract extends VextClientContract> {
+export interface VextApiClient<
+  TContract extends VextClientContract,
+  TRouteTypes = Record<never, VextApiRouteType>,
+> {
   readonly contract: TContract;
-  request<TMethod extends VextClientRouteMethod>(
+  request<
+    TMethod extends VextClientRouteMethod,
+    TPath extends PathFor<TContract, TMethod>,
+  >(
     method: TMethod,
-    path: PathFor<TContract, TMethod>,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  GET(
-    path: PathFor<TContract, "GET">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  POST(
-    path: PathFor<TContract, "POST">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  PUT(
-    path: PathFor<TContract, "PUT">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  PATCH(
-    path: PathFor<TContract, "PATCH">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  DELETE(
-    path: PathFor<TContract, "DELETE">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  HEAD(
-    path: PathFor<TContract, "HEAD">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
-  OPTIONS(
-    path: PathFor<TContract, "OPTIONS">,
-    options?: VextApiRequestOptions,
-  ): Promise<unknown>;
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]>;
+  GET<TPath extends PathFor<TContract, "GET">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "GET", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "GET", TPath>["response"]>;
+  POST<TPath extends PathFor<TContract, "POST">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "POST", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "POST", TPath>["response"]>;
+  PUT<TPath extends PathFor<TContract, "PUT">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "PUT", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "PUT", TPath>["response"]>;
+  PATCH<TPath extends PathFor<TContract, "PATCH">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "PATCH", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "PATCH", TPath>["response"]>;
+  DELETE<TPath extends PathFor<TContract, "DELETE">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "DELETE", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "DELETE", TPath>["response"]>;
+  HEAD<TPath extends PathFor<TContract, "HEAD">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "HEAD", TPath>
+    >,
+  ): Promise<RouteTypeFor<TContract, TRouteTypes, "HEAD", TPath>["response"]>;
+  OPTIONS<TPath extends PathFor<TContract, "OPTIONS">>(
+    path: TPath,
+    options?: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, "OPTIONS", TPath>
+    >,
+  ): Promise<
+    RouteTypeFor<TContract, TRouteTypes, "OPTIONS", TPath>["response"]
+  >;
 }
 
-export function createVextApiClient<const TContract extends VextClientContract>(
+export function createVextApiClient<
+  const TContract extends VextClientContract,
+  TRouteTypes = Record<never, VextApiRouteType>,
+>(
   contract: TContract,
   options: VextApiClientOptions = {},
-): VextApiClient<TContract> {
-  const request = async <TMethod extends VextClientRouteMethod>(
+): VextApiClient<TContract, TRouteTypes> {
+  const request = async <
+    TMethod extends VextClientRouteMethod,
+    TPath extends PathFor<TContract, TMethod>,
+  >(
     method: TMethod,
-    path: PathFor<TContract, TMethod>,
-    requestOptions: VextApiRequestOptions = {},
-  ): Promise<unknown> => {
+    path: TPath,
+    requestOptions: VextApiRequestOptionsFor<
+      RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>
+    > = {},
+  ): Promise<
+    RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]
+  > => {
+    const runtimeOptions = requestOptions as VextApiRequestOptions;
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new Error("[vextjs/frontend] fetch is not available.");
     }
 
-    const url = buildUrl(options.baseUrl, String(path), requestOptions);
+    const url = buildUrl(options.baseUrl, String(path), runtimeOptions);
     const headers = new Headers(options.headers);
-    mergeHeaders(headers, requestOptions.headers);
+    mergeHeaders(headers, runtimeOptions.headers);
 
     const init: RequestInit = {
       method,
       headers,
-      signal: requestOptions.signal,
+      signal: runtimeOptions.signal,
     };
 
     if (
-      requestOptions.body !== undefined &&
+      runtimeOptions.body !== undefined &&
       method !== "GET" &&
       method !== "HEAD"
     ) {
@@ -128,9 +200,9 @@ export function createVextApiClient<const TContract extends VextClientContract>(
         headers.set("content-type", "application/json");
       }
       init.body =
-        typeof requestOptions.body === "string"
-          ? requestOptions.body
-          : JSON.stringify(requestOptions.body);
+        typeof runtimeOptions.body === "string"
+          ? runtimeOptions.body
+          : JSON.stringify(runtimeOptions.body);
     }
 
     const response = await fetchImpl(url, init);
@@ -149,7 +221,12 @@ export function createVextApiClient<const TContract extends VextClientContract>(
         details: errorBody.details,
       });
     }
-    return unwrapVextResponse(body);
+    return unwrapVextResponse(body) as RouteTypeFor<
+      TContract,
+      TRouteTypes,
+      TMethod,
+      TPath
+    >["response"];
   };
 
   return {

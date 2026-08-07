@@ -1524,6 +1524,7 @@ describe("validateConfig", () => {
             },
             render: {
               ssr: true,
+              streaming: "buffered",
               fallback: "client",
               timeoutMs: 3000,
               layout: true,

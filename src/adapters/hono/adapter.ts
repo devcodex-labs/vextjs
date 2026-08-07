@@ -9,6 +9,7 @@ import { createVextRequest as createHonoRequest } from "./request.js";
 import {
   createVextResponse as createHonoResponse,
   createResponseBox,
+  type HonoNodeResponseEnvironment,
 } from "./response.js";
 import {
   createVextRequest as createNodeRequest,
@@ -471,7 +472,9 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         const webRequest = new Request(url, requestInit);
 
         // 通过 env 传递 Node.js 原始对象，供 createVextRequest 读取 socket 信息
-        const env = { incoming: nodeReq, outgoing: nodeRes };
+        const env: HonoNodeResponseEnvironment & {
+          incoming: IncomingMessage;
+        } = { incoming: nodeReq, outgoing: nodeRes };
 
         // 调用 Hono 的 fetch handler，其返回值可能是 Response 或 Promise<Response>
         const result = hono.fetch(webRequest, env);
@@ -482,6 +485,9 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
         const completion = responsePromise
           .then(async (webResponse: Response) => {
+            if (env.vextStreamOwned) {
+              return;
+            }
             // 将 Web Response 写入 Node.js ServerResponse
             nodeRes.statusCode = webResponse.status;
 

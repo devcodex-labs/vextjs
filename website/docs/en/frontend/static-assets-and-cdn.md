@@ -59,3 +59,87 @@ This changes generated asset URLs. Upload is controlled separately by `frontend.
 ## Incremental Upload
 
 `deploy-manifest.json` plus sha256 state lets Vext skip unchanged images, fonts, JS, CSS, and public files. This is the default path for enterprise releases where large media files should not be re-uploaded every build.
+
+## Local Media Pipeline
+
+`config.frontend.media` compiles only local raster files found under
+`src/frontend/assets/**`. It writes content-addressed image variants and a
+media manifest into the normal frontend output, so those files participate in
+SRI and incremental deploy closure.
+
+```ts
+export default {
+  frontend: {
+    media: {
+      maxBytes: 20 * 1024 * 1024,
+      images: {
+        widths: [320, 640, 960, 1280, 1600],
+        formats: ["original", "webp", "avif"],
+        quality: 75,
+        maxInputPixels: 40_000_000,
+        maxVariants: 24,
+      },
+      fonts: {
+        maxBytes: 5 * 1024 * 1024,
+      },
+    },
+  },
+};
+```
+
+All limits are positive and build-time enforced. `media.maxBytes` bounds the
+complete generated closure. Vext refuses an unreadable source, oversized
+decoded input, too many variants, or a media closure that exceeds the
+configured byte budget.
+
+### Images
+
+Use `Image` with the local source path relative to `src/frontend`; it reads
+the document media manifest and emits width/height, responsive `srcSet`,
+`sizes`, format sources, and a placeholder. `priority` produces an eager,
+high-priority image and the corresponding document preload.
+
+```tsx
+import { Image } from "vextjs/frontend";
+
+export function Hero() {
+  return (
+    <Image
+      src="assets/hero.png"
+      alt="Product overview"
+      width={960}
+      height={540}
+      sizes="(max-width: 768px) 100vw, 960px"
+      priority
+    />
+  );
+}
+```
+
+Vext never fetches or proxies a remote image. A remote `src` requires an
+explicit `defineImageLoader({ allowlist, load })`; the loader owns the remote
+URL and must return an absolute HTTP(S) URL.
+
+### Fonts
+
+Declare a local font descriptor in a frontend source file. `defineFont`
+requires a local `src`, a family, and a license identifier or application
+license reference. The compiler emits a local WOFF2 subset and deterministic
+`@font-face` CSS; equivalent descriptors are deduplicated.
+
+```ts
+import { defineFont } from "vextjs/frontend";
+
+export const brandFont = defineFont({
+  src: "./assets/BrandSans.ttf",
+  family: "Brand Sans",
+  weight: 400,
+  display: "swap",
+  preload: true,
+  fallback: "system-ui",
+  license: "OFL-1.1",
+});
+```
+
+Remote font URLs are rejected. The local media worker has no CDN SDK, remote
+font downloader, or bundler plugin layer.

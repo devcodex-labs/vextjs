@@ -5,6 +5,8 @@ import {
   type RouteIndexEntry,
 } from "../project-index/scan-routes.js";
 import { inferOperationId } from "../../lib/openapi/operation-id.js";
+import { createRouteId } from "../../frontend/contract/schema-ir.js";
+import type { VextRouteFreshnessIdentity } from "../../frontend/contract/types.js";
 import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
 import { writeRouteInspectFile } from "./write-route-inspect.js";
 import {
@@ -65,6 +67,7 @@ export interface DoctorRouteRecord {
   operationIdSource: "explicit" | "inferred";
   tags: string[];
   hidden: boolean;
+  freshness: VextRouteFreshnessIdentity;
 }
 
 export interface DoctorResult {
@@ -145,6 +148,7 @@ function readRouteEntriesFromManifest(
       operationIdSource?: "explicit" | "inferred";
       tags?: string[];
       hidden?: boolean;
+      freshness?: VextRouteFreshnessIdentity;
     }>;
   };
 
@@ -167,6 +171,10 @@ function readRouteEntriesFromManifest(
         operationId,
         tags: route.tags ?? [],
         hidden: route.hidden ?? false,
+        freshness: route.freshness ?? {
+          mode: "dynamic",
+          source: "legacy-default",
+        },
       } satisfies RouteIndexEntry;
     })
     .sort((a, b) =>
@@ -290,6 +298,7 @@ function toDoctorRouteRecord(entry: RouteIndexEntry): DoctorRouteRecord {
     operationIdSource: entry.operationId ? "explicit" : "inferred",
     tags: entry.tags,
     hidden: entry.hidden,
+    freshness: entry.freshness,
   };
 }
 
@@ -362,10 +371,18 @@ function buildRouteManifestPayload(
       path: item.path,
       docsSummary: item.docsSummary,
       summary: item.docsSummary,
+      routeId: createRouteId(item.method, item.path),
       operationId: item.effectiveOperationId,
       operationIdSource: item.operationIdSource,
       tags: item.tags,
       hidden: item.hidden,
+      schema: {
+        schemaVersion: 1,
+        request: {},
+        responses: [],
+      },
+      freshness: item.freshness,
+      layout: { state: "unresolved", paths: [] },
     })),
   };
 }

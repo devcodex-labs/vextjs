@@ -172,6 +172,7 @@ interface RouteOptions {
     cookie?: Record<string, VextSchemaField>;
   };
   cache?: false | number | RouteCacheOptions;
+  frontend?: VextRouteFrontendOptions;
   middlewares?: VextMiddlewareRef[];
   docs?: RouteDocsConfig;
   auth?: false | true | VextAuthRequirement;
@@ -200,6 +201,30 @@ interface RouteOptions {
   };
 }
 ```
+
+### 前端 freshness
+
+`RouteOptions.frontend` 把页面 freshness 保留在既有路由声明中：
+
+```ts
+frontend: {
+  mode: "dynamic" | "static" | "revalidate",
+  revalidate?: number, // 秒；revalidate mode 必填
+  staticParams?: Array<Record<string, string | number | boolean>>,
+  clientOnly?: boolean,
+  tags?: string[],
+  page?: string,
+  staticBudget?: {
+    maxParams?: number;
+    maxDurationMs?: number;
+    maxBytes?: number;
+  },
+}
+```
+
+`staticParams` 只允许用于 `"static"`。`revalidate` 只允许用于
+`"revalidate"`，且是正数秒级间隔。`clientOnly` 保留 route
+document/data/assets，同时有意跳过服务端 page body；它不是 PPR，也不是第二套路由。
 
 ### 完整示例
 

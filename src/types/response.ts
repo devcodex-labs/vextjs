@@ -57,6 +57,19 @@ export interface VextRenderErrorOptions extends VextRenderOptions {
   expose?: boolean;
 }
 
+/**
+ * Internal, buffered result used by the route-side frontend freshness layer.
+ * It keeps cache storage at the page-envelope boundary rather than persisting
+ * final HTML, so each request can still negotiate its own document response.
+ *
+ * @internal
+ */
+export interface VextFrontendRenderCapture {
+  payload: unknown;
+  status: number;
+  headers: VextHeaders;
+}
+
 export interface VextResponse {
   /**
    * 返回 JSON 响应
@@ -331,6 +344,19 @@ export interface VextResponse {
    * @internal
    */
   _renderCached?(payload: unknown, status: number, headers: VextHeaders): void;
+
+  /**
+   * Produces the render payload without sending it. Route freshness uses this
+   * to persist a source-neutral page envelope then delegates normal response
+   * negotiation back to `_renderCached()` for every cache hit.
+   *
+   * @internal
+   */
+  _captureFrontendRender?(
+    page: string,
+    props?: Record<string, unknown>,
+    options?: VextRenderOptions,
+  ): VextFrontendRenderCapture;
 
   // ── 实时通信（插件注入，可选）────────────────────────
 

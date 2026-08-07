@@ -1,6 +1,7 @@
-import { IncomingMessage, ServerResponse } from "node:http";
+import { createServer, get, IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { PassThrough, Readable } from "node:stream";
+import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 import { createHonoAdapter } from "../../../src/adapters/hono/adapter.js";
 import { getHandlerDone } from "../../../src/lib/handler-completion.js";
@@ -26,7 +27,11 @@ function createAdapter(): VextAdapter {
   } as unknown as VextApp);
 }
 
-function registerGet(adapter: VextAdapter, path: string, handler: VextMiddleware) {
+function registerGet(
+  adapter: VextAdapter,
+  path: string,
+  handler: VextMiddleware,
+) {
   adapter.registerRoute("GET", path, [handler]);
 }
 
@@ -66,11 +71,13 @@ function dispatch(
     const originalWrite = response.write.bind(response);
     const originalEnd = response.end.bind(response);
     (response as any).write = (chunk: unknown, ...args: any[]) => {
-      if (chunk !== undefined && chunk !== null) chunks.push(Buffer.from(chunk as any));
+      if (chunk !== undefined && chunk !== null)
+        chunks.push(Buffer.from(chunk as any));
       return originalWrite(chunk as any, ...args);
     };
     (response as any).end = (chunk?: unknown, ...args: any[]) => {
-      if (chunk !== undefined && chunk !== null) chunks.push(Buffer.from(chunk as any));
+      if (chunk !== undefined && chunk !== null)
+        chunks.push(Buffer.from(chunk as any));
       const result = originalEnd(chunk as any, ...args);
       queueMicrotask(() => {
         void (async () => {
@@ -78,7 +85,10 @@ function dispatch(
           const headers = Object.fromEntries(
             response
               .getHeaderNames()
-              .map((name) => [name, response.getHeader(name) as string | string[]]),
+              .map((name) => [
+                name,
+                response.getHeader(name) as string | string[],
+              ]),
           );
           cleanup();
           resolve({
@@ -103,6 +113,50 @@ function dispatch(
   });
 }
 
+async function measureHttpStream(
+  handler: (req: IncomingMessage, res: ServerResponse) => void,
+  path: string,
+): Promise<{ firstByteMs: number; completedMs: number; text: string }> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      let firstByteAt: number | undefined;
+      const chunks: Buffer[] = [];
+      const request = get(`http://127.0.0.1:${port}${path}`, (response) => {
+        response.on("data", (chunk) => {
+          firstByteAt ??= performance.now();
+          chunks.push(Buffer.from(chunk));
+        });
+        response.once("error", reject);
+        response.once("end", () => {
+          if (firstByteAt === undefined) {
+            reject(new Error("stream response did not emit a body chunk"));
+            return;
+          }
+          resolve({
+            firstByteMs: firstByteAt - startedAt,
+            completedMs: performance.now() - startedAt,
+            text: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      });
+      request.once("error", reject);
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+}
+
 describe("Hono adapter stream responses", () => {
   it("writes Node readable streams through the Web Response bridge", async () => {
     const adapter = createAdapter();
@@ -120,6 +174,27 @@ describe("Hono adapter stream responses", () => {
     expect(response.headers["content-type"]).toBe("text/plain");
     expect(response.headers["x-stream"]).toBe("yes");
     expect(response.text).toBe("hello-hono");
+  });
+
+  it("emits the first HTTP body chunk before a delayed stream boundary", async () => {
+    const adapter = createAdapter();
+    registerGet(adapter, "/stream-timing", async (req, res) => {
+      req.requestId = "req-1";
+      const stream = new PassThrough();
+      stream.write("shell");
+      res.stream(stream, "text/plain");
+      setTimeout(() => stream.end("-complete"), 120).unref();
+    });
+
+    const response = await measureHttpStream(
+      adapter.buildHandler(),
+      "/stream-timing",
+    );
+
+    expect(response.text).toBe("shell-complete");
+    expect(response.completedMs - response.firstByteMs).toBeGreaterThanOrEqual(
+      60,
+    );
   });
 
   it("settles Node readable errors without hanging the Hono bridge", async () => {

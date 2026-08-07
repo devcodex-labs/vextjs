@@ -170,6 +170,8 @@ export type RoutesLoader = (
     sessionMiddleware?: RouteReloaderMiddleware;
     corsMiddleware?: RouteReloaderMiddleware;
     freshImports?: boolean;
+    rootDir?: string;
+    frontendMode?: "development" | "production";
   },
   collector?: RouteMetadataCollector | null,
 ) => Promise<void>;
@@ -577,6 +579,8 @@ export async function reloadRoutes(
           sessionMiddleware: builtinMiddlewares?.sessionMiddleware,
           corsMiddleware: routeCorsMiddleware,
           freshImports: true,
+          rootDir: projectRootFromOutDir(outDir),
+          frontendMode: "development",
         },
         collector,
       );

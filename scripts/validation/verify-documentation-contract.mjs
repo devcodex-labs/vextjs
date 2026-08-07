@@ -323,6 +323,177 @@ function verifyPublicReferenceContracts() {
   }
 }
 
+function verifyFrontendStreamingDocumentationContract() {
+  requireTokens("README.md", [
+    'frontend.render.streaming: "auto"',
+    'default `"buffered"`',
+    "Suspense fallback",
+    "Native, Hono, Fastify, Express, and Koa",
+    "React Server Components",
+    "Server Functions",
+    "partial prerendering",
+  ]);
+
+  const renderingTokens = [
+    'frontend.render.streaming: "buffered"',
+    'frontend.render.streaming: "auto"',
+    "renderToPipeableStream",
+    "Suspense fallback",
+    "Native",
+    "Hono",
+    "Fastify",
+    "Express",
+    "Koa",
+    "React Server Components",
+    "Server Functions",
+    "Server Actions",
+    "PPR",
+    "Webpack/Vite/Rollup/Rolldown",
+    "esbuild",
+  ];
+  for (const locale of ["en", "zh"]) {
+    requireTokens(
+      `website/docs/${locale}/frontend/rendering-modes.md`,
+      renderingTokens,
+    );
+    requireTokens(`website/docs/${locale}/frontend/boundaries-and-roadmap.md`, [
+      'frontend.render.streaming: "auto"',
+      '"buffered"',
+      "React Server Components",
+      "Server Functions",
+      "Server Actions",
+      "PPR",
+      "Webpack/Vite/Rollup/Rolldown",
+      "esbuild",
+    ]);
+    requireTokens(`website/docs/${locale}/frontend/troubleshooting.md`, [
+      'frontend.render.streaming: "auto"',
+      '"buffered"',
+      "React Server Components",
+      "Server Functions",
+      "Server Actions",
+      "PPR",
+    ]);
+    requireTokens(`website/docs/${locale}/api/config.md`, [
+      "`render.streaming`",
+      "`'buffered' \\| 'auto'`",
+      "`'buffered'`",
+      "`render.timeoutMs`",
+      "`3000`",
+    ]);
+    forbidTokens(`website/docs/${locale}/frontend/boundaries-and-roadmap.md`, [
+      "\n- streaming SSR\n",
+    ]);
+    forbidTokens(`website/docs/${locale}/frontend/troubleshooting.md`, [
+      "\n- streaming SSR\n",
+    ]);
+  }
+}
+
+function verifyFrontendNavigationDocumentationContract() {
+  const apiTokens = [
+    "`Link`",
+    "`Form`",
+    "`navigate`",
+    "`prefetch`",
+    "`revalidate`",
+    "`useNavigation`",
+    "`useFetcher`",
+    "`useRouteData`",
+  ];
+  requireTokens("README.md", [
+    ...apiTokens,
+    "application/vnd.vext.page+json;v=1",
+    "same handler",
+    "one document navigation",
+    "second loader/action route DSL",
+  ]);
+  for (const locale of ["en", "zh"]) {
+    requireTokens(`website/docs/${locale}/frontend/data-flow.md`, [
+      ...apiTokens,
+      'prefetch="none" | "click" | "visible"',
+      "idle",
+      "loading",
+      "submitting",
+      "revalidating",
+      "error",
+      "aborted",
+      "application/vnd.vext.page+json;v=1",
+      "routeId, path, tags, keys",
+      "no-store",
+    ]);
+    requireTokens(`website/docs/${locale}/frontend/boundaries-and-roadmap.md`, [
+      "`Link`",
+      "`Form`",
+      "loader/action route DSL",
+      "esbuild",
+    ]);
+    forbidTokens(`website/docs/${locale}/frontend/boundaries-and-roadmap.md`, [
+      "\n- persistent client layout navigation\n",
+      "\n- 持久客户端 layout 导航\n",
+    ]);
+  }
+}
+
+function verifyFrontendFreshnessMediaDocumentationContract() {
+  requireTokens("README.md", [
+    `RouteOptions.frontend`,
+    `mode: "dynamic" | "static" | "revalidate"`,
+    `staticParams`,
+    `config.frontend.media`,
+    `Image`,
+    `defineFont`,
+    `defineImageLoader`,
+  ]);
+
+  for (const locale of ["en", "zh"]) {
+    requireTokens("website/docs/" + locale + "/frontend/rendering-modes.md", [
+      `mode: "static"`,
+      `mode: "revalidate"`,
+      `staticParams`,
+      `clientOnly: true`,
+      `revalidate`,
+      `tags`,
+      `PPR`,
+    ]);
+    requireTokens(
+      "website/docs/" + locale + "/frontend/static-assets-and-cdn.md",
+      [
+        `config.frontend.media`,
+        `media.maxBytes`,
+        `maxInputPixels`,
+        `maxVariants`,
+        `Image`,
+        `defineFont`,
+        `defineImageLoader`,
+        `WOFF2`,
+      ],
+    );
+    requireTokens("website/docs/" + locale + "/api/config.md", [
+      `media.maxBytes`,
+      `media.images.widths`,
+      `media.images.formats`,
+      `media.images.quality`,
+      `media.images.maxInputPixels`,
+      `media.images.maxVariants`,
+      `media.fonts.maxBytes`,
+    ]);
+    requireTokens("website/docs/" + locale + "/api/route-definition.md", [
+      `VextRouteFrontendOptions`,
+      `staticParams`,
+      `clientOnly`,
+      `staticBudget`,
+    ]);
+  }
+
+  forbidTokens("website/docs/en/frontend/boundaries-and-roadmap.md", [
+    `- built-in image/font optimization components\n`,
+  ]);
+  forbidTokens("website/docs/zh/frontend/boundaries-and-roadmap.md", [
+    `- 内置图片/字体优化组件\n`,
+  ]);
+}
+
 function verifyExampleAndMetadata() {
   const examplePackage = JSON.parse(read("examples/hello-world/package.json"));
   if (examplePackage.dependencies?.vextjs !== "file:../..") {
@@ -497,6 +668,9 @@ if (renderedOnly) {
   verifyMarkdownTables();
   verifyCliDocs();
   verifyPublicReferenceContracts();
+  verifyFrontendStreamingDocumentationContract();
+  verifyFrontendNavigationDocumentationContract();
+  verifyFrontendFreshnessMediaDocumentationContract();
   verifyExampleAndMetadata();
 }
 

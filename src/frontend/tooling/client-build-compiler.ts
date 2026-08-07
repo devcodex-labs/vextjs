@@ -30,6 +30,8 @@ import {
 } from "./size-report.js";
 import { buildFrontendRouteAssets } from "./route-assets.js";
 import { createJscssBuildDefines } from "./jscss-extractor.js";
+import { writeStaticFrontendArtifacts } from "./static-artifact-writer.js";
+import { writeFrontendMediaArtifacts } from "./media-artifact-writer.js";
 
 export interface BuildFrontendClientOptions {
   rootDir: string;
@@ -48,6 +50,8 @@ export interface BuildFrontendClientResult {
   generatedDir?: string;
   contractPath?: string;
   modulePath?: string;
+  staticManifestPath?: string;
+  mediaManifestPath?: string;
   routeCount?: number;
   warnings: string[];
 }
@@ -254,6 +258,16 @@ export async function buildFrontendClient(
     await renderIndexHtml(config, manifest),
     "utf-8",
   );
+  const mediaArtifacts = await writeFrontendMediaArtifacts({
+    rootDir: options.rootDir,
+    config,
+    mode: options.mode,
+  });
+  const staticArtifacts = await writeStaticFrontendArtifacts({
+    rootDir: options.rootDir,
+    config,
+    mode: options.mode,
+  });
   const deployManifest = await buildFrontendDeployManifest({
     rootDir: options.rootDir,
     config,
@@ -294,6 +308,8 @@ export async function buildFrontendClient(
     generatedDir: registry.generatedDir,
     contractPath: contract?.contractPath,
     modulePath: contract?.modulePath,
+    staticManifestPath: staticArtifacts.manifestPath,
+    mediaManifestPath: mediaArtifacts.manifestPath,
     routeCount: contract?.routeCount,
     warnings: [
       ...buildResult.warnings.map((item) => item.text),
@@ -748,8 +764,7 @@ function renderDocumentLangPlaceholder(
   template: string,
   config: ResolvedVextFrontendConfig,
 ): string {
-  const htmlLangAttribute =
-    /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*)>/iu;
+  const htmlLangAttribute = /<html\b([^>]*?)\slang=(["'])[^"']*\2([^>]*)>/iu;
   const htmlWithoutLang = /<html\b((?:(?!\slang=)[^>])*)>/iu;
   const tokenLangAttribute = /\s+lang=(["'])\{vext\.lang\}\1/giu;
   if (!config.i18n.htmlLang) {
@@ -767,10 +782,7 @@ function renderDocumentLangPlaceholder(
       `<html$1 lang="${langAttribute}" data-vext-lang$3>`,
     )
     .replace(htmlWithoutLang, `<html lang="${langAttribute}" data-vext-lang$1>`)
-    .replace(
-      tokenLangAttribute,
-      ` lang="${langAttribute}" data-vext-lang`,
-    )
+    .replace(tokenLangAttribute, ` lang="${langAttribute}" data-vext-lang`)
     .replaceAll("{vext.lang}", langAttribute);
 }
 
@@ -1027,6 +1039,12 @@ function resolveVextFrontendRuntimeImport(
   config: ResolvedVextFrontendConfig,
   importPath: string,
 ): string | undefined {
+  if (importPath === "vextjs/frontend/navigation-runtime") {
+    return resolveVextNavigationRuntimeModule();
+  }
+  if (importPath === "vextjs/frontend/media-runtime") {
+    return resolveVextMediaRuntimeModule();
+  }
   if (importPath === "vextjs/frontend") {
     return path.join(path.dirname(config.entry), "vext-runtime.tsx");
   }
@@ -1034,6 +1052,22 @@ function resolveVextFrontendRuntimeImport(
     return resolveVextStyleModule();
   }
   return undefined;
+}
+
+function resolveVextNavigationRuntimeModule(): string {
+  const sourcePath = fileURLToPath(
+    new URL("../runtime/navigation.ts", import.meta.url),
+  );
+  if (existsSync(sourcePath)) return sourcePath;
+  return fileURLToPath(new URL("../runtime/navigation.js", import.meta.url));
+}
+
+function resolveVextMediaRuntimeModule(): string {
+  const sourcePath = fileURLToPath(
+    new URL("../media/index.ts", import.meta.url),
+  );
+  if (existsSync(sourcePath)) return sourcePath;
+  return fileURLToPath(new URL("../media/index.js", import.meta.url));
 }
 
 function resolveVextStyleModule(): string {

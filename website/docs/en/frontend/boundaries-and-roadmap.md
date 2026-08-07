@@ -10,13 +10,16 @@ The current Vext frontend direction is:
 - `src/routes/**` as URL and server data entry
 - `res.render(page, props?, options?)`
 - React 19 SSR plus hydration
+- opt-in Streaming SSR with `frontend.render.streaming: "auto"`; `"buffered"` remains the default
+- same-route page navigation with `Link`, `Form`, fetchers, revalidation, history, persistent common layouts, scroll/focus restoration, and document fallback
+- route-side static, revalidate, and client-only freshness with `staticParams`, tags, single-flight, atomic replacement, and last-known-good recovery
 - nested layout chain
 - default error pages and `renderError()`
 - Vext JSCSS plus CSS/CSS Modules
 - frontend i18n with `useVextI18n(locale?)`
 - Fast Refresh and render refresh in development
 - esbuild-powered production build
-- route assets, code splitting, size reports, budgets, deploy manifest, SRI, and incremental static upload
+- route assets, code splitting, size reports, budgets, deploy manifest, SRI, incremental static upload, and local image/font media closure
 
 ## Version Boundary
 
@@ -47,10 +50,8 @@ Vext can expose contracts for external frontend frameworks through `vextjs/front
 These are not first-phase commitments, but can be evaluated later:
 
 - React Server Components
-- Server Actions
-- streaming SSR
-- persistent client layout navigation
-- built-in image/font optimization components
+- Server Functions and Server Actions
+- partial prerendering (PPR)
 - deeper external framework adapters
 
 Each track needs separate requirements, performance evidence, and compatibility review before becoming default behavior.
@@ -62,3 +63,7 @@ Each track needs separate requirements, performance evidence, and compatibility 
 - treating global SPA fallback as the default
 - uploading SSR HTML as a static asset by default
 - adding cloud-provider SDKs to core for asset upload
+- implicitly fetching or proxying remote images, or downloading remote fonts
+- treating Streaming SSR as React Server Components, Server Functions, Server Actions, or PPR
+- replacing the esbuild frontend pipeline with a Webpack/Vite/Rollup/Rolldown plugin ecosystem
+- adding a parallel loader/action route DSL or function-action RPC transport

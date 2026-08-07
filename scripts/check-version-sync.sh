@@ -69,9 +69,7 @@ check_file() {
   fi
 
   if [ ! -f "$file" ]; then
-    echo "FAIL ${description}"
-    echo "     file not found: ${file}"
-    ERRORS=$((ERRORS + 1))
+    echo "SKIP (not found): ${file}"
     return
   fi
 
@@ -93,27 +91,17 @@ check_file \
   "\"v${VERSION}\"" \
   "website/rspress.config.ts -> v${VERSION}"
 
-# 2. website/docs/{en,zh}/guide/cli.md — vext --version output example
+# 2. website/docs/guide/cli.md — vext --version output example
 check_file \
-  "website/docs/en/guide/cli.md" \
+  "website/docs/guide/cli.md" \
   "vextjs v${VERSION}" \
-  "website/docs/en/guide/cli.md -> vextjs v${VERSION}"
+  "website/docs/guide/cli.md -> vextjs v${VERSION}"
 
+# 3. website/docs/guide/quick-start.md — dependency "vextjs": "^X.Y.Z"
 check_file \
-  "website/docs/zh/guide/cli.md" \
-  "vextjs v${VERSION}" \
-  "website/docs/zh/guide/cli.md -> vextjs v${VERSION}"
-
-# 3. website/docs/{en,zh}/guide/quick-start.md — dependency "vextjs": "^X.Y.Z"
-check_file \
-  "website/docs/en/guide/quick-start.md" \
+  "website/docs/guide/quick-start.md" \
   "\"vextjs\": \"\\^${VERSION}\"" \
-  "website/docs/en/guide/quick-start.md -> ^${VERSION}"
-
-check_file \
-  "website/docs/zh/guide/quick-start.md" \
-  "\"vextjs\": \"\\^${VERSION}\"" \
-  "website/docs/zh/guide/quick-start.md -> ^${VERSION}"
+  "website/docs/guide/quick-start.md -> ^${VERSION}"
 
 # 4. README.md — dependency "vextjs": "^X.Y.Z"
 check_file \

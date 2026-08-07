@@ -1,1019 +1,1170 @@
 # VextJS
 
-[Documentation](https://devcodex-labs.github.io/vextjs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 
-VextJS is a high-performance full-stack Node.js framework for building maintainable applications. It combines a convention-based backend runtime, file-system routing, typed services, plugins, middleware, validation, OpenAPI generation, route-level caching, an esbuild-powered React frontend pipeline, and a CLI workflow that keeps projects productive from the first command.
+> 一个现代化的 Node.js Web 框架，开箱即用，专为构建高性能 RESTful API 而设计。
 
-## Why VextJS
+vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路由、服务自动注入、参数校验、OpenAPI 文档自动生成等企业级特性，让你专注于业务逻辑。
 
-- Convention-based structure for routes, services, middleware, plugins, config, locales, generated types, and preload scripts.
-- File-system routing with dynamic params, nested routes, validation, middleware, OpenAPI metadata, and response helpers.
-- Adapter support for Native Node.js, Hono, Fastify, Express, and Koa.
-- Automatic service injection through `app.services`.
-- Plugin lifecycle hooks with app extension support.
-- Runtime `app.hooks` for request, validation, response, error, fetch, service, cache, plugin, OpenAPI, and server lifecycle points.
-- Built-in request context, request id, access logging, body limit, structured error handling with `app.throw` details, i18n, and OpenAPI endpoints.
-- Built-in `app.fetch` with timeout/retry/requestId propagation and config-driven `app.fetch.proxy` response passthrough.
-- Route-level response cache powered by `response-cache-kit` / `cache-hub`, with memory, Redis, and multi-level modes.
-- Built-in React frontend integration for `src/frontend/pages/**`, route-driven `res.render()`, SSR, hydration telemetry, route-specific modulepreload, Vext JSCSS/CSS assets, scoped SPA fallback, and generated API contract files.
-- Lightweight `vextjs/frontend` runtime helpers for page i18n, generated API contract artifacts, and future external frontend adapters.
-- Hot development workflow with route hot swap, service/i18n reload, and cold restart only when required.
-- Type generation for service and plugin app extensions.
-- Process-level preload support for OpenTelemetry, APM, polyfills, and startup bridges.
+---
 
-## Quick Start
+## ✨ 特性
 
-```bash
-npx vextjs create my-app
-cd my-app
-npm run dev
-```
+- **🔌 Adapter 架构** — 底层 HTTP 框架可替换（默认 Native Adapter，零外部依赖），业务代码无需改动
+- **📁 约定式路由** — `src/routes/` 下的文件自动扫描加载，文件路径即路由前缀
+- **🧩 插件系统** — 拓扑排序、依赖声明、生命周期钩子，轻松扩展框架能力
+- **💉 服务自动注入** — `src/services/` 下的 class 自动实例化并挂载到 `app.services`
+- **🛡️ 参数校验** — 集成 [schema-dsl](https://www.npmjs.com/package/schema-dsl)，声明式校验 + i18n 错误消息
+- **📖 OpenAPI 文档** — 路由元信息自动收集，生成 OpenAPI 3.0.3 JSON
+- **🔥 开发模式热重载** — 三层重载策略（Soft Reload + Cold Restart），毫秒级反馈
+- **🏗️ 内置中间件** — requestId、CORS、bodyParser、rateLimit、accessLog、responseWrapper 开箱即用
+- **⚡ 路由缓存** — 声明式 `cache: 60`，LRU 内存存储，标签失效，Vary headers，条件缓存
+- **🌐 i18n 支持** — `src/locales/` 语言包自动加载，校验错误消息多语言
+- **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
+- **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
+- **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断；`vext doctor routes` 已进入 Phase 2 预览
+- **🛰️ Preload 生态集成** — 同时支持依赖包 `vext.preload` 与项目根 `preload/` 目录；适合 OpenTelemetry / APM / polyfill / 启动前环境桥接这类必须早于应用代码执行的能力
+- **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
 
-Open `http://localhost:3000`. The default scaffold is a full-stack React app rendered from Vext routes. It includes a React page, a shared layout, default error page, `/api/hello`, and `/api/health` so the project is runnable immediately.
+---
 
-Create a project with another adapter:
+## 🖥️ 内置 React 前端运行时
 
-```bash
-npx vextjs create my-app --adapter hono
-```
+`config.frontend` 可为同一个 Vext 路由加入 React SSR、hydration、导航、静态/再验证页面和本地媒体构建；URL 与服务端数据入口仍由 `src/routes/**` 和 `res.render()` 保持权威。
 
-Create a JavaScript project:
+### 渲染与同路由导航
 
-```bash
-npx vextjs create my-app --js
-```
+默认 `frontend.render.streaming: "buffered"` 使用兼容的 `renderToString` 路径。The default `"buffered"` mode remains the compatibility path. 对需要先送达骨架的页面，设置 `frontend.render.streaming: "auto"`；Vext 会在 shell ready 后发送 document prefix 与 Suspense fallback，再继续输出延迟 boundary。Native, Hono, Fastify, Express, and Koa 使用同一生命周期：首字节前冻结响应，超时或客户端断开会中止未完成流。
 
-Create an API-only project:
+`vextjs/frontend` 导出 `Link`、`Form`、`navigate`、`prefetch`、`revalidate`、`useNavigation`、`useFetcher` 和 `useRouteData`。浏览器仅在协商 `application/vnd.vext.page+json;v=1` 后取得 page envelope；请求仍经过 the same handler、middleware、auth、CSRF、validation、cache、redirect 和 error chain。协议、权限或资源不兼容时保留 LKG，并执行 one document navigation。该能力不会新增 second loader/action route DSL。
 
-```bash
-npx vextjs create my-api --template api --frontend none
-```
+这条运行时路线不包含 React Server Components、Server Functions、Server Actions 或 partial prerendering (PPR)；前端构建继续使用 esbuild，不引入 Webpack/Vite/Rollup/Rolldown 插件生态。
 
-Skip dependency installation:
+### 路由 freshness 与本地媒体
 
-```bash
-npx vextjs create my-app --skip-install
-```
+在既有路由的 `RouteOptions.frontend` 中声明 `mode: "dynamic" | "static" | "revalidate"`。静态路由可提供 `staticParams`，再验证路由提供以秒为单位的 `revalidate`，`tags` 用于失效；`clientOnly` 保留 document、data 与 assets，但不输出服务端 page body。Vext 以 filesystem store 提供 single-flight、atomic replace 与 last-known-good，因此这不是 PPR 或另一套路由 DSL。
 
-## Installation
+`config.frontend.media` 只处理 `src/frontend/assets/**` 中的本地图片与字体，构建会生成 hashed variants、media manifest、SRI/deploy closure 和本地 WOFF2 subset。使用 `Image` 取得本地响应式图片，使用 `defineFont` 声明带许可证的本地字体；远程图片必须显式提供 allowlisted `defineImageLoader`，Vext 从不代理远程图片或下载远程字体。
 
-Manual setup is also supported:
+---
+
+## 🧭 快速导航
+
+如果你是第一次接触 VextJS，推荐按下面顺序阅读：
+
+1. **5 分钟跑起来** → 直接看 [🚀 快速开始](#-快速开始)
+2. **先判断是启动期配置还是进程级预加载** → 看 [启动期远程配置（bootstrap）](#31-可选启动期远程配置srcconfigbootstrapjs) 与 [OpenTelemetry 零配置接入](#32-可选零配置接入-opentelemetrypreload-型生态)
+3. **想接 OpenTelemetry** → 继续看下方的 [OpenTelemetry 零配置接入速查](#-vextjs--opentelemetry-零配置接入速查)
+4. **想了解命令行能力** → 继续往下看 `CLI 命令` 章节
+5. **想看配置与环境切换** → 继续往下看 `配置` 与 `环境变量` 章节
+6. **想系统化学习** → 官网文档：<https://vextjs.github.io/vext/>
+
+---
+
+## 📦 安装
 
 ```bash
 npm install vextjs
 ```
 
-`package.json`:
+> 默认使用 **Native Adapter**（基于 Node.js `http.createServer` + `route-core`），零外部 HTTP 框架依赖，性能最优。
+
+如需使用其他 adapter，请额外安装对应框架包：
+
+```bash
+# Fastify adapter
+npm install fastify
+
+# Hono adapter
+npm install hono @hono/node-server
+
+# Express adapter
+npm install express
+
+# Koa adapter
+npm install koa
+```
+
+然后在配置中指定 adapter：
+
+```js
+// src/config/default.js
+export default {
+  adapter: "fastify", // 'native' (默认) | 'fastify' | 'hono' | 'express' | 'koa'
+};
+```
+
+---
+
+## ⚡ 性能
+
+VextJS 提供 5 种 adapter，覆盖不同使用场景。以下为基准测试数据（5 轮取中位数）：
+
+### Native vs Fastify（核心对比）
+
+| 场景          | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
+| ------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
+| **JSON 响应** |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
+| **路由参数**  |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
+| **中间件链**  |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
+
+> Vext-Native 在所有场景领先 Vext-Fastify **26~51%**（中间件链场景 Vext-Native 甚至超越裸跑 Native +11.9%）。
+
+### 全 Adapter 性能概览（JSON 场景）
+
+| Adapter       |   Vext RPS | Overhead | 额外依赖                   | 推荐场景                |
+| ------------- | ---------: | -------: | -------------------------- | ----------------------- |
+| **Native** ⭐ | **36,819** |    18.1% | ✅ 零依赖                  | **默认推荐**，性能最优  |
+| Express       |     30,974 |    -3.7% | `express`                  | 已有 Express 生态需复用 |
+| Fastify       |     29,203 |    36.0% | `fastify`                  | 需要 Fastify 生态插件   |
+| Koa           |     22,488 |    29.4% | `koa`                      | 已有 Koa 中间件需复用   |
+| Hono          |     15,684 |    24.2% | `hono` `@hono/node-server` | Web Standard API 兼容   |
+
+> **测试环境**: Node.js v24.14.0 + autocannon（50 connections, 10 pipelining, 10s × 5 轮取中位数, Windows x64, i7-9700, 32GB RAM，2026-03-23）
+>
+> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 路由，是 VextJS 唯一不依赖第三方 HTTP 框架的 adapter。Vext-Native 比 Vext-Fastify 快 **26.1%**（JSON）/ **39.5%**（中间件链），比 Vext-Hono 快 **135%**，比 Vext-Express 快 **18.9%**（Express v5 + Node.js v24 性能大幅提升）。所有数据经 5 轮中位数验证，绝大多数 CV（变异系数）< 3.5%。
+
+### Adapter 选择指南
+
+| 你的场景              | 推荐 Adapter       | 理由                                        |
+| --------------------- | ------------------ | ------------------------------------------- |
+| 新项目，无历史包袱    | **native**（默认） | 零外部依赖 + 性能最优                       |
+| 已有 Fastify 插件生态 | fastify            | 可复用 Fastify 插件（如 fastify-multipart） |
+| 已有 Express 中间件   | express            | 兼容庞大的 Express 中间件生态               |
+| 已有 Koa 中间件       | koa                | 兼容 Koa 中间件                             |
+| 需要 Web Standard API | hono               | Hono 支持 Request/Response Web API 标准     |
+
+---
+
+## 🚀 快速开始
+
+### 1. 创建项目结构
+
+```
+my-app/
+├── src/
+│   ├── config/
+│   │   ├── default.js       # 应用配置
+│   │   └── bootstrap.js     # 启动期远程配置 provider（可选）
+│   └── routes/
+│       └── index.js          # 路由定义
+└── package.json
+```
+
+### 2. 配置 `package.json`
 
 ```json
 {
   "name": "my-app",
   "type": "module",
   "scripts": {
-    "dev": "vext dev",
-    "build": "vext build",
-    "start": "vext start"
+    "start": "vext start",
+    "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^1.0.0"
+    "vextjs": "^0.3.8"
   }
 }
 ```
 
-VextJS projects use ESM. Keep `"type": "module"` in application packages.
+### 3. 编写配置
 
-## Project Structure
-
-The scaffold creates the convention directories that the runtime knows how to scan:
-
-```text
-my-app/
-|-- preload/                    # Optional process-level preload scripts
-|   `-- README.md
-|-- public/
-|   `-- favicon.svg             # Static assets copied into the frontend build
-|-- src/
-|   |-- frontend/
-|   |   |-- pages/
-|   |   |   |-- _document.html   # HTML document with {vext.*} slots
-|   |   |   |-- index.tsx        # Page rendered by res.render("index")
-|   |   |   |-- layout.tsx       # Shared layout chain entry
-|   |   |   `-- error/
-|   |   |       `-- default.tsx  # Default HTML error page
-|   |   |-- components/
-|   |   |   `-- AppShell.tsx
-|   |   |-- locales/
-|   |   |   `-- en-US.ts
-|   |   |-- styles/
-|   |   |   |-- index.css
-|   |   |   `-- card.style.ts
-|   |   `-- assets/
-|   |-- config/
-|   |   |-- default.ts          # Required base config
-|   |   |-- development.ts      # Development override
-|   |   |-- production.ts       # Production override
-|   |   |-- local.example.ts    # Copy to local.ts for private local overrides
-|   |   `-- bootstrap.example.ts # Copy to bootstrap.ts for startup providers
-|   |-- routes/
-|   |   `-- index.ts
-|   |-- services/
-|   |   `-- example.ts
-|   |-- middlewares/
-|   |   `-- README.md
-|   |-- plugins/
-|   |   `-- README.md
-|   |-- locales/
-|   |   `-- README.md
-|   `-- types/
-|       `-- generated/
-|           `-- .gitkeep        # vext typegen writes index.d.ts here
-|-- package.json
-`-- tsconfig.json
-```
-
-JavaScript projects use `.js` files and do not create `src/types/generated/`.
-Generated TypeScript declarations are stored under `.vext/types/`; `src/types/generated/index.d.ts` is a small reference shim created by `vext typegen`. Frontend generated source lives under `.vext/generated/frontend/`; browser and SSR output is written under `.vext/client/` in development and `dist/client/` during production build.
-
-`local.example.ts` and `bootstrap.example.ts` are examples, not active config files. Copy them when you need the feature:
-
-```bash
-cp src/config/local.example.ts src/config/local.ts
-cp src/config/bootstrap.example.ts src/config/bootstrap.ts
-```
-
-`src/config/local.ts` and `src/config/local.js` are ignored by the generated `.gitignore` because they may reference private local infrastructure.
-
-## CLI
-
-```bash
-vext dev              # Development mode with hot reload
-vext build            # Build TypeScript projects
-vext start            # Start the production server from dist/
-vext create <name>    # Create a new project
-vext typegen          # Generate service and app extension types
-vext stop             # Stop cluster workers
-vext reload           # Rolling restart for cluster workers
-vext status           # Inspect cluster status
-```
-
-`vext dev` prints a minimal ready log by default: listening URL(s) plus total startup time. Add `--startup-profile` to print startup timings grouped by stable phases such as `main/preflight`, `main/preload`, `pre-worker-bootstrap`, `compile`, `database`, `plugins`, `routes`, `openapi`, `listen`, and `onReady`. Use `--startup-profile-json .vext/inspect/startup-profile.json` to write the same phase names and `gap.*` events to JSON without enabling human-readable profile details.
-
-`vext start` keeps production output minimal too: start mode, listening URL(s), and total startup time. Add `--startup-profile` or `--startup-profile-json <path>` when you need cold-start phase timings from the production bootstrap path.
-
-`vext create` options:
-
-```bash
-vext create my-app
-vext create my-app --js
-vext create my-app --adapter hono
-vext create my-app --adapter fastify
-vext create my-app --adapter express
-vext create my-app --adapter koa
-vext create my-app --adapter native
-vext create my-api --template api --frontend none
-vext create my-app --skip-install
-vext create my-app --force
-```
-
-`vext create` accepts exactly one project name. Extra positional arguments are rejected before the target directory is written. If the automatic `npm install` step fails, the command exits non-zero but keeps the generated project so you can enter it and run `npm install` again. TypeScript full-stack projects include NodeNext-compatible mappings for `@frontend`, `@pages`, `@components`, `@styles`, and `@assets`.
-
-## Configuration
-
-Configuration is loaded and merged in this order:
-
-```text
-framework defaults -> default -> config profile -> local -> bootstrap provider patch -> CLI override
-```
-
-`src/config/default.ts`:
-
-```ts
-import type { VextUserConfig } from "vextjs";
-
-const config: VextUserConfig = {
+```js
+// src/config/default.js
+export default {
   port: 3000,
-  adapter: "native",
+  host: "0.0.0.0",
   logger: {
     level: "info",
-    pretty: true,
-    prettyColor: "auto",
-  },
-  server: {
-    requestTimeout: 120_000,
-    headersTimeout: 60_000,
-    keepAliveTimeout: 5_000,
   },
   openapi: {
     enabled: true,
   },
-  securityHeaders: {
-    enabled: true,
-    preset: "basic",
-  },
-  frontend: {
-    enabled: true,
-    framework: "react",
-    publicDir: "public",
-    publicPath: "/",
-    i18n: {
-      enabled: true,
-      defaultLocale: "en-US",
-    },
-    dev: {
-      renderRefresh: "prompt",
-    },
-  },
 };
-
-export default config;
 ```
 
-Config profile files can return partial config. `vext start`, `vext build`, and `vext deploy assets` default to the `production` profile; `vext dev` defaults to `development`. Use `--config <name>` or `VEXT_CONFIG=<name>` to load a custom profile such as `src/config/sg-sit.ts`:
+> 💡 只需声明你关心的字段，其他字段（`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等）由框架自动补全默认值。
 
-```bash
-vext start --config sg-sit
-VEXT_CONFIG=sg-sit vext start
-vext deploy assets --config sg-sit --dry-run
-```
+### 3.1 可选：启动期远程配置（`src/config/bootstrap.js`）
 
-Profile files can return partial config:
+当数据库、密钥、Nacos 远程配置等内容**必须在配置冻结前生效**时，可新增 `src/config/bootstrap.js`：
 
-```ts
-// src/config/production.ts
-import type { VextUserConfig } from "vextjs";
-
-const config: Partial<VextUserConfig> = {
-  port: 3001,
-  logger: {
-    level: "info",
-    pretty: false,
-  },
-};
-
-export default config;
-```
-
-Use `src/config/local.ts` for machine-specific overrides and keep it out of Git.
-
-`app.logger` uses Vext's built-in structured logger by default. It outputs JSON in production, uses an internal pretty formatter in development, colors pretty level labels in TTY terminals or with `FORCE_COLOR=1` through `logger.prettyColor: "auto"`, supports `trace()`, runtime `getLevel()` / `setLevel()`, and exact key/path redaction through `logger.redactKeys` / `logger.redactPaths`. JSON output never contains ANSI color codes. Plugins can wrap it through `app.setLogger()` for external log bridges.
-
-Use `config.server` for inbound Node.js HTTP server settings such as request, headers, keep-alive, socket timeout, request header size, max requests per socket, and incomplete-request checking interval. It applies to the built-in Native, Hono, Fastify, Express, Koa adapters and the dev server; omitted fields keep the current Node.js defaults. This is separate from `config.fetch.timeout`, which only controls outbound `app.fetch` calls.
-
-## Frontend
-
-The default `vext create` template enables `config.frontend` and creates `src/frontend/**`. URL entry still lives in `src/routes/**`; a route renders a page by calling `res.render(page, props, options)`:
-
-```ts
-app.get("/", {}, async (req, res) => {
-  const greeting = await app.services.example.greeting("Vext");
-  res.render("index", { greeting });
-});
-```
-
-`vext dev` builds the browser app into `.vext/client/`, watches `src/frontend/**` and `public/**`, and uses the dev event bus for CSS/JSCSS updates, React Fast Refresh, and optional render-data refresh prompts after backend soft reloads.
-
-Component styles can use the default `vextjs/style` facade. Files such as `src/frontend/styles/card.style.ts` are scanned during build, extracted into generated CSS, and merged into the final CSS asset without adding Emotion or styled-components as default runtime dependencies.
-
-`vext build` compiles server code and then bundles the browser client and SSR renderer into `dist/client/`. Browser pages, layouts, error pages, and locale entries are split through dynamic imports; shared React runtime packages go through the Vext-managed vendor entry. `vext start` serves static frontend assets and HTML rendering while leaving API paths such as `/api/**`, `/openapi.json`, and `/docs/**` to the backend runtime.
-
-Production builds also write `dist/client/deploy-manifest.json` for CDN or static asset publishing and `dist/client/size-report.json` for raw/gzip/brotli size evidence, route initial assets, and app-owned/external runtime groups. `vext deploy assets` and `vext build --upload-assets` upload only changed JS/CSS/images/fonts and copied `public/**` files by sha256 state; server-rendered `index.html` is not uploaded by default.
-
-For React hydration performance budgets, set fields such as `frontend.build.budgets.maxInitialJsBrotliBytes`, `maxRouteInitialJsBrotliBytes`, or `maxAppOwnedInitialJsBrotliBytes`. The default frontend i18n mode uses `frontend.i18n.clientLoad: "current"` so the browser loads only the SSR locale during hydration; use `"all"` only when a page needs no-reload locale switching. Advanced React CDN/import-map usage remains opt-in through `frontend.build.client.external` plus `externalRuntime`; React-related externals must provide runtime mappings.
-
-For the frontend user guide, start with [Frontend Overview](https://devcodex-labs.github.io/vextjs/frontend/overview). The Frontend section has its own navigation for getting started, routing/pages, SSR, hydration, CSR fallback, render data cache, Fast Refresh, code splitting, static assets/CDN, performance budgets, configuration, and troubleshooting.
-
-When `frontend.apiClient` is enabled, Vext also emits `client-contract.json` and `api.generated.ts` next to the frontend output for tooling or advanced external frontend integrations. Normal page code does not need to hand-write route contracts; for first-screen data, prepare services in the route handler and pass props through `res.render()`.
-
-For API-only projects, use:
-
-```bash
-npx vextjs create my-api --template api --frontend none
-```
-
-## Startup Config Providers
-
-Use `src/config/bootstrap.ts` when configuration must be fetched before the final app config is validated and frozen:
-
-```ts
+```js
+// src/config/bootstrap.js
 import { defineBootstrapConfig } from "vextjs";
 
 export default defineBootstrapConfig({
   providers: [
     {
       name: "remote-config",
-      async load({ configProfile, signal }) {
-        const response = await fetch(
-          `https://config.example.com/${configProfile}.json`,
-          { signal },
-        );
-        return await response.json();
+      async load({ env, signal }) {
+        const response = await fetch(`https://config.example.com/${env}.json`, {
+          signal,
+        });
+        const remote = await response.json();
+        return {
+          database: remote.database,
+        };
       },
     },
   ],
 });
 ```
 
-This is the right place for startup config centers and early infrastructure patches. Use `preload/` instead for APM, OpenTelemetry, polyfills, or anything that must execute before application modules are imported.
+配置优先级：
 
-## Preload
+```text
+默认值 → default.js → {NODE_ENV}.js → local.js → bootstrap provider patch → CLI override
+```
 
-VextJS supports two preload sources:
+适合场景：
 
-- Application-level scripts in the project root `preload/` directory.
-- Package-level scripts declared through `package.json` `vext.preload`.
+- 启动期数据库配置
+- 远程配置中心 patch
+- 需要在内置插件初始化前可见的基础设施配置
 
-Application preload example:
+不适合场景：
+
+- APM / OpenTelemetry SDK 初始化
+- monkey patch / polyfill
+
+这类“进程级提早执行”能力应继续使用 `preload`。
+
+### 3.2 可选：零配置接入 OpenTelemetry（preload 型生态）
+
+如果你希望在 Vext 应用里直接启用 Trace / Metrics / Logs，可安装 `vextjs-opentelemetry`：
+
+```bash
+npm install vextjs-opentelemetry
+```
+
+```json
+{
+  "vext": {
+    "otel": {
+      "serviceName": "my-app",
+      "endpoint": "http://otel-collector.internal:4318",
+      "sampling": { "ratio": 1 }
+    }
+  }
+}
+```
+
+```js
+// src/plugins/otel.js
+import { opentelemetryPlugin } from "vextjs-opentelemetry/vextjs";
+
+export default opentelemetryPlugin({
+  serviceName: "my-app",
+  tracing: {
+    ignorePaths: ["/health", "/_otel/status"],
+  },
+  logs: {
+    bridgeAppLogger: true,
+  },
+});
+```
+
+然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload`，也会识别项目根 `preload/` 目录，并在应用代码前注入对应脚本，无需手动加 `node --import ...`。
+
+如果你是应用项目而不是插件包，现在也可以直接在项目根创建：
 
 ```text
 preload/
-|-- 01-otel.ts
-`-- 02-polyfill.mjs
+├── 01-bootstrap-port.ts
+└── 02-bootstrap-verbose.mjs
 ```
 
-Supported application preload files include `.js`, `.mjs`, `.ts`, and `.mts`. TypeScript preload files are compiled before injection. `vext dev` watches the root `preload/` directory and performs a cold restart when preload files change.
+- `.mjs` / `.js` 会直接作为 ESM preload 注入
+- `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
+- `vext dev` 下修改 `preload/` 中的文件会触发 cold restart，确保结果与手动重启一致
+- `vext build` 会把项目根 `preload/` 编译到 `dist/preload/*.mjs`，便于生产部署只携带 `dist/`
 
-## Routes
+更多说明：
 
-Routes live in `src/routes/` and are mapped from file paths to URL prefixes:
+- preload 机制：<https://vextjs.github.io/vext/guide/preload>
+- VextJS OpenTelemetry 完整接入：<https://vextjs.github.io/vext/examples/opentelemetry>
 
-```text
-src/routes/index.ts          -> /
-src/routes/users.ts          -> /users
-src/routes/admin/index.ts    -> /admin
-src/routes/admin/settings.ts -> /admin/settings
-src/routes/users/[id].ts     -> /users/:id
-```
+---
 
-Route discovery loads `.ts`, `.js`, `.mjs`, and `.cjs` files. It skips `*.test.*`, `*.spec.*`, `*.d.ts`, `node_modules`, generated `.__vext_compiled__` files, and files or directories starting with `_` or `.`. Runtime loading and `vext doctor routes --write-manifest` use the same exclusion policy, so helper modules under `src/routes/_*.ts` and local test files never become routes.
+## 🛰️ VextJS + OpenTelemetry 零配置接入速查
 
-Example:
+### 双入口配置优先级（VextJS 专用）
 
-```ts
+`vextjs-opentelemetry` 在 VextJS 里有两个正式入口，但职责不同：
+
+| 入口                                            | 生效阶段                   | 适合放什么                                                                                          | 不适合放什么                                     |
+| ----------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `package.json` → `vext.otel`                    | **preload / 进程启动前**   | `serviceName`、`endpoint`、`protocol`、`headers`、`sampling` 这类“SDK 一开始就要知道”的默认导出配置 | `ignorePaths`、`capture`、日志桥接、请求级逻辑   |
+| `src/plugins/otel.js` → `opentelemetryPlugin()` | **plugin setup + request** | `tracing`、`metrics`、`lifecycle`、`logs.bridgeAppLogger`，以及 setup 阶段对 exporter 的补充 / 覆盖 | 指望它回写 preload 阶段已经启动好的 SDK Resource |
+
+> ✅ 推荐做法：把“导出到哪里、用什么协议、服务名是什么”优先收敛到 `package.json vext.otel`；把“请求要采什么、日志怎么桥接、哪些路径忽略”放进 `opentelemetryPlugin()`。
+
+### `endpoint` / `protocol` 对照
+
+| 目标                | 推荐配置                                | `protocol`       | 结果                                                                |
+| ------------------- | --------------------------------------- | ---------------- | ------------------------------------------------------------------- |
+| 完全不上报          | 不写 `endpoint`，或显式写 `"none"`      | —                | SDK 可保持安全 noop / 不导出任何数据                                |
+| 本地文件调试        | `"./otel-data"`                         | —                | 按 `pid` 写入 `traces.*.jsonl` / `metrics.*.jsonl` / `logs.*.jsonl` |
+| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"`（默认） | 通过 OTLP/HTTP 上报                                                 |
+| OTLP gRPC Collector | `"otel-collector.internal:4317"`        | `"grpc"`         | 通过 gRPC h2c 上报                                                  |
+
+> 💡 如果你同时在 `package.json vext.otel` 和 `opentelemetryPlugin()` 里都写了 `endpoint / protocol / headers`，建议保持一致，避免 `/_otel/status`、启动日志和最终实际导出目标出现认知偏差。
+
+### 快速排查
+
+- **`/_otel/status` 显示 `sdk: "noop"`**
+  - 确认是通过 `vext dev` / `vext start` 启动，而不是直接 `node dist/server.js`
+  - 确认 `vextjs-opentelemetry` 在 `dependencies` 中
+  - 若必须自定义 Node 启动命令，请手动补 `--import vextjs-opentelemetry/instrumentation`
+- **`exportTarget` 不是你期望的地址**
+  - 先检查 `package.json vext.otel`
+  - 再检查 `src/plugins/otel.js` 是否又追加了不同的 `endpoint / protocol / headers`
+- **日志里没有 `trace_id`**
+  - 先确认 `/_otel/status` 已是 `initialized`
+  - 再确认插件已正常加载；如果希望 `app.logger` 也桥接到 OTel Logs，开启 `logs.bridgeAppLogger: true`
+- **后端一直收不到数据**
+  - 先用 `./otel-data` 本地文件模式确认数据是否已生成
+  - 再检查 Collector 地址、端口、协议是否匹配，并预留一点批量导出延迟
+
+### 安全与隐私提醒
+
+- `capture.headers`、`capture.body` **只建议白名单采集**，不要把 `authorization`、`cookie`、密码、手机号、邮箱等敏感字段直接打进遥测
+- `/_otel/status` 适合排障，但生产环境建议只开放给内网或经网关限制访问
+- `headers` 中若需要放 API Key / Token，优先通过环境变量或部署平台 Secret 注入；不要把真实密钥硬编码进仓库里的 `package.json`
+- `package.json vext.otel` 更适合放“默认导出目标与服务名”这类非敏感配置；真正的敏感凭证请交给运行时注入
+
+### 4. 编写路由
+
+```js
+// src/routes/index.js
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get(
-    "/",
-    {
-      docs: { summary: "Home" },
-    },
-    async (_req, res) => {
-      const greeting = await app.services.example.greeting("Vext");
-      res.json(greeting);
-    },
-  );
-
-  app.get(
-    "/health",
-    {
-      docs: { summary: "Health check" },
-    },
-    async (_req, res) => {
-      res.json({ status: "ok", timestamp: Date.now() });
-    },
-  );
-});
-```
-
-## Validation
-
-Route validation uses `schema-dsl` style declarations:
-
-```ts
-app.post(
-  "/users",
-  {
-    validate: {
-      body: {
-        name: "string!",
-        age: "number|min:0",
-        email: "email!",
-      },
-    },
-  },
-  async (req, res) => {
-    const body = req.valid("body");
-    res.json({ created: true, user: body });
-  },
-);
-```
-
-Validation errors use HTTP `422` by default and can be localized through `src/locales/`.
-
-With the v1 source adaptation, `?` means that a property may be absent; it does
-not make the value nullable. Use `types:string|null` or raw JSON Schema
-`{ type: ["string", "null"] }` when `null` is explicitly allowed. Field
-descriptions use the side-effect-free builder instead of a global String method:
-
-```ts
-import { schemaAdapter } from "vextjs";
-
-const userSchema = {
-  name: schemaAdapter.compileField("string!").description("User name"),
-  nickname: "string?",
-};
-```
-
-See [Migrating to vextjs v1](./MIGRATION.md) for the complete schema-dsl v3 and
-monsqlize 3.1 migration contract for `vextjs@1.0.0`.
-
-## Cookies and Sessions
-
-Vext parses the request `Cookie` header for every adapter and exposes it through readonly `req.cookies` and `req.cookie(name)` with first-wins duplicate semantics. Responses can append multiple cookies without collapsing them into a comma-joined header:
-
-```ts
-app.get("/preferences", {}, async (req, res) => {
-  const theme = req.cookie("theme") ?? "system";
-  res.cookie("theme", theme, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
+  app.get("/", {}, async (req, res) => {
+    res.json({ message: "Hello, VextJS!" });
   });
-  res.json({ theme });
+
+  app.get("/health", {}, async (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
 });
 ```
 
-Enable session support through configuration. Vext auto-registers the built-in
-runtime in production, development, tests, and soft reloads:
-
-```ts
-// src/config/default.ts
-export default {
-  session: {
-    enabled: true,
-  },
-};
-
-app.post("/login", {}, async (req, res) => {
-  req.session!.userId = "u_123";
-  res.json({ ok: true });
-});
-```
-
-The default session cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` is enabled automatically for HTTPS requests. The built-in memory store is suitable for development, tests, and single-process deployments. For shared production stores, pass a cache-like backend through the official adapter:
-
-```ts
-import { createCacheSessionStore } from "vextjs";
-import { createRedisCacheAdapter } from "cache-hub/redis";
-
-const sessionCache = createRedisCacheAdapter("redis://localhost:6379");
-
-export default {
-  session: {
-    enabled: true,
-    store: createCacheSessionStore(sessionCache, {
-      prefix: "my-app:sess:",
-      close: () => sessionCache.close?.(),
-    }),
-  },
-};
-```
-
-`createCacheSessionStore()` accepts a structural cache with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, and stores JSON strings by default. Vext closes a configured store during app shutdown. Install `cache-hub` and the selected backend client, such as `ioredis`, in the consuming app. `config.cache.cacheHub` and `app.cache` are for route response cache only; they are not a Session Store shortcut. Advanced users can still implement `VextSessionStore` directly when they need a custom persistence contract. Routes can use `session: false` to opt out, or `session: true` to opt in when the global runtime is disabled. The explicit `session()` middleware remains available for scoped/manual registration; do not combine it with `config.session.enabled: true`. Routes that receive a `Cookie` header are not cached by default, and responses with `Set-Cookie` are never written to route cache.
-
-## CSRF Protection
-
-Vext includes a zero-dependency CSRF middleware that uses the configured Session runtime by default and can fall back to signed double-submit cookies when `config.csrf.secret` is provided.
-
-```ts
-// src/config/default.ts
-export default {
-  session: { enabled: true },
-  csrf: {
-    enabled: true,
-  },
-};
-
-app.get("/csrf-token", {}, async (req, res) => {
-  res.json({ token: req.csrfToken() });
-});
-```
-
-Set `config.csrf.enabled: true` to auto-register CSRF globally after body parsing and plugin global middleware, or register `csrf()` manually when you need a scoped path. Unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`) must submit a token through `x-csrf-token`, `x-xsrf-token`, or body field `_csrf`. Route options can opt out with `{ csrf: false }`.
-
-## Security Headers
-
-Vext can write common browser security response headers from configuration without adding Helmet or a custom plugin. The feature is disabled by default; `basic` adds only the low-impact baseline headers.
-
-```ts
-// src/config/default.ts
-import type { VextUserConfig } from "vextjs";
-
-const config: VextUserConfig = {
-  securityHeaders: {
-    enabled: true,
-    preset: "basic",
-  },
-};
-
-export default config;
-```
-
-`basic` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: SAMEORIGIN`. `strict` also opts into HTTPS-only HSTS, a minimal `Permissions-Policy`, COOP, and CORP; CSP and COEP remain explicit because they depend on each app's assets and cross-origin resource model. Routes can opt out with `{ securityHeaders: false }`, and handlers can still override individual headers with `res.setHeader()`.
-
-## Auth Guard and Context
-
-Every request has an anonymous `req.auth` context by default. Register the first-party `auth()` middleware to populate identity metadata, then protect routes through small local helpers that map your business policy to `RouteOptions.auth`:
-
-```ts
-// src/middlewares/auth.ts
-import { auth, defineMiddleware } from "vextjs";
-
-export default defineMiddleware(
-  auth({
-    provider: "app",
-    async verify(token) {
-      if (token !== "demo-token") return false;
-
-      return {
-        subject: "user:1",
-        userId: "1",
-        roles: ["admin"],
-        scopes: ["posts:write"],
-        claims: { tier: "internal" },
-        can(action, resource) {
-          return action === "post:update" && resource === "post-1";
-        },
-      };
-    },
-  }),
-);
-```
-
-```ts
-import type { RouteOptions } from "vextjs";
-
-function requireAuth(options: RouteOptions = {}): RouteOptions {
-  return {
-    ...options,
-    middlewares: ["auth"],
-    auth: { required: true, security: "bearerAuth" },
-  };
-}
-
-function requirePostUpdate(options: RouteOptions = {}): RouteOptions {
-  return {
-    ...options,
-    middlewares: ["auth"],
-    auth: {
-      roles: ["admin"],
-      scopes: ["posts:write"],
-      permissions: [
-        { action: "post:update", resource: (req) => req.params.id },
-      ],
-      mode: "all",
-      security: "bearerAuth",
-    },
-  };
-}
-
-app.get("/me", requireAuth(), async (req, res) => {
-  res.json({ userId: req.auth.userId, roles: req.auth.roles });
-});
-
-app.post("/posts/:id", requirePostUpdate(), handler);
-```
-
-`auth()` identifies a request but does not protect routes by itself. `auth: true` requires an authenticated request; object form can require roles, scopes, permissions, or a custom `check`. Most applications should wrap those route options in helpers like `requireAuth()` / `requirePostUpdate()` so middleware names, security schemes, and permission resources stay in one place. `auth: false` marks a route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
-
-Stable guard error codes are `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_FORBIDDEN` (403), `AUTH_CONFIG_ERROR` (500), and `AUTH_PROVIDER_ERROR` (500). `requestContext.getStore()?.auth` contains only safe metadata such as `userId`, roles, scopes, scheme, and provider; raw credentials and claims stay out of the request context snapshot.
-
-## Error Handling
-
-VextJS catches exceptions thrown from routes, services, and middleware through a built-in global `error-handler`.
-
-- Use `app.throw(...)` when you want to return a structured HTTP error such as `404`, `409`, or a custom business code.
-- Throw `new VextValidationError(errors)` when you want to return a `422` response with field-level validation details.
-- Throw `new Error("...")` for unexpected runtime failures. VextJS will convert it to a `500 Internal Server Error`.
-
-`app.throw` also supports optional business details for cases such as upstream API errors:
-
-```ts
-app.throw(
-  502,
-  "payment.failed",
-  { orderId },
-  {
-    provider: "stripe",
-    providerCode: "card_declined",
-  },
-);
-
-app.throw({
-  status: 502,
-  message: "payment.failed",
-  code: "PAYMENT_FAILED",
-  details: { provider: "stripe", providerCode: "card_declined" },
-});
-```
-
-`details` is sanitized before it is written to the JSON response, so circular references and unsupported values cannot break error serialization.
-
-See the full guide in [Error Handling](https://devcodex-labs.github.io/vextjs/guide/error-handling) and the [App API](https://devcodex-labs.github.io/vextjs/api/app).
-
-For unexpected runtime errors, detailed stack traces are intended for development and diagnostics:
-
-- In development, you can expose `stack` in JSON by setting `response.hideInternalErrors = false`.
-- Browser requests in dev mode can also render the built-in HTML error overlay with stack frames and source context.
-- In production, keep `hideInternalErrors` enabled so clients receive a safe `500` response instead of internal details.
-
-## Services
-
-Services live in `src/services/` and are injected into `app.services` by filename:
-
-```ts
-// src/services/example.ts
-import type { VextApp } from "vextjs";
-
-export default class ExampleService {
-  constructor(private app: VextApp) {}
-
-  async greeting(name: string) {
-    this.app.logger.info("Generating greeting", { name });
-    return { message: `Hello, ${name}! Welcome to VextJS.` };
-  }
-}
-```
-
-Use it from a route:
-
-```ts
-const result = await app.services.example.greeting("Vext");
-```
-
-Run type generation after changing services or app extensions:
+### 5. 启动
 
 ```bash
-npx vext typegen
+# 开发模式（热重载）
+npm run dev
+
+# 生产模式
+npm start
 ```
 
-Generated declarations are written to `.vext/types/`, with `src/types/generated/index.d.ts` referencing them for TypeScript projects.
+```bash
+# 验证
+curl http://localhost:3000/
+# → {"code":0,"data":{"message":"Hello, VextJS!"}}
+```
 
-## Middleware
+---
 
-Middleware files live in `src/middlewares/` and are referenced by name from route config or global configuration.
+## 🖥️ CLI 命令
 
-```ts
-// src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
+VextJS 提供内置 CLI，通过 `npx vext` 或 `package.json` scripts 调用。
 
-export default defineMiddleware(async (req, res, next) => {
-  if (!req.headers.get("authorization")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+### `vext start` — 启动编译产物
 
-  return next();
+```bash
+vext start                          # 使用默认配置启动
+vext start --port 8080              # 指定端口
+vext start --host 127.0.0.1         # 指定监听地址
+NODE_ENV=production vext start      # 加载 production 配置
+NODE_ENV=sg-sit vext start          # 加载 sg-sit 配置（需存在 src/config/sg-sit.ts）
+```
+
+启动流程：检测项目结构 → 加载配置 → 注册插件/中间件/服务/路由 → 启动 HTTP 服务器。
+
+如果存在 `dist/` 编译产物，自动使用编译后的 JS 运行；TypeScript 项目无 `dist/` 时自动通过 `tsx` 加载。
+
+环境配置文件通过运行时 `NODE_ENV` 选择：`src/config/{NODE_ENV}.ts`。
+
+> ⚠️ `vext build` 当前会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`。因此不要依赖 build 后源码里的 `process.env.NODE_ENV` 条件分支做运行时环境切换；环境差异应优先写入 `src/config/<env>.ts`、bootstrap provider 或其他显式业务环境变量。
+
+### `vext dev` — 开发模式
+
+```bash
+vext dev                      # 启动开发服务器
+vext dev --poll               # Docker / NFS 环境使用轮询模式
+vext dev --poll-interval 2000 # 自定义轮询间隔（毫秒）
+vext dev --debounce 50        # 自定义防抖间隔（毫秒，默认 0 不开启）
+vext dev --no-hot             # 禁用 Soft Reload，所有变更走 Cold Restart
+vext dev --clear              # 每次重载后清空控制台
+```
+
+在 `0.3.7` 起，`vext dev` 会在 initial start、文件变更、手动 reload / restart、以及子进程请求 cold restart 前统一执行一次 **dev preflight**：
+
+- 先自动执行一轮 `typegen`，保持 `src/types/generated/*.generated.d.ts` 与当前 `services` / `plugins` 定义同步；
+- 对 TypeScript 项目追加一轮基于 `tsconfig.json` 的语义诊断；
+- 若存在 blocking issue，则不会进入新一轮 reload / restart，而是保留当前可运行版本并直接打印诊断信息。
+
+**三层重载策略：**
+
+| Tier | 触发条件                  | 动作                                       | 速度      |
+| ---- | ------------------------- | ------------------------------------------ | --------- |
+| T1   | 代码修改（modify）        | Soft Reload — `esbuild.transform()` 热替换 | ⚡ 毫秒级 |
+| T2   | 文件新增 / 删除           | Soft Reload — `esbuild ctx.rebuild()` 重建 | ⚡ 毫秒级 |
+| T3   | 配置 / 插件 / `.env` 变更 | Cold Restart — kill + fork 重启子进程      | 🔄 秒级   |
+
+**键盘快捷键：**
+
+| 按键     | 功能                     |
+| -------- | ------------------------ |
+| `r`      | 手动 Cold Restart        |
+| `h`      | 手动 Soft Reload（全量） |
+| `c`      | 清空控制台               |
+| `?`      | 显示帮助                 |
+| `Ctrl+C` | 退出开发服务器           |
+
+### `vext build` — 构建
+
+```bash
+vext build                    # TypeScript 编译为 JavaScript
+```
+
+### `vext typegen` / `vext doctor routes` — 工程辅助命令（experimental）
+
+Phase 1 / Phase 2 新增的静态工具链能力整体仍保持 **tooling-only** 边界：不会进入 `start` / `build` 的默认 runtime 主路径；但从 `0.3.7` 起，`vext dev` 会在 preflight 中自动执行基础 `typegen`，用于在开发态同步 generated 声明并阻断明显的 TypeScript 语义错误。
+
+```bash
+# 生成 app.services / app.extend() 声明，并执行 tooling 层 service 依赖诊断
+vext typegen
+
+# 仅校验 generated 产物是否需要更新，不写文件
+vext typegen --check
+
+# 输出服务索引 / app.extend / 依赖图的稳定 manifest
+vext typegen --write-manifest
+
+# 扫描静态路由信息，并将诊断结果写入 inspect + manifest
+vext doctor routes --write-inspect --write-manifest
+```
+
+当前产物约定：
+
+- `src/types/generated/services.generated.d.ts`
+- `src/types/generated/app-extensions.generated.d.ts`
+- `.vext/inspect/services.manifest.json`
+- `.vext/inspect/routes.json`
+- `.vext/inspect/routes.manifest.json`
+
+说明：
+
+- `vext typegen` 面向 `services` / `plugins`，解决声明生成与依赖诊断问题；
+- `vext dev` 会自动执行基础 `typegen`（生成 services/app-extensions 两类声明），但如果你需要 `--check` / `--write-manifest` 等更强控制，仍应显式调用 `vext typegen`；
+- `vext typegen --write-manifest` 会额外生成 `services.manifest.json`，把 service 索引、`app.extend()` 聚合结果与依赖图摘要固化为稳定消费层；
+- `vext doctor routes` 面向静态路由治理，当前 `doctor all` 仍等价于 `routes`；
+- `routes.json` 是诊断 / inspect 产物，`routes.manifest.json` 是给编辑器、CI、可视化等下游工具消费的稳定契约层；
+- `services.manifest.json` 当前聚焦 service 索引、`app.extend()` 聚合信息与服务依赖图；routes 与 services 仍保持分层产物，避免过早合并成单一总 manifest。
+
+---
+
+## 📁 项目结构
+
+```
+my-app/
+├── src/
+│   ├── config/
+│   │   ├── default.js        # 默认配置
+│   │   ├── production.js     # 生产环境覆盖（可选）
+│   │   └── local.js          # 本地覆盖，不提交到 Git（可选）
+│   ├── routes/               # 路由目录（自动扫描）
+│   │   ├── index.js          # → /
+│   │   ├── users.js          # → /users
+│   │   └── api/
+│   │       └── posts.js      # → /api/posts
+│   ├── services/             # 服务层（自动注入到 app.services）
+│   │   ├── user.js           # → app.services.user
+│   │   └── payment/
+│   │       └── stripe.js     # → app.services.payment.stripe
+│   ├── middlewares/           # 自定义路由级中间件
+│   ├── plugins/              # 插件（拓扑排序加载）
+│   ├── locales/              # i18n 语言包（可选）
+│   │   ├── zh-CN.json
+│   │   └── en.json
+│   └── ...
+├── package.json
+└── tsconfig.json             # TypeScript 项目（可选）
+```
+
+---
+
+## 🛣️ 路由
+
+路由使用 `defineRoutes` 定义，支持**三段式** `(path, options, handler)` 和**两段式** `(path, handler)` 语法。
+
+### 基础路由
+
+```js
+// src/routes/users.js
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  // 三段式：path, options, handler
+  app.get(
+    "/list",
+    {
+      docs: { summary: "获取用户列表" },
+      validate: {
+        query: { page: "number:1-", limit: "number:1-100" },
+      },
+    },
+    async (req, res) => {
+      const { page, limit } = req.valid("query");
+      const users = await app.services.user.findAll({ page, limit });
+      res.json(users);
+    },
+  );
+
+  // 两段式：path, handler（无 options）
+  app.get("/:id", async (req, res) => {
+    const user = await app.services.user.findById(req.params.id);
+    res.json(user);
+  });
+
+  app.post(
+    "/",
+    {
+      validate: {
+        body: { name: "string:1-50", email: "email" },
+      },
+    },
+    async (req, res) => {
+      const user = await app.services.user.create(req.valid("body"));
+      res.json(user, 201);
+    },
+  );
+
+  app.delete("/:id", {}, async (req, res) => {
+    await app.services.user.delete(req.params.id);
+    res.json({ deleted: true });
+  });
 });
 ```
 
-## Plugins
+### 路由映射规则
 
-Plugins live in `src/plugins/` and can register lifecycle hooks, resources, and app extensions:
+| 文件路径                      | 路由前缀         |
+| ----------------------------- | ---------------- |
+| `src/routes/index.js`         | `/`              |
+| `src/routes/users.js`         | `/users`         |
+| `src/routes/api/posts.js`     | `/api/posts`     |
+| `src/routes/api/v2/orders.js` | `/api/v2/orders` |
 
-```ts
+### 路由选项
+
+```js
+app.get(
+  "/protected",
+  {
+    // 路由级中间件引用（需在 config.middlewares 白名单中声明）
+    middlewares: ["auth", { name: "rbac", options: { roles: ["admin"] } }],
+
+    // 参数校验（schema-dsl 语法）
+    validate: {
+      query: { page: "number", limit: "number" },
+      param: { id: "string" },
+      body: { name: "string:1-100", email: "email" },
+    },
+
+    // OpenAPI 文档元信息
+    docs: {
+      summary: "获取受保护资源",
+      description: "需要认证和管理员角色",
+      tags: ["Admin"],
+    },
+  },
+  handler,
+);
+```
+
+---
+
+## 🔧 服务层
+
+服务文件放在 `src/services/` 下，导出一个 class，框架自动实例化并注入到 `app.services`。
+
+```js
+// src/services/user.js
+export default class UserService {
+  constructor(app) {
+    this.app = app;
+    this.logger = app.logger;
+  }
+
+  async findAll({ page = 1, limit = 20 }) {
+    this.logger.info(`Fetching users page=${page} limit=${limit}`);
+    // 数据库查询...
+    return { users: [], total: 0 };
+  }
+
+  async findById(id) {
+    // ...
+  }
+
+  async create(data) {
+    // ...
+  }
+}
+```
+
+```js
+// 在路由中使用
+app.get("/users", {}, async (req, res) => {
+  const result = await app.services.user.findAll({ page: 1 });
+  res.json(result);
+});
+```
+
+### 嵌套服务
+
+```
+services/
+├── user.js              → app.services.user
+├── user-profile.js      → app.services.userProfile
+└── payment/
+    ├── stripe.js         → app.services.payment.stripe
+    └── alipay.js         → app.services.payment.alipay
+```
+
+- 文件名 `kebab-case` 自动转换为 `camelCase`
+- 以 `_` 开头的文件/目录会被跳过
+- 框架自动检测服务之间的循环依赖
+
+---
+
+## 🧩 插件
+
+插件用于扩展框架能力，支持依赖声明和拓扑排序加载。
+
+```js
+// src/plugins/redis.js
 import { definePlugin } from "vextjs";
+import Redis from "ioredis";
 
 export default definePlugin({
   name: "redis",
+
+  // 声明依赖（可选），框架自动按拓扑顺序加载
+  // dependencies: ['database'],
+
   async setup(app) {
-    app.extend("redis", {
-      async ping() {
-        return "PONG";
-      },
+    const redis = new Redis(app.config.redis);
+
+    // 扩展 app 对象
+    app.extend("cache", redis);
+
+    // 注册全局中间件
+    app.use(async (req, res, next) => {
+      req.cache = app.cache;
+      await next();
+    });
+
+    // 注册关闭钩子（优雅关闭时执行）
+    app.onClose(async () => {
+      await redis.quit();
+      app.logger.info("Redis disconnected");
     });
   },
 });
 ```
 
-For precise app extension typing, export `appExtensions = defineAppExtensions<{ ... }>()` with an inline object generic from the plugin file. Legacy `app.extend()` calls are still scanned automatically as a best-effort fallback. After adding app extensions, run `vext typegen` so TypeScript consumers see the new fields.
+```js
+// 在路由/服务中使用插件扩展的能力
+const cached = await app.cache.get("user:123");
+```
 
-## Runtime Hooks
+---
 
-Use `app.hooks.on(name, handler)` to observe or patch framework lifecycle points without replacing core middleware:
+## 🛡️ 中间件
 
-```ts
-app.hooks.on("validation:success", ({ req, route }) => {
-  app.logger.info({ requestId: req.requestId, route: route.path }, "validated");
-});
+### 内置中间件
 
-app.hooks.on("response:before", ({ headers }) => ({
-  headers: { ...headers, "x-powered-by": "vext" },
-}));
+VextJS 内置以下中间件，全部开箱即用，无需手动注册：
 
-app.hooks.on("service:beforeCall", ({ service, method }) => {
-  app.logger.debug({ service, method }, "service call");
+| 中间件          | 功能                                   | 配置字段            |
+| --------------- | -------------------------------------- | ------------------- |
+| requestId       | 为每个请求生成唯一 ID                  | `config.requestId`  |
+| cors            | 跨域资源共享                           | `config.cors`       |
+| bodyParser      | 请求体解析（JSON / URLEncoded）        | `config.bodyParser` |
+| rateLimit       | 速率限制                               | `config.rateLimit`  |
+| responseWrapper | 统一响应格式 `{ code, data, message }` | `config.response`   |
+| accessLog       | 请求访问日志                           | `config.accessLog`  |
+| errorHandler    | 全局错误处理 + 404 兜底                | —                   |
+
+### 自定义中间件
+
+```js
+// src/middlewares/auth.js
+import { defineMiddleware } from "vextjs";
+
+export default defineMiddleware(async (req, res, next) => {
+  const token = req.headers["authorization"];
+  if (!token) {
+    req.app.throw(401, "Unauthorized");
+  }
+  // 解析 token，设置用户信息...
+  await next();
 });
 ```
 
-Available lifecycle families include request/route, validation, handler, response, error, fetch/proxy, service, cache, plugin, routes, OpenAPI, server, ready, and close. `app.hooks` is a reserved app property and cannot be overwritten with `app.extend("hooks", ...)`.
+### 工厂中间件（带配置参数）
 
-See the full guide in [Runtime Hooks](https://devcodex-labs.github.io/vextjs/guide/hooks) and the [App API](https://devcodex-labs.github.io/vextjs/api/app).
+```js
+// src/middlewares/rbac.js
+import { defineMiddlewareFactory } from "vextjs";
 
-## Adapters
-
-The default adapter is Native Node.js:
-
-```ts
-const config = {
-  adapter: "native",
-};
+export default defineMiddlewareFactory((options) => {
+  return async (req, res, next) => {
+    if (!options.roles.includes(req.user?.role)) {
+      req.app.throw(403, "Forbidden");
+    }
+    await next();
+  };
+});
 ```
 
-Other adapters are available through package subpaths:
+```js
+// 在路由中使用（需在 config.middlewares 白名单声明）
+app.get(
+  "/admin",
+  {
+    middlewares: [{ name: "rbac", options: { roles: ["admin"] } }],
+  },
+  handler,
+);
+```
 
-```ts
-import { honoAdapter } from "vextjs/adapters/hono";
+---
 
+## ⚙️ 配置
+
+配置文件支持分层合并：框架内置默认值 → `default` → `{NODE_ENV}` → `local` → `bootstrap provider patch` → CLI override。
+
+```js
+// src/config/default.js — 默认配置
 export default {
-  adapter: honoAdapter(),
+  port: 3000,
+  host: "0.0.0.0",
+  logger: {
+    level: "info", // 'debug' | 'info' | 'warn' | 'error' | 'silent'
+  },
+  cors: {
+    origins: ["*"], // 允许的来源列表（数组格式）
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  },
+  bodyParser: {
+    maxBodySize: "1mb",
+  },
+  rateLimit: {
+    max: 100, // 每个窗口期最大请求数
+    window: 60, // 窗口期时长（秒，数字）
+  },
+  requestId: {
+    enabled: true,
+    header: "X-Request-Id",
+  },
+  response: {
+    hideInternalErrors: true, // 生产环境隐藏内部错误详情
+  },
+  openapi: {
+    enabled: true,
+    title: "My API",
+    version: "1.0.0",
+  },
+  shutdown: {
+    timeout: 10, // 优雅关闭超时（秒）
+  },
 };
 ```
 
-Install the matching peer dependency before using a non-native adapter:
+```js
+// src/config/production.js — 生产环境覆盖
+export default {
+  logger: { level: "warn" },
+  response: { hideInternalErrors: true },
+};
+```
+
+```js
+// src/config/local.js — 本地开发覆盖（加入 .gitignore）
+export default {
+  port: 4000,
+  logger: { level: "debug" },
+};
+```
+
+除了 `development` / `production` / `test` 之外，Vext 也支持任意环境名，例如：
+
+```text
+src/config/sg-sit.js
+src/config/us-uat.js
+src/config/us-prod.js
+```
+
+启动时只要设置对应的 `NODE_ENV`，Vext 就会自动加载匹配文件：
 
 ```bash
-npm install hono @hono/node-server
-npm install fastify
-npm install express
-npm install koa @koa/router@^15.6.0
+NODE_ENV=sg-sit vext start
 ```
 
-## Response Cache
+如果你希望在 `package.json` scripts 中跨平台设置环境变量，推荐安装 `cross-env`：
 
-Response cache is enabled at route level:
+```bash
+npm i -D cross-env
+```
 
-```ts
-app.get(
-  "/articles",
+```json
+{
+  "scripts": {
+    "start:sg-sit": "cross-env NODE_ENV=sg-sit vext start",
+    "start:us-uat": "cross-env NODE_ENV=us-uat vext start"
+  }
+}
+```
+
+CLI 参数 `--port` / `--host` 优先级最高，覆盖配置文件和 `bootstrap provider patch` 中的值。
+
+---
+
+## ✅ 参数校验
+
+路由选项中的 `validate` 字段使用 [schema-dsl](https://www.npmjs.com/package/schema-dsl) 语法，声明式校验请求参数。
+
+```js
+app.post(
+  "/users",
   {
-    cache: {
-      ttl: 60_000,
-      key: "articles:list",
+    validate: {
+      body: {
+        name: "string:1-50", // 字符串，长度 1-50
+        email: "email", // 邮箱格式
+        age: "number:0-150?", // 可选数字，范围 0-150
+        role: "enum:admin,user,guest", // 枚举值
+        tags: "[string]", // 字符串数组
+      },
+      query: {
+        format: "enum:json,xml?", // 可选枚举
+      },
     },
   },
-  async (_req, res) => {
-    res.json(await app.services.article.list());
+  async (req, res) => {
+    const body = req.valid("body"); // 类型安全的校验后数据
+    const query = req.valid("query");
+    // ...
   },
 );
 ```
 
-The runtime delegates response caching to `response-cache-kit`, backed by `cache-hub`. Vext captures successful JSON responses from GET or HEAD routes, stores them with millisecond TTLs, and serves later hits before validation and handler execution. Cache keys can be static strings or request-based functions; use `partitionKey` for user or tenant isolation.
+校验失败时自动返回 `400` 错误，包含详细的字段错误信息。支持 i18n 多语言错误消息。
 
-Configure the runtime in `config.cache`. The legacy Memory shorthand still works:
+---
 
-```ts
-export default {
-  cache: {
-    defaultTtl: 60_000,
-    maxEntries: 1000,
-    maxMemory: 50 * 1024 * 1024,
-  },
-};
-```
+## ⚡ 路由缓存
 
-For Redis or multi-level response cache, use the `cacheHub` runtime config:
+路由选项中的 `cache` 字段提供声明式响应缓存，支持数字简写或完整配置对象。
 
-```ts
-export default {
-  cache: {
-    defaultTtl: 2_000,
-    cacheHub: {
-      mode: "redis",
-      url: "redis://localhost:6379",
-      lease: { waitForOwner: 1_000, onTimeout: "fetch" },
-      distributed: { channel: "vext:response-cache" },
+```js
+// 数字简写：缓存 60 秒
+app.get("/products", { cache: 60 }, async (req, res) => {
+  res.json(await db.getProducts());
+});
+
+// 完整配置：TTL + Vary headers + 标签失效
+app.get(
+  "/products",
+  {
+    cache: {
+      ttl: 120,
+      vary: ["accept-language"], // 不同语言单独缓存
+      tags: ["products"], // 标签（用于批量失效）
+      condition: (req) => !req.query.refresh, // 条件缓存
     },
   },
+  async (req, res) => {
+    res.json(await db.getProducts());
+  },
+);
+```
+
+缓存命中时自动设置 `X-Cache: HIT` 和 `Cache-Control: public, max-age=N` 响应头。
+
+### 运行时 API
+
+```js
+// 按标签批量失效
+await app.cache.invalidate("products");
+
+// 清空所有缓存
+await app.cache.clear();
+
+// 查看缓存统计
+const stats = app.cache.stats();
+// → { entries: 42, hits: 128, misses: 31, hitRate: 0.805 }
+```
+
+### 全局配置
+
+```js
+// src/config/default.js
+export default {
+  cache: {
+    enabled: true, // 是否启用（默认 true）
+    defaultTtl: 60, // 默认 TTL 秒数
+    maxEntries: 1000, // 最大缓存条目数
+  },
 };
 ```
 
-## OpenAPI
+---
 
-Enable OpenAPI in config:
+## 📖 OpenAPI 文档
 
-```ts
+启用 `openapi.enabled: true` 后，框架自动从路由元信息生成 OpenAPI 3.0.3 文档，并提供交互式文档页面。
+
+### 文档端点
+
+| 端点                | 说明                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET /openapi.json` | OpenAPI JSON spec（供外部工具消费）                                                              |
+| `GET /docs`         | [Scalar API Reference](https://github.com/scalar/scalar) 交互式文档页面（文档阅读 + Try it out） |
+
+```bash
+# 获取 OpenAPI JSON
+curl http://localhost:3000/openapi.json
+
+# 浏览器打开交互式文档
+open http://localhost:3000/docs
+```
+
+### Scalar 配置
+
+```js
+// src/config/default.js
 export default {
   openapi: {
     enabled: true,
     title: "My API",
     version: "1.0.0",
-    docs: {
-      path: "/docs",
-      code: {
-        enabled: "auto",
-      },
+    // Scalar API Reference 配置
+    scalar: {
+      theme: "default", // 主题: default / alternate / moon / purple / solarized / ...
+      darkMode: false, // 深色模式
+      layout: "modern", // 布局: modern / classic
+      showSidebar: true, // 显示侧边栏
     },
   },
 };
 ```
 
-Then visit:
+### 路由文档元信息
 
-- `http://localhost:3000/docs` for the built-in Vext Docs page.
-- `http://localhost:3000/openapi.json` for the generated OpenAPI document.
-
-Route metadata is collected from `docs`, validation declarations, parameters, responses, and route registration data. The default docs UI is served by Vext's first-party HTML + vanilla JavaScript renderer under `/_vext/docs`.
-
-The default renderer focuses on these surfaces:
-
-- HTTP API, Pages, Services, Utils, Models, and discovered Components / Plugins / Middlewares are top-level sections.
-- HTTP API and Pages use recursive navigation from OpenAPI path segments.
-- Stable resource segments such as `/api/v1/info` stay as categories.
-- Each operation leaf prefers `summary`, then falls back to the endpoint path.
-- Dynamic path parameters such as `{id}` are visually weakened instead of treated as business categories.
-- Middle dynamic segments are preserved when they lead to child resources.
-- Built-in docs assets are version-tagged so browser cache does not hide renderer updates.
-
-When a project exposes at least two versioned source groups such as `/api/v1/**`, `/api/v2/**`, `/api/beta/**`, `/v1/**`, `/v2/**`, or `/beta/**`, Vext Docs automatically adds an ordered `All / API v1 / API v2 / API Beta` style source switcher. Numbered versions are listed before named release channels such as `alpha`, `beta`, or `rc`.
-
-Each source loads source-aware `/_vext/docs/openapi.json?source=...`, `code.json?source=...`, and `search.json?source=...` data so search, Overview counts, navigation, deep links, and access-filtered operations stay isolated. Non-`All` sources return only OpenAPI entries by default; Code JSDoc items are included for a source only when that source explicitly defines `code.include` / `code.exclude`.
-
-Projects can override or add source definitions with `openapi.docs.sources`; source `access`, including `source.access.visible`, is also respected by the docs source list and source-aware data endpoints. Every explicit source still needs a `match` pattern because it scopes OpenAPI data. For a code-only source, use a stable non-API namespace such as `/sdk/**` and opt into Code JSDoc with `code.include` / `code.exclude`.
-
-The operation view includes parameters, request bodies, horizontal response status tabs without repeated status headings, resolved schema fields without artificial root rows, search entries, auth/deprecated/Try it out state badges, collapsed operation Metadata, a global Authorize control for OpenAPI security schemes, same-origin Try it out, and Code JSDoc usage recipes.
-
-The Try it out console is organized as tabs for Params, Headers, Body, Samples, History, and Response. It includes server selection that prefers OpenAPI `servers[]`, OpenAPI `servers[].variables` controls, optional same-origin fallback, an optional per-request Custom server input, full resolved URL preview and Copy URL, structured query/header rows generated from OpenAPI parameters including `validate.header`, raw fallbacks, auth status and effective header previews inside the Headers tab, optional browser-side request/response hooks through `openapi.docs.tryItOut.hookScript` / `hookGlobal`, diagnostics, cURL/browser fetch/Node fetch/Axios code samples, request history, and a fixed response viewer with pretty/raw body modes plus the actual request and response headers for the last send.
-
-`hookGlobal` is only the browser lookup name; hook notes and sample diagnostics are shown only when a `hookScript` is configured or the runtime global exposes `beforeRequest` / `afterResponse`.
-
-The UI also supports:
-
-- `openapi.docs.ui.theme` and `openapi.docs.ui.density`;
-- keyboard search shortcuts and category search filters;
-- a desktop outline on wide screens;
-- auto/sidebar resize with persisted manual width;
-- a mobile drawer with synchronized search/filter controls;
-- responsive field tables on narrow screens;
-- incremental rendering for long operation lists;
-- copy actions, old single-source hash links, and multi-source `#source=<id>&view=<view>&id=<anchor>` deep links;
-- an Overview workspace with counts, source metadata, and package startup / build / verification commands.
-
-Route-level `docs.tags` is deprecated and ignored with a warning; operation tags are inferred automatically from route path/source. Vext no longer auto-generates `x-tagGroups`; explicit `openapi.tagGroups` is only passed through as an OpenAPI vendor extension and is not used by the built-in docs navigation.
-
-`docs.code.enabled` surfaces standard JSDoc and lightweight runtime metadata from `src/services/`, `src/utils/`, the configured models directory, `src/frontend/components/`, `src/plugins/`, and `src/middlewares/` as Services / Utils / Models / Components / Plugins / Middlewares with recursive namespace/source navigation.
-
-Locales / Config / Styles / Preload static source scanning remains available only when explicitly enabled through `openapi.docs.code.*`; it is not part of the default top-level documentation surface.
-
-Models are listed from recognizable model files even when no JSDoc is present. Root-level models are shown directly under Models, nested model files are grouped by source directory, and the default UI statically reads model definitions to show registry key, name, collection, connection, schema fields, enums, options, indexes, methods, hooks, and usage without importing or executing model code.
-
-Plugins and middlewares show bootstrap/lifecycle, app extension, middleware type, route usage, and source links when they can be inferred from source text.
-
-On local loopback docs pages, code docs entries can show an `Open source` link that redirects to `vscode://file/...`; non-local access hides that link. In `vext start`, Code JSDoc prefers `<project>/src` when source files are present and falls back to the runtime directory when only built output is available. External documentation tools should consume `/openapi.json` directly instead of using a Vext renderer hook.
-
-Custom source surfaces can be configured when the automatic version selector is not enough:
-
-```ts
-export default {
-  openapi: {
-    docs: {
-      sources: [
-        {
-          id: "public-v1",
-          label: "Public v1",
-          match: ["/api/v1/**"],
-          default: true,
-        },
-        {
-          id: "admin-v1",
-          label: "Admin v1",
-          match: ["/admin/v1/**"],
-          access: "admin",
-        },
-        {
-          id: "internal-v1",
-          label: "Internal v1",
-          match: ["/internal/v1/**"],
-          access: { visible: false },
-        },
-        {
-          id: "sdk",
-          label: "SDK",
-          match: ["/sdk/**"],
-          code: {
-            include: ["services/sdk", "models/*"],
-            exclude: ["*internal*"],
-          },
-        },
-      ],
-    },
-  },
-};
-```
-
-`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
-
-`openapi.docs.assetsPath` is the internal route prefix registered by Vext for docs assets and source-aware data endpoints. `openapi.docs.assetsPublicPath` can be different when a reverse proxy strips a public prefix, so the browser fetches `/admin/_vext/docs/*` while Vext still registers `/_vext/docs/*`. `openapi.jsonPublicPath` remains the public canonical `/openapi.json` path for external tools and metadata; the built-in source-aware docs UI fetches `openapi.docs.assetsPublicPath` endpoints.
-
-Try it out request hooks run only in the browser docs page. A minimal hook script looks like this:
+路由的 `docs` 选项用于补充文档元信息：
 
 ```js
-// public/docs-hook.js
-window.VextDocsHooks = {
-  beforeRequest({ request, path }) {
-    return {
-      headers: {
-        ...request.headers,
-        "x-docs-signature": "demo-" + path,
-      },
-    };
-  },
-  afterResponse({ response }) {
-    return {
-      diagnostics: ["status: " + response.status],
-    };
-  },
-};
-```
-
-Enable it with `openapi.docs.tryItOut.hookScript = "/docs-hook.js"` and optionally change the lookup name with `hookGlobal`.
-
-Try it out server behavior can be tuned separately from the OpenAPI `servers[]` metadata:
-
-```ts
-export default {
-  openapi: {
-    servers: [
-      {
-        url: "http://127.0.0.1:3000",
-        description: "Local development server",
-      },
-      { url: "https://api.example.com", description: "Production" },
-    ],
+app.get(
+  "/users/:id",
+  {
     docs: {
-      tryItOut: {
-        defaultServer: "first", // "first", "same-origin", "custom", or an exact server URL
-        sameOrigin: "auto", // auto shows Same origin only when no OpenAPI servers exist
-        customServer: true,
-        customServerUrl: "http://127.0.0.1:3000",
-      },
+      summary: "获取用户详情",
+      description: "根据用户 ID 获取完整的用户信息",
+      tags: ["Users"],
+    },
+    validate: {
+      params: { id: "string" },
     },
   },
-};
+  handler,
+);
 ```
 
-For fixed local or deployed endpoints, prefer a complete server URL including its port. Reserve OpenAPI `servers[].variables` for genuinely variable parts such as environment names, regions, tenants, or API versions.
+---
 
-## i18n
+## 🧪 测试
 
-Put locale files in `src/locales/`:
+VextJS 提供内置测试工具，无需启动 HTTP 服务器即可测试路由。
 
-```ts
-// src/locales/en-US.ts
-export default {
-  validation: {
-    required: "This field is required.",
-  },
-};
+```js
+import { describe, it, expect } from "vitest";
+import { createTestApp } from "vextjs/testing";
+
+describe("User API", () => {
+  it("should return user list", async () => {
+    const app = await createTestApp({
+      rootDir: "/path/to/project",
+    });
+
+    const res = await app.request.get("/users/list?page=1&limit=10");
+
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe(0);
+    expect(res.body.data).toBeDefined();
+  });
+});
 ```
 
-The runtime automatically loads locale files during bootstrap. In development, locale changes trigger the service/i18n reload path.
+---
 
-## Development Hot Reload
+## 🌐 i18n 国际化
 
-`vext dev` chooses the smallest safe reload strategy:
+在 `src/locales/` 下放置语言文件，框架自动加载并注册到 schema-dsl 校验器。
 
-| Change type                                          | Strategy              |
-| ---------------------------------------------------- | --------------------- |
-| Route files                                          | Hot route replacement |
-| Service or locale files                              | Service/i18n reload   |
-| Frontend files or public assets                      | Frontend rebuild      |
-| Config, plugin, preload, env, package, or lock files | Cold restart          |
+```jsonc
+// src/locales/zh-CN.json
+{
+  "validation.required": "{field} 不能为空",
+  "validation.string.min": "{field} 长度不能少于 {min} 个字符",
+  "validation.email": "{field} 格式不正确",
+}
+```
 
-TypeScript projects are compiled into `.vext/dev/` during development.
+```jsonc
+// src/locales/en.json
+{
+  "validation.required": "{field} is required",
+  "validation.string.min": "{field} must be at least {min} characters",
+  "validation.email": "{field} is not a valid email",
+}
+```
 
-## Build And Start
+---
+
+## 🏛️ 架构概览
+
+```
+用户请求
+  │
+  ▼
+┌──────────────────────────────────────────────┐
+│               VextJS Framework               │
+│                                              │
+│  ┌─── 内置中间件链 ───────────────────────┐  │
+│  │ requestId → cors → bodyParser →        │  │
+│  │ rateLimit → responseWrapper → accessLog│  │
+│  └────────────────────────────────────────┘  │
+│                    │                         │
+│                    ▼                         │
+│  ┌─── 路由级中间件 ──┐                       │
+│  │ auth → rbac → ... │                       │
+│  └───────────────────┘                       │
+│                    │                         │
+│                    ▼                         │
+│  ┌─── 参数校验 ──────┐                       │
+│  │ validate(schema)  │                       │
+│  └───────────────────┘                       │
+│                    │                         │
+│                    ▼                         │
+│  ┌─── 路由 Handler ──┐  ┌── Services ──┐    │
+│  │  app.get/post/... │─→│ app.services │    │
+│  └───────────────────┘  └──────────────┘    │
+│                    │                         │
+│                    ▼                         │
+│  ┌─── Adapter Layer ─────────────────────┐   │
+│  │  Native (默认) / Fastify / Hono /     │   │
+│  │  Express / Koa  — 可替换              │   │
+│  └───────────────────────────────────────┘   │
+└──────────────────────────────────────────────┘
+  │
+  ▼
+HTTP 响应 → { code: 0, data: {...} }
+```
+
+### 启动流程
+
+1. **配置加载** — 内置默认值 → `default` → `{env}` → `local` → `bootstrap provider patch` → CLI override + 冻结
+2. **创建 App** — 初始化 logger、validator、adapter、throw
+3. **i18n 加载** — 自动扫描 `src/locales/`
+4. **插件加载** — 拓扑排序 + 依次 `setup()`
+5. **中间件加载** — 按 `config.middlewares` 白名单加载
+6. **服务加载** — 扫描 `src/services/`，实例化注入 `app.services`
+7. **路由加载** — 扫描 `src/routes/`，注册到 adapter
+8. **内置中间件注册** — requestId → cors → bodyParser → rateLimit → responseWrapper → accessLog → errorHandler
+9. **HTTP 监听** — `adapter.listen(port, host)`
+10. **就绪钩子** — 执行 `onReady` 回调
+
+---
+
+## 📋 环境变量
+
+| 变量                   | 说明                                                 | 默认值                                                |
+| ---------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| `NODE_ENV`             | 运行时环境名；用于匹配 `src/config/{NODE_ENV}.ts`    | `production`（start 默认）/ `development`（dev 默认） |
+| `VEXT_PORT`            | 覆盖监听端口                                         | —                                                     |
+| `VEXT_HOST`            | 覆盖监听地址                                         | —                                                     |
+| `VEXT_PORT_CONFLICT`   | 端口冲突策略（`error` / `prompt` / `kill` / `next`） | `error`                                               |
+| `VEXT_LIFECYCLE_LEVEL` | 生命周期日志级别（`concise` / `verbose`）            | `concise`                                             |
+| `VEXT_DEV_POLL`        | 强制轮询模式（`1` / `0`）                            | 自动检测                                              |
+| `VEXT_DEV_NO_HOT`      | 禁用 Soft Reload                                     | —                                                     |
+| `VEXT_DEV_DEBOUNCE`    | 防抖间隔（毫秒）                                     | `0`（不开启）                                         |
+
+> 如果项目需要在 `package.json` scripts 中跨平台设置 `NODE_ENV`，推荐使用 `cross-env`；Vext 本身不内置该工具。
+
+---
+
+## 🗺️ 路线图
+
+- [x] Adapter 架构（Native 默认 + Hono / Fastify / Express / Koa 可选）
+- [x] Native Adapter（零外部 HTTP 框架依赖，`http.createServer` + `route-core`）
+- [x] 约定式路由 + 三段式语法
+- [x] 插件系统（拓扑排序 + 生命周期）
+- [x] 服务自动注入
+- [x] 内置中间件（requestId / CORS / bodyParser / rateLimit / accessLog）
+- [x] 参数校验（schema-dsl 集成）
+- [x] OpenAPI 3.0.3 文档生成
+- [x] CLI（start / dev / build / stop / reload / status / typegen / doctor）
+- [x] 开发模式热重载（Soft Reload + Cold Restart）
+- [x] 测试工具（createTestApp）
+- [x] Cluster 多进程（Master/Worker + Rolling Restart）
+- [x] 性能基准测试（autocannon 自动化 + 多轮取中位数）
+- [x] AsyncLocalStorage 可配置跳过
+- [x] Native Adapter 性能优化（Overhead 降至 ~18%，领先 Fastify 26~51%）
+- [x] `vext create` 项目脚手架
+- [x] 文档站（rspress）
+- [x] 路由级响应缓存（LRU 内存存储，标签失效，Vary headers）
+- [ ] SSE 支持
+- [ ] WebSocket 支持
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request。
 
 ```bash
+# 克隆项目
+git clone https://github.com/vextjs/vext.git
+cd vext
+
+# 安装依赖
+npm install
+
+# 开发（TypeScript 监听编译）
+npm run dev
+
+# 运行测试
+npm test
+
+# 类型检查
+npm run typecheck
+
+# 构建
 npm run build
-npm start
 ```
 
-`vext build` refreshes generated types and manifest files before compiling TypeScript source and project-level preload files. When `frontend.enabled` is true, it also bundles the browser client and writes `dist/client/manifest.json`, `dist/client/render-manifest.json`, `dist/client/deploy-manifest.json`, `dist/client/size-report.json`, `dist/client/index.html`, and API contract artifacts. The render manifest includes route initial assets used by SSR modulepreload; production `vext start` fails fast when that schema is missing and asks you to rebuild instead of serving stale frontend output. `vext start` runs the production bootstrap path, can read compiled preload files from `dist/preload/`, and serves the frontend build when present.
+---
 
-For TypeScript projects, run `vext build` before `vext start`. Development should use `vext dev`; production start does not fall back to a TypeScript runtime.
+## 📄 许可证
 
-## Testing Utilities
-
-VextJS exports testing helpers through `vextjs/testing`:
-
-```ts
-import { createTestApp } from "vextjs/testing";
-```
-
-Use the testing entry for integration tests that need the framework runtime without starting a real production process. Rate limiting, access logs, and Session are quiet/disabled by default, but explicit `config.*.enabled: true` values run the same built-in middleware contracts as production and development.
-
-## Documentation
-
-- Documentation site: <https://devcodex-labs.github.io/vextjs/>
-- Changelog: [CHANGELOG.md](./CHANGELOG.md)
-- Detailed release notes: [changelogs/](./changelogs/)
-- Issues: <https://github.com/devcodex-labs/vextjs/issues>
-
-## Requirements
-
-- Node.js `>=20.19.0`
-- ESM application packages
-
-## License
-
-Apache-2.0
+[MIT](./LICENSE) © 2025 [vextjs](https://github.com/vextjs)

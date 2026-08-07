@@ -78,9 +78,9 @@ Avoid timestamps, random values, browser-only state, or locale decisions that di
 
 Use the correct source:
 
-| File | Reference |
-|------|-----------|
-| `public/logo.png` | `/logo.png` |
+| File                           | Reference                                |
+| ------------------------------ | ---------------------------------------- |
+| `public/logo.png`              | `/logo.png`                              |
 | `src/frontend/assets/logo.png` | `import logoUrl from "@assets/logo.png"` |
 
 If production CDN URLs are wrong, check `frontend.deploy.assetBaseUrl`, `publicPath`, and `deploy-manifest.json`.
@@ -119,10 +119,14 @@ Current default path:
 - route-specific modulepreload
 - compressed size budgets
 
+Available but opt-in:
+
+- Streaming SSR with `frontend.render.streaming: "auto"`; the default remains `"buffered"`.
+
 Not default in this phase:
 
 - React Server Components
-- Server Actions
-- streaming SSR
+- Server Functions and Server Actions
+- partial prerendering (PPR)
 - persistent client layout navigation
 - built-in image/font optimization components

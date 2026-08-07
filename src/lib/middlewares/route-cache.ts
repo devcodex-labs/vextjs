@@ -242,7 +242,7 @@ export function buildRouteCacheMiddleware(
       for (const [name, value] of Object.entries(headers)) {
         res.setHeader(name, value);
       }
-      if (isRenderCacheHit(result.body, headers)) {
+      if (isRenderCacheHit(result.body)) {
         sendCachedRender(res, result.body, result.status, headers);
         return;
       }
@@ -400,10 +400,8 @@ function createVextHeaders(
   return headers;
 }
 
-function isRenderCacheHit(body: unknown, headers: HeaderBag): boolean {
-  if (!isRecord(body) || body.__vextResponseKind !== "render") return false;
-  const contentType = getHeaderValue(headers, "Content-Type");
-  return contentType.toLowerCase().includes("text/html");
+function isRenderCacheHit(body: unknown): boolean {
+  return isRecord(body) && body.__vextResponseKind === "render";
 }
 
 function sendCachedRender(
