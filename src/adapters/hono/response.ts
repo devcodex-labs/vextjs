@@ -558,6 +558,20 @@ export function createVextResponse(
       _flushed = true;
       _pending = null;
 
+      const outgoing = nodeResponseTarget();
+      if (outgoing) {
+        outgoing.statusCode = _status;
+        applyNodeHeaders(outgoing);
+        (c.env as HonoNodeResponseEnvironment).vextStreamOwned = true;
+        readable.once("error", (error) => {
+          finishNodeStreamFailure(outgoing, error);
+        });
+        finishResponseSendAfterStreamSettlement(res, sendState, readable);
+        captureResponse(c.body(null));
+        readable.pipe(outgoing);
+        return;
+      }
+
       c.status(_status as any);
       applyHeaders();
       finishResponseSendAfterStreamSettlement(res, sendState, readable);

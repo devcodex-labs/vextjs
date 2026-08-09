@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -17,23 +17,119 @@ const workspace = path.resolve(
 );
 const artifacts = path.join(workspace, "artifacts");
 const consumer = path.join(workspace, "consumer");
+const npmCache = path.join(workspace, "npm-cache");
+const installTimeoutMs = readPositiveInteger(
+  process.env.VEXT_PACK_INSTALL_TIMEOUT_MS,
+  15 * 60 * 1_000,
+  "VEXT_PACK_INSTALL_TIMEOUT_MS",
+);
+const fetchTimeoutMs = readPositiveInteger(
+  process.env.VEXT_PACK_INSTALL_FETCH_TIMEOUT_MS,
+  120_000,
+  "VEXT_PACK_INSTALL_FETCH_TIMEOUT_MS",
+);
 
 mkdirSync(artifacts, { recursive: true });
 mkdirSync(consumer, { recursive: true });
+mkdirSync(npmCache, { recursive: true });
 
-function npm(args, options = {}) {
-  const result = spawnSync("npm", args, {
-    cwd: options.cwd ?? root,
-    encoding: options.capture ? "utf8" : undefined,
-    stdio: options.capture ? ["ignore", "pipe", "inherit"] : "inherit",
-    shell: process.platform === "win32",
-  });
-  if (result.status !== 0) process.exit(result.status ?? 1);
-  return result.stdout ?? "";
+function readPositiveInteger(value, fallback, name) {
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive integer in milliseconds`);
+  }
+  return Number(value);
 }
 
-function pack(target) {
-  const output = npm(
+function terminateProcessTree(child) {
+  if (!child.pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+      return;
+    }
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    // The child may have exited between timeout scheduling and termination.
+  }
+}
+
+function npm(args, options = {}) {
+  const capture = options.capture ?? false;
+  const timeoutMs = options.timeoutMs;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("npm", args, {
+      cwd: options.cwd ?? root,
+      detached: process.platform !== "win32",
+      shell: process.platform === "win32",
+      stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
+      windowsHide: true,
+    });
+    let stdout = "";
+    let settled = false;
+    let timedOut = false;
+    let timeoutHandle;
+
+    const finish = (error, output = "") => {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (error) reject(error);
+      else resolve(output);
+    };
+
+    if (capture) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+    }
+
+    child.once("error", (error) => finish(error));
+    child.once("close", (code, signal) => {
+      if (timedOut) {
+        finish(
+          new Error(
+            `npm ${args[0]} exceeded ${timeoutMs}ms and its process tree was terminated. ` +
+              `Evidence workspace retained at: ${workspace}`,
+          ),
+        );
+        return;
+      }
+      if (code !== 0) {
+        finish(
+          new Error(
+            `npm ${args[0]} failed with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`,
+          ),
+        );
+        return;
+      }
+      finish(null, stdout);
+    });
+
+    if (timeoutMs) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        terminateProcessTree(child);
+        setTimeout(() => {
+          finish(
+            new Error(
+              `npm ${args[0]} exceeded ${timeoutMs}ms and its process tree was terminated. ` +
+                `Evidence workspace retained at: ${workspace}`,
+            ),
+          );
+        }, 2_000).unref();
+      }, timeoutMs);
+    }
+  });
+}
+
+async function pack(target) {
+  const output = await npm(
     [
       "pack",
       target,
@@ -51,69 +147,99 @@ function pack(target) {
   return path.join(artifacts, manifest.filename);
 }
 
-const schemaTarball = pack(path.join(root, "node_modules", "schema-dsl"));
-const monsqlizeTarball = pack(path.join(root, "node_modules", "monsqlize"));
-const vextTarball = pack(root);
-const vextSha256 = createHash("sha256")
-  .update(readFileSync(vextTarball))
-  .digest("hex");
-const expectedSha256 = process.env.VEXT_EXPECTED_ARTIFACT_SHA256?.toLowerCase();
-if (expectedSha256 && vextSha256 !== expectedSha256) {
-  throw new Error(
-    `Packed vextjs SHA256 ${vextSha256} does not match external validation ${expectedSha256}`,
+async function main() {
+  const schemaTarball = await pack(
+    path.join(root, "node_modules", "schema-dsl"),
   );
-}
-console.log(`vextjs tarball SHA256: ${vextSha256}`);
+  const monsqlizeTarball = await pack(
+    path.join(root, "node_modules", "monsqlize"),
+  );
+  const vextTarball = await pack(root);
+  const vextSha256 = createHash("sha256")
+    .update(readFileSync(vextTarball))
+    .digest("hex");
+  const expectedSha256 =
+    process.env.VEXT_EXPECTED_ARTIFACT_SHA256?.toLowerCase();
+  if (expectedSha256 && vextSha256 !== expectedSha256) {
+    throw new Error(
+      `Packed vextjs SHA256 ${vextSha256} does not match external validation ${expectedSha256}`,
+    );
+  }
+  console.log(`vextjs tarball SHA256: ${vextSha256}`);
 
-writeFileSync(
-  path.join(consumer, "package.json"),
-  `${JSON.stringify({ name: "vext-packed-install-smoke", private: true, type: "module" }, null, 2)}\n`,
-);
+  writeFileSync(
+    path.join(consumer, "package.json"),
+    `${JSON.stringify({ name: "vext-packed-install-smoke", private: true, type: "module" }, null, 2)}\n`,
+  );
 
-npm(
-  [
-    "install",
-    "--ignore-scripts",
-    "--package-lock=false",
-    "--no-audit",
-    "--no-fund",
-    schemaTarball,
-    monsqlizeTarball,
-    vextTarball,
-  ],
-  { cwd: consumer },
-);
-npm(["ls", "vextjs", "monsqlize", "schema-dsl", "--all"], { cwd: consumer });
-
-const esmSmoke = [
-  "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('pre-import String pollution');",
-  "const vext = await import('vextjs');",
-  "await import('monsqlize');",
-  "await import('schema-dsl');",
-  "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('post-import String pollution');",
-  "const schema = vext.schemaAdapter.compile({ name: 'string!', nickname: 'string?' });",
-  "if (!schema.required?.includes('name') || schema.required?.includes('nickname')) throw new Error('required projection mismatch');",
-  "console.log('ESM packed smoke passed');",
-].join(" ");
-
-const cjsSmoke = [
-  "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('pre-import String pollution');",
-  "const vext = require('vextjs');",
-  "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('post-import String pollution');",
-  "if (typeof vext.schemaAdapter?.compile !== 'function') throw new Error('schemaAdapter export missing');",
-  "console.log('CJS packed smoke passed');",
-].join(" ");
-
-for (const args of [
-  ["--input-type=module", "-e", esmSmoke],
-  ["-e", cjsSmoke],
-]) {
-  const result = spawnSync(process.execPath, args, {
+  console.log(`Packed install cache: ${npmCache}`);
+  console.log(`Packed install timeout: ${installTimeoutMs}ms`);
+  await npm(
+    [
+      "install",
+      "--ignore-scripts",
+      "--package-lock=false",
+      "--no-audit",
+      "--no-fund",
+      `--cache=${npmCache}`,
+      "--fetch-retries=0",
+      `--fetch-timeout=${fetchTimeoutMs}`,
+      schemaTarball,
+      monsqlizeTarball,
+      vextTarball,
+    ],
+    { cwd: consumer, timeoutMs: installTimeoutMs },
+  );
+  await npm(["ls", "vextjs", "monsqlize", "schema-dsl", "--all"], {
     cwd: consumer,
-    stdio: "inherit",
   });
-  if (result.status !== 0) process.exit(result.status ?? 1);
+
+  const esmSmoke = [
+    "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('pre-import String pollution');",
+    "const vext = await import('vextjs');",
+    "await import('monsqlize');",
+    "await import('schema-dsl');",
+    "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('post-import String pollution');",
+    "const schema = vext.schemaAdapter.compile({ name: 'string!', nickname: 'string?' });",
+    "if (!schema.required?.includes('name') || schema.required?.includes('nickname')) throw new Error('required projection mismatch');",
+    "console.log('ESM packed smoke passed');",
+  ].join(" ");
+
+  const cjsSmoke = [
+    "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('pre-import String pollution');",
+    "const vext = require('vextjs');",
+    "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('post-import String pollution');",
+    "if (typeof vext.schemaAdapter?.compile !== 'function') throw new Error('schemaAdapter export missing');",
+    "console.log('CJS packed smoke passed');",
+  ].join(" ");
+
+  for (const args of [
+    ["--input-type=module", "-e", esmSmoke],
+    ["-e", cjsSmoke],
+  ]) {
+    await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, args, {
+        cwd: consumer,
+        stdio: "inherit",
+      });
+      child.once("error", reject);
+      child.once("close", (code) => {
+        if (code === 0) resolve();
+        else
+          reject(
+            new Error(
+              `node packed smoke failed with code ${code ?? "unknown"}`,
+            ),
+          );
+      });
+    });
+  }
+
+  console.log(`Packed install verified for vextjs@${pkg.version}`);
+  console.log(`Evidence workspace retained at: ${workspace}`);
 }
 
-console.log(`Packed install verified for vextjs@${pkg.version}`);
-console.log(`Evidence workspace retained at: ${workspace}`);
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack : error);
+  process.exitCode = 1;
+});

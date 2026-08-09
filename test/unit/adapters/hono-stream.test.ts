@@ -197,6 +197,29 @@ describe("Hono adapter stream responses", () => {
     );
   });
 
+  it("pipes slow downloads through the Node response bridge", async () => {
+    const adapter = createAdapter();
+    registerGet(adapter, "/download-timing", async (req, res) => {
+      req.requestId = "req-1";
+      async function* chunks() {
+        yield "download";
+        await new Promise<void>((resolve) => setTimeout(resolve, 120));
+        yield "-complete";
+      }
+      res.download(Readable.from(chunks()), "report.txt", "text/plain");
+    });
+
+    const response = await measureHttpStream(
+      adapter.buildHandler(),
+      "/download-timing",
+    );
+
+    expect(response.text).toBe("download-complete");
+    expect(response.completedMs - response.firstByteMs).toBeGreaterThanOrEqual(
+      60,
+    );
+  });
+
   it("settles Node readable errors without hanging the Hono bridge", async () => {
     const adapter = createAdapter();
     registerGet(adapter, "/stream-error", async (req, res) => {
