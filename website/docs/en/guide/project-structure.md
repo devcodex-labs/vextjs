@@ -4,14 +4,16 @@ VextJS follows the design philosophy of **convention over configuration** and im
 
 ## Standard directory structure
 
+This tree documents the conventions Vext recognizes; it is not a promise that every optional directory is generated. `vext create` emits only the files with initial runtime content and never uses placeholder README files to keep empty directories in source control.
+
 ```bash
 my-app/
-├── preload/ # Project-level preload script (optional)
-│ ├── 01-otel.ts # Execute before process starts
-│ └── README.md # Scaffolding space instructions
+├── preload/ # Optional project-level preload script; create when needed
+│ └── 01-otel.ts # Execute before process starts
 │
 ├── public/ # Static assets copied into the frontend build
-│ └── favicon.svg
+│ ├── favicon.svg # Shared V mark favicon
+│ └── vext-mark.svg # The same mark used by AppShell
 │
 ├── src/
 │ ├── frontend/ # Frontend source (default full-stack template)
@@ -182,7 +184,7 @@ When `config.frontend.enabled` is true:
 
 ### `public/` — Frontend static assets
 
-Files in `public/` are copied into the frontend output directory. Use it for favicons, robots files, and static images that should be served without going through the JavaScript bundle. Images or fonts imported from TSX/CSS and emitted with hashes should usually live under `src/frontend/assets/`.
+Files in `public/` are copied into the frontend output directory. The default fullstack scaffold emits `vext-mark.svg` and `favicon.svg` from the same V mark; AppShell references the former. Use `public/` for that mark, robots files, and static images that should be served without going through the JavaScript bundle. Images or fonts imported from TSX/CSS and emitted with hashes should usually live under `src/frontend/assets/`.
 
 ### `src/routes/` — Routing directory
 

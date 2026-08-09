@@ -38,7 +38,7 @@ npm run build # → vext build
 
 ## `vext create` — Create a project
 
-Interactively create new VextJS projects and automatically generate project skeleton and configuration files. The default template is `fullstack-react`; API-only scaffolding remains available through `--template api --frontend none`.
+Interactively create new VextJS projects and automatically generate project skeleton and configuration files. The default template is `fullstack-react`; API-only scaffolding remains available through `--template api --frontend none`. The full-stack starter opens with a server-rendered Vext launchpad that you can edit immediately.
 
 ### Usage
 
@@ -84,39 +84,32 @@ The command accepts exactly one project name. Extra positional arguments fail be
 
 ```
 my-app/
-├── preload/
-│ └── README.md # Project-level preload script placeholder description
 ├── public/
-│ └── favicon.svg # Static asset copied into the frontend build
+│ ├── favicon.svg # Shared V mark used as the favicon
+│ └── vext-mark.svg # Same V mark used by the starter app shell
 ├── src/
-│ ├── client/
-│ │ ├── App.tsx # React app
-│ │ ├── index.html # HTML shell
-│ │ ├── main.tsx # Browser entry
-│ │ └── styles.css
 │ ├── config/
-│ │ ├── default.ts #Default configuration (port: 3000)
-│ │ ├── development.ts # Development environment coverage
-│ │ ├── production.ts # Production environment coverage (port: 3001)
-│ │ ├── local.example.ts # Enable local coverage after copying to local.ts
-│ │ └── bootstrap.example.ts # Copy to bootstrap.ts and enable startup provider
-│ ├── routes/
-│ │ └── index.ts # Example routing
-│ ├── services/
-│ │ └── example.ts # Example service
-│ ├── middlewares/
-│ │ └── README.md # Custom middleware placeholder description
-│ ├── plugins/
-│ │ └── README.md # Custom plug-in placeholder description
-│ ├── locales/
-│ │ └── README.md # i18n language pack placeholder description
-│ └── types/
-│ └── generated/
-│ └── .gitkeep # typegen output directory placeholder (TS project)
+│ │ ├── default.ts # Shared configuration (port: 3000)
+│ │ ├── development.ts # Development profile
+│ │ ├── production.ts # Production profile
+│ │ ├── local.example.ts # Copy to local.ts for local-only overrides
+│ │ └── bootstrap.example.ts # Copy to bootstrap.ts for startup providers
+│ ├── frontend/
+│ │ ├── components/AppShell.tsx # Shared React shell
+│ │ ├── locales/en-US.ts # Starter messages
+│ │ ├── pages/ # React pages, layout, document, and error page
+│ │ └── styles/index.css # Vext launchpad styles
+│ ├── routes/index.ts # URL handler and server data
+│ ├── services/example.ts # Example service
+│ └── types/generated/.gitkeep # Typegen output root (TS projects)
 ├── package.json
 ├── tsconfig.json
 └── .gitignore
 ```
+
+The starter deliberately does not create root or directory-level placeholder `README.md` files. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and `preload/` remain supported and are created when you add real source files.
+
+For the default fullstack starter, `public/vext-mark.svg` and `public/favicon.svg` are the same V mark. The app shell uses the former; both are copied with the rest of `public/` assets.
 
 After creation is complete:
 

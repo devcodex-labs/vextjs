@@ -4,14 +4,16 @@ VextJS 遵循 **约定优于配置** 的设计理念，通过固定的目录结�
 
 ## 标准目录结构
 
+此树状图描述 Vext 会识别的约定，并不表示每个可选目录都会被生成。`vext create` 只生成有初始运行内容的文件，不再用占位 README 文件保留空目录。
+
 ```bash
 my-app/
-├── preload/                   # 项目级 preload 脚本（可选）
-│   ├── 01-otel.ts             # 进程启动前执行
-│   └── README.md              # 脚手架占位说明
+├── preload/                   # 可选项目级 preload 脚本；需要时再创建
+│   └── 01-otel.ts             # 进程启动前执行
 │
 ├── public/                    # 会复制到前端构建产物的静态资源
-│   └── favicon.svg
+│   ├── favicon.svg             # 与 V 标记同源的 favicon
+│   └── vext-mark.svg           # AppShell 使用的同一 V 标记
 │
 ├── src/
 │   ├── frontend/              # 前端源码（默认全栈模板）
@@ -182,7 +184,7 @@ export default defineBootstrapConfig({
 
 ### `public/` — 前端静态资源
 
-`public/` 中的文件会复制到前端输出目录。适合放置 favicon、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/frontend/assets/`。
+`public/` 中的文件会复制到前端输出目录。默认全栈脚手架会以同一个 V 标记生成 `vext-mark.svg` 和 `favicon.svg`，AppShell 引用前者。这里适合放置该标记、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/frontend/assets/`。
 
 ### `src/routes/` — 路由目录
 

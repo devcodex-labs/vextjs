@@ -247,7 +247,7 @@ describe("vext create", () => {
   // ────────────────────────────────────────────────────────
 
   describe("目录结构生成（TypeScript）", () => {
-    it("创建所有必要目录", async () => {
+    it("只创建带初始内容的目录", async () => {
       await createCommand(["test-app", "--skip-install"]);
 
       const dirs = getCreatedDirs();
@@ -261,18 +261,23 @@ describe("vext create", () => {
         expect.arrayContaining([
           "src/routes",
           "src/services",
-          "src/middlewares",
-          "src/plugins",
           "src/config",
-          "src/locales",
+          "src/frontend/pages",
           "src/frontend/pages/error",
           "src/frontend/components",
           "src/frontend/styles",
-          "src/frontend/assets",
           "src/frontend/locales",
           "public",
-          "preload",
           "src/types/generated",
+        ]),
+      );
+      expect(dirsSuffix).not.toEqual(
+        expect.arrayContaining([
+          "src/middlewares",
+          "src/plugins",
+          "src/locales",
+          "preload",
+          "src/frontend/assets",
         ]),
       );
     });
@@ -287,7 +292,6 @@ describe("vext create", () => {
         expect.arrayContaining([
           "package.json",
           ".gitignore",
-          "README.md",
           "tsconfig.json",
           "src/config/default.ts",
           "src/config/development.ts",
@@ -303,30 +307,21 @@ describe("vext create", () => {
           "src/frontend/components/AppShell.tsx",
           "src/frontend/locales/en-US.ts",
           "src/frontend/styles/index.css",
+          "public/vext-mark.svg",
           "public/favicon.svg",
-          "src/locales/README.md",
-          "preload/README.md",
           "src/types/generated/.gitkeep",
         ]),
       );
     });
 
-    it("生成空目录的 README 占位文件", async () => {
+    it("不生成样板 README 占位文件", async () => {
       await createCommand(["test-app", "--skip-install"]);
 
       const files = getWrittenFiles();
 
-      expect(files["src/middlewares/README.md"]).toBeDefined();
-      expect(files["src/middlewares/README.md"]).toContain("middlewares");
-
-      expect(files["src/plugins/README.md"]).toBeDefined();
-      expect(files["src/plugins/README.md"]).toContain("plugins");
-
-      expect(files["src/locales/README.md"]).toBeDefined();
-      expect(files["src/locales/README.md"]).toContain("language packs");
-
-      expect(files["preload/README.md"]).toBeDefined();
-      expect(files["preload/README.md"]).toContain("preload scripts");
+      expect(
+        Object.keys(files).some((file) => file.endsWith("README.md")),
+      ).toBe(false);
     });
   });
 
@@ -387,8 +382,6 @@ describe("vext create", () => {
           "src/config/bootstrap.example.js",
           "src/routes/index.js",
           "src/services/example.js",
-          "src/locales/README.md",
-          "preload/README.md",
         ]),
       );
 
@@ -770,52 +763,15 @@ describe("vext create", () => {
       });
     });
 
-    describe("README.md", () => {
-      it("包含项目名称", async () => {
+    describe("scaffold hygiene", () => {
+      it("does not generate a root README in TypeScript or JavaScript projects", async () => {
         await createCommand(["test-app", "--skip-install"]);
+        expect(Object.keys(getWrittenFiles())).not.toContain("README.md");
 
-        const files = getWrittenFiles();
-        expect(files["README.md"]).toContain("# test-app");
-      });
-
-      it("包含 adapter 信息", async () => {
-        await createCommand([
-          "test-app",
-          "--adapter",
-          "fastify",
-          "--skip-install",
-        ]);
-
-        const files = getWrittenFiles();
-        expect(files["README.md"]).toContain("fastify");
-      });
-
-      it("包含快速上手命令", async () => {
-        await createCommand(["test-app", "--skip-install"]);
-
-        const files = getWrittenFiles();
-        expect(files["README.md"]).toContain("npm run dev");
-        expect(files["README.md"]).toContain("npm start");
-      });
-
-      it("TS 模式 README 指向 .ts 配置约定", async () => {
-        await createCommand(["test-app", "--skip-install"]);
-
-        const files = getWrittenFiles();
-        expect(files["README.md"]).toContain("src/config/default.ts");
-        expect(files["README.md"]).toContain("src/config/local.example.ts");
-        expect(files["README.md"]).toContain("src/config/bootstrap.example.ts");
-      });
-
-      it("JS 模式 README 指向 .js 配置约定", async () => {
+        vi.clearAllMocks();
+        setupFreshProject();
         await createCommand(["test-app", "--js", "--skip-install"]);
-
-        const files = getWrittenFiles();
-        expect(files["README.md"]).toContain("src/config/default.js");
-        expect(files["README.md"]).toContain("src/config/local.example.js");
-        expect(files["README.md"]).toContain("src/config/bootstrap.example.js");
-        expect(files["README.md"]).not.toContain("src/config/default.ts");
-        expect(files["README.md"]).not.toContain("types/generated");
+        expect(Object.keys(getWrittenFiles())).not.toContain("README.md");
       });
     });
 
@@ -938,7 +894,9 @@ describe("vext create", () => {
         expect(files["src/routes/index.ts"]).toContain("app.get('/'");
         expect(files["src/routes/index.ts"]).toContain("res.render(");
         expect(files["src/routes/index.ts"]).toContain("'index'");
-        expect(files["src/routes/index.ts"]).toContain("layoutData:");
+        expect(files["src/routes/index.ts"]).toContain(
+          "Vext Runtime Launchpad",
+        );
       });
 
       it("调用 example service", async () => {
@@ -965,6 +923,9 @@ describe("vext create", () => {
         expect(files["src/frontend/pages/_document.html"]).toContain(
           "{vext.entry}",
         );
+        expect(files["src/frontend/pages/_document.html"]).toContain(
+          'href="/favicon.svg"',
+        );
         expect(files["src/frontend/pages/_document.html"]).not.toContain(
           "%VEXT",
         );
@@ -972,9 +933,67 @@ describe("vext create", () => {
           "@components/AppShell",
         );
         expect(files["src/frontend/pages/index.tsx"]).toContain("useVextI18n");
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "runtime-facts",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "getting-started",
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          "useVextI18n",
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'src="/vext-mark.svg"',
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).not.toContain(
+          'aria-hidden="true">V<',
+        );
+        expect(files["public/vext-mark.svg"]).toBe(files["public/favicon.svg"]);
+        expect(files["public/vext-mark.svg"]).toContain('viewBox="0 0 72 72"');
+        expect(files["public/vext-mark.svg"]).toContain('stroke="#12D6C6"');
+        expect(files["public/vext-mark.svg"]).toContain('stroke="#5EE987"');
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          "prefers-reduced-motion",
+        );
+        expect(files["src/frontend/styles/index.css"]).toContain("--vext-cyan");
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          "--vext-green",
+        );
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          ":focus-visible",
+        );
         expect(files["src/frontend/pages/error/default.tsx"]).toContain(
           "DefaultErrorPage",
         );
+      });
+
+      it("生成与文档站一致的 V 标记和 favicon", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const actualFs =
+          await vi.importActual<typeof import("node:fs")>("node:fs");
+        const docsMark = actualFs
+          .readFileSync("website/docs/public/logo.svg", "utf8")
+          .replace(/\r\n/g, "\n")
+          .trim();
+        const files = getWrittenFiles();
+
+        expect(
+          files["public/vext-mark.svg"].replace(/\r\n/g, "\n").trim(),
+        ).toBe(docsMark);
+        expect(files["public/favicon.svg"].replace(/\r\n/g, "\n").trim()).toBe(
+          docsMark,
+        );
+      });
+
+      it("JavaScript fullstack 模板也生成同一品牌资产", async () => {
+        await createCommand(["test-app", "--js", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/frontend/components/AppShell.jsx"]).toContain(
+          'src="/vext-mark.svg"',
+        );
+        expect(files["public/vext-mark.svg"]).toBe(files["public/favicon.svg"]);
       });
 
       it("默认 fullstack 模板不再生成旧 src/client SPA 入口", async () => {
@@ -1365,27 +1384,21 @@ describe("vext create", () => {
       await createCommand(["test-app", "--skip-install"]);
 
       const files = getWrittenFiles();
-      // 模板文件：package.json + .gitignore + README.md + tsconfig.json +
+      // 模板文件：package.json + .gitignore + tsconfig.json +
       //           5 config files + routes/index.ts + services/example.ts +
-      //           locales/README.md + preload/README.md + generated/.gitkeep +
-      //           8 fullstack frontend/public files = 22
-      // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 24
-      expect(Object.keys(files).length).toBe(24);
+      //           generated/.gitkeep + 9 fullstack frontend/public files = 20
+      expect(Object.keys(files).length).toBe(20);
     });
 
     it("JS 模式生成正确的文件数量", async () => {
       await createCommand(["test-app", "--js", "--skip-install"]);
 
       const files = getWrittenFiles();
-      // 模板文件：package.json + .gitignore + README.md +
+      // 模板文件：package.json + .gitignore +
       //           5 config files + routes/index.js + services/example.js +
-      //           locales/README.md + preload/README.md +
-      //           8 fullstack frontend/public files = 20
-      // 占位 README：middlewares/README.md + plugins/README.md = 2
-      // 总计 22
+      //           9 fullstack frontend/public files = 18
       // 不含：tsconfig.json
-      expect(Object.keys(files).length).toBe(22);
+      expect(Object.keys(files).length).toBe(18);
     });
   });
 

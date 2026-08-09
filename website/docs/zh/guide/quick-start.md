@@ -217,6 +217,8 @@ npm start
 
 前端页面放在 `src/frontend/pages/**`。浏览器入口、页面 registry、layout registry 和 HTML 注入代码由 Vext 自动生成；手动项目至少需要创建 `src/frontend/pages/index.tsx`、`src/frontend/pages/_document.html` 与 `src/frontend/styles/index.css`，也可以直接从默认 `vext create` 模板开始。
 
+默认全栈模板会展示 SSR Vext runtime launchpad，并且只包含真实 starter 源码：不会生成根目录 README 或占位 README 文件。AppShell 使用 `public/vext-mark.svg`，`public/favicon.svg` 使用同一个 V 标记。只有在添加对应源码时，才创建可选约定目录。
+
 ## 项目结构
 
 脚手架或手动创建后，你的项目结构应该如下：
@@ -224,47 +226,30 @@ npm start
 ```
 my-app/
 ├── public/
-│   └── favicon.svg          # 会复制到前端构建产物的静态资源
+│   ├── favicon.svg           # 与 V 标记同源的 favicon
+│   └── vext-mark.svg         # AppShell 使用的同一 V 标记
 ├── src/
-│   ├── frontend/
-│   │   ├── pages/
-│   │   │   ├── _document.html
-│   │   │   ├── index.tsx
-│   │   │   ├── layout.tsx
-│   │   │   └── error/
-│   │   │       └── default.tsx
-│   │   ├── components/
-│   │   ├── styles/
-│   │   │   └── index.css
-│   │   ├── assets/
-│   │   └── locales/
 │   ├── config/
-│   │   ├── default.ts        # 默认配置
-│   │   ├── bootstrap.example.ts # 启动期远程配置 provider 示例
-│   │   ├── development.ts    # 开发环境覆盖（可选）
-│   │   ├── production.ts     # 生产环境覆盖（可选）
-│   │   └── local.example.ts  # 本地覆盖示例，复制为 local.ts 后使用
-│   ├── routes/
-│   │   └── index.ts          # 路由定义
-│   ├── services/
-│   │   └── example.ts        # 服务层
-│   ├── middlewares/
-│   │   └── README.md         # 自定义中间件占位说明
-│   ├── plugins/
-│   │   └── README.md         # 自定义插件占位说明
-│   ├── locales/
-│   │   └── README.md         # i18n 语言包占位说明
-│   └── types/
-│       └── generated/
-│           └── .gitkeep      # typegen 输出目录占位（TS 项目）
-├── preload/
-│   └── README.md             # 进程级 preload 脚本占位说明
+│   │   ├── default.ts        # 共享配置（port: 3000）
+│   │   ├── development.ts    # 开发环境 profile
+│   │   ├── production.ts     # 生产环境 profile
+│   │   ├── local.example.ts  # 复制为 local.ts 后添加本地覆盖
+│   │   └── bootstrap.example.ts # 复制为 bootstrap.ts 后添加启动期 provider
+│   ├── frontend/
+│   │   ├── components/AppShell.tsx # 公共 React shell
+│   │   ├── locales/en-US.ts  # starter 文案
+│   │   ├── pages/            # React 页面、layout、document 和错误页
+│   │   └── styles/index.css  # Vext launchpad 样式
+│   ├── routes/index.ts       # URL handler 和服务端数据
+│   ├── services/example.ts   # 服务层
+│   └── types/generated/.gitkeep # TypeScript 项目的 typegen 输出根
 ├── package.json
-└── tsconfig.json              # TypeScript 配置（TS 项目）
+├── tsconfig.json
+└── .gitignore
 ```
 
 :::info 约定
-VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/frontend/`、`public/` 与项目根 `preload/` 目录，无需手动注册。路由文件名会映射为 URL 前缀：
+VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/frontend/`、`public/` 与项目根 `preload/` 目录，无需手动注册。初始脚手架只创建已有 starter 内容的目录；可选约定目录会在你创建后被自动扫描。路由文件名会映射为 URL 前缀：
 
 | 文件路径                       | URL 前缀          |
 | ------------------------------ | ----------------- |

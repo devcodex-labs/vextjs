@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-The default scaffold is full-stack: backend routes, services, React pages, styles, assets, locales, and public files are created in one project. API-only projects can still use:
+The default scaffold is full-stack: backend routes, services, React pages, styles, an initial locale, and same-source `public/vext-mark.svg` / `favicon.svg` assets are created in one project. Optional asset and convention directories are added only when they contain real application source. API-only projects can still use:
 
 ```bash
 npx vextjs create my-api --template api --frontend none
@@ -26,6 +26,10 @@ GET / -> src/routes/index.ts -> res.render("index")
 ```
 
 `src/frontend/pages/index.tsx` is the page component. It does not create a URL by itself; the route handler chooses when to render it.
+
+## The Generated Launchpad
+
+The default full-stack template starts with an SSR Vext runtime launchpad instead of a blank demo. `src/routes/index.ts` supplies the greeting and render time, `src/frontend/pages/index.tsx` renders them with `useVextI18n`, `src/frontend/components/AppShell.tsx` owns the shared navigation and references `public/vext-mark.svg`, and `src/frontend/styles/index.css` owns the ink/cyan/green/amber visual tokens. `public/favicon.svg` uses the same mark. Change those files first; there are no generated README placeholders to maintain.
 
 ## Change the Home Page
 
@@ -104,11 +108,11 @@ export const card = style({
 
 ## If Something Fails
 
-| Symptom | Check |
-|---------|-------|
-| Page not found | Confirm the page id matches `src/frontend/pages/**` without extension. |
+| Symptom                              | Check                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| Page not found                       | Confirm the page id matches `src/frontend/pages/**` without extension.     |
 | Browser bundle imports a server file | Move service/database work back into `src/routes/**` or `src/services/**`. |
-| Styles do not update | Check `frontend.dev.hot` and `frontend.dev.fastRefresh`. |
-| API request receives HTML | Send `Accept: application/json` and review `spaFallback.scopes[]`. |
+| Styles do not update                 | Check `frontend.dev.hot` and `frontend.dev.fastRefresh`.                   |
+| API request receives HTML            | Send `Accept: application/json` and review `spaFallback.scopes[]`.         |
 
 Next, read [Project Structure](/frontend/project-structure) and [Routing and Pages](/frontend/routing-and-pages).

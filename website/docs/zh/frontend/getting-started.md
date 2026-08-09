@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-默认脚手架是全栈项目：后端 routes、services、React 页面、样式、资源、多语言、public 文件都在同一个项目里创建。纯 API 项目仍然可以使用：
+默认脚手架是全栈项目：后端 routes、services、React 页面、样式、初始多语言文件，以及同源的 `public/vext-mark.svg` / favicon 都在同一个项目里创建。可选资源与约定目录只会在其中有真实应用源码时按需添加。纯 API 项目仍然可以使用：
 
 ```bash
 npx vextjs create my-api --template api --frontend none
@@ -26,6 +26,10 @@ GET / -> src/routes/index.ts -> res.render("index")
 ```
 
 `src/frontend/pages/index.tsx` 是页面组件。它不会自动创建 URL；URL 由 route handler 决定。
+
+## 默认 Launchpad
+
+默认全栈模板提供 SSR Vext runtime launchpad，而不是空白 demo。`src/routes/index.ts` 提供 greeting 和渲染时间，`src/frontend/pages/index.tsx` 用 `useVextI18n` 渲染它们，`src/frontend/components/AppShell.tsx` 负责公共导航并引用 `public/vext-mark.svg`，`src/frontend/styles/index.css` 负责 ink/cyan/green/amber 视觉 token；`public/favicon.svg` 使用同一个 V 标记。优先从这些文件开始修改；没有需要维护的生成 README 占位文件。
 
 ## 修改首页
 
@@ -104,11 +108,11 @@ export const card = style({
 
 ## 失败时先检查
 
-| 现象 | 检查 |
-|------|------|
-| page not found | page id 是否和 `src/frontend/pages/**` 下的路径一致且不带扩展名。 |
+| 现象                         | 检查                                                                 |
+| ---------------------------- | -------------------------------------------------------------------- |
+| page not found               | page id 是否和 `src/frontend/pages/**` 下的路径一致且不带扩展名。    |
 | 浏览器 bundle 引入服务端文件 | service / database 调用应放回 `src/routes/**` 或 `src/services/**`。 |
-| 样式没有更新 | 检查 `frontend.dev.hot` 与 `frontend.dev.fastRefresh`。 |
-| API 请求拿到 HTML | 发送 `Accept: application/json`，并检查 `spaFallback.scopes[]`。 |
+| 样式没有更新                 | 检查 `frontend.dev.hot` 与 `frontend.dev.fastRefresh`。              |
+| API 请求拿到 HTML            | 发送 `Accept: application/json`，并检查 `spaFallback.scopes[]`。     |
 
 下一步阅读 [项目结构](/zh/frontend/project-structure) 与 [路由与页面](/zh/frontend/routing-and-pages)。

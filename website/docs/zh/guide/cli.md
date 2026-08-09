@@ -39,7 +39,7 @@ npm run build  # → vext build
 
 ## `vext create` — 创建项目
 
-交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。默认模板是 `fullstack-react`；API-only 脚手架仍可通过 `--template api --frontend none` 创建。
+交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。默认模板是 `fullstack-react`；API-only 脚手架仍可通过 `--template api --frontend none` 创建。全栈 starter 默认展示可直接修改的服务端渲染 Vext launchpad。
 
 ### 用法
 
@@ -85,39 +85,32 @@ npx vextjs create my-app --skip-install
 
 ```
 my-app/
-├── preload/
-│   └── README.md             # 项目级 preload 脚本占位说明
 ├── public/
-│   └── favicon.svg           # 会复制到前端构建产物的静态资源
+│   ├── favicon.svg           # 与 V 标记同源的 favicon
+│   └── vext-mark.svg         # starter AppShell 使用的同一 V 标记
 ├── src/
-│   ├── client/
-│   │   ├── App.tsx           # React 应用
-│   │   ├── index.html        # HTML shell
-│   │   ├── main.tsx          # 浏览器入口
-│   │   └── styles.css
 │   ├── config/
-│   │   ├── default.ts        # 默认配置（port: 3000）
-│   │   ├── development.ts    # 开发环境覆盖
-│   │   ├── production.ts     # 生产环境覆盖（port: 3001）
-│   │   ├── local.example.ts  # 复制为 local.ts 后启用本地覆盖
-│   │   └── bootstrap.example.ts # 复制为 bootstrap.ts 后启用启动期 provider
-│   ├── routes/
-│   │   └── index.ts          # 示例路由
-│   ├── services/
-│   │   └── example.ts        # 示例服务
-│   ├── middlewares/
-│   │   └── README.md         # 自定义中间件占位说明
-│   ├── plugins/
-│   │   └── README.md         # 自定义插件占位说明
-│   ├── locales/
-│   │   └── README.md         # i18n 语言包占位说明
-│   └── types/
-│       └── generated/
-│           └── .gitkeep      # typegen 输出目录占位（TS 项目）
+│   │   ├── default.ts        # 共享配置（port: 3000）
+│   │   ├── development.ts    # 开发环境 profile
+│   │   ├── production.ts     # 生产环境 profile
+│   │   ├── local.example.ts  # 复制为 local.ts 后添加本地覆盖
+│   │   └── bootstrap.example.ts # 复制为 bootstrap.ts 后添加启动期 provider
+│   ├── frontend/
+│   │   ├── components/AppShell.tsx # 公共 React shell
+│   │   ├── locales/en-US.ts  # starter 文案
+│   │   ├── pages/            # React 页面、layout、document 和错误页
+│   │   └── styles/index.css  # Vext launchpad 样式
+│   ├── routes/index.ts       # URL handler 和服务端数据
+│   ├── services/example.ts   # 示例服务
+│   └── types/generated/.gitkeep # TypeScript 项目的 typegen 输出根
 ├── package.json
 ├── tsconfig.json
 └── .gitignore
 ```
+
+脚手架不会生成根目录或目录级的占位 `README.md` 文件。`src/middlewares/`、`src/plugins/`、`src/locales/` 与 `preload/` 等约定目录仍受支持；添加真实源码时会按需创建。
+
+默认全栈 starter 的 `public/vext-mark.svg` 与 `public/favicon.svg` 使用同一个 V 标记；前者由 AppShell 使用，两者都会随 `public/` 静态资源一起复制。
 
 创建完成后：
 

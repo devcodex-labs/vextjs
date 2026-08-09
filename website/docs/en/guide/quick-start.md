@@ -217,6 +217,8 @@ npm start
 
 Frontend pages live under `src/frontend/pages/**`. Vext generates the browser entry, page registry, layout registry, and HTML injection code automatically. For a manual project, create at least `src/frontend/pages/index.tsx`, `src/frontend/pages/_document.html`, and `src/frontend/styles/index.css`, or start from the default `vext create` template.
 
+The default full-stack template opens with an SSR Vext runtime launchpad. It deliberately includes only real starter code: it does not create a root README or placeholder README files. Its AppShell uses `public/vext-mark.svg`; `public/favicon.svg` is the same V mark. Add optional convention directories only when you add their source files.
+
 ## Project structure
 
 After scaffolding or manual creation, your project structure should look like this:
@@ -224,47 +226,30 @@ After scaffolding or manual creation, your project structure should look like th
 ```
 my-app/
 ├── public/
-│ └── favicon.svg # Static asset copied into the frontend build
+│ ├── favicon.svg # Shared V mark favicon
+│ └── vext-mark.svg # Same V mark used by AppShell
 ├── src/
-│ ├── frontend/
-│ │ ├── pages/
-│ │ │ ├── _document.html
-│ │ │ ├── index.tsx
-│ │ │ ├── layout.tsx
-│ │ │ └── error/
-│ │ │   └── default.tsx
-│ │ ├── components/
-│ │ ├── styles/
-│ │ │ └── index.css
-│ │ ├── assets/
-│ │ └── locales/
 │ ├── config/
-│ │ ├── default.ts #Default configuration
-│ │ ├── bootstrap.example.ts # Remote configuration provider example during startup
-│ │ ├── development.ts # Development environment coverage (optional)
-│ │ ├── production.ts # Production environment coverage (optional)
-│ │ └── local.example.ts # Local coverage example, copy it to local.ts and use it
-│ ├── routes/
-│ │ └── index.ts # Route definition
-│ ├── services/
-│ │ └── example.ts # Service layer
-│ ├── middlewares/
-│ │ └── README.md # Custom middleware placeholder description
-│ ├── plugins/
-│ │ └── README.md # Custom plug-in placeholder description
-│ ├── locales/
-│ │ └── README.md # i18n language pack placeholder description
-│ └── types/
-│ └── generated/
-│ └── .gitkeep # typegen output directory placeholder (TS project)
-├── preload/
-│ └── README.md # Process-level preload script placeholder description
+│ │ ├── default.ts # Shared configuration (port: 3000)
+│ │ ├── development.ts # Development profile
+│ │ ├── production.ts # Production profile
+│ │ ├── local.example.ts # Copy to local.ts for local-only overrides
+│ │ └── bootstrap.example.ts # Copy to bootstrap.ts for startup providers
+│ ├── frontend/
+│ │ ├── components/AppShell.tsx # Shared React shell
+│ │ ├── locales/en-US.ts # Starter messages
+│ │ ├── pages/ # React pages, layout, document, and error page
+│ │ └── styles/index.css # Vext launchpad styles
+│ ├── routes/index.ts # URL handler and server data
+│ ├── services/example.ts # Service layer
+│ └── types/generated/.gitkeep # Typegen output root (TS project)
 ├── package.json
-└── tsconfig.json # TypeScript configuration (TS project)
+├── tsconfig.json
+└── .gitignore
 ```
 
 :::info Convention
-VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/frontend/`, `public/` and the project root `preload/` directory without manual registration. Route file names are mapped to URL prefixes:
+VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/frontend/`, `public/` and the project root `preload/` directory without manual registration. The initial scaffold creates only the directories with starter content; the optional convention directories are scanned whenever you create them. Route file names are mapped to URL prefixes:
 
 | File path                      | URL prefix        |
 | ------------------------------ | ----------------- |

@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- `vext create` now emits only meaningful starter files: it no longer adds root or directory-level placeholder `README.md` files, and optional convention directories are created when real source is added.
+- The default `fullstack-react` starter now opens with an original server-rendered Vext Runtime Launchpad that demonstrates route data, `useVextI18n`, the shared app shell, and responsive accessible styling.
+- The default fullstack starter now emits the same V mark for `public/vext-mark.svg` and `public/favicon.svg`, with cyan/green/amber starter tokens aligned to the documentation brand.
+
 ## Version History
 
 | Version | Date | Type | Key Theme |

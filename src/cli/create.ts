@@ -431,26 +431,7 @@ async function generateProject(
 ): Promise<void> {
   // ── 1. 创建目录结构 ────────────────────────────────────
   const isTs = options.language === "ts";
-  const isFullstack = options.template === "fullstack-react";
-  const dirs = [
-    "src/routes",
-    "src/services",
-    "src/middlewares",
-    "src/plugins",
-    "src/config",
-    "src/locales",
-    "preload",
-  ];
-  if (isFullstack) {
-    dirs.push(
-      "src/frontend/pages/error",
-      "src/frontend/components",
-      "src/frontend/styles",
-      "src/frontend/assets",
-      "src/frontend/locales",
-      "public",
-    );
-  }
+  const dirs = ["src/routes", "src/services", "src/config"];
 
   if (isTs) {
     dirs.push("src/types/generated");
@@ -473,21 +454,8 @@ async function generateProject(
     fs.writeFileSync(fullPath, content, "utf-8");
   }
 
-  // ── 3. 写入占位 README 到空目录 ────────────────────────
-  const emptyDirs = ["src/middlewares", "src/plugins"];
-  for (const dir of emptyDirs) {
-    const readmePath = path.join(targetDir, dir, `README.md`);
-    const dirName = path.basename(dir);
-    fs.writeFileSync(
-      readmePath,
-      `# ${dirName}\n\nPlace your custom ${dirName} here.\n\n` +
-        `See the [vext documentation](https://github.com/devcodex-labs/vextjs) for details.\n`,
-      "utf-8",
-    );
-  }
-
   console.log(
-    `  ✅ Project files generated (${Object.keys(templates).length + emptyDirs.length} files)\n`,
+    `  ✅ Project files generated (${Object.keys(templates).length} files)\n`,
   );
 }
 
@@ -525,9 +493,6 @@ function getTemplateFiles(
   // ── .gitignore ────────────────────────────────────────
   files[".gitignore"] = generateGitignore();
 
-  // ── README.md ─────────────────────────────────────────
-  files["README.md"] = generateReadme(name, adapter, ext, isTs, isFullstack);
-
   // ── tsconfig.json（TS 项目专用）────────────────────────
   if (isTs) {
     files["tsconfig.json"] = generateTsconfig(isFullstack);
@@ -559,10 +524,6 @@ function getTemplateFiles(
   // ── src/services/example ──────────────────────────────
   files[`src/services/example.${ext}`] = generateExampleService(isTs);
 
-  // ── optional convention directories ───────────────────
-  files["src/locales/README.md"] = generateLocalesReadme();
-  files["preload/README.md"] = generatePreloadReadme();
-
   if (isTs) {
     files["src/types/generated/.gitkeep"] = "";
   }
@@ -581,6 +542,7 @@ function getTemplateFiles(
       generateFrontendAppShell(isTs);
     files[`src/frontend/locales/en-US.${localeExt}`] = generateFrontendLocale();
     files["src/frontend/styles/index.css"] = generateFrontendStyles();
+    files["public/vext-mark.svg"] = generateVextMarkSvg();
     files["public/favicon.svg"] = generateFaviconSvg();
   }
 
@@ -685,92 +647,6 @@ coverage/
 `;
 }
 
-function generateReadme(
-  name: string,
-  adapter: string,
-  ext: string,
-  isTs: boolean,
-  isFullstack: boolean,
-): string {
-  const optionalStructureLines = isTs
-    ? `├── locales/         # Optional i18n language packs
-└── types/generated/ # Generated TypeScript declarations`
-    : `└── locales/         # Optional i18n language packs`;
-  const frontendStructure = isFullstack
-    ? `├── frontend/
-│   ├── pages/       # React pages, layouts, document and error pages
-│   ├── components/  # Shared React components
-│   ├── styles/      # CSS and JSCSS-ready style entry
-│   ├── assets/      # Bundled images, fonts and static imports
-│   └── locales/     # Frontend page messages
-`
-    : "";
-  const frontendUsage = isFullstack
-    ? `
-## Frontend Rendering
-
-The default full-stack template renders React pages from Vext routes:
-
-\`\`\`${ext}
-app.get('/', {}, async (req, res) => {
-  const greeting = await app.services.example.greeting('Vext')
-  res.render('index', { greeting })
-})
-\`\`\`
-
-- Page files live in \`src/frontend/pages/**\`.
-- Shared components live in \`src/frontend/components/**\` and can be imported with \`@components/...\`.
-- The HTML document is \`src/frontend/pages/_document.html\` and uses \`{vext.root}\`, \`{vext.data}\`, \`{vext.entry}\`, and \`{vext.styles}\`.
-- Static files in \`public/\` are copied to the frontend output directory.
-`
-    : "";
-
-  return `# ${name}
-
-A [vext](https://github.com/devcodex-labs/vextjs) project.
-
-## Getting Started
-
-\`\`\`bash
-# Development mode (with hot reload)
-npm run dev
-
-# Production mode
-npm start
-\`\`\`
-
-## Project Structure
-
-\`\`\`
-src/
-${frontendStructure}├── config/          # Configuration files and examples
-├── routes/          # Route definitions
-├── services/        # Business logic services
-├── middlewares/     # Custom middlewares
-├── plugins/         # Custom plugins
-${optionalStructureLines}
-
-preload/             # Optional process-level preload scripts
-\`\`\`
-
-## Configuration
-
-- **Adapter**: \`${adapter}\`
-- **Template**: \`${isFullstack ? "fullstack-react" : "api"}\`
-- **Port**: \`3000\` (default)
-
-Edit \`src/config/default.${ext}\` to customize shared configuration.
-Copy \`src/config/local.example.${ext}\` to \`src/config/local.${ext}\` for local-only overrides.
-Copy \`src/config/bootstrap.example.${ext}\` to \`src/config/bootstrap.${ext}\` when you need startup-time config providers.
-${frontendUsage}
-
-## Learn More
-
-- [vext Documentation](https://github.com/devcodex-labs/vextjs)
-- [API Reference](https://github.com/devcodex-labs/vextjs#api)
-`;
-}
-
 function generateLocalExampleConfig(isTs: boolean): string {
   if (isTs) {
     return `import type { VextUserConfig } from 'vextjs'
@@ -835,22 +711,6 @@ export default defineBootstrapConfig({
     },
   ],
 })
-`;
-}
-
-function generateLocalesReadme(): string {
-  return `# locales
-
-Place optional i18n language packs here, for example \`en-US.ts\` or \`zh-CN.ts\`.
-vext loads this directory automatically when locale support is enabled.
-`;
-}
-
-function generatePreloadReadme(): string {
-  return `# preload
-
-Place optional process-level preload scripts here.
-Use this directory for OpenTelemetry, APM, polyfills, or startup bridges that must run before application code.
 `;
 }
 
@@ -1036,13 +896,8 @@ export default defineRoutes((app) => {
       },
       {
         head: {
-          title: 'Vext full-stack app',
-          description: 'A React 19 page rendered by Vext routes and services.',
-        },
-        layoutData: {
-          default: {
-            section: 'Dashboard',
-          },
+          title: 'Vext Runtime Launchpad',
+          description: 'A server-rendered React starter for Vext applications.',
         },
       },
     )
@@ -1073,13 +928,8 @@ export default defineRoutes((app) => {
       },
       {
         head: {
-          title: 'Vext full-stack app',
-          description: 'A React 19 page rendered by Vext routes and services.',
-        },
-        layoutData: {
-          default: {
-            section: 'Dashboard',
-          },
+          title: 'Vext Runtime Launchpad',
+          description: 'A server-rendered React starter for Vext applications.',
         },
       },
     )
@@ -1199,6 +1049,18 @@ type HomeMessages = {
     eyebrow: string
     title: string
     intro: string
+    primaryAction: string
+    secondaryAction: string
+    greetingLabel: string
+    renderedLabel: string
+    guideEyebrow: string
+    guideTitle: string
+    routeTitle: string
+    routeDescription: string
+    pageTitle: string
+    pageDescription: string
+    styleTitle: string
+    styleDescription: string
   }
 }
 
@@ -1213,20 +1075,80 @@ export default function HomePage({ greeting, renderedAt }: HomePageProps) {
   const i18n = useVextI18n<HomeMessages>()
 
   return (
-    <main className="home">
-      <p className="eyebrow">{i18n.home.eyebrow}</p>
-      <h1>{i18n.home.title}</h1>
-      <p className="lead">{i18n.home.intro}</p>
-      <dl className="facts">
-        <div>
-          <dt>Service data</dt>
-          <dd>{greeting.message}</dd>
+    <main className="launchpad">
+      <section className="hero" aria-labelledby="launchpad-title">
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="hero-content">
+          <p className="eyebrow">
+            <span className="eyebrow-dot" aria-hidden="true" />
+            {i18n.home.eyebrow}
+          </p>
+          <h1 id="launchpad-title">{i18n.home.title}</h1>
+          <p className="lead">{i18n.home.intro}</p>
+          <div className="hero-actions">
+            <a className="button button-primary" href="#getting-started">
+              {i18n.home.primaryAction}
+              <span aria-hidden="true">→</span>
+            </a>
+            <a
+              className="button button-secondary"
+              href="/api/health"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {i18n.home.secondaryAction}
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <dl className="runtime-facts">
+            <div>
+              <dt>{i18n.home.greetingLabel}</dt>
+              <dd>{greeting.message}</dd>
+            </div>
+            <div>
+              <dt>{i18n.home.renderedLabel}</dt>
+              <dd>
+                <time dateTime={renderedAt}>{renderedAt}</time>
+              </dd>
+            </div>
+          </dl>
         </div>
-        <div>
-          <dt>Rendered at</dt>
-          <dd>{renderedAt}</dd>
-        </div>
-      </dl>
+      </section>
+
+      <section
+        className="starter-guide"
+        id="getting-started"
+        aria-labelledby="getting-started-title"
+      >
+        <p className="eyebrow">{i18n.home.guideEyebrow}</p>
+        <h2 id="getting-started-title">{i18n.home.guideTitle}</h2>
+        <ol className="starter-steps">
+          <li>
+            <span aria-hidden="true">01</span>
+            <div>
+              <h3>{i18n.home.routeTitle}</h3>
+              <p>{i18n.home.routeDescription}</p>
+              <code>src/routes/index.ts</code>
+            </div>
+          </li>
+          <li>
+            <span aria-hidden="true">02</span>
+            <div>
+              <h3>{i18n.home.pageTitle}</h3>
+              <p>{i18n.home.pageDescription}</p>
+              <code>src/frontend/pages/index.tsx</code>
+            </div>
+          </li>
+          <li>
+            <span aria-hidden="true">03</span>
+            <div>
+              <h3>{i18n.home.styleTitle}</h3>
+              <p>{i18n.home.styleDescription}</p>
+              <code>src/frontend/styles/index.css</code>
+            </div>
+          </li>
+        </ol>
+      </section>
     </main>
   )
 }
@@ -1239,20 +1161,80 @@ export default function HomePage({ greeting, renderedAt }) {
   const i18n = useVextI18n()
 
   return (
-    <main className="home">
-      <p className="eyebrow">{i18n.home.eyebrow}</p>
-      <h1>{i18n.home.title}</h1>
-      <p className="lead">{i18n.home.intro}</p>
-      <dl className="facts">
-        <div>
-          <dt>Service data</dt>
-          <dd>{greeting.message}</dd>
+    <main className="launchpad">
+      <section className="hero" aria-labelledby="launchpad-title">
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="hero-content">
+          <p className="eyebrow">
+            <span className="eyebrow-dot" aria-hidden="true" />
+            {i18n.home.eyebrow}
+          </p>
+          <h1 id="launchpad-title">{i18n.home.title}</h1>
+          <p className="lead">{i18n.home.intro}</p>
+          <div className="hero-actions">
+            <a className="button button-primary" href="#getting-started">
+              {i18n.home.primaryAction}
+              <span aria-hidden="true">→</span>
+            </a>
+            <a
+              className="button button-secondary"
+              href="/api/health"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {i18n.home.secondaryAction}
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <dl className="runtime-facts">
+            <div>
+              <dt>{i18n.home.greetingLabel}</dt>
+              <dd>{greeting.message}</dd>
+            </div>
+            <div>
+              <dt>{i18n.home.renderedLabel}</dt>
+              <dd>
+                <time dateTime={renderedAt}>{renderedAt}</time>
+              </dd>
+            </div>
+          </dl>
         </div>
-        <div>
-          <dt>Rendered at</dt>
-          <dd>{renderedAt}</dd>
-        </div>
-      </dl>
+      </section>
+
+      <section
+        className="starter-guide"
+        id="getting-started"
+        aria-labelledby="getting-started-title"
+      >
+        <p className="eyebrow">{i18n.home.guideEyebrow}</p>
+        <h2 id="getting-started-title">{i18n.home.guideTitle}</h2>
+        <ol className="starter-steps">
+          <li>
+            <span aria-hidden="true">01</span>
+            <div>
+              <h3>{i18n.home.routeTitle}</h3>
+              <p>{i18n.home.routeDescription}</p>
+              <code>src/routes/index.js</code>
+            </div>
+          </li>
+          <li>
+            <span aria-hidden="true">02</span>
+            <div>
+              <h3>{i18n.home.pageTitle}</h3>
+              <p>{i18n.home.pageDescription}</p>
+              <code>src/frontend/pages/index.jsx</code>
+            </div>
+          </li>
+          <li>
+            <span aria-hidden="true">03</span>
+            <div>
+              <h3>{i18n.home.styleTitle}</h3>
+              <p>{i18n.home.styleDescription}</p>
+              <code>src/frontend/styles/index.css</code>
+            </div>
+          </li>
+        </ol>
+      </section>
     </main>
   )
 }
@@ -1266,21 +1248,18 @@ import { AppShell } from '@components/AppShell'
 
 type LayoutProps = {
   children?: ReactNode
-  data?: {
-    section?: string
-  }
 }
 
-export default function RootLayout({ children, data }: LayoutProps) {
-  return <AppShell section={data?.section ?? 'Home'}>{children}</AppShell>
+export default function RootLayout({ children }: LayoutProps) {
+  return <AppShell>{children}</AppShell>
 }
 `;
   }
 
   return `import { AppShell } from '@components/AppShell'
 
-export default function RootLayout({ children, data }) {
-  return <AppShell section={data?.section ?? 'Home'}>{children}</AppShell>
+export default function RootLayout({ children }) {
+  return <AppShell>{children}</AppShell>
 }
 `;
 }
@@ -1288,24 +1267,42 @@ export default function RootLayout({ children, data }) {
 function generateFrontendAppShell(isTs: boolean): string {
   if (isTs) {
     return `import type { ReactNode } from 'react'
+import { useVextI18n } from 'vextjs/frontend'
 
 type AppShellProps = {
   children?: ReactNode
-  section: string
 }
 
-export function AppShell({ children, section }: AppShellProps) {
+type AppShellMessages = {
+  shell: {
+    navigation: string
+    home: string
+    start: string
+    health: string
+    status: string
+  }
+}
+
+export function AppShell({ children }: AppShellProps) {
+  const i18n = useVextI18n<AppShellMessages>()
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/">
-          vext
+        <a className="brand" href="/" aria-label={i18n.shell.home}>
+          <img className="brand-mark" src="/vext-mark.svg" alt="" aria-hidden="true" />
+          <span>vext</span>
         </a>
-        <nav aria-label="Primary">
-          <a href="/">Home</a>
-          <a href="/api/health">Health</a>
+        <nav aria-label={i18n.shell.navigation}>
+          <a href="#getting-started">{i18n.shell.start}</a>
+          <a href="/api/health" target="_blank" rel="noreferrer">
+            {i18n.shell.health}
+          </a>
         </nav>
-        <span className="section">{section}</span>
+        <span className="runtime-badge">
+          <span aria-hidden="true" />
+          {i18n.shell.status}
+        </span>
       </header>
       {children}
     </div>
@@ -1314,18 +1311,28 @@ export function AppShell({ children, section }: AppShellProps) {
 `;
   }
 
-  return `export function AppShell({ children, section }) {
+  return `import { useVextI18n } from 'vextjs/frontend'
+
+export function AppShell({ children }) {
+  const i18n = useVextI18n()
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/">
-          vext
+        <a className="brand" href="/" aria-label={i18n.shell.home}>
+          <img className="brand-mark" src="/vext-mark.svg" alt="" aria-hidden="true" />
+          <span>vext</span>
         </a>
-        <nav aria-label="Primary">
-          <a href="/">Home</a>
-          <a href="/api/health">Health</a>
+        <nav aria-label={i18n.shell.navigation}>
+          <a href="#getting-started">{i18n.shell.start}</a>
+          <a href="/api/health" target="_blank" rel="noreferrer">
+            {i18n.shell.health}
+          </a>
         </nav>
-        <span className="section">{section}</span>
+        <span className="runtime-badge">
+          <span aria-hidden="true" />
+          {i18n.shell.status}
+        </span>
       </header>
       {children}
     </div>
@@ -1374,11 +1381,33 @@ export default function DefaultErrorPage({ error }: ErrorPageProps) {
 
 function generateFrontendLocale(): string {
   return `export default {
+  shell: {
+    navigation: 'Primary navigation',
+    home: 'Vext home',
+    start: 'Start building',
+    health: 'Health',
+    status: 'SSR ready',
+  },
   home: {
-    eyebrow: 'Vext full-stack',
-    title: 'Routes render React pages',
+    eyebrow: 'Vext runtime launchpad',
+    title: 'Build the runtime your product deserves.',
     intro:
-      'Prepare data in a route or service, then render a React page with res.render().',
+      'A server-rendered React starter with routes, services, and a browser runtime already connected.',
+    primaryAction: 'Explore the starter',
+    secondaryAction: 'Check runtime health',
+    greetingLabel: 'Service response',
+    renderedLabel: 'Rendered on the server',
+    guideEyebrow: 'Your first three edits',
+    guideTitle: 'A small, production-shaped surface to make your own.',
+    routeTitle: 'Shape the request',
+    routeDescription:
+      'Load data and keep response behavior in the route that owns the URL.',
+    pageTitle: 'Compose the experience',
+    pageDescription:
+      'Render that data with React while Vext keeps SSR and hydration aligned.',
+    styleTitle: 'Make the system recognisable',
+    styleDescription:
+      'Adjust the starter tokens and layout without introducing a separate UI runtime.',
   },
 }
 `;
@@ -1386,8 +1415,15 @@ function generateFrontendLocale(): string {
 
 function generateFrontendStyles(): string {
   return `:root {
-  color: #172026;
-  background: #f7f9fb;
+  --vext-ink: #071013;
+  --vext-cyan: #12d6c6;
+  --vext-green: #5ee987;
+  --vext-amber: #f5bd4f;
+  --vext-surface: #0d171b;
+  --vext-muted: #aab8c1;
+  color-scheme: dark;
+  color: #f3f7ff;
+  background: var(--vext-ink);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -1397,120 +1433,437 @@ function generateFrontendStyles(): string {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
+  min-width: 320px;
   margin: 0;
+  background: var(--vext-ink);
+}
+
+a {
+  color: inherit;
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 15% -10%, rgba(18, 214, 198, 0.24), transparent 34rem),
+    radial-gradient(circle at 88% 12%, rgba(94, 233, 135, 0.18), transparent 30rem),
+    var(--vext-ink);
+}
+
+.app-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  opacity: 0.32;
+  background-image:
+    linear-gradient(rgba(18, 214, 198, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 214, 198, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
 }
 
 .topbar {
-  height: 56px;
+  position: relative;
+  z-index: 1;
   display: flex;
+  min-height: 76px;
   align-items: center;
-  gap: 20px;
-  padding: 0 24px;
-  border-bottom: 1px solid #d6dde5;
-  background: #ffffff;
+  gap: 22px;
+  padding: 0 clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid rgba(18, 214, 198, 0.16);
+  background: rgba(7, 16, 19, 0.72);
+  backdrop-filter: blur(18px);
 }
 
 .brand {
-  color: #172026;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #ffffff;
+  font-size: 18px;
   font-weight: 800;
+  letter-spacing: -0.04em;
   text-decoration: none;
+}
+
+.brand-mark {
+  display: block;
+  width: 27px;
+  height: 27px;
+  filter: drop-shadow(0 0 14px rgba(18, 214, 198, 0.28));
 }
 
 .topbar nav {
   display: flex;
-  gap: 14px;
+  align-items: center;
+  gap: 20px;
 }
 
 .topbar nav a {
-  color: #52606d;
+  color: var(--vext-muted);
   font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
+  transition: color 160ms ease;
 }
 
-.section {
+.topbar nav a:hover {
+  color: #ffffff;
+}
+
+.runtime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.home,
-.error-page {
-  min-height: calc(100vh - 56px);
-  display: grid;
-  align-content: center;
-  gap: 18px;
-  padding: 48px clamp(20px, 6vw, 80px);
-}
-
-.home {
-  max-width: 960px;
-}
-
-.eyebrow {
-  margin: 0;
-  color: #3b6ea8;
-  font-size: 13px;
+  color: #c7d9d5;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-h1 {
+.runtime-badge > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vext-green);
+  box-shadow: 0 0 0 4px rgba(94, 233, 135, 0.12);
+}
+
+.launchpad {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - 76px);
+  margin: 0 auto;
+  padding: clamp(52px, 9vw, 132px) clamp(20px, 5vw, 72px) 72px;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(18, 214, 198, 0.18);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(12, 30, 32, 0.96), rgba(8, 18, 22, 0.86)),
+    var(--vext-surface);
+  box-shadow:
+    0 30px 100px rgba(0, 0, 0, 0.34),
+    inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.hero::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: 0.5;
+  background:
+    linear-gradient(90deg, rgba(18, 214, 198, 0.09) 1px, transparent 1px),
+    linear-gradient(rgba(18, 214, 198, 0.09) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(135deg, black, transparent 66%);
+}
+
+.hero-glow {
+  position: absolute;
+  top: -14rem;
+  right: -10rem;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(94, 233, 135, 0.34), transparent 67%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.hero-content {
+  position: relative;
+  display: grid;
+  gap: 25px;
+  max-width: 820px;
+  padding: clamp(34px, 7vw, 84px);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
   margin: 0;
+  color: var(--vext-cyan);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.eyebrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vext-amber);
+  box-shadow: 0 0 18px rgba(245, 189, 79, 0.72);
+}
+
+.hero h1,
+.starter-guide h2,
+.error-page h1 {
+  margin: 0;
+  color: #f7f9ff;
+  letter-spacing: -0.055em;
+}
+
+.hero h1 {
   max-width: 760px;
-  font-size: 48px;
-  line-height: 1.05;
+  font-size: clamp(3rem, 7vw, 6.3rem);
+  line-height: 0.96;
 }
 
 p {
   margin: 0;
-  color: #52606d;
 }
 
 .lead {
-  max-width: 640px;
-  font-size: 18px;
-  line-height: 1.6;
+  max-width: 650px;
+  color: #bed0cf;
+  font-size: clamp(17px, 1.5vw, 20px);
+  line-height: 1.7;
 }
 
-.facts {
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 17px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.button-primary {
+  background: var(--vext-cyan);
+  box-shadow: 0 12px 28px rgba(18, 214, 198, 0.24);
+  color: var(--vext-ink);
+}
+
+.button-primary:hover {
+  background: #7ff4e9;
+}
+
+.button-secondary {
+  border-color: rgba(94, 233, 135, 0.3);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e4f6f1;
+}
+
+.button-secondary:hover {
+  border-color: rgba(94, 233, 135, 0.58);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.runtime-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 16px 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 710px;
+  margin: 8px 0 0;
 }
 
-.facts div {
-  border: 1px solid #d6dde5;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 18px;
+.runtime-facts div {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(192, 205, 237, 0.14);
+  border-radius: 14px;
+  background: rgba(4, 7, 14, 0.26);
 }
 
 dt {
   margin-bottom: 8px;
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 700;
+  color: #8f9ab3;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 dd {
+  overflow-wrap: anywhere;
   margin: 0;
-  color: #172026;
-  font-weight: 600;
+  color: #edf2ff;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.starter-guide {
+  display: grid;
+  gap: 18px;
+  padding: clamp(56px, 9vw, 112px) 0 0;
+}
+
+.starter-guide h2 {
+  max-width: 640px;
+  font-size: clamp(2rem, 4.6vw, 3.6rem);
+  line-height: 1.04;
+}
+
+.starter-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 0;
+  margin: 22px 0 0;
+  list-style: none;
+}
+
+.starter-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 15px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid rgba(186, 205, 243, 0.13);
+  border-radius: 18px;
+  background: rgba(16, 20, 32, 0.66);
+}
+
+.starter-steps > li > span {
+  color: #9baeff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.starter-steps h3 {
+  margin: 0 0 8px;
+  color: #eff3ff;
+  font-size: 16px;
+}
+
+.starter-steps p {
+  color: #9ea9c1;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+code {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 5px 8px;
+  border: 1px solid rgba(165, 181, 221, 0.16);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #c7d2ff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
 }
 
 .error-page {
-  max-width: 720px;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  width: min(760px, 100%);
+  min-height: calc(100vh - 76px);
+  margin: 0 auto;
+  padding: 48px clamp(20px, 5vw, 72px);
 }
 
+.error-page h1 {
+  font-size: clamp(4rem, 10vw, 8rem);
+  line-height: 0.9;
+}
+
+.error-page > p:not(.eyebrow),
 .error-page small {
-  color: #6b7280;
+  color: #aeb9cf;
+}
+
+:focus-visible {
+  outline: 3px solid var(--vext-cyan);
+  outline-offset: 4px;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    min-height: 68px;
+    gap: 15px;
+  }
+
+  .topbar nav {
+    gap: 13px;
+  }
+
+  .topbar nav a {
+    font-size: 13px;
+  }
+
+  .runtime-badge {
+    display: none;
+  }
+
+  .launchpad {
+    min-height: calc(100vh - 68px);
+    padding-top: 38px;
+  }
+
+  .hero {
+    border-radius: 22px;
+  }
+
+  .runtime-facts,
+  .starter-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 440px) {
+  .topbar nav a:last-child {
+    display: none;
+  }
+
+  .hero-content {
+    padding: 30px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 `;
 }
@@ -1521,6 +1874,7 @@ function generateFrontendDocument(name: string): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>${name}</title>
     {vext.head}
     {vext.styles}
@@ -1534,12 +1888,20 @@ function generateFrontendDocument(name: string): string {
 `;
 }
 
-function generateFaviconSvg(): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#172026"/>
-  <path d="M18 18h28L34 46h-8l8-18H18z" fill="#6ee7b7"/>
+function generateVextMarkSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
+  <rect width="72" height="72" rx="16" fill="#071013"/>
+  <path d="M14 14L35 58L58 14" stroke="#12D6C6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M58 14L66 28L52 42" stroke="#5EE987" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="14" cy="14" r="4" fill="#F5BD4F"/>
+  <circle cx="35" cy="58" r="4" fill="#12D6C6"/>
+  <circle cx="58" cy="14" r="4" fill="#5EE987"/>
 </svg>
 `;
+}
+
+function generateFaviconSvg(): string {
+  return generateVextMarkSvg();
 }
 
 // ── 帮助输出 ────────────────────────────────────────────────
