@@ -2,7 +2,7 @@
 
 ## Method 1: Use scaffolding (recommended)
 
-VextJS provides the `vext create` command to quickly create a runnable project. The default template is a full-stack React app with Vext API routes:
+VextJS provides the `vext create` command to create a runnable project. The default template proves the one-route model immediately: `/` renders React through `res.render()`, `/api/hello` returns JSON, and both use the generated example service. Choose API-only when no page runtime is needed.
 
 ```bash
 # Create TypeScript full-stack project (default Native Adapter)
@@ -28,7 +28,7 @@ cd my-app
 npm run dev
 ```
 
-Visit `http://localhost:3000` and you should see the React client. The backend API routes are available at `/api/hello` and `/api/health`.
+Visit `http://localhost:3000` for the server-rendered starter and `http://localhost:3000/docs` for live API documentation. The backend API routes are available at `/api/hello` and `/api/health`.
 
 ## Method 2: Manual creation
 
@@ -52,7 +52,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^1.0.0"
+    "vextjs": "^1.0.1"
   }
 }
 ```

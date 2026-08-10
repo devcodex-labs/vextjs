@@ -15,12 +15,26 @@ VextJS 同时提供面向读者的文档页面和确定性的构建产物。这�
 | [`docs-manifest.json`](https://devcodex-labs.github.io/vextjs/docs-manifest.json)                         | 构建生成的页面元数据：canonical URL、locale、摘要、受众、适用面、稳定性、关联页面和 source hash。 |
 | [`capabilities.json`](https://devcodex-labs.github.io/vextjs/capabilities.json)                           | 已支持的 frontend/runtime 能力和明确 non-goal；必须与对应细节页一起引用。                         |
 | [`ai-gold-questions.json`](https://devcodex-labs.github.io/vextjs/ai-gold-questions.json)                 | 要求引用来源的问题集合，防止回答虚构未支持能力。                                                  |
-| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | 面向语言模型和文档工具的精选入口；它是索引，不是 crawler 控制文件。                               |
-| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | 英文和简体中文全部文档页的构建生成索引。                                                          |
+| [`zh/llms.txt`](https://devcodex-labs.github.io/vextjs/zh/llms.txt)                                       | 面向语言模型和文档工具的简体中文精选入口；它是索引，不是 crawler 控制文件。                       |
+| [`zh/llms-full.txt`](https://devcodex-labs.github.io/vextjs/zh/llms-full.txt)                             | 完整简体中文 URL 与摘要索引：每个公开中文文档页只出现一次。                                       |
+| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | 默认英文精选入口，与简体中文内容隔离。                                                            |
+| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | 完整英文 URL 与摘要索引：每个公开英文文档页只出现一次。                                           |
 | [`docs-events.schema.json`](https://devcodex-labs.github.io/vextjs/docs-events.schema.json)               | 可选的隐私保护事件合同；VextJS 没有启用 collector。                                               |
 | [`docs-dashboard-definition.json`](https://devcodex-labs.github.io/vextjs/docs-dashboard-definition.json) | 供未来自行选择合规 collector 的站点所有者使用的指标定义和采集边界。                               |
 
 机器资产在文档构建完成后生成，不含 build timestamp，因此相同 source 会生成相同的 metadata 和 hash。
+
+## 语言与完整性合同
+
+四个 `llms*.txt` 文件都是确定性生成的 UTF-8 Markdown，并以 plain text 提供。根目录文件只包含英文；
+`/zh/` 下的文件只包含简体中文。`llms.txt` 刻意保持精选，帮助模型不用载入整个站点就能找到主要阅读路径；
+`llms-full.txt` 则是当前 locale 的穷尽索引，每个页面都有唯一 canonical URL 和从源文档提取的摘要。
+`docs-manifest.json` 仍是权威双语总清单，并记录每条 entry 的 locale 与 source hash；构建会验证每个
+locale 的精确覆盖。
+
+这里的 “full” 表示完整索引，不是复制所有页面正文。具备网页访问能力的 AI 会继续读取 canonical URL；离线工具
+可以先用 manifest 和索引精确选择所需页面。这样既保持 1:1 的构建期覆盖证明，也避免把全部双语源文档一次性
+塞入模型上下文。
 
 ## AI 回答应如何使用文档
 

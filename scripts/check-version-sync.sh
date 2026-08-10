@@ -113,11 +113,13 @@ for locale in en zh; do
     "website/docs/${locale}/guide/quick-start.md -> ^${VERSION}"
 done
 
-# 4. Root README — dependency "vextjs": "^X.Y.Z"
-check_file \
-  "README.md" \
-  "\"vextjs\": \"\\^${VERSION}\"" \
-  "README.md -> ^${VERSION}"
+# 4. Root README — stable package entry (must not advertise an unpublished exact patch)
+if grep -Eq '"vextjs"[[:space:]]*:[[:space:]]*"\^[0-9]+\.[0-9]+\.[0-9]+"' README.md; then
+  echo "FAIL: README.md must not hardcode a package patch version"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK:   README.md uses a version-agnostic package entry"
+fi
 
 # ── summary ──────────────────────────────────────────────────
 

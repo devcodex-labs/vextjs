@@ -14,13 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- No unreleased changes.
+- No unreleased product changes; documentation and release-validation work is recorded under [1.0.1](./changelogs/v1.0.1.md).
 
 ## Version History
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [1.0.1] | 2026-08-10 | Patch | Docs/release validation: English product README, locale-specific AI indexes, `npx vextjs create` cold-start, identity/contract/compare URL fixes [view](./changelogs/v1.0.1.md) |
 | [1.0.0] | 2026-08-10 | Major | 首个稳定 v1：schema-dsl v3 / monsqlize 3.1 固定 GA 依赖、完整 route-native 前端运行时、SSR starter、文档与发布安全门禁；包含 Hono Node 流式响应桥生命周期修复 [查看](./changelogs/v1.0.0.md) |
 | [0.3.8] | 2026-05-31 | Patch | 发布前收口：补齐 adapter/body-limit/cluster 验证闭环，移除 npm 包 sourcemap 产物，并同步 vext-test 外部消费者验证 [查看](./changelogs/v0.3.8.md) |
 | [0.3.7] | 2026-05-21 | Patch | `vext dev` 补齐 preflight 诊断与 typegen 自动生成：阻断 TS 错误热重载、补全 reload 堆栈，并移除脚手架静态 services 类型声明 [查看](./changelogs/v0.3.7.md) |
@@ -63,35 +64,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/vextjs/vext/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/vextjs/vext/compare/v0.3.8...v1.0.0
-[0.3.8]: https://github.com/vextjs/vext/compare/v0.3.7...v0.3.8
-[0.3.7]: https://github.com/vextjs/vext/compare/v0.3.6...v0.3.7
-[0.3.6]: https://github.com/vextjs/vext/compare/v0.3.5...v0.3.6
-[0.3.5]: https://github.com/vextjs/vext/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/vextjs/vext/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/vextjs/vext/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/vextjs/vext/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/vextjs/vext/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/vextjs/vext/compare/v0.2.11...v0.3.0
-[0.2.11]: https://github.com/vextjs/vext/compare/v0.2.10...v0.2.11
-[0.2.10]: https://github.com/vextjs/vext/compare/v0.2.9...v0.2.10
-[0.2.9]: https://github.com/vextjs/vext/compare/v0.2.8...v0.2.9
-[0.2.8]: https://github.com/vextjs/vext/compare/v0.2.7...v0.2.8
-[0.2.7]: https://github.com/vextjs/vext/compare/v0.2.6...v0.2.7
-[0.2.5]: https://github.com/vextjs/vext/compare/v0.2.4...v0.2.5
-[0.2.4]: https://github.com/vextjs/vext/compare/v0.2.3...v0.2.4
-[0.2.3]: https://github.com/vextjs/vext/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/vextjs/vext/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/vextjs/vext/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/vextjs/vext/compare/v0.1.9...v0.2.0
-[0.1.9]: https://github.com/vextjs/vext/compare/v0.1.8...v0.1.9
-[0.1.8]: https://github.com/vextjs/vext/compare/v0.1.7...v0.1.8
-[0.1.7]: https://github.com/vextjs/vext/compare/v0.1.6...v0.1.7
-[0.1.6]: https://github.com/vextjs/vext/compare/v0.1.5...v0.1.6
-[0.1.5]: https://github.com/vextjs/vext/compare/v0.1.4...v0.1.5
-[0.1.4]: https://github.com/vextjs/vext/compare/v0.1.3...v0.1.4
-[0.1.3]: https://github.com/vextjs/vext/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/vextjs/vext/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/vextjs/vext/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/vextjs/vext/releases/tag/v0.1.0
+[Unreleased]: https://github.com/devcodex-labs/vextjs/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/devcodex-labs/vextjs/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/devcodex-labs/vextjs/compare/v0.3.8...v1.0.0
+[0.3.8]: https://github.com/devcodex-labs/vextjs/compare/v0.3.7...v0.3.8
+[0.3.7]: https://github.com/devcodex-labs/vextjs/compare/v0.3.6...v0.3.7
+[0.3.6]: https://github.com/devcodex-labs/vextjs/compare/v0.3.5...v0.3.6
+[0.3.5]: https://github.com/devcodex-labs/vextjs/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/devcodex-labs/vextjs/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/devcodex-labs/vextjs/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/devcodex-labs/vextjs/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/devcodex-labs/vextjs/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/devcodex-labs/vextjs/compare/v0.2.11...v0.3.0
+[0.2.11]: https://github.com/devcodex-labs/vextjs/compare/v0.2.10...v0.2.11
+[0.2.10]: https://github.com/devcodex-labs/vextjs/compare/v0.2.9...v0.2.10
+[0.2.9]: https://github.com/devcodex-labs/vextjs/compare/v0.2.8...v0.2.9
+[0.2.8]: https://github.com/devcodex-labs/vextjs/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/devcodex-labs/vextjs/compare/v0.2.6...v0.2.7
+[0.2.5]: https://github.com/devcodex-labs/vextjs/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/devcodex-labs/vextjs/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/devcodex-labs/vextjs/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/devcodex-labs/vextjs/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/devcodex-labs/vextjs/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/devcodex-labs/vextjs/compare/v0.1.9...v0.2.0
+[0.1.9]: https://github.com/devcodex-labs/vextjs/compare/v0.1.8...v0.1.9
+[0.1.8]: https://github.com/devcodex-labs/vextjs/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/devcodex-labs/vextjs/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/devcodex-labs/vextjs/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/devcodex-labs/vextjs/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/devcodex-labs/vextjs/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/devcodex-labs/vextjs/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/devcodex-labs/vextjs/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/devcodex-labs/vextjs/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/devcodex-labs/vextjs/releases/tag/v0.1.0

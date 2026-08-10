@@ -150,8 +150,8 @@ const navSource: NavItemSource[] = [
     ],
   },
   {
-    en: "v1.0.0",
-    zh: "v1.0.0",
+    en: "v1.0.1",
+    zh: "v1.0.1",
     items: [
       {
         en: "Changelog",

@@ -1,7 +1,7 @@
 {
   "name": "vextjs",
-  "version": "1.0.0",
-  "description": "vextjs is a high-performance full-stack Node.js framework with integrated API runtime, scaffolding, typed client generation, and esbuild-powered frontend delivery.",
+  "version": "1.0.1",
+  "description": "Full-stack Node.js framework for APIs and server-rendered pages with one route model, typed contracts, and built-in docs.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

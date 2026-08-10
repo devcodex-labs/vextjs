@@ -24,7 +24,7 @@ const packageMetadata = JSON.parse(
 
 const curatedLlmsSections = [
   {
-    title: "Start here",
+    titles: { en: "Start here", zh: "从这里开始" },
     routes: [
       "/guide/introduction",
       "/guide/quick-start",
@@ -32,7 +32,7 @@ const curatedLlmsSections = [
     ],
   },
   {
-    title: "Frontend runtime",
+    titles: { en: "Frontend runtime", zh: "前端运行时" },
     routes: [
       "/frontend/overview",
       "/frontend/rendering-modes",
@@ -42,7 +42,7 @@ const curatedLlmsSections = [
     ],
   },
   {
-    title: "Runtime and operations",
+    titles: { en: "Runtime and operations", zh: "运行时与运维" },
     routes: [
       "/guide/routing",
       "/guide/services",
@@ -52,15 +52,51 @@ const curatedLlmsSections = [
     ],
   },
   {
-    title: "Support and machine-readable documentation",
+    titles: {
+      en: "Support and machine-readable documentation",
+      zh: "支持与机器可读文档",
+    },
     routes: [
       "/resources/support-and-services",
       "/resources/documentation-data-and-ai",
-      "/zh/resources/support-and-services",
-      "/zh/resources/documentation-data-and-ai",
     ],
   },
 ];
+
+const llmsLocaleContent = {
+  en: {
+    title: "VextJS",
+    summary:
+      "High-performance Node.js full-stack runtime documentation. The current frontend model is route-owned SSR plus hydration, optional Streaming SSR, and an esbuild build pipeline; React Server Components, Server Functions, and PPR are documented non-goals for this release.",
+    scope:
+      "This is the concise English index. Use the complete English index for every public English page, or the documentation manifest for the authoritative bilingual inventory.",
+    fullTitle: "VextJS Complete English Documentation Index",
+    fullSummary:
+      "Generated from every public English documentation source. Each canonical URL appears exactly once with its source-derived summary.",
+    fullSectionTitle: "English documentation",
+    machineAssetsTitle: "Machine-readable assets",
+    optionalSectionTitle: "Other language",
+    optionalLabel: "Simplified Chinese index",
+    optionalDescription:
+      "Use the locale-specific Chinese index when the requested answer should be grounded in Simplified Chinese documentation.",
+  },
+  zh: {
+    title: "VextJS 简体中文文档",
+    summary:
+      "VextJS 的简体中文机器可读文档入口。当前前端模型是路由拥有的 SSR 与 hydration、可选 Streaming SSR，以及 esbuild 构建链；本版本明确不包含 React Server Components、Server Functions 和 PPR。",
+    scope:
+      "这是精简的简体中文索引。全部中文页面请使用完整中文索引；权威双语清单请使用文档 manifest。",
+    fullTitle: "VextJS 完整简体中文文档索引",
+    fullSummary:
+      "由全部公开简体中文文档源生成；每个 canonical URL 只出现一次，并带有从源文档提取的摘要。",
+    fullSectionTitle: "简体中文文档",
+    machineAssetsTitle: "机器可读资产",
+    optionalSectionTitle: "可选语言",
+    optionalLabel: "英文索引",
+    optionalDescription:
+      "需要以英文文档为依据回答时，请使用英文 locale 的索引。",
+  },
+};
 
 function listFiles(directory, extensions) {
   return readdirSync(directory, { withFileTypes: true })
@@ -304,57 +340,108 @@ function requirePublicArtifact(name) {
   }
 }
 
-function buildLlms(entriesByRoute, entries) {
+function routeForLlmsLocale(route, locale) {
+  const normalized = normalizeRoute(route);
+  if (locale === "en") return normalized;
+  if (normalized === "/") return "/zh/";
+  return normalizeRoute(`/zh${normalized}`);
+}
+
+function llmsArtifactUrl(locale, name) {
+  const localePrefix = locale === "zh" ? "/zh" : "";
+  return `${docsSiteUrl}${localePrefix}/${name}`;
+}
+
+function assertLlmsLocalePurity(locale, name, content) {
+  if (content.includes("\uFFFD")) {
+    throw new Error(`${name} contains invalid UTF-8 replacement characters.`);
+  }
+  const containsHan = /[\u3400-\u9fff]/u.test(content);
+  if (locale === "en" && containsHan) {
+    throw new Error(`${name} must not contain Simplified Chinese content.`);
+  }
+  if (locale === "zh" && !containsHan) {
+    throw new Error(`${name} must contain Simplified Chinese content.`);
+  }
+}
+
+function buildLlmsForLocale(locale, entriesByRoute, entries) {
+  const content = llmsLocaleContent[locale];
+  const localeEntries = entries.filter((entry) => entry.locale === locale);
   const lines = [
-    "# VextJS",
+    `# ${content.title}`,
     "",
-    "> High-performance Node.js full-stack runtime documentation. The current frontend model is route-owned SSR plus hydration, optional Streaming SSR, and an esbuild build pipeline; React Server Components, Server Functions, and PPR are documented non-goals for this release.",
+    `> ${content.summary}`,
+    "",
+    content.scope,
     "",
   ];
   for (const section of curatedLlmsSections) {
-    lines.push(`## ${section.title}`, "");
+    lines.push(`## ${section.titles[locale]}`, "");
     for (const route of section.routes) {
-      const entry = entriesByRoute.get(normalizeRoute(route));
-      if (!entry)
+      const localizedRoute = routeForLlmsLocale(route, locale);
+      const entry = entriesByRoute.get(localizedRoute);
+      if (!entry) {
         throw new Error(
-          `llms.txt route is missing from the manifest: ${route}`,
+          `${locale}/llms.txt route is missing from the manifest: ${localizedRoute}`,
         );
+      }
       lines.push(`- [${entry.title}](${entry.canonicalUrl}): ${entry.summary}`);
     }
     lines.push("");
   }
+  lines.push(`## ${content.machineAssetsTitle}`, "");
+  if (locale === "en") {
+    lines.push(
+      `- [Documentation manifest](${docsSiteUrl}/docs-manifest.json): authoritative bilingual page metadata, locales, public applicability, relationships, and source hashes.`,
+      `- [Capability boundary](${docsSiteUrl}/capabilities.json): supported frontend/runtime capabilities and explicit exclusions.`,
+      `- [AI reference questions](${docsSiteUrl}/ai-gold-questions.json): citation-required evaluation prompts.`,
+      `- [Event contract](${docsSiteUrl}/docs-events.schema.json): optional privacy-preserving documentation event schema; no collector is enabled by default.`,
+      `- [Measurement definition](${docsSiteUrl}/docs-dashboard-definition.json): metric definitions and collection boundary.`,
+      `- [Complete English documentation index](${llmsArtifactUrl(locale, "llms-full.txt")}): every public English page URL and summary, generated from the manifest.`,
+    );
+  } else {
+    lines.push(
+      `- [文档 manifest](${docsSiteUrl}/docs-manifest.json): 权威双语页面元数据，包含 locale、适用面、关联页面和 source hash。`,
+      `- [能力边界](${docsSiteUrl}/capabilities.json): 已支持的 frontend/runtime 能力与明确排除项。`,
+      `- [AI 参考问题](${docsSiteUrl}/ai-gold-questions.json): 要求引用来源的评测问题。`,
+      `- [事件合同](${docsSiteUrl}/docs-events.schema.json): 可选的隐私保护文档事件 schema；默认不启用 collector。`,
+      `- [度量定义](${docsSiteUrl}/docs-dashboard-definition.json): 指标定义与采集边界。`,
+      `- [完整简体中文文档索引](${llmsArtifactUrl(locale, "llms-full.txt")}): 由 manifest 生成的全部公开中文页面 URL 与摘要。`,
+    );
+  }
   lines.push(
-    "## Machine-readable assets",
     "",
-    `- [Documentation manifest](${docsSiteUrl}/docs-manifest.json): stable page metadata, locales, public applicability, relationships, and source hashes.`,
-    `- [Capability boundary](${docsSiteUrl}/capabilities.json): supported frontend/runtime capabilities and explicit exclusions.`,
-    `- [AI reference questions](${docsSiteUrl}/ai-gold-questions.json): citation-required evaluation prompts.`,
-    `- [Event contract](${docsSiteUrl}/docs-events.schema.json): optional privacy-preserving documentation event schema; no collector is enabled by default.`,
-    `- [Measurement definition](${docsSiteUrl}/docs-dashboard-definition.json): metric definitions and collection boundary.`,
-    `- [Full documentation index](${docsSiteUrl}/llms-full.txt): all generated page references.`,
+    `## ${content.optionalSectionTitle}`,
+    "",
+    `- [${content.optionalLabel}](${llmsArtifactUrl(locale === "en" ? "zh" : "en", "llms.txt")}): ${content.optionalDescription}`,
     "",
   );
 
   const fullLines = [
-    "# VextJS Documentation Index",
+    `# ${content.fullTitle}`,
     "",
-    "> Generated from the public English and Simplified Chinese documentation sources. Prefer the cited page and its canonical URL over assumptions about unsupported features.",
+    `> ${content.fullSummary}`,
+    "",
+    `## ${content.fullSectionTitle}`,
     "",
   ];
-  for (const locale of ["en", "zh"]) {
-    fullLines.push(`## ${locale === "en" ? "English" : "简体中文"}`, "");
-    for (const entry of entries.filter((item) => item.locale === locale)) {
-      fullLines.push(
-        `- [${entry.title}](${entry.canonicalUrl}): ${entry.summary}`,
-      );
-    }
-    fullLines.push("");
+  for (const entry of localeEntries) {
+    fullLines.push(
+      `- [${entry.title}](${entry.canonicalUrl}): ${entry.summary}`,
+    );
   }
+  fullLines.push("");
 
-  return {
-    llms: `${lines.join("\n").trimEnd()}\n`,
-    llmsFull: `${fullLines.join("\n").trimEnd()}\n`,
-  };
+  const llms = `${lines.join("\n").trimEnd()}\n`;
+  const llmsFull = `${fullLines.join("\n").trimEnd()}\n`;
+  assertLlmsLocalePurity(locale, llmsArtifactUrl(locale, "llms.txt"), llms);
+  assertLlmsLocalePurity(
+    locale,
+    llmsArtifactUrl(locale, "llms-full.txt"),
+    llmsFull,
+  );
+  return { llms, llmsFull };
 }
 
 function main() {
@@ -409,12 +496,19 @@ function main() {
     path.join(distRoot, "docs-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
-  const { llms, llmsFull } = buildLlms(entriesByRoute, manifestEntries);
-  writeIfChanged(path.join(distRoot, "llms.txt"), llms);
-  writeIfChanged(path.join(distRoot, "llms-full.txt"), llmsFull);
+  for (const locale of ["en", "zh"]) {
+    const { llms, llmsFull } = buildLlmsForLocale(
+      locale,
+      entriesByRoute,
+      manifestEntries,
+    );
+    const localeRoot = locale === "zh" ? path.join(distRoot, "zh") : distRoot;
+    writeIfChanged(path.join(localeRoot, "llms.txt"), llms);
+    writeIfChanged(path.join(localeRoot, "llms-full.txt"), llmsFull);
+  }
 
   console.log(
-    `Generated canonical metadata, docs-manifest.json, llms.txt, and llms-full.txt for ${manifestEntries.length} documentation pages.`,
+    `Generated canonical metadata, docs-manifest.json, and locale-specific llms indexes for ${manifestEntries.length} documentation pages.`,
   );
 }
 

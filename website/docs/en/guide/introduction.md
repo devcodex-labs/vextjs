@@ -2,7 +2,7 @@
 
 ## What is VextJS?
 
-VextJS is a modern Node.js web framework designed for building high-performance RESTful APIs. It provides enterprise-level features such as **Adapter architecture** (the underlying HTTP framework can be replaced), **plug-in system**, **conventional routing**, **automatic service injection**, **declarative parameter verification**, **automatic generation of OpenAPI documents**, etc., allowing you to focus on business logic.
+VextJS is a full-stack Node.js framework for applications that need APIs, server-rendered React pages, or both. `src/routes/**` remains the URL authority while services, validation, security, cache, OpenAPI, and typed clients share the same request contracts. You can begin with the default full-stack starter or keep an API-only application without adopting a second routing model.
 
 ```typescript
 import { defineRoutes } from "vextjs";
@@ -20,19 +20,21 @@ export default defineRoutes((app) => {
 });
 ```
 
+The same route file can call `res.render()` to produce an SSR page from the same services and lifecycle. See [Frontend getting started](/frontend/getting-started) for that path and [Frontend boundaries](/frontend/boundaries-and-roadmap) for the intentional exclusions.
+
 ## Core Features
 
 ### 🔌 Adapter architecture
 
 VextJS's underlying HTTP handling layer is replaceable. Built-in 5 kinds of Adapters:
 
-| Adapter | Underlying framework | Features | Applicable scenarios |
-| ------------------ | ---------------------------------- | ---------------------------------- | ------------------ |
-| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance |
-| **Hono** | Hono | Web Standards API | Full Stack / Edge Runtime |
-| **Fastify** | Fastify | Rich ecology, serialization optimization | Large-scale projects |
-| **Express** | Express | The largest middleware ecosystem | Migration project |
-| **Koa** | Koa | Lightweight and elegant | Small and medium-sized projects |
+| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            |
+| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- |
+| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   |
+| **Hono**             | Hono + `@hono/node-server`         | Web Standards API on Node.js                                   | Node.js applications            |
+| **Fastify**          | Fastify                            | Rich ecology, serialization optimization                       | Large-scale projects            |
+| **Express**          | Express                            | The largest middleware ecosystem                               | Migration project               |
+| **Koa**              | Koa                                | Lightweight and elegant                                        | Small and medium-sized projects |
 
 Switching the Adapter only requires modifying one line of configuration, with **zero changes to the business code**:
 
@@ -52,12 +54,12 @@ export default {
 
 Historical benchmark snapshot (JSON response scenario, median of 5 rounds):
 
-| Frame | Raw RPS | Vext RPS | Frame Overhead |
-| ------- | ------: | -------: | -------: |
-| Native | 44,932 | 36,819 | 18.1% |
-| Fastify | 45,619 | 29,203 | 36.0% |
-| Hono | 20,703 | 15,684 | 24.2% |
-| Express | 29,868 | 30,974 | -3.7% |
+| Frame   | Raw RPS | Vext RPS | Frame Overhead |
+| ------- | ------: | -------: | -------------: |
+| Native  |  44,932 |   36,819 |          18.1% |
+| Fastify |  45,619 |   29,203 |          36.0% |
+| Hono    |  20,703 |   15,684 |          24.2% |
+| Express |  29,868 |   30,974 |          -3.7% |
 
 > The overhead of Vext includes: body parser, response wrapper, request/response abstraction, AsyncLocalStorage context, middleware chain executor, etc. **complete functions**.
 
@@ -138,7 +140,7 @@ VextJS uses ESM + conventional directories as the module system: `src/config/`, 
 - **Internationalization (i18n)** — Language packs are loaded automatically, error messages are in multiple languages
 - **Built-in rate limit** — based on `flex-rate-limit`, supports IP / user dimension
 - **Request Tracking** — AsyncLocalStorage runs through route → service and automatically injects requestId
-- **MonSQLize plugin** — Built-in database plugin, conditional loading with zero overhead
+- **MonSQLize plugin** — Built-in connection/model lifecycle, loaded only when `config.database` is present
 
 ## Design concept
 
@@ -166,15 +168,15 @@ Through the Adapter architecture, the core of the framework is completely decoup
 
 ## Compare with other frameworks
 
-| Features | VextJS | Fastify | Express | NestJS |
-| ------------ | -------------------- | -------------- | ----------- | ------------------ |
-| The bottom layer is replaceable | ✅ 5 types of Adapters | ❌ | ❌ | ✅ Express/Fastify |
-| Conventional routing | ✅ File-level automatic scanning | ❌ Manual registration | ❌ Manual registration | ✅ Decorator |
-| Parameter validation | ✅ Declarative schema-dsl | ✅ JSON Schema | Requires middleware | ✅ class-validator |
-| OpenAPI generation | ✅ Automatic | Plug-in required | Middleware required | ✅ Decorator |
-| Hot Reload | ✅ Soft + Cold | ❌ | ❌ | ❌ |
-| Cluster Management | ✅ Built-in | ❌ | ❌ | ❌ |
-| Volume | Lightweight | Lightweight | Lightweight | Weight |
+| Features                        | VextJS                           | Fastify                | Express                | NestJS             |
+| ------------------------------- | -------------------------------- | ---------------------- | ---------------------- | ------------------ |
+| The bottom layer is replaceable | ✅ 5 types of Adapters           | ❌                     | ❌                     | ✅ Express/Fastify |
+| Conventional routing            | ✅ File-level automatic scanning | ❌ Manual registration | ❌ Manual registration | ✅ Decorator       |
+| Parameter validation            | ✅ Declarative schema-dsl        | ✅ JSON Schema         | Requires middleware    | ✅ class-validator |
+| OpenAPI generation              | ✅ Automatic                     | Plug-in required       | Middleware required    | ✅ Decorator       |
+| Hot Reload                      | ✅ Soft + Cold                   | ❌                     | ❌                     | ❌                 |
+| Cluster Management              | ✅ Built-in                      | ❌                     | ❌                     | ❌                 |
+| Volume                          | Lightweight                      | Lightweight            | Lightweight            | Weight             |
 
 ## Environmental requirements
 
@@ -183,4 +185,4 @@ Through the Adapter architecture, the core of the framework is completely decoup
 
 ## Next step
 
-Are you ready? Go to Quick Start(/guide/quick-start) to create your first VextJS project.
+Ready to start? [Create your first VextJS project](/guide/quick-start).

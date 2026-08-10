@@ -16,13 +16,32 @@ checks easier without asking readers to trust an opaque crawler or a tracker.
 | [`docs-manifest.json`](https://devcodex-labs.github.io/vextjs/docs-manifest.json)                         | Generated page metadata: canonical URL, locale, summary, audience, applicability, stability, related pages, and source hash. |
 | [`capabilities.json`](https://devcodex-labs.github.io/vextjs/capabilities.json)                           | Supported frontend/runtime capabilities and explicit non-goals. Cite it together with the linked detail page.                |
 | [`ai-gold-questions.json`](https://devcodex-labs.github.io/vextjs/ai-gold-questions.json)                 | Citation-required questions that prevent answers from inventing unsupported capabilities.                                    |
-| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | Curated entry points for language models and documentation tools. It is an index, not a crawler-control file.                |
-| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | Generated index of all English and Simplified Chinese documentation pages.                                                   |
+| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | Concise English entry points for language models and documentation tools. It is an index, not a crawler-control file.        |
+| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | Complete English URL-and-summary index: every public English documentation page appears exactly once.                        |
+| [`zh/llms.txt`](https://devcodex-labs.github.io/vextjs/zh/llms.txt)                                       | Concise Simplified Chinese entry points, isolated from the default English index.                                            |
+| [`zh/llms-full.txt`](https://devcodex-labs.github.io/vextjs/zh/llms-full.txt)                             | Complete Simplified Chinese URL-and-summary index: every public Chinese documentation page appears exactly once.             |
 | [`docs-events.schema.json`](https://devcodex-labs.github.io/vextjs/docs-events.schema.json)               | Optional privacy-preserving event contract. No collector is enabled by VextJS.                                               |
 | [`docs-dashboard-definition.json`](https://devcodex-labs.github.io/vextjs/docs-dashboard-definition.json) | Metric definitions and collection boundary for a site owner who later chooses a compliant collector.                         |
 
 The machine artifacts are generated after the documentation build. They contain
 no build timestamp, so identical source creates identical metadata and hashes.
+
+## Language and completeness contract
+
+All four `llms*.txt` files are deterministic UTF-8 Markdown served as plain
+text. The root files contain English only; files under `/zh/` contain Simplified
+Chinese. `llms.txt` is intentionally curated so a model can find the main
+reading paths without loading the whole site. `llms-full.txt` is the exhaustive
+index for its locale, with one canonical URL and source-derived summary for
+every page. `docs-manifest.json` remains the authoritative bilingual inventory
+and records each entry's locale and source hash; the build verifies exact
+per-locale coverage.
+
+The “full” files are complete indexes, not copies of every page body. A
+web-capable assistant follows the canonical URLs to the rendered documentation;
+an offline tool can use the manifest and indexes to choose the exact pages it
+needs. This keeps the machine entry small enough to parse while preserving
+1:1, build-verified coverage.
 
 ## How an AI answer should use the docs
 

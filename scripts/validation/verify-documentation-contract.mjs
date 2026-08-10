@@ -28,6 +28,35 @@ function readJson(relativePath) {
   }
 }
 
+function markdownLinkUrls(content) {
+  return [...content.matchAll(/\[[^\]]+\]\((https:\/\/[^)\s]+)\)/g)].map(
+    (match) => match[1],
+  );
+}
+
+function containsHan(content) {
+  return /[\u3400-\u9fff]/u.test(content);
+}
+
+function verifyLlmsShape(name, content) {
+  const lines = content.split(/\r?\n/);
+  if (!/^# [^#\s].+/.test(lines[0] ?? "")) {
+    fail(`${name} must start with exactly one H1 project title`);
+  }
+  if (!lines.some((line) => line.startsWith("> "))) {
+    fail(`${name} must contain a project summary blockquote`);
+  }
+  if (!lines.some((line) => line.startsWith("## "))) {
+    fail(`${name} must contain at least one H2 file-list section`);
+  }
+  if (!lines.some((line) => /^- \[[^\]]+\]\(https:\/\//.test(line))) {
+    fail(`${name} must contain absolute Markdown file-list links`);
+  }
+  if (content.includes("\uFFFD")) {
+    fail(`${name} contains an invalid UTF-8 replacement character`);
+  }
+}
+
 function listFiles(directory, extension) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path.join(directory, entry.name);
@@ -162,7 +191,7 @@ function verifyWebsiteNavigationContract() {
     }
   }
 
-  const versionMenu = sectionBetween(navSource, 'en: "v1.0.0"', "  },\n];");
+  const versionMenu = sectionBetween(navSource, 'en: "v1.0.1"', "  },\n];");
   if (versionMenu.includes('en: "Contributing"')) {
     fail("website version menu must not duplicate Contributing");
   }
@@ -206,8 +235,11 @@ function verifyDocumentationGrowthContract() {
       "docs-manifest.json",
       "capabilities.json",
       "ai-gold-questions.json",
-      "llms.txt",
-      "llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms-full.txt",
+      "Language and completeness contract",
       "docs-events.schema.json",
       "docs-dashboard-definition.json",
       "tracker",
@@ -217,8 +249,11 @@ function verifyDocumentationGrowthContract() {
       "docs-manifest.json",
       "capabilities.json",
       "ai-gold-questions.json",
-      "llms.txt",
-      "llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms-full.txt",
+      "语言与完整性合同",
       "docs-events.schema.json",
       "docs-dashboard-definition.json",
       "tracker",
@@ -699,16 +734,6 @@ function verifyPublicReferenceContracts() {
 }
 
 function verifyFrontendStreamingDocumentationContract() {
-  requireTokens("README.md", [
-    'frontend.render.streaming: "auto"',
-    'default `"buffered"`',
-    "Suspense fallback",
-    "Native, Hono, Fastify, Express, and Koa",
-    "React Server Components",
-    "Server Functions",
-    "partial prerendering",
-  ]);
-
   const renderingTokens = [
     'frontend.render.streaming: "buffered"',
     'frontend.render.streaming: "auto"',
@@ -776,13 +801,6 @@ function verifyFrontendNavigationDocumentationContract() {
     "`useFetcher`",
     "`useRouteData`",
   ];
-  requireTokens("README.md", [
-    ...apiTokens,
-    "application/vnd.vext.page+json;v=1",
-    "same handler",
-    "one document navigation",
-    "second loader/action route DSL",
-  ]);
   for (const locale of ["en", "zh"]) {
     requireTokens(`website/docs/${locale}/frontend/data-flow.md`, [
       ...apiTokens,
@@ -811,16 +829,6 @@ function verifyFrontendNavigationDocumentationContract() {
 }
 
 function verifyFrontendFreshnessMediaDocumentationContract() {
-  requireTokens("README.md", [
-    `RouteOptions.frontend`,
-    `mode: "dynamic" | "static" | "revalidate"`,
-    `staticParams`,
-    `config.frontend.media`,
-    `Image`,
-    `defineFont`,
-    `defineImageLoader`,
-  ]);
-
   for (const locale of ["en", "zh"]) {
     requireTokens("website/docs/" + locale + "/frontend/rendering-modes.md", [
       `mode: "static"`,
@@ -961,6 +969,103 @@ function verifyExampleAndMetadata() {
     "https://github.com/devcodex-labs/vextjs",
     "https://github.com/devcodex-labs/vextjs/issues",
   ]);
+
+  verifyReadmePublicEntryContract();
+}
+
+function verifyReadmePublicEntryContract() {
+  requireTokens("README.md", [
+    "## CLI",
+    "## Get started",
+    "## Why VextJS",
+    "## One route model",
+    "## Simplified project model",
+    "## Good fit",
+    "## Boundaries",
+    "npx vextjs create",
+    "res.render",
+    "Apache-2.0",
+    ">=20.19.0",
+    "https://devcodex-labs.github.io/vextjs/",
+    "https://github.com/devcodex-labs/vextjs",
+    "https://devcodex-labs.github.io/vextjs/llms.txt",
+    "https://devcodex-labs.github.io/vextjs/capabilities.json",
+    "For AI assistants",
+    "Ship APIs and server-rendered React pages from one Node.js application",
+    "full-stack Node.js application framework",
+    "one route model and request lifecycle",
+    "Route contracts drive validation",
+    "config.database",
+    "Three-tier hot reload",
+    "React Fast Refresh",
+    "Production lifecycle",
+    "not an Edge runtime adapter",
+  ]);
+  forbidTokens("README.md", [
+    "vextjs.github.io",
+    "github.com/vextjs/vext",
+    "License: MIT",
+    "Node.js-%3E%3D18.0.0",
+    "opensource.org/licenses/MIT",
+    "on one request path",
+    "Validation can drive OpenAPI",
+    "Same-route navigation and page envelopes",
+  ]);
+
+  requireTokens("website/docs/en/index.mdx", [
+    "full-stack Node.js application framework",
+    "under one route model and request lifecycle",
+    "Route contracts feed validation, docs, and client types",
+    "not an",
+    "Edge runtime adapter",
+  ]);
+  forbidTokens("website/docs/en/index.mdx", [
+    "stay on one request path",
+    "Validation feeds docs and typed clients",
+    "edge scenarios",
+  ]);
+  requireTokens("website/docs/zh/index.mdx", [
+    "Node.js 全栈应用框架",
+    "一套路由模型与请求生命周期",
+    "路由契约驱动校验、文档和客户端类型",
+    "不是 Edge runtime adapter",
+  ]);
+  forbidTokens("website/docs/zh/index.mdx", [
+    "共用一条请求链",
+    "校验驱动文档和类型客户端",
+    "适合边缘",
+  ]);
+  requireTokens("website/docs/en/guide/introduction.md", [
+    "Hono + `@hono/node-server`",
+    "Node.js applications",
+    "config.database",
+  ]);
+  forbidTokens("website/docs/en/guide/introduction.md", [
+    "Full Stack / Edge Runtime",
+    "conditional loading with zero overhead",
+  ]);
+  requireTokens("website/docs/zh/guide/introduction.md", [
+    "Hono + `@hono/node-server`",
+    "Node.js 应用",
+    "config.database",
+  ]);
+  forbidTokens("website/docs/zh/guide/introduction.md", [
+    "全栈 / 边缘运行时",
+    "条件加载零开销",
+  ]);
+  // Cold-start must not put bare `npx vext create` in copy-paste fences.
+  // Local binary usage (`npx vext dev`) after install remains valid.
+  const readme = read("README.md");
+  if (/"vextjs"\s*:\s*"\^\d+\.\d+\.\d+"/.test(readme)) {
+    fail(
+      "README.md must not hardcode an unpublished package version; keep versioned manual installation in bilingual Quick Start docs",
+    );
+  }
+  if (/```[\s\S]*?\bnpx vext create\b[\s\S]*?```/.test(readme)) {
+    fail(
+      'README.md must not put "npx vext create" inside a copy-paste code fence (use "npx vextjs create")',
+    );
+  }
 }
 
 function decodeHtml(value) {
@@ -1096,6 +1201,8 @@ function verifyRenderedMachineArtifacts() {
     "docs-dashboard-definition.json",
     "llms.txt",
     "llms-full.txt",
+    "zh/llms.txt",
+    "zh/llms-full.txt",
     "sitemap.xml",
   ]) {
     if (!existsSync(path.join(renderedRoot, name))) {
@@ -1108,14 +1215,19 @@ function verifyRenderedMachineArtifacts() {
   if (manifest.schemaVersion !== "vext.docs-manifest/v1") {
     fail("website/dist/docs-manifest.json must declare vext.docs-manifest/v1");
   }
-  if (manifest.frameworkVersion !== "1.0.0") {
+  if (manifest.frameworkVersion !== "1.0.1") {
     fail(
-      "website/dist/docs-manifest.json must declare framework version 1.0.0",
+      "website/dist/docs-manifest.json must declare framework version 1.0.1",
     );
   }
   if (!Array.isArray(manifest.entries)) {
     fail("website/dist/docs-manifest.json must contain entries");
     return;
+  }
+  if (manifest.defaultLocale !== "en") {
+    fail(
+      "website/dist/docs-manifest.json must declare English as defaultLocale",
+    );
   }
 
   const sourceFiles = [
@@ -1138,6 +1250,25 @@ function verifyRenderedMachineArtifacts() {
       continue;
     }
     entriesByRoute.set(routeKey, entry);
+    const expectedLocale =
+      routeKey === "/zh" || routeKey.startsWith("/zh/") ? "zh" : "en";
+    if (entry.locale !== expectedLocale) {
+      fail(`docs manifest has invalid locale for route: ${entry.route}`);
+    }
+    if (!entry.title?.trim() || !entry.summary?.trim()) {
+      fail(`docs manifest has an empty title or summary: ${entry.route}`);
+    }
+    const localizedText = `${entry.title ?? ""} ${entry.summary ?? ""}`;
+    if (entry.locale === "en" && containsHan(localizedText)) {
+      fail(
+        `English docs manifest metadata contains Chinese text: ${entry.route}`,
+      );
+    }
+    if (entry.locale === "zh" && !containsHan(localizedText)) {
+      fail(
+        `Chinese docs manifest metadata has no Chinese text: ${entry.route}`,
+      );
+    }
     const expectedSource = documentationSourceForRoute(entry.route ?? "");
     if (!expectedSource || entry.sourcePath !== expectedSource) {
       fail(
@@ -1196,25 +1327,116 @@ function verifyRenderedMachineArtifacts() {
     }
   }
 
-  const llms = readFileSync(path.join(renderedRoot, "llms.txt"), "utf8");
-  const llmsFull = readFileSync(
-    path.join(renderedRoot, "llms-full.txt"),
-    "utf8",
+  const entriesByCanonicalUrl = new Map(
+    manifest.entries.map((entry) => [entry.canonicalUrl, entry]),
   );
-  for (const token of [
-    "# VextJS",
-    "docs-manifest.json",
-    "capabilities.json",
-    "ai-gold-questions.json",
-    "docs-events.schema.json",
-    "llms-full.txt",
-  ]) {
-    if (!llms.includes(token))
-      fail(`llms.txt is missing required token: ${token}`);
-  }
-  for (const entry of manifest.entries) {
-    if (!llmsFull.includes(entry.canonicalUrl)) {
-      fail(`llms-full.txt is missing manifest URL: ${entry.canonicalUrl}`);
+  const llmsArtifacts = [
+    {
+      locale: "en",
+      indexName: "llms.txt",
+      fullName: "llms-full.txt",
+      fullUrl: "https://devcodex-labs.github.io/vextjs/llms-full.txt",
+      alternateUrl: "https://devcodex-labs.github.io/vextjs/zh/llms.txt",
+      optionalHeading: "## Other language",
+      forbiddenOptionalHeading: "## Optional",
+    },
+    {
+      locale: "zh",
+      indexName: "zh/llms.txt",
+      fullName: "zh/llms-full.txt",
+      fullUrl: "https://devcodex-labs.github.io/vextjs/zh/llms-full.txt",
+      alternateUrl: "https://devcodex-labs.github.io/vextjs/llms.txt",
+      optionalHeading: "## 可选语言",
+      forbiddenOptionalHeading: "## Optional",
+    },
+  ];
+
+  for (const artifact of llmsArtifacts) {
+    const llms = readFileSync(
+      path.join(renderedRoot, artifact.indexName),
+      "utf8",
+    );
+    const llmsFull = readFileSync(
+      path.join(renderedRoot, artifact.fullName),
+      "utf8",
+    );
+    verifyLlmsShape(`website/dist/${artifact.indexName}`, llms);
+    verifyLlmsShape(`website/dist/${artifact.fullName}`, llmsFull);
+    if (!llms.includes(artifact.optionalHeading)) {
+      fail(
+        `${artifact.indexName} is missing locale-specific heading: ${artifact.optionalHeading}`,
+      );
+    }
+    if (llms.includes(artifact.forbiddenOptionalHeading)) {
+      fail(
+        `${artifact.indexName} contains a non-localized optional-language heading`,
+      );
+    }
+
+    if (artifact.locale === "en") {
+      if (containsHan(llms) || containsHan(llmsFull)) {
+        fail("root llms indexes must contain English content only");
+      }
+    } else if (!containsHan(llms) || !containsHan(llmsFull)) {
+      fail("/zh llms indexes must contain Simplified Chinese content");
+    }
+
+    for (const token of [
+      "docs-manifest.json",
+      "capabilities.json",
+      "ai-gold-questions.json",
+      "docs-events.schema.json",
+      artifact.fullUrl,
+      artifact.alternateUrl,
+    ]) {
+      if (!llms.includes(token)) {
+        fail(`${artifact.indexName} is missing required token: ${token}`);
+      }
+    }
+
+    const curatedPageUrls = markdownLinkUrls(llms).filter((url) =>
+      entriesByCanonicalUrl.has(url),
+    );
+    if (curatedPageUrls.length !== 15) {
+      fail(
+        `${artifact.indexName} must contain exactly 15 curated documentation links; found ${curatedPageUrls.length}`,
+      );
+    }
+    if (new Set(curatedPageUrls).size !== curatedPageUrls.length) {
+      fail(`${artifact.indexName} contains duplicate documentation links`);
+    }
+    for (const url of curatedPageUrls) {
+      if (entriesByCanonicalUrl.get(url)?.locale !== artifact.locale) {
+        fail(`${artifact.indexName} contains a cross-locale page link: ${url}`);
+      }
+    }
+
+    const fullPageUrls = markdownLinkUrls(llmsFull).filter((url) =>
+      entriesByCanonicalUrl.has(url),
+    );
+    const expectedUrls = manifest.entries
+      .filter((entry) => entry.locale === artifact.locale)
+      .map((entry) => entry.canonicalUrl);
+    if (fullPageUrls.length !== expectedUrls.length) {
+      fail(
+        `${artifact.fullName} has ${fullPageUrls.length} page links; expected ${expectedUrls.length}`,
+      );
+    }
+    if (new Set(fullPageUrls).size !== fullPageUrls.length) {
+      fail(`${artifact.fullName} contains duplicate documentation links`);
+    }
+    const actualUrls = new Set(fullPageUrls);
+    for (const expectedUrl of expectedUrls) {
+      if (!actualUrls.has(expectedUrl)) {
+        fail(`${artifact.fullName} is missing manifest URL: ${expectedUrl}`);
+      }
+    }
+    for (const actualUrl of fullPageUrls) {
+      if (entriesByCanonicalUrl.get(actualUrl)?.locale !== artifact.locale) {
+        fail(
+          `${artifact.fullName} contains a cross-locale page link: ${actualUrl}`,
+        );
+      }
     }
   }
 }

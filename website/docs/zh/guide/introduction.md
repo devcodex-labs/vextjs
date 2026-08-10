@@ -2,7 +2,7 @@
 
 ## VextJS 是什么？
 
-VextJS 是一个现代化的 Node.js Web 框架，专为构建高性能 RESTful API 而设计。它提供 **Adapter 架构**（底层 HTTP 框架可替换）、**插件系统**、**约定式路由**、**服务自动注入**、**声明式参数校验**、**OpenAPI 文档自动生成** 等企业级特性，让你专注于业务逻辑。
+VextJS 是一个面向 API、服务端渲染 React 页面或两者并存场景的 Node.js 全栈框架。`src/routes/**` 始终拥有 URL，服务、校验、安全、缓存、OpenAPI 与类型客户端共用同一套请求契约。你可以从默认全栈脚手架起步，也可以保持 API-only，而不必引入第二套路由模型。
 
 ```typescript
 import { defineRoutes } from "vextjs";
@@ -20,19 +20,21 @@ export default defineRoutes((app) => {
 });
 ```
 
+同一个路由文件也可以调用 `res.render()`，让 SSR 页面复用相同服务与请求生命周期。完整路径见[前端快速开始](/zh/frontend/getting-started)，有意排除的能力见[前端边界与路线图](/zh/frontend/boundaries-and-roadmap)。
+
 ## 核心特性
 
 ### 🔌 Adapter 架构
 
 VextJS 的底层 HTTP 处理层是可替换的。内置 5 种 Adapter：
 
-| Adapter            | 底层框架                           | 特点                           | 适用场景          |
-| ------------------ | ---------------------------------- | ------------------------------ | ----------------- |
-| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能      |
-| **Hono**           | Hono                               | Web Standards API              | 全栈 / 边缘运行时 |
-| **Fastify**        | Fastify                            | 生态丰富，序列化优化           | 大型项目          |
-| **Express**        | Express                            | 最大中间件生态                 | 迁移项目          |
-| **Koa**            | Koa                                | 轻量优雅                       | 中小型项目        |
+| Adapter            | 底层框架                           | 特点                           | 适用场景     |
+| ------------------ | ---------------------------------- | ------------------------------ | ------------ |
+| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能 |
+| **Hono**           | Hono + `@hono/node-server`         | Node.js 上的 Web Standards API | Node.js 应用 |
+| **Fastify**        | Fastify                            | 生态丰富，序列化优化           | 大型项目     |
+| **Express**        | Express                            | 最大中间件生态                 | 迁移项目     |
+| **Koa**            | Koa                                | 轻量优雅                       | 中小型项目   |
 
 切换 Adapter 仅需修改一行配置，**业务代码零改动**：
 
@@ -140,7 +142,7 @@ VextJS 当前不提供 `@Controller` / `@Get` / `@Inject` / `@Service` 等装饰
 - **国际化 (i18n)** — 语言包自动加载，错误消息多语言
 - **内置限流** — 基于 `flex-rate-limit`，支持 IP / 用户维度
 - **请求追踪** — AsyncLocalStorage 贯穿 route → service，自动注入 requestId
-- **MonSQLize 插件** — 内置数据库插件，条件加载零开销
+- **MonSQLize 插件** — 内置连接与模型生命周期，仅在存在 `config.database` 时加载
 
 ## 设计理念
 
@@ -185,4 +187,4 @@ VextJS 当前不提供 `@Controller` / `@Get` / `@Inject` / `@Service` 等装饰
 
 ## 下一步
 
-准备好了吗？前往 [快速开始](/guide/quick-start) 创建你的第一个 VextJS 项目。
+准备好了吗？前往[快速开始](/zh/guide/quick-start)创建你的第一个 VextJS 项目。

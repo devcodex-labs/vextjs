@@ -1,7 +1,7 @@
 ---
 pageType: custom
 title: VextJS
-description: VextJS 是高性能 Node.js 全栈框架，提供 Native fast path、React 前端集成、三段式热重载、CLI、校验、OpenAPI 与生产部署能力。
+description: 用一个 Node.js 应用交付 API 与服务端渲染 React 页面，并统一路由模型、类型契约和内置文档。
 ---
 
 export const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
@@ -11,10 +11,10 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   <section className="vext-hero">
     <div className="vext-hero__inner">
       <div className="vext-hero__content">
-        <p className="vext-hero__eyebrow">VEXTJS 1.0.0 / FULL-STACK RUNTIME</p>
+        <p className="vext-hero__eyebrow">VEXTJS 1.0.1 / FULL-STACK RUNTIME</p>
         <h1>VextJS</h1>
         <p className="vext-hero__lead">
-          面向高性能 API 与内置 React 前端集成的 Node.js 框架。Native fast path、三段式后端热重载、前端重建、CLI、校验、OpenAPI 与生产运行能力在同一套工程模型里开箱即用。
+          VextJS 是面向 API 与服务端渲染 React 页面的 Node.js 全栈应用框架。路由、服务、校验、安全、类型契约和实时 API 文档统一在一套路由模型与请求生命周期下，同时内置 Native fast path、CLI、热重载与生产运行能力。
         </p>
         <div className="vext-actions">
           <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>快速开始</a>
@@ -25,16 +25,16 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
         </div>
         <div className="vext-trust-row">
           <div className="vext-trust-item">
-            <strong>T1</strong>
-            <span>路由代码 1-10ms 热替换</span>
+            <strong>一套路由</strong>
+            <span>JSON 与 SSR 共用 URL 所有权</span>
           </div>
           <div className="vext-trust-item">
-            <strong>T2</strong>
-            <span>服务/模型 5-50ms 结构重载</span>
+            <strong>契约贯通</strong>
+            <span>路由契约驱动校验、文档和客户端类型</span>
           </div>
           <div className="vext-trust-item">
-            <strong>T3</strong>
-            <span>配置/插件 1-3s 冷启动</span>
+            <strong>按需起步</strong>
+            <span>默认全栈，同时支持 API-only</span>
           </div>
           <div className="vext-trust-item">
             <strong>Native</strong>
@@ -200,7 +200,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
       </div>
       <div className="vext-adapter-row">
         <strong>Hono</strong>
-        <span>轻量现代生态，适合边缘和中间件组合。</span>
+        <span>通过 @hono/node-server 在 Node.js 上提供 Web Standard API；不是 Edge runtime adapter。</span>
         <em>lean</em>
       </div>
       <div className="vext-adapter-row">

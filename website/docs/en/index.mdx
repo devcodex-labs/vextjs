@@ -1,7 +1,7 @@
 ---
 pageType: custom
 title: VextJS
-description: High-performance full-stack Node.js framework with native routing, React frontend integration, three-tier hot reload, schema-dsl validation, OpenAPI, and production runtime features.
+description: Ship APIs and server-rendered React pages from one Node.js application with one route model, typed contracts, and built-in docs.
 ---
 
 export const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
@@ -11,12 +11,13 @@ export const docsHref = (path) => `${basePath}${path}`;
   <section className="vext-hero">
     <div className="vext-hero__inner">
       <div className="vext-hero__content">
-        <p className="vext-hero__eyebrow">VEXTJS 1.0.0 / FULL-STACK RUNTIME</p>
+        <p className="vext-hero__eyebrow">VEXTJS 1.0.1 / FULL-STACK RUNTIME</p>
         <h1>VextJS</h1>
         <p className="vext-hero__lead">
-          A Node.js framework built for high-performance APIs and integrated React frontends. Native
-          fast path, three-tier backend hot reload, frontend rebuild, CLI, validation, OpenAPI, and
-          production runtime capabilities are ready in one project model.
+          VextJS is a full-stack Node.js application framework for APIs and server-rendered React
+          pages. Routes, services, validation, security, typed contracts, and live API docs stay
+          under one route model and request lifecycle, while the native fast path, CLI, hot reload,
+          and production runtime remain built in.
         </p>
         <div className="vext-actions">
           <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>Quick start</a>
@@ -27,16 +28,16 @@ export const docsHref = (path) => `${basePath}${path}`;
         </div>
         <div className="vext-trust-row">
           <div className="vext-trust-item">
-            <strong>T1</strong>
-            <span>Route code hot swap in 1-10 ms</span>
+            <strong>One route</strong>
+            <span>JSON and SSR share URL ownership</span>
           </div>
           <div className="vext-trust-item">
-            <strong>T2</strong>
-            <span>Service/model structural reload in 5-50 ms</span>
+            <strong>Contracts</strong>
+            <span>Route contracts feed validation, docs, and client types</span>
           </div>
           <div className="vext-trust-item">
-            <strong>T3</strong>
-            <span>Config/plugin cold restart in 1-3 s</span>
+            <strong>Start small</strong>
+            <span>Full-stack default, API-only supported</span>
           </div>
           <div className="vext-trust-item">
             <strong>Native</strong>
@@ -227,8 +228,8 @@ export const docsHref = (path) => `${basePath}${path}`;
       <div className="vext-adapter-row">
         <strong>Hono</strong>
         <span>
-          Lightweight modern ecosystem for edge scenarios and middleware
-          composition.
+          Web Standard APIs on Node.js via @hono/node-server; this is not an
+          Edge runtime adapter.
         </span>
         <em>lean</em>
       </div>

@@ -2,7 +2,7 @@
 
 ## 方式一：使用脚手架（推荐）
 
-VextJS 提供了 `vext create` 命令，可以快速创建可运行项目。默认模板是带 Vext API 路由的全栈 React 应用：
+VextJS 提供 `vext create` 命令创建可运行项目。默认模板会直接证明一套路由模型：`/` 通过 `res.render()` 渲染 React，`/api/hello` 返回 JSON，两者都调用生成的 example service；不需要页面运行时则选择 API-only。
 
 ```bash
 # 创建 TypeScript 全栈项目（默认 Native Adapter）
@@ -28,7 +28,7 @@ cd my-app
 npm run dev
 ```
 
-访问 `http://localhost:3000`，你应该能看到 React 客户端。后端 API 路由位于 `/api/hello` 与 `/api/health`。
+访问 `http://localhost:3000` 查看服务端渲染 starter，访问 `http://localhost:3000/docs` 查看实时 API 文档。后端 API 路由位于 `/api/hello` 与 `/api/health`。
 
 ## 方式二：手动创建
 
@@ -52,7 +52,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^1.0.0"
+    "vextjs": "^1.0.1"
   }
 }
 ```

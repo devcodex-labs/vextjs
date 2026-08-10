@@ -92,47 +92,13 @@ echo ""
 # ── 0. Version Check ────────────────────────────────────────
 
 step_start "Version Sync Check"
-# Use pure bash+grep to extract version — no node required in this context.
-# (check-version-sync.sh uses `node` which may not be in Git Bash PATH)
-VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
-
-if [ -z "$VERSION" ]; then
-  echo "❌ 无法从 package.json 读取版本号"
-  step_fail
+# Keep one version-contract implementation for local CI and GitHub Actions.
+# Later steps already require Node.js/npx, so a separate grep-based copy only
+# creates drift when documentation paths or README version policy change.
+if bash scripts/check-version-sync.sh; then
+  step_pass
 else
-  echo "📦 package.json version: v${VERSION}"
-  echo "──────────────────────────────────────────"
-  VER_ERRORS=0
-
-  check_version() {
-    local file="$1"
-    local pattern="$2"
-    local label="$3"
-    if [ ! -f "$file" ]; then
-      echo "⚠️  跳过 ${file}（文件不存在）"
-      return
-    fi
-    if grep -qF "$pattern" "$file"; then
-      echo "✅ ${label}"
-    else
-      echo "❌ ${label}"
-      echo "   文件: ${file}"
-      echo "   期望包含: ${pattern}"
-      VER_ERRORS=$((VER_ERRORS + 1))
-    fi
-  }
-
-  check_version "website/rspress.config.ts"          "\"v${VERSION}\""        "rspress.config.ts → v${VERSION}"
-  check_version "website/docs/guide/cli.md"          "vextjs v${VERSION}"     "cli.md → vextjs v${VERSION}"
-  check_version "website/docs/guide/quick-start.md"  "\"vextjs\": \"^${VERSION}\"" "quick-start.md → ^${VERSION}"
-  check_version "README.md"                          "\"vextjs\": \"^${VERSION}\"" "README.md → ^${VERSION}"
-  check_version "CHANGELOG.md"                       "[${VERSION}]"           "CHANGELOG.md → [${VERSION}]"
-
-  if [ "$VER_ERRORS" -gt 0 ]; then
-    step_fail
-  else
-    step_pass
-  fi
+  step_fail
 fi
 
 # ── 1. Lint + Typecheck ─────────────────────────────────────
