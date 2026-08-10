@@ -1,8 +1,8 @@
 {
   "accepted": true,
-  "artifactVersion": "1.0.0",
-  "artifactSha256": "e0a65b8cc6a1388da8ce45d3e8920cd897dba79defcad7d22f95d84e1bd9019f",
+  "artifactVersion": "1.0.1",
+  "artifactSha256": "339281b85d494f52e5dd61ff78f3207132b5fc542a4c5d85d1d1cae959127b6a",
   "consumerRepo": "https://github.com/devcodex-labs/vextjs-test",
-  "consumerCommit": "fae959b71766101f4e8f4d66cbfa2f1dd9413c26",
-  "runId": "I7-release-20260810-695700c-fae959b"
+  "consumerCommit": "d41973062f5cc37d009625270a043d5bacffe261",
+  "runId": "I7-release-v101-final-20260810-a3ad676-d419730"
 }
