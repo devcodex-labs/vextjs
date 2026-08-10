@@ -191,6 +191,12 @@ if (!existsSync(websiteModules)) {
     path.join(root, "website"),
   );
 }
+run(
+  "website production dependency audit",
+  npm,
+  ["audit", "--omit=dev", "--audit-level=high"],
+  path.join(root, "website"),
+);
 run("website build", npm, ["run", "build"], path.join(root, "website"));
 run("rendered documentation contract", npm, [
   "run",

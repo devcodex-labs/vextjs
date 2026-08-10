@@ -19,6 +19,8 @@ export interface RoutesManifestPayload {
     path?: string;
     routeId?: string;
     operationId?: string;
+    source?: string;
+    docsKind?: "backend-api" | "frontend-route";
     docsSummary?: string | null;
     tags?: string[];
     hidden?: boolean;
@@ -96,6 +98,8 @@ export function buildClientContract(
       continue;
     }
     const routeId = route.routeId ?? createRouteId(method, route.path);
+    const routeDescription = describeRouteForDiagnostic(route, routeId);
+    const isFrontendDocument = route.docsKind === "frontend-route";
     const request = route.schema?.request;
     const input = {
       ...(request?.params ? { params: toSchemaReference(request.params) } : {}),
@@ -108,8 +112,18 @@ export function buildClientContract(
         ? { cookies: toSchemaReference(request.cookies) }
         : {}),
     };
-    const responses = buildResponseContracts(routeId, route.schema, warnings);
-    const response = selectSuccessResponse(routeId, responses, warnings);
+    const responses = buildResponseContracts(
+      routeDescription,
+      route.schema,
+      warnings,
+      !isFrontendDocument,
+    );
+    const response = selectSuccessResponse(
+      routeDescription,
+      responses,
+      warnings,
+      isFrontendDocument,
+    );
 
     routes.push({
       routeId,
@@ -190,10 +204,19 @@ function toSchemaReference(schema: VextSchemaIRV1): VextClientSchemaReference {
   return { type: "schema", schema };
 }
 
-function buildResponseContracts(
+function describeRouteForDiagnostic(
+  route: NonNullable<RoutesManifestPayload["routes"]>[number],
   routeId: string,
+): string {
+  const source = route.source?.trim();
+  return `${route.method?.toUpperCase() ?? "?"} ${route.path ?? "?"} (${source ? `${source}; ` : ""}${routeId})`;
+}
+
+function buildResponseContracts(
+  routeDescription: string,
   schema: VextRouteSchemaContractV1 | undefined,
   warnings: string[],
+  warnOnUnknown: boolean,
 ): VextClientResponseContract[] {
   return (schema?.responses ?? []).map((response) => {
     if (response.schema) {
@@ -203,8 +226,10 @@ function buildResponseContracts(
         schema: toSchemaReference(response.schema),
       };
     }
-    const diagnostic = `${routeId}:${response.status} is missing ${`docs.responses.${response.status}.schema`}; emitted unknown.`;
-    warnings.push(diagnostic);
+    const diagnostic = `${routeDescription}:${response.status} is missing ${`docs.responses.${response.status}.schema`}; emitted unknown.`;
+    if (warnOnUnknown) {
+      warnings.push(diagnostic);
+    }
     return {
       status: response.status,
       contentType: response.contentType,
@@ -214,16 +239,21 @@ function buildResponseContracts(
 }
 
 function selectSuccessResponse(
-  routeId: string,
+  routeDescription: string,
   responses: readonly VextClientResponseContract[],
   warnings: string[],
+  isFrontendDocument: boolean,
 ): VextClientSchemaReference {
   const success = responses.find((response) =>
     /^2\d\d$/u.test(response.status),
   );
   if (success) return success.schema;
-  const diagnostic = `${routeId} has no documented 2xx response schema; emitted unknown.`;
-  warnings.push(diagnostic);
+  const diagnostic = isFrontendDocument
+    ? `${routeDescription} renders an HTML document; emitted unknown.`
+    : `${routeDescription} has no documented 2xx response schema; emitted unknown.`;
+  if (!isFrontendDocument) {
+    warnings.push(diagnostic);
+  }
   return { type: "unknown", diagnostic };
 }
 

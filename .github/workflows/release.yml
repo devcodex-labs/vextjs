@@ -137,6 +137,10 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Audit website production dependencies
+        working-directory: website
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build docs (rspress build)
         working-directory: website
         run: npm run build

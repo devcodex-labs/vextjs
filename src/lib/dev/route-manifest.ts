@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { inferOperationId } from "../openapi/operation-id.js";
-import type { RouteMetadata } from "../openapi/types.js";
+import type { RouteMetadata, VextOpenAPIDocsKind } from "../openapi/types.js";
 import {
   createRouteFreshnessIdentity,
   createRouteId,
@@ -34,6 +34,7 @@ export interface DevRouteManifestPayload {
   routes: Array<{
     fileRelativePath: string;
     source: string;
+    docsKind: VextOpenAPIDocsKind;
     prefix: string;
     method: string;
     path: string;
@@ -76,6 +77,7 @@ export function buildDevRouteManifestPayload(
     return {
       fileRelativePath,
       source: fileRelativePath,
+      docsKind: route.docsKind ?? "backend-api",
       prefix: "",
       method: route.method,
       path: route.path,

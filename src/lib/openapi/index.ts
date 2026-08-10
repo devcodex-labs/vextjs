@@ -34,7 +34,12 @@ export type {
 
 export { RouteMetadataCollector } from "./collector.js";
 
-export { detectRenderCall, detectRouteDocsKind } from "./route-docs-kind.js";
+export {
+  detectRenderCall,
+  detectRenderCallSource,
+  detectRouteDocsKind,
+  detectRouteSourceDocsKind,
+} from "./route-docs-kind.js";
 
 // ── 转换器 ──────────────────────────────────────────────────
 

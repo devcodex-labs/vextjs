@@ -6,6 +6,11 @@ import {
   SOURCE_GLOB,
   SOURCE_IGNORE,
 } from "../../lib/build/shared-esbuild-config.js";
+import {
+  PROJECT_PRELOAD_FILE_PATTERN,
+  PROJECT_PRELOAD_OUTPUT_DIR,
+  resolveProjectPreloadDirectory,
+} from "../../lib/preload/project-preload-paths.js";
 
 /**
  * detect-project.ts — 项目自动检测工具
@@ -66,10 +71,9 @@ const BUILD_EXTRA_IGNORE = [
   "**/config/development.{ts,js,mts,mjs,cts,cjs}",
   "**/config/local.{ts,js,mts,mjs,cts,cjs}",
   "**/config/test.{ts,js,mts,mjs,cts,cjs}",
+  "preload/**",
 ];
 
-const PROJECT_PRELOAD_DIR = "preload";
-const PROJECT_PRELOAD_PATTERN = /\.(ts|mts|js|mjs)$/i;
 const SOURCE_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -239,23 +243,23 @@ function getCompiledSourceOutputFiles(rootDir: string): string[] {
 }
 
 function getCompiledProjectPreloadOutputFiles(rootDir: string): string[] {
-  const preloadDir = path.join(rootDir, PROJECT_PRELOAD_DIR);
-  if (!fs.existsSync(preloadDir)) {
+  const preloadDirectory = resolveProjectPreloadDirectory(rootDir);
+  if (!preloadDirectory) {
     return [];
   }
 
   return fs
-    .readdirSync(preloadDir, { withFileTypes: true })
+    .readdirSync(preloadDirectory.path, { withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
-    .filter((name) => PROJECT_PRELOAD_PATTERN.test(name))
+    .filter((name) => PROJECT_PRELOAD_FILE_PATTERN.test(name))
     .sort((a, b) => a.localeCompare(b))
     .map((name) =>
       path.join(
         rootDir,
         "dist",
-        PROJECT_PRELOAD_DIR,
-        name.replace(PROJECT_PRELOAD_PATTERN, ".mjs"),
+        PROJECT_PRELOAD_OUTPUT_DIR,
+        name.replace(PROJECT_PRELOAD_FILE_PATTERN, ".mjs"),
       ),
     );
 }

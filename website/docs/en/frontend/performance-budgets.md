@@ -20,6 +20,8 @@ The report includes:
 - app-owned assets
 - external runtime groups
 
+Top-level `initialJs*` values represent the largest complete first-load closure across generated pages, including shared chunks transitively imported by the browser entry. Deferred modules—such as other route pages and error fallbacks—are excluded until navigation or a render failure loads them. Use `routes[]` to inspect each route's own closure.
+
 When `frontend.build.diagnostics.performanceReport` is enabled, the report also includes route-level initial JS metrics. When it is disabled, SSR route preload metadata is still generated in `render-manifest.json`, but route-level byte metrics are omitted from build reports.
 
 ## Budget Fields

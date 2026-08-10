@@ -19,6 +19,15 @@ function read(relativePath) {
   return readFileSync(path.join(root, relativePath), "utf8");
 }
 
+function readJson(relativePath) {
+  try {
+    return JSON.parse(read(relativePath));
+  } catch (error) {
+    fail(`${relativePath} is not valid JSON: ${error.message}`);
+    return null;
+  }
+}
+
 function listFiles(directory, extension) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path.join(directory, entry.name);
@@ -103,6 +112,222 @@ function verifyMarkdownTables() {
   }
   if (tableCount < 150) {
     fail(`documentation table inventory unexpectedly small: ${tableCount}`);
+  }
+}
+
+function sectionBetween(content, startMarker, endMarker) {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker, start);
+  if (start === -1 || end === -1) {
+    fail(`documentation navigation config is missing ${startMarker}`);
+    return "";
+  }
+  return content.slice(start, end);
+}
+
+function verifyWebsiteNavigationContract() {
+  const config = read("website/rspress.config.ts");
+  const navSource = sectionBetween(
+    config,
+    "const navSource: NavItemSource[] = [",
+    "const createNav",
+  );
+  const englishSidebar = sectionBetween(
+    config,
+    "const englishSidebar: SidebarGroup[] = [",
+    "const englishFrontendSidebar",
+  );
+  const chineseSidebar = sectionBetween(
+    config,
+    "const chineseSidebar: SidebarGroup[] = [",
+    "const chineseFrontendSidebar",
+  );
+
+  for (const token of [
+    'en: "Tooling & Operations"',
+    'zh: "工具与运维"',
+    'en: "Resources"',
+    'zh: "资源"',
+    'en: "Examples"',
+    'en: "Benchmark"',
+    'en: "Contributing"',
+    'en: "Support & Services"',
+    'zh: "支持与服务"',
+    'en: "Docs Data & AI"',
+    'zh: "文档数据与 AI"',
+    'activeMatch: "^/api/"',
+  ]) {
+    if (!navSource.includes(token)) {
+      fail(`website navigation is missing contract token: ${token}`);
+    }
+  }
+
+  const versionMenu = sectionBetween(navSource, 'en: "v1.0.0"', "  },\n];");
+  if (versionMenu.includes('en: "Contributing"')) {
+    fail("website version menu must not duplicate Contributing");
+  }
+  if (englishSidebar.includes('text: "Frontend Overview"')) {
+    fail("general English Start sidebar must not duplicate Frontend Overview");
+  }
+  if (chineseSidebar.includes('text: "前端总览"')) {
+    fail("general Chinese 开始 sidebar must not duplicate 前端总览");
+  }
+}
+
+function documentationSourceForRoute(route) {
+  const normalized = route.replace(/\/$/, "") || "/";
+  const locale =
+    normalized === "/zh" || normalized.startsWith("/zh/") ? "zh" : "en";
+  const localePrefix = locale === "zh" ? "/zh" : "";
+  const suffix = normalized.slice(localePrefix.length).replace(/^\//, "");
+  const stem = suffix || "index";
+  const base = `website/docs/${locale}/${stem}`;
+  for (const extension of [".md", ".mdx"]) {
+    if (existsSync(path.join(root, `${base}${extension}`))) {
+      return `${base}${extension}`;
+    }
+  }
+  return null;
+}
+
+function verifyDocumentationGrowthContract() {
+  const supportTokens = {
+    en: [
+      "GitHub Discussions",
+      "Apache-2.0",
+      "scope",
+      "credentials",
+      "service-level",
+    ],
+    zh: ["GitHub Discussions", "Apache-2.0", "范围", "凭据", "SLA"],
+  };
+  const dataAndAiTokens = {
+    en: [
+      "docs-manifest.json",
+      "capabilities.json",
+      "ai-gold-questions.json",
+      "llms.txt",
+      "llms-full.txt",
+      "docs-events.schema.json",
+      "docs-dashboard-definition.json",
+      "tracker",
+      "raw search",
+    ],
+    zh: [
+      "docs-manifest.json",
+      "capabilities.json",
+      "ai-gold-questions.json",
+      "llms.txt",
+      "llms-full.txt",
+      "docs-events.schema.json",
+      "docs-dashboard-definition.json",
+      "tracker",
+      "原始",
+    ],
+  };
+  for (const locale of ["en", "zh"]) {
+    requireTokens(
+      `website/docs/${locale}/resources/support-and-services.md`,
+      supportTokens[locale],
+    );
+    requireTokens(
+      `website/docs/${locale}/resources/documentation-data-and-ai.md`,
+      dataAndAiTokens[locale],
+    );
+    requireTokens(`website/docs/${locale}/frontend/rendering-modes.md`, [
+      "Streaming SSR",
+      "React Server Components",
+      "Server Functions",
+      "server/client",
+      "route",
+      "esbuild",
+    ]);
+    requireTokens(`website/docs/${locale}/frontend/boundaries-and-roadmap.md`, [
+      "React Server Components",
+      "Server Functions",
+      "server/client",
+      "payload",
+      "esbuild",
+      "adapter",
+    ]);
+  }
+
+  requireTokens("website/package.json", ["generate-machine-artifacts.mjs"]);
+
+  const capabilities = readJson("website/docs/public/capabilities.json");
+  if (capabilities) {
+    if (capabilities.schemaVersion !== "vext.capabilities/v1") {
+      fail("capabilities.json must declare vext.capabilities/v1");
+    }
+    const excluded = capabilities.frontend?.explicitNonGoals ?? [];
+    for (const id of [
+      "react-server-components",
+      "server-functions",
+      "partial-prerendering",
+      "bundler-plugin-ecosystem",
+    ]) {
+      if (!excluded.some((item) => item.id === id)) {
+        fail(`capabilities.json is missing explicit non-goal: ${id}`);
+      }
+    }
+  }
+
+  const questions = readJson("website/docs/public/ai-gold-questions.json");
+  if (questions) {
+    if (questions.schemaVersion !== "vext.docs-gold-questions/v1") {
+      fail("ai-gold-questions.json must declare vext.docs-gold-questions/v1");
+    }
+    if (
+      !Array.isArray(questions.questions) ||
+      questions.questions.length < 20
+    ) {
+      fail(
+        "ai-gold-questions.json must contain at least 20 citation questions",
+      );
+    }
+    for (const question of questions.questions ?? []) {
+      if (
+        !question.id ||
+        !question.question ||
+        !Array.isArray(question.requiredRoutes)
+      ) {
+        fail("ai-gold-questions.json contains an incomplete question");
+        continue;
+      }
+      for (const route of question.requiredRoutes) {
+        if (!documentationSourceForRoute(route)) {
+          fail(
+            `AI gold question ${question.id} references missing route: ${route}`,
+          );
+        }
+      }
+    }
+  }
+
+  const eventSchema = readJson("website/docs/public/docs-events.schema.json");
+  if (eventSchema) {
+    if (eventSchema.properties?.schemaVersion?.const !== "vext.docs-event/v1") {
+      fail("docs-events.schema.json must declare vext.docs-event/v1");
+    }
+    if (
+      eventSchema.properties?.queryLength?.description?.includes(
+        "raw search text",
+      ) !== true
+    ) {
+      fail("docs-events.schema.json must prohibit raw search text");
+    }
+  }
+
+  const dashboard = readJson(
+    "website/docs/public/docs-dashboard-definition.json",
+  );
+  if (dashboard) {
+    if (dashboard.collection?.default !== "disabled") {
+      fail("docs dashboard collection must be disabled by default");
+    }
+    if (!dashboard.collection?.neverCollect?.includes("user identity")) {
+      fail("docs dashboard must prohibit user identity collection");
+    }
   }
 }
 
@@ -200,6 +425,48 @@ function forbidTokens(relativePath, tokens) {
   }
 }
 
+function normalizeDocumentedCode(value) {
+  return value.trim().replaceAll("\r\n", "\n");
+}
+
+function documentedCodeBlock(relativeDocsPath, startMarker, endMarker) {
+  const content = read(relativeDocsPath);
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker, start + startMarker.length);
+  if (start === -1 || end === -1 || end <= start) {
+    fail(
+      `${relativeDocsPath} is missing documented code markers: ${startMarker}`,
+    );
+    return "";
+  }
+
+  const section = content.slice(start + startMarker.length, end);
+  const match = section.match(/```(?:ts|tsx)\r?\n([\s\S]*?)\r?\n```/);
+  if (!match) {
+    fail(`${relativeDocsPath} has no fenced code block for ${startMarker}`);
+    return "";
+  }
+
+  return normalizeDocumentedCode(match[1]);
+}
+
+function verifyDocumentedFixture(
+  relativeDocsPath,
+  startMarker,
+  endMarker,
+  fixturePath,
+) {
+  const documented = documentedCodeBlock(
+    relativeDocsPath,
+    startMarker,
+    endMarker,
+  );
+  const fixture = normalizeDocumentedCode(read(fixturePath));
+  if (documented && documented !== fixture) {
+    fail(`${relativeDocsPath} drifts from executable fixture ${fixturePath}`);
+  }
+}
+
 function interfaceBody(relativePath, interfaceName) {
   const content = read(relativePath);
   const declaration = `export interface ${interfaceName}`;
@@ -274,6 +541,113 @@ function verifyInterfaceReference(
   }
 }
 
+function documentationSection(relativeDocsPath, startHeading, endHeading) {
+  const docs = read(relativeDocsPath);
+  const start = docs.indexOf(startHeading);
+  const end = docs.indexOf(endHeading, start + startHeading.length);
+  if (start === -1 || end === -1 || end <= start) {
+    fail(
+      `${relativeDocsPath} must contain a ${startHeading} section before ${endHeading}`,
+    );
+    return "";
+  }
+  return docs.slice(start, end);
+}
+
+function verifyQualifiedInterfaceReference(
+  relativeSourcePath,
+  interfaceName,
+  relativeDocsPath,
+  docsSection,
+  prefix,
+  exclusions = [],
+) {
+  for (const member of publicInterfaceMembers(
+    relativeSourcePath,
+    interfaceName,
+    exclusions,
+  )) {
+    const token = `\`${prefix}${member}\``;
+    if (!docsSection.includes(token)) {
+      fail(
+        `${relativeDocsPath} does not cover ${interfaceName}.${member} as ${token} from ${relativeSourcePath}`,
+      );
+    }
+  }
+}
+
+function verifyFrontendConfigurationReferenceContracts() {
+  const relativeSourcePath = "src/frontend/contract/types.ts";
+  const interfaces = [
+    ["VextFrontendConfig", ""],
+    ["VextFrontendPagesConfig", "pages."],
+    ["VextFrontendSpaFallbackConfig", "spaFallback."],
+    ["VextFrontendSpaFallbackScope", "spaFallback.scopes[]."],
+    ["VextFrontendStylesConfig", "styles."],
+    ["VextFrontendJscssConfig", "styles.jscss."],
+    ["VextFrontendBuildConfig", "build."],
+    ["VextFrontendBuildTargetConfig", "build.client."],
+    ["VextFrontendServerBuildTargetConfig", "build.server."],
+    ["VextFrontendVendorChunksConfig", "build.vendorChunks."],
+    ["VextFrontendBuildBudgetsConfig", "build.budgets."],
+    ["VextFrontendMediaConfig", "media."],
+    ["VextFrontendMediaImagesConfig", "media.images."],
+    ["VextFrontendMediaFontsConfig", "media.fonts."],
+    ["VextFrontendDeployConfig", "deploy."],
+    ["VextFrontendDeployUploadConfig", "deploy.upload."],
+    ["VextFrontendRenderConfig", "render."],
+    ["VextFrontendErrorPagesConfig", "errorPages."],
+    ["VextFrontendI18nConfig", "i18n."],
+    ["VextFrontendDevConfig", "dev."],
+    ["VextFrontendApiClientConfig", "apiClient."],
+  ];
+  const extensionTokens = [
+    "`VextFrontendAdapter`",
+    "`name`",
+    "`framework`",
+    "`resolveBuildOptions(config)`",
+    "`VextFrontendDeployUploadAdapter`",
+    "`upload(input)`",
+    "`VextFrontendDeployUploadAdapterInput`",
+    "`asset`",
+    "`sourcePath`",
+    "`uploadKey`",
+    "`dryRun`",
+    "`VextFrontendDeployUploadAdapterResult`",
+    "`uploaded`",
+    "`url`",
+    "`etag`",
+    "`build.client.externalRuntime.<specifier>.url`",
+    "`build.client.externalRuntime.<specifier>.integrity`",
+    "`build.client.externalRuntime.<specifier>.crossOrigin`",
+  ];
+
+  for (const locale of ["en", "zh"]) {
+    const relativeDocsPath = `website/docs/${locale}/api/config.md`;
+    const docsSection = documentationSection(
+      relativeDocsPath,
+      "## VextFrontendConfig",
+      "## VextClusterConfig",
+    );
+    for (const [interfaceName, prefix] of interfaces) {
+      verifyQualifiedInterfaceReference(
+        relativeSourcePath,
+        interfaceName,
+        relativeDocsPath,
+        docsSection,
+        prefix,
+      );
+    }
+    for (const token of extensionTokens) {
+      if (!docsSection.includes(token)) {
+        fail(
+          `${relativeDocsPath} is missing frontend extension token: ${token}`,
+        );
+      }
+    }
+  }
+}
+
 function verifyPublicReferenceContracts() {
   const contextTokens = [
     "`cookies`",
@@ -321,6 +695,7 @@ function verifyPublicReferenceContracts() {
     requireTokens(contextDocs, contextTokens);
     requireTokens(configDocs, configTokens);
   }
+  verifyFrontendConfigurationReferenceContracts();
 }
 
 function verifyFrontendStreamingDocumentationContract() {
@@ -494,6 +869,52 @@ function verifyFrontendFreshnessMediaDocumentationContract() {
   ]);
 }
 
+function verifyJscssUserGuideDocumentationContract() {
+  requireTokens("website/rspress.config.ts", [
+    '{ text: "Vext JSCSS", link: "/frontend/jscss" },',
+    '{ text: "Vext JSCSS", link: "/zh/frontend/jscss" },',
+  ]);
+
+  for (const locale of ["en", "zh"]) {
+    const frontendDocs = `website/docs/${locale}/frontend`;
+    const route = locale === "zh" ? "/zh/frontend/jscss" : "/frontend/jscss";
+
+    verifyDocumentedFixture(
+      `${frontendDocs}/jscss.md`,
+      "<!-- jscss-user-guide:button-style:start -->",
+      "<!-- jscss-user-guide:button-style:end -->",
+      "test/fixtures/frontend/jscss-user-guide/button.style.ts",
+    );
+    verifyDocumentedFixture(
+      `${frontendDocs}/jscss.md`,
+      "<!-- jscss-user-guide:button-component:start -->",
+      "<!-- jscss-user-guide:button-component:end -->",
+      "test/fixtures/frontend/jscss-user-guide/Button.tsx",
+    );
+
+    requireTokens(`${frontendDocs}/jscss.md`, [
+      "`recipe()`",
+      "`className`",
+      "`setVar()`",
+      "document.documentElement.style.setProperty",
+      "src/frontend/**",
+      "Sass",
+      "SCSS",
+    ]);
+    requireTokens(`${frontendDocs}/styles-and-assets.md`, [
+      route,
+      "`recipe()`",
+      "`setVar()`",
+    ]);
+    forbidTokens(`${frontendDocs}/styles-and-assets.md`, [
+      "base: style(",
+      "primary: style(",
+      "danger: style(",
+    ]);
+    requireTokens(`${frontendDocs}/getting-started.md`, [route]);
+    requireTokens(`${frontendDocs}/overview.md`, [route]);
+  }
+}
 function verifyExampleAndMetadata() {
   const examplePackage = JSON.parse(read("examples/hello-world/package.json"));
   if (examplePackage.dependencies?.vextjs !== "file:../..") {
@@ -643,6 +1064,161 @@ function verifyRenderedAnchors() {
   }
 }
 
+function renderedHtmlForManifestRoute(route) {
+  if (route === "/") return path.join(renderedRoot, "index.html");
+  if (route.endsWith("/")) {
+    return path.join(renderedRoot, route.slice(1), "index.html");
+  }
+  return path.join(renderedRoot, `${route.slice(1)}.html`);
+}
+
+function readRenderedJson(name) {
+  const file = path.join(renderedRoot, name);
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    fail(`website/dist/${name} is not valid JSON: ${error.message}`);
+    return null;
+  }
+}
+
+function verifyRenderedMachineArtifacts() {
+  if (!existsSync(renderedRoot)) {
+    fail("website/dist does not exist; run the website build first");
+    return;
+  }
+
+  for (const name of [
+    "docs-manifest.json",
+    "capabilities.json",
+    "ai-gold-questions.json",
+    "docs-events.schema.json",
+    "docs-dashboard-definition.json",
+    "llms.txt",
+    "llms-full.txt",
+    "sitemap.xml",
+  ]) {
+    if (!existsSync(path.join(renderedRoot, name))) {
+      fail(`website/dist is missing machine-readable artifact: ${name}`);
+    }
+  }
+
+  const manifest = readRenderedJson("docs-manifest.json");
+  if (!manifest) return;
+  if (manifest.schemaVersion !== "vext.docs-manifest/v1") {
+    fail("website/dist/docs-manifest.json must declare vext.docs-manifest/v1");
+  }
+  if (manifest.frameworkVersion !== "1.0.0") {
+    fail(
+      "website/dist/docs-manifest.json must declare framework version 1.0.0",
+    );
+  }
+  if (!Array.isArray(manifest.entries)) {
+    fail("website/dist/docs-manifest.json must contain entries");
+    return;
+  }
+
+  const sourceFiles = [
+    ...listFiles(path.join(docsRoot, "en"), ".md"),
+    ...listFiles(path.join(docsRoot, "en"), ".mdx"),
+    ...listFiles(path.join(docsRoot, "zh"), ".md"),
+    ...listFiles(path.join(docsRoot, "zh"), ".mdx"),
+  ];
+  if (manifest.entries.length !== sourceFiles.length) {
+    fail(
+      `docs manifest has ${manifest.entries.length} entries; expected ${sourceFiles.length}`,
+    );
+  }
+
+  const entriesByRoute = new Map();
+  for (const entry of manifest.entries) {
+    const routeKey = normalizeTargetPath(entry.route ?? "");
+    if (entriesByRoute.has(routeKey)) {
+      fail(`docs manifest duplicates route: ${entry.route}`);
+      continue;
+    }
+    entriesByRoute.set(routeKey, entry);
+    const expectedSource = documentationSourceForRoute(entry.route ?? "");
+    if (!expectedSource || entry.sourcePath !== expectedSource) {
+      fail(
+        `docs manifest has invalid source mapping for route: ${entry.route}`,
+      );
+    }
+    if (!/^[a-f0-9]{64}$/.test(entry.contentHash ?? "")) {
+      fail(`docs manifest has invalid source hash for route: ${entry.route}`);
+    }
+    if (!Array.isArray(entry.audience) || !Array.isArray(entry.appliesTo)) {
+      fail(
+        `docs manifest has incomplete semantic metadata for route: ${entry.route}`,
+      );
+    }
+    if (entry.stability !== "stable" || !Array.isArray(entry.related)) {
+      fail(
+        `docs manifest has invalid stability or related metadata for route: ${entry.route}`,
+      );
+    }
+    const htmlFile = renderedHtmlForManifestRoute(entry.route);
+    if (!existsSync(htmlFile)) {
+      fail(`docs manifest route has no rendered HTML: ${entry.route}`);
+      continue;
+    }
+    const html = readFileSync(htmlFile, "utf8");
+    const canonicalTag = `<link rel="canonical" href="${entry.canonicalUrl}">`;
+    const ogUrlTag = `<meta property="og:url" content="${entry.canonicalUrl}">`;
+    if (!html.includes(canonicalTag) || !html.includes(ogUrlTag)) {
+      fail(`rendered metadata does not match manifest route: ${entry.route}`);
+    }
+    if ((html.match(/<link rel="canonical"/g) ?? []).length !== 1) {
+      fail(
+        `rendered page must contain exactly one canonical tag: ${entry.route}`,
+      );
+    }
+  }
+
+  const sitemap = readFileSync(path.join(renderedRoot, "sitemap.xml"), "utf8");
+  const sitemapUrls = new Set(
+    [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]),
+  );
+  for (const entry of manifest.entries) {
+    if (!sitemapUrls.has(entry.canonicalUrl)) {
+      fail(`sitemap is missing manifest canonical URL: ${entry.canonicalUrl}`);
+    }
+  }
+
+  const questions = readRenderedJson("ai-gold-questions.json");
+  for (const question of questions?.questions ?? []) {
+    for (const route of question.requiredRoutes ?? []) {
+      if (!entriesByRoute.has(normalizeTargetPath(route))) {
+        fail(
+          `rendered AI gold question references missing manifest route: ${route}`,
+        );
+      }
+    }
+  }
+
+  const llms = readFileSync(path.join(renderedRoot, "llms.txt"), "utf8");
+  const llmsFull = readFileSync(
+    path.join(renderedRoot, "llms-full.txt"),
+    "utf8",
+  );
+  for (const token of [
+    "# VextJS",
+    "docs-manifest.json",
+    "capabilities.json",
+    "ai-gold-questions.json",
+    "docs-events.schema.json",
+    "llms-full.txt",
+  ]) {
+    if (!llms.includes(token))
+      fail(`llms.txt is missing required token: ${token}`);
+  }
+  for (const entry of manifest.entries) {
+    if (!llmsFull.includes(entry.canonicalUrl)) {
+      fail(`llms-full.txt is missing manifest URL: ${entry.canonicalUrl}`);
+    }
+  }
+}
+
 function runTokenizerSelfTest() {
   const valid = [
     "| Field | Type |",
@@ -663,14 +1239,18 @@ function runTokenizerSelfTest() {
 runTokenizerSelfTest();
 
 if (renderedOnly) {
+  verifyRenderedMachineArtifacts();
   verifyRenderedAnchors();
 } else {
   verifyMarkdownTables();
+  verifyWebsiteNavigationContract();
   verifyCliDocs();
   verifyPublicReferenceContracts();
   verifyFrontendStreamingDocumentationContract();
   verifyFrontendNavigationDocumentationContract();
   verifyFrontendFreshnessMediaDocumentationContract();
+  verifyJscssUserGuideDocumentationContract();
+  verifyDocumentationGrowthContract();
   verifyExampleAndMetadata();
 }
 

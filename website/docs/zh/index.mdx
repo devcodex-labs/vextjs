@@ -20,6 +20,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
           <a className="vext-button vext-button--primary" href={docsHref("/guide/quick-start.html")}>快速开始</a>
           <a className="vext-button vext-button--ghost" href={docsHref("/guide/hot-reload.html")}>三段热重载</a>
           <a className="vext-button vext-button--ghost" href={docsHref("/benchmark.html")}>Benchmark</a>
+          <a className="vext-button vext-button--ghost" href={docsHref("/resources/support-and-services.html")}>支持与服务</a>
           <a className="vext-button vext-button--ghost" href="https://github.com/devcodex-labs/vextjs">GitHub</a>
         </div>
         <div className="vext-trust-row">
@@ -63,129 +64,220 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
         </div>
       </aside>
     </div>
+
   </section>
 
-  <nav className="vext-path-strip" aria-label="Vext documentation paths">
-    <a href={docsHref("/guide/quick-start.html")}><strong>Start</strong><span>从脚手架到第一个全栈应用</span></a>
-    <a href={docsHref("/guide/hot-reload.html")}><strong>Reload</strong><span>理解后端热重载与前端重建边界</span></a>
-    <a href={docsHref("/benchmark.html")}><strong>Perf</strong><span>复现 Native fast path 与 benchmark 数据</span></a>
-    <a href={docsHref("/guide/deployment.html")}><strong>Ship</strong><span>部署、优雅关闭、Rolling Restart 与 Cluster</span></a>
-    <a href={docsHref("/api/config.html")}><strong>API</strong><span>配置、路由、上下文、插件与测试工具</span></a>
-  </nav>
+<nav className="vext-path-strip" aria-label="Vext documentation paths">
+  <a href={docsHref("/guide/quick-start.html")}>
+    <strong>Start</strong>
+    <span>从脚手架到第一个全栈应用</span>
+  </a>
+  <a href={docsHref("/guide/hot-reload.html")}>
+    <strong>Reload</strong>
+    <span>理解后端热重载与前端重建边界</span>
+  </a>
+  <a href={docsHref("/benchmark.html")}>
+    <strong>Perf</strong>
+    <span>复现 Native fast path 与 benchmark 数据</span>
+  </a>
+  <a href={docsHref("/guide/deployment.html")}>
+    <strong>Ship</strong>
+    <span>部署、优雅关闭、Rolling Restart 与 Cluster</span>
+  </a>
+  <a href={docsHref("/api/config.html")}>
+    <strong>API</strong>
+    <span>配置、路由、上下文、插件与测试工具</span>
+  </a>
+</nav>
 
-  <section className="vext-section">
-    <div className="vext-section__header">
-      <p className="vext-kicker">Hot Reload Pipeline</p>
-      <h2 className="vext-title">三段式后端热重载加前端重建，让开发反馈更紧。</h2>
-      <p className="vext-copy">Vext 会按变更边界选择不同策略：能热替换的直接替换，客户端文件变化时重建前端资源，触及运行时边界时再冷启动。</p>
-    </div>
-    <div className="vext-reload">
-      <article className="vext-tier-card vext-tier-card--active">
-        <span className="vext-capability__mark">T1 / code</span>
-        <h3>路由代码热替换</h3>
-        <p>命中 <code>src/routes/</code> 等业务代码时走毫秒级替换路径，保留开发服务进程和连接状态。</p>
-        <strong>1-10ms</strong>
-      </article>
-      <article className="vext-tier-card">
-        <span className="vext-capability__mark">T2 / struct</span>
-        <h3>服务与模型结构重载</h3>
-        <p>服务层、模型、语言资源等结构变更触发局部重载，不把每次改动都推向冷启动。</p>
-        <strong>5-50ms</strong>
-      </article>
-      <article className="vext-tier-card">
-        <span className="vext-capability__mark">T3 / cold</span>
-        <h3>运行时边界冷启动</h3>
-        <p>配置、插件和中间件改变时执行冷启动，保证运行边界正确重建，不牺牲安全性。</p>
-        <strong>1-3s</strong>
-      </article>
-    </div>
-  </section>
+<section className="vext-section">
+  <div className="vext-section__header">
+    <p className="vext-kicker">Hot Reload Pipeline</p>
+    <h2 className="vext-title">三段式后端热重载加前端重建，让开发反馈更紧。</h2>
+    <p className="vext-copy">
+      Vext
+      会按变更边界选择不同策略：能热替换的直接替换，客户端文件变化时重建前端资源，触及运行时边界时再冷启动。
+    </p>
+  </div>
+  <div className="vext-reload">
+    <article className="vext-tier-card vext-tier-card--active">
+      <span className="vext-capability__mark">T1 / code</span>
+      <h3>路由代码热替换</h3>
+      <p>
+        命中 <code>src/routes/</code>{" "}
+        等业务代码时走毫秒级替换路径，保留开发服务进程和连接状态。
+      </p>
+      <strong>1-10ms</strong>
+    </article>
+    <article className="vext-tier-card">
+      <span className="vext-capability__mark">T2 / struct</span>
+      <h3>服务与模型结构重载</h3>
+      <p>
+        服务层、模型、语言资源等结构变更触发局部重载，不把每次改动都推向冷启动。
+      </p>
+      <strong>5-50ms</strong>
+    </article>
+    <article className="vext-tier-card">
+      <span className="vext-capability__mark">T3 / cold</span>
+      <h3>运行时边界冷启动</h3>
+      <p>
+        配置、插件和中间件改变时执行冷启动，保证运行边界正确重建，不牺牲安全性。
+      </p>
+      <strong>1-3s</strong>
+    </article>
+  </div>
+</section>
 
-  <section className="vext-section">
-    <div className="vext-section__header">
-      <p className="vext-kicker">Performance Stack</p>
-      <h2 className="vext-title">性能不是包装词，而是从 HTTP 路径到生产护栏的一组工程选择。</h2>
-      <p className="vext-copy">首页保留框架真实工程面：Native fast path、route-core、schema/OpenAPI、CLI 与生产交付能力。</p>
-    </div>
-    <div className="vext-capability-grid">
-      <article className="vext-capability">
-        <span className="vext-capability__mark">fast path</span>
-        <h3>Native 高性能路径</h3>
-        <p>Native Adapter 贴近 Node.js 原生 HTTP，配合 route-core 路由核心保持轻量。</p>
-      </article>
-      <article className="vext-capability">
-        <span className="vext-capability__mark">router</span>
-        <h3>全栈路由核心</h3>
-        <p>文件路由、三段式路由定义、生成客户端契约和请求上下文围绕同一套 Vext 工程模型组织。</p>
-      </article>
-      <article className="vext-capability">
-        <span className="vext-capability__mark">schema</span>
-        <h3>校验与 OpenAPI</h3>
-        <p>在路由 options 中声明参数规则，让请求校验和接口文档共用同一份定义。</p>
-      </article>
-      <article className="vext-capability">
-        <span className="vext-capability__mark">cli</span>
-        <h3>开箱即用 CLI</h3>
-        <p>创建、开发、构建和启动命令收敛在框架入口，新项目可以直接开工。</p>
-      </article>
-      <article className="vext-capability">
-        <span className="vext-capability__mark">hooks</span>
-        <h3>运行时生命周期</h3>
-        <p>request、validation、response、service、fetch 等 hooks 支撑插件和横切逻辑。</p>
-      </article>
-      <article className="vext-capability">
-        <span className="vext-capability__mark">safe ship</span>
-        <h3>生产安全能力</h3>
-        <p>限流、结构化错误、优雅关闭、心跳监控和多进程部署组成交付闭环。</p>
-      </article>
-    </div>
-  </section>
+<section className="vext-section">
+  <div className="vext-section__header">
+    <p className="vext-kicker">Performance Stack</p>
+    <h2 className="vext-title">
+      性能不是包装词，而是从 HTTP 路径到生产护栏的一组工程选择。
+    </h2>
+    <p className="vext-copy">
+      首页保留框架真实工程面：Native fast path、route-core、schema/OpenAPI、CLI
+      与生产交付能力。
+    </p>
+  </div>
+  <div className="vext-capability-grid">
+    <article className="vext-capability">
+      <span className="vext-capability__mark">fast path</span>
+      <h3>Native 高性能路径</h3>
+      <p>
+        Native Adapter 贴近 Node.js 原生 HTTP，配合 route-core
+        路由核心保持轻量。
+      </p>
+    </article>
+    <article className="vext-capability">
+      <span className="vext-capability__mark">router</span>
+      <h3>全栈路由核心</h3>
+      <p>
+        文件路由、三段式路由定义、生成客户端契约和请求上下文围绕同一套 Vext
+        工程模型组织。
+      </p>
+    </article>
+    <article className="vext-capability">
+      <span className="vext-capability__mark">schema</span>
+      <h3>校验与 OpenAPI</h3>
+      <p>在路由 options 中声明参数规则，让请求校验和接口文档共用同一份定义。</p>
+    </article>
+    <article className="vext-capability">
+      <span className="vext-capability__mark">cli</span>
+      <h3>开箱即用 CLI</h3>
+      <p>创建、开发、构建和启动命令收敛在框架入口，新项目可以直接开工。</p>
+    </article>
+    <article className="vext-capability">
+      <span className="vext-capability__mark">hooks</span>
+      <h3>运行时生命周期</h3>
+      <p>
+        request、validation、response、service、fetch 等 hooks
+        支撑插件和横切逻辑。
+      </p>
+    </article>
+    <article className="vext-capability">
+      <span className="vext-capability__mark">safe ship</span>
+      <h3>生产安全能力</h3>
+      <p>限流、结构化错误、优雅关闭、心跳监控和多进程部署组成交付闭环。</p>
+    </article>
+  </div>
+</section>
 
-  <section className="vext-section">
-    <div className="vext-matrix">
-      <div className="vext-matrix__panel">
-        <p className="vext-kicker">Runtime Flexibility</p>
-        <h2 className="vext-title">Adapter 是弹性，不是首页主角。</h2>
-        <p>Vext 的主线是框架自身的 API 性能与开发体验。Adapter 负责在需要时连接不同 HTTP 生态，让迁移和集成更稳。</p>
+<section className="vext-section">
+  <div className="vext-matrix">
+    <div className="vext-matrix__panel">
+      <p className="vext-kicker">Runtime Flexibility</p>
+      <h2 className="vext-title">Adapter 是弹性，不是首页主角。</h2>
+      <p>
+        Vext 的主线是框架自身的 API 性能与开发体验。Adapter 负责在需要时连接不同
+        HTTP 生态，让迁移和集成更稳。
+      </p>
+    </div>
+    <div className="vext-adapter-list">
+      <div className="vext-adapter-row">
+        <strong>Native</strong>
+        <span>原生 HTTP fast path，适合追求极简依赖和吞吐。</span>
+        <em>core</em>
       </div>
-      <div className="vext-adapter-list">
-        <div className="vext-adapter-row"><strong>Native</strong><span>原生 HTTP fast path，适合追求极简依赖和吞吐。</span><em>core</em></div>
-        <div className="vext-adapter-row"><strong>Hono</strong><span>轻量现代生态，适合边缘和中间件组合。</span><em>lean</em></div>
-        <div className="vext-adapter-row"><strong>Fastify</strong><span>成熟高性能生态，适合复杂插件场景。</span><em>plugin</em></div>
-        <div className="vext-adapter-row"><strong>Express</strong><span>兼容传统 Node.js 项目迁移。</span><em>classic</em></div>
-        <div className="vext-adapter-row"><strong>Koa</strong><span>适合洋葱模型和既有 Koa 代码复用。</span><em>flow</em></div>
+      <div className="vext-adapter-row">
+        <strong>Hono</strong>
+        <span>轻量现代生态，适合边缘和中间件组合。</span>
+        <em>lean</em>
+      </div>
+      <div className="vext-adapter-row">
+        <strong>Fastify</strong>
+        <span>成熟高性能生态，适合复杂插件场景。</span>
+        <em>plugin</em>
+      </div>
+      <div className="vext-adapter-row">
+        <strong>Express</strong>
+        <span>兼容传统 Node.js 项目迁移。</span>
+        <em>classic</em>
+      </div>
+      <div className="vext-adapter-row">
+        <strong>Koa</strong>
+        <span>适合洋葱模型和既有 Koa 代码复用。</span>
+        <em>flow</em>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section className="vext-section">
-    <div className="vext-production">
-      <div>
-        <p className="vext-kicker">Production Ready</p>
-        <h2 className="vext-title">安全、稳定、可发布，不停在 demo 层。</h2>
-        <p className="vext-copy">Vext 的文档入口应该让团队快速判断它能否进入真实服务端项目：限流、优雅关闭、Rolling Restart、Cluster、国际化、结构化错误和 OpenAPI 都要被看见。</p>
+<section className="vext-section">
+  <div className="vext-production">
+    <div>
+      <p className="vext-kicker">Production Ready</p>
+      <h2 className="vext-title">安全、稳定、可发布，不停在 demo 层。</h2>
+      <p className="vext-copy">
+        Vext
+        的文档入口应该让团队快速判断它能否进入真实服务端项目：限流、优雅关闭、Rolling
+        Restart、Cluster、国际化、结构化错误和 OpenAPI 都要被看见。
+      </p>
+    </div>
+    <div className="vext-production__signals">
+      <div className="vext-signal">
+        <strong>Rate Limit</strong>
+        <span>内置限流能力降低滥用风险。</span>
       </div>
-      <div className="vext-production__signals">
-        <div className="vext-signal"><strong>Rate Limit</strong><span>内置限流能力降低滥用风险。</span></div>
-        <div className="vext-signal"><strong>Graceful</strong><span>关闭流程保护连接与请求。</span></div>
-        <div className="vext-signal"><strong>Cluster</strong><span>多进程与心跳适合生产守护。</span></div>
-        <div className="vext-signal"><strong>Errors</strong><span>业务码、i18n 与 JSON-safe details。</span></div>
+      <div className="vext-signal">
+        <strong>Graceful</strong>
+        <span>关闭流程保护连接与请求。</span>
+      </div>
+      <div className="vext-signal">
+        <strong>Cluster</strong>
+        <span>多进程与心跳适合生产守护。</span>
+      </div>
+      <div className="vext-signal">
+        <strong>Errors</strong>
+        <span>业务码、i18n 与 JSON-safe details。</span>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section className="vext-section">
-    <div className="vext-section__header">
-      <p className="vext-kicker">Next Steps</p>
-      <h2 className="vext-title">直接进入你要验证的工程路径。</h2>
-    </div>
-    <div className="vext-next">
-      <a href={docsHref("/guide/quick-start.html")}><strong>创建第一个项目</strong><span>使用 npx vextjs create 创建 TypeScript + React 项目。</span></a>
-      <a href={docsHref("/guide/hot-reload.html")}><strong>验证重载体验</strong><span>查看后端 T1/T2/T3 触发边界和前端重建输出。</span></a>
-      <a href={docsHref("/guide/deployment.html")}><strong>准备生产部署</strong><span>查看构建、启动、优雅关闭与多进程策略。</span></a>
-      <a href={docsHref("/benchmark.html")}><strong>复现性能基准</strong><span>基于仓库 benchmark 脚本复核不同场景吞吐。</span></a>
-    </div>
-  </section>
+<section className="vext-section">
+  <div className="vext-section__header">
+    <p className="vext-kicker">Next Steps</p>
+    <h2 className="vext-title">直接进入你要验证的工程路径。</h2>
+  </div>
+  <div className="vext-next">
+    <a href={docsHref("/guide/quick-start.html")}>
+      <strong>创建第一个项目</strong>
+      <span>使用 npx vextjs create 创建 TypeScript + React 项目。</span>
+    </a>
+    <a href={docsHref("/guide/hot-reload.html")}>
+      <strong>验证重载体验</strong>
+      <span>查看后端 T1/T2/T3 触发边界和前端重建输出。</span>
+    </a>
+    <a href={docsHref("/guide/deployment.html")}>
+      <strong>准备生产部署</strong>
+      <span>查看构建、启动、优雅关闭与多进程策略。</span>
+    </a>
+    <a href={docsHref("/benchmark.html")}>
+      <strong>复现性能基准</strong>
+      <span>基于仓库 benchmark 脚本复核不同场景吞吐。</span>
+    </a>
+  </div>
+</section>
 
   <footer className="vext-footer">
     <div className="vext-footer__inner">
@@ -212,6 +304,8 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
           <a href={docsHref("/api/config.html")}>API 参考</a>
           <a href={docsHref("/examples/hello-world.html")}>示例</a>
           <a href={docsHref("/benchmark.html")}>Benchmark</a>
+          <a href={docsHref("/resources/support-and-services.html")}>支持与服务</a>
+          <a href={docsHref("/resources/documentation-data-and-ai.html")}>文档数据与 AI</a>
         </div>
         <div>
           <h2>版本</h2>

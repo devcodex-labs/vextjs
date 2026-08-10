@@ -3,7 +3,7 @@
 VextJS provides the **Preload** mechanism, allowing the following two types of sources to execute scripts before the Node.js module is loaded:
 
 1. **Dependency package declaration**: npm package declares `vext.preload` in `package.json`
-2. **Project-level directory**: `preload/` in the root directory of the application project
+2. **Project-level directory**: canonical `src/preload/` in the application project
 
 `vext start` / `vext dev` will automatically discover these declarations and inject them into the child process via the `--import` parameter.
 
@@ -16,24 +16,24 @@ Node.js's `--import` parameter is designed for exactly this: it ensures that the
 Manually adding `--import` requires modifying the startup script, which increases the configuration burden. VextJS’s preload mechanism automates this step:
 
 - The plug-in package only needs to declare `vext.preload` in `package.json`
-- The application project only needs to create the `preload/` directory in the project root
+- The application project only needs to create `src/preload/`
 
 The CLI will automatically complete the injection.
 
-> Starting from `v0.3.6`, application projects no longer need to package a local npm package for preload. Just create the `preload/` directory in the project root.
+> Application projects do not need to package a local npm package for preload. Create `src/preload/` when the first preload source is needed; the scaffold intentionally does not create an empty directory.
 
 ## Working principle
 
 ```text
 vext start / vext dev
   ↓
-Scan the project root preload/ directory
+Scan canonical src/preload/ (or the warned legacy root preload/ fallback)
   ↓
 Read dependencies + devDependencies of project package.json
   ↓
 Traverse the package.json of installed dependencies and look for the "vext.preload" field
   ↓
-Project-level preload and package-level preload are merged, deduplicated and converted into file:/// URLs
+The selected project-level preload directory and package-level preloads are merged, deduplicated and converted into file:/// URLs
   ↓
 Inject into the child process execArgv with the --import <url> parameter
   ↓
@@ -50,7 +50,7 @@ sequenceDiagram
     participant Script as preload script
     participant App as application code
 
-    CLI->>PR: Scan project root preload/ + direct dependencies
+    CLI->>PR: Scan src/preload/ + direct dependencies
     PR-->>CLI: [file:///...preload.js]
     CLI->>Child: fork({ execArgv: ["--import", "file:///..."] })
     Child->>Script: executed first (--import mechanism)
@@ -61,12 +61,12 @@ sequenceDiagram
 
 ## Statement preload
 
-### Method A: Project-level `preload/` directory
+### Method A: Project-level `src/preload/` directory
 
-Create in the application project root directory:
+Create inside the application source directory:
 
 ```text
-preload/
+src/preload/
 ├── 01-bootstrap-port.ts
 ├── 02-bootstrap-verbose.mjs
 └── 03-polyfill.js
@@ -74,28 +74,32 @@ preload/
 
 First term rules:
 
-| Rules | Description |
-|------|------|
-| Directory location | Fixed to project root `preload/` |
-| Scan scope | **Non-recursive**, only scan first-level files in the current directory |
-| File order | Inject in ascending order of file names |
+| Rules                          | Description                                                                                     |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Directory location             | Fixed to canonical `src/preload/`                                                               |
+| Scan scope                     | **Non-recursive**, only scan first-level files in the current directory                         |
+| File order                     | Inject in ascending order of file names                                                         |
 | Project level vs package level | **Project level preload is executed first**, and package level `vext.preload` is executed later |
-| Deduplication | Deduplication by absolute path |
+| Deduplication                  | Deduplication by absolute path                                                                  |
+
+#### Legacy root directory migration
+
+Project-root `preload/` is supported only as a temporary migration fallback. If it contains a supported preload source, Vext emits a warning that names `src/preload/` as the target. Do not keep supported preload files in both directories: Vext fails fast instead of merging them, because a preload can initialize global instrumentation and must not run twice.
 
 #### Supported file types
 
-| Type | Processing | Recommendation |
-|------|----------|:------:|
-| `.mjs` | Direct injection | ✅ Recommended |
-| `.js` | Inject directly under ESM project | ✅ Available |
-| `.ts` | Compile to `.vext/preload/*.mjs` before starting and then inject | ✅ Available |
+| Type   | Processing                                                       | Recommendation |
+| ------ | ---------------------------------------------------------------- | :------------: |
+| `.mjs` | Direct injection                                                 | ✅ Recommended |
+| `.js`  | Inject directly under ESM project                                |  ✅ Available  |
+| `.ts`  | Compile to `.vext/preload/*.mjs` before starting and then inject |  ✅ Available  |
 | `.mts` | Compile to `.vext/preload/*.mjs` before starting and then inject | ✅ Recommended |
 
 > It is recommended to use `.mjs` / `.mts` first, which has the clearest semantics.
 
 #### How TypeScript preload works
 
-If the project-level `preload/` directory contains `.ts` / `.mts` files, the CLI will use `esbuild` to compile them to:
+If the project-level `src/preload/` directory contains `.ts` / `.mts` files, the CLI will use `esbuild` to compile them to:
 
 ```text
 .vext/preload/*.mjs
@@ -104,7 +108,7 @@ If the project-level `preload/` directory contains `.ts` / `.mts` files, the CLI
 For example:
 
 ```text
-preload/01-bootstrap-port.ts
+src/preload/01-bootstrap-port.ts
 → .vext/preload/01-bootstrap-port.__compiled__.mjs
 → --import file:///.../.vext/preload/01-bootstrap-port.__compiled__.mjs
 ```
@@ -113,13 +117,13 @@ The purpose of this is to ensure that: without modifying the `vext build` main c
 
 - `vext dev`
 - `vext start`
--Cluster worker
+  -Cluster worker
 
 The preload behavior of the three links is consistent.
 
 #### Behavior under `vext dev`
 
-Project-level preload belongs to **execution logic before startup**. Therefore, when files in `preload/` are added/modified/deleted:
+Project-level preload belongs to **execution logic before startup**. Therefore, when files in `src/preload/` are added/modified/deleted:
 
 - `vext dev` will listen to this directory
 - and trigger **cold restart** uniformly
@@ -141,10 +145,10 @@ Add the `vext.preload` field in the `package.json` of the npm package:
 
 #### Field format
 
-| Format | Example | Description |
-|------|------|------|
-| String | `"./dist/init.js"` | Single preload script |
-| Array | `["./dist/a.js", "./dist/b.js"]` | Multiple scripts, injected in array order |
+| Format | Example                          | Description                               |
+| ------ | -------------------------------- | ----------------------------------------- |
+| String | `"./dist/init.js"`               | Single preload script                     |
+| Array  | `["./dist/a.js", "./dist/b.js"]` | Multiple scripts, injected in array order |
 
 Paths are relative to the package root (`node_modules/<package>/`) and are automatically resolved to absolute paths by the CLI.
 
@@ -165,21 +169,21 @@ After installation, `vext start` / `vext dev` automatically injects `--import`, 
 
 ## Applicable scenarios
 
-| Scene | Description |
-|------|------|
-| **OpenTelemetry SDK** | Must be initialized before module loading to monkey-patch HTTP/DB client |
-| **APM Tools** | Datadog, New Relic and other APM agents are the same |
-| **Global polyfill** | A global patch that needs to be injected before all code is executed |
+| Scene                                    | Description                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **OpenTelemetry SDK**                    | Must be initialized before module loading to monkey-patch HTTP/DB client                                     |
+| **APM Tools**                            | Datadog, New Relic and other APM agents are the same                                                         |
+| **Global polyfill**                      | A global patch that needs to be injected before all code is executed                                         |
 | **Process-level configuration bridging** | For example, setting environment variables for the bootstrap provider to read during the configuration phase |
 
 ## The boundary between preload and bootstrap config provider`preload` and `src/config/bootstrap.ts` both occur before the application is fully started, but have different responsibilities:
 
-| capabilities | preload | bootstrap config provider |
-|------|---------|---------------------------|
-| Execution timing | Before Node.js module is loaded (`--import`) | Before configuring merge / validate / freeze |
-| Main responsibilities | SDK initialization, environment bridging, monkey patch, global polyfill | Return structured configuration patch |
-| Whether to participate in the configuration priority chain | ❌ | ✅ |
-| Is it suitable as the main path for remote database configuration | ❌ | ✅ |
+| capabilities                                                      | preload                                                                 | bootstrap config provider                    |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| Execution timing                                                  | Before Node.js module is loaded (`--import`)                            | Before configuring merge / validate / freeze |
+| Main responsibilities                                             | SDK initialization, environment bridging, monkey patch, global polyfill | Return structured configuration patch        |
+| Whether to participate in the configuration priority chain        | ❌                                                                      | ✅                                           |
+| Is it suitable as the main path for remote database configuration | ❌                                                                      | ✅                                           |
 
 Recommended practices:
 
@@ -190,11 +194,11 @@ Recommended practices:
 
 ## Three startup modes
 
-| mode | preload takes effect? | Description |
-|------|:-:|------|
-| `vext start` / `vext dev` | ✅ | CLI automatically discovers and injects `--import` |
-| `node --import <path> dist/server.js` | ✅ | Manually add `--import`, the effect is the same |
-| `node dist/server.js` (without --import) | ❌ | preload script will not execute |
+| mode                                     | preload takes effect? | Description                                        |
+| ---------------------------------------- | :-------------------: | -------------------------------------------------- |
+| `vext start` / `vext dev`                |          ✅           | CLI automatically discovers and injects `--import` |
+| `node --import <path> dist/server.js`    |          ✅           | Manually add `--import`, the effect is the same    |
+| `node dist/server.js` (without --import) |          ❌           | preload script will not execute                    |
 
 > It is recommended to use `vext start` / `vext dev` to enjoy the convenience of automatic injection.
 
@@ -210,7 +214,7 @@ VEXT_CLUSTER=1 vext start # Each Worker automatically loads the preload script
 
 ### Safe Behavior
 
-- **The project-level directory is a controlled single directory**: Only the project root `preload/` is recognized, and any directory is not scanned recursively.
+- **The project-level directory is a controlled single directory**: `src/preload/` is canonical and is scanned non-recursively. Project-root `preload/` is a warned compatibility fallback, not a second source directory.
 - **Only scan direct dependencies**: CLI only reads the `dependencies` + `devDependencies` of the project `package.json`, and does not recursively scan sub-dependencies
 - **Skip when the file does not exist**: When the file pointed to by `vext.preload` does not exist, the CLI will output a warning and skip it, without blocking startup.
 - **Downgrade when parsing fails**: The dependent package `package.json` is silently skipped when parsing fails.
@@ -229,27 +233,27 @@ CLI-injected `--import` does not conflict with `--import` manually added by the 
 
 ### Deployment boundaries
 
-If you are using **project-level `preload/`**:
+If you are using **project-level `src/preload/`**:
 
-- `vext build` will compile the project root `preload/` to `dist/preload/`
+- `vext build` will compile `src/preload/` to `dist/preload/`
 - `.ts` / `.mts` / `.js` / `.mjs` will all be uniformly output into `.mjs` files that can be directly `--import`
 - Therefore, when deploying in production, you usually only need to carry:
   - Project root `package.json`
   - `dist/` (which already contains `dist/preload/`, if used)
 
-`vext start` will give priority to reading the project root `preload/`; if the directory does not exist in the root directory, it will automatically fall back to reading `dist/preload/`.
+`vext start` resolves populated `src/preload/` first, uses a populated legacy root `preload/` only as a warned fallback, and otherwise falls back to `dist/preload/` for a built deployment.
 
 ## Write custom preload
 
 ### Write project-level preload
 
 ```ts
-// preload/01-bootstrap-port.ts
+// src/preload/01-bootstrap-port.ts
 process.env.APP_BOOTSTRAP_PORT = "3011";
 ```
 
 ```js
-// preload/02-sdk.mjs
+// src/preload/02-sdk.mjs
 try {
   const { init } = await import("../src/sdk.js");
   await init();

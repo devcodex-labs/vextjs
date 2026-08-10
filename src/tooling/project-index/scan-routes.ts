@@ -6,8 +6,19 @@ import {
   ROUTE_SOURCE_PATTERNS,
   shouldIncludeRouteFilePath,
 } from "../../lib/route-file-policy.js";
-import { createRouteFreshnessIdentity } from "../../frontend/contract/schema-ir.js";
-import type { VextRouteFreshnessIdentity } from "../../frontend/contract/types.js";
+import { detectRouteSourceDocsKind } from "../../lib/openapi/route-docs-kind.js";
+import { SchemaConverter } from "../../lib/openapi/schema-converter.js";
+import type { VextOpenAPIDocsKind } from "../../lib/openapi/types.js";
+import {
+  createDigest,
+  createRouteFreshnessIdentity,
+} from "../../frontend/contract/schema-ir.js";
+import type {
+  VextRouteFreshnessIdentity,
+  VextRouteResponseSchemaV1,
+  VextRouteSchemaContractV1,
+  VextSchemaIRV1,
+} from "../../frontend/contract/types.js";
 import type { VextRouteFrontendOptions } from "../../types/app.js";
 const HTTP_METHODS = [
   "get",
@@ -18,6 +29,14 @@ const HTTP_METHODS = [
   "head",
   "options",
 ];
+
+const schemaConverter = new SchemaConverter();
+
+interface StaticRouteResponseDefinition {
+  status: string;
+  contentType: string;
+  schema?: Record<string, unknown> | string;
+}
 
 export interface RouteIndexEntry {
   filePath: string;
@@ -30,6 +49,8 @@ export interface RouteIndexEntry {
   operationId: string | null;
   tags: string[];
   hidden: boolean;
+  docsKind: VextOpenAPIDocsKind;
+  schema: VextRouteSchemaContractV1;
   freshness: VextRouteFreshnessIdentity;
 }
 
@@ -83,6 +104,7 @@ function scanRouteEntries(
 
       const docs = readRouteDocs(args[1]);
       const frontend = readRouteFrontend(args[1]);
+      const handler = args.length >= 3 ? args[2] : args[1];
       const method = match[1]!.toUpperCase();
 
       entries.push({
@@ -96,6 +118,8 @@ function scanRouteEntries(
         operationId: docs.operationId,
         tags: docs.tags,
         hidden: docs.hidden,
+        docsKind: detectRouteSourceDocsKind(handler),
+        schema: createRouteSchemaContract(docs.responses),
         freshness: createRouteFreshnessIdentity({ frontend }),
       });
     }
@@ -175,6 +199,7 @@ function readRouteDocs(optionsArg: string | undefined): {
   operationId: string | null;
   tags: string[];
   hidden: boolean;
+  responses: StaticRouteResponseDefinition[];
 } {
   const empty = {
     docsSummary: null,
@@ -182,6 +207,7 @@ function readRouteDocs(optionsArg: string | undefined): {
     operationId: null,
     tags: [],
     hidden: false,
+    responses: [],
   };
 
   const options = optionsArg?.trim();
@@ -209,7 +235,212 @@ function readRouteDocs(optionsArg: string | undefined): {
     operationId,
     tags: readStringArrayProperty(docsObject, "tags"),
     hidden: readBooleanProperty(docsObject, "hidden"),
+    responses: readRouteResponseDefinitions(docsObject),
   };
+}
+
+function createRouteSchemaContract(
+  responses: readonly StaticRouteResponseDefinition[],
+): VextRouteSchemaContractV1 {
+  return {
+    schemaVersion: 1,
+    request: {},
+    responses: responses
+      .map((response) => {
+        const schema = response.schema
+          ? createStaticResponseSchema(response.status, response.schema)
+          : undefined;
+        return {
+          status: response.status,
+          contentType: response.contentType,
+          ...(schema ? { schema } : {}),
+        } satisfies VextRouteResponseSchemaV1;
+      })
+      .sort((left, right) => compareResponseStatus(left.status, right.status)),
+  };
+}
+
+function createStaticResponseSchema(
+  status: string,
+  responseSchema: Record<string, unknown> | string,
+): VextSchemaIRV1 | undefined {
+  try {
+    const schema = schemaConverter.convertResponseSchema(responseSchema);
+    const ref = typeof schema.$ref === "string" ? schema.$ref : undefined;
+    return {
+      schemaVersion: 1,
+      kind: "vext-schema-ir",
+      source: "docs.responses",
+      sourcePath: `docs.responses.${status}.schema`,
+      schema,
+      digest: createDigest(schema),
+      ...(ref ? { ref } : {}),
+    };
+  } catch {
+    // Static indexing deliberately fails closed for dynamic or unsupported
+    // expressions. Runtime OpenAPI validation still owns those declarations.
+    return undefined;
+  }
+}
+
+function readRouteResponseDefinitions(
+  docsObject: string,
+): StaticRouteResponseDefinition[] {
+  const responsesObject = readObjectProperty(docsObject, "responses");
+  if (!responsesObject) return [];
+
+  return readObjectEntries(responsesObject)
+    .map(({ key, value }) => {
+      const status = readObjectEntryKey(key);
+      const responseObject = value.trim();
+      if (!status || !responseObject.startsWith("{")) return null;
+
+      const contentType =
+        readStringLiteral(
+          readObjectEntryValue(responseObject, "contentType") ?? "",
+        ) ?? "application/json";
+      const schema = parseStaticResponseSchema(
+        readObjectEntryValue(responseObject, "schema"),
+      );
+      return { status, contentType, ...(schema ? { schema } : {}) };
+    })
+    .filter(
+      (response): response is StaticRouteResponseDefinition =>
+        response !== null,
+    )
+    .sort((left, right) => compareResponseStatus(left.status, right.status));
+}
+
+function parseStaticResponseSchema(
+  value: string | undefined,
+): Record<string, unknown> | string | undefined {
+  const parsed = parseStaticSchemaValue(value);
+  return typeof parsed === "string" || isStaticSchemaObject(parsed)
+    ? parsed
+    : undefined;
+}
+
+function parseStaticSchemaValue(value: string | undefined): unknown {
+  if (!value) return undefined;
+  const string = readStringLiteral(value);
+  if (string !== null) return string;
+
+  const trimmed = value.trim();
+  if (trimmed.startsWith("{")) {
+    return parseStaticSchemaObject(trimmed);
+  }
+  if (trimmed.startsWith("[")) {
+    return parseStaticSchemaArray(trimmed);
+  }
+  return undefined;
+}
+
+function parseStaticSchemaObject(
+  source: string,
+): Record<string, unknown> | undefined {
+  const object = readBalanced(source, 0, "{", "}");
+  if (!object || object.length !== source.trim().length) return undefined;
+
+  const result: Record<string, unknown> = {};
+  for (const { key, value } of readObjectEntries(object)) {
+    const property = readObjectEntryKey(key);
+    const parsed = parseStaticSchemaValue(value);
+    if (!property || parsed === undefined) return undefined;
+    result[property] = parsed;
+  }
+  return result;
+}
+
+function parseStaticSchemaArray(source: string): unknown[] | undefined {
+  const array = readBalanced(source, 0, "[", "]");
+  if (!array || array.length !== source.trim().length) return undefined;
+  const members = splitTopLevelArgs(array.slice(1, -1));
+  if (members.length === 1 && !members[0]) return [];
+
+  const values: unknown[] = [];
+  for (const member of members) {
+    const parsed = parseStaticSchemaValue(member);
+    if (parsed === undefined) return undefined;
+    values.push(parsed);
+  }
+  return values;
+}
+
+function isStaticSchemaObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readObjectEntries(
+  objectLiteral: string,
+): Array<{ key: string; value: string }> {
+  const object = objectLiteral.trim();
+  if (!object.startsWith("{") || !object.endsWith("}")) return [];
+
+  const entries: Array<{ key: string; value: string }> = [];
+  for (const member of splitTopLevelArgs(object.slice(1, -1))) {
+    if (!member) continue;
+    const separator = findTopLevelPropertySeparator(member);
+    if (separator < 1) continue;
+    entries.push({
+      key: member.slice(0, separator).trim(),
+      value: member.slice(separator + 1).trim(),
+    });
+  }
+  return entries;
+}
+
+function readObjectEntryValue(
+  objectLiteral: string,
+  expectedKey: string,
+): string | undefined {
+  return readObjectEntries(objectLiteral).find(
+    ({ key }) => readObjectEntryKey(key) === expectedKey,
+  )?.value;
+}
+
+function readObjectEntryKey(value: string): string | null {
+  const string = readStringLiteral(value);
+  if (string !== null) return string;
+  return /^[A-Za-z_$][\w$]*$/u.test(value) || /^\d+$/u.test(value)
+    ? value
+    : null;
+}
+
+function findTopLevelPropertySeparator(source: string): number {
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+    } else if (char === "{" || char === "(" || char === "[") {
+      depth++;
+    } else if (char === "}" || char === ")" || char === "]") {
+      depth--;
+    } else if (char === ":" && depth === 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function compareResponseStatus(left: string, right: string): number {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+    return leftNumber - rightNumber;
+  }
+  return left.localeCompare(right);
 }
 
 function readStringProperty(objectLiteral: string, key: string): string | null {

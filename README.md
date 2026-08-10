@@ -25,7 +25,7 @@ vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 - **🧪 测试工具** — 内置 `createTestApp`，无需启动 HTTP 服务器即可测试路由
 - **⚡ TypeScript 原生** — 完整类型定义，极致的 IDE 补全体验
 - **🧰 工程辅助命令** — `vext typegen` 可生成 `app.services` / `app.extend()` 声明并执行 tooling 层依赖诊断；`vext doctor routes` 已进入 Phase 2 预览
-- **🛰️ Preload 生态集成** — 同时支持依赖包 `vext.preload` 与项目根 `preload/` 目录；适合 OpenTelemetry / APM / polyfill / 启动前环境桥接这类必须早于应用代码执行的能力
+- **🛰️ Preload 生态集成** — 同时支持依赖包 `vext.preload` 与规范项目目录 `src/preload/`；适合 OpenTelemetry / APM / polyfill / 启动前环境桥接这类必须早于应用代码执行的能力
 - **📦 零配置启动** — 合理的默认配置，最少 5 个字段即可运行
 
 ---
@@ -41,6 +41,8 @@ vextjs 提供 Adapter 架构（底层可替换）、插件系统、约定式路�
 `vextjs/frontend` 导出 `Link`、`Form`、`navigate`、`prefetch`、`revalidate`、`useNavigation`、`useFetcher` 和 `useRouteData`。浏览器仅在协商 `application/vnd.vext.page+json;v=1` 后取得 page envelope；请求仍经过 the same handler、middleware、auth、CSRF、validation、cache、redirect 和 error chain。协议、权限或资源不兼容时保留 LKG，并执行 one document navigation。该能力不会新增 second loader/action route DSL。
 
 这条运行时路线不包含 React Server Components、Server Functions、Server Actions 或 partial prerendering (PPR)；前端构建继续使用 esbuild，不引入 Webpack/Vite/Rollup/Rolldown 插件生态。
+
+这不是缺少 SSR：RSC 需要独立的 server/client component graph、payload、cache、开发与部署契约，而当前 `src/routes/**` + `res.render()` 已提供 SSR、hydration、Suspense、Streaming SSR 和同一路由导航。不要从 React 版本、SSR 或 Suspense 推断 RSC 支持；完整决策边界见 [Frontend Boundaries and Roadmap](https://devcodex-labs.github.io/vextjs/frontend/boundaries-and-roadmap)。
 
 ### 路由 freshness 与本地媒体
 
@@ -164,7 +166,7 @@ my-app/
     "dev": "vext dev"
   },
   "dependencies": {
-    "vextjs": "^0.3.8"
+    "vextjs": "^1.0.0"
   }
 }
 ```
@@ -267,20 +269,21 @@ export default opentelemetryPlugin({
 });
 ```
 
-然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload`，也会识别项目根 `preload/` 目录，并在应用代码前注入对应脚本，无需手动加 `node --import ...`。
+然后继续使用 `vext dev` / `vext start` 启动即可。CLI 会自动读取依赖包声明的 `vext.preload`，也会识别规范项目目录 `src/preload/`，并在应用代码前注入对应脚本，无需手动加 `node --import ...`。
 
-如果你是应用项目而不是插件包，现在也可以直接在项目根创建：
+如果你是应用项目而不是插件包，现在也可以直接创建：
 
 ```text
-preload/
+src/preload/
 ├── 01-bootstrap-port.ts
 └── 02-bootstrap-verbose.mjs
 ```
 
 - `.mjs` / `.js` 会直接作为 ESM preload 注入
 - `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
-- `vext dev` 下修改 `preload/` 中的文件会触发 cold restart，确保结果与手动重启一致
-- `vext build` 会把项目根 `preload/` 编译到 `dist/preload/*.mjs`，便于生产部署只携带 `dist/`
+- `vext dev` 下修改 `src/preload/` 中的文件会触发 cold restart，确保结果与手动重启一致
+- `vext build` 会把 `src/preload/` 编译到 `dist/preload/*.mjs`，便于生产部署只携带 `dist/`
+- 项目根 `preload/` 仅保留迁移兼容：使用时会输出迁移 warning；不要同时在两个目录放置 preload 源文件，CLI 会 fail-fast 以避免重复执行
 
 更多说明：
 

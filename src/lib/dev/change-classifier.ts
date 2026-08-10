@@ -73,13 +73,15 @@ export interface ClassifierOptions {
  * 设计依据（11-hot-reload.md §3 文件分类规则）：
  *   - config/ — 配置影响 bootstrap 阶段的行为（端口、中间件列表等）
  *   - plugins/ — 插件在 setup() 阶段注册钩子和中间件，无法安全卸载
- *   - preload/ — 项目级 preload 在应用代码前执行，变更后需完整重启才能重新注入
+ *   - src/preload/ — 项目级 preload 在应用代码前执行，变更后需完整重启才能重新注入
+ *   - preload/ — 兼容旧项目的根目录 preload，遵循同一冷重启语义
  *   - package.json / lockfile — 依赖变更需要重新安装和加载
  *   - tsconfig.json — 编译配置变更需要重建 esbuild context
  *   - .env — 环境变量在进程启动时读取，修改后需重启生效
  */
 const COLD_PATTERNS: RegExp[] = [
   /^src\/config\//,
+  /^src\/preload\//,
   /^preload\//,
   /^package\.json$/,
   /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|bun\.lock)$/,

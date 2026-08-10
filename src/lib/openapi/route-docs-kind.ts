@@ -7,16 +7,30 @@ const RESPONSE_RENDER_PATTERN =
 export function detectRouteDocsKind(
   handler?: VextHandler,
 ): VextOpenAPIDocsKind {
-  return handler && detectRenderCall(handler)
+  return detectRouteSourceDocsKind(
+    handler ? Function.prototype.toString.call(handler) : undefined,
+  );
+}
+
+export function detectRenderCall(handler: VextHandler): boolean {
+  return detectRenderCallSource(Function.prototype.toString.call(handler));
+}
+
+/**
+ * Static build tooling receives handler source text instead of a loaded
+ * function. Keep its page/API classification identical to the runtime
+ * collector without evaluating application modules.
+ */
+export function detectRouteSourceDocsKind(
+  handlerSource?: string,
+): VextOpenAPIDocsKind {
+  return handlerSource && detectRenderCallSource(handlerSource)
     ? "frontend-route"
     : "backend-api";
 }
 
-export function detectRenderCall(handler: VextHandler): boolean {
-  const source = stripCommentsAndStrings(
-    Function.prototype.toString.call(handler),
-  );
-  return RESPONSE_RENDER_PATTERN.test(source);
+export function detectRenderCallSource(source: string): boolean {
+  return RESPONSE_RENDER_PATTERN.test(stripCommentsAndStrings(source));
 }
 
 function stripCommentsAndStrings(source: string): string {

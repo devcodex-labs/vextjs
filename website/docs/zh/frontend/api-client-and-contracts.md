@@ -33,7 +33,7 @@ api.generated.ts
 
 运行时 route manifest 会把既有 `RouteOptions.validate` 的 `param`、`query`、`header`、`cookie`、`body` 字段，以及 `docs.responses.<status>.schema` 投影为 `VextSchemaIRV1`。`api.generated.ts` 会将支持的 JSON Schema 基础类型、对象、数组、枚举、optional 与 nullable 字段生成 request 和成功 response 的 TypeScript 类型。
 
-缺少 `docs.responses.<status>.schema` 时，契约保持 `unknown` 并携带 route/status diagnostic；Vext 不会猜测 response 类型。`$ref` 会保留在契约中，但在具备 component-reference resolver 前，生成 TypeScript 仍为 `unknown`。cookie schema 只描述契约：浏览器 fetch 控制 cookie transport，生成 client 不提供可写 `Cookie` header。
+缺少 `docs.responses.<status>.schema` 时，契约保持 `unknown`，并携带 HTTP 方法、路由路径、可用时的源文件和稳定 route ID 的 diagnostic；Vext 不会猜测 response 类型。使用 `res.render()` 渲染的 HTML 页面会被归类为前端文档，不会产生 API response schema warning。`$ref` 会保留在契约中，但在具备 component-reference resolver 前，生成 TypeScript 仍为 `unknown`。cookie schema 只描述契约：浏览器 fetch 控制 cookie transport，生成 client 不提供可写 `Cookie` header。
 
 ## 公开入口
 

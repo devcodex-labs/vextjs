@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-The default scaffold is full-stack: backend routes, services, React pages, styles, an initial locale, and same-source `public/vext-mark.svg` / `favicon.svg` assets are created in one project. Optional asset and convention directories are added only when they contain real application source. API-only projects can still use:
+The default scaffold is full-stack: backend routes, services, React pages, styles, an initial locale, and `public/vext-mark.svg` / `favicon.svg` variants built from the same V geometry are created in one project. Optional asset and convention directories are added only when they contain real application source. API-only projects can still use:
 
 ```bash
 npx vextjs create my-api --template api --frontend none
@@ -29,7 +29,7 @@ GET / -> src/routes/index.ts -> res.render("index")
 
 ## The Generated Launchpad
 
-The default full-stack template starts with an SSR Vext runtime launchpad instead of a blank demo. `src/routes/index.ts` supplies the greeting and render time, `src/frontend/pages/index.tsx` renders them with `useVextI18n`, `src/frontend/components/AppShell.tsx` owns the shared navigation and references `public/vext-mark.svg`, and `src/frontend/styles/index.css` owns the ink/cyan/green/amber visual tokens. `public/favicon.svg` uses the same mark. Change those files first; there are no generated README placeholders to maintain.
+The default full-stack template starts with an SSR Vext runtime launchpad instead of a blank demo. Its visible runtime trace follows route → service → `res.render()` → browser runtime; the greeting and render time remain real server data. `src/frontend/components/AppShell.tsx` owns the shared navigation and references the transparent `public/vext-mark.svg`, while `public/favicon.svg` is its contrast-safe variant with the same V geometry. `src/frontend/styles/index.css` owns the ink/cyan/green/amber tokens plus CSS-only, reduced-motion-safe effects. Change those files first; there are no generated README placeholders to maintain.
 
 ## Change the Home Page
 
@@ -105,6 +105,8 @@ export const card = style({
   borderRadius: 8,
 });
 ```
+
+For the first recipe, variants, CSS variables, and build output, follow [Vext JSCSS](/frontend/jscss).
 
 ## If Something Fails
 

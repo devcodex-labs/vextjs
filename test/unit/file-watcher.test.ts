@@ -31,7 +31,7 @@ function createTempProject(): string {
   fs.mkdirSync(path.join(srcDir, "services"), { recursive: true });
   fs.mkdirSync(path.join(srcDir, "config"), { recursive: true });
   fs.mkdirSync(path.join(srcDir, "plugins"), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, "preload"), { recursive: true });
+  fs.mkdirSync(path.join(srcDir, "preload"), { recursive: true });
 
   // src/routes/user.ts
   fs.writeFileSync(
@@ -75,7 +75,7 @@ function createTempProject(): string {
   fs.writeFileSync(path.join(tmpDir, ".env"), "PORT=3000\n");
   fs.writeFileSync(path.join(tmpDir, ".env.local"), "SECRET=abc\n");
   fs.writeFileSync(
-    path.join(tmpDir, "preload", "01-env.ts"),
+    path.join(srcDir, "preload", "01-env.ts"),
     "export const preloadFlag = 'init';\n",
   );
 
@@ -160,7 +160,12 @@ describe("change-classifier", () => {
       expect(result.action).toBe("cold");
     });
 
-    it("preload/ 下的项目级 preload 文件应分类为 cold", () => {
+    it("src/preload/ 下的项目级 preload 文件应分类为 cold", () => {
+      const result = classifyChange("src/preload/01-env.ts");
+      expect(result.action).toBe("cold");
+    });
+
+    it("兼容的根 preload/ 文件仍应分类为 cold", () => {
       const result = classifyChange("preload/01-env.ts");
       expect(result.action).toBe("cold");
     });
@@ -659,7 +664,7 @@ describe("VextFileWatcher", () => {
       }
     });
 
-    it("修改 preload/ 文件应触发 cold 事件", async () => {
+    it("修改 src/preload/ 文件应触发 cold 事件", async () => {
       watcher = new VextFileWatcher({
         root: projectRoot,
         debounce: 50,
@@ -675,7 +680,7 @@ describe("VextFileWatcher", () => {
       await sleep(100);
 
       fs.writeFileSync(
-        path.join(projectRoot, "preload", "01-env.ts"),
+        path.join(projectRoot, "src", "preload", "01-env.ts"),
         "export const preloadFlag = 'updated';\n",
       );
 
@@ -687,7 +692,7 @@ describe("VextFileWatcher", () => {
       if (event) {
         expect(event.action).toBe("cold");
         expect(
-          event.files.some((f) => f.path.includes("preload/01-env.ts")),
+          event.files.some((f) => f.path.includes("src/preload/01-env.ts")),
         ).toBe(true);
       }
     });
@@ -763,7 +768,7 @@ describe("VextFileWatcher", () => {
       }
     });
 
-    it("fs.watch 模式下动态创建 preload/ 目录后应监听其中新增文件", async () => {
+    it("fs.watch 模式下动态创建兼容 preload/ 目录后应监听其中新增文件", async () => {
       fs.rmSync(path.join(projectRoot, "preload"), {
         recursive: true,
         force: true,
@@ -914,7 +919,7 @@ describe("VextFileWatcher", () => {
       }
     });
 
-    it("polling 模式下修改 preload/ 文件应触发 cold 事件", async () => {
+    it("polling 模式下修改 src/preload/ 文件应触发 cold 事件", async () => {
       watcher = new VextFileWatcher({
         root: projectRoot,
         usePolling: true,
@@ -928,7 +933,7 @@ describe("VextFileWatcher", () => {
       const eventPromise = new Promise<FileChangeEvent>((resolve) => {
         watcher.on("change", (event: FileChangeEvent) => {
           const hasPreload = event.files.some((f) =>
-            f.path.includes("preload/01-env.ts"),
+            f.path.includes("src/preload/01-env.ts"),
           );
           if (hasPreload) {
             resolve(event);
@@ -937,7 +942,7 @@ describe("VextFileWatcher", () => {
       });
 
       fs.writeFileSync(
-        path.join(projectRoot, "preload", "01-env.ts"),
+        path.join(projectRoot, "src", "preload", "01-env.ts"),
         "export const preloadFlag = 'polling-updated';\n",
       );
 

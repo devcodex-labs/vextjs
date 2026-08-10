@@ -6,7 +6,11 @@ import {
 } from "../project-index/scan-routes.js";
 import { inferOperationId } from "../../lib/openapi/operation-id.js";
 import { createRouteId } from "../../frontend/contract/schema-ir.js";
-import type { VextRouteFreshnessIdentity } from "../../frontend/contract/types.js";
+import type {
+  VextRouteFreshnessIdentity,
+  VextRouteSchemaContractV1,
+} from "../../frontend/contract/types.js";
+import type { VextOpenAPIDocsKind } from "../../lib/openapi/types.js";
 import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
 import { writeRouteInspectFile } from "./write-route-inspect.js";
 import {
@@ -67,6 +71,8 @@ export interface DoctorRouteRecord {
   operationIdSource: "explicit" | "inferred";
   tags: string[];
   hidden: boolean;
+  docsKind: VextOpenAPIDocsKind;
+  schema: VextRouteSchemaContractV1;
   freshness: VextRouteFreshnessIdentity;
 }
 
@@ -142,12 +148,14 @@ function readRouteEntriesFromManifest(
       prefix?: string;
       method?: string;
       path?: string;
+      docsKind?: VextOpenAPIDocsKind;
       docsSummary?: string | null;
       summary?: string | null;
       operationId?: string | null;
       operationIdSource?: "explicit" | "inferred";
       tags?: string[];
       hidden?: boolean;
+      schema?: VextRouteSchemaContractV1;
       freshness?: VextRouteFreshnessIdentity;
     }>;
   };
@@ -171,6 +179,12 @@ function readRouteEntriesFromManifest(
         operationId,
         tags: route.tags ?? [],
         hidden: route.hidden ?? false,
+        docsKind: route.docsKind ?? "backend-api",
+        schema: route.schema ?? {
+          schemaVersion: 1,
+          request: {},
+          responses: [],
+        },
         freshness: route.freshness ?? {
           mode: "dynamic",
           source: "legacy-default",
@@ -298,6 +312,8 @@ function toDoctorRouteRecord(entry: RouteIndexEntry): DoctorRouteRecord {
     operationIdSource: entry.operationId ? "explicit" : "inferred",
     tags: entry.tags,
     hidden: entry.hidden,
+    docsKind: entry.docsKind,
+    schema: entry.schema,
     freshness: entry.freshness,
   };
 }
@@ -369,6 +385,7 @@ function buildRouteManifestPayload(
       prefix: item.prefix,
       method: item.method,
       path: item.path,
+      docsKind: item.docsKind,
       docsSummary: item.docsSummary,
       summary: item.docsSummary,
       routeId: createRouteId(item.method, item.path),
@@ -376,11 +393,7 @@ function buildRouteManifestPayload(
       operationIdSource: item.operationIdSource,
       tags: item.tags,
       hidden: item.hidden,
-      schema: {
-        schemaVersion: 1,
-        request: {},
-        responses: [],
-      },
+      schema: item.schema,
       freshness: item.freshness,
       layout: { state: "unresolved", paths: [] },
     })),

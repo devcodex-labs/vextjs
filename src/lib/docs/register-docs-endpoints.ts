@@ -408,7 +408,10 @@ function resolveDocsSourceTarget(
   if (isInside(sourceRoot, sourceTarget) && existsSync(sourceTarget)) {
     return sourceTarget;
   }
-  if (config.rootDir && file.startsWith("preload/")) {
+  if (
+    config.rootDir &&
+    (file.startsWith("src/preload/") || file.startsWith("preload/"))
+  ) {
     const root = resolve(config.rootDir);
     const rootTarget = resolve(root, file);
     if (isInside(root, rootTarget) && existsSync(rootTarget)) {

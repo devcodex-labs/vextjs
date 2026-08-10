@@ -105,7 +105,10 @@ export function resolveFrontendConfig(
       : [build.target]
     : ["es2022"];
   const clientBuild = build.client ?? {};
-  const clientTarget = normalizeTarget(clientBuild.target, "es2022");
+  const clientTarget = normalizeTarget(
+    clientBuild.target ?? build.target,
+    "es2022",
+  );
   const serverBuild = build.server ?? {};
   const serverTarget = normalizeTarget(serverBuild.target, "node20");
   assertSupportedBuildTargetKeys(

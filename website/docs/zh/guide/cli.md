@@ -39,7 +39,7 @@ npm run build  # → vext build
 
 ## `vext create` — 创建项目
 
-交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。默认模板是 `fullstack-react`；API-only 脚手架仍可通过 `--template api --frontend none` 创建。全栈 starter 默认展示可直接修改的服务端渲染 Vext launchpad。
+交互式创建新的 VextJS 项目，自动生成项目骨架和配置文件。默认模板是 `fullstack-react`；API-only 脚手架仍可通过 `--template api --frontend none` 创建。全栈 starter 默认展示可直接修改的服务端渲染 Vext launchpad，并在首页同时提供官方 Vext Guide 与本地 API 文档入口 `/docs`。其默认配置会启用 OpenAPI，因此该本地入口在 `vext dev` 与生产 `vext start` 后均可访问；API-only 项目仍保持显式启用。
 
 ### 用法
 
@@ -86,8 +86,8 @@ npx vextjs create my-app --skip-install
 ```
 my-app/
 ├── public/
-│   ├── favicon.svg           # 与 V 标记同源的 favicon
-│   └── vext-mark.svg         # starter AppShell 使用的同一 V 标记
+│   ├── favicon.svg           # 使用同一 V 几何的高对比 favicon 变体
+│   └── vext-mark.svg         # starter AppShell 使用的透明 V 标记
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 共享配置（port: 3000）
@@ -100,6 +100,7 @@ my-app/
 │   │   ├── locales/en-US.ts  # starter 文案
 │   │   ├── pages/            # React 页面、layout、document 和错误页
 │   │   └── styles/index.css  # Vext launchpad 样式
+│   ├── preload/              # 可选 preload 源；添加首个真实文件时再创建
 │   ├── routes/index.ts       # URL handler 和服务端数据
 │   ├── services/example.ts   # 示例服务
 │   └── types/generated/.gitkeep # TypeScript 项目的 typegen 输出根
@@ -108,9 +109,9 @@ my-app/
 └── .gitignore
 ```
 
-脚手架不会生成根目录或目录级的占位 `README.md` 文件。`src/middlewares/`、`src/plugins/`、`src/locales/` 与 `preload/` 等约定目录仍受支持；添加真实源码时会按需创建。
+脚手架不会生成根目录或目录级的占位 `README.md` 文件。`src/middlewares/`、`src/plugins/`、`src/locales/` 与规范的 `src/preload/` 等约定目录仍受支持；添加真实源码时会按需创建。历史项目根 `preload/` 不会由脚手架生成。
 
-默认全栈 starter 的 `public/vext-mark.svg` 与 `public/favicon.svg` 使用同一个 V 标记；前者由 AppShell 使用，两者都会随 `public/` 静态资源一起复制。
+默认全栈 starter 的 `public/vext-mark.svg` 是透明导航标记，`public/favicon.svg` 是高对比 favicon 变体；两者使用同一 V 几何。前者由 AppShell 使用，两者都会随 `public/` 静态资源一起复制。
 
 创建完成后：
 
@@ -251,11 +252,14 @@ vext build [options]
 | `--clean`          | 编译前清理输出目录                              | `false`      |
 | `--sourcemap`      | 生成 source map                                 | `true`       |
 | `--no-sourcemap`   | 禁用 source map                                 | —            |
-| `--minify`         | 压缩输出代码                                    | `false`      |
+| `--minify`         | 压缩输出代码（默认开启；保留兼容选项）          | `true`       |
+| `--no-minify`      | 关闭输出压缩                                    | —            |
 | `--typecheck`      | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
 | `--upload-assets`  | 前端构建完成后执行静态资源上传                  | `false`      |
 | `--deploy-dry-run` | 只输出前端上传计划，不写入目标                  | `false`      |
 | `-h, --help`       | 显示帮助                                        | —            |
+
+生产 CLI 构建默认压缩后端输出。需要可读的本地输出时使用 `--no-minify`；若由环境控制该退出开关，可设置 `VEXT_BUILD_MINIFY=false`。前端生产压缩仍遵循 `frontend.build.minify`。
 
 ### 示例
 
@@ -271,6 +275,9 @@ vext build --clean
 
 # 指定输出目录
 vext build --outdir build
+
+# 保留可读输出，便于本地检查
+vext build --no-minify
 
 # 构建后上传前端静态资源
 vext build --upload-assets
@@ -542,18 +549,19 @@ VEXT_CLUSTER=1 vext start
 `vext start` 和 `vext dev` 会自动解析两类 preload 来源：
 
 1. 已安装依赖包中声明的 `vext.preload`
-2. 应用项目根目录中的 `preload/`
+2. 应用项目中的规范目录 `src/preload/`
 
-在子进程启动前，这些脚本会统一通过 `--import` 注入。例如 `@devcodex/opentelemetry` 可利用包级 `vext.preload` 在应用代码加载前自动初始化 OpenTelemetry SDK；应用项目本身也可以直接在根目录 `preload/` 中放置脚本做启动前环境桥接。
+在子进程启动前，这些脚本会统一通过 `--import` 注入。例如 `@devcodex/opentelemetry` 可利用包级 `vext.preload` 在应用代码加载前自动初始化 OpenTelemetry SDK；应用项目本身也可以直接在 `src/preload/` 中放置脚本做启动前环境桥接。
 
 首期项目级 preload 规则：
 
-- 目录固定为项目根 `preload/`
+- 规范目录固定为 `src/preload/`
 - 非递归扫描
 - 项目级 preload 先执行，包级 preload 后执行
 - `.mjs` / `.js` 直接注入
 - `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
-- `vext dev` 下若 `preload/` 里的文件发生变化，会触发 cold restart
+- `vext dev` 下若 `src/preload/` 里的文件发生变化，会触发 cold restart
+- 项目根 `preload/` 是仅用于迁移的临时兼容回退；使用时会输出迁移 warning。不要在两个目录同时放置支持的 preload 文件，Vext 会 fail-fast，避免脚本重复执行
 
 详见 [预加载 (Preload)](/guide/preload)。
 

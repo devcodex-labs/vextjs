@@ -8,12 +8,9 @@ VextJS 遵循 **约定优于配置** 的设计理念，通过固定的目录结�
 
 ```bash
 my-app/
-├── preload/                   # 可选项目级 preload 脚本；需要时再创建
-│   └── 01-otel.ts             # 进程启动前执行
-│
 ├── public/                    # 会复制到前端构建产物的静态资源
-│   ├── favicon.svg             # 与 V 标记同源的 favicon
-│   └── vext-mark.svg           # AppShell 使用的同一 V 标记
+│   ├── favicon.svg             # 使用同一 V 几何的高对比 favicon 变体
+│   └── vext-mark.svg           # AppShell 使用的透明 V 标记
 │
 ├── src/
 │   ├── frontend/              # 前端源码（默认全栈模板）
@@ -39,6 +36,9 @@ my-app/
 │   │   ├── production.ts      # 生产环境覆盖（可选）
 │   │   ├── local.ts           # 本地覆盖，不提交到 Git（可选）
 │   │   └── local.example.ts   # 脚手架生成的本地覆盖示例
+│   │
+│   ├── preload/               # 可选项目级 preload 源；需要时再创建
+│   │   └── 01-otel.ts         # 进程启动前执行
 │   │
 │   ├── routes/                # 路由定义（约定式，自动扫描）
 │   │   ├── index.ts           # → /
@@ -184,7 +184,7 @@ export default defineBootstrapConfig({
 
 ### `public/` — 前端静态资源
 
-`public/` 中的文件会复制到前端输出目录。默认全栈脚手架会以同一个 V 标记生成 `vext-mark.svg` 和 `favicon.svg`，AppShell 引用前者。这里适合放置该标记、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/frontend/assets/`。
+`public/` 中的文件会复制到前端输出目录。默认全栈脚手架会生成用于 AppShell 的透明 `vext-mark.svg` 和高对比 `favicon.svg`；两者使用同一 V 几何。这里适合放置这些固定 URL 资源、robots、静态图片等不需要进入 JavaScript bundle 的资源。需要由 TSX/CSS import 并带 hash 输出的图片或字体，建议放在 `src/frontend/assets/`。
 
 ### `src/routes/` — 路由目录
 

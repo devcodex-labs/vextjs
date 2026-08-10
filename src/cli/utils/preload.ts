@@ -2,9 +2,12 @@ import { readFileSync, existsSync } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  DIST_PRELOAD_DIR,
+  formatLegacyProjectPreloadWarning,
+  resolveProjectPreloadDirectory,
+} from "../../lib/preload/project-preload-paths.js";
 
-const PROJECT_PRELOAD_DIR = "preload";
-const DIST_PRELOAD_DIR = "dist/preload";
 const PRELOAD_CACHE_DIR = ".vext/preload";
 
 const PROJECT_PRELOAD_EXTENSIONS = new Set([".mjs", ".js", ".ts", ".mts"]);
@@ -15,7 +18,7 @@ const TS_PRELOAD_EXTENSIONS = new Set([".ts", ".mts"]);
  * resolvePreloads — 解析项目级 + 包级 preload 列表
  *
  * 解析顺序：
- *   1. 项目根 preload/ 目录（项目级 preload）
+ *   1. src/preload/ 目录（项目级 preload；根 preload/ 仅兼容旧项目）
  *   2. package.json 直接依赖中的 vext.preload（包级 preload）
  *   3. 合并后按绝对路径去重
  *
@@ -54,11 +57,31 @@ export async function resolvePreloads(rootDir: string): Promise<string[]> {
 }
 
 async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
-  const preloadDir = resolveProjectPreloadDir(rootDir);
-  if (!preloadDir) {
-    return [];
+  const sourceDirectory = resolveProjectPreloadDirectory(rootDir);
+  if (sourceDirectory) {
+    if (sourceDirectory.kind === "legacy" && sourceDirectory.hasSourceFiles) {
+      console.warn(formatLegacyProjectPreloadWarning());
+    }
+    const sourcePreloads = await resolvePreloadDirectory(
+      rootDir,
+      sourceDirectory.path,
+    );
+    if (sourcePreloads.length > 0) {
+      return sourcePreloads;
+    }
   }
 
+  const distPreloadDir = join(rootDir, DIST_PRELOAD_DIR);
+  if (!existsSync(distPreloadDir)) {
+    return [];
+  }
+  return resolvePreloadDirectory(rootDir, distPreloadDir);
+}
+
+async function resolvePreloadDirectory(
+  rootDir: string,
+  preloadDir: string,
+): Promise<string[]> {
   const entries = await readdir(preloadDir, { withFileTypes: true });
   const sortedEntries = [...entries].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -94,20 +117,6 @@ async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
   }
 
   return preloads;
-}
-
-function resolveProjectPreloadDir(rootDir: string): string | null {
-  const projectPreloadDir = join(rootDir, PROJECT_PRELOAD_DIR);
-  if (existsSync(projectPreloadDir)) {
-    return projectPreloadDir;
-  }
-
-  const distPreloadDir = join(rootDir, DIST_PRELOAD_DIR);
-  if (existsSync(distPreloadDir)) {
-    return distPreloadDir;
-  }
-
-  return null;
 }
 
 function resolvePackagePreloads(rootDir: string): string[] {

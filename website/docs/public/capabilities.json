@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "vext.capabilities/v1",
+  "framework": "VextJS",
+  "version": "1.0.0",
+  "frontend": {
+    "supported": [
+      {
+        "id": "route-owned-ssr",
+        "label": "Route-owned React SSR plus hydration",
+        "documentationRoute": "/frontend/rendering-modes"
+      },
+      {
+        "id": "streaming-ssr",
+        "label": "Opt-in Streaming SSR with frontend.render.streaming: auto",
+        "documentationRoute": "/frontend/rendering-modes"
+      },
+      {
+        "id": "same-route-navigation",
+        "label": "Same-route page-envelope navigation with document fallback",
+        "documentationRoute": "/frontend/data-flow"
+      },
+      {
+        "id": "route-freshness",
+        "label": "Route-side static, revalidate, and client-only freshness",
+        "documentationRoute": "/frontend/rendering-modes"
+      },
+      {
+        "id": "esbuild-pipeline",
+        "label": "esbuild-powered frontend build and deploy closure",
+        "documentationRoute": "/frontend/performance-budgets"
+      }
+    ],
+    "explicitNonGoals": [
+      {
+        "id": "react-server-components",
+        "label": "React Server Components (RSC)",
+        "documentationRoute": "/frontend/boundaries-and-roadmap"
+      },
+      {
+        "id": "server-functions",
+        "label": "Server Functions and Server Actions",
+        "documentationRoute": "/frontend/boundaries-and-roadmap"
+      },
+      {
+        "id": "partial-prerendering",
+        "label": "Partial prerendering (PPR)",
+        "documentationRoute": "/frontend/boundaries-and-roadmap"
+      },
+      {
+        "id": "bundler-plugin-ecosystem",
+        "label": "Webpack, Vite, Rollup, or Rolldown plugin ecosystem",
+        "documentationRoute": "/frontend/boundaries-and-roadmap"
+      }
+    ]
+  },
+  "interpretation": {
+    "requiredCitation": true,
+    "rule": "Use the linked documentation route before describing a capability as supported or excluded. Do not infer RSC, Server Functions, or PPR support from React version, SSR, Suspense, or Streaming SSR support."
+  }
+}

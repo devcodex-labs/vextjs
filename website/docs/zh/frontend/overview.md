@@ -97,32 +97,33 @@ export default (app) => {
 
 `res.render(page, props?, options?)` 三个参数含义如下：
 
-| 参数 | 含义 |
-|------|------|
-| `page` | `src/frontend/pages/**` 下的页面 id，不含扩展名。`admin/dashboard.tsx` 对应 `"admin/dashboard"`。 |
-| `props` | 可 JSON 序列化的服务端数据，会写入 SSR 文档并在 hydration 时复用。 |
-| `options` | 渲染选项，例如 `status`、`head`、`layoutData`、`messages`、`nonce` 或页面级行为。 |
+| 参数      | 含义                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| `page`    | `src/frontend/pages/**` 下的页面 id，不含扩展名。`admin/dashboard.tsx` 对应 `"admin/dashboard"`。 |
+| `props`   | 可 JSON 序列化的服务端数据，会写入 SSR 文档并在 hydration 时复用。                                |
+| `options` | 渲染选项，例如 `status`、`head`、`layoutData`、`messages`、`nonce` 或页面级行为。                 |
 
 ## 阅读路径
 
 左侧导航就是主地图，按概念、任务和参考三层组织。
 
-| 需求 | 从这里开始 |
-|------|------------|
-| 第一次跑通页面 | [快速开始](/zh/frontend/getting-started) |
-| 理解 URL 与页面归属 | [路由与页面](/zh/frontend/routing-and-pages) |
-| 选择 SSR、Hydration 或 CSR | [渲染模式](/zh/frontend/rendering-modes) |
-| 把 service 数据传给页面 | [数据流](/zh/frontend/data-flow) |
-| 组织嵌套壳层 | [Layout 与组件](/zh/frontend/layouts-and-components) |
-| 排查 SSR 输出 | [SSR](/zh/frontend/ssr) |
-| 排查浏览器 attach / mismatch | [Hydration](/zh/frontend/hydration) |
-| 构建 client-router 子应用 | [CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback) |
-| 缓存 render 数据 | [Render Data 与缓存](/zh/frontend/render-data-and-cache) |
-| 优化开发反馈 | [Fast Refresh](/zh/frontend/fast-refresh) 与 [Render Refresh](/zh/frontend/render-refresh) |
-| 发布前端资源 | [构建与发布](/zh/frontend/build-and-deploy) 与 [静态资源与 CDN](/zh/frontend/static-assets-and-cdn) |
-| 控制 JS 大小 | [代码拆分](/zh/frontend/code-splitting) 与 [性能预算](/zh/frontend/performance-budgets) |
-| 验证生产 hydration | [Hydration 验证](/zh/frontend/hydration-validation) |
-| 查找配置字段 | [配置](/zh/frontend/configuration) |
-| 查看当前边界 | [边界与路线图](/zh/frontend/boundaries-and-roadmap) |
+| 需求                                        | 从这里开始                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 第一次跑通页面                              | [快速开始](/zh/frontend/getting-started)                                                            |
+| 理解 URL 与页面归属                         | [路由与页面](/zh/frontend/routing-and-pages)                                                        |
+| 选择 SSR、Hydration 或 CSR                  | [渲染模式](/zh/frontend/rendering-modes)                                                            |
+| 把 service 数据传给页面                     | [数据流](/zh/frontend/data-flow)                                                                    |
+| 组织嵌套壳层                                | [Layout 与组件](/zh/frontend/layouts-and-components)                                                |
+| 排查 SSR 输出                               | [SSR](/zh/frontend/ssr)                                                                             |
+| 为带 variants 或 CSS variables 的组件写样式 | [Vext JSCSS](/zh/frontend/jscss)                                                                    |
+| 排查浏览器 attach / mismatch                | [Hydration](/zh/frontend/hydration)                                                                 |
+| 构建 client-router 子应用                   | [CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback)                                            |
+| 缓存 render 数据                            | [Render Data 与缓存](/zh/frontend/render-data-and-cache)                                            |
+| 优化开发反馈                                | [Fast Refresh](/zh/frontend/fast-refresh) 与 [Render Refresh](/zh/frontend/render-refresh)          |
+| 发布前端资源                                | [构建与发布](/zh/frontend/build-and-deploy) 与 [静态资源与 CDN](/zh/frontend/static-assets-and-cdn) |
+| 控制 JS 大小                                | [代码拆分](/zh/frontend/code-splitting) 与 [性能预算](/zh/frontend/performance-budgets)             |
+| 验证生产 hydration                          | [Hydration 验证](/zh/frontend/hydration-validation)                                                 |
+| 查找配置字段                                | [配置](/zh/frontend/configuration)                                                                  |
+| 查看当前边界                                | [边界与路线图](/zh/frontend/boundaries-and-roadmap)                                                 |
 
 旧 [前端集成页](/zh/guide/frontend) 只作为历史链接兼容入口保留。

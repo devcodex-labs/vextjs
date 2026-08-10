@@ -340,6 +340,9 @@ export default {
 | `frontend.build.target`                 | `string \| string[]` | `'es2022'`                                         | Browser build target                                                     |
 | `frontend.build.minify`                 | `boolean`            | Production `true`                                  | Minify frontend output                                                   |
 | `frontend.build.sourcemap`              | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
+| `frontend.build.server.minify`          | `boolean`            | `false`                                            | SSR renderer minification; intentionally independent from browser output |
+| `frontend.build.server.sourcemap`       | `boolean`            | Development `true`                                 | SSR renderer source-map setting                                          |
+| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                             | Write `dist/client/size-report.json`                                     |
 | `frontend.build.client.external`        | `string[]`           | `[]`                                               | Browser bundle external modules                                          |
 | `frontend.build.client.externalRuntime` | `object`             | `{}`                                               | Import map URL mapping for externalized browser modules                  |
 | `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                                | Shared dependency chunk management                                       |
@@ -349,12 +352,14 @@ export default {
 | `frontend.deploy.assetBaseUrl`          | `string`             | None                                               | Absolute CDN prefix for frontend static assets                           |
 | `frontend.deploy.integrity`             | `boolean`            | `false`                                            | Inject SRI integrity for JS/CSS tags                                     |
 | `frontend.deploy.upload`                | `boolean \| object`  | `{ enabled: false, exclude: ["**/*.map"] }`        | Static asset upload and incremental deployment configuration             |
+| `frontend.deploy.upload.adapter`        | `string \| object`   | `'filesystem'`                                     | Built-in local staging adapter, `mock`, or an explicit custom adapter    |
+| `frontend.deploy.upload.stateFile`      | `string`             | `.vext/deploy/frontend-assets-state.json`          | Incremental upload history; keep it outside `frontend.outDir`            |
 
 By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
 
 When `frontend.deploy.upload` is enabled, `vext deploy assets` reads `dist/client/deploy-manifest.json` and uploads changed assets by `uploadKey` and sha256. The built-in `filesystem` adapter writes files to `targetDir`, which is useful as a CDN sync staging directory. HTML is still rendered by Vext, and `index.html` plus `**/*.map` are excluded from the default deploy manifest.
 
-For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see the [Frontend guide](/frontend/overview).
+This table is a general-configuration overview. For an exact nested field, resolved default, build-output topology, or CDN/upload decision, use [Frontend Configuration](/frontend/configuration) and the canonical [VextFrontendConfig API reference](/api/config#vextfrontendconfig). For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see the [Frontend guide](/frontend/overview).
 
 ## Complete configuration item reference
 

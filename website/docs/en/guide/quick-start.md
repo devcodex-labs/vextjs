@@ -64,7 +64,7 @@ VextJS requires `"type": "module"`, and the project uses the ESM module format.
 ### 3. Create directory structure
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/preload src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public
 ```
 
 ### 4. Write configuration
@@ -217,7 +217,7 @@ npm start
 
 Frontend pages live under `src/frontend/pages/**`. Vext generates the browser entry, page registry, layout registry, and HTML injection code automatically. For a manual project, create at least `src/frontend/pages/index.tsx`, `src/frontend/pages/_document.html`, and `src/frontend/styles/index.css`, or start from the default `vext create` template.
 
-The default full-stack template opens with an SSR Vext runtime launchpad. It deliberately includes only real starter code: it does not create a root README or placeholder README files. Its AppShell uses `public/vext-mark.svg`; `public/favicon.svg` is the same V mark. Add optional convention directories only when you add their source files.
+The default full-stack template opens with an SSR Vext runtime launchpad that makes the route → service → SSR → browser-runtime path visible. Its header exposes both the Vext Guide and the generated app's local API documentation at `/docs`; the secondary action opens the Vext Guide. It enables `openapi.enabled: true` by default, so the local documentation entry works in development and production. It deliberately includes only real starter code: it does not create a root README or placeholder README files. Its AppShell uses the transparent `public/vext-mark.svg`; `public/favicon.svg` is the contrast-safe favicon variant built from the same V geometry. Add optional convention directories only when you add their source files.
 
 ## Project structure
 
@@ -226,8 +226,8 @@ After scaffolding or manual creation, your project structure should look like th
 ```
 my-app/
 ├── public/
-│ ├── favicon.svg # Shared V mark favicon
-│ └── vext-mark.svg # Same V mark used by AppShell
+│ ├── favicon.svg # Contrast-safe V mark favicon variant
+│ └── vext-mark.svg # Transparent V mark used by AppShell
 ├── src/
 │ ├── config/
 │ │ ├── default.ts # Shared configuration (port: 3000)
@@ -249,7 +249,7 @@ my-app/
 ```
 
 :::info Convention
-VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/frontend/`, `public/` and the project root `preload/` directory without manual registration. The initial scaffold creates only the directories with starter content; the optional convention directories are scanned whenever you create them. Route file names are mapped to URL prefixes:
+VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `src/middlewares/`, `src/plugins/`, `src/locales/`, `src/preload/`, `src/frontend/`, and `public/` without manual registration. The initial scaffold creates only the directories with starter content; the optional convention directories are scanned whenever you create them. Project-root `preload/` remains a warned migration fallback only. Route file names are mapped to URL prefixes:
 
 | File path                      | URL prefix        |
 | ------------------------------ | ----------------- |
@@ -264,7 +264,7 @@ VextJS will automatically scan `src/routes/`, `src/services/`, `src/config/`, `s
 
 ## Access OpenAPI documentation
 
-After turning on `openapi.enabled: true` in the configuration, you can access it by starting the project:
+The default `fullstack-react` configuration already enables `openapi.enabled: true`. In an API-only project, or if you have turned it off, enable it before starting the project:
 
 - **Vext Docs Documentation**: `http://localhost:3000/docs`
 - **OpenAPI JSON**: `http://localhost:3000/openapi.json`

@@ -4490,7 +4490,7 @@ export const VEXT_DOCS_APP_JS: string = `
       return "// Vext loads src/" + text(doc.sourceFile || "config/default.ts") + " for the selected config profile.\\n// Start with: vext start --config " + parseDocId(doc.id).scope;
     }
     if (doc.kind === "preload") {
-      return "// Project preload file: " + text(doc.sourceFile || "preload") + "\\n// It runs before app bootstrap when configured by the Vext CLI preload pipeline.";
+      return "// Project preload file: " + text(doc.sourceFile || "src/preload") + "\\n// It runs before app bootstrap when configured by the Vext CLI preload pipeline.";
     }
     if (doc.kind === "style") {
       const source = text(doc.sourceFile || "").replace(/\\.(ts|js|mts|mjs|cts|cjs)$/u, "");
@@ -4835,7 +4835,10 @@ export const VEXT_DOCS_APP_JS: string = `
       };
     }
     if (item.kind === "preload") {
-      const source = stripExtension(item.sourceFile || "").replace(/^preload\\//u, "");
+      const source = stripExtension(item.sourceFile || "").replace(
+        /^(?:src\\/)?preload\\//u,
+        "",
+      );
       const parts = source ? source.split("/").filter(Boolean) : [];
       return {
         segments: parts.slice(0, -1),

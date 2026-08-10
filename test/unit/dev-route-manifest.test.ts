@@ -59,6 +59,25 @@ describe("buildDevRouteManifestPayload", () => {
     expect(payload.routes[0]?.summary).toBe("List users");
     expect(payload.routeFileCount).toBe(1);
     expect(payload.routes[0]?.operationIdSource).toBe("inferred");
+    expect(payload.routes[0]?.docsKind).toBe("backend-api");
+  });
+
+  it("preserves frontend document classification for downstream diagnostics", () => {
+    const rootDir = createTempRoot();
+    const route: RouteMetadata = {
+      method: "GET",
+      path: "/",
+      options: {},
+      sourceFile: path.join(rootDir, "src", "routes", "index.ts"),
+      docsKind: "frontend-route",
+    };
+
+    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+
+    expect(payload.routes[0]).toMatchObject({
+      source: "src/routes/index.ts",
+      docsKind: "frontend-route",
+    });
   });
 
   it("keeps non-dev source paths as portable project-relative paths", () => {

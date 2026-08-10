@@ -34,23 +34,23 @@ This ensures that new scaffolding or projects that have just cleaned `.vext/` ca
 `vext build` uses **file-by-file compilation** mode for server code instead of bundle mode - each source file is independently compiled into an output file, maintaining the directory structure mapping of `src/`. `src/frontend/**` is excluded from this server file-by-file step and is handled by the frontend bundler and SSR renderer build steps.
 
 ```
-src/dist/
-├── index.ts → ├── index.js + index.js.map
-├── config/ ├── config/
-│ ├── default.ts → │ ├── default.js + default.js.map
-│ └── production.ts → │ └── production.js + production.js.map
-├── routes/ ├── routes/
-│ ├── users.ts → │ ├── users.js + users.js.map
-│ └── posts.ts → │ └── posts.js + posts.js.map
-├── services/ ├── services/
-│ ├── user.ts → │ ├── user.js + user.js.map
-│ └── auth.ts → │ └── auth.js + auth.js.map
-├── plugins/ ├── plugins/
-│ └── redis.ts → │ └── redis.js + redis.js.map
-├── middlewares/ └── middlewares/
-│ └── auth.ts → └── auth.js + auth.js.map
-└── models/ └── models/
-    └── user.ts → └── user.js + user.js.map
+src/                          dist/
+├── index.ts            →     ├── index.js        + index.js.map
+├── config/                   ├── config/
+│   ├── default.ts      →     │   ├── default.js   + default.js.map
+│   └── production.ts   →     │   └── production.js + production.js.map
+├── routes/                   ├── routes/
+│   ├── users.ts        →     │   ├── users.js     + users.js.map
+│   └── posts.ts        →     │   └── posts.js     + posts.js.map
+├── services/                 ├── services/
+│   ├── user.ts         →     │   ├── user.js      + user.js.map
+│   └── auth.ts         →     │   └── auth.js      + auth.js.map
+├── plugins/                  ├── plugins/
+│   └── redis.ts        →     │   └── redis.js     + redis.js.map
+├── middlewares/              └── middlewares/
+│   └── auth.ts         →         └── auth.js       + auth.js.map
+└── models/                   └── models/
+    └── user.ts         →         └── user.js       + user.js.map
 ```
 
 ### Why not Bundle?
@@ -69,17 +69,20 @@ src/dist/
 
 `vext build` does not support positional arguments. Value options such as `--outdir` and `--config` must be followed by a non-option value, for example `--outdir dist`; `--outdir --minify` or `--config --clean` fails as a missing-value error.
 
-| Parameters         | Description                                                  | Default value |
-| ------------------ | ------------------------------------------------------------ | ------------- |
-| `--outdir <path>`  | Output directory                                             | `dist`        |
-| `--config <name>`  | Select the build-time config profile                         | `production`  |
-| `--clean`          | Clean the output directory before compilation                | `false`       |
-| `--sourcemap`      | Generate source map                                          | `true`        |
-| `--no-sourcemap`   | Disable source map                                           | —             |
-| `--minify`         | Compress output code                                         | `false`       |
-| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest | `false`       |
-| `--upload-assets`  | Upload frontend static assets after the frontend build       | `false`       |
-| `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false`       |
+| Parameters         | Description                                                           | Default value |
+| ------------------ | --------------------------------------------------------------------- | ------------- |
+| `--outdir <path>`  | Output directory                                                      | `dist`        |
+| `--config <name>`  | Select the build-time config profile                                  | `production`  |
+| `--clean`          | Clean the output directory before compilation                         | `false`       |
+| `--sourcemap`      | Generate source map                                                   | `true`        |
+| `--no-sourcemap`   | Disable source map                                                    | —             |
+| `--minify`         | Compress output code (enabled by default; retained for compatibility) | `true`        |
+| `--no-minify`      | Disable output compression                                            | —             |
+| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest          | `false`       |
+| `--upload-assets`  | Upload frontend static assets after the frontend build                | `false`       |
+| `--deploy-dry-run` | Print the frontend upload plan without writing assets                 | `false`       |
+
+Production CLI builds minify backend output by default. Use `--no-minify` for a readable local inspection, or set `VEXT_BUILD_MINIFY=false` when that opt-out must be supplied by the environment. Frontend production minification continues to follow `frontend.build.minify`.
 
 Normal repeated builds automatically remove stale backend `dist/**/*.js` and `dist/**/*.js.map` outputs left by deleted or renamed server source files while preserving `dist/client/` frontend assets. Use `--clean` when you want to clear the entire output directory before compilation.
 
@@ -88,28 +91,35 @@ Normal repeated builds automatically remove stale backend `dist/**/*.js` and `di
 When `config.frontend.enabled` is true, the browser pipeline uses esbuild in bundle mode:
 
 ```text
-src/frontend/pages/index.tsx      →  dist/client/assets/browser-entry-<hash>.js
-src/frontend/pages/_document.html → dist/client/index.html
-src/frontend/styles/index.css     → dist/client/assets/browser-entry-<hash>.css
-public/** → dist/client/**
-.vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+.vext/generated/frontend/browser-entry.tsx → dist/client/assets/browser-entry-<hash>.js
+.vext/generated/frontend/vendor-entry.tsx  → dist/client/assets/vext-vendor-<hash>.js (when enabled)
+dynamic imports from src/frontend/pages/**  → dist/client/assets/<page-or-layout-chunk>-<hash>.js
+src/frontend/pages/_document.html           → dist/client/index.html
+src/frontend/styles/index.css                → dist/client/assets/browser-entry-<hash>.css
+public/**                                    → dist/client/**
+.vext/manifest/routes.json                  → client-contract.json + route-contract.json + api.generated.ts (when apiClient is enabled)
 .vext/generated/frontend/server-renderer.ts → dist/client/server/renderer.cjs
 ```
 
 The frontend build writes:
 
-| File                                 | Description                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------- |
-| `dist/client/index.html`             | HTML entry served by `vext start`                                               |
-| `dist/client/assets/*`               | Bundled JavaScript, CSS, and imported assets                                    |
-| `dist/client/manifest.json`          | Frontend asset manifest                                                         |
-| `dist/client/deploy-manifest.json`   | Uploadable static asset manifest with sha256, SRI, content type, and upload key |
-| `dist/client/render-manifest.json`   | SSR page, layout, error page, and renderer manifest                             |
-| `dist/client/messages-manifest.json` | Frontend i18n messages manifest                                                 |
-| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                                             |
-| `dist/client/size-report.json`       | Size summary for generated frontend assets                                      |
-| `dist/client/client-contract.json`   | Route contract generated from route manifest                                    |
-| `dist/client/api.generated.ts`       | Lightweight typed API client module                                             |
+| File                                 | Description                                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `dist/client/index.html`             | HTML entry served by `vext start`                                                                            |
+| `dist/client/assets/*`               | Bundled JavaScript, CSS, and imported assets                                                                 |
+| `dist/client/manifest.json`          | Frontend asset manifest                                                                                      |
+| `dist/client/deploy-manifest.json`   | Uploadable static asset manifest with sha256, SRI, content type, and upload key                              |
+| `dist/client/render-manifest.json`   | SSR page, layout, error page, and renderer manifest                                                          |
+| `dist/client/messages-manifest.json` | Frontend i18n message manifest; it may contain no locale entries when i18n is disabled                       |
+| `dist/client/media-manifest.json`    | Local image/font artifact manifest                                                                           |
+| `dist/client/static-manifest.json`   | Static and freshness artifact manifest                                                                       |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                                                                          |
+| `dist/client/size-report.json`       | Size summary for generated frontend assets; written when `build.diagnostics.sizeReport` is enabled (default) |
+| `dist/client/client-contract.json`   | Route contract generated from route manifest when `apiClient.enabled` is enabled (default)                   |
+| `dist/client/route-contract.json`    | Route response-schema contract when `apiClient.enabled` is enabled (default)                                 |
+| `dist/client/api.generated.ts`       | Lightweight typed API client module when `apiClient.enabled` is enabled (default)                            |
+
+`size-report.json` reports top-level `initialJs*` values as the largest complete page first-load closure, including chunks imported by the browser entry. Deferred route and error-page chunks are excluded until the browser requests them. Inspect `routes[]` for each route's exact closure; this prevents direct entry-file bytes from understating the default performance budgets.
 
 `vext start` fails fast when frontend is enabled but `dist/client/index.html` is missing. Run `vext build` before production start.
 
@@ -128,13 +138,21 @@ When `frontend.deploy.integrity=true`, Vext injects build-time SRI into generate
 
 ### Optimization options
 
-| Options      | Default                     | Description                                                                   |
-| ------------ | --------------------------- | ----------------------------------------------------------------------------- |
-| Source Map   | `external` (`.js.map` file) | Error stack mapped back to TypeScript line numbers                            |
-| Tree Shaking | Enable                      | Remove unused exports (dead code elimination)                                 |
-| Keep Names   | On                          | Keep function/class names (error stack readability)                           |
-| Minify       | Off                         | Optional on, reduce product volume                                            |
-| packages     | `external`                  | External dependencies are not packaged and are resolved by Node.js at runtime |
+| Options      | Default                     | Description                                                                                        |
+| ------------ | --------------------------- | -------------------------------------------------------------------------------------------------- |
+| Source Map   | `external` (`.js.map` file) | Error stack mapped back to TypeScript line numbers                                                 |
+| Tree Shaking | Enable                      | Remove unused exports (dead code elimination)                                                      |
+| Keep Names   | On                          | Keep function/class names (error stack readability)                                                |
+| Minify       | On by default               | Minifies backend output; use `--no-minify` or `VEXT_BUILD_MINIFY=false` only for local diagnostics |
+| packages     | `external`                  | External dependencies are not packaged and are resolved by Node.js at runtime                      |
+
+This table describes the **backend CLI compiler**. Its production default is
+minified output with external source maps. The frontend has independent
+defaults: `frontend.build.client.minify` is `true` in production,
+`frontend.build.client.sourcemap` is `false` in production, and the SSR
+renderer keeps `frontend.build.server.minify` at `false` unless you opt in.
+See [Build and Deploy](../frontend/build-and-deploy) before changing those
+independent frontend settings.
 
 ### Automatic injection
 

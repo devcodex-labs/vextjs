@@ -44,14 +44,18 @@ src/dist/
 
 ### Compile options
 
-| Options      | Default                 | Description                                         |
-| ------------ | ----------------------- | --------------------------------------------------- |
-| Source Map   | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers  |
-| Minify       | Off                     | Optional on, reduce product volume                  |
-| Target       | `node20`                | Align with `engines.node >= 20.19.0`                |
-| Format       | CJS                     | CommonJS output, Node.js runs stably                |
-| Tree Shaking | Enable                  | Remove unused exports                               |
-| Keep Names   | On                      | Keep function/class names (error stack readability) |
+| Options      | Default                 | Description                                                           |
+| ------------ | ----------------------- | --------------------------------------------------------------------- |
+| Source Map   | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers                    |
+| Minify       | On by default           | Minifies backend output; use `--no-minify` only for local diagnostics |
+| Target       | `node20`                | Align with `engines.node >= 20.19.0`                                  |
+| Format       | CJS                     | CommonJS output, Node.js runs stably                                  |
+| Tree Shaking | Enable                  | Remove unused exports                                                 |
+| Keep Names   | On                      | Keep function/class names (error stack readability)                   |
+
+This table is about the backend compiler. Frontend output follows its own
+production defaults: browser minification is on, browser source maps are off,
+and SSR-renderer minification is off unless explicitly configured.
 
 ### Compile Exclusion
 
@@ -69,6 +73,51 @@ Production compilation automatically excludes the following files:
 `vext build` is implemented based on [esbuild](https://esbuild.github.io/), and the pure compilation phase is extremely fast. Compilation time for a typical project (50+ source files) is usually under 1 second\*\*.
 
 `process.env.NODE_ENV = "production"` will be automatically injected during compilation, so the environment branch in the user source code after build will be statically folded according to production semantics; the runtime config profile is selected independently with `--config` or `VEXT_CONFIG`.
+
+## Deliver the frontend in production
+
+When `frontend.enabled` is true, `vext build` also writes the browser and SSR
+closure to `dist/client/`: `index.html`, hashed assets, `render-manifest.json`,
+`deploy-manifest.json`, and the default `server/renderer.cjs`. The backend
+output remains source-layout based under `dist/`; do not deploy a fictional
+top-level `dist/server/` directory.
+
+### Same-origin deployment
+
+The default needs no extra frontend configuration:
+
+```bash
+vext build
+vext start
+```
+
+`vext start` validates the frontend closure before listening. It then serves
+the client assets and uses the render manifest for SSR. This is the lowest-risk
+starting point for one Node service.
+
+### CDN deployment and upload
+
+Use a CDN only when it will own immutable browser assets. Set an absolute
+`frontend.deploy.assetBaseUrl`, keep HTML/SSR on the Node service, then review
+the upload plan before executing it:
+
+```bash
+vext build
+vext deploy assets --dry-run
+vext deploy assets
+vext start
+```
+
+`deploy-manifest.json` contains uploadable JS, CSS, imported media, and
+`public/**` files with sha256/SRI metadata. It deliberately excludes SSR HTML
+and source maps. Keep `frontend.deploy.upload.stateFile` outside the output
+directory so an ordinary build cannot erase incremental-upload state.
+
+Only `filesystem` and `mock` adapters are built in. `filesystem` creates a
+local staging tree; an actual provider needs an explicit custom adapter. Vext
+does not silently add a cloud SDK or a bundler-plugin ecosystem. See
+[Build and Deploy](../frontend/build-and-deploy) for the full sequence and
+[Frontend Configuration](../frontend/configuration) for every field.
 
 ## Start production service
 
@@ -115,7 +164,9 @@ WORKDIR/app
 COPY package.json package-lock.json ./
 
 # Install all dependencies (including devDependencies, required for compilation)
-RUN npm ci#Copy source code
+RUN npm ci
+
+# Copy source code
 COPY src/ src/
 COPY tsconfig.json ./
 
@@ -131,18 +182,18 @@ WORKDIR/app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-#Copy the compiled product
+# Copy the compiled product
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
 
-#Run as non-root user
+# Run as non-root user
 RUN addgroup --system --gid 1001 vext && \
     adduser --system --uid 1001 vext
 USER vext
 
-#Environment variables
+# Environment variables
 ENV NODE_OPTIONS=--enable-source-maps
-ENVPORT=3000
+ENV PORT=3000
 
 EXPOSE 3000
 
@@ -179,7 +230,8 @@ services:
     build: .
     ports:
       - "3000:3000"
-    environment: -PORT=3000
+    environment:
+      - PORT=3000
       - MONGODB_URL=mongodb://mongo:27017/myapp
     depends_on:
       mongo:
@@ -260,7 +312,7 @@ server {
     client_max_body_size 10M;
 
     # Proxy to VextJS
-    location/{
+    location / {
         proxy_pass http://vext_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

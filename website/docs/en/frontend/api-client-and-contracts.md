@@ -33,7 +33,7 @@ These artifacts are useful for:
 
 The runtime route manifest projects the existing `RouteOptions.validate` fields (`param`, `query`, `header`, `cookie`, and `body`) and `docs.responses.<status>.schema` into `VextSchemaIRV1`. `api.generated.ts` turns supported JSON-schema primitives, objects, arrays, enums, optional fields, and nullable fields into request and successful-response TypeScript types.
 
-A missing `docs.responses.<status>.schema` remains `unknown` and includes a route/status diagnostic; Vext never guesses a response type. `$ref` values are retained in the contract but currently emit `unknown` in generated TypeScript until a component-reference resolver is available. Cookie schemas are contract metadata only: browser fetch controls cookie transport and the generated client does not offer a writable `Cookie` header.
+A missing `docs.responses.<status>.schema` remains `unknown` and includes a diagnostic with the HTTP method, route path, source file when available, and stable route ID; Vext never guesses a response type. HTML page routes rendered with `res.render()` are classified as frontend documents, so they do not produce an API-response-schema warning. `$ref` values are retained in the contract but currently emit `unknown` in generated TypeScript until a component-reference resolver is available. Cookie schemas are contract metadata only: browser fetch controls cookie transport and the generated client does not offer a writable `Cookie` header.
 
 ## Public Entry
 

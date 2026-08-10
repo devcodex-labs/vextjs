@@ -20,6 +20,8 @@ dist/client/size-report.json
 - app-owned assets
 - external runtime groups
 
+顶层 `initialJs*` 表示生成页面中最大的完整首载闭包，包含 browser entry 传递导入的共享 chunk。其他页面和错误页等延迟模块会在导航或渲染失败时才加载，因此不计入首载。每个 route 自己的闭包请查看 `routes[]`。
+
 开启 `frontend.build.diagnostics.performanceReport` 后，报告还会包含路由级 initial JS 指标。关闭时，SSR route preload 所需 metadata 仍会写入 `render-manifest.json`，但构建报告不会保留路由级字节指标。
 
 ## 预算字段

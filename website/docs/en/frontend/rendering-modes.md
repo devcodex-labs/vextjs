@@ -40,6 +40,37 @@ The streaming lifecycle is:
 
 Native, Hono, Fastify, Express, and Koa support this path. It does not add React Server Components, Server Functions or Server Actions, partial prerendering (PPR), or a Webpack/Vite/Rollup/Rolldown plugin layer. The frontend build remains esbuild-based.
 
+## Streaming SSR is not React Server Components
+
+Streaming SSR improves **when HTML is sent**: a route can send its document
+shell and a Suspense fallback before a delayed boundary completes. The browser
+still hydrates the React tree from Vext's route-owned render payload.
+
+[React Server Components](https://react.dev/reference/rsc/server-components)
+are a different framework and bundler model. They require a server/client
+component boundary, a server-component payload protocol, and framework support
+for the associated module graph. [Server
+Functions](https://react.dev/reference/rsc/server-functions) additionally need
+the framework to create callable server references for client code. React notes
+that the framework/bundler APIs behind those integrations do not yet follow the
+same minor-version stability guarantee as ordinary React APIs.
+
+Vext therefore keeps the current contract deliberately smaller and explicit:
+
+- `src/routes/**` owns the URL and server data boundary.
+- `res.render()` owns HTML generation, hydration data, headers, and streaming
+  lifecycle.
+- `src/frontend/**` remains a known browser-safe graph built with esbuild.
+- Route services, SSR, hydration, Suspense, Streaming SSR, static/revalidate
+  freshness, and same-route navigation remain available without a Flight
+  payload, `"use client"`/`"use server"` partition, or action RPC contract.
+
+This is not a claim that RSC is undesirable. It is a supported release boundary:
+RSC must be evaluated as a whole framework contract across development,
+production artifacts, cache semantics, security, the browser runtime, and all
+five adapters. See [Frontend Boundaries and
+Roadmap](/frontend/boundaries-and-roadmap) for the decision rule.
+
 ## Static, Revalidate, and Client-only Pages
 
 Freshness remains a route option; it does not create a second page or route

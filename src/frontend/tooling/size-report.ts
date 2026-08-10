@@ -29,6 +29,19 @@ export async function buildFrontendSizeReport(
   const initialJs = assets.filter(
     (asset) => asset.entry && asset.path.endsWith(".js"),
   );
+  const fallbackInitial = {
+    raw: sumBy(initialJs, "bytes"),
+    gzip: sumBy(initialJs, "gzipBytes"),
+    brotli: sumBy(initialJs, "brotliBytes"),
+    appOwnedBrotli: sumBy(
+      initialJs.filter((asset) => asset.source !== "external"),
+      "brotliBytes",
+    ),
+  };
+  const initial = resolveLargestRouteInitialMetrics(
+    options.routes,
+    fallbackInitial,
+  );
   return {
     schemaVersion: 1,
     kind: "frontend-size-report",
@@ -36,15 +49,53 @@ export async function buildFrontendSizeReport(
     totalBytes: sumBy(assets, "bytes"),
     totalGzipBytes: sumBy(assets, "gzipBytes"),
     totalBrotliBytes: sumBy(assets, "brotliBytes"),
-    initialJsBytes: sumBy(initialJs, "bytes"),
-    initialJsGzipBytes: sumBy(initialJs, "gzipBytes"),
-    initialJsBrotliBytes: sumBy(initialJs, "brotliBytes"),
-    appOwnedInitialJsBrotliBytes: sumBy(
-      initialJs.filter((asset) => asset.source !== "external"),
-      "brotliBytes",
-    ),
+    initialJsBytes: initial.raw,
+    initialJsGzipBytes: initial.gzip,
+    initialJsBrotliBytes: initial.brotli,
+    appOwnedInitialJsBrotliBytes: initial.appOwnedBrotli,
     assets,
     routes: options.routes,
+  };
+}
+
+/**
+ * A browser entry's direct file is not its load cost: it can import a large
+ * shared/vendor closure. When routes are available, expose the largest whole
+ * page first-load closure at the report top level so the default budgets do
+ * not under-report that dependency graph. Per-route values remain available
+ * under `routes` for route-specific analysis.
+ */
+function resolveLargestRouteInitialMetrics(
+  routes: VextFrontendRouteInitialAssets[] | undefined,
+  fallback: {
+    raw: number;
+    gzip: number;
+    brotli: number;
+    appOwnedBrotli: number;
+  },
+): {
+  raw: number;
+  gzip: number;
+  brotli: number;
+  appOwnedBrotli: number;
+} {
+  const largestRoute = (routes ?? [])
+    .filter(
+      (route) =>
+        typeof route.initialJsBytes === "number" &&
+        Number.isFinite(route.initialJsBytes),
+    )
+    .sort(
+      (left, right) => (right.initialJsBytes ?? 0) - (left.initialJsBytes ?? 0),
+    )[0];
+  if (!largestRoute) return fallback;
+
+  return {
+    raw: largestRoute.initialJsBytes ?? fallback.raw,
+    gzip: largestRoute.initialJsGzipBytes ?? fallback.gzip,
+    brotli: largestRoute.initialJsBrotliBytes ?? fallback.brotli,
+    appOwnedBrotli:
+      largestRoute.appOwnedInitialJsBrotliBytes ?? fallback.appOwnedBrotli,
   };
 }
 

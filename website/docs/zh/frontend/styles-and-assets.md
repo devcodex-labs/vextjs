@@ -27,6 +27,8 @@ body {
 
 全局 CSS 适合 reset、基础排版和设计 token。组件局部样式优先用组件或 CSS Modules。
 
+Vext 不会编译 Sass 或 SCSS 源文件。如需 Sass，请在交给 Vext 前由外部工具预编译为 CSS；一等支持的样式源是 CSS、CSS Modules 和 Vext JSCSS。
+
 ## CSS Modules
 
 `.module.css` 默认按 CSS Modules 处理。
@@ -50,34 +52,7 @@ export function Card(props: { children: React.ReactNode }) {
 
 ## Vext JSCSS
 
-JSCSS 是 Vext 默认动态样式 facade，面向组件级动态样式和构建期抽取。
-
-```ts
-// src/frontend/styles/button.style.ts
-import { createVar, recipe, style } from "vextjs/style";
-
-const colorText = createVar("color-text", "#111827");
-const colorPrimary = createVar("color-primary", "#2563eb");
-const colorDanger = createVar("color-danger", "#dc2626");
-
-export const button = recipe({
-  base: style({
-    borderRadius: 8,
-    padding: "8px 12px",
-    color: colorText,
-  }),
-  variants: {
-    intent: {
-      primary: style({ background: colorPrimary }),
-      danger: style({ background: colorDanger }),
-    },
-  },
-});
-```
-
-extractor 会把样式写入构建产物。不需要默认引入 Emotion 或 styled-components 作为 runtime 依赖。
-
-`frontend.styles.jscss.runtimeAdapter` 默认为 `css-variables`，因此 `createVar()` 会输出 CSS custom property 引用，`setVar()` 会输出 custom property 声明。设置 `runtimeAdapter: "none"` 或 `dynamicVars: false` 时，变量会编译为静态 fallback 值。设置 `recipes: false` 时不会生成 recipe variant class。
+JSCSS 是 Vext 内置的组件级 variants、语义化 CSS variables 与构建期 CSS 抽取路径。先阅读 [Vext JSCSS 教程](/zh/frontend/jscss)：其中说明支持的 `recipe()` rule 写法、React `className` 用法、构建产物，以及 `setVar()` 声明和浏览器改变量之间的区别。extractor 会把 CSS 写入构建产物，因此不需要默认引入 Emotion 或 styled-components runtime。
 
 ## CSS Variables
 
@@ -94,7 +69,7 @@ export const panel = style({
 });
 ```
 
-变量命名尽量语义化，例如 `color.surface`、`color.text`、`space.md`、`radius.sm`。
+`setVar()` 只创建抽取 CSS 所需的声明，不会更新 DOM。浏览器中需要实时改值时，在浏览器代码里执行 `document.documentElement.style.setProperty(accent.name, value)`。
 
 ## Import 型资源
 

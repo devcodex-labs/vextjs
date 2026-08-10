@@ -91,8 +91,8 @@ export interface VextFrontendBuildBudgetsConfig {
 
 export interface VextFrontendBuildConfig {
   /**
-   * Shared shorthand build flags for client and server frontend compiler paths.
-   * Specific sections can override these defaults.
+   * Browser build shorthand. The client section can override these defaults;
+   * the SSR renderer keeps its own Node-oriented target and diagnostics.
    */
   minify?: boolean;
   sourcemap?: boolean;
@@ -660,9 +660,16 @@ export interface VextFrontendSizeReport {
   totalBytes: number;
   totalGzipBytes: number;
   totalBrotliBytes: number;
+  /**
+   * Largest complete first-load JS closure across generated page routes.
+   * Deferred route and error-page dynamic imports are excluded.
+   */
   initialJsBytes: number;
+  /** Gzip size of the largest complete first-load JS closure. */
   initialJsGzipBytes: number;
+  /** Brotli size of the largest complete first-load JS closure. */
   initialJsBrotliBytes: number;
+  /** App-owned brotli size for that largest first-load closure. */
   appOwnedInitialJsBrotliBytes: number;
   assets: VextFrontendSizeMetric[];
   routes?: VextFrontendRouteInitialAssets[];

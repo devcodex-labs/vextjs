@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devcodex-labs.github.io/vextjs/docs-events.schema.json",
+  "title": "VextJS documentation event",
+  "description": "Optional, privacy-preserving event contract for a documentation analytics collector. VextJS does not enable or bundle a collector by default.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "vext.docs-event/v1"
+    },
+    "event": {
+      "enum": [
+        "docs_view",
+        "docs_search",
+        "docs_copy_command",
+        "docs_external_cta"
+      ]
+    },
+    "page": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "locale": {
+      "enum": ["en", "zh"]
+    },
+    "referrerClass": {
+      "enum": ["direct", "internal", "external", "unknown"]
+    },
+    "queryLength": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 512,
+      "description": "Length only. Do not send raw search text."
+    },
+    "cta": {
+      "enum": ["github", "discussion", "quick-start", "docs", "other"]
+    }
+  },
+  "required": ["schemaVersion", "event", "page", "locale"]
+}

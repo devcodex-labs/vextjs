@@ -106,8 +106,8 @@ const navSource: NavItemSource[] = [
       "^/guide/(validation|cookies-session|cache|database|fetch|openapi)",
   },
   {
-    en: "Production",
-    zh: "生产",
+    en: "Tooling & Operations",
+    zh: "工具与运维",
     link: "/guide/deployment",
     activeMatch:
       "^/guide/(build|deployment|testing|cli|hot-reload|preload|cluster|i18n|logger|error-handling)",
@@ -116,19 +116,38 @@ const navSource: NavItemSource[] = [
     en: "API Reference",
     zh: "API 参考",
     link: "/api/config",
-    activeMatch: "/api/",
+    activeMatch: "^/api/",
   },
   {
-    en: "Examples",
-    zh: "示例",
-    link: "/examples/hello-world",
-    activeMatch: "/examples/",
-  },
-  {
-    en: "Benchmark",
-    zh: "基准测试",
-    link: "/benchmark",
-    activeMatch: "/benchmark",
+    en: "Resources",
+    zh: "资源",
+    items: [
+      {
+        en: "Examples",
+        zh: "示例",
+        link: "/examples/hello-world",
+      },
+      {
+        en: "Benchmark",
+        zh: "基准测试",
+        link: "/benchmark",
+      },
+      {
+        en: "Contributing",
+        zh: "贡献指南",
+        link: "https://github.com/devcodex-labs/vextjs/blob/main/CONTRIBUTING.md",
+      },
+      {
+        en: "Support & Services",
+        zh: "支持与服务",
+        link: "/resources/support-and-services",
+      },
+      {
+        en: "Docs Data & AI",
+        zh: "文档数据与 AI",
+        link: "/resources/documentation-data-and-ai",
+      },
+    ],
   },
   {
     en: "v1.0.0",
@@ -138,11 +157,6 @@ const navSource: NavItemSource[] = [
         en: "Changelog",
         zh: "更新日志",
         link: "https://github.com/devcodex-labs/vextjs/blob/main/CHANGELOG.md",
-      },
-      {
-        en: "Contributing",
-        zh: "贡献指南",
-        link: "https://github.com/devcodex-labs/vextjs/blob/main/CONTRIBUTING.md",
       },
     ],
   },
@@ -177,7 +191,6 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Introduction", link: "/guide/introduction" },
       { text: "Quick Start", link: "/guide/quick-start" },
       { text: "Project Structure", link: "/guide/project-structure" },
-      { text: "Frontend Overview", link: "/frontend/overview" },
     ],
   },
   {
@@ -205,7 +218,7 @@ const englishSidebar: SidebarGroup[] = [
     ],
   },
   {
-    text: "Production",
+    text: "Tooling & Operations",
     items: [
       { text: "Build", link: "/guide/build" },
       { text: "Deployment", link: "/guide/deployment" },
@@ -269,6 +282,7 @@ const englishFrontendSidebar: SidebarGroup[] = [
         link: "/frontend/layouts-and-components",
       },
       { text: "Styles and Assets", link: "/frontend/styles-and-assets" },
+      { text: "Vext JSCSS", link: "/frontend/jscss" },
     ],
   },
   {
@@ -337,7 +351,6 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "介绍", link: "/zh/guide/introduction" },
       { text: "快速开始", link: "/zh/guide/quick-start" },
       { text: "项目结构", link: "/zh/guide/project-structure" },
-      { text: "前端总览", link: "/zh/frontend/overview" },
     ],
   },
   {
@@ -365,7 +378,7 @@ const chineseSidebar: SidebarGroup[] = [
     ],
   },
   {
-    text: "交付与生产",
+    text: "工具与运维",
     items: [
       { text: "构建", link: "/zh/guide/build" },
       { text: "部署与生产环境", link: "/zh/guide/deployment" },
@@ -402,7 +415,10 @@ const chineseSidebar: SidebarGroup[] = [
   {
     text: "生态集成",
     items: [
-      { text: "permission-core Auth 接入", link: "/zh/examples/permission-core-auth" },
+      {
+        text: "permission-core Auth 接入",
+        link: "/zh/examples/permission-core-auth",
+      },
       { text: "Nacos 接入", link: "/zh/examples/nacos-integration" },
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
     ],
@@ -426,6 +442,7 @@ const chineseFrontendSidebar: SidebarGroup[] = [
       { text: "数据流", link: "/zh/frontend/data-flow" },
       { text: "Layout 与组件", link: "/zh/frontend/layouts-and-components" },
       { text: "样式与资源", link: "/zh/frontend/styles-and-assets" },
+      { text: "Vext JSCSS", link: "/zh/frontend/jscss" },
     ],
   },
   {

@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "vext.docs-gold-questions/v1",
+  "purpose": "Reference questions for evaluating whether an AI answer cites VextJS documentation and preserves public capability boundaries.",
+  "questions": [
+    {
+      "id": "frontend-rendering-model",
+      "locale": "en",
+      "question": "What is VextJS's default frontend rendering model?",
+      "requiredRoutes": ["/frontend/rendering-modes"],
+      "mustNotClaim": ["React Server Components are enabled by default"]
+    },
+    {
+      "id": "frontend-streaming-lifecycle",
+      "locale": "en",
+      "question": "When does VextJS stream a Suspense fallback, and what happens after headers are sent?",
+      "requiredRoutes": ["/frontend/rendering-modes"],
+      "mustNotClaim": [
+        "Streaming SSR can replace status and headers after bytes are sent"
+      ]
+    },
+    {
+      "id": "frontend-rsc-boundary",
+      "locale": "en",
+      "question": "Why does the current VextJS frontend not support React Server Components, and which supported capabilities cover SSR and progressive HTML?",
+      "requiredRoutes": [
+        "/frontend/boundaries-and-roadmap",
+        "/frontend/rendering-modes"
+      ],
+      "mustNotClaim": ["RSC is required for VextJS SSR or SEO"]
+    },
+    {
+      "id": "frontend-navigation-boundary",
+      "locale": "en",
+      "question": "How does same-route navigation fail safely when the page-envelope protocol is incompatible?",
+      "requiredRoutes": [
+        "/frontend/data-flow",
+        "/frontend/boundaries-and-roadmap"
+      ],
+      "mustNotClaim": ["VextJS adds a loader/action route DSL"]
+    },
+    {
+      "id": "frontend-build-boundary",
+      "locale": "en",
+      "question": "Which frontend build pipeline does VextJS use, and which bundler plugin ecosystems are excluded?",
+      "requiredRoutes": [
+        "/frontend/boundaries-and-roadmap",
+        "/frontend/performance-budgets"
+      ],
+      "mustNotClaim": ["VextJS requires a Vite or Webpack plugin"]
+    },
+    {
+      "id": "frontend-freshness",
+      "locale": "en",
+      "question": "Where are static, revalidate, and client-only frontend freshness policies configured?",
+      "requiredRoutes": ["/frontend/rendering-modes"],
+      "mustNotClaim": ["PPR is required for VextJS revalidation"]
+    },
+    {
+      "id": "api-only-project",
+      "locale": "en",
+      "question": "Can VextJS run as an API-only project?",
+      "requiredRoutes": ["/frontend/boundaries-and-roadmap"],
+      "mustNotClaim": ["The frontend is mandatory"]
+    },
+    {
+      "id": "support-entry",
+      "locale": "en",
+      "question": "Where should a team begin a scoped VextJS support or integration conversation?",
+      "requiredRoutes": ["/resources/support-and-services"],
+      "mustNotClaim": ["A public pricing or SLA is guaranteed"]
+    },
+    {
+      "id": "docs-machine-assets",
+      "locale": "en",
+      "question": "Which VextJS documentation assets are intended for AI-assisted analysis?",
+      "requiredRoutes": ["/resources/documentation-data-and-ai"],
+      "mustNotClaim": ["llms.txt controls or authorizes crawlers"]
+    },
+    {
+      "id": "documentation-privacy",
+      "locale": "en",
+      "question": "Does the documentation site enable a third-party tracker by default?",
+      "requiredRoutes": ["/resources/documentation-data-and-ai"],
+      "mustNotClaim": [
+        "Raw search text or user identity is collected by default"
+      ]
+    },
+    {
+      "id": "frontend-rendering-model-zh",
+      "locale": "zh",
+      "question": "VextJS 当前默认的前端渲染模型是什么？",
+      "requiredRoutes": ["/zh/frontend/rendering-modes"],
+      "mustNotClaim": ["React Server Components 默认已启用"]
+    },
+    {
+      "id": "frontend-streaming-lifecycle-zh",
+      "locale": "zh",
+      "question": "VextJS 何时会流式发送 Suspense fallback，headers 已发送后又如何处理？",
+      "requiredRoutes": ["/zh/frontend/rendering-modes"],
+      "mustNotClaim": ["Streaming SSR 在发送字节后还能替换 status 和 headers"]
+    },
+    {
+      "id": "frontend-rsc-boundary-zh",
+      "locale": "zh",
+      "question": "为什么当前 VextJS 前端不支持 React Server Components，哪些已支持能力覆盖 SSR 和渐进 HTML？",
+      "requiredRoutes": [
+        "/zh/frontend/boundaries-and-roadmap",
+        "/zh/frontend/rendering-modes"
+      ],
+      "mustNotClaim": ["VextJS 的 SSR 或 SEO 必须依赖 RSC"]
+    },
+    {
+      "id": "frontend-navigation-boundary-zh",
+      "locale": "zh",
+      "question": "同一路由 page-envelope 协议不兼容时，VextJS 如何安全降级？",
+      "requiredRoutes": [
+        "/zh/frontend/data-flow",
+        "/zh/frontend/boundaries-and-roadmap"
+      ],
+      "mustNotClaim": ["VextJS 新增了 loader/action 路由 DSL"]
+    },
+    {
+      "id": "frontend-build-boundary-zh",
+      "locale": "zh",
+      "question": "VextJS 使用哪条前端构建流水线，哪些 bundler 插件生态被排除？",
+      "requiredRoutes": [
+        "/zh/frontend/boundaries-and-roadmap",
+        "/zh/frontend/performance-budgets"
+      ],
+      "mustNotClaim": ["VextJS 必须依赖 Vite 或 Webpack 插件"]
+    },
+    {
+      "id": "frontend-freshness-zh",
+      "locale": "zh",
+      "question": "VextJS 的 static、revalidate 和 client-only 前端 freshness 策略在哪里配置？",
+      "requiredRoutes": ["/zh/frontend/rendering-modes"],
+      "mustNotClaim": ["VextJS revalidate 必须依赖 PPR"]
+    },
+    {
+      "id": "api-only-project-zh",
+      "locale": "zh",
+      "question": "VextJS 是否可以作为纯 API 项目运行？",
+      "requiredRoutes": ["/zh/frontend/boundaries-and-roadmap"],
+      "mustNotClaim": ["前端是强制要求"]
+    },
+    {
+      "id": "support-entry-zh",
+      "locale": "zh",
+      "question": "团队应从哪里发起 VextJS 支持或集成的范围沟通？",
+      "requiredRoutes": ["/zh/resources/support-and-services"],
+      "mustNotClaim": ["已承诺公开价格或 SLA"]
+    },
+    {
+      "id": "docs-machine-assets-zh",
+      "locale": "zh",
+      "question": "哪些 VextJS 文档资产适合 AI 辅助分析？",
+      "requiredRoutes": ["/zh/resources/documentation-data-and-ai"],
+      "mustNotClaim": ["llms.txt 用于控制或授权爬虫"]
+    },
+    {
+      "id": "documentation-privacy-zh",
+      "locale": "zh",
+      "question": "文档站是否默认启用了第三方 tracker？",
+      "requiredRoutes": ["/zh/resources/documentation-data-and-ai"],
+      "mustNotClaim": ["默认收集原始搜索内容或用户身份"]
+    }
+  ]
+}

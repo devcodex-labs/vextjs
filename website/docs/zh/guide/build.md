@@ -69,15 +69,20 @@ src/                          dist/
 
 `vext build` 不支持位置参数。`--outdir`、`--config` 等取值参数必须紧跟非 option 值，例如 `--outdir dist`；`--outdir --minify` 或 `--config --clean` 会作为缺值错误失败。
 
-| 参数              | 说明                                            | 默认值       |
-| ----------------- | ----------------------------------------------- | ------------ |
-| `--outdir <path>` | 输出目录                                        | `dist`       |
-| `--config <name>` | 选择 build-time 配置 profile                    | `production` |
-| `--clean`         | 编译前清理输出目录                              | `false`      |
-| `--sourcemap`     | 生成 source map                                 | `true`       |
-| `--no-sourcemap`  | 禁用 source map                                 | —            |
-| `--minify`        | 压缩输出代码                                    | `false`      |
-| `--typecheck`     | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
+| 参数               | 说明                                            | 默认值       |
+| ------------------ | ----------------------------------------------- | ------------ |
+| `--outdir <path>`  | 输出目录                                        | `dist`       |
+| `--config <name>`  | 选择 build-time 配置 profile                    | `production` |
+| `--clean`          | 编译前清理输出目录                              | `false`      |
+| `--sourcemap`      | 生成 source map                                 | `true`       |
+| `--no-sourcemap`   | 禁用 source map                                 | —            |
+| `--minify`         | 压缩输出代码（默认开启；保留兼容选项）          | `true`       |
+| `--no-minify`      | 关闭输出压缩                                    | —            |
+| `--typecheck`      | 刷新 generated / manifest 后执行 `tsc --noEmit` | `false`      |
+| `--upload-assets`  | 前端构建完成后上传静态资源                      | `false`      |
+| `--deploy-dry-run` | 仅打印前端上传计划，不写入资源                  | `false`      |
+
+生产 CLI 构建默认压缩后端输出。需要本地阅读构建结果时使用 `--no-minify`；若必须由环境提供该开关，可设置 `VEXT_BUILD_MINIFY=false`。前端生产压缩仍由 `frontend.build.minify` 控制。
 
 普通重复构建会自动清理已删除或重命名服务端源码留下的 `dist/**/*.js` 与 `dist/**/*.js.map` 后端 stale 产物，并保留 `dist/client/` 前端产物；`--clean` 用于在编译前彻底清空整个输出目录。
 
@@ -86,29 +91,35 @@ src/                          dist/
 当 `config.frontend.enabled` 为 true 时，浏览器流水线使用 esbuild bundle 模式：
 
 ```text
-src/frontend/pages/index.tsx      →  dist/client/assets/index-<hash>.js
-generated browser entry           →  dist/client/assets/browser-entry-<hash>.js
-src/frontend/pages/_document.html →  dist/client/index.html
-src/frontend/styles/index.css     →  dist/client/assets/browser-entry-<hash>.css
-public/** → dist/client/**
-.vext/manifest/routes.json → dist/client/client-contract.json + dist/client/api.generated.ts
+.vext/generated/frontend/browser-entry.tsx → dist/client/assets/browser-entry-<hash>.js
+.vext/generated/frontend/vendor-entry.tsx  → dist/client/assets/vext-vendor-<hash>.js（启用时）
+src/frontend/pages/** 的动态 import         → dist/client/assets/<page-or-layout-chunk>-<hash>.js
+src/frontend/pages/_document.html           → dist/client/index.html
+src/frontend/styles/index.css                → dist/client/assets/browser-entry-<hash>.css
+public/**                                    → dist/client/**
+.vext/manifest/routes.json                  → client-contract.json + route-contract.json + api.generated.ts（apiClient 启用时）
 .vext/generated/frontend/server-renderer.ts → dist/client/server/renderer.cjs
 ```
 
 前端构建会写入：
 
-| 文件                                 | 说明                                                              |
-| ------------------------------------ | ----------------------------------------------------------------- |
-| `dist/client/index.html`             | `vext start` 服务的 HTML 入口                                     |
-| `dist/client/assets/*`               | 打包后的 JavaScript、CSS 与导入资产                               |
-| `dist/client/manifest.json`          | 前端资源 manifest                                                 |
-| `dist/client/deploy-manifest.json`   | 可上传静态资源 manifest，含 sha256、SRI、content type、upload key |
-| `dist/client/render-manifest.json`   | SSR 页面、layout、错误页与 renderer manifest                      |
-| `dist/client/messages-manifest.json` | 前端 i18n messages manifest                                       |
-| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                               |
-| `dist/client/size-report.json`       | 前端资源体积摘要                                                  |
-| `dist/client/client-contract.json`   | 基于 route manifest 生成的路由契约                                |
-| `dist/client/api.generated.ts`       | 轻量 typed API client module                                      |
+| 文件                                 | 说明                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `dist/client/index.html`             | `vext start` 服务的 HTML 入口                                                  |
+| `dist/client/assets/*`               | 打包后的 JavaScript、CSS 与导入资产                                            |
+| `dist/client/manifest.json`          | 前端资源 manifest                                                              |
+| `dist/client/deploy-manifest.json`   | 可上传静态资源 manifest，含 sha256、SRI、content type、upload key              |
+| `dist/client/render-manifest.json`   | SSR 页面、layout、错误页与 renderer manifest                                   |
+| `dist/client/messages-manifest.json` | 前端 i18n messages manifest；i18n 关闭时可不含 locale entries                  |
+| `dist/client/media-manifest.json`    | 本地图片/字体 artifact manifest                                                |
+| `dist/client/static-manifest.json`   | static 与 freshness artifact manifest                                          |
+| `dist/client/server/renderer.cjs`    | SSR renderer bundle                                                            |
+| `dist/client/size-report.json`       | 前端资源体积摘要；`build.diagnostics.sizeReport` 开启时写入（默认开启）        |
+| `dist/client/client-contract.json`   | 基于 route manifest 生成的路由契约；`apiClient.enabled` 开启时写入（默认开启） |
+| `dist/client/route-contract.json`    | route response-schema 契约；`apiClient.enabled` 开启时写入（默认开启）         |
+| `dist/client/api.generated.ts`       | 轻量 typed API client module；`apiClient.enabled` 开启时写入（默认开启）       |
+
+`size-report.json` 顶层的 `initialJs*` 表示所有页面中最大的完整首载闭包，包含 browser entry 继续 import 的共享 chunk。其他路由和错误页的延迟 chunk 会在浏览器实际请求时才加载，因此不计入首载。逐路由的精确闭包请查看 `routes[]`；因此默认预算不会再被单个 entry 文件大小低估。
 
 启用前端但缺少 `dist/client/index.html` 时，`vext start` 会 fail fast。生产启动前请先执行 `vext build`。
 
@@ -127,13 +138,15 @@ public/** → dist/client/**
 
 ### 优化选项
 
-| 选项         | 默认值                       | 说明                                  |
-| ------------ | ---------------------------- | ------------------------------------- |
-| Source Map   | `external`（`.js.map` 文件） | 错误堆栈映射回 TypeScript 行号        |
-| Tree Shaking | 开启                         | 移除未使用的导出（死代码消除）        |
-| Keep Names   | 开启                         | 保留函数/类名称（错误堆栈可读性）     |
-| Minify       | 关闭                         | 可选开启，减小产物体积                |
-| packages     | `external`                   | 外部依赖不打包，运行时由 Node.js 解析 |
+| 选项         | 默认值                       | 说明                                                                        |
+| ------------ | ---------------------------- | --------------------------------------------------------------------------- |
+| Source Map   | `external`（`.js.map` 文件） | 错误堆栈映射回 TypeScript 行号                                              |
+| Tree Shaking | 开启                         | 移除未使用的导出（死代码消除）                                              |
+| Keep Names   | 开启                         | 保留函数/类名称（错误堆栈可读性）                                           |
+| Minify       | 默认开启                     | 压缩后端产物；仅在本地诊断时使用 `--no-minify` 或 `VEXT_BUILD_MINIFY=false` |
+| packages     | `external`                   | 外部依赖不打包，运行时由 Node.js 解析                                       |
+
+本表描述的是**后端 CLI 编译器**。它在生产期默认压缩，并生成外部 source map。前端拥有独立默认值：生产期 `frontend.build.client.minify` 为 `true`，`frontend.build.client.sourcemap` 为 `false`；SSR renderer 的 `frontend.build.server.minify` 默认仍为 `false`，只有显式设置才压缩。调整前端独立配置前，请先阅读[构建与发布](../frontend/build-and-deploy)。
 
 ### 自动注入
 

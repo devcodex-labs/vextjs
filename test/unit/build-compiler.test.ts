@@ -377,14 +377,16 @@ describe("BuildCompiler", () => {
       ).toBe(true);
     });
 
-    it("应将项目根 preload/ 自动编译并写入 dist/preload/", async () => {
-      fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
+    it("应将 src/preload/ 自动编译并写入 dist/preload/", async () => {
+      fs.mkdirSync(path.join(projectRoot, "src", "preload"), {
+        recursive: true,
+      });
       fs.writeFileSync(
-        path.join(projectRoot, "preload", "01-env.ts"),
+        path.join(projectRoot, "src", "preload", "01-env.ts"),
         "process.env.APP_PORT = '3011';\n",
       );
       fs.writeFileSync(
-        path.join(projectRoot, "preload", "02-hook.mjs"),
+        path.join(projectRoot, "src", "preload", "02-hook.mjs"),
         "export const ready = true;\n",
       );
 
@@ -930,9 +932,11 @@ describe("BuildCompiler", () => {
     });
 
     it("重新编译时应清理 dist/preload 中已删除的项目级 preload 产物", async () => {
-      fs.mkdirSync(path.join(projectRoot, "preload"), { recursive: true });
+      fs.mkdirSync(path.join(projectRoot, "src", "preload"), {
+        recursive: true,
+      });
       fs.writeFileSync(
-        path.join(projectRoot, "preload", "01-env.ts"),
+        path.join(projectRoot, "src", "preload", "01-env.ts"),
         "process.env.APP_STAGE = 'dev';\n",
       );
 
@@ -943,7 +947,7 @@ describe("BuildCompiler", () => {
         fs.existsSync(path.join(projectRoot, "dist", "preload", "01-env.mjs")),
       ).toBe(true);
 
-      fs.rmSync(path.join(projectRoot, "preload"), {
+      fs.rmSync(path.join(projectRoot, "src", "preload"), {
         recursive: true,
         force: true,
       });
@@ -995,7 +999,7 @@ describe("parseBuildArgs", () => {
       expect(options.outdir).toBe("dist");
       expect(options.clean).toBe(false);
       expect(options.sourcemap).toBe(true);
-      expect(options.minify).toBe(false);
+      expect(options.minify).toBe(true);
       expect(options.typecheck).toBe(false);
       expect(options.uploadAssets).toBe(false);
       expect(options.deployDryRun).toBe(false);
@@ -1072,6 +1076,11 @@ describe("parseBuildArgs", () => {
       expect(options.minify).toBe(true);
     });
 
+    it("--no-minify 应禁用代码压缩", () => {
+      const options = parseBuildArgs(["--no-minify"]);
+      expect(options.minify).toBe(false);
+    });
+
     it("--typecheck 应启用类型检查", () => {
       const options = parseBuildArgs(["--typecheck"]);
       expect(options.typecheck).toBe(true);
@@ -1122,9 +1131,15 @@ describe("parseBuildArgs", () => {
       expect(options.sourcemap).toBe(false);
     });
 
-    it("VEXT_BUILD_MINIFY=true 应启用代码压缩", () => {
-      process.env.VEXT_BUILD_MINIFY = "true";
+    it("VEXT_BUILD_MINIFY=false 应禁用代码压缩", () => {
+      process.env.VEXT_BUILD_MINIFY = "false";
       const options = parseBuildArgs([]);
+      expect(options.minify).toBe(false);
+    });
+
+    it("CLI --minify 应覆盖 VEXT_BUILD_MINIFY=false", () => {
+      process.env.VEXT_BUILD_MINIFY = "false";
+      const options = parseBuildArgs(["--minify"]);
       expect(options.minify).toBe(true);
     });
 

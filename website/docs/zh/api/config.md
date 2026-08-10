@@ -672,7 +672,7 @@ OpenAPI 文档自动生成配置。
 | `docs.code.locales`             | `boolean \| object`                       | `false`              | 可选 Locales 文档源；开启后扫描 `src/locales/**` 和 `src/frontend/locales/**`；配置 `dir` 时只扫描该自定义 locale 根目录                                                |
 | `docs.code.config`              | `boolean \| object`                       | `false`              | 可选 Config 文档源；开启后扫描 `src/config/**`                                                                                                                          |
 | `docs.code.styles`              | `boolean \| object`                       | `false`              | 可选 Styles 文档源；开启后扫描 `src/frontend/styles/**`                                                                                                                 |
-| `docs.code.preload`             | `boolean \| object`                       | `false`              | 可选 Preload 文档源；开启后扫描项目根 `preload/**`                                                                                                                      |
+| `docs.code.preload`             | `boolean \| object`                       | `false`              | 可选 Preload 文档源；开启后扫描规范的 `src/preload/**`；项目根 `preload/**` 仅为带 warning 的兼容回退                                                                   |
 | `docs.access.mode`              | `'off' \| 'visibility-only' \| 'enforce'` | `'off'`              | 文档 UI 数据、菜单和 operation 权限模式                                                                                                                                 |
 | `docs.access.openapiJson`       | `'filtered' \| 'public'`                  | `'filtered'`         | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                            |
 | `docs.sources`                  | `Array`                                   | `[]`                 | 可选的多 API / 多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                                |
@@ -795,91 +795,142 @@ export default {
 
 内置前端构建与静态服务配置。
 
-| 字段                                            | 类型                                 | 默认值                                                       | 说明                                                                    |
-| ----------------------------------------------- | ------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `enabled`                                       | `boolean`                            | `false`                                                      | 是否启用前端集成                                                        |
-| `framework`                                     | `string`                             | `'react'`                                                    | 前端框架标签                                                            |
-| `root`                                          | `string`                             | `'src/frontend'`                                             | 前端源码目录                                                            |
-| `pages.dir`                                     | `string`                             | `'pages'`                                                    | 页面目录，相对 `root` 解析                                              |
-| `pages.extensions`                              | `string[]`                           | `['.tsx', '.jsx', '.ts', '.js']`                             | 页面、layout、错误页和 locale 模块扫描扩展名                            |
-| `pages.document`                                | `string`                             | `'pages/_document.html'`                                     | document 模板路径，相对 `root` 解析                                     |
-| `pages.errorDir`                                | `string`                             | `'pages/error'`                                              | 错误页面目录，相对 `root` 解析                                          |
-| `componentsDir`                                 | `string`                             | `'components'`                                               | 公共组件目录，相对 `root` 解析                                          |
-| `styles.entry`                                  | `string`                             | `'styles/index.css'`                                         | 全局 CSS 入口，相对 `root` 解析                                         |
-| `styles.jscss`                                  | `boolean \| object`                  | `{ enabled: true }`                                          | Vext JSCSS 构建期 CSS 抽取与动态 CSS variables                          |
-| `styles.jscss.files`                            | `string[]`                           | `['**/*.style.ts', '**/*.style.js', '**/*.css.ts']`          | JSCSS 源文件扫描 glob                                                   |
-| `styles.jscss.runtimeAdapter`                   | `'css-variables' \| 'none' \| false` | `'css-variables'`                                            | 通过 CSS custom properties 输出动态变量，或回退为静态 fallback 值       |
-| `styles.jscss.dynamicVars`                      | `boolean`                            | `true`                                                       | 是否输出 JSCSS custom property 声明与 `var(...)` 引用                   |
-| `styles.jscss.recipes`                          | `boolean`                            | `true`                                                       | recipe variants 是否生成额外 class 与 CSS rules                         |
-| `assetsDir`                                     | `string`                             | `'assets'`                                                   | 前端打包资产目录，相对 `root` 解析                                      |
-| `media`                                         | `object`                             | 本地默认值                                                   | 直接编译本地图片和字体；生成文件仍进入普通 deploy/SRI closure           |
-| `media.maxBytes`                                | `number`                             | `20971520`                                                   | 完整本地图片和字体 closure 的最大字节数                                 |
-| `media.images.widths`                           | `number[]`                           | `[320, 640, 960, 1280, 1600]`                                | 本地图片的正整数响应式宽度候选                                          |
-| `media.images.formats`                          | `('original' \| 'webp' \| 'avif')[]` | `['original', 'webp', 'avif']`                               | 本地输出 codec；`original` 保留源 codec                                 |
-| `media.images.quality`                          | `number`                             | `75`                                                         | 1 到 100 的整数图片质量                                                 |
-| `media.images.maxInputPixels`                   | `number`                             | `40000000`                                                   | 解码后本地图片像素的构建期上限                                          |
-| `media.images.maxVariants`                      | `number`                             | `24`                                                         | 单个本地图片 variants 的构建期上限                                      |
-| `media.fonts.maxBytes`                          | `number`                             | `5242880`                                                    | 单个生成的本地 WOFF2 subset 最大字节数                                  |
-| `entry`                                         | `string`                             | `'.vext/generated/frontend/browser-entry.tsx'`               | 自动生成的浏览器入口；通常不需要手写                                    |
-| `indexHtml`                                     | `string`                             | `'src/frontend/pages/_document.html'`                        | HTML document 模板                                                      |
-| `outDir`                                        | `string`                             | 开发期 `.vext/client`，生产期 `dist/client`                  | 前端输出目录                                                            |
-| `publicDir`                                     | `string`                             | `'public'`                                                   | 会复制到前端输出目录的静态资源                                          |
-| `publicPath`                                    | `string`                             | `'/'`                                                        | 公开资源路径前缀                                                        |
-| `alias`                                         | `object`                             | 内置 `@frontend/@pages/@components/@styles/@assets`          | 前端安全 alias，不默认指向整个 `src`                                    |
-| `spaFallback`                                   | `boolean \| object`                  | `{ scopes: [] }`                                             | 只对显式声明的 client-router 子应用范围服务 fallback                    |
-| `spaFallback.enabled`                           | `boolean`                            | `true`                                                       | 是否允许 scoped fallback 仲裁；无 scope 时不会接管路径                  |
-| `spaFallback.exclude`                           | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**', '/_vext/docs/**']` | fallback 全局排除路径                                                   |
-| `spaFallback.scopes[]`                          | `object[]`                           | `[]`                                                         | 明确声明的 client-router 子应用范围                                     |
-| `apiClient`                                     | `boolean \| object`                  | `true`                                                       | 生成 client contract 产物                                               |
-| `apiClient.enabled`                             | `boolean`                            | `true`                                                       | 是否输出 `client-contract.json` 与 `api.generated.ts`                   |
-| `render.ssr`                                    | `boolean`                            | `true`                                                       | 是否启用 SSR 渲染                                                       |
-| `render.fallback`                               | `'client' \| 'error'`                | `'client'`                                                   | SSR 失败时回退客户端壳还是错误响应                                      |
-| `render.streaming`                              | `'buffered' \| 'auto'`               | `'buffered'`                                                 | 保留 `renderToString` 兼容路径，或流式发送 shell 与 Suspense boundaries |
-| `render.timeoutMs`                              | `number`                             | `3000`                                                       | 中止未完成的 streaming SSR；buffered 同步渲染返回后再检查               |
-| `render.layout`                                 | `boolean`                            | `true`                                                       | 是否启用嵌套 layout chain                                               |
-| `errorPages.default`                            | `string`                             | `'error/default'`                                            | 默认错误页 page id                                                      |
-| `errorPages.status`                             | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                     | 状态码到错误页 page id 的映射                                           |
-| `i18n`                                          | `object`                             | `{ enabled: false }`                                         | 前端页面文案层、SSR messages 与 `{vext.lang}`                           |
-| `i18n.source`                                   | `string`                             | `'locales'`                                                  | 前端文案目录，相对 `root` 解析                                          |
-| `i18n.defaultLocale`                            | `'inherit' \| string`                | `'inherit'`                                                  | 默认 locale；`inherit` 表示跟随请求级 locale                            |
-| `i18n.detect`                                   | `string[]`                           | `['accept-language']`                                        | SSR locale 探测来源                                                     |
-| `i18n.inject`                                   | `'used' \| 'all'`                    | `'used'`                                                     | 注入已使用 messages 还是全部 messages                                   |
-| `i18n.clientSwitch`                             | `'reload'`                           | `'reload'`                                                   | 客户端切换 locale 的首期策略                                            |
-| `i18n.clientLoad`                               | `'current' \| 'all'`                 | `'current'`                                                  | 浏览器端只加载当前 SSR locale，或加载全部 locale                        |
-| `i18n.htmlLang`                                 | `boolean`                            | `true`                                                       | 是否写入 `{vext.lang}` / `<html lang>`                                  |
-| `i18n.vary`                                     | `boolean`                            | `true`                                                       | 是否按 locale 影响响应 vary/cache                                       |
-| `dev.hot`                                       | `boolean`                            | `true`                                                       | 开发期前端热更新通道                                                    |
-| `dev.fastRefresh`                               | `boolean`                            | `true`                                                       | React Fast Refresh                                                      |
-| `dev.transport`                                 | `'sse'`                              | `'sse'`                                                      | Vext dev event bus 传输方式                                             |
-| `dev.overlay`                                   | `boolean`                            | `true`                                                       | 是否显示前端 dev browser rebuild 错误与 render refresh 提示 UI          |
-| `dev.debounceMs`                                | `number`                             | `50`                                                         | 文件变更事件防抖时间                                                    |
-| `dev.renderRefresh`                             | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                                   | route/service 等 render 相关后端变更后的浏览器动作                      |
-| `build.target`                                  | `string \| string[]`                 | `'es2022'`                                                   | 浏览器构建目标                                                          |
-| `build.minify`                                  | `boolean`                            | 生产期 `true`                                                | 压缩前端产物                                                            |
-| `build.sourcemap`                               | `boolean`                            | 开发期 `true`                                                | 生成前端 source map                                                     |
-| `build.client`                                  | `object`                             | 继承共享 build 默认值                                        | 浏览器 bundle 输出、hash 命名、splitting 与 external                    |
-| `build.client.assetsDir`                        | `string`                             | `"assets"`                                                   | `frontend.outDir` 下的浏览器 bundle 资源子目录                          |
-| `build.client.splitting`                        | `boolean`                            | `true`                                                       | 浏览器代码拆分                                                          |
-| `build.client.external`                         | `string[]`                           | `[]`                                                         | 浏览器 bundle 外置模块列表                                              |
-| `build.client.externalRuntime`                  | `object`                             | `{}`                                                         | 外置模块 import map URL 映射；React external 缺映射会构建失败           |
-| `build.server`                                  | `object`                             | `server/renderer.cjs`                                        | SSR renderer bundle 输出                                                |
-| `build.server.outFile`                          | `string`                             | `server/renderer.cjs`                                        | `frontend.outDir` 下的 SSR renderer 文件                                |
-| `build.vendorChunks`                            | `boolean \| object`                  | `{ enabled: true }`                                          | Vext-managed vendor entry 与共享 chunk 管理                             |
-| `build.budgets`                                 | `object`                             | 全部 `0`                                                     | 前端资源大小预算；`0` 表示不限制                                        |
-| `build.budgets.maxInitialJsGzipBytes`           | `number`                             | `0`                                                          | 首屏入口 JS gzip 预算                                                   |
-| `build.budgets.maxInitialJsBrotliBytes`         | `number`                             | `0`                                                          | 首屏入口 JS brotli 预算                                                 |
-| `build.budgets.maxRouteInitialJsBrotliBytes`    | `number`                             | `0`                                                          | 单 route 首屏 JS brotli 预算                                            |
-| `build.budgets.maxAppOwnedInitialJsBrotliBytes` | `number`                             | `0`                                                          | 排除 external runtime 后的应用自有首屏 JS brotli 预算                   |
-| `build.assets.inlineLimit`                      | `number`                             | `0`                                                          | import 型资源内联阈值；默认输出 hash 文件                               |
-| `build.css.modules`                             | `boolean`                            | `true`                                                       | 是否支持 CSS Modules 约定                                               |
-| `build.diagnostics.metafile`                    | `boolean`                            | `true`                                                       | 是否保留内部 esbuild metafile 诊断，供 size report / leak scan 使用     |
-| `build.diagnostics.sizeReport`                  | `boolean`                            | `true`                                                       | 是否生成体积报告                                                        |
-| `build.diagnostics.performanceReport`           | `boolean`                            | `true`                                                       | 是否在构建报告中保留路由级 initial JS 指标                              |
-| `build.diagnostics.leakScan`                    | `boolean`                            | `true`                                                       | 阻断浏览器 bundle 误引入服务端模块                                      |
-| `deploy.assetBaseUrl`                           | `string`                             | 无                                                           | CDN 静态资源绝对前缀                                                    |
-| `deploy.crossOrigin`                            | `'anonymous' \| 'use-credentials'`   | 无                                                           | 注入 script/link 时的 crossorigin 值                                    |
-| `deploy.integrity`                              | `boolean`                            | `false`                                                      | 是否把构建期 SRI 注入 JS/CSS 标签                                       |
-| `deploy.upload`                                 | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`                  | 静态资源上传配置；`vext deploy assets` 按 sha256 增量上传               |
+| 字段                                                   | 类型                                 | 默认值                                                       | 说明                                                                      |
+| ------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `enabled`                                              | `boolean`                            | `false`                                                      | 是否启用前端集成                                                          |
+| `framework`                                            | `string`                             | `'react'`                                                    | 前端框架标签                                                              |
+| `adapter`                                              | `VextFrontendAdapter`                | 无                                                           | 兼容前端 adapter 的高级集成边界；不会启用 plugin ecosystem                |
+| `root`                                                 | `string`                             | `'src/frontend'`                                             | 前端源码目录                                                              |
+| `pages`                                                | `object`                             | 内置 page 约定                                               | page、document 与 error-page 的发现配置                                   |
+| `pages.dir`                                            | `string`                             | `'pages'`                                                    | 页面目录，相对 `root` 解析                                                |
+| `pages.extensions`                                     | `string[]`                           | `['.tsx', '.jsx', '.ts', '.js']`                             | 页面、layout、错误页和 locale 模块扫描扩展名                              |
+| `pages.document`                                       | `string`                             | `'pages/_document.html'`                                     | document 模板路径，相对 `root` 解析                                       |
+| `pages.errorDir`                                       | `string`                             | `'pages/error'`                                              | 错误页面目录，相对 `root` 解析                                            |
+| `componentsDir`                                        | `string`                             | `'components'`                                               | 公共组件目录，相对 `root` 解析                                            |
+| `styles`                                               | `object`                             | 内置 style 约定                                              | 全局 CSS 入口与可选 Vext JSCSS 配置                                       |
+| `styles.entry`                                         | `string`                             | `'styles/index.css'`                                         | 全局 CSS 入口，相对 `root` 解析                                           |
+| `styles.jscss`                                         | `boolean \| object`                  | `{ enabled: true }`                                          | Vext JSCSS 构建期 CSS 抽取与动态 CSS variables                            |
+| `styles.jscss.enabled`                                 | `boolean`                            | `true`                                                       | 是否启用 Vext JSCSS 抽取                                                  |
+| `styles.jscss.files`                                   | `string[]`                           | `['**/*.style.ts', '**/*.style.js', '**/*.css.ts']`          | JSCSS 源文件扫描 glob                                                     |
+| `styles.jscss.runtimeAdapter`                          | `'css-variables' \| 'none' \| false` | `'css-variables'`                                            | 通过 CSS custom properties 输出动态变量，或回退为静态 fallback 值         |
+| `styles.jscss.dynamicVars`                             | `boolean`                            | `true`                                                       | 是否输出 JSCSS custom property 声明与 `var(...)` 引用                     |
+| `styles.jscss.recipes`                                 | `boolean`                            | `true`                                                       | recipe variants 是否生成额外 class 与 CSS rules                           |
+| `assetsDir`                                            | `string`                             | `'assets'`                                                   | 前端打包资产目录，相对 `root` 解析                                        |
+| `media`                                                | `object`                             | 本地默认值                                                   | 直接编译本地图片和字体；生成文件仍进入普通 deploy/SRI closure             |
+| `media.maxBytes`                                       | `number`                             | `20971520`                                                   | 完整本地图片和字体 closure 的最大字节数                                   |
+| `media.images`                                         | `object`                             | 本地图片默认值                                               | 响应式本地图片 variants                                                   |
+| `media.images.widths`                                  | `number[]`                           | `[320, 640, 960, 1280, 1600]`                                | 本地图片的正整数响应式宽度候选                                            |
+| `media.images.formats`                                 | `('original' \| 'webp' \| 'avif')[]` | `['original', 'webp', 'avif']`                               | 本地输出 codec；`original` 保留源 codec                                   |
+| `media.images.quality`                                 | `number`                             | `75`                                                         | 1 到 100 的整数图片质量                                                   |
+| `media.images.maxInputPixels`                          | `number`                             | `40000000`                                                   | 解码后本地图片像素的构建期上限                                            |
+| `media.images.maxVariants`                             | `number`                             | `24`                                                         | 单个本地图片 variants 的构建期上限                                        |
+| `media.fonts`                                          | `object`                             | 本地字体默认值                                               | 本地 WOFF2 subset 限制                                                    |
+| `media.fonts.maxBytes`                                 | `number`                             | `5242880`                                                    | 单个生成的本地 WOFF2 subset 最大字节数                                    |
+| `entry`                                                | `string`                             | `'.vext/generated/frontend/browser-entry.tsx'`               | 自动生成的浏览器入口；通常不需要手写                                      |
+| `indexHtml`                                            | `string`                             | `'src/frontend/pages/_document.html'`                        | HTML document 模板                                                        |
+| `outDir`                                               | `string`                             | 开发期 `.vext/client`，生产期 `dist/client`                  | 前端输出目录                                                              |
+| `publicDir`                                            | `string`                             | `'public'`                                                   | 会复制到前端输出目录的静态资源                                            |
+| `publicPath`                                           | `string`                             | `'/'`                                                        | 公开资源路径前缀                                                          |
+| `alias`                                                | `object`                             | 内置 `@frontend/@pages/@components/@styles/@assets`          | 前端安全 alias，不默认指向整个 `src`                                      |
+| `spaFallback`                                          | `boolean \| object`                  | `{ scopes: [] }`                                             | 只对显式声明的 client-router 子应用范围服务 fallback                      |
+| `spaFallback.enabled`                                  | `boolean`                            | `true`                                                       | 是否允许 scoped fallback 仲裁；无 scope 时不会接管路径                    |
+| `spaFallback.exclude`                                  | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**', '/_vext/docs/**']` | fallback 全局排除路径                                                     |
+| `spaFallback.scopes`                                   | `object[]`                           | `[]`                                                         | 明确声明的 client-router 子应用范围                                       |
+| `spaFallback.scopes[]`                                 | `object[]`                           | `[]`                                                         | 明确声明的 client-router 子应用范围                                       |
+| `spaFallback.scopes[].basePath`                        | `string`                             | 必填                                                         | client shell 负责的 URL 前缀                                              |
+| `spaFallback.scopes[].page`                            | `string`                             | 必填                                                         | client shell 对应的 page id                                               |
+| `spaFallback.scopes[].ssr`                             | `boolean`                            | `false`                                                      | client shell 首次是否 SSR 渲染                                            |
+| `spaFallback.scopes[].exclude`                         | `string[]`                           | `[]`                                                         | 该 scope 内 fallback 不得接管的路径                                       |
+| `spaFallback.scopes[].status`                          | `number`                             | `200`                                                        | fallback 命中的 HTTP status                                               |
+| `apiClient`                                            | `boolean \| object`                  | `true`                                                       | 生成 client contract 产物                                                 |
+| `apiClient.enabled`                                    | `boolean`                            | `true`                                                       | 是否输出 `client-contract.json` 与 `api.generated.ts`                     |
+| `render`                                               | `object`                             | `{ ssr: true, streaming: 'buffered' }`                       | SSR、layout、fallback 与 streaming 控制                                   |
+| `render.ssr`                                           | `boolean`                            | `true`                                                       | 是否启用 SSR 渲染                                                         |
+| `render.fallback`                                      | `'client' \| 'error'`                | `'client'`                                                   | SSR 失败时回退客户端壳还是错误响应                                        |
+| `render.streaming`                                     | `'buffered' \| 'auto'`               | `'buffered'`                                                 | 保留 `renderToString` 兼容路径，或流式发送 shell 与 Suspense boundaries   |
+| `render.timeoutMs`                                     | `number`                             | `3000`                                                       | 中止未完成的 streaming SSR；buffered 同步渲染返回后再检查                 |
+| `render.layout`                                        | `boolean`                            | `true`                                                       | 是否启用嵌套 layout chain                                                 |
+| `errorPages`                                           | `object`                             | 内置 error-page 约定                                         | 默认错误页与按状态码映射的错误页                                          |
+| `errorPages.default`                                   | `string`                             | `'error/default'`                                            | 默认错误页 page id                                                        |
+| `errorPages.status`                                    | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                     | 状态码到错误页 page id 的映射                                             |
+| `i18n`                                                 | `object`                             | `{ enabled: false }`                                         | 前端页面文案层、SSR messages 与 `{vext.lang}`                             |
+| `i18n.enabled`                                         | `boolean`                            | `false`                                                      | 是否启用前端 locale 发现与 message artifacts                              |
+| `i18n.source`                                          | `string`                             | `'locales'`                                                  | 前端文案目录，相对 `root` 解析                                            |
+| `i18n.defaultLocale`                                   | `'inherit' \| string`                | `'inherit'`                                                  | 默认 locale；`inherit` 表示跟随请求级 locale                              |
+| `i18n.detect`                                          | `string[]`                           | `['accept-language']`                                        | SSR locale 探测来源                                                       |
+| `i18n.inject`                                          | `'used' \| 'all'`                    | `'used'`                                                     | 注入已使用 messages 还是全部 messages                                     |
+| `i18n.clientSwitch`                                    | `'reload'`                           | `'reload'`                                                   | 客户端切换 locale 的首期策略                                              |
+| `i18n.clientLoad`                                      | `'current' \| 'all'`                 | `'current'`                                                  | 浏览器端只加载当前 SSR locale，或加载全部 locale                          |
+| `i18n.htmlLang`                                        | `boolean`                            | `true`                                                       | 是否写入 `{vext.lang}` / `<html lang>`                                    |
+| `i18n.vary`                                            | `boolean`                            | `true`                                                       | 是否按 locale 影响响应 vary/cache                                         |
+| `dev`                                                  | `object`                             | 内置 dev 默认值                                              | 浏览器开发事件、refresh 与 overlay 控制                                   |
+| `dev.hot`                                              | `boolean`                            | `true`                                                       | 开发期前端热更新通道                                                      |
+| `dev.fastRefresh`                                      | `boolean`                            | `true`                                                       | React Fast Refresh                                                        |
+| `dev.transport`                                        | `'sse'`                              | `'sse'`                                                      | Vext dev event bus 传输方式                                               |
+| `dev.overlay`                                          | `boolean`                            | `true`                                                       | 是否显示前端 dev browser rebuild 错误与 render refresh 提示 UI            |
+| `dev.debounceMs`                                       | `number`                             | `50`                                                         | 文件变更事件防抖时间                                                      |
+| `dev.renderRefresh`                                    | `'prompt' \| 'auto' \| 'off'`        | `'prompt'`                                                   | route/service 等 render 相关后端变更后的浏览器动作                        |
+| `build`                                                | `object`                             | 内置生产/开发编译默认值                                      | 浏览器构建默认值；SSR renderer 保持独立的 `build.server` Node 配置        |
+| `build.target`                                         | `string \| string[]`                 | `'es2022'`                                                   | 浏览器构建目标                                                            |
+| `build.minify`                                         | `boolean`                            | 生产期 `true`                                                | 压缩前端产物                                                              |
+| `build.sourcemap`                                      | `boolean`                            | 开发期 `true`                                                | 生成前端 source map                                                       |
+| `build.client`                                         | `object`                             | 继承共享 build 默认值                                        | 浏览器 bundle 输出、hash 命名、splitting 与 external                      |
+| `build.client.assetsDir`                               | `string`                             | `"assets"`                                                   | `frontend.outDir` 下的浏览器 bundle 资源子目录                            |
+| `build.client.target`                                  | `string \| string[]`                 | 继承 `build.target`（`'es2022'`）                            | 浏览器专用 esbuild target                                                 |
+| `build.client.minify`                                  | `boolean`                            | 继承生产期 `true`                                            | 浏览器专用压缩覆盖                                                        |
+| `build.client.sourcemap`                               | `boolean`                            | 继承开发期 `true`                                            | 浏览器专用 source-map 覆盖                                                |
+| `build.client.splitting`                               | `boolean`                            | `true`                                                       | 浏览器代码拆分                                                            |
+| `build.client.entryNames`                              | `string`                             | `'[name]-[hash]'`                                            | `assetsDir` 下浏览器 entry 文件名模式                                     |
+| `build.client.chunkNames`                              | `string`                             | `'[name]-[hash]'`                                            | `assetsDir` 下浏览器 chunk 文件名模式                                     |
+| `build.client.assetNames`                              | `string`                             | `'[name]-[hash]'`                                            | `assetsDir` 下 import 型浏览器资源文件名模式                              |
+| `build.client.external`                                | `string[]`                           | `[]`                                                         | 浏览器 bundle 外置模块列表                                                |
+| `build.client.externalRuntime`                         | `object`                             | `{}`                                                         | 外置模块 import map URL 映射；React external 缺映射会构建失败             |
+| `build.client.externalRuntime.<specifier>.url`         | `string`                             | 必填                                                         | 某个命名 browser external 的绝对 URL                                      |
+| `build.client.externalRuntime.<specifier>.integrity`   | `string`                             | 无                                                           | 该 external runtime 可选的 SRI 值                                         |
+| `build.client.externalRuntime.<specifier>.crossOrigin` | `'anonymous' \| 'use-credentials'`   | 无                                                           | 该 external runtime 可选的 `crossorigin` 值                               |
+| `build.server`                                         | `object`                             | `server/renderer.cjs`                                        | SSR renderer bundle 输出                                                  |
+| `build.server.outFile`                                 | `string`                             | `server/renderer.cjs`                                        | `frontend.outDir` 下的 SSR renderer 文件                                  |
+| `build.server.target`                                  | `string \| string[]`                 | `'node20'`                                                   | SSR-renderer esbuild target                                               |
+| `build.server.minify`                                  | `boolean`                            | `false`                                                      | SSR-renderer 压缩；独立于浏览器压缩                                       |
+| `build.server.sourcemap`                               | `boolean`                            | 继承开发期 `true`                                            | SSR-renderer source-map 设置                                              |
+| `build.server.external`                                | `string[]`                           | `[]`                                                         | 保留在 renderer bundle 外部的 Node 模块                                   |
+| `build.vendorChunks`                                   | `boolean \| object`                  | `{ enabled: true }`                                          | Vext-managed vendor entry 与共享 chunk 管理                               |
+| `build.vendorChunks.enabled`                           | `boolean`                            | `true`                                                       | 是否输出 Vext-managed vendor entry                                        |
+| `build.vendorChunks.packages`                          | `string[]`                           | React runtime packages                                       | 会放入共享 vendor entry 的 package                                        |
+| `build.vendorChunks.entryName`                         | `string`                             | `'vext-vendor'`                                              | 共享 vendor entry 的逻辑名称                                              |
+| `build.budgets`                                        | `object`                             | 全部 `0`                                                     | 前端资源大小预算；`0` 表示不限制                                          |
+| `build.budgets.maxAssetBytes`                          | `number`                             | `0`                                                          | 单个资源 raw byte 上限                                                    |
+| `build.budgets.maxInitialJsBytes`                      | `number`                             | `0`                                                          | 最大完整页面首载 JS closure 的 raw-byte 上限                              |
+| `build.budgets.maxInitialJsGzipBytes`                  | `number`                             | `0`                                                          | 最大完整页面首载 JS 闭包 gzip 预算                                        |
+| `build.budgets.maxInitialJsBrotliBytes`                | `number`                             | `0`                                                          | 最大完整页面首载 JS 闭包 brotli 预算                                      |
+| `build.budgets.maxRouteInitialJsBrotliBytes`           | `number`                             | `0`                                                          | 单 route 首屏 JS brotli 预算                                              |
+| `build.budgets.maxAppOwnedInitialJsBrotliBytes`        | `number`                             | `0`                                                          | 排除 external runtime 后的应用自有首屏 JS brotli 预算                     |
+| `build.budgets.maxTotalBytes`                          | `number`                             | `0`                                                          | 全部可发布前端资源的总字节上限                                            |
+| `build.budgets.warnOnly`                               | `boolean`                            | `false`                                                      | 仅报告预算违规而不让构建失败                                              |
+| `build.assets`                                         | `object`                             | `{ inlineLimit: 0 }`                                         | import 型资源输出控制                                                     |
+| `build.assets.inlineLimit`                             | `number`                             | `0`                                                          | import 型资源内联阈值；默认输出 hash 文件                                 |
+| `build.css`                                            | `object`                             | `{ modules: true }`                                          | CSS module 编译控制                                                       |
+| `build.css.modules`                                    | `boolean`                            | `true`                                                       | 是否支持 CSS Modules 约定                                                 |
+| `build.diagnostics`                                    | `object`                             | 全部诊断开启                                                 | 构建报告与浏览器泄漏诊断控制                                              |
+| `build.diagnostics.metafile`                           | `boolean`                            | `true`                                                       | 是否保留内部 esbuild metafile 诊断，供 size report / leak scan 使用       |
+| `build.diagnostics.sizeReport`                         | `boolean`                            | `true`                                                       | 是否生成体积报告                                                          |
+| `build.diagnostics.performanceReport`                  | `boolean`                            | `true`                                                       | 是否在构建报告中保留路由级 initial JS 指标                                |
+| `build.diagnostics.leakScan`                           | `boolean`                            | `true`                                                       | 阻断浏览器 bundle 误引入服务端模块                                        |
+| `deploy`                                               | `object`                             | 内置本地交付默认值                                           | 浏览器静态资源 URL、SRI、crossorigin 与可选的增量上传配置                 |
+| `deploy.assetBaseUrl`                                  | `string`                             | 无                                                           | CDN 静态资源绝对前缀                                                      |
+| `deploy.crossOrigin`                                   | `'anonymous' \| 'use-credentials'`   | 无                                                           | 注入 script/link 时的 crossorigin 值                                      |
+| `deploy.integrity`                                     | `boolean`                            | `false`                                                      | 是否把构建期 SRI 注入 JS/CSS 标签                                         |
+| `deploy.upload`                                        | `boolean \| object`                  | `{ enabled: false, exclude: ["**/*.map"] }`                  | 静态资源上传配置；`vext deploy assets` 按 sha256 增量上传                 |
+| `deploy.upload.enabled`                                | `boolean`                            | `false`                                                      | 为 `vext build --upload-assets` 和 `vext deploy assets` 开启上传          |
+| `deploy.upload.adapter`                                | `string \| object`                   | `'filesystem'`                                               | 内置 `filesystem`/`mock` adapter 名称或显式 custom adapter                |
+| `deploy.upload.targetDir`                              | `string`                             | 开启时为 `.vext/deploy/frontend-assets`                      | 内置 filesystem staging adapter 的本地目标目录                            |
+| `deploy.upload.publicBaseUrl`                          | `string`                             | 无                                                           | upload plan 报告的显式公开 URL；filesystem 会回退到 `deploy.assetBaseUrl` |
+| `deploy.upload.prefix`                                 | `string`                             | `''`                                                         | 加到每个 upload key 前的前缀                                              |
+| `deploy.upload.stateFile`                              | `string`                             | `.vext/deploy/frontend-assets-state.json`                    | 增量上传状态；应放在 `frontend.outDir` 外                                 |
+| `deploy.upload.dryRun`                                 | `boolean`                            | `false`                                                      | 只规划上传、不写入资源                                                    |
+| `deploy.upload.concurrency`                            | `number`                             | `4`                                                          | 最大并行上传数                                                            |
+| `deploy.upload.include`                                | `string[]`                           | `['**/*']`                                                   | 允许上传的 deploy-manifest 路径                                           |
+| `deploy.upload.exclude`                                | `string[]`                           | `['**/*.map']`                                               | 排除上传的 deploy-manifest 路径                                           |
 
 ```typescript
 export default {
@@ -900,6 +951,37 @@ export default {
   },
 };
 ```
+
+### 适配器扩展契约
+
+`frontend.adapter` 是显式、进程内的类型化扩展点，不是自动插件发现机制。`VextFrontendAdapter` 提供 `name`、`framework` 以及可选的 `resolveBuildOptions(config)`；该 resolver 接收已解析的前端配置，并可同步或异步返回编译器选项。它不会引入另一套 bundler，也不会启用 RSC、Server Functions 或 PPR。
+
+如果交付目标不是内置的本地 staging adapter，请向 `deploy.upload.adapter` 传入 `VextFrontendDeployUploadAdapter` 对象。它提供 `name` 和 `upload(input)`；其 `VextFrontendDeployUploadAdapterInput` 包含 `asset`、`sourcePath`、`uploadKey` 与 `dryRun`，而 `VextFrontendDeployUploadAdapterResult` 必须返回 `uploaded`，并可返回 `url` 与 `etag`。
+
+```ts
+export default {
+  frontend: {
+    deploy: {
+      upload: {
+        enabled: true,
+        adapter: {
+          name: "company-cdn",
+          async upload({ asset, sourcePath, uploadKey, dryRun }) {
+            if (dryRun) return { uploaded: false };
+            // 用所选云厂商 SDK 将 sourcePath 上传到 uploadKey。
+            return {
+              uploaded: true,
+              url: `https://cdn.example.com/${uploadKey}`,
+            };
+          },
+        },
+      },
+    },
+  },
+};
+```
+
+`filesystem` 与 `mock` 是仅有的内置 upload adapter 名称。云厂商适配器必须显式写在应用配置中，因此运行时不会暗中安装或发现云服务/bundler 插件。
 
 默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。`spaFallback: true` 仅作为兼容 shorthand，不推荐在企业级混合项目中使用。
 

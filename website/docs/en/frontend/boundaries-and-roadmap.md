@@ -45,6 +45,43 @@ export default {
 
 Vext can expose contracts for external frontend frameworks through `vextjs/frontend`, generated API artifacts, and stable HTTP boundaries. The default integrated experience remains Vext-owned full-stack React.
 
+## Why RSC is not a current requirement
+
+React Server Components (RSC) are not a synonym for SSR, Suspense, SEO, or
+streaming HTML. Vext already supports route-owned server data, `res.render()`,
+React SSR plus hydration, and opt-in `frontend.render.streaming: "auto"` with
+Suspense fallbacks. Those capabilities are sufficient for the normal first-page
+HTML, progressive rendering, and interactive browser-runtime path documented by
+this release.
+
+RSC would introduce a different framework-wide contract rather than a single
+component feature:
+
+1. A server/client component graph and a payload protocol must be built,
+   versioned, cached, invalidated, and kept compatible with the browser entry.
+2. Development, Fast Refresh/HMR, production manifests, code splitting,
+   deployment output, and diagnostics must understand that graph and its
+   boundaries.
+3. Server Functions / Server Actions add callable server references, mutation
+   semantics, CSRF/auth/error behavior, and an RPC-like transport boundary.
+4. The same behavior must be observable across Native, Hono, Fastify, Express,
+   and Koa without weakening Vext's route, adapter, or HTTP contracts.
+
+The [React RSC reference](https://react.dev/reference/rsc/server-components)
+describes this separate server/component environment, and React currently
+advises framework authors to pin React or use Canary when implementing the
+underlying bundler/framework APIs. That is evidence that RSC support must be a
+deliberate, independently versioned program for Vext; it cannot be inferred
+from the presence of React 19, SSR, or `renderToPipeableStream`.
+
+Choosing not to support RSC now is therefore a valid product and operational
+choice. It preserves one route-owned data path, one known browser-safe frontend
+graph, stable HTTP semantics, the esbuild pipeline, and a smaller deployment
+surface. Teams do not lose SSR, hydration, Suspense, streaming HTML, route-side
+freshness, or same-route navigation. If a future RSC proposal is made, it must
+define its payload, cache, security, development, package, adapter, and packed
+consumer acceptance contracts before it can leave this non-goal list.
+
 ## Future Tracks
 
 These are not first-phase commitments, but can be evaluated later:

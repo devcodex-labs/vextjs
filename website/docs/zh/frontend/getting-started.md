@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-默认脚手架是全栈项目：后端 routes、services、React 页面、样式、初始多语言文件，以及同源的 `public/vext-mark.svg` / favicon 都在同一个项目里创建。可选资源与约定目录只会在其中有真实应用源码时按需添加。纯 API 项目仍然可以使用：
+默认脚手架是全栈项目：后端 routes、services、React 页面、样式、初始多语言文件，以及使用同一 V 几何的 `public/vext-mark.svg` / favicon 变体都在同一个项目里创建。可选资源与约定目录只会在其中有真实应用源码时按需添加。纯 API 项目仍然可以使用：
 
 ```bash
 npx vextjs create my-api --template api --frontend none
@@ -29,7 +29,7 @@ GET / -> src/routes/index.ts -> res.render("index")
 
 ## 默认 Launchpad
 
-默认全栈模板提供 SSR Vext runtime launchpad，而不是空白 demo。`src/routes/index.ts` 提供 greeting 和渲染时间，`src/frontend/pages/index.tsx` 用 `useVextI18n` 渲染它们，`src/frontend/components/AppShell.tsx` 负责公共导航并引用 `public/vext-mark.svg`，`src/frontend/styles/index.css` 负责 ink/cyan/green/amber 视觉 token；`public/favicon.svg` 使用同一个 V 标记。优先从这些文件开始修改；没有需要维护的生成 README 占位文件。
+默认全栈模板提供 SSR Vext runtime launchpad，而不是空白 demo。它将「路由 → 服务 → `res.render()` → 浏览器运行时」作为可见运行时链路，greeting 和渲染时间仍来自真实服务端数据。`src/frontend/components/AppShell.tsx` 负责公共导航并引用透明的 `public/vext-mark.svg`；`public/favicon.svg` 是采用相同 V 几何的高对比变体。`src/frontend/styles/index.css` 负责 ink/cyan/green/amber 视觉 token，以及纯 CSS、遵守减少动态效果偏好的轻量动效。优先从这些文件开始修改；没有需要维护的生成 README 占位文件。
 
 ## 修改首页
 
@@ -105,6 +105,8 @@ export const card = style({
   borderRadius: 8,
 });
 ```
+
+需要第一次使用 recipe、variants、CSS variables 与构建产物时，阅读 [Vext JSCSS](/zh/frontend/jscss)。
 
 ## 失败时先检查
 

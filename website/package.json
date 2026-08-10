@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "rspress dev",
-    "build": "rspress build",
+    "build": "rspress build && node scripts/generate-machine-artifacts.mjs",
     "preview": "rspress preview"
   },
   "dependencies": {
-    "@rspress/core": "^2.0.2",
-    "@rspress/plugin-sitemap": "^2.0.7"
+    "@rspress/core": "^2.0.19",
+    "@rspress/plugin-sitemap": "^2.0.19"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

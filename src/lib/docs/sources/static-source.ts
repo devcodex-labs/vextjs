@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { resolveProjectPreloadDirectory } from "../../preload/project-preload-paths.js";
 import type { VextCodeDocItem, VextCodeDocsSourceConfig } from "../types.js";
 import {
   isSourceEnabled,
@@ -25,7 +26,10 @@ export async function loadLocaleCodeDocs(
   const config = sourceConfig(options.source);
   const roots = config.dir
     ? [join(options.srcDir, config.dir)]
-    : unique([join(options.srcDir, "locales"), join(options.srcDir, "frontend/locales")]);
+    : unique([
+        join(options.srcDir, "locales"),
+        join(options.srcDir, "frontend/locales"),
+      ]);
   const items: VextCodeDocItem[] = [];
 
   for (const root of roots) {
@@ -105,7 +109,12 @@ export async function loadPreloadCodeDocs(
   }
 
   const config = sourceConfig(options.source);
-  const preloadDir = join(options.rootDir, config.dir ?? "preload");
+  const preloadDir = config.dir
+    ? join(options.rootDir, config.dir)
+    : resolveProjectPreloadDirectory(options.rootDir)?.path;
+  if (!preloadDir) {
+    return [];
+  }
   const files = await scanCodeSourceFiles(preloadDir, config);
   const items: VextCodeDocItem[] = [];
 
@@ -200,6 +209,7 @@ function unique(values: string[]): string[] {
 
 function formatList(values: string[], limit = 8): string {
   const visible = values.slice(0, limit);
-  const suffix = values.length > limit ? `, +${values.length - limit} more` : "";
+  const suffix =
+    values.length > limit ? `, +${values.length - limit} more` : "";
   return visible.join(", ") + suffix;
 }

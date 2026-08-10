@@ -10,7 +10,7 @@ import type { ClassifierOptions } from "./change-classifier.js";
  *
  * 热重载的入口组件，负责：
  *
- *   1. **监听** `src/` 目录、项目根 `preload/`/`public/` 目录和根目录配置文件的变更
+ *   1. **监听** `src/` 目录（含 `src/preload/`）、兼容的项目根 `preload/`、`public/` 和根目录配置文件的变更
  *   2. **分类** 变更文件为 `cold`（冷重启）、`soft`（热替换）、`client`（前端重建）或 `ignore`（忽略）
  *   3. **识别变更类型**（`modify` / `add` / `delete`）— 决定走 Tier 1 还是 Tier 2 编译路径
  *   4. **防抖合并** 100ms 窗口内的多个变更为一次 reload 事件
@@ -137,7 +137,7 @@ export class VextFileWatcher extends EventEmitter {
    */
   private watchers: Closeable[] = [];
 
-  /** 当前挂载的项目级 preload 目录 watcher（如存在） */
+  /** 当前挂载的兼容项目根 preload/ 目录 watcher（如存在） */
   private preloadWatcher: Closeable | null = null;
 
   /** 当前挂载的 public 目录 watcher（如存在） */
@@ -275,11 +275,11 @@ export class VextFileWatcher extends EventEmitter {
       // src/ 目录不存在时静默跳过
     }
 
-    // ── preload/ 目录监听（项目级 preload，非递归）─────────
+    // ── 兼容 preload/ 目录监听（非递归；src/preload/ 已由 src watcher 覆盖）──
     this.attachPreloadWatcher(root);
     this.attachPublicWatcher(root);
 
-    // ── 项目根目录监听（补足 preload/public 和根冷重启文件动态变化）────
+    // ── 项目根目录监听（补足兼容 preload/public 和根冷重启文件动态变化）────
     try {
       const watcher = watch(
         root,
@@ -299,7 +299,7 @@ export class VextFileWatcher extends EventEmitter {
             );
             this.onFileChange(normalized, changeType);
           }
-          if (normalized.startsWith("preload")) {
+          if (normalized === "preload" || normalized.startsWith("preload/")) {
             void this.reconcilePreloadWatcher(root);
           }
           if (normalized.startsWith("public")) {
@@ -512,7 +512,7 @@ export class VextFileWatcher extends EventEmitter {
       this.preloadWatcher = watcher;
       this.watchers.push(watcher);
     } catch {
-      // preload/ 目录不存在时静默跳过
+      // 兼容 preload/ 目录不存在时静默跳过
     }
   }
 
@@ -883,7 +883,7 @@ export class VextFileWatcher extends EventEmitter {
   }
 
   /**
-   * listPreloadFiles — 列出项目根 preload/ 目录中的一级文件
+   * listPreloadFiles — 列出兼容项目根 preload/ 目录中的一级文件
    *
    * 仅收集项目级 preload 支持的候选文件类型，且不递归子目录。
    */

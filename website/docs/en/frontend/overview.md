@@ -97,32 +97,33 @@ export default (app) => {
 
 `res.render(page, props?, options?)` has three arguments:
 
-| Argument | Meaning |
-|----------|---------|
-| `page` | Page id under `src/frontend/pages/**`, without extension. `admin/dashboard.tsx` becomes `"admin/dashboard"`. |
-| `props` | JSON-safe server data serialized into the SSR document and reused during hydration. |
-| `options` | Rendering options such as `status`, `head`, `layoutData`, `messages`, `nonce`, or page-specific behavior. |
+| Argument  | Meaning                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
+| `page`    | Page id under `src/frontend/pages/**`, without extension. `admin/dashboard.tsx` becomes `"admin/dashboard"`. |
+| `props`   | JSON-safe server data serialized into the SSR document and reused during hydration.                          |
+| `options` | Rendering options such as `status`, `head`, `layoutData`, `messages`, `nonce`, or page-specific behavior.    |
 
 ## Reading Paths
 
 Use the left navigation as the main map. It is intentionally split into concept, task, and reference layers.
 
-| Need | Start here |
-|------|------------|
-| First successful page | [Getting Started](/frontend/getting-started) |
-| Understand URL and page ownership | [Routing and Pages](/frontend/routing-and-pages) |
-| Choose SSR, hydration, or CSR | [Rendering Modes](/frontend/rendering-modes) |
-| Pass service data to pages | [Data Flow](/frontend/data-flow) |
-| Build nested shells | [Layouts and Components](/frontend/layouts-and-components) |
-| Debug SSR output | [SSR](/frontend/ssr) |
-| Debug browser attach/mismatch | [Hydration](/frontend/hydration) |
-| Build a client-router sub-app | [CSR and SPA Fallback](/frontend/csr-and-spa-fallback) |
-| Cache render data | [Render Data and Cache](/frontend/render-data-and-cache) |
-| Tune development feedback | [Fast Refresh](/frontend/fast-refresh) and [Render Refresh](/frontend/render-refresh) |
-| Ship frontend assets | [Build and Deploy](/frontend/build-and-deploy) and [Static Assets and CDN](/frontend/static-assets-and-cdn) |
-| Keep JS small | [Code Splitting](/frontend/code-splitting) and [Performance Budgets](/frontend/performance-budgets) |
-| Validate production hydration | [Hydration Validation](/frontend/hydration-validation) |
-| Find config fields | [Configuration](/frontend/configuration) |
-| Check current boundaries | [Boundaries and Roadmap](/frontend/boundaries-and-roadmap) |
+| Need                                             | Start here                                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| First successful page                            | [Getting Started](/frontend/getting-started)                                                                |
+| Understand URL and page ownership                | [Routing and Pages](/frontend/routing-and-pages)                                                            |
+| Choose SSR, hydration, or CSR                    | [Rendering Modes](/frontend/rendering-modes)                                                                |
+| Pass service data to pages                       | [Data Flow](/frontend/data-flow)                                                                            |
+| Build nested shells                              | [Layouts and Components](/frontend/layouts-and-components)                                                  |
+| Debug SSR output                                 | [SSR](/frontend/ssr)                                                                                        |
+| Style a component with variants or CSS variables | [Vext JSCSS](/frontend/jscss)                                                                               |
+| Debug browser attach/mismatch                    | [Hydration](/frontend/hydration)                                                                            |
+| Build a client-router sub-app                    | [CSR and SPA Fallback](/frontend/csr-and-spa-fallback)                                                      |
+| Cache render data                                | [Render Data and Cache](/frontend/render-data-and-cache)                                                    |
+| Tune development feedback                        | [Fast Refresh](/frontend/fast-refresh) and [Render Refresh](/frontend/render-refresh)                       |
+| Ship frontend assets                             | [Build and Deploy](/frontend/build-and-deploy) and [Static Assets and CDN](/frontend/static-assets-and-cdn) |
+| Keep JS small                                    | [Code Splitting](/frontend/code-splitting) and [Performance Budgets](/frontend/performance-budgets)         |
+| Validate production hydration                    | [Hydration Validation](/frontend/hydration-validation)                                                      |
+| Find config fields                               | [Configuration](/frontend/configuration)                                                                    |
+| Check current boundaries                         | [Boundaries and Roadmap](/frontend/boundaries-and-roadmap)                                                  |
 
 The old [Frontend integration page](/guide/frontend) is kept only as a compatibility entry for existing links.

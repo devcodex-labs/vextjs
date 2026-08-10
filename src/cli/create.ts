@@ -64,6 +64,7 @@ interface CreateOptions {
 const VALID_ADAPTERS = ["hono", "fastify", "express", "koa", "native"];
 const VALID_TEMPLATES = ["api", "fullstack-react"];
 const VALID_FRONTENDS = ["react", "none"];
+const VEXT_DOCUMENTATION_URL = "https://devcodex-labs.github.io/vextjs/";
 
 /**
  * adapter 对应的 peer dependency 映射
@@ -106,8 +107,8 @@ const ADAPTER_DEV_DEPS: Record<string, Record<string, string>> = {
 /**
  * Scaffold dependency versions derived from the framework package.json.
  *
- * Full-stack templates must pin react/react-dom to the exact versions that
- * vextjs itself depends on. Using a floating caret range (e.g. `^19.2.7`) can
+ * Full-stack templates must pin react/react-dom/react-refresh to the exact
+ * versions that vextjs itself depends on. Using a floating caret range (e.g. `^19.2.7`) can
  * resolve a newer patch at install time while vextjs still requires the older
  * exact version, which nests a second copy under `node_modules/vextjs` and
  * breaks candidate-artifact tree identity checks (and can cause dual-React
@@ -120,12 +121,15 @@ interface ScaffoldPackageVersions {
   react: string;
   /** Exact react-dom version aligned with vextjs dependencies. */
   reactDom: string;
+  /** Exact react-refresh version used by the development runtime. */
+  reactRefresh: string;
 }
 
 const FALLBACK_SCAFFOLD_VERSIONS: ScaffoldPackageVersions = {
   vextjs: "latest",
   react: "19.2.7",
   reactDom: "19.2.7",
+  reactRefresh: "0.18.0",
 };
 
 /**
@@ -141,6 +145,7 @@ async function readScaffoldPackageVersions(): Promise<ScaffoldPackageVersions> {
   let frameworkVersion = FALLBACK_SCAFFOLD_VERSIONS.vextjs;
   let react = FALLBACK_SCAFFOLD_VERSIONS.react;
   let reactDom = FALLBACK_SCAFFOLD_VERSIONS.reactDom;
+  let reactRefresh = FALLBACK_SCAFFOLD_VERSIONS.reactRefresh;
 
   try {
     const { createRequire } = await import("node:module");
@@ -157,6 +162,9 @@ async function readScaffoldPackageVersions(): Promise<ScaffoldPackageVersions> {
     }
     if (pkg.dependencies?.["react-dom"]) {
       reactDom = pkg.dependencies["react-dom"];
+    }
+    if (pkg.dependencies?.["react-refresh"]) {
+      reactRefresh = pkg.dependencies["react-refresh"];
     }
   } catch {
     // package.json 读取失败时使用 FALLBACK_SCAFFOLD_VERSIONS
@@ -187,7 +195,7 @@ async function readScaffoldPackageVersions(): Promise<ScaffoldPackageVersions> {
     }
   }
 
-  return { vextjs, react, reactDom };
+  return { vextjs, react, reactDom, reactRefresh };
 }
 
 // ── 主函数 ──────────────────────────────────────────────────
@@ -571,6 +579,7 @@ function generatePackageJson(
 
   const devDeps: Record<string, string> = {
     ...(isTs ? { typescript: "^5.4.0" } : {}),
+    ...(isFullstack ? { "react-refresh": packageVersions.reactRefresh } : {}),
     ...(isFullstack && isTs
       ? { "@types/react": "^19.2.17", "@types/react-dom": "^19.2.3" }
       : {}),
@@ -780,6 +789,12 @@ function generateDefaultConfig(
   isTs: boolean,
   isFullstack: boolean,
 ): string {
+  const openapiBlock = isFullstack
+    ? `  openapi: {
+    enabled: true,
+  },
+`
+    : "";
   const frontendBlock = isFullstack
     ? `  frontend: {
     enabled: true,
@@ -806,7 +821,7 @@ function generateDefaultConfig(
 const config: VextUserConfig = {
   port: 3000,
   adapter: '${adapter}',
-${frontendBlock}
+${openapiBlock}${frontendBlock}
 }
 
 export default config
@@ -817,7 +832,7 @@ export default config
 const config = {
   port: 3000,
   adapter: '${adapter}',
-${frontendBlock}
+${openapiBlock}${frontendBlock}
 }
 
 export default config
@@ -903,12 +918,32 @@ export default defineRoutes((app) => {
     )
   })
 
-  app.get('/api/hello', {}, async (req, res) => {
+  app.get('/api/hello', {
+    docs: {
+      summary: 'Read the starter greeting',
+      responses: {
+        200: {
+          description: 'Starter greeting.',
+          schema: { message: 'string' },
+        },
+      },
+    },
+  }, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('/api/health', {}, async (req, res) => {
+  app.get('/api/health', {
+    docs: {
+      summary: 'Check starter runtime health',
+      responses: {
+        200: {
+          description: 'Runtime health state.',
+          schema: { status: 'string', timestamp: 'number' },
+        },
+      },
+    },
+  }, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -935,12 +970,32 @@ export default defineRoutes((app) => {
     )
   })
 
-  app.get('/api/hello', {}, async (req, res) => {
+  app.get('/api/hello', {
+    docs: {
+      summary: 'Read the starter greeting',
+      responses: {
+        200: {
+          description: 'Starter greeting.',
+          schema: { message: 'string' },
+        },
+      },
+    },
+  }, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('/api/health', {}, async (req, res) => {
+  app.get('/api/health', {
+    docs: {
+      summary: 'Check starter runtime health',
+      responses: {
+        200: {
+          description: 'Runtime health state.',
+          schema: { status: 'string', timestamp: 'number' },
+        },
+      },
+    },
+  }, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -953,12 +1008,32 @@ export default defineRoutes((app) => {
     return `import { defineRoutes } from 'vextjs'
 
 export default defineRoutes((app) => {
-  app.get('${helloPath}', {}, async (req, res) => {
+  app.get('${helloPath}', {
+    docs: {
+      summary: 'Read the starter greeting',
+      responses: {
+        200: {
+          description: 'Starter greeting.',
+          schema: { message: 'string' },
+        },
+      },
+    },
+  }, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('${healthPath}', {}, async (req, res) => {
+  app.get('${healthPath}', {
+    docs: {
+      summary: 'Check starter runtime health',
+      responses: {
+        200: {
+          description: 'Runtime health state.',
+          schema: { status: 'string', timestamp: 'number' },
+        },
+      },
+    },
+  }, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -968,12 +1043,32 @@ export default defineRoutes((app) => {
   return `import { defineRoutes } from 'vextjs'
 
 export default defineRoutes((app) => {
-  app.get('${helloPath}', {}, async (req, res) => {
+  app.get('${helloPath}', {
+    docs: {
+      summary: 'Read the starter greeting',
+      responses: {
+        200: {
+          description: 'Starter greeting.',
+          schema: { message: 'string' },
+        },
+      },
+    },
+  }, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
     res.json(greeting)
   })
 
-  app.get('${healthPath}', {}, async (req, res) => {
+  app.get('${healthPath}', {
+    docs: {
+      summary: 'Check starter runtime health',
+      responses: {
+        200: {
+          description: 'Runtime health state.',
+          schema: { status: 'string', timestamp: 'number' },
+        },
+      },
+    },
+  }, async (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() })
   })
 })
@@ -1041,10 +1136,8 @@ export default class ExampleService {
 }
 
 function generateFrontendHomePage(isTs: boolean): string {
-  if (isTs) {
-    return `import { useVextI18n } from 'vextjs/frontend'
-
-type HomeMessages = {
+  const typeDefinitions = isTs
+    ? `type HomeMessages = {
   home: {
     eyebrow: string
     title: string
@@ -1053,6 +1146,22 @@ type HomeMessages = {
     secondaryAction: string
     greetingLabel: string
     renderedLabel: string
+    runtimeEyebrow: string
+    runtimeTitle: string
+    routeSignalLabel: string
+    serviceSignalLabel: string
+    renderSignalLabel: string
+    browserSignalLabel: string
+    capabilityEyebrow: string
+    capabilityTitle: string
+    routesCapabilityTitle: string
+    routesCapabilityDescription: string
+    ssrCapabilityTitle: string
+    ssrCapabilityDescription: string
+    docsCapabilityTitle: string
+    docsCapabilityDescription: string
+    buildCapabilityTitle: string
+    buildCapabilityDescription: string
     guideEyebrow: string
     guideTitle: string
     routeTitle: string
@@ -1061,6 +1170,11 @@ type HomeMessages = {
     pageDescription: string
     styleTitle: string
     styleDescription: string
+    commandsEyebrow: string
+    commandsTitle: string
+    commandsDescription: string
+    localDocsAction: string
+    footerLabel: string
   }
 }
 
@@ -1071,133 +1185,125 @@ type HomePageProps = {
   renderedAt: string
 }
 
-export default function HomePage({ greeting, renderedAt }: HomePageProps) {
-  const i18n = useVextI18n<HomeMessages>()
-
-  return (
-    <main className="launchpad">
-      <section className="hero" aria-labelledby="launchpad-title">
-        <div className="hero-glow" aria-hidden="true" />
-        <div className="hero-content">
-          <p className="eyebrow">
-            <span className="eyebrow-dot" aria-hidden="true" />
-            {i18n.home.eyebrow}
-          </p>
-          <h1 id="launchpad-title">{i18n.home.title}</h1>
-          <p className="lead">{i18n.home.intro}</p>
-          <div className="hero-actions">
-            <a className="button button-primary" href="#getting-started">
-              {i18n.home.primaryAction}
-              <span aria-hidden="true">→</span>
-            </a>
-            <a
-              className="button button-secondary"
-              href="/api/health"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {i18n.home.secondaryAction}
-              <span aria-hidden="true">↗</span>
-            </a>
-          </div>
-          <dl className="runtime-facts">
-            <div>
-              <dt>{i18n.home.greetingLabel}</dt>
-              <dd>{greeting.message}</dd>
-            </div>
-            <div>
-              <dt>{i18n.home.renderedLabel}</dt>
-              <dd>
-                <time dateTime={renderedAt}>{renderedAt}</time>
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <section
-        className="starter-guide"
-        id="getting-started"
-        aria-labelledby="getting-started-title"
-      >
-        <p className="eyebrow">{i18n.home.guideEyebrow}</p>
-        <h2 id="getting-started-title">{i18n.home.guideTitle}</h2>
-        <ol className="starter-steps">
-          <li>
-            <span aria-hidden="true">01</span>
-            <div>
-              <h3>{i18n.home.routeTitle}</h3>
-              <p>{i18n.home.routeDescription}</p>
-              <code>src/routes/index.ts</code>
-            </div>
-          </li>
-          <li>
-            <span aria-hidden="true">02</span>
-            <div>
-              <h3>{i18n.home.pageTitle}</h3>
-              <p>{i18n.home.pageDescription}</p>
-              <code>src/frontend/pages/index.tsx</code>
-            </div>
-          </li>
-          <li>
-            <span aria-hidden="true">03</span>
-            <div>
-              <h3>{i18n.home.styleTitle}</h3>
-              <p>{i18n.home.styleDescription}</p>
-              <code>src/frontend/styles/index.css</code>
-            </div>
-          </li>
-        </ol>
-      </section>
-    </main>
-  )
-}
-`;
-  }
+`
+    : "";
+  const propsType = isTs ? ": HomePageProps" : "";
+  const i18nType = isTs ? "<HomeMessages>" : "";
+  const routeFile = isTs ? "index.ts" : "index.js";
+  const pageFile = isTs ? "index.tsx" : "index.jsx";
 
   return `import { useVextI18n } from 'vextjs/frontend'
 
-export default function HomePage({ greeting, renderedAt }) {
-  const i18n = useVextI18n()
+${typeDefinitions}export default function HomePage({ greeting, renderedAt }${propsType}) {
+  const i18n = useVextI18n${i18nType}()
 
   return (
     <main className="launchpad">
       <section className="hero" aria-labelledby="launchpad-title">
         <div className="hero-glow" aria-hidden="true" />
-        <div className="hero-content">
-          <p className="eyebrow">
-            <span className="eyebrow-dot" aria-hidden="true" />
-            {i18n.home.eyebrow}
-          </p>
-          <h1 id="launchpad-title">{i18n.home.title}</h1>
-          <p className="lead">{i18n.home.intro}</p>
-          <div className="hero-actions">
-            <a className="button button-primary" href="#getting-started">
-              {i18n.home.primaryAction}
-              <span aria-hidden="true">→</span>
-            </a>
-            <a
-              className="button button-secondary"
-              href="/api/health"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {i18n.home.secondaryAction}
-              <span aria-hidden="true">↗</span>
-            </a>
+        <div className="hero-layout">
+          <div className="hero-content hero-copy">
+            <p className="eyebrow">
+              <span className="eyebrow-dot" aria-hidden="true" />
+              {i18n.home.eyebrow}
+            </p>
+            <h1 id="launchpad-title">{i18n.home.title}</h1>
+            <p className="lead">{i18n.home.intro}</p>
+            <div className="hero-actions">
+              <a className="button button-primary" href="#getting-started">
+                {i18n.home.primaryAction}
+                <span aria-hidden="true">→</span>
+              </a>
+              <a
+                className="button button-secondary"
+                href="${VEXT_DOCUMENTATION_URL}"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {i18n.home.secondaryAction}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
           </div>
-          <dl className="runtime-facts">
-            <div>
-              <dt>{i18n.home.greetingLabel}</dt>
-              <dd>{greeting.message}</dd>
-            </div>
-            <div>
-              <dt>{i18n.home.renderedLabel}</dt>
-              <dd>
-                <time dateTime={renderedAt}>{renderedAt}</time>
-              </dd>
-            </div>
-          </dl>
+
+          <aside className="runtime-trace" aria-labelledby="runtime-trace-title">
+            <p className="eyebrow trace-eyebrow">
+              <span className="trace-status" aria-hidden="true" />
+              {i18n.home.runtimeEyebrow}
+            </p>
+            <h2 id="runtime-trace-title">{i18n.home.runtimeTitle}</h2>
+            <ol className="trace-steps">
+              <li>
+                <span aria-hidden="true">01</span>
+                <div>
+                  <strong>{i18n.home.routeSignalLabel}</strong>
+                  <code>GET / → src/routes/${routeFile}</code>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true">02</span>
+                <div>
+                  <strong>{i18n.home.serviceSignalLabel}</strong>
+                  <code>app.services.example.greeting()</code>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true">03</span>
+                <div>
+                  <strong>{i18n.home.renderSignalLabel}</strong>
+                  <code>res.render('index')</code>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true">04</span>
+                <div>
+                  <strong>{i18n.home.browserSignalLabel}</strong>
+                  <code>generated browser runtime</code>
+                </div>
+              </li>
+            </ol>
+            <dl className="runtime-facts runtime-output">
+              <div>
+                <dt>{i18n.home.greetingLabel}</dt>
+                <dd>{greeting.message}</dd>
+              </div>
+              <div>
+                <dt>{i18n.home.renderedLabel}</dt>
+                <dd>
+                  <time dateTime={renderedAt}>{renderedAt}</time>
+                </dd>
+              </div>
+            </dl>
+          </aside>
+        </div>
+      </section>
+
+      <section className="capabilities" aria-labelledby="capabilities-title">
+        <div className="section-heading">
+          <p className="eyebrow">{i18n.home.capabilityEyebrow}</p>
+          <h2 id="capabilities-title">{i18n.home.capabilityTitle}</h2>
+        </div>
+        <div className="capability-grid">
+          <article className="capability-card">
+            <span aria-hidden="true">01</span>
+            <h3>{i18n.home.routesCapabilityTitle}</h3>
+            <p>{i18n.home.routesCapabilityDescription}</p>
+          </article>
+          <article className="capability-card">
+            <span aria-hidden="true">02</span>
+            <h3>{i18n.home.ssrCapabilityTitle}</h3>
+            <p>{i18n.home.ssrCapabilityDescription}</p>
+          </article>
+          <article className="capability-card">
+            <span aria-hidden="true">03</span>
+            <h3>{i18n.home.docsCapabilityTitle}</h3>
+            <p>{i18n.home.docsCapabilityDescription}</p>
+          </article>
+          <article className="capability-card">
+            <span aria-hidden="true">04</span>
+            <h3>{i18n.home.buildCapabilityTitle}</h3>
+            <p>{i18n.home.buildCapabilityDescription}</p>
+          </article>
         </div>
       </section>
 
@@ -1214,7 +1320,7 @@ export default function HomePage({ greeting, renderedAt }) {
             <div>
               <h3>{i18n.home.routeTitle}</h3>
               <p>{i18n.home.routeDescription}</p>
-              <code>src/routes/index.js</code>
+              <code>src/routes/${routeFile}</code>
             </div>
           </li>
           <li>
@@ -1222,7 +1328,7 @@ export default function HomePage({ greeting, renderedAt }) {
             <div>
               <h3>{i18n.home.pageTitle}</h3>
               <p>{i18n.home.pageDescription}</p>
-              <code>src/frontend/pages/index.jsx</code>
+              <code>src/frontend/pages/${pageFile}</code>
             </div>
           </li>
           <li>
@@ -1235,6 +1341,29 @@ export default function HomePage({ greeting, renderedAt }) {
           </li>
         </ol>
       </section>
+
+      <section className="starter-commands" aria-labelledby="starter-commands-title">
+        <div>
+          <p className="eyebrow">{i18n.home.commandsEyebrow}</p>
+          <h2 id="starter-commands-title">{i18n.home.commandsTitle}</h2>
+          <p>{i18n.home.commandsDescription}</p>
+        </div>
+        <ol className="command-list">
+          <li><span aria-hidden="true">01</span><code>npm run dev</code></li>
+          <li><span aria-hidden="true">02</span><code>npm run build</code></li>
+          <li><span aria-hidden="true">03</span><code>npm start</code></li>
+        </ol>
+      </section>
+
+      <footer className="launchpad-footer">
+        <span>{i18n.home.footerLabel}</span>
+        <div>
+          <a href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
+            {i18n.home.secondaryAction}
+          </a>
+          <a href="/docs">{i18n.home.localDocsAction}</a>
+        </div>
+      </footer>
     </main>
   )
 }
@@ -1278,6 +1407,8 @@ type AppShellMessages = {
     navigation: string
     home: string
     start: string
+    docs: string
+    apiDocs: string
     health: string
     status: string
   }
@@ -1294,8 +1425,12 @@ export function AppShell({ children }: AppShellProps) {
           <span>vext</span>
         </a>
         <nav aria-label={i18n.shell.navigation}>
-          <a href="#getting-started">{i18n.shell.start}</a>
-          <a href="/api/health" target="_blank" rel="noreferrer">
+          <a className="nav-start" href="#getting-started">{i18n.shell.start}</a>
+          <a className="nav-docs" href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
+            {i18n.shell.docs}
+          </a>
+          <a href="/docs">{i18n.shell.apiDocs}</a>
+          <a className="nav-health" href="/api/health" target="_blank" rel="noreferrer">
             {i18n.shell.health}
           </a>
         </nav>
@@ -1324,8 +1459,12 @@ export function AppShell({ children }) {
           <span>vext</span>
         </a>
         <nav aria-label={i18n.shell.navigation}>
-          <a href="#getting-started">{i18n.shell.start}</a>
-          <a href="/api/health" target="_blank" rel="noreferrer">
+          <a className="nav-start" href="#getting-started">{i18n.shell.start}</a>
+          <a className="nav-docs" href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
+            {i18n.shell.docs}
+          </a>
+          <a href="/docs">{i18n.shell.apiDocs}</a>
+          <a className="nav-health" href="/api/health" target="_blank" rel="noreferrer">
             {i18n.shell.health}
           </a>
         </nav>
@@ -1385,6 +1524,8 @@ function generateFrontendLocale(): string {
     navigation: 'Primary navigation',
     home: 'Vext home',
     start: 'Start building',
+    docs: 'Documentation',
+    apiDocs: 'API docs',
     health: 'Health',
     status: 'SSR ready',
   },
@@ -1394,9 +1535,29 @@ function generateFrontendLocale(): string {
     intro:
       'A server-rendered React starter with routes, services, and a browser runtime already connected.',
     primaryAction: 'Explore the starter',
-    secondaryAction: 'Check runtime health',
+    secondaryAction: 'Read the documentation',
     greetingLabel: 'Service response',
     renderedLabel: 'Rendered on the server',
+    runtimeEyebrow: 'Connected runtime',
+    runtimeTitle: 'One request, one path to the browser.',
+    routeSignalLabel: 'Route owns the URL',
+    serviceSignalLabel: 'Service supplies the data',
+    renderSignalLabel: 'React renders on the server',
+    browserSignalLabel: 'Browser runtime keeps navigation aligned',
+    capabilityEyebrow: 'Built into the starter',
+    capabilityTitle: 'A full-stack surface, already connected.',
+    routesCapabilityTitle: 'Routes and services',
+    routesCapabilityDescription:
+      'Keep the URL, response behavior, and server data together.',
+    ssrCapabilityTitle: 'SSR plus browser runtime',
+    ssrCapabilityDescription:
+      'Render the first page on the server, then continue navigation in the browser.',
+    docsCapabilityTitle: 'Local API docs',
+    docsCapabilityDescription:
+      'Open the generated OpenAPI surface at /docs from the same application.',
+    buildCapabilityTitle: 'Production output',
+    buildCapabilityDescription:
+      'Ship hashed client assets through the built-in esbuild pipeline.',
     guideEyebrow: 'Your first three edits',
     guideTitle: 'A small, production-shaped surface to make your own.',
     routeTitle: 'Shape the request',
@@ -1408,6 +1569,12 @@ function generateFrontendLocale(): string {
     styleTitle: 'Make the system recognisable',
     styleDescription:
       'Adjust the starter tokens and layout without introducing a separate UI runtime.',
+    commandsEyebrow: 'Run the same surface',
+    commandsTitle: 'Develop locally. Build deliberately.',
+    commandsDescription:
+      'The route, page, styles, and docs entry keep the same ownership in development and production.',
+    localDocsAction: 'Open local API docs',
+    footerLabel: 'Vext full-stack runtime starter',
   },
 }
 `;
@@ -1469,6 +1636,8 @@ a {
     linear-gradient(90deg, rgba(18, 214, 198, 0.06) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: linear-gradient(to bottom, black, transparent 72%);
+  animation: vext-grid-drift 30s linear infinite;
+  will-change: transform;
 }
 
 .topbar {
@@ -1538,13 +1707,14 @@ a {
   border-radius: 999px;
   background: var(--vext-green);
   box-shadow: 0 0 0 4px rgba(94, 233, 135, 0.12);
+  animation: vext-status-pulse 2.8s ease-in-out infinite;
 }
 
 .launchpad {
   width: min(1180px, 100%);
   min-height: calc(100vh - 76px);
   margin: 0 auto;
-  padding: clamp(52px, 9vw, 132px) clamp(20px, 5vw, 72px) 72px;
+  padding: clamp(44px, 5vw, 72px) clamp(20px, 5vw, 72px) 72px;
 }
 
 .hero {
@@ -1582,6 +1752,8 @@ a {
   background: radial-gradient(circle, rgba(94, 233, 135, 0.34), transparent 67%);
   filter: blur(8px);
   pointer-events: none;
+  animation: vext-hero-glow 18s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 .hero-content {
@@ -1721,6 +1893,189 @@ dd {
   font-weight: 650;
 }
 
+.hero-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  align-items: stretch;
+}
+
+.hero-copy {
+  max-width: none;
+}
+
+.runtime-trace {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 20px;
+  min-width: 0;
+  margin: clamp(20px, 4vw, 44px) clamp(20px, 4vw, 44px) clamp(20px, 4vw, 44px) 0;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid rgba(94, 233, 135, 0.26);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(9, 31, 31, 0.86), rgba(6, 13, 19, 0.72)),
+    rgba(7, 16, 19, 0.72);
+  box-shadow:
+    0 20px 44px rgba(0, 0, 0, 0.18),
+    inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.trace-eyebrow {
+  color: var(--vext-green);
+}
+
+.trace-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vext-green);
+  box-shadow: 0 0 0 5px rgba(94, 233, 135, 0.1);
+  animation: vext-status-pulse 2.8s ease-in-out infinite;
+}
+
+.runtime-trace h2,
+.section-heading h2,
+.starter-commands h2 {
+  margin: 0;
+  color: #f7f9ff;
+  letter-spacing: -0.045em;
+}
+
+.runtime-trace h2 {
+  max-width: 420px;
+  font-size: clamp(1.7rem, 2.7vw, 2.45rem);
+  line-height: 1.04;
+}
+
+.trace-steps,
+.command-list {
+  display: grid;
+  gap: 13px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.trace-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 13px;
+  border-bottom: 1px solid rgba(192, 205, 237, 0.1);
+}
+
+.trace-steps li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.trace-steps > li > span,
+.command-list > li > span {
+  color: var(--vext-amber);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.trace-steps strong {
+  display: block;
+  color: #edf7f5;
+  font-size: 14px;
+}
+
+.trace-steps code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 5px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #a8c6c2;
+  font-size: 11px;
+}
+
+.runtime-output {
+  grid-template-columns: 1fr;
+  max-width: none;
+  margin: 0;
+}
+
+.runtime-output div {
+  padding: 13px 15px;
+  border-color: rgba(94, 233, 135, 0.16);
+}
+
+.capabilities {
+  display: grid;
+  gap: 26px;
+  padding: clamp(68px, 10vw, 128px) 0 0;
+}
+
+.section-heading {
+  display: grid;
+  gap: 13px;
+  max-width: 680px;
+}
+
+.section-heading h2,
+.starter-commands h2 {
+  font-size: clamp(2rem, 4.2vw, 3.45rem);
+  line-height: 1.04;
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.capability-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 216px;
+  padding: 23px;
+  border: 1px solid rgba(186, 205, 243, 0.13);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(16, 31, 35, 0.8), rgba(11, 17, 25, 0.72));
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.capability-card:hover {
+  border-color: rgba(18, 214, 198, 0.45);
+  background: linear-gradient(145deg, rgba(17, 42, 44, 0.86), rgba(11, 17, 25, 0.78));
+  transform: translateY(-3px);
+}
+
+.capability-card > span {
+  color: var(--vext-cyan);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.capability-card h3 {
+  margin: 16px 0 0;
+  color: #effaff;
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+
+.capability-card p,
+.starter-commands > div > p {
+  color: #9fb4ba;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
 .starter-guide {
   display: grid;
   gap: 18px;
@@ -1784,6 +2139,66 @@ code {
   font-size: 12px;
 }
 
+.starter-commands {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 30px;
+  align-items: end;
+  padding: clamp(68px, 10vw, 128px) 0 0;
+}
+
+.starter-commands > div {
+  display: grid;
+  gap: 13px;
+}
+
+.command-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.command-list li {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid rgba(94, 233, 135, 0.2);
+  border-radius: 14px;
+  background: rgba(94, 233, 135, 0.04);
+}
+
+.command-list code {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #e7fff2;
+}
+
+.launchpad-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: clamp(68px, 10vw, 128px);
+  padding: 22px 0 0;
+  border-top: 1px solid rgba(192, 205, 237, 0.13);
+  color: #81949b;
+  font-size: 13px;
+}
+
+.launchpad-footer div {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.launchpad-footer a {
+  color: #cde4df;
+  font-weight: 700;
+  text-decoration-color: rgba(18, 214, 198, 0.44);
+  text-underline-offset: 4px;
+}
+
 .error-page {
   display: grid;
   align-content: center;
@@ -1809,6 +2224,42 @@ code {
   outline-offset: 4px;
 }
 
+@keyframes vext-grid-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(28px, 28px, 0);
+  }
+}
+
+@keyframes vext-hero-glow {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate3d(-3%, 5%, 0) scale(1.08);
+  }
+}
+
+@keyframes vext-status-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
 @media (max-width: 760px) {
   .topbar {
     min-height: 68px;
@@ -1821,6 +2272,10 @@ code {
 
   .topbar nav a {
     font-size: 13px;
+  }
+
+  .nav-health {
+    display: none;
   }
 
   .runtime-badge {
@@ -1837,14 +2292,33 @@ code {
   }
 
   .runtime-facts,
-  .starter-steps {
+  .starter-steps,
+  .hero-layout,
+  .starter-commands {
     grid-template-columns: 1fr;
+  }
+
+  .runtime-trace {
+    margin: 0 clamp(20px, 5vw, 44px) clamp(20px, 5vw, 44px);
+  }
+
+  .capability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 440px) {
-  .topbar nav a:last-child {
+@media (max-width: 520px) {
+  .nav-start {
     display: none;
+  }
+
+  .topbar nav {
+    margin-left: auto;
+  }
+
+  .capability-grid,
+  .command-list {
+    grid-template-columns: 1fr;
   }
 
   .hero-content {
@@ -1890,7 +2364,6 @@ function generateFrontendDocument(name: string): string {
 
 function generateVextMarkSvg(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
-  <rect width="72" height="72" rx="16" fill="#071013"/>
   <path d="M14 14L35 58L58 14" stroke="#12D6C6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M58 14L66 28L52 42" stroke="#5EE987" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="14" cy="14" r="4" fill="#F5BD4F"/>
@@ -1901,7 +2374,15 @@ function generateVextMarkSvg(): string {
 }
 
 function generateFaviconSvg(): string {
-  return generateVextMarkSvg();
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
+  <rect width="72" height="72" rx="16" fill="#071013"/>
+  <path d="M14 14L35 58L58 14" stroke="#12D6C6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M58 14L66 28L52 42" stroke="#5EE987" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="14" cy="14" r="4" fill="#F5BD4F"/>
+  <circle cx="35" cy="58" r="4" fill="#12D6C6"/>
+  <circle cx="58" cy="14" r="4" fill="#5EE987"/>
+</svg>
+`;
 }
 
 // ── 帮助输出 ────────────────────────────────────────────────
@@ -1958,6 +2439,6 @@ function printSuccess(options: CreateOptions): void {
     npm run dev      Start development server (with hot reload)
     npm start        Start production server${options.language === "ts" || options.template === "fullstack-react" ? "\n    npm run build    Build for production" : ""}
 
-  📖 Documentation: https://devcodex-labs.github.io/vextjs/
+  📖 Documentation: ${VEXT_DOCUMENTATION_URL}
 `);
 }

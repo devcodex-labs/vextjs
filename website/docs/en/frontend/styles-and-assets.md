@@ -27,6 +27,8 @@ body {
 
 Use global CSS for reset, base typography, and design tokens. Prefer components or CSS Modules for local component styles.
 
+Vext does not compile Sass or SCSS source files. If a project needs Sass, compile it externally to CSS before Vext consumes it; first-class style sources are CSS, CSS Modules, and Vext JSCSS.
+
 ## CSS Modules
 
 CSS Modules are enabled for `.module.css`.
@@ -50,34 +52,7 @@ export function Card(props: { children: React.ReactNode }) {
 
 ## Vext JSCSS
 
-JSCSS is Vext's default dynamic style facade. It is designed for component-level dynamic styles and build-time extraction.
-
-```ts
-// src/frontend/styles/button.style.ts
-import { createVar, recipe, style } from "vextjs/style";
-
-const colorText = createVar("color-text", "#111827");
-const colorPrimary = createVar("color-primary", "#2563eb");
-const colorDanger = createVar("color-danger", "#dc2626");
-
-export const button = recipe({
-  base: style({
-    borderRadius: 8,
-    padding: "8px 12px",
-    color: colorText,
-  }),
-  variants: {
-    intent: {
-      primary: style({ background: colorPrimary }),
-      danger: style({ background: colorDanger }),
-    },
-  },
-});
-```
-
-The extractor writes CSS into the build output. You do not need Emotion or styled-components as default runtime dependencies.
-
-`frontend.styles.jscss.runtimeAdapter` defaults to `css-variables`, so `createVar()` emits CSS custom property references and `setVar()` emits custom property declarations. Set `runtimeAdapter: "none"` or `dynamicVars: false` to compile variable values to their static fallbacks instead. Set `recipes: false` when recipe variant classes should not be emitted.
+JSCSS is Vext's built-in path for component-level variants, semantic CSS variables, and build-time CSS extraction. Start with the [Vext JSCSS tutorial](/frontend/jscss): it shows the supported `recipe()` rule shape, React `className` usage, build output, and the distinction between `setVar()` declarations and browser-side variable changes. The extractor writes CSS into the build output, so you do not need Emotion or styled-components as default runtime dependencies.
 
 ## CSS Variables
 
@@ -94,7 +69,7 @@ export const panel = style({
 });
 ```
 
-Keep variables semantic, such as `color.surface`, `color.text`, `space.md`, or `radius.sm`.
+`setVar()` creates a declaration for extracted CSS; it does not update the DOM. Change a live browser value with `document.documentElement.style.setProperty(accent.name, value)` from browser code.
 
 ## Imported Assets
 

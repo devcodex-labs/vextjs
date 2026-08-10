@@ -36,7 +36,11 @@ describe("inspectDistBuild", () => {
     writeFile(rootDir, "src/index.ts", "export const ready = true;\n");
     writeFile(rootDir, "src/routes/user.ts", "export default {};\n");
     writeFile(rootDir, "src/services/auth.ts", "export default {};\n");
-    writeFile(rootDir, "preload/01-env.ts", "process.env.APP_READY = '1';\n");
+    writeFile(
+      rootDir,
+      "src/preload/01-env.ts",
+      "process.env.APP_READY = '1';\n",
+    );
     writeFile(rootDir, "dist/package.json", '{"type":"commonjs"}\n');
     writeFile(rootDir, "dist/config/default.js", "module.exports = {};\n");
 
@@ -59,7 +63,11 @@ describe("inspectDistBuild", () => {
     writeFile(rootDir, "src/index.ts", "export const ready = true;\n");
     writeFile(rootDir, "src/routes/user.ts", "export default {};\n");
     writeFile(rootDir, "src/services/auth.ts", "export default {};\n");
-    writeFile(rootDir, "preload/01-env.ts", "process.env.APP_READY = '1';\n");
+    writeFile(
+      rootDir,
+      "src/preload/01-env.ts",
+      "process.env.APP_READY = '1';\n",
+    );
 
     writeFile(rootDir, "dist/package.json", '{"type":"commonjs"}\n');
     writeFile(rootDir, "dist/config/default.js", "module.exports = {};\n");
@@ -86,7 +94,7 @@ describe("inspectDistBuild", () => {
     writeFile(rootDir, "src/config/local.ts", "export default {};\n");
     writeFile(rootDir, "src/routes/user.test.ts", "export default {};\n");
     writeFile(rootDir, "src/client/page.ts", "export default {};\n");
-    writeFile(rootDir, "preload/README.md", "# preload\n");
+    writeFile(rootDir, "src/preload/README.md", "# preload\n");
     writeFile(rootDir, "dist/package.json", '{"type":"commonjs"}\n');
     writeFile(rootDir, "dist/config/default.js", "module.exports = {};\n");
 

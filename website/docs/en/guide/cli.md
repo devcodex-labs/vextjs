@@ -38,7 +38,7 @@ npm run build # → vext build
 
 ## `vext create` — Create a project
 
-Interactively create new VextJS projects and automatically generate project skeleton and configuration files. The default template is `fullstack-react`; API-only scaffolding remains available through `--template api --frontend none`. The full-stack starter opens with a server-rendered Vext launchpad that you can edit immediately.
+Interactively create new VextJS projects and automatically generate project skeleton and configuration files. The default template is `fullstack-react`; API-only scaffolding remains available through `--template api --frontend none`. The full-stack starter opens with a server-rendered Vext launchpad that you can edit immediately, including a visible Vext Guide link and a local API documentation entry at `/docs`. Its default configuration enables OpenAPI, so that local entry is live after both `vext dev` and production `vext start`; API-only projects remain opt-in.
 
 ### Usage
 
@@ -85,8 +85,8 @@ The command accepts exactly one project name. Extra positional arguments fail be
 ```
 my-app/
 ├── public/
-│ ├── favicon.svg # Shared V mark used as the favicon
-│ └── vext-mark.svg # Same V mark used by the starter app shell
+│ ├── favicon.svg # Contrast-safe favicon variant of the V mark
+│ └── vext-mark.svg # Transparent V mark used by the starter app shell
 ├── src/
 │ ├── config/
 │ │ ├── default.ts # Shared configuration (port: 3000)
@@ -99,6 +99,7 @@ my-app/
 │ │ ├── locales/en-US.ts # Starter messages
 │ │ ├── pages/ # React pages, layout, document, and error page
 │ │ └── styles/index.css # Vext launchpad styles
+│ ├── preload/ # Optional preload sources; create with the first real preload file
 │ ├── routes/index.ts # URL handler and server data
 │ ├── services/example.ts # Example service
 │ └── types/generated/.gitkeep # Typegen output root (TS projects)
@@ -107,9 +108,9 @@ my-app/
 └── .gitignore
 ```
 
-The starter deliberately does not create root or directory-level placeholder `README.md` files. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and `preload/` remain supported and are created when you add real source files.
+The starter deliberately does not create root or directory-level placeholder `README.md` files. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and the canonical `src/preload/` remain supported and are created when you add real source files. The legacy project-root `preload/` directory is not scaffolded.
 
-For the default fullstack starter, `public/vext-mark.svg` and `public/favicon.svg` are the same V mark. The app shell uses the former; both are copied with the rest of `public/` assets.
+For the default fullstack starter, `public/vext-mark.svg` is a transparent navigation mark and `public/favicon.svg` is a contrast-safe favicon variant. They share the same V geometry; the app shell uses the former, and both are copied with the rest of `public/` assets.
 
 After creation is complete:
 
@@ -243,18 +244,21 @@ vext build [options]
 
 ### Options
 
-| Options            | Description                                                  | Default      |
-| ------------------ | ------------------------------------------------------------ | ------------ |
-| `--outdir <path>`  | Output directory                                             | `dist`       |
-| `--config <name>`  | Load `src/config/<name>` for build-time configuration        | `production` |
-| `--clean`          | Clean the output directory before compilation                | `false`      |
-| `--sourcemap`      | Generate source map                                          | `true`       |
-| `--no-sourcemap`   | Disable source map                                           | —            |
-| `--minify`         | Compress output code                                         | `false`      |
-| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest | `false`      |
-| `--upload-assets`  | Upload frontend static assets after the frontend build       | `false`      |
-| `--deploy-dry-run` | Print the frontend upload plan without writing assets        | `false`      |
-| `-h, --help`       | Show help                                                    | —            |
+| Options            | Description                                                           | Default      |
+| ------------------ | --------------------------------------------------------------------- | ------------ |
+| `--outdir <path>`  | Output directory                                                      | `dist`       |
+| `--config <name>`  | Load `src/config/<name>` for build-time configuration                 | `production` |
+| `--clean`          | Clean the output directory before compilation                         | `false`      |
+| `--sourcemap`      | Generate source map                                                   | `true`       |
+| `--no-sourcemap`   | Disable source map                                                    | —            |
+| `--minify`         | Compress output code (enabled by default; retained for compatibility) | `true`       |
+| `--no-minify`      | Disable output compression                                            | —            |
+| `--typecheck`      | Execute `tsc --noEmit` after refreshing generated / manifest          | `false`      |
+| `--upload-assets`  | Upload frontend static assets after the frontend build                | `false`      |
+| `--deploy-dry-run` | Print the frontend upload plan without writing assets                 | `false`      |
+| `-h, --help`       | Show help                                                             | —            |
+
+Production CLI builds minify backend output by default. Use `--no-minify` for readable local output, or set `VEXT_BUILD_MINIFY=false` when the opt-out is controlled by the environment. Frontend production minification still follows `frontend.build.minify`.
 
 ### Example
 
@@ -270,6 +274,9 @@ vext build --clean
 
 #Specify output directory
 vext build --outdir build
+
+# Keep readable output for a local inspection
+vext build --no-minify
 
 # Upload frontend static assets after building
 vext build --upload-assets
@@ -541,16 +548,17 @@ VEXT_CLUSTER=1 vext start
 `vext start` and `vext dev` will automatically parse two types of preload sources:
 
 1. `vext.preload` declared in the installed dependency package
-2. `preload/` in the root directory of the application project
+2. canonical `src/preload/` in the application project
 
-These scripts will be injected uniformly through `--import` before the child process is started. For example, `@devcodex/opentelemetry` can use the package-level `vext.preload` to automatically initialize the OpenTelemetry SDK before loading the application code; the application project itself can also directly place a script in the root directory `preload/` to bridge the pre-launch environment.First phase project-level preload rules:
+These scripts will be injected uniformly through `--import` before the child process is started. For example, `@devcodex/opentelemetry` can use the package-level `vext.preload` to automatically initialize the OpenTelemetry SDK before loading the application code; the application project itself can place a script in `src/preload/` to bridge the pre-launch environment. Project-level preload rules:
 
-- The directory is fixed to the project root `preload/`
+- The canonical directory is `src/preload/`
 - Non-recursive scan
 - Project-level preload is executed first, and package-level preload is executed later.
 - `.mjs` / `.js` direct injection
 - `.ts` / `.mts` will be compiled into `.vext/preload/*.mjs` before startup and then injected
-- If the files in `preload/` change under `vext dev`, cold restart will be triggered.
+- If the files in `src/preload/` change under `vext dev`, cold restart will be triggered.
+- Project-root `preload/` is a temporary compatibility fallback that emits a migration warning. Do not place supported preload files in both directories: Vext fails fast rather than running scripts twice.
 
 See [Preload](/guide/preload) for details.
 

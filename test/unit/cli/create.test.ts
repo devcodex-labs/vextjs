@@ -276,6 +276,7 @@ describe("vext create", () => {
           "src/middlewares",
           "src/plugins",
           "src/locales",
+          "src/preload",
           "preload",
           "src/frontend/assets",
         ]),
@@ -515,7 +516,7 @@ describe("vext create", () => {
         }
       });
 
-      it("fullstack 将 react/react-dom 钉到与 vextjs 一致的精确版本", async () => {
+      it("fullstack 将 React 开发运行时钉到与 vextjs 一致的精确版本", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
@@ -532,8 +533,12 @@ describe("vext create", () => {
         expect(pkg.dependencies["react-dom"]).toBe(
           framework.dependencies["react-dom"],
         );
+        expect(pkg.devDependencies["react-refresh"]).toBe(
+          framework.dependencies["react-refresh"],
+        );
         expect(pkg.dependencies.react).not.toMatch(/^[\^~]/);
         expect(pkg.dependencies["react-dom"]).not.toMatch(/^[\^~]/);
+        expect(pkg.devDependencies["react-refresh"]).not.toMatch(/^[\^~]/);
       });
 
       it("api 模板不声明 react/react-dom", async () => {
@@ -549,6 +554,7 @@ describe("vext create", () => {
 
         expect(pkg.dependencies.react).toBeUndefined();
         expect(pkg.dependencies["react-dom"]).toBeUndefined();
+        expect(pkg.devDependencies?.["react-refresh"]).toBeUndefined();
       });
 
       it("VEXT_PACKAGE 覆盖生成的 vextjs 依赖（file: 候选包）", async () => {
@@ -815,6 +821,9 @@ describe("vext create", () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const files = getWrittenFiles();
+        expect(files["src/config/default.ts"]).toMatch(
+          /openapi:\s*\{\s*enabled: true,/,
+        );
         expect(files["src/config/default.ts"]).toContain("frontend:");
         expect(files["src/config/default.ts"]).not.toContain("src/client");
         expect(files["src/config/default.ts"]).not.toContain("entry:");
@@ -937,7 +946,19 @@ describe("vext create", () => {
           "runtime-facts",
         );
         expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "runtime-trace",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "capability-grid",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "starter-commands",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
           "getting-started",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          'href="https://devcodex-labs.github.io/vextjs/"',
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           "useVextI18n",
@@ -945,11 +966,33 @@ describe("vext create", () => {
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           'src="/vext-mark.svg"',
         );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'href="/docs"',
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'href="https://devcodex-labs.github.io/vextjs/"',
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'className="nav-docs"',
+        );
+        expect(files["src/frontend/locales/en-US.ts"]).toContain(
+          "docs: 'Documentation'",
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'className="nav-start"',
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          'className="nav-health"',
+        );
         expect(files["src/frontend/components/AppShell.tsx"]).not.toContain(
           'aria-hidden="true">V<',
         );
-        expect(files["public/vext-mark.svg"]).toBe(files["public/favicon.svg"]);
+        expect(files["public/vext-mark.svg"]).not.toBe(
+          files["public/favicon.svg"],
+        );
         expect(files["public/vext-mark.svg"]).toContain('viewBox="0 0 72 72"');
+        expect(files["public/vext-mark.svg"]).not.toContain("<rect");
+        expect(files["public/favicon.svg"]).toContain("<rect");
         expect(files["public/vext-mark.svg"]).toContain('stroke="#12D6C6"');
         expect(files["public/vext-mark.svg"]).toContain('stroke="#5EE987"');
         expect(files["src/frontend/styles/index.css"]).toContain(
@@ -962,12 +1005,21 @@ describe("vext create", () => {
         expect(files["src/frontend/styles/index.css"]).toContain(
           ":focus-visible",
         );
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          "vext-grid-drift",
+        );
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          "vext-hero-glow",
+        );
+        expect(files["src/frontend/styles/index.css"]).toContain(
+          "padding: clamp(44px, 5vw, 72px)",
+        );
         expect(files["src/frontend/pages/error/default.tsx"]).toContain(
           "DefaultErrorPage",
         );
       });
 
-      it("生成与文档站一致的 V 标记和 favicon", async () => {
+      it("生成与文档站一致的透明 V 标记及高对比 favicon", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
         const actualFs =
@@ -981,19 +1033,47 @@ describe("vext create", () => {
         expect(
           files["public/vext-mark.svg"].replace(/\r\n/g, "\n").trim(),
         ).toBe(docsMark);
-        expect(files["public/favicon.svg"].replace(/\r\n/g, "\n").trim()).toBe(
-          docsMark,
+        expect(
+          files["public/favicon.svg"].replace(/\r\n/g, "\n").trim(),
+        ).not.toBe(docsMark);
+        expect(files["public/favicon.svg"]).toContain("<rect");
+        const faviconGeometry = files["public/favicon.svg"]
+          .replace(/\s*<rect[^>]*\/>\r?\n/, "\n")
+          .replace(/\r\n/g, "\n")
+          .trim();
+        expect(faviconGeometry).toBe(
+          files["public/vext-mark.svg"].replace(/\r\n/g, "\n").trim(),
         );
       });
 
-      it("JavaScript fullstack 模板也生成同一品牌资产", async () => {
+      it("JavaScript fullstack 模板也生成同源几何的品牌资产", async () => {
         await createCommand(["test-app", "--js", "--skip-install"]);
 
         const files = getWrittenFiles();
         expect(files["src/frontend/components/AppShell.jsx"]).toContain(
           'src="/vext-mark.svg"',
         );
-        expect(files["public/vext-mark.svg"]).toBe(files["public/favicon.svg"]);
+        expect(files["src/frontend/components/AppShell.jsx"]).toContain(
+          'href="/docs"',
+        );
+        expect(files["src/frontend/components/AppShell.jsx"]).toContain(
+          'className="nav-docs"',
+        );
+        expect(files["src/config/default.js"]).toMatch(
+          /openapi:\s*\{\s*enabled: true,/,
+        );
+        expect(files["src/frontend/pages/index.jsx"]).toContain(
+          'href="https://devcodex-labs.github.io/vextjs/"',
+        );
+        expect(files["src/frontend/pages/index.jsx"]).toContain(
+          "runtime-trace",
+        );
+        expect(files["src/frontend/pages/index.jsx"]).toContain(
+          "starter-commands",
+        );
+        expect(files["public/vext-mark.svg"]).not.toBe(
+          files["public/favicon.svg"],
+        );
       });
 
       it("默认 fullstack 模板不再生成旧 src/client SPA 入口", async () => {

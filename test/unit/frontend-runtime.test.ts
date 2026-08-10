@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import * as ts from "typescript";
 import { describe, expect, it, afterEach } from "vitest";
 import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolver.js";
 import {
@@ -105,6 +106,25 @@ describe("frontend config resolver", () => {
         { rootDir, mode: "development" },
       ).render.streaming,
     ).toBe("auto");
+  });
+
+  it("applies the shared browser target and allows a client override", async () => {
+    const rootDir = await tempRoot();
+    const inherited = resolveFrontendConfig(
+      { enabled: true, build: { target: "es2020" } },
+      { rootDir, mode: "production" },
+    );
+    const overridden = resolveFrontendConfig(
+      {
+        enabled: true,
+        build: { target: "es2020", client: { target: "es2022" } },
+      },
+      { rootDir, mode: "production" },
+    );
+
+    expect(inherited.build.client.target).toEqual(["es2020"]);
+    expect(inherited.build.server.target).toEqual(["node20"]);
+    expect(overridden.build.client.target).toEqual(["es2022"]);
   });
 
   it("documents the default SPA fallback exclusions from the resolver", async () => {
@@ -494,6 +514,7 @@ describe("frontend client contract", () => {
           path: "/users/:id",
           routeId: "route_create_user",
           operationId: "createUser",
+          source: "src/routes/users.ts",
           schema: {
             schemaVersion: 1,
             request: {
@@ -570,10 +591,32 @@ describe("frontend client contract", () => {
       ],
     });
     expect(contract.warnings).toContain(
-      "route_create_user:204 is missing docs.responses.204.schema; emitted unknown.",
+      "POST /users/:id (src/routes/users.ts; route_create_user):204 is missing docs.responses.204.schema; emitted unknown.",
     );
     expect(contract.routeManifestDigest).toHaveLength(64);
     expect(contract.digest).toHaveLength(64);
+  });
+
+  it("keeps HTML frontend routes out of API response-schema warnings", () => {
+    const contract = buildClientContract({
+      routes: [
+        {
+          method: "GET",
+          path: "/",
+          routeId: "route_home",
+          operationId: "getHome",
+          source: "src/routes/index.ts",
+          docsKind: "frontend-route",
+        },
+      ],
+    });
+
+    expect(contract.warnings).toEqual([]);
+    expect(contract.routes[0]?.response).toEqual({
+      type: "unknown",
+      diagnostic:
+        "GET / (src/routes/index.ts; route_home) renders an HTML document; emitted unknown.",
+    });
   });
 
   it("rejects a client contract when the current route manifest has drifted", () => {
@@ -1377,6 +1420,73 @@ describe("frontend client build", () => {
     expect(bundledCss).toContain(".vext-action-tone-primary-");
   });
 
+  it("builds and renders the JSCSS user-guide examples", async () => {
+    const fixtureDir = path.join(
+      process.cwd(),
+      "test",
+      "fixtures",
+      "frontend",
+      "jscss-user-guide",
+    );
+    const [buttonStyle, buttonComponent] = await Promise.all([
+      readFile(path.join(fixtureDir, "button.style.ts"), "utf-8"),
+      readFile(path.join(fixtureDir, "Button.tsx"), "utf-8"),
+    ]);
+    const rootDir = await tempRoot();
+    const frontendDir = path.join(rootDir, "src", "frontend");
+    const stylePath = path.join(frontendDir, "styles", "button.style.ts");
+    const componentPath = path.join(frontendDir, "components", "Button.tsx");
+
+    await mkdir(path.join(frontendDir, "pages"), { recursive: true });
+    await mkdir(path.dirname(stylePath), { recursive: true });
+    await mkdir(path.dirname(componentPath), { recursive: true });
+    await writeFile(
+      path.join(frontendDir, "pages", "_document.html"),
+      "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
+    );
+    await writeFile(stylePath, buttonStyle);
+    await writeFile(componentPath, buttonComponent);
+    await writeFile(
+      path.join(frontendDir, "pages", "index.tsx"),
+      [
+        'import { Button } from "../components/Button";',
+        "export default function Page() {",
+        '  return <Button intent="primary">Publish</Button>;',
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const diagnostics = typecheckJscssUserGuide([stylePath, componentPath]);
+    expect(diagnostics).toEqual([]);
+
+    const result = await buildFrontendClient({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const generatedCss = await readFile(
+      path.join(result.generatedDir!, "vext-jscss.css"),
+      "utf-8",
+    );
+    expect(generatedCss).toContain(".vext-button-");
+    expect(generatedCss).toContain(".vext-button-intent-primary-");
+    expect(generatedCss).toContain("color:var(--vext-color-text, #111827)");
+
+    const middleware = createFrontendRenderMiddleware({
+      rootDir,
+      mode: "production",
+      config: { enabled: true, apiClient: false },
+    });
+    const res = createRenderMockResponse();
+    await middleware(createMockRequest("/"), res, async () => {});
+    res.render("index");
+
+    const html = res.sent?.html ?? "";
+    expect(html).toContain("vext-button-intent-primary-");
+    expect(html).toContain("Publish");
+  });
+
   it("honors Vext JSCSS runtime adapter, dynamic vars, and recipes flags", async () => {
     async function buildJscssCase(
       jscss: NonNullable<
@@ -1567,10 +1677,70 @@ describe("frontend client build", () => {
         "utf-8",
       ),
     );
+    const defaultBrowserManifest = JSON.parse(
+      await readFile(defaultResult.manifestPath!, "utf-8"),
+    );
+    const browserEntry = defaultBrowserManifest.assets.find(
+      (asset: { entry?: boolean; path: string }) =>
+        asset.entry &&
+        asset.path.endsWith(".js") &&
+        asset.path.includes("browser-entry-"),
+    );
+    expect(browserEntry).toBeDefined();
+    const routeAssets = defaultRenderManifest.routeAssets.routes[0];
+    const assetsByPath = new Map(
+      defaultBrowserManifest.assets.map(
+        (asset: { bytes: number; path: string }) => [asset.path, asset],
+      ),
+    );
+    const staticClosurePaths = new Set<string>();
+    const addStaticClosure = async (assetPath: string): Promise<void> => {
+      if (staticClosurePaths.has(assetPath)) return;
+      const asset = assetsByPath.get(assetPath) as
+        | { bytes: number; path: string }
+        | undefined;
+      if (!asset?.path.endsWith(".js")) return;
+      staticClosurePaths.add(asset.path);
+      const source = await readFile(
+        path.join(defaultResult.config.outDir, asset.path.replace(/^\//u, "")),
+        "utf-8",
+      );
+      for (const match of source.matchAll(
+        /(?:\bfrom\s*|\bimport\s*)["'](\.\/[^"']+\.js)["']/gu,
+      )) {
+        await addStaticClosure(
+          path.posix.join(path.posix.dirname(asset.path), match[1]!),
+        );
+      }
+    };
+    await addStaticClosure(browserEntry.path);
+    for (const assetPath of routeAssets.scripts) {
+      await addStaticClosure(assetPath);
+    }
+    const expectedInitialJsBytes = [...staticClosurePaths]
+      .map((assetPath) => assetsByPath.get(assetPath)!)
+      .reduce(
+        (total: number, asset: { bytes: number }) => total + asset.bytes,
+        0,
+      );
     expect(
-      defaultRenderManifest.routeAssets.routes[0].initialJsBrotliBytes,
-    ).toBeGreaterThan(0);
+      routeAssets.scripts.some((assetPath: string) => {
+        const asset = assetsByPath.get(assetPath) as
+          | { entry?: boolean }
+          | undefined;
+        return asset?.entry === true;
+      }),
+    ).toBe(true);
+    expect(routeAssets.initialJsBrotliBytes).toBeGreaterThan(0);
     expect(defaultSizeReport.routes[0].initialJsBrotliBytes).toBeGreaterThan(0);
+    expect(routeAssets.initialJsBytes).toBe(expectedInitialJsBytes);
+    expect(defaultSizeReport.routes[0].initialJsBytes).toBe(
+      expectedInitialJsBytes,
+    );
+    expect(defaultSizeReport.initialJsBytes).toBe(expectedInitialJsBytes);
+    expect(defaultSizeReport.initialJsBytes).toBe(
+      defaultSizeReport.routes[0].initialJsBytes,
+    );
 
     const disabledRootDir = await tempRoot();
     await createMinimalFrontend(disabledRootDir);
@@ -3134,6 +3304,42 @@ async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "vext-frontend-"));
   tempDirs.push(dir);
   return dir;
+}
+
+function typecheckJscssUserGuide(files: string[]): string[] {
+  const sourceRoot = process.cwd();
+  const documentedFiles = new Set(files.map((file) => path.resolve(file)));
+  const program = ts.createProgram(files, {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    jsx: ts.JsxEmit.ReactJSX,
+    strict: true,
+    skipLibCheck: true,
+    noEmit: true,
+    baseUrl: sourceRoot,
+    paths: {
+      react: ["node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["node_modules/@types/react/jsx-runtime.d.ts"],
+      "vextjs/style": ["src/frontend/style/index.ts"],
+    },
+  });
+
+  return ts
+    .getPreEmitDiagnostics(program)
+    .filter(
+      (diagnostic) =>
+        diagnostic.file &&
+        documentedFiles.has(path.resolve(diagnostic.file.fileName)),
+    )
+    .map((diagnostic) => {
+      const message = ts.flattenDiagnosticMessageText(
+        diagnostic.messageText,
+        "\n",
+      );
+
+      return `${diagnostic.file!.fileName}: ${message}`;
+    });
 }
 
 async function createMinimalFrontend(rootDir: string): Promise<void> {

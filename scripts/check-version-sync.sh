@@ -64,12 +64,18 @@ check_file() {
   description="${3:-}"
 
   if [ -z "$pattern" ]; then
-    echo "SKIP (no pattern): ${file}"
+    echo "FAIL ${description}"
+    echo "     file:    ${file}"
+    echo "     reason:  expected pattern is empty"
+    ERRORS=$((ERRORS + 1))
     return
   fi
 
   if [ ! -f "$file" ]; then
-    echo "SKIP (not found): ${file}"
+    echo "FAIL ${description}"
+    echo "     file:    ${file}"
+    echo "     reason:  required versioned document is missing"
+    ERRORS=$((ERRORS + 1))
     return
   fi
 
@@ -91,19 +97,23 @@ check_file \
   "\"v${VERSION}\"" \
   "website/rspress.config.ts -> v${VERSION}"
 
-# 2. website/docs/guide/cli.md — vext --version output example
-check_file \
-  "website/docs/guide/cli.md" \
-  "vextjs v${VERSION}" \
-  "website/docs/guide/cli.md -> vextjs v${VERSION}"
+# 2. Bilingual CLI pages — vext --version output example
+for locale in en zh; do
+  check_file \
+    "website/docs/${locale}/guide/cli.md" \
+    "vextjs v${VERSION}" \
+    "website/docs/${locale}/guide/cli.md -> vextjs v${VERSION}"
+done
 
-# 3. website/docs/guide/quick-start.md — dependency "vextjs": "^X.Y.Z"
-check_file \
-  "website/docs/guide/quick-start.md" \
-  "\"vextjs\": \"\\^${VERSION}\"" \
-  "website/docs/guide/quick-start.md -> ^${VERSION}"
+# 3. Bilingual quick-start pages — dependency "vextjs": "^X.Y.Z"
+for locale in en zh; do
+  check_file \
+    "website/docs/${locale}/guide/quick-start.md" \
+    "\"vextjs\": \"\\^${VERSION}\"" \
+    "website/docs/${locale}/guide/quick-start.md -> ^${VERSION}"
+done
 
-# 4. README.md — dependency "vextjs": "^X.Y.Z"
+# 4. Root README — dependency "vextjs": "^X.Y.Z"
 check_file \
   "README.md" \
   "\"vextjs\": \"\\^${VERSION}\"" \

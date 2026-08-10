@@ -51,14 +51,14 @@ describe("resolvePreloads", () => {
       },
     });
 
-    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
     fs.writeFileSync(
-      path.join(rootDir, "preload", "02-project.js"),
+      path.join(rootDir, "src", "preload", "02-project.js"),
       "export {}\n",
       "utf-8",
     );
     fs.writeFileSync(
-      path.join(rootDir, "preload", "01-project.mjs"),
+      path.join(rootDir, "src", "preload", "01-project.mjs"),
       "export {}\n",
       "utf-8",
     );
@@ -79,8 +79,9 @@ describe("resolvePreloads", () => {
     );
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([
-      pathToFileURL(path.join(rootDir, "preload", "01-project.mjs")).href,
-      pathToFileURL(path.join(rootDir, "preload", "02-project.js")).href,
+      pathToFileURL(path.join(rootDir, "src", "preload", "01-project.mjs"))
+        .href,
+      pathToFileURL(path.join(rootDir, "src", "preload", "02-project.js")).href,
       pathToFileURL(
         path.join(
           rootDir,
@@ -91,6 +92,46 @@ describe("resolvePreloads", () => {
         ),
       ).href,
     ]);
+  });
+
+  it("keeps a populated project-root preload directory as a warned compatibility path", async () => {
+    const rootDir = createTmpProject();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writeProjectPackageJson(rootDir);
+    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "preload", "01-legacy.mjs"),
+      "export {}\n",
+      "utf-8",
+    );
+
+    await expect(resolvePreloads(rootDir)).resolves.toEqual([
+      pathToFileURL(path.join(rootDir, "preload", "01-legacy.mjs")).href,
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("project-root preload/ is deprecated"),
+    );
+  });
+
+  it("rejects populated canonical and legacy preload directories instead of merging them", async () => {
+    const rootDir = createTmpProject();
+    writeProjectPackageJson(rootDir);
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "src", "preload", "01-canonical.mjs"),
+      "export {}\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(rootDir, "preload", "01-legacy.mjs"),
+      "export {}\n",
+      "utf-8",
+    );
+
+    await expect(resolvePreloads(rootDir)).rejects.toThrow(
+      "found preload files in both src/preload/ and legacy preload/",
+    );
   });
 
   it("compiles TypeScript project preloads into .vext/preload and returns compiled mjs URLs", async () => {
@@ -105,14 +146,14 @@ describe("resolvePreloads", () => {
       "utf-8",
     );
 
-    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
     fs.writeFileSync(
-      path.join(rootDir, "preload", "01-env.ts"),
+      path.join(rootDir, "src", "preload", "01-env.ts"),
       "export const flag: string = 'ok';\n",
       "utf-8",
     );
     fs.writeFileSync(
-      path.join(rootDir, "preload", "02-hook.mts"),
+      path.join(rootDir, "src", "preload", "02-hook.mts"),
       "export const boot = () => 'hook';\n",
       "utf-8",
     );
@@ -130,10 +171,28 @@ describe("resolvePreloads", () => {
     }
   });
 
-  it("falls back to dist/preload when root preload/ does not exist", async () => {
+  it("falls back to dist/preload when src/preload/ does not exist", async () => {
     const rootDir = createTmpProject();
     writeProjectPackageJson(rootDir);
 
+    fs.mkdirSync(path.join(rootDir, "dist", "preload"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "dist", "preload", "01-built.mjs"),
+      "export const built = true;\n",
+      "utf-8",
+    );
+
+    await expect(resolvePreloads(rootDir)).resolves.toEqual([
+      pathToFileURL(path.join(rootDir, "dist", "preload", "01-built.mjs")).href,
+    ]);
+  });
+
+  it("falls back to dist/preload when src/preload/ is present but empty", async () => {
+    const rootDir = createTmpProject();
+    writeProjectPackageJson(rootDir);
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), {
+      recursive: true,
+    });
     fs.mkdirSync(path.join(rootDir, "dist", "preload"), { recursive: true });
     fs.writeFileSync(
       path.join(rootDir, "dist", "preload", "01-built.mjs"),
@@ -151,9 +210,9 @@ describe("resolvePreloads", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     writeProjectPackageJson(rootDir);
 
-    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
     fs.writeFileSync(
-      path.join(rootDir, "preload", "01-ignore.txt"),
+      path.join(rootDir, "src", "preload", "01-ignore.txt"),
       "noop\n",
       "utf-8",
     );
@@ -169,7 +228,9 @@ describe("resolvePreloads", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     writeProjectPackageJson(rootDir);
 
-    fs.mkdirSync(path.join(rootDir, "preload", "nested"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload", "nested"), {
+      recursive: true,
+    });
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -187,9 +248,9 @@ describe("resolvePreloads", () => {
       },
     });
 
-    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
     fs.writeFileSync(
-      path.join(rootDir, "preload", "01-shared.mjs"),
+      path.join(rootDir, "src", "preload", "01-shared.mjs"),
       "export {}\n",
       "utf-8",
     );
@@ -197,7 +258,7 @@ describe("resolvePreloads", () => {
     writeJson(path.join(rootDir, "node_modules", "dup", "package.json"), {
       name: "dup",
       vext: {
-        preload: "../../preload/01-shared.mjs",
+        preload: "../../src/preload/01-shared.mjs",
       },
     });
     fs.mkdirSync(path.join(rootDir, "node_modules", "dup"), {
@@ -205,7 +266,7 @@ describe("resolvePreloads", () => {
     });
 
     await expect(resolvePreloads(rootDir)).resolves.toEqual([
-      pathToFileURL(path.join(rootDir, "preload", "01-shared.mjs")).href,
+      pathToFileURL(path.join(rootDir, "src", "preload", "01-shared.mjs")).href,
     ]);
   });
 
@@ -460,9 +521,9 @@ describe("resolvePreloads", () => {
     const rootDir = createTmpProject();
     writeProjectPackageJson(rootDir);
 
-    fs.mkdirSync(path.join(rootDir, "preload"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "src", "preload"), { recursive: true });
     fs.writeFileSync(
-      path.join(rootDir, "preload", "01-broken.ts"),
+      path.join(rootDir, "src", "preload", "01-broken.ts"),
       "export const broken = ;\n",
       "utf-8",
     );

@@ -4,6 +4,7 @@ import type {
   VextRouteLayoutIdentity,
   VextRouteSchemaContractV1,
 } from "../../frontend/contract/types.js";
+import type { VextOpenAPIDocsKind } from "../../lib/openapi/types.js";
 import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
 import { writeGeneratedFile } from "../typegen/write-generated-file.js";
 
@@ -28,6 +29,7 @@ export interface RouteManifestPayload {
     prefix: string;
     method: string;
     path: string;
+    docsKind: VextOpenAPIDocsKind;
     docsSummary: string | null;
     summary: string | null;
     routeId: string;

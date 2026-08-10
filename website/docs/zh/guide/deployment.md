@@ -44,14 +44,16 @@ src/                          dist/
 
 ### 编译选项
 
-| 选项         | 默认值                 | 说明                              |
-| ------------ | ---------------------- | --------------------------------- |
-| Source Map   | 开启（外部 `.js.map`） | 错误堆栈映射回 TypeScript 行号    |
-| Minify       | 关闭                   | 可选开启，减小产物体积            |
-| Target       | `node20`               | 与 `engines.node >= 20.19.0` 对齐 |
-| Format       | CJS                    | CommonJS 输出，Node.js 稳定运行   |
-| Tree Shaking | 开启                   | 移除未使用的导出                  |
-| Keep Names   | 开启                   | 保留函数/类名称（错误堆栈可读性） |
+| 选项         | 默认值                 | 说明                                           |
+| ------------ | ---------------------- | ---------------------------------------------- |
+| Source Map   | 开启（外部 `.js.map`） | 错误堆栈映射回 TypeScript 行号                 |
+| Minify       | 默认开启               | 压缩后端产物；仅在本地诊断时使用 `--no-minify` |
+| Target       | `node20`               | 与 `engines.node >= 20.19.0` 对齐              |
+| Format       | CJS                    | CommonJS 输出，Node.js 稳定运行                |
+| Tree Shaking | 开启                   | 移除未使用的导出                               |
+| Keep Names   | 开启                   | 保留函数/类名称（错误堆栈可读性）              |
+
+本表描述后端编译器。前端产物采用独立的生产默认值：浏览器压缩开启、浏览器 source map 关闭，SSR renderer 压缩关闭，除非显式配置。
 
 ### 编译排除
 
@@ -69,6 +71,36 @@ src/                          dist/
 `vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快。典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
 
 编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置 profile，仍由启动时的 `--config` 或 `VEXT_CONFIG` 决定。
+
+## 生产交付前端
+
+当 `frontend.enabled` 为 true 时，`vext build` 还会将浏览器与 SSR closure 写入 `dist/client/`：`index.html`、带 hash 的资源、`render-manifest.json`、`deploy-manifest.json` 和默认的 `server/renderer.cjs`。后端产物仍在 `dist/` 下保持源码目录映射；不要部署一个并不存在的固定顶层 `dist/server/` 目录。
+
+### 同源部署
+
+默认不需要额外前端配置：
+
+```bash
+vext build
+vext start
+```
+
+`vext start` 会在 listen 前校验前端 closure，随后服务 client assets，并用 render manifest 执行 SSR。这是单个 Node 服务最低风险的起点。
+
+### CDN 部署与上传
+
+只有确定由 CDN 承担 immutable browser assets 时才使用 CDN。设置绝对 `frontend.deploy.assetBaseUrl`，让 HTML/SSR 继续由 Node 服务提供，然后在真实上传前审阅 upload plan：
+
+```bash
+vext build
+vext deploy assets --dry-run
+vext deploy assets
+vext start
+```
+
+`deploy-manifest.json` 包含可上传的 JS、CSS、import 型媒体与 `public/**` 文件，并带有 sha256/SRI metadata。它刻意排除 SSR HTML 与 source map。`frontend.deploy.upload.stateFile` 必须放在输出目录之外，避免普通 build 清理增量上传状态。
+
+内置 adapter 只有 `filesystem` 与 `mock`。`filesystem` 用于生成本地 staging tree；真实云厂商需要显式 custom adapter。Vext 不会悄悄引入 cloud SDK 或 bundler-plugin ecosystem。完整步骤见[构建与发布](../frontend/build-and-deploy)，全部字段见[前端配置](../frontend/configuration)。
 
 ## 启动生产服务
 

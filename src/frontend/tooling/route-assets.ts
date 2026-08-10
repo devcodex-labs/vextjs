@@ -27,16 +27,36 @@ export async function buildFrontendRouteAssets(
   const assetByPath = new Map(
     options.manifest.assets.map((asset) => [asset.path, asset]),
   );
-  const entryScripts = options.manifest.assets
-    .filter((asset) => asset.entry && asset.path.endsWith(".js"))
+  const browserEntryScripts = options.manifest.assets
+    .filter(
+      (asset) =>
+        asset.entry &&
+        asset.path.endsWith(".js") &&
+        isBrowserEntrypoint(options.config, asset),
+    )
     .map((asset) => asset.path);
+  const browserEntryOutputFiles = outputEntries
+    .filter(([outputFile]) => {
+      const asset = outputToManifestAsset(
+        options.config,
+        assetByPath,
+        outputFile,
+      );
+      return (
+        asset?.entry === true &&
+        asset.path.endsWith(".js") &&
+        isBrowserEntrypoint(options.config, asset)
+      );
+    })
+    .map(([outputFile]) => outputFile);
   const routes = await Promise.all(
     options.registry.pages.map((page) =>
       buildRouteAssetsForPage({
         ...options,
         outputEntries,
         assetByPath,
-        entryScripts,
+        browserEntryScripts,
+        browserEntryOutputFiles,
         page,
       }),
     ),
@@ -48,7 +68,8 @@ async function buildRouteAssetsForPage(
   input: BuildFrontendRouteAssetsOptions & {
     outputEntries: Array<[string, esbuild.Metafile["outputs"][string]]>;
     assetByPath: Map<string, VextFrontendManifestAsset>;
-    entryScripts: string[];
+    browserEntryScripts: string[];
+    browserEntryOutputFiles: string[];
     page: FrontendRenderRegistryResult["pages"][number];
   },
 ): Promise<VextFrontendRouteInitialAssets> {
@@ -64,20 +85,30 @@ async function buildRouteAssetsForPage(
     input.outputEntries,
     sourceFiles,
   );
-  const outputClosure = collectOutputClosure(input.metafile, outputFiles);
-  const routeScripts = outputClosure
+  const outputClosure = collectStaticOutputClosure(input.metafile, outputFiles);
+  const browserEntryOutputClosure = collectStaticOutputClosure(
+    input.metafile,
+    input.browserEntryOutputFiles,
+  );
+  const routeClosureScripts = outputClosure
     .map((file) => outputToManifestAsset(input.config, input.assetByPath, file))
     .filter((asset): asset is VextFrontendManifestAsset => Boolean(asset))
-    .filter((asset) => asset.path.endsWith(".js") && !asset.entry)
+    .filter((asset) => asset.path.endsWith(".js"));
+  const routeScripts = routeClosureScripts
+    .filter((asset) => !isBrowserEntrypoint(input.config, asset))
     .map((asset) => asset.path)
     .sort();
+  const browserEntryClosureScripts = browserEntryOutputClosure
+    .map((file) => outputToManifestAsset(input.config, input.assetByPath, file))
+    .filter((asset): asset is VextFrontendManifestAsset => Boolean(asset))
+    .filter((asset) => asset.path.endsWith(".js"))
+    .map((asset) => asset.path);
   const styles = outputClosure
-    .flatMap((file) => [
-      file,
-      input.metafile?.outputs[file]?.cssBundle,
-    ])
+    .flatMap((file) => [file, input.metafile?.outputs[file]?.cssBundle])
     .map((file) =>
-      file ? outputToManifestAsset(input.config, input.assetByPath, file) : undefined,
+      file
+        ? outputToManifestAsset(input.config, input.assetByPath, file)
+        : undefined,
     )
     .filter((asset): asset is VextFrontendManifestAsset => Boolean(asset))
     .filter((asset) => asset.path.endsWith(".css"))
@@ -91,7 +122,11 @@ async function buildRouteAssetsForPage(
     )
     .map((asset) => asset.path)
     .sort();
-  const initialScripts = unique([...input.entryScripts, ...routeScripts]);
+  const initialScripts = unique([
+    ...input.browserEntryScripts,
+    ...browserEntryClosureScripts,
+    ...routeClosureScripts.map((asset) => asset.path),
+  ]);
   const jsSizes = await sumCompressedAssets(input.config, initialScripts);
   return {
     page: input.page.id,
@@ -106,9 +141,9 @@ async function buildRouteAssetsForPage(
     scripts: unique(routeScripts),
     styles: unique(styles),
     assets: unique(assets),
-    externalScripts: Object.values(input.config.build.client.externalRuntime).map(
-      (entry) => entry.url,
-    ),
+    externalScripts: Object.values(
+      input.config.build.client.externalRuntime,
+    ).map((entry) => entry.url),
     initialJsBytes: jsSizes.raw,
     initialJsGzipBytes: jsSizes.gzip,
     initialJsBrotliBytes: jsSizes.brotli,
@@ -138,7 +173,12 @@ function collectOutputsForSources(
   return matches;
 }
 
-function collectOutputClosure(
+/**
+ * First-load metrics deliberately stop at dynamic imports. Other pages and
+ * error fallbacks are emitted as entries too, but are not downloaded before a
+ * navigation or render failure asks the browser for them.
+ */
+function collectStaticOutputClosure(
   metafile: esbuild.Metafile | undefined,
   outputFiles: string[],
 ): string[] {
@@ -151,6 +191,7 @@ function collectOutputClosure(
     visited.add(file);
     const output = metafile.outputs[file];
     for (const item of output?.imports ?? []) {
+      if (item.kind === "dynamic-import") continue;
       if (metafile.outputs[item.path] && !visited.has(item.path)) {
         stack.push(item.path);
       }
@@ -207,8 +248,9 @@ function resolveDefaultLocaleFile(
 ): string | undefined {
   const defaultLocale = input.config.i18n.defaultLocale;
   if (defaultLocale === "inherit") return undefined;
-  return input.registry.locales.find((locale) => locale.locale === defaultLocale)
-    ?.file;
+  return input.registry.locales.find(
+    (locale) => locale.locale === defaultLocale,
+  )?.file;
 }
 
 function outputToPublicPath(
@@ -239,6 +281,17 @@ function joinPublicPath(publicPath: string, relativePath: string): string {
 
 function getAssetBase(config: ResolvedVextFrontendConfig): string {
   return config.deploy.assetBaseUrl ?? config.publicPath;
+}
+
+function isBrowserEntrypoint(
+  config: ResolvedVextFrontendConfig,
+  asset: VextFrontendManifestAsset,
+): boolean {
+  const prefix = joinPublicPath(
+    getAssetBase(config),
+    `${config.build.client.assetsDir}/browser-entry`,
+  );
+  return asset.path.startsWith(prefix);
 }
 
 function unique<T>(items: T[]): T[] {

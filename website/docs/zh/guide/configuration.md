@@ -340,6 +340,9 @@ export default {
 | `frontend.build.target`                 | `string \| string[]` | `'es2022'`                                     | 浏览器构建目标                                        |
 | `frontend.build.minify`                 | `boolean`            | 生产期 `true`                                  | 压缩前端产物                                          |
 | `frontend.build.sourcemap`              | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                   |
+| `frontend.build.server.minify`          | `boolean`            | `false`                                        | SSR renderer 压缩；刻意独立于浏览器产物               |
+| `frontend.build.server.sourcemap`       | `boolean`            | 开发期 `true`                                  | SSR renderer source-map 设置                          |
+| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                         | 写入 `dist/client/size-report.json`                   |
 | `frontend.build.client.external`        | `string[]`           | `[]`                                           | 浏览器构建外置模块列表                                |
 | `frontend.build.client.externalRuntime` | `object`             | `{}`                                           | 外置模块的 import map URL                             |
 | `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                            | 公共依赖共享 chunk 管理                               |
@@ -349,6 +352,8 @@ export default {
 | `frontend.deploy.assetBaseUrl`          | `string`             | 无                                             | CDN 资源绝对前缀                                      |
 | `frontend.deploy.integrity`             | `boolean`            | `false`                                        | 为 JS/CSS 注入 SRI integrity                          |
 | `frontend.deploy.upload`                | `boolean \| object`  | `{ enabled: false, exclude: ["**/*.map"] }`    | 静态资源上传和增量发布配置                            |
+| `frontend.deploy.upload.adapter`        | `string \| object`   | `'filesystem'`                                 | 内置本地 staging adapter、`mock` 或显式自定义 adapter |
+| `frontend.deploy.upload.stateFile`      | `string`             | `.vext/deploy/frontend-assets-state.json`      | 增量上传历史；应位于 `frontend.outDir` 外             |
 
 默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。`spaFallback: true` 仅作为兼容 shorthand，不推荐在企业级混合项目中使用。
 
@@ -356,7 +361,7 @@ export default {
 
 默认上传排除 `index.html` 和 `**/*.map`：HTML 仍由 Vext 服务端渲染，source map 可保留在服务器调试链路中，不随 CDN 静态资源发布。
 
-创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端指南](/zh/frontend/overview)。
+本表只是通用配置总览。需要精确嵌套字段、resolved default、构建输出拓扑或 CDN/upload 决策时，请阅读[前端配置](/zh/frontend/configuration)与权威的 [VextFrontendConfig API 参考](/zh/api/config#vextfrontendconfig)。创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端指南](/zh/frontend/overview)。
 
 ## 完整配置项参考
 

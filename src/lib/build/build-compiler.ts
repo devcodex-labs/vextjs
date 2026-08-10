@@ -8,6 +8,12 @@ import {
   SOURCE_GLOB,
   SOURCE_IGNORE,
 } from "./shared-esbuild-config.js";
+import {
+  formatLegacyProjectPreloadWarning,
+  PROJECT_PRELOAD_FILE_PATTERN,
+  PROJECT_PRELOAD_OUTPUT_DIR,
+  resolveProjectPreloadDirectory,
+} from "../preload/project-preload-paths.js";
 
 /**
  * BuildCompiler — 生产编译器（Phase 2A）
@@ -74,7 +80,7 @@ export interface BuildCompilerOptions {
   sourcemap?: boolean;
 
   /**
-   * 是否压缩代码（默认 false）
+   * 是否压缩代码（默认 false；CLI `vext build` 默认传入 true）
    *
    * 生产可选开启，减小产物体积。
    * 注意：keepNames 始终为 true（保留函数名可读性）。
@@ -127,13 +133,15 @@ const BUILD_EXTRA_IGNORE = [
   "**/config/development.{ts,js,mts,mjs,cts,cjs}",
   "**/config/local.{ts,js,mts,mjs,cts,cjs}",
   "**/config/test.{ts,js,mts,mjs,cts,cjs}",
+  "preload/**",
 ];
 
-const PROJECT_PRELOAD_DIR = "preload";
-const PROJECT_PRELOAD_PATTERN = /\.(ts|mts|js|mjs)$/i;
 const SOURCE_ENTRY_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
 const OWNED_BACKEND_OUTPUT_GLOBS = ["**/*.js", "**/*.js.map"];
-const OWNED_BACKEND_OUTPUT_IGNORE = [`${PROJECT_PRELOAD_DIR}/**`, "client/**"];
+const OWNED_BACKEND_OUTPUT_IGNORE = [
+  `${PROJECT_PRELOAD_OUTPUT_DIR}/**`,
+  "client/**",
+];
 
 // ── BuildCompiler 类 ────────────────────────────────────────
 
@@ -305,14 +313,24 @@ export class BuildCompiler {
     tsconfigPath: string | undefined,
     sourcemap: boolean,
   ): Promise<{ fileCount: number; warnings: esbuild.Message[] }> {
-    const sourceDir = path.join(this.options.rootDir, PROJECT_PRELOAD_DIR);
-    const outPreloadDir = path.join(this.options.outDir, PROJECT_PRELOAD_DIR);
+    const sourceDirectory = resolveProjectPreloadDirectory(
+      this.options.rootDir,
+    );
+    const outPreloadDir = path.join(
+      this.options.outDir,
+      PROJECT_PRELOAD_OUTPUT_DIR,
+    );
 
     fs.rmSync(outPreloadDir, { recursive: true, force: true });
 
-    if (!fs.existsSync(sourceDir)) {
+    if (!sourceDirectory) {
       return { fileCount: 0, warnings: [] };
     }
+    if (sourceDirectory.kind === "legacy" && sourceDirectory.hasSourceFiles) {
+      console.warn(formatLegacyProjectPreloadWarning());
+    }
+
+    const sourceDir = sourceDirectory.path;
 
     const entries = await fs.promises.readdir(sourceDir, {
       withFileTypes: true,
@@ -325,10 +343,13 @@ export class BuildCompiler {
 
     for (const entry of sortedEntries) {
       if (!entry.isFile()) continue;
-      if (!PROJECT_PRELOAD_PATTERN.test(entry.name)) continue;
+      if (!PROJECT_PRELOAD_FILE_PATTERN.test(entry.name)) continue;
 
       const sourcePath = path.join(sourceDir, entry.name);
-      const outputName = entry.name.replace(/\.(ts|mts|js|mjs)$/i, ".mjs");
+      const outputName = entry.name.replace(
+        PROJECT_PRELOAD_FILE_PATTERN,
+        ".mjs",
+      );
       const outfile = path.join(outPreloadDir, outputName);
 
       await fs.promises.mkdir(path.dirname(outfile), { recursive: true });

@@ -27,7 +27,8 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
  *   --outdir <path>    输出目录（默认 'dist'）
  *   --clean            编译前清理输出目录（默认 false）
  *   --no-sourcemap     不生成 source map（默认生成）
- *   --minify           代码压缩（默认 false）
+ *   --minify           代码压缩（默认 true；保留兼容选项）
+ *   --no-minify        不压缩代码
  *   --typecheck        工具产物刷新后执行 TypeScript 类型检查（默认 false）
  *   -h, --help         显示帮助信息
  *
@@ -36,14 +37,14 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
  *   vext build --clean            清理旧产物后编译
  *   vext build --outdir build     指定输出目录
  *   vext build --no-sourcemap     不生成 source map
- *   vext build --minify           生产优化（压缩代码）
+ *   vext build --no-minify        保留未压缩的可读输出
  *   vext build --typecheck        生成类型/manifest 后执行类型检查
- *   vext build --clean --minify --typecheck   完整生产构建
+ *   vext build --clean --typecheck            完整生产构建
  *
  * 环境变量：
  *   VEXT_BUILD_OUTDIR      覆盖输出目录（优先级低于 CLI 参数）
  *   VEXT_BUILD_SOURCEMAP   设为 'false' 禁用 source map
- *   VEXT_BUILD_MINIFY      设为 'true' 启用代码压缩
+ *   VEXT_BUILD_MINIFY      设为 'false' 禁用代码压缩
  *
  * @module cli/build
  * @see 09a-build.md §3（CLI 入口实现）
@@ -289,7 +290,7 @@ async function buildFrontendForCommand(
     `[vextjs] frontend built: ${path.relative(rootDir, result.config.outDir)}`,
   );
   if (typeof result.routeCount === "number") {
-    console.log(`[vextjs] frontend api routes: ${result.routeCount}`);
+    console.log(`[vextjs] frontend route contracts: ${result.routeCount}`);
   }
   for (const warning of result.warnings) {
     console.warn(`[vextjs] frontend warning: ${warning}`);
@@ -368,7 +369,8 @@ function resolveCliConfigProfile(
  *   --clean            编译前清理（默认 false）
  *   --sourcemap        生成 source map（默认 true）
  *   --no-sourcemap     不生成 source map
- *   --minify           代码压缩（默认 false）
+ *   --minify           代码压缩（默认 true；保留兼容选项）
+ *   --no-minify        不压缩代码
  *   --typecheck        工具产物刷新后执行类型检查（默认 false）
  *   -h, --help         显示帮助信息
  *
@@ -381,7 +383,7 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
     outdir: process.env.VEXT_BUILD_OUTDIR || "dist",
     clean: false,
     sourcemap: process.env.VEXT_BUILD_SOURCEMAP !== "false",
-    minify: process.env.VEXT_BUILD_MINIFY === "true",
+    minify: process.env.VEXT_BUILD_MINIFY !== "false",
     typecheck: false,
     uploadAssets: false,
     deployDryRun: false,
@@ -423,6 +425,10 @@ export function parseBuildArgs(args: string[]): BuildCommandOptions {
 
       case "--minify":
         options.minify = true;
+        break;
+
+      case "--no-minify":
+        options.minify = false;
         break;
 
       case "--typecheck":
@@ -492,7 +498,8 @@ function printBuildHelp(): void {
     --clean            Clean output directory before build
     --sourcemap        Generate source maps (default: true)
     --no-sourcemap     Disable source map generation
-    --minify           Minify output code
+    --minify           Minify output code (default: true)
+    --no-minify        Disable output minification
     --typecheck        Run TypeScript type check after generated artifacts refresh
     --upload-assets    Upload frontend static assets after build
     --deploy-dry-run   Print frontend upload plan without writing assets
@@ -501,17 +508,18 @@ function printBuildHelp(): void {
   Environment variables:
     VEXT_BUILD_OUTDIR      Override output directory
     VEXT_BUILD_SOURCEMAP   Set to "false" to disable source maps
-    VEXT_BUILD_MINIFY      Set to "true" to enable minification
+    VEXT_BUILD_MINIFY      Set to "false" to disable minification
 
   Examples:
     $ vext build
     $ vext build --config sg-sit
     $ vext build --clean
-    $ vext build --clean --minify --typecheck
+    $ vext build --clean --typecheck
     $ vext build --upload-assets
     $ vext build --upload-assets --deploy-dry-run
     $ vext build --outdir build
     $ vext build --no-sourcemap
+    $ vext build --no-minify
 
   After building, start with:
     $ vext start

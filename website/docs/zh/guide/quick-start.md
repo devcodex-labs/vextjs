@@ -64,7 +64,7 @@ VextJS 要求 `"type": "module"`，项目使用 ESM 模块格式。
 ### 3. 创建目录结构
 
 ```bash
-mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public preload
+mkdir -p src/config src/routes src/services src/middlewares src/plugins src/locales src/preload src/types/generated src/frontend/pages/error src/frontend/components src/frontend/styles src/frontend/assets src/frontend/locales public
 ```
 
 ### 4. 编写配置
@@ -217,7 +217,7 @@ npm start
 
 前端页面放在 `src/frontend/pages/**`。浏览器入口、页面 registry、layout registry 和 HTML 注入代码由 Vext 自动生成；手动项目至少需要创建 `src/frontend/pages/index.tsx`、`src/frontend/pages/_document.html` 与 `src/frontend/styles/index.css`，也可以直接从默认 `vext create` 模板开始。
 
-默认全栈模板会展示 SSR Vext runtime launchpad，并且只包含真实 starter 源码：不会生成根目录 README 或占位 README 文件。AppShell 使用 `public/vext-mark.svg`，`public/favicon.svg` 使用同一个 V 标记。只有在添加对应源码时，才创建可选约定目录。
+默认全栈模板会展示 SSR Vext runtime launchpad，并明确呈现「路由 → 服务 → SSR → 浏览器运行时」链路；顶部导航同时提供官方 Vext Guide 和生成项目的本地 API 文档 `/docs`，次要行动按钮打开 Vext Guide。模板默认启用 `openapi.enabled: true`，因此本地文档入口在开发与生产模式都可用。模板只包含真实 starter 源码：不会生成根目录 README 或占位 README 文件。AppShell 使用透明的 `public/vext-mark.svg`，`public/favicon.svg` 是采用相同 V 几何的高对比 favicon 变体。只有在添加对应源码时，才创建可选约定目录。
 
 ## 项目结构
 
@@ -226,8 +226,8 @@ npm start
 ```
 my-app/
 ├── public/
-│   ├── favicon.svg           # 与 V 标记同源的 favicon
-│   └── vext-mark.svg         # AppShell 使用的同一 V 标记
+│   ├── favicon.svg           # 使用同一 V 几何的高对比 favicon 变体
+│   └── vext-mark.svg         # AppShell 使用的透明 V 标记
 ├── src/
 │   ├── config/
 │   │   ├── default.ts        # 共享配置（port: 3000）
@@ -249,7 +249,7 @@ my-app/
 ```
 
 :::info 约定
-VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/frontend/`、`public/` 与项目根 `preload/` 目录，无需手动注册。初始脚手架只创建已有 starter 内容的目录；可选约定目录会在你创建后被自动扫描。路由文件名会映射为 URL 前缀：
+VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/middlewares/`、`src/plugins/`、`src/locales/`、`src/preload/`、`src/frontend/` 与 `public/`，无需手动注册。初始脚手架只创建已有 starter 内容的目录；可选约定目录会在你创建后被自动扫描。项目根 `preload/` 仅作为带 warning 的迁移回退保留。路由文件名会映射为 URL 前缀：
 
 | 文件路径                       | URL 前缀          |
 | ------------------------------ | ----------------- |
@@ -264,7 +264,7 @@ VextJS 会自动扫描 `src/routes/`、`src/services/`、`src/config/`、`src/mi
 
 ## 访问 OpenAPI 文档
 
-配置中开启 `openapi.enabled: true` 后，启动项目即可访问：
+默认 `fullstack-react` 配置已经启用 `openapi.enabled: true`。对于 API-only 项目，或你主动关闭它之后，请先启用该配置再启动项目：
 
 - **Vext Docs 文档**: `http://localhost:3000/docs`
 - **OpenAPI JSON**: `http://localhost:3000/openapi.json`

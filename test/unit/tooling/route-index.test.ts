@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildRouteIndex } from "../../../src/tooling/project-index/scan-routes.js";
+import { runDoctor } from "../../../src/tooling/doctor/index.js";
 
 async function writeProjectFile(
   rootDir: string,
@@ -165,5 +166,81 @@ export default defineRoutes((app) => {
       page: "posts/detail",
       staticBudget: { maxParams: 4, maxBytes: 4096 },
     });
+  });
+
+  it("keeps literal response schemas and page-route classification in the static build manifest", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-index-contract-"));
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/index.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/", {}, async (_req, res) => {
+    res.render("index", { message: "Hello" });
+  });
+
+  app.get("/api/health", {
+    docs: {
+      summary: "Health check",
+      responses: {
+        200: {
+          contentType: "application/json",
+          schema: { status: "string", timestamp: "number" },
+        },
+      },
+    },
+  }, async (_req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+});
+`,
+    );
+
+    const result = await runDoctor({
+      rootDir: projectRoot,
+      target: "routes",
+      refresh: true,
+      writeManifest: true,
+    });
+    const page = result.routes.find((route) => route.path === "/");
+    const api = result.routes.find((route) => route.path === "/api/health");
+
+    expect(page?.docsKind).toBe("frontend-route");
+    expect(api?.docsKind).toBe("backend-api");
+    expect(api?.schema.responses[0]).toMatchObject({
+      status: "200",
+      contentType: "application/json",
+      schema: {
+        sourcePath: "docs.responses.200.schema",
+        schema: {
+          type: "object",
+          properties: {
+            status: { type: "string" },
+            timestamp: { type: "number" },
+          },
+        },
+      },
+    });
+
+    const manifest = JSON.parse(
+      await readFile(
+        join(projectRoot, ".vext", "manifest", "routes.json"),
+        "utf-8",
+      ),
+    ) as { routes: Array<{ path: string; docsKind: string; schema: unknown }> };
+    expect(manifest.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/", docsKind: "frontend-route" }),
+        expect.objectContaining({
+          path: "/api/health",
+          docsKind: "backend-api",
+          schema: expect.objectContaining({
+            responses: expect.arrayContaining([
+              expect.objectContaining({ status: "200" }),
+            ]),
+          }),
+        }),
+      ]),
+    );
   });
 });

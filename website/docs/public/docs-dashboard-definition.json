@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "vext.docs-dashboard/v1",
+  "collection": {
+    "default": "disabled",
+    "boundary": "A site owner may wire a collector that accepts docs-events.schema.json only after selecting a provider, legal basis, retention policy, and consent treatment. VextJS ships no tracker or collector.",
+    "neverCollect": [
+      "user identity",
+      "credentials or tokens",
+      "raw search text",
+      "URL query values",
+      "page body content"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "qualified_documentation_visit",
+      "event": "docs_view",
+      "definition": "A page view grouped only by canonical page, locale, and referrer class."
+    },
+    {
+      "id": "search_intent",
+      "event": "docs_search",
+      "definition": "A documentation search counted without raw query text; queryLength is optional diagnostic data."
+    },
+    {
+      "id": "activation_intent",
+      "event": "docs_copy_command",
+      "definition": "A copy of an installation or quick-start command."
+    },
+    {
+      "id": "maintainer_contact_intent",
+      "event": "docs_external_cta",
+      "definition": "A click to GitHub, a discussion, or another documented maintainer-facing CTA."
+    }
+  ],
+  "reviewCadence": "Review wording and developer journeys monthly; do not infer revenue, identity, or conversion from this contract alone."
+}
