@@ -1196,6 +1196,53 @@ type HomePageProps = {
 
 ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${propsType}) {
   const i18n = useVextI18n${i18nType}()
+  const home = i18n.home ?? {
+    eyebrow: 'Vext runtime launchpad',
+    title: 'Build the runtime your product deserves.',
+    intro:
+      'A server-rendered React starter with routes, services, and a browser runtime already connected.',
+    primaryAction: 'Explore the starter',
+    secondaryAction: 'Read the documentation',
+    greetingLabel: 'Service response',
+    renderedLabel: 'Rendered on the server',
+    runtimeEyebrow: 'Connected runtime',
+    runtimeTitle: 'One request, one path to the browser.',
+    routeSignalLabel: 'Route owns the URL',
+    serviceSignalLabel: 'Service supplies the data',
+    renderSignalLabel: 'React renders on the server',
+    browserSignalLabel: 'Browser runtime keeps navigation aligned',
+    capabilityEyebrow: 'Built into the starter',
+    capabilityTitle: 'A full-stack surface, already connected.',
+    routesCapabilityTitle: 'Routes and services',
+    routesCapabilityDescription:
+      'Keep the URL, response behavior, and server data together.',
+    ssrCapabilityTitle: 'SSR plus browser runtime',
+    ssrCapabilityDescription:
+      'Render the first page on the server, then continue navigation in the browser.',
+    docsCapabilityTitle: 'Local API docs',
+    docsCapabilityDescription:
+      'Open the generated OpenAPI surface at /docs from the same application.',
+    buildCapabilityTitle: 'Production output',
+    buildCapabilityDescription:
+      'Ship hashed client assets through the built-in esbuild pipeline.',
+    guideEyebrow: 'Your first three edits',
+    guideTitle: 'A small, production-shaped surface to make your own.',
+    routeTitle: 'Shape the request',
+    routeDescription:
+      'Load data and keep response behavior in the route that owns the URL.',
+    pageTitle: 'Compose the experience',
+    pageDescription:
+      'Render that data with React while Vext keeps SSR and hydration aligned.',
+    styleTitle: 'Make the system recognisable',
+    styleDescription:
+      'Adjust the starter tokens and layout without introducing a separate UI runtime.',
+    commandsEyebrow: 'Run the same surface',
+    commandsTitle: 'Develop locally. Build deliberately.',
+    commandsDescription:
+      'The route, page, styles, and docs entry keep the same ownership in development and production.',
+    localDocsAction: 'Open local API docs',
+    footerLabel: 'Vext full-stack runtime starter',
+  }
 
   return (
     <main className="launchpad">
@@ -1205,13 +1252,13 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
           <div className="hero-content hero-copy">
             <p className="eyebrow">
               <span className="eyebrow-dot" aria-hidden="true" />
-              {i18n.home.eyebrow}
+              {home.eyebrow}
             </p>
-            <h1 id="launchpad-title">{i18n.home.title}</h1>
-            <p className="lead">{i18n.home.intro}</p>
+            <h1 id="launchpad-title">{home.title}</h1>
+            <p className="lead">{home.intro}</p>
             <div className="hero-actions">
               <a className="button button-primary" href="#getting-started">
-                {i18n.home.primaryAction}
+                {home.primaryAction}
                 <span aria-hidden="true">→</span>
               </a>
               <a
@@ -1220,7 +1267,7 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
                 target="_blank"
                 rel="noreferrer"
               >
-                {i18n.home.secondaryAction}
+                {home.secondaryAction}
                 <span aria-hidden="true">↗</span>
               </a>
             </div>
@@ -1229,46 +1276,46 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
           <aside className="runtime-trace" aria-labelledby="runtime-trace-title">
             <p className="eyebrow trace-eyebrow">
               <span className="trace-status" aria-hidden="true" />
-              {i18n.home.runtimeEyebrow}
+              {home.runtimeEyebrow}
             </p>
-            <h2 id="runtime-trace-title">{i18n.home.runtimeTitle}</h2>
+            <h2 id="runtime-trace-title">{home.runtimeTitle}</h2>
             <ol className="trace-steps">
               <li>
                 <span aria-hidden="true">01</span>
                 <div>
-                  <strong>{i18n.home.routeSignalLabel}</strong>
+                  <strong>{home.routeSignalLabel}</strong>
                   <code>GET / → src/routes/${routeFile}</code>
                 </div>
               </li>
               <li>
                 <span aria-hidden="true">02</span>
                 <div>
-                  <strong>{i18n.home.serviceSignalLabel}</strong>
+                  <strong>{home.serviceSignalLabel}</strong>
                   <code>app.services.example.greeting()</code>
                 </div>
               </li>
               <li>
                 <span aria-hidden="true">03</span>
                 <div>
-                  <strong>{i18n.home.renderSignalLabel}</strong>
+                  <strong>{home.renderSignalLabel}</strong>
                   <code>res.render('index')</code>
                 </div>
               </li>
               <li>
                 <span aria-hidden="true">04</span>
                 <div>
-                  <strong>{i18n.home.browserSignalLabel}</strong>
+                  <strong>{home.browserSignalLabel}</strong>
                   <code>generated browser runtime</code>
                 </div>
               </li>
             </ol>
             <dl className="runtime-facts runtime-output">
               <div>
-                <dt>{i18n.home.greetingLabel}</dt>
+                <dt>{home.greetingLabel}</dt>
                 <dd>{greeting.message}</dd>
               </div>
               <div>
-                <dt>{i18n.home.renderedLabel}</dt>
+                <dt>{home.renderedLabel}</dt>
                 <dd>
                   <time dateTime={renderedAt}>{renderedAt}</time>
                 </dd>
@@ -1280,29 +1327,29 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
 
       <section className="capabilities" aria-labelledby="capabilities-title">
         <div className="section-heading">
-          <p className="eyebrow">{i18n.home.capabilityEyebrow}</p>
-          <h2 id="capabilities-title">{i18n.home.capabilityTitle}</h2>
+          <p className="eyebrow">{home.capabilityEyebrow}</p>
+          <h2 id="capabilities-title">{home.capabilityTitle}</h2>
         </div>
         <div className="capability-grid">
           <article className="capability-card">
             <span aria-hidden="true">01</span>
-            <h3>{i18n.home.routesCapabilityTitle}</h3>
-            <p>{i18n.home.routesCapabilityDescription}</p>
+            <h3>{home.routesCapabilityTitle}</h3>
+            <p>{home.routesCapabilityDescription}</p>
           </article>
           <article className="capability-card">
             <span aria-hidden="true">02</span>
-            <h3>{i18n.home.ssrCapabilityTitle}</h3>
-            <p>{i18n.home.ssrCapabilityDescription}</p>
+            <h3>{home.ssrCapabilityTitle}</h3>
+            <p>{home.ssrCapabilityDescription}</p>
           </article>
           <article className="capability-card">
             <span aria-hidden="true">03</span>
-            <h3>{i18n.home.docsCapabilityTitle}</h3>
-            <p>{i18n.home.docsCapabilityDescription}</p>
+            <h3>{home.docsCapabilityTitle}</h3>
+            <p>{home.docsCapabilityDescription}</p>
           </article>
           <article className="capability-card">
             <span aria-hidden="true">04</span>
-            <h3>{i18n.home.buildCapabilityTitle}</h3>
-            <p>{i18n.home.buildCapabilityDescription}</p>
+            <h3>{home.buildCapabilityTitle}</h3>
+            <p>{home.buildCapabilityDescription}</p>
           </article>
         </div>
       </section>
@@ -1312,30 +1359,30 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
         id="getting-started"
         aria-labelledby="getting-started-title"
       >
-        <p className="eyebrow">{i18n.home.guideEyebrow}</p>
-        <h2 id="getting-started-title">{i18n.home.guideTitle}</h2>
+        <p className="eyebrow">{home.guideEyebrow}</p>
+        <h2 id="getting-started-title">{home.guideTitle}</h2>
         <ol className="starter-steps">
           <li>
             <span aria-hidden="true">01</span>
             <div>
-              <h3>{i18n.home.routeTitle}</h3>
-              <p>{i18n.home.routeDescription}</p>
+              <h3>{home.routeTitle}</h3>
+              <p>{home.routeDescription}</p>
               <code>src/routes/${routeFile}</code>
             </div>
           </li>
           <li>
             <span aria-hidden="true">02</span>
             <div>
-              <h3>{i18n.home.pageTitle}</h3>
-              <p>{i18n.home.pageDescription}</p>
+              <h3>{home.pageTitle}</h3>
+              <p>{home.pageDescription}</p>
               <code>src/frontend/pages/${pageFile}</code>
             </div>
           </li>
           <li>
             <span aria-hidden="true">03</span>
             <div>
-              <h3>{i18n.home.styleTitle}</h3>
-              <p>{i18n.home.styleDescription}</p>
+              <h3>{home.styleTitle}</h3>
+              <p>{home.styleDescription}</p>
               <code>src/frontend/styles/index.css</code>
             </div>
           </li>
@@ -1344,9 +1391,9 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
 
       <section className="starter-commands" aria-labelledby="starter-commands-title">
         <div>
-          <p className="eyebrow">{i18n.home.commandsEyebrow}</p>
-          <h2 id="starter-commands-title">{i18n.home.commandsTitle}</h2>
-          <p>{i18n.home.commandsDescription}</p>
+          <p className="eyebrow">{home.commandsEyebrow}</p>
+          <h2 id="starter-commands-title">{home.commandsTitle}</h2>
+          <p>{home.commandsDescription}</p>
         </div>
         <ol className="command-list">
           <li><span aria-hidden="true">01</span><code>npm run dev</code></li>
@@ -1356,12 +1403,12 @@ ${typeDefinitions}export default function HomePage({ greeting, renderedAt }${pro
       </section>
 
       <footer className="launchpad-footer">
-        <span>{i18n.home.footerLabel}</span>
+        <span>{home.footerLabel}</span>
         <div>
           <a href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
-            {i18n.home.secondaryAction}
+            {home.secondaryAction}
           </a>
-          <a href="/docs">{i18n.home.localDocsAction}</a>
+          <a href="/docs">{home.localDocsAction}</a>
         </div>
       </footer>
     </main>
@@ -1416,27 +1463,36 @@ type AppShellMessages = {
 
 export function AppShell({ children }: AppShellProps) {
   const i18n = useVextI18n<AppShellMessages>()
+  const shell = i18n.shell ?? {
+    navigation: 'Primary navigation',
+    home: 'Vext home',
+    start: 'Start building',
+    docs: 'Documentation',
+    apiDocs: 'API docs',
+    health: 'Health',
+    status: 'SSR ready',
+  }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label={i18n.shell.home}>
+        <a className="brand" href="/" aria-label={shell.home}>
           <img className="brand-mark" src="/vext-mark.svg" alt="" aria-hidden="true" />
           <span>vext</span>
         </a>
-        <nav aria-label={i18n.shell.navigation}>
-          <a className="nav-start" href="#getting-started">{i18n.shell.start}</a>
+        <nav aria-label={shell.navigation}>
+          <a className="nav-start" href="#getting-started">{shell.start}</a>
           <a className="nav-docs" href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
-            {i18n.shell.docs}
+            {shell.docs}
           </a>
-          <a href="/docs">{i18n.shell.apiDocs}</a>
+          <a href="/docs">{shell.apiDocs}</a>
           <a className="nav-health" href="/api/health" target="_blank" rel="noreferrer">
-            {i18n.shell.health}
+            {shell.health}
           </a>
         </nav>
         <span className="runtime-badge">
           <span aria-hidden="true" />
-          {i18n.shell.status}
+          {shell.status}
         </span>
       </header>
       {children}
@@ -1450,27 +1506,36 @@ export function AppShell({ children }: AppShellProps) {
 
 export function AppShell({ children }) {
   const i18n = useVextI18n()
+  const shell = i18n.shell ?? {
+    navigation: 'Primary navigation',
+    home: 'Vext home',
+    start: 'Start building',
+    docs: 'Documentation',
+    apiDocs: 'API docs',
+    health: 'Health',
+    status: 'SSR ready',
+  }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label={i18n.shell.home}>
+        <a className="brand" href="/" aria-label={shell.home}>
           <img className="brand-mark" src="/vext-mark.svg" alt="" aria-hidden="true" />
           <span>vext</span>
         </a>
-        <nav aria-label={i18n.shell.navigation}>
-          <a className="nav-start" href="#getting-started">{i18n.shell.start}</a>
+        <nav aria-label={shell.navigation}>
+          <a className="nav-start" href="#getting-started">{shell.start}</a>
           <a className="nav-docs" href="${VEXT_DOCUMENTATION_URL}" target="_blank" rel="noreferrer">
-            {i18n.shell.docs}
+            {shell.docs}
           </a>
-          <a href="/docs">{i18n.shell.apiDocs}</a>
+          <a href="/docs">{shell.apiDocs}</a>
           <a className="nav-health" href="/api/health" target="_blank" rel="noreferrer">
-            {i18n.shell.health}
+            {shell.health}
           </a>
         </nav>
         <span className="runtime-badge">
           <span aria-hidden="true" />
-          {i18n.shell.status}
+          {shell.status}
         </span>
       </header>
       {children}

@@ -943,6 +943,9 @@ describe("vext create", () => {
         );
         expect(files["src/frontend/pages/index.tsx"]).toContain("useVextI18n");
         expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "const home = i18n.home ??",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
           "runtime-facts",
         );
         expect(files["src/frontend/pages/index.tsx"]).toContain(
@@ -962,6 +965,9 @@ describe("vext create", () => {
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           "useVextI18n",
+        );
+        expect(files["src/frontend/components/AppShell.tsx"]).toContain(
+          "const shell = i18n.shell ??",
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           'src="/vext-mark.svg"',
