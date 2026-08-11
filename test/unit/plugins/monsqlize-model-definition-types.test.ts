@@ -186,8 +186,9 @@ void invalidRedisCache;
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);
   });
 
-  it("exposes controlled 3.2.0 options and preserves the raw-instance capability boundary", () => {
+  it("exposes controlled 3.3.0 options and preserves the raw-instance capability boundary", () => {
     const diagnostics = compileTypeProbe(`
+import { defineModel, Model } from "monsqlize";
 import type {
   MonSQLizeDatabaseConfig,
   VextApp,
@@ -262,6 +263,30 @@ const unknownOptions = {
 
 declare const app: VextApp;
 
+const UserDescriptor = defineModel("typed_users", {
+  schema: {
+    email: "email!",
+    age: "number?",
+  },
+});
+Model.define(UserDescriptor);
+
+async function assertDescriptorInference() {
+  const user = await app.monsqlize
+    ?.model(UserDescriptor)
+    .findOne({ email: "hello@example.com" });
+  const email: string | undefined = user?.email;
+  const age: number | undefined = user?.age;
+  // @ts-expect-error The descriptor infers email as string, not number.
+  const invalidEmail: number | undefined = user?.email;
+  void email;
+  void age;
+  void invalidEmail;
+}
+
+// @ts-expect-error app.db remains a stable key-based facade.
+app.db?.model(UserDescriptor);
+
 app.monsqlize?.collection<{ embedding: number[] }>("items").vectorSearch({
   index: "items_embedding",
   path: "embedding",
@@ -295,6 +320,7 @@ app.db?.withTransaction(async () => "nope");
 void database;
 void protectedOptions;
 void unknownOptions;
+void assertDescriptorInference;
 `);
 
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);

@@ -75,7 +75,7 @@ type MonSQLizeOptionClassificationIsExhaustive =
 /**
  * Advanced MonSQLize constructor options accepted by Vext.
  *
- * Option value shapes are picked directly from `monsqlize@3.2.0`; Vext keeps
+ * Option value shapes are picked directly from `monsqlize@3.3.0`; Vext keeps
  * a deliberate, exhaustively checked key allowlist around them. Vext-owned
  * constructor keys are explicit `never` properties and are also rejected at
  * runtime when JavaScript or a type escape hatch is used.
@@ -289,7 +289,7 @@ export interface MonSQLizeDatabaseConfig {
   };
 
   /**
-   * Controlled escape hatch for advanced `monsqlize@3.2.0` constructor options.
+   * Controlled escape hatch for advanced `monsqlize@3.3.0` constructor options.
    *
    * Connection, cache, logger, pool, model, and shutdown lifecycle keys remain
    * owned by the first-class Vext database configuration and are rejected.

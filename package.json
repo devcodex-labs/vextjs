@@ -134,7 +134,7 @@
     "fast-glob": "3.3.3",
     "fast-json-stringify": "7.0.1",
     "flex-rate-limit": "2.2.4",
-    "monsqlize": "3.2.0",
+    "monsqlize": "3.3.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-refresh": "0.18.0",

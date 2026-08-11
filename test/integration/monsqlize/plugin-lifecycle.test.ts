@@ -36,7 +36,7 @@ import { MongoMemoryServer } from "mongodb-memory-server-core";
 import type { VextApp } from "../../../src/types/app.js";
 import { setupMonSQLize } from "../../../src/lib/plugins/monsqlize/plugin.js";
 import { shouldLoadMonSQLize } from "../../../src/lib/plugins/monsqlize/index.js";
-import MonSQLize from "monsqlize";
+import MonSQLize, { defineModel, Model } from "monsqlize";
 import { dsl } from "schema-dsl";
 
 // ── 超时配置 ────────────────────────────────────────────────
@@ -238,7 +238,7 @@ describe("MonSQLize 插件集成测试", () => {
       await executeCloseHooks(closeHooks);
     });
 
-    it("保持 raw instance 身份并暴露 monsqlize 3.2.0 collection/model 能力", async () => {
+    it("保持 raw instance 身份并暴露 monsqlize 3.3.0 collection/model 能力", async () => {
       const { app, closeHooks, extendedProps } = createMockApp({
         config: { uri: mongoUri },
         logger: false,
@@ -267,17 +267,28 @@ describe("MonSQLize 插件集成测试", () => {
         expect(defaults.findMaxSkip).toBe(5_678);
         expect(defaults.requireCursorSecret).toBe(true);
 
-        const collection = db.collection("monsqlize_320_capability_probe");
+        const collection = db.collection("monsqlize_330_capability_probe");
         expect(typeof collection.vectorSearch).toBe("function");
 
-        (MonSQLize as any).Model.define("Monsqlize320CapabilityProbe", {
+        Model.define("Monsqlize330CapabilityProbe", {
           schema: { name: "string" },
         });
-        const model = db.model("Monsqlize320CapabilityProbe");
+        const model = db.model("Monsqlize330CapabilityProbe");
         expect(typeof model.vectorSearch).toBe("function");
         expect(typeof model.checkRelationUsage).toBe("function");
         expect(typeof model.deleteOneWithRelations).toBe("function");
         expect(typeof model.forceDeleteWithRelations).toBe("function");
+
+        const descriptor = defineModel("Monsqlize330DescriptorProbe", {
+          schema: { name: "string!" },
+        });
+        Model.define(descriptor);
+        const descriptorModel = raw.model(descriptor);
+        await descriptorModel.insertOne({ name: "descriptor-ready" });
+        const descriptorDocument = await descriptorModel.findOne({
+          name: "descriptor-ready",
+        });
+        expect(descriptorDocument?.name).toBe("descriptor-ready");
       } finally {
         await executeCloseHooks(closeHooks);
         (MonSQLize as any).Model._clear();

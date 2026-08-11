@@ -768,7 +768,7 @@ export default {
 
 ### Database configuration (`database`)
 
-Adding `database` activates Vext's built-in `monsqlize@3.2.0` lifecycle:
+Adding `database` activates Vext's built-in `monsqlize@3.3.0` lifecycle:
 connection normalization, logger bridging, model loading, `app.db` /
 `app.monsqlize` mounting, and shutdown cleanup. Use the first-class fields for
 those owned concerns. `database.monsqlizeOptions` is a typed, runtime-validated

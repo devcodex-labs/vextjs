@@ -6,7 +6,7 @@ VextJS 内置了 [MonSQLize](https://github.com/devcodex-labs/monSQLize) 数据�
 
 ### 1. 添加数据库配置
 
-VextJS 已将 `monsqlize@3.2.0` 固定为直接运行时依赖，Vext 应用不需要再安装
+VextJS 已将 `monsqlize@3.3.0` 固定为直接运行时依赖，Vext 应用不需要再安装
 第二份。添加 `config.database` 即可启用内置生命周期。
 
 ```typescript
@@ -179,7 +179,7 @@ export default {
 } satisfies VextConfig;
 ```
 
-公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.2.0`
+公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.3.0`
 `MonSQLizeOptions` 中取型；运行时使用同一 allowlist：
 
 - `schemaDsl`
@@ -397,7 +397,7 @@ try {
 
 `app.monsqlize` 与内置插件创建的原始 `MonSQLize` 实例是同一个对象，不是
 Vext 缩减包装，因此完整的上游实例 API 仍然可用。`app.db` 刻意保持为小型、稳定
-facade，但其 `collection()` 与 `model()` 返回上游 3.2.0 类型。
+facade，但其 `collection()` 与 `model()` 返回上游 3.3.0 类型。
 
 ```typescript
 const monsqlize = app.monsqlize;
@@ -433,6 +433,36 @@ await Product?.deleteOneWithRelations({ _id: productId });
 
 Vext 根包只导出 `VextMonSQLizeOptions` 等 Vext 自有集成类型，不镜像全部上游
 symbol。需要 MonSQLize 专属类或类型时，请直接从 `monsqlize` 导入。
+
+### 手动注册的类型化 descriptor（3.3.0）
+
+MonSQLize 3.3.0 可以从对象字面量 schema 推导 Model 文档类型。应用代码需要导入
+这一包级 API 时，应把 `monsqlize@3.3.0` 声明为应用的直接依赖，而不是依赖包管理器
+碰巧提升传递依赖。请先一次性注册 descriptor，再通过原始实例获取 Model：
+
+```typescript
+import { defineModel, Model } from "monsqlize";
+import type { VextApp } from "vextjs";
+
+const UserDescriptor = defineModel("users", {
+  schema: {
+    email: "email!",
+    age: "number?",
+  },
+});
+
+Model.define(UserDescriptor);
+
+export async function findUser(app: VextApp, email: string) {
+  const User = app.monsqlize?.model(UserDescriptor);
+  return User?.findOne({ email }); // email: string；age?: number
+}
+```
+
+这是显式的上游注册路径。不要把 descriptor 作为 `src/models/*` 文件的默认导出：
+Vext 自动 Model 加载器仍接收 definition object，并从文件推导集合名。稳定的
+`app.db.model()` facade 也继续只接收字符串 key；需要 descriptor 携带的类型推导时，
+请使用 `app.monsqlize.model(descriptor)`。
 
 ## Model 定义
 

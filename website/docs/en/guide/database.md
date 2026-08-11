@@ -6,7 +6,7 @@ VextJS has a built-in [MonSQLize](https://github.com/devcodex-labs/monSQLize) da
 
 ### 1. Add database configuration
 
-VextJS pins `monsqlize@3.2.0` as a direct runtime dependency, so a Vext
+VextJS pins `monsqlize@3.3.0` as a direct runtime dependency, so a Vext
 application does not need to install a second copy. Add `config.database` to
 activate the built-in lifecycle.
 
@@ -182,7 +182,7 @@ export default {
 ```
 
 The public `VextMonSQLizeOptions` type is picked directly from the pinned
-`monsqlize@3.2.0` `MonSQLizeOptions`. The runtime uses the same allowlist:
+`monsqlize@3.3.0` `MonSQLizeOptions`. The runtime uses the same allowlist:
 
 - `schemaDsl`
 - `poolFallback`, `maxPoolsCount`
@@ -399,7 +399,7 @@ try {
 `app.monsqlize` is the same raw `MonSQLize` instance created by the built-in
 plugin. It is not a reduced Vext wrapper, so the complete upstream instance API
 remains available. `app.db` intentionally stays a small stable facade, while
-its `collection()` and `model()` methods return the upstream 3.2.0 types.
+its `collection()` and `model()` methods return the upstream 3.3.0 types.
 
 ```typescript
 const monsqlize = app.monsqlize;
@@ -438,6 +438,39 @@ inspect the returned coverage before treating it as complete.
 Vext's root package exports Vext-owned integration types such as
 `VextMonSQLizeOptions`; it does not mirror every upstream symbol. Import
 MonSQLize-specific classes and types from `monsqlize` when you need them.
+
+### Typed descriptors for manual registration (3.3.0)
+
+MonSQLize 3.3.0 can infer a Model document type from an object-literal schema.
+If application code imports this package-level API, declare `monsqlize@3.3.0`
+as an explicit application dependency instead of relying on dependency
+hoisting. Register the descriptor once before resolving it from the raw
+instance:
+
+```typescript
+import { defineModel, Model } from "monsqlize";
+import type { VextApp } from "vextjs";
+
+const UserDescriptor = defineModel("users", {
+  schema: {
+    email: "email!",
+    age: "number?",
+  },
+});
+
+Model.define(UserDescriptor);
+
+export async function findUser(app: VextApp, email: string) {
+  const User = app.monsqlize?.model(UserDescriptor);
+  return User?.findOne({ email }); // email: string; age?: number
+}
+```
+
+This is an explicit upstream registration path. Do not export the descriptor
+as the default value of a `src/models/*` file: Vext's automatic Model loader
+continues to accept definition objects and derives the collection name from
+that file. The stable `app.db.model()` facade also remains key-based; use
+`app.monsqlize.model(descriptor)` when descriptor-carried inference is needed.
 
 ## Model definition
 

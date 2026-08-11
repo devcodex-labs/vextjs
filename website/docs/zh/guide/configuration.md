@@ -770,7 +770,7 @@ export default {
 
 ### 数据库配置 (`database`)
 
-添加 `database` 会启用 Vext 内置的 `monsqlize@3.2.0` 生命周期：连接归一化、
+添加 `database` 会启用 Vext 内置的 `monsqlize@3.3.0` 生命周期：连接归一化、
 日志桥接、Model 加载、挂载 `app.db` / `app.monsqlize` 以及关闭清理。这些由
 Vext 管理的能力继续使用一等字段配置。`database.monsqlizeOptions` 是带类型且
 经过运行时校验的高级 allowlist 入口；受保护或未知字段会在上游构造函数运行前失败。
