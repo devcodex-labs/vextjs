@@ -256,10 +256,21 @@ app.get("/info", async (req, res) => {
 获取经过 `validate` 校验并类型转换后的数据。
 
 ```typescript
-function valid<T = Record<string, any>>(
-  location: "query" | "body" | "param" | "header" | "cookie",
-): T;
+type VextValidationLocation = "query" | "body" | "param" | "header" | "cookie";
+
+interface VextRequest<
+  TValidated extends Record<VextValidationLocation, unknown>,
+> {
+  valid<
+    TOverride = never,
+    TLocation extends VextValidationLocation = VextValidationLocation,
+  >(
+    location: TLocation,
+  ): [TOverride] extends [never] ? TValidated[TLocation] : TOverride;
+}
 ```
+
+`TValidated` 由当前路由的 `validate` 对象自动生成。公共 API 仍保留显式泛型覆盖，供动态或外部 Schema 使用；普通路由代码应优先依赖自动推导契约。
 
 **参数**：
 
@@ -288,7 +299,7 @@ app.get(
   "/users",
   {
     validate: {
-      query: { page: "number:1-", limit: "number:1-100" },
+      query: { page: "number:1-!", limit: "number:1-100!" },
     },
   },
   async (req, res) => {
@@ -299,20 +310,15 @@ app.get(
 );
 ```
 
-**泛型用法**：
+**自动推导**：
 
 ```typescript
-interface UserQuery {
-  page: number;
-  limit: number;
-  keyword?: string;
-}
-
-const query = req.valid<UserQuery>("query");
-// query.page   → IDE 提示 number
-// query.limit  → IDE 提示 number
-// query.keyword → IDE 提示 string | undefined
+const query = req.valid("query");
+// query.page  → number
+// query.limit → number
 ```
+
+如果路由没有声明所请求的位置，推导结果是 `undefined`。链式字段 builder 会推导为 `unknown`；只有应用确实拥有该动态契约时，才使用运行时类型守卫或显式泛型覆盖。
 
 **多位置校验**：
 

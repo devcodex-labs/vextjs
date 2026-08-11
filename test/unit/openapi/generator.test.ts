@@ -1338,6 +1338,96 @@ describe("OpenAPIGenerator", () => {
       ).toBe("#/components/schemas/SuccessResponse");
     });
 
+    it("projects runtime response schemas with docs metadata and family selectors", () => {
+      const doc = generate([
+        createRoute("GET", "/users", {
+          responses: {
+            "2XX": {
+              schema: {
+                id: "integer!",
+                profile: { name: "string!" },
+              },
+            },
+            204: { schema: { ignored: "string!" } },
+          },
+          docs: {
+            responses: {
+              "2xx": {
+                description: "Successful user response",
+                example: { id: 1, profile: { name: "Ada" } },
+              },
+              204: { description: "No content" },
+            },
+          },
+        }),
+      ]);
+
+      const responses = doc.paths["/users"].get!.responses;
+      const family = responses["2XX"];
+      expect(family.description).toBe("Successful user response");
+      expect(family.content!["application/json"].schema).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          data: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "integer" },
+              profile: {
+                type: "object",
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+      });
+      expect(family.content!["application/json"].example).toEqual({
+        code: 0,
+        data: { id: 1, profile: { name: "Ada" } },
+        requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      });
+      expect(responses["204"]).toEqual({ description: "No content" });
+    });
+
+    it("rejects duplicate runtime and docs schema truth during projection", () => {
+      expect(() =>
+        generate([
+          createRoute("GET", "/users", {
+            responses: { 200: { schema: { id: "integer!" } } },
+            docs: {
+              responses: {
+                200: { schema: { id: "integer!" } },
+              },
+            },
+          }),
+        ]),
+      ).toThrow(/both RouteOptions\.responses and docs\.responses/i);
+    });
+
+    it("projects runtime schemas without an envelope when response wrapping is disabled", () => {
+      const generator = new OpenAPIGenerator({}, { responseWrap: false });
+      const doc = generator.generate([
+        createRoute("GET", "/users", {
+          responses: { 200: { schema: { id: "integer!" } } },
+          docs: {
+            responses: {
+              200: { example: { id: 1 } },
+            },
+          },
+        }),
+      ]);
+
+      const content =
+        doc.paths["/users"].get!.responses["200"].content!["application/json"];
+      expect(content.schema).toMatchObject({
+        type: "object",
+        properties: { id: { type: "integer" } },
+        additionalProperties: false,
+      });
+      expect(content.example).toEqual({ id: 1 });
+    });
+
     it("声明 docs.responses 时不添加默认 200", () => {
       const doc = generate([
         createRoute("GET", "/users", {

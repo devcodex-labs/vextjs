@@ -21,6 +21,10 @@
  */
 
 import type { VextPluginContext } from "../../../types/plugin.js";
+import {
+  MONSQLIZE_ALLOWED_OPTION_KEYS,
+  MONSQLIZE_PROTECTED_OPTION_KEYS,
+} from "./types.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
 import { createConnection } from "./connection.js";
 import { loadModels } from "./model-loader.js";
@@ -323,6 +327,10 @@ function buildMonSQLizeConfig(
   config: MonSQLizeDatabaseConfig,
   app: VextPluginContext,
 ): Record<string, unknown> {
+  const controlledOptions = resolveControlledMonSQLizeOptions(
+    config.monsqlizeOptions,
+  );
+
   // ── 映射 config.config（vext 用户配置 → MonSQLize 配置）────
   // N1: 同时支持 uri（主要）和 url（已废弃），做字段名映射。
   const mongoConfig: Record<string, unknown> = { ...config.config };
@@ -353,6 +361,7 @@ function buildMonSQLizeConfig(
     })();
 
   const result: Record<string, unknown> = {
+    ...controlledOptions,
     // MonSQLize 的 type 字段是数据库类型（目前仅支持 "mongodb"），
     // 不同于 vext 的 database.type（连接模式：url / replica / srv）。
     // vext 的 config.type 已包含在 config.config 的结构中（url vs hosts vs host），
@@ -434,6 +443,54 @@ function buildMonSQLizeConfig(
   }
 
   return result;
+}
+
+const MONSQLIZE_ALLOWED_OPTION_KEY_SET = new Set<string>(
+  MONSQLIZE_ALLOWED_OPTION_KEYS,
+);
+const MONSQLIZE_PROTECTED_OPTION_KEY_SET = new Set<string>(
+  MONSQLIZE_PROTECTED_OPTION_KEYS,
+);
+
+function resolveControlledMonSQLizeOptions(
+  value: unknown,
+): Record<string, unknown> {
+  if (value === undefined) {
+    return {};
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(
+      "[monsqlize] database.monsqlizeOptions must be a plain options object.",
+    );
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(
+      "[monsqlize] database.monsqlizeOptions must be a plain options object.",
+    );
+  }
+
+  const input = value as Record<string, unknown>;
+  for (const key of Object.keys(input)) {
+    if (MONSQLIZE_ALLOWED_OPTION_KEY_SET.has(key)) {
+      continue;
+    }
+    if (MONSQLIZE_PROTECTED_OPTION_KEY_SET.has(key)) {
+      throw new Error(
+        `[monsqlize] database.monsqlizeOptions.${key} is managed by Vext and cannot be overridden.`,
+      );
+    }
+    throw new Error(
+      `[monsqlize] Unsupported database.monsqlizeOptions key "${key}". Allowed keys: ${MONSQLIZE_ALLOWED_OPTION_KEYS.join(", ")}.`,
+    );
+  }
+
+  return Object.fromEntries(
+    MONSQLIZE_ALLOWED_OPTION_KEYS.filter((key) =>
+      Object.hasOwn(input, key),
+    ).map((key) => [key, input[key]]),
+  );
 }
 
 type RedisCacheConfig = NonNullable<

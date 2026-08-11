@@ -779,6 +779,30 @@ describe("vext create", () => {
         await createCommand(["test-app", "--js", "--skip-install"]);
         expect(Object.keys(getWrittenFiles())).not.toContain("README.md");
       });
+
+      it("keeps generated non-locale source English-first in every template and language mode", async () => {
+        const scenarios = [
+          ["--skip-install"],
+          ["--js", "--skip-install"],
+          ["--template", "api", "--frontend", "none", "--skip-install"],
+          ["--js", "--template", "api", "--frontend", "none", "--skip-install"],
+        ];
+
+        for (const args of scenarios) {
+          vi.clearAllMocks();
+          setupFreshProject();
+          await createCommand(["test-app", ...args]);
+
+          const nonLocaleSource = Object.entries(getWrittenFiles()).filter(
+            ([file]) => file.startsWith("src/") && !file.includes("/locales/"),
+          );
+          const filesWithHanText = nonLocaleSource
+            .filter(([, content]) => /\p{Script=Han}/u.test(content))
+            .map(([file]) => file);
+
+          expect(filesWithHanText, `scenario: ${args.join(" ")}`).toEqual([]);
+        }
+      });
     });
 
     describe("src/config/default", () => {

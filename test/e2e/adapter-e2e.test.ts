@@ -82,6 +82,42 @@ for (const adapterName of ADAPTERS) {
       });
     });
 
+    describe("compiled response serialization", () => {
+      it("selects the post-hook status schema and recursively projects fields", async () => {
+        const res = await e2eGet(app.baseUrl, "/compiled-response");
+        expect(res.status).toBe(202);
+        expect(res.body).toMatchObject({
+          code: 0,
+          data: {
+            accepted: true,
+            nested: { visible: "kept" },
+          },
+        });
+        expect(res.body).not.toHaveProperty("data.extra");
+        expect(res.body).not.toHaveProperty("data.nested.hidden");
+      });
+
+      it("keeps rawJson outside the route serializer", async () => {
+        const res = await e2eGet(app.baseUrl, "/compiled-raw");
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ visible: "kept", extra: "raw-bypass" });
+      });
+
+      it("isolates shared HEAD and GET route-option serializer caches", async () => {
+        const head = await e2eRequest(
+          `${app.baseUrl}/compiled-shared-options`,
+          { method: "HEAD" },
+        );
+        expect(head.status).toBe(200);
+        expect(head.text).toBe("");
+
+        const get = await e2eGet(app.baseUrl, "/compiled-shared-options");
+        expect(get.status).toBe(200);
+        expect(get.body).toMatchObject({ data: { visible: "get" } });
+        expect(get.body).not.toHaveProperty("data.extra");
+      });
+    });
+
     // ── requestId ────────────────────────────────────────
 
     describe("requestId", () => {

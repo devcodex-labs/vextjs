@@ -286,17 +286,11 @@ app.get("/health", async (req, res) => {
 **最佳实践**：始终确保 `req.valid(location)` 的 `location` 与 `validate` 中声明的位置一致。
 ::::
 
-### 泛型类型提示
+### 路由 Schema 自动类型推导
 
-可以使用泛型获得更精确的 IDE 类型提示：
+handler 会从同一个 `validate` 对象获得上下文类型，无需再把契约重复写成 TypeScript 接口：
 
 ```typescript
-interface CreateUserBody {
-  name: string;
-  email: string;
-  age?: number;
-}
-
 app.post(
   "/users",
   {
@@ -309,14 +303,18 @@ app.post(
     },
   },
   async (req, res) => {
-    const data = req.valid<CreateUserBody>("body");
-    // data.name — IDE 知道是 string
-    // data.email — IDE 知道是 string
-    // data.age — IDE 知道是 number | undefined
+    const data = req.valid("body");
+    // data.name  — string
+    // data.email — string
+    // data.age   — number | undefined
     res.json(await app.services.user.create(data));
   },
 );
 ```
+
+自动推导覆盖 DSL 字符串、必填/可选标记、嵌套对象和单元素数组 Schema。
+`schemaAdapter.compileField()` 返回的链式 builder 会诚实地推导为 `unknown`，因为其后续动态修改无法从静态类型恢复。
+对于动态或外部提供的 Schema，仍可用 `req.valid<ExternalBody>("body")` 作为显式覆盖；它会覆盖自动推导，因此应用必须自行保证该类型与运行时契约一致。
 
 ## 校验错误响应
 

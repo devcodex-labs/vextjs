@@ -171,6 +171,10 @@ interface RouteOptions {
     header?: Record<string, VextSchemaField>;
     cookie?: Record<string, VextSchemaField>;
   };
+  responses?: Record<
+    string | number,
+    { schema: Record<string, unknown> | string }
+  >;
   cache?: false | number | RouteCacheOptions;
   frontend?: VextRouteFrontendOptions;
   middlewares?: VextMiddlewareRef[];
@@ -249,6 +253,10 @@ app.put(
         email: "email",
         age: "number:0-200?",
       },
+    },
+    responses: {
+      200: { schema: { id: "string!", name: "string!", email: "email!" } },
+      404: { schema: { code: "integer!", message: "string!" } },
     },
     cache: false,
     docs: {
@@ -363,7 +371,7 @@ app.post(
   "/users",
   {
     validate: {
-      body: { name: "string:1-50", email: "email" },
+      body: { name: "string:1-50!", email: "email!" },
       query: { notify: "boolean?" },
     },
   },
@@ -375,18 +383,15 @@ app.post(
 );
 ```
 
-可以通过泛型获得更精确的类型提示：
+handler 会直接从路由 Schema 推导类型，无需再声明一份重复接口：
 
 ```typescript
-interface CreateUserBody {
-  name: string;
-  email: string;
-}
-
-const body = req.valid<CreateUserBody>("body");
+const body = req.valid("body");
 // body.name  → IDE 知道是 string
 // body.email → IDE 知道是 string
 ```
+
+显式泛型仅保留为动态或外部 Schema 的逃生口；它会覆盖自动推导结果。
 
 ### 校验失败响应
 
@@ -663,6 +668,16 @@ app.post(
       },
     },
     middlewares: ["audit-log"],
+    responses: {
+      201: {
+        schema: {
+          id: "string",
+          name: "string",
+          email: "email",
+          createdAt: "date",
+        },
+      },
+    },
     docs: {
       summary: "创建用户",
       description: "创建一个新用户账号，并记录操作审计日志。",
@@ -670,12 +685,6 @@ app.post(
       responses: {
         201: {
           description: "用户创建成功",
-          schema: {
-            id: "string",
-            name: "string",
-            email: "email",
-            createdAt: "date",
-          },
           example: {
             id: "usr_abc123",
             name: "Alice",
@@ -769,11 +778,34 @@ app.get(
 );
 ```
 
-### 响应定义
+### 运行时响应 Schema
+
+```typescript
+interface RuntimeResponseConfig {
+  schema: Record<string, unknown> | string;
+}
+
+type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
+```
+
+该映射声明在顶层 `RouteOptions.responses`。selector 支持精确状态（`201`）、
+状态族（`2xx`）与 `default`；`response:before` 完成后按最终状态以“精确 →
+状态族 → default”选择。Vext 在路由注册时编译每个 JSON schema，并在后续请求
+中复用。同一份闭合 schema 会投影到 OpenAPI、路由 manifest、静态 build 索引
+和生成客户端类型。
+
+schema 描述传给 `res.json()` 的业务数据，不需要手写重复的响应包裹。未声明
+字段会递归移除，缺失 required 值会在提交字节前失败。HEAD、精确 204、raw
+JSON、text、redirect、file/download、stream 与 render/SSR 响应会绕过该序列化器。
+生命周期和 raw JSON Schema 细节见
+[OpenAPI 响应契约](/zh/guide/openapi#responses--运行时响应契约与文档元数据)。
+
+### 响应文档元数据
 
 ```typescript
 interface ResponseConfig {
   description?: string;
+  /** 仅文档兼容入口；优先使用 RouteOptions.responses。 */
   schema?: Record<string, unknown> | string;
   contentType?: string;
   example?: unknown;
@@ -794,6 +826,10 @@ interface ResponseConfig {
   >;
 }
 ```
+
+描述、示例、响应头与 content type 保留在 `docs.responses`。如果同一规范化
+selector 已在顶层 `responses` 中声明，不得在这里重复 `schema`；双重声明会
+让路由注册失败。
 
 **多示例响应**：
 

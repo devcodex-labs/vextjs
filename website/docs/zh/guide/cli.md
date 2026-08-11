@@ -109,7 +109,7 @@ my-app/
 └── .gitignore
 ```
 
-脚手架不会生成根目录或目录级的占位 `README.md` 文件。`src/middlewares/`、`src/plugins/`、`src/locales/` 与规范的 `src/preload/` 等约定目录仍受支持；添加真实源码时会按需创建。历史项目根 `preload/` 不会由脚手架生成。
+脚手架不会生成根目录或目录级的占位 `README.md` 文件。TypeScript、JavaScript 的全栈与 API-only 模板所生成的用户源码均以英文为默认语言；只有显式 locale 目录下的语言资源不受该约束。`src/middlewares/`、`src/plugins/`、`src/locales/` 与规范的 `src/preload/` 等约定目录仍受支持；添加真实源码时会按需创建。历史项目根 `preload/` 不会由脚手架生成。
 
 默认全栈 starter 的 `public/vext-mark.svg` 是透明导航标记，`public/favicon.svg` 是高对比 favicon 变体；两者使用同一 V 几何。前者由 AppShell 使用，两者都会随 `public/` 静态资源一起复制。
 

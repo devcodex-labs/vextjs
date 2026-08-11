@@ -2,6 +2,11 @@ import type { VextApp } from "./app.js";
 import type { VextAuthContext } from "./auth.js";
 import type { VextCookieJar } from "./cookies.js";
 import type { VextSession } from "./session.js";
+import type {
+  VextDefaultValidatedData,
+  VextValidatedData,
+  VextValidationLocation,
+} from "./validation.js";
 
 /**
  * ParsedFile — 已解析的上传文件
@@ -37,7 +42,9 @@ export interface ParsedFile {
  * 路由 handler 和中间件通过此接口访问请求数据，
  * 与底层框架解耦，确保切换 Adapter 时用户代码无需改动。
  */
-export interface VextRequest {
+export interface VextRequest<
+  TValidated extends VextValidatedData = VextDefaultValidatedData,
+> {
   // ── 原始数据 ──────────────────────────────────────────────
 
   /** URL 查询参数（已解析为键值对） */
@@ -180,20 +187,23 @@ export interface VextRequest {
    * 但底层数据源是复数 req.params。框架内部已正确映射。
    *
    * @param location 校验数据位置
-   * @returns 校验后的数据对象；默认返回 Record<string, any>
+   * @returns 校验后的数据对象；路由 schema 可用时由框架自动推导
    *
    * @example
    * // 直接使用（推荐，validator 已保证数据正确性）
    * const { page, limit } = req.valid('query')
    *
    * @example
-   * // 加泛型获取更精确的 IDE 提示（可选）
+   * // 显式泛型仍可覆盖自动推导（兼容既有代码）
    * const param = req.valid<{ id: string }>('param')
    * param.id  // IDE 知道是 string
    */
-  valid<T = Record<string, any>>(
-    location: "query" | "body" | "param" | "header" | "cookie",
-  ): T;
+  valid<
+    TOverride = never,
+    TLocation extends VextValidationLocation = VextValidationLocation,
+  >(
+    location: TLocation,
+  ): [TOverride] extends [never] ? TValidated[TLocation] : TOverride;
 
   // ── 国际化（插件注入，可选）────────────────────────────
 

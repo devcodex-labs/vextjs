@@ -295,11 +295,11 @@ app.get(
 | `'header'` | `req.headers` | 请求头           |
 | `'cookie'` | `req.cookies` | 已解析 Cookie 值 |
 
-:::tip 类型提示
-可以使用泛型获取更精确的类型提示：
+:::tip 自动类型推导
+路由声明 `validate` 后，handler 会直接从同一个 Schema 获得推导类型：
 
 ```typescript
-const { id } = req.valid<{ id: string }>("param");
+const { id } = req.valid("param");
 // id 的类型为 string
 ```
 
@@ -537,6 +537,11 @@ app.post(
     validate: {
       body: { name: "string:1-50!", email: "email!" },
     },
+    responses: {
+      201: {
+        schema: { id: "string", name: "string", email: "email" },
+      },
+    },
     docs: {
       summary: "创建用户",
       description: "创建一个新用户，邮箱必须唯一。",
@@ -545,7 +550,6 @@ app.post(
       responses: {
         201: {
           description: "创建成功",
-          schema: { id: "string", name: "string", email: "email" },
         },
         409: {
           description: "邮箱已存在",
@@ -556,6 +560,10 @@ app.post(
   handler,
 );
 ```
+
+顶层 `responses` 是编译 JSON 序列化、OpenAPI 与生成客户端类型共用的运行时
+契约。描述和示例保留在 `docs.responses`；同一状态 selector 不要在其中重复
+声明 schema。
 
 ### 隐藏路由
 

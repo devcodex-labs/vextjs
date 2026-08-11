@@ -1,5 +1,5 @@
 import type { VextAdapter } from "./adapter.js";
-import type { VextMiddleware } from "./middleware.js";
+import type { VextMiddleware, VextHandler } from "./middleware.js";
 import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
@@ -18,6 +18,7 @@ import type { VextRouteSessionOptions, VextSessionConfig } from "./session.js";
 import type { VextCsrfConfig } from "./csrf.js";
 import type { VextSecurityHeadersConfig } from "./security-headers.js";
 import type { VextAuthRequirement } from "./auth.js";
+import type { InferVextValidation } from "./validation.js";
 
 /**
  * VextServices — 服务集合类型
@@ -1217,25 +1218,53 @@ export type VextUserConfig = Partial<VextConfig>;
 export interface VextApp {
   // ── HTTP 方法（三段式：path, options, handler）──────────
 
-  get(path: string, options: RouteOptions, handler: VextHandler): void;
+  get<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   get(path: string, handler: VextHandler): void;
 
-  post(path: string, options: RouteOptions, handler: VextHandler): void;
+  post<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   post(path: string, handler: VextHandler): void;
 
-  put(path: string, options: RouteOptions, handler: VextHandler): void;
+  put<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   put(path: string, handler: VextHandler): void;
 
-  patch(path: string, options: RouteOptions, handler: VextHandler): void;
+  patch<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   patch(path: string, handler: VextHandler): void;
 
-  delete(path: string, options: RouteOptions, handler: VextHandler): void;
+  delete<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   delete(path: string, handler: VextHandler): void;
 
-  head(path: string, options: RouteOptions, handler: VextHandler): void;
+  head<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   head(path: string, handler: VextHandler): void;
 
-  options(path: string, options: RouteOptions, handler: VextHandler): void;
+  options<const TOptions extends RouteOptions>(
+    path: string,
+    options: TOptions,
+    handler: VextHandler<InferVextValidation<TOptions["validate"]>>,
+  ): void;
   options(path: string, handler: VextHandler): void;
 
   // ── 内置模块（插件可覆盖）──────────────────────────────
@@ -1515,8 +1544,27 @@ export type VextMiddlewareRef = string | { name: string; options?: unknown };
 export type VextSchemaField =
   | string
   | DslBuilder
-  | VextSchemaField[]
+  | readonly VextSchemaField[]
   | { [key: string]: VextSchemaField };
+
+/**
+ * Runtime response data schema compiled once during route registration.
+ *
+ * Accepts a schema-dsl field map, a self-contained raw JSON Schema object, or
+ * a JSON Schema reference string. Raw schemas intentionally use `unknown`
+ * values so keywords such as `type`, `required`, `$defs`, and boolean
+ * `additionalProperties` remain representable by the public type.
+ */
+export type VextResponseSchemaDefinition = Record<string, unknown> | string;
+
+export interface VextResponseSchemaConfig {
+  schema: VextResponseSchemaDefinition;
+}
+
+export type VextRouteResponsesConfig = Record<
+  string | number,
+  VextResponseSchemaConfig
+>;
 
 /**
  * OpenAPI 文档配置（路由级）
@@ -1629,6 +1677,16 @@ export interface RouteOptions {
     header?: Record<string, VextSchemaField>;
     cookie?: Record<string, VextSchemaField>;
   };
+
+  /**
+   * Runtime JSON response schemas keyed by exact status (200), status family
+   * (2xx), or `default`. Schemas describe the business data passed to
+   * `res.json()` and are compiled once during route registration.
+   *
+   * `docs.responses` remains docs metadata. Do not repeat a schema there for
+   * the same selector.
+   */
+  responses?: VextRouteResponsesConfig;
 
   /**
    * 路由级中间件引用
@@ -1776,6 +1834,3 @@ export interface RouteRecord {
   /** 路由处理函数 */
   handler: VextHandler;
 }
-
-/** 路由处理函数类型（从 middleware.ts 中的 VextHandler 对齐） */
-type VextHandler = import("./middleware.js").VextHandler;

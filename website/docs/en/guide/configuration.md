@@ -766,6 +766,33 @@ export default {
 };
 ```
 
+### Database configuration (`database`)
+
+Adding `database` activates Vext's built-in `monsqlize@3.2.0` lifecycle:
+connection normalization, logger bridging, model loading, `app.db` /
+`app.monsqlize` mounting, and shutdown cleanup. Use the first-class fields for
+those owned concerns. `database.monsqlizeOptions` is a typed, runtime-validated
+escape hatch for the documented advanced allowlist; protected or unknown keys
+fail before the upstream constructor runs.
+
+```typescript
+export default {
+  database: {
+    config: { uri: "mongodb://localhost:27017/myapp" },
+    maxTimeMS: 2_000,
+    monsqlizeOptions: {
+      findMaxLimit: 2_000,
+      transaction: { enableRetry: true, maxRetries: 2 },
+      writePathPolicy: { default: "model-only" },
+    },
+  },
+};
+```
+
+See [Database (MonSQLize)](./database.md#controlled-advanced-monsqlize-options)
+for the full allowlist, ownership boundary, raw-instance API, Vector Search,
+and relation-protected deletion prerequisites.
+
 ### Request context configuration (`requestContext`)
 
 | Configuration item       | Type      | Default value | Description                                         |

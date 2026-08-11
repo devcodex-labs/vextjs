@@ -31,9 +31,9 @@ api.generated.ts
 
 `client-contract.json` 和 `api.generated.ts` 对相同 route manifest 会稳定生成。`generatedAt` 字段是稳定标记，便于在 CI 中比较生成产物。
 
-运行时 route manifest 会把既有 `RouteOptions.validate` 的 `param`、`query`、`header`、`cookie`、`body` 字段，以及 `docs.responses.<status>.schema` 投影为 `VextSchemaIRV1`。`api.generated.ts` 会将支持的 JSON Schema 基础类型、对象、数组、枚举、optional 与 nullable 字段生成 request 和成功 response 的 TypeScript 类型。
+运行时 route manifest 会把既有 `RouteOptions.validate` 的 `param`、`query`、`header`、`cookie`、`body` 字段，以及规范的 `RouteOptions.responses.<selector>.schema` 投影为 `VextSchemaIRV1`。同一份闭合响应 schema 同时驱动编译线上序列化、OpenAPI 与静态 build 索引。`api.generated.ts` 会将支持的 JSON Schema 基础类型、对象、数组、枚举、optional 与 nullable 字段生成 request 和成功 response 的 TypeScript 类型。仅文档的 `docs.responses.<selector>.schema` 仍作为兼容回退，但不会启用运行时字段投影。
 
-缺少 `docs.responses.<status>.schema` 时，契约保持 `unknown`，并携带 HTTP 方法、路由路径、可用时的源文件和稳定 route ID 的 diagnostic；Vext 不会猜测 response 类型。使用 `res.render()` 渲染的 HTML 页面会被归类为前端文档，不会产生 API response schema warning。`$ref` 会保留在契约中，但在具备 component-reference resolver 前，生成 TypeScript 仍为 `unknown`。cookie schema 只描述契约：浏览器 fetch 控制 cookie transport，生成 client 不提供可写 `Cookie` header。
+缺少运行时或文档响应 schema 时，契约保持 `unknown`，并携带 HTTP 方法、路由路径、可用时的源文件和稳定 route ID 的 diagnostic；Vext 不会猜测 response 类型。精确状态 selector 优先于状态族（`2xx`），最后才使用 `default`；生成的成功类型会包含精确和状态族 2xx 契约。使用 `res.render()` 渲染的 HTML 页面会被归类为前端文档，不会产生 API response schema warning。`$ref` 会保留在契约中，但在具备 component-reference resolver 前，生成 TypeScript 仍为 `unknown`。cookie schema 只描述契约：浏览器 fetch 控制 cookie transport，生成 client 不提供可写 `Cookie` header。
 
 ## 公开入口
 

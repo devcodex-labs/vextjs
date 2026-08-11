@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import type { VextRequest } from "../../types/request.js";
 import type { VextResponse } from "../../types/response.js";
+import type { RouteOptions } from "../../types/app.js";
 import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import type { CookieSerializeOptions } from "../../types/cookies.js";
 import {
@@ -25,6 +26,11 @@ import {
 } from "../../lib/response-render-placeholder.js";
 import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
 import { prepareRedirect } from "../../lib/redirect.js";
+import {
+  getPreparedRouteResponseSerializers,
+  stringifyRouteResponse,
+  type CompiledRouteResponseSerializers,
+} from "../../lib/response-serializer.js";
 
 type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 
@@ -132,20 +138,21 @@ class NativeVextResponse implements VextResponse {
    * Buffered body exit staged until `_flush()` after onion unwind.
    * Lets post-`await next()` middleware still mutate headers.
    */
-  private _pending:
-    | {
-        status: number;
-        body?: string;
-        /** Applied before buffered headers; `null` removes Content-Type (204). */
-        defaultContentType?: string | null;
-        /** When true, Content-Length is set after `_applyHeaders` (text path). */
-        contentLengthAfterHeaders?: boolean;
-        sendState: ReturnType<typeof beginResponseSend>;
-      }
-    | null = null;
+  private _pending: {
+    status: number;
+    body?: string;
+    /** Applied before buffered headers; `null` removes Content-Type (204). */
+    defaultContentType?: string | null;
+    /** When true, Content-Length is set after `_applyHeaders` (text path). */
+    contentLengthAfterHeaders?: boolean;
+    sendState: ReturnType<typeof beginResponseSend>;
+  } | null = null;
 
   /** True once the underlying ServerResponse has been written/ended. */
   private _flushed: boolean = false;
+
+  /** Registration-time compiled response serializers for this route. */
+  private _responseSerializers?: CompiledRouteResponseSerializers;
 
   /** 发送前拦截钩子（缓存中间件在 MISS 时注册） @internal */
   _onSend?: (data: unknown, statusCode: number, headers?: VextHeaders) => void;
@@ -161,12 +168,14 @@ class NativeVextResponse implements VextResponse {
     serverResponse: ServerResponse,
     requestIdSource: RequestIdSource,
     closeToken?: object,
+    responseSerializers?: CompiledRouteResponseSerializers,
   ) {
     this._serverResponse = serverResponse;
     this._requestIdSource = requestIdSource;
     if (closeToken) {
       this._closeToken = closeToken;
     }
+    this._responseSerializers = responseSerializers;
   }
 
   // ── 内部辅助方法（原型上共享）──────────────────────────
@@ -227,6 +236,24 @@ class NativeVextResponse implements VextResponse {
   private _stringifyJson(data: unknown): string {
     try {
       return JSON.stringify(data) ?? "";
+    } catch (error) {
+      this._sent = false;
+      throw error;
+    }
+  }
+
+  private _stringifyRouteJson(
+    data: unknown,
+    status: number,
+    wrapped: boolean,
+  ): string {
+    try {
+      return stringifyRouteResponse(
+        this._responseSerializers,
+        status,
+        data,
+        wrapped,
+      );
     } catch (error) {
       this._sent = false;
       throw error;
@@ -364,11 +391,15 @@ class NativeVextResponse implements VextResponse {
 
       // 出口包装：{ code: 0, data, requestId }
       this._sendJsonString(
-        this._stringifyJson({
-          code: 0,
-          data,
-          requestId: this._resolveRequestId(),
-        }),
+        this._stringifyRouteJson(
+          {
+            code: 0,
+            data,
+            requestId: this._resolveRequestId(),
+          },
+          finalStatus,
+          true,
+        ),
         finalStatus,
         sendState,
       );
@@ -381,7 +412,11 @@ class NativeVextResponse implements VextResponse {
       return;
     }
 
-    this._sendJsonString(this._stringifyJson(data), finalStatus, sendState);
+    this._sendJsonString(
+      this._stringifyRouteJson(data, finalStatus, false),
+      finalStatus,
+      sendState,
+    );
   }
 
   /**
@@ -674,6 +709,13 @@ export function createVextResponse(
   serverResponse: ServerResponse,
   requestIdSource: RequestIdSource,
   closeToken?: object,
+  routeOptions?: RouteOptions,
+  routeMethod?: string,
 ): VextResponse {
-  return new NativeVextResponse(serverResponse, requestIdSource, closeToken);
+  return new NativeVextResponse(
+    serverResponse,
+    requestIdSource,
+    closeToken,
+    getPreparedRouteResponseSerializers(routeOptions, routeMethod),
+  );
 }

@@ -897,6 +897,113 @@ describe("buildMonSQLizeConfig (via setupMonSQLize)", () => {
     expect(passedConfig.slowQueryMs).toBe(2000);
   });
 
+  it("forwards every controlled monsqlizeOptions key unchanged", async () => {
+    const cursorValueNormalizer = (_field: string, value: unknown) => value;
+    const monsqlizeOptions = {
+      schemaDsl: false,
+      poolFallback: {
+        enabled: true,
+        fallbackStrategy: "primary",
+        retryDelay: 25,
+      },
+      maxPoolsCount: 8,
+      sync: { enabled: false, targets: [] },
+      transaction: { enableRetry: true, maxRetries: 2 },
+      findMaxLimit: 2_000,
+      findMaxSkip: 20_000,
+      requireCursorSecret: true,
+      cursorSecretWarning: "always",
+      cursorTypes: { createdAt: "date" },
+      cursorValueNormalizer,
+      log: { slowQueryTag: { event: "db.slow", code: "DB_SLOW" } },
+      countQueue: { enabled: true, concurrency: 2 },
+      autoIndex: { enabled: true, emitEvents: false },
+      cacheAutoInvalidate: true,
+      writePathPolicy: { default: "model-only" },
+    };
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/db" },
+        monsqlizeOptions,
+      },
+    });
+
+    await setupMonSQLize(app, "/tmp/src");
+
+    const passedConfig = mockMonSQLizeConstructor.mock.calls[0]![0];
+    for (const [key, value] of Object.entries(monsqlizeOptions)) {
+      expect(passedConfig[key]).toBe(value);
+    }
+    expect(passedConfig.type).toBe("mongodb");
+    expect(passedConfig.config).toEqual({ uri: "mongodb://localhost/db" });
+  });
+
+  it.each([
+    "type",
+    "databaseName",
+    "database",
+    "config",
+    "cache",
+    "logger",
+    "pools",
+    "poolStrategy",
+    "maxTimeMS",
+    "findLimit",
+    "findPageMaxLimit",
+    "slowQueryMs",
+    "slowQueryLog",
+    "autoConvertObjectId",
+    "namespace",
+    "cursorSecret",
+    "models",
+  ])(
+    "rejects Vext-owned monsqlizeOptions key %s before construction",
+    async (key) => {
+      const { app } = createMockApp({
+        database: {
+          config: { uri: "mongodb://localhost/db" },
+          monsqlizeOptions: { [key]: "blocked" },
+        },
+      });
+
+      await expect(setupMonSQLize(app, "/tmp/src")).rejects.toThrow(
+        `database.monsqlizeOptions.${key} is managed by Vext`,
+      );
+      expect(mockMonSQLizeConstructor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects unknown monsqlizeOptions keys before construction", async () => {
+    const { app } = createMockApp({
+      database: {
+        config: { uri: "mongodb://localhost/db" },
+        monsqlizeOptions: { futureTypo: true },
+      },
+    });
+
+    await expect(setupMonSQLize(app, "/tmp/src")).rejects.toThrow(
+      'Unsupported database.monsqlizeOptions key "futureTypo"',
+    );
+    expect(mockMonSQLizeConstructor).not.toHaveBeenCalled();
+  });
+
+  it.each([null, true, [], new Date(0)])(
+    "rejects non-object monsqlizeOptions value %j",
+    async (monsqlizeOptions) => {
+      const { app } = createMockApp({
+        database: {
+          config: { uri: "mongodb://localhost/db" },
+          monsqlizeOptions,
+        },
+      });
+
+      await expect(setupMonSQLize(app, "/tmp/src")).rejects.toThrow(
+        "database.monsqlizeOptions must be a plain options object",
+      );
+      expect(mockMonSQLizeConstructor).not.toHaveBeenCalled();
+    },
+  );
+
   it("passes namespace with default scope", async () => {
     const { app } = createMockApp({
       database: { config: { uri: "mongodb://localhost/db" } },

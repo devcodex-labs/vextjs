@@ -1080,13 +1080,12 @@ function generateExampleService(isTs: boolean): string {
     return `import type { VextApp } from 'vextjs'
 
 /**
- * ExampleService — 示例服务
+ * ExampleService demonstrates the basic Vext service convention.
  *
- * 演示 vext service 的基本用法。
- * 服务文件放在 src/services/ 目录下，
- * 框架会自动扫描并注入到 app.services 中。
+ * Service files live in src/services/. Vext discovers them automatically
+ * and exposes each service through app.services.
  *
- * 文件名决定 service key：
+ * The file name determines the service key:
  *   src/services/example.ts → app.services.example
  *   src/services/user.ts    → app.services.user
  */
@@ -1097,9 +1096,7 @@ export default class ExampleService {
     this.app = app
   }
 
-  /**
-   * 生成问候消息
-   */
+  /** Generate a greeting message. */
   async greeting(name: string): Promise<{ message: string }> {
     this.app.logger.info('Generating greeting', { name })
     return { message: \`Hello, \${name}! Welcome to vext.\` }
@@ -1109,13 +1106,12 @@ export default class ExampleService {
   }
 
   return `/**
- * ExampleService — 示例服务
+ * ExampleService demonstrates the basic Vext service convention.
  *
- * 演示 vext service 的基本用法。
- * 服务文件放在 src/services/ 目录下，
- * 框架会自动扫描并注入到 app.services 中。
+ * Service files live in src/services/. Vext discovers them automatically
+ * and exposes each service through app.services.
  *
- * 文件名决定 service key：
+ * The file name determines the service key:
  *   src/services/example.js → app.services.example
  *   src/services/user.js    → app.services.user
  */
@@ -1124,9 +1120,7 @@ export default class ExampleService {
     this.app = app
   }
 
-  /**
-   * 生成问候消息
-   */
+  /** Generate a greeting message. */
   async greeting(name) {
     this.app.logger.info('Generating greeting', { name })
     return { message: \`Hello, \${name}! Welcome to vext.\` }

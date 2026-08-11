@@ -164,6 +164,7 @@ const checks = [
   ["lint", npm, ["run", "lint"]],
   ["typecheck", npm, ["run", "typecheck"]],
   ["ESM/CJS build", npm, ["run", "build"]],
+  ["compiled response serializer", npm, ["run", "verify:response-serializer"]],
   ["unit tests", npm, ["run", "test:unit"]],
   ["integration tests", npm, ["run", "test:int"]],
   ["E2E tests", npm, ["run", "test:e2e"]],

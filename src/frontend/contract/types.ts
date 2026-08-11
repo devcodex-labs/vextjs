@@ -403,7 +403,7 @@ export type VextClientRouteMethod =
 export interface VextSchemaIRV1 {
   schemaVersion: 1;
   kind: "vext-schema-ir";
-  source: "validate" | "docs.responses";
+  source: "validate" | "responses" | "docs.responses";
   sourcePath: string;
   schema: Record<string, unknown>;
   digest: string;

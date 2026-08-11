@@ -144,12 +144,18 @@ describe("buildDevRouteManifestPayload", () => {
     });
     expect(record?.schema.request.cookies?.digest).toHaveLength(64);
     expect(record?.schema.responses).toHaveLength(2);
-    expect(record?.schema.responses[0]).toMatchObject({
+    const created = record?.schema.responses.find(
+      (response) => response.status === "201",
+    );
+    const noContent = record?.schema.responses.find(
+      (response) => response.status === "204",
+    );
+    expect(created).toMatchObject({
       status: "201",
       contentType: "application/json",
       schema: { sourcePath: "docs.responses.201.schema" },
     });
-    expect(record?.schema.responses[1]).toEqual({
+    expect(noContent).toEqual({
       status: "204",
       contentType: "text/plain",
     });
@@ -158,5 +164,55 @@ describe("buildDevRouteManifestPayload", () => {
       source: "legacy-default",
     });
     expect(record?.layout).toEqual({ state: "unresolved", paths: [] });
+  });
+
+  it("projects runtime responses as the canonical frontend schema source", () => {
+    const rootDir = createTempRoot();
+    const route: RouteMetadata = {
+      method: "GET",
+      path: "/users",
+      options: {
+        responses: {
+          "2XX": {
+            schema: { id: "integer!", profile: { name: "string!" } },
+          },
+          204: { schema: { ignored: "string!" } },
+        },
+        docs: {
+          responses: {
+            "2xx": { description: "Success" },
+            204: { description: "No content" },
+          },
+        },
+      },
+      sourceFile: path.join(rootDir, "src", "routes", "users.ts"),
+    };
+
+    const record = buildDevRouteManifestPayload(rootDir, [route]).routes[0];
+    const family = record?.schema.responses.find(
+      (response) => response.status === "2xx",
+    );
+    const noContent = record?.schema.responses.find(
+      (response) => response.status === "204",
+    );
+    expect(family).toMatchObject({
+      status: "2xx",
+      contentType: "application/json",
+      schema: {
+        source: "responses",
+        sourcePath: "responses.2xx.schema",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            profile: { type: "object", additionalProperties: false },
+          },
+        },
+      },
+    });
+    expect(noContent).toEqual({
+      status: "204",
+      contentType: "application/json",
+    });
   });
 });

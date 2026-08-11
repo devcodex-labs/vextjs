@@ -295,11 +295,12 @@ app.get(
 | `'header'` | `req.headers` | Request headers         |
 | `'cookie'` | `req.cookies` | Parsed Cookie values    |
 
-:::tip type tip
-You can use generics to get more precise type hints:
+:::tip Automatic type inference
+When the route declares `validate`, the handler receives the inferred type from
+that same schema:
 
 ```typescript
-const { id } = req.valid<{ id: string }>("param");
+const { id } = req.valid("param");
 // The type of id is string
 ```
 
@@ -537,6 +538,11 @@ app.post(
     validate: {
       body: { name: "string:1-50!", email: "email!" },
     },
+    responses: {
+      201: {
+        schema: { id: "string", name: "string", email: "email" },
+      },
+    },
     docs: {
       summary: "Create user",
       description: "Create a new user, the email address must be unique.",
@@ -545,7 +551,6 @@ app.post(
       responses: {
         201: {
           description: "Created successfully",
-          schema: { id: "string", name: "string", email: "email" },
         },
         409: {
           description: "Email already exists",
@@ -556,6 +561,11 @@ app.post(
   handler,
 );
 ```
+
+Top-level `responses` is the runtime contract used for compiled JSON
+serialization, OpenAPI, and generated client types. Keep descriptions and
+examples in `docs.responses`; do not repeat the schema there for the same
+status selector.
 
 ### Hidden route
 

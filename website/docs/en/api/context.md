@@ -256,10 +256,23 @@ app.get("/info", async (req, res) => {
 Get the data after `validate` verification and type conversion.
 
 ```typescript
-function valid<T = Record<string, any>>(
-  location: "query" | "body" | "param" | "header" | "cookie",
-): T;
+type VextValidationLocation = "query" | "body" | "param" | "header" | "cookie";
+
+interface VextRequest<
+  TValidated extends Record<VextValidationLocation, unknown>,
+> {
+  valid<
+    TOverride = never,
+    TLocation extends VextValidationLocation = VextValidationLocation,
+  >(
+    location: TLocation,
+  ): [TOverride] extends [never] ? TValidated[TLocation] : TOverride;
+}
 ```
+
+`TValidated` is generated from the `validate` object on the current route.
+The public API also keeps an explicit generic override for dynamic or external
+schemas, but ordinary route code should rely on the inferred contract.
 
 **Parameters**:
 
@@ -278,7 +291,7 @@ function valid<T = Record<string, any>>(
 | `'cookie'` | `req.cookies` | Parsed Cookie values    |
 
 :::tip
-Note that `location` uses the **singular** `'param`` (consistent with the key configured in `validate`), but the underlying data source is the **plural** `req.params`. The frame internals are mapped correctly.
+Note that `location` uses the **singular** `'param'` (consistent with the key configured in `validate`), but the underlying data source is the **plural** `req.params`. The framework maps them correctly.
 :::
 
 **Basic Usage**:
@@ -288,7 +301,7 @@ app.get(
   "/users",
   {
     validate: {
-      query: { page: "number:1-", limit: "number:1-100" },
+      query: { page: "number:1-!", limit: "number:1-100!" },
     },
   },
   async (req, res) => {
@@ -299,20 +312,18 @@ app.get(
 );
 ```
 
-**Generic usage**:
+**Automatic inference**:
 
 ```typescript
-interface UserQuery {
-  page: number;
-  limit: number;
-  keyword?: string;
-}
-
-const query = req.valid<UserQuery>("query");
-// query.page → IDE prompt number
-// query.limit → IDE prompt number
-// query.keyword → IDE prompt string | undefined
+const query = req.valid("query");
+// query.page  → number
+// query.limit → number
 ```
+
+If a route does not declare the requested location, its inferred result is
+`undefined`. Chainable field builders are inferred as `unknown`; use a runtime
+type guard or an explicit override only when the application owns that dynamic
+contract.
 
 **Multiple location verification**:
 

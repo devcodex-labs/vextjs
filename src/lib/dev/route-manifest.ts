@@ -90,7 +90,7 @@ export function buildDevRouteManifestPayload(
         : ("inferred" as const),
       tags: docs?.tags ?? [],
       hidden: false,
-      schema: projectRouteSchemaContract(route.options),
+      schema: projectRouteSchemaContract(route.options, route.method),
       freshness: createRouteFreshnessIdentity(route.options),
       layout: createUnresolvedLayoutIdentity(),
     };

@@ -14,7 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- No unreleased product changes; documentation and release-validation work is recorded under [1.0.1](./changelogs/v1.0.1.md).
+- `vext create` now emits English-first user source in TypeScript/JavaScript and full-stack/API-only modes; explicit locale resources remain language-specific.
+- Route handlers now infer `req.valid(location)` from their inline `validate` schema through `schema-dsl@3.0.4`; explicit generics remain a compatibility escape hatch for dynamic schemas.
+- Top-level `RouteOptions.responses` now compiles JSON response schemas once at route registration and shares the exact/family/default contract across all five adapters, OpenAPI, runtime/static route manifests, and generated client types; documentation-only `docs.responses.schema` keeps the legacy `JSON.stringify` behavior.
+- The direct `monsqlize` dependency is pinned to `3.2.0`; `database.monsqlizeOptions` now forwards a typed runtime-validated advanced allowlist, `app.monsqlize` retains the complete raw instance, and `app.db` remains a stable facade whose collection/model results expose Vector Search and relation-protected deletion. The package lock intentionally records MonSQLize's internal exact `schema-dsl@3.0.0` alongside Vext's direct `schema-dsl@3.0.4`.
 
 ## Version History
 

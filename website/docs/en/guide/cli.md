@@ -108,7 +108,7 @@ my-app/
 └── .gitignore
 ```
 
-The starter deliberately does not create root or directory-level placeholder `README.md` files. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and the canonical `src/preload/` remain supported and are created when you add real source files. The legacy project-root `preload/` directory is not scaffolded.
+The starter deliberately does not create root or directory-level placeholder `README.md` files. Generated user source is English-first in both TypeScript and JavaScript, for full-stack and API-only templates; files under explicit locale directories are the only language-content exception. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and the canonical `src/preload/` remain supported and are created when you add real source files. The legacy project-root `preload/` directory is not scaffolded.
 
 For the default fullstack starter, `public/vext-mark.svg` is a transparent navigation mark and `public/favicon.svg` is a contrast-safe favicon variant. They share the same V geometry; the app shell uses the former, and both are copied with the rest of `public/` assets.
 

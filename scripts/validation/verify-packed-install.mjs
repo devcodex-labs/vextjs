@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -17,7 +17,18 @@ const workspace = path.resolve(
 );
 const artifacts = path.join(workspace, "artifacts");
 const consumer = path.join(workspace, "consumer");
-const npmCache = path.join(workspace, "npm-cache");
+const npmCache = path.resolve(
+  process.env.VEXT_PREFLIGHT_NPM_CACHE ?? path.join(workspace, "npm-cache"),
+);
+const prepackedVextTarball = process.env.VEXT_PREFLIGHT_VEXT_TARBALL
+  ? path.resolve(process.env.VEXT_PREFLIGHT_VEXT_TARBALL)
+  : undefined;
+const acceptedConsumer = process.env.VEXT_PREFLIGHT_ACCEPTED_CONSUMER
+  ? path.resolve(process.env.VEXT_PREFLIGHT_ACCEPTED_CONSUMER)
+  : undefined;
+const offline = /^(?:1|true)$/i.test(
+  process.env.VEXT_PREFLIGHT_OFFLINE ?? "false",
+);
 const installTimeoutMs = readPositiveInteger(
   process.env.VEXT_PACK_INSTALL_TIMEOUT_MS,
   15 * 60 * 1_000,
@@ -147,53 +158,26 @@ async function pack(target) {
   return path.join(artifacts, manifest.filename);
 }
 
-async function main() {
-  const schemaTarball = await pack(
-    path.join(root, "node_modules", "schema-dsl"),
-  );
-  const monsqlizeTarball = await pack(
-    path.join(root, "node_modules", "monsqlize"),
-  );
-  const vextTarball = await pack(root);
-  const vextSha256 = createHash("sha256")
-    .update(readFileSync(vextTarball))
-    .digest("hex");
-  const expectedSha256 =
-    process.env.VEXT_EXPECTED_ARTIFACT_SHA256?.toLowerCase();
-  if (expectedSha256 && vextSha256 !== expectedSha256) {
-    throw new Error(
-      `Packed vextjs SHA256 ${vextSha256} does not match external validation ${expectedSha256}`,
-    );
+function resolveFileSpec(base, spec, label) {
+  if (typeof spec !== "string" || !spec.startsWith("file:")) {
+    throw new Error(`${label} must use a file: artifact spec`);
   }
-  console.log(`vextjs tarball SHA256: ${vextSha256}`);
+  return path.resolve(base, spec.slice("file:".length));
+}
 
-  writeFileSync(
-    path.join(consumer, "package.json"),
-    `${JSON.stringify({ name: "vext-packed-install-smoke", private: true, type: "module" }, null, 2)}\n`,
-  );
+function assertSamePath(actual, expected, label) {
+  const normalizeForComparison = (value) => {
+    const normalized = path.normalize(value);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const normalizedActual = normalizeForComparison(actual);
+  const normalizedExpected = normalizeForComparison(expected);
+  if (normalizedActual !== normalizedExpected) {
+    throw new Error(`${label} ${actual} does not match ${expected}`);
+  }
+}
 
-  console.log(`Packed install cache: ${npmCache}`);
-  console.log(`Packed install timeout: ${installTimeoutMs}ms`);
-  await npm(
-    [
-      "install",
-      "--ignore-scripts",
-      "--package-lock=false",
-      "--no-audit",
-      "--no-fund",
-      `--cache=${npmCache}`,
-      "--fetch-retries=0",
-      `--fetch-timeout=${fetchTimeoutMs}`,
-      schemaTarball,
-      monsqlizeTarball,
-      vextTarball,
-    ],
-    { cwd: consumer, timeoutMs: installTimeoutMs },
-  );
-  await npm(["ls", "vextjs", "monsqlize", "schema-dsl", "--all"], {
-    cwd: consumer,
-  });
-
+async function runRuntimeSmokes(consumerRoot) {
   const esmSmoke = [
     "if (Object.getOwnPropertyDescriptor(String.prototype, 'description')) throw new Error('pre-import String pollution');",
     "const vext = await import('vextjs');",
@@ -219,7 +203,7 @@ async function main() {
   ]) {
     await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, args, {
-        cwd: consumer,
+        cwd: consumerRoot,
         stdio: "inherit",
       });
       child.once("error", reject);
@@ -234,6 +218,137 @@ async function main() {
       });
     });
   }
+}
+
+async function verifyAcceptedConsumer(vextTarball) {
+  if (!existsSync(acceptedConsumer)) {
+    throw new Error(
+      `VEXT_PREFLIGHT_ACCEPTED_CONSUMER does not exist: ${acceptedConsumer}`,
+    );
+  }
+  const consumerPackage = JSON.parse(
+    readFileSync(path.join(acceptedConsumer, "package.json"), "utf8"),
+  );
+  const lock = JSON.parse(
+    readFileSync(path.join(acceptedConsumer, "package-lock.json"), "utf8"),
+  );
+  const installedPackage = JSON.parse(
+    readFileSync(
+      path.join(acceptedConsumer, "node_modules", "vextjs", "package.json"),
+      "utf8",
+    ),
+  );
+  const lockEntry = lock.packages?.["node_modules/vextjs"];
+  if (!lockEntry) throw new Error("accepted consumer lock lacks vextjs entry");
+
+  assertSamePath(
+    resolveFileSpec(
+      acceptedConsumer,
+      consumerPackage.dependencies?.vextjs,
+      "accepted consumer vextjs dependency",
+    ),
+    vextTarball,
+    "accepted consumer artifact",
+  );
+  assertSamePath(
+    resolveFileSpec(
+      acceptedConsumer,
+      lockEntry.resolved,
+      "accepted consumer lock resolution",
+    ),
+    vextTarball,
+    "accepted consumer locked artifact",
+  );
+  const expectedIntegrity = `sha512-${createHash("sha512")
+    .update(readFileSync(vextTarball))
+    .digest("base64")}`;
+  if (lockEntry.integrity !== expectedIntegrity) {
+    throw new Error("accepted consumer lock integrity does not match artifact");
+  }
+  if (
+    lockEntry.version !== pkg.version ||
+    installedPackage.version !== pkg.version
+  ) {
+    throw new Error("accepted consumer vextjs version does not match source");
+  }
+
+  await npm(["ls", "vextjs", "monsqlize", "schema-dsl", "--all"], {
+    cwd: acceptedConsumer,
+  });
+  if (consumerPackage.scripts?.typecheck) {
+    await npm(["run", "typecheck"], { cwd: acceptedConsumer });
+  }
+  await runRuntimeSmokes(acceptedConsumer);
+  console.log(`Accepted packed consumer verified: ${acceptedConsumer}`);
+}
+
+async function main() {
+  if (prepackedVextTarball && !existsSync(prepackedVextTarball)) {
+    throw new Error(
+      `VEXT_PREFLIGHT_VEXT_TARBALL does not exist: ${prepackedVextTarball}`,
+    );
+  }
+  if (acceptedConsumer && !prepackedVextTarball) {
+    throw new Error(
+      "VEXT_PREFLIGHT_ACCEPTED_CONSUMER requires VEXT_PREFLIGHT_VEXT_TARBALL",
+    );
+  }
+  const vextTarball = prepackedVextTarball ?? (await pack(root));
+  if (prepackedVextTarball) {
+    console.log(`Reusing accepted vextjs tarball: ${vextTarball}`);
+  }
+  const vextSha256 = createHash("sha256")
+    .update(readFileSync(vextTarball))
+    .digest("hex");
+  const expectedSha256 =
+    process.env.VEXT_EXPECTED_ARTIFACT_SHA256?.toLowerCase();
+  if (expectedSha256 && vextSha256 !== expectedSha256) {
+    throw new Error(
+      `Packed vextjs SHA256 ${vextSha256} does not match external validation ${expectedSha256}`,
+    );
+  }
+  console.log(`vextjs tarball SHA256: ${vextSha256}`);
+
+  if (acceptedConsumer) {
+    await verifyAcceptedConsumer(vextTarball);
+    console.log(`Packed install verified for vextjs@${pkg.version}`);
+    return;
+  }
+
+  const schemaTarball = await pack(
+    path.join(root, "node_modules", "schema-dsl"),
+  );
+  const monsqlizeTarball = await pack(
+    path.join(root, "node_modules", "monsqlize"),
+  );
+
+  writeFileSync(
+    path.join(consumer, "package.json"),
+    `${JSON.stringify({ name: "vext-packed-install-smoke", private: true, type: "module" }, null, 2)}\n`,
+  );
+
+  console.log(`Packed install cache: ${npmCache}`);
+  console.log(`Packed install offline: ${offline}`);
+  console.log(`Packed install timeout: ${installTimeoutMs}ms`);
+  const installArgs = [
+    "install",
+    "--ignore-scripts",
+    "--package-lock=false",
+    "--no-audit",
+    "--no-fund",
+    ...(offline ? ["--offline"] : []),
+    `--cache=${npmCache}`,
+    "--fetch-retries=0",
+    `--fetch-timeout=${fetchTimeoutMs}`,
+    schemaTarball,
+    monsqlizeTarball,
+    vextTarball,
+  ];
+  await npm(installArgs, { cwd: consumer, timeoutMs: installTimeoutMs });
+  await npm(["ls", "vextjs", "monsqlize", "schema-dsl", "--all"], {
+    cwd: consumer,
+  });
+  await runRuntimeSmokes(consumer);
 
   console.log(`Packed install verified for vextjs@${pkg.version}`);
   console.log(`Evidence workspace retained at: ${workspace}`);

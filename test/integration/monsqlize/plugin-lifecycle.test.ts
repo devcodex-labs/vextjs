@@ -238,6 +238,52 @@ describe("MonSQLize 插件集成测试", () => {
       await executeCloseHooks(closeHooks);
     });
 
+    it("保持 raw instance 身份并暴露 monsqlize 3.2.0 collection/model 能力", async () => {
+      const { app, closeHooks, extendedProps } = createMockApp({
+        config: { uri: mongoUri },
+        logger: false,
+        models: { autoRegister: false },
+        monsqlizeOptions: {
+          schemaDsl: false,
+          findMaxLimit: 1_234,
+          findMaxSkip: 5_678,
+          requireCursorSecret: true,
+          cursorSecretWarning: "off",
+        },
+      });
+
+      try {
+        await setupMonSQLize(app, "/nonexistent-src-dir");
+
+        const raw = extendedProps.get("monsqlize") as MonSQLize;
+        const db = extendedProps.get("db") as Record<string, any>;
+        expect(raw).toBe((app as any).monsqlize);
+        expect(db).toBe((app as any).db);
+        expect(typeof raw.withTransaction).toBe("function");
+        expect(db.withTransaction).toBeUndefined();
+
+        const defaults = raw.getDefaults();
+        expect(defaults.findMaxLimit).toBe(1_234);
+        expect(defaults.findMaxSkip).toBe(5_678);
+        expect(defaults.requireCursorSecret).toBe(true);
+
+        const collection = db.collection("monsqlize_320_capability_probe");
+        expect(typeof collection.vectorSearch).toBe("function");
+
+        (MonSQLize as any).Model.define("Monsqlize320CapabilityProbe", {
+          schema: { name: "string" },
+        });
+        const model = db.model("Monsqlize320CapabilityProbe");
+        expect(typeof model.vectorSearch).toBe("function");
+        expect(typeof model.checkRelationUsage).toBe("function");
+        expect(typeof model.deleteOneWithRelations).toBe("function");
+        expect(typeof model.forceDeleteWithRelations).toBe("function");
+      } finally {
+        await executeCloseHooks(closeHooks);
+        (MonSQLize as any).Model._clear();
+      }
+    });
+
     it("root useMemoryServer 使用 core 生成的 URI 覆盖外部 URL", async () => {
       const { app, closeHooks, extendedProps } = createMockApp({
         config: { url: "mongodb://127.0.0.1:1/should-not-connect" },

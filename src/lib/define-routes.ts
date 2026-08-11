@@ -2,6 +2,7 @@ import type { VextApp, RouteOptions, RouteRecord } from "../types/app.js";
 import type { VextMiddleware, VextHandler } from "../types/middleware.js";
 import type { VextAdapter } from "../types/adapter.js";
 import type { RouteDefinition, RouteFactory } from "../types/route.js";
+import { prepareRouteResponseSerializers } from "./response-serializer.js";
 
 const ROUTE_INTERNALS_SYMBOL = Symbol.for("vext.routeDefinition.internals");
 
@@ -153,6 +154,11 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
       for (const route of routes) {
         // ── 1. 拼接完整路径 ──────────────────────────────
         const fullPath = normalizePath(prefix, route.path);
+        prepareRouteResponseSerializers(route.options, {
+          method: route.method,
+          path: fullPath,
+          sourceFile: routeDefinition.sourceFile,
+        });
 
         // ── 2. 解析路由级中间件引用 ─────────────────────
         const routeMiddlewares: VextMiddleware[] = [];
@@ -189,7 +195,7 @@ export function defineRoutes(factory: RouteFactory): RouteDefinition {
         ];
 
         // ── 6. 注册到 adapter ──────────────────────────
-        adapter.registerRoute(route.method, fullPath, chain);
+        adapter.registerRoute(route.method, fullPath, chain, route.options);
       }
     },
   };

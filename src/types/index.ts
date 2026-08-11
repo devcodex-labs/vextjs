@@ -13,6 +13,13 @@ export { MIDDLEWARE_SYMBOL, MIDDLEWARE_FACTORY_SYMBOL } from "./middleware.js";
 // ── 请求 / 响应类型 ────────────────────────────────────────
 export type { VextRequest, ParsedFile } from "./request.js";
 export type {
+  InferVextSchema,
+  InferVextValidation,
+  VextDefaultValidatedData,
+  VextValidatedData,
+  VextValidationLocation,
+} from "./validation.js";
+export type {
   VextResponse,
   VextPublicResponse,
   VextRenderErrorOptions,
@@ -124,6 +131,9 @@ export type {
   RouteOptions,
   RouteRecord,
   RouteDocsConfig,
+  VextResponseSchemaConfig,
+  VextResponseSchemaDefinition,
+  VextRouteResponsesConfig,
   VextMiddlewareRef,
   RouteCacheOptions,
   VextCacheConfig,

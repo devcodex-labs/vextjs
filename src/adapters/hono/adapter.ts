@@ -239,7 +239,14 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         const box = createResponseBox();
         // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
         // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-        const res = createHonoResponse(c, () => req.requestId, box, req);
+        const res = createHonoResponse(
+          c,
+          () => req.requestId,
+          box,
+          req,
+          routeOptions,
+          upperMethod,
+        );
         res._hooks = app.hooks;
 
         // 在 AsyncLocalStorage 请求上下文中执行整个中间件链
@@ -609,7 +616,13 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         store.routeBodyParser;
     }
     req.route = routePath || store.routePath;
-    const res = createNodeResponse(nodeRes, req, req);
+    const res = createNodeResponse(
+      nodeRes,
+      req,
+      req,
+      store.routeOptions,
+      "HEAD",
+    );
     res._hooks = app.hooks;
 
     if (store.chain === null) {

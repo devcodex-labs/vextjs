@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { SchemaConverter } from "../../lib/openapi/schema-converter.js";
 import type { JsonSchema } from "../../lib/openapi/types.js";
+import {
+  collectRouteResponseContracts,
+  resolveRouteResponseJsonSchema,
+} from "../../lib/response-serializer.js";
 import type {
   RouteOptions,
   VextRouteFrontendOptions,
@@ -24,12 +28,13 @@ const requestSources = [
 ] as const;
 
 /**
- * Projects existing route validation and docs response schemas into the
- * framework-owned IR. This consumes RouteOptions directly; it never creates
- * another user-authored schema format.
+ * Projects route validation and the canonical runtime/docs response contracts
+ * into framework-owned IR. This consumes RouteOptions directly; it never
+ * creates another user-authored schema format.
  */
 export function projectRouteSchemaContract(
   options: RouteOptions,
+  method?: string,
 ): VextRouteSchemaContractV1 {
   const request: VextRouteSchemaContractV1["request"] = {};
   for (const [target, source] of requestSources) {
@@ -43,20 +48,33 @@ export function projectRouteSchemaContract(
     }
   }
 
-  const responses = Object.entries(options.docs?.responses ?? {})
-    .map(([status, response]) => {
-      const contentType = response.contentType ?? "application/json";
-      const sourcePath = `docs.responses.${status}.schema`;
+  const responses = collectRouteResponseContracts(options)
+    .map((response) => {
+      const contentType = response.docs?.contentType ?? "application/json";
+      const runtimeHasNoBody =
+        response.runtime !== undefined &&
+        (method?.toUpperCase() === "HEAD" || response.selector === "204");
+      const runtimeSchema =
+        response.runtime && !runtimeHasNoBody
+          ? resolveRouteResponseJsonSchema(response.runtime.schema)
+          : undefined;
+      const docsSchema = response.docs?.schema;
       return {
-        status: String(status),
+        status: response.selector,
         contentType,
-        schema: response.schema
+        schema: runtimeSchema
           ? createSchemaIR(
-              "docs.responses",
-              sourcePath,
-              schemaConverter.convertResponseSchema(response.schema),
+              "responses",
+              `responses.${response.selector}.schema`,
+              runtimeSchema as JsonSchema,
             )
-          : undefined,
+          : docsSchema
+            ? createSchemaIR(
+                "docs.responses",
+                `docs.responses.${response.selector}.schema`,
+                schemaConverter.convertResponseSchema(docsSchema),
+              )
+            : undefined,
       } satisfies VextRouteResponseSchemaV1;
     })
     .sort((left, right) => compareStatus(left.status, right.status));

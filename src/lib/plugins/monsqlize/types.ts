@@ -9,7 +9,84 @@
  * @see 13-monsqlize-plugin.md §2.1（类型扩展）
  */
 
-import type { ModelDefinition } from "monsqlize";
+import type { ModelDefinition, MonSQLizeOptions } from "monsqlize";
+
+/**
+ * Upstream MonSQLize options that Vext can safely forward without giving up
+ * ownership of connection, cache, logging, pool, model, or shutdown lifecycle.
+ *
+ * @internal Shared by the public type and runtime validator to prevent drift.
+ */
+export const MONSQLIZE_ALLOWED_OPTION_KEYS = [
+  "schemaDsl",
+  "poolFallback",
+  "maxPoolsCount",
+  "sync",
+  "transaction",
+  "findMaxLimit",
+  "findMaxSkip",
+  "requireCursorSecret",
+  "cursorSecretWarning",
+  "cursorTypes",
+  "cursorValueNormalizer",
+  "log",
+  "countQueue",
+  "autoIndex",
+  "cacheAutoInvalidate",
+  "writePathPolicy",
+] as const satisfies readonly (keyof MonSQLizeOptions)[];
+
+/** @internal MonSQLize constructor keys whose lifecycle remains Vext-owned. */
+export const MONSQLIZE_PROTECTED_OPTION_KEYS = [
+  "type",
+  "databaseName",
+  "database",
+  "config",
+  "cache",
+  "logger",
+  "pools",
+  "poolStrategy",
+  "maxTimeMS",
+  "findLimit",
+  "findPageMaxLimit",
+  "slowQueryMs",
+  "slowQueryLog",
+  "autoConvertObjectId",
+  "namespace",
+  "cursorSecret",
+  "models",
+] as const satisfies readonly (keyof MonSQLizeOptions)[];
+
+type VextMonSQLizeAllowedOptionKey =
+  (typeof MONSQLIZE_ALLOWED_OPTION_KEYS)[number];
+type VextMonSQLizeProtectedOptionKey =
+  (typeof MONSQLIZE_PROTECTED_OPTION_KEYS)[number];
+type AssertNoUnclassifiedMonSQLizeOption<T extends never> = [T] extends [never]
+  ? true
+  : never;
+type MonSQLizeOptionClassificationIsExhaustive =
+  AssertNoUnclassifiedMonSQLizeOption<
+    Exclude<
+      keyof MonSQLizeOptions,
+      VextMonSQLizeAllowedOptionKey | VextMonSQLizeProtectedOptionKey
+    >
+  >;
+
+/**
+ * Advanced MonSQLize constructor options accepted by Vext.
+ *
+ * Option value shapes are picked directly from `monsqlize@3.2.0`; Vext keeps
+ * a deliberate, exhaustively checked key allowlist around them. Vext-owned
+ * constructor keys are explicit `never` properties and are also rejected at
+ * runtime when JavaScript or a type escape hatch is used.
+ */
+export type VextMonSQLizeOptions = Pick<
+  MonSQLizeOptions,
+  MonSQLizeOptionClassificationIsExhaustive extends true
+    ? VextMonSQLizeAllowedOptionKey
+    : never
+> &
+  Partial<Record<VextMonSQLizeProtectedOptionKey, never>>;
 
 // ── 扩展 VextApp / VextConfig ───────────────────────────────
 declare module "../../../types/app.js" {
@@ -131,13 +208,13 @@ export interface VextModelDefinition<
     database?: string;
   };
   /** schema-dsl 简洁语法、对象格式或 monSQLize 支持的 SchemaDSL */
-  schema?: ModelDefinition<TDocument>["schema"];
+  schema?: Exclude<ModelDefinition<TDocument>["schema"], undefined>;
   /** monSQLize 对象式 hooks 或 v1 hooks factory */
-  hooks?: ModelDefinition<TDocument>["hooks"];
+  hooks?: Exclude<ModelDefinition<TDocument>["hooks"], undefined>;
   /** monSQLize 模型方法定义或 v1 methods factory */
-  methods?: ModelDefinition<TDocument>["methods"];
+  methods?: Exclude<ModelDefinition<TDocument>["methods"], undefined>;
   /** monSQLize 模型选项，如 timestamps、softDelete、version、validate */
-  options?: ModelDefinition<TDocument>["options"];
+  options?: Exclude<ModelDefinition<TDocument>["options"], undefined>;
 }
 
 /**
@@ -210,6 +287,14 @@ export interface MonSQLizeDatabaseConfig {
       keepaliveInterval?: number;
     };
   };
+
+  /**
+   * Controlled escape hatch for advanced `monsqlize@3.2.0` constructor options.
+   *
+   * Connection, cache, logger, pool, model, and shutdown lifecycle keys remain
+   * owned by the first-class Vext database configuration and are rejected.
+   */
+  monsqlizeOptions?: VextMonSQLizeOptions;
 
   /**
    * 缓存配置

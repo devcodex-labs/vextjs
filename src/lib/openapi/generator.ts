@@ -7,7 +7,7 @@
  *   1. 遍历路由元信息，为每条路由构建 Operation 对象
  *   2. 将 validate.param / query / header / cookie → parameters
  *   3. 将 validate.body → requestBody
- *   4. 将 docs.responses → responses（成功响应自动包装为 { code, data, requestId }）
+ *   4. 将 RouteOptions.responses + docs.responses → OpenAPI responses
  *   5. 从 middlewares 推断 security（auth → bearerAuth）
  *   6. 从 middlewares 推断 x-rate-limit 扩展
  *   7. 自动推断 tags（从文件路径）和 operationId（从方法+路径）
@@ -33,6 +33,11 @@ import type {
 import { SchemaConverter } from "./schema-converter.js";
 import { inferOperationId } from "./operation-id.js";
 import { authRequirementToOpenApiSecurity } from "../auth.js";
+import {
+  collectRouteResponseContracts,
+  resolveRouteResponseJsonSchema,
+  toOpenApiResponseSelector,
+} from "../response-serializer.js";
 
 const DOCS_TAGS_WARNING_SAMPLE_LIMIT = 3;
 
@@ -109,9 +114,14 @@ export function createDeprecatedRouteDocsTagsWarning(
 export class OpenAPIGenerator {
   private converter = new SchemaConverter();
   private config: OpenAPIConfig;
+  private responseWrap: boolean;
 
-  constructor(config: OpenAPIConfig = {}) {
+  constructor(
+    config: OpenAPIConfig = {},
+    runtime: { responseWrap?: boolean } = {},
+  ) {
     this.config = config;
+    this.responseWrap = runtime.responseWrap !== false;
   }
 
   /**
@@ -453,71 +463,85 @@ export class OpenAPIGenerator {
     }
 
     // ── 响应（responses） ───────────────────────────────────
-    // docs.responses 中的每个状态码映射为 OpenAPI responses
-    if (docs.responses) {
-      for (const [statusCode, config] of Object.entries(docs.responses)) {
-        const code = String(statusCode);
-        const responseObj: OpenAPIResponse = {
-          description: config.description ?? "",
-        };
+    // RouteOptions.responses owns runtime schema; docs.responses contributes
+    // description/examples/headers/contentType and remains docs-only when no
+    // runtime schema exists for the selector.
+    const responseContracts = collectRouteResponseContracts(options);
+    for (const contract of responseContracts) {
+      const code = toOpenApiResponseSelector(contract.selector);
+      const config = contract.docs;
+      const responseObj: OpenAPIResponse = {
+        description:
+          config?.description ??
+          (code === "default" ? "Default response" : `${code} response`),
+      };
 
-        if (config.schema) {
-          const converted = this.converter.convertResponseSchema(
-            config.schema as Record<string, unknown> | string,
-          );
-
-          // 包装为 vext 标准响应格式 { code: 0, data: ..., requestId: ... }
-          const wrappedSchema = this.wrapResponseSchema(
-            Number(code),
-            converted,
-          );
-
-          const contentType =
-            ((config as Record<string, unknown>).contentType as string) ??
-            "application/json";
-
-          responseObj.content = {
-            [contentType]: {
-              schema: wrappedSchema,
-            },
-          };
-
-          const contentEntry = responseObj.content![contentType]!;
-
-          // 单个示例
-          if ((config as Record<string, unknown>).example !== undefined) {
-            contentEntry.example = this.wrapResponseExample(
-              Number(code),
-              (config as Record<string, unknown>).example,
-            );
-          }
-
-          // 多个示例
-          if ((config as Record<string, unknown>).examples) {
-            const examples = (config as Record<string, unknown>)
-              .examples as Record<
-              string,
-              { summary?: string; description?: string; value: unknown }
-            >;
-            contentEntry.examples = {};
-            for (const [name, ex] of Object.entries(examples)) {
-              contentEntry.examples![name] = {
-                summary: ex.summary,
-                description: ex.description,
-                value: this.wrapResponseExample(Number(code), ex.value),
-              };
-            }
-          }
-        }
-
-        // 响应头
-        if ((config as Record<string, unknown>).headers) {
-          responseObj.headers = (config as Record<string, unknown>)
-            .headers as OpenAPIResponse["headers"];
-        }
-
-        operation.responses[code] = responseObj;
+      if (contract.runtime && config?.schema !== undefined) {
+        throw new Error(
+          `[vextjs] Response selector ${contract.selector} declares schema in both RouteOptions.responses and docs.responses.`,
+        );
       }
+
+      const contentType = config?.contentType ?? "application/json";
+      if (
+        contract.runtime &&
+        contentType.toLowerCase() !== "application/json"
+      ) {
+        throw new Error(
+          `[vextjs] Runtime response selector ${contract.selector} only supports application/json, received ${JSON.stringify(contentType)}.`,
+        );
+      }
+
+      const definition = contract.runtime?.schema ?? config?.schema;
+      const runtimeHasNoBody =
+        contract.runtime !== undefined &&
+        (method.toUpperCase() === "HEAD" || contract.selector === "204");
+      if (definition !== undefined && !runtimeHasNoBody) {
+        const converted = contract.runtime
+          ? (resolveRouteResponseJsonSchema(
+              contract.runtime.schema,
+            ) as JsonSchema)
+          : this.converter.convertResponseSchema(
+              definition as Record<string, unknown> | string,
+            );
+        const wrappedSchema = contract.runtime
+          ? this.responseWrap
+            ? this.wrapRuntimeResponseSchema(contract.selector, converted)
+            : converted
+          : this.wrapResponseSchema(Number(code), converted);
+
+        responseObj.content = {
+          [contentType]: {
+            schema: wrappedSchema,
+          },
+        };
+        const contentEntry = responseObj.content[contentType]!;
+        const wrapExample = (example: unknown): unknown =>
+          contract.runtime
+            ? this.responseWrap
+              ? this.wrapRuntimeResponseExample(example)
+              : example
+            : this.wrapResponseExample(Number(code), example);
+
+        if (config?.example !== undefined) {
+          contentEntry.example = wrapExample(config.example);
+        }
+        if (config?.examples) {
+          contentEntry.examples = {};
+          for (const [name, example] of Object.entries(config.examples)) {
+            contentEntry.examples[name] = {
+              summary: example.summary,
+              description: example.description,
+              value: wrapExample(example.value),
+            };
+          }
+        }
+      }
+
+      if (config?.headers) {
+        responseObj.headers = config.headers as OpenAPIResponse["headers"];
+      }
+      operation.responses[code] = responseObj;
     }
 
     // ── 默认响应（未声明 docs.responses 时） ─────────────────
@@ -756,6 +780,27 @@ export class OpenAPIGenerator {
     return dataSchema;
   }
 
+  /** Runtime schemas describe res.json() business data for every body status. */
+  private wrapRuntimeResponseSchema(
+    selector: string,
+    dataSchema: JsonSchema,
+  ): JsonSchema {
+    if (selector === "204") return {};
+    return {
+      type: "object",
+      properties: {
+        code: { type: "integer", example: 0 },
+        data: dataSchema,
+        requestId: {
+          type: "string",
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        },
+      },
+      required: ["code", "data", "requestId"],
+      additionalProperties: false,
+    };
+  }
+
   /**
    * 包装响应示例为 vext 标准格式
    *
@@ -775,6 +820,14 @@ export class OpenAPIGenerator {
       };
     }
     return example;
+  }
+
+  private wrapRuntimeResponseExample(example: unknown): unknown {
+    return {
+      code: 0,
+      data: example,
+      requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    };
   }
 
   /**

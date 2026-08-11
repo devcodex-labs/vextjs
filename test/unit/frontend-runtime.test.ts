@@ -591,10 +591,50 @@ describe("frontend client contract", () => {
       ],
     });
     expect(contract.warnings).toContain(
-      "POST /users/:id (src/routes/users.ts; route_create_user):204 is missing docs.responses.204.schema; emitted unknown.",
+      "POST /users/:id (src/routes/users.ts; route_create_user):204 has no runtime or documented response schema; emitted unknown.",
     );
     expect(contract.routeManifestDigest).toHaveLength(64);
     expect(contract.digest).toHaveLength(64);
+  });
+
+  it("selects a runtime 2xx family response as the generated success type", () => {
+    const digest = "d".repeat(64);
+    const contract = buildClientContract({
+      routes: [
+        {
+          method: "GET",
+          path: "/users",
+          operationId: "getUsers",
+          schema: {
+            schemaVersion: 1,
+            request: {},
+            responses: [
+              {
+                status: "2xx",
+                contentType: "application/json",
+                schema: {
+                  schemaVersion: 1,
+                  kind: "vext-schema-ir",
+                  source: "responses",
+                  sourcePath: "responses.2xx.schema",
+                  digest,
+                  schema: {
+                    type: "object",
+                    properties: { id: { type: "integer" } },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(contract.routes[0]?.response).toMatchObject({
+      type: "schema",
+      schema: { digest },
+    });
+    expect(contract.warnings).toEqual([]);
   });
 
   it("keeps HTML frontend routes out of API response-schema warnings", () => {

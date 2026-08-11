@@ -438,38 +438,41 @@ export async function bootstrap(
     //
     const openapiStartedAt = performance.now();
     if (openapiEnabled && collector) {
-      const generator = new OpenAPIGenerator({
-        title: openapiConfig?.title,
-        description: openapiConfig?.description,
-        version: openapiConfig?.version,
-        servers: (openapiConfig as Record<string, unknown>)?.servers as
-          | Array<{ url: string; description?: string }>
-          | undefined,
-        tags: (openapiConfig as Record<string, unknown>)?.tags as
-          | Array<{ name: string; description?: string }>
-          | undefined,
-        tagGroups: (openapiConfig as Record<string, unknown>)?.tagGroups as
-          | Array<{ name: string; tags: string[] }>
-          | undefined,
-        securitySchemes: (openapiConfig as Record<string, unknown>)
-          ?.securitySchemes as Record<
-          string,
-          {
-            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-            scheme?: string;
-            bearerFormat?: string;
-            description?: string;
-          }
-        >,
-        guardSecurityMap: (openapiConfig as Record<string, unknown>)
-          ?.guardSecurityMap as Record<string, string> | undefined,
-        contact: (openapiConfig as Record<string, unknown>)?.contact as
-          | { name?: string; email?: string; url?: string }
-          | undefined,
-        license: (openapiConfig as Record<string, unknown>)?.license as
-          | { name: string; url?: string }
-          | undefined,
-      });
+      const generator = new OpenAPIGenerator(
+        {
+          title: openapiConfig?.title,
+          description: openapiConfig?.description,
+          version: openapiConfig?.version,
+          servers: (openapiConfig as Record<string, unknown>)?.servers as
+            | Array<{ url: string; description?: string }>
+            | undefined,
+          tags: (openapiConfig as Record<string, unknown>)?.tags as
+            | Array<{ name: string; description?: string }>
+            | undefined,
+          tagGroups: (openapiConfig as Record<string, unknown>)?.tagGroups as
+            | Array<{ name: string; tags: string[] }>
+            | undefined,
+          securitySchemes: (openapiConfig as Record<string, unknown>)
+            ?.securitySchemes as Record<
+            string,
+            {
+              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+              scheme?: string;
+              bearerFormat?: string;
+              description?: string;
+            }
+          >,
+          guardSecurityMap: (openapiConfig as Record<string, unknown>)
+            ?.guardSecurityMap as Record<string, string> | undefined,
+          contact: (openapiConfig as Record<string, unknown>)?.contact as
+            | { name?: string; email?: string; url?: string }
+            | undefined,
+          license: (openapiConfig as Record<string, unknown>)?.license as
+            | { name: string; url?: string }
+            | undefined,
+        },
+        { responseWrap: config.response?.wrap !== false },
+      );
 
       const routes = collector.getRoutes();
       const docsTagsWarning = createDeprecatedRouteDocsTagsWarning(routes);

@@ -527,36 +527,66 @@ docs: {
 }
 ```
 
-### `responses` — response definitions
+### `responses` — runtime response contracts and docs metadata
 
-Response document for custom routes. The key is the HTTP status code:
+Declare the JSON response shape in top-level `RouteOptions.responses`, beside
+`validate` and `docs`. This is the runtime source of truth: Vext uses it for
+wire serialization, OpenAPI, the route manifest, and generated frontend client
+types. Use `docs.responses` only for descriptions, examples, headers, and
+content type metadata.
 
 ```typescript
-docs: {
-  responses: {
-    200: {
-      description: 'Successfully returned user list',
-      schema: {
-        id: 'string',
-        name: 'string',
-        email: 'email',
-        role: 'admin|user',
+app.get(
+  "/users",
+  {
+    responses: {
+      200: {
+        schema: {
+          id: "string",
+          name: "string",
+          email: "email",
+          role: "admin|user",
+        },
+      },
+      "4xx": {
+        schema: { code: "integer!", message: "string!" },
       },
     },
-    401: {
-      description: 'Uncertified',
-    },
-    403: {
-      description: 'Insufficient permissions',
-    },
-    500: {
-      description: 'Server internal error',
+    docs: {
+      responses: {
+        200: { description: "Successfully returned the user list" },
+        401: { description: "Unauthenticated" },
+        403: { description: "Insufficient permissions" },
+        500: { description: "Internal server error" },
+      },
     },
   },
-}
+  handler,
+);
 ```
 
-Response `schema` uses the same DSL syntax as `validate`, automatically converted to JSON Schema.
+Runtime selectors may be exact status codes (`200`), status families (`2xx`),
+or `default`. After `response:before` finishes, Vext selects the final status in
+exact → family → default order. Each schema is compiled once when the route is
+registered with `fast-json-stringify`; request handling does not compile it
+again. Undeclared object fields are removed recursively, and missing required
+fields fail before response bytes are committed.
+
+The schema describes the business data passed to `res.json()`. When the normal
+Vext response envelope is enabled, Vext also compiles the surrounding
+`{ code, data, requestId }` shape. You may use schema-dsl field maps or a
+self-contained raw JSON Schema object. A standalone unresolved `$ref` cannot be
+compiled; include its `$defs` in the same schema.
+
+`docs.responses.<selector>.schema` remains supported for documentation-only
+compatibility. It uses `JSON.stringify` at runtime and does not project fields
+or provide the compiled-serialization performance path. Do not declare a
+schema in both locations for the same normalized selector; route registration
+fails instead of choosing one silently.
+
+HEAD routes and exact `204` contracts never compile or emit a body.
+`rawJson()`, `text()`, redirects, files/downloads, streams, and HTML/SSR
+`render()` responses intentionally bypass the JSON contract serializer.
 
 #### Response example
 
@@ -618,6 +648,10 @@ docs: {
   },
 }
 ```
+
+`contentType` is documentation metadata. Runtime compiled response schemas are
+JSON-only; use `text()`, file/download, stream, or another matching response
+method for non-JSON payloads.
 
 #### Response header
 

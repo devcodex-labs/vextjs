@@ -16,6 +16,11 @@ export type {
   // 请求 / 响应类型
   VextRequest,
   ParsedFile,
+  InferVextSchema,
+  InferVextValidation,
+  VextDefaultValidatedData,
+  VextValidatedData,
+  VextValidationLocation,
   VextResponse,
   VextPublicResponse,
   VextRenderErrorOptions,
@@ -97,6 +102,9 @@ export type {
   RouteOptions,
   RouteRecord,
   RouteDocsConfig,
+  VextResponseSchemaConfig,
+  VextResponseSchemaDefinition,
+  VextRouteResponsesConfig,
   VextMiddlewareRef,
 
   // 缓存类型
@@ -312,6 +320,7 @@ export type {
   MonSQLizeConnection,
   MonSQLizeDatabaseConfig,
   VextModelDefinition,
+  VextMonSQLizeOptions,
 } from "./lib/plugins/monsqlize/index.js";
 
 // 路由定义辅助函数

@@ -226,7 +226,7 @@ function buildResponseContracts(
         schema: toSchemaReference(response.schema),
       };
     }
-    const diagnostic = `${routeDescription}:${response.status} is missing ${`docs.responses.${response.status}.schema`}; emitted unknown.`;
+    const diagnostic = `${routeDescription}:${response.status} has no runtime or documented response schema; emitted unknown.`;
     if (warnOnUnknown) {
       warnings.push(diagnostic);
     }
@@ -245,12 +245,12 @@ function selectSuccessResponse(
   isFrontendDocument: boolean,
 ): VextClientSchemaReference {
   const success = responses.find((response) =>
-    /^2\d\d$/u.test(response.status),
+    /^2(?:\d\d|xx)$/iu.test(response.status),
   );
   if (success) return success.schema;
   const diagnostic = isFrontendDocument
     ? `${routeDescription} renders an HTML document; emitted unknown.`
-    : `${routeDescription} has no documented 2xx response schema; emitted unknown.`;
+    : `${routeDescription} has no runtime or documented 2xx response schema; emitted unknown.`;
   if (!isFrontendDocument) {
     warnings.push(diagnostic);
   }

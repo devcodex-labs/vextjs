@@ -180,12 +180,25 @@ export default defineRoutes((app) => {
   });
 
   app.get("/api/health", {
+    responses: {
+      "2XX": {
+        schema: {
+          type: "object",
+          properties: {
+            status: { type: "string" },
+            timestamp: { type: "number" },
+          },
+          required: ["status", "timestamp"],
+          additionalProperties: false,
+        },
+      },
+    },
     docs: {
       summary: "Health check",
       responses: {
-        200: {
+        "2xx": {
           contentType: "application/json",
-          schema: { status: "string", timestamp: "number" },
+          description: "Healthy",
         },
       },
     },
@@ -208,16 +221,19 @@ export default defineRoutes((app) => {
     expect(page?.docsKind).toBe("frontend-route");
     expect(api?.docsKind).toBe("backend-api");
     expect(api?.schema.responses[0]).toMatchObject({
-      status: "200",
+      status: "2xx",
       contentType: "application/json",
       schema: {
-        sourcePath: "docs.responses.200.schema",
+        source: "responses",
+        sourcePath: "responses.2xx.schema",
         schema: {
           type: "object",
           properties: {
             status: { type: "string" },
             timestamp: { type: "number" },
           },
+          required: ["status", "timestamp"],
+          additionalProperties: false,
         },
       },
     });
@@ -236,7 +252,10 @@ export default defineRoutes((app) => {
           docsKind: "backend-api",
           schema: expect.objectContaining({
             responses: expect.arrayContaining([
-              expect.objectContaining({ status: "200" }),
+              expect.objectContaining({
+                status: "2xx",
+                schema: expect.objectContaining({ source: "responses" }),
+              }),
             ]),
           }),
         }),

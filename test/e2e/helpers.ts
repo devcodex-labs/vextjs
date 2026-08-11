@@ -268,7 +268,7 @@ function makeRouteDefinition(routes, collector, factory) {
         const fullPath = normalizePath(prefix, route.path);
         const handlerMiddleware = async (req, res, _next) => { await route.handler(req, res); };
         const chain = [handlerMiddleware];
-        adapter.registerRoute(route.method, fullPath, chain);
+        adapter.registerRoute(route.method, fullPath, chain, route.options);
       }
     },
     _factory: factory,
@@ -286,6 +286,18 @@ const routes = [];
 const collector = createCollector(routes);
 
 function factory(app) {
+  app.hooks.on('response:before', ({ data }) => {
+    if (!data || typeof data !== 'object' || data.__compiledHook !== true) return;
+    return {
+      status: 202,
+      data: {
+        accepted: true,
+        nested: { visible: 'kept', hidden: 'removed' },
+        extra: 'removed',
+      },
+    };
+  });
+
   collector.get('/', {}, async (req, res) => {
     res.json({ message: 'hello vext', adapter: req.app.config.adapter });
   });
@@ -293,6 +305,37 @@ function factory(app) {
   collector.get('/echo-header', {}, async (req, res) => {
     const custom = req.headers['x-custom-header'] || '';
     res.json({ echo: custom, requestId: req.requestId });
+  });
+
+  collector.get('/compiled-response', {
+    responses: {
+      201: { schema: { created: 'boolean!' } },
+      '2xx': {
+        schema: {
+          accepted: 'boolean!',
+          nested: { visible: 'string!' },
+        },
+      },
+      default: { schema: { fallback: 'string!' } },
+    },
+  }, async (_req, res) => {
+    res.status(201).json({ __compiledHook: true, created: true });
+  });
+
+  collector.get('/compiled-raw', {
+    responses: { 200: { schema: { visible: 'string!' } } },
+  }, async (_req, res) => {
+    res.rawJson({ visible: 'kept', extra: 'raw-bypass' });
+  });
+
+  const sharedResponseOptions = {
+    responses: { 200: { schema: { visible: 'string!' } } },
+  };
+  collector.head('/compiled-shared-options', sharedResponseOptions, async (_req, res) => {
+    res.json({ visible: 'head', extra: 'must-not-be-sent' });
+  });
+  collector.get('/compiled-shared-options', sharedResponseOptions, async (_req, res) => {
+    res.json({ visible: 'get', extra: 'projected' });
   });
 }
 

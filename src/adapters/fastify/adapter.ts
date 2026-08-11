@@ -208,10 +208,10 @@ export function createFastifyAdapter(
     : undefined;
 
   const fastify: FastifyInstance = Fastify({
-      logger: options.logger ?? false,
-      pluginTimeout: options.pluginTimeout ?? 10000,
-      bodyLimit: defaultBodyLimit,
-      exposeHeadRoutes: true,
+    logger: options.logger ?? false,
+    pluginTimeout: options.pluginTimeout ?? 10000,
+    bodyLimit: defaultBodyLimit,
+    exposeHeadRoutes: true,
     ...(serverFactory ? { serverFactory } : {}),
     // Fastify v5 要求路由器选项通过 routerOptions 传递（FSTDEP022）
     // 直接传 ignoreTrailingSlash / caseSensitive 在 v5 仍可用但会触发 deprecation warning，
@@ -345,7 +345,13 @@ export function createFastifyAdapter(
 
           // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
           // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-          const res = createVextResponse(reply, () => req.requestId, req);
+          const res = createVextResponse(
+            reply,
+            () => req.requestId,
+            req,
+            routeOptions,
+            method,
+          );
           res._hooks = app.hooks;
 
           // 在 AsyncLocalStorage 请求上下文中执行整个中间件链

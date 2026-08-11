@@ -519,36 +519,62 @@ docs: {
 }
 ```
 
-### `responses` — 响应定义
+### `responses` — 运行时响应契约与文档元数据
 
-自定义路由的响应文档。key 为 HTTP 状态码：
+在与 `validate`、`docs` 同级的顶层 `RouteOptions.responses` 中声明 JSON
+响应结构。它是运行时单一真相源：Vext 同时用它驱动线上序列化、OpenAPI、
+路由 manifest 和前端生成客户端类型。`docs.responses` 只负责描述、示例、
+响应头和 content type 元数据。
 
 ```typescript
-docs: {
-  responses: {
-    200: {
-      description: '成功返回用户列表',
-      schema: {
-        id: 'string',
-        name: 'string',
-        email: 'email',
-        role: 'admin|user',
+app.get(
+  "/users",
+  {
+    responses: {
+      200: {
+        schema: {
+          id: "string",
+          name: "string",
+          email: "email",
+          role: "admin|user",
+        },
+      },
+      "4xx": {
+        schema: { code: "integer!", message: "string!" },
       },
     },
-    401: {
-      description: '未认证',
-    },
-    403: {
-      description: '权限不足',
-    },
-    500: {
-      description: '服务器内部错误',
+    docs: {
+      responses: {
+        200: { description: "成功返回用户列表" },
+        401: { description: "未认证" },
+        403: { description: "权限不足" },
+        500: { description: "服务器内部错误" },
+      },
     },
   },
-}
+  handler,
+);
 ```
 
-响应 `schema` 使用与 `validate` 相同的 DSL 语法，自动转换为 JSON Schema。
+运行时 selector 支持精确状态码（`200`）、状态族（`2xx`）和 `default`。
+`response:before` 完成后，Vext 按最终状态以“精确 → 状态族 → default”顺序
+选取 schema。每个 schema 在路由注册时由 `fast-json-stringify` 编译一次，
+请求链不会重复编译。未声明的对象字段会递归移除；缺失 required 字段会在
+提交响应字节前失败。
+
+schema 描述传给 `res.json()` 的业务数据。启用 Vext 标准响应包裹时，框架
+还会编译外层 `{ code, data, requestId }`。可以使用 schema-dsl 字段映射，
+也可以使用自包含 raw JSON Schema。无法独立解析的 `$ref` 不能编译；请把
+对应 `$defs` 放在同一个 schema 中。
+
+`docs.responses.<selector>.schema` 仍作为仅文档兼容入口保留，但运行时走
+`JSON.stringify`，不会投影字段，也不具备编译序列化性能路径。同一个规范化
+selector 不得在两处重复声明 schema；框架会在路由注册阶段报错，而不是静默
+选择其中一个。
+
+HEAD 路由与精确 `204` 契约不会编译或发送响应体。`rawJson()`、`text()`、
+redirect、file/download、stream 以及 HTML/SSR `render()` 都会有意绕过 JSON
+契约序列化器。
 
 #### 响应示例
 
@@ -610,6 +636,9 @@ docs: {
   },
 }
 ```
+
+`contentType` 是文档元数据。运行时编译响应 schema 仅支持 JSON；非 JSON
+载荷应使用 `text()`、file/download、stream 或其他匹配的响应方法。
 
 #### 响应头
 

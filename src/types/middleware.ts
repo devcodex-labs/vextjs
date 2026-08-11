@@ -1,5 +1,9 @@
 import type { VextRequest } from "./request.js";
 import type { VextResponse } from "./response.js";
+import type {
+  VextDefaultValidatedData,
+  VextValidatedData,
+} from "./validation.js";
 
 /**
  * 标准中间件函数
@@ -53,10 +57,9 @@ export type VextErrorMiddleware = (
  *   res.json(users)
  * }
  */
-export type VextHandler = (
-  req: VextRequest,
-  res: VextResponse,
-) => Promise<void> | void;
+export type VextHandler<
+  TValidated extends VextValidatedData = VextDefaultValidatedData,
+> = (req: VextRequest<TValidated>, res: VextResponse) => Promise<void> | void;
 
 /**
  * Symbol 标记，用于 defineMiddleware/defineMiddlewareFactory 标识

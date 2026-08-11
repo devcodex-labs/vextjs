@@ -20,6 +20,7 @@ import { buildRouteAuthGuardMiddleware } from "./auth.js";
 import { createRouteMultipartMiddleware } from "./middlewares/body-parser.js";
 import { createRouteTimeoutMiddleware } from "./middlewares/route-timeout.js";
 import { waitForResponseSend } from "./response-hooks.js";
+import { prepareRouteResponseSerializers } from "./response-serializer.js";
 import type { RouteMetadataCollector } from "./openapi/collector.js";
 import { pathToFileURL } from "node:url";
 import type { VextInternalHooks, VextRouteHookInfo } from "../types/hooks.js";
@@ -321,10 +322,16 @@ function prepareRouteDefinitionRegistrations(
   for (const [index, route] of routeDef.routes.entries()) {
     // ── 1. 拼接完整路径 ──────────────────────────────────
     const fullPath = normalizePath(prefix, route.path);
+    const routeOptions = route.options ?? {};
+    prepareRouteResponseSerializers(routeOptions, {
+      method: route.method,
+      path: fullPath,
+      sourceFile: routeDef.sourceFile,
+    });
     const routeInfo: VextRouteHookInfo = {
       method: route.method.toUpperCase(),
       path: fullPath,
-      options: route.options ?? {},
+      options: routeOptions,
       sourceFile: routeDef.sourceFile,
     };
 
@@ -534,7 +541,7 @@ function prepareRouteDefinitionRegistrations(
       method: route.method,
       path: fullPath,
       chain,
-      routeOptions: route.options ?? {},
+      routeOptions,
       sourceFile: routeDef.sourceFile,
       handler: route.handler,
       order: index,

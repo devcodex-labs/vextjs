@@ -80,6 +80,8 @@ interface RouteStore {
   routeBodyParser?: VextBodyParserConfig;
   /** 原始路由 options，供全局中间件读取 route-level override */
   routeOptions: RouteOptions;
+  /** Normalized HTTP method used by the registration-time serializer cache. */
+  routeMethod: string;
 }
 
 /**
@@ -329,7 +331,13 @@ export function createNativeAdapter(
     }
     // F-01：注入路由模板（如 /users/:id），解决 Prometheus 高基数问题
     req.route = routePath || store.routePath;
-    const res = createVextResponse(nodeRes, req, req);
+    const res = createVextResponse(
+      nodeRes,
+      req,
+      req,
+      store.routeOptions,
+      store.routeMethod,
+    );
     res._hooks = app.hooks;
 
     // ── 预组装中间件链（首次请求时构建，后续复用）──────────
@@ -636,6 +644,7 @@ export function createNativeAdapter(
         routePath, // F-01：路由模板，供 onRouteMatch 赋值到 req.route
         routeBodyParser,
         routeOptions,
+        routeMethod,
       };
       const storeId = routeStores.length;
       routeStores.push(store);

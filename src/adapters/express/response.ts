@@ -1,5 +1,6 @@
 import type { Response as ExpressResponse } from "express";
 import type { VextResponse } from "../../types/response.js";
+import type { RouteOptions } from "../../types/app.js";
 import type { VextHeaderValue, VextHeaders } from "../../types/headers.js";
 import {
   beginResponseSend,
@@ -23,6 +24,10 @@ import {
 } from "../../lib/response-render-placeholder.js";
 import { buildAttachmentContentDisposition } from "../../lib/content-disposition.js";
 import { prepareRedirect } from "../../lib/redirect.js";
+import {
+  getPreparedRouteResponseSerializers,
+  stringifyRouteResponse,
+} from "../../lib/response-serializer.js";
 
 /**
  * Express Response → VextResponse 转换
@@ -81,6 +86,8 @@ export function createVextResponse(
   expressRes: ExpressResponse,
   getRequestId: () => string,
   closeToken?: object,
+  routeOptions?: RouteOptions,
+  routeMethod?: string,
 ): VextResponse {
   /** 当前 HTTP 状态码（默认 200，可通过 status() 修改） */
   let _status = 200;
@@ -103,6 +110,10 @@ export function createVextResponse(
   };
   let _pending: PendingFlush | null = null;
   let _flushed = false;
+  const _responseSerializers = getPreparedRouteResponseSerializers(
+    routeOptions,
+    routeMethod,
+  );
 
   /**
    * 将累积的响应头设置到 Express Response 上
@@ -186,6 +197,24 @@ export function createVextResponse(
     }
   }
 
+  function stringifyRouteJson(
+    data: unknown,
+    status: number,
+    wrapped: boolean,
+  ): string {
+    try {
+      return stringifyRouteResponse(
+        _responseSerializers,
+        status,
+        data,
+        wrapped,
+      );
+    } catch (error) {
+      _sent = false;
+      throw error;
+    }
+  }
+
   const res: VextResponse & { _closeToken?: object } = {
     /**
      * 返回 JSON 响应
@@ -238,11 +267,15 @@ export function createVextResponse(
           return;
         }
 
-        const body = stringifyJson({
-          code: 0,
-          data,
-          requestId: getRequestId(),
-        });
+        const body = stringifyRouteJson(
+          {
+            code: 0,
+            data,
+            requestId: getRequestId(),
+          },
+          finalStatus,
+          true,
+        );
         queuePending({
           status: finalStatus,
           body,
@@ -264,7 +297,7 @@ export function createVextResponse(
 
       queuePending({
         status: finalStatus,
-        body: stringifyJson(data),
+        body: stringifyRouteJson(data, finalStatus, false),
         defaultContentType: "application/json; charset=utf-8",
         sendState,
       });

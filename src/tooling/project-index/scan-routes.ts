@@ -13,6 +13,11 @@ import {
   createDigest,
   createRouteFreshnessIdentity,
 } from "../../frontend/contract/schema-ir.js";
+import {
+  normalizeDocumentedResponseSelector,
+  normalizeRuntimeResponseSelector,
+  resolveRouteResponseJsonSchema,
+} from "../../lib/response-serializer.js";
 import type {
   VextRouteFreshnessIdentity,
   VextRouteResponseSchemaV1,
@@ -35,6 +40,7 @@ const schemaConverter = new SchemaConverter();
 interface StaticRouteResponseDefinition {
   status: string;
   contentType: string;
+  source: "responses" | "docs.responses";
   schema?: Record<string, unknown> | string;
 }
 
@@ -103,6 +109,10 @@ function scanRouteEntries(
       if (!routePath) continue;
 
       const docs = readRouteDocs(args[1]);
+      const responses = mergeRouteResponseDefinitions(
+        readRouteResponseDefinitions(args[1], "responses"),
+        docs.responses,
+      );
       const frontend = readRouteFrontend(args[1]);
       const handler = args.length >= 3 ? args[2] : args[1];
       const method = match[1]!.toUpperCase();
@@ -119,7 +129,7 @@ function scanRouteEntries(
         tags: docs.tags,
         hidden: docs.hidden,
         docsKind: detectRouteSourceDocsKind(handler),
-        schema: createRouteSchemaContract(docs.responses),
+        schema: createRouteSchemaContract(responses, method),
         freshness: createRouteFreshnessIdentity({ frontend }),
       });
     }
@@ -235,12 +245,13 @@ function readRouteDocs(optionsArg: string | undefined): {
     operationId,
     tags: readStringArrayProperty(docsObject, "tags"),
     hidden: readBooleanProperty(docsObject, "hidden"),
-    responses: readRouteResponseDefinitions(docsObject),
+    responses: readRouteResponseDefinitions(docsObject, "docs.responses"),
   };
 }
 
 function createRouteSchemaContract(
   responses: readonly StaticRouteResponseDefinition[],
+  method: string,
 ): VextRouteSchemaContractV1 {
   return {
     schemaVersion: 1,
@@ -248,7 +259,7 @@ function createRouteSchemaContract(
     responses: responses
       .map((response) => {
         const schema = response.schema
-          ? createStaticResponseSchema(response.status, response.schema)
+          ? createStaticResponseSchema(response, method)
           : undefined;
         return {
           status: response.status,
@@ -261,17 +272,26 @@ function createRouteSchemaContract(
 }
 
 function createStaticResponseSchema(
-  status: string,
-  responseSchema: Record<string, unknown> | string,
+  response: StaticRouteResponseDefinition,
+  method: string,
 ): VextSchemaIRV1 | undefined {
   try {
-    const schema = schemaConverter.convertResponseSchema(responseSchema);
+    if (
+      response.source === "responses" &&
+      (method === "HEAD" || response.status === "204")
+    ) {
+      return undefined;
+    }
+    const schema =
+      response.source === "responses"
+        ? resolveRouteResponseJsonSchema(response.schema!)
+        : schemaConverter.convertResponseSchema(response.schema!);
     const ref = typeof schema.$ref === "string" ? schema.$ref : undefined;
     return {
       schemaVersion: 1,
       kind: "vext-schema-ir",
-      source: "docs.responses",
-      sourcePath: `docs.responses.${status}.schema`,
+      source: response.source,
+      sourcePath: `${response.source}.${response.status}.schema`,
       schema,
       digest: createDigest(schema),
       ...(ref ? { ref } : {}),
@@ -284,16 +304,22 @@ function createStaticResponseSchema(
 }
 
 function readRouteResponseDefinitions(
-  docsObject: string,
+  containerObject: string | undefined,
+  source: "responses" | "docs.responses",
 ): StaticRouteResponseDefinition[] {
-  const responsesObject = readObjectProperty(docsObject, "responses");
+  if (!containerObject) return [];
+  const responsesObject = readObjectProperty(containerObject, "responses");
   if (!responsesObject) return [];
 
-  return readObjectEntries(responsesObject)
+  const definitions = readObjectEntries(responsesObject)
     .map(({ key, value }) => {
-      const status = readObjectEntryKey(key);
+      const rawStatus = readObjectEntryKey(key);
       const responseObject = value.trim();
-      if (!status || !responseObject.startsWith("{")) return null;
+      if (!rawStatus || !responseObject.startsWith("{")) return null;
+      const status =
+        source === "responses"
+          ? normalizeRuntimeResponseSelector(rawStatus)
+          : normalizeDocumentedResponseSelector(rawStatus);
 
       const contentType =
         readStringLiteral(
@@ -302,13 +328,56 @@ function readRouteResponseDefinitions(
       const schema = parseStaticResponseSchema(
         readObjectEntryValue(responseObject, "schema"),
       );
-      return { status, contentType, ...(schema ? { schema } : {}) };
+      return { status, contentType, source, ...(schema ? { schema } : {}) };
     })
     .filter(
       (response): response is StaticRouteResponseDefinition =>
         response !== null,
-    )
-    .sort((left, right) => compareResponseStatus(left.status, right.status));
+    );
+
+  const selectors = new Set<string>();
+  for (const definition of definitions) {
+    if (selectors.has(definition.status)) {
+      throw new Error(
+        `[vextjs] Duplicate ${source} selector after normalization: ${JSON.stringify(definition.status)}.`,
+      );
+    }
+    selectors.add(definition.status);
+  }
+
+  return definitions.sort((left, right) =>
+    compareResponseStatus(left.status, right.status),
+  );
+}
+
+function mergeRouteResponseDefinitions(
+  runtimeResponses: readonly StaticRouteResponseDefinition[],
+  documentedResponses: readonly StaticRouteResponseDefinition[],
+): StaticRouteResponseDefinition[] {
+  const merged = new Map(
+    runtimeResponses.map((response) => [response.status, response] as const),
+  );
+
+  for (const documented of documentedResponses) {
+    const runtime = merged.get(documented.status);
+    if (!runtime) {
+      merged.set(documented.status, documented);
+      continue;
+    }
+    if (documented.schema !== undefined) {
+      throw new Error(
+        `[vextjs] Route response selector ${documented.status} declares schema in both RouteOptions.responses and docs.responses.`,
+      );
+    }
+    merged.set(documented.status, {
+      ...runtime,
+      contentType: documented.contentType,
+    });
+  }
+
+  return [...merged.values()].sort((left, right) =>
+    compareResponseStatus(left.status, right.status),
+  );
 }
 
 function parseStaticResponseSchema(
@@ -326,6 +395,12 @@ function parseStaticSchemaValue(value: string | undefined): unknown {
   if (string !== null) return string;
 
   const trimmed = value.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(trimmed)) {
+    return Number(trimmed);
+  }
   if (trimmed.startsWith("{")) {
     return parseStaticSchemaObject(trimmed);
   }

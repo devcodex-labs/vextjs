@@ -286,17 +286,12 @@ app.get("/health", async (req, res) => {
 **Best Practice**: Always ensure that the `location` of `req.valid(location)` is consistent with the location declared in `validate`.
 ::::
 
-### Generic type hints
+### Automatic route-schema inference
 
-You can use generics to get more precise IDE type hints:
+The handler is contextually typed from the same `validate` object used at
+runtime. You do not need to duplicate that contract as a TypeScript interface:
 
 ```typescript
-interface CreateUserBody {
-  name: string;
-  email: string;
-  age?: number;
-}
-
 app.post(
   "/users",
   {
@@ -309,14 +304,22 @@ app.post(
     },
   },
   async (req, res) => {
-    const data = req.valid<CreateUserBody>("body");
-    // data.name — which the IDE knows is a string
-    // data.email — the IDE knows it is a string
-    // data.age — the IDE knows that number | undefined
+    const data = req.valid("body");
+    // data.name  — string
+    // data.email — string
+    // data.age   — number | undefined
     res.json(await app.services.user.create(data));
   },
 );
 ```
+
+Inference covers DSL strings, required/optional markers, nested objects, and
+single-item array schemas. A chainable `schemaAdapter.compileField()` builder
+is intentionally inferred as `unknown`, because later builder mutations are
+not visible in its static type. The explicit form
+`req.valid<ExternalBody>("body")` remains available as an escape hatch for
+dynamic or externally supplied schemas; it overrides inference and therefore
+must match the runtime contract maintained by the application.
 
 ## Verification error response
 

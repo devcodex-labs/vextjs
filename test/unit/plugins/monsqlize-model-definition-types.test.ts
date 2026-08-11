@@ -12,7 +12,7 @@ const compilerOptions: ts.CompilerOptions = {
   esModuleInterop: true,
   allowSyntheticDefaultImports: true,
   noUncheckedIndexedAccess: true,
-  exactOptionalPropertyTypes: false,
+  exactOptionalPropertyTypes: true,
   types: ["node"],
 };
 
@@ -43,13 +43,17 @@ function compileTypeProbe(source: string): readonly ts.Diagnostic[] {
   };
 
   const program = ts.createProgram([fileName], compilerOptions, host);
-  return ts
-    .getPreEmitDiagnostics(program)
-    .filter(
-      (diagnostic) =>
-        diagnostic.file &&
-        path.normalize(diagnostic.file.fileName) === normalizedFileName,
+  return ts.getPreEmitDiagnostics(program).filter((diagnostic) => {
+    if (!diagnostic.file) return false;
+    const diagnosticFileName = path.normalize(diagnostic.file.fileName);
+    return (
+      diagnosticFileName === normalizedFileName ||
+      (diagnostic.code === 2430 &&
+        diagnosticFileName.endsWith(
+          path.normalize("src/lib/plugins/monsqlize/types.ts"),
+        ))
     );
+  });
 }
 
 function formatDiagnostic(diagnostic: ts.Diagnostic): string {
@@ -177,6 +181,120 @@ const invalidRedisCache = {
 void docStyleRedisCache;
 void legacyRedisCache;
 void invalidRedisCache;
+`);
+
+    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
+  });
+
+  it("exposes controlled 3.2.0 options and preserves the raw-instance capability boundary", () => {
+    const diagnostics = compileTypeProbe(`
+import type {
+  MonSQLizeDatabaseConfig,
+  VextApp,
+  VextMonSQLizeOptions,
+} from "../../../src/index.js";
+
+const controlledOptions = {
+  schemaDsl: { enabled: false },
+  poolFallback: { enabled: true, fallbackStrategy: "primary" },
+  maxPoolsCount: 8,
+  sync: { enabled: false, targets: [] },
+  transaction: { enableRetry: true, maxRetries: 2 },
+  findMaxLimit: 2_000,
+  findMaxSkip: 20_000,
+  requireCursorSecret: true,
+  cursorSecretWarning: "always",
+  cursorTypes: { createdAt: "date" },
+  cursorValueNormalizer: (_field: string, value: unknown) => value,
+  log: { slowQueryTag: { event: "db.slow", code: "DB_SLOW" } },
+  countQueue: { enabled: true, concurrency: 2 },
+  autoIndex: { enabled: true, emitEvents: false },
+  cacheAutoInvalidate: true,
+  writePathPolicy: { default: "model-only" },
+} satisfies VextMonSQLizeOptions;
+
+const database = {
+  config: { uri: "mongodb://localhost:27017/myapp" },
+  monsqlizeOptions: controlledOptions,
+} satisfies MonSQLizeDatabaseConfig;
+
+const protectedOptions = {
+  // @ts-expect-error Vext owns the database type.
+  type: "mongodb",
+  // @ts-expect-error Vext owns databaseName resolution.
+  databaseName: "other",
+  // @ts-expect-error Vext owns the database alias.
+  database: "other",
+  // @ts-expect-error Vext owns the connection config.
+  config: { uri: "mongodb://other" },
+  // @ts-expect-error Vext owns cache construction.
+  cache: {},
+  // @ts-expect-error Vext owns the logger bridge.
+  logger: null,
+  // @ts-expect-error Vext owns pool normalization.
+  pools: [],
+  // @ts-expect-error Vext owns the pool strategy.
+  poolStrategy: "auto",
+  // @ts-expect-error Use database.maxTimeMS.
+  maxTimeMS: 100,
+  // @ts-expect-error Use database.findLimit.
+  findLimit: 10,
+  // @ts-expect-error Use database.findPageMaxLimit.
+  findPageMaxLimit: 100,
+  // @ts-expect-error Use database.slowQueryMs.
+  slowQueryMs: 100,
+  // @ts-expect-error Use database.slowQueryLog.
+  slowQueryLog: {},
+  // @ts-expect-error Use database.autoConvertObjectId.
+  autoConvertObjectId: false,
+  // @ts-expect-error Use database.namespace.
+  namespace: { scope: "database" },
+  // @ts-expect-error Use database.cursorSecret.
+  cursorSecret: "secret",
+  // @ts-expect-error Vext owns model loading.
+  models: "./models",
+} satisfies VextMonSQLizeOptions;
+
+const unknownOptions = {
+  // @ts-expect-error Unknown upstream keys are not accepted implicitly.
+  futureTypo: true,
+} satisfies VextMonSQLizeOptions;
+
+declare const app: VextApp;
+
+app.monsqlize?.collection<{ embedding: number[] }>("items").vectorSearch({
+  index: "items_embedding",
+  path: "embedding",
+  queryVector: [0.1, 0.2],
+  limit: 5,
+  numCandidates: 50,
+});
+app.monsqlize?.model<{ embedding: number[] }>("Item").vectorSearch({
+  index: "items_embedding",
+  path: "embedding",
+  queryVector: [0.1, 0.2],
+  limit: 5,
+  exact: true,
+});
+app.monsqlize?.model("Item").checkRelationUsage({ _id: "item-1" });
+app.monsqlize?.model("Item").deleteOneWithRelations({ _id: "item-1" });
+app.monsqlize?.model("Item").forceDeleteWithRelations({ _id: "item-1" });
+app.monsqlize?.withTransaction(async () => "ok");
+
+app.db?.collection("items").vectorSearch({
+  index: "items_embedding",
+  path: "embedding",
+  queryVector: [0.1, 0.2],
+  limit: 5,
+  exact: true,
+});
+app.db?.model("Item").deleteOneWithRelations({ _id: "item-1" });
+// @ts-expect-error app.db remains a stable facade; use app.monsqlize for transactions.
+app.db?.withTransaction(async () => "nope");
+
+void database;
+void protectedOptions;
+void unknownOptions;
 `);
 
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);

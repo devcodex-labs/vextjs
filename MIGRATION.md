@@ -3,6 +3,12 @@
 This guide describes the migration required by stable `schema-dsl@3.0.0` and
 `monsqlize@3.1.0` when upgrading to `vextjs@1.0.0`.
 
+> The current unreleased source line pins `schema-dsl@3.0.4` and
+> `monsqlize@3.2.0`. That backward-compatible dependency update does not alter
+> the original v1 migration order below. It adds the optional
+> `database.monsqlizeOptions` controlled escape hatch; existing first-class
+> `database.*` configuration remains valid.
+
 ## Upgrade order
 
 The release order is fixed because vextjs consumes both packages directly:

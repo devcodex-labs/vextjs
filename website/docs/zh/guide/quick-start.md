@@ -217,7 +217,7 @@ npm start
 
 前端页面放在 `src/frontend/pages/**`。浏览器入口、页面 registry、layout registry 和 HTML 注入代码由 Vext 自动生成；手动项目至少需要创建 `src/frontend/pages/index.tsx`、`src/frontend/pages/_document.html` 与 `src/frontend/styles/index.css`，也可以直接从默认 `vext create` 模板开始。
 
-默认全栈模板会展示 SSR Vext runtime launchpad，并明确呈现「路由 → 服务 → SSR → 浏览器运行时」链路；顶部导航同时提供官方 Vext Guide 和生成项目的本地 API 文档 `/docs`，次要行动按钮打开 Vext Guide。模板默认启用 `openapi.enabled: true`，因此本地文档入口在开发与生产模式都可用。模板只包含真实 starter 源码：不会生成根目录 README 或占位 README 文件。AppShell 使用透明的 `public/vext-mark.svg`，`public/favicon.svg` 是采用相同 V 几何的高对比 favicon 变体。只有在添加对应源码时，才创建可选约定目录。
+默认全栈模板会展示 SSR Vext runtime launchpad，并明确呈现「路由 → 服务 → SSR → 浏览器运行时」链路；顶部导航同时提供官方 Vext Guide 和生成项目的本地 API 文档 `/docs`，次要行动按钮打开 Vext Guide。模板默认启用 `openapi.enabled: true`，因此本地文档入口在开发与生产模式都可用。模板只包含真实 starter 源码：不会生成根目录 README 或占位 README 文件。TypeScript、JavaScript 的全栈与 API-only 模板所生成的用户源码均以英文为默认语言，显式 locale 资源是唯一语言内容例外。AppShell 使用透明的 `public/vext-mark.svg`，`public/favicon.svg` 是采用相同 V 几何的高对比 favicon 变体。只有在添加对应源码时，才创建可选约定目录。
 
 ## 项目结构
 

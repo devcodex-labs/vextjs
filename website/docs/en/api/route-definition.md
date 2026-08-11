@@ -171,6 +171,10 @@ interface RouteOptions {
     header?: Record<string, VextSchemaField>;
     cookie?: Record<string, VextSchemaField>;
   };
+  responses?: Record<
+    string | number,
+    { schema: Record<string, unknown> | string }
+  >;
   cache?: false | number | RouteCacheOptions;
   frontend?: VextRouteFrontendOptions;
   middlewares?: VextMiddlewareRef[];
@@ -250,6 +254,10 @@ app.put(
         email: "email",
         age: "number:0-200?",
       },
+    },
+    responses: {
+      200: { schema: { id: "string!", name: "string!", email: "email!" } },
+      404: { schema: { code: "integer!", message: "string!" } },
     },
     cache: false,
     docs: {
@@ -364,7 +372,7 @@ app.post(
   "/users",
   {
     validate: {
-      body: { name: "string:1-50", email: "email" },
+      body: { name: "string:1-50!", email: "email!" },
       query: { notify: "boolean?" },
     },
   },
@@ -376,18 +384,17 @@ app.post(
 );
 ```
 
-More precise type hints can be obtained via generics:
+The handler type is inferred from the route schema without a duplicate
+interface:
 
 ```typescript
-interface CreateUserBody {
-  name: string;
-  email: string;
-}
-
-const body = req.valid<CreateUserBody>("body");
+const body = req.valid("body");
 // body.name → IDE knows it is string
 // body.email → IDE knows it is string
 ```
+
+An explicit generic remains available only as an escape hatch for dynamic or
+external schemas and overrides the inferred contract.
 
 ### Verification failure response
 
@@ -664,6 +671,16 @@ app.post(
       },
     },
     middlewares: ["audit-log"],
+    responses: {
+      201: {
+        schema: {
+          id: "string",
+          name: "string",
+          email: "email",
+          createdAt: "date",
+        },
+      },
+    },
     docs: {
       summary: "Create user",
       description:
@@ -672,12 +689,6 @@ app.post(
       responses: {
         201: {
           description: "User created successfully",
-          schema: {
-            id: "string",
-            name: "string",
-            email: "email",
-            createdAt: "date",
-          },
           example: {
             id: "usr_abc123",
             name: "Alice",
@@ -771,11 +782,36 @@ app.get(
 );
 ```
 
-### Response definition
+### Runtime response schema
+
+```typescript
+interface RuntimeResponseConfig {
+  schema: Record<string, unknown> | string;
+}
+
+type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
+```
+
+Declare this map as top-level `RouteOptions.responses`. Selectors support an
+exact status (`201`), a family (`2xx`), or `default`; the final status after
+`response:before` chooses exact → family → default. Vext compiles each JSON
+schema once during route registration and reuses it across requests. The same
+closed schema is projected to OpenAPI, route manifests, static build indexing,
+and generated client types.
+
+Schemas describe the business data passed to `res.json()`, not a manually
+duplicated envelope. Undeclared properties are removed recursively. Missing
+required values fail before bytes are committed. HEAD, exact 204, raw JSON,
+text, redirect, file/download, stream, and render/SSR responses bypass this
+serializer. See [OpenAPI response contracts](/guide/openapi#responses--runtime-response-contracts-and-docs-metadata)
+for lifecycle and raw JSON Schema details.
+
+### Documented response metadata
 
 ```typescript
 interface ResponseConfig {
   description?: string;
+  /** Documentation-only compatibility; prefer RouteOptions.responses. */
   schema?: Record<string, unknown> | string;
   contentType?: string;
   example?: unknown;
@@ -796,6 +832,10 @@ interface ResponseConfig {
   >;
 }
 ```
+
+Keep descriptions, examples, headers, and content type in `docs.responses`.
+Do not repeat `schema` there when the same normalized selector already exists
+in top-level `responses`; registration fails on this dual declaration.
 
 **Multi-example response**:
 

@@ -4,13 +4,10 @@ VextJS 内置了 [MonSQLize](https://github.com/devcodex-labs/monSQLize) 数据�
 
 ## 快速开始
 
-### 1. 安装 MonSQLize
+### 1. 添加数据库配置
 
-```bash
-npm install monsqlize
-```
-
-### 2. 添加数据库配置
+VextJS 已将 `monsqlize@3.2.0` 固定为直接运行时依赖，Vext 应用不需要再安装
+第二份。添加 `config.database` 即可启用内置生命周期。
 
 ```typescript
 // src/config/default.ts
@@ -25,7 +22,7 @@ export default {
 };
 ```
 
-### 3. 在服务中使用
+### 2. 在服务中使用
 
 ```typescript
 // src/services/user.ts
@@ -157,6 +154,49 @@ export default {
 | `pools`               | `array`                       | —                       | 多连接池配置                                                       |
 | `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                                                     |
 | `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                                                   |
+| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                       | 受控的 MonSQLize 高级配置；连接与 Vext 生命周期相关字段仍受保护    |
+
+### 受控的 MonSQLize 高级配置
+
+应用需要上游构造能力、但不希望替换 Vext 所有的连接或生命周期配置时，使用
+`database.monsqlizeOptions`：
+
+```typescript
+import type { VextConfig } from "vextjs";
+
+export default {
+  database: {
+    config: { uri: "mongodb://localhost:27017/myapp" },
+    monsqlizeOptions: {
+      findMaxLimit: 2_000,
+      findMaxSkip: 20_000,
+      transaction: { enableRetry: true, maxRetries: 2 },
+      autoIndex: { enabled: true, emitEvents: true },
+      cacheAutoInvalidate: true,
+      writePathPolicy: { default: "model-only" },
+    },
+  },
+} satisfies VextConfig;
+```
+
+公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.2.0`
+`MonSQLizeOptions` 中取型；运行时使用同一 allowlist：
+
+- `schemaDsl`
+- `poolFallback`、`maxPoolsCount`
+- `sync`、`transaction`
+- `findMaxLimit`、`findMaxSkip`
+- `requireCursorSecret`、`cursorSecretWarning`、`cursorTypes`、
+  `cursorValueNormalizer`
+- `log`、`countQueue`、`autoIndex`、`cacheAutoInvalidate`、`writePathPolicy`
+
+Vext 会在调用 MonSQLize 构造函数前拒绝未知字段，以及这些由 Vext 管理的字段：
+`type`、`databaseName`、`database`、`config`、`cache`、`logger`、
+`pools`、`poolStrategy`、`maxTimeMS`、`findLimit`、
+`findPageMaxLimit`、`slowQueryMs`、`slowQueryLog`、
+`autoConvertObjectId`、`namespace`、`cursorSecret`、`models`。请继续通过
+一等 `database.*` 字段配置它们，以保持连接归一化、日志、Model 加载与关闭流程
+可预测。
 
 ### 缓存配置
 
@@ -355,21 +395,44 @@ try {
 
 ## app.monsqlize — 原始实例
 
-`app.monsqlize` 暴露原始 MonSQLize 实例，用于高级场景：
+`app.monsqlize` 与内置插件创建的原始 `MonSQLize` 实例是同一个对象，不是
+Vext 缩减包装，因此完整的上游实例 API 仍然可用。`app.db` 刻意保持为小型、稳定
+facade，但其 `collection()` 与 `model()` 返回上游 3.2.0 类型。
 
 ```typescript
-// 直接使用 MonSQLize API
 const monsqlize = app.monsqlize;
+if (!monsqlize) throw new Error("Database is not configured");
 
-// 事件监听
+// 实例级完整能力保留在 app.monsqlize。
+await monsqlize.withTransaction(async (transaction) => {
+  // ...
+});
 monsqlize.on("slow-query", (info) => {
   app.logger.warn({ ...info }, "Slow query detected");
 });
+
+// app.db 返回上游 Collection / Model 实例。
+const hits = await app.db?.collection("products").vectorSearch({
+  index: "product_embedding",
+  path: "embedding",
+  queryVector: embedding,
+  numCandidates: 100,
+  limit: 10,
+});
+
+const Product = app.db?.model("Product");
+const usage = await Product?.checkRelationUsage({ _id: productId });
+await Product?.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
-大多数场景下使用 `app.db` 即可。只有在需要 MonSQLize 底层 API 时才使用 `app.monsqlize`。
+普通 collection/model 路径使用 `app.db`；实例级事务、连接池、同步、事件、诊断与
+管理 API 使用 `app.monsqlize`。Vector Search 需要兼容的 MongoDB 部署和预先创建的
+索引。关系保护删除只覆盖已注册、已声明的关系；把结果视为完整证据前应检查 coverage。
 :::
+
+Vext 根包只导出 `VextMonSQLizeOptions` 等 Vext 自有集成类型，不镜像全部上游
+symbol。需要 MonSQLize 专属类或类型时，请直接从 `monsqlize` 导入。
 
 ## Model 定义
 

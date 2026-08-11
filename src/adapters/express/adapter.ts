@@ -377,7 +377,11 @@ export function createExpressAdapter(
                 (req.headers[headerName] as string) || crypto.randomUUID();
             }
 
-            const res = createVextResponse(expressRes, () => req.requestId, req);
+            const res = createVextResponse(
+              expressRes,
+              () => req.requestId,
+              req,
+            );
             res._hooks = app.hooks;
 
             errorHandler(err, req, res);
@@ -510,7 +514,13 @@ export function createExpressAdapter(
 
             // 延迟绑定 requestId：传入 getter 确保 json() 实际调用时才取值
             // 此时 requestId 必然已由 requestIdMiddleware 设置到 req.requestId
-            const res = createVextResponse(expressRes, () => req.requestId, req);
+            const res = createVextResponse(
+              expressRes,
+              () => req.requestId,
+              req,
+              routeOptions,
+              method,
+            );
             res._hooks = app.hooks;
 
             // 在 AsyncLocalStorage 请求上下文中执行整个中间件链

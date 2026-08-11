@@ -62,6 +62,7 @@ export interface KoaAdapterOptions {
  * 路由条目
  */
 interface RouteEntry {
+  method: string;
   pattern: string;
   chain: VextMiddleware[];
   fullChain: VextMiddleware[] | null;
@@ -306,7 +307,13 @@ export function createKoaAdapter(
           routeBodyParser;
       }
       req.route = entry.pattern;
-      const res = createVextResponse(ctx, () => req.requestId, req);
+      const res = createVextResponse(
+        ctx,
+        () => req.requestId,
+        req,
+        entry.routeOptions,
+        entry.method,
+      );
       res._hooks = vextApp.hooks;
 
       const runChain = async () => {
@@ -500,6 +507,7 @@ export function createKoaAdapter(
     ): void {
       const upperMethod = method.toUpperCase();
       const entry: RouteEntry = {
+        method: upperMethod,
         pattern: path,
         chain,
         fullChain: null,

@@ -768,6 +768,30 @@ export default {
 };
 ```
 
+### 数据库配置 (`database`)
+
+添加 `database` 会启用 Vext 内置的 `monsqlize@3.2.0` 生命周期：连接归一化、
+日志桥接、Model 加载、挂载 `app.db` / `app.monsqlize` 以及关闭清理。这些由
+Vext 管理的能力继续使用一等字段配置。`database.monsqlizeOptions` 是带类型且
+经过运行时校验的高级 allowlist 入口；受保护或未知字段会在上游构造函数运行前失败。
+
+```typescript
+export default {
+  database: {
+    config: { uri: "mongodb://localhost:27017/myapp" },
+    maxTimeMS: 2_000,
+    monsqlizeOptions: {
+      findMaxLimit: 2_000,
+      transaction: { enableRetry: true, maxRetries: 2 },
+      writePathPolicy: { default: "model-only" },
+    },
+  },
+};
+```
+
+完整 allowlist、所有权边界、原始实例 API、Vector Search 与关系保护删除前提见
+[数据库 (MonSQLize)](./database.md#受控的-monsqlize-高级配置)。
+
 ### 请求上下文配置 (`requestContext`)
 
 | 配置项                   | 类型      | 默认值 | 说明                                  |

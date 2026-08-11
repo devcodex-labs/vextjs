@@ -4,13 +4,11 @@ VextJS has a built-in [MonSQLize](https://github.com/devcodex-labs/monSQLize) da
 
 ## Quick Start
 
-### 1. Install MonSQLize
+### 1. Add database configuration
 
-```bash
-npm install monsqlize
-```
-
-### 2. Add database configuration
+VextJS pins `monsqlize@3.2.0` as a direct runtime dependency, so a Vext
+application does not need to install a second copy. Add `config.database` to
+activate the built-in lifecycle.
 
 ```typescript
 // src/config/default.ts
@@ -25,7 +23,7 @@ export default {
 };
 ```
 
-### 3. Use in service
+### 2. Use in service
 
 ```typescript
 // src/services/user.ts
@@ -157,6 +155,50 @@ export default {
 | `pools`               | `array`                       | —                        | Multiple connection pool configuration                                                                                          |
 | `poolStrategy`        | `string`                      | `'auto'`                 | Connection pool selection strategy                                                                                              |
 | `slowQueryLog`        | `object`                      | —                        | Slow query persistence configuration                                                                                            |
+| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                        | Controlled advanced MonSQLize options; connection and Vext lifecycle keys remain protected                                      |
+
+### Controlled advanced MonSQLize options
+
+Use `database.monsqlizeOptions` when an application needs an upstream
+constructor capability that does not replace a Vext-owned connection or
+lifecycle setting:
+
+```typescript
+import type { VextConfig } from "vextjs";
+
+export default {
+  database: {
+    config: { uri: "mongodb://localhost:27017/myapp" },
+    monsqlizeOptions: {
+      findMaxLimit: 2_000,
+      findMaxSkip: 20_000,
+      transaction: { enableRetry: true, maxRetries: 2 },
+      autoIndex: { enabled: true, emitEvents: true },
+      cacheAutoInvalidate: true,
+      writePathPolicy: { default: "model-only" },
+    },
+  },
+} satisfies VextConfig;
+```
+
+The public `VextMonSQLizeOptions` type is picked directly from the pinned
+`monsqlize@3.2.0` `MonSQLizeOptions`. The runtime uses the same allowlist:
+
+- `schemaDsl`
+- `poolFallback`, `maxPoolsCount`
+- `sync`, `transaction`
+- `findMaxLimit`, `findMaxSkip`
+- `requireCursorSecret`, `cursorSecretWarning`, `cursorTypes`,
+  `cursorValueNormalizer`
+- `log`, `countQueue`, `autoIndex`, `cacheAutoInvalidate`, `writePathPolicy`
+
+Vext rejects unknown keys and these Vext-owned keys before the MonSQLize
+constructor runs: `type`, `databaseName`, `database`, `config`, `cache`,
+`logger`, `pools`, `poolStrategy`, `maxTimeMS`, `findLimit`,
+`findPageMaxLimit`, `slowQueryMs`, `slowQueryLog`, `autoConvertObjectId`,
+`namespace`, `cursorSecret`, and `models`. Configure those through their
+first-class `database.*` fields so connection normalization, logging, model
+loading, and shutdown remain deterministic.
 
 ### Cache configuration
 
@@ -354,21 +396,48 @@ try {
 
 ## app.monsqlize — original instance
 
-`app.monsqlize` exposes a raw MonSQLize instance for advanced scenarios:
+`app.monsqlize` is the same raw `MonSQLize` instance created by the built-in
+plugin. It is not a reduced Vext wrapper, so the complete upstream instance API
+remains available. `app.db` intentionally stays a small stable facade, while
+its `collection()` and `model()` methods return the upstream 3.2.0 types.
 
 ```typescript
-// Use MonSQLize API directly
 const monsqlize = app.monsqlize;
+if (!monsqlize) throw new Error("Database is not configured");
 
-//Event listening
+// Full instance-only APIs stay on app.monsqlize.
+await monsqlize.withTransaction(async (transaction) => {
+  // ...
+});
 monsqlize.on("slow-query", (info) => {
   app.logger.warn({ ...info }, "Slow query detected");
 });
+
+// app.db returns upstream Collection / Model instances.
+const hits = await app.db?.collection("products").vectorSearch({
+  index: "product_embedding",
+  path: "embedding",
+  queryVector: embedding,
+  numCandidates: 100,
+  limit: 10,
+});
+
+const Product = app.db?.model("Product");
+const usage = await Product?.checkRelationUsage({ _id: productId });
+await Product?.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
-In most scenarios, just use `app.db`. Use `app.monsqlize` only if you need MonSQLize's underlying API.
+Use `app.db` for the common collection/model path and `app.monsqlize` for
+instance-wide transactions, pools, sync, events, diagnostics, and management
+APIs. Vector Search requires a compatible MongoDB deployment and a pre-created
+index. Relation-protected deletion only covers registered, declared relations;
+inspect the returned coverage before treating it as complete.
 :::
+
+Vext's root package exports Vext-owned integration types such as
+`VextMonSQLizeOptions`; it does not mirror every upstream symbol. Import
+MonSQLize-specific classes and types from `monsqlize` when you need them.
 
 ## Model definition
 

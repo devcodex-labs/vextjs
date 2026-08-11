@@ -608,44 +608,49 @@ export async function reloadRoutes(
 
     if (openapiEnabled) {
       const projectRoot = projectRootFromOutDir(outDir);
-      const generator = new OpenAPIGenerator({
-        title: (openapiCfg as Record<string, unknown>)?.title as
-          | string
-          | undefined,
-        description: (openapiCfg as Record<string, unknown>)?.description as
-          | string
-          | undefined,
-        version: (openapiCfg as Record<string, unknown>)?.version as
-          | string
-          | undefined,
-        servers: (openapiCfg as Record<string, unknown>)?.servers as
-          | Array<{ url: string; description?: string }>
-          | undefined,
-        tags: (openapiCfg as Record<string, unknown>)?.tags as
-          | Array<{ name: string; description?: string }>
-          | undefined,
-        securitySchemes: (openapiCfg as Record<string, unknown>)
-          ?.securitySchemes as Record<
-          string,
-          {
-            type: "http" | "apiKey" | "oauth2" | "openIdConnect";
-            scheme?: string;
-            bearerFormat?: string;
-            description?: string;
-          }
-        >,
-        guardSecurityMap: (openapiCfg as Record<string, unknown>)
-          ?.guardSecurityMap as Record<string, string> | undefined,
-        contact: (openapiCfg as Record<string, unknown>)?.contact as
-          | { name?: string; email?: string; url?: string }
-          | undefined,
-        license: (openapiCfg as Record<string, unknown>)?.license as
-          | { name: string; url?: string }
-          | undefined,
-        tagGroups: (openapiCfg as Record<string, unknown>)?.tagGroups as
-          | Array<{ name: string; tags: string[] }>
-          | undefined,
-      } as OpenAPIConfig);
+      const generator = new OpenAPIGenerator(
+        {
+          title: (openapiCfg as Record<string, unknown>)?.title as
+            | string
+            | undefined,
+          description: (openapiCfg as Record<string, unknown>)?.description as
+            | string
+            | undefined,
+          version: (openapiCfg as Record<string, unknown>)?.version as
+            | string
+            | undefined,
+          servers: (openapiCfg as Record<string, unknown>)?.servers as
+            | Array<{ url: string; description?: string }>
+            | undefined,
+          tags: (openapiCfg as Record<string, unknown>)?.tags as
+            | Array<{ name: string; description?: string }>
+            | undefined,
+          securitySchemes: (openapiCfg as Record<string, unknown>)
+            ?.securitySchemes as Record<
+            string,
+            {
+              type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+              scheme?: string;
+              bearerFormat?: string;
+              description?: string;
+            }
+          >,
+          guardSecurityMap: (openapiCfg as Record<string, unknown>)
+            ?.guardSecurityMap as Record<string, string> | undefined,
+          contact: (openapiCfg as Record<string, unknown>)?.contact as
+            | { name?: string; email?: string; url?: string }
+            | undefined,
+          license: (openapiCfg as Record<string, unknown>)?.license as
+            | { name: string; url?: string }
+            | undefined,
+          tagGroups: (openapiCfg as Record<string, unknown>)?.tagGroups as
+            | Array<{ name: string; tags: string[] }>
+            | undefined,
+        } as OpenAPIConfig,
+        {
+          responseWrap: (responseConfig as { wrap?: boolean }).wrap !== false,
+        },
+      );
 
       const docsTagsWarning = createDeprecatedRouteDocsTagsWarning(routes);
       if (docsTagsWarning) app.logger.warn(docsTagsWarning);
