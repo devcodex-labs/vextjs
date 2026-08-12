@@ -25,11 +25,13 @@
  *   STUB_HEARTBEAT_INTERVAL    — Worker 心跳间隔
  *   STUB_METRICS_INTERVAL      — Worker 指标上报间隔
  *   STUB_STARTUP_DELAY         — Worker 启动延迟
+ *   STUB_STARTUP_DELAY_AFTER_WORKER_ID — 只对编号更大的 Worker 应用启动延迟
  *   STUB_FAIL_ON_START         — Worker 启动失败
  *   STUB_STOP_HEARTBEAT        — Worker 停止心跳
  *   STUB_REQUEST_RESTART       — Worker 请求重启
  *   STUB_REQUEST_RESTART_DELAY — Worker 请求重启延迟
  *   STUB_EXIT_AFTER            — Worker 延迟崩溃
+ *   STUB_EXIT_AFTER_WORKER_ID  — 只让指定 Worker 编号延迟崩溃
  *   STUB_EXIT_CODE             — Worker 崩溃退出码
  *   STUB_SHUTDOWN_DELAY        — Worker 关闭延迟
  *

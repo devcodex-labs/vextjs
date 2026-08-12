@@ -643,6 +643,55 @@ describe("SoftReloader", () => {
       await reload1;
     });
 
+    it("运行态失败请求 cold restart 后应丢弃队列并停止后续 reload", async () => {
+      let releaseRouteReload!: () => void;
+      const routeReloadStarted = new Promise<void>((resolve) => {
+        releaseRouteReload = resolve;
+      });
+      vi.mocked(reloadRoutes).mockImplementation(async () => {
+        await routeReloadStarted;
+        throw new Error("route registration failed");
+      });
+
+      const compiler = createMockCompiler();
+      const reloader = new SoftReloader(
+        createDefaultOptions({ compiler: compiler as any }),
+      );
+      const originalSend = process.send;
+      process.send = undefined;
+
+      try {
+        const firstReload = reloader.reload([
+          { path: "src/routes/user.ts", type: "modify" },
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        const queuedResult = await reloader.reload([
+          { path: "src/services/auth.ts", type: "modify" },
+        ]);
+        expect(queuedResult.success).toBe(true);
+        expect(reloader.hasPendingChanges()).toBe(true);
+
+        releaseRouteReload();
+        const failedResult = await firstReload;
+        expect(failedResult.requestedColdRestart).toBe(true);
+        expect(reloader.hasPendingChanges()).toBe(false);
+        expect(compiler.compileFiles).toHaveBeenCalledTimes(1);
+
+        const laterResult = await reloader.reload([
+          { path: "src/routes/admin.ts", type: "modify" },
+        ]);
+        expect(laterResult).toMatchObject({
+          success: false,
+          requestedColdRestart: true,
+          error: "cold restart pending",
+        });
+        expect(compiler.compileFiles).toHaveBeenCalledTimes(1);
+      } finally {
+        process.send = originalSend;
+      }
+    });
+
     it("reload 完成后 isReloading 应恢复为 false", async () => {
       const options = createDefaultOptions();
       const reloader = new SoftReloader(options);
@@ -837,6 +886,7 @@ describe("SoftReloader", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("SyntaxError");
+      expect(result.requestedColdRestart).toBe(false);
       expect(hotHandler.swap).not.toHaveBeenCalled();
     });
 
@@ -878,6 +928,38 @@ describe("SoftReloader", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("route registration failed");
       expect(hotHandler.swap).not.toHaveBeenCalled();
+    });
+
+    it("缓存失效后失败时应请求 cold restart，避免保留部分运行态", async () => {
+      vi.mocked(reloadRoutes).mockRejectedValue(
+        new Error("route registration failed"),
+      );
+
+      const originalSend = process.send;
+      const send = vi.fn();
+      process.send = send as typeof process.send;
+
+      try {
+        const hotHandler = createMockHotHandler();
+        const options = createDefaultOptions({
+          hotHandler: hotHandler as any,
+        });
+
+        const reloader = new SoftReloader(options);
+        const result = await reloader.reload([
+          { path: "src/routes/admin.ts", type: "modify" },
+        ]);
+
+        expect(result.success).toBe(false);
+        expect(result.requestedColdRestart).toBe(true);
+        expect(hotHandler.swap).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledWith({
+          type: "request-cold-restart",
+          reason: "soft reload failed after runtime mutation",
+        });
+      } finally {
+        process.send = originalSend;
+      }
     });
 
     it("失败时应输出错误日志并提示保留旧版本", async () => {

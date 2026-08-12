@@ -44,7 +44,8 @@ import type { FileChangeInfo } from "./file-watcher.js";
  *   - 当前 reload 完成后自动处理队列
  *
  * 降级策略：
- *   - Soft Reload 任何步骤失败 → 不调用 swap()，旧 handler 继续服务
+ *   - 编译阶段失败 → 不调用 swap()，旧 handler 继续服务
+ *   - 缓存失效后的任一步失败 → 请求 Cold Restart，以新进程恢复一致运行态
  *   - 级联爆炸检测 → 通过 IPC 请求 Cold Restart
  *   - 编译错误 → 打印错误信息，等待用户修复后再次触发
  *
@@ -159,7 +160,7 @@ export interface SoftReloadResult {
   /** 是否成功 */
   success: boolean;
 
-  /** 是否请求了 Cold Restart（级联爆炸） */
+  /** 是否请求了 Cold Restart（级联爆炸或运行态可能已被修改后的失败） */
   requestedColdRestart: boolean;
 
   /** 总耗时（毫秒） */
@@ -283,6 +284,14 @@ export class SoftReloader {
   private pendingReload: FileChangeInfo[] | null = null;
 
   /**
+   * 缓存失效后已请求 Cold Restart。
+   *
+   * 当前进程的运行态可能已被部分修改，直到父进程 fork 新 Worker 前都
+   * 不允许再编译、驱逐缓存或交换 handler。
+   */
+  private coldRestartRequested = false;
+
+  /**
    * 累计成功 reload 次数
    */
   private successCount = 0;
@@ -327,6 +336,13 @@ export class SoftReloader {
    * @returns 最后一次 reload 的结果
    */
   async reload(changedFiles: FileChangeInfo[]): Promise<SoftReloadResult> {
+    if (this.coldRestartRequested) {
+      this.logger.debug(
+        "[hot-reload] cold restart pending, ignoring additional reload request.",
+      );
+      return this.createColdRestartPendingResult();
+    }
+
     // ── 并发保护：合并到待处理队列 ──────────────────────
     if (this.reloadLock) {
       if (this.pendingReload) {
@@ -365,6 +381,10 @@ export class SoftReloader {
 
     try {
       lastResult = await this.doSoftReload(changedFiles);
+      if (lastResult.requestedColdRestart) {
+        this.pendingReload = null;
+        return lastResult;
+      }
 
       // ── 处理待处理队列 ────────────────────────────────
       while (this.pendingReload !== null) {
@@ -374,6 +394,10 @@ export class SoftReloader {
           `[hot-reload] processing queued changes: ${next.length} file(s)`,
         );
         lastResult = await this.doSoftReload(next);
+        if (lastResult.requestedColdRestart) {
+          this.pendingReload = null;
+          return lastResult;
+        }
       }
 
       return lastResult;
@@ -410,6 +434,33 @@ export class SoftReloader {
     return this.pendingReload !== null;
   }
 
+  private createColdRestartPendingResult(): SoftReloadResult {
+    return {
+      success: false,
+      requestedColdRestart: true,
+      elapsed: 0,
+      compileTime: 0,
+      cacheTime: 0,
+      i18nTime: 0,
+      middlewareTime: 0,
+      serviceTime: 0,
+      modelTime: 0,
+      routeTime: 0,
+      swapTime: 0,
+      tier: "T1:code",
+      evictedModules: 0,
+      error: "cold restart pending",
+    };
+  }
+
+  private requestColdRestart(reason: string): void {
+    if (this.coldRestartRequested) return;
+
+    this.coldRestartRequested = true;
+    this.pendingReload = null;
+    process.send?.({ type: "request-cold-restart", reason });
+  }
+
   // ── 私有方法 ──────────────────────────────────────────────
 
   /**
@@ -443,6 +494,9 @@ export class SoftReloader {
     let modelEnd = startTime;
     let routeEnd = startTime;
     let swapEnd = startTime;
+    // 缓存失效之后，后续阶段可能已改动共享运行态（services/models/i18n/cache）。
+    // 此后失败不能只保留旧 handler，必须让父进程替换当前 Worker。
+    let requiresColdRestartOnFailure = false;
 
     const hasStructuralChange = changedFiles.some(
       (f) => f.type === "add" || f.type === "delete",
@@ -478,6 +532,9 @@ export class SoftReloader {
         this.compiler.resolveCompiled(f),
       );
 
+      // 从缓存失效开始即可能出现部分运行态变更；即使该操作自身抛错，
+      // 也必须走冷重启而不是继续复用旧 handler。
+      requiresColdRestartOnFailure = true;
       const cacheResult = invalidateAndEvict(compiledFiles, outDir);
 
       // 级联检测：失效集合 > 80% 缓存 → 降级 Cold Restart
@@ -486,10 +543,7 @@ export class SoftReloader {
           "[hot-reload] invalidation cascade too large " +
             `(${cacheResult.invalidated.size} modules), requesting cold restart`,
         );
-        process.send?.({
-          type: "request-cold-restart",
-          reason: "cascade too large",
-        });
+        this.requestColdRestart("cascade too large");
 
         this.failureCount++;
         const elapsed = performance.now() - startTime;
@@ -623,14 +677,10 @@ export class SoftReloader {
     } catch (err) {
       // ── 失败回退 ────────────────────────────────────────
       //
-      // Soft Reload 的任何步骤失败时：
-      //   1. 不调用 swap() — 旧 handler 通过闭包继续服务
-      //   2. 打印错误信息
-      //   3. 等待用户修复后再次触发
-      //
-      // 这是设计文档 11e §1 描述的"失败回退机制"：
-      //   "如果 soft reload 的任何步骤失败，不调用 swap()，
-      //    旧 handler 通过闭包继续服务。"
+      // 编译失败发生在任何运行态变更之前，保留旧 handler 即可。
+      // 缓存失效后的失败则可能已改动 services/models/i18n/cache；任意
+      // 用户 Service 的副作用都不能由框架可信地进程内回滚，因此请求
+      // Cold Restart 重新建立完整运行态。旧 handler 仅在父进程替换前短暂服务。
       //
 
       const elapsed = performance.now() - startTime;
@@ -643,15 +693,23 @@ export class SoftReloader {
       if (error.stack) {
         this.logger.error(error.stack);
       }
-      this.logger.error(
-        "[hot-reload] keeping previous version active. Fix the error and save again.",
-      );
+
+      if (requiresColdRestartOnFailure) {
+        this.logger.warn(
+          "[hot-reload] runtime state may have changed; requesting cold restart.",
+        );
+        this.requestColdRestart("soft reload failed after runtime mutation");
+      } else {
+        this.logger.error(
+          "[hot-reload] keeping previous version active. Fix the error and save again.",
+        );
+      }
 
       this.failureCount++;
 
       return {
         success: false,
-        requestedColdRestart: false,
+        requestedColdRestart: requiresColdRestartOnFailure,
         elapsed,
         compileTime: compileEnd - startTime,
         cacheTime: cacheEnd - compileEnd,

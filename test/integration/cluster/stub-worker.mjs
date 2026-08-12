@@ -21,11 +21,13 @@
  *   STUB_HEARTBEAT_INTERVAL — 心跳间隔（毫秒），默认 1000
  *   STUB_METRICS_INTERVAL   — 指标上报间隔（毫秒），默认 2000
  *   STUB_STARTUP_DELAY      — 启动延迟（毫秒），默认 0（立即 ready）
+ *   STUB_STARTUP_DELAY_AFTER_WORKER_ID — 只对编号更大的 Worker 应用启动延迟
  *   STUB_FAIL_ON_START      — 设为 "1" 时启动失败（process.exit(1)）
  *   STUB_STOP_HEARTBEAT     — 设为 "1" 时不发送心跳（模拟心跳超时）
  *   STUB_REQUEST_RESTART    — 设为 "1" 时启动后请求重启（模拟内存超阈值）
  *   STUB_REQUEST_RESTART_DELAY — 请求重启延迟（毫秒），默认 500
  *   STUB_EXIT_AFTER         — 设置后 Worker 在指定毫秒后自行崩溃退出（模拟崩溃）
+ *   STUB_EXIT_AFTER_WORKER_ID — 只让指定编号的 Worker 自行崩溃
  *   STUB_EXIT_CODE          — 崩溃退出码，默认 1
  *   STUB_SHUTDOWN_DELAY     — 收到 shutdown 后延迟退出（毫秒），默认 100
  *
@@ -44,7 +46,18 @@ const METRICS_INTERVAL = parseInt(
   process.env.STUB_METRICS_INTERVAL || "2000",
   10,
 );
-const STARTUP_DELAY = parseInt(process.env.STUB_STARTUP_DELAY || "0", 10);
+const configuredStartupDelay = parseInt(
+  process.env.STUB_STARTUP_DELAY || "0",
+  10,
+);
+const startupDelayAfterWorkerId = process.env.STUB_STARTUP_DELAY_AFTER_WORKER_ID
+  ? parseInt(process.env.STUB_STARTUP_DELAY_AFTER_WORKER_ID, 10)
+  : null;
+const STARTUP_DELAY =
+  startupDelayAfterWorkerId === null ||
+  Number(workerId) > startupDelayAfterWorkerId
+    ? configuredStartupDelay
+    : 0;
 const FAIL_ON_START = process.env.STUB_FAIL_ON_START === "1";
 const STOP_HEARTBEAT = process.env.STUB_STOP_HEARTBEAT === "1";
 const REQUEST_RESTART = process.env.STUB_REQUEST_RESTART === "1";
@@ -52,9 +65,14 @@ const REQUEST_RESTART_DELAY = parseInt(
   process.env.STUB_REQUEST_RESTART_DELAY || "500",
   10,
 );
-const EXIT_AFTER = process.env.STUB_EXIT_AFTER
-  ? parseInt(process.env.STUB_EXIT_AFTER, 10)
+const exitAfterWorkerId = process.env.STUB_EXIT_AFTER_WORKER_ID
+  ? parseInt(process.env.STUB_EXIT_AFTER_WORKER_ID, 10)
   : null;
+const EXIT_AFTER =
+  process.env.STUB_EXIT_AFTER &&
+  (exitAfterWorkerId === null || Number(workerId) === exitAfterWorkerId)
+    ? parseInt(process.env.STUB_EXIT_AFTER, 10)
+    : null;
 const EXIT_CODE = parseInt(process.env.STUB_EXIT_CODE || "1", 10);
 const SHUTDOWN_DELAY = parseInt(process.env.STUB_SHUTDOWN_DELAY || "100", 10);
 

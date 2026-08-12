@@ -213,7 +213,8 @@ function isRenderRelatedServerFile(filePath: string): boolean {
  *   - SoftReloader 封装完整 Soft Reload 流程（编译→清缓存→i18n→服务→路由→swap）
  *   - IPC 消息监听：接收主进程的 `{ type: 'reload', files: [...] }` 指令
  *   - 级联爆炸检测 → 通过 IPC 请求 Cold Restart
- *   - 失败回退 → 旧 handler 通过闭包继续服务
+ *   - 编译失败 → 旧 handler 继续服务；运行态变更后的失败 → 父进程停止
+ *     当前 child 并执行 Cold Restart，避免继续服务混合运行态
  *
  * @module lib/dev/dev-bootstrap
  * @see 11d-bootstrap-cli.md §4（Dev 模式 Bootstrap）

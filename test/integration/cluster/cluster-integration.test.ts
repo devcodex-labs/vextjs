@@ -15,6 +15,7 @@
  *   8.  首个 Worker 失败 Fail Fast — 首个 Worker 启动失败 → Master 立即中止
  *   9.  频率保护 — 连续快速崩溃超过 maxRestarts → 暂停自动重启
  *   10. PID 文件 — Master 启动写入 PID 文件，关闭后删除
+ *   11. Rolling Restart ready 超时 — 候选 Worker 被终止，旧 Worker 继续服务
  *
  * 注意事项：
  *   - 所有测试使用 stub-worker.mjs（不启动 HTTP），启动极快
@@ -314,6 +315,33 @@ describe("Cluster Integration Tests", () => {
         // 虽然 Worker 有 500ms 启动延迟，但应最终就绪
         const status = await getMasterStatus(proc);
         expect(status.readyWorkerCount).toBe(1);
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      "后续 Worker 启动期间 ready Worker 崩溃时应补齐目标容量",
+      async () => {
+        const proc = await startMasterAndWaitReady({
+          STUB_WORKERS: "2",
+          STUB_HEALTH_CHECK_ENABLED: "0",
+          STUB_RESTART_BASE_DELAY: "100",
+          STUB_RESTART_MAX_DELAY: "100",
+          // Worker 1 已 ready 后崩溃；Worker 2 仍处于 initial startup，
+          // 因此该退出必须进入 auto-restart，而不是被启动期整体忽略。
+          STUB_EXIT_AFTER: "1000",
+          STUB_EXIT_AFTER_WORKER_ID: "1",
+          STUB_STARTUP_DELAY: "2500",
+          STUB_STARTUP_DELAY_AFTER_WORKER_ID: "1",
+        });
+
+        await proc.waitForOutput("restarting worker in 100ms", 5_000);
+        await proc.waitForOutputCount("event:worker-ready", 3, 10_000);
+
+        const status = await getMasterStatus(proc);
+        expect(status.targetWorkerCount).toBe(2);
+        expect(status.workerCount).toBe(2);
+        expect(status.readyWorkerCount).toBe(2);
       },
       TEST_TIMEOUT,
     );
@@ -752,6 +780,44 @@ describe("Cluster Integration Tests", () => {
           "event:worker-ready",
         );
         expect(readyEvents).toBe(4);
+      },
+      TEST_TIMEOUT,
+    );
+
+    it(
+      "替换 Worker ready 超时后应终止候选 Worker，并保留旧 Worker 服务",
+      async () => {
+        const proc = await startMasterAndWaitReady({
+          STUB_WORKERS: "1",
+          STUB_HEALTH_CHECK_ENABLED: "0",
+          // 为健康的首个 Worker 留出 CI / 全套并行运行时的启动余量；
+          // 启动延迟只施加给替换候选 Worker，因此仍会稳定触发 ready timeout。
+          STUB_RELOAD_READY_TIMEOUT: "3000",
+          STUB_STARTUP_DELAY: "5000",
+          STUB_STARTUP_DELAY_AFTER_WORKER_ID: "1",
+        });
+
+        const restartDone = waitForMasterIPC(
+          proc,
+          "rolling-restart-done",
+          10_000,
+        );
+        sendMasterMessage(proc, {
+          type: "rolling-restart",
+          trigger: "ready-timeout",
+        });
+
+        await restartDone;
+        await proc.waitForOutput("event:worker-exit", 5_000);
+        await sleep(5100);
+
+        const status = await getMasterStatus(proc);
+        expect(status.workerCount).toBe(1);
+        expect(status.readyWorkerCount).toBe(1);
+        expect(countMatchingLines(proc.lines, "event:worker-ready")).toBe(1);
+        expect(
+          proc.lines.some((line) => line.includes("[stub-worker:2] ready")),
+        ).toBe(false);
       },
       TEST_TIMEOUT,
     );

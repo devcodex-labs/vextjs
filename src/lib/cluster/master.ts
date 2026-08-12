@@ -173,6 +173,29 @@ export class ClusterMaster extends EventEmitter {
   /** 是否正在执行 Rolling Restart */
   private isReloading = false;
 
+  /**
+   * 尚未 ready 且由当前调用方负责处置的候选 Worker。
+   *
+   * 初始启动和零停机替换都必须由调用方决定失败后的去向；只有运行期
+   * auto-restart 自己创建的候选才应在 early exit 后继续进入退避重试。
+   */
+  private ownedStartupWorkerIds = new Set<number>();
+
+  /** 首个 Worker 启动失败后，等待最后一个候选退出再解绑全局监听器。 */
+  private startupFailed = false;
+
+  /** 是否已注册 cluster 全局 Worker exit 监听器 */
+  private workerExitListenerRegistered = false;
+
+  /** 保留稳定引用，确保终止生命周期可以精确移除 cluster 全局监听器。 */
+  private readonly onClusterWorkerExit = (
+    worker: ClusterWorker,
+    code: number | null,
+    signal: string | null,
+  ): void => {
+    this.handleWorkerExit(worker, code, signal);
+  };
+
   /** 健康检查定时器 */
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -263,6 +286,14 @@ export class ClusterMaster extends EventEmitter {
       );
     }
 
+    // ── 注册 Worker exit 全局监听 ─────────────────────────
+    //
+    // 必须在首次 fork 前注册：否则启动期间 readyTimeout 后被终止的
+    // Worker 无法从 this.workers 中移除。每个未 ready 候选都带有显式
+    // 所有权，避免误判为运行期崩溃，同时不屏蔽已 ready Worker 的退出。
+    this.startupFailed = false;
+    this.registerWorkerExitListener();
+
     // ── 串行 fork Worker ──────────────────────────────────
     //
     // 逐个启动，好处：
@@ -279,6 +310,7 @@ export class ClusterMaster extends EventEmitter {
           console.error(
             `[cluster] ❌ first worker failed: ${(err as Error).message}`,
           );
+          this.startupFailed = true;
           this.cleanup();
           throw err;
         }
@@ -288,11 +320,6 @@ export class ClusterMaster extends EventEmitter {
         );
       }
     }
-
-    // ── 注册 Worker exit 全局监听 ─────────────────────────
-    cluster.on("exit", (worker, code, signal) => {
-      this.handleWorkerExit(worker, code, signal);
-    });
 
     // ── 注册 OS 信号处理 ──────────────────────────────────
     this.registerSignals();
@@ -524,16 +551,20 @@ export class ClusterMaster extends EventEmitter {
    *   2. 设置 WorkerMeta（state = 'starting'）
    *   3. 发送 set-title 消息
    *   4. 注册 IPC 消息监听
-   *   5. 等待 Worker 发送 'ready' 消息（超时则拒绝）
+   *   5. 等待 Worker 发送 'ready' 消息（超时则终止并拒绝）
    *
    * 环境变量传递：
    *   - VEXT_WORKER_ID: Worker 编号（从 1 开始递增）
    *   - VEXT_MODE: 'start'（触发 bootstrap 自执行入口）
    *
+   * @param options.retryOnEarlyExit 为 auto-restart 候选保留 early-exit 退避重试；
+   * 其他调用方自行决定未 ready 候选的失败语义。
    * @returns fork 出的 cluster.Worker 实例
    * @throws Worker 在 readyTimeout 内未就绪或在就绪前退出
    */
-  private async forkWorker(): Promise<ClusterWorker> {
+  private async forkWorker(
+    options: { retryOnEarlyExit?: boolean } = {},
+  ): Promise<ClusterWorker> {
     const nextId = this.nextWorkerId++;
 
     const worker = cluster.fork({
@@ -549,6 +580,9 @@ export class ClusterMaster extends EventEmitter {
       state: "starting",
     };
     this.workers.set(worker.id, meta);
+    if (!options.retryOnEarlyExit) {
+      this.ownedStartupWorkerIds.add(worker.id);
+    }
 
     // 设置 Worker 进程标题
     try {
@@ -567,6 +601,7 @@ export class ClusterMaster extends EventEmitter {
 
     // 等待 Worker 就绪
     await this.waitForWorkerReady(worker);
+    this.ownedStartupWorkerIds.delete(worker.id);
 
     this.emit("worker-ready", {
       workerId: worker.id,
@@ -581,7 +616,7 @@ export class ClusterMaster extends EventEmitter {
    *
    * 使用 Promise 封装事件驱动的等待逻辑：
    *   - 收到 'ready' → resolve
-   *   - 超时 → reject
+   *   - 超时 → 终止该 Worker 并 reject
    *   - Worker 提前退出 → reject
    *
    * @param worker 目标 Worker
@@ -594,6 +629,7 @@ export class ClusterMaster extends EventEmitter {
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
+        this.terminateUnreadyWorker(worker);
         cleanup();
         reject(
           new Error(
@@ -634,6 +670,68 @@ export class ClusterMaster extends EventEmitter {
       worker.on("message", onMessage);
       worker.once("exit", onExit);
     });
+  }
+
+  /**
+   * terminateUnreadyWorker — 终止 readyTimeout 内未就绪的 Worker
+   *
+   * 该 Worker 是本次 fork 的候选实例，不能让它在超时后继续存活：
+   *   - rolling restart 中会造成 N+1 Worker；
+   *   - ready 监听器已移除，迟到的 ready 也不会更新 metadata；
+   *   - health check 会跳过 starting 状态，无法再回收它。
+   *
+   * 先标记为 draining，再强制终止。handleWorkerExit 会删除 metadata，
+   * 并识别 draining 状态以避免把这次有意终止误触发为 auto-restart。
+   */
+  private terminateUnreadyWorker(worker: ClusterWorker): void {
+    const meta = this.workers.get(worker.id);
+    if (meta) meta.state = "draining";
+
+    if (worker.isDead()) return;
+
+    console.warn(
+      `[cluster] worker ${worker.id} failed to become ready, terminating`,
+    );
+
+    try {
+      worker.process.kill("SIGKILL");
+    } catch {
+      try {
+        worker.kill("SIGKILL");
+      } catch (err) {
+        console.error(
+          `[cluster] failed to terminate unready worker ${worker.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /** 注册一次 cluster 全局 Worker exit 监听器。 */
+  private registerWorkerExitListener(): void {
+    if (this.workerExitListenerRegistered) return;
+
+    cluster.on("exit", this.onClusterWorkerExit);
+    this.workerExitListenerRegistered = true;
+  }
+
+  /**
+   * 在终止生命周期中移除全局 exit 监听器。
+   *
+   * 启动失败和 graceful shutdown 时，最后一个 Worker 的 exit 仍需由本
+   * 实例处理，因而仅在 workers Map 清空后解绑。正常运行的 Master 即使
+   * 暂时没有 Worker，也保留监听器以支持既有 auto-restart 语义。
+   */
+  private removeWorkerExitListenerIfTerminated(): void {
+    if (
+      !this.workerExitListenerRegistered ||
+      this.workers.size > 0 ||
+      (!this.startupFailed && !this.isShuttingDown)
+    ) {
+      return;
+    }
+
+    cluster.off("exit", this.onClusterWorkerExit);
+    this.workerExitListenerRegistered = false;
   }
 
   /**
@@ -721,11 +819,12 @@ export class ClusterMaster extends EventEmitter {
    * handleWorkerExit — Worker 退出事件处理
    *
    * 决策树：
-   *   1. 正在关闭 → 跳过（gracefulShutdown 已处理）
-   *   2. 状态为 draining → 跳过（正常替换流程）
-   *   3. autoRestart=false → 检查是否所有 Worker 都已退出
-   *   4. 频率保护命中 → 暂停自动重启 + 发射事件
-   *   5. 正常场景 → 指数退避后重启
+   *   1. 调用方拥有的未 ready 候选 → 跳过（调用方决定失败语义）
+   *   2. 正在关闭 → 跳过（gracefulShutdown 已处理）
+   *   3. 状态为 draining → 跳过（正常替换或 readyTimeout 回收）
+   *   4. autoRestart=false → 检查是否所有 Worker 都已退出
+   *   5. 频率保护命中 → 暂停自动重启 + 发射事件
+   *   6. 正常场景 → 指数退避后重启
    */
   private handleWorkerExit(
     worker: ClusterWorker,
@@ -733,6 +832,9 @@ export class ClusterMaster extends EventEmitter {
     signal: string | null,
   ): void {
     const meta = this.workers.get(worker.id);
+    const wasOwnedStartupCandidate = this.ownedStartupWorkerIds.delete(
+      worker.id,
+    );
     this.workers.delete(worker.id);
     this.workerMetrics.delete(worker.id);
 
@@ -748,10 +850,24 @@ export class ClusterMaster extends EventEmitter {
     } satisfies ClusterMasterEvents["worker-exit"]);
 
     // 正在关闭 → 不重启
-    if (this.isShuttingDown) return;
+    if (this.isShuttingDown) {
+      this.removeWorkerExitListenerIfTerminated();
+      return;
+    }
+
+    // 初始启动、rolling restart 和 request-restart 的未 ready 候选由各自
+    // 调用方处理。已经 ready 的 Worker 不在该集合中，因此即使后续启动
+    // 尚未完成，异常退出也会走正常 auto-restart，维持目标容量。
+    if (wasOwnedStartupCandidate) {
+      this.removeWorkerExitListenerIfTerminated();
+      return;
+    }
 
     // 正常替换流程中的旧 Worker 退出 → 不重启
-    if (meta?.state === "draining") return;
+    if (meta?.state === "draining") {
+      this.removeWorkerExitListenerIfTerminated();
+      return;
+    }
 
     // 自动重启禁用 → 检查是否所有 Worker 已退出
     if (!this.config.autoRestart) {
@@ -780,7 +896,7 @@ export class ClusterMaster extends EventEmitter {
     setTimeout(async () => {
       if (this.isShuttingDown) return;
       try {
-        await this.forkWorker();
+        await this.forkWorker({ retryOnEarlyExit: true });
       } catch (err) {
         console.error(
           `[cluster] failed to spawn replacement: ${(err as Error).message}`,
@@ -1012,6 +1128,7 @@ export class ClusterMaster extends EventEmitter {
   private cleanup(): void {
     this.stopHealthCheck();
     this.removeSignalHandlers();
+    this.removeWorkerExitListenerIfTerminated();
 
     const pidResult = removePidFile(this.config.pidFile);
     if (!pidResult.ok && pidResult.error) {

@@ -52,7 +52,8 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
  * 降级策略：
  *   - `--no-hot` 选项：所有变更都走 Cold Restart
  *   - 子进程 `request-cold-restart`：级联爆炸时自动降级
- *   - Soft Reload 失败：旧 handler 通过闭包继续服务，等待用户修复
+ *   - 编译失败：旧 handler 继续服务；运行态已变更后的失败先停止子进程，
+ *     再通过 Cold Restart 恢复完整运行态
  *
  * 进程架构：
  *   vext dev (主进程)
@@ -372,6 +373,61 @@ export async function devCommand(args: string[] = []): Promise<void> {
     return false;
   };
 
+  // 缓存失效后的 Soft Reload 失败不能继续复用当前 child。该标记在
+  // restart 成功前保持为 true，使后续文件变更走 Cold Restart 而非 IPC HMR。
+  let runtimeRecoveryRequired = false;
+  let runtimeRecoveryInProgress = false;
+  let pendingRuntimeRecoveryReason: string | null = null;
+
+  const restartChild = async (reason: string): Promise<void> => {
+    await refreshPreloads();
+    pendingReadyStartedAt = performance.now();
+    await restarter.restart(reason);
+    runtimeRecoveryRequired = false;
+  };
+
+  const recoverRuntimeAfterMutation = async (reason: string): Promise<void> => {
+    if (runtimeRecoveryInProgress) return;
+
+    runtimeRecoveryRequired = true;
+    runtimeRecoveryInProgress = true;
+    try {
+      // 先停止可能已经部分重载的 child；如果严格 preflight 阻断，不能让
+      // 它继续服务混合运行态。
+      await restarter.kill();
+
+      if (!(await runPreflight(`child requested cold restart: ${reason}`))) {
+        console.error(
+          "[vext dev] runtime recovery is pending; save a valid change to restart.\n",
+        );
+        return;
+      }
+
+      await restartChild(reason);
+    } catch (err) {
+      console.error(
+        "[vext dev] runtime recovery failed:",
+        err instanceof Error ? err.message : err,
+      );
+      console.error(
+        "[vext dev] runtime recovery is pending; fix the error and save to retry.\n",
+      );
+    } finally {
+      runtimeRecoveryInProgress = false;
+
+      // 恢复期间的新保存不能丢弃：replacement child 可能已在保存前开始
+      // 初始化，因此无论本次恢复成功或失败，都以最近一次保存重放一次冷恢复。
+      const pendingReason = pendingRuntimeRecoveryReason;
+      pendingRuntimeRecoveryReason = null;
+      if (pendingReason) {
+        console.log(
+          "[vext dev] replaying changes saved during runtime recovery...",
+        );
+        void recoverRuntimeAfterMutation(pendingReason);
+      }
+    }
+  };
+
   // 监听子进程事件
   restarter.setEvents({
     onChildMessage: (msg: unknown) => {
@@ -427,22 +483,13 @@ export async function devCommand(args: string[] = []): Promise<void> {
           ((msg as Record<string, unknown>).reason as string) ||
           "child request";
         console.log(`\n[vext dev] child requested cold restart: ${reason}`);
-        runPreflight(`child requested cold restart: ${reason}`)
-          .then((ok) => {
-            if (!ok) {
-              return;
-            }
-            return refreshPreloads().then(() => {
-              pendingReadyStartedAt = performance.now();
-              return restarter.restart(reason);
-            });
-          })
-          .catch((err: unknown) => {
-            console.error(
-              "[vext dev] restart failed:",
-              err instanceof Error ? err.message : err,
-            );
-          });
+        if (runtimeRecoveryRequired) {
+          console.warn(
+            "[vext dev] runtime recovery already pending, ignoring duplicate request.",
+          );
+          return;
+        }
+        void recoverRuntimeAfterMutation(reason);
         return;
       }
 
@@ -514,10 +561,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
         "[vext dev] initial checks failed. Waiting for changes...\n",
       );
     } else {
-      await refreshPreloads();
-      pendingReadyStartedAt = performance.now();
       await startupProfiler.time("main.worker.ready", () =>
-        restarter.restart("initial start"),
+        restartChild("initial start"),
       );
     }
   } catch (err) {
@@ -548,6 +593,15 @@ export async function devCommand(args: string[] = []): Promise<void> {
         console.clear();
       }
 
+      if (runtimeRecoveryInProgress) {
+        pendingRuntimeRecoveryReason =
+          event.files.map((file) => file.path).join(", ") || "file changes";
+        console.log(
+          "[vext dev] runtime recovery already in progress; queued current files for a retry if it cannot complete.",
+        );
+        return;
+      }
+
       const preflightReason =
         event.action === "cold"
           ? "cold restart preflight"
@@ -555,6 +609,23 @@ export async function devCommand(args: string[] = []): Promise<void> {
             ? "client rebuild preflight"
             : "soft reload preflight";
       if (!(await runPreflight(preflightReason))) {
+        return;
+      }
+
+      if (runtimeRecoveryRequired) {
+        console.log(
+          "[vext dev] runtime recovery pending → cold restart instead of soft reload...",
+        );
+        try {
+          await restartChild(event.files.map((file) => file.path).join(", "));
+          console.log("[vext dev] cold restart complete\n");
+        } catch (err) {
+          console.error(
+            "[vext dev] restart failed:",
+            err instanceof Error ? err.message : err,
+          );
+          console.error("[vext dev] fix the error and save to retry\n");
+        }
         return;
       }
 
@@ -569,9 +640,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
           "[vext dev] config/plugin change detected \u2192 cold restart (Tier 3)...",
         );
         try {
-          await refreshPreloads();
-          pendingReadyStartedAt = performance.now();
-          await restarter.restart(event.files.map((f) => f.path).join(", "));
+          await restartChild(event.files.map((f) => f.path).join(", "));
           console.log("[vext dev] cold restart complete\n");
         } catch (err) {
           console.error(
@@ -611,9 +680,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
             `[${hasStructural ? "structural" : "code"}]...`,
         );
         try {
-          await refreshPreloads();
-          pendingReadyStartedAt = performance.now();
-          await restarter.restart(event.files.map((f) => f.path).join(", "));
+          await restartChild(event.files.map((f) => f.path).join(", "));
           console.log("[vext dev] cold restart complete\n");
         } catch (err) {
           console.error(
@@ -715,10 +782,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
               if (!ok) {
                 return;
               }
-              return refreshPreloads().then(() => {
-                pendingReadyStartedAt = performance.now();
-                return restarter.restart("manual");
-              });
+              return restartChild("manual");
             })
             .catch((err: unknown) => {
               console.error(

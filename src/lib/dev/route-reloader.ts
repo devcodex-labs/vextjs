@@ -45,8 +45,9 @@ import { VEXT_FRONTEND_DEV_EVENT_PATH } from "../../frontend/runtime/dev-events.
  *   - 新 adapter 走与生产环境完全一致的代码路径
  *   - 路由注册表是干净的（全新实例），无需清除旧路由
  *   - buildHandler() 返回的 handler 与 listen() 内部使用的完全一致
- *   - 如果重载过程中任何步骤失败，不调用 HotSwappableHandler.swap()，
- *     旧 handler 通过闭包继续服务
+ *   - 如果重载过程中任何步骤失败，不调用 HotSwappableHandler.swap()；
+ *     编译阶段前的失败保留旧 handler，缓存失效后的失败由 SoftReloader
+ *     请求 Cold Restart 重新建立完整运行态
  *
  * @module lib/dev/route-reloader
  * @see 11b-soft-reload.md §5（路由重载 — Fresh Adapter 策略）

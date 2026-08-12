@@ -81,12 +81,14 @@ Frontend-only changes use a separate rebuild path:
 
 This path rebuilds `.vext/client/` and keeps the backend process running. React pages, layouts, and shared components use React Fast Refresh by default; CSS-only changes update stylesheet links; after backend soft reloads that affect render data, the browser action follows `frontend.dev.renderRefresh`.
 
-If an error occurs during the soft reload process, the framework will keep the old version running and prompt for repair:
+Soft reload distinguishes compile failures from failures after runtime mutation. If compilation fails before cache invalidation, the framework keeps the previous handler running and prompts for repair:
 
 ```
 [hot-reload] [FAIL] failed after 12ms: Cannot find module './missing.js'
 [hot-reload] keeping previous version active. Fix the error and save again.
 ```
+
+If an error occurs after cache invalidation or while reloading services, models, i18n, middleware, or routes, the current worker may hold mixed runtime state. VextJS requests a cold restart and stops that worker before running preflight checks. If strict preflight blocks the replacement, the worker remains stopped; fix the reported issue and save again to start a clean process.
 
 ## Three-layer reloading strategy
 

@@ -675,6 +675,167 @@ describe("cli interaction: start/dev", () => {
     );
   });
 
+  it("devCommand should stop a mutated child before preflight and recover on a later save", async () => {
+    mocks.runDevPreflight
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        typegenOk: true,
+        tsOk: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      });
+
+    await devCommand(["--strict-preflight"]);
+    const restarter = mocks.restarterInstances[0]!;
+    const watcher = mocks.watcherInstances[0]!;
+
+    restarter.events.onChildMessage?.({
+      type: "request-cold-restart",
+      reason: "soft reload failed after runtime mutation",
+    });
+    await flush();
+    await flush();
+
+    expect(restarter.kill).toHaveBeenCalledTimes(1);
+    expect(restarter.restart).toHaveBeenCalledTimes(1);
+    expect(restarter.kill.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.runDevPreflight.mock.invocationCallOrder[1]!,
+    );
+
+    await watcher.handlers.get("change")?.({
+      files: [{ path: "src/routes/example.ts", type: "modify" }],
+      action: "soft",
+    });
+
+    expect(restarter.restart).toHaveBeenCalledTimes(2);
+    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reload" }),
+    );
+  });
+
+  it("devCommand should retry a save received while runtime recovery is pending", async () => {
+    let resolveRecoveryPreflight!: (result: {
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }) => void;
+    const recoveryPreflight = new Promise<{
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }>((resolve) => {
+      resolveRecoveryPreflight = resolve;
+    });
+
+    mocks.runDevPreflight
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      })
+      .mockImplementationOnce(() => recoveryPreflight)
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      });
+
+    await devCommand(["--strict-preflight"]);
+    const restarter = mocks.restarterInstances[0]!;
+    const watcher = mocks.watcherInstances[0]!;
+
+    restarter.events.onChildMessage?.({
+      type: "request-cold-restart",
+      reason: "soft reload failed after runtime mutation",
+    });
+    await flush();
+    await flush();
+
+    await watcher.handlers.get("change")?.({
+      files: [{ path: "src/routes/recovered.ts", type: "modify" }],
+      action: "soft",
+    });
+
+    resolveRecoveryPreflight({
+      ok: false,
+      typegenOk: true,
+      tsOk: false,
+    });
+    await flush();
+    await flush();
+    await flush();
+    await flush();
+
+    expect(mocks.runDevPreflight).toHaveBeenCalledTimes(3);
+    expect(restarter.kill).toHaveBeenCalledTimes(2);
+    expect(restarter.restart).toHaveBeenCalledTimes(2);
+    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reload" }),
+    );
+  });
+
+  it("devCommand should replay a save received while the replacement child starts", async () => {
+    let resolveReplacementRestart!: () => void;
+    const replacementRestart = new Promise<void>((resolve) => {
+      resolveReplacementRestart = resolve;
+    });
+
+    mocks.runDevPreflight
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        typegenOk: true,
+        tsOk: true,
+      });
+
+    await devCommand(["--strict-preflight"]);
+    const restarter = mocks.restarterInstances[0]!;
+    const watcher = mocks.watcherInstances[0]!;
+    restarter.restart.mockImplementationOnce(() => replacementRestart);
+
+    restarter.events.onChildMessage?.({
+      type: "request-cold-restart",
+      reason: "soft reload failed after runtime mutation",
+    });
+    await flush();
+    await flush();
+
+    await watcher.handlers.get("change")?.({
+      files: [{ path: "src/routes/starting.ts", type: "modify" }],
+      action: "soft",
+    });
+
+    resolveReplacementRestart();
+    await flush();
+    await flush();
+    await flush();
+    await flush();
+
+    expect(mocks.runDevPreflight).toHaveBeenCalledTimes(3);
+    expect(restarter.kill).toHaveBeenCalledTimes(2);
+    expect(restarter.restart).toHaveBeenCalledTimes(3);
+    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reload" }),
+    );
+  });
+
   it("devCommand should rebuild frontend for src/frontend changes", async () => {
     await devCommand([]);
     const watcher = mocks.watcherInstances[0]!;

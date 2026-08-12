@@ -81,12 +81,14 @@ npx vext dev
 
 该路径会重建 `.vext/client/`，并保持后端进程继续运行。React 页面、layout 和公共组件默认通过 React Fast Refresh 更新；纯 CSS 变更会更新样式链接；route/service 等影响 render 数据的后端 soft reload 成功后，浏览器动作由 `frontend.dev.renderRefresh` 控制。
 
-如果 soft reload 过程中出错，框架会保持旧版本继续运行并提示修复：
+soft reload 会区分编译失败与运行态已经变更后的失败。如果编译在缓存失效前失败，框架会保持旧 handler 继续运行并提示修复：
 
 ```
 [hot-reload] [FAIL] failed after 12ms: Cannot find module './missing.js'
 [hot-reload] keeping previous version active. Fix the error and save again.
 ```
+
+如果缓存失效之后，或在重载 service、model、i18n、中间件、路由时失败，当前 Worker 可能已经持有混合运行态。VextJS 会请求冷重启，并在执行 preflight 前停止该 Worker。严格 preflight 阻止替换时，该 Worker 会保持停止；修复报告的问题后再次保存，即会启动干净的新进程。
 
 ## 三层重载策略
 

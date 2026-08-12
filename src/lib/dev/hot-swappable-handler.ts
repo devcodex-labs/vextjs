@@ -70,7 +70,8 @@ export class HotSwappableHandler {
    * 当前活跃的请求处理函数
    *
    * soft reload 成功时通过 swap() 替换为新的 handler。
-   * soft reload 失败时保持不变，旧 handler 通过闭包继续服务。
+   * 编译阶段失败时保持不变；运行态已经变更后的失败会由父进程冷重启，
+   * 因而旧 handler 只在替换进程前短暂存在。
    */
   private currentHandler: RequestHandler;
 
@@ -123,8 +124,9 @@ export class HotSwappableHandler {
    * 由 soft reload 流程在所有准备工作（编译、cache 清除、服务重载、
    * 路由重载、新 adapter 构建）全部成功后调用。
    *
-   * 如果 soft reload 的任何步骤失败，**不调用 swap**，
-   * 旧 handler 通过闭包继续服务（失败回退机制，见 11e §1）。
+   * 如果 soft reload 的任何步骤失败，**不调用 swap**。编译阶段失败时旧
+   * handler 可继续服务；缓存失效后的失败会请求父进程 Cold Restart，避免
+   * 把未 swap 的旧 handler 误当作完整的运行态回滚。
    *
    * 由于 JS 是单线程的，赋值操作天然是原子的。
    * 不需要锁，不需要 CAS。
