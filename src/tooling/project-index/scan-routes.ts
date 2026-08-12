@@ -548,15 +548,9 @@ function readOptionalBooleanProperty(
 }
 
 function readObjectProperty(objectLiteral: string, key: string): string | null {
-  const pattern = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*\\{`, "u");
-  const match = pattern.exec(objectLiteral);
-  if (!match) return null;
-  return readBalanced(
-    objectLiteral,
-    objectLiteral.indexOf("{", match.index),
-    "{",
-    "}",
-  );
+  const value = readObjectEntryValue(objectLiteral, key)?.trim();
+  if (!value?.startsWith("{")) return null;
+  return readBalanced(value, 0, "{", "}");
 }
 
 function readObjectArrayProperty(

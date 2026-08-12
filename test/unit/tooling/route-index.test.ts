@@ -262,4 +262,50 @@ export default defineRoutes((app) => {
       ]),
     );
   });
+
+  it("keeps docs-only response schemas out of RouteOptions.responses", async () => {
+    projectRoot = await mkdtemp(
+      join(tmpdir(), "vext-route-index-docs-response-"),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/index.ts",
+      `import { defineRoutes } from "vextjs";
+export default defineRoutes((app) => {
+  app.get("/api/health", {
+    docs: {
+      summary: "Health check",
+      responses: {
+        200: {
+          description: "Healthy",
+          schema: { status: "string", timestamp: "number" },
+        },
+      },
+    },
+  }, async (_req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+  });
+});
+`,
+    );
+
+    const result = await runDoctor({
+      rootDir: projectRoot,
+      target: "routes",
+      refresh: true,
+      writeManifest: true,
+    });
+    const api = result.routes.find((route) => route.path === "/api/health");
+
+    expect(api?.schema.responses).toEqual([
+      expect.objectContaining({
+        status: "200",
+        schema: expect.objectContaining({
+          source: "docs.responses",
+          sourcePath: "docs.responses.200.schema",
+          schema: expect.objectContaining({ type: "object" }),
+        }),
+      }),
+    ]);
+  });
 });
