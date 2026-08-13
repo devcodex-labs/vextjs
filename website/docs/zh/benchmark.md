@@ -2,6 +2,49 @@
 
 本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。当前版本的可复现基准以仓库内 `test/benchmark/run-benchmark.mjs` 为准；页面中的历史 benchmark 仓库数据仅用于趋势参考。
 
+## 当前可复现结果（2026-08-14，本地时区）
+
+> - **代码身份**：`main@cea18d760592b790d602f61f343e8d71c4a35735`
+> - **协议**：10 秒 / 50 connections / pipelining 10 / 预热 5 秒 / 5 轮取中位数
+> - **环境**：Node.js 20.20.2、win32 x64、Intel i7-9700、32 GiB RAM
+> - **依赖版本**：Fastify 5.11.3、Hono 4.13.2、`@hono/node-server` 2.1.0、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0（均在正式运行前从 registry 核验并锁定）
+
+这组结果替代下方 2026-01-15 的历史数值作为当前参考。完整的 5 轮样本、CV、延迟和 telemetry 见[主基准原始报告](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
+
+### Native 与 Fastify 的主对照
+
+所有数字均为 req/s 中位数。**Core** 是仅用于定位最短 Vext Native 路径的私有 harness，不经过 bootstrap；**Normal** 走正式 bootstrap + router-loader，但为公平比较关闭了可选请求能力。Normal 中 `requestContext=false` 时不会注册 `authContext`，`frontend.enabled=false` 时不会注册 noop middleware；普通路由只保留一个全局 `requestHook` 节点。
+
+| 同步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
+| ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
+| JSON                     |     35,283 |      33,726 |           30,299 |             29,691 |
+| 参数路由                 |     34,073 |      33,206 |           28,612 |             28,066 |
+| 处理器业务链             |     29,726 |      32,240 |           24,376 |             25,244 |
+| 真实 route middleware 链 |     28,907 |      28,108 |                — |             24,741 |
+
+| 异步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
+| ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
+| JSON                     |     34,773 |      33,520 |           28,848 |             28,783 |
+| 参数路由                 |     33,810 |      34,141 |           27,946 |             27,839 |
+| 处理器业务链             |     28,559 |      30,335 |           25,061 |             23,927 |
+| 真实 route middleware 链 |     28,319 |      29,115 |                — |             23,755 |
+
+结论不能写成“Fastify 总是更快”或“Vext 排名第二”：Raw Native 与 Raw Fastify 在不同场景、同步/异步模型下互有领先。当前合成路径中，Vext Native Normal 相对 Raw Native 的差距为 14%–18%，相对 Raw Fastify 的差距为 12%–22%；这是框架的路由、请求/响应对象和生命周期成本，不能外推为真实业务的端到端吞吐承诺。
+
+### 五个 adapter 的最新矩阵
+
+下表是同一协议下、各 adapter 的 Raw 对照与 Vext 对照的开销（Vext 相对该 adapter Raw，负值表示较低）。它用于观察 adapter 开销，不用于将不同框架的 Raw 吞吐排成总榜。
+
+| Adapter |   JSON | 参数路由 | 处理器业务链 | route middleware 链 |
+| ------- | -----: | -------: | -----------: | ------------------: |
+| Native  | -16.3% |   -14.2% |       -16.1% |              -13.3% |
+| Fastify | -28.7% |   -28.1% |       -30.4% |              -32.3% |
+| Express |  -6.4% |   -10.0% |       -10.1% |              -11.0% |
+| Koa     | -22.6% |   -21.0% |       -23.0% |              -26.7% |
+| Hono    | -65.5% |   -65.7% |       -61.9% |              -61.8% |
+
+Hono 的差距是独立的 adapter 优化课题；它不应被混入 Native 与 Fastify 的公平性结论。生产选型还应以真实中间件、认证、日志、序列化、I/O 与部署环境的压测为准。
+
 ## 对比口径说明（请先阅读）
 
 当前 repo-local benchmark 衡量的是**相同场景、相同压测参数、尽量相同功能负载**下的吞吐量对比，而不是“默认开箱全功能配置”的直接对比。
@@ -26,18 +69,20 @@
 >
 > 若你要评估真实业务场景，请结合自己的中间件、日志、鉴权、响应包装、数据库访问和部署环境重新压测。
 
-## 测试环境
+## 历史数据环境（2026-01-15，仅趋势参考）
 
-| 项目         | 规格                                                         |
-| ------------ | ------------------------------------------------------------ |
-| **CPU**      | Intel Core i9-13900K (24 核 / 32 线程)                       |
-| **内存**     | 64 GB DDR5-5600                                              |
-| **操作系统** | Ubuntu 22.04 LTS                                             |
-| **Node.js**  | v22.12.0                                                     |
+> 下方所有历史章节使用的是另一台机器、另一套依赖和负载协议；不得与上方当前结果直接比较，也不得据此得出当前版本的框架排名。
+
+| 项目         | 规格                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| **CPU**      | Intel Core i9-13900K (24 核 / 32 线程)                                                        |
+| **内存**     | 64 GB DDR5-5600                                                                               |
+| **操作系统** | Ubuntu 22.04 LTS                                                                              |
+| **Node.js**  | v22.12.0                                                                                      |
 | **测试工具** | [autocannon](https://github.com/mcollina/autocannon) v8.0.0（通过 `npm exec --package` 调用） |
-| **并发连接** | 100                                                          |
-| **持续时间** | 30 秒                                                        |
-| **预热**     | 5 秒（不计入统计）                                           |
+| **并发连接** | 100                                                                                           |
+| **持续时间** | 30 秒                                                                                         |
+| **预热**     | 5 秒（不计入统计）                                                                            |
 
 > ⚠️ **注意**: 性能基准测试结果受测试环境、负载模式和代码实现方式影响较大。建议在自己的硬件上运行基准测试以获得最准确的结果。
 
@@ -318,26 +363,25 @@ npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localh
 
 当前 benchmark 通过 CLI 参数配置，不存在 `bench.config.ts`：
 
-| 参数 | 默认值 | 说明 |
-| --- | --- | --- |
-| `--duration` | `15` | 压测持续秒数 |
-| `--connections` | `50` | 并发连接数 |
-| `--pipelining` | `10` | HTTP pipeline 深度 |
-| `--warmup` | `5` | 预热秒数 |
-| `--rounds` | `1` | 轮次；PR / 发版前建议 5 或 7 |
-| `--scenario` | `all` | `json` / `params` / `chain` / `middleware-chain` / `all` |
-| `--framework` | 全部 | 框架过滤，逗号分隔 |
-| `--output` | `test/benchmark/RESULTS.md` | 报告输出路径 |
+| 参数            | 默认值                      | 说明                                                     |
+| --------------- | --------------------------- | -------------------------------------------------------- |
+| `--duration`    | `15`                        | 压测持续秒数                                             |
+| `--connections` | `50`                        | 并发连接数                                               |
+| `--pipelining`  | `10`                        | HTTP pipeline 深度                                       |
+| `--warmup`      | `5`                         | 预热秒数                                                 |
+| `--rounds`      | `1`                         | 轮次；PR / 发版前建议 5 或 7                             |
+| `--scenario`    | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
+| `--framework`   | 全部                        | 框架过滤，逗号分隔                                       |
+| `--output`      | `test/benchmark/RESULTS.md` | 报告输出路径                                             |
 
 ---
 
 ## 结论
 
-- **历史最高吞吐量**: VextJS + Native Adapter，在 2026-01-15 历史 Hello World 场景下达到约 **98,000 req/s**，开启 Cluster 模式可突破 **700,000 req/s**（8 核）
-- **最低内存**: VextJS + Native Adapter，空载仅 **18 MB**，适合资源受限环境
-- **最快启动**: VextJS + Native Adapter，冷启动约 **42 ms**，热重载约 **180 ms**
-- **校验性能**: 内置 schema-dsl 基于 ajv 编译，校验开销极低，接近原生 ajv 性能
-- **扩展性**: Cluster 模式下接近线性扩展，8 核可获得约 7.6× 的吞吐量提升
+- 当前可引用的结果是页面顶部的 2026-08-14 5 轮正式测量和对应原始报告；下方数字均为历史参考。
+- Raw Native 与 Raw Fastify 的领先项随场景和 handler 模型变化，不能据此宣布通用总排名。
+- Vext Native Normal 已确认不存在被禁用的 `authContext` 或 frontend noop middleware 遗留在请求链中；其剩余差距主要是可见的框架运行时成本。
+- Hono adapter 的当前差距显著高于其他 adapter，已明确为独立后续优化方向，而不是掩盖在 Native/Fastify 结论里的数据。
 
 ### 性能建议
 
@@ -353,7 +397,7 @@ npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localh
 
 ## 相关链接
 
-- [benchmarks 仓库](https://github.com/vextjs/benchmarks) — 完整测试代码和历史数据
+- [当前 benchmark 源码与原始报告](https://github.com/devcodex-labs/vextjs/tree/main/test/benchmark) — 可复现命令、测试代码和最新原始数据
 - [Adapter 架构](/guide/adapters) — 了解各 Adapter 的技术实现
 - [Cluster 多进程](/guide/cluster) — 如何配置和使用 Cluster 模式
 - [配置项](/api/config) — `adapter` 配置字段详情

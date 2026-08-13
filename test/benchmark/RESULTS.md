@@ -1,59 +1,63 @@
 # Vext Native 基准公平性报告
 
-> UTC: 2026-08-13T10:09:41.631Z
-> 源码: main@80ac6c187becd4a04be23b3a6855c8884c5f92b3 (dirty)
-> 候选差异 SHA-256: cc9bb4aa0501c21665c4e5883a70f8ca277fb8343ad2224719d72060c9e5f046
+> UTC: 2026-08-13T15:35:05.568Z
+> 源码: main@cea18d760592b790d602f61f343e8d71c4a35735 (clean)
+> 候选差异 SHA-256: clean
 > Runner: `test/benchmark/run-native-fairness.mjs`
 > 参数: duration=10s, connections=50, pipelining=10, warmup=5s, rounds=5
 
+> Handler mode: sync
+> 锁定版本: Vext 1.0.1; Fastify 5.11.3; Hono 4.13.2; @hono/node-server 2.1.0; Express 5.2.1; Koa 3.2.1; @koa/router 15.7.0; route-core 0.0.7; Autocannon 8.0.0
+
 ## 口径
 
-- Raw Native 与 Raw Fastify 对齐为同步 handler、预序列化 JSON body 与 route-only middleware-chain。
+- `/json`、`/params`、`/chain` 与 `/health` 的四个受测对象均使用上方声明的 handler mode；Raw Fastify 在 async mode 按其公开契约返回 `reply`。
+- `/middleware-chain` 保留各框架真实的 route-level middleware 调度，不用于推断 direct handler mode 的差异。
 - Vext Native Core 是 benchmark 私有 direct harness：无 bootstrap global middleware，参测 route registration chain 必须为 1。
-- Vext Native Normal 使用正式 bootstrap + router-loader；frontend disabled 后保留的两个 global 生命周期节点是 authContext 与 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。
+- Vext Native Normal 使用正式 bootstrap + router-loader；在 `requestContext=false` 且 frontend disabled 时，authContext 不注册，唯一全局生命周期节点为 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。
 - Core 不测试 middleware-chain，避免将 route middleware 成本混入最短路径。
 
 ## 汇总
 
 | 场景         | Raw Native RPS | Raw Fastify RPS | Vext Core RPS | Vext Normal RPS | Core vs Raw Native | Normal vs Raw Native |
 | ------------ | -------------: | --------------: | ------------: | --------------: | -----------------: | -------------------: |
-| JSON 响应    |         30,440 |          26,104 |      23,270.4 |       22,137.82 |            -23.55% |              -27.27% |
-| 路由参数     |         24,832 |       28,594.91 |     24,031.28 |        16,611.6 |             -3.22% |              -33.10% |
-| 处理器业务链 |      23,314.19 |        26,062.4 |     19,971.28 |        19,559.2 |            -14.34% |              -16.11% |
-| 真实中间件链 |       22,302.4 |          21,852 |             — |          21,160 |                  — |               -5.12% |
+| JSON 响应    |      35,282.91 |       33,725.82 |     30,298.91 |        29,691.2 |            -14.13% |              -15.85% |
+| 路由参数     |      34,072.73 |       33,205.82 |     28,611.64 |       28,066.19 |            -16.03% |              -17.63% |
+| 处理器业务链 |      29,725.82 |          32,240 |        24,376 |       25,244.37 |            -18.00% |              -15.08% |
+| 真实中间件链 |      28,906.91 |       28,108.37 |             — |        24,741.1 |                  — |              -14.41% |
 
 ## 多轮样本
 
-| 场景             | 目标               | RPS samples                                          |    Median |      Mean |    CV |  P50 |   P99 |
-| ---------------- | ------------------ | ---------------------------------------------------- | --------: | --------: | ----: | ---: | ----: |
-| json             | Raw Native         | 33,800.73, 32,149.6, 30,440, 29,152.8, 26,176        |    30,440 | 30,343.83 |  8.6% | 14ms |  78ms |
-| json             | Raw Fastify        | 25,592, 26,104, 23,662.4, 28,745.6, 26,117.1         |    26,104 | 26,044.22 |  6.2% | 16ms |  98ms |
-| json             | Vext Native Core   | 24,673.6, 23,006.4, 24,303.28, 23,270.4, 21,971.64   |  23,270.4 | 23,445.06 |  4.1% | 18ms | 100ms |
-| json             | Vext Native Normal | 25,244.8, 22,137.82, 19,442.8, 18,890.8, 23,446.55   | 22,137.82 | 21,832.55 | 11.0% | 19ms |  75ms |
-| params           | Raw Native         | 27,523.2, 29,732.8, 20,436.8, 23,928, 24,832         |    24,832 | 25,290.56 | 12.5% | 17ms |  95ms |
-| params           | Raw Fastify        | 28,594.91, 32,272.73, 28,562.91, 27,622.4, 28,917.82 | 28,594.91 | 29,194.15 |  5.5% | 14ms | 102ms |
-| params           | Vext Native Core   | 25,896, 24,031.28, 22,968, 22,592, 27,072.73         | 24,031.28 |    24,512 |  7.0% | 18ms |  70ms |
-| params           | Vext Native Normal | 19,170.8, 18,213.82, 7,724.6, 6,982.4, 16,611.6      |  16,611.6 | 13,740.64 | 38.5% | 27ms |  75ms |
-| chain            | Raw Native         | 23,290.8, 25,481.46, 23,314.19, 23,064, 24,425.46    | 23,314.19 | 23,915.18 |  3.8% | 18ms |  97ms |
-| chain            | Raw Fastify        | 21,598.8, 26,324.8, 27,532.8, 26,062.4, 25,992       |  26,062.4 | 25,502.16 |  8.0% | 17ms |  87ms |
-| chain            | Vext Native Core   | 19,971.28, 16,070.4, 21,617.6, 22,079.28, 19,746     | 19,971.28 | 19,896.91 | 10.6% | 21ms |  77ms |
-| chain            | Vext Native Normal | 15,013.4, 21,576, 20,905.6, 18,994.41, 19,559.2      |  19,559.2 | 19,209.72 | 11.9% | 22ms |  60ms |
-| middleware-chain | Raw Native         | 20,104.41, 22,792, 21,667.28, 23,699.2, 22,302.4     |  22,302.4 | 22,113.06 |  5.4% | 19ms |  98ms |
-| middleware-chain | Raw Fastify        | 21,884.8, 20,634, 28,457.46, 21,852, 21,672          |    21,852 | 22,900.05 | 12.3% | 17ms | 131ms |
-| middleware-chain | Vext Native Core   | N/A                                                  |       N/A |       N/A |   N/A |  N/A |   N/A |
-| middleware-chain | Vext Native Normal | 21,662.4, 22,035.64, 20,232, 19,118.91, 21,160       |    21,160 | 20,841.79 |  5.1% | 21ms |  54ms |
+| 场景             | 目标               | RPS samples                                           |    Median |      Mean |   CV |  P50 |  P99 |
+| ---------------- | ------------------ | ----------------------------------------------------- | --------: | --------: | ---: | ---: | ---: |
+| json             | Raw Native         | 33,199.28, 34,516.37, 35,620.37, 35,821.1, 35,282.91  | 35,282.91 | 34,888.01 | 2.7% | 12ms | 83ms |
+| json             | Raw Fastify        | 34,674.91, 33,725.82, 32,559.28, 33,703.28, 33,912.73 | 33,725.82 |  33,715.2 | 2.0% | 13ms | 83ms |
+| json             | Vext Native Core   | 30,427.2, 30,298.91, 29,227.2, 30,505.6, 30,070.4     | 30,298.91 | 30,105.86 | 1.5% | 15ms | 64ms |
+| json             | Vext Native Normal | 29,691.2, 29,800, 28,988.8, 28,920, 30,090.91         |  29,691.2 | 29,498.18 | 1.6% | 15ms | 64ms |
+| params           | Raw Native         | 34,122.4, 33,124.37, 34,072.73, 34,089.6, 34,069.82   | 34,072.73 | 33,895.78 | 1.1% | 13ms | 71ms |
+| params           | Raw Fastify        | 35,157.1, 33,026.4, 33,119.2, 34,062.4, 33,205.82     | 33,205.82 | 33,714.18 | 2.4% | 13ms | 86ms |
+| params           | Vext Native Core   | 28,544.73, 29,154.19, 28,596.8, 28,611.64, 29,953.6   | 28,611.64 | 28,972.19 | 1.9% | 15ms | 63ms |
+| params           | Vext Native Normal | 28,626.19, 27,602.19, 28,066.19, 27,448, 28,268.37    | 28,066.19 | 28,002.19 | 1.5% | 16ms | 54ms |
+| chain            | Raw Native         | 28,565.1, 29,725.82, 29,215.28, 30,052.8, 30,533.1    | 29,725.82 | 29,618.42 | 2.3% | 15ms | 83ms |
+| chain            | Raw Fastify        | 32,311.28, 31,701.1, 32,311.28, 32,240, 31,673.46     |    32,240 | 32,047.42 | 0.9% | 14ms | 76ms |
+| chain            | Vext Native Core   | 24,376, 25,285.1, 23,032, 25,126.55, 23,904.73        |    24,376 | 24,344.88 | 3.4% | 18ms | 63ms |
+| chain            | Vext Native Normal | 23,336, 25,315.64, 25,328.73, 25,113.46, 25,244.37    | 25,244.37 | 24,867.64 | 3.1% | 18ms | 36ms |
+| middleware-chain | Raw Native         | 28,653.82, 29,093.1, 28,435.2, 28,906.91, 29,144      | 28,906.91 | 28,846.61 | 0.9% | 16ms | 70ms |
+| middleware-chain | Raw Fastify        | 30,393.6, 29,072.73, 25,164.37, 27,342.4, 28,108.37   | 28,108.37 | 28,016.29 | 6.3% | 16ms | 86ms |
+| middleware-chain | Vext Native Core   | N/A                                                   |       N/A |       N/A |  N/A |  N/A |  N/A |
+| middleware-chain | Vext Native Normal | 23,981.82, 24,741.1, 24,498.19, 24,787.2, 24,976      |  24,741.1 | 24,596.86 | 1.4% | 19ms | 42ms |
 
 ## Chain telemetry
 
 | 场景             | 模式   | global middleware | route registration chain | 状态     |
 | ---------------- | ------ | ----------------: | -----------------------: | -------- |
 | json             | core   |                 0 |                        1 | asserted |
-| json             | normal |                 2 |                        2 | asserted |
+| json             | normal |                 1 |                        2 | asserted |
 | params           | core   |                 0 |                        1 | asserted |
-| params           | normal |                 2 |                        2 | asserted |
+| params           | normal |                 1 |                        2 | asserted |
 | chain            | core   |                 0 |                        1 | asserted |
-| chain            | normal |                 2 |                        2 | asserted |
-| middleware-chain | normal |                 2 |                        5 | asserted |
+| chain            | normal |                 1 |                        2 | asserted |
+| middleware-chain | normal |                 1 |                        5 | asserted |
 
 ## 环境
 

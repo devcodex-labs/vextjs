@@ -11,7 +11,7 @@
 
 ## ⚡ 最新结果与可比性
 
-当前可引用的测量结果只在 [`RESULTS.md`](./RESULTS.md) 中。该文件由 runner 自动生成，并记录源码 SHA、worktree 状态、Node/OS/CPU/内存、Autocannon 版本、完整参数、每轮样本和 CV；不要把本 README 中的示例或其他机器的数值当作当前基准。
+当前可引用的主对照测量结果只在 [`RESULTS.md`](./RESULTS.md) 中。该文件由 runner 自动生成，并记录源码 SHA、worktree 状态、Node/OS/CPU/内存、锁定依赖版本、Autocannon 版本、完整参数、每轮样本和 CV；不要把本 README 中的示例或其他机器的数值当作当前基准。正式运行前必须重新核验 registry 中的对照框架版本，并将实际解析版本写入报告。
 
 Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量路由核心，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Benchmark 必须区分 `chain`（handler 内联业务链）、`middleware-chain`（真实 route-level middleware chain）、Core（私有最短路径）与 Normal（正式 bootstrap），避免把任意一者误读为默认运行时性能。
 
@@ -38,14 +38,17 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 ### 主公平性对照（Raw Native / Fastify / Vext Native）
 
 ```bash
-# 正式：四个目标、四场景（Core 的 middleware-chain 明确为 N/A）、5 轮中位数
-node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5
+# 正式同步 handler：四个目标、四场景（Core 的 middleware-chain 明确为 N/A）、5 轮中位数
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --handler-mode sync
+
+# 正式异步 handler：与同步模式保持完全相同的负载协议
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --handler-mode async
 
 # 快速 smoke：验证 HTTP 契约和 chain telemetry，不作性能结论
 npm run test:bench:fairness -- --duration 1 --connections 10 --pipelining 1 --warmup 0 --rounds 1
 ```
 
-主 runner 会在写报告前断言：Core 的 global middleware 为 `0` 且参测 route registration chain 为 `1`；Normal 在 `frontend.enabled=false` 后 global middleware 为 `2`（`authContext`、`requestHook`），普通 route registration chain 为 `2`（`routeMatched + handler`），`middleware-chain` 为 `5`。不符合时结果会失败，不会生成可引用报告。
+主 runner 会在写报告前断言：Core 的 global middleware 为 `0` 且参测 route registration chain 为 `1`；Normal 在 `requestContext=false` 与 `frontend.enabled=false` 后 global middleware 为 `1`（仅 `requestHook`；`authContext` 和 frontend noop 不注册），普通 route registration chain 为 `2`（`routeMatched + handler`），`middleware-chain` 为 `5`。不符合时结果会失败，不会生成可引用报告。
 
 Raw Fastify 的三层 hook 只附着在 `/middleware-chain` 路由，不会穿过 `/json`、`/users/:id`、`/chain`；Raw Native / Raw Fastify 都使用预序列化 JSON body。Core 是 `test/benchmark` 的私有 direct harness，刻意绕过 bootstrap/router-loader；它表示最短 Vext Native 路径，不表示完整生产配置。
 
