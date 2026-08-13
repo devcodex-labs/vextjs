@@ -13,6 +13,9 @@ import type {
  *
  * 由内置 multipart 解析器或自定义上传插件填充到 req.files。
  * 内置解析通过 config.multipart 或 RouteOptions.multipart 启用；
+ * 内置路径为纯内存解析：请求体和 `buffer` 都不会写入框架管理的临时目录。
+ * 因此没有内置 tmpDir、文件 TTL 或定时清理任务；不再被请求/业务代码引用的 Buffer
+ * 由 Node.js 垃圾回收。需要持久化或流式落盘时，应由应用/插件明确接管。
  * 需要流式落盘等高级场景时，也可以由插件引入 busboy / formidable 等库接管。
  *
  * @example
@@ -29,7 +32,10 @@ export interface ParsedFile {
   filename: string;
   /** MIME 类型（如 'image/jpeg'、'application/pdf'） */
   mimetype: string;
-  /** 文件二进制数据 */
+  /**
+   * 文件二进制数据。内置 multipart 解析只保存在内存中，不会创建临时文件。
+   * 如需长期保存，请由业务代码或自定义流式上传插件写入目标存储。
+   */
   buffer: Buffer;
   /** 文件大小（字节数） */
   size: number;
@@ -222,6 +228,7 @@ export interface VextRequest<
    * 全局 `config.multipart.enabled = true` 时自动解析 multipart/form-data；
    * 单个路由可通过 `multipart.enabled = true/false` 覆盖启用或跳过。
    * 自定义插件也可以在内置解析关闭或 `req.files === undefined` 时填充此字段。
+   * 内置解析不会创建框架管理的临时文件；`buffer` 仅在内存中保留。
    * 非文件上传请求此字段为 undefined。
    *
    * @example

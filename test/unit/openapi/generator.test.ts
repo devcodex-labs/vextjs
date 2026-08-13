@@ -2188,6 +2188,14 @@ describe("OpenAPIGenerator", () => {
       expect(zhApi).toContain("`access`");
       expect(zhApi).toContain("传给 `openapi.docs.access.resolver`");
       expect(enApi).toContain("passed to `openapi.docs.access.resolver`");
+      expect(zhGuide).toContain(
+        "区分运行时授权、OpenAPI security 与 Docs access",
+      );
+      expect(enGuide).toContain(
+        "Keep runtime authorization, OpenAPI security, and Docs access separate",
+      );
+      expect(zhApi).toContain("不会保护 route；API 访问控制仍应使用 `auth`");
+      expect(enApi).toContain("It does not protect the route; use `auth` for API access control");
     });
   });
 

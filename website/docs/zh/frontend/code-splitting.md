@@ -12,6 +12,12 @@ src/frontend/pages/admin/dashboard.tsx
   -> route asset graph
 ```
 
+## 默认行为与关闭边界
+
+`frontend.build.client.splitting` 默认是 `true`。生成的 page、layout 与 error registry 使用动态 `import()`，因此浏览器端默认按路由拆分代码。SSR 会为首屏注入 route-specific `modulepreload`；这只是改善首次渲染的预取，不会把 registry 变成 eager import。
+
+只有部署环境存在明确的打包兼容或诊断原因时，才设置 `frontend.build.client.splitting: false`。它会关闭客户端代码拆分，并可能让更多 route module 合并进初始浏览器输出；它不是让懒加载“更可靠”的开关。
+
 ## Layout 与错误页
 
 Layout 和错误页也属于 registry。Route preload 可以包含首屏所需的 page、layout chain、共享 CSS 和 runtime chunks。

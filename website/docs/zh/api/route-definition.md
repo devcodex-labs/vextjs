@@ -564,6 +564,17 @@ app.post(
 
 只有一次性路由或底层 API reference 示例才建议直接写原始 `auth` 对象。真实应用里应把 middleware 名称、安全方案、角色、scope 和权限资源集中在本地 helper 中。
 
+### 运行时 auth、OpenAPI security 与 Docs access
+
+三者相关但彼此独立：
+
+- `auth.roles`、`auth.scopes`、`auth.permissions` 与 `auth.check` 是运行时路由保护，决定当前请求能否进入 handler。
+- `auth.security` 是 OpenAPI metadata，用于选择文档中的安全方案；对象数组可声明 OAuth scope，例如 `[{ oauth2: ["posts:write"] }]`，但它不会授予或执行该 scope。
+- `docs.security` 只覆盖生成出的 OpenAPI security metadata，不会取消运行时的 `auth` 要求。
+- `docs.access` 是传给 `openapi.docs.access.resolver` 的 Vext Docs 可见性/Try it out metadata，不会保护 route；API 访问控制仍应使用 `auth`。
+
+运行时 scope 与 OAuth scope 可以使用相同字符串，但仍是两份独立声明；两者都需要时请分别显式配置。
+
 Guard 失败会使用稳定错误码：
 
 | 错误码                | HTTP 状态 | 含义                                                  |
@@ -652,7 +663,7 @@ interface RouteDocsConfig {
 | `extensions`  | `object`           | —                            | 自定义 `x-*` 扩展字段                                                                                                      |
 | `responses`   | `object`           | —                            | 响应定义                                                                                                                   |
 
-`docs.access` 会写入 OpenAPI operation 的 `x-vext-docs-access` vendor extension，并在 Vext Docs 过滤阶段作为 `kind: "operation"` descriptor 的 `access` 字段传给 `openapi.docs.access.resolver`。字符串值通常用于角色、租户或分组标识；对象值可以携带 `roles`、`permissions`、`group`、`visible` 和 `tryItOut` metadata。
+`docs.access` 会写入 OpenAPI operation 的 `x-vext-docs-access` vendor extension，并在 Vext Docs 过滤阶段作为 `kind: "operation"` descriptor 的 `access` 字段传给 `openapi.docs.access.resolver`。字符串值通常用于角色、租户或分组标识；对象值可以携带 `roles`、`permissions`、`group`、`visible` 和 `tryItOut` metadata。这只是文档访问 metadata：隐藏 operation 或关闭 Try it out 不会为 route 增加认证或授权。
 
 ### 完整示例
 
@@ -875,7 +886,7 @@ docs: {
 
 ## multipart
 
-路由级文件上传配置。`multipart.files` 会自动输出 OpenAPI `multipart/form-data` requestBody，无需手动编写 `docs.requestBody`。全局 `config.multipart.enabled` 关闭时，可通过 `multipart.enabled: true` 让单个路由启用内置解析；全局开启时，也可通过 `multipart.enabled: false` 让单个路由跳过内置解析。
+路由级文件上传配置。`multipart.files` 会自动输出 OpenAPI `multipart/form-data` requestBody，无需手动编写 `docs.requestBody`。全局 `config.multipart.enabled` 关闭时，可通过 `multipart.enabled: true` 让单个路由启用内置解析；全局开启时，也可通过 `multipart.enabled: false` 让单个路由跳过内置解析。内置解析是纯内存路径：不会创建框架管理的临时文件，因此没有 tmp 目录、文件 TTL 或定时清理配置。大文件或持久化存储应由流式上传插件接管。
 
 ```typescript
 app.post(

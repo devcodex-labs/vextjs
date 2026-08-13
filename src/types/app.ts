@@ -731,6 +731,10 @@ export interface VextBodyParserConfig {
 
 /**
  * Multipart / 文件上传全局配置
+ *
+ * 内置解析会把请求体和 ParsedFile.buffer 保存在内存中，不创建框架管理的临时文件或目录。
+ * 因而没有 tmpDir、磁盘持久化、TTL 或定时清理配置；大文件、流式写入和持久化
+ * 应由应用或自定义上传插件负责。
  */
 export interface VextMultipartConfig {
   /**

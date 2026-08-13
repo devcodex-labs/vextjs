@@ -567,6 +567,17 @@ app.post(
 
 Use the raw `auth` object directly only for a one-off route or low-level API reference examples. In real applications, keep middleware names, security schemes, roles, scopes, and permission resources in local helpers.
 
+### Runtime auth, OpenAPI security, and Docs access
+
+These are related but independent layers:
+
+- `auth.roles`, `auth.scopes`, `auth.permissions`, and `auth.check` are runtime route guards. They decide whether the current request reaches the handler.
+- `auth.security` is OpenAPI metadata. It selects the documented security scheme, and an object array can declare OAuth scopes such as `[{ oauth2: ["posts:write"] }]`; it does not grant or enforce that scope.
+- `docs.security` only overrides the generated OpenAPI security metadata. It does not disable a runtime `auth` requirement.
+- `docs.access` is Vext Docs visibility/Try it out metadata sent to `openapi.docs.access.resolver`. It does not protect the route; use `auth` for API access control.
+
+It is valid for an application to use the same string in a runtime scope and an OAuth scope, but they remain separate declarations. Keep both explicit when both are required.
+
 Guard failures use stable error codes:
 
 | Code                  | HTTP status | Meaning                                                                 |
@@ -655,7 +666,7 @@ interface RouteDocsConfig {
 | `extensions`  | `object`           | —                                   | Custom `x-*` extension fields                                                                                                             |
 | `responses`   | `object`           | —                                   | response definition                                                                                                                       |
 
-`docs.access` is emitted on the OpenAPI operation as the `x-vext-docs-access` vendor extension and passed to `openapi.docs.access.resolver` as the `access` field of a `kind: "operation"` descriptor during Vext Docs filtering. String values are useful for role, tenant, or group labels; object values can carry `roles`, `permissions`, `group`, `visible`, and `tryItOut` metadata.
+`docs.access` is emitted on the OpenAPI operation as the `x-vext-docs-access` vendor extension and passed to `openapi.docs.access.resolver` as the `access` field of a `kind: "operation"` descriptor during Vext Docs filtering. String values are useful for role, tenant, or group labels; object values can carry `roles`, `permissions`, `group`, `visible`, and `tryItOut` metadata. This is documentation access metadata only: hiding an operation or disabling Try it out does not add authentication or authorization to the route.
 
 ### Complete example
 
@@ -881,7 +892,7 @@ docs: {
 
 ## multipart
 
-Route-level file upload configuration. `multipart.files` automatically outputs an OpenAPI `multipart/form-data` requestBody without manually writing `docs.requestBody`. Set `multipart.enabled: true` to opt one route into built-in parsing when global `config.multipart.enabled` is off; set `multipart.enabled: false` to opt one route out when global parsing is on.
+Route-level file upload configuration. `multipart.files` automatically outputs an OpenAPI `multipart/form-data` requestBody without manually writing `docs.requestBody`. Set `multipart.enabled: true` to opt one route into built-in parsing when global `config.multipart.enabled` is off; set `multipart.enabled: false` to opt one route out when global parsing is on. Built-in parsing is memory-only: it creates no framework-managed temporary files, so there is no tmp directory, file TTL, or periodic cleanup setting. Use a streaming upload plugin for large files or persistent storage.
 
 ```typescript
 app.post(

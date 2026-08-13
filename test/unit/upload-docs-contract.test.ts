@@ -57,4 +57,22 @@ describe("upload docs contract", () => {
       readRepoFile("website/docs/zh/api/route-definition.md"),
     ).not.toContain('middlewares: ["upload"]');
   });
+
+  it("documents the built-in multipart memory lifecycle without inventing disk cleanup", () => {
+    const requestTypes = readRepoFile("src/types/request.ts");
+    const multipartConfig = readRepoFile("src/types/app.ts");
+    const enConfig = readRepoFile("website/docs/en/api/config.md");
+    const zhConfig = readRepoFile("website/docs/zh/api/config.md");
+    const enContext = readRepoFile("website/docs/en/api/context.md");
+    const zhContext = readRepoFile("website/docs/zh/api/context.md");
+
+    expect(requestTypes).toContain("都不会写入框架管理的临时目录");
+    expect(multipartConfig).toContain("没有 tmpDir、磁盘持久化、TTL 或定时清理配置");
+    expect(enConfig).toContain("Built-in multipart parsing is memory-only");
+    expect(enConfig).toContain("does **not** create a framework-managed temporary file");
+    expect(zhConfig).toContain("内置 multipart 解析是纯内存路径");
+    expect(zhConfig).toContain("没有可配置的 `tmpDir`、磁盘保留 TTL 或定时清理任务");
+    expect(enContext).toContain("does not create framework-managed temporary files");
+    expect(zhContext).toContain("不会创建框架管理的临时文件、临时目录、TTL 或定时清理任务");
+  });
 });

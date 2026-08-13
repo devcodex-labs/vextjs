@@ -399,7 +399,7 @@ app.get("/greeting", async (req, res) => {
 
 ### `files`
 
-文件上传列表，初始状态为 `undefined`。全局 `config.multipart.enabled` 开启后，内置 body-parser 会自动解析 `multipart/form-data` 并填充此字段；单个路由也可以通过 `multipart.enabled: true` 单独启用，或通过 `multipart.enabled: false` 跳过全局解析。需要流式落盘或第三方解析器时，自定义上传插件也可以填充此字段。
+文件上传列表，初始状态为 `undefined`。全局 `config.multipart.enabled` 开启后，内置 body-parser 会自动解析 `multipart/form-data` 并填充此字段；单个路由也可以通过 `multipart.enabled: true` 单独启用，或通过 `multipart.enabled: false` 跳过全局解析。内置解析会在内存中保留请求体与每个 `buffer`，不会创建框架管理的临时文件、临时目录、TTL 或定时清理任务。需要流式落盘、持久化存储或第三方解析器时，自定义上传插件也可以填充此字段。
 
 ```typescript
 interface ParsedFile {

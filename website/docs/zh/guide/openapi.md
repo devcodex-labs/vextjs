@@ -505,6 +505,16 @@ app.get(
 
 如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。`auth: { required: false }` 且没有 roles、scopes、permissions 或 `check` 时，OpenAPI 会把该路由标记为公开；如果同时声明这些授权规则，运行时仍会要求认证，OpenAPI 也会输出认证 security。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
 
+#### 区分运行时授权、OpenAPI security 与 Docs access
+
+| 层级 | 配置字段 | 实际控制内容 | **不能**控制的内容 |
+| --- | --- | --- | --- |
+| 运行时路由授权 | `auth.required`、`roles`、`scopes`、`permissions`、`check` | 请求凭据/身份要求，以及路由的 401/403 判定 | 不会自动把运行时 scope 写成 OpenAPI OAuth scope |
+| OpenAPI operation security | `auth.security` 或手动 `docs.security` 覆盖 | 标准 OpenAPI `security` 的安全方案和 scope metadata | 不会在运行时执行 role、permission 或自定义 `check` |
+| Vext Docs access | `docs.access` 与 `openapi.docs.access.resolver` | Vext Docs 及其过滤文档数据中的可见性和 Try it out 过滤 | 不会保护真实 API route |
+
+`auth.scopes` 是对 `req.auth.scopes` 的运行时判定，不会自动复制为 OAuth scopes。需要让 OpenAPI 消费者看到 OAuth scope 时，请显式声明，例如 `auth: { scopes: ["posts:write"], security: [{ oauth2: ["posts:write"] }] }`。`docs.access` 只用于描述或过滤文档受众；即使 operation 在 Docs 中隐藏，也必须保留路由自己的 `auth` 要求。
+
 手动覆盖：
 
 ```typescript

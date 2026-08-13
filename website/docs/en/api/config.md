@@ -606,6 +606,12 @@ export default {
 `multipart.maxFileSize` only limits the size of a single file; the total request body read limit is controlled by `bodyParser.maxBodySize`. When using Fastify, if `fastifyAdapter({ bodyLimit })` is additionally passed in, the actual read boundary will be the smaller value of the adapter `bodyLimit` and the overall upper limit of body-parser.
 :::
 
+### Storage and cleanup
+
+Built-in multipart parsing is memory-only. Vext reads the request body and exposes each upload as `req.files[*].buffer`; it does **not** create a framework-managed temporary file or temporary directory. Consequently, there is no `tmpDir`, on-disk retention TTL, or periodic cleanup job to configure. When the request and application code no longer retain a buffer, normal Node.js garbage collection reclaims it; Vext never deletes files that your application stores itself.
+
+Set `bodyParser.maxBodySize`, `multipart.maxFileSize`, `multipart.maxFiles`, and `multipart.allowedMimeTypes` deliberately. For large uploads, streaming object storage, or any durable file lifecycle, disable/avoid the built-in parser for that route and use a streaming upload plugin that owns its storage and cleanup policy.
+
 ---
 
 ## VextAccessLogConfig

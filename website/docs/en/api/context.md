@@ -404,7 +404,7 @@ app.get("/greeting", async (req, res) => {
 
 ### `files`
 
-File upload list, initially `undefined`. Vext populates it when built-in multipart parsing is enabled globally through `config.multipart.enabled` or for one route through `multipart.enabled: true`. A route may set `multipart.enabled: false` to opt out even when global parsing is enabled. Custom upload plugins can also populate this field when they need streaming writes or third-party parsers.
+File upload list, initially `undefined`. Vext populates it when built-in multipart parsing is enabled globally through `config.multipart.enabled` or for one route through `multipart.enabled: true`. A route may set `multipart.enabled: false` to opt out even when global parsing is enabled. Built-in parsing keeps the request body and each `buffer` in memory; it does not create framework-managed temporary files, a temp directory, TTL, or periodic cleanup job. Custom upload plugins can also populate this field when they need streaming writes, durable storage, or third-party parsers.
 
 ```typescript
 interface ParsedFile {

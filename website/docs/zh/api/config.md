@@ -608,6 +608,12 @@ export default {
 `multipart.maxFileSize` 只限制单个文件大小；总请求体读取上限由 `bodyParser.maxBodySize` 控制。使用 Fastify 时，如额外传入 `fastifyAdapter({ bodyLimit })`，实际读取边界会取 adapter `bodyLimit` 与 body-parser 总体上限中的较小值。
 :::
 
+### 存储与清理
+
+内置 multipart 解析是纯内存路径。Vext 读取请求体后，将每个上传文件暴露为 `req.files[*].buffer`；它**不会**创建框架管理的临时文件或临时目录。因此没有可配置的 `tmpDir`、磁盘保留 TTL 或定时清理任务。请求和业务代码不再持有 Buffer 引用后，由正常的 Node.js GC 回收；Vext 不会删除应用自行保存的文件。
+
+请有意识地设置 `bodyParser.maxBodySize`、`multipart.maxFileSize`、`multipart.maxFiles` 与 `multipart.allowedMimeTypes`。大文件、流式对象存储或任何需要持久化文件生命周期的场景，应在该路由关闭/避免内置解析，并使用由插件自身负责存储和清理策略的流式上传方案。
+
 ---
 
 ## VextAccessLogConfig

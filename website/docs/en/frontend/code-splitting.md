@@ -12,6 +12,12 @@ src/frontend/pages/admin/dashboard.tsx
   -> route asset graph
 ```
 
+## Default and opt-out behavior
+
+`frontend.build.client.splitting` defaults to `true`. The generated page, layout, and error registry uses dynamic `import()` entries, so browser route code is split by default. SSR injects route-specific `modulepreload` for the first render; that preload improves the first navigation without turning the registry into eager imports.
+
+Set `frontend.build.client.splitting: false` only when a deployment has a specific bundling compatibility or diagnostic reason. It disables client code splitting and can merge more route modules into the initial browser output; it is not a way to make lazy loading more reliable.
+
 ## Layouts and Errors
 
 Layouts and error pages are also part of the registry. A route preload can include the page, layout chain, shared CSS, and runtime chunks needed for the first render.
