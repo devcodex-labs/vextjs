@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, extname, sep } from "node:path";
 import type { VextApp, RouteOptions } from "../types/app.js";
-import type { VextMiddleware } from "../types/middleware.js";
+import type { VextHandler, VextMiddleware } from "../types/middleware.js";
 import type { RouteDefinition } from "../types/route.js";
 import { executeRouteFactory } from "./define-routes.js";
 import { buildValidateMiddleware } from "./validate-middleware.js";
@@ -112,6 +112,74 @@ function resolveRouteTimeout(
   options?: RouteOptions,
 ): number | false | undefined {
   return options?.timeout ?? options?.override?.timeout;
+}
+
+function isPromise(value: unknown): value is Promise<void> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+function createHandlerLifecycleMiddleware(
+  handler: VextHandler,
+  hooks: VextInternalHooks,
+  route: VextRouteHookInfo,
+): VextMiddleware {
+  return (req, res, _next) => {
+    const startedAt = performance.now();
+    const emitAfter = (): void | Promise<void> => {
+      if (!hooks.has("handler:after")) return;
+      return waitForResponseSend(res)
+        .then(() =>
+          hooks.emitSafe("handler:after", {
+            req,
+            res,
+            route,
+            requestId: req.requestId,
+            durationMs: Math.round(performance.now() - startedAt),
+          }),
+        )
+        .then(() => undefined);
+    };
+    const emitError = (error: unknown): void | Promise<void> => {
+      if (!hooks.has("handler:error")) throw error;
+      return hooks
+        .emitSafe("handler:error", {
+          req,
+          res,
+          route,
+          error,
+          requestId: req.requestId,
+        })
+        .then(() => {
+          throw error;
+        });
+    };
+    const invoke = (): void | Promise<void> => {
+      try {
+        const result = handler(req, res);
+        return isPromise(result)
+          ? result.then(() => emitAfter(), emitError)
+          : emitAfter();
+      } catch (error) {
+        return emitError(error);
+      }
+    };
+
+    if (!hooks.has("handler:before")) {
+      return invoke();
+    }
+    return hooks
+      .emit("handler:before", {
+        req,
+        res,
+        route,
+        requestId: req.requestId,
+      })
+      .then(() => invoke());
+  };
 }
 
 /**
@@ -485,45 +553,25 @@ function prepareRouteDefinitionRegistrations(
 
     // ── 4. 将 handler 包装为 VextMiddleware ─────────────
     // handler 是执行链的最后一环，不调用 next()
-    const handlerMiddleware: VextMiddleware = async (req, res, _next) => {
-      const startedAt = performance.now();
-      await hooks.emit("handler:before", {
-        req,
-        res,
-        route: routeInfo,
-        requestId: req.requestId,
-      });
-      try {
-        await route.handler(req, res);
-        await waitForResponseSend(res);
-        await hooks.emitSafe("handler:after", {
-          req,
-          res,
-          route: routeInfo,
-          requestId: req.requestId,
-          durationMs: Math.round(performance.now() - startedAt),
-        });
-      } catch (error) {
-        await hooks.emitSafe("handler:error", {
-          req,
-          res,
-          route: routeInfo,
-          error,
-          requestId: req.requestId,
-        });
-        throw error;
-      }
-    };
+    const handlerMiddleware = createHandlerLifecycleMiddleware(
+      route.handler,
+      hooks,
+      routeInfo,
+    );
 
     // ── 5. 组装执行链 ──────────────────────────────────
-    const routeMatchedMiddleware: VextMiddleware = async (req, _res, next) => {
-      await hooks.emit("route:matched", {
-        req,
-        route: routeInfo,
-        params: req.params,
-        requestId: req.requestId,
-      });
-      await next();
+    const routeMatchedMiddleware: VextMiddleware = (req, _res, next) => {
+      if (!hooks.has("route:matched")) {
+        return next();
+      }
+      return hooks
+        .emit("route:matched", {
+          req,
+          route: routeInfo,
+          params: req.params,
+          requestId: req.requestId,
+        })
+        .then(() => next());
     };
 
     const chain: VextMiddleware[] = [

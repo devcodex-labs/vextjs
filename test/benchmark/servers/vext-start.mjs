@@ -26,6 +26,7 @@ const vextRoot = join(__dirname, "..", "..", "..");
 const adapter = process.env.BENCH_ADAPTER || "native";
 const port = parseInt(process.env.PORT || "3000", 10);
 const benchmarkMode = process.env.VEXT_BENCH_MODE || "normal";
+const handlerMode = process.env.VEXT_BENCH_HANDLER_MODE || "sync";
 
 // vext-app 项目根目录
 const rootDir = join(__dirname, "vext-app");
@@ -73,7 +74,10 @@ if (benchmarkMode === "core") {
         process.send({
           type: "ready",
           port: actualPort,
-          telemetry: result.app.adapter.getBenchmarkTelemetry?.(),
+          telemetry: {
+            ...result.app.adapter.getBenchmarkTelemetry?.(),
+            handlerMode,
+          },
         });
       }
     } catch (err) {

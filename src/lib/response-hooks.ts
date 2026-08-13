@@ -49,18 +49,26 @@ export function beginResponseSend(
 ): ResponseSendState {
   const startedAt = performance.now();
   const hooks = isInternalHooks(res._hooks) ? res._hooks : undefined;
-  const nextHeaders = cloneHeaders(payload.headers);
+  const hasBeforeHook = hooks?.has("response:before") === true;
+  const needsMutableHeaders = Boolean(res._onBeforeSend) || hasBeforeHook;
+  // Response adapters already pass an owned header snapshot. A second clone is
+  // needed only when an interceptor can mutate it.
+  const nextHeaders = needsMutableHeaders
+    ? cloneHeaders(payload.headers)
+    : payload.headers;
   res._onBeforeSend?.(payload.kind, payload.data, payload.status, nextHeaders);
 
   const hookPayload = {
     ...payload,
     headers: nextHeaders,
   };
-  const patch = hooks?.emitSync("response:before", hookPayload) as
-    | VextResponseBeforePatch
-    | undefined;
+  const patch = (
+    hasBeforeHook ? hooks!.emitSync("response:before", hookPayload) : undefined
+  ) as VextResponseBeforePatch | undefined;
 
-  mergeHeaders(nextHeaders, patch?.headers);
+  if (patch?.headers) {
+    mergeHeaders(nextHeaders, patch.headers);
+  }
 
   return {
     kind: payload.kind,
@@ -77,13 +85,15 @@ export function finishResponseSend(
   state: ResponseSendState,
 ): void {
   const hooks = isInternalHooks(res._hooks) ? res._hooks : undefined;
-  hooks?.emitSafeSync("response:after", {
-    kind: state.kind,
-    status: state.status,
-    headers: state.headers,
-    requestId: state.requestId,
-    durationMs: Math.round(performance.now() - state.startedAt),
-  });
+  if (hooks?.has("response:after")) {
+    hooks.emitSafeSync("response:after", {
+      kind: state.kind,
+      status: state.status,
+      headers: state.headers,
+      requestId: state.requestId,
+      durationMs: Math.round(performance.now() - state.startedAt),
+    });
+  }
 
   // Fire req.onClose exactly-once when the response has completed send.
   // Inject/testing paths may not emit host IncomingMessage 'close'.

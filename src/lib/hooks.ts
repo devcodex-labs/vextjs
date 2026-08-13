@@ -8,6 +8,7 @@ import type {
 import type { VextLogger } from "../types/app.js";
 
 type AnyHookHandler = (payload: unknown) => unknown | Promise<unknown>;
+const EMPTY_HANDLERS: AnyHookHandler[] = [];
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
@@ -46,7 +47,8 @@ export function createHookManager(logger?: VextLogger): VextInternalHooks {
   }
 
   function getHandlers(name: VextHookName): AnyHookHandler[] {
-    return Array.from(listeners.get(name) ?? []);
+    const handlers = listeners.get(name);
+    return handlers?.size ? Array.from(handlers) : EMPTY_HANDLERS;
   }
 
   return {

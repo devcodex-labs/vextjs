@@ -13,6 +13,7 @@
 
 import Fastify from "fastify";
 import crypto from "node:crypto";
+import { withFastifyBenchmarkHandler } from "./handler-mode.mjs";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 
@@ -36,30 +37,39 @@ function sendJson(reply, data, statusCode = 200) {
 }
 
 // ── 场景 1: 纯 JSON 响应 ────────────────────────────────────
-fastify.get("/json", (_request, reply) => {
-  sendJson(reply, { message: "Hello World" });
-});
+fastify.get(
+  "/json",
+  withFastifyBenchmarkHandler((_request, reply) => {
+    sendJson(reply, { message: "Hello World" });
+  }),
+);
 
 // ── 场景 2: 路由参数解析 ────────────────────────────────────
-fastify.get("/users/:id", (request, reply) => {
-  const { id } = request.params;
-  sendJson(reply, { id, name: `User ${id}` });
-});
+fastify.get(
+  "/users/:id",
+  withFastifyBenchmarkHandler((request, reply) => {
+    const { id } = request.params;
+    sendJson(reply, { id, name: `User ${id}` });
+  }),
+);
 
 // ── 场景 3: 3 层 handler 内联业务链 ──────────────────────────
-fastify.get("/chain", (request, reply) => {
-  const startTime = Date.now();
-  const requestId = crypto.randomUUID();
-  request.headers.authorization;
-  const elapsed = Date.now() - startTime;
-  reply.header("X-Response-Time", `${elapsed}ms`);
-  reply.header("X-Bench-Request-Id", requestId);
-  sendJson(reply, {
-    message: "Chain complete",
-    requestId,
-    authenticated: true,
-  });
-});
+fastify.get(
+  "/chain",
+  withFastifyBenchmarkHandler((request, reply) => {
+    const startTime = Date.now();
+    const requestId = crypto.randomUUID();
+    request.headers.authorization;
+    const elapsed = Date.now() - startTime;
+    reply.header("X-Response-Time", `${elapsed}ms`);
+    reply.header("X-Bench-Request-Id", requestId);
+    sendJson(reply, {
+      message: "Chain complete",
+      requestId,
+      authenticated: true,
+    });
+  }),
+);
 
 // ── 场景 4: 3 层真实 route-level middleware chain ───────────
 // Fastify 使用 route-level lifecycle hooks 作为其原生中间件模型。不要用
@@ -83,18 +93,21 @@ const middlewareChainPreHandlers = [
 fastify.get(
   "/middleware-chain",
   { preHandler: middlewareChainPreHandlers },
-  (_request, reply) => {
+  withFastifyBenchmarkHandler((_request, reply) => {
     sendJson(reply, {
       message: "Middleware chain complete",
       authenticated: true,
     });
-  },
+  }),
 );
 
 // ── 健康检查 ─────────────────────────────────────────────────
-fastify.get("/health", (_request, reply) => {
-  sendJson(reply, { status: "ok" });
-});
+fastify.get(
+  "/health",
+  withFastifyBenchmarkHandler((_request, reply) => {
+    sendJson(reply, { status: "ok" });
+  }),
+);
 
 // ── 启动服务器 ───────────────────────────────────────────────
 try {

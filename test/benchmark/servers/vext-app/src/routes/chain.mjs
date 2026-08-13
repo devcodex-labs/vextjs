@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { defineRoutes } from "vextjs";
+import { withBenchmarkHandler } from "../../../handler-mode.mjs";
 
 const BENCH_ROUTE_OPTIONS = { override: { cors: { enabled: false } } };
 
@@ -12,28 +13,32 @@ const BENCH_ROUTE_OPTIONS = { override: { cors: { enabled: false } } };
 // 如需测量真实 route-level middleware chain，请使用 /middleware-chain。
 
 export default defineRoutes((app) => {
-  app.get("/", BENCH_ROUTE_OPTIONS, async (req, res) => {
-    // ── 中间件 1 模拟：请求计时 ──────────────────────────
-    const startTime = Date.now();
+  app.get(
+    "/",
+    BENCH_ROUTE_OPTIONS,
+    withBenchmarkHandler((req, res) => {
+      // ── 中间件 1 模拟：请求计时 ──────────────────────────
+      const startTime = Date.now();
 
-    // ── 中间件 2 模拟：请求 ID 生成 ──────────────────────
-    const benchRequestId = crypto.randomUUID();
+      // ── 中间件 2 模拟：请求 ID 生成 ──────────────────────
+      const benchRequestId = crypto.randomUUID();
 
-    // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────
-    req.headers.authorization;
-    const authenticated = true;
+      // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────
+      req.headers.authorization;
+      const authenticated = true;
 
-    // ── handler 逻辑 ─────────────────────────────────────
-    const elapsed = Date.now() - startTime;
+      // ── handler 逻辑 ─────────────────────────────────────
+      const elapsed = Date.now() - startTime;
 
-    // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
-    res.setHeader("X-Response-Time", `${elapsed}ms`);
-    res.setHeader("X-Bench-Request-Id", benchRequestId);
+      // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
+      res.setHeader("X-Response-Time", `${elapsed}ms`);
+      res.setHeader("X-Bench-Request-Id", benchRequestId);
 
-    res.json({
-      message: "Chain complete",
-      requestId: benchRequestId,
-      authenticated,
-    });
-  });
+      res.json({
+        message: "Chain complete",
+        requestId: benchRequestId,
+        authenticated,
+      });
+    }),
+  );
 });

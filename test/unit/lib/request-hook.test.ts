@@ -29,6 +29,15 @@ function createReq(overrides: Partial<VextRequest> = {}): VextRequest {
 }
 
 describe("request hook middleware", () => {
+  it("passes through without creating a request hook lifecycle when unobserved", async () => {
+    const hooks = createHookManager();
+    const next = vi.fn(async () => undefined);
+
+    await createRequestHookMiddleware(hooks)(createReq(), {} as any, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it("emits request:start for matched requests before next", async () => {
     const hooks = createHookManager();
     const onStart = vi.fn();
@@ -46,6 +55,18 @@ describe("request hook middleware", () => {
       }),
     );
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("observes listeners registered after the middleware is created", async () => {
+    const hooks = createHookManager();
+    const middleware = createRequestHookMiddleware(hooks);
+    const onStart = vi.fn();
+
+    await middleware(createReq(), {} as any, vi.fn());
+    hooks.on("request:start", onStart);
+    await middleware(createReq(), {} as any, vi.fn());
+
+    expect(onStart).toHaveBeenCalledTimes(1);
   });
 
   it("emits request:start and route:notFound for notFound requests", async () => {

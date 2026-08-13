@@ -460,8 +460,7 @@ describe("router-loader", () => {
       req,
       res,
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(readable.pipe).toHaveBeenCalledWith(nodeRes);
     expect(events).toEqual(["middleware:before", "handler"]);
@@ -475,6 +474,48 @@ describe("router-loader", () => {
       "handler:after",
       "middleware:after",
     ]);
+  });
+
+  it("does not wait for stream settlement when no handler:after listener exists", async () => {
+    const routesDir = join(tmpDir, "routes");
+    await writeRouteFile(routesDir, "files.mjs", makeStreamRouteFile());
+
+    const app = createMockApp();
+    const readable = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(),
+    }) as unknown as NodeJS.ReadableStream;
+    (app as any).streamControl = { readable, events: [] };
+
+    await loadRoutes(app, routesDir, {
+      middlewareDefs: {},
+      globalMiddlewares: [],
+    });
+
+    const route = app.mockAdapter.registeredRoutes.find(
+      (entry) => entry.path === "/files/stream",
+    );
+    const nodeRes = Object.assign(new EventEmitter(), {
+      statusCode: 200,
+      setHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      end: vi.fn(),
+    });
+    const res = createNativeResponse(nodeRes as any, () => "req-1");
+    res._hooks = app.hooks;
+    const running = executeTestChain(
+      route!.chain,
+      { method: "GET", requestId: "req-1", params: {}, app },
+      res,
+    );
+    const settled = await Promise.race([
+      running.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 25)),
+    ]);
+
+    expect(readable.pipe).toHaveBeenCalledWith(nodeRes);
+    nodeRes.emit("finish");
+    await running;
+    expect(settled).toBe(true);
   });
 
   // ── 空目录 / 不存在的目录 ────────────────────────────────

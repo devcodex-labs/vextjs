@@ -12,7 +12,8 @@
  */
 
 import { Hono } from "hono";
-import { createServer } from "node:http";
+import { serve } from "@hono/node-server";
+import crypto from "node:crypto";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const app = new Hono();
@@ -77,74 +78,16 @@ app.get("/middleware-chain", (c) => {
 app.get("/health", (c) => c.json({ status: "ok" }));
 
 // ── 启动服务器 ───────────────────────────────────────────────
-const server = createServer(async (nodeReq, nodeRes) => {
-  const protocol = "http";
-  const host = nodeReq.headers.host ?? `localhost:${port}`;
-  const url = `${protocol}://${host}${nodeReq.url ?? "/"}`;
-
-  const method = (nodeReq.method ?? "GET").toUpperCase();
-  const hasBody = method !== "GET" && method !== "HEAD";
-
-  let body = null;
-  if (hasBody) {
-    body = new ReadableStream({
-      start(controller) {
-        nodeReq.on("data", (chunk) =>
-          controller.enqueue(new Uint8Array(chunk)),
-        );
-        nodeReq.on("end", () => controller.close());
-        nodeReq.on("error", (err) => controller.error(err));
-      },
-    });
-  }
-
-  const headers = new Headers();
-  const rawHeaders = nodeReq.rawHeaders;
-  for (let i = 0; i < rawHeaders.length; i += 2) {
-    if (rawHeaders[i] && rawHeaders[i + 1]) {
-      headers.append(rawHeaders[i], rawHeaders[i + 1]);
+const server = serve(
+  { fetch: app.fetch, port, hostname: "127.0.0.1" },
+  ({ port: actualPort }) => {
+    console.log(`[raw-hono] listening on http://127.0.0.1:${port}`);
+    // 通知父进程已就绪（子进程模式）
+    if (process.send) {
+      process.send({ type: "ready", port: actualPort });
     }
-  }
-
-  const requestInit = { method, headers };
-  if (body) {
-    requestInit.body = body;
-    requestInit.duplex = "half";
-  }
-
-  const webRequest = new Request(url, requestInit);
-  const webResponse = await app.fetch(webRequest);
-
-  nodeRes.statusCode = webResponse.status;
-  webResponse.headers.forEach((value, key) => {
-    nodeRes.setHeader(key, value);
-  });
-
-  if (webResponse.body) {
-    const reader = webResponse.body.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        nodeRes.write(value);
-      }
-    } catch {
-      // client disconnected
-    } finally {
-      nodeRes.end();
-    }
-  } else {
-    nodeRes.end();
-  }
-});
-
-server.listen(port, "127.0.0.1", () => {
-  console.log(`[raw-hono] listening on http://127.0.0.1:${port}`);
-  // 通知父进程已就绪（子进程模式）
-  if (process.send) {
-    process.send({ type: "ready", port });
-  }
-});
+  },
+);
 
 // 优雅关闭
 process.on("SIGTERM", () => {

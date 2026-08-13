@@ -767,7 +767,9 @@ export async function devBootstrap(
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
 
-    app.adapter.registerMiddleware(createAuthContextMiddleware());
+    if (config.requestContext?.enabled !== false) {
+      app.adapter.registerMiddleware(createAuthContextMiddleware());
+    }
 
     app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 
@@ -1020,7 +1022,10 @@ export async function devBootstrap(
                 cfg.locale as any, // D3 修复：补传 localeConfig
               )) as any)
           : undefined,
-      authContextMiddleware: createAuthContextMiddleware() as any,
+      authContextMiddleware:
+        config.requestContext?.enabled !== false
+          ? (createAuthContextMiddleware() as any)
+          : undefined,
       createCorsMiddleware: ((cfg: Record<string, unknown>) =>
         createCorsMiddleware(cfg.cors as any)) as any,
       sessionMiddleware: sessionRuntime.middleware as any,

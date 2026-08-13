@@ -542,7 +542,9 @@ export async function bootstrap(
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
 
-    app.adapter.registerMiddleware(createAuthContextMiddleware());
+    if (config.requestContext?.enabled !== false) {
+      app.adapter.registerMiddleware(createAuthContextMiddleware());
+    }
 
     app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 

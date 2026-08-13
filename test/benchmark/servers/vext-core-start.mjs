@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 
 import { DEFAULT_CONFIG, createApp } from "../../../dist/lib/app.js";
 import { resolveAdapter } from "../../../dist/lib/adapter-resolver.js";
+import { handlerMode, withBenchmarkHandler } from "./handler-mode.mjs";
 
 const port = Number.parseInt(process.env.PORT || "3000", 10);
 const host = "127.0.0.1";
@@ -49,27 +50,39 @@ function registerCoreRoute(path, handler) {
   app.adapter.registerRoute("GET", path, chain);
 }
 
-registerCoreRoute("/json", async (_req, res) => {
-  res.json({ message: "Hello World" });
-});
+registerCoreRoute(
+  "/json",
+  withBenchmarkHandler((_req, res) => {
+    res.json({ message: "Hello World" });
+  }),
+);
 
-registerCoreRoute("/users/:id", async (req, res) => {
-  const id = req.params.id;
-  res.json({ id, name: `User ${id}` });
-});
+registerCoreRoute(
+  "/users/:id",
+  withBenchmarkHandler((req, res) => {
+    const id = req.params.id;
+    res.json({ id, name: `User ${id}` });
+  }),
+);
 
-registerCoreRoute("/chain", async (req, res) => {
-  const startedAt = Date.now();
-  const requestId = crypto.randomUUID();
-  req.headers.authorization;
-  res.setHeader("X-Response-Time", `${Date.now() - startedAt}ms`);
-  res.setHeader("X-Bench-Request-Id", requestId);
-  res.json({ message: "Chain complete", requestId, authenticated: true });
-});
+registerCoreRoute(
+  "/chain",
+  withBenchmarkHandler((req, res) => {
+    const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
+    req.headers.authorization;
+    res.setHeader("X-Response-Time", `${Date.now() - startedAt}ms`);
+    res.setHeader("X-Bench-Request-Id", requestId);
+    res.json({ message: "Chain complete", requestId, authenticated: true });
+  }),
+);
 
-registerCoreRoute("/health", async (_req, res) => {
-  res.json({ status: "ok" });
-});
+registerCoreRoute(
+  "/health",
+  withBenchmarkHandler((_req, res) => {
+    res.json({ status: "ok" });
+  }),
+);
 
 const serverHandle = await app.adapter.listen(port, host);
 
@@ -79,6 +92,7 @@ if (process.send) {
     port: serverHandle.port,
     telemetry: {
       mode: "core",
+      handlerMode,
       globalMiddlewareCount: 0,
       routeChainLengths,
     },

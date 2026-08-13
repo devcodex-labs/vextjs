@@ -39,6 +39,12 @@ const REPOSITORY_ROOT = resolve(__dirname, "../..");
 const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
 const AUTOCANNON_VERSION = "8.0.0";
 const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
+const PACKAGE_METADATA = JSON.parse(
+  readFileSync(join(REPOSITORY_ROOT, "package.json"), "utf8"),
+);
+const PACKAGE_LOCK = JSON.parse(
+  readFileSync(join(REPOSITORY_ROOT, "package-lock.json"), "utf8"),
+);
 
 const FRAMEWORKS = ["hono", "fastify", "express", "koa", "native"];
 
@@ -277,6 +283,7 @@ function startVextServer(framework, port) {
         ...process.env,
         PORT: String(port),
         BENCH_ADAPTER: framework,
+        VEXT_BENCH_HANDLER_MODE: "sync",
       },
       stdio: ["pipe", "pipe", "pipe", "ipc"],
     });
@@ -728,6 +735,28 @@ function getSourceProvenance() {
     commit: commit || "unavailable",
     worktree: status ? "dirty" : "clean",
     dirtyPatchSha256: getCandidatePatchSha256(status),
+    versions: getFrameworkVersions(),
+  };
+}
+
+function getLockedVersion(packageName) {
+  return (
+    PACKAGE_LOCK.packages?.[`node_modules/${packageName}`]?.version ??
+    "unavailable"
+  );
+}
+
+function getFrameworkVersions() {
+  return {
+    vextjs: PACKAGE_METADATA.version,
+    fastify: getLockedVersion("fastify"),
+    hono: getLockedVersion("hono"),
+    honoNodeServer: getLockedVersion("@hono/node-server"),
+    express: getLockedVersion("express"),
+    koa: getLockedVersion("koa"),
+    koaRouter: getLockedVersion("@koa/router"),
+    routeCore: getLockedVersion("route-core"),
+    autocannon: AUTOCANNON_VERSION,
   };
 }
 
@@ -843,7 +872,8 @@ function hasSameProvenance(left, right) {
   return (
     left.commit === right.commit &&
     left.worktree === right.worktree &&
-    left.dirtyPatchSha256 === right.dirtyPatchSha256
+    left.dirtyPatchSha256 === right.dirtyPatchSha256 &&
+    JSON.stringify(left.versions) === JSON.stringify(right.versions)
   );
 }
 
@@ -1212,13 +1242,15 @@ function generateReport(allResults, opts, environment, provenance) {
   md += `> **候选差异 SHA-256**: ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（不含自动生成的 \`RESULTS.md\`；包含未跟踪候选文件）\n`;
   md += `> **Runner**: \`test/benchmark/run-benchmark.mjs\`\n`;
   md += `> **Autocannon**: v${AUTOCANNON_VERSION}\n`;
+  md += `> **锁定版本**: Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore}\n`;
   md += `> **Node.js**: ${environment.node}\n`;
   md += `> **平台**: ${environment.platform} ${environment.arch}\n`;
   md += `> **参数**: frameworks=${opts.frameworks.join(",")}, scenario=${opts.scenario}, duration=${opts.duration}s, connections=${opts.connections}, pipelining=${opts.pipelining}, warmup=${opts.warmup}s, rounds=${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""}\n\n`;
   md += `---\n\n`;
 
   md += `## Benchmark 口径说明\n\n`;
-  md += `- 当前 adapter matrix app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext；它仍经过正式 bootstrap 的 authContext、requestHook 和标准路由生命周期，因此不是 Vext Native Core。\n`;
+  md += `- 当前 adapter matrix app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext；authContext 因 requestContext=false 不注册，仍经过 requestHook 和标准路由生命周期，因此不是 Vext Native Core。\n`;
+  md += `- Raw Hono 使用官方 \`@hono/node-server\` 的 \`serve({ fetch })\` 入口；direct endpoint handler 固定为同步形态，middleware-chain 保留各框架真实调度。\n`;
   md += `- 如需 Raw Native / Raw Fastify / Vext Native Core / Vext Native Normal 的可审计主对照，请运行 \`test/benchmark/run-native-fairness.mjs\`。\n`;
   md += `- \`chain\` 是历史兼容场景，表示 handler 内联业务逻辑链，不代表真实 vext middleware chain。\n`;
   md += `- \`middleware-chain\` 才表示 route-level middleware chain，会进入 adapter 的中间件链执行器。\n`;
@@ -1404,6 +1436,7 @@ function generateReport(allResults, opts, environment, provenance) {
   md += `| CPU | ${cpuModel} |\n`;
   md += `| 内存 | ${formatBytes(totalMemoryBytes)} |\n`;
   md += `| 压测工具 | autocannon v${AUTOCANNON_VERSION} |\n`;
+  md += `| 锁定框架版本 | Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore} |\n`;
   md += `| 框架 | ${opts.frameworks.join(", ")} |\n`;
   md += `| 场景 | ${opts.scenario} |\n`;
   md += `| 持续时间 | ${opts.duration}s |\n`;

@@ -13,6 +13,19 @@ import {
 import type { VextResponse } from "../../../src/types/response.js";
 
 describe("response hook lifecycle helpers", () => {
+  it("does not clone an already-owned header snapshot when no before hook can mutate it", () => {
+    const headers = { "x-request-id": "req-1" };
+    const state = beginResponseSend({} as VextResponse, {
+      kind: "json",
+      status: 200,
+      headers,
+      wrapped: false,
+      requestId: "req-1",
+    });
+
+    expect(state.headers).toBe(headers);
+  });
+
   it("runs the internal all-response hook before public response hooks", () => {
     const hooks = createHookManager();
     const order: string[] = [];

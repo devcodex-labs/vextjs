@@ -174,8 +174,8 @@
     }
   },
   "devDependencies": {
-    "@hono/node-server": "1.19.14",
-    "@koa/router": "15.6.0",
+    "@hono/node-server": "2.1.0",
+    "@koa/router": "15.7.0",
     "@types/express": "5.0.6",
     "@types/koa": "3.0.1",
     "@types/node": "22.19.13",
@@ -184,9 +184,9 @@
     "@vitest/coverage-v8": "4.1.9",
     "eslint": "10.2.1",
     "express": "5.2.1",
-    "fastify": "5.8.5",
-    "hono": "4.12.25",
-    "koa": "3.1.2",
+    "fastify": "5.11.3",
+    "hono": "4.13.2",
+    "koa": "3.2.1",
     "mongodb-memory-server-core": "11.2.0",
     "prettier": "3.8.1",
     "typescript": "5.9.3",

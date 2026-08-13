@@ -20,6 +20,12 @@ const REPOSITORY_ROOT = resolve(__dirname, "../..");
 const AUTOCANNON_VERSION = "8.0.0";
 const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
 const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
+const PACKAGE_METADATA = JSON.parse(
+  readFileSync(join(REPOSITORY_ROOT, "package.json"), "utf8"),
+);
+const PACKAGE_LOCK = JSON.parse(
+  readFileSync(join(REPOSITORY_ROOT, "package-lock.json"), "utf8"),
+);
 
 const SCENARIOS = [
   { name: "json", title: "JSON 响应", path: "/json" },
@@ -48,6 +54,7 @@ function parseArgs() {
     warmup: 5,
     rounds: 5,
     scenario: "all",
+    handlerMode: "sync",
     output: join(__dirname, "RESULTS.md"),
     resultsJson: undefined,
   };
@@ -74,6 +81,9 @@ function parseArgs() {
       case "--scenario":
         options.scenario = next();
         break;
+      case "--handler-mode":
+        options.handlerMode = next();
+        break;
       case "--output":
         options.output = next();
         break;
@@ -95,6 +105,9 @@ function parseArgs() {
     if (!Number.isFinite(options[key]) || options[key] < 0) {
       throw new Error(`Invalid --${key}: ${options[key]}`);
     }
+  }
+  if (!["sync", "async"].includes(options.handlerMode)) {
+    throw new Error(`Invalid --handler-mode: ${options.handlerMode}`);
   }
   return options;
 }
@@ -299,11 +312,15 @@ function stopServer(server) {
   });
 }
 
-function startTarget(target, port) {
+function startTarget(target, port, handlerMode) {
   const serverFile = target.id.startsWith("raw-")
     ? join(__dirname, "servers", `${target.id}.mjs`)
     : join(__dirname, "servers", "vext-start.mjs");
-  const env = { ...process.env, PORT: String(port) };
+  const env = {
+    ...process.env,
+    PORT: String(port),
+    VEXT_BENCH_HANDLER_MODE: handlerMode,
+  };
   if (target.mode) {
     env.BENCH_ADAPTER = "native";
     env.VEXT_BENCH_MODE = target.mode;
@@ -351,8 +368,12 @@ function routeKeyForScenario(scenario) {
   return scenario.name === "params" ? "GET /users/:id" : `GET ${scenario.path}`;
 }
 
-function assertVextTelemetry(target, scenario, telemetry) {
-  if (!telemetry || telemetry.mode !== target.mode) {
+function assertVextTelemetry(target, scenario, telemetry, handlerMode) {
+  if (
+    !telemetry ||
+    telemetry.mode !== target.mode ||
+    telemetry.handlerMode !== handlerMode
+  ) {
     throw new Error(`${target.title} did not return valid telemetry`);
   }
   const routeLength =
@@ -367,7 +388,7 @@ function assertVextTelemetry(target, scenario, telemetry) {
   }
   const expectedRouteLength = scenario.name === "middleware-chain" ? 5 : 2;
   if (
-    telemetry.globalMiddlewareCount !== 2 ||
+    telemetry.globalMiddlewareCount !== 1 ||
     routeLength !== expectedRouteLength
   ) {
     throw new Error(
@@ -386,6 +407,27 @@ function readGitValue(args) {
   } catch {
     return "unavailable";
   }
+}
+
+function getLockedVersion(packageName) {
+  return (
+    PACKAGE_LOCK.packages?.[`node_modules/${packageName}`]?.version ??
+    "unavailable"
+  );
+}
+
+function getFrameworkVersions() {
+  return {
+    vextjs: PACKAGE_METADATA.version,
+    fastify: getLockedVersion("fastify"),
+    hono: getLockedVersion("hono"),
+    honoNodeServer: getLockedVersion("@hono/node-server"),
+    express: getLockedVersion("express"),
+    koa: getLockedVersion("koa"),
+    koaRouter: getLockedVersion("@koa/router"),
+    routeCore: getLockedVersion("route-core"),
+    autocannon: AUTOCANNON_VERSION,
+  };
 }
 
 function candidatePatchSha256() {
@@ -430,13 +472,17 @@ function generateReport(results, options, provenance) {
   markdown += `> 候选差异 SHA-256: ${provenance.candidate ?? "clean"}\n`;
   markdown += `> Runner: \`test/benchmark/run-native-fairness.mjs\`\n`;
   markdown += `> 参数: duration=${options.duration}s, connections=${options.connections}, pipelining=${options.pipelining}, warmup=${options.warmup}s, rounds=${options.rounds}\n\n`;
+  markdown += `> Handler mode: ${options.handlerMode}\n`;
+  markdown += `> 锁定版本: Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore}; Autocannon ${provenance.versions.autocannon}\n\n`;
   markdown += "## 口径\n\n";
   markdown +=
-    "- Raw Native 与 Raw Fastify 对齐为同步 handler、预序列化 JSON body 与 route-only middleware-chain。\n";
+    "- `/json`、`/params`、`/chain` 与 `/health` 的四个受测对象均使用上方声明的 handler mode；Raw Fastify 在 async mode 按其公开契约返回 `reply`。\n";
+  markdown +=
+    "- `/middleware-chain` 保留各框架真实的 route-level middleware 调度，不用于推断 direct handler mode 的差异。\n";
   markdown +=
     "- Vext Native Core 是 benchmark 私有 direct harness：无 bootstrap global middleware，参测 route registration chain 必须为 1。\n";
   markdown +=
-    "- Vext Native Normal 使用正式 bootstrap + router-loader；frontend disabled 后保留的两个 global 生命周期节点是 authContext 与 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。\n";
+    "- Vext Native Normal 使用正式 bootstrap + router-loader；在 `requestContext=false` 且 frontend disabled 时，authContext 不注册，唯一全局生命周期节点为 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。\n";
   markdown +=
     "- Core 不测试 middleware-chain，避免将 route middleware 成本混入最短路径。\n\n";
   markdown += "## 汇总\n\n";
@@ -497,6 +543,7 @@ async function main() {
     commit: readGitValue(["rev-parse", "HEAD"]),
     worktree: readGitValue(["status", "--porcelain=v1"]) ? "dirty" : "clean",
     candidate: candidatePatchSha256(),
+    versions: getFrameworkVersions(),
   };
   const results = [];
   let port = 19400;
@@ -518,11 +565,16 @@ async function main() {
       let server;
       try {
         console.log(`  start ${target.title} on ${targetPort}`);
-        server = await startTarget(target, targetPort);
+        server = await startTarget(target, targetPort, options.handlerMode);
         await waitForHealthy(server.port);
         await assertScenarioContract(server.port, scenario);
         if (target.mode) {
-          assertVextTelemetry(target, scenario, server.telemetry);
+          assertVextTelemetry(
+            target,
+            scenario,
+            server.telemetry,
+            options.handlerMode,
+          );
           row.telemetry[target.id] = server.telemetry;
         }
         if (options.warmup > 0) {

@@ -21,6 +21,7 @@
 import { createServer } from "node:http";
 import crypto from "node:crypto";
 import { createRouter } from "route-core";
+import { withBenchmarkHandler } from "./handler-mode.mjs";
 
 const port = parseInt(process.env.PORT || "3000", 10);
 
@@ -75,14 +76,22 @@ async function runRawMiddlewareChain(req, res, middlewares, handler) {
 }
 
 // ── 场景 1: 纯 JSON 响应 ────────────────────────────────────
-register("GET", "/json", (_req, res) => {
-  sendJson(res, { message: "Hello World" });
-});
+register(
+  "GET",
+  "/json",
+  withBenchmarkHandler((_req, res) => {
+    sendJson(res, { message: "Hello World" });
+  }),
+);
 
 // ── 场景 2: 路由参数解析 ────────────────────────────────────
-register("GET", "/users/:id", (_req, res, params) => {
-  sendJson(res, { id: params.id, name: `User ${params.id}` });
-});
+register(
+  "GET",
+  "/users/:id",
+  withBenchmarkHandler((_req, res, params) => {
+    sendJson(res, { id: params.id, name: `User ${params.id}` });
+  }),
+);
 
 // ── 场景 3: 3 层 handler 内联业务逻辑 ───────────────────────
 // 使用内联逻辑模拟 3 层中间件效果（与其他裸跑服务器保持一致）
@@ -90,31 +99,35 @@ register("GET", "/users/:id", (_req, res, params) => {
 // 中间件 1: 请求计时
 // 中间件 2: 请求 ID 生成
 // 中间件 3: 简单鉴权模拟（读取 header）
-register("GET", "/chain", (req, res) => {
-  // ── 中间件 1 模拟：请求计时 ──────────────────────────────
-  const startTime = Date.now();
+register(
+  "GET",
+  "/chain",
+  withBenchmarkHandler((req, res) => {
+    // ── 中间件 1 模拟：请求计时 ──────────────────────────────
+    const startTime = Date.now();
 
-  // ── 中间件 2 模拟：请求 ID 生成 ──────────────────────────
-  const requestId = crypto.randomUUID();
+    // ── 中间件 2 模拟：请求 ID 生成 ──────────────────────────
+    const requestId = crypto.randomUUID();
 
-  // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────────
-  // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
-  req.headers.authorization;
-  const authenticated = true;
+    // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────────
+    // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
+    req.headers.authorization;
+    const authenticated = true;
 
-  // ── handler 逻辑 ─────────────────────────────────────────
-  const elapsed = Date.now() - startTime;
+    // ── handler 逻辑 ─────────────────────────────────────────
+    const elapsed = Date.now() - startTime;
 
-  // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
-  res.setHeader("X-Response-Time", `${elapsed}ms`);
-  res.setHeader("X-Bench-Request-Id", requestId);
+    // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
+    res.setHeader("X-Response-Time", `${elapsed}ms`);
+    res.setHeader("X-Bench-Request-Id", requestId);
 
-  sendJson(res, {
-    message: "Chain complete",
-    requestId,
-    authenticated,
-  });
-});
+    sendJson(res, {
+      message: "Chain complete",
+      requestId,
+      authenticated,
+    });
+  }),
+);
 
 // ── 场景 4: 真实 async middleware chain ────────────────────
 const rawMiddlewareChain = [
@@ -150,9 +163,13 @@ register("GET", "/middleware-chain", (req, res) => {
 });
 
 // ── 健康检查 ─────────────────────────────────────────────────
-register("GET", "/health", (_req, res) => {
-  sendJson(res, { status: "ok" });
-});
+register(
+  "GET",
+  "/health",
+  withBenchmarkHandler((_req, res) => {
+    sendJson(res, { status: "ok" });
+  }),
+);
 
 // ── 创建 HTTP 服务器 ─────────────────────────────────────────
 const server = createServer((req, res) => {

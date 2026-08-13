@@ -453,7 +453,9 @@ export async function createTestApp(
     app.adapter.registerMiddleware(requestIdMiddleware);
   }
 
-  app.adapter.registerMiddleware(createAuthContextMiddleware());
+  if (finalConfig.requestContext?.enabled !== false) {
+    app.adapter.registerMiddleware(createAuthContextMiddleware());
+  }
 
   app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
 
