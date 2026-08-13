@@ -77,6 +77,7 @@
     "test:cov": "vitest run --coverage",
     "test:docs:b32:cov": "vitest run --coverage --coverage.include=src/lib/docs/sources/source-registry.ts --coverage.thresholds.lines=95 --coverage.thresholds.functions=95 --coverage.thresholds.statements=95 --coverage.thresholds.branches=95 test/unit/docs/source-registry.test.ts test/unit/docs/register-docs-endpoints.test.ts",
     "test:bench": "node test/benchmark/run-benchmark.mjs",
+    "test:bench:fairness": "node test/benchmark/run-native-fairness.mjs",
     "typecheck": "tsc --noEmit",
     "ci:local": "bash scripts/ci-local.sh",
     "ci:local:quick": "bash scripts/ci-local.sh --quick",

@@ -8,7 +8,7 @@
  *   - 禁用安全中间件（CSRF / CORS 等），与裸跑 Koa 对齐
  *   - 日志级别设为 NONE，避免 I/O 干扰
  *   - 禁用不必要的内置中间件
- *   - chain 场景的 3 层中间件通过 config.middleware 注册
+ *   - middleware-chain 场景的 3 层中间件通过 config.middleware 注册
  */
 
 const port = parseInt(process.env.PORT || "7001", 10);
@@ -67,21 +67,21 @@ module.exports = (appInfo) => {
     enable: false,
   };
 
-  // ── 注册 chain 场景中间件 ──────────────────────────────
-  // 仅对 /chain 路径生效的 3 层中间件
+  // ── 注册 middleware-chain 场景中间件 ───────────────────
+  // 仅对 /middleware-chain 路径生效的 3 层中间件
   config.middleware = ["timing", "requestId", "auth"];
 
   // 中间件配置：限定路径匹配
   config.timing = {
-    match: "/chain",
+    match: "/middleware-chain",
   };
 
   config.requestId = {
-    match: "/chain",
+    match: "/middleware-chain",
   };
 
   config.auth = {
-    match: "/chain",
+    match: "/middleware-chain",
   };
 
   // ── 其他优化 ───────────────────────────────────────────

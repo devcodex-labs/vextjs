@@ -5,6 +5,7 @@
  *   1. GET /json         → 纯 JSON 响应
  *   2. GET /users/:id    → 路由参数解析
  *   3. GET /chain        → 3 层 handler 内联业务链 + JSON 响应
+ *   4. GET /middleware-chain → 3 层真实中间件链 + JSON 响应
  *
  * 用法：
  *   PORT=3000 node test/benchmark/servers/raw-hono.mjs
@@ -27,40 +28,48 @@ app.get("/users/:id", (c) => {
   return c.json({ id, name: `User ${id}` });
 });
 
-// ── 场景 3: 3 层 handler 内联业务链 ────────────────────────────────────
-// 模拟 vext 洋葱模型：每层中间件在请求前后各做一次操作
+// ── 场景 3: 3 层 handler 内联业务链 ──────────────────────────
+app.get("/chain", (c) => {
+  const startTime = Date.now();
+  const requestId = crypto.randomUUID();
+  c.req.header("Authorization");
+  const elapsed = Date.now() - startTime;
+  c.header("X-Response-Time", `${elapsed}ms`);
+  c.header("X-Bench-Request-Id", requestId);
+  return c.json({
+    message: "Chain complete",
+    requestId,
+    authenticated: true,
+  });
+});
+
+// ── 场景 4: 3 层真实 route-level middleware chain ───────────
 
 // 中间件 1: 请求计时
-app.use("/chain", async (c, next) => {
-  c.set("startTime", Date.now());
+app.use("/middleware-chain", async (c, next) => {
+  const startedAt = Date.now();
+  c.header("X-Response-Time", `${Date.now() - startedAt}ms`);
   await next();
-  // after: 计算耗时（洋葱模型回溯）
-  const elapsed = Date.now() - c.get("startTime");
-  c.header("X-Response-Time", `${elapsed}ms`);
 });
 
 // 中间件 2: 请求 ID
-app.use("/chain", async (c, next) => {
+app.use("/middleware-chain", async (c, next) => {
   const requestId = crypto.randomUUID();
-  c.set("requestId", requestId);
+  c.header("X-Bench-Request-Id", requestId);
   await next();
-  c.header("X-Request-Id", requestId);
 });
 
 // 中间件 3: 简单鉴权模拟
-app.use("/chain", async (c, next) => {
+app.use("/middleware-chain", async (c, next) => {
   // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
   c.req.header("Authorization");
-  c.set("authenticated", true);
   await next();
 });
 
-// chain 路由处理器
-app.get("/chain", (c) => {
+app.get("/middleware-chain", (c) => {
   return c.json({
-    message: "Chain complete",
-    requestId: c.get("requestId"),
-    authenticated: c.get("authenticated"),
+    message: "Middleware chain complete",
+    authenticated: true,
   });
 });
 

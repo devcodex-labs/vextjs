@@ -5,6 +5,7 @@
  *   1. GET /json         → 纯 JSON 响应
  *   2. GET /users/:id    → 路由参数解析
  *   3. GET /chain        → 3 层 handler 内联业务链 + JSON 响应
+ *   4. GET /middleware-chain → 3 层真实中间件链 + JSON 响应
  *
  * 用法：
  *   PORT=3000 node test/benchmark/servers/raw-express.mjs
@@ -31,26 +32,34 @@ app.get("/users/:id", (req, res) => {
   res.json({ id, name: `User ${id}` });
 });
 
-// ── 场景 3: 3 层 handler 内联业务链 ────────────────────────────────────
-// 模拟 vext 洋葱模型：每层中间件在请求前后各做一次操作
+// ── 场景 3: 3 层 handler 内联业务链 ──────────────────────────
+app.get("/chain", (req, res) => {
+  const startTime = Date.now();
+  const requestId = crypto.randomUUID();
+  req.headers.authorization;
+  const elapsed = Date.now() - startTime;
+  res.setHeader("X-Response-Time", `${elapsed}ms`);
+  res.setHeader("X-Bench-Request-Id", requestId);
+  res.json({
+    message: "Chain complete",
+    requestId,
+    authenticated: true,
+  });
+});
+
+// ── 场景 4: 3 层真实 route-level middleware chain ───────────
 
 // 中间件 1: 请求计时
 function timingMiddleware(req, res, next) {
-  req._startTime = Date.now();
-  res.on("finish", () => {
-    // after: 计算耗时（洋葱模型回溯模拟）
-    const elapsed = Date.now() - req._startTime;
-    // header 已发送，这里只是模拟计算开销
-    void elapsed;
-  });
+  const startedAt = Date.now();
+  res.setHeader("X-Response-Time", `${Date.now() - startedAt}ms`);
   next();
 }
 
 // 中间件 2: 请求 ID
 function requestIdMiddleware(req, res, next) {
   const requestId = crypto.randomUUID();
-  req._requestId = requestId;
-  res.setHeader("X-Request-Id", requestId);
+  res.setHeader("X-Bench-Request-Id", requestId);
   next();
 }
 
@@ -58,21 +67,19 @@ function requestIdMiddleware(req, res, next) {
 function authMiddleware(req, _res, next) {
   // 模拟鉴权检查（不真正拒绝，只是做一次 header 读取）
   req.headers.authorization;
-  req._authenticated = true;
   next();
 }
 
-// chain 路由：应用 3 层中间件
+// middleware-chain 路由：应用 3 层中间件
 app.get(
-  "/chain",
+  "/middleware-chain",
   timingMiddleware,
   requestIdMiddleware,
   authMiddleware,
   (req, res) => {
     res.json({
-      message: "Chain complete",
-      requestId: req._requestId,
-      authenticated: req._authenticated,
+      message: "Middleware chain complete",
+      authenticated: true,
     });
   },
 );

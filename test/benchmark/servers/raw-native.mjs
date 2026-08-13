@@ -58,7 +58,6 @@ function sendJson(res, data, statusCode = 200) {
 }
 
 async function runRawMiddlewareChain(req, res, middlewares, handler) {
-  const state = {};
   let index = -1;
 
   async function dispatch(i) {
@@ -69,7 +68,7 @@ async function runRawMiddlewareChain(req, res, middlewares, handler) {
 
     const layer = i === middlewares.length ? handler : middlewares[i];
     if (!layer) return;
-    await layer(req, res, () => dispatch(i + 1), state);
+    await layer(req, res, () => dispatch(i + 1));
   }
 
   await dispatch(0);
@@ -108,7 +107,7 @@ register("GET", "/chain", (req, res) => {
 
   // 写入自定义响应头（模拟洋葱模型回溯阶段的行为）
   res.setHeader("X-Response-Time", `${elapsed}ms`);
-  res.setHeader("X-Request-Id", requestId);
+  res.setHeader("X-Bench-Request-Id", requestId);
 
   sendJson(res, {
     message: "Chain complete",
@@ -119,16 +118,16 @@ register("GET", "/chain", (req, res) => {
 
 // ── 场景 4: 真实 async middleware chain ────────────────────
 const rawMiddlewareChain = [
-  async (_req, res, next, _state) => {
+  async (_req, res, next) => {
     const startTime = Date.now();
     res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
     await next();
   },
-  async (_req, res, next, _state) => {
+  async (_req, res, next) => {
     res.setHeader("X-Bench-Request-Id", crypto.randomUUID());
     await next();
   },
-  async (req, _res, next, _state) => {
+  async (req, _res, next) => {
     req.headers.authorization;
     await next();
   },
@@ -139,7 +138,7 @@ register("GET", "/middleware-chain", (req, res) => {
     req,
     res,
     rawMiddlewareChain,
-    async (_req, res, _next, _state) => {
+    async (_req, res, _next) => {
       sendJson(res, {
         message: "Middleware chain complete",
         authenticated: true,

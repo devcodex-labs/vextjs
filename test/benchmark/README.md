@@ -1,6 +1,6 @@
 # vext 性能基准测试
 
-> 量化 vext 框架开销，对比 Native / Hono / Fastify / Express / Koa 五个底层框架的裸跑性能与通过 vext 封装后的性能。
+> 主对照量化 Raw Native、Raw Fastify、Vext Native Core 与 Vext Native Normal；另保留 Native / Hono / Fastify / Express / Koa adapter matrix 用于横向观察。
 > 支持多轮取中位数模式（`--rounds`），消除 Windows 系统噪声，获取可信数据。
 
 ## 🎯 目标
@@ -9,29 +9,13 @@
 - **全框架覆盖**：测试 vext 支持的全部 5 个 adapter（Native / Hono / Fastify / Express / Koa）
 - **多场景验证**：覆盖最常见的 API 使用模式
 
-## ⚡ 性能概览（5 轮中位数）
+## ⚡ 最新结果与可比性
 
-### Native vs Fastify 核心对比
+当前可引用的测量结果只在 [`RESULTS.md`](./RESULTS.md) 中。该文件由 runner 自动生成，并记录源码 SHA、worktree 状态、Node/OS/CPU/内存、Autocannon 版本、完整参数、每轮样本和 CV；不要把本 README 中的示例或其他机器的数值当作当前基准。
 
-| 场景                      | Raw Native | Vext Native | Raw Fastify | Vext Fastify | Native 领先 |
-| ------------------------- | ---------: | ----------: | ----------: | -----------: | :---------: |
-| **JSON 响应**             |     44,932 |  **36,819** |      45,619 |       29,203 | **+26.1%**  |
-| **路由参数**              |     43,859 |  **36,755** |      43,676 |       24,386 | **+50.7%**  |
-| **处理器业务链（chain）** |     28,337 |  **31,698** |      41,286 |       22,719 | **+39.5%**  |
+Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量路由核心，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Benchmark 必须区分 `chain`（handler 内联业务链）、`middleware-chain`（真实 route-level middleware chain）、Core（私有最短路径）与 Normal（正式 bootstrap），避免把任意一者误读为默认运行时性能。
 
-### 全 Adapter 性能概览（JSON 场景）
-
-| Adapter       |   Vext RPS | Overhead | 额外依赖                   |
-| ------------- | ---------: | -------: | -------------------------- |
-| **Native** ⭐ | **36,819** |    18.1% | ✅ 零依赖（默认）          |
-| Express       |     30,974 |    -3.7% | `express`                  |
-| Fastify       |     29,203 |    36.0% | `fastify`                  |
-| Koa           |     22,488 |    29.4% | `koa`                      |
-| Hono          |     15,684 |    24.2% | `hono` `@hono/node-server` |
-
-> Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量路由核心，是 vext 默认 adapter 且唯一不依赖第三方 HTTP 框架的实现。Benchmark 需区分 `chain`（handler 内联业务链）与 `middleware-chain`（真实 route-level middleware chain），避免把 core-mode 数据误读为默认运行时性能。
-> 测试环境：Node.js v24.14.0, Windows x64, i7-9700, 32GB RAM, autocannon (50 connections, 10 pipelining, 10s × 5 轮取中位数，2026-03-23)。
-> 绝大多数场景 CV（变异系数）< 3.5%，数据高度可信。
+仅当源码身份、Node.js、OS/CPU、参数、场景和系统负载条件相同时，才可以把两份报告用作趋势或回归对比；跨机器/跨协议结果只能作为各自环境的局部观测。
 
 ## 📋 测试场景
 
@@ -47,11 +31,25 @@
 - **Raw（裸跑）**：直接使用框架原生 API，无 vext 封装（Native 裸跑 = `http.createServer` + `route-core`）
 - **chain**：历史兼容场景，测 handler 内联业务逻辑链。
 - **middleware-chain**：真实 route-level middleware chain，测 adapter 中间件链执行器。
-- **Vext（封装）**：通过 vext bootstrap 使用对应 adapter，关闭非必要中间件
+- **Vext Normal**：通过正式 bootstrap + `defineRoutes()` + router-loader 使用对应 adapter，关闭可选中间件；它不是 Core。
 
 ## 🚀 使用方法
 
-### 快速运行
+### 主公平性对照（Raw Native / Fastify / Vext Native）
+
+```bash
+# 正式：四个目标、四场景（Core 的 middleware-chain 明确为 N/A）、5 轮中位数
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5
+
+# 快速 smoke：验证 HTTP 契约和 chain telemetry，不作性能结论
+npm run test:bench:fairness -- --duration 1 --connections 10 --pipelining 1 --warmup 0 --rounds 1
+```
+
+主 runner 会在写报告前断言：Core 的 global middleware 为 `0` 且参测 route registration chain 为 `1`；Normal 在 `frontend.enabled=false` 后 global middleware 为 `2`（`authContext`、`requestHook`），普通 route registration chain 为 `2`（`routeMatched + handler`），`middleware-chain` 为 `5`。不符合时结果会失败，不会生成可引用报告。
+
+Raw Fastify 的三层 hook 只附着在 `/middleware-chain` 路由，不会穿过 `/json`、`/users/:id`、`/chain`；Raw Native / Raw Fastify 都使用预序列化 JSON body。Core 是 `test/benchmark` 的私有 direct harness，刻意绕过 bootstrap/router-loader；它表示最短 Vext Native 路径，不表示完整生产配置。
+
+### Adapter matrix（辅助）
 
 ```bash
 npm run test:bench
@@ -60,8 +58,16 @@ npm run test:bench
 ### 推荐模式
 
 ```bash
-# 标准模式（PR 前对比）— 5 轮取中位数，每轮 10s
-npm run test:bench -- --framework native,fastify --rounds 5
+# 正式 adapter matrix — 五 adapter、四场景、5 轮中位数（约 40 分钟）
+node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --framework native,hono,fastify,express,koa --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5
+
+# 聚焦模式（PR 前对比）— 两个 adapter、5 轮中位数
+npm run test:bench -- --framework native,fastify --scenario all --duration 10 --warmup 5 --rounds 5
+
+# 受执行时限约束时：按 adapter × 场景分段，但保持相同正式协议
+node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --framework native --scenario json --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --results-json ./artifacts/native-json.json --output ./artifacts/native-json.md
+node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --framework native --scenario params --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --results-json ./artifacts/native-params.json --output ./artifacts/native-params.md
+node test/benchmark/run-benchmark.mjs --from-results-json ./artifacts/native-json.json,./artifacts/native-params.json --output test/benchmark/RESULTS.md
 
 # 精确模式（发版前）— 7 轮取中位数，每轮 15s，长预热
 npm run test:bench -- --rounds 7 --duration 15 --warmup 5
@@ -69,6 +75,8 @@ npm run test:bench -- --rounds 7 --duration 15 --warmup 5
 # 配合 V8 GC 控制（减少 GC 停顿干扰）
 node --expose-gc --max-old-space-size=512 test/benchmark/run-benchmark.mjs --rounds 5
 ```
+
+`--from-results-json` 允许按场景分段，但只合并 source commit/worktree diff 指纹、Node/OS/CPU 环境，以及 duration/connections/pipelining/warmup/rounds 都相同的 complete 样本；partial、重复、协议不一致，或含连接错误、超时、非 2xx 响应的输入都会被拒绝，不能伪装成一个正式 baseline。差异指纹刻意排除 runner 自动生成的 `RESULTS.md`，避免报告内容和生成时间造成自引用；其余已跟踪差异及未跟踪候选文件内容都会纳入。正式全矩阵合并加 `--require-complete-matrix`，它会要求恰好五 adapter × 四场景的 20 组结果。
 
 ### 自定义参数
 
@@ -94,16 +102,19 @@ npm run test:bench -- --output ./my-results.md
 
 ### 可用选项
 
-| 选项                     | 默认值                      | 说明                                                               |
-| ------------------------ | --------------------------- | ------------------------------------------------------------------ |
-| `--duration <seconds>`   | `15`                        | 压测持续时间（秒）                                                 |
-| `--connections <number>` | `50`                        | 并发连接数                                                         |
-| `--pipelining <number>`  | `10`                        | HTTP 流水线深度                                                    |
-| `--warmup <seconds>`     | `5`                         | 预热时间（秒）                                                     |
-| `--rounds <number>`      | `1`                         | 轮次数（≥3 时取中位数，推荐 5 或 7）                               |
-| `--scenario <name>`      | `all`                       | 场景过滤：`json` / `params` / `chain` / `middleware-chain` / `all` |
-| `--framework <names>`    | 全部                        | 框架过滤（逗号分隔）：`native,hono,fastify,express,koa`            |
-| `--output <path>`        | `test/benchmark/RESULTS.md` | 报告输出路径                                                       |
+| 选项                          | 默认值                      | 说明                                                                                           |
+| ----------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `--duration <seconds>`        | `15`                        | 压测持续时间（秒）                                                                             |
+| `--connections <number>`      | `50`                        | 并发连接数                                                                                     |
+| `--pipelining <number>`       | `10`                        | HTTP 流水线深度                                                                                |
+| `--warmup <seconds>`          | `5`                         | 预热时间（秒）                                                                                 |
+| `--rounds <number>`           | `1`                         | 轮次数（≥3 时取中位数，推荐 5 或 7）                                                           |
+| `--scenario <name>`           | `all`                       | 场景过滤：`json` / `params` / `chain` / `middleware-chain` / `all`                             |
+| `--framework <names>`         | 五个 Vext adapter           | 框架过滤（逗号分隔）：`native,hono,fastify,express,koa`；Egg 只在显式 `--framework egg` 时运行 |
+| `--output <path>`             | `test/benchmark/RESULTS.md` | 报告输出路径                                                                                   |
+| `--results-json <path>`       | —                           | 写入完整原始样本，适合分段正式 matrix                                                          |
+| `--from-results-json <paths>` | —                           | 合并逗号分隔的 complete JSON 样本；要求同一来源和协议                                          |
+| `--require-complete-matrix`   | `false`                     | 合并时要求五 adapter × 四场景的完整正式矩阵                                                    |
 
 ### 多轮模式说明
 
@@ -116,11 +127,11 @@ npm run test:bench -- --output ./my-results.md
 
 #### 耗时参考
 
-| 模式         | 轮次 | 每轮耗时 | 6 场景(2 框架) | 总耗时  |
-| ------------ | :--: | :------: | :------------: | :-----: |
-| 单轮（快速） |  1   |   ~20s   |      × 12      | ~4 min  |
-| 标准 5 轮    |  5   | ~17s × 5 |      × 12      | ~17 min |
-| 精确 7 轮    |  7   | ~22s × 7 |      × 12      | ~31 min |
+| 模式        | 覆盖面             | 参数       | 预计总耗时 |
+| ----------- | ------------------ | ---------- | ---------- |
+| 快速定位    | 1 adapter × 4 场景 | 1 轮 × 10s | ≥ 2 分钟   |
+| 聚焦对比    | 2 adapter × 4 场景 | 5 轮 × 10s | ≥ 15 分钟  |
+| 正式 matrix | 5 adapter × 4 场景 | 5 轮 × 10s | 约 40 分钟 |
 
 ## 📁 文件结构
 
@@ -128,6 +139,7 @@ npm run test:bench -- --output ./my-results.md
 test/benchmark/
 ├── README.md                          # 本文件
 ├── run-benchmark.mjs                  # 主基准测试脚本
+├── run-native-fairness.mjs            # Raw Native/Fastify + Vext Native Core/Normal 主对照
 ├── RESULTS.md                         # 运行后自动生成的报告
 └── servers/
     ├── raw-native.mjs                 # Native 裸跑服务器（http.createServer + route-core）
@@ -136,6 +148,8 @@ test/benchmark/
     ├── raw-express.mjs                # Express 裸跑服务器
     ├── raw-koa.mjs                    # Koa 裸跑服务器
     ├── vext-start.mjs                 # vext 子进程启动脚本
+    ├── vext-core-start.mjs            # benchmark 私有 Native Core 入口
+    ├── vext-normal-adapter.mjs        # Normal chain telemetry wrapper
     └── vext-app/                      # vext 项目骨架
         └── src/
             ├── config/
@@ -151,11 +165,12 @@ test/benchmark/
 ## 🔧 工作原理
 
 1. **裸跑服务器**：每个框架都有一个独立的裸跑服务器文件，实现相同路由场景，使用框架原生 API（Native 裸跑使用 `http.createServer` + `route-core`）
-2. **vext 服务器**：所有框架共用同一套 vext-app 路由代码，仅通过 `BENCH_ADAPTER` 环境变量切换底层 adapter（默认 `native`）
-3. **子进程隔离**：所有服务器（裸跑和 vext）均在独立子进程中启动，避免状态污染和端口冲突
-4. **压测工具**：通过 `npm run test:bench` 按需解析 [autocannon](https://github.com/mcollina/autocannon)，避免根安装树携带可选 benchmark 依赖
-5. **预热**：正式压测前先进行短时间预热，消除 JIT 编译和冷启动影响
-6. **报告生成**：自动生成 Markdown 格式的对比报告，包含 RPS、延迟、吞吐量和 Overhead 分析
+2. **vext Normal 服务器**：所有 adapter 共用 `vext-app` 的 `defineRoutes()` 路由代码；Native Normal 通过 telemetry 输出实际 global / route chain 长度。
+3. **vext Core 服务器**：仅 Native 使用私有 direct harness，直接注册单 handler route；不读取、也不引入公开 benchmark 配置。
+4. **子进程隔离**：所有服务器（裸跑和 vext）均在独立子进程中启动，避免状态污染和端口冲突。
+5. **压测工具**：通过 `npm run test:bench` 按需解析 [autocannon](https://github.com/mcollina/autocannon)，避免根安装树携带可选 benchmark 依赖。
+6. **预热**：正式压测前先进行短时间预热，消除 JIT 编译和冷启动影响。
+7. **报告生成**：自动生成 Markdown 格式的对比报告，包含 RPS、延迟、吞吐量、轮次和 chain telemetry。
 
 ## 📊 报告内容
 
@@ -167,13 +182,14 @@ test/benchmark/
 - **Overhead 分析**：平均/最大/最小 Overhead，是否达标判定
 - **多轮统计**（`--rounds` > 1 时）：各轮 RPS、中位数、平均值、最小值、最大值、标准差、CV%，以及高波动警告
 - **测试环境**：Node.js 版本、平台、CPU、内存、轮次等
+- **可追溯性**：源码 SHA/dirty 状态、runner 路径、Autocannon 版本、完整 framework/scenario 参数与可比性限制
 
 ## ⚠️ 注意事项
 
 - 基准测试结果受硬件、系统负载、Node.js 版本等因素影响，不同环境下数值可能差异较大
 - **强烈建议使用 `--rounds 5`**（或更多）获取可信数据，单轮结果在 Windows 上波动可达 ±60%
 - 建议在低负载环境下运行，关闭不必要的后台进程（尤其是 Windows Defender 实时扫描、Windows Update、Search 索引服务）
-- vext 服务器关闭了大部分内置中间件（accessLog、requestId、responseWrapper、cors、rateLimit），仅测量 adapter 层和路由层的核心开销
+- adapter matrix 关闭了大部分可选中间件（accessLog、requestId、responseWrapper、cors、rateLimit），但仍有 Normal 生命周期成本；不能把它标作 Core。
 - 默认日志级别设为 `silent`，避免 I/O 操作干扰性能测量
 - Windows 上信号处理行为与 Unix 不同，但不影响基准测试结果
 - Windows 上裸跑 Native（每请求 ~1μs）受系统调度抖动影响最大，Vext 层因框架开销"缓冲"反而更稳定

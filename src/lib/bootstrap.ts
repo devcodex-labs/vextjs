@@ -585,13 +585,17 @@ export async function bootstrap(
       app.adapter.registerMiddleware(responseWrapper);
     }
 
-    app.adapter.registerMiddleware(
-      createFrontendRenderMiddleware({
-        rootDir,
-        mode: "production",
-        config: config.frontend,
-      }),
-    );
+    // frontend disabled 时不要注册 noop renderer。否则每个请求都会多一次
+    // async middleware / next() 调度，违背此处“禁用即零开销”的约定。
+    if (isFrontendEnabled(config.frontend)) {
+      app.adapter.registerMiddleware(
+        createFrontendRenderMiddleware({
+          rootDir,
+          mode: "production",
+          config: config.frontend,
+        }),
+      );
+    }
 
     // 6. access-log（config.accessLog.enabled，默认 true）
     if (config.accessLog?.enabled !== false) {
@@ -1240,6 +1244,17 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       suffix: `(workers=${readyWorkers}/${master.getTargetWorkerCount()})`,
     });
   }
+}
+
+function isFrontendEnabled(
+  frontend:
+    | import("../frontend/contract/types.js").VextFrontendUserConfig
+    | undefined,
+): boolean {
+  return (
+    frontend === true ||
+    (typeof frontend === "object" && frontend.enabled === true)
+  );
 }
 
 function ensureStartBuildReady(rootDir: string, isBuilt: boolean): void {

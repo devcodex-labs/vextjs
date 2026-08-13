@@ -12,7 +12,14 @@
  *   - 日志设为 silent 避免 I/O 干扰性能测量
  */
 
-const adapter = process.env.BENCH_ADAPTER || "native";
+import { createBenchmarkNormalAdapter } from "../../../vext-normal-adapter.mjs";
+
+const requestedAdapter = process.env.BENCH_ADAPTER || "native";
+const benchmarkMode = process.env.VEXT_BENCH_MODE || "normal";
+const adapter =
+  requestedAdapter === "native" && benchmarkMode === "normal"
+    ? createBenchmarkNormalAdapter
+    : requestedAdapter;
 const port = parseInt(process.env.PORT || "3000", 10);
 
 export default {
@@ -30,8 +37,8 @@ export default {
   },
 
   // ── 中间件开关 ─────────────────────────────────────────────
-  // 禁用所有非必要中间件，聚焦测量 adapter 层和路由层核心开销。
-  // 裸跑服务器也没有这些中间件，所以禁用后对比更公平。
+  // Normal benchmark 显式禁用可选请求能力；authContext 和 requestHook
+  // 仍是 Vext 的正常生命周期组成部分，会由 telemetry 明确记录而不冒充 Core。
 
   // 禁用速率限制（默认 max=100/60s，高并发下会限流导致大量 429）
   rateLimit: {
@@ -53,6 +60,10 @@ export default {
     enabled: false,
   },
 
+  // middleware-chain 场景显式加载三层 route-level middleware。
+  // 这三项只被该路由引用，不会进入其余 benchmark 场景。
+  middlewares: ["bench-timing", "bench-request-id", "bench-auth"],
+
   // 禁用响应包装（避免额外的 JSON 包装层 { code, data, requestId }）
   response: {
     wrap: false,
@@ -68,6 +79,22 @@ export default {
   // benchmark 不使用 requestContext，禁用后零副作用。
   // 预估 Vext RPS +5-10%。
   requestContext: {
+    enabled: false,
+  },
+
+  // frontend disabled 时 bootstrap 不应注册 renderer noop middleware。
+  frontend: {
+    enabled: false,
+  },
+
+  // 显式列出默认关闭的能力，防止 benchmark 口径依赖默认值。
+  session: {
+    enabled: false,
+  },
+  csrf: {
+    enabled: false,
+  },
+  securityHeaders: {
     enabled: false,
   },
 };

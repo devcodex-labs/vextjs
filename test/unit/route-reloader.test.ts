@@ -409,7 +409,7 @@ describe("reloadRoutes", () => {
 
       const options = createDefaultOptions({
         app: createMockApp({
-          config: { session: { enabled: true } },
+          config: { frontend: { enabled: true }, session: { enabled: true } },
         }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
@@ -505,7 +505,7 @@ describe("reloadRoutes", () => {
 
       const options = createDefaultOptions({
         app: createMockApp({
-          config: { session: { enabled: true } },
+          config: { frontend: { enabled: true }, session: { enabled: true } },
         }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
@@ -529,6 +529,34 @@ describe("reloadRoutes", () => {
         "global",
         "csrf",
       ]);
+    });
+
+    it("frontend disabled 时不重建 renderer 或 dev events route", async () => {
+      const frontendRenderMw = createMockMiddleware("frontendRender");
+      const frontendDevEventsMw = createMockMiddleware("frontendDevEvents");
+      const createFrontendRenderMiddleware = vi.fn(() => frontendRenderMw);
+      const freshAdapter = createMockAdapter();
+
+      const options = createDefaultOptions({
+        app: createMockApp({ config: { frontend: { enabled: false } } }),
+        resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
+        builtinMiddlewares: {
+          createFrontendRenderMiddleware,
+          frontendDevEvents: frontendDevEventsMw,
+        },
+      });
+
+      await reloadRoutes(options);
+
+      expect(createFrontendRenderMiddleware).not.toHaveBeenCalled();
+      expect(freshAdapter.registerMiddleware).not.toHaveBeenCalledWith(
+        frontendRenderMw,
+      );
+      expect(freshAdapter.registerRoute).not.toHaveBeenCalledWith(
+        "GET",
+        "/__vext/dev/events",
+        [frontendDevEventsMw],
+      );
     });
 
     it("应在未提供内置中间件时跳过", async () => {

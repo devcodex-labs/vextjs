@@ -2,8 +2,7 @@
  * egg.js 基准测试中间件 — 请求 ID 生成
  *
  * 模拟 vext / Koa / Hono 裸跑服务器中的 requestId 中间件：
- *   - before: 生成 UUID v4 并存入 ctx.state.requestId
- *   - after:  设置 X-Request-Id 响应头
+ *   - before: 生成 UUID v4 并设置 X-Bench-Request-Id 响应头
  *
  * 仅对 /chain 路径生效（通过 config.middleware + match 配置限定）。
  *
@@ -21,8 +20,7 @@ const crypto = require("node:crypto");
 module.exports = () => {
   return async function requestId(ctx, next) {
     const id = crypto.randomUUID();
-    ctx.state.requestId = id;
+    ctx.set("X-Bench-Request-Id", id);
     await next();
-    ctx.set("X-Request-Id", id);
   };
 };

@@ -1,58 +1,7 @@
-// ── RouteDefinition 基础设施（与 E2E helpers 保持一致） ──────
-function createCollector(routes) {
-  function makeMethod(method) {
-    return (path, optionsOrHandler, handler) => {
-      if (typeof optionsOrHandler === "function") {
-        routes.push({ method, path, options: {}, handler: optionsOrHandler });
-      } else {
-        routes.push({ method, path, options: optionsOrHandler || {}, handler });
-      }
-    };
-  }
-  return {
-    get: makeMethod("GET"),
-    post: makeMethod("POST"),
-    put: makeMethod("PUT"),
-    patch: makeMethod("PATCH"),
-    delete: makeMethod("DELETE"),
-    head: makeMethod("HEAD"),
-    options: makeMethod("OPTIONS"),
-  };
-}
+import crypto from "node:crypto";
+import { defineRoutes } from "vextjs";
 
-function normalizePath(prefix, subPath) {
-  const cleanPrefix =
-    prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
-  const cleanSubPath = subPath.startsWith("/") ? subPath.slice(1) : subPath;
-  if (!cleanSubPath) return cleanPrefix || "/";
-  if (cleanPrefix === "/") return `/${cleanSubPath}`;
-  const fullPath = `${cleanPrefix}/${cleanSubPath}`;
-  if (fullPath.length > 1 && fullPath.endsWith("/"))
-    return fullPath.slice(0, -1);
-  return fullPath;
-}
-
-function makeRouteDefinition(routes, collector, factory) {
-  return {
-    routes,
-    sourceFile: "",
-    register(adapter, prefix, middlewareDefs, globalMiddlewares) {
-      for (const route of routes) {
-        const fullPath = normalizePath(prefix, route.path);
-
-        // 组装路由级中间件链 + handler
-        const routeMiddlewares = route.options._inlineMiddlewares || [];
-        const handlerMiddleware = async (req, res, _next) => {
-          await route.handler(req, res);
-        };
-        const chain = [...routeMiddlewares, handlerMiddleware];
-        adapter.registerRoute(route.method, fullPath, chain);
-      }
-    },
-    _factory: factory,
-    _collector: collector,
-  };
-}
+const BENCH_ROUTE_OPTIONS = { override: { cors: { enabled: false } } };
 
 // ── 路由定义 ─────────────────────────────────────────────────
 // GET /chain → 3 层 handler 内联业务逻辑
@@ -62,11 +11,8 @@ function makeRouteDefinition(routes, collector, factory) {
 //
 // 如需测量真实 route-level middleware chain，请使用 /middleware-chain。
 
-const routes = [];
-const collector = createCollector(routes);
-
-function factory(app) {
-  collector.get("/", {}, async (req, res) => {
+export default defineRoutes((app) => {
+  app.get("/", BENCH_ROUTE_OPTIONS, async (req, res) => {
     // ── 中间件 1 模拟：请求计时 ──────────────────────────
     const startTime = Date.now();
 
@@ -74,7 +20,7 @@ function factory(app) {
     const benchRequestId = crypto.randomUUID();
 
     // ── 中间件 3 模拟：简单鉴权（读取 header） ──────────
-    const authHeader = req.headers.authorization;
+    req.headers.authorization;
     const authenticated = true;
 
     // ── handler 逻辑 ─────────────────────────────────────
@@ -90,6 +36,4 @@ function factory(app) {
       authenticated,
     });
   });
-}
-
-export default makeRouteDefinition(routes, collector, factory);
+});

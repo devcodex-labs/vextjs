@@ -2,8 +2,7 @@
  * egg.js 基准测试中间件 — 请求计时（洋葱模型）
  *
  * 模拟 vext / Koa / Hono 裸跑服务器中的计时中间件：
- *   - before: 记录请求开始时间到 ctx.state.startTime
- *   - after:  计算耗时并设置 X-Response-Time 响应头
+ *   - before: 计算轻量计时值并设置 X-Response-Time 响应头
  *
  * 仅对 /chain 路径生效（通过 config.middleware + match 配置限定）。
  *
@@ -18,9 +17,8 @@
 
 module.exports = () => {
   return async function timing(ctx, next) {
-    ctx.state.startTime = Date.now();
+    const startedAt = Date.now();
+    ctx.set("X-Response-Time", `${Date.now() - startedAt}ms`);
     await next();
-    const elapsed = Date.now() - ctx.state.startTime;
-    ctx.set("X-Response-Time", `${elapsed}ms`);
   };
 };

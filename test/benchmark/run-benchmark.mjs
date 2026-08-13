@@ -11,26 +11,34 @@
  *   node test/benchmark/run-benchmark.mjs --framework hono,fastify
  *
  * 选项：
- *   --duration <seconds>     压测持续时间（默认 10）
+ *   --duration <seconds>     压测持续时间（默认 15）
  *   --connections <number>   并发连接数（默认 50）
  *   --pipelining <number>    HTTP 流水线（默认 10）
- *   --warmup <seconds>       预热时间（默认 3）
+ *   --warmup <seconds>       预热时间（默认 5）
+ *   --rounds <number>        每个模式的轮次数（默认 1；≥3 建议取中位数）
  *   --scenario <name>        仅运行指定场景（json / params / chain / middleware-chain / all）
- *   --framework <names>      仅运行指定框架，逗号分隔（hono,fastify,express,koa）
+ *   --framework <names>      仅运行指定框架，逗号分隔（native,hono,fastify,express,koa；egg 仅显式比较）
  *   --output <path>          报告输出路径（默认 stdout + test/benchmark/RESULTS.md）
+ *   --results-json <path>    将完整原始样本写为 JSON，供分段正式 matrix 合并
+ *   --from-results-json <paths> 读取逗号分隔的 complete JSON 样本并只生成合并报告
+ *   --require-complete-matrix  合并时要求五 adapter × 四场景完整矩阵
  */
 
-import { fork, spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { execFileSync, fork, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ── 常量 ──────────────────────────────────────────────────────
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const REPOSITORY_ROOT = resolve(__dirname, "../..");
 const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
 const AUTOCANNON_VERSION = "8.0.0";
+const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
 
 const FRAMEWORKS = ["hono", "fastify", "express", "koa", "native"];
 
@@ -86,8 +94,13 @@ function parseArgs() {
     warmup: 5,
     rounds: 1,
     scenario: "all",
-    frameworks: [...ALL_FRAMEWORKS],
+    // The standard matrix is the five Vext adapters. Egg remains an explicit
+    // independent baseline because it has no Vext adapter counterpart.
+    frameworks: [...FRAMEWORKS],
     output: join(__dirname, "RESULTS.md"),
+    resultsJson: undefined,
+    fromResultsJson: [],
+    requireCompleteMatrix: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -115,6 +128,18 @@ function parseArgs() {
         break;
       case "--output":
         opts.output = args[++i];
+        break;
+      case "--results-json":
+        opts.resultsJson = args[++i];
+        break;
+      case "--from-results-json":
+        opts.fromResultsJson = args[++i]
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        break;
+      case "--require-complete-matrix":
+        opts.requireCompleteMatrix = true;
         break;
     }
   }
@@ -336,6 +361,49 @@ async function waitForHealthy(port, timeoutMs = 5000) {
   );
 }
 
+async function assertScenarioContract(port, scenario) {
+  const response = await fetch(`http://127.0.0.1:${port}${scenario.path}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Scenario contract failed for ${scenario.name}: HTTP ${response.status}`,
+    );
+  }
+
+  const body = await response.json();
+  const expectedMessage =
+    scenario.name === "json"
+      ? "Hello World"
+      : scenario.name === "params"
+        ? undefined
+        : scenario.name === "chain"
+          ? "Chain complete"
+          : "Middleware chain complete";
+
+  if (scenario.name === "params") {
+    if (body?.id !== "42" || body?.name !== "User 42") {
+      throw new Error(
+        `Scenario contract failed for ${scenario.name}: invalid body`,
+      );
+    }
+  } else if (body?.message !== expectedMessage) {
+    throw new Error(
+      `Scenario contract failed for ${scenario.name}: invalid body`,
+    );
+  }
+
+  if (scenario.name === "chain" || scenario.name === "middleware-chain") {
+    const responseTime = response.headers.get("x-response-time");
+    const requestId = response.headers.get("x-bench-request-id");
+    if (!responseTime || !requestId) {
+      throw new Error(
+        `Scenario contract failed for ${scenario.name}: missing benchmark headers`,
+      );
+    }
+  }
+}
+
 // ── autocannon 包装 ───────────────────────────────────────────
 
 /**
@@ -400,7 +468,9 @@ function runAutocannon({ port, path, duration, connections, pipelining }) {
 
       try {
         const line = stdout.trim().split(/\r?\n/).at(-1);
-        resolve(JSON.parse(line));
+        const result = JSON.parse(line);
+        assertSuccessfulAutocannon(result, url);
+        resolve(result);
       } catch (error) {
         reject(
           new Error(
@@ -477,6 +547,29 @@ function extractMetrics(result) {
     timeouts: result.timeouts ?? 0,
     non2xx: result.non2xx ?? 0,
   };
+}
+
+function assertSuccessfulAutocannon(result, target) {
+  const errors = result.errors ?? 0;
+  const timeouts = result.timeouts ?? 0;
+  const non2xx = result.non2xx ?? 0;
+
+  if (errors > 0 || timeouts > 0 || non2xx > 0) {
+    throw new Error(
+      `Benchmark request failure for ${target}: errors=${errors}, timeouts=${timeouts}, non2xx=${non2xx}`,
+    );
+  }
+}
+
+function hasValidMetrics(metrics) {
+  return Boolean(
+    metrics &&
+    metrics.rps > 0 &&
+    metrics.totalRequests > 0 &&
+    metrics.errors === 0 &&
+    metrics.timeouts === 0 &&
+    metrics.non2xx === 0,
+  );
 }
 
 // ── 多轮测试 + 中位数选择 ─────────────────────────────────────
@@ -601,19 +694,301 @@ function calcStdDev(values) {
 
 // ── 报告生成 ──────────────────────────────────────────────────
 
+function readGitValue(args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function readGitBuffer(args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: REPOSITORY_ROOT,
+      encoding: "buffer",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+
+function getSourceProvenance() {
+  const commit = readGitValue(["rev-parse", "HEAD"]);
+  const branch = readGitValue(["branch", "--show-current"]);
+  const status = readGitValue(["status", "--porcelain=v1"]);
+
+  return {
+    branch: branch || "detached",
+    commit: commit || "unavailable",
+    worktree: status ? "dirty" : "clean",
+    dirtyPatchSha256: getCandidatePatchSha256(status),
+  };
+}
+
+function getCandidatePatchSha256(status) {
+  if (!status) return null;
+
+  // RESULTS.md is generated by this runner. Excluding it prevents the report
+  // timestamp/content from changing the identity of the candidate it records.
+  const trackedPatch = readGitBuffer([
+    "diff",
+    "--binary",
+    "HEAD",
+    "--",
+    ".",
+    GENERATED_REPORT_PATHSPEC,
+  ]);
+  const untrackedFiles = readGitBuffer([
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+    "--",
+    ".",
+    GENERATED_REPORT_PATHSPEC,
+  ]);
+  const hash = createHash("sha256");
+  let hasCandidateDiff = false;
+
+  if (trackedPatch && trackedPatch.length > 0) {
+    hash.update("tracked-diff\0");
+    hash.update(trackedPatch);
+    hasCandidateDiff = true;
+  }
+
+  for (const file of (untrackedFiles ?? Buffer.alloc(0))
+    .toString("utf-8")
+    .split("\0")
+    .filter(Boolean)
+    .sort()) {
+    try {
+      hash.update(`untracked:${file}\0`);
+      hash.update(readFileSync(resolve(REPOSITORY_ROOT, file)));
+      hasCandidateDiff = true;
+    } catch {
+      // A concurrently removed untracked file must not make the runner claim
+      // a complete artifact; the caller will retain the dirty worktree state.
+      return null;
+    }
+  }
+
+  return hasCandidateDiff ? hash.digest("hex") : null;
+}
+
+function formatCandidatePatchSha256(value) {
+  return value ?? "无非生成候选差异";
+}
+
+function getBenchmarkEnvironment(os) {
+  return {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cpuModel: os.cpus()[0]?.model ?? "Unknown",
+    totalMemoryBytes: os.totalmem(),
+  };
+}
+
+function createResultArtifact(
+  opts,
+  provenance,
+  environment,
+  allResults,
+  complete,
+) {
+  return {
+    schemaVersion: 2,
+    complete,
+    provenance,
+    environment,
+    options: {
+      duration: opts.duration,
+      connections: opts.connections,
+      pipelining: opts.pipelining,
+      warmup: opts.warmup,
+      rounds: opts.rounds,
+      scenario: opts.scenario,
+      frameworks: opts.frameworks,
+    },
+    allResults,
+  };
+}
+
+function hasSameProtocol(left, right) {
+  return (
+    left.duration === right.duration &&
+    left.connections === right.connections &&
+    left.pipelining === right.pipelining &&
+    left.warmup === right.warmup &&
+    left.rounds === right.rounds
+  );
+}
+
+function hasSameEnvironment(left, right) {
+  return (
+    left.node === right.node &&
+    left.platform === right.platform &&
+    left.arch === right.arch &&
+    left.cpuModel === right.cpuModel
+  );
+}
+
+function hasSameProvenance(left, right) {
+  return (
+    left.commit === right.commit &&
+    left.worktree === right.worktree &&
+    left.dirtyPatchSha256 === right.dirtyPatchSha256
+  );
+}
+
+function hasValidArtifactResult(result) {
+  if (!hasValidMetrics(result?.raw)) return false;
+  if (result.framework === EGG_FRAMEWORK) return result.vext == null;
+  return hasValidMetrics(result?.vext);
+}
+
+async function loadMergedResults(paths, output, requireCompleteMatrix) {
+  if (paths.length === 0) {
+    throw new Error("--from-results-json requires at least one JSON artifact.");
+  }
+
+  const artifacts = await Promise.all(
+    paths.map(async (path) => {
+      const raw = await readFile(path, "utf-8");
+      return { path, value: JSON.parse(raw) };
+    }),
+  );
+  const first = artifacts[0].value;
+  if (
+    first?.schemaVersion !== 2 ||
+    !first.complete ||
+    !first.options ||
+    !first.provenance ||
+    !first.environment ||
+    !Array.isArray(first.allResults)
+  ) {
+    throw new Error(
+      `Invalid or incomplete benchmark artifact: ${artifacts[0].path}`,
+    );
+  }
+
+  const seen = new Set();
+  const allResults = [];
+  const frameworks = [];
+  for (const { path, value } of artifacts) {
+    if (
+      value?.schemaVersion !== 2 ||
+      !value.complete ||
+      !value.options ||
+      !value.provenance ||
+      !value.environment ||
+      !Array.isArray(value.allResults)
+    ) {
+      throw new Error(`Invalid or incomplete benchmark artifact: ${path}`);
+    }
+    if (!hasSameProtocol(first.options, value.options)) {
+      throw new Error(`Benchmark protocol mismatch in artifact: ${path}`);
+    }
+    if (!hasSameProvenance(first.provenance, value.provenance)) {
+      throw new Error(
+        `Benchmark source provenance mismatch in artifact: ${path}`,
+      );
+    }
+    if (!hasSameEnvironment(first.environment, value.environment)) {
+      throw new Error(`Benchmark environment mismatch in artifact: ${path}`);
+    }
+    for (const framework of value.options.frameworks) {
+      if (!frameworks.includes(framework)) frameworks.push(framework);
+    }
+    for (const result of value.allResults) {
+      if (!hasValidArtifactResult(result)) {
+        throw new Error(`Invalid benchmark metrics in artifact: ${path}`);
+      }
+      const key = `${result.framework}:${result.scenario}`;
+      if (seen.has(key)) {
+        throw new Error(`Duplicate benchmark result while merging: ${key}`);
+      }
+      seen.add(key);
+      allResults.push(result);
+    }
+  }
+
+  const mergedScenarios = [
+    ...new Set(allResults.map((result) => result.scenario)),
+  ];
+
+  if (requireCompleteMatrix) {
+    const expected = new Set(
+      FRAMEWORKS.flatMap((framework) =>
+        SCENARIOS.map((scenario) => `${framework}:${scenario.name}`),
+      ),
+    );
+    const missing = [...expected].filter((key) => !seen.has(key));
+    const unexpected = [...seen].filter((key) => !expected.has(key));
+
+    if (missing.length > 0 || unexpected.length > 0) {
+      throw new Error(
+        `Incomplete benchmark matrix: missing=${missing.join(",") || "none"}; unexpected=${unexpected.join(",") || "none"}`,
+      );
+    }
+  }
+
+  return {
+    allResults,
+    opts: {
+      ...first.options,
+      frameworks,
+      scenario: mergedScenarios.length === 1 ? mergedScenarios[0] : "all",
+      output,
+    },
+    provenance: first.provenance,
+    environment: first.environment,
+  };
+}
+
 // ── 主流程 ────────────────────────────────────────────────────
 
 async function main() {
   const opts = parseArgs();
   const os = await import("node:os");
+  const environment = getBenchmarkEnvironment(os);
+
+  if (opts.fromResultsJson.length > 0) {
+    const merged = await loadMergedResults(
+      opts.fromResultsJson,
+      opts.output,
+      opts.requireCompleteMatrix,
+    );
+    const report = generateReport(
+      merged.allResults,
+      merged.opts,
+      merged.environment,
+      merged.provenance,
+    );
+    console.log(report);
+    await writeFile(opts.output, report, "utf-8");
+    console.log(`\n✅ 合并报告已保存到: ${opts.output}`);
+    return;
+  }
+
+  const provenance = getSourceProvenance();
 
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║           vext 性能基准测试 (Benchmark Suite)           ║");
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log();
-  console.log(`  Node.js:      ${process.version}`);
-  console.log(`  平台:         ${process.platform} ${process.arch}`);
-  console.log(`  CPU:          ${os.cpus()[0]?.model ?? "Unknown"}`);
+  console.log(`  Node.js:      ${environment.node}`);
+  console.log(`  平台:         ${environment.platform} ${environment.arch}`);
+  console.log(`  CPU:          ${environment.cpuModel}`);
+  console.log(
+    `  源码:         ${provenance.branch}@${provenance.commit} (${provenance.worktree})`,
+  );
   console.log(`  持续时间:     ${opts.duration}s`);
   console.log(`  并发连接:     ${opts.connections}`);
   console.log(`  流水线:       ${opts.pipelining}`);
@@ -673,6 +1048,7 @@ async function main() {
         rawServer = await startRawServer(framework, rawPort);
         // egg 启动较慢（多进程模型），给更长的健康检查超时
         await waitForHealthy(rawPort, isEgg ? 15_000 : 5000);
+        await assertScenarioContract(rawPort, scenario);
         console.log(`     ✅ 裸跑服务器就绪`);
 
         // 预热
@@ -720,6 +1096,7 @@ async function main() {
           );
           vextServer = await startVextServer(framework, vextPort);
           await waitForHealthy(vextServer.port, 10_000);
+          await assertScenarioContract(vextServer.port, scenario);
           console.log(`     ✅ vext 服务器就绪`);
 
           // 预热
@@ -780,7 +1157,7 @@ async function main() {
   console.log(`  📝 生成报告...`);
   console.log(`${"═".repeat(60)}\n`);
 
-  const report = generateReport(allResults, opts, os);
+  const report = generateReport(allResults, opts, environment, provenance);
 
   // 输出到控制台
   console.log(report);
@@ -793,6 +1170,22 @@ async function main() {
     console.error(`\n⚠️ 报告保存失败: ${err.message}`);
   }
 
+  if (opts.resultsJson) {
+    const artifact = createResultArtifact(
+      opts,
+      provenance,
+      environment,
+      allResults,
+      !hadBenchmarkFailure,
+    );
+    await writeFile(
+      opts.resultsJson,
+      `${JSON.stringify(artifact, null, 2)}\n`,
+      "utf-8",
+    );
+    console.log(`✅ 原始样本已保存到: ${opts.resultsJson}`);
+  }
+
   if (hadBenchmarkFailure) {
     throw new Error(
       "One or more benchmark runs failed; report contains partial results.",
@@ -803,9 +1196,8 @@ async function main() {
 /**
  * 生成 Markdown 报告
  */
-function generateReport(allResults, opts, os) {
-  const cpuModel = os.cpus()[0]?.model ?? "Unknown";
-  const totalMem = os.totalmem();
+function generateReport(allResults, opts, environment, provenance) {
+  const { cpuModel, totalMemoryBytes } = environment;
 
   const now = new Date();
   const dateStr = now.toISOString().split("T")[0];
@@ -815,17 +1207,23 @@ function generateReport(allResults, opts, os) {
 
   // ── 头部 ────────────────────────────────────────────────
   md += `# vext 性能基准测试报告\n\n`;
-  md += `> **日期**: ${dateStr} ${timeStr}\n`;
-  md += `> **Node.js**: ${process.version}\n`;
-  md += `> **平台**: ${process.platform} ${process.arch}\n`;
-  md += `> **参数**: duration=${opts.duration}s, connections=${opts.connections}, pipelining=${opts.pipelining}, rounds=${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""}\n\n`;
+  md += `> **日期（UTC）**: ${dateStr} ${timeStr}\n`;
+  md += `> **源码**: ${provenance.branch}@${provenance.commit}（worktree: ${provenance.worktree}）\n`;
+  md += `> **候选差异 SHA-256**: ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（不含自动生成的 \`RESULTS.md\`；包含未跟踪候选文件）\n`;
+  md += `> **Runner**: \`test/benchmark/run-benchmark.mjs\`\n`;
+  md += `> **Autocannon**: v${AUTOCANNON_VERSION}\n`;
+  md += `> **Node.js**: ${environment.node}\n`;
+  md += `> **平台**: ${environment.platform} ${environment.arch}\n`;
+  md += `> **参数**: frameworks=${opts.frameworks.join(",")}, scenario=${opts.scenario}, duration=${opts.duration}s, connections=${opts.connections}, pipelining=${opts.pipelining}, warmup=${opts.warmup}s, rounds=${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""}\n\n`;
   md += `---\n\n`;
 
   md += `## Benchmark 口径说明\n\n`;
-  md += `- 当前 benchmark app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext，用于测量 adapter/router core 开销。\n`;
+  md += `- 当前 adapter matrix app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext；它仍经过正式 bootstrap 的 authContext、requestHook 和标准路由生命周期，因此不是 Vext Native Core。\n`;
+  md += `- 如需 Raw Native / Raw Fastify / Vext Native Core / Vext Native Normal 的可审计主对照，请运行 \`test/benchmark/run-native-fairness.mjs\`。\n`;
   md += `- \`chain\` 是历史兼容场景，表示 handler 内联业务逻辑链，不代表真实 vext middleware chain。\n`;
   md += `- \`middleware-chain\` 才表示 route-level middleware chain，会进入 adapter 的中间件链执行器。\n`;
-  md += `- 本报告不等同于默认 runtime 配置性能；如需默认配置性能，应单独增加 default-runtime benchmark。\n\n`;
+  md += `- 本报告不等同于默认 runtime 配置性能；如需默认配置性能，应单独增加 default-runtime benchmark。\n`;
+  md += `- **可比性限制**：只比较相同源码身份、Node.js、OS/CPU、参数、场景和缓存/系统负载条件下的报告。不同机器或不同协议的数值不能直接作为性能回归结论。\n\n`;
 
   // ── 总结表格 ────────────────────────────────────────────
   md += `## 📊 总结\n\n`;
@@ -998,11 +1396,16 @@ function generateReport(allResults, opts, os) {
   md += `## 🖥️ 测试环境\n\n`;
   md += `| 项目 | 值 |\n`;
   md += `|------|----|\n`;
-  md += `| Node.js | ${process.version} |\n`;
-  md += `| 平台 | ${process.platform} ${process.arch} |\n`;
+  md += `| 源码 | ${provenance.branch}@${provenance.commit} (${provenance.worktree}) |\n`;
+  md += `| 候选差异 SHA-256 | ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（不含自动生成的 \`RESULTS.md\`；包含未跟踪候选文件） |\n`;
+  md += `| Runner | test/benchmark/run-benchmark.mjs |\n`;
+  md += `| Node.js | ${environment.node} |\n`;
+  md += `| 平台 | ${environment.platform} ${environment.arch} |\n`;
   md += `| CPU | ${cpuModel} |\n`;
-  md += `| 内存 | ${formatBytes(totalMem)} |\n`;
-  md += `| 压测工具 | autocannon |\n`;
+  md += `| 内存 | ${formatBytes(totalMemoryBytes)} |\n`;
+  md += `| 压测工具 | autocannon v${AUTOCANNON_VERSION} |\n`;
+  md += `| 框架 | ${opts.frameworks.join(", ")} |\n`;
+  md += `| 场景 | ${opts.scenario} |\n`;
   md += `| 持续时间 | ${opts.duration}s |\n`;
   md += `| 并发连接 | ${opts.connections} |\n`;
   md += `| 流水线 | ${opts.pipelining} |\n`;

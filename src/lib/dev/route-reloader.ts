@@ -126,6 +126,16 @@ export interface RouteReloaderApp {
   };
 }
 
+function isFrontendEnabled(config: Record<string, unknown>): boolean {
+  const frontend = config.frontend;
+  return (
+    frontend === true ||
+    (typeof frontend === "object" &&
+      frontend !== null &&
+      (frontend as { enabled?: unknown }).enabled === true)
+  );
+}
+
 /**
  * 中间件注册表条目
  *
@@ -407,6 +417,9 @@ export async function reloadRoutes(
 
   const routesDir = path.join(outDir, "routes");
   let routeCorsMiddleware: RouteReloaderMiddleware | undefined;
+  const frontendEnabled = isFrontendEnabled(
+    app.config as Record<string, unknown>,
+  );
 
   // ── 1. 创建全新的 adapter 实例 ────────────────────────
   //
@@ -481,14 +494,14 @@ export async function reloadRoutes(
     if (builtinMiddlewares.responseWrapper) {
       freshAdapter.registerMiddleware(builtinMiddlewares.responseWrapper);
     }
-    if (builtinMiddlewares.createFrontendRenderMiddleware) {
+    if (frontendEnabled && builtinMiddlewares.createFrontendRenderMiddleware) {
       freshAdapter.registerMiddleware(
         builtinMiddlewares.createFrontendRenderMiddleware(
           app.config as Record<string, unknown>,
         ),
       );
     }
-    if (builtinMiddlewares.frontendDevEvents) {
+    if (frontendEnabled && builtinMiddlewares.frontendDevEvents) {
       freshAdapter.registerRoute("GET", VEXT_FRONTEND_DEV_EVENT_PATH, [
         builtinMiddlewares.frontendDevEvents,
       ]);

@@ -805,16 +805,20 @@ export async function devBootstrap(
       app.adapter.registerMiddleware(responseWrapper);
     }
 
-    app.adapter.registerMiddleware(
-      createFrontendRenderMiddleware({
-        rootDir: projectRoot,
-        mode: "development",
-        config: config.frontend,
-      }),
-    );
-    app.adapter.registerRoute("GET", VEXT_FRONTEND_DEV_EVENT_PATH, [
-      frontendDevEvents.middleware,
-    ]);
+    // 与生产 bootstrap 一致：frontend disabled 时 renderer 及其 dev-event
+    // route 都不进入请求路径，避免 hot reload 后重新引入 noop middleware。
+    if (isFrontendEnabled(config.frontend)) {
+      app.adapter.registerMiddleware(
+        createFrontendRenderMiddleware({
+          rootDir: projectRoot,
+          mode: "development",
+          config: config.frontend,
+        }),
+      );
+      app.adapter.registerRoute("GET", VEXT_FRONTEND_DEV_EVENT_PATH, [
+        frontendDevEvents.middleware,
+      ]);
+    }
 
     // 6. access-log（config.accessLog.enabled，默认 true）
     //    洋葱模型 after-middleware：before 记录开始时间，after 记录耗时+状态码
@@ -1044,13 +1048,17 @@ export async function devBootstrap(
           : undefined,
       responseWrapper:
         config.response?.wrap !== false ? (responseWrapper as any) : undefined,
-      createFrontendRenderMiddleware: ((cfg: Record<string, unknown>) =>
-        createFrontendRenderMiddleware({
-          rootDir: projectRoot,
-          mode: "development",
-          config: (cfg as any).frontend,
-        })) as any,
-      frontendDevEvents: frontendDevEvents.middleware as any,
+      createFrontendRenderMiddleware: isFrontendEnabled(config.frontend)
+        ? (((cfg: Record<string, unknown>) =>
+            createFrontendRenderMiddleware({
+              rootDir: projectRoot,
+              mode: "development",
+              config: (cfg as any).frontend,
+            })) as any)
+        : undefined,
+      frontendDevEvents: isFrontendEnabled(config.frontend)
+        ? (frontendDevEvents.middleware as any)
+        : undefined,
       createAccessLogMiddleware:
         config.accessLog?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>
@@ -1351,6 +1359,17 @@ function resolveConfiguredModelsDir(config: unknown): string | undefined {
   }
   const dir = (models as Record<string, unknown>).dir;
   return typeof dir === "string" ? dir : undefined;
+}
+
+function isFrontendEnabled(
+  frontend:
+    | import("../../frontend/contract/types.js").VextFrontendUserConfig
+    | undefined,
+): boolean {
+  return (
+    frontend === true ||
+    (typeof frontend === "object" && frontend.enabled === true)
+  );
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────

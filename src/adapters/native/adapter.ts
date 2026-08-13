@@ -111,7 +111,7 @@ async function executeChain(
 
   // ── F2 快速路径：仅 1 个中间件时跳过递归调度 ──────────
   //
-  // benchmark 中所有中间件都被禁用后，chain 只含 1 个 handlerMiddleware。
+  // 直接注册且没有全局或路由级中间件的 route 会形成单元素 handler 链。
   // 标准路径每请求创建 4+ 个 Promise（executeChain / dispatch(0) / middleware / dispatch(1)）。
   // 快速路径仅创建 1 个 Promise（middleware 本身），减少 ~75% 的 Promise/微任务开销。
   //
