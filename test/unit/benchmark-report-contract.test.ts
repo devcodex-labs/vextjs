@@ -48,21 +48,17 @@ function runBenchmarkCli(relativePath: string, args: string[]) {
 }
 
 describe("benchmark report semantics", () => {
-  it("renders the Core route-middleware scenario as N/A, not missing data", () => {
+  it("keeps Core diagnostics out of public adapter-selection pages", () => {
     const runner = read("test/benchmark/run-native-fairness.mjs");
     const en = read("website/docs/en/benchmark.md");
     const zh = read("website/docs/zh/benchmark.md");
 
     expect(runner).toContain(': "N/A";');
     expect(runner).toContain("这表示不适用，不是漏测或零成本");
-    expect(en).toMatch(
-      /\| Route middleware chain\s+\|\s+N\/A\s+\|\s+N\/A\s+\|/,
-    );
-    expect(zh).toMatch(/\| route middleware 链\s+\|\s+N\/A\s+\|\s+N\/A\s+\|/);
-    expect(en).toContain("internal diagnostic entry");
-    expect(zh).toContain("内部用来定位最短执行路径的诊断入口");
-    expect(en).toContain("neither missing data nor a zero-cost measurement");
-    expect(zh).toContain("既不是漏测，也不表示成本为零");
+    expect(en).not.toContain("Core shows");
+    expect(zh).not.toContain("Core 有 `N/A`");
+    expect(en).toContain("Raw-framework and shortest-path measurements");
+    expect(zh).toContain("裸框架与最短路径测量");
   });
 
   it("describes the actual Normal global middleware telemetry", () => {
@@ -79,19 +75,19 @@ describe("benchmark report semantics", () => {
     const zh = read("website/docs/zh/benchmark.md");
 
     for (const page of [en, zh]) {
-      expect(page).toContain("26,444");
-      expect(page).toContain("33,351");
-      expect(page).toContain("-31.6%");
-      expect(page).toContain("-69.1%");
-      expect(page).toContain("17.8%–20.8%");
-      expect(page).toContain("--process-priority -14");
+      expect(page).toContain("24,508.37");
+      expect(page).toContain("21,445.1");
+      expect(page).toContain("9,258.73");
+      expect(page).toContain("--process-priority 0");
+      expect(page).toContain("--rounds 7");
+      expect(page).toContain("--max-cv 20");
       expect(page).toContain("programmatic API");
       expect(page).not.toContain(
         "main@cea18d760592b790d602f61f343e8d71c4a35735",
       );
-      expect(page).not.toContain("35,283");
-      expect(page).not.toContain("-16.3%");
-      expect(page).not.toContain("20.9%");
+      expect(page).not.toContain("33,351");
+      expect(page).not.toContain("-31.6%");
+      expect(page).not.toContain("--process-priority -14");
     }
   });
 
@@ -248,6 +244,7 @@ describe("benchmark report semantics", () => {
   it("interleaves targets by round and rejects unstable formal samples", () => {
     const runner = read("test/benchmark/run-native-fairness.mjs");
     const matrixRunner = read("test/benchmark/run-benchmark.mjs");
+    const adapterRunner = read("test/benchmark/run-adapter-matrix.mjs");
 
     expect(runner).toContain('targetScheduling: "round-interleaved-rotating"');
     expect(runner).toContain("rotateTargets(");
@@ -275,11 +272,20 @@ describe("benchmark report semantics", () => {
     expect(matrixRunner).toContain(
       "Benchmark artifact source provenance does not match the current worktree",
     );
+    expect(adapterRunner).toContain(
+      'targetScheduling: "round-interleaved-rotating"',
+    );
+    expect(adapterRunner).toContain("assertSameContract(");
+    expect(adapterRunner).toContain("assertNormalTelemetry(");
+    expect(adapterRunner).toContain("Benchmark CV gate failed");
+    expect(adapterRunner).toContain("complete: unstable.length === 0");
+    expect(adapterRunner).toContain("Incomplete Vext adapter matrix");
   });
 
   it("keeps generated benchmark artifacts out of candidate provenance", () => {
     const runner = read("test/benchmark/run-native-fairness.mjs");
     const matrixRunner = read("test/benchmark/run-benchmark.mjs");
+    const adapterRunner = read("test/benchmark/run-adapter-matrix.mjs");
     const benchmarkReadme = read("test/benchmark/README.md");
     const gitignore = read(".gitignore");
 
@@ -295,6 +301,10 @@ describe("benchmark report semantics", () => {
     expect(matrixRunner).toContain("Unable to read benchmark git provenance");
     expect(matrixRunner).not.toContain("⚠️ 报告保存失败");
     expect(runner).toContain("Unable to read benchmark git status");
+    expect(adapterRunner).toContain("GENERATED_REPORT_PATHSPEC");
+    expect(adapterRunner).toContain(
+      "candidateSourceState([options.output, options.resultsJson])",
+    );
     expect(gitignore).toContain("/test/benchmark/.artifacts/");
     expect(benchmarkReadme).toContain("test/benchmark/.artifacts/");
     expect(benchmarkReadme).not.toContain("./artifacts/");
@@ -316,6 +326,11 @@ describe("benchmark report semantics", () => {
       "test/benchmark/run-benchmark.mjs",
       ["--connections", "50x"],
       "Invalid --connections",
+    ],
+    [
+      "test/benchmark/run-adapter-matrix.mjs",
+      ["--rounds", "0"],
+      "Invalid --rounds",
     ],
   ])(
     "rejects malformed numeric CLI input before benchmarking (%s %j)",

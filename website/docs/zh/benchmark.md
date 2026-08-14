@@ -1,83 +1,43 @@
 # 性能基准
 
-这份基准帮助你理解 VextJS 在轻量 HTTP 场景中的框架开销，以及 Native 与 Fastify 在相同负载下的差异。它适合做初步选型，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
+这份基准用于帮助你选择 Vext HTTP Adapter。它固定同一个 Vext 应用，在相同的轻量 Normal 负载下比较五个受支持的 Adapter。它适合作为 Adapter 选型输入，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
 
 ## 先看结论
 
-- **没有跨场景的总冠军。** 同步 handler 组中 Raw Fastify 在四个场景领先；异步 handler 组中 Raw Native 领先 JSON、参数路由和处理器业务链，Raw Fastify 领先 route middleware 链。
-- **Vext Native Normal 展示的是可运行框架路径的成本。** 同步组相对 Raw Native 低 11.8%–18.1%、相对 Raw Fastify 低 17.8%–20.8%；异步组对应为 17.2%–32.0% 和 20.0%–30.5%。
-- **这些数字不能解释成“Fastify 永远最快”或“Vext 排名第二”。** 场景、handler 形态和底层 adapter 都会改变结果。
-- **选择 adapter 时先看能力与迁移成本。** Native 是零第三方 HTTP 框架依赖的默认路径；需要特定生态时再选择 Fastify、Express、Koa 或 Hono，并用自己的业务负载复测。
+- **这是 Adapter 对比，不是跨框架排行榜。** 每一行均使用相同的 Vext routes、Normal bootstrap、handler 模式、HTTP 契约、中间件 fixture 和压测协议；唯一变量是 Adapter。
+- **本机和本负载下 Native 的吞吐最高。** 这是当前环境观测，不是它在所有环境中都最优的承诺。
+- **本样本中 Fastify 与 Koa 的吞吐随后，Hono 与 Express 则取舍各自的编程模型和生态。** 对于较小差异，请结合 CV 和延迟数据判断。
+- **先按集成和迁移需求选择，再用你的业务复测。** Native 是依赖更轻的默认路径；需要相应生态时选择 Fastify、Express、Koa 或 Hono。
 
 ## 当前结果
 
-以下结果采集于 **2026-08-14**。所有数字均为 5 轮的 req/s 中位数，数值越高表示这个测试场景中的吞吐越高。
+以下结果采集于 **2026-08-14**。所有数字均为 **7** 轮 req/s 的中位数，数值越高表示该测试场景中的吞吐越高。
 
-### 同步 handler
+| 场景                |    Native |      Hono |   Fastify |  Express |      Koa |
+| ------------------- | --------: | --------: | --------: | -------: | -------: |
+| JSON 响应           | 24,508.37 |  10,690.4 |  21,445.1 | 7,276.91 | 18,247.6 |
+| 参数路由            |    23,992 | 10,274.55 | 21,120.73 | 7,246.73 | 17,918.8 |
+| 处理器业务链        |  21,566.4 |  9,282.37 | 19,086.41 | 7,064.91 | 16,466.8 |
+| route middleware 链 |  21,243.2 |  9,258.73 |    18,536 |    7,062 |   15,972 |
 
-| 场景                | Raw Native | Raw Fastify | Vext Native Normal |
-| ------------------- | ---------: | ----------: | -----------------: |
-| JSON                |     26,444 |      28,857 |             22,880 |
-| 参数路由            |     25,895 |      27,785 |             22,828 |
-| 处理器业务链        |     24,091 |      24,615 |             19,723 |
-| route middleware 链 |     24,053 |      24,985 |             19,776 |
+全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 0.6%–2.1% 之间；全部轮次、P50/P99、版本和链路 telemetry 请查看[完整报告](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
 
-### 异步 handler
+## 为什么这样对比
 
-| 场景                | Raw Native | Raw Fastify | Vext Native Normal |
-| ------------------- | ---------: | ----------: | -----------------: |
-| JSON                |     33,351 |      28,782 |             22,856 |
-| 参数路由            |     34,193 |      32,300 |             23,244 |
-| 处理器业务链        |     30,088 |      26,185 |             20,940 |
-| route middleware 链 |     25,236 |      30,085 |             20,903 |
+面向使用者的决策是**选择哪个 Vext Adapter**，所以每个目标均运行同一个 Vext Normal 应用。routes、`defineRoutes()` 加载、路由匹配、请求/响应对象、中间件 fixture、handler 模式、响应契约、进程优先级和 Autocannon 协议均保持不变，唯一变量是 Adapter。
 
-同步与异步两组在不同时间采样，只能在各自表格内比较，不能用两张表的绝对值证明某种 handler 写法更快。
+fixture 有意关闭这些 GET 场景不使用的可选请求能力：access log、生成的 request ID、CORS、rate limit、response wrap、body parser、request context、session、CSRF、security headers、frontend render 和应用日志。它仍保留 Normal bootstrap 与路由生命周期。因此比较具有聚焦性和可复现性，但它不是全能力生产负载，也不是数据库/I/O 基准。
 
-完整的轮次样本、CV、P50/P99、源码身份和生命周期 telemetry 可查看[原始结果](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
-
-## 这些差距包含什么
-
-`Raw Native` 和 `Raw Fastify` 直接使用各自底层 API。`Vext Native Normal` 使用 Vext 的正式 bootstrap、router loader、路由匹配、请求/响应对象和生命周期；为对齐核心负载，测试关闭了非必要的可选请求能力：
-
-- access log、request ID、CORS 和 rate limit；
-- response wrap、body parser 和 request context；
-- session、CSRF、security headers 和 frontend（默认即关闭或在 fixture 中明确关闭）；
-- 日志输出设为 `silent`。
-
-因此，Normal 与 Raw 的差值主要反映这个精简负载中的 Vext 路由、请求/响应抽象和生命周期成本。它不是开启全部生产能力后的吞吐，也不能代表包含 I/O 的完整业务接口。
-
-### 为什么原始报告中的 Core 有 `N/A`
-
-Core 是 benchmark 内部用来定位最短执行路径的诊断入口，不经过正式 bootstrap，也不是用户可选择的运行模式。
-
-| Core 诊断场景       | 同步 | 异步 |
-| ------------------- | ---: | ---: |
-| route middleware 链 |  N/A |  N/A |
-
-`N/A` 表示“不适用”：Core 不注册 route middleware chain，所以无法测量该场景；它既不是漏测，也不表示成本为零。用户选型应以 Normal 结果为主。
-
-## Adapter 对比
-
-下面是同一协议下，Vext 相对每个 adapter 对应 Raw 实现的吞吐差值；负值表示 Vext 在该组中较低。它衡量的是 **Vext 与该 adapter 的组合开销**，不能把不同行直接当成框架总排名。
-
-| Adapter |   JSON | 参数路由 | 处理器业务链 | route middleware 链 |
-| ------- | -----: | -------: | -----------: | ------------------: |
-| Native  | -31.6% |   -29.6% |       -29.4% |              -27.6% |
-| Fastify | -43.0% |   -41.7% |       -38.3% |              -39.1% |
-| Express |  -9.4% |    -2.6% |        -7.4% |              -12.7% |
-| Koa     | -31.4% |   -33.3% |       -37.4% |              -34.2% |
-| Hono    | -69.1% |   -68.6% |       -67.0% |              -67.9% |
-
-Express 的百分比更小不表示它的绝对吞吐最高；百分比受各自 Raw 基线影响。Hono 的差距包含 Vext 自有 `node:http` bridge 成本：Raw Hono 使用官方 `@hono/node-server`，而 Vext Hono adapter 的运行时只依赖 `hono`。这两个入口都是真实公开路径，但不是同一个 server wrapper。
+裸框架与最短路径测量仍作为维护者诊断保留；它们回答的是另一个问题，不用于本页的 Adapter 排名。
 
 ### 如何选择
 
-| 需求                                         | 建议起点       | 需要注意                                                           |
-| -------------------------------------------- | -------------- | ------------------------------------------------------------------ |
-| 新项目、希望减少 HTTP 框架依赖               | Native（默认） | 用真实业务负载确认吞吐与延迟目标                                   |
-| 已确定需要 Fastify 相关能力                  | Fastify        | Vext middleware 与底层原生 middleware 的签名不同，先核对集成边界   |
-| 从 Express 或 Koa 迁移、团队已有经验         | 对应 adapter   | 不要仅依据开销百分比选择，先验证现有中间件的迁移方式               |
-| Node.js 服务中需要 Hono / Web Standards 风格 | Hono           | 当前是 Node.js adapter，不是 Edge 运行时承诺；现有 bridge 开销较大 |
+| 需求                                         | 建议起点       | 需要注意                                                               |
+| -------------------------------------------- | -------------- | ---------------------------------------------------------------------- |
+| 新项目、希望减少 HTTP 框架依赖               | Native（默认） | 用真实业务负载确认吞吐与延迟目标                                       |
+| 已确定需要 Fastify 相关能力                  | Fastify        | Vext middleware 与底层原生 middleware 的签名不同，先核对集成边界       |
+| 从 Express 或 Koa 迁移、团队已有经验         | 对应 adapter   | 不要仅依据开销百分比选择，先验证现有中间件的迁移方式                   |
+| Node.js 服务中需要 Hono / Web Standards 风格 | Hono           | 当前是 Node.js adapter，不是 Edge 运行时承诺；对 bridge 敏感负载应实测 |
 
 详细安装和配置请参见 [Adapter 指南](/guide/adapters)。
 
@@ -86,9 +46,9 @@ Express 的百分比更小不表示它的绝对吞吐最高；百分比受各自
 | 项目   | 当前正式样本                                                                                                             |
 | ------ | ------------------------------------------------------------------------------------------------------------------------ |
 | 环境   | Node.js 20.20.2、Windows x64、Intel i7-9700、32 GiB RAM                                                                  |
-| 负载   | 50 connections、pipelining 10、每轮 10 秒                                                                                |
-| 稳定性 | 5 秒预热、5 轮中位数、目标逐轮交错、CV ≤ 15%                                                                             |
-| 进程   | runner 与被测子进程使用相同优先级 -14                                                                                    |
+| 负载   | 50 connections、pipelining 10、每次测量 10 秒                                                                            |
+| 稳定性 | 5 秒预热、7 轮中位数、轮次顺序轮转、CV ≤ 20%                                                                             |
+| 进程   | runner 与被测子进程使用相同 normal 优先级 0                                                                              |
 | 依赖   | Fastify 5.12.0、Hono 4.13.2、`@hono/node-server` 2.1.1、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0 |
 
 正式运行前，runner 会将这些依赖与当日 npm `latest` 核对；任一版本、源码身份、非 2xx、连接错误、超时、缺失结果或 CV 门禁失败都会拒绝生成可引用报告。目标按轮次交错执行，减少时间漂移固定偏向某一实现。
@@ -102,13 +62,13 @@ npm ci
 npm run verify:benchmark-deps
 ```
 
-运行与本页一致的同步主对照：
+运行与本页一致的公开 Adapter 对照：
 
 ```bash
-node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority -14 --handler-mode sync
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
 ```
 
-将最后一个参数改为 `--handler-mode async` 可运行异步组。`--process-priority -14` 是本页 Windows 样本的一部分；如果你的平台或权限不支持，请改用可用值，并把结果视为新的环境基线，不要直接与本页数字比较。
+本样本使用同步 handler。如果你的平台或权限需要不同的优先级，请改用可用值，并将结果视为新的环境基线，不要直接与本页绝对数值比较。
 
 runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
 
@@ -126,11 +86,11 @@ runner 使用本地 Autocannon **programmatic API**，会自动启动和停止�
 - 当前结果来自一台 Windows 主机，不代表 Linux、容器或云环境。
 - 这是轻量 HTTP 微基准，不衡量开发体验、插件质量、可维护性或完整业务延迟。
 - 不同日期、机器、依赖版本、handler 模式或压测协议的绝对数字不可直接合并排名。
-- adapter matrix 与 Native/Fastify 主对照用途不同：前者观察组合开销，后者提供更严格的同场景对照。
+- 本表只比较 Vext Adapter。裸框架与最短路径诊断单独维护，不是面向使用者的 Adapter 排名。
 
 ## 相关链接
 
-- [原始结果与完整样本](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)
+- [结果与完整样本](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)
 - [Benchmark 复现说明](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
 - [Adapter 选择与配置](/guide/adapters)
 - [生产部署](/guide/deployment)

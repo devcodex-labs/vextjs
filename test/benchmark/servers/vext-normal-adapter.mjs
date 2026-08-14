@@ -1,19 +1,24 @@
 import { createNativeAdapter } from "../../../dist/adapters/native/adapter.js";
+import { createHonoAdapter } from "../../../dist/adapters/hono/adapter.js";
+import { createFastifyAdapter } from "../../../dist/adapters/fastify/adapter.js";
+import { createExpressAdapter } from "../../../dist/adapters/express/adapter.js";
+import { createKoaAdapter } from "../../../dist/adapters/koa/adapter.js";
 
 function routeKey(method, path) {
   return `${method.toUpperCase()} ${path}`;
 }
 
 /**
- * Benchmark-only Native adapter wrapper.
+ * Benchmark-only Normal adapter observer.
  *
  * It measures registration-time chain composition without changing the public
- * adapter contract or the production bootstrap. The runner receives the values
- * through vext-start IPC and rejects a result when the expected Normal chain is
- * not present.
+ * adapter contract or the production bootstrap. Every Vext adapter uses the
+ * same observer so the adapter matrix can prove that its shared Normal fixture
+ * really registered the same Vext chain before it measures throughput.
  */
 export function createBenchmarkNormalAdapter(app) {
-  const adapter = createNativeAdapter({}, app);
+  const adapterName = process.env.BENCH_ADAPTER || "native";
+  const adapter = createAdapter(adapterName, app);
   const routeChains = new Map();
   let globalMiddlewareCount = 0;
 
@@ -33,6 +38,7 @@ export function createBenchmarkNormalAdapter(app) {
   Object.defineProperty(adapter, "getBenchmarkTelemetry", {
     value: () => ({
       mode: "normal",
+      adapter: adapterName,
       globalMiddlewareCount,
       routeChainLengths: Object.fromEntries(routeChains),
     }),
@@ -40,4 +46,21 @@ export function createBenchmarkNormalAdapter(app) {
   });
 
   return adapter;
+}
+
+function createAdapter(adapterName, app) {
+  switch (adapterName) {
+    case "native":
+      return createNativeAdapter({}, app);
+    case "hono":
+      return createHonoAdapter(app);
+    case "fastify":
+      return createFastifyAdapter({}, app);
+    case "express":
+      return createExpressAdapter({}, app);
+    case "koa":
+      return createKoaAdapter({}, app);
+    default:
+      throw new Error(`Unsupported benchmark adapter: ${adapterName}`);
+  }
 }

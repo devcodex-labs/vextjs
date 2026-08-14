@@ -1,74 +1,90 @@
-# Vext Native 基准公平性报告
+# Vext Adapter Matrix Benchmark
 
-> UTC: 2026-08-14T02:41:58.283Z
-> 源码: main@e1901aa7e2ab07e01283e8f85dfad414be3235b6 (dirty)
-> 候选差异 SHA-256: 5a6422172cd5488d2b95f886dfb1ec74404a96141f427ecc28e02c1d149727bc
-> Runner: `test/benchmark/run-native-fairness.mjs`
-> 参数: duration=10s, connections=50, pipelining=10, warmup=5s, rounds=5
+> **Audience**: Vext users choosing an HTTP adapter for the same application.
+> **UTC**: 2026-08-14T16:03:33.389Z
+> **Source**: main@9bbc314785bf9085643cabea1978bf05f7a176fa (dirty)
+> **Candidate SHA-256**: 4c12a8838117a1bb869b39dd6d4b03b5844d8434263e3768a7ef4be0be9a5302
+> **Candidate scope**: excludes this report and JSON artifacts; includes all other tracked and untracked source changes.
+> **Runner**: `test/benchmark/run-adapter-matrix.mjs`
+> **Protocol**: duration=10s, connections=50, pipelining=10, warmup=5s, rounds=7, handler=sync
+> **Scheduling**: round-interleaved-rotating; max CV=20%
 
-> 目标调度: round-interleaved-rotating; max CV=15%
+## Why this comparison
 
-> Handler mode: sync
-> Requested process priority: -14
-> 锁定版本: Vext 1.0.1; Fastify 5.12.0; Hono 4.13.2; @hono/node-server 2.1.1; Express 5.2.1; Koa 3.2.1; @koa/router 15.7.0; route-core 0.0.7; Autocannon 8.0.0
+The measured decision is **which Vext adapter to use while the Vext application stays the same**. Every target uses the same routes, Normal configuration, middleware fixture, handler mode, HTTP contract, process priority, and load protocol. Only the adapter changes. Raw framework and Vext Core measurements answer maintainer diagnostics and are intentionally not used for this user-facing table.
 
-> npm latest 校验: 2026-08-14T02:41:58.049Z against https://registry.npmjs.org
+## Results
 
-## 口径
+| Scenario               | Native RPS |  Hono RPS | Fastify RPS | Express RPS |  Koa RPS |
+| ---------------------- | ---------: | --------: | ----------: | ----------: | -------: |
+| JSON response          |  24,508.37 |  10,690.4 |    21,445.1 |    7,276.91 | 18,247.6 |
+| Route parameters       |     23,992 | 10,274.55 |   21,120.73 |    7,246.73 | 17,918.8 |
+| Handler business chain |   21,566.4 |  9,282.37 |   19,086.41 |    7,064.91 | 16,466.8 |
+| Route middleware chain |   21,243.2 |  9,258.73 |      18,536 |       7,062 |   15,972 |
 
-- `/json`、`/params`、`/chain` 与 `/health` 的四个受测对象均使用上方声明的 handler mode；Raw Fastify 在 async mode 按其公开契约返回 `reply`。
-- `/middleware-chain` 保留各框架真实的 route-level middleware 调度，不用于推断 direct handler mode 的差异。
-- 每轮在 Raw Native、Raw Fastify、Vext Core、Vext Normal 之间轮转起始目标，避免同一目标连续跑完全部轮次造成时间漂移偏差。
-- Vext Native Core 是 benchmark 私有 direct harness：无 bootstrap global middleware，参测 route registration chain 必须为 1。
-- Vext Native Normal 使用正式 bootstrap + router-loader；在 `requestContext=false` 且 frontend disabled 时，authContext 不注册，唯一全局生命周期节点为 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。
-- Core 不注册 route middleware chain，因此该场景显示 `N/A`；这表示不适用，不是漏测或零成本。
+## Per-scenario statistics
 
-## 汇总
+| Scenario         | Adapter | RPS samples                                                                |    Median |  P50 |  P99 | Errors |   CV |
+| ---------------- | ------- | -------------------------------------------------------------------------- | --------: | ---: | ---: | -----: | ---: |
+| json             | Native  | 24,508.37, 24,569.46, 24,497.6, 24,230.55, 24,329.46, 24,669.82, 24,666.91 | 24,508.37 | 19ms | 31ms |      0 | 0.6% |
+| json             | Hono    | 10,578.4, 10,590.91, 10,701.46, 10,509.46, 10,690.4, 10,994.4, 10,996      |  10,690.4 | 45ms | 71ms |      0 | 1.7% |
+| json             | Fastify | 21,291.2, 21,338.91, 21,445.1, 21,421.82, 21,478.55, 21,571.64, 21,715.2   |  21,445.1 | 22ms | 29ms |      0 | 0.6% |
+| json             | Express | 7,263.1, 7,314.73, 7,186.8, 7,276.91, 7,412.4, 7,139.82, 7,606             |  7,276.91 | 67ms | 84ms |      0 | 2.0% |
+| json             | Koa     | 18,449.82, 17,810.8, 18,409.82, 18,071.64, 17,781.82, 18,247.6, 18,575.28  |  18,247.6 | 26ms | 36ms |      0 | 1.6% |
+| params           | Native  | 24,095.28, 23,992, 23,414.4, 23,873.6, 23,906.19, 24,049.6, 24,257.6       |    23,992 | 19ms | 27ms |      0 | 1.0% |
+| params           | Hono    | 10,496.8, 10,323.21, 10,193.1, 10,199.64, 10,274.55, 10,137.6, 10,441.1    | 10,274.55 | 47ms | 72ms |      0 | 1.2% |
+| params           | Fastify | 21,081.6, 20,864.73, 21,365.1, 21,073.6, 21,452.8, 21,360, 21,120.73       | 21,120.73 | 22ms | 34ms |      0 | 0.9% |
+| params           | Express | 7,372, 7,212.19, 7,246.73, 7,160.4, 7,102.4, 7,249.2, 7,395.46             |  7,246.73 | 67ms | 95ms |      0 | 1.4% |
+| params           | Koa     | 18,408.41, 17,824.41, 18,206.8, 17,918.8, 17,835.2, 17,696.41, 18,695.6    |  17,918.8 | 27ms | 36ms |      0 | 1.9% |
+| chain            | Native  | 22,124.37, 21,365.1, 22,111.28, 21,496, 21,464, 21,566.4, 21,789.82        |  21,566.4 | 22ms | 28ms |      0 | 1.3% |
+| chain            | Hono    | 9,602.21, 9,235.1, 9,481, 9,379.4, 9,165, 9,282.37, 8,945.4                |  9,282.37 | 52ms | 83ms |      0 | 2.1% |
+| chain            | Fastify | 19,283.64, 19,000, 19,308.37, 18,758.41, 18,579.64, 19,320, 19,086.41      | 19,086.41 | 25ms | 32ms |      0 | 1.4% |
+| chain            | Express | 7,057.6, 6,980.91, 7,163.2, 7,080.4, 7,017.6, 7,064.91, 7,155.2            |  7,064.91 | 69ms | 87ms |      0 | 0.9% |
+| chain            | Koa     | 16,554.8, 15,991.2, 16,428, 16,033.6, 16,595.28, 16,466.8, 16,466.8        |  16,466.8 | 29ms | 41ms |      0 | 1.4% |
+| middleware-chain | Native  | 21,014.55, 21,628.37, 21,243.2, 21,171.64, 20,969.46, 21,290.91, 21,262.4  |  21,243.2 | 22ms | 29ms |      0 | 0.9% |
+| middleware-chain | Hono    | 9,267.1, 9,397.28, 9,345.8, 9,258.73, 9,146.6, 9,047, 9,121.64             |  9,258.73 | 52ms | 85ms |      0 | 1.3% |
+| middleware-chain | Fastify | 18,285.46, 18,740.8, 18,720.37, 18,305.82, 18,562, 18,536, 18,206.19       |    18,536 | 25ms | 34ms |      0 | 1.1% |
+| middleware-chain | Express | 7,225.64, 7,074, 7,062, 6,859.1, 7,071.2, 6,955.6, 6,994                   |     7,062 | 70ms | 89ms |      0 | 1.5% |
+| middleware-chain | Koa     | 15,860.4, 15,785.82, 16,022, 15,649.82, 15,972, 16,024, 16,137.82          |    15,972 | 30ms | 42ms |      0 | 1.0% |
 
-| 场景         | Raw Native RPS | Raw Fastify RPS | Vext Core RPS | Vext Normal RPS | Core vs Raw Native | Normal vs Raw Native |
-| ------------ | -------------: | --------------: | ------------: | --------------: | -----------------: | -------------------: |
-| JSON 响应    |      26,444.37 |       28,857.46 |      22,899.2 |          22,880 |            -13.41% |              -13.48% |
-| 路由参数     |      25,894.55 |       27,785.46 |      23,740.8 |       22,828.37 |             -8.32% |              -11.84% |
-| 处理器业务链 |      24,090.91 |       24,614.55 |     20,730.91 |        19,723.2 |            -13.95% |              -18.13% |
-| 真实中间件链 |       24,053.1 |       24,985.46 |           N/A |       19,775.64 |                N/A |              -17.78% |
+## Normal chain telemetry
 
-## 多轮样本
+| Scenario         | Adapter | Global middleware | Route registration chain | Status   |
+| ---------------- | ------- | ----------------: | -----------------------: | -------- |
+| json             | Native  |                 1 |                        2 | asserted |
+| json             | Hono    |                 1 |                        2 | asserted |
+| json             | Fastify |                 1 |                        2 | asserted |
+| json             | Express |                 1 |                        2 | asserted |
+| json             | Koa     |                 1 |                        2 | asserted |
+| params           | Native  |                 1 |                        2 | asserted |
+| params           | Hono    |                 1 |                        2 | asserted |
+| params           | Fastify |                 1 |                        2 | asserted |
+| params           | Express |                 1 |                        2 | asserted |
+| params           | Koa     |                 1 |                        2 | asserted |
+| chain            | Native  |                 1 |                        2 | asserted |
+| chain            | Hono    |                 1 |                        2 | asserted |
+| chain            | Fastify |                 1 |                        2 | asserted |
+| chain            | Express |                 1 |                        2 | asserted |
+| chain            | Koa     |                 1 |                        2 | asserted |
+| middleware-chain | Native  |                 1 |                        5 | asserted |
+| middleware-chain | Hono    |                 1 |                        5 | asserted |
+| middleware-chain | Fastify |                 1 |                        5 | asserted |
+| middleware-chain | Express |                 1 |                        5 | asserted |
+| middleware-chain | Koa     |                 1 |                        5 | asserted |
 
-| 场景             | 目标               | RPS samples                                           |    Median |      Mean |    CV |  P50 |  P99 |
-| ---------------- | ------------------ | ----------------------------------------------------- | --------: | --------: | ----: | ---: | ---: |
-| json             | Raw Native         | 30,686.55, 23,928, 26,444.37, 25,562.91, 27,689.46    | 26,444.37 | 26,862.26 |  8.5% | 17ms | 27ms |
-| json             | Raw Fastify        | 32,098.19, 32,970.19, 28,857.46, 26,719.28, 24,908.37 | 28,857.46 |  29,110.7 | 10.6% | 16ms | 23ms |
-| json             | Vext Native Core   | 22,899.2, 21,601.6, 21,048, 23,859.64, 23,312.73      |  22,899.2 | 22,544.23 |  4.7% | 21ms | 33ms |
-| json             | Vext Native Normal | 21,117.82, 21,704, 22,880, 23,017.46, 23,186.19       |    22,880 | 22,381.09 |  3.7% | 20ms | 85ms |
-| params           | Raw Native         | 33,857.46, 23,525.1, 24,335.28, 25,894.55, 26,762.91  | 25,894.55 | 26,875.06 | 13.7% | 17ms | 94ms |
-| params           | Raw Fastify        | 32,264, 26,495.28, 27,785.46, 26,413.82, 27,882.91    | 27,785.46 | 28,168.29 |  7.6% | 17ms | 31ms |
-| params           | Vext Native Core   | 23,740.8, 23,253.1, 18,993.6, 24,025.46, 23,840.73    |  23,740.8 | 22,770.74 |  8.4% | 19ms | 33ms |
-| params           | Vext Native Normal | 22,828.37, 20,449.6, 18,594.55, 23,422.4, 23,680.73   | 22,828.37 | 21,795.13 |  9.0% | 20ms | 30ms |
-| chain            | Raw Native         | 29,286.55, 23,587.2, 24,090.91, 21,210.91, 24,214.55  | 24,090.91 | 24,478.02 | 10.8% | 19ms | 29ms |
-| chain            | Raw Fastify        | 31,543.28, 30,970.91, 24,614.55, 23,382.55, 24,195.64 | 24,614.55 | 26,941.39 | 13.2% | 19ms | 31ms |
-| chain            | Vext Native Core   | 21,802.91, 20,313.46, 20,808, 19,862.41, 20,730.91    | 20,730.91 | 20,703.54 |  3.1% | 23ms | 32ms |
-| chain            | Vext Native Normal | 21,002.91, 19,874.19, 19,723.2, 19,593.46, 19,326.8   |  19,723.2 | 19,904.11 |  2.9% | 24ms | 33ms |
-| middleware-chain | Raw Native         | 27,432, 24,765.82, 21,599.28, 20,028.37, 24,053.1     |  24,053.1 | 23,575.71 | 10.9% | 20ms | 27ms |
-| middleware-chain | Raw Fastify        | 28,178.19, 29,129.46, 23,251.64, 21,816, 24,985.46    | 24,985.46 | 25,472.15 | 11.0% | 19ms | 25ms |
-| middleware-chain | Vext Native Core   | N/A                                                   |       N/A |       N/A |   N/A |  N/A |  N/A |
-| middleware-chain | Vext Native Normal | 18,522.91, 21,213.82, 20,390.55, 19,170.19, 19,775.64 | 19,775.64 | 19,814.62 |  4.7% | 24ms | 34ms |
+## Validity and limits
 
-## Chain telemetry
+- All five targets are alive before a scenario is measured. Each round rotates its first target; the median is reported and a CV over the declared threshold rejects the artifact.
+- The fixture explicitly disables optional request features not used by these GET scenarios. This is a light Normal Vext workload, not an all-features production workload or a database/I/O benchmark.
+- Results rank no overall winner across different scenarios. Use the numbers with your required integrations, migration constraints, P95/P99, and a representative production workload.
+- Latest dependency versions are verified against the npm registry before the run; the exact locked versions and source identity are recorded below.
 
-| 场景             | 模式   | global middleware | route registration chain | 状态     |
-| ---------------- | ------ | ----------------: | -----------------------: | -------- |
-| json             | core   |                 0 |                        1 | asserted |
-| json             | normal |                 1 |                        2 | asserted |
-| params           | core   |                 0 |                        1 | asserted |
-| params           | normal |                 1 |                        2 | asserted |
-| chain            | core   |                 0 |                        1 | asserted |
-| chain            | normal |                 1 |                        2 | asserted |
-| middleware-chain | normal |                 1 |                        5 | asserted |
-
-## 环境
+## Environment
 
 - Node.js: v20.20.2
 - Platform: win32 x64
 - CPU: Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz
 - Memory: 32 GiB
-- Process priority: -14
+- Process priority: 0
+- Dependencies: Vext 1.0.1; Hono 4.13.2; Fastify 5.12.0; Express 5.2.1; Koa 3.2.1; @koa/router 15.7.0; Autocannon 8.0.0
+- npm latest verification: 2026-08-14T15:32:13.294Z against https://registry.npmjs.org

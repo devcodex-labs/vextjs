@@ -17,9 +17,7 @@ import { createBenchmarkNormalAdapter } from "../../../vext-normal-adapter.mjs";
 const requestedAdapter = process.env.BENCH_ADAPTER || "native";
 const benchmarkMode = process.env.VEXT_BENCH_MODE || "normal";
 const adapter =
-  requestedAdapter === "native" && benchmarkMode === "normal"
-    ? createBenchmarkNormalAdapter
-    : requestedAdapter;
+  benchmarkMode === "normal" ? createBenchmarkNormalAdapter : requestedAdapter;
 const port = parseInt(process.env.PORT || "3000", 10);
 
 export default {
