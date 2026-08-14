@@ -9,18 +9,13 @@ These benchmarks help you choose a Vext HTTP adapter. They keep the Vext applica
 - **Fastify and Koa are the next fastest adapters in this sample; Hono and Express trade throughput for their own programming and ecosystem choices.** Use the detailed CV and latency data before treating small differences as meaningful.
 - **Choose for integration and migration needs first, then reproduce with your workload.** Native is the dependency-light default. Select Fastify, Express, Koa, or Hono when their ecosystem is the better fit.
 
+<!-- benchmark-results:start -->
+
 ## Current results
 
-The following results were collected on **August 14, 2026**. Every value is the median requests per second from **seven** rounds; higher is better for that scenario.
+Formal results are generated from a complete clean-source artifact before this page is published.
 
-| Scenario               |    Native |      Hono |   Fastify |  Express |      Koa |
-| ---------------------- | --------: | --------: | --------: | -------: | -------: |
-| JSON response          | 24,508.37 |  10,690.4 |  21,445.1 | 7,276.91 | 18,247.6 |
-| Route parameters       |    23,992 | 10,274.55 | 21,120.73 | 7,246.73 | 17,918.8 |
-| Handler business chain |  21,566.4 |  9,282.37 | 19,086.41 | 7,064.91 | 16,466.8 |
-| Route middleware chain |  21,243.2 |  9,258.73 |    18,536 |    7,062 |   15,972 |
-
-All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from 0.6% to 2.1%; see the [full report](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md) for every sample, P50/P99 latency, versions, and chain telemetry.
+<!-- benchmark-results:end -->
 
 ## Why this comparison
 
@@ -65,12 +60,12 @@ npm run verify:benchmark-deps
 Run the public adapter comparison with the same protocol used on this page:
 
 ```bash
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
 ```
 
 This sample uses synchronous handlers. If your platform or permissions require a different priority, choose an available value and treat the result as a new environment baseline rather than comparing absolute numbers with this page.
 
-The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all options, the adapter-matrix command, and artifact merge rules.
+The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. The [full in-document results](/benchmark/results) include every sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all runner options and artifact merge rules.
 
 ### Test your application
 
@@ -90,7 +85,7 @@ A framework microbenchmark answers only “what does the core HTTP path cost?”
 
 ## Related links
 
-- [Results and all samples](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)
+- [Results and all samples](/benchmark/results)
 - [Benchmark reproduction guide](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
 - [Adapter selection and configuration](/guide/adapters)
 - [Production deployment](/guide/deployment)

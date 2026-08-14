@@ -66,6 +66,7 @@ function parseArgs() {
     resultsJson: undefined,
     fromResultsJson: [],
     requireCompleteMatrix: false,
+    formal: false,
   };
   const args = process.argv.slice(2);
   const next = (index) => args[index + 1];
@@ -125,6 +126,9 @@ function parseArgs() {
         break;
       case "--require-complete-matrix":
         options.requireCompleteMatrix = true;
+        break;
+      case "--formal":
+        options.formal = true;
         break;
       default:
         throw new Error(`Unknown option: ${args[index]}`);
@@ -501,6 +505,7 @@ function getFrameworkVersions() {
     vextjs: PACKAGE_METADATA.version,
     native: process.version,
     hono: getLockedVersion("hono"),
+    honoNodeServer: getLockedVersion("@hono/node-server"),
     fastify: getLockedVersion("fastify"),
     express: getLockedVersion("express"),
     koa: getLockedVersion("koa"),
@@ -574,7 +579,12 @@ function sameProvenance(left, right) {
   );
 }
 
-async function loadMergedResults(paths, output, requireCompleteMatrix) {
+async function loadMergedResults(
+  paths,
+  output,
+  requireCompleteMatrix,
+  requireFormal,
+) {
   if (paths.length === 0) {
     throw new Error("--from-results-json requires at least one JSON artifact");
   }
@@ -604,6 +614,14 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
     throw new Error(
       `Benchmark artifact source provenance does not match the current worktree: ${artifacts[0].path}`,
     );
+  }
+  if (requireFormal) {
+    if (!first.options?.formal) {
+      throw new Error(
+        `Formal benchmark merge requires formal source artifacts: ${artifacts[0].path}`,
+      );
+    }
+    assertFormalSource(first.provenance);
   }
   const seen = new Set();
   const results = [];
@@ -645,9 +663,16 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
   );
   return {
     results,
-    options: { ...first.options, scenario: "all", output },
+    options: {
+      ...first.options,
+      formal: requireFormal,
+      requireCompleteMatrix,
+      scenario: "all",
+      output,
+    },
     provenance: first.provenance,
     environment: first.environment,
+    recordedAt: first.recordedAt,
   };
 }
 
@@ -664,11 +689,20 @@ function findUnstableMeasurements(results, maxCv, rounds) {
   );
 }
 
-function generateReport(results, options, provenance, environment) {
+function assertFormalSource(provenance) {
+  if (provenance.worktree !== "clean" || provenance.candidate !== null) {
+    throw new Error(
+      "Formal benchmark requires a clean source worktree; commit or stash source changes before running.",
+    );
+  }
+}
+
+function generateReport(results, options, provenance, environment, recordedAt) {
   let markdown = "# Vext Adapter Matrix Benchmark\n\n";
   markdown +=
     "> **Audience**: Vext users choosing an HTTP adapter for the same application.\n";
-  markdown += `> **UTC**: ${new Date().toISOString()}\n`;
+  markdown += `> **UTC**: ${recordedAt}\n`;
+  markdown += `> **Formal result**: ${options.formal ? "yes (clean source required)" : "no"}\n`;
   markdown += `> **Source**: ${provenance.branch}@${provenance.commit} (${provenance.worktree})\n`;
   markdown += `> **Candidate SHA-256**: ${provenance.candidate ?? "clean"}\n`;
   markdown +=
@@ -723,7 +757,7 @@ function generateReport(results, options, provenance, environment) {
     "- Latest dependency versions are verified against the npm registry before the run; the exact locked versions and source identity are recorded below.\n\n";
   markdown += "## Environment\n\n";
   markdown += `- Node.js: ${environment.node}\n- Platform: ${environment.platform} ${environment.arch}\n- CPU: ${environment.cpuModel}\n- Memory: ${Math.round(environment.totalMemoryBytes / 1024 / 1024 / 1024)} GiB\n- Process priority: ${environment.processPriority}\n`;
-  markdown += `- Dependencies: Vext ${provenance.versions.vextjs}; Hono ${provenance.versions.hono}; Fastify ${provenance.versions.fastify}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; Autocannon ${provenance.versions.autocannon}\n`;
+  markdown += `- Dependencies: Vext ${provenance.versions.vextjs}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Fastify ${provenance.versions.fastify}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; Autocannon ${provenance.versions.autocannon}\n`;
   markdown += `- npm latest verification: ${provenance.latestDependencies.checkedAt} against ${provenance.latestDependencies.registryUrl}\n`;
   return markdown;
 }
@@ -740,6 +774,7 @@ async function main() {
       options.fromResultsJson,
       options.output,
       options.requireCompleteMatrix,
+      options.formal,
     );
     merged.provenance.latestDependencies = {
       checkedAt: latestDependencies.checkedAt,
@@ -753,6 +788,7 @@ async function main() {
         merged.options,
         merged.provenance,
         merged.environment,
+        merged.recordedAt ?? new Date().toISOString(),
       ),
       "utf8",
     );
@@ -782,6 +818,7 @@ async function main() {
       versions: latestDependencies.versions,
     },
   };
+  if (options.formal) assertFormalSource(provenance);
   const results = [];
   let port = 19500;
 
@@ -878,6 +915,7 @@ async function main() {
     options.maxCv,
     options.rounds,
   );
+  const recordedAt = new Date().toISOString();
   const artifact = {
     schemaVersion: 1,
     suite: "vext-adapter-matrix",
@@ -887,6 +925,7 @@ async function main() {
     options,
     stability: { maxCv: options.maxCv, unstable },
     results,
+    recordedAt,
   };
   if (options.resultsJson)
     await writeFile(
@@ -901,7 +940,7 @@ async function main() {
   }
   await writeFile(
     options.output,
-    generateReport(results, options, provenance, environment),
+    generateReport(results, options, provenance, environment, recordedAt),
     "utf8",
   );
   console.log(`Report written: ${options.output}`);

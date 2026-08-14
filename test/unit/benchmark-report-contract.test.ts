@@ -70,25 +70,26 @@ describe("benchmark report semantics", () => {
     expect(config).not.toContain("authContext 和 requestHook");
   });
 
-  it("keeps both localized benchmark pages on the current formal dataset", () => {
+  it("keeps both localized benchmark pages on the current formal delivery path", () => {
     const en = read("website/docs/en/benchmark.md");
     const zh = read("website/docs/zh/benchmark.md");
+    const generator = read("test/benchmark/generate-website-results.mjs");
 
     for (const page of [en, zh]) {
-      expect(page).toContain("24,508.37");
-      expect(page).toContain("21,445.1");
-      expect(page).toContain("9,258.73");
       expect(page).toContain("--process-priority 0");
       expect(page).toContain("--rounds 7");
       expect(page).toContain("--max-cv 20");
       expect(page).toContain("programmatic API");
-      expect(page).not.toContain(
-        "main@cea18d760592b790d602f61f343e8d71c4a35735",
-      );
-      expect(page).not.toContain("33,351");
-      expect(page).not.toContain("-31.6%");
       expect(page).not.toContain("--process-priority -14");
     }
+    expect(en).toContain("/benchmark/results");
+    expect(zh).toContain("/zh/benchmark/results");
+    expect(en).not.toContain("github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md");
+    expect(zh).not.toContain("github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md");
+    expect(generator).toContain("Website benchmark results require a clean-source formal artifact");
+    expect(generator).toContain("Every measured sample");
+    expect(generator).toContain("每一个测量样本");
+    expect(generator).toContain("npm run generate:benchmark-docs");
   });
 
   it("keeps the public benchmark pages user-facing and single-source", () => {
@@ -280,6 +281,10 @@ describe("benchmark report semantics", () => {
     expect(adapterRunner).toContain("Benchmark CV gate failed");
     expect(adapterRunner).toContain("complete: unstable.length === 0");
     expect(adapterRunner).toContain("Incomplete Vext adapter matrix");
+    expect(adapterRunner).toContain("--formal");
+    expect(adapterRunner).toContain("assertFormalSource(provenance)");
+    expect(adapterRunner).toContain("honoNodeServer");
+    expect(adapterRunner).toContain("recordedAt");
   });
 
   it("keeps generated benchmark artifacts out of candidate provenance", () => {
@@ -304,6 +309,9 @@ describe("benchmark report semantics", () => {
     expect(adapterRunner).toContain("GENERATED_REPORT_PATHSPEC");
     expect(adapterRunner).toContain(
       "candidateSourceState([options.output, options.resultsJson])",
+    );
+    expect(adapterRunner).toContain(
+      "Formal benchmark requires a clean source worktree",
     );
     expect(gitignore).toContain("/test/benchmark/.artifacts/");
     expect(benchmarkReadme).toContain("test/benchmark/.artifacts/");

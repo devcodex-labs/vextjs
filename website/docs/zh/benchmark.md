@@ -9,18 +9,13 @@
 - **本样本中 Fastify 与 Koa 的吞吐随后，Hono 与 Express 则取舍各自的编程模型和生态。** 对于较小差异，请结合 CV 和延迟数据判断。
 - **先按集成和迁移需求选择，再用你的业务复测。** Native 是依赖更轻的默认路径；需要相应生态时选择 Fastify、Express、Koa 或 Hono。
 
+<!-- benchmark-results:start -->
+
 ## 当前结果
 
-以下结果采集于 **2026-08-14**。所有数字均为 **7** 轮 req/s 的中位数，数值越高表示该测试场景中的吞吐越高。
+正式结果会在发布前从完整、干净源码的 artifact 自动生成。
 
-| 场景                |    Native |      Hono |   Fastify |  Express |      Koa |
-| ------------------- | --------: | --------: | --------: | -------: | -------: |
-| JSON 响应           | 24,508.37 |  10,690.4 |  21,445.1 | 7,276.91 | 18,247.6 |
-| 参数路由            |    23,992 | 10,274.55 | 21,120.73 | 7,246.73 | 17,918.8 |
-| 处理器业务链        |  21,566.4 |  9,282.37 | 19,086.41 | 7,064.91 | 16,466.8 |
-| route middleware 链 |  21,243.2 |  9,258.73 |    18,536 |    7,062 |   15,972 |
-
-全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 0.6%–2.1% 之间；全部轮次、P50/P99、版本和链路 telemetry 请查看[完整报告](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
+<!-- benchmark-results:end -->
 
 ## 为什么这样对比
 
@@ -65,12 +60,12 @@ npm run verify:benchmark-deps
 运行与本页一致的公开 Adapter 对照：
 
 ```bash
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
 ```
 
 本样本使用同步 handler。如果你的平台或权限需要不同的优先级，请改用可用值，并将结果视为新的环境基线，不要直接与本页绝对数值比较。
 
-runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
+runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。[站内完整结果](/zh/benchmark/results)包含全部样本、P50/P99、精确版本、provenance 和路由生命周期 telemetry；完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
 
 ### 测试真实应用
 
@@ -90,7 +85,7 @@ runner 使用本地 Autocannon **programmatic API**，会自动启动和停止�
 
 ## 相关链接
 
-- [结果与完整样本](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)
+- [结果与完整样本](/zh/benchmark/results)
 - [Benchmark 复现说明](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
 - [Adapter 选择与配置](/guide/adapters)
 - [生产部署](/guide/deployment)

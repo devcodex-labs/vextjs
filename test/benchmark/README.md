@@ -39,15 +39,16 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 ### 用户主基准：Vext Adapter Matrix
 
 ```bash
-# 正式同步 handler：五 Adapter、四场景、7 轮中位数
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
+# 正式同步 handler：干净源码、五 Adapter、四场景、7 轮中位数
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync --results-json test/benchmark/.artifacts/adapter-matrix-formal-release.json
+npm run generate:benchmark-docs
 
 # 快速 smoke：验证五个 Adapter 的 HTTP 契约和 Normal chain telemetry，不作性能结论
 npm run test:bench -- --scenario json --duration 1 --connections 10 --pipelining 1 --warmup 0 --rounds 1
 
 # 受执行时限约束时：按场景分段，只合并同源码、同依赖、同环境、同协议且 CV 过门禁的完整目标组
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --scenario json --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --results-json ./test/benchmark/.artifacts/adapter-json.json --output ./test/benchmark/.artifacts/adapter-json.md
-node test/benchmark/run-adapter-matrix.mjs --from-results-json ./test/benchmark/.artifacts/adapter-json.json,./test/benchmark/.artifacts/adapter-params.json,./test/benchmark/.artifacts/adapter-chain.json,./test/benchmark/.artifacts/adapter-middleware-chain.json --require-complete-matrix --output test/benchmark/RESULTS.md
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario json --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --results-json ./test/benchmark/.artifacts/adapter-json.json --output ./test/benchmark/.artifacts/adapter-json.md
+node test/benchmark/run-adapter-matrix.mjs --formal --from-results-json ./test/benchmark/.artifacts/adapter-json.json,./test/benchmark/.artifacts/adapter-params.json,./test/benchmark/.artifacts/adapter-chain.json,./test/benchmark/.artifacts/adapter-middleware-chain.json --require-complete-matrix --output test/benchmark/RESULTS.md
 ```
 
 主 runner 会在写报告前断言：五个 Adapter 的 status、JSON body、content type、必要 header 与 Normal chain telemetry 都一致；`requestContext=false` 与 `frontend.enabled=false` 后每个 Adapter 的 global middleware 为 `1`（仅 `requestHook`），普通 route registration chain 为 `2`（`routeMatched + handler`），`middleware-chain` 为 `5`。每轮会轮转五个 Adapter 的起始目标；任一多轮样本 CV 超过 `--max-cv`（默认 20%）时只保留 `complete=false` 的原始 JSON，并拒绝生成可引用 Markdown 报告。
@@ -68,7 +69,7 @@ npm run test:bench -- --rounds 7 --duration 15 --warmup 5
 node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --rounds 7
 ```
 
-`--from-results-json` 允许按场景分段，但只合并 source commit/worktree diff 指纹、Node/OS/CPU/内存/进程优先级环境，以及 duration/connections/pipelining/warmup/rounds 都相同的 complete 样本；partial、重复、协议不一致，或含连接错误、超时、非 2xx 响应的输入都会被拒绝，不能伪装成一个正式 baseline。差异指纹刻意排除 runner 本次读取或生成的 report/JSON artifact，避免报告内容和生成时间造成自引用；其余已跟踪差异及未跟踪候选文件内容都会纳入。仓库内分段结果统一写到已忽略的 `test/benchmark/.artifacts/`。正式全矩阵合并加 `--require-complete-matrix`，它会要求恰好五 adapter × 四场景的 20 组结果。
+`--from-results-json` 允许按场景分段，但只合并 source commit/worktree diff 指纹、Node/OS/CPU/内存/进程优先级环境，以及 duration/connections/pipelining/warmup/rounds 都相同的 complete 样本；partial、重复、协议不一致，或含连接错误、超时、非 2xx 响应的输入都会被拒绝，不能伪装成一个正式 baseline。`--formal` 会额外拒绝除当前生成报告和 JSON artifact 之外的任何脏源码，并要求合并输入也来自 formal run。差异指纹刻意排除 runner 本次读取或生成的 report/JSON artifact，避免报告内容和生成时间造成自引用；其余已跟踪差异及未跟踪候选文件内容都会纳入。仓库内分段结果统一写到已忽略的 `test/benchmark/.artifacts/`。正式全矩阵合并加 `--require-complete-matrix`，它会要求恰好五 adapter × 四场景的 20 组结果。通过后运行 `npm run generate:benchmark-docs`，将双语的完整样本、版本、provenance、P50/P99 和 telemetry 发布到文档站内页面；`npm run verify:benchmark-docs` 会拒绝 artifact 与站内页面漂移。
 
 后台负载较高的 Windows 主机可显式使用 `--process-priority -14`（Node.js 的 high priority 值）；runner 会同时设置自身和每个被测子进程并核对实际值。平台不允许该优先级时会直接失败。所有待合并分段必须使用相同值，不能混合普通与高优先级样本。
 
@@ -108,6 +109,7 @@ npm run test:bench -- --output ./my-results.md
 | `--results-json <path>`       | —                           | 写入完整原始样本，适合分段正式 matrix                              |
 | `--from-results-json <paths>` | —                           | 合并逗号分隔的 complete JSON 样本；要求同一来源和协议              |
 | `--require-complete-matrix`   | `false`                     | 合并时要求五 adapter × 四场景的完整正式矩阵                        |
+| `--formal`                    | `false`                     | 只允许干净源码；用于可引用结果与站内公开结果页                     |
 
 ### 多轮模式说明
 
