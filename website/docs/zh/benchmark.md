@@ -1,41 +1,64 @@
-# 性能基准测试
+# 性能基准
 
-本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。当前版本的可复现基准以仓库内 `test/benchmark/run-native-fairness.mjs`（Native/Fastify 主对照）和 `test/benchmark/run-benchmark.mjs`（adapter 辅助矩阵）为准；页面中的历史 benchmark 仓库数据仅用于趋势参考。
+这份基准帮助你理解 VextJS 在轻量 HTTP 场景中的框架开销，以及 Native 与 Fastify 在相同负载下的差异。它适合做初步选型，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
 
-## 当前可复现结果（2026-08-14，本地时区）
+## 先看结论
 
-> - **代码身份**：正式报告记录 `main@e1901aa7e2ab07e01283e8f85dfad414be3235b6`、dirty worktree 和候选差异 SHA-256；压测完成后的文档同步不冒充被测源码提交
-> - **协议**：10 秒 / 50 connections / pipelining 10 / 预热 5 秒 / 5 轮取中位数 / 目标逐轮交错 / CV ≤ 15%
-> - **环境**：Node.js 20.20.2、win32 x64、Intel i7-9700、32 GiB RAM、进程优先级 -14（runner 与所有被测子进程一致）
-> - **依赖版本**：Fastify 5.12.0、Hono 4.13.2、`@hono/node-server` 2.1.1、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0（均由 runner 在正式运行前按 npm `latest` 核验并锁定）
+- **没有跨场景的总冠军。** 同步 handler 组中 Raw Fastify 在四个场景领先；异步 handler 组中 Raw Native 领先 JSON、参数路由和处理器业务链，Raw Fastify 领先 route middleware 链。
+- **Vext Native Normal 展示的是可运行框架路径的成本。** 同步组相对 Raw Native 低 11.8%–18.1%、相对 Raw Fastify 低 17.8%–20.8%；异步组对应为 17.2%–32.0% 和 20.0%–30.5%。
+- **这些数字不能解释成“Fastify 永远最快”或“Vext 排名第二”。** 场景、handler 形态和底层 adapter 都会改变结果。
+- **选择 adapter 时先看能力与迁移成本。** Native 是零第三方 HTTP 框架依赖的默认路径；需要特定生态时再选择 Fastify、Express、Koa 或 Hono，并用自己的业务负载复测。
 
-这组结果替代下方 2026-01-15 的历史数值作为当前参考。完整的 5 轮样本、CV、延迟和 telemetry 见[主基准原始报告](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
+## 当前结果
 
-### Native 与 Fastify 的主对照
+以下结果采集于 **2026-08-14**。所有数字均为 5 轮的 req/s 中位数，数值越高表示这个测试场景中的吞吐越高。
 
-所有数字均为 req/s 中位数。**Core** 是仅用于定位最短 Vext Native 路径的私有 harness，不经过 bootstrap；**Normal** 走正式 bootstrap + router-loader，但为公平比较关闭了可选请求能力。Normal 中 `requestContext=false` 时不会注册 `authContext`，`frontend.enabled=false` 时不会注册 noop middleware；普通路由只保留一个全局 `requestHook` 节点。
+### 同步 handler
 
-| 同步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
-| ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                     |     26,444 |      28,857 |           22,899 |             22,880 |
-| 参数路由                 |     25,895 |      27,785 |           23,741 |             22,828 |
-| 处理器业务链             |     24,091 |      24,615 |           20,731 |             19,723 |
-| 真实 route middleware 链 |     24,053 |      24,985 |              N/A |             19,776 |
+| 场景                | Raw Native | Raw Fastify | Vext Native Normal |
+| ------------------- | ---------: | ----------: | -----------------: |
+| JSON                |     26,444 |      28,857 |             22,880 |
+| 参数路由            |     25,895 |      27,785 |             22,828 |
+| 处理器业务链        |     24,091 |      24,615 |             19,723 |
+| route middleware 链 |     24,053 |      24,985 |             19,776 |
 
-| 异步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
-| ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                     |     33,351 |      28,782 |           24,620 |             22,856 |
-| 参数路由                 |     34,193 |      32,300 |           23,969 |             23,244 |
-| 处理器业务链             |     30,088 |      26,185 |           21,537 |             20,940 |
-| 真实 route middleware 链 |     25,236 |      30,085 |              N/A |             20,903 |
+### 异步 handler
 
-`N/A` 是有意设计：Core 不注册 route middleware chain，因此该场景不适用；它既不是漏测，也不表示成本为零。
+| 场景                | Raw Native | Raw Fastify | Vext Native Normal |
+| ------------------- | ---------: | ----------: | -----------------: |
+| JSON                |     33,351 |      28,782 |             22,856 |
+| 参数路由            |     34,193 |      32,300 |             23,244 |
+| 处理器业务链        |     30,088 |      26,185 |             20,940 |
+| route middleware 链 |     25,236 |      30,085 |             20,903 |
 
-结论不能写成“Fastify 总是更快”或“Vext 排名第二”：同步组中 Raw Fastify 四场均领先或接近 Raw Native；异步组中 Raw Native 领先前三场、Raw Fastify 领先真实中间件链。Vext Native Normal 在同步组相对 Raw Native 低 11.8%–18.1%、相对 Raw Fastify 低 17.8%–20.9%；异步组对应为 17.2%–32.0% 和 20.0%–30.5%。同步与异步是分时采样，只能做各自组内对照，不能把两组绝对值直接解释成 handler 模式加速。这些差距是路由、请求/响应对象和生命周期成本，不能外推为真实业务的端到端吞吐承诺。
+同步与异步两组在不同时间采样，只能在各自表格内比较，不能用两张表的绝对值证明某种 handler 写法更快。
 
-### 五个 adapter 的最新矩阵
+完整的轮次样本、CV、P50/P99、源码身份和生命周期 telemetry 可查看[原始结果](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
 
-下表是同一协议下、各 adapter 的 Raw 对照与 Vext 对照的开销（Vext 相对该 adapter Raw，负值表示较低）。它用于观察 adapter 开销，不用于将不同框架的 Raw 吞吐排成总榜。
+## 这些差距包含什么
+
+`Raw Native` 和 `Raw Fastify` 直接使用各自底层 API。`Vext Native Normal` 使用 Vext 的正式 bootstrap、router loader、路由匹配、请求/响应对象和生命周期；为对齐核心负载，测试关闭了非必要的可选请求能力：
+
+- access log、request ID、CORS 和 rate limit；
+- response wrap、body parser 和 request context；
+- session、CSRF、security headers 和 frontend（默认即关闭或在 fixture 中明确关闭）；
+- 日志输出设为 `silent`。
+
+因此，Normal 与 Raw 的差值主要反映这个精简负载中的 Vext 路由、请求/响应抽象和生命周期成本。它不是开启全部生产能力后的吞吐，也不能代表包含 I/O 的完整业务接口。
+
+### 为什么原始报告中的 Core 有 `N/A`
+
+Core 是 benchmark 内部用来定位最短执行路径的诊断入口，不经过正式 bootstrap，也不是用户可选择的运行模式。
+
+| Core 诊断场景       | 同步 | 异步 |
+| ------------------- | ---: | ---: |
+| route middleware 链 |  N/A |  N/A |
+
+`N/A` 表示“不适用”：Core 不注册 route middleware chain，所以无法测量该场景；它既不是漏测，也不表示成本为零。用户选型应以 Normal 结果为主。
+
+## Adapter 对比
+
+下面是同一协议下，Vext 相对每个 adapter 对应 Raw 实现的吞吐差值；负值表示 Vext 在该组中较低。它衡量的是 **Vext 与该 adapter 的组合开销**，不能把不同行直接当成框架总排名。
 
 | Adapter |   JSON | 参数路由 | 处理器业务链 | route middleware 链 |
 | ------- | -----: | -------: | -----------: | ------------------: |
@@ -45,369 +68,70 @@
 | Koa     | -31.4% |   -33.3% |       -37.4% |              -34.2% |
 | Hono    | -69.1% |   -68.6% |       -67.0% |              -67.9% |
 
-Hono 的差距是独立的 adapter 优化课题；它不应被混入 Native 与 Fastify 的公平性结论。Raw Hono 使用官方 `@hono/node-server` Node 入口，而 Vext Hono 运行时只依赖 `hono` 并使用 Vext 自有 `node:http` bridge；两者都是真实公开路径，但差距因此包含 bridge 实现成本。生产选型还应以真实中间件、认证、日志、序列化、I/O 与部署环境的压测为准。
+Express 的百分比更小不表示它的绝对吞吐最高；百分比受各自 Raw 基线影响。Hono 的差距包含 Vext 自有 `node:http` bridge 成本：Raw Hono 使用官方 `@hono/node-server`，而 Vext Hono adapter 的运行时只依赖 `hono`。这两个入口都是真实公开路径，但不是同一个 server wrapper。
 
-## 对比口径说明（请先阅读）
+### 如何选择
 
-当前 repo-local benchmark 衡量的是**相同场景、相同压测参数、尽量相同功能负载**下的吞吐量对比，而不是“默认开箱全功能配置”的直接对比。
+| 需求                                         | 建议起点       | 需要注意                                                           |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------ |
+| 新项目、希望减少 HTTP 框架依赖               | Native（默认） | 用真实业务负载确认吞吐与延迟目标                                   |
+| 已确定需要 Fastify 相关能力                  | Fastify        | Vext middleware 与底层原生 middleware 的签名不同，先核对集成边界   |
+| 从 Express 或 Koa 迁移、团队已有经验         | 对应 adapter   | 不要仅依据开销百分比选择，先验证现有中间件的迁移方式               |
+| Node.js 服务中需要 Hono / Web Standards 风格 | Hono           | 当前是 Node.js adapter，不是 Edge 运行时承诺；现有 bridge 开销较大 |
 
-- **Raw（裸跑）**：直接使用底层框架原生 API 实现同一测试场景
-- **Vext**：通过 Vext 启动相同场景，但为了与 Raw 公平对比，会关闭非必要默认能力，只保留 adapter / 路由层核心开销
-- **chain**：历史兼容场景，表示 handler 内联业务逻辑链
-- **middleware-chain**：真实 route-level middleware chain，会进入 adapter 的中间件链执行器
+详细安装和配置请参见 [Adapter 指南](/guide/adapters)。
 
-当前 benchmark 中，Vext 侧会关闭或收紧以下非核心默认能力：
+## 测试口径
 
-- `accessLog`
-- `requestId`
-- `cors`
-- `rateLimit`
-- `response.wrap`
-- `bodyParser`
-- `requestContext`
-- 日志级别改为 `silent`
+| 项目   | 当前正式样本                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 环境   | Node.js 20.20.2、Windows x64、Intel i7-9700、32 GiB RAM                                                                  |
+| 负载   | 50 connections、pipelining 10、每轮 10 秒                                                                                |
+| 稳定性 | 5 秒预热、5 轮中位数、目标逐轮交错、CV ≤ 15%                                                                             |
+| 进程   | runner 与被测子进程使用相同优先级 -14                                                                                    |
+| 依赖   | Fastify 5.12.0、Hono 4.13.2、`@hono/node-server` 2.1.1、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0 |
 
-> ⚠️ 这意味着：本页数据更接近“框架核心路径 / adapter 层”的对比结果，而**不是**默认生产配置下开启全部内置能力时的最终吞吐量承诺。
->
-> 若你要评估真实业务场景，请结合自己的中间件、日志、鉴权、响应包装、数据库访问和部署环境重新压测。
+正式运行前，runner 会将这些依赖与当日 npm `latest` 核对；任一版本、源码身份、非 2xx、连接错误、超时、缺失结果或 CV 门禁失败都会拒绝生成可引用报告。目标按轮次交错执行，减少时间漂移固定偏向某一实现。
 
-## 历史数据环境（2026-01-15，仅趋势参考）
+## 自己复现
 
-> 下方所有历史章节使用的是另一台机器、另一套依赖和负载协议；不得与上方当前结果直接比较，也不得据此得出当前版本的框架排名。
-
-| 项目         | 规格                                                                                          |
-| ------------ | --------------------------------------------------------------------------------------------- |
-| **CPU**      | Intel Core i9-13900K (24 核 / 32 线程)                                                        |
-| **内存**     | 64 GB DDR5-5600                                                                               |
-| **操作系统** | Ubuntu 22.04 LTS                                                                              |
-| **Node.js**  | v22.12.0                                                                                      |
-| **测试工具** | [autocannon](https://github.com/mcollina/autocannon) v8.0.0（通过 `npm exec --package` 调用） |
-| **并发连接** | 100                                                                                           |
-| **持续时间** | 30 秒                                                                                         |
-| **预热**     | 5 秒（不计入统计）                                                                            |
-
-> ⚠️ **注意**: 性能基准测试结果受测试环境、负载模式和代码实现方式影响较大。建议在自己的硬件上运行基准测试以获得最准确的结果。
-
----
-
-## Hello World 基准
-
-最简路由场景：返回固定字符串响应，不含任何业务逻辑，测试框架原始吞吐量。
-
-### 测试代码
-
-::: code-tabs
-@tab VextJS
-
-```typescript
-// src/routes/index.ts
-import { defineRoutes } from "vextjs";
-
-export default defineRoutes((app) => {
-  app.get("/", {}, async (req, res) => {
-    res.json({ message: "Hello, World!" });
-  });
-});
-```
-
-@tab Fastify
-
-```javascript
-const fastify = require("fastify")();
-
-fastify.get("/", async () => {
-  return { message: "Hello, World!" };
-});
-
-fastify.listen({ port: 3000 });
-```
-
-@tab Express
-
-```javascript
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => {
-  res.json({ message: "Hello, World!" });
-});
-
-app.listen(3000);
-```
-
-@tab Hono (Node)
-
-```typescript
-import { Hono } from "hono";
-import { serve } from "@hono/node-server";
-
-const app = new Hono();
-
-app.get("/", (c) => c.json({ message: "Hello, World!" }));
-
-serve({ fetch: app.fetch, port: 3000 });
-```
-
-:::
-
-### 结果
-
-| 框架                | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |  吞吐量   |
-| ------------------- | :-----------: | :------: | :------: | :------: | :-------: |
-| **VextJS** (Native) |  **98,421**   |  0.9 ms  |  1.8 ms  |  3.2 ms  | 18.2 MB/s |
-| VextJS (Fastify)    |    87,653     |  1.1 ms  |  2.1 ms  |  3.8 ms  | 16.2 MB/s |
-| VextJS (Hono)       |    72,841     |  1.3 ms  |  2.5 ms  |  4.4 ms  | 13.5 MB/s |
-| Fastify v5          |    85,320     |  1.1 ms  |  2.2 ms  |  3.9 ms  | 15.8 MB/s |
-| Hono v4 (Node)      |    68,412     |  1.4 ms  |  2.7 ms  |  4.9 ms  | 12.7 MB/s |
-| Express v5          |    18,934     |  4.9 ms  |  9.8 ms  | 17.2 ms  | 3.5 MB/s  |
-| Koa v2              |    24,716     |  3.8 ms  |  7.6 ms  | 13.4 ms  | 4.6 MB/s  |
-| NestJS (Express)    |    16,821     |  5.5 ms  | 11.2 ms  | 19.8 ms  | 3.1 MB/s  |
-| NestJS (Fastify)    |    79,234     |  1.2 ms  |  2.3 ms  |  4.1 ms  | 14.7 MB/s |
-
-> 历史数据来源：[benchmark 仓库](https://github.com/vextjs/benchmarks)，2026-01-15 测试。当前版本复现实测请优先运行本仓库 `test/benchmark/run-benchmark.mjs`。
-
----
-
-## JSON 序列化基准
-
-测试返回包含嵌套对象的 JSON 响应的性能，贴近真实 API 场景。
-
-### 响应结构
-
-```json
-{
-  "id": 1,
-  "name": "John Doe",
-  "email": "john@example.com",
-  "createdAt": "2026-01-15T08:00:00.000Z",
-  "profile": {
-    "avatar": "https://example.com/avatar.png",
-    "bio": "Software Engineer",
-    "location": "Shanghai, China"
-  },
-  "roles": ["user", "admin"],
-  "metadata": {
-    "loginCount": 42,
-    "lastLogin": "2026-01-14T20:30:00.000Z"
-  }
-}
-```
-
-### 结果
-
-| 框架                | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 | 延迟 p99 |
-| ------------------- | :-----------: | :------: | :------: | :------: |
-| **VextJS** (Native) |  **91,247**   |  1.0 ms  |  2.0 ms  |  3.5 ms  |
-| VextJS (Fastify)    |    81,334     |  1.1 ms  |  2.3 ms  |  4.0 ms  |
-| VextJS (Hono)       |    67,523     |  1.4 ms  |  2.8 ms  |  4.9 ms  |
-| Fastify v5          |    79,876     |  1.2 ms  |  2.4 ms  |  4.2 ms  |
-| Hono v4 (Node)      |    62,103     |  1.5 ms  |  3.0 ms  |  5.3 ms  |
-| Express v5          |    16,782     |  5.6 ms  | 11.3 ms  | 19.9 ms  |
-| NestJS (Fastify)    |    73,910     |  1.3 ms  |  2.6 ms  |  4.6 ms  |
-
----
-
-## 参数校验基准
-
-测试在路由处理时进行请求参数校验的性能开销，VextJS 使用内置 schema-dsl 校验，其他框架使用 zod 或 joi。
-
-### 测试场景
-
-POST 请求，Body 包含 10 个字段，包括字符串、数字、枚举和嵌套对象。
-
-| 框架                             | 请求/秒 (avg) | 延迟 p50 | 延迟 p95 |     校验库      |
-| -------------------------------- | :-----------: | :------: | :------: | :-------------: |
-| **VextJS** (Native + schema-dsl) |  **84,312**   |  1.1 ms  |  2.2 ms  | 内置 schema-dsl |
-| VextJS (Fastify + schema-dsl)    |    74,891     |  1.2 ms  |  2.5 ms  | 内置 schema-dsl |
-| Fastify v5 (ajv)                 |    78,234     |  1.2 ms  |  2.4 ms  |     ajv v8      |
-| Fastify v5 (zod)                 |    51,823     |  1.8 ms  |  3.7 ms  |     zod v3      |
-| Express + zod                    |    12,341     |  7.6 ms  | 15.3 ms  |     zod v3      |
-| NestJS (class-validator)         |    42,156     |  2.2 ms  |  4.4 ms  | class-validator |
-
-> VextJS 的 schema-dsl 基于 ajv 编译，拥有接近原生 ajv 的校验性能，同时提供更简洁的 DSL 语法。
-
----
-
-## 中间件链基准
-
-测试经过 5 层中间件后的最终路由处理性能，模拟真实应用中认证、日志、限流等中间件叠加场景。
-
-### 中间件配置
-
-5 层中间件：
-
-1. 请求 ID 注入
-2. 请求日志记录（内存 Buffer，不写磁盘）
-3. JWT 验证（跳过签名验证，仅解析）
-4. 限流检查（内存计数器）
-5. 响应头注入
-
-| 框架                | 请求/秒 (avg) | 较无中间件损耗 | 延迟 p99 |
-| ------------------- | :-----------: | :------------: | :------: |
-| **VextJS** (Native) |  **79,834**   |     -18.9%     |  4.1 ms  |
-| VextJS (Fastify)    |    57,221     |     -21.5%     |  5.6 ms  |
-| Fastify v5          |    68,901     |     -19.2%     |  4.8 ms  |
-| Express v5          |    13,421     |     -29.1%     | 22.4 ms  |
-| Koa v2              |    18,934     |     -23.4%     | 18.1 ms  |
-
----
-
-## Adapter 对比
-
-VextJS 支持多种底层 HTTP Adapter，性能差异主要来源于底层 HTTP 实现：
-
-| Adapter          | 请求/秒 (Hello World，历史) | 特性                                              | 适用场景              |
-| ---------------- | :-------------------------: | ------------------------------------------------- | --------------------- |
-| `native`（默认） |           ~98,000           | 零外部 HTTP 框架依赖，Node 原生 http + route-core | 推荐，性能最高        |
-| `fastify`        |           ~87,000           | 高性能 + 生态丰富                                 | 需要 Fastify 插件生态 |
-| `hono`           |           ~72,000           | Web Standards API，超轻量                         | 全栈 / 边缘运行时     |
-| `express`        |           ~18,000           | 最大中间件生态                                    | 迁移现有 Express 项目 |
-| `koa`            |           ~24,000           | 轻量优雅                                          | 中小型项目            |
-| `node-cluster`   |         ~340,000\*          | 多进程，线性扩展                                  | 多核 CPU 服务器       |
-
-> `*` Cluster 数据为 8 核 worker 合计吞吐量（单进程 ×8 近线性扩展）。
-> 注：uWS（uWebSockets.js）adapter 尚未内置，列为未来规划（roadmap）。
-
-### Adapter 性能可视化
-
-```
-Native      ████████████████████████████████████████  98,421 req/s
-Fastify     ████████████████████████████████████      87,653 req/s
-Hono        ████████████████████████████████          72,841 req/s
-Koa         ██████████                                24,716 req/s
-Express     ████████                                  18,934 req/s
-```
-
----
-
-## Cluster 模式基准
-
-测试在多核环境下，VextJS Cluster 模式与单进程模式的吞吐量对比：
-
-| 模式            | Worker 数 | 请求/秒 | CPU 利用率 |  内存  |
-| --------------- | :-------: | :-----: | :--------: | :----: |
-| 单进程 (Native) |     1     | 98,421  |    12%     | 48 MB  |
-| Cluster × 2     |     2     | 192,834 |    24%     | 96 MB  |
-| Cluster × 4     |     4     | 381,201 |    47%     | 192 MB |
-| Cluster × 8     |     8     | 743,892 |    91%     | 384 MB |
-| Cluster × 16    |    16     | 891,234 |    98%     | 768 MB |
-
-> 8 核以上受 CPU 调度开销影响，扩展效率略有下降，但仍接近线性扩展。
-
----
-
-## 内存基准
-
-框架空载时的内存占用（仅启动 HTTP 服务器，无请求处理）：
-
-| 框架                | 启动内存  | 10 万请求后 | GC 压力 |
-| ------------------- | :-------: | :---------: | :-----: |
-| **VextJS** (Native) | **18 MB** |    22 MB    |   低    |
-| VextJS (Hono)       |   24 MB   |    28 MB    |   低    |
-| VextJS (Fastify)    |   31 MB   |    38 MB    |   低    |
-| Fastify v5          |   29 MB   |    36 MB    |   低    |
-| Express v5          |   42 MB   |    58 MB    |   中    |
-| NestJS (Express)    |   86 MB   |   112 MB    |   中    |
-| NestJS (Fastify)    |   71 MB   |    94 MB    |  低-中  |
-
----
-
-## 启动时间
-
-从进程启动到第一个请求可响应的时间（冷启动）：
-
-| 框架                | 冷启动时间 | 热重载时间 |
-| ------------------- | :--------: | :--------: |
-| **VextJS** (Native) | **42 ms**  |   180 ms   |
-| VextJS (Fastify)    |   68 ms    |   210 ms   |
-| Fastify v5          |   61 ms    |     —      |
-| Express v5          |   38 ms    |     —      |
-| NestJS              |  1,240 ms  |     —      |
-
-> VextJS 热重载时间包含 esbuild 增量编译 + worker 替换的完整流程，实际热重载感知延迟约 200 ms。
-
----
-
-## 如何自行运行基准测试
-
-### 运行当前仓库内基准
+先安装锁文件中的依赖并确认 benchmark 版本仍是当前 npm `latest`：
 
 ```bash
 npm ci
 npm run verify:benchmark-deps
-node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync
 ```
 
-本页 Windows 正式样本使用 `--process-priority -14`；其他平台只有在 Node.js 允许设置该优先级时才能使用。runner 会核对实际值，不支持时直接失败。
-
-### 运行单个框架
+运行与本页一致的同步主对照：
 
 ```bash
-# 仅测试 VextJS (Native)
-npm run test:bench -- --framework native --scenario all --rounds 5
-
-# 仅测试 VextJS (Fastify)
-npm run test:bench -- --framework fastify --scenario all --rounds 5
-
-# 仅测试真实 route-level middleware chain
-npm run test:bench -- --scenario middleware-chain --rounds 5
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority -14 --handler-mode sync
 ```
 
-### 使用 autocannon 手动测试
+将最后一个参数改为 `--handler-mode async` 可运行异步组。`--process-priority -14` 是本页 Windows 样本的一部分；如果你的平台或权限不支持，请改用可用值，并把结果视为新的环境基线，不要直接与本页数字比较。
 
-当前仓库将 Autocannon 8.0.0 锁为开发依赖，benchmark runner 直接调用本地 programmatic API，并自动启动/停止测试服务器；不会在每个样本期间运行 `npm exec`。通常不需要手动启动服务器。
+runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
 
-如需对一个已启动的本地服务单独压测，可直接运行：
+### 测试真实应用
 
-```bash
-# 运行 autocannon
-npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localhost:3000/
-```
+框架微基准只回答“核心 HTTP 路径的成本”。上线前至少应在与你的生产环境相近的机器上加入：
 
-### 配置说明
+1. 实际认证、日志、响应包装和中间件；
+2. 数据库、缓存和外部 API 的真实或可控替身；
+3. 预热、多个轮次、吞吐、P95/P99、错误率和资源占用；
+4. 与生产一致的 Node.js 版本、进程数、容器限额和反向代理。
 
-当前 benchmark 通过 CLI 参数配置，不存在 `bench.config.ts`：
+## 限制
 
-| 参数                        | 默认值                      | 说明                                                     |
-| --------------------------- | --------------------------- | -------------------------------------------------------- |
-| `--duration`                | `15`                        | 压测持续秒数                                             |
-| `--connections`             | `50`                        | 并发连接数                                               |
-| `--pipelining`              | `10`                        | HTTP pipeline 深度                                       |
-| `--warmup`                  | `5`                         | 预热秒数                                                 |
-| `--rounds`                  | `1`                         | 轮次；PR / 发版前建议 5 或 7                             |
-| `--max-cv`                  | `15`                        | 任一多轮结果超过此 CV 时拒绝可引用报告                   |
-| `--process-priority`        | `0`                         | runner 与被测子进程优先级（-20..19）                     |
-| `--scenario`                | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
-| `--framework`               | 五个 Vext adapter           | 框架过滤，逗号分隔                                       |
-| `--output`                  | `test/benchmark/RESULTS.md` | 报告输出路径                                             |
-| `--results-json`            | —                           | 保存完整原始样本                                         |
-| `--from-results-json`       | —                           | 合并来源、环境和协议一致的 complete artifact             |
-| `--require-complete-matrix` | `false`                     | 合并时要求完整场景或完整 5×4 adapter 矩阵                |
-
----
-
-## 结论
-
-- 当前可引用的结果是页面顶部的 2026-08-14 5 轮正式测量和对应原始报告；下方数字均为历史参考。
-- Raw Native 与 Raw Fastify 的领先项随场景和 handler 模型变化，不能据此宣布通用总排名。
-- Vext Native Normal 已确认不存在被禁用的 `authContext` 或 frontend noop middleware 遗留在请求链中；其剩余差距主要是可见的框架运行时成本。
-- Hono adapter 的当前差距显著高于其他 adapter，已明确为独立后续优化方向，而不是掩盖在 Native/Fastify 结论里的数据。
-
-### 性能建议
-
-| 场景                           | 推荐配置                                                   |
-| ------------------------------ | ---------------------------------------------------------- |
-| 极致性能（云原生，单机高并发） | `adapter: 'native'` + Cluster × CPU核数                    |
-| 生产环境（通用）               | `adapter: 'native'` 或 `'fastify'` + Cluster × (CPU核数-1) |
-| 轻量部署（容器 / 边缘）        | `adapter: 'native'`，单进程，零框架依赖                    |
-| 全栈 / 边缘运行时              | `adapter: 'hono'`，兼容 Web Standards API                  |
-| 开发环境                       | `adapter: 'native'`（默认），热重载最快                    |
-
----
+- 当前结果来自一台 Windows 主机，不代表 Linux、容器或云环境。
+- 这是轻量 HTTP 微基准，不衡量开发体验、插件质量、可维护性或完整业务延迟。
+- 不同日期、机器、依赖版本、handler 模式或压测协议的绝对数字不可直接合并排名。
+- adapter matrix 与 Native/Fastify 主对照用途不同：前者观察组合开销，后者提供更严格的同场景对照。
 
 ## 相关链接
 
-- [当前 benchmark 源码与原始报告](https://github.com/devcodex-labs/vextjs/tree/main/test/benchmark) — 可复现命令、测试代码和最新原始数据
-- [Adapter 架构](/guide/adapters) — 了解各 Adapter 的技术实现
-- [Cluster 多进程](/guide/cluster) — 如何配置和使用 Cluster 模式
-- [配置项](/api/config) — `adapter` 配置字段详情
+- [原始结果与完整样本](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)
+- [Benchmark 复现说明](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
+- [Adapter 选择与配置](/guide/adapters)
+- [生产部署](/guide/deployment)
+- [配置参考](/api/config)

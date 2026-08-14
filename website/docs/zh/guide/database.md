@@ -45,13 +45,13 @@ export class UserService {
 
 ### 条件加载
 
-MonSQLize 插件采用**条件加载**策略——仅当 `config.database` 存在时才会启用。没有数据库配置的项目完全不受影响，零开销。
+MonSQLize 插件采用**条件加载**策略：仅当 `config.database` 存在时才会启用。没有数据库配置时，Vext 会跳过插件 setup，不安装数据库运行时与相关 hook。
 
 ```
 bootstrap()
   → 检测 config.database 是否存在
   → 是 → 创建 MonSQLize 实例 → 连接 → 加载 Model → 挂载 app.db
-  → 否 → 跳过（零开销）
+  → 否 → 跳过插件 setup
 ```
 
 ### 加载时机

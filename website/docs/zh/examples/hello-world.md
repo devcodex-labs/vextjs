@@ -97,7 +97,7 @@ export default {
 ```
 
 :::tip
-`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `route-core`），零外部 HTTP 框架依赖，性能最高。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，**业务代码无需任何改动**。
+`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `route-core`），不依赖第三方 HTTP 框架。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，**路由业务代码无需改写**；选择前请查看[当前性能基准](/benchmark)并用实际负载复测。
 :::
 
 ## 4. 路由
@@ -298,15 +298,15 @@ export default {
 
 ## 关键概念回顾
 
-| 概念           | 说明                                       |
-| -------------- | ------------------------------------------ |
-| `defineRoutes` | 路由定义函数，在回调中注册路由             |
-| `bootstrap`    | 框架启动函数，编排完整的初始化流程         |
-| `validate`     | 声明式参数校验（schema-dsl DSL 语法）      |
-| `req.valid()`  | 获取校验并类型转换后的数据                 |
-| `res.json()`   | 返回 JSON 响应（自动出口包装）             |
+| 概念           | 说明                                          |
+| -------------- | --------------------------------------------- |
+| `defineRoutes` | 路由定义函数，在回调中注册路由                |
+| `bootstrap`    | 框架启动函数，编排完整的初始化流程            |
+| `validate`     | 声明式参数校验（schema-dsl DSL 语法）         |
+| `req.valid()`  | 获取校验并类型转换后的数据                    |
+| `res.json()`   | 返回 JSON 响应（自动出口包装）                |
 | `docs`         | OpenAPI 文档配置，自动生成 Vext Docs API 文档 |
-| 出口包装       | 统一响应格式 `{ code, data, requestId }`   |
+| 出口包装       | 统一响应格式 `{ code, data, requestId }`      |
 
 ## 下一步
 

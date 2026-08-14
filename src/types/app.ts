@@ -901,7 +901,7 @@ export interface VextAccessLogConfig {
  *   - 中间件/handler 可通过 requestContext.getStore() 访问请求级数据
  *
  * 禁用时（enabled: false）：
- *   - 跳过 requestContext.run() 调用，预估全 adapter +3-8% RPS
+ *   - 跳过 requestContext.run() 调用；实际性能影响取决于 Node.js 版本、adapter 与业务负载
  *   - ⚠️ app.throw 的 I18nError locale 解析失效（回退到默认 locale）
  *   - ⚠️ app.logger 不自动注入 requestId（日志中无 requestId 字段）
  *   - ⚠️ app.fetch 不自动传播 requestId（需手动设置 x-request-id header）
@@ -1119,8 +1119,8 @@ export interface VextConfig {
    * AsyncLocalStorage 请求上下文配置
    *
    * 控制是否启用 requestContext.run() 包裹请求处理。
-   * 禁用后可提升 +3-8% RPS，但 logger requestId 自动注入、
-   * app.throw locale 解析、app.fetch requestId 传播均失效。
+   * 禁用后会跳过 AsyncLocalStorage 包裹，但 logger requestId 自动注入、
+   * app.throw locale 解析、app.fetch requestId 传播均失效；请按真实负载评估取舍。
    *
    * @see VextRequestContextConfig
    */

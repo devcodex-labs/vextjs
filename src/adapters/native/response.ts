@@ -37,7 +37,7 @@ type RequestIdSource = Pick<VextRequest, "requestId"> | (() => string);
 /**
  * Native ServerResponse → VextResponse 转换（F5 优化：class 实例化）
  *
- * 直接操作 Node.js ServerResponse，零第三方框架中间层开销。
+ * 直接操作 Node.js ServerResponse，不经过第三方 HTTP 框架中间层。
  * 这是 Native Adapter 的核心性能优势之一：跳过 Fastify reply / Koa ctx.response /
  * Express res 等框架的响应对象包装层，直接调用原生 API。
  *
@@ -522,7 +522,7 @@ class NativeVextResponse implements VextResponse {
    * 流式响应（大文件传输、实时数据流）
    *
    * 直接将 ReadableStream pipe 到 ServerResponse。
-   * Node.js 原生 pipe 机制，零框架开销。
+   * 直接使用 Node.js 原生 pipe 机制，不经过额外框架流转层。
    */
   stream(
     readable: NodeJS.ReadableStream,

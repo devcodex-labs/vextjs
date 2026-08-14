@@ -1,6 +1,6 @@
 # Adapter 架构
 
-VextJS 的核心设计之一是 **Adapter 架构**——底层 HTTP 处理层完全可替换。你的业务代码（路由、中间件、服务、插件）操作的是 VextJS 封装的 `req` / `res` 对象，而非底层框架的原生对象。切换 Adapter 仅需修改一行配置，**业务代码零改动**。
+VextJS 使用 **Adapter 架构**替换底层 HTTP 处理层。基于 VextJS `req` / `res` 编写的路由与服务通常可以保持原有接口；底层框架专属的中间件、插件和能力仍需核对适配边界。选择 Adapter 本身只需修改配置字段。
 
 ## 工作原理
 
@@ -24,29 +24,19 @@ Adapter 负责：
 
 VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
-| Adapter            | 底层框架                           | 特点                           | 适用场景               | 额外依赖  |
-| ------------------ | ---------------------------------- | ------------------------------ | ---------------------- | --------- |
-| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能           | 无        |
-| **Hono**           | Hono                               | Web Standards API，轻量        | Node.js 全栈 HTTP 服务 | `hono`    |
-| **Fastify**        | Fastify                            | 生态丰富，JSON 序列化优化      | 大型项目               | `fastify` |
-| **Express**        | Express v5                         | 最大中间件生态                 | 迁移项目               | `express` |
-| **Koa**            | Koa v3                             | 轻量优雅                       | 中小型项目             | `koa`     |
+| Adapter            | 底层框架                           | 特点                             | 适用场景               | 额外依赖  |
+| ------------------ | ---------------------------------- | -------------------------------- | ---------------------- | --------- |
+| **Native**（默认） | `http.createServer` + `route-core` | 零第三方 HTTP 框架依赖，默认路径 | 新项目、希望减少依赖   | 无        |
+| **Hono**           | Hono                               | Web Standards API，轻量          | Node.js 全栈 HTTP 服务 | `hono`    |
+| **Fastify**        | Fastify                            | 插件生态、JSON 序列化能力        | 需要 Fastify 能力      | `fastify` |
+| **Express**        | Express v5                         | 成熟的中间件生态                 | 从 Express 迁移        | `express` |
+| **Koa**            | Koa v3                             | 轻量中间件模型                   | 团队已有 Koa 经验      | `koa`     |
 
 ### 性能对比
 
-历史基准快照（JSON 响应场景，5 轮中位数）：
+本页不保存独立数字快照，避免旧环境与当前结果形成两套口径。Raw Native 与 Raw Fastify 的领先项会随场景和 handler 形态变化；五个 adapter 的百分比也只表示 Vext 相对各自 Raw 基线的组合开销，不是框架总排名。
 
-| Adapter | Raw RPS | Vext RPS | 框架开销 |
-| ------- | ------: | -------: | -------: |
-| Native  |  44,932 |   36,819 |    18.1% |
-| Express |  29,868 |   30,974 |    -3.7% |
-| Fastify |  45,619 |   29,203 |    36.0% |
-| Koa     |  31,833 |   22,488 |    29.4% |
-| Hono    |  20,703 |   15,684 |    24.2% |
-
-> Vext 开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
->
-> **测试环境**：Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数，2026-03-23）。当前版本复现实测以仓库内 benchmark 为准，并区分 `chain` 与 `middleware-chain`。
+请在[性能基准](/benchmark)查看唯一的当前结果、测试方法、限制和复现命令。选择 adapter 后，仍应使用实际中间件、认证、日志和 I/O 负载验证你的目标。
 
 ## 使用方法
 
@@ -73,7 +63,7 @@ export default {
 };
 ```
 
-Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `route-core` 做路由匹配，性能最优且零外部 HTTP 框架依赖。
+Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `route-core` 做路由匹配；它是默认路径，且不依赖第三方 HTTP 框架。实际性能取决于场景，请以当前基准和你的业务压测为准。
 
 ### Hono Adapter
 
@@ -216,16 +206,16 @@ Koa 是 Express 团队打造的下一代 Web 框架，以轻量和优雅著称�
   };
 ```
 
-**业务代码无需任何改动。** 路由定义、中间件、服务层、插件——所有用户代码操作的都是 `VextRequest` / `VextResponse` 接口，与底层框架完全解耦。
+基于 `VextRequest` / `VextResponse` 的路由 handler 和服务代码通常可以直接复用。底层原生中间件、插件或框架专属行为并非完全解耦，切换前应按目标 Adapter 的集成说明复核。
 
 ## 如何选择 Adapter
 
 ### 选择 Native（默认推荐）
 
-- 追求最高性能
-- 不依赖其他框架的生态
-- 新项目，没有历史包袱
-- 希望零额外依赖
+- 希望从框架默认路径开始
+- 不需要其他 HTTP 框架的特定能力
+- 新项目，没有 adapter 迁移约束
+- 希望减少额外依赖
 
 ### 选择 Hono
 
@@ -479,7 +469,7 @@ export default {
 ```
 
 ```typescript
-// src/config/production.ts — 生产环境保持 Native（最高性能）
+// src/config/production.ts — 生产环境沿用默认 Native
 export default {
   // 不设置 adapter，继承 default.ts 的默认 native
 };
@@ -497,7 +487,7 @@ export default {
 
 ### 性能差异主要来自哪里？
 
-性能差异主要来自底层框架本身的 HTTP 解析、路由匹配和序列化效率。VextJS 层的开销（中间件链、请求/响应包装等）在所有 Adapter 上基本一致。Native Adapter 因为使用了最底层的 `http.createServer`，省去了框架层的额外抽象，因此性能最高。
+性能差异同时来自底层框架的 HTTP 解析、路由匹配、序列化，以及 Vext 与各 adapter 的集成路径。当前实测中，各 adapter 相对 Raw 基线的差距并不相同，也没有一个实现对所有场景恒定领先。请结合[性能基准](/benchmark)的口径，并用你的实际中间件和 I/O 负载复测。
 
 ### 底层框架的原生中间件能用吗？
 

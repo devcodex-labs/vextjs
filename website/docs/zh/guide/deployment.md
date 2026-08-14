@@ -68,7 +68,7 @@ src/                          dist/
 
 ### 编译底层
 
-`vext build` 基于 [esbuild](https://esbuild.github.io/) 实现，纯编译阶段速度极快。典型项目（50+ 源文件）的编译时间通常在 **1 秒以内**。
+`vext build` 的后端编译阶段基于 [esbuild](https://esbuild.github.io/) 实现。实际耗时取决于项目规模、插件转换、source map 配置、文件系统与硬件；制定部署预算时请测量自己的 CI 或发布构建。
 
 编译时会自动注入 `process.env.NODE_ENV = "production"`，因此 build 后用户源码中的环境分支会按 production 语义静态折叠；但运行时实际加载哪个配置 profile，仍由启动时的 `--config` 或 `VEXT_CONFIG` 决定。
 

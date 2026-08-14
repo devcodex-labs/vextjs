@@ -782,7 +782,7 @@ AsyncLocalStorage 请求上下文配置。
 ```typescript
 export default {
   requestContext: {
-    enabled: false, // 禁用后可提升 3-8% RPS
+    enabled: false, // 仅在不依赖下列请求级能力时关闭
   },
 };
 ```

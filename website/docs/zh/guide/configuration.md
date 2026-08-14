@@ -259,7 +259,7 @@ export default {
 ```
 
 :::tip
-不指定 `adapter` 时默认使用 Native Adapter，性能最高且零框架依赖。仅当需要使用特定框架的生态或特性时才切换。
+不指定 `adapter` 时默认使用 Native Adapter，它不依赖第三方 HTTP 框架。需要特定框架的能力或迁移路径时再切换；吞吐表现会随场景变化，请结合[当前性能基准](/benchmark)和你的业务负载判断。
 :::
 
 ## 前端配置 (`frontend`)
@@ -807,13 +807,13 @@ export default {
 ```
 
 :::warning 性能提示
-禁用 `requestContext` 可提升约 3-8% RPS，但以下功能将失效：
+禁用 `requestContext` 会移除基于请求上下文的生命周期能力，也可能减少相应开销，但收益取决于负载，必须用实际应用验证。以下功能将失效：
 
 - `app.logger` 自动携带 `requestId`
 - `app.throw()` 自动解析请求 locale
 - `app.fetch` 自动传播 `requestId`
 
-仅在极致性能场景下考虑禁用。
+仅在确认这些能力不需要、且实际压测证明收益成立时考虑禁用。
 :::
 
 ### Cluster 配置 (`cluster`)

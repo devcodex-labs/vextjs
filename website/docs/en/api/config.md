@@ -780,7 +780,7 @@ AsyncLocalStorage request context configuration.
 ```typescript
 export default {
   requestContext: {
-    enabled: false, // Disabled to increase RPS by 3-8%
+    enabled: false, // Disable only when the request-scoped features below are not needed
   },
 };
 ```

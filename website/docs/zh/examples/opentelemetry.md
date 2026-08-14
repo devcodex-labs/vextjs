@@ -793,7 +793,7 @@ export default defineRoutes((app) => {
 | ------------ | ------------------------------------------------------------------------------- |
 | 回调正常返回 | `span.end()` 自动调用                                                           |
 | 回调抛出异常 | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
-| SDK 未初始化 | Noop span，零 overhead（OTel API 契约保证）                                     |
+| SDK 未初始化 | Noop span；不会导出遥测数据                                                     |
 
 ### 底层 API（自定义 SpanKind / Processor 等高级场景）
 

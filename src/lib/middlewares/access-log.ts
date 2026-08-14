@@ -22,7 +22,7 @@ function formatBytes(bytes: number): string {
  *   在 `await next()` 后记录请求耗时、HTTP 状态码、方法、路径、客户端 IP。
  *
  * 配置项（config.accessLog）：
- *   - enabled:          是否启用（默认 true）；false 时直接跳过，零开销
+ *   - enabled:          是否启用（默认 true）；false 时 bootstrap 不注册，直接调用工厂时也会防御性跳过
  *   - level:            日志输出级别（默认 'info'）；可设为 'debug' 由 logger.level 初始阈值或 setLevel() 统一控制
  *   - skipPaths:        精确匹配跳过的路径列表（如 ['/health', '/ready']），减少日志噪音
  *   - skipPathPrefixes: 前缀匹配跳过的路径列表（如 ['/internal']），跳过整个路径树

@@ -259,7 +259,7 @@ export default {
 ```
 
 :::tip
-When `adapter` is not specified, Native Adapter is used by default, which has the highest performance and zero framework dependency. Only switch when you need to use the ecology or features of a specific framework.
+When `adapter` is omitted, Vext uses the Native adapter, which has no third-party HTTP framework dependency. Switch when you need another framework's capabilities or a migration path. Throughput varies by workload, so review the [current benchmarks](/benchmark) and test your application before deciding.
 :::
 
 ## Frontend configuration (`frontend`)
@@ -808,13 +808,13 @@ export default {
 ```
 
 :::warning performance tips
-Disabling `requestContext` can improve RPS by about 3-8%, but the following features will be disabled:
+Disabling `requestContext` removes request-context lifecycle capabilities and may reduce their overhead, but the benefit depends on the workload and must be measured in your application. The following features will be disabled:
 
 - `app.logger` automatically carries `requestId`
 - `app.throw()` automatically parses the request locale
 - `app.fetch` automatically propagates `requestId`
 
-Consider disabling it only in extreme performance scenarios.
+Consider disabling it only after confirming that these capabilities are unnecessary and application-level measurements show a benefit.
 :::
 
 ### Cluster configuration (`cluster`)

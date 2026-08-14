@@ -303,7 +303,7 @@ export async function bootstrap(
     //
     // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
     // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
-    // 无 database 配置则完全跳过，零开销。
+    // 无 database 配置则跳过 setup，不加载数据库运行时与 hook。
     //
     if (shouldLoadMonSQLize(config as unknown as Record<string, unknown>)) {
       const monsqlizePlugin = createMonSQLizePlugin(srcDir);
@@ -506,7 +506,7 @@ export async function bootstrap(
     // 路由注册后立即锁定，后续调用 app.use() 将抛出错误
     internals.lockUse();
 
-    // ── 步骤 ⑥: 注册内置中间件（条件注册 — 零开销禁用）────
+    // ── 步骤 ⑥: 注册内置中间件（禁用项不进入请求链）────────
     //
     // 注册顺序决定执行顺序：
     //   1. requestId — 生成/透传请求唯一标识
@@ -520,7 +520,7 @@ export async function bootstrap(
     //   9. access-log — 洋葱模型 after-middleware（记录耗时/状态码/路径）
     //
     // 🆕 性能优化：每个中间件仅在 enabled !== false 时注册。
-    // 禁用的中间件完全不进入中间件链，实现真正的零开销（之前是
+    // 禁用的中间件完全不进入中间件链，避免额外的请求级调度（之前是
     // 函数仍被调用但 fast-return，每请求仍有函数调用 + await next() 开销）。
     //
     // 这些中间件通过 adapter.registerMiddleware() 注册，
@@ -588,7 +588,7 @@ export async function bootstrap(
     }
 
     // frontend disabled 时不要注册 noop renderer。否则每个请求都会多一次
-    // async middleware / next() 调度，违背此处“禁用即零开销”的约定。
+    // async middleware / next() 调度，违背此处“禁用即不进入请求链”的约定。
     if (isFrontendEnabled(config.frontend)) {
       app.adapter.registerMiddleware(
         createFrontendRenderMiddleware({

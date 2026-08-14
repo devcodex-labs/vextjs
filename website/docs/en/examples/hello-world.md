@@ -97,7 +97,7 @@ export default {
 ```
 
 :::tip
-`adapter: 'native'` uses the built-in Native Adapter (based on `http.createServer` + `route-core`), with zero external HTTP framework dependencies and the highest performance. You can also switch to `'hono'`, `'fastify'`, `'express'` or `'koa'` without any changes to the business code**.
+`adapter: 'native'` uses the built-in Native adapter (`http.createServer` + `route-core`) and has no third-party HTTP framework dependency. You can switch to `'hono'`, `'fastify'`, `'express'`, or `'koa'` without rewriting route business logic. Review the [current benchmarks](/benchmark) and test your workload before choosing.
 :::
 
 ## 4. Routing
@@ -218,6 +218,7 @@ pnpmdev
 ```
 
 Development mode features:- Automatic hot reloading of file modifications (three-layer strategy: routing/service/configuration smart refresh)
+
 - Beautify log output (built-in pretty format)
 - Automatically enable OpenAPI documentation (visit `http://localhost:3000/docs`)
 
@@ -296,15 +297,15 @@ export default {
 
 ## Key concepts review
 
-| Concept | Description |
-| -------------- | --------------------------------------------- |
-| `defineRoutes` | Route definition function, register the route in the callback |
-| `bootstrap` | Framework startup function, arranges the complete initialization process |
-| `validate` | Declarative parameter validation (schema-dsl DSL syntax) |
-| `req.valid()` | Get the verified and type-converted data |
-| `res.json()` | Returns a JSON response (automatic export wrapper) |
-| `docs` | OpenAPI document configuration, automatically generate Vext Docs API documentation |
-| Export packaging | Unified response format `{ code, data, requestId }` |
+| Concept          | Description                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `defineRoutes`   | Route definition function, register the route in the callback                      |
+| `bootstrap`      | Framework startup function, arranges the complete initialization process           |
+| `validate`       | Declarative parameter validation (schema-dsl DSL syntax)                           |
+| `req.valid()`    | Get the verified and type-converted data                                           |
+| `res.json()`     | Returns a JSON response (automatic export wrapper)                                 |
+| `docs`           | OpenAPI document configuration, automatically generate Vext Docs API documentation |
+| Export packaging | Unified response format `{ code, data, requestId }`                                |
 
 ## Next step
 

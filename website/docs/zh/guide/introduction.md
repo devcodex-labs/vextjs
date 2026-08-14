@@ -28,15 +28,15 @@ export default defineRoutes((app) => {
 
 VextJS 的底层 HTTP 处理层是可替换的。内置 5 种 Adapter：
 
-| Adapter            | 底层框架                           | 特点                           | 适用场景     |
-| ------------------ | ---------------------------------- | ------------------------------ | ------------ |
-| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能 |
-| **Hono**           | Hono + Vext 的 `node:http` 桥接    | Node.js 上的 Web Standards API | Node.js 应用 |
-| **Fastify**        | Fastify                            | 生态丰富，序列化优化           | 大型项目     |
-| **Express**        | Express                            | 最大中间件生态                 | 迁移项目     |
-| **Koa**            | Koa                                | 轻量优雅                       | 中小型项目   |
+| Adapter            | 底层框架                           | 特点                             | 适用场景             |
+| ------------------ | ---------------------------------- | -------------------------------- | -------------------- |
+| **Native**（默认） | `http.createServer` + `route-core` | 零第三方 HTTP 框架依赖，默认路径 | 新项目、希望减少依赖 |
+| **Hono**           | Hono + Vext 的 `node:http` 桥接    | Node.js 上的 Web Standards API   | Node.js 应用         |
+| **Fastify**        | Fastify                            | 插件生态、序列化能力             | 需要 Fastify 能力    |
+| **Express**        | Express                            | 成熟的中间件生态                 | 迁移项目             |
+| **Koa**            | Koa                                | 轻量中间件模型                   | 团队已有 Koa 经验    |
 
-切换 Adapter 仅需修改一行配置，**业务代码零改动**：
+使用 VextJS `req` / `res` 编写的路由 handler 通常无需随 Adapter 改写；底层框架专属的中间件或插件仍需单独核对集成边界。框架选择本身只需修改一个配置字段：
 
 ```typescript
 // src/config/default.ts
@@ -50,20 +50,11 @@ export default {
 };
 ```
 
-### ⚡ 极致性能
+### ⚡ 性能与取舍
 
-历史基准快照（JSON 响应场景，5 轮中位数）：
+Vext 提供可复现的 Native/Fastify 主对照和五个 adapter 的辅助矩阵。当前结果显示 Raw Native 与 Raw Fastify 会随场景和 handler 形态互有领先；Vext 的差距还包含路由、请求/响应对象和生命周期成本，因此不能压缩成一个框架总排名。
 
-| 框架    | Raw RPS | Vext RPS | 框架开销 |
-| ------- | ------: | -------: | -------: |
-| Native  |  44,932 |   36,819 |    18.1% |
-| Fastify |  45,619 |   29,203 |    36.0% |
-| Hono    |  20,703 |   15,684 |    24.2% |
-| Express |  29,868 |   30,974 |    -3.7% |
-
-> Vext 的开销包含：body parser、response wrapper、请求/响应抽象、AsyncLocalStorage 上下文、中间件链执行器等**完整功能**。
-
-> ⚠️ **测试环境说明**：上表为 2026-03-23 历史快照，基于 Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon（50 connections, 10 pipelining, 10s × 5 轮中位数）测得。当前版本复现实测以仓库内 `test/benchmark/run-benchmark.mjs` 为准，并区分 `chain` 与 `middleware-chain`。完整口径请参见 [性能基准测试](/benchmark)。
+请在[性能基准](/benchmark)查看唯一的当前数据、测试口径、adapter 选择建议和复现命令。生产选型仍应加入你的认证、日志、中间件、I/O 与部署环境重新压测。
 
 ### 🛡️ 声明式参数校验
 

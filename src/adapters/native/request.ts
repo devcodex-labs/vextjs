@@ -32,7 +32,7 @@ export interface ParsedUrl {
 /**
  * Native Request → VextRequest 转换
  *
- * 直接从 Node.js IncomingMessage 构造 VextRequest，零第三方框架开销。
+ * 直接从 Node.js IncomingMessage 构造 VextRequest，不经过第三方 HTTP 框架层。
  * 这是 Native Adapter 的核心性能优势之一：跳过 Fastify/Koa/Express 等
  * 框架的请求对象包装层，直接操作原生对象。
  *
@@ -50,7 +50,7 @@ export interface ParsedUrl {
  *     供 vext body-parser 中间件使用
  *
  * 性能优化：
- *   - query 使用 getter + 缓存，GET /json 等无 query 场景零开销
+ *   - query 使用 getter + 缓存，未访问 query 时不执行解析
  *   - path 仅做一次 indexOf('?') 分割，避免 new URL() 的完整解析开销
  *   - headers 直接引用 IncomingMessage.headers，无拷贝
  *   - _getRawBody 使用 Buffer 拼接 + 缓存，多次调用返回同一字符串
@@ -87,7 +87,7 @@ export function createVextRequest(
   // ── query 懒解析（对象字面量 getter + 访问后物化）─────────
   //
   // P1 优化：初始对象形状包含 query getter，首次访问后将 query 物化为
-  // value descriptor，让后续读取零开销，同时保持公开对象描述符稳定。
+  // value descriptor，让后续读取直接返回已解析值，同时保持公开对象描述符稳定。
   //
   // 大量场景（如 GET /json）不需要 query 参数。
   // 使用 getter + 缓存实现懒解析，首次访问时从 URL 解析，结果缓存。

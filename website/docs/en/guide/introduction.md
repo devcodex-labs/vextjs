@@ -26,17 +26,17 @@ The same route file can call `res.render()` to produce an SSR page from the same
 
 ### 🔌 Adapter architecture
 
-VextJS's underlying HTTP handling layer is replaceable. Built-in 5 kinds of Adapters:
+VextJS has a replaceable HTTP layer with five built-in adapters:
 
-| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            |
-| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- |
-| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   |
-| **Hono**             | Hono + Vext's `node:http` bridge   | Web Standards API on Node.js                                   | Node.js applications            |
-| **Fastify**          | Fastify                            | Rich ecology, serialization optimization                       | Large-scale projects            |
-| **Express**          | Express                            | The largest middleware ecosystem                               | Migration project               |
-| **Koa**              | Koa                                | Lightweight and elegant                                        | Small and medium-sized projects |
+| Adapter              | Underlying framework               | Characteristics                             | Good starting point for             |
+| -------------------- | ---------------------------------- | ------------------------------------------- | ----------------------------------- |
+| **Native** (default) | `http.createServer` + `route-core` | No third-party HTTP framework; default path | New projects and fewer dependencies |
+| **Hono**             | Hono + Vext's `node:http` bridge   | Web Standards APIs on Node.js               | Node.js applications                |
+| **Fastify**          | Fastify                            | Plugin ecosystem and serialization features | Projects that require Fastify       |
+| **Express**          | Express                            | Mature middleware ecosystem                 | Migration projects                  |
+| **Koa**              | Koa                                | Lightweight middleware model                | Teams with Koa experience           |
 
-Switching the Adapter only requires modifying one line of configuration, with **zero changes to the business code**:
+Route handlers written against VextJS `req` / `res` normally stay unchanged when you switch adapters. Adapter-specific middleware or plugins still need an integration review; the framework choice itself is one configuration field:
 
 ```typescript
 // src/config/default.ts
@@ -50,20 +50,11 @@ export default {
 };
 ```
 
-### ⚡ Ultimate performance
+### ⚡ Performance and tradeoffs
 
-Historical benchmark snapshot (JSON response scenario, median of 5 rounds):
+Vext publishes a reproducible Native/Fastify primary comparison and an auxiliary five-adapter matrix. The current results show that Raw Native and Raw Fastify trade the lead as the workload and handler shape change. Vext's gap also includes routing, request/response objects, and lifecycle cost, so it cannot be reduced to one overall framework ranking.
 
-| Frame   | Raw RPS | Vext RPS | Frame Overhead |
-| ------- | ------: | -------: | -------------: |
-| Native  |  44,932 |   36,819 |          18.1% |
-| Fastify |  45,619 |   29,203 |          36.0% |
-| Hono    |  20,703 |   15,684 |          24.2% |
-| Express |  29,868 |   30,974 |          -3.7% |
-
-> The overhead of Vext includes: body parser, response wrapper, request/response abstraction, AsyncLocalStorage context, middleware chain executor, etc. **complete functions**.
-
-> ⚠️ **Test environment description**: The above table is a historical snapshot of 2026-03-23, measured based on Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon (50 connections, 10 pipelining, 10s × 5 rounds median). The current version reproduces the actual test based on `test/benchmark/run-benchmark.mjs` in the warehouse, and distinguishes between `chain` and `middleware-chain`. For complete details, see [Performance Benchmark](/benchmark).
+Use the [Performance benchmarks](/benchmark) page as the single source for current measurements, methodology, adapter guidance, and reproduction commands. Before production, add your authentication, logging, middleware, I/O, and deployment environment to the workload.
 
 ### 🛡️ Declarative parameter verification
 

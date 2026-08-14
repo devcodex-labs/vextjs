@@ -1,6 +1,6 @@
 # Adapter architecture
 
-One of the core designs of VextJS is the Adapter architecture - the underlying HTTP processing layer is completely replaceable. Your business code (routing, middleware, services, plug-ins) operates on the `req` / `res` objects encapsulated by VextJS, rather than the native objects of the underlying framework. Switching the Adapter only requires modifying one line of configuration, with **zero changes to the business code**.
+VextJS uses an adapter architecture so the underlying HTTP layer can be replaced. Application routes, middleware, services, and plugins use VextJS `req` / `res` objects instead of the underlying framework's native objects. In the supported abstraction, switching adapters is a configuration change rather than a rewrite of route handlers.
 
 ## Working principle
 
@@ -24,29 +24,19 @@ Adapter is responsible for:
 
 VextJS has 5 built-in Adapters, covering the mainstream Node.js HTTP framework:
 
-| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            | Additional dependencies |
-| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- | ----------------------- |
-| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   | None                    |
-| **Hono**             | Hono                               | Web Standards API, lightweight                                 | Node.js full-stack HTTP service | `hono`                  |
-| **Fastify**          | Fastify                            | Rich ecology, JSON serialization optimization                  | Large-scale projects            | `fastify`               |
-| **Express**          | Express v5                         | The largest middleware ecosystem                               | Migration project               | `express`               |
-| **Koa**              | Koa v3                             | Lightweight and elegant                                        | Small and medium-sized projects | `koa`                   |
+| Adapter              | Underlying framework               | Characteristics                             | Good starting point for             | Additional dependency |
+| -------------------- | ---------------------------------- | ------------------------------------------- | ----------------------------------- | --------------------- |
+| **Native** (default) | `http.createServer` + `route-core` | No third-party HTTP framework; default path | New projects and fewer dependencies | None                  |
+| **Hono**             | Hono                               | Web Standards APIs on Node.js               | Node.js full-stack services         | `hono`                |
+| **Fastify**          | Fastify                            | Plugin ecosystem and JSON serialization     | Projects that require Fastify       | `fastify`             |
+| **Express**          | Express v5                         | Mature middleware ecosystem                 | Express migrations                  | `express`             |
+| **Koa**              | Koa v3                             | Lightweight middleware model                | Teams with Koa experience           | `koa`                 |
 
 ### Performance comparison
 
-Historical benchmark snapshot (JSON response scenario, median of 5 rounds):
+This page does not keep a separate numeric snapshot, because an old environment would create a second, conflicting source of truth. Raw Native and Raw Fastify trade the lead as scenarios and handler shapes change. The five-adapter percentages measure Vext against each adapter's own Raw baseline; they are not an overall framework ranking.
 
-| Adapter | Raw RPS | Vext RPS | Framework overhead |
-| ------- | ------: | -------: | -----------------: |
-| Native  |  44,932 |   36,819 |              18.1% |
-| Express |  29,868 |   30,974 |              -3.7% |
-| Fastify |  45,619 |   29,203 |              36.0% |
-| Koa     |  31,833 |   22,488 |              29.4% |
-| Hono    |  20,703 |   15,684 |              24.2% |
-
-> Vext overhead includes: body parser, response wrapper, request/response abstraction, AsyncLocalStorage context, middleware chain executor, etc. **complete functions**.
->
-> **Test environment**: Node.js v24.14.0 / Windows x64 / Intel i7-9700 / autocannon (50 connections, 10 pipelining, 10s × 5 rounds median, 2026-03-23). The actual reproduction test of the current version is subject to the benchmark in the warehouse, and distinguishes between `chain` and `middleware-chain`.
+Use the [Performance benchmarks](/benchmark) page for the current results, methodology, limitations, and reproduction commands. After choosing an adapter, validate it with your real middleware, authentication, logging, and I/O workload.
 
 ## How to use
 
@@ -73,7 +63,7 @@ export default {
 };
 ```
 
-Native Adapter uses Node.js native `http.createServer` to process HTTP, and cooperates with `route-core` for route matching, with optimal performance and zero dependence on external HTTP frameworks.
+The Native adapter uses Node.js `http.createServer` with `route-core`. It is the default path and has no third-party HTTP framework dependency. Performance varies by workload, so use the current benchmark and your application tests when making a decision.
 
 ### Hono Adapter
 
@@ -216,16 +206,16 @@ To switch Adapter, you only need to modify the `adapter` field in `src/config/de
   };
 ```
 
-**No changes are required to the business code. ** Route definition, middleware, service layer, plug-in - all user code operates on the `VextRequest` / `VextResponse` interface and is completely decoupled from the underlying framework.
+Route handlers and services built on `VextRequest` / `VextResponse` can usually be reused. Native middleware, plugins, and framework-specific behavior are not fully decoupled, so review the target adapter's integration boundary before switching.
 
 ## How to choose Adapter
 
 ### Select Native (recommended by default)
 
-- Pursue maximum performance
-- An ecosystem that does not rely on other frameworks
-- New project, no historical baggage
-- Hope zero extra dependencies
+- Start with the framework's default path
+- Do not require capabilities from another HTTP framework
+- Build a new project without adapter migration constraints
+- Keep additional dependencies to a minimum
 
 ### Select Hono
 
@@ -480,7 +470,7 @@ export default {
 ```
 
 ```typescript
-// src/config/production.ts — Keep the production environment Native (highest performance)
+// src/config/production.ts — Keep the default Native adapter in production
 export default {
   // Do not set adapter, inherit the default native of default.ts
 };
@@ -498,7 +488,7 @@ Can't. Adapter is determined by configuration at startup and cannot be switched 
 
 ### Where does the performance difference mainly come from?
 
-The performance difference mainly comes from the HTTP parsing, route matching and serialization efficiency of the underlying framework itself. The overhead of the VextJS layer (middleware chain, request/response packaging, etc.) is basically the same across all Adapters. Native Adapter has the highest performance because it uses the lowest level `http.createServer`, eliminating the need for additional abstractions at the framework layer.
+Performance differences come from both the underlying framework's HTTP parsing, routing, and serialization and Vext's integration path for each adapter. Current measurements show different overhead against each Raw baseline, with no implementation leading every scenario. Review the [Performance benchmarks](/benchmark) methodology, then test your actual middleware and I/O workload.
 
 ### Can the native middleware of the underlying framework be used?
 

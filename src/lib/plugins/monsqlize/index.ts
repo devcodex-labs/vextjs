@@ -5,7 +5,7 @@
  * 开箱即用：用户只需在 config 中配置 database 字段即可自动启用。
  *
  * 条件加载策略：
- *   - 仅当 app.config.database 存在时才执行 setup（无配置则跳过，零开销）
+ *   - 仅当 app.config.database 存在时才执行 setup（无配置则不加载数据库运行时与 hook）
  *   - 由 bootstrap.ts 在用户插件加载之前注册（内置插件优先）
  *   - 用户插件可安全依赖 app.db / app.monsqlize
  *

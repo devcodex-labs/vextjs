@@ -501,7 +501,7 @@ export async function devBootstrap(
     //
     // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
     // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
-    // 无 database 配置则完全跳过，零开销。
+    // 无 database 配置则跳过 setup，不加载数据库运行时与 hook。
     //
     // 注意：dev 模式使用 outDir（编译产物目录）而非 srcDir，
     // 因为 dev 子进程不带 tsx loader，需要从 .vext/dev/models/ 加载 CJS 编译产物。
@@ -747,7 +747,7 @@ export async function devBootstrap(
     //   → 插件全局中间件 → 错误处理 → 404
     //
     // 🔧 D2/D3 修复：每个中间件仅在 enabled !== false 时注册（与生产 bootstrap.ts 对齐）。
-    // 禁用的中间件完全不进入中间件链，实现真正的零开销。
+    // 禁用的中间件完全不进入中间件链，避免额外的请求级调度。
     // D3 修复：createRequestIdMiddleware 补传第四参数 localeConfig，
     // 确保 dev 模式下 store.locale 正确写入（i18n 语言解析生效）。
     //

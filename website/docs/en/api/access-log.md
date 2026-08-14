@@ -135,7 +135,7 @@ export default {
 | --------- | ------------- | --------------------------------------- |
 | `boolean` | `true`        | Whether to enable access-log middleware |
 
-When set to `false`, the middleware directly calls `next()`, skipping it with zero overhead.
+When set to `false`, Vext does not register the built-in access-log middleware during bootstrap, so it is absent from the request middleware chain.
 
 ```typescript
 // src/config/development.ts — Development environment closes access log to reduce noise

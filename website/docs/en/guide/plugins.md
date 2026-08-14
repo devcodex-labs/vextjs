@@ -573,7 +573,7 @@ VextJS has the following built-in plugins:
 | ------------- | ---------------------------------- | ---------------------------------------------------------- |
 | **monsqlize** | MonSQLize database ORM integration | Automatically load when `monsqlize` dependency is detected |
 
-The built-in plug-in detects whether it should be loaded through `shouldLoadMonSQLize()`, achieving zero configuration and zero overhead - it will not be loaded at all when the corresponding dependencies are not installed.
+The built-in plugin uses `shouldLoadMonSQLize()` to decide whether to load. It needs no manual registration, and Vext skips loading it when the required dependency or database configuration is absent.
 
 ## File upload
 

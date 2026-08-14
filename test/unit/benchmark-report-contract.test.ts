@@ -1,10 +1,34 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 function read(relativePath: string): string {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
+}
+
+function readTextTree(relativeRoot: string): Array<[string, string]> {
+  const root = path.join(process.cwd(), relativeRoot);
+  const pending = [root];
+  const files: Array<[string, string]> = [];
+
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const absolutePath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(absolutePath);
+        continue;
+      }
+      if (!/\.(?:ts|md|mdx)$/.test(entry.name)) continue;
+      files.push([
+        path.relative(process.cwd(), absolutePath),
+        readFileSync(absolutePath, "utf8"),
+      ]);
+    }
+  }
+
+  return files;
 }
 
 function runBenchmarkCli(relativePath: string, args: string[]) {
@@ -31,12 +55,12 @@ describe("benchmark report semantics", () => {
 
     expect(runner).toContain(': "N/A";');
     expect(runner).toContain("这表示不适用，不是漏测或零成本");
-    expect(
-      en.match(/Route middleware chain\s+\|[^\n]*\|\s+N\/A\s+\|/g),
-    ).toHaveLength(2);
-    expect(
-      zh.match(/真实 route middleware 链\s+\|[^\n]*\|\s+N\/A\s+\|/g),
-    ).toHaveLength(2);
+    expect(en).toMatch(
+      /\| Route middleware chain\s+\|\s+N\/A\s+\|\s+N\/A\s+\|/,
+    );
+    expect(zh).toMatch(/\| route middleware 链\s+\|\s+N\/A\s+\|\s+N\/A\s+\|/);
+    expect(en).toContain("internal diagnostic entry");
+    expect(zh).toContain("内部用来定位最短执行路径的诊断入口");
     expect(en).toContain("neither missing data nor a zero-cost measurement");
     expect(zh).toContain("既不是漏测，也不表示成本为零");
   });
@@ -58,6 +82,8 @@ describe("benchmark report semantics", () => {
       expect(page).toContain("26,444");
       expect(page).toContain("33,351");
       expect(page).toContain("-31.6%");
+      expect(page).toContain("-69.1%");
+      expect(page).toContain("17.8%–20.8%");
       expect(page).toContain("--process-priority -14");
       expect(page).toContain("programmatic API");
       expect(page).not.toContain(
@@ -65,6 +91,157 @@ describe("benchmark report semantics", () => {
       );
       expect(page).not.toContain("35,283");
       expect(page).not.toContain("-16.3%");
+      expect(page).not.toContain("20.9%");
+    }
+  });
+
+  it("keeps the public benchmark pages user-facing and single-source", () => {
+    const en = read("website/docs/en/benchmark.md");
+    const zh = read("website/docs/zh/benchmark.md");
+
+    expect(en).toContain("## At a glance");
+    expect(en).toContain("### Test your application");
+    expect(zh).toContain("## 先看结论");
+    expect(zh).toContain("### 测试真实应用");
+
+    const forbidden = [
+      "2026-01-15",
+      "98,421",
+      "Historical environment",
+      "历史数据环境",
+      "Cluster mode baseline",
+      "Cluster 模式基准",
+      "Memory benchmark",
+      "内存基准",
+      "Startup time",
+      "启动时间",
+      "dirty worktree",
+      "candidate diff",
+      "候选差异",
+      "private harness",
+      "私有 harness",
+      "current warehouse",
+      "comparative caliber",
+    ];
+
+    for (const page of [en, zh]) {
+      for (const phrase of forbidden) {
+        expect(page).not.toContain(phrase);
+      }
+    }
+  });
+
+  it("keeps benchmark entry points free of stale snapshots and absolute rankings", () => {
+    const enHome = read("website/docs/en/index.mdx");
+    const zhHome = read("website/docs/zh/index.mdx");
+    const relatedPages = [
+      enHome,
+      zhHome,
+      read("website/docs/en/guide/introduction.md"),
+      read("website/docs/zh/guide/introduction.md"),
+      read("website/docs/en/guide/adapters.md"),
+      read("website/docs/zh/guide/adapters.md"),
+      read("website/docs/en/guide/configuration.md"),
+      read("website/docs/zh/guide/configuration.md"),
+      read("website/docs/en/examples/hello-world.md"),
+      read("website/docs/zh/examples/hello-world.md"),
+      read("website/docs/en/api/config.md"),
+      read("website/docs/zh/api/config.md"),
+      read("website/docs/en/api/access-log.md"),
+      read("website/docs/zh/api/access-log.md"),
+      read("website/docs/en/guide/hot-reload.md"),
+      read("website/docs/zh/guide/hot-reload.md"),
+      read("website/docs/en/guide/deployment.md"),
+      read("website/docs/zh/guide/deployment.md"),
+      read("website/docs/en/guide/logger.md"),
+      read("website/docs/zh/guide/logger.md"),
+      read("website/docs/en/guide/database.md"),
+      read("website/docs/zh/guide/database.md"),
+      read("website/docs/en/guide/plugins.md"),
+      read("website/docs/zh/guide/plugins.md"),
+      read("website/docs/en/examples/opentelemetry.md"),
+      read("website/docs/zh/examples/opentelemetry.md"),
+    ];
+
+    expect(enHome).toContain(
+      "Understand current results, methodology, and adapter tradeoffs",
+    );
+    expect(zhHome).toContain("理解当前性能、测试口径与 Adapter 取舍");
+
+    for (const page of relatedPages) {
+      for (const stale of [
+        "2026-03-23",
+        "44,932",
+        "45,619",
+        "36,819",
+        "29,203",
+      ]) {
+        expect(page).not.toContain(stale);
+      }
+      for (const absoluteClaim of [
+        "性能最高",
+        "性能最优",
+        "最高性能",
+        "highest performance",
+        "optimal performance",
+        "maximum performance",
+        "ultimate performance",
+        "业务代码零改动",
+        "业务代码无需任何改动",
+        "No changes are required to the business code",
+        "3-8% RPS",
+        "3–8% RPS",
+        "zero overhead",
+        "零开销",
+        "零 overhead",
+        "1-10ms",
+        "1-10 ms",
+        "5-50ms",
+        "5-50 ms",
+        "1-3s",
+        "1-3 s",
+        "under 1 second",
+        "1 秒以内",
+      ]) {
+        expect(page).not.toContain(absoluteClaim);
+      }
+    }
+  });
+
+  it("keeps source and public docs free of unsupported fixed performance promises", () => {
+    const corpus = [...readTextTree("src"), ...readTextTree("website/docs")];
+    const forbiddenPatterns = [
+      /3[-–]8%\s*RPS/i,
+      /zero[^\r\n]{0,20}overhead/i,
+      /零[^\r\n]{0,20}开销/,
+      /零\s*overhead/i,
+      /1[-–]10\s*ms/i,
+      /5[-–]50\s*ms/i,
+      /1[-–]3\s*s(?:\b|$)/i,
+      /under 1 second/i,
+      /1\s*秒以内/,
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      const offenders = corpus
+        .filter(([, content]) => pattern.test(content))
+        .map(([file]) => file);
+      expect({ pattern: pattern.source, offenders }).toEqual({
+        pattern: pattern.source,
+        offenders: [],
+      });
+    }
+  });
+
+  it("keeps custom homepage text from becoming nested Markdown paragraphs", () => {
+    const bareMarkdownBlockChild =
+      /<(?:p|h[1-6]|span|a|strong|em|code)\b[^>]*>\r?\n[ \t]*[^ \t<{]/;
+
+    for (const page of [
+      read("website/docs/en/index.mdx"),
+      read("website/docs/zh/index.mdx"),
+    ]) {
+      expect(page).not.toMatch(bareMarkdownBlockChild);
     }
   });
 

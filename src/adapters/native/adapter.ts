@@ -177,7 +177,7 @@ const _noop = async (): Promise<void> => {};
  *
  * 架构说明：
  *   - 路由匹配：route-core（只负责 method/path 匹配与 params 提取）
- *   - HTTP 层：Node.js 原生 http.createServer，零框架开销
+ *   - HTTP 层：Node.js 原生 http.createServer，不经过第三方 HTTP 框架层
  *   - 中间件链执行：vext 自己的 executeChain（洋葱模型）
  *   - 请求/响应对象：直接从 IncomingMessage / ServerResponse 构造 VextRequest / VextResponse
  *   - 全局中间件：通过 registerMiddleware() 收集，在每个路由执行时拼接到链头
@@ -356,7 +356,7 @@ export function createNativeAdapter(
     // 确保 app.throw 等内部方法能通过 requestContext.getStore() 访问请求级数据。
     //
     // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
-    // 直接执行中间件链，预估 +3-8% RPS。
+    // 直接执行中间件链；实际性能影响取决于 Node.js 版本与业务负载。
     //
     const completion = Promise.resolve().then(() =>
       alsEnabled

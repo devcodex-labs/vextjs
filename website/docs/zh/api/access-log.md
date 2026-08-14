@@ -135,7 +135,7 @@ export default {
 | --------- | ------ | -------------------------- |
 | `boolean` | `true` | 是否启用 access-log 中间件 |
 
-设为 `false` 时，中间件直接调用 `next()`，零开销跳过。
+设为 `false` 时，Vext 在 bootstrap 阶段不会注册内置 access-log 中间件，因此它不会进入请求中间件链。
 
 ```typescript
 // src/config/development.ts — 开发环境关闭 access log 减少噪音

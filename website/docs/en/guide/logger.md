@@ -57,7 +57,7 @@ export default {
 };
 ```
 
-After setting a certain level, **logs lower than this level will not be output**. For example, with `level: 'info'`, calls to `debug()` are silently ignored (zero overhead).
+After setting a certain level, **logs lower than this level will not be output**. For example, with `level: 'info'`, `debug()` calls are filtered by the logger threshold and produce no log record.
 
 ### Adjust log level at runtime
 

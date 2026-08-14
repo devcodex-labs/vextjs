@@ -789,7 +789,7 @@ export default defineRoutes((app) => {
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | The callback returns normally    | `span.end()` is automatically called                                            |
 | The callback throws an exception | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
-| SDK not initialized              | Noop span, zero overhead (OTel API contract guarantee)                          |
+| SDK not initialized              | Noop span; no telemetry is exported                                             |
 
 ### Underlying API (customized SpanKind / Processor and other advanced scenarios)
 

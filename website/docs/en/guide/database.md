@@ -46,13 +46,13 @@ It's that simple! The framework automatically connects to the database when it s
 
 ### Conditional loading
 
-The MonSQLize plugin uses a **conditional loading** strategy - it will only be enabled if `config.database` exists. Projects without database configuration are completely unaffected, with zero overhead.
+The MonSQLize plugin uses a **conditional loading** strategy: it is enabled only when `config.database` exists. Without database configuration, Vext skips plugin setup and does not install its database runtime or hooks.
 
 ```
 bootstrap()
   → Check whether config.database exists
   → Yes → Create MonSQLize instance → Connect → Load Model → Mount app.db
-  → No → Skip (zero overhead)
+  → No → Skip plugin setup
 ```
 
 ### Loading time

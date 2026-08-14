@@ -393,7 +393,7 @@ async function loadServiceFile(
  *   3. 构建有向依赖图（serviceKey → 依赖的 serviceKey 集合）
  *   4. DFS 检测环路，发现环路则 Fail Fast
  *
- * 优点：零运行时开销，bootstrap 阶段即可检测
+ * 优点：在 bootstrap 阶段完成检测，不增加请求路径检查
  * 缺点：无法检测动态拼接的 key（如 app.services[name]），但此模式极少见
  *
  * @param services       app.services 对象（用于获取所有 key）
@@ -440,7 +440,8 @@ async function checkServiceCircularDeps(
     // 匹配 this.app.services.xxx 或 app.services.xxx
     // 支持嵌套访问如 app.services.payment.stripe
     // 注意：访问可能带方法调用（app.services.b.value()），需回退到已知 service key 前缀
-    const regex = /(?:this\.)?app\.services\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+    const regex =
+      /(?:this\.)?app\.services\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(source)) !== null) {
       let dep = match[1]!;

@@ -129,7 +129,11 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     // Prefer Node IncomingMessage headers when the Node bridge is present so
     // empty values (e.g. x-probe: "") survive. Web Headers often drops them.
     const env = c.env as
-      | { incoming?: { headers?: Record<string, string | string[] | undefined> } }
+      | {
+          incoming?: {
+            headers?: Record<string, string | string[] | undefined>;
+          };
+        }
       | undefined;
     const nodeHeaders = env?.incoming?.headers;
     if (nodeHeaders && typeof nodeHeaders === "object") {
@@ -183,7 +187,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   //
   // 实现方式：先在对象字面量中放占位符值（满足 TypeScript 类型检查），
   // 然后立即用 Object.defineProperty 覆盖为 getter。
-  // 首次访问 getter 时执行解析并用 value descriptor 替换 getter（后续零开销）。
+  // 首次访问 getter 时执行解析并用 value descriptor 替换 getter（后续不重复解析）。
   //
 
   const req: VextRequest = {
@@ -248,7 +252,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   //
   // 使用 defineProperty 覆盖占位符值，实现：
   //   1. 首次访问时调用解析函数
-  //   2. 解析后用 value descriptor 覆盖 getter（后续访问零开销）
+  //   2. 解析后用 value descriptor 覆盖 getter（后续访问不重复解析）
   //   3. 仍然支持写入（如测试场景下直接赋值）
   //
   // 注意：configurable: true 是必须的，否则首次访问后无法覆盖为 value descriptor。
@@ -257,7 +261,7 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
   Object.defineProperty(req, "query", {
     get() {
       const value = parseQuery();
-      // 用 value descriptor 覆盖 getter，后续访问直接返回值（零开销）
+      // 用 value descriptor 覆盖 getter，后续访问直接返回已解析值
       Object.defineProperty(req, "query", {
         value,
         writable: true,

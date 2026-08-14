@@ -253,7 +253,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
         // 确保 app.throw 等内部方法能通过 requestContext.getStore() 访问请求级数据
         //
         // 🆕 5.7: 当 requestContext.enabled === false 时跳过 ALS 包裹，
-        // 直接执行中间件链，预估 +3-8% RPS。
+        // 直接执行中间件链；实际性能影响取决于 Node.js 版本与业务负载。
         //
         const runChain = async () => {
           try {

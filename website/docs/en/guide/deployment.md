@@ -70,7 +70,7 @@ Production compilation automatically excludes the following files:
 
 ### Compile the bottom layer
 
-`vext build` is implemented based on [esbuild](https://esbuild.github.io/), and the pure compilation phase is extremely fast. Compilation time for a typical project (50+ source files) is usually under 1 second\*\*.
+`vext build` uses [esbuild](https://esbuild.github.io/) for the backend compilation stage. Build time depends on project size, plugin transforms, source-map settings, filesystem performance, and hardware; measure your own CI or release build when setting deployment budgets.
 
 `process.env.NODE_ENV = "production"` will be automatically injected during compilation, so the environment branch in the user source code after build will be statically folded according to production semantics; the runtime config profile is selected independently with `--config` or `VEXT_CONFIG`.
 

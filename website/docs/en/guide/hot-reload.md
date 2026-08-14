@@ -1,6 +1,6 @@
 # Hot reload
 
-VextJS has a built-in intelligent hot reload mechanism and starts development mode through the `vext dev` command. The framework will monitor file changes and automatically select the optimal reload strategy based on the type of change, from millisecond-level hot replacement to complete process restart, covering all development scenarios.
+VextJS has a built-in hot reload mechanism, started through the `vext dev` command. The framework watches file changes and selects a reload path by change boundary, from targeted handler replacement to a complete process restart.
 
 Starting from `0.3.7`, `vext dev` will execute **dev preflight** once before each initial start, file change, manual reload / restart, and child process request cold restart:
 
@@ -36,7 +36,7 @@ After startup, the terminal will display a Banner box, including the current ope
 ╚═══════════════════════ ═══════════════════════╝
 ```
 
-After modifying the files in the `src/` directory, the terminal will output the change details and reload results:
+After modifying files in the `src/` directory, the terminal outputs the change details and reload result. The timings below are illustrative log values, not cross-project performance guarantees:
 
 ```
 [vext dev] 1 file(s) changed:
@@ -92,16 +92,16 @@ If an error occurs after cache invalidation or while reloading services, models,
 
 ## Three-layer reloading strategy
 
-VextJS's hot reloading adopts a three-layer strategy and automatically selects the optimal method based on the type of changed file:
+VextJS hot reload uses a three-layer strategy and selects the matching method based on the changed file type:
 
 ### Tier 1 — Route hot replacement ⚡
 
-| Trigger conditions     | File changes under `src/routes/`                                  |
-| ---------------------- | ----------------------------------------------------------------- |
-| Behavior               | Atomic replacement request handler, zero interrupts               |
-| Speed                  | Millisecond level (1-10ms)                                        |
-| Impact                 | Only the routing files are changed, other routes are not affected |
-| Connection interrupted | ❌ No interruption, the request being processed is not affected   |
+| Trigger conditions     | File changes under `src/routes/`                                    |
+| ---------------------- | ------------------------------------------------------------------- |
+| Behavior               | Atomic replacement request handler, zero interrupts                 |
+| Timing                 | Varies with the changed modules, dependency graph, and project size |
+| Impact                 | Only the routing files are changed, other routes are not affected   |
+| Connection interrupted | ❌ No interruption, the request being processed is not affected     |
 
 ```
 Modify src/routes/users.ts
@@ -133,7 +133,7 @@ export default defineRoutes((app) => {
 | Trigger conditions     | File changes under `src/services/`, `src/models/` or `src/locales/` |
 | ---------------------- | ------------------------------------------------------------------- |
 | Behavior               | Rebuild affected service instances                                  |
-| Speed                  | Millisecond level (5-50ms)                                          |
+| Timing                 | Varies with the affected dependency graph and project size          |
 | Impact                 | Changed services and their dependency chains                        |
 | Connection interrupted | ❌ No interruption                                                  |
 
@@ -187,7 +187,7 @@ export default {
 | Trigger conditions     | File changes under `src/config/`, `src/plugins/`, `src/middlewares/` |
 | ---------------------- | -------------------------------------------------------------------- |
 | Behavior               | Full restart process                                                 |
-| Speed                  | Second level (1-3s)                                                  |
+| Timing                 | Varies with application startup work and external dependencies       |
 | Impact                 | Entire application reinitialization                                  |
 | Connection Interrupted | ✅ Requests being processed may be interrupted                       |
 
@@ -429,7 +429,7 @@ vext reload # Rolling restart Worker
 
 ### 1. Make full use of Tier 1/2
 
-Put most of the development work in the routing and service layer and enjoy millisecond-level hot reload experience. Configuration and plugin modifications are relatively minor, and occasional cold restarts are acceptable.
+Keeping most application work in routes and services lets Vext use its targeted reload paths more often. Configuration and plugin changes are less frequent and can use the safer cold-restart path.
 
 ### 2. Cooperate with IDE real-time type checking
 
