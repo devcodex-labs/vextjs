@@ -24,13 +24,13 @@ Adapter is responsible for:
 
 VextJS has 5 built-in Adapters, covering the mainstream Node.js HTTP framework:
 
-| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            | Additional dependencies    |
-| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- | -------------------------- |
-| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   | None                       |
-| **Hono**             | Hono                               | Web Standards API, lightweight                                 | Node.js full-stack HTTP service | `hono` `@hono/node-server` |
-| **Fastify**          | Fastify                            | Rich ecology, JSON serialization optimization                  | Large-scale projects            | `fastify`                  |
-| **Express**          | Express v5                         | The largest middleware ecosystem                               | Migration project               | `express`                  |
-| **Koa**              | Koa v3                             | Lightweight and elegant                                        | Small and medium-sized projects | `koa`                      |
+| Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            | Additional dependencies |
+| -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- | ----------------------- |
+| **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   | None                    |
+| **Hono**             | Hono                               | Web Standards API, lightweight                                 | Node.js full-stack HTTP service | `hono`                  |
+| **Fastify**          | Fastify                            | Rich ecology, JSON serialization optimization                  | Large-scale projects            | `fastify`               |
+| **Express**          | Express v5                         | The largest middleware ecosystem                               | Migration project               | `express`               |
+| **Koa**              | Koa v3                             | Lightweight and elegant                                        | Small and medium-sized projects | `koa`                   |
 
 ### Performance comparison
 
@@ -78,7 +78,7 @@ Native Adapter uses Node.js native `http.createServer` to process HTTP, and coop
 ### Hono Adapter
 
 ```bash
-npm install hono @hono/node-server
+npm install hono
 ```
 
 **Recommended method (string identification):**
@@ -103,7 +103,7 @@ export default {
 };
 ```
 
-Hono is an ultra-lightweight web framework based on the Web Standards API (`Request` / `Response`). The current built-in Hono Adapter is a Node.js HTTP server adapter. It depends on `hono`, `@hono/node-server`, and the `node:http` request/response bridge, and is suitable when you want Hono routing inside a Node.js service.
+Hono is an ultra-lightweight web framework based on the Web Standards API (`Request` / `Response`). The current built-in Hono Adapter is a Node.js HTTP server adapter. It depends only on `hono`; Vext owns the `node:http` request/response bridge used to expose Hono routing inside a Node.js service. `@hono/node-server` is not a runtime dependency of this adapter.
 
 This does not represent official Edge / Serverless adapter support. Cloudflare Workers, Deno Deploy, Bun edge, and other non-Node.js runtimes require a dedicated Edge / Serverless adapter or ecosystem plugin. Do not treat the current `vextjs/adapters/hono` package as an Edge runtime guarantee.
 
@@ -506,7 +506,7 @@ Not recommended for direct use. VextJS has its own middleware system (`defineMid
 
 ### What should I do if peer dependencies report a warning?
 
-VextJS declares all underlying frameworks as optional `peerDependencies`. You only need to install the framework package corresponding to the Adapter you actually use. For example, when using the Hono Adapter, only `hono` and `@hono/node-server` are installed, and peer dependency warnings from other frameworks can be safely ignored.
+VextJS declares all underlying frameworks as optional `peerDependencies`. You only need to install the framework package corresponding to the Adapter you actually use. For example, the Hono Adapter requires only `hono`; peer dependency warnings from other unused frameworks can be safely ignored.
 
 The current Hono Adapter is a Node.js runtime capability: it receives requests through a Node.js HTTP server and bridges them into Hono's Web `Request` / `Response` flow. Edge / Serverless runtimes should not use these Node adapter installation instructions as a support claim.
 

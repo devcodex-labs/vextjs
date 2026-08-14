@@ -37,8 +37,9 @@ export default {
   },
 
   // ── 中间件开关 ─────────────────────────────────────────────
-  // Normal benchmark 显式禁用可选请求能力；authContext 和 requestHook
-  // 仍是 Vext 的正常生命周期组成部分，会由 telemetry 明确记录而不冒充 Core。
+  // Normal benchmark 显式禁用可选请求能力；requestContext=false 时不会
+  // 注册 authContext，唯一保留的全局生命周期节点是 requestHook。
+  // telemetry 会明确记录该节点，避免把 Normal 冒充为 Core。
 
   // 禁用速率限制（默认 max=100/60s，高并发下会限流导致大量 429）
   rateLimit: {

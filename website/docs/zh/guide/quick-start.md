@@ -96,7 +96,7 @@ export default {
 如需使用其他 Adapter（如 Hono），先安装对应包再配置：
 
 ```bash
-npm install hono @hono/node-server
+npm install hono
 ```
 
 ```typescript

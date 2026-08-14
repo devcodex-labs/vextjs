@@ -1036,20 +1036,22 @@ function verifyReadmePublicEntryContract() {
     "适合边缘",
   ]);
   requireTokens("website/docs/en/guide/introduction.md", [
-    "Hono + `@hono/node-server`",
+    "Hono + Vext's `node:http` bridge",
     "Node.js applications",
     "config.database",
   ]);
   forbidTokens("website/docs/en/guide/introduction.md", [
+    "Hono + `@hono/node-server`",
     "Full Stack / Edge Runtime",
     "conditional loading with zero overhead",
   ]);
   requireTokens("website/docs/zh/guide/introduction.md", [
-    "Hono + `@hono/node-server`",
+    "Hono + Vext 的 `node:http` 桥接",
     "Node.js 应用",
     "config.database",
   ]);
   forbidTokens("website/docs/zh/guide/introduction.md", [
+    "Hono + `@hono/node-server`",
     "全栈 / 边缘运行时",
     "条件加载零开销",
   ]);

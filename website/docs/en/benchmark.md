@@ -1,13 +1,13 @@
 # Performance benchmark test
 
-This page shows performance benchmark data comparing VextJS with other popular Node.js web frameworks. The reproducible benchmark of the current version is subject to `test/benchmark/run-benchmark.mjs` in the warehouse; the historical benchmark warehouse data on the page is only for trend reference.
+This page compares VextJS with other popular Node.js web frameworks. The current reproducible evidence comes from `test/benchmark/run-native-fairness.mjs` (the primary Native/Fastify comparison) and `test/benchmark/run-benchmark.mjs` (the auxiliary adapter matrix); historical benchmark-repository data below is trend reference only.
 
 ## Current reproducible results (2026-08-14, local time)
 
-> - **Source identity:** `main@cea18d760592b790d602f61f343e8d71c4a35735`
-> - **Protocol:** 10 seconds / 50 connections / pipelining 10 / 5-second warmup / median of 5 rounds
-> - **Environment:** Node.js 20.20.2, win32 x64, Intel i7-9700, 32 GiB RAM
-> - **Locked dependency versions:** Fastify 5.11.3, Hono 4.13.2, `@hono/node-server` 2.1.0, Express 5.2.1, Koa 3.2.1, `@koa/router` 15.7.0, and Autocannon 8.0.0 (checked against the registry before the formal runs)
+> - **Source identity:** the formal reports record `main@e1901aa7e2ab07e01283e8f85dfad414be3235b6`, the dirty-worktree state, and a candidate-diff SHA-256; post-run documentation edits are not presented as the measured source commit
+> - **Protocol:** 10 seconds / 50 connections / pipelining 10 / 5-second warmup / median of 5 rounds / round-interleaved targets / CV ≤ 15%
+> - **Environment:** Node.js 20.20.2, win32 x64, Intel i7-9700, 32 GiB RAM, process priority -14 for the runner and every measured child
+> - **Locked dependency versions:** Fastify 5.12.0, Hono 4.13.2, `@hono/node-server` 2.1.1, Express 5.2.1, Koa 3.2.1, `@koa/router` 15.7.0, and Autocannon 8.0.0 (checked against npm `latest` by the runner before the formal runs)
 
 These measurements replace the 2026-01-15 figures below as the current reference. The [primary raw report](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md) contains the five samples, CV, latency, and chain telemetry.
 
@@ -17,19 +17,21 @@ All figures are median req/s. **Core** is a private shortest-path harness and do
 
 | Synchronous handler scenario | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
 | ---------------------------- | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                         |     35,283 |      33,726 |           30,299 |             29,691 |
-| Route parameters             |     34,073 |      33,206 |           28,612 |             28,066 |
-| Handler business chain       |     29,726 |      32,240 |           24,376 |             25,244 |
-| Route middleware chain       |     28,907 |      28,108 |                — |             24,741 |
+| JSON                         |     26,444 |      28,857 |           22,899 |             22,880 |
+| Route parameters             |     25,895 |      27,785 |           23,741 |             22,828 |
+| Handler business chain       |     24,091 |      24,615 |           20,731 |             19,723 |
+| Route middleware chain       |     24,053 |      24,985 |              N/A |             19,776 |
 
 | Asynchronous handler scenario | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
 | ----------------------------- | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                          |     34,773 |      33,520 |           28,848 |             28,783 |
-| Route parameters              |     33,810 |      34,141 |           27,946 |             27,839 |
-| Handler business chain        |     28,559 |      30,335 |           25,061 |             23,927 |
-| Route middleware chain        |     28,319 |      29,115 |                — |             23,755 |
+| JSON                          |     33,351 |      28,782 |           24,620 |             22,856 |
+| Route parameters              |     34,193 |      32,300 |           23,969 |             23,244 |
+| Handler business chain        |     30,088 |      26,185 |           21,537 |             20,940 |
+| Route middleware chain        |     25,236 |      30,085 |              N/A |             20,903 |
 
-The result is not “Fastify is always faster” or “Vext is second.” Raw Native and Raw Fastify lead in different scenarios and handler models. In these synthetic paths, Vext Native Normal trails Raw Native by 14%–18% and Raw Fastify by 12%–22%; that is the visible cost of routing, request/response objects, and lifecycle machinery, not an end-to-end production throughput promise.
+`N/A` is intentional: Core does not register a route middleware chain, so this scenario is not applicable. It is neither missing data nor a zero-cost measurement.
+
+The result is not “Fastify is always faster” or “Vext is second.” In the synchronous group Raw Fastify leads or is close in all four scenarios; in the asynchronous group Raw Native leads the first three while Raw Fastify leads the real middleware chain. Vext Native Normal trails Raw Native by 11.8%–18.1% and Raw Fastify by 17.8%–20.9% in the synchronous group; the asynchronous ranges are 17.2%–32.0% and 20.0%–30.5%. Sync and async were sampled at different times, so their absolute values support within-group comparisons only and do not prove one handler mode is faster. The remaining gap is visible routing, request/response, and lifecycle cost—not an end-to-end production throughput promise.
 
 ### Latest five-adapter matrix
 
@@ -37,13 +39,13 @@ The table below shows Vext overhead against each adapter's corresponding Raw imp
 
 | Adapter |   JSON | Route parameters | Handler business chain | Route middleware chain |
 | ------- | -----: | ---------------: | ---------------------: | ---------------------: |
-| Native  | -16.3% |           -14.2% |                 -16.1% |                 -13.3% |
-| Fastify | -28.7% |           -28.1% |                 -30.4% |                 -32.3% |
-| Express |  -6.4% |           -10.0% |                 -10.1% |                 -11.0% |
-| Koa     | -22.6% |           -21.0% |                 -23.0% |                 -26.7% |
-| Hono    | -65.5% |           -65.7% |                 -61.9% |                 -61.8% |
+| Native  | -31.6% |           -29.6% |                 -29.4% |                 -27.6% |
+| Fastify | -43.0% |           -41.7% |                 -38.3% |                 -39.1% |
+| Express |  -9.4% |            -2.6% |                  -7.4% |                 -12.7% |
+| Koa     | -31.4% |           -33.3% |                 -37.4% |                 -34.2% |
+| Hono    | -69.1% |           -68.6% |                 -67.0% |                 -67.9% |
 
-The Hono gap is a separate adapter optimization track and is not folded into the Native/Fastify fairness conclusion. Production decisions should be based on benchmarks that include the application's real middleware, auth, logging, serialization, I/O, and deployment environment.
+The Hono gap is a separate adapter optimization track and is not folded into the Native/Fastify fairness conclusion. Raw Hono uses the official `@hono/node-server` Node entry, while Vext Hono requires only `hono` and uses Vext's own `node:http` bridge; both are public execution paths, but the gap therefore includes bridge implementation cost. Production decisions should be based on benchmarks that include the application's real middleware, auth, logging, serialization, I/O, and deployment environment.
 
 ## Comparative caliber description (please read first)
 
@@ -331,9 +333,12 @@ Time from process startup to when the first request can be responded to (cold st
 ### Run the benchmark in the current warehouse
 
 ```bash
-npm install
-npm run test:bench -- --scenario all --rounds 5
+npm ci
+npm run verify:benchmark-deps
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync
 ```
+
+The formal Windows samples on this page used `--process-priority -14`. Use that value on another platform only when Node.js is permitted to set it; the runner verifies the actual value and fails explicitly when unsupported.
 
 ### Run a single framework
 
@@ -350,7 +355,7 @@ npm run test:bench -- --scenario middleware-chain --rounds 5
 
 ### Manual testing using autocannon
 
-The benchmark runner of the current warehouse will automatically start/stop the test server and call autocannon through `npm exec --package=autocannon@8.0.0`. There is usually no need to start the server manually.
+Autocannon 8.0.0 is a locked development dependency. The benchmark runners call its local programmatic API and automatically start and stop each target; they do not invoke `npm exec` during every sample. There is normally no need to start a server manually.
 
 If you need to perform a separate stress test on a started local service, you can directly run:
 
@@ -363,16 +368,21 @@ npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localh
 
 The current benchmark is configured through CLI parameters, and `bench.config.ts` does not exist:
 
-| Parameters      | Default value               | Description                                              |
-| --------------- | --------------------------- | -------------------------------------------------------- |
-| `--duration`    | `15`                        | The number of seconds the stress test lasts              |
-| `--connections` | `50`                        | Number of concurrent connections                         |
-| `--pipelining`  | `10`                        | HTTP pipeline depth                                      |
-| `--warmup`      | `5`                         | Warmup seconds                                           |
-| `--rounds`      | `1`                         | Rounds; PR / pre-release suggestion 5 or 7               |
-| `--scenario`    | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
-| `--framework`   | All                         | Framework filtering, comma separated                     |
-| `--output`      | `test/benchmark/RESULTS.md` | Report output path                                       |
+| Parameter                   | Default                     | Description                                              |
+| --------------------------- | --------------------------- | -------------------------------------------------------- |
+| `--duration`                | `15`                        | Measurement duration in seconds                          |
+| `--connections`             | `50`                        | Concurrent connections                                   |
+| `--pipelining`              | `10`                        | HTTP pipeline depth                                      |
+| `--warmup`                  | `5`                         | Warmup seconds                                           |
+| `--rounds`                  | `1`                         | Rounds; use 5 or 7 before release                        |
+| `--max-cv`                  | `15`                        | Reject a citable report if any multi-round CV exceeds it |
+| `--process-priority`        | `0`                         | Runner and measured-child priority (-20..19)             |
+| `--scenario`                | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
+| `--framework`               | Five Vext adapters          | Comma-separated framework filter                         |
+| `--output`                  | `test/benchmark/RESULTS.md` | Report output path                                       |
+| `--results-json`            | —                           | Save complete raw samples                                |
+| `--from-results-json`       | —                           | Merge complete artifacts with identical provenance       |
+| `--require-complete-matrix` | `false`                     | Require all scenarios or the full 5×4 adapter matrix     |
 
 ---
 

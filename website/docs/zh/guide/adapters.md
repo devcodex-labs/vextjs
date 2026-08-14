@@ -24,13 +24,13 @@ Adapter 负责：
 
 VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
-| Adapter            | 底层框架                           | 特点                           | 适用场景               | 额外依赖                   |
-| ------------------ | ---------------------------------- | ------------------------------ | ---------------------- | -------------------------- |
-| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能           | 无                         |
-| **Hono**           | Hono                               | Web Standards API，轻量        | Node.js 全栈 HTTP 服务 | `hono` `@hono/node-server` |
-| **Fastify**        | Fastify                            | 生态丰富，JSON 序列化优化      | 大型项目               | `fastify`                  |
-| **Express**        | Express v5                         | 最大中间件生态                 | 迁移项目               | `express`                  |
-| **Koa**            | Koa v3                             | 轻量优雅                       | 中小型项目             | `koa`                      |
+| Adapter            | 底层框架                           | 特点                           | 适用场景               | 额外依赖  |
+| ------------------ | ---------------------------------- | ------------------------------ | ---------------------- | --------- |
+| **Native**（默认） | `http.createServer` + `route-core` | 零外部 HTTP 框架依赖，性能最高 | 追求极致性能           | 无        |
+| **Hono**           | Hono                               | Web Standards API，轻量        | Node.js 全栈 HTTP 服务 | `hono`    |
+| **Fastify**        | Fastify                            | 生态丰富，JSON 序列化优化      | 大型项目               | `fastify` |
+| **Express**        | Express v5                         | 最大中间件生态                 | 迁移项目               | `express` |
+| **Koa**            | Koa v3                             | 轻量优雅                       | 中小型项目             | `koa`     |
 
 ### 性能对比
 
@@ -78,7 +78,7 @@ Native Adapter 使用 Node.js 原生 `http.createServer` 处理 HTTP，配合 `r
 ### Hono Adapter
 
 ```bash
-npm install hono @hono/node-server
+npm install hono
 ```
 
 **推荐方式（字符串标识）：**
@@ -103,7 +103,7 @@ export default {
 };
 ```
 
-Hono 是一个超轻量级的 Web 框架，基于 Web Standards API（`Request` / `Response`）。当前内置 Hono Adapter 是 Node.js HTTP server adapter，依赖 `hono`、`@hono/node-server` 和 `node:http` 请求/响应桥接，适合在 Node.js 环境中复用 Hono 路由能力。
+Hono 是一个超轻量级的 Web 框架，基于 Web Standards API（`Request` / `Response`）。当前内置 Hono Adapter 是 Node.js HTTP server adapter，运行时只依赖 `hono`；用于接入 Hono 路由的 `node:http` 请求/响应桥接由 Vext 自己实现。`@hono/node-server` 不是该 Adapter 的运行时依赖。
 
 这不等同于官方 Edge / Serverless Adapter 支持。Cloudflare Workers、Deno Deploy、Bun edge 或其他非 Node.js 运行时需要单独的 Edge / Serverless 适配器或生态插件支持，不能直接把当前 `vextjs/adapters/hono` 当作 Edge 运行时保证。
 
@@ -505,7 +505,7 @@ export default {
 
 ### peer dependencies 报警告怎么办？
 
-VextJS 将所有底层框架声明为可选的 `peerDependencies`。你只需安装实际使用的 Adapter 对应的框架包。例如使用 Hono Adapter 时只安装 `hono` 和 `@hono/node-server`，其他框架的 peer dependency 警告可以安全忽略。
+VextJS 将所有底层框架声明为可选的 `peerDependencies`。你只需安装实际使用的 Adapter 对应的框架包。例如 Hono Adapter 只需要 `hono`，其他未使用框架的 peer dependency 警告可以安全忽略。
 
 当前 Hono Adapter 是 Node.js 运行时能力：它通过 Node.js HTTP server 接收请求，并把请求桥接给 Hono 的 Web `Request` / `Response` 处理流程。Edge / Serverless 运行时不应使用这组 Node adapter 安装说明作为支持声明。
 

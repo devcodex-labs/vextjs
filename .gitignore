@@ -77,6 +77,9 @@ web_modules/
 # Retained isolated release-preflight evidence
 test/.tmp-release-preflight-*/
 
+# Local benchmark artifacts (not candidate source)
+/test/benchmark/.artifacts/
+
 # Adapter e2e / formal harness scratch (must not dirty release worktrees)
 tmp-deferred-header-test-*/
 tmp-test-*/

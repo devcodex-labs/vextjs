@@ -1209,6 +1209,17 @@ describe("vext create", () => {
       expect(files["src/config/default.ts"]).toContain("adapter: 'fastify'");
     });
 
+    it("--adapter hono 只添加运行时实际使用的 hono 依赖", async () => {
+      await createCommand(["test-app", "--adapter", "hono", "--skip-install"]);
+
+      const files = getWrittenFiles();
+      const pkg = JSON.parse(files["package.json"]);
+
+      expect(pkg.dependencies.hono).toBe("^4.0.0");
+      expect(pkg.dependencies["@hono/node-server"]).toBeUndefined();
+      expect(files["src/config/default.ts"]).toContain("adapter: 'hono'");
+    });
+
     it("--adapter express 添加 express 依赖和 @types/express", async () => {
       await createCommand([
         "test-app",

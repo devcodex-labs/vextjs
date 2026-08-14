@@ -31,7 +31,7 @@ VextJS's underlying HTTP handling layer is replaceable. Built-in 5 kinds of Adap
 | Adapter              | Underlying framework               | Features                                                       | Applicable scenarios            |
 | -------------------- | ---------------------------------- | -------------------------------------------------------------- | ------------------------------- |
 | **Native** (default) | `http.createServer` + `route-core` | Zero external HTTP framework dependencies, highest performance | Pursuing ultimate performance   |
-| **Hono**             | Hono + `@hono/node-server`         | Web Standards API on Node.js                                   | Node.js applications            |
+| **Hono**             | Hono + Vext's `node:http` bridge   | Web Standards API on Node.js                                   | Node.js applications            |
 | **Fastify**          | Fastify                            | Rich ecology, serialization optimization                       | Large-scale projects            |
 | **Express**          | Express                            | The largest middleware ecosystem                               | Migration project               |
 | **Koa**              | Koa                                | Lightweight and elegant                                        | Small and medium-sized projects |

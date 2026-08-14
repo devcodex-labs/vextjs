@@ -6,20 +6,23 @@
  * the expected chain composition is absent.
  */
 
-import { execFileSync, fork, spawn } from "node:child_process";
+import { execFileSync, fork } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import autocannon from "autocannon";
+import {
+  AUTOCANNON_VERSION,
+  verifyLatestBenchmarkDependencies,
+} from "./dependency-versions.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPOSITORY_ROOT = resolve(__dirname, "../..");
-const AUTOCANNON_VERSION = "8.0.0";
 const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
-const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
 const PACKAGE_METADATA = JSON.parse(
   readFileSync(join(REPOSITORY_ROOT, "package.json"), "utf8"),
 );
@@ -55,8 +58,13 @@ function parseArgs() {
     rounds: 5,
     scenario: "all",
     handlerMode: "sync",
+    maxCv: 15,
+    processPriority: 0,
+    targetScheduling: "round-interleaved-rotating",
     output: join(__dirname, "RESULTS.md"),
     resultsJson: undefined,
+    fromResultsJson: [],
+    requireCompleteMatrix: false,
   };
   const args = process.argv.slice(2);
 
@@ -64,19 +72,19 @@ function parseArgs() {
     const next = () => args[++index];
     switch (args[index]) {
       case "--duration":
-        options.duration = Number.parseInt(next(), 10);
+        options.duration = Number(next());
         break;
       case "--connections":
-        options.connections = Number.parseInt(next(), 10);
+        options.connections = Number(next());
         break;
       case "--pipelining":
-        options.pipelining = Number.parseInt(next(), 10);
+        options.pipelining = Number(next());
         break;
       case "--warmup":
-        options.warmup = Number.parseInt(next(), 10);
+        options.warmup = Number(next());
         break;
       case "--rounds":
-        options.rounds = Math.max(1, Number.parseInt(next(), 10));
+        options.rounds = Number(next());
         break;
       case "--scenario":
         options.scenario = next();
@@ -84,30 +92,51 @@ function parseArgs() {
       case "--handler-mode":
         options.handlerMode = next();
         break;
+      case "--max-cv":
+        options.maxCv = Number(next());
+        break;
+      case "--process-priority":
+        options.processPriority = Number(next());
+        break;
       case "--output":
         options.output = next();
         break;
       case "--results-json":
         options.resultsJson = next();
         break;
+      case "--from-results-json":
+        options.fromResultsJson = next()
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        break;
+      case "--require-complete-matrix":
+        options.requireCompleteMatrix = true;
+        break;
       default:
         throw new Error(`Unknown option: ${args[index]}`);
     }
   }
 
-  for (const key of [
-    "duration",
-    "connections",
-    "pipelining",
-    "warmup",
-    "rounds",
-  ]) {
+  for (const key of ["duration", "connections", "pipelining", "rounds"]) {
+    if (!Number.isInteger(options[key]) || options[key] <= 0) {
+      throw new Error(`Invalid --${key}: ${options[key]}`);
+    }
+  }
+  for (const key of ["warmup", "maxCv"]) {
     if (!Number.isFinite(options[key]) || options[key] < 0) {
       throw new Error(`Invalid --${key}: ${options[key]}`);
     }
   }
   if (!["sync", "async"].includes(options.handlerMode)) {
     throw new Error(`Invalid --handler-mode: ${options.handlerMode}`);
+  }
+  if (
+    !Number.isInteger(options.processPriority) ||
+    options.processPriority < -20 ||
+    options.processPriority > 19
+  ) {
+    throw new Error(`Invalid --process-priority: ${options.processPriority}`);
   }
   return options;
 }
@@ -119,11 +148,11 @@ function sleep(ms) {
 function formatNumber(value) {
   return typeof value === "number"
     ? value.toLocaleString("en-US", { maximumFractionDigits: 2 })
-    : "—";
+    : "N/A";
 }
 
 function formatPercent(value) {
-  return typeof value === "number" ? `${value.toFixed(2)}%` : "—";
+  return typeof value === "number" ? `${value.toFixed(2)}%` : "N/A";
 }
 
 function stddev(values) {
@@ -155,77 +184,34 @@ function metricsFromAutocannon(result) {
   };
 }
 
-function runAutocannon({ port, path, duration, connections, pipelining }) {
-  return new Promise((resolve, reject) => {
-    const url = `http://127.0.0.1:${port}${path}`;
-    const autocannonArgs = [
-      "exec",
-      "--yes",
-      `--package=autocannon@${AUTOCANNON_VERSION}`,
-      "--",
-      "autocannon",
-      "--json",
-      "--no-progress",
-      "--duration",
-      String(duration),
-      "--connections",
-      String(connections),
-      "--pipelining",
-      String(pipelining),
-      url,
-    ];
-    const args =
-      process.platform === "win32"
-        ? ["/d", "/s", "/c", "npm", ...autocannonArgs]
-        : autocannonArgs;
-    const child = spawn(AUTOCANNON_COMMAND, args, {
-      cwd: REPOSITORY_ROOT,
-      env: process.env,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => (stdout += chunk));
-    child.stderr?.on("data", (chunk) => (stderr += chunk));
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code !== 0) {
-        reject(new Error(`autocannon failed (${code}): ${stderr || stdout}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout.trim().split(/\r?\n/).at(-1)));
-      } catch (error) {
-        reject(
-          new Error(
-            `Unable to parse autocannon JSON: ${error instanceof Error ? error.message : error}\n${stdout}\n${stderr}`,
-          ),
-        );
-      }
-    });
+async function runAutocannon({
+  port,
+  path,
+  duration,
+  connections,
+  pipelining,
+}) {
+  const url = `http://127.0.0.1:${port}${path}`;
+  const result = await autocannon({
+    url,
+    duration,
+    connections,
+    pipelining,
   });
+  const errors = result.errors ?? 0;
+  const timeouts = result.timeouts ?? 0;
+  const non2xx = result.non2xx ?? 0;
+  if (errors > 0 || timeouts > 0 || non2xx > 0) {
+    throw new Error(
+      `Autocannon reported errors=${errors}, timeouts=${timeouts}, non2xx=${non2xx} for ${url}`,
+    );
+  }
+  return result;
 }
 
-async function runRounds(port, scenario, options) {
-  const samples = [];
-  for (let round = 1; round <= options.rounds; round += 1) {
-    if (round > 1) {
-      await sleep(2000);
-      global.gc?.();
-    }
-    console.log(`      round ${round}/${options.rounds}`);
-    samples.push(
-      metricsFromAutocannon(
-        await runAutocannon({
-          port,
-          path: scenario.path,
-          duration: options.duration,
-          connections: options.connections,
-          pipelining: options.pipelining,
-        }),
-      ),
-    );
+function summarizeSamples(samples) {
+  if (samples.length === 0) {
+    throw new Error("Cannot summarize an empty benchmark sample set");
   }
   const ordered = [...samples].sort((left, right) => left.rps - right.rps);
   const median = { ...ordered[Math.floor(ordered.length / 2)] };
@@ -241,6 +227,230 @@ async function runRounds(port, scenario, options) {
     cv: mean === 0 ? 0 : (stddev(rps) / mean) * 100,
   };
   return median;
+}
+
+function rotateTargets(targets, offset) {
+  const normalized = offset % targets.length;
+  return [...targets.slice(normalized), ...targets.slice(0, normalized)];
+}
+
+function findUnstableMeasurements(results, maxCv, rounds) {
+  if (rounds <= 1) return [];
+  return results.flatMap((row) =>
+    Object.entries(row.targets)
+      .filter(([, metrics]) => metrics.stats.cv > maxCv)
+      .map(([target, metrics]) => ({
+        scenario: row.scenario,
+        target,
+        cv: metrics.stats.cv,
+      })),
+  );
+}
+
+function getBenchmarkEnvironment() {
+  return {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cpuModel: os.cpus()[0]?.model ?? "unknown",
+    totalMemoryBytes: os.totalmem(),
+    processPriority: getProcessPriority(),
+  };
+}
+
+function getProcessPriority() {
+  try {
+    return os.getPriority();
+  } catch {
+    return "unavailable";
+  }
+}
+
+function applyProcessPriority(priority, pid = 0, label = "benchmark runner") {
+  try {
+    os.setPriority(pid, priority);
+    const actual = os.getPriority(pid);
+    if (actual !== priority) {
+      throw new Error(`requested ${priority}, got ${actual}`);
+    }
+  } catch (error) {
+    throw new Error(
+      `Unable to set ${label} process priority to ${priority}: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+}
+
+function hasSameProtocol(left, right) {
+  return (
+    left.duration === right.duration &&
+    left.connections === right.connections &&
+    left.pipelining === right.pipelining &&
+    left.warmup === right.warmup &&
+    left.rounds === right.rounds &&
+    left.handlerMode === right.handlerMode &&
+    left.maxCv === right.maxCv &&
+    left.processPriority === right.processPriority &&
+    left.targetScheduling === right.targetScheduling
+  );
+}
+
+function hasSameEnvironment(left, right) {
+  return (
+    left.node === right.node &&
+    left.platform === right.platform &&
+    left.arch === right.arch &&
+    left.cpuModel === right.cpuModel &&
+    left.totalMemoryBytes === right.totalMemoryBytes &&
+    left.processPriority === right.processPriority
+  );
+}
+
+function hasSameProvenance(left, right) {
+  return (
+    left.commit === right.commit &&
+    left.worktree === right.worktree &&
+    left.candidate === right.candidate &&
+    JSON.stringify(left.versions) === JSON.stringify(right.versions)
+  );
+}
+
+function hasValidMetrics(metrics) {
+  return Boolean(
+    metrics &&
+    metrics.rps > 0 &&
+    metrics.totalRequests > 0 &&
+    metrics.errors === 0 &&
+    metrics.timeouts === 0 &&
+    metrics.non2xx === 0 &&
+    metrics.stats?.samples?.length > 0,
+  );
+}
+
+function hasValidResultRow(row) {
+  const scenario = SCENARIOS.find(
+    (candidate) => candidate.name === row.scenario,
+  );
+  if (!scenario) return false;
+  return TARGETS.every((target) => {
+    if (target.mode === "core" && scenario.core === false) {
+      return row.targets[target.id] == null;
+    }
+    return hasValidMetrics(row.targets[target.id]);
+  });
+}
+
+async function loadMergedResults(paths, output, requireCompleteMatrix) {
+  if (paths.length === 0) {
+    throw new Error("--from-results-json requires at least one JSON artifact");
+  }
+  const artifacts = await Promise.all(
+    paths.map(async (path) => ({
+      path,
+      value: JSON.parse(await readFile(path, "utf8")),
+    })),
+  );
+  const first = artifacts[0].value;
+  if (
+    first?.schemaVersion !== 2 ||
+    !first.complete ||
+    !first.provenance?.latestDependencies ||
+    !first.environment ||
+    !first.options ||
+    !Array.isArray(first.results)
+  ) {
+    throw new Error(
+      `Invalid or incomplete benchmark artifact: ${artifacts[0].path}`,
+    );
+  }
+  const currentVersions = getFrameworkVersions();
+  if (
+    JSON.stringify(first.provenance.versions) !==
+    JSON.stringify(currentVersions)
+  ) {
+    throw new Error(
+      `Benchmark artifact dependency versions do not match the current lockfile: ${artifacts[0].path}`,
+    );
+  }
+  const currentSource = candidateSourceState([output, ...paths]);
+  const currentCommit = readGitValue(["rev-parse", "HEAD"]);
+  if (currentCommit === "unavailable") {
+    throw new Error("Unable to read benchmark source commit");
+  }
+  const currentProvenance = {
+    commit: currentCommit,
+    worktree: currentSource.worktree,
+    candidate: currentSource.candidate,
+    versions: currentVersions,
+  };
+  if (!hasSameProvenance(first.provenance, currentProvenance)) {
+    throw new Error(
+      `Benchmark artifact source provenance does not match the current worktree: ${artifacts[0].path}`,
+    );
+  }
+
+  const seen = new Set();
+  const results = [];
+  for (const { path, value } of artifacts) {
+    if (
+      value?.schemaVersion !== 2 ||
+      !value.complete ||
+      value.stability?.unstable?.length !== 0 ||
+      !value.provenance?.latestDependencies ||
+      !value.environment ||
+      !value.options ||
+      !Array.isArray(value.results)
+    ) {
+      throw new Error(`Invalid or incomplete benchmark artifact: ${path}`);
+    }
+    if (!hasSameProtocol(first.options, value.options)) {
+      throw new Error(`Benchmark protocol mismatch in artifact: ${path}`);
+    }
+    if (!hasSameEnvironment(first.environment, value.environment)) {
+      throw new Error(`Benchmark environment mismatch in artifact: ${path}`);
+    }
+    if (!hasSameProvenance(first.provenance, value.provenance)) {
+      throw new Error(
+        `Benchmark source provenance mismatch in artifact: ${path}`,
+      );
+    }
+    for (const row of value.results) {
+      if (!hasValidResultRow(row)) {
+        throw new Error(`Invalid benchmark result in artifact: ${path}`);
+      }
+      if (seen.has(row.scenario)) {
+        throw new Error(
+          `Duplicate benchmark scenario while merging: ${row.scenario}`,
+        );
+      }
+      seen.add(row.scenario);
+      results.push(row);
+    }
+  }
+
+  if (requireCompleteMatrix) {
+    const expected = SCENARIOS.map((scenario) => scenario.name);
+    const missing = expected.filter((scenario) => !seen.has(scenario));
+    const unexpected = [...seen].filter(
+      (scenario) => !expected.includes(scenario),
+    );
+    if (missing.length > 0 || unexpected.length > 0) {
+      throw new Error(
+        `Incomplete Native fairness matrix: missing=${missing.join(",") || "none"}; unexpected=${unexpected.join(",") || "none"}`,
+      );
+    }
+  }
+
+  results.sort(
+    (left, right) =>
+      SCENARIOS.findIndex((scenario) => scenario.name === left.scenario) -
+      SCENARIOS.findIndex((scenario) => scenario.name === right.scenario),
+  );
+  return {
+    results,
+    options: { ...first.options, scenario: "all", output },
+    provenance: first.provenance,
+    environment: first.environment,
+  };
 }
 
 async function waitForHealthy(port, timeoutMs = 8000) {
@@ -312,7 +522,7 @@ function stopServer(server) {
   });
 }
 
-function startTarget(target, port, handlerMode) {
+function startTarget(target, port, handlerMode, processPriority) {
   const serverFile = target.id.startsWith("raw-")
     ? join(__dirname, "servers", `${target.id}.mjs`)
     : join(__dirname, "servers", "vext-start.mjs");
@@ -331,6 +541,13 @@ function startTarget(target, port, handlerMode) {
       env,
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
+    try {
+      applyProcessPriority(processPriority, child.pid, `${target.title} child`);
+    } catch (error) {
+      child.kill("SIGTERM");
+      reject(error);
+      return;
+    }
     let stderr = "";
     child.stderr?.on("data", (chunk) => (stderr += chunk));
     const timer = setTimeout(() => {
@@ -430,13 +647,45 @@ function getFrameworkVersions() {
   };
 }
 
-function candidatePatchSha256() {
-  const status = readGitValue(["status", "--porcelain=v1"]);
-  if (!status || status === "unavailable") return null;
+function generatedArtifactPathspecs(paths) {
+  const pathspecs = new Set();
+  for (const path of paths.filter(Boolean)) {
+    const relativePath = relative(REPOSITORY_ROOT, resolve(path));
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(
+        `..${process.platform === "win32" ? "\\" : "/"}`,
+      ) ||
+      isAbsolute(relativePath)
+    ) {
+      continue;
+    }
+    pathspecs.add(`:(exclude)${relativePath.replaceAll("\\", "/")}`);
+  }
+  return [...pathspecs];
+}
+
+function candidateSourceState(excludedPaths = []) {
+  const exclusions = [
+    GENERATED_REPORT_PATHSPEC,
+    ...generatedArtifactPathspecs(excludedPaths),
+  ];
+  const status = readGitValue([
+    "status",
+    "--porcelain=v1",
+    "--",
+    ".",
+    ...exclusions,
+  ]);
+  if (status === "unavailable") {
+    throw new Error("Unable to read benchmark git status");
+  }
+  if (!status) return { worktree: "clean", candidate: null };
   const hash = createHash("sha256");
   const tracked = execFileSync(
     "git",
-    ["diff", "--binary", "HEAD", "--", ".", GENERATED_REPORT_PATHSPEC],
+    ["diff", "--binary", "HEAD", "--", ".", ...exclusions],
     { cwd: REPOSITORY_ROOT, encoding: "buffer" },
   );
   hash.update(tracked);
@@ -449,7 +698,7 @@ function candidatePatchSha256() {
       "-z",
       "--",
       ".",
-      GENERATED_REPORT_PATHSPEC,
+      ...exclusions,
     ],
     { cwd: REPOSITORY_ROOT, encoding: "buffer" },
   )
@@ -461,30 +710,36 @@ function candidatePatchSha256() {
     hash.update(file);
     hash.update(readFileSync(resolve(REPOSITORY_ROOT, file)));
   }
-  return hash.digest("hex");
+  return { worktree: "dirty", candidate: hash.digest("hex") };
 }
 
-function generateReport(results, options, provenance) {
+function generateReport(results, options, provenance, environment) {
   const now = new Date().toISOString();
   let markdown = "# Vext Native 基准公平性报告\n\n";
   markdown += `> UTC: ${now}\n`;
   markdown += `> 源码: ${provenance.branch}@${provenance.commit} (${provenance.worktree})\n`;
   markdown += `> 候选差异 SHA-256: ${provenance.candidate ?? "clean"}\n`;
+  markdown += `> 候选摘要范围: 排除本次 report/JSON artifacts；包含其余已跟踪差异和未跟踪候选文件\n`;
   markdown += `> Runner: \`test/benchmark/run-native-fairness.mjs\`\n`;
   markdown += `> 参数: duration=${options.duration}s, connections=${options.connections}, pipelining=${options.pipelining}, warmup=${options.warmup}s, rounds=${options.rounds}\n\n`;
+  markdown += `> 目标调度: ${options.targetScheduling}; max CV=${options.maxCv}%\n\n`;
   markdown += `> Handler mode: ${options.handlerMode}\n`;
+  markdown += `> Requested process priority: ${options.processPriority}\n`;
   markdown += `> 锁定版本: Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore}; Autocannon ${provenance.versions.autocannon}\n\n`;
+  markdown += `> npm latest 校验: ${provenance.latestDependencies.checkedAt} against ${provenance.latestDependencies.registryUrl}\n\n`;
   markdown += "## 口径\n\n";
   markdown +=
     "- `/json`、`/params`、`/chain` 与 `/health` 的四个受测对象均使用上方声明的 handler mode；Raw Fastify 在 async mode 按其公开契约返回 `reply`。\n";
   markdown +=
     "- `/middleware-chain` 保留各框架真实的 route-level middleware 调度，不用于推断 direct handler mode 的差异。\n";
   markdown +=
+    "- 每轮在 Raw Native、Raw Fastify、Vext Core、Vext Normal 之间轮转起始目标，避免同一目标连续跑完全部轮次造成时间漂移偏差。\n";
+  markdown +=
     "- Vext Native Core 是 benchmark 私有 direct harness：无 bootstrap global middleware，参测 route registration chain 必须为 1。\n";
   markdown +=
     "- Vext Native Normal 使用正式 bootstrap + router-loader；在 `requestContext=false` 且 frontend disabled 时，authContext 不注册，唯一全局生命周期节点为 requestHook。普通 route registration chain=2（routeMatched + handler），middleware-chain=5（routeMatched + 3 route middleware + handler）。\n";
   markdown +=
-    "- Core 不测试 middleware-chain，避免将 route middleware 成本混入最短路径。\n\n";
+    "- Core 不注册 route middleware chain，因此该场景显示 `N/A`；这表示不适用，不是漏测或零成本。\n\n";
   markdown += "## 汇总\n\n";
   markdown +=
     "| 场景 | Raw Native RPS | Raw Fastify RPS | Vext Core RPS | Vext Normal RPS | Core vs Raw Native | Normal vs Raw Native |\n";
@@ -525,12 +780,38 @@ function generateReport(results, options, provenance) {
     }
   }
   markdown += "\n## 环境\n\n";
-  markdown += `- Node.js: ${process.version}\n- Platform: ${process.platform} ${process.arch}\n- CPU: ${os.cpus()[0]?.model ?? "unknown"}\n- Memory: ${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GiB\n`;
+  markdown += `- Node.js: ${environment.node}\n- Platform: ${environment.platform} ${environment.arch}\n- CPU: ${environment.cpuModel}\n- Memory: ${Math.round(environment.totalMemoryBytes / 1024 / 1024 / 1024)} GiB\n- Process priority: ${environment.processPriority}\n`;
   return markdown;
 }
 
 async function main() {
   const options = parseArgs();
+  applyProcessPriority(options.processPriority);
+  const latestDependencies = await verifyLatestBenchmarkDependencies({
+    repositoryRoot: REPOSITORY_ROOT,
+  });
+  const environment = getBenchmarkEnvironment();
+  if (options.fromResultsJson.length > 0) {
+    const merged = await loadMergedResults(
+      options.fromResultsJson,
+      options.output,
+      options.requireCompleteMatrix,
+    );
+    merged.provenance.latestDependencies = {
+      checkedAt: latestDependencies.checkedAt,
+      registryUrl: latestDependencies.registryUrl,
+      versions: latestDependencies.versions,
+    };
+    const report = generateReport(
+      merged.results,
+      merged.options,
+      merged.provenance,
+      merged.environment,
+    );
+    await writeFile(options.output, report, "utf8");
+    console.log(`Merged report written: ${options.output}`);
+    return;
+  }
   const activeScenarios =
     options.scenario === "all"
       ? SCENARIOS
@@ -538,17 +819,32 @@ async function main() {
   if (activeScenarios.length === 0) {
     throw new Error(`Unknown scenario: ${options.scenario}`);
   }
+  const source = candidateSourceState([options.output, options.resultsJson]);
+  const commit = readGitValue(["rev-parse", "HEAD"]);
+  if (commit === "unavailable") {
+    throw new Error("Unable to read benchmark source commit");
+  }
   const provenance = {
-    branch: readGitValue(["branch", "--show-current"]),
-    commit: readGitValue(["rev-parse", "HEAD"]),
-    worktree: readGitValue(["status", "--porcelain=v1"]) ? "dirty" : "clean",
-    candidate: candidatePatchSha256(),
+    branch: readGitValue(["branch", "--show-current"]) || "detached",
+    commit,
+    worktree: source.worktree,
+    candidate: source.candidate,
     versions: getFrameworkVersions(),
+    latestDependencies: {
+      checkedAt: latestDependencies.checkedAt,
+      registryUrl: latestDependencies.registryUrl,
+      versions: latestDependencies.versions,
+    },
   };
   const results = [];
   let port = 19400;
 
-  for (const scenario of activeScenarios) {
+  for (
+    let scenarioIndex = 0;
+    scenarioIndex < activeScenarios.length;
+    scenarioIndex += 1
+  ) {
+    const scenario = activeScenarios[scenarioIndex];
     console.log(`\n== ${scenario.title} (${scenario.path}) ==`);
     const row = {
       scenario: scenario.name,
@@ -556,16 +852,29 @@ async function main() {
       targets: {},
       telemetry: {},
     };
-    for (const target of TARGETS) {
-      if (target.mode === "core" && scenario.core === false) {
-        console.log(`  ${target.title}: N/A by design`);
-        continue;
-      }
-      const targetPort = port++;
-      let server;
-      try {
+    const activeTargets = TARGETS.filter((target) => {
+      const applicable = !(target.mode === "core" && scenario.core === false);
+      if (!applicable) console.log(`  ${target.title}: N/A by design`);
+      return applicable;
+    });
+    const runningTargets = [];
+    const samples = Object.fromEntries(
+      activeTargets.map((target) => [target.id, []]),
+    );
+    try {
+      for (const target of activeTargets) {
+        const targetPort = port++;
         console.log(`  start ${target.title} on ${targetPort}`);
-        server = await startTarget(target, targetPort, options.handlerMode);
+        const server = await startTarget(
+          target,
+          targetPort,
+          options.handlerMode,
+          options.processPriority,
+        );
+        runningTargets.push({ target, server });
+        console.log(
+          `    ready pid=${server.process.pid}, priority=${os.getPriority(server.process.pid)}`,
+        );
         await waitForHealthy(server.port);
         await assertScenarioContract(server.port, scenario);
         if (target.mode) {
@@ -586,31 +895,85 @@ async function main() {
             pipelining: 1,
           });
         }
-        row.targets[target.id] = await runRounds(
-          server.port,
-          scenario,
-          options,
-        );
-        console.log(
-          `  ${target.title}: ${formatNumber(row.targets[target.id].rps)} RPS`,
-        );
-      } finally {
-        await stopServer(server);
-        await sleep(250);
       }
+
+      let measurementIndex = 0;
+      for (let round = 0; round < options.rounds; round += 1) {
+        const order = rotateTargets(runningTargets, round + scenarioIndex);
+        console.log(
+          `  round ${round + 1}/${options.rounds}: ${order.map(({ target }) => target.title).join(" -> ")}`,
+        );
+        for (const { target, server } of order) {
+          if (measurementIndex > 0) {
+            await sleep(2000);
+            global.gc?.();
+          }
+          const metrics = metricsFromAutocannon(
+            await runAutocannon({
+              port: server.port,
+              path: scenario.path,
+              duration: options.duration,
+              connections: options.connections,
+              pipelining: options.pipelining,
+            }),
+          );
+          samples[target.id].push(metrics);
+          measurementIndex += 1;
+          console.log(`    ${target.title}: ${formatNumber(metrics.rps)} RPS`);
+        }
+      }
+
+      for (const { target } of runningTargets) {
+        row.targets[target.id] = summarizeSamples(samples[target.id]);
+        console.log(
+          `  ${target.title} median: ${formatNumber(row.targets[target.id].rps)} RPS (CV=${row.targets[target.id].stats.cv.toFixed(1)}%)`,
+        );
+      }
+    } finally {
+      for (const { server } of [...runningTargets].reverse()) {
+        await stopServer(server);
+      }
+      await sleep(250);
     }
     results.push(row);
   }
 
-  const report = generateReport(results, options, provenance);
-  await writeFile(options.output, report, "utf8");
+  const unstable = findUnstableMeasurements(
+    results,
+    options.maxCv,
+    options.rounds,
+  );
   if (options.resultsJson) {
     await writeFile(
       options.resultsJson,
-      `${JSON.stringify({ schemaVersion: 1, provenance, options, results }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          schemaVersion: 2,
+          complete: unstable.length === 0,
+          provenance,
+          environment,
+          options,
+          stability: { maxCv: options.maxCv, unstable },
+          results,
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
   }
+  if (unstable.length > 0) {
+    throw new Error(
+      `Benchmark CV gate failed (max ${options.maxCv}%): ${unstable
+        .map(
+          ({ scenario, target, cv }) =>
+            `${scenario}/${target}=${cv.toFixed(1)}%`,
+        )
+        .join(", ")}`,
+    );
+  }
+  const report = generateReport(results, options, provenance, environment);
+  await writeFile(options.output, report, "utf8");
   console.log(`\nReport written: ${options.output}`);
 }
 

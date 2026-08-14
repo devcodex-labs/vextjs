@@ -158,13 +158,13 @@ Read the exact lifecycle, trade-offs, and exclusions in [Frontend boundaries and
 
 Pick the stack that fits your deployment; business routes stay the same.
 
-| Adapter              | Extra packages              | Notes                                                               |
-| -------------------- | --------------------------- | ------------------------------------------------------------------- |
-| **native** (default) | none                        | Node HTTP + `route-core`; no extra HTTP framework package           |
-| `express`            | `express`                   | Use when you need that middleware ecosystem                         |
-| `fastify`            | `fastify`                   | Use when you need that plugin ecosystem                             |
-| `koa`                | `koa`                       | Use when you need that middleware style                             |
-| `hono`               | `hono`, `@hono/node-server` | Node.js adapter with Web Standard APIs; not an Edge runtime adapter |
+| Adapter              | Extra packages | Notes                                                                                     |
+| -------------------- | -------------- | ----------------------------------------------------------------------------------------- |
+| **native** (default) | none           | Node HTTP + `route-core`; no extra HTTP framework package                                 |
+| `express`            | `express`      | Use when you need that middleware ecosystem                                               |
+| `fastify`            | `fastify`      | Use when you need that plugin ecosystem                                                   |
+| `koa`                | `koa`          | Use when you need that middleware style                                                   |
+| `hono`               | `hono`         | Node.js adapter with an internal Web Request/Response bridge; not an Edge runtime adapter |
 
 ```js
 // src/config/default.js

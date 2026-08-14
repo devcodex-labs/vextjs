@@ -179,9 +179,9 @@ async function loadBuiltInAdapter(
       return loadBuiltInAdapterWithDiagnostics(
         "hono",
         {
-          peerPackages: ["hono", "@hono/node-server"],
-          requiresText: `"hono" and "@hono/node-server" packages`,
-          installText: `Install them with: npm install hono @hono/node-server`,
+          peerPackages: ["hono"],
+          requiresText: `the "hono" package`,
+          installText: `Install it with: npm install hono`,
         },
         async () => {
           const { createHonoAdapter } =

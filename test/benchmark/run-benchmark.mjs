@@ -16,6 +16,8 @@
  *   --pipelining <number>    HTTP 流水线（默认 10）
  *   --warmup <seconds>       预热时间（默认 5）
  *   --rounds <number>        每个模式的轮次数（默认 1；≥3 建议取中位数）
+ *   --max-cv <percent>       多轮结果允许的最大 CV（默认 15；超出则拒绝报告）
+ *   --process-priority <n>   runner 与被测子进程优先级（-20..19；默认 0）
  *   --scenario <name>        仅运行指定场景（json / params / chain / middleware-chain / all）
  *   --framework <names>      仅运行指定框架，逗号分隔（native,hono,fastify,express,koa；egg 仅显式比较）
  *   --output <path>          报告输出路径（默认 stdout + test/benchmark/RESULTS.md）
@@ -24,20 +26,24 @@
  *   --require-complete-matrix  合并时要求五 adapter × 四场景完整矩阵
  */
 
-import { execFileSync, fork, spawn } from "node:child_process";
+import { execFileSync, fork } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import os from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import autocannon from "autocannon";
+import {
+  AUTOCANNON_VERSION,
+  verifyLatestBenchmarkDependencies,
+} from "./dependency-versions.mjs";
 
 // ── 常量 ──────────────────────────────────────────────────────
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPOSITORY_ROOT = resolve(__dirname, "../..");
-const AUTOCANNON_COMMAND = process.platform === "win32" ? "cmd.exe" : "npm";
-const AUTOCANNON_VERSION = "8.0.0";
 const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
 const PACKAGE_METADATA = JSON.parse(
   readFileSync(join(REPOSITORY_ROOT, "package.json"), "utf8"),
@@ -99,6 +105,9 @@ function parseArgs() {
     pipelining: 10,
     warmup: 5,
     rounds: 1,
+    maxCv: 15,
+    processPriority: 0,
+    targetScheduling: "round-interleaved-alternating",
     scenario: "all",
     // The standard matrix is the five Vext adapters. Egg remains an explicit
     // independent baseline because it has no Vext adapter counterpart.
@@ -112,22 +121,28 @@ function parseArgs() {
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--duration":
-        opts.duration = parseInt(args[++i], 10);
+        opts.duration = Number(args[++i]);
         break;
       case "--connections":
-        opts.connections = parseInt(args[++i], 10);
+        opts.connections = Number(args[++i]);
         break;
       case "--pipelining":
-        opts.pipelining = parseInt(args[++i], 10);
+        opts.pipelining = Number(args[++i]);
         break;
       case "--warmup":
-        opts.warmup = parseInt(args[++i], 10);
+        opts.warmup = Number(args[++i]);
         break;
       case "--scenario":
         opts.scenario = args[++i];
         break;
       case "--rounds":
-        opts.rounds = Math.max(1, parseInt(args[++i], 10));
+        opts.rounds = Number(args[++i]);
+        break;
+      case "--max-cv":
+        opts.maxCv = Number(args[++i]);
+        break;
+      case "--process-priority":
+        opts.processPriority = Number(args[++i]);
         break;
       case "--framework":
         opts.frameworks = args[++i].split(",").map((s) => s.trim());
@@ -147,7 +162,42 @@ function parseArgs() {
       case "--require-complete-matrix":
         opts.requireCompleteMatrix = true;
         break;
+      default:
+        throw new Error(`Unknown option: ${args[i]}`);
     }
+  }
+
+  for (const key of ["duration", "connections", "pipelining", "rounds"]) {
+    if (!Number.isInteger(opts[key]) || opts[key] <= 0) {
+      throw new Error(`Invalid --${key}: ${opts[key]}`);
+    }
+  }
+  if (!Number.isInteger(opts.warmup) || opts.warmup < 0) {
+    throw new Error(`Invalid --warmup: ${opts.warmup}`);
+  }
+  if (!Number.isFinite(opts.maxCv) || opts.maxCv < 0) {
+    throw new Error(`Invalid --max-cv: ${opts.maxCv}`);
+  }
+  if (
+    !Number.isInteger(opts.processPriority) ||
+    opts.processPriority < -20 ||
+    opts.processPriority > 19
+  ) {
+    throw new Error(`Invalid --process-priority: ${opts.processPriority}`);
+  }
+  if (opts.frameworks.length === 0) {
+    throw new Error("At least one benchmark framework is required");
+  }
+  const unknownFrameworks = opts.frameworks.filter(
+    (framework) => !ALL_FRAMEWORKS.includes(framework),
+  );
+  if (unknownFrameworks.length > 0) {
+    throw new Error(
+      `Unknown benchmark framework: ${unknownFrameworks.join(", ")}`,
+    );
+  }
+  if (new Set(opts.frameworks).size !== opts.frameworks.length) {
+    throw new Error("Duplicate benchmark frameworks are not allowed");
   }
 
   return opts;
@@ -162,10 +212,10 @@ function parseArgs() {
  * @param {number} port       端口号
  * @returns {Promise<{process: import('child_process').ChildProcess, port: number}>}
  */
-function startRawServer(framework, port) {
+function startRawServer(framework, port, processPriority) {
   // egg 使用特殊的启动方式（startCluster 多进程模型）
   if (framework === EGG_FRAMEWORK) {
-    return startEggServer(port);
+    return startEggServer(port, processPriority);
   }
 
   return new Promise((resolve, reject) => {
@@ -174,6 +224,7 @@ function startRawServer(framework, port) {
       env: { ...process.env, PORT: String(port) },
       stdio: ["pipe", "pipe", "pipe", "ipc"],
     });
+    applyChildProcessPriority(child, processPriority, `raw-${framework}`);
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
@@ -222,13 +273,14 @@ function startRawServer(framework, port) {
  * @param {number} port 端口号
  * @returns {Promise<{process: import('child_process').ChildProcess, port: number}>}
  */
-function startEggServer(port) {
+function startEggServer(port, processPriority) {
   return new Promise((resolve, reject) => {
     const startFile = join(__dirname, "servers", "raw-egg", "start.js");
     const child = fork(startFile, [], {
       env: { ...process.env, PORT: String(port) },
       stdio: ["pipe", "pipe", "pipe", "ipc"],
     });
+    applyChildProcessPriority(child, processPriority, "raw-egg");
 
     // egg 启动较慢（master + agent + worker），给更长的超时
     const timeout = setTimeout(() => {
@@ -275,7 +327,7 @@ function startEggServer(port) {
  * @param {number} port       端口号
  * @returns {Promise<{process: import('child_process').ChildProcess, port: number, close: () => Promise<void>}>}
  */
-function startVextServer(framework, port) {
+function startVextServer(framework, port, processPriority) {
   return new Promise((resolve, reject) => {
     const serverFile = join(__dirname, "servers", "vext-start.mjs");
     const child = fork(serverFile, [], {
@@ -287,6 +339,7 @@ function startVextServer(framework, port) {
       },
       stdio: ["pipe", "pipe", "pipe", "ipc"],
     });
+    applyChildProcessPriority(child, processPriority, `vext-${framework}`);
 
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
@@ -424,71 +477,22 @@ async function assertScenarioContract(port, scenario) {
  * @param {number} options.pipelining
  * @returns {Promise<Object>} autocannon 结果
  */
-function runAutocannon({ port, path, duration, connections, pipelining }) {
-  return new Promise((resolve, reject) => {
-    const url = `http://127.0.0.1:${port}${path}`;
-    const autocannonArgs = [
-      "exec",
-      "--yes",
-      `--package=autocannon@${AUTOCANNON_VERSION}`,
-      "--",
-      "autocannon",
-      "--json",
-      "--no-progress",
-      "--duration",
-      String(duration),
-      "--connections",
-      String(connections),
-      "--pipelining",
-      String(pipelining),
-      url,
-    ];
-    const args =
-      process.platform === "win32"
-        ? ["/d", "/s", "/c", "npm", ...autocannonArgs]
-        : autocannonArgs;
-    const child = spawn(AUTOCANNON_COMMAND, args, {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code !== 0) {
-        reject(
-          new Error(
-            `autocannon CLI failed with code ${code}: ${stderr || stdout}`,
-          ),
-        );
-        return;
-      }
-
-      try {
-        const line = stdout.trim().split(/\r?\n/).at(-1);
-        const result = JSON.parse(line);
-        assertSuccessfulAutocannon(result, url);
-        resolve(result);
-      } catch (error) {
-        reject(
-          new Error(
-            `Unable to parse autocannon JSON output: ${
-              error instanceof Error ? error.message : String(error)
-            }\n${stdout}\n${stderr}`,
-          ),
-        );
-      }
-    });
+async function runAutocannon({
+  port,
+  path,
+  duration,
+  connections,
+  pipelining,
+}) {
+  const url = `http://127.0.0.1:${port}${path}`;
+  const result = await autocannon({
+    url,
+    duration,
+    connections,
+    pipelining,
   });
+  assertSuccessfulAutocannon(result, url);
+  return result;
 }
 
 /**
@@ -579,69 +583,7 @@ function hasValidMetrics(metrics) {
   );
 }
 
-// ── 多轮测试 + 中位数选择 ─────────────────────────────────────
-
-/**
- * 多轮运行 autocannon，取中位数结果
- *
- * @param {Object} opts          压测参数
- * @param {number} opts.port
- * @param {string} opts.path
- * @param {number} opts.duration
- * @param {number} opts.connections
- * @param {number} opts.pipelining
- * @param {number} rounds        轮次数（1 = 单轮，≥3 取中位数有意义）
- * @returns {Promise<Object>}    中位数 metrics（附带 _stats 统计信息）
- */
-async function runMultiRound(
-  { port, path, duration, connections, pipelining },
-  rounds,
-) {
-  if (rounds <= 1) {
-    // 单轮模式 — 向后兼容
-    const result = await runAutocannon({
-      port,
-      path,
-      duration,
-      connections,
-      pipelining,
-    });
-    return extractMetrics(result);
-  }
-
-  const allMetrics = [];
-
-  for (let round = 1; round <= rounds; round++) {
-    // 轮间冷却（第一轮不需要）
-    if (round > 1) {
-      console.log(`        💤 冷却 2s...`);
-      await sleep(2000);
-      // 尝试手动 GC（需 --expose-gc 启动参数）
-      if (global.gc) {
-        global.gc();
-      }
-    }
-
-    console.log(`        🔄 轮次 ${round}/${rounds}...`);
-
-    const result = await runAutocannon({
-      port,
-      path,
-      duration,
-      connections,
-      pipelining,
-    });
-
-    const metrics = extractMetrics(result);
-    allMetrics.push(metrics);
-
-    console.log(
-      `        📊 RPS: ${formatNumber(metrics.rps)} | P50: ${metrics.latencyP50}ms | P99: ${metrics.latencyP99}ms`,
-    );
-  }
-
-  return selectMedian(allMetrics);
-}
+// ── 多轮中位数与稳定性 ────────────────────────────────────────
 
 /**
  * 从多轮 metrics 中选择 RPS 中位数对应的那一轮完整结果
@@ -699,6 +641,24 @@ function calcStdDev(values) {
   return Math.sqrt(variance);
 }
 
+function findUnstableMeasurements(allResults, maxCv, rounds) {
+  if (rounds <= 1) return [];
+  return allResults.flatMap((result) =>
+    [
+      ["raw", result.raw],
+      ["vext", result.vext],
+    ]
+      .filter(([, metrics]) => metrics?._stats)
+      .filter(([, metrics]) => parseFloat(metrics._stats.cv) > maxCv)
+      .map(([mode, metrics]) => ({
+        framework: result.framework,
+        scenario: result.scenario,
+        mode,
+        cv: parseFloat(metrics._stats.cv),
+      })),
+  );
+}
+
 // ── 报告生成 ──────────────────────────────────────────────────
 
 function readGitValue(args) {
@@ -725,16 +685,50 @@ function readGitBuffer(args) {
   }
 }
 
-function getSourceProvenance() {
+function generatedArtifactPathspecs(paths) {
+  const pathspecs = new Set();
+  for (const path of paths.filter(Boolean)) {
+    const relativePath = relative(REPOSITORY_ROOT, resolve(path));
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(
+        `..${process.platform === "win32" ? "\\" : "/"}`,
+      ) ||
+      isAbsolute(relativePath)
+    ) {
+      continue;
+    }
+    pathspecs.add(`:(exclude)${relativePath.replaceAll("\\", "/")}`);
+  }
+  return [...pathspecs];
+}
+
+function getSourceProvenance(excludedPaths = []) {
   const commit = readGitValue(["rev-parse", "HEAD"]);
   const branch = readGitValue(["branch", "--show-current"]);
-  const status = readGitValue(["status", "--porcelain=v1"]);
+  const exclusions = [
+    GENERATED_REPORT_PATHSPEC,
+    ...generatedArtifactPathspecs(excludedPaths),
+  ];
+  const pathspecs = [".", ...exclusions];
+  const statusBuffer = readGitBuffer([
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--",
+    ...pathspecs,
+  ]);
+  if (!commit || statusBuffer === null) {
+    throw new Error("Unable to read benchmark git provenance");
+  }
+  const status = statusBuffer.toString("utf8");
 
   return {
     branch: branch || "detached",
     commit: commit || "unavailable",
     worktree: status ? "dirty" : "clean",
-    dirtyPatchSha256: getCandidatePatchSha256(status),
+    dirtyPatchSha256: getCandidatePatchSha256(status, pathspecs),
     versions: getFrameworkVersions(),
   };
 }
@@ -760,7 +754,7 @@ function getFrameworkVersions() {
   };
 }
 
-function getCandidatePatchSha256(status) {
+function getCandidatePatchSha256(status, pathspecs) {
   if (!status) return null;
 
   // RESULTS.md is generated by this runner. Excluding it prevents the report
@@ -770,8 +764,7 @@ function getCandidatePatchSha256(status) {
     "--binary",
     "HEAD",
     "--",
-    ".",
-    GENERATED_REPORT_PATHSPEC,
+    ...pathspecs,
   ]);
   const untrackedFiles = readGitBuffer([
     "ls-files",
@@ -779,9 +772,11 @@ function getCandidatePatchSha256(status) {
     "--exclude-standard",
     "-z",
     "--",
-    ".",
-    GENERATED_REPORT_PATHSPEC,
+    ...pathspecs,
   ]);
+  if (trackedPatch === null || untrackedFiles === null) {
+    throw new Error("Unable to read benchmark candidate diff");
+  }
   const hash = createHash("sha256");
   let hasCandidateDiff = false;
 
@@ -800,10 +795,11 @@ function getCandidatePatchSha256(status) {
       hash.update(`untracked:${file}\0`);
       hash.update(readFileSync(resolve(REPOSITORY_ROOT, file)));
       hasCandidateDiff = true;
-    } catch {
-      // A concurrently removed untracked file must not make the runner claim
-      // a complete artifact; the caller will retain the dirty worktree state.
-      return null;
+    } catch (error) {
+      throw new Error(
+        `Unable to hash untracked benchmark candidate file ${file}: ${error instanceof Error ? error.message : error}`,
+        { cause: error },
+      );
     }
   }
 
@@ -814,14 +810,46 @@ function formatCandidatePatchSha256(value) {
   return value ?? "无非生成候选差异";
 }
 
-function getBenchmarkEnvironment(os) {
+function getBenchmarkEnvironment() {
   return {
     node: process.version,
     platform: process.platform,
     arch: process.arch,
     cpuModel: os.cpus()[0]?.model ?? "Unknown",
     totalMemoryBytes: os.totalmem(),
+    processPriority: getProcessPriority(),
   };
+}
+
+function getProcessPriority() {
+  try {
+    return os.getPriority();
+  } catch {
+    return "unavailable";
+  }
+}
+
+function applyProcessPriority(priority, pid = 0, label = "benchmark runner") {
+  try {
+    os.setPriority(pid, priority);
+    const actual = os.getPriority(pid);
+    if (actual !== priority) {
+      throw new Error(`requested ${priority}, got ${actual}`);
+    }
+  } catch (error) {
+    throw new Error(
+      `Unable to set ${label} process priority to ${priority}: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+}
+
+function applyChildProcessPriority(child, priority, label) {
+  try {
+    applyProcessPriority(priority, child.pid, label);
+  } catch (error) {
+    child.kill("SIGTERM");
+    throw error;
+  }
 }
 
 function createResultArtifact(
@@ -830,10 +858,12 @@ function createResultArtifact(
   environment,
   allResults,
   complete,
+  stability,
 ) {
   return {
     schemaVersion: 2,
     complete,
+    stability,
     provenance,
     environment,
     options: {
@@ -842,6 +872,9 @@ function createResultArtifact(
       pipelining: opts.pipelining,
       warmup: opts.warmup,
       rounds: opts.rounds,
+      maxCv: opts.maxCv,
+      processPriority: opts.processPriority,
+      targetScheduling: opts.targetScheduling,
       scenario: opts.scenario,
       frameworks: opts.frameworks,
     },
@@ -855,7 +888,10 @@ function hasSameProtocol(left, right) {
     left.connections === right.connections &&
     left.pipelining === right.pipelining &&
     left.warmup === right.warmup &&
-    left.rounds === right.rounds
+    left.rounds === right.rounds &&
+    left.maxCv === right.maxCv &&
+    left.processPriority === right.processPriority &&
+    left.targetScheduling === right.targetScheduling
   );
 }
 
@@ -864,7 +900,9 @@ function hasSameEnvironment(left, right) {
     left.node === right.node &&
     left.platform === right.platform &&
     left.arch === right.arch &&
-    left.cpuModel === right.cpuModel
+    left.cpuModel === right.cpuModel &&
+    left.totalMemoryBytes === right.totalMemoryBytes &&
+    left.processPriority === right.processPriority
   );
 }
 
@@ -898,6 +936,7 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
   if (
     first?.schemaVersion !== 2 ||
     !first.complete ||
+    !first.stability ||
     !first.options ||
     !first.provenance ||
     !first.environment ||
@@ -905,6 +944,26 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
   ) {
     throw new Error(
       `Invalid or incomplete benchmark artifact: ${artifacts[0].path}`,
+    );
+  }
+  if (!first.provenance.latestDependencies) {
+    throw new Error(
+      `Benchmark artifact lacks npm latest verification: ${artifacts[0].path}`,
+    );
+  }
+  const currentVersions = getFrameworkVersions();
+  if (
+    JSON.stringify(first.provenance.versions) !==
+    JSON.stringify(currentVersions)
+  ) {
+    throw new Error(
+      `Benchmark artifact dependency versions do not match the current lockfile: ${artifacts[0].path}`,
+    );
+  }
+  const currentProvenance = getSourceProvenance([output, ...paths]);
+  if (!hasSameProvenance(first.provenance, currentProvenance)) {
+    throw new Error(
+      `Benchmark artifact source provenance does not match the current worktree: ${artifacts[0].path}`,
     );
   }
 
@@ -915,8 +974,10 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
     if (
       value?.schemaVersion !== 2 ||
       !value.complete ||
+      !value.stability ||
       !value.options ||
       !value.provenance ||
+      !value.provenance.latestDependencies ||
       !value.environment ||
       !Array.isArray(value.allResults)
     ) {
@@ -986,8 +1047,11 @@ async function loadMergedResults(paths, output, requireCompleteMatrix) {
 
 async function main() {
   const opts = parseArgs();
-  const os = await import("node:os");
-  const environment = getBenchmarkEnvironment(os);
+  applyProcessPriority(opts.processPriority);
+  const environment = getBenchmarkEnvironment();
+  const latestDependencies = await verifyLatestBenchmarkDependencies({
+    repositoryRoot: REPOSITORY_ROOT,
+  });
 
   if (opts.fromResultsJson.length > 0) {
     const merged = await loadMergedResults(
@@ -995,6 +1059,11 @@ async function main() {
       opts.output,
       opts.requireCompleteMatrix,
     );
+    merged.provenance.latestDependencies = {
+      checkedAt: latestDependencies.checkedAt,
+      registryUrl: latestDependencies.registryUrl,
+      versions: latestDependencies.versions,
+    };
     const report = generateReport(
       merged.allResults,
       merged.opts,
@@ -1007,7 +1076,12 @@ async function main() {
     return;
   }
 
-  const provenance = getSourceProvenance();
+  const provenance = getSourceProvenance([opts.output, opts.resultsJson]);
+  provenance.latestDependencies = {
+    checkedAt: latestDependencies.checkedAt,
+    registryUrl: latestDependencies.registryUrl,
+    versions: latestDependencies.versions,
+  };
 
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║           vext 性能基准测试 (Benchmark Suite)           ║");
@@ -1026,6 +1100,8 @@ async function main() {
   console.log(
     `  轮次:         ${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : " (单轮)"}`,
   );
+  console.log(`  目标调度:     ${opts.targetScheduling}`);
+  console.log(`  最大 CV:      ${opts.maxCv}%`);
   console.log(`  框架:         ${opts.frameworks.join(", ")}`);
   console.log(
     `  场景:         ${opts.scenario === "all" ? SCENARIOS.map((s) => s.name).join(", ") : opts.scenario}`,
@@ -1046,13 +1122,9 @@ async function main() {
   const allResults = [];
   let hadBenchmarkFailure = false;
   let portOffset = 0;
+  let scheduleOffset = 0;
 
   for (const framework of opts.frameworks) {
-    if (!ALL_FRAMEWORKS.includes(framework)) {
-      console.warn(`⚠️ 跳过未知框架: ${framework}`);
-      continue;
-    }
-
     // egg 是独立对比项，没有 vext adapter，只跑裸跑测试
     const isEgg = framework === EGG_FRAMEWORK;
 
@@ -1063,122 +1135,175 @@ async function main() {
     for (const scenario of activeScenarios) {
       console.log(`\n  📋 场景: ${scenario.title} (${scenario.description})`);
 
-      // ── 裸跑测试 ──────────────────────────────────────
       const rawPort = isEgg
         ? BASE_PORT_EGG + portOffset
         : BASE_PORT_RAW + portOffset;
       portOffset++;
       let rawServer = null;
+      let vextServer = null;
       let rawMetrics = null;
+      let vextMetrics = null;
+      const rawSamples = [];
+      const vextSamples = [];
 
       try {
         console.log(
           `     🔧 启动裸跑服务器 [raw-${framework}] 端口 ${rawPort}...`,
         );
-        rawServer = await startRawServer(framework, rawPort);
+        rawServer = await startRawServer(
+          framework,
+          rawPort,
+          opts.processPriority,
+        );
         // egg 启动较慢（多进程模型），给更长的健康检查超时
         await waitForHealthy(rawPort, isEgg ? 15_000 : 5000);
         await assertScenarioContract(rawPort, scenario);
-        console.log(`     ✅ 裸跑服务器就绪`);
-
-        // 预热
-        if (opts.warmup > 0) {
-          console.log(`     🔥 预热中 (${opts.warmup}s)...`);
-          await warmup(rawPort, scenario.path, opts.warmup);
-        }
-
-        // 压测（支持多轮取中位数）
         console.log(
-          `     🚀 压测中 (${opts.duration}s × ${opts.rounds} 轮, ${opts.connections} connections)...`,
+          `     ✅ 裸跑服务器就绪 (pid=${rawServer.process.pid}, priority=${os.getPriority(rawServer.process.pid)})`,
         );
-        rawMetrics = await runMultiRound(
-          {
-            port: rawPort,
-            path: scenario.path,
-            duration: opts.duration,
-            connections: opts.connections,
-            pipelining: opts.pipelining,
-          },
-          opts.rounds,
-        );
-        console.log(
-          `     📊 Raw RPS: ${formatNumber(rawMetrics.rps)} | P50: ${rawMetrics.latencyP50}ms | P99: ${rawMetrics.latencyP99}ms`,
-        );
-      } catch (err) {
-        hadBenchmarkFailure = true;
-        console.error(`     ❌ 裸跑测试失败: ${err.message}`);
-      } finally {
-        await stopRawServer(rawServer);
-        await sleep(500); // 等待端口释放
-      }
 
-      // ── vext 封装测试（egg 跳过，因为没有 vext egg adapter）───
-      let vextMetrics = null;
-
-      if (!isEgg) {
-        const vextPort = BASE_PORT_VEXT + portOffset;
-        portOffset++;
-        let vextServer = null;
-
-        try {
+        if (!isEgg) {
+          const vextPort = BASE_PORT_VEXT + portOffset;
+          portOffset++;
           console.log(
             `     🔧 启动 vext 服务器 [vext-${framework}] 端口 ${vextPort}...`,
           );
-          vextServer = await startVextServer(framework, vextPort);
+          vextServer = await startVextServer(
+            framework,
+            vextPort,
+            opts.processPriority,
+          );
           await waitForHealthy(vextServer.port, 10_000);
           await assertScenarioContract(vextServer.port, scenario);
-          console.log(`     ✅ vext 服务器就绪`);
-
-          // 预热
-          if (opts.warmup > 0) {
-            console.log(`     🔥 预热中 (${opts.warmup}s)...`);
-            await warmup(vextServer.port, scenario.path, opts.warmup);
-          }
-
-          // 压测（支持多轮取中位数）
           console.log(
-            `     🚀 压测中 (${opts.duration}s × ${opts.rounds} 轮, ${opts.connections} connections)...`,
+            `     ✅ vext 服务器就绪 (pid=${vextServer.process.pid}, priority=${os.getPriority(vextServer.process.pid)})`,
           );
-          vextMetrics = await runMultiRound(
-            {
-              port: vextServer.port,
-              path: scenario.path,
-              duration: opts.duration,
-              connections: opts.connections,
-              pipelining: opts.pipelining,
-            },
-            opts.rounds,
-          );
-          console.log(
-            `     📊 Vext RPS: ${formatNumber(vextMetrics.rps)} | P50: ${vextMetrics.latencyP50}ms | P99: ${vextMetrics.latencyP99}ms`,
-          );
-
-          // Overhead 计算
-          if (rawMetrics && rawMetrics.rps > 0) {
-            const overhead =
-              ((rawMetrics.rps - vextMetrics.rps) / rawMetrics.rps) * 100;
-            const emoji = overhead <= 5 ? "✅" : overhead <= 15 ? "⚠️" : "❌";
-            console.log(`     📈 Overhead: ${overhead.toFixed(2)}% ${emoji}`);
-          }
-        } catch (err) {
-          hadBenchmarkFailure = true;
-          console.error(`     ❌ vext 测试失败: ${err.message}`);
-        } finally {
-          await stopRawServer(vextServer);
-          await sleep(500);
         }
-      } else {
-        console.log(`     ⏭️  跳过 vext 封装测试（egg 无 vext adapter）`);
+
+        const measurementTargets = [
+          {
+            mode: "raw",
+            port: rawPort,
+            samples: rawSamples,
+          },
+          ...(!isEgg
+            ? [
+                {
+                  mode: "vext",
+                  port: vextServer.port,
+                  samples: vextSamples,
+                },
+              ]
+            : []),
+        ];
+
+        if (opts.warmup > 0) {
+          for (const target of measurementTargets) {
+            console.log(`     🔥 ${target.mode} 预热中 (${opts.warmup}s)...`);
+            await warmup(target.port, scenario.path, opts.warmup);
+          }
+        }
+
+        let measurementIndex = 0;
+        for (let round = 0; round < opts.rounds; round++) {
+          const rawFirst = (round + scheduleOffset) % 2 === 0;
+          const order =
+            measurementTargets.length === 1 || rawFirst
+              ? measurementTargets
+              : [...measurementTargets].reverse();
+          console.log(
+            `     🔄 轮次 ${round + 1}/${opts.rounds}: ${order.map((target) => target.mode).join(" -> ")}`,
+          );
+          for (const target of order) {
+            if (measurementIndex > 0) {
+              await sleep(2000);
+              global.gc?.();
+            }
+            const metrics = extractMetrics(
+              await runAutocannon({
+                port: target.port,
+                path: scenario.path,
+                duration: opts.duration,
+                connections: opts.connections,
+                pipelining: opts.pipelining,
+              }),
+            );
+            target.samples.push(metrics);
+            measurementIndex += 1;
+            console.log(
+              `        ${target.mode}: ${formatNumber(metrics.rps)} RPS | P50 ${metrics.latencyP50}ms | P99 ${metrics.latencyP99}ms`,
+            );
+          }
+        }
+
+        rawMetrics = selectMedian(rawSamples);
+        if (!isEgg) vextMetrics = selectMedian(vextSamples);
+        console.log(`     📊 Raw median: ${formatNumber(rawMetrics.rps)}`);
+        if (vextMetrics) {
+          console.log(`     📊 Vext median: ${formatNumber(vextMetrics.rps)}`);
+          const overhead =
+            ((rawMetrics.rps - vextMetrics.rps) / rawMetrics.rps) * 100;
+          const emoji = overhead <= 5 ? "✅" : overhead <= 15 ? "⚠️" : "❌";
+          console.log(`     📈 Overhead: ${overhead.toFixed(2)}% ${emoji}`);
+        }
+      } catch (err) {
+        hadBenchmarkFailure = true;
+        console.error(`     ❌ benchmark 失败: ${err.message}`);
+      } finally {
+        await stopRawServer(vextServer);
+        await stopRawServer(rawServer);
+        await sleep(500);
       }
 
-      // 收集结果
       allResults.push({
         framework,
         scenario: scenario.name,
         raw: rawMetrics,
         vext: vextMetrics,
       });
+      scheduleOffset += 1;
     }
+  }
+
+  const unstable = findUnstableMeasurements(
+    allResults,
+    opts.maxCv,
+    opts.rounds,
+  );
+  const stability = { maxCv: opts.maxCv, unstable };
+  const complete = !hadBenchmarkFailure && unstable.length === 0;
+
+  if (opts.resultsJson) {
+    const artifact = createResultArtifact(
+      opts,
+      provenance,
+      environment,
+      allResults,
+      complete,
+      stability,
+    );
+    await writeFile(
+      opts.resultsJson,
+      `${JSON.stringify(artifact, null, 2)}\n`,
+      "utf-8",
+    );
+    console.log(`✅ 原始样本已保存到: ${opts.resultsJson}`);
+  }
+
+  if (hadBenchmarkFailure) {
+    throw new Error(
+      "One or more benchmark runs failed; no citable report was generated.",
+    );
+  }
+  if (unstable.length > 0) {
+    throw new Error(
+      `Benchmark CV gate failed (max ${opts.maxCv}%): ${unstable
+        .map(
+          ({ framework, scenario, mode, cv }) =>
+            `${framework}/${scenario}/${mode}=${cv.toFixed(1)}%`,
+        )
+        .join(", ")}`,
+    );
   }
 
   // ── 生成报告 ────────────────────────────────────────────
@@ -1192,35 +1317,9 @@ async function main() {
   // 输出到控制台
   console.log(report);
 
-  // 写入文件
-  try {
-    await writeFile(opts.output, report, "utf-8");
-    console.log(`\n✅ 报告已保存到: ${opts.output}`);
-  } catch (err) {
-    console.error(`\n⚠️ 报告保存失败: ${err.message}`);
-  }
-
-  if (opts.resultsJson) {
-    const artifact = createResultArtifact(
-      opts,
-      provenance,
-      environment,
-      allResults,
-      !hadBenchmarkFailure,
-    );
-    await writeFile(
-      opts.resultsJson,
-      `${JSON.stringify(artifact, null, 2)}\n`,
-      "utf-8",
-    );
-    console.log(`✅ 原始样本已保存到: ${opts.resultsJson}`);
-  }
-
-  if (hadBenchmarkFailure) {
-    throw new Error(
-      "One or more benchmark runs failed; report contains partial results.",
-    );
-  }
+  // 写入失败必须让进程非零退出，避免把“无报告”误判为成功。
+  await writeFile(opts.output, report, "utf-8");
+  console.log(`\n✅ 报告已保存到: ${opts.output}`);
 }
 
 /**
@@ -1239,23 +1338,26 @@ function generateReport(allResults, opts, environment, provenance) {
   md += `# vext 性能基准测试报告\n\n`;
   md += `> **日期（UTC）**: ${dateStr} ${timeStr}\n`;
   md += `> **源码**: ${provenance.branch}@${provenance.commit}（worktree: ${provenance.worktree}）\n`;
-  md += `> **候选差异 SHA-256**: ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（不含自动生成的 \`RESULTS.md\`；包含未跟踪候选文件）\n`;
+  md += `> **候选差异 SHA-256**: ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（排除本次 report/JSON artifacts；包含其余已跟踪差异和未跟踪候选文件）\n`;
   md += `> **Runner**: \`test/benchmark/run-benchmark.mjs\`\n`;
   md += `> **Autocannon**: v${AUTOCANNON_VERSION}\n`;
   md += `> **锁定版本**: Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore}\n`;
+  md += `> **npm latest 校验**: ${provenance.latestDependencies.checkedAt} against ${provenance.latestDependencies.registryUrl}\n`;
   md += `> **Node.js**: ${environment.node}\n`;
   md += `> **平台**: ${environment.platform} ${environment.arch}\n`;
   md += `> **参数**: frameworks=${opts.frameworks.join(",")}, scenario=${opts.scenario}, duration=${opts.duration}s, connections=${opts.connections}, pipelining=${opts.pipelining}, warmup=${opts.warmup}s, rounds=${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""}\n\n`;
+  md += `> **目标调度**: ${opts.targetScheduling}; max CV=${opts.maxCv}%\n\n`;
   md += `---\n\n`;
 
   md += `## Benchmark 口径说明\n\n`;
   md += `- 当前 adapter matrix app 默认禁用 requestId、cors、bodyParser、rateLimit、accessLog、response wrapper 与 requestContext；authContext 因 requestContext=false 不注册，仍经过 requestHook 和标准路由生命周期，因此不是 Vext Native Core。\n`;
-  md += `- Raw Hono 使用官方 \`@hono/node-server\` 的 \`serve({ fetch })\` 入口；direct endpoint handler 固定为同步形态，middleware-chain 保留各框架真实调度。\n`;
+  md += `- 每个 adapter 的 Raw/Vext 对在轮次间交替先后顺序，避免一方连续跑完全部轮次造成时间漂移偏差；任一多轮 CV 超过阈值时拒绝生成可引用报告。\n`;
+  md += `- Raw Hono 使用官方 \`@hono/node-server\` 的 \`serve({ fetch })\` 入口；Vext Hono adapter 只依赖 \`hono\` 并使用 Vext 自有 Node bridge，因此该组差距包含 bridge 实现成本，不应被描述为相同 server wrapper 的纯框架排名。\n`;
   md += `- 如需 Raw Native / Raw Fastify / Vext Native Core / Vext Native Normal 的可审计主对照，请运行 \`test/benchmark/run-native-fairness.mjs\`。\n`;
   md += `- \`chain\` 是历史兼容场景，表示 handler 内联业务逻辑链，不代表真实 vext middleware chain。\n`;
   md += `- \`middleware-chain\` 才表示 route-level middleware chain，会进入 adapter 的中间件链执行器。\n`;
   md += `- 本报告不等同于默认 runtime 配置性能；如需默认配置性能，应单独增加 default-runtime benchmark。\n`;
-  md += `- **可比性限制**：只比较相同源码身份、Node.js、OS/CPU、参数、场景和缓存/系统负载条件下的报告。不同机器或不同协议的数值不能直接作为性能回归结论。\n\n`;
+  md += `- **可比性限制**：只比较相同源码身份、Node.js、OS/CPU/内存、进程优先级、参数、场景和缓存/系统负载条件下的报告。不同机器或不同协议的数值不能直接作为性能回归结论。\n\n`;
 
   // ── 总结表格 ────────────────────────────────────────────
   md += `## 📊 总结\n\n`;
@@ -1429,12 +1531,13 @@ function generateReport(allResults, opts, environment, provenance) {
   md += `| 项目 | 值 |\n`;
   md += `|------|----|\n`;
   md += `| 源码 | ${provenance.branch}@${provenance.commit} (${provenance.worktree}) |\n`;
-  md += `| 候选差异 SHA-256 | ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（不含自动生成的 \`RESULTS.md\`；包含未跟踪候选文件） |\n`;
+  md += `| 候选差异 SHA-256 | ${formatCandidatePatchSha256(provenance.dirtyPatchSha256)}（排除本次 report/JSON artifacts；包含其余已跟踪差异和未跟踪候选文件） |\n`;
   md += `| Runner | test/benchmark/run-benchmark.mjs |\n`;
   md += `| Node.js | ${environment.node} |\n`;
   md += `| 平台 | ${environment.platform} ${environment.arch} |\n`;
   md += `| CPU | ${cpuModel} |\n`;
   md += `| 内存 | ${formatBytes(totalMemoryBytes)} |\n`;
+  md += `| 进程优先级 | ${environment.processPriority} |\n`;
   md += `| 压测工具 | autocannon v${AUTOCANNON_VERSION} |\n`;
   md += `| 锁定框架版本 | Vext ${provenance.versions.vextjs}; Fastify ${provenance.versions.fastify}; Hono ${provenance.versions.hono}; @hono/node-server ${provenance.versions.honoNodeServer}; Express ${provenance.versions.express}; Koa ${provenance.versions.koa}; @koa/router ${provenance.versions.koaRouter}; route-core ${provenance.versions.routeCore} |\n`;
   md += `| 框架 | ${opts.frameworks.join(", ")} |\n`;
@@ -1444,6 +1547,7 @@ function generateReport(allResults, opts, environment, provenance) {
   md += `| 流水线 | ${opts.pipelining} |\n`;
   md += `| 预热时间 | ${opts.warmup}s |\n`;
   md += `| 轮次 | ${opts.rounds}${opts.rounds > 1 ? " (取中位数)" : ""} |\n`;
+  md += `| 请求进程优先级 | ${opts.processPriority} |\n`;
 
   md += `\n---\n\n`;
   md += `> 本报告由 \`test/benchmark/run-benchmark.mjs\` 自动生成\n`;

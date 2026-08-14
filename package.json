@@ -92,6 +92,7 @@
     "verify:exports": "node test/verify-package-exports.mjs",
     "verify:package-composition": "node scripts/validation/verify-package-composition.mjs",
     "verify:adapters": "node test/verify-adapters-startup.mjs",
+    "verify:benchmark-deps": "node test/benchmark/verify-latest-dependencies.mjs",
     "verify:schema-v3": "node scripts/validation/check-schema-v3-adaptation.mjs",
     "verify:pack-install": "node scripts/validation/verify-packed-install.mjs",
     "verify:docs-contract": "node scripts/validation/verify-documentation-contract.mjs",
@@ -146,7 +147,6 @@
     "subset-font": "2.5.0"
   },
   "peerDependencies": {
-    "@hono/node-server": "^1.14.1",
     "@koa/router": "^15.6.0",
     "express": "^5.0.0",
     "fastify": "^5.0.0",
@@ -154,9 +154,6 @@
     "koa": "^3.0.0"
   },
   "peerDependenciesMeta": {
-    "@hono/node-server": {
-      "optional": true
-    },
     "@koa/router": {
       "optional": true
     },
@@ -174,7 +171,7 @@
     }
   },
   "devDependencies": {
-    "@hono/node-server": "2.1.0",
+    "@hono/node-server": "2.1.1",
     "@koa/router": "15.7.0",
     "@types/express": "5.0.6",
     "@types/koa": "3.0.1",
@@ -182,9 +179,10 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitest/coverage-v8": "4.1.9",
+    "autocannon": "8.0.0",
     "eslint": "10.2.1",
     "express": "5.2.1",
-    "fastify": "5.11.3",
+    "fastify": "5.12.0",
     "hono": "4.13.2",
     "koa": "3.2.1",
     "mongodb-memory-server-core": "11.2.0",
@@ -192,6 +190,13 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.0",
     "vitest": "4.1.9"
+  },
+  "overrides": {
+    "autocannon@8.0.0": {
+      "hyperid": {
+        "uuid": "11.1.1"
+      }
+    }
   },
   "directories": {
     "example": "examples",

@@ -1,13 +1,13 @@
 # 性能基准测试
 
-本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。当前版本的可复现基准以仓库内 `test/benchmark/run-benchmark.mjs` 为准；页面中的历史 benchmark 仓库数据仅用于趋势参考。
+本页展示 VextJS 与其他主流 Node.js Web 框架的性能基准对比数据。当前版本的可复现基准以仓库内 `test/benchmark/run-native-fairness.mjs`（Native/Fastify 主对照）和 `test/benchmark/run-benchmark.mjs`（adapter 辅助矩阵）为准；页面中的历史 benchmark 仓库数据仅用于趋势参考。
 
 ## 当前可复现结果（2026-08-14，本地时区）
 
-> - **代码身份**：`main@cea18d760592b790d602f61f343e8d71c4a35735`
-> - **协议**：10 秒 / 50 connections / pipelining 10 / 预热 5 秒 / 5 轮取中位数
-> - **环境**：Node.js 20.20.2、win32 x64、Intel i7-9700、32 GiB RAM
-> - **依赖版本**：Fastify 5.11.3、Hono 4.13.2、`@hono/node-server` 2.1.0、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0（均在正式运行前从 registry 核验并锁定）
+> - **代码身份**：正式报告记录 `main@e1901aa7e2ab07e01283e8f85dfad414be3235b6`、dirty worktree 和候选差异 SHA-256；压测完成后的文档同步不冒充被测源码提交
+> - **协议**：10 秒 / 50 connections / pipelining 10 / 预热 5 秒 / 5 轮取中位数 / 目标逐轮交错 / CV ≤ 15%
+> - **环境**：Node.js 20.20.2、win32 x64、Intel i7-9700、32 GiB RAM、进程优先级 -14（runner 与所有被测子进程一致）
+> - **依赖版本**：Fastify 5.12.0、Hono 4.13.2、`@hono/node-server` 2.1.1、Express 5.2.1、Koa 3.2.1、`@koa/router` 15.7.0、Autocannon 8.0.0（均由 runner 在正式运行前按 npm `latest` 核验并锁定）
 
 这组结果替代下方 2026-01-15 的历史数值作为当前参考。完整的 5 轮样本、CV、延迟和 telemetry 见[主基准原始报告](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md)。
 
@@ -17,19 +17,21 @@
 
 | 同步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
 | ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                     |     35,283 |      33,726 |           30,299 |             29,691 |
-| 参数路由                 |     34,073 |      33,206 |           28,612 |             28,066 |
-| 处理器业务链             |     29,726 |      32,240 |           24,376 |             25,244 |
-| 真实 route middleware 链 |     28,907 |      28,108 |                — |             24,741 |
+| JSON                     |     26,444 |      28,857 |           22,899 |             22,880 |
+| 参数路由                 |     25,895 |      27,785 |           23,741 |             22,828 |
+| 处理器业务链             |     24,091 |      24,615 |           20,731 |             19,723 |
+| 真实 route middleware 链 |     24,053 |      24,985 |              N/A |             19,776 |
 
 | 异步 handler 场景        | Raw Native | Raw Fastify | Vext Native Core | Vext Native Normal |
 | ------------------------ | ---------: | ----------: | ---------------: | -----------------: |
-| JSON                     |     34,773 |      33,520 |           28,848 |             28,783 |
-| 参数路由                 |     33,810 |      34,141 |           27,946 |             27,839 |
-| 处理器业务链             |     28,559 |      30,335 |           25,061 |             23,927 |
-| 真实 route middleware 链 |     28,319 |      29,115 |                — |             23,755 |
+| JSON                     |     33,351 |      28,782 |           24,620 |             22,856 |
+| 参数路由                 |     34,193 |      32,300 |           23,969 |             23,244 |
+| 处理器业务链             |     30,088 |      26,185 |           21,537 |             20,940 |
+| 真实 route middleware 链 |     25,236 |      30,085 |              N/A |             20,903 |
 
-结论不能写成“Fastify 总是更快”或“Vext 排名第二”：Raw Native 与 Raw Fastify 在不同场景、同步/异步模型下互有领先。当前合成路径中，Vext Native Normal 相对 Raw Native 的差距为 14%–18%，相对 Raw Fastify 的差距为 12%–22%；这是框架的路由、请求/响应对象和生命周期成本，不能外推为真实业务的端到端吞吐承诺。
+`N/A` 是有意设计：Core 不注册 route middleware chain，因此该场景不适用；它既不是漏测，也不表示成本为零。
+
+结论不能写成“Fastify 总是更快”或“Vext 排名第二”：同步组中 Raw Fastify 四场均领先或接近 Raw Native；异步组中 Raw Native 领先前三场、Raw Fastify 领先真实中间件链。Vext Native Normal 在同步组相对 Raw Native 低 11.8%–18.1%、相对 Raw Fastify 低 17.8%–20.9%；异步组对应为 17.2%–32.0% 和 20.0%–30.5%。同步与异步是分时采样，只能做各自组内对照，不能把两组绝对值直接解释成 handler 模式加速。这些差距是路由、请求/响应对象和生命周期成本，不能外推为真实业务的端到端吞吐承诺。
 
 ### 五个 adapter 的最新矩阵
 
@@ -37,13 +39,13 @@
 
 | Adapter |   JSON | 参数路由 | 处理器业务链 | route middleware 链 |
 | ------- | -----: | -------: | -----------: | ------------------: |
-| Native  | -16.3% |   -14.2% |       -16.1% |              -13.3% |
-| Fastify | -28.7% |   -28.1% |       -30.4% |              -32.3% |
-| Express |  -6.4% |   -10.0% |       -10.1% |              -11.0% |
-| Koa     | -22.6% |   -21.0% |       -23.0% |              -26.7% |
-| Hono    | -65.5% |   -65.7% |       -61.9% |              -61.8% |
+| Native  | -31.6% |   -29.6% |       -29.4% |              -27.6% |
+| Fastify | -43.0% |   -41.7% |       -38.3% |              -39.1% |
+| Express |  -9.4% |    -2.6% |        -7.4% |              -12.7% |
+| Koa     | -31.4% |   -33.3% |       -37.4% |              -34.2% |
+| Hono    | -69.1% |   -68.6% |       -67.0% |              -67.9% |
 
-Hono 的差距是独立的 adapter 优化课题；它不应被混入 Native 与 Fastify 的公平性结论。生产选型还应以真实中间件、认证、日志、序列化、I/O 与部署环境的压测为准。
+Hono 的差距是独立的 adapter 优化课题；它不应被混入 Native 与 Fastify 的公平性结论。Raw Hono 使用官方 `@hono/node-server` Node 入口，而 Vext Hono 运行时只依赖 `hono` 并使用 Vext 自有 `node:http` bridge；两者都是真实公开路径，但差距因此包含 bridge 实现成本。生产选型还应以真实中间件、认证、日志、序列化、I/O 与部署环境的压测为准。
 
 ## 对比口径说明（请先阅读）
 
@@ -331,9 +333,12 @@ Express     ████████                                  18,934 req
 ### 运行当前仓库内基准
 
 ```bash
-npm install
-npm run test:bench -- --scenario all --rounds 5
+npm ci
+npm run verify:benchmark-deps
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync
 ```
+
+本页 Windows 正式样本使用 `--process-priority -14`；其他平台只有在 Node.js 允许设置该优先级时才能使用。runner 会核对实际值，不支持时直接失败。
 
 ### 运行单个框架
 
@@ -350,7 +355,7 @@ npm run test:bench -- --scenario middleware-chain --rounds 5
 
 ### 使用 autocannon 手动测试
 
-当前仓库的 benchmark runner 会自动启动/停止测试服务器，并通过 `npm exec --package=autocannon@8.0.0` 调用 autocannon。通常不需要手动启动服务器。
+当前仓库将 Autocannon 8.0.0 锁为开发依赖，benchmark runner 直接调用本地 programmatic API，并自动启动/停止测试服务器；不会在每个样本期间运行 `npm exec`。通常不需要手动启动服务器。
 
 如需对一个已启动的本地服务单独压测，可直接运行：
 
@@ -363,16 +368,21 @@ npx --yes --package=autocannon@8.0.0 autocannon -c 100 -d 30 -p 10 http://localh
 
 当前 benchmark 通过 CLI 参数配置，不存在 `bench.config.ts`：
 
-| 参数            | 默认值                      | 说明                                                     |
-| --------------- | --------------------------- | -------------------------------------------------------- |
-| `--duration`    | `15`                        | 压测持续秒数                                             |
-| `--connections` | `50`                        | 并发连接数                                               |
-| `--pipelining`  | `10`                        | HTTP pipeline 深度                                       |
-| `--warmup`      | `5`                         | 预热秒数                                                 |
-| `--rounds`      | `1`                         | 轮次；PR / 发版前建议 5 或 7                             |
-| `--scenario`    | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
-| `--framework`   | 全部                        | 框架过滤，逗号分隔                                       |
-| `--output`      | `test/benchmark/RESULTS.md` | 报告输出路径                                             |
+| 参数                        | 默认值                      | 说明                                                     |
+| --------------------------- | --------------------------- | -------------------------------------------------------- |
+| `--duration`                | `15`                        | 压测持续秒数                                             |
+| `--connections`             | `50`                        | 并发连接数                                               |
+| `--pipelining`              | `10`                        | HTTP pipeline 深度                                       |
+| `--warmup`                  | `5`                         | 预热秒数                                                 |
+| `--rounds`                  | `1`                         | 轮次；PR / 发版前建议 5 或 7                             |
+| `--max-cv`                  | `15`                        | 任一多轮结果超过此 CV 时拒绝可引用报告                   |
+| `--process-priority`        | `0`                         | runner 与被测子进程优先级（-20..19）                     |
+| `--scenario`                | `all`                       | `json` / `params` / `chain` / `middleware-chain` / `all` |
+| `--framework`               | 五个 Vext adapter           | 框架过滤，逗号分隔                                       |
+| `--output`                  | `test/benchmark/RESULTS.md` | 报告输出路径                                             |
+| `--results-json`            | —                           | 保存完整原始样本                                         |
+| `--from-results-json`       | —                           | 合并来源、环境和协议一致的 complete artifact             |
+| `--require-complete-matrix` | `false`                     | 合并时要求完整场景或完整 5×4 adapter 矩阵                |
 
 ---
 

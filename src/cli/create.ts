@@ -75,7 +75,6 @@ const VEXT_DOCUMENTATION_URL = "https://devcodex-labs.github.io/vextjs/";
 const ADAPTER_DEPS: Record<string, Record<string, string>> = {
   hono: {
     hono: "^4.0.0",
-    "@hono/node-server": "^1.14.1",
   },
   fastify: {
     fastify: "^5.0.0",
