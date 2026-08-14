@@ -9,7 +9,7 @@
 #   2. unit tests（无外部依赖，Node 20 / 22）
 #   3. integration tests（无外部依赖，使用 mock，Node 20 / 22）
 #   4. e2e tests（真实 HTTP 服务器，仅 Node 22）
-#   5. coverage report（仅 Node 22，上传 codecov）
+#   5. coverage report（仅 Node 22，保存 GitHub Actions artifact）
 #
 # @see plans/v1/10-testing.md §9（CI 集成指南）
 # @see IMPLEMENTATION-PLAN.md 任务 4.5
@@ -190,7 +190,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - name: Checkout
@@ -211,13 +210,13 @@ jobs:
       - name: Run tests with coverage
         run: npx vitest run --coverage --coverage.provider=v8 --coverage.reporter=lcov --coverage.reporter=text
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
         with:
-          files: coverage/lcov.info
-          disable_search: true
-          fail_ci_if_error: true
-          use_oidc: true
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 14
 
   # ────────────────────────────────────────────────────────────
   # 6. 文档站构建验证（PR 门禁）
