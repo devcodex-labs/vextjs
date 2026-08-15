@@ -150,8 +150,15 @@ describe("Enterprise Workload Suite contract", () => {
     expect(zh).toContain("P50/P97.5/P99");
     expect(en).toContain("does not invent a P95 estimate");
     expect(zh).toContain("不会伪造 P95 估算值");
-    expect(en).toContain("No accepted formal artifact has been published yet.");
-    expect(zh).toContain("尚未发布可接受的正式 artifact。");
+    expect(markerSection(en)).toContain("## Current formal results");
+    expect(markerSection(zh)).toContain("## 当前正式结果");
+    expect(
+      en.includes("No accepted formal artifact has been published yet.") ||
+        en.includes("This result was recorded at"),
+    ).toBe(true);
+    expect(
+      zh.includes("尚未发布可接受的正式 artifact。") || zh.includes("此结果于"),
+    ).toBe(true);
     expect(en).toContain("Raw-path diagnostic reference");
     expect(zh).toContain("裸路径诊断参考");
     expect(en).toContain("<!-- enterprise-raw-diagnostics:start -->");

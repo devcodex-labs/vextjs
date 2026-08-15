@@ -7,6 +7,7 @@ import {
 import {
   assertFormalArtifact,
   assertRawDiagnosticArtifact,
+  formatDocumentationPage,
   renderRawDiagnosticReference,
   renderResults,
 } from "../benchmark/enterprise/generate-enterprise-results.mjs";
@@ -234,6 +235,21 @@ function createRawDiagnosticArtifact(
 }
 
 describe("Enterprise benchmark result generator", () => {
+  it("formats generated Markdown so generation and format checks remain stable", async () => {
+    const formatted = await formatDocumentationPage(
+      [
+        "# Benchmark",
+        "",
+        "| Short | Wider header |",
+        "| --- | --- |",
+        "| a | b |",
+        "",
+      ].join("\n"),
+    );
+
+    expect(formatted).toContain("| a     | b            |");
+  });
+
   it("renders every formal round on the localized result page", () => {
     const artifact = createFormalArtifact();
 

@@ -7,6 +7,7 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { format as formatMarkdown } from "prettier";
 import { ENTERPRISE_BENCHMARK_PACKAGES } from "../dependency-versions.mjs";
 import {
   ENTERPRISE_SUITE_ID,
@@ -75,6 +76,10 @@ const START = "<!-- enterprise-results:start -->";
 const END = "<!-- enterprise-results:end -->";
 const RAW_START = "<!-- enterprise-raw-diagnostics:start -->";
 const RAW_END = "<!-- enterprise-raw-diagnostics:end -->";
+
+async function formatDocumentationPage(content) {
+  return formatMarkdown(content, { parser: "markdown" });
+}
 
 function parseArgs() {
   const options = {
@@ -970,22 +975,17 @@ async function main() {
       rawArtifact,
       page.language,
     );
+    const formatted = await formatDocumentationPage(
+      current
+        .replace(section(current), expected)
+        .replace(section(current, RAW_START, RAW_END), expectedRaw),
+    );
     if (options.check) {
-      if (section(current) !== expected) {
+      if (current !== formatted) {
         throw new Error(`${page.path} is out of sync with ${options.input}`);
       }
-      if (section(current, RAW_START, RAW_END) !== expectedRaw) {
-        throw new Error(
-          `${page.path} is out of sync with ${options.rawDiagnosticsInput}`,
-        );
-      }
     } else {
-      await writeFile(
-        page.path,
-        current
-          .replace(section(current), expected)
-          .replace(section(current, RAW_START, RAW_END), expectedRaw),
-      );
+      await writeFile(page.path, formatted);
     }
   }
   console.log(
@@ -998,6 +998,7 @@ async function main() {
 export {
   assertFormalArtifact,
   assertRawDiagnosticArtifact,
+  formatDocumentationPage,
   renderRawDiagnosticReference,
   renderResults,
 };
