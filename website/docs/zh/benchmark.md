@@ -22,7 +22,7 @@
 | 处理器业务链        | 21,802.91 |     9,387 |  18,865.6 |  7,155.2 | 16,527.64 |
 | route middleware 链 | 21,584.73 |     9,383 |  18,729.1 | 7,137.64 | 16,219.64 |
 
-全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 0.2%–1.4% 之间。[查看站内完整结果与全部样本](/zh/benchmark/results)，其中包含 P50/P99、精确版本、provenance 和路由生命周期 telemetry。
+全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 0.2%–1.4% 之间。[查看站内完整结果与全部样本](/zh/benchmark/results.html)，其中包含 P50/P99、精确版本、provenance 和路由生命周期 telemetry。
 
 <!-- benchmark-results:end -->
 
@@ -74,7 +74,7 @@ node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs 
 
 本样本使用同步 handler。如果你的平台或权限需要不同的优先级，请改用可用值，并将结果视为新的环境基线，不要直接与本页绝对数值比较。
 
-runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。[站内完整结果](/zh/benchmark/results)包含全部样本、P50/P99、精确版本、provenance 和路由生命周期 telemetry；完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
+runner 使用本地 Autocannon **programmatic API**，会自动启动和停止测试目标。[站内完整结果](/zh/benchmark/results.html)包含全部样本、P50/P99、精确版本、provenance 和路由生命周期 telemetry；完整参数、adapter matrix 命令和 artifact 合并规则见 [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)。
 
 ### 测试真实应用
 
@@ -94,7 +94,7 @@ runner 使用本地 Autocannon **programmatic API**，会自动启动和停止�
 
 ## 相关链接
 
-- [结果与完整样本](/zh/benchmark/results)
+- [结果与完整样本](/zh/benchmark/results.html)
 - [Benchmark 复现说明](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
 - [Adapter 选择与配置](/guide/adapters)
 - [生产部署](/guide/deployment)

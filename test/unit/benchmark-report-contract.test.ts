@@ -74,6 +74,7 @@ describe("benchmark report semantics", () => {
     const en = read("website/docs/en/benchmark.md");
     const zh = read("website/docs/zh/benchmark.md");
     const generator = read("test/benchmark/generate-website-results.mjs");
+    const siteConfig = read("website/rspress.config.ts");
 
     for (const page of [en, zh]) {
       expect(page).toContain("--process-priority 0");
@@ -82,8 +83,11 @@ describe("benchmark report semantics", () => {
       expect(page).toContain("programmatic API");
       expect(page).not.toContain("--process-priority -14");
     }
-    expect(en).toContain("/benchmark/results");
-    expect(zh).toContain("/zh/benchmark/results");
+    expect(en).toContain("/benchmark/results.html");
+    expect(zh).toContain("/zh/benchmark/results.html");
+    expect(en).not.toContain("](/benchmark/results)");
+    expect(zh).not.toContain("](/zh/benchmark/results)");
+    expect(siteConfig).toContain('link: "/benchmark.html"');
     expect(en).not.toContain(
       "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
     );

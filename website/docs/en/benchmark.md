@@ -22,7 +22,7 @@ This formal run was recorded at **2026-08-15T00:07:37.413Z** from clean Vext sou
 | Handler business chain | 21,802.91 |     9,387 |  18,865.6 |  7,155.2 | 16,527.64 |
 | Route middleware chain | 21,584.73 |     9,383 |  18,729.1 | 7,137.64 | 16,219.64 |
 
-All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from 0.2%–1.4%. [Read the full in-document results and every sample](/benchmark/results), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.
+All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from 0.2%–1.4%. [Read the full in-document results and every sample](/benchmark/results.html), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.
 
 <!-- benchmark-results:end -->
 
@@ -74,7 +74,7 @@ node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs 
 
 This sample uses synchronous handlers. If your platform or permissions require a different priority, choose an available value and treat the result as a new environment baseline rather than comparing absolute numbers with this page.
 
-The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. The [full in-document results](/benchmark/results) include every sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all runner options and artifact merge rules.
+The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. The [full in-document results](/benchmark/results.html) include every sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all runner options and artifact merge rules.
 
 ### Test your application
 
@@ -94,7 +94,7 @@ A framework microbenchmark answers only “what does the core HTTP path cost?”
 
 ## Related links
 
-- [Results and all samples](/benchmark/results)
+- [Results and all samples](/benchmark/results.html)
 - [Benchmark reproduction guide](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
 - [Adapter selection and configuration](/guide/adapters)
 - [Production deployment](/guide/deployment)

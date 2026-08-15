@@ -229,8 +229,8 @@ function renderSummary(artifact, language) {
     ? "| Scenario | Native | Hono | Fastify | Express | Koa |\n| --- | ---: | ---: | ---: | ---: | ---: |"
     : "| 场景 | Native | Hono | Fastify | Express | Koa |\n| --- | ---: | ---: | ---: | ---: | ---: |";
   const conclusion = isEnglish
-    ? `All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from ${roundCvRange(artifact)}. [Read the full in-document results and every sample](/benchmark/results), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.`
-    : `全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 ${roundCvRange(artifact)} 之间。[查看站内完整结果与全部样本](/zh/benchmark/results)，其中包含 P50/P99、精确版本、provenance 和路由生命周期 telemetry。`;
+    ? `All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from ${roundCvRange(artifact)}. [Read the full in-document results and every sample](/benchmark/results.html), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.`
+    : `全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 ${roundCvRange(artifact)} 之间。[查看站内完整结果与全部样本](/zh/benchmark/results.html)，其中包含 P50/P99、精确版本、provenance 和路由生命周期 telemetry。`;
   return `${heading}\n\n${description}\n\n${header}\n${resultRows(artifact, language)}\n\n${conclusion}`;
 }
 

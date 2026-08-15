@@ -130,7 +130,7 @@ const navSource: NavItemSource[] = [
       {
         en: "Benchmark",
         zh: "基准测试",
-        link: "/benchmark",
+        link: "/benchmark.html",
       },
       {
         en: "Contributing",
