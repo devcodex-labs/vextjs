@@ -1,10 +1,17 @@
 {
   "id": "linux-x64-v1",
-  "status": "pilot-required",
-  "reason": "The CV gate must be frozen from a pilot on the target Linux x64 environment before a formal artifact is accepted.",
-  "node": "current LTS major selected and frozen by the qualifying pilot",
-  "nodeMajor": null,
-  "qualification": null,
+  "status": "frozen",
+  "reason": "Frozen from the reviewed qualification pilot recorded at 2026-08-15T09:31:59.150Z on a clean Linux x64 source revision with verified isolated CPU sets. Its observed maximum RPS CV was 6.510254069214942%, so the documented pilot rule approved a 10% gate.",
+  "node": "Node.js 24 LTS",
+  "nodeMajor": 24,
+  "qualification": {
+    "mode": "qualification-pilot",
+    "recordedAt": "2026-08-15T09:31:59.150Z",
+    "sourceCommit": "fbc149bd0878e7b5050ae50c42b533bf82cad5ae",
+    "nodeMajor": 24,
+    "observedMaxCv": 6.510254069214942,
+    "approvedMaxCv": 10
+  },
   "platform": "linux x64",
   "connections": 50,
   "pipelining": 1,
@@ -25,5 +32,6 @@
     "cpuPer1kRequests",
     "rss",
     "peakRss"
-  ]
+  ],
+  "maxCv": 10
 }

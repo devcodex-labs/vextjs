@@ -187,20 +187,24 @@ describe("Enterprise Workload Suite contract", () => {
     }
   });
 
-  it("rejects a formal run before any benchmark when the pilot protocol is not frozen", () => {
+  it("rejects a formal workload override before any benchmark starts", () => {
     const runner = path.join(
       process.cwd(),
       "test/benchmark/enterprise/run-enterprise-suite.mjs",
     );
-    const result = spawnSync(process.execPath, [runner, "--formal"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      timeout: 10_000,
-    });
+    const result = spawnSync(
+      process.execPath,
+      [runner, "--formal", "--duration", "1"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    );
 
     expect(result.status).toBe(1);
     expect(`${result.stdout}${result.stderr}`).toContain(
-      "requires a pilot-frozen protocol",
+      "fixes --duration=30; received 1",
     );
   });
 
