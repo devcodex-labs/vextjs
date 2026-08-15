@@ -18,7 +18,7 @@ function createSample(round: number, expectedStatus: number) {
     reportedTotalRequests: 30_000 + round,
     totalRequests: 30_000 + round,
     p50LatencyMs: 2 + round,
-    p95LatencyMs: 4 + round,
+    p97_5LatencyMs: 4 + round,
     p99LatencyMs: 6 + round,
     errors: 0,
     timeouts: 0,
@@ -253,6 +253,16 @@ describe("Enterprise benchmark result generator", () => {
   it("rejects an artifact whose complete-sample evidence is tampered", () => {
     const artifact = createFormalArtifact();
     artifact.results[0]!.targets["vext-native"].samples[0]!.errors = 1;
+
+    expect(() => assertFormalArtifact(artifact)).toThrow(
+      "contains an invalid formal sample",
+    );
+  });
+
+  it("rejects a formal artifact that omits Autocannon's P97.5 latency", () => {
+    const artifact = createFormalArtifact();
+    delete artifact.results[0]!.targets["vext-native"]!.samples[0]!
+      .p97_5LatencyMs;
 
     expect(() => assertFormalArtifact(artifact)).toThrow(
       "contains an invalid formal sample",

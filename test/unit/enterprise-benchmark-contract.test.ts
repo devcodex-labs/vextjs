@@ -146,6 +146,10 @@ describe("Enterprise Workload Suite contract", () => {
     expect(zh).toContain("## 为什么不做裸跑排名");
     expect(en).toContain("Target runtime versions");
     expect(zh).toContain("目标运行时版本");
+    expect(en).toContain("P50/P97.5/P99");
+    expect(zh).toContain("P50/P97.5/P99");
+    expect(en).toContain("does not invent a P95 estimate");
+    expect(zh).toContain("不会伪造 P95 估算值");
     expect(en).toContain("No accepted formal artifact has been published yet.");
     expect(zh).toContain("尚未发布可接受的正式 artifact。");
     expect(en).toContain("Raw-path diagnostic reference");

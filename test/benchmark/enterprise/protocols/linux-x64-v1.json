@@ -23,7 +23,7 @@
   "metrics": [
     "requestsPerSecond",
     "p50LatencyMs",
-    "p95LatencyMs",
+    "p97_5LatencyMs",
     "p99LatencyMs",
     "errors",
     "timeouts",

@@ -223,6 +223,12 @@ function assertSamples(result, targetId, artifact) {
     if (
       !Number.isFinite(sample.rps) ||
       sample.rps <= 0 ||
+      !Number.isFinite(sample.p50LatencyMs) ||
+      sample.p50LatencyMs < 0 ||
+      !Number.isFinite(sample.p97_5LatencyMs) ||
+      sample.p97_5LatencyMs < 0 ||
+      !Number.isFinite(sample.p99LatencyMs) ||
+      sample.p99LatencyMs < 0 ||
       !Number.isFinite(sample.reportedTotalRequests) ||
       sample.reportedTotalRequests <= 0 ||
       !Number.isFinite(sample.totalRequests) ||
@@ -596,7 +602,7 @@ function renderFullSamples(artifact, language) {
           "轮次",
           "RPS",
           "完成 / 已处理请求",
-          "P50 / P95 / P99",
+          "P50 / P97.5 / P99",
           "状态分布",
           "CPU / 1K",
           "RSS / 峰值 RSS",
@@ -607,7 +613,7 @@ function renderFullSamples(artifact, language) {
           "Round",
           "RPS",
           "Completed / processed requests",
-          "P50 / P95 / P99",
+          "P50 / P97.5 / P99",
           "Status distribution",
           "CPU / 1K",
           "RSS / peak RSS",
@@ -625,7 +631,7 @@ function renderFullSamples(artifact, language) {
           String(sample.round + 1),
           formatNumber(sample.rps),
           `${formatNumber(sample.reportedTotalRequests)} / ${formatNumber(sample.totalRequests)}`,
-          `${formatNumber(sample.p50LatencyMs)} / ${formatNumber(sample.p95LatencyMs)} / ${formatNumber(sample.p99LatencyMs)} ms`,
+          `${formatNumber(sample.p50LatencyMs)} / ${formatNumber(sample.p97_5LatencyMs)} / ${formatNumber(sample.p99LatencyMs)} ms`,
           statuses,
           `${formatNumber(sample.cpuMicrosecondsPer1kRequests)} μs`,
           `${formatBytes(sample.rss)} / ${formatBytes(sample.peakRss)}`,

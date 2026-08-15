@@ -63,7 +63,9 @@ The formal runner refuses to create a citable artifact unless all of the followi
 - all target packages match the npm `latest` versions verified for the run;
 - all targets complete the same semantic conformance suite before load begins;
 - the protocol is frozen from a reviewed pilot, then uses 50 connections, pipelining 1, at least 10 seconds of warmup, at least 30 seconds per measurement, and at least 7 rotating rounds;
-- every workload records RPS, P50/P95/P99, errors, timeouts, status distribution, CPU time, CPU per 1K requests, RSS, peak RSS, exact versions, and provenance.
+- every workload records RPS, P50/P97.5/P99, errors, timeouts, status distribution, CPU time, CPU per 1K requests, RSS, peak RSS, exact versions, and provenance.
+
+Autocannon 8 reports P50, P97.5, and P99 rather than P95. The suite publishes that native P97.5 value directly and does not invent a P95 estimate.
 
 The full formal sample and any matching raw-path diagnostic samples are generated into this page in both languages. They are intentionally never replaced by a GitHub-only link or a separate results page.
 

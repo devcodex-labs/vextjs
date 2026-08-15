@@ -391,7 +391,7 @@ function summarizeSamples(samples) {
       cv: mean === 0 ? 0 : (standardDeviation(rps) / mean) * 100,
     },
     p50LatencyMs: median(samples.map((sample) => sample.p50LatencyMs)),
-    p95LatencyMs: median(samples.map((sample) => sample.p95LatencyMs)),
+    p97_5LatencyMs: median(samples.map((sample) => sample.p97_5LatencyMs)),
     p99LatencyMs: median(samples.map((sample) => sample.p99LatencyMs)),
     cpuMicrosecondsPer1kRequests: median(
       samples.map((sample) => sample.cpuMicrosecondsPer1kRequests),
@@ -746,12 +746,24 @@ async function runAutocannon(server, workload, options, phase, round) {
       })}`,
     );
   }
+  const latency = result.latency;
+  for (const [percentile, value] of [
+    ["P50", latency?.p50],
+    ["P97.5", latency?.p97_5],
+    ["P99", latency?.p99],
+  ]) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(
+        `${server.target.title} ${workload.id} ${phase} did not report a finite ${percentile} latency percentile`,
+      );
+    }
+  }
   return {
     rps: result.requests?.average ?? 0,
     totalRequests,
-    p50LatencyMs: result.latency?.p50 ?? 0,
-    p95LatencyMs: result.latency?.p95 ?? 0,
-    p99LatencyMs: result.latency?.p99 ?? 0,
+    p50LatencyMs: latency.p50,
+    p97_5LatencyMs: latency.p97_5,
+    p99LatencyMs: latency.p99,
     errors: result.errors ?? 0,
     timeouts: result.timeouts ?? 0,
     non2xx: result.non2xx ?? 0,

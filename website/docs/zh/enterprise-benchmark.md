@@ -63,7 +63,9 @@ Hono 有意推迟到第二阶段。当前仓库尚没有已验证的 Hono 校验
 - 每个目标包都与运行当日核验的 npm `latest` 精确版本一致；
 - 开始压测前，所有目标均通过同一套语义 conformance；
 - 协议由已审阅的 pilot 冻结，然后使用 50 connections、pipelining 1、至少 10 秒预热、每次至少 30 秒测量、至少 7 轮轮转；
-- 每个工作负载记录 RPS、P50/P95/P99、错误、超时、状态分布、CPU 时间、每 1K 请求 CPU、RSS、峰值 RSS、精确版本和 provenance。
+- 每个工作负载记录 RPS、P50/P97.5/P99、错误、超时、状态分布、CPU 时间、每 1K 请求 CPU、RSS、峰值 RSS、精确版本和 provenance。
+
+Autocannon 8 原生报告的是 P50、P97.5 和 P99，而不是 P95。套件直接公布该 P97.5 值，不会伪造 P95 估算值。
 
 完整正式样本以及匹配的裸路径诊断样本都会生成在本站中英文页面内；不会被替换为只跳转 GitHub 或单独 results 页的链接。
 
