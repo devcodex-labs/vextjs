@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ENTERPRISE_ORDER_PATH,
   ENTERPRISE_SUITE_ID,
@@ -11,6 +11,7 @@ import {
   createWorkloadRequest,
   resolveBenchmarkIdentity,
 } from "../benchmark/enterprise/contract.mjs";
+import { waitForTargetQuiescence } from "../benchmark/enterprise/run-enterprise-suite.mjs";
 
 function read(relativePath: string): string {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -201,5 +202,28 @@ describe("Enterprise Workload Suite contract", () => {
     expect(`${result.stdout}${result.stderr}`).toContain(
       "requires a pilot-frozen protocol",
     );
+  });
+
+  it("waits for in-flight workload telemetry to settle before the next reset", async () => {
+    const stableStats = {
+      counters: { requestId: 11, repositoryWrite: 11 },
+      repository: { writes: 11 },
+    };
+    const readStats = vi
+      .fn()
+      .mockResolvedValueOnce({
+        counters: { requestId: 10, repositoryWrite: 10 },
+        repository: { writes: 10 },
+      })
+      .mockResolvedValueOnce(stableStats)
+      .mockResolvedValueOnce(stableStats);
+
+    await expect(
+      waitForTargetQuiescence(
+        { target: { title: "Test target" } },
+        { readStats, pollMs: 0, stableSamples: 2, timeoutMs: 100 },
+      ),
+    ).resolves.toBe(stableStats);
+    expect(readStats).toHaveBeenCalledTimes(3);
   });
 });

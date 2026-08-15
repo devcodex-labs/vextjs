@@ -759,10 +759,56 @@ async function runAutocannon(server, workload, options, phase, round) {
   };
 }
 
+function wait(milliseconds) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, milliseconds);
+  });
+}
+
+function telemetrySignature(stats) {
+  return JSON.stringify({
+    counters: stats.counters,
+    repository: stats.repository,
+  });
+}
+
+/**
+ * Autocannon can finish its elapsed window while a small number of requests
+ * are still executing.  Resetting immediately would let those requests write
+ * into the next measurement's state.  Wait for consecutive control snapshots
+ * to agree before resetting or treating a snapshot as the measurement result.
+ */
+async function waitForTargetQuiescence(
+  server,
+  {
+    readStats = getTargetStats,
+    pollMs = 25,
+    stableSamples = 3,
+    timeoutMs = 5_000,
+  } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let previousSignature;
+  let consecutiveMatches = 0;
+  while (Date.now() <= deadline) {
+    const stats = await readStats(server);
+    const signature = telemetrySignature(stats);
+    consecutiveMatches =
+      signature === previousSignature ? consecutiveMatches + 1 : 1;
+    previousSignature = signature;
+    if (consecutiveMatches >= stableSamples) return stats;
+    await wait(pollMs);
+  }
+  throw new Error(
+    `${server.target.title} did not reach a quiescent telemetry snapshot within ${timeoutMs}ms`,
+  );
+}
+
 async function measureTarget(server, workload, options, round) {
   if (options.warmup > 0) {
     await resetTarget(server);
     await runAutocannon(server, workload, options, "warmup", round);
+    await waitForTargetQuiescence(server);
   }
   await resetTarget(server);
   const measurement = await runAutocannon(
@@ -772,7 +818,7 @@ async function measureTarget(server, workload, options, round) {
     "measurement",
     round,
   );
-  const stats = await getTargetStats(server);
+  const stats = await waitForTargetQuiescence(server);
   const processedRequests = stats.counters.requestId;
   const trailingRequestLimit = options.connections * options.pipelining;
   if (
@@ -1073,9 +1119,13 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(
-    error instanceof Error ? (error.stack ?? error.message) : error,
-  );
-  process.exitCode = 1;
-});
+export { waitForTargetQuiescence };
+
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
+    process.exitCode = 1;
+  });
+}
