@@ -34,6 +34,25 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 - **middleware-chain**：真实 route-level middleware chain，测 adapter 中间件链执行器。
 - **Vext Normal**：通过正式 bootstrap + `defineRoutes()` + router-loader 使用对应 adapter，关闭可选中间件；它不是 Core。
 
+## 企业级工作负载套件（独立口径）
+
+`enterprise/` 不修改也不复用主 Adapter Matrix 的语义。它比较 Vext Native、原生 Fastify、以及 Nest + 同版本 Fastify，在同一个 `POST /api/users/:userId/orders` 契约下覆盖请求关联、鉴权/授权、校验、服务组合、结构化日志、安全响应头、内存仓储边界和错误处理。它的用户文档在 [企业级工作负载基准测试](https://devcodex-labs.github.io/vextjs/zh/enterprise-benchmark)，完整正式样本始终留在该页面，而不是单独跳转 GitHub。
+
+裸 HTTP/路由路径仍是维护诊断，而不是该套件的排名口径；生产形态能力不能靠“全部关掉”来比较。当前固定依赖为 Fastify 5.12.0、Nest 11.2.1、`reflect-metadata` 0.2.2、`rxjs` 7.8.2 和 Autocannon 8.0.0，runner 会在运行前核验 npm `latest`。Hono 暂不进入第一阶段，因为当前仓库没有已验证的 Hono 校验与服务组合实现；临时拼接会降低可比性。
+
+```bash
+# 本地/Windows：仅验证实现，不生成公开数据
+npm run build
+npm run test:bench:enterprise -- --pilot
+
+# 只有 Linux x64、干净源码、pilot 冻结协议及非重叠 CPU 集才允许正式 artifact
+taskset -c 4-7 node test/benchmark/enterprise/run-enterprise-suite.mjs \
+  --formal --load-cpus 4-7 --target-cpus 0-3
+npm run generate:enterprise-benchmark-docs
+```
+
+正式协议固定 50 connections、pipelining 1、至少 10 秒预热、30 秒测量、7 轮轮转；它还记录 P50/P95/P99、状态分布、CPU / 1K、RSS、峰值 RSS、精确版本和 provenance。合格 pilot 必须冻结当前 LTS Node.js 主版本和 CV 门禁，正式运行会核验 runner 与全部 target 的实际 CPU 亲和性。当前 `linux-x64-v1` 仍处于 `pilot-required`，因此 runner 会拒绝把任何本地/未冻结结果生成到站点。
+
 ## 🚀 使用方法
 
 ### 用户主基准：Vext Adapter Matrix

@@ -16,6 +16,21 @@ export const BENCHMARK_PACKAGES = Object.freeze([
   "autocannon",
 ]);
 
+/**
+ * Packages used by the Enterprise Workload Suite. This intentionally extends
+ * (rather than replaces) the Adapter Matrix dependency set: each public
+ * benchmark verifies only the packages it actually executes.
+ */
+export const ENTERPRISE_BENCHMARK_PACKAGES = Object.freeze([
+  "fastify",
+  "autocannon",
+  "@nestjs/common",
+  "@nestjs/core",
+  "@nestjs/platform-fastify",
+  "reflect-metadata",
+  "rxjs",
+]);
+
 function assertExactVersion(packageName, version) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version ?? "")) {
     throw new Error(
@@ -28,11 +43,12 @@ export function validateBenchmarkDependencyState({
   manifest,
   lock,
   installedVersions,
+  packageNames = BENCHMARK_PACKAGES,
 }) {
   const lockRoot = lock.packages?.[""];
   const versions = {};
 
-  for (const packageName of BENCHMARK_PACKAGES) {
+  for (const packageName of packageNames) {
     const declared = manifest.devDependencies?.[packageName];
     const lockDeclared = lockRoot?.devDependencies?.[packageName];
     const lockResolved =
@@ -67,6 +83,7 @@ export function validateBenchmarkDependencyState({
 
 export function readLocalBenchmarkVersions(
   repositoryRoot = resolve(__dirname, "../.."),
+  { packageNames = BENCHMARK_PACKAGES } = {},
 ) {
   const manifest = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -75,7 +92,7 @@ export function readLocalBenchmarkVersions(
     readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"),
   );
   const installedVersions = {};
-  for (const packageName of BENCHMARK_PACKAGES) {
+  for (const packageName of packageNames) {
     const installedManifest = JSON.parse(
       readFileSync(
         join(repositoryRoot, "node_modules", packageName, "package.json"),
@@ -88,6 +105,7 @@ export function readLocalBenchmarkVersions(
     manifest,
     lock,
     installedVersions,
+    packageNames,
   });
 }
 
@@ -161,10 +179,11 @@ export async function verifyLatestBenchmarkDependencies({
   repositoryRoot,
   fetchImpl,
   registryUrl = NPM_REGISTRY_URL,
+  packageNames = BENCHMARK_PACKAGES,
 } = {}) {
-  const local = readLocalBenchmarkVersions(repositoryRoot);
+  const local = readLocalBenchmarkVersions(repositoryRoot, { packageNames });
   const rows = await Promise.all(
-    BENCHMARK_PACKAGES.map(async (packageName) => {
+    packageNames.map(async (packageName) => {
       const latest = await fetchRegistryLatestVersion(packageName, {
         fetchImpl,
         registryUrl,

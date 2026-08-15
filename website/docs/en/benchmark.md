@@ -2,6 +2,8 @@
 
 These benchmarks help you choose a Vext HTTP adapter. They keep the Vext application fixed and compare the five supported adapters under the same light Normal workload. They are an input to adapter selection—not a substitute for load-testing your application with its real middleware, authentication, logging, database access, and deployment topology.
 
+For a separate production-shaped API comparison across Vext Native, direct Fastify, and Nest + Fastify, see the [Enterprise workload benchmark](/enterprise-benchmark). It uses a different contract and protocol, so its results are never merged into this Adapter Matrix.
+
 ## At a glance
 
 - **This is an adapter comparison, not a cross-framework league table.** Each row runs the same Vext routes, Normal bootstrap, handler mode, HTTP contract, middleware fixture, and load protocol; only the adapter changes.

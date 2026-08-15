@@ -370,7 +370,10 @@ describe("ColdRestarter", () => {
       restarter = new ColdRestarter({
         entryScript: modeFileWorker,
         env: { WORKER_MODE_FILE: modeFile },
-        readyTimeout: 500,
+        // Full-suite process startup can briefly contend with other fork-based
+        // tests on Windows. This remains a short timeout-path test while
+        // leaving enough room for the retry child to initialize reliably.
+        readyTimeout: 1500,
         killTimeout: 1000,
       });
 

@@ -260,6 +260,13 @@ const englishSidebar: SidebarGroup[] = [
       { text: "OpenTelemetry", link: "/examples/opentelemetry" },
     ],
   },
+  {
+    text: "Benchmarking",
+    items: [
+      { text: "Adapter Matrix", link: "/benchmark" },
+      { text: "Enterprise Workloads", link: "/enterprise-benchmark" },
+    ],
+  },
 ];
 
 const englishFrontendSidebar: SidebarGroup[] = [
@@ -421,6 +428,13 @@ const chineseSidebar: SidebarGroup[] = [
       },
       { text: "Nacos 接入", link: "/zh/examples/nacos-integration" },
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
+    ],
+  },
+  {
+    text: "基准测试",
+    items: [
+      { text: "Adapter Matrix", link: "/zh/benchmark" },
+      { text: "企业级工作负载", link: "/zh/enterprise-benchmark" },
     ],
   },
 ];

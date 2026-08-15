@@ -173,7 +173,7 @@ export default {
 };
 ```
 
-Benchmark methodology and numbers: [Benchmark docs](https://devcodex-labs.github.io/vextjs/benchmark) · reproduce with `npm run test:bench` in this repo.
+Benchmark methodology and numbers: [Adapter Matrix](https://devcodex-labs.github.io/vextjs/benchmark) · [Enterprise workload benchmark](https://devcodex-labs.github.io/vextjs/enterprise-benchmark) · reproduce with `npm run test:bench` or `npm run test:bench:enterprise` in this repo.
 
 ---
 

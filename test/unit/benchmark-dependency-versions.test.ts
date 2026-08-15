@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AUTOCANNON_VERSION,
   BENCHMARK_PACKAGES,
+  ENTERPRISE_BENCHMARK_PACKAGES,
   fetchRegistryLatestVersion,
   readLocalBenchmarkVersions,
   validateBenchmarkDependencyState,
@@ -43,6 +44,29 @@ describe("benchmark dependency latest-version guard", () => {
 
     expect(result.rows).toHaveLength(Object.keys(versions).length);
     expect(result.rows.every((row) => row.current)).toBe(true);
+  });
+
+  it("keeps the Enterprise Workload Suite dependency gate scoped to its actual targets", async () => {
+    const versions = readLocalBenchmarkVersions(process.cwd(), {
+      packageNames: ENTERPRISE_BENCHMARK_PACKAGES,
+    });
+
+    expect(Object.keys(versions)).toEqual([...ENTERPRISE_BENCHMARK_PACKAGES]);
+    expect(versions).toMatchObject({
+      fastify: "5.12.0",
+      "@nestjs/common": "11.2.1",
+      "@nestjs/core": "11.2.1",
+      "@nestjs/platform-fastify": "11.2.1",
+    });
+    const result = await verifyLatestBenchmarkDependencies({
+      repositoryRoot: process.cwd(),
+      packageNames: ENTERPRISE_BENCHMARK_PACKAGES,
+      fetchImpl: registryFetch(versions),
+      registryUrl: "https://registry.test",
+    });
+    expect(result.rows.map((row) => row.packageName)).toEqual([
+      ...ENTERPRISE_BENCHMARK_PACKAGES,
+    ]);
   });
 
   it("fails with the exact stale package and versions", async () => {

@@ -2,6 +2,8 @@
 
 这份基准用于帮助你选择 Vext HTTP Adapter。它固定同一个 Vext 应用，在相同的轻量 Normal 负载下比较五个受支持的 Adapter。它适合作为 Adapter 选型输入，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
 
+如需查看 Vext Native、原生 Fastify 与 Nest + Fastify 之间独立的生产形态 API 对比，请参阅[企业级工作负载基准测试](/zh/enterprise-benchmark)。它使用不同的契约和协议，结果不会与本 Adapter Matrix 混合。
+
 ## 先看结论
 
 - **这是 Adapter 对比，不是跨框架排行榜。** 每一行均使用相同的 Vext routes、Normal bootstrap、handler 模式、HTTP 契约、中间件 fixture 和压测协议；唯一变量是 Adapter。
