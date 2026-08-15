@@ -17,16 +17,23 @@ export const BENCHMARK_PACKAGES = Object.freeze([
 ]);
 
 /**
- * Packages used by the Enterprise Workload Suite. This intentionally extends
- * (rather than replaces) the Adapter Matrix dependency set: each public
- * benchmark verifies only the packages it actually executes.
+ * Packages executed by the Framework-native Product-stack Enterprise API
+ * suite. The list is deliberately separate from the Adapter Matrix: a runner
+ * must only claim freshness for packages it actually loads.
  */
-export const ENTERPRISE_BENCHMARK_PACKAGES = Object.freeze([
+export const FRAMEWORK_NATIVE_BENCHMARK_PACKAGES = Object.freeze([
   "fastify",
   "autocannon",
+  "@fastify/helmet",
+  "@fastify/jwt",
+  "@fastify/request-context",
   "@nestjs/common",
   "@nestjs/core",
+  "@nestjs/jwt",
   "@nestjs/platform-fastify",
+  "class-transformer",
+  "class-validator",
+  "jose",
   "reflect-metadata",
   "rxjs",
 ]);

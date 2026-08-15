@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AUTOCANNON_VERSION,
   BENCHMARK_PACKAGES,
-  ENTERPRISE_BENCHMARK_PACKAGES,
+  FRAMEWORK_NATIVE_BENCHMARK_PACKAGES,
   fetchRegistryLatestVersion,
   readLocalBenchmarkVersions,
   validateBenchmarkDependencyState,
@@ -46,26 +46,35 @@ describe("benchmark dependency latest-version guard", () => {
     expect(result.rows.every((row) => row.current)).toBe(true);
   });
 
-  it("keeps the Enterprise Workload Suite dependency gate scoped to its actual targets", async () => {
+  it("keeps the Framework-native Product-stack dependency gate scoped to its actual targets", async () => {
     const versions = readLocalBenchmarkVersions(process.cwd(), {
-      packageNames: ENTERPRISE_BENCHMARK_PACKAGES,
+      packageNames: FRAMEWORK_NATIVE_BENCHMARK_PACKAGES,
     });
 
-    expect(Object.keys(versions)).toEqual([...ENTERPRISE_BENCHMARK_PACKAGES]);
+    expect(Object.keys(versions)).toEqual([
+      ...FRAMEWORK_NATIVE_BENCHMARK_PACKAGES,
+    ]);
     expect(versions).toMatchObject({
       fastify: "5.12.0",
+      "@fastify/helmet": "13.1.0",
+      "@fastify/jwt": "10.2.2",
+      "@fastify/request-context": "7.0.0",
       "@nestjs/common": "11.2.1",
       "@nestjs/core": "11.2.1",
+      "@nestjs/jwt": "11.0.2",
       "@nestjs/platform-fastify": "11.2.1",
+      "class-transformer": "0.5.1",
+      "class-validator": "0.15.1",
+      jose: "6.2.9",
     });
     const result = await verifyLatestBenchmarkDependencies({
       repositoryRoot: process.cwd(),
-      packageNames: ENTERPRISE_BENCHMARK_PACKAGES,
+      packageNames: FRAMEWORK_NATIVE_BENCHMARK_PACKAGES,
       fetchImpl: registryFetch(versions),
       registryUrl: "https://registry.test",
     });
     expect(result.rows.map((row) => row.packageName)).toEqual([
-      ...ENTERPRISE_BENCHMARK_PACKAGES,
+      ...FRAMEWORK_NATIVE_BENCHMARK_PACKAGES,
     ]);
   });
 

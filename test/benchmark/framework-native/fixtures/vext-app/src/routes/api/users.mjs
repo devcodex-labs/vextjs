@@ -1,20 +1,15 @@
 import { defineRoutes } from "vextjs";
 import { s } from "schema-dsl";
-import { getHeader } from "../../../../../contract.mjs";
-import { increment } from "../../../../../target-runtime.mjs";
+import { benchmarkRuntime } from "../../plugins/benchmark-runtime.mjs";
 
 export default defineRoutes((app) => {
   app.post(
     "/:userId/orders",
     {
-      middlewares: ["enterprise-auth"],
-      auth: {
-        permissions: ["orders:create"],
-      },
+      middlewares: ["benchmark-auth"],
+      auth: { permissions: ["orders:write"] },
       validate: {
-        param: {
-          userId: "integer:1-!",
-        },
+        param: { userId: "integer:1-!" },
         body: {
           sku: "string:1-64!",
           quantity: "integer:1-!",
@@ -24,14 +19,10 @@ export default defineRoutes((app) => {
       },
     },
     async (req, res) => {
-      increment(app.enterpriseBenchmarkState, "controller");
-      const latencyHeader = getHeader(req.headers, "x-benchmark-latency-ms");
-      const delayMs = Number(latencyHeader ?? 0);
+      benchmarkRuntime.record("controller");
       const result = await app.services.order.create({
         userId: req.valid("param").userId,
         body: req.valid("body"),
-        context: req.enterpriseContext,
-        delayMs: Number.isFinite(delayMs) ? delayMs : 0,
       });
       res.json(result, 201);
     },

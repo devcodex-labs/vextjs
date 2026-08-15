@@ -264,7 +264,7 @@ const englishSidebar: SidebarGroup[] = [
     text: "Benchmarking",
     items: [
       { text: "Adapter Matrix", link: "/benchmark" },
-      { text: "Enterprise Workloads", link: "/enterprise-benchmark" },
+      { text: "Framework-native API", link: "/enterprise-benchmark" },
     ],
   },
 ];
@@ -434,7 +434,7 @@ const chineseSidebar: SidebarGroup[] = [
     text: "基准测试",
     items: [
       { text: "Adapter Matrix", link: "/zh/benchmark" },
-      { text: "企业级工作负载", link: "/zh/enterprise-benchmark" },
+      { text: "Framework-native API", link: "/zh/enterprise-benchmark" },
     ],
   },
 ];
