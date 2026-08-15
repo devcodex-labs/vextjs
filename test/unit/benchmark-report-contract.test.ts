@@ -84,12 +84,20 @@ describe("benchmark report semantics", () => {
     }
     expect(en).toContain("/benchmark/results");
     expect(zh).toContain("/zh/benchmark/results");
-    expect(en).not.toContain("github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md");
-    expect(zh).not.toContain("github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md");
-    expect(generator).toContain("Website benchmark results require a clean-source formal artifact");
+    expect(en).not.toContain(
+      "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
+    );
+    expect(zh).not.toContain(
+      "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
+    );
+    expect(generator).toContain(
+      "Website benchmark results require a clean-source formal artifact",
+    );
     expect(generator).toContain("Every measured sample");
     expect(generator).toContain("每一个测量样本");
     expect(generator).toContain("npm run generate:benchmark-docs");
+    expect(generator).toContain('routeKey: "GET /users/:id"');
+    expect(generator).toContain("return scenario.routeKey;");
   });
 
   it("keeps the public benchmark pages user-facing and single-source", () => {

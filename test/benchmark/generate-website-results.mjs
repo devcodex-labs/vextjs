@@ -9,6 +9,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "prettier";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(__dirname, "../..");
@@ -19,6 +20,7 @@ const SCENARIOS = [
   {
     name: "json",
     path: "/json",
+    routeKey: "GET /json",
     en: "JSON response",
     zh: "JSON 响应",
     enDescription: "Route matching and JSON serialization.",
@@ -27,6 +29,7 @@ const SCENARIOS = [
   {
     name: "params",
     path: "/users/42",
+    routeKey: "GET /users/:id",
     en: "Route parameters",
     zh: "参数路由",
     enDescription: "Dynamic route matching and parameter extraction.",
@@ -35,14 +38,17 @@ const SCENARIOS = [
   {
     name: "chain",
     path: "/chain",
+    routeKey: "GET /chain",
     en: "Handler business chain",
     zh: "处理器业务链",
-    enDescription: "Three layers of handler business logic and a JSON response.",
+    enDescription:
+      "Three layers of handler business logic and a JSON response.",
     zhDescription: "三层 handler 业务逻辑与 JSON 响应。",
   },
   {
     name: "middleware-chain",
     path: "/middleware-chain",
+    routeKey: "GET /middleware-chain",
     en: "Route middleware chain",
     zh: "route middleware 链",
     enDescription: "Three route-level middleware layers and a JSON response.",
@@ -116,7 +122,7 @@ function isPositiveNumber(value) {
 }
 
 function routeKeyForScenario(scenario) {
-  return `GET ${scenario.path}`;
+  return scenario.routeKey;
 }
 
 function assertFormalArtifact(artifact) {
@@ -144,10 +150,17 @@ function assertFormalArtifact(artifact) {
     );
   }
   if (!/^\d{4}-\d{2}-\d{2}T/.test(artifact.recordedAt ?? "")) {
-    throw new Error("Formal benchmark artifact is missing recordedAt UTC provenance");
+    throw new Error(
+      "Formal benchmark artifact is missing recordedAt UTC provenance",
+    );
   }
-  if (!Array.isArray(artifact.results) || artifact.results.length !== SCENARIOS.length) {
-    throw new Error("Formal benchmark artifact does not contain every scenario");
+  if (
+    !Array.isArray(artifact.results) ||
+    artifact.results.length !== SCENARIOS.length
+  ) {
+    throw new Error(
+      "Formal benchmark artifact does not contain every scenario",
+    );
   }
 
   const resultByScenario = new Map(
@@ -198,7 +211,9 @@ function roundCvRange(artifact) {
 
 function resultRows(artifact, language) {
   return SCENARIOS.map((scenario) => {
-    const result = artifact.results.find((row) => row.scenario === scenario.name);
+    const result = artifact.results.find(
+      (row) => row.scenario === scenario.name,
+    );
     return `| ${scenario[language]} | ${TARGETS.map((target) => formatNumber(result.targets[target.id].rps)).join(" | ")} |`;
   }).join("\n");
 }
@@ -254,21 +269,25 @@ function renderDetails(artifact, language) {
     (scenario) =>
       `| \`${scenario.path}\` | ${scenario[language]} | ${scenario[`${language}Description`]} |`,
   ).join("\n");
-  const sampleRows = rows.flatMap((result) =>
-    TARGETS.map((target) => {
-      const metrics = result.targets[target.id];
-      return `| ${SCENARIOS.find((scenario) => scenario.name === result.scenario)[language]} | ${target.title} | ${metrics.stats.samples.map(formatNumber).join(", ")} | ${formatNumber(metrics.rps)} | ${metrics.latencyP50} ms | ${metrics.latencyP99} ms | ${metrics.errors} / ${metrics.timeouts} / ${metrics.non2xx} | ${metrics.stats.cv.toFixed(1)}% |`;
-    }),
-  ).join("\n");
-  const telemetryRows = rows.flatMap((result) =>
-    TARGETS.map((target) => {
-      const telemetry = result.telemetry[target.id];
-      const scenario = SCENARIOS.find(
-        (candidate) => candidate.name === result.scenario,
-      );
-      return `| ${scenario[language]} | ${target.title} | ${telemetry.globalMiddlewareCount} | ${telemetry.routeChainLengths[routeKeyForScenario(scenario)]} | ${isEnglish ? "asserted" : "已断言"} |`;
-    }),
-  ).join("\n");
+  const sampleRows = rows
+    .flatMap((result) =>
+      TARGETS.map((target) => {
+        const metrics = result.targets[target.id];
+        return `| ${SCENARIOS.find((scenario) => scenario.name === result.scenario)[language]} | ${target.title} | ${metrics.stats.samples.map(formatNumber).join(", ")} | ${formatNumber(metrics.rps)} | ${metrics.latencyP50} ms | ${metrics.latencyP99} ms | ${metrics.errors} / ${metrics.timeouts} / ${metrics.non2xx} | ${metrics.stats.cv.toFixed(1)}% |`;
+      }),
+    )
+    .join("\n");
+  const telemetryRows = rows
+    .flatMap((result) =>
+      TARGETS.map((target) => {
+        const telemetry = result.telemetry[target.id];
+        const scenario = SCENARIOS.find(
+          (candidate) => candidate.name === result.scenario,
+        );
+        return `| ${scenario[language]} | ${target.title} | ${telemetry.globalMiddlewareCount} | ${telemetry.routeChainLengths[routeKeyForScenario(scenario)]} | ${isEnglish ? "asserted" : "已断言"} |`;
+      }),
+    )
+    .join("\n");
   const comparison = isEnglish
     ? "Every target runs the same Vext Normal application: identical routes, `defineRoutes()` loading, route matching, request/response objects, middleware fixture, handler mode, HTTP contract, process priority, and Autocannon protocol. Only the HTTP adapter changes. Raw-framework and shortest-path measurements are maintainer diagnostics and are not used here."
     : "每个目标均运行同一个 Vext Normal 应用：routes、`defineRoutes()` 加载、路由匹配、请求/响应对象、中间件 fixture、handler 模式、HTTP 契约、进程优先级和 Autocannon 协议完全一致；唯一变量是 HTTP Adapter。裸框架与最短路径测量只用于维护者诊断，不用于此处。";
@@ -376,12 +395,24 @@ async function desiredOutputs(artifact, options) {
     readFile(options.enSummary, "utf8"),
     readFile(options.zhSummary, "utf8"),
   ]);
-  return [
-    [options.enOutput, `${renderDetails(artifact, "en")}\n`],
-    [options.zhOutput, `${renderDetails(artifact, "zh")}\n`],
-    [options.enSummary, replaceSummaryBlock(enSource, renderSummary(artifact, "en"))],
-    [options.zhSummary, replaceSummaryBlock(zhSource, renderSummary(artifact, "zh"))],
+  const outputs = [
+    [options.enOutput, renderDetails(artifact, "en")],
+    [options.zhOutput, renderDetails(artifact, "zh")],
+    [
+      options.enSummary,
+      replaceSummaryBlock(enSource, renderSummary(artifact, "en")),
+    ],
+    [
+      options.zhSummary,
+      replaceSummaryBlock(zhSource, renderSummary(artifact, "zh")),
+    ],
   ];
+  return Promise.all(
+    outputs.map(async ([path, content]) => [
+      path,
+      await format(content, { parser: "markdown" }),
+    ]),
+  );
 }
 
 async function main() {

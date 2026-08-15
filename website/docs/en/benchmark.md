@@ -13,7 +13,16 @@ These benchmarks help you choose a Vext HTTP adapter. They keep the Vext applica
 
 ## Current results
 
-Formal results are generated from a complete clean-source artifact before this page is published.
+This formal run was recorded at **2026-08-15T00:07:37.413Z** from clean Vext source `main@772d3eab9f3826a55526deaf2ad6b1c128bda446` (Vext 1.0.1; Node.js v20.20.2). Every value is the median requests per second from **7** rounds; higher is better for that scenario.
+
+| Scenario               |    Native |      Hono |   Fastify |  Express |       Koa |
+| ---------------------- | --------: | --------: | --------: | -------: | --------: |
+| JSON response          | 25,085.82 | 11,158.19 | 22,191.28 | 7,651.82 | 19,017.46 |
+| Route parameters       |  24,773.1 |    10,652 | 21,961.46 | 7,554.37 | 18,678.55 |
+| Handler business chain | 21,802.91 |     9,387 |  18,865.6 |  7,155.2 | 16,527.64 |
+| Route middleware chain | 21,584.73 |     9,383 |  18,729.1 | 7,137.64 | 16,219.64 |
+
+All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from 0.2%–1.4%. [Read the full in-document results and every sample](/benchmark/results), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.
 
 <!-- benchmark-results:end -->
 
