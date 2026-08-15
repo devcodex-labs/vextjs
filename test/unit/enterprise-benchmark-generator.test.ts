@@ -6,6 +6,8 @@ import {
 } from "../benchmark/enterprise/contract.mjs";
 import {
   assertFormalArtifact,
+  assertRawDiagnosticArtifact,
+  renderRawDiagnosticReference,
   renderResults,
 } from "../benchmark/enterprise/generate-enterprise-results.mjs";
 
@@ -67,6 +69,13 @@ function createFormalArtifact() {
       status: "frozen",
       nodeMajor: 20,
       maxCv: 5,
+      qualification: {
+        mode: "qualification-pilot",
+        recordedAt: "2026-08-14T23:00:00.000Z",
+        nodeMajor: 20,
+        observedMaxCv: 1,
+        approvedMaxCv: 5,
+      },
       connections: 50,
       pipelining: 1,
       warmupSeconds: 10,
@@ -87,6 +96,8 @@ function createFormalArtifact() {
       node: "v20.20.2",
       platform: "linux",
       arch: "x64",
+      cpuModel: "Qualification CPU",
+      totalMemoryBytes: 32 * 1024 * 1024 * 1024,
       runnerCpuSet: "4-7",
     },
     dependencyVerification: {
@@ -137,6 +148,90 @@ function createFormalArtifact() {
   };
 }
 
+function createRawDiagnosticArtifact(
+  formalArtifact: ReturnType<typeof createFormalArtifact>,
+) {
+  const sample = (round: number) => ({
+    rps: 10_000 + round,
+    totalRequests: 100_000 + round,
+    latencyP50: 1 + round,
+    latencyP99: 3 + round,
+    throughput: 1_000_000 + round,
+    errors: 0,
+    timeouts: 0,
+    non2xx: 0,
+  });
+  const metrics = () => {
+    const samples = Array.from({ length: 5 }, (_, round) => sample(round));
+    return {
+      ...samples[2],
+      rps: samples[2]!.rps,
+      stats: {
+        samples,
+        median: samples[2]!.rps,
+        cv: 1,
+      },
+    };
+  };
+  const targets = [
+    "raw-native",
+    "raw-fastify",
+    "vext-native-core",
+    "vext-native-normal",
+  ];
+  return {
+    schemaVersion: 2,
+    suite: "vext-native-fairness-diagnostics",
+    suiteVersion: 1,
+    recordedAt: "2026-08-15T00:15:00.000Z",
+    complete: true,
+    provenance: {
+      branch: "main",
+      commit: formalArtifact.provenance.commit,
+      worktree: "clean",
+      versions: {
+        vextjs: formalArtifact.frameworkVersions.vextjs,
+        fastify: formalArtifact.frameworkVersions.fastify,
+        autocannon: formalArtifact.frameworkVersions.autocannon,
+        routeCore: "0.0.7",
+      },
+    },
+    environment: {
+      node: formalArtifact.environment.node,
+      platform: formalArtifact.environment.platform,
+      arch: formalArtifact.environment.arch,
+      cpuModel: formalArtifact.environment.cpuModel,
+      totalMemoryBytes: formalArtifact.environment.totalMemoryBytes,
+      processPriority: 0,
+    },
+    options: {
+      duration: 10,
+      connections: 50,
+      pipelining: 10,
+      warmup: 5,
+      rounds: 5,
+      maxCv: 15,
+    },
+    stability: { maxCv: 15, unstable: [] },
+    results: ["json", "params", "chain", "middleware-chain"].map(
+      (scenario) => ({
+        scenario,
+        targets: Object.fromEntries(
+          targets
+            .filter(
+              (targetId) =>
+                !(
+                  targetId === "vext-native-core" &&
+                  scenario === "middleware-chain"
+                ),
+            )
+            .map((targetId) => [targetId, metrics()]),
+        ),
+      }),
+    ),
+  };
+}
+
 describe("Enterprise benchmark result generator", () => {
   it("renders every formal round on the localized result page", () => {
     const artifact = createFormalArtifact();
@@ -162,5 +257,32 @@ describe("Enterprise benchmark result generator", () => {
     expect(() => assertFormalArtifact(artifact)).toThrow(
       "contains an invalid formal sample",
     );
+  });
+
+  it("renders matching raw diagnostics as an explicitly secondary same-page reference", () => {
+    const formalArtifact = createFormalArtifact();
+    const rawArtifact = createRawDiagnosticArtifact(formalArtifact);
+
+    expect(() =>
+      assertRawDiagnosticArtifact(rawArtifact, formalArtifact),
+    ).not.toThrow();
+
+    const en = renderRawDiagnosticReference(rawArtifact, "en");
+    const zh = renderRawDiagnosticReference(rawArtifact, "zh");
+    expect(en).toContain("not a production ranking");
+    expect(en).toContain("Complete per-round diagnostic samples");
+    expect(en).toContain("Raw Native");
+    expect(zh).toContain("非生产排名");
+    expect(zh).toContain("完整逐轮诊断样本");
+  });
+
+  it("rejects a raw diagnostic from a different source revision", () => {
+    const formalArtifact = createFormalArtifact();
+    const rawArtifact = createRawDiagnosticArtifact(formalArtifact);
+    rawArtifact.provenance.commit = "other-commit";
+
+    expect(() =>
+      assertRawDiagnosticArtifact(rawArtifact, formalArtifact),
+    ).toThrow("does not match the formal result source or environment");
   });
 });

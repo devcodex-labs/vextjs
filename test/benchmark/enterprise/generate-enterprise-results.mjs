@@ -24,6 +24,26 @@ const DEFAULT_INPUT = join(
   ".artifacts",
   "enterprise-latest.json",
 );
+const DEFAULT_RAW_DIAGNOSTICS_INPUT = join(
+  REPOSITORY_ROOT,
+  "test",
+  "benchmark",
+  ".artifacts",
+  "native-fairness-latest.json",
+);
+const RAW_DIAGNOSTIC_SUITE = "vext-native-fairness-diagnostics";
+const RAW_DIAGNOSTIC_SCENARIOS = [
+  "json",
+  "params",
+  "chain",
+  "middleware-chain",
+];
+const RAW_DIAGNOSTIC_TARGETS = [
+  "raw-native",
+  "raw-fastify",
+  "vext-native-core",
+  "vext-native-normal",
+];
 const PAGES = [
   {
     language: "en",
@@ -35,6 +55,8 @@ const PAGES = [
       "enterprise-benchmark.md",
     ),
     pending: "No accepted formal artifact has been published yet.",
+    rawPending:
+      "No raw-path diagnostic artifact matching a formal result has been published yet.",
   },
   {
     language: "zh",
@@ -46,18 +68,29 @@ const PAGES = [
       "enterprise-benchmark.md",
     ),
     pending: "尚未发布可接受的正式 artifact。",
+    rawPending: "尚未发布与正式结果匹配的裸路径诊断 artifact。",
   },
 ];
 const START = "<!-- enterprise-results:start -->";
 const END = "<!-- enterprise-results:end -->";
+const RAW_START = "<!-- enterprise-raw-diagnostics:start -->";
+const RAW_END = "<!-- enterprise-raw-diagnostics:end -->";
 
 function parseArgs() {
-  const options = { input: DEFAULT_INPUT, check: false };
+  const options = {
+    input: DEFAULT_INPUT,
+    rawDiagnosticsInput: DEFAULT_RAW_DIAGNOSTICS_INPUT,
+    check: false,
+  };
   const args = process.argv.slice(2);
   for (let index = 0; index < args.length; index += 1) {
     switch (args[index]) {
       case "--input":
         options.input = resolve(REPOSITORY_ROOT, args[index + 1]);
+        index += 1;
+        break;
+      case "--raw-diagnostics-input":
+        options.rawDiagnosticsInput = resolve(REPOSITORY_ROOT, args[index + 1]);
         index += 1;
         break;
       case "--check":
@@ -79,13 +112,15 @@ async function exists(path) {
   }
 }
 
-function section(content) {
-  const start = content.indexOf(START);
-  const end = content.indexOf(END);
+function section(content, startMarker = START, endMarker = END) {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker);
   if (start < 0 || end < 0 || end < start) {
-    throw new Error("Enterprise benchmark page is missing its result markers");
+    throw new Error(
+      `Enterprise benchmark page is missing result markers ${startMarker} / ${endMarker}`,
+    );
   }
-  return content.slice(start, end + END.length);
+  return content.slice(start, end + endMarker.length);
 }
 
 function formatNumber(value, maximumFractionDigits = 2) {
@@ -250,6 +285,19 @@ function assertFormalArtifact(artifact) {
       "Formal artifact does not satisfy the publication environment gate",
     );
   }
+  const qualification = artifact.protocol.qualification;
+  if (
+    qualification?.mode !== "qualification-pilot" ||
+    !Number.isFinite(qualification.observedMaxCv) ||
+    qualification.observedMaxCv < 0 ||
+    qualification.nodeMajor !== artifact.protocol.nodeMajor ||
+    qualification.approvedMaxCv !== artifact.protocol.maxCv ||
+    !Number.isFinite(Date.parse(qualification.recordedAt ?? ""))
+  ) {
+    throw new Error(
+      "Formal artifact does not record the reviewed qualification pilot",
+    );
+  }
   if (
     artifact.options?.connections !== 50 ||
     artifact.options?.pipelining !== 1 ||
@@ -382,6 +430,124 @@ function assertFormalArtifact(artifact) {
   }
 }
 
+function expectedRawTargets(scenario) {
+  return RAW_DIAGNOSTIC_TARGETS.filter(
+    (targetId) =>
+      !(targetId === "vext-native-core" && scenario === "middleware-chain"),
+  );
+}
+
+function assertRawDiagnosticMetrics(metrics, scenario, targetId, artifact) {
+  const samples = metrics?.stats?.samples;
+  if (
+    !Number.isFinite(metrics?.rps) ||
+    metrics.rps <= 0 ||
+    !Number.isFinite(metrics?.stats?.median) ||
+    !Number.isFinite(metrics?.stats?.cv) ||
+    !Array.isArray(samples) ||
+    samples.length !== artifact.options?.rounds
+  ) {
+    throw new Error(
+      `Raw diagnostic ${scenario}/${targetId} does not contain complete samples`,
+    );
+  }
+  for (const sample of samples) {
+    if (
+      !Number.isFinite(sample?.rps) ||
+      sample.rps <= 0 ||
+      !Number.isFinite(sample?.totalRequests) ||
+      sample.totalRequests <= 0 ||
+      sample.errors !== 0 ||
+      sample.timeouts !== 0 ||
+      sample.non2xx !== 0
+    ) {
+      throw new Error(
+        `Raw diagnostic ${scenario}/${targetId} contains an invalid sample`,
+      );
+    }
+  }
+}
+
+function assertRawDiagnosticArtifact(rawArtifact, enterpriseArtifact) {
+  if (
+    rawArtifact?.schemaVersion !== 2 ||
+    rawArtifact.suite !== RAW_DIAGNOSTIC_SUITE ||
+    rawArtifact.complete !== true ||
+    rawArtifact.stability?.unstable?.length !== 0 ||
+    rawArtifact.provenance?.worktree !== "clean" ||
+    !Array.isArray(rawArtifact.results)
+  ) {
+    throw new Error(
+      "Raw diagnostic artifact is incomplete or not publication-safe",
+    );
+  }
+  if (
+    rawArtifact.provenance?.commit !== enterpriseArtifact.provenance?.commit ||
+    rawArtifact.environment?.node !== enterpriseArtifact.environment?.node ||
+    rawArtifact.environment?.platform !==
+      enterpriseArtifact.environment?.platform ||
+    rawArtifact.environment?.arch !== enterpriseArtifact.environment?.arch ||
+    rawArtifact.environment?.cpuModel !==
+      enterpriseArtifact.environment?.cpuModel ||
+    rawArtifact.environment?.totalMemoryBytes !==
+      enterpriseArtifact.environment?.totalMemoryBytes
+  ) {
+    throw new Error(
+      "Raw diagnostic artifact does not match the formal result source or environment",
+    );
+  }
+  for (const [packageName, version] of [
+    ["vextjs", enterpriseArtifact.frameworkVersions?.vextjs],
+    ["fastify", enterpriseArtifact.frameworkVersions?.fastify],
+    ["autocannon", enterpriseArtifact.frameworkVersions?.autocannon],
+  ]) {
+    if (
+      !version ||
+      rawArtifact.provenance?.versions?.[packageName] !== version
+    ) {
+      throw new Error(
+        `Raw diagnostic artifact version for ${packageName} does not match the formal result`,
+      );
+    }
+  }
+  const rawRecordedAt = Date.parse(rawArtifact.recordedAt ?? "");
+  const enterpriseRecordedAt = Date.parse(enterpriseArtifact.recordedAt ?? "");
+  if (
+    !Number.isFinite(rawRecordedAt) ||
+    !Number.isFinite(enterpriseRecordedAt) ||
+    Math.abs(rawRecordedAt - enterpriseRecordedAt) > 24 * 60 * 60 * 1000
+  ) {
+    throw new Error(
+      "Raw diagnostic artifact was not recorded within 24 hours of the formal result",
+    );
+  }
+  const actualScenarios = rawArtifact.results.map((result) => result?.scenario);
+  if (
+    JSON.stringify(actualScenarios) !== JSON.stringify(RAW_DIAGNOSTIC_SCENARIOS)
+  ) {
+    throw new Error(
+      "Raw diagnostic artifact does not contain the complete scenario set",
+    );
+  }
+  for (const result of rawArtifact.results) {
+    const expectedTargets = expectedRawTargets(result.scenario).sort();
+    const actualTargets = Object.keys(result.targets ?? {}).sort();
+    if (JSON.stringify(actualTargets) !== JSON.stringify(expectedTargets)) {
+      throw new Error(
+        `Raw diagnostic ${result.scenario} has an unexpected target set`,
+      );
+    }
+    for (const targetId of expectedTargets) {
+      assertRawDiagnosticMetrics(
+        result.targets[targetId],
+        result.scenario,
+        targetId,
+        rawArtifact,
+      );
+    }
+  }
+}
+
 function renderSummaryTable(artifact, language) {
   const labels =
     language === "zh"
@@ -500,6 +666,10 @@ function renderResults(artifact, language) {
           `load=${artifact.options.loadCpus}; target=${artifact.options.targetCpus}`,
         ],
         [
+          "资格 pilot",
+          `${artifact.protocol.qualification.recordedAt}；Node ${artifact.protocol.qualification.nodeMajor}.x；观察到最大 CV ${formatNumber(artifact.protocol.qualification.observedMaxCv)}%；批准 CV ≤ ${formatNumber(artifact.protocol.qualification.approvedMaxCv)}%`,
+        ],
+        [
           "版本",
           `Vext ${versions.vextjs}; Fastify ${versions.fastify}; Nest common/core/platform-fastify ${versions["@nestjs/common"]}/${versions["@nestjs/core"]}/${versions["@nestjs/platform-fastify"]}; reflect-metadata ${versions["reflect-metadata"]}; rxjs ${versions.rxjs}; Autocannon ${versions.autocannon}`,
         ],
@@ -522,6 +692,10 @@ function renderResults(artifact, language) {
         [
           "CPU isolation",
           `load=${artifact.options.loadCpus}; target=${artifact.options.targetCpus}`,
+        ],
+        [
+          "Qualification pilot",
+          `${artifact.protocol.qualification.recordedAt}; Node ${artifact.protocol.qualification.nodeMajor}.x; observed maximum CV ${formatNumber(artifact.protocol.qualification.observedMaxCv)}%; approved CV ≤ ${formatNumber(artifact.protocol.qualification.approvedMaxCv)}%`,
         ],
         [
           "Versions",
@@ -559,12 +733,179 @@ function renderResults(artifact, language) {
   ].join("\n");
 }
 
+function rawScenarioTitle(scenario, language) {
+  const titles = {
+    json: language === "zh" ? "JSON 响应" : "JSON response",
+    params: language === "zh" ? "路由参数" : "Route parameters",
+    chain: language === "zh" ? "处理器业务链" : "Handler business chain",
+    "middleware-chain":
+      language === "zh" ? "真实中间件链" : "Real middleware chain",
+  };
+  return titles[scenario] ?? scenario;
+}
+
+function rawTargetTitle(targetId) {
+  return (
+    {
+      "raw-native": "Raw Native",
+      "raw-fastify": "Raw Fastify",
+      "vext-native-core": "Vext Native Core",
+      "vext-native-normal": "Vext Native Normal",
+    }[targetId] ?? targetId
+  );
+}
+
+function renderRawDiagnosticSummary(rawArtifact, language) {
+  const header = [
+    language === "zh" ? "诊断场景" : "Diagnostic scenario",
+    ...RAW_DIAGNOSTIC_TARGETS.map((targetId) =>
+      language === "zh"
+        ? `${rawTargetTitle(targetId)} RPS 中位数 / CV`
+        : `${rawTargetTitle(targetId)} median RPS / CV`,
+    ),
+  ];
+  const rows = rawArtifact.results.map((result) => [
+    rawScenarioTitle(result.scenario, language),
+    ...RAW_DIAGNOSTIC_TARGETS.map((targetId) => {
+      const metrics = result.targets[targetId];
+      return metrics
+        ? `${formatNumber(metrics.stats.median)} / ${formatNumber(metrics.stats.cv)}%`
+        : "N/A";
+    }),
+  ]);
+  return [header, header.map(() => "---"), ...rows]
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
+}
+
+function renderRawDiagnosticSamples(rawArtifact, language) {
+  const header =
+    language === "zh"
+      ? ["诊断场景", "目标", "轮次", "RPS", "请求数", "P50 / P99", "吞吐"]
+      : [
+          "Diagnostic scenario",
+          "Target",
+          "Round",
+          "RPS",
+          "Requests",
+          "P50 / P99",
+          "Throughput",
+        ];
+  const rows = rawArtifact.results.flatMap((result) =>
+    expectedRawTargets(result.scenario).flatMap((targetId) =>
+      result.targets[targetId].stats.samples.map((sample, index) => [
+        rawScenarioTitle(result.scenario, language),
+        rawTargetTitle(targetId),
+        String(index + 1),
+        formatNumber(sample.rps),
+        formatNumber(sample.totalRequests),
+        `${formatNumber(sample.latencyP50)} / ${formatNumber(sample.latencyP99)} ms`,
+        formatNumber(sample.throughput),
+      ]),
+    ),
+  );
+  return [header, header.map(() => "---"), ...rows]
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
+}
+
+function renderRawDiagnosticReference(rawArtifact, language) {
+  const isZh = language === "zh";
+  const versions = rawArtifact.provenance.versions;
+  const statement = isZh
+    ? "这一组数据是与上方正式结果绑定的最短路径维护诊断：源码 commit、Node.js、Linux 平台、CPU 型号、内存与 Vext / Fastify / Autocannon 版本完全一致，记录时间相差不超过 24 小时。它故意使用短路径 API，不复刻上方生产形态 API；因此只用于解释路由与组合开销，不能与正式结果相减、合并或作为生产选型排名。"
+    : "These are shortest-path maintenance diagnostics bound to the formal result above: the source commit, Node.js, Linux platform, CPU model, memory, and Vext / Fastify / Autocannon versions are identical, and the two artifacts were recorded within 24 hours. They deliberately use short-path APIs rather than recreating the production-shaped API above, so they explain routing and composition cost only; they must not be subtracted from, merged with, or ranked against the formal result.";
+  const metadata = isZh
+    ? [
+        ["字段", "值"],
+        [
+          "诊断来源",
+          `\`${rawArtifact.provenance.branch}@${rawArtifact.provenance.commit}\`（clean）`,
+        ],
+        [
+          "诊断协议",
+          `${rawArtifact.options.duration}s × ${rawArtifact.options.rounds} 轮；${rawArtifact.options.connections} connections；pipelining ${rawArtifact.options.pipelining}；${rawArtifact.options.warmup}s 预热；CV ≤ ${rawArtifact.options.maxCv}%`,
+        ],
+        [
+          "版本",
+          `Vext ${versions.vextjs}; Fastify ${versions.fastify}; route-core ${versions.routeCore}; Autocannon ${versions.autocannon}`,
+        ],
+      ]
+    : [
+        ["Field", "Value"],
+        [
+          "Diagnostic source",
+          `\`${rawArtifact.provenance.branch}@${rawArtifact.provenance.commit}\` (clean)`,
+        ],
+        [
+          "Diagnostic protocol",
+          `${rawArtifact.options.duration}s × ${rawArtifact.options.rounds} rounds; ${rawArtifact.options.connections} connections; pipelining ${rawArtifact.options.pipelining}; ${rawArtifact.options.warmup}s warmup; CV ≤ ${rawArtifact.options.maxCv}%`,
+        ],
+        [
+          "Versions",
+          `Vext ${versions.vextjs}; Fastify ${versions.fastify}; route-core ${versions.routeCore}; Autocannon ${versions.autocannon}`,
+        ],
+      ];
+  const metadataTable = [
+    `| ${metadata[0].join(" | ")} |`,
+    "| --- | --- |",
+    ...metadata.slice(1).map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+  return [
+    RAW_START,
+    isZh
+      ? "## 裸路径诊断参考（非生产排名）"
+      : "## Raw-path diagnostic reference (not a production ranking)",
+    "",
+    statement,
+    "",
+    isZh ? "### 诊断身份与协议" : "### Diagnostic identity and protocol",
+    "",
+    metadataTable,
+    "",
+    isZh ? "### 诊断汇总" : "### Diagnostic summary",
+    "",
+    renderRawDiagnosticSummary(rawArtifact, language),
+    "",
+    isZh ? "### 完整逐轮诊断样本" : "### Complete per-round diagnostic samples",
+    "",
+    isZh
+      ? "每一轮裸路径样本也直接留在本页。`Vext Native Core` 在真实中间件链场景显示 `N/A`，因为这个私有 direct harness 按设计不注册 route middleware；这不是零成本，也不是漏测。"
+      : "Every raw-path round stays on this page as well. `Vext Native Core` is `N/A` for the real middleware-chain scenario because this private direct harness intentionally does not register route middleware; that is neither zero cost nor a missing measurement.",
+    "",
+    renderRawDiagnosticSamples(rawArtifact, language),
+    "",
+    RAW_END,
+  ].join("\n");
+}
+
+function renderRawDiagnosticPending(language) {
+  const isZh = language === "zh";
+  return [
+    RAW_START,
+    isZh
+      ? "## 裸路径诊断参考（非生产排名）"
+      : "## Raw-path diagnostic reference (not a production ranking)",
+    "",
+    isZh
+      ? "尚未发布与正式结果匹配的裸路径诊断 artifact。它只会在同一干净 commit、Node.js、Linux 平台、CPU 型号、内存和关键版本匹配且记录时间相差不超过 24 小时时，随正式结果在本页出现；不会混入历史或 Windows 本地数字。"
+      : "No raw-path diagnostic artifact matching a formal result has been published yet. It will appear on this page only when the clean commit, Node.js, Linux platform, CPU model, memory, and key versions match and both artifacts were recorded within 24 hours; historical or Windows-local numbers are never mixed in.",
+    "",
+    RAW_END,
+  ].join("\n");
+}
+
 async function verifyPendingPages() {
   for (const page of PAGES) {
     const content = await readFile(page.path, "utf8");
     if (!section(content).includes(page.pending)) {
       throw new Error(
         `${page.path} has no formal artifact but does not contain the required pending-state explanation`,
+      );
+    }
+    if (!section(content, RAW_START, RAW_END).includes(page.rawPending)) {
+      throw new Error(
+        `${page.path} has no formal artifact but its raw diagnostic pending state is out of sync`,
       );
     }
   }
@@ -586,15 +927,38 @@ async function main() {
   }
   const artifact = JSON.parse(await readFile(options.input, "utf8"));
   assertFormalArtifact(artifact);
+  if (!(await exists(options.rawDiagnosticsInput))) {
+    throw new Error(
+      `A matching raw diagnostic artifact is required with a formal result: ${options.rawDiagnosticsInput}`,
+    );
+  }
+  const rawArtifact = JSON.parse(
+    await readFile(options.rawDiagnosticsInput, "utf8"),
+  );
+  assertRawDiagnosticArtifact(rawArtifact, artifact);
   for (const page of PAGES) {
     const current = await readFile(page.path, "utf8");
     const expected = renderResults(artifact, page.language);
+    const expectedRaw = renderRawDiagnosticReference(
+      rawArtifact,
+      page.language,
+    );
     if (options.check) {
       if (section(current) !== expected) {
         throw new Error(`${page.path} is out of sync with ${options.input}`);
       }
+      if (section(current, RAW_START, RAW_END) !== expectedRaw) {
+        throw new Error(
+          `${page.path} is out of sync with ${options.rawDiagnosticsInput}`,
+        );
+      }
     } else {
-      await writeFile(page.path, current.replace(section(current), expected));
+      await writeFile(
+        page.path,
+        current
+          .replace(section(current), expected)
+          .replace(section(current, RAW_START, RAW_END), expectedRaw),
+      );
     }
   }
   console.log(
@@ -604,7 +968,12 @@ async function main() {
   );
 }
 
-export { assertFormalArtifact, renderResults };
+export {
+  assertFormalArtifact,
+  assertRawDiagnosticArtifact,
+  renderRawDiagnosticReference,
+  renderResults,
+};
 
 if (
   process.argv[1] &&

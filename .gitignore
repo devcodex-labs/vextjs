@@ -79,6 +79,7 @@ test/.tmp-release-preflight-*/
 
 # Local benchmark artifacts (not candidate source)
 /test/benchmark/.artifacts/
+/test/benchmark/NATIVE-FAIRNESS.md
 
 # Adapter e2e / formal harness scratch (must not dirty release worktrees)
 tmp-deferred-header-test-*/

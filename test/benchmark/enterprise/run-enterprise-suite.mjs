@@ -62,6 +62,7 @@ function parseArgs() {
     resultsJson: DEFAULT_RESULTS_PATH,
     formal: false,
     pilot: false,
+    qualificationPilot: false,
     loadCpus: undefined,
     targetCpus: undefined,
     explicit: new Set(),
@@ -119,6 +120,9 @@ function parseArgs() {
       case "--pilot":
         options.pilot = true;
         break;
+      case "--qualification-pilot":
+        options.qualificationPilot = true;
+        break;
       case "--help":
         printHelp();
         process.exit(0);
@@ -127,15 +131,20 @@ function parseArgs() {
         throw new Error(`Unknown option: ${argument}`);
     }
   }
-  if (options.formal && options.pilot) {
-    throw new Error("--formal and --pilot cannot be combined");
+  if (
+    [options.formal, options.pilot, options.qualificationPilot].filter(Boolean)
+      .length > 1
+  ) {
+    throw new Error(
+      "--formal, --pilot, and --qualification-pilot are mutually exclusive",
+    );
   }
   return options;
 }
 
 function printHelp() {
   console.log(
-    `\n${ENTERPRISE_SUITE_ID}\n\nLocal pilot (non-citable):\n  npm run test:bench:enterprise -- --pilot\n\nFormal run (Linux x64 only, after the protocol is frozen from a pilot):\n  taskset -c <load-cpus> node test/benchmark/enterprise/run-enterprise-suite.mjs --formal --load-cpus <load-cpus> --target-cpus <target-cpus>\n`,
+    `\n${ENTERPRISE_SUITE_ID}\n\nQuick local pilot (non-citable, does not qualify a formal protocol):\n  npm run test:bench:enterprise -- --pilot\n\nQualification pilot (Linux x64, clean source, frozen workload shape, and isolated CPUs; proposes Node major and CV gate):\n  taskset -c <load-cpus> node test/benchmark/enterprise/run-enterprise-suite.mjs --qualification-pilot --load-cpus <load-cpus> --target-cpus <target-cpus>\n\nFormal run (Linux x64 only, after the protocol is frozen from a qualification pilot):\n  taskset -c <load-cpus> node test/benchmark/enterprise/run-enterprise-suite.mjs --formal --load-cpus <load-cpus> --target-cpus <target-cpus>\n`,
   );
 }
 
@@ -188,6 +197,10 @@ function applyFormalProtocol(options, protocol) {
     }
     options[key] = value;
   }
+}
+
+function usesFormalIsolation(options) {
+  return options.formal || options.qualificationPilot;
 }
 
 function validateOptions(options) {
@@ -257,41 +270,20 @@ function readCurrentCpuSet() {
   return match?.[1]?.trim();
 }
 
-function assertFormalEnvironment({ options, protocol, provenance }) {
-  if (protocol.status !== "frozen") {
-    throw new Error(
-      `Formal execution requires a pilot-frozen protocol; ${protocol.id} is ${protocol.status}`,
-    );
-  }
-  if (!Number.isFinite(protocol.maxCv) || protocol.maxCv <= 0) {
-    throw new Error(
-      `Formal protocol ${protocol.id} must define a positive pilot-frozen maxCv`,
-    );
-  }
-  if (!Number.isInteger(protocol.nodeMajor) || protocol.nodeMajor <= 0) {
-    throw new Error(
-      `Formal protocol ${protocol.id} must pin the current-LTS nodeMajor from its qualifying pilot`,
-    );
-  }
-  const runningNodeMajor = Number(process.versions.node.split(".")[0]);
-  if (runningNodeMajor !== protocol.nodeMajor) {
-    throw new Error(
-      `Formal protocol ${protocol.id} requires Node.js ${protocol.nodeMajor}.x; running ${process.version}`,
-    );
-  }
+function assertQualificationEnvironment({ options, provenance }) {
   if (process.platform !== "linux" || process.arch !== "x64") {
     throw new Error(
-      "Formal Enterprise Workload Suite artifacts require Linux x64",
+      "Qualification and formal Enterprise Workload Suite runs require Linux x64",
     );
   }
   if (provenance.worktree !== "clean") {
     throw new Error(
-      "Formal Enterprise Workload Suite artifacts require a clean source worktree",
+      "Qualification and formal Enterprise Workload Suite runs require a clean source worktree",
     );
   }
   if (!options.loadCpus || !options.targetCpus) {
     throw new Error(
-      "Formal execution requires --load-cpus and --target-cpus with no overlap",
+      "Qualification and formal execution require --load-cpus and --target-cpus with no overlap",
     );
   }
   const loadCpus = parseCpuSet(options.loadCpus);
@@ -316,6 +308,44 @@ function assertFormalEnvironment({ options, protocol, provenance }) {
       `Runner CPU affinity ${effectiveLoadCpus} does not match --load-cpus ${options.loadCpus}; launch the runner under taskset`,
     );
   }
+}
+
+function assertFormalEnvironment({ options, protocol, provenance }) {
+  if (protocol.status !== "frozen") {
+    throw new Error(
+      `Formal execution requires a pilot-frozen protocol; ${protocol.id} is ${protocol.status}`,
+    );
+  }
+  if (!Number.isFinite(protocol.maxCv) || protocol.maxCv <= 0) {
+    throw new Error(
+      `Formal protocol ${protocol.id} must define a positive pilot-frozen maxCv`,
+    );
+  }
+  if (!Number.isInteger(protocol.nodeMajor) || protocol.nodeMajor <= 0) {
+    throw new Error(
+      `Formal protocol ${protocol.id} must pin the current-LTS nodeMajor from its qualifying pilot`,
+    );
+  }
+  const qualification = protocol.qualification;
+  if (
+    qualification?.mode !== "qualification-pilot" ||
+    !Number.isFinite(qualification.observedMaxCv) ||
+    qualification.observedMaxCv < 0 ||
+    qualification.nodeMajor !== protocol.nodeMajor ||
+    qualification.approvedMaxCv !== protocol.maxCv ||
+    !Number.isFinite(Date.parse(qualification.recordedAt ?? ""))
+  ) {
+    throw new Error(
+      `Formal protocol ${protocol.id} must record the reviewed qualification pilot that froze Node.js and maxCv`,
+    );
+  }
+  const runningNodeMajor = Number(process.versions.node.split(".")[0]);
+  if (runningNodeMajor !== protocol.nodeMajor) {
+    throw new Error(
+      `Formal protocol ${protocol.id} requires Node.js ${protocol.nodeMajor}.x; running ${process.version}`,
+    );
+  }
+  assertQualificationEnvironment({ options, provenance });
 }
 
 function getEnvironment() {
@@ -402,7 +432,7 @@ function startTarget(target, port, options) {
       ...process.env,
       PORT: String(port),
     };
-    const child = options.formal
+    const child = usesFormalIsolation(options)
       ? spawn(
           "taskset",
           ["-c", options.targetCpus, process.execPath, target.entry],
@@ -897,10 +927,12 @@ function createPilotRecommendation(results) {
 async function main() {
   const options = parseArgs();
   const protocol = await loadProtocol(options.protocolPath);
-  if (options.formal) applyFormalProtocol(options, protocol);
+  if (usesFormalIsolation(options)) applyFormalProtocol(options, protocol);
   validateOptions(options);
 
   const provenance = readSourceProvenance();
+  if (options.qualificationPilot)
+    assertQualificationEnvironment({ options, provenance });
   if (options.formal)
     assertFormalEnvironment({ options, protocol, provenance });
   if (!existsSync(join(REPOSITORY_ROOT, "dist", "lib", "bootstrap.js"))) {
@@ -928,7 +960,7 @@ async function main() {
       }
     }
     assertFastifyHostParity(servers, dependencyVerification.versions.fastify);
-    if (options.formal) {
+    if (usesFormalIsolation(options)) {
       assertTargetCpuAffinity(servers, options.targetCpus);
     }
 
@@ -939,25 +971,31 @@ async function main() {
     const results = await runMeasurements(servers, options);
     const maxCv = options.formal ? protocol.maxCv : undefined;
     const unstable = findUnstableResults(results, maxCv);
-    const pilot = options.pilot ? createPilotRecommendation(results) : null;
+    const pilot =
+      options.pilot || options.qualificationPilot
+        ? createPilotRecommendation(results)
+        : null;
     if (options.formal && unstable.length > 0) {
       throw new Error(`Formal CV gate failed: ${JSON.stringify(unstable)}`);
     }
     const localVersions = readLocalBenchmarkVersions(REPOSITORY_ROOT, {
       packageNames: ENTERPRISE_BENCHMARK_PACKAGES,
     });
+    const recordedAt = new Date().toISOString();
     const artifact = {
       schemaVersion: 1,
       suite: ENTERPRISE_SUITE_ID,
       suiteVersion: ENTERPRISE_SUITE_VERSION,
-      recordedAt: new Date().toISOString(),
+      recordedAt,
       complete: true,
       acceptedForPublication: options.formal && unstable.length === 0,
       executionMode: options.formal
         ? "formal"
-        : options.pilot
-          ? "pilot"
-          : "local",
+        : options.qualificationPilot
+          ? "qualification-pilot"
+          : options.pilot
+            ? "pilot"
+            : "local",
       protocol: {
         ...protocol,
         maxCv: protocol.maxCv ?? null,
@@ -993,6 +1031,21 @@ async function main() {
         unstable,
       },
       pilot,
+      qualification: options.qualificationPilot
+        ? {
+            eligibleForProtocolFreeze: true,
+            observedNodeMajor: Number(process.versions.node.split(".")[0]),
+            proposedMaxCv: pilot?.proposedMaxCv ?? null,
+            qualificationWorkload: {
+              connections: options.connections,
+              pipelining: options.pipelining,
+              warmupSeconds: options.warmup,
+              durationSeconds: options.duration,
+              rounds: options.rounds,
+            },
+            isolationVerified: true,
+          }
+        : null,
     };
     await mkdir(dirname(options.resultsJson), { recursive: true });
     await writeFile(

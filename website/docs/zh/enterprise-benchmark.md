@@ -46,22 +46,30 @@ Hono 有意推迟到第二阶段。当前仓库尚没有已验证的 Hono 校验
 
 <!-- enterprise-results:end -->
 
+<!-- enterprise-raw-diagnostics:start -->
+
+## 裸路径诊断参考（非生产排名）
+
+尚未发布与正式结果匹配的裸路径诊断 artifact。它只会在同一干净 commit、Node.js、Linux 平台、CPU 型号、内存和关键版本匹配且记录时间相差不超过 24 小时时，随正式结果在本页出现；不会混入历史或 Windows 本地数字。
+
+<!-- enterprise-raw-diagnostics:end -->
+
 ## 正式协议
 
 正式 runner 只有在以下条件全部满足时，才会生成可引用 artifact：
 
 - 源码工作区干净，并在 artifact 中记录 revision；
-- 主机为 Linux x64，合格 pilot 会冻结其当前 LTS Node.js 主版本，runner 会核验 runner 与每个 target 的实际 CPU 亲和性；
+- 主机为 Linux x64，资格 pilot 使用与正式运行相同的冻结工作负载，记录 Node.js 主版本并提出 CV 门槛，runner 会核验 runner 与每个 target 的实际 CPU 亲和性；
 - 每个目标包都与运行当日核验的 npm `latest` 精确版本一致；
 - 开始压测前，所有目标均通过同一套语义 conformance；
 - 协议由已审阅的 pilot 冻结，然后使用 50 connections、pipelining 1、至少 10 秒预热、每次至少 30 秒测量、至少 7 轮轮转；
 - 每个工作负载记录 RPS、P50/P95/P99、错误、超时、状态分布、CPU 时间、每 1K 请求 CPU、RSS、峰值 RSS、精确版本和 provenance。
 
-完整样本会生成在本页中英文结果块内；不会被替换为只跳转 GitHub 或单独 results 页的链接。
+完整正式样本以及匹配的裸路径诊断样本都会生成在本站中英文页面内；不会被替换为只跳转 GitHub 或单独 results 页的链接。
 
 ## 复现
 
-本地运行仅用于实现验证：
+快速本地运行仅用于实现验证：
 
 ```bash
 npm ci
@@ -69,14 +77,26 @@ npm run build
 npm run test:bench:enterprise -- --pilot
 ```
 
-当合格的 Linux x64 pilot 已经评审，并将 Node.js 主版本和 CV 门禁明确冻结到 `test/benchmark/enterprise/protocols/linux-x64-v1.json` 后，使用隔离 CPU 集运行正式套件：
+在实际 Linux x64 主机上，用与正式运行相同的工作负载形状、干净源码和不重叠 CPU 集运行资格 pilot：
+
+```bash
+taskset -c 4-7 node test/benchmark/enterprise/run-enterprise-suite.mjs \
+  --qualification-pilot --load-cpus 4-7 --target-cpus 0-3
+```
+
+评审该 artifact 后，将它记录的 Node.js 主版本和批准的 CV 门槛明确冻结到 `test/benchmark/enterprise/protocols/linux-x64-v1.json`。之后才运行正式套件和与之匹配的裸路径诊断：
 
 ```bash
 taskset -c 4-7 node test/benchmark/enterprise/run-enterprise-suite.mjs \
   --formal --load-cpus 4-7 --target-cpus 0-3
 
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs \
+  --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 \
+  --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync \
+  --require-complete-matrix
+
 npm run generate:enterprise-benchmark-docs
 npm run verify:enterprise-benchmark-docs
 ```
 
-生成器会拒绝本地、pilot、脏源码、不完整、不稳定或非 Linux artifact，避免把方便取得的本地数字悄悄变成文档证据。
+生成器会拒绝本地、快速 pilot、资格 pilot、脏源码、不完整、不稳定、非 Linux 或不匹配的裸路径诊断 artifact。这既避免把方便取得的本地数字悄悄变成文档证据，也让可复现的最短路径参考位于生产形态结论旁边，而不是混进结论本身。

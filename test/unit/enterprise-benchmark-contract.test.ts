@@ -88,6 +88,8 @@ describe("Enterprise Workload Suite contract", () => {
     expect(enterpriseRunner).toContain("runConformance(");
     expect(enterpriseRunner).toContain("round-interleaved-rotating");
     expect(enterpriseRunner).toContain("--pipelining 1");
+    expect(enterpriseRunner).toContain("--qualification-pilot");
+    expect(enterpriseRunner).toContain("usesFormalIsolation");
     expect(enterpriseRunner).toContain('process.platform !== "linux"');
     expect(enterpriseRunner).toContain("taskset");
     expect(enterpriseRunner).toContain("assertFastifyHostParity");
@@ -145,6 +147,10 @@ describe("Enterprise Workload Suite contract", () => {
     expect(zh).toContain("目标运行时版本");
     expect(en).toContain("No accepted formal artifact has been published yet.");
     expect(zh).toContain("尚未发布可接受的正式 artifact。");
+    expect(en).toContain("Raw-path diagnostic reference");
+    expect(zh).toContain("裸路径诊断参考");
+    expect(en).toContain("<!-- enterprise-raw-diagnostics:start -->");
+    expect(zh).toContain("<!-- enterprise-raw-diagnostics:start -->");
     expect(markerSection(en)).not.toContain("github.com/");
     expect(markerSection(zh)).not.toContain("github.com/");
     expect(generator).toContain("Every per-round request count");
@@ -154,6 +160,10 @@ describe("Enterprise Workload Suite contract", () => {
     expect(generator).not.toContain("enterprise-benchmark/results");
     expect(generator).toContain("sample.round + 1");
     expect(generator).toContain("Completed / processed requests");
+    expect(generator).toContain("within 24 hours");
+    expect(generator).toContain(
+      "does not match the formal result source or environment",
+    );
     expect(readme).toContain("Enterprise workload benchmark");
   });
 

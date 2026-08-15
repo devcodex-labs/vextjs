@@ -36,7 +36,7 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 
 ## 企业级工作负载套件（独立口径）
 
-`enterprise/` 不修改也不复用主 Adapter Matrix 的语义。它比较 Vext Native、原生 Fastify、以及 Nest + 同版本 Fastify，在同一个 `POST /api/users/:userId/orders` 契约下覆盖请求关联、鉴权/授权、校验、服务组合、结构化日志、安全响应头、内存仓储边界和错误处理。它的用户文档在 [企业级工作负载基准测试](https://devcodex-labs.github.io/vextjs/zh/enterprise-benchmark)，完整正式样本始终留在该页面，而不是单独跳转 GitHub。
+`enterprise/` 不修改也不复用主 Adapter Matrix 的语义。它比较 Vext Native、原生 Fastify、以及 Nest + 同版本 Fastify，在同一个 `POST /api/users/:userId/orders` 契约下覆盖请求关联、鉴权/授权、校验、服务组合、结构化日志、安全响应头、内存仓储边界和错误处理。它的用户文档在 [企业级工作负载基准测试](https://devcodex-labs.github.io/vextjs/zh/enterprise-benchmark)：完整正式样本及其同环境裸路径诊断参考都始终留在该页面，而不是单独跳转 GitHub。
 
 裸 HTTP/路由路径仍是维护诊断，而不是该套件的排名口径；生产形态能力不能靠“全部关掉”来比较。当前固定依赖为 Fastify 5.12.0、Nest 11.2.1、`reflect-metadata` 0.2.2、`rxjs` 7.8.2 和 Autocannon 8.0.0，runner 会在运行前核验 npm `latest`。Hono 暂不进入第一阶段，因为当前仓库没有已验证的 Hono 校验与服务组合实现；临时拼接会降低可比性。
 
@@ -45,13 +45,24 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 npm run build
 npm run test:bench:enterprise -- --pilot
 
-# 只有 Linux x64、干净源码、pilot 冻结协议及非重叠 CPU 集才允许正式 artifact
+# 在实际 Linux x64 主机用与正式运行相同的负载形状和 CPU 隔离，生成资格 pilot
+taskset -c 4-7 node test/benchmark/enterprise/run-enterprise-suite.mjs \
+  --qualification-pilot --load-cpus 4-7 --target-cpus 0-3
+
+# 评审资格 artifact 并冻结 Node 主版本/CV 门槛后，才允许正式 artifact
 taskset -c 4-7 node test/benchmark/enterprise/run-enterprise-suite.mjs \
   --formal --load-cpus 4-7 --target-cpus 0-3
+
+# 与正式 artifact 同 commit / 环境运行的裸路径维护诊断；仅作为同页参考
+node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs \
+  --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 \
+  --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync \
+  --require-complete-matrix
+
 npm run generate:enterprise-benchmark-docs
 ```
 
-正式协议固定 50 connections、pipelining 1、至少 10 秒预热、30 秒测量、7 轮轮转；它还记录 P50/P95/P99、状态分布、CPU / 1K、RSS、峰值 RSS、精确版本和 provenance。合格 pilot 必须冻结当前 LTS Node.js 主版本和 CV 门禁，正式运行会核验 runner 与全部 target 的实际 CPU 亲和性。当前 `linux-x64-v1` 仍处于 `pilot-required`，因此 runner 会拒绝把任何本地/未冻结结果生成到站点。
+正式协议固定 50 connections、pipelining 1、至少 10 秒预热、30 秒测量、7 轮轮转；它还记录 P50/P95/P99、状态分布、CPU / 1K、RSS、峰值 RSS、精确版本和 provenance。资格 pilot 使用相同的负载形状，记录实际 Node.js 主版本并提出 CV 门槛；评审并冻结后，正式运行会核验 runner 与全部 target 的实际 CPU 亲和性。裸路径诊断只有与正式 artifact 的 clean commit、Node、Linux、CPU 型号、内存、Vext/Fastify/Autocannon 版本一致且在 24 小时内记录时，才会随正式样本出现在用户页面；它从不进入生产形态主表或排名。当前 `linux-x64-v1` 仍处于 `pilot-required`，因此 runner 会拒绝把任何本地/未冻结结果生成到站点。
 
 ## 🚀 使用方法
 
@@ -75,7 +86,7 @@ node test/benchmark/run-adapter-matrix.mjs --formal --from-results-json ./test/b
 ### 维护者诊断入口
 
 ```bash
-# Raw Native / Raw Fastify / Vext Native Core / Normal：定位 Native 最短链和组合开销，不是用户选型主报告
+# Raw Native / Raw Fastify / Vext Native Core / Normal：定位 Native 最短链和组合开销，不是用户选型主报告；默认写入独立的 NATIVE-FAIRNESS.md / native-fairness-latest.json
 node --expose-gc --max-old-space-size=512 test/benchmark/run-native-fairness.mjs --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 5 --max-cv 15 --process-priority 0 --handler-mode sync
 
 # Raw/Vext 成对结果：定位具体 Adapter 的组合增量，不用于横向 Adapter 排名
@@ -156,6 +167,7 @@ test/benchmark/
 ├── run-benchmark.mjs                  # Raw/Vext 成对维护者诊断
 ├── run-native-fairness.mjs            # Raw Native/Fastify + Vext Native Core/Normal 维护者诊断
 ├── RESULTS.md                         # 运行后自动生成的报告
+├── NATIVE-FAIRNESS.md                 # Raw Native/Fastify/Core/Normal 的独立维护诊断报告
 └── servers/
     ├── raw-native.mjs                 # Native 裸跑服务器（http.createServer + route-core）
     ├── raw-hono.mjs                   # Hono 裸跑服务器

@@ -9,7 +9,7 @@
 import { execFileSync, fork } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPOSITORY_ROOT = resolve(__dirname, "../..");
 const GENERATED_REPORT_PATHSPEC = ":(exclude)test/benchmark/RESULTS.md";
+const DEFAULT_OUTPUT_PATH = join(__dirname, "NATIVE-FAIRNESS.md");
+const DEFAULT_RESULTS_PATH = join(
+  REPOSITORY_ROOT,
+  "test",
+  "benchmark",
+  ".artifacts",
+  "native-fairness-latest.json",
+);
 const PACKAGE_METADATA = JSON.parse(
   readFileSync(join(REPOSITORY_ROOT, "package.json"), "utf8"),
 );
@@ -61,8 +69,8 @@ function parseArgs() {
     maxCv: 15,
     processPriority: 0,
     targetScheduling: "round-interleaved-rotating",
-    output: join(__dirname, "RESULTS.md"),
-    resultsJson: undefined,
+    output: DEFAULT_OUTPUT_PATH,
+    resultsJson: DEFAULT_RESULTS_PATH,
     fromResultsJson: [],
     requireCompleteMatrix: false,
   };
@@ -808,6 +816,7 @@ async function main() {
       merged.provenance,
       merged.environment,
     );
+    await mkdir(dirname(resolve(options.output)), { recursive: true });
     await writeFile(options.output, report, "utf8");
     console.log(`Merged report written: ${options.output}`);
     return;
@@ -944,16 +953,21 @@ async function main() {
     options.rounds,
   );
   if (options.resultsJson) {
+    await mkdir(dirname(resolve(options.resultsJson)), { recursive: true });
     await writeFile(
       options.resultsJson,
       `${JSON.stringify(
         {
           schemaVersion: 2,
+          suite: "vext-native-fairness-diagnostics",
+          suiteVersion: 1,
+          recordedAt: new Date().toISOString(),
           complete: unstable.length === 0,
           provenance,
           environment,
           options,
           stability: { maxCv: options.maxCv, unstable },
+          targets: TARGETS.map(({ id, title, mode }) => ({ id, title, mode })),
           results,
         },
         null,
@@ -973,6 +987,7 @@ async function main() {
     );
   }
   const report = generateReport(results, options, provenance, environment);
+  await mkdir(dirname(resolve(options.output)), { recursive: true });
   await writeFile(options.output, report, "utf8");
   console.log(`\nReport written: ${options.output}`);
 }

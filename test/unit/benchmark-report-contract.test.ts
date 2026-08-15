@@ -303,6 +303,9 @@ describe("benchmark report semantics", () => {
       "Benchmark artifact source provenance does not match the current worktree",
     );
     expect(runner).toContain("processPriority: getProcessPriority()");
+    expect(runner).toContain('"NATIVE-FAIRNESS.md"');
+    expect(runner).toContain('"native-fairness-latest.json"');
+    expect(runner).toContain('suite: "vext-native-fairness-diagnostics"');
     expect(matrixRunner).toContain(
       'targetScheduling: "round-interleaved-alternating"',
     );
@@ -356,6 +359,7 @@ describe("benchmark report semantics", () => {
     );
     expect(gitignore).toContain("/test/benchmark/.artifacts/");
     expect(benchmarkReadme).toContain("test/benchmark/.artifacts/");
+    expect(benchmarkReadme).toContain("NATIVE-FAIRNESS.md");
     expect(benchmarkReadme).not.toContain("./artifacts/");
   });
 

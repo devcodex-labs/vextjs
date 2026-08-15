@@ -4,6 +4,7 @@
   "reason": "The CV gate must be frozen from a pilot on the target Linux x64 environment before a formal artifact is accepted.",
   "node": "current LTS major selected and frozen by the qualifying pilot",
   "nodeMajor": null,
+  "qualification": null,
   "platform": "linux x64",
   "connections": 50,
   "pipelining": 1,
