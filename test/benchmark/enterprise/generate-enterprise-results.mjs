@@ -444,14 +444,17 @@ function expectedRawTargets(scenario) {
 }
 
 function assertRawDiagnosticMetrics(metrics, scenario, targetId, artifact) {
-  const samples = metrics?.stats?.samples;
+  const samples = metrics?.samples;
   if (
     !Number.isFinite(metrics?.rps) ||
     metrics.rps <= 0 ||
     !Number.isFinite(metrics?.stats?.median) ||
     !Number.isFinite(metrics?.stats?.cv) ||
     !Array.isArray(samples) ||
-    samples.length !== artifact.options?.rounds
+    samples.length !== artifact.options?.rounds ||
+    !Array.isArray(metrics?.stats?.samples) ||
+    metrics.stats.samples.length !== samples.length ||
+    metrics.stats.samples.some((rps) => !Number.isFinite(rps) || rps <= 0)
   ) {
     throw new Error(
       `Raw diagnostic ${scenario}/${targetId} does not contain complete samples`,
@@ -463,6 +466,12 @@ function assertRawDiagnosticMetrics(metrics, scenario, targetId, artifact) {
       sample.rps <= 0 ||
       !Number.isFinite(sample?.totalRequests) ||
       sample.totalRequests <= 0 ||
+      !Number.isFinite(sample?.latencyP50) ||
+      sample.latencyP50 < 0 ||
+      !Number.isFinite(sample?.latencyP99) ||
+      sample.latencyP99 < 0 ||
+      !Number.isFinite(sample?.throughput) ||
+      sample.throughput <= 0 ||
       sample.errors !== 0 ||
       sample.timeouts !== 0 ||
       sample.non2xx !== 0
@@ -478,6 +487,7 @@ function assertRawDiagnosticArtifact(rawArtifact, enterpriseArtifact) {
   if (
     rawArtifact?.schemaVersion !== 2 ||
     rawArtifact.suite !== RAW_DIAGNOSTIC_SUITE ||
+    rawArtifact.suiteVersion !== 2 ||
     rawArtifact.complete !== true ||
     rawArtifact.stability?.unstable?.length !== 0 ||
     rawArtifact.provenance?.worktree !== "clean" ||
@@ -787,7 +797,16 @@ function renderRawDiagnosticSummary(rawArtifact, language) {
 function renderRawDiagnosticSamples(rawArtifact, language) {
   const header =
     language === "zh"
-      ? ["诊断场景", "目标", "轮次", "RPS", "请求数", "P50 / P99", "吞吐"]
+      ? [
+          "诊断场景",
+          "目标",
+          "轮次",
+          "RPS",
+          "请求数",
+          "P50 / P99",
+          "错误 / 超时 / 非 2xx",
+          "吞吐",
+        ]
       : [
           "Diagnostic scenario",
           "Target",
@@ -795,17 +814,19 @@ function renderRawDiagnosticSamples(rawArtifact, language) {
           "RPS",
           "Requests",
           "P50 / P99",
+          "Errors / timeouts / non-2xx",
           "Throughput",
         ];
   const rows = rawArtifact.results.flatMap((result) =>
     expectedRawTargets(result.scenario).flatMap((targetId) =>
-      result.targets[targetId].stats.samples.map((sample, index) => [
+      result.targets[targetId].samples.map((sample, index) => [
         rawScenarioTitle(result.scenario, language),
         rawTargetTitle(targetId),
         String(index + 1),
         formatNumber(sample.rps),
         formatNumber(sample.totalRequests),
         `${formatNumber(sample.latencyP50)} / ${formatNumber(sample.latencyP99)} ms`,
+        `${sample.errors} / ${sample.timeouts} / ${sample.non2xx}`,
         formatNumber(sample.throughput),
       ]),
     ),

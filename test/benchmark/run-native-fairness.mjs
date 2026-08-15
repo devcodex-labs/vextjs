@@ -225,6 +225,7 @@ function summarizeSamples(samples) {
   const median = { ...ordered[Math.floor(ordered.length / 2)] };
   const rps = samples.map((sample) => sample.rps);
   const mean = rps.reduce((sum, value) => sum + value, 0) / rps.length;
+  median.samples = samples.map((sample) => ({ ...sample }));
   median.stats = {
     samples: rps,
     min: ordered[0].rps,
@@ -330,6 +331,8 @@ function hasValidMetrics(metrics) {
     metrics.errors === 0 &&
     metrics.timeouts === 0 &&
     metrics.non2xx === 0 &&
+    Array.isArray(metrics.samples) &&
+    metrics.samples.length === metrics.stats?.samples?.length &&
     metrics.stats?.samples?.length > 0,
   );
 }
@@ -960,7 +963,7 @@ async function main() {
         {
           schemaVersion: 2,
           suite: "vext-native-fairness-diagnostics",
-          suiteVersion: 1,
+          suiteVersion: 2,
           recordedAt: new Date().toISOString(),
           complete: unstable.length === 0,
           provenance,

@@ -55,6 +55,8 @@ describe("benchmark report semantics", () => {
 
     expect(runner).toContain(': "N/A";');
     expect(runner).toContain("这表示不适用，不是漏测或零成本");
+    expect(runner).toContain("suiteVersion: 2");
+    expect(runner).toContain("median.samples = samples.map");
     expect(en).not.toContain("Core shows");
     expect(zh).not.toContain("Core 有 `N/A`");
     expect(en).toContain("Raw-framework and shortest-path measurements");

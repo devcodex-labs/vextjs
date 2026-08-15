@@ -166,8 +166,9 @@ function createRawDiagnosticArtifact(
     return {
       ...samples[2],
       rps: samples[2]!.rps,
+      samples,
       stats: {
-        samples,
+        samples: samples.map((entry) => entry.rps),
         median: samples[2]!.rps,
         cv: 1,
       },
@@ -182,7 +183,7 @@ function createRawDiagnosticArtifact(
   return {
     schemaVersion: 2,
     suite: "vext-native-fairness-diagnostics",
-    suiteVersion: 1,
+    suiteVersion: 2,
     recordedAt: "2026-08-15T00:15:00.000Z",
     complete: true,
     provenance: {
@@ -294,5 +295,15 @@ describe("Enterprise benchmark result generator", () => {
     expect(() =>
       assertRawDiagnosticArtifact(rawArtifact, formalArtifact),
     ).toThrow("does not match the formal result source or environment");
+  });
+
+  it("rejects a raw diagnostic without complete per-round metrics", () => {
+    const formalArtifact = createFormalArtifact();
+    const rawArtifact = createRawDiagnosticArtifact(formalArtifact);
+    rawArtifact.results[0]!.targets["raw-native"]!.samples = [];
+
+    expect(() =>
+      assertRawDiagnosticArtifact(rawArtifact, formalArtifact),
+    ).toThrow("does not contain complete samples");
   });
 });
