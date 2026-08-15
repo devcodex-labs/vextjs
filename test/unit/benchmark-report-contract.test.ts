@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -83,10 +83,36 @@ describe("benchmark report semantics", () => {
       expect(page).toContain("programmatic API");
       expect(page).not.toContain("--process-priority -14");
     }
-    expect(en).toContain("/benchmark/results.html");
-    expect(zh).toContain("/zh/benchmark/results.html");
-    expect(en).not.toContain("](/benchmark/results)");
-    expect(zh).not.toContain("](/zh/benchmark/results)");
+    expect(en).toContain("<!-- benchmark-details:start -->");
+    expect(zh).toContain("<!-- benchmark-details:start -->");
+    expect(en).toContain("## Full formal sample");
+    expect(zh).toContain("## 完整正式样本");
+    expect(en).toContain("Every measured sample");
+    expect(zh).toContain("每一个测量样本");
+    expect(en).not.toContain("/benchmark/results.html");
+    expect(zh).not.toContain("/zh/benchmark/results.html");
+    expect(
+      existsSync(
+        path.join(process.cwd(), "website/docs/en/benchmark/results.md"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        path.join(process.cwd(), "website/docs/zh/benchmark/results.md"),
+      ),
+    ).toBe(false);
+    const enLegacyRedirect = readFileSync(
+      path.join(process.cwd(), "website/docs/public/benchmark/results.html"),
+      "utf8",
+    );
+    const zhLegacyRedirect = readFileSync(
+      path.join(process.cwd(), "website/docs/public/zh/benchmark/results.html"),
+      "utf8",
+    );
+    expect(enLegacyRedirect).toContain("../benchmark.html#full-formal-sample");
+    expect(zhLegacyRedirect).toContain(
+      "../benchmark.html#%E5%AE%8C%E6%95%B4%E6%AD%A3%E5%BC%8F%E6%A0%B7%E6%9C%AC",
+    );
     expect(siteConfig).toContain('link: "/benchmark.html"');
     expect(en).not.toContain(
       "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
@@ -102,6 +128,9 @@ describe("benchmark report semantics", () => {
     expect(generator).toContain("npm run generate:benchmark-docs");
     expect(generator).toContain('routeKey: "GET /users/:id"');
     expect(generator).toContain("return scenario.routeKey;");
+    expect(generator).not.toContain("benchmark/results.md");
+    expect(generator).not.toContain("--en-output");
+    expect(generator).not.toContain("--zh-output");
   });
 
   it("keeps the public benchmark pages user-facing and single-source", () => {

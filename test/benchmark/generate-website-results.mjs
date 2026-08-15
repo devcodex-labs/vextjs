@@ -1,12 +1,12 @@
 /**
  * Publishes the citable Adapter Matrix result into the user-facing docs site.
  *
- * The detailed pages and the landing-page result blocks are both derived from
- * one complete, clean-source formal artifact. This keeps a reader in the docs
- * site instead of making GitHub the only place to inspect the sample evidence.
+ * The summary and full-sample blocks are both derived from one complete,
+ * clean-source formal artifact and live in the same benchmark page. This keeps
+ * the conclusion, methodology, and evidence on one user-facing reading path.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "prettier";
@@ -15,6 +15,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(__dirname, "../..");
 const SUMMARY_START = "<!-- benchmark-results:start -->";
 const SUMMARY_END = "<!-- benchmark-results:end -->";
+const DETAILS_START = "<!-- benchmark-details:start -->";
+const DETAILS_END = "<!-- benchmark-details:end -->";
 
 const SCENARIOS = [
   {
@@ -70,8 +72,6 @@ function parseArgs() {
       REPOSITORY_ROOT,
       "test/benchmark/.artifacts/adapter-matrix-formal-release.json",
     ),
-    enOutput: join(REPOSITORY_ROOT, "website/docs/en/benchmark/results.md"),
-    zhOutput: join(REPOSITORY_ROOT, "website/docs/zh/benchmark/results.md"),
     enSummary: join(REPOSITORY_ROOT, "website/docs/en/benchmark.md"),
     zhSummary: join(REPOSITORY_ROOT, "website/docs/zh/benchmark.md"),
     check: false,
@@ -83,14 +83,6 @@ function parseArgs() {
     switch (args[index]) {
       case "--input":
         options.input = next(index);
-        index += 1;
-        break;
-      case "--en-output":
-        options.enOutput = next(index);
-        index += 1;
-        break;
-      case "--zh-output":
-        options.zhOutput = next(index);
         index += 1;
         break;
       case "--en-summary":
@@ -229,8 +221,8 @@ function renderSummary(artifact, language) {
     ? "| Scenario | Native | Hono | Fastify | Express | Koa |\n| --- | ---: | ---: | ---: | ---: | ---: |"
     : "| 场景 | Native | Hono | Fastify | Express | Koa |\n| --- | ---: | ---: | ---: | ---: | ---: |";
   const conclusion = isEnglish
-    ? `All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from ${roundCvRange(artifact)}. [Read the full in-document results and every sample](/benchmark/results.html), including P50/P99, exact versions, provenance, and route-lifecycle telemetry.`
-    : `全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 ${roundCvRange(artifact)} 之间。[查看站内完整结果与全部样本](/zh/benchmark/results.html)，其中包含 P50/P99、精确版本、provenance 和路由生命周期 telemetry。`;
+    ? `All 20 adapter/scenario measurements completed with zero errors, timeouts, and non-2xx responses. Per-scenario CV ranged from ${roundCvRange(artifact)}. The full per-round sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry appear below on this page.`
+    : `全部 20 个 Adapter/场景测量均为零错误、零超时、零非 2xx 响应。每个场景的 CV 在 ${roundCvRange(artifact)} 之间。完整的逐轮样本、P50/P99、精确版本、provenance 和路由生命周期 telemetry 均在本页下方。`;
   return `${heading}\n\n${description}\n\n${header}\n${resultRows(artifact, language)}\n\n${conclusion}`;
 }
 
@@ -240,30 +232,22 @@ function renderDetails(artifact, language) {
   const rows = artifact.results;
   const labels = isEnglish
     ? {
-        title: "# Full benchmark results",
-        lead: "This page contains the complete formal Adapter Matrix sample. It is generated from the same artifact as the summary on the benchmark landing page, so no GitHub redirect is required to inspect the evidence.",
-        identity: "## Run identity",
-        comparison: "## What was compared",
-        scenarios: "## Scenarios",
-        medians: "## Median throughput",
-        samples: "## Every measured sample",
-        telemetry: "## Normal route-lifecycle telemetry",
-        environment: "## Exact environment and versions",
-        reproduce: "## Reproduce this run",
-        limits: "## Interpretation limits",
+        title: "## Full formal sample",
+        lead: "This complete formal sample is generated from the same artifact as the current-result summary above. It remains on this page so the conclusion, method, and every measurement can be reviewed together.",
+        identity: "### Run identity",
+        scenarios: "### Scenarios",
+        samples: "### Every measured sample",
+        telemetry: "### Normal route-lifecycle telemetry",
+        environment: "### Exact environment and versions",
       }
     : {
-        title: "# 完整基准结果",
-        lead: "此页包含完整的正式 Adapter Matrix 样本。它与基准首页摘要由同一 artifact 生成，因此查看证据不需要跳转到 GitHub。",
-        identity: "## 运行身份",
-        comparison: "## 对比对象",
-        scenarios: "## 场景",
-        medians: "## 吞吐中位数",
-        samples: "## 每一个测量样本",
-        telemetry: "## Normal 路由生命周期 telemetry",
-        environment: "## 精确环境与版本",
-        reproduce: "## 复现本次运行",
-        limits: "## 解读限制",
+        title: "## 完整正式样本",
+        lead: "此完整正式样本与上方当前结果摘要由同一 artifact 生成，并保留在本页中，使结论、方法和每一条测量数据可以一起审阅。",
+        identity: "### 运行身份",
+        scenarios: "### 场景",
+        samples: "### 每一个测量样本",
+        telemetry: "### Normal 路由生命周期 telemetry",
+        environment: "### 精确环境与版本",
       };
   const scenarioRows = SCENARIOS.map(
     (scenario) =>
@@ -288,17 +272,6 @@ function renderDetails(artifact, language) {
       }),
     )
     .join("\n");
-  const comparison = isEnglish
-    ? "Every target runs the same Vext Normal application: identical routes, `defineRoutes()` loading, route matching, request/response objects, middleware fixture, handler mode, HTTP contract, process priority, and Autocannon protocol. Only the HTTP adapter changes. Raw-framework and shortest-path measurements are maintainer diagnostics and are not used here."
-    : "每个目标均运行同一个 Vext Normal 应用：routes、`defineRoutes()` 加载、路由匹配、请求/响应对象、中间件 fixture、handler 模式、HTTP 契约、进程优先级和 Autocannon 协议完全一致；唯一变量是 HTTP Adapter。裸框架与最短路径测量只用于维护者诊断，不用于此处。";
-  const limits = isEnglish
-    ? "This is a light Normal GET workload, not an all-features production or database/I/O benchmark. It comes from one Windows host. Do not combine absolute values across machines, dates, dependency versions, handler modes, or load protocols; validate your own production-shaped workload before choosing an adapter."
-    : "这是轻量的 Normal GET 负载，不是全能力生产负载或数据库/I/O 基准；数据来自一台 Windows 主机。不要将不同机器、日期、依赖版本、handler 模式或压测协议下的绝对数字合并排名；选择 Adapter 前仍应验证与自身生产场景相近的负载。";
-  const reproduce = isEnglish
-    ? "A citable run must start from a clean source worktree. The `--formal` switch refuses dirty source; publishing this page additionally requires the complete matrix. The runner checks exact local dependency versions against npm `latest`, validates every HTTP contract, and rejects errors, timeouts, non-2xx responses, missing results, or CV above the declared limit."
-    : "可引用运行必须从干净源码工作树开始。`--formal` 会拒绝脏源码；发布此页还要求完整矩阵。runner 会将精确本地依赖版本与 npm `latest` 核对、验证每个 HTTP 契约，并拒绝错误、超时、非 2xx、缺失结果或超过声明阈值的 CV。";
-  const command = `node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration ${artifact.options.duration} --connections ${artifact.options.connections} --pipelining ${artifact.options.pipelining} --warmup ${artifact.options.warmup} --rounds ${artifact.options.rounds} --max-cv ${artifact.options.maxCv} --process-priority ${artifact.options.processPriority} --handler-mode ${artifact.options.handlerMode} --results-json test/benchmark/.artifacts/adapter-matrix-formal-release.json`;
-
   return `<!-- Generated by npm run generate:benchmark-docs; do not edit manually. -->
 ${labels.title}
 
@@ -315,21 +288,11 @@ ${labels.identity}
 | Node.js | ${artifact.environment.node} |
 | ${isEnglish ? "Protocol" : "协议"} | ${artifact.options.duration}s × ${artifact.options.rounds} rounds; ${artifact.options.connections} connections; pipelining ${artifact.options.pipelining}; ${artifact.options.warmup}s warmup; ${artifact.options.handlerMode} handler; CV ≤ ${artifact.options.maxCv}% |
 
-${labels.comparison}
-
-${comparison}
-
 ${labels.scenarios}
 
 | ${isEnglish ? "Path" : "路径"} | ${isEnglish ? "Scenario" : "场景"} | ${isEnglish ? "What it exercises" : "覆盖内容"} |
 | --- | --- | --- |
 ${scenarioRows}
-
-${labels.medians}
-
-| ${isEnglish ? "Scenario" : "场景"} | Native | Hono | Fastify | Express | Koa |
-| --- | ---: | ---: | ---: | ---: | ---: |
-${resultRows(artifact, language)}
 
 ${labels.samples}
 
@@ -360,21 +323,6 @@ ${labels.environment}
 | @koa/router | ${versions.koaRouter} |
 | Autocannon | ${versions.autocannon} |
 | ${isEnglish ? "npm latest verification" : "npm latest 核验"} | ${artifact.provenance.latestDependencies.checkedAt} (${artifact.provenance.latestDependencies.registryUrl}) |
-
-${labels.reproduce}
-
-${reproduce}
-
-\`\`\`bash
-npm ci
-npm run verify:benchmark-deps
-${command}
-npm run generate:benchmark-docs
-\`\`\`
-
-${labels.limits}
-
-${limits}
 `;
 }
 
@@ -390,21 +338,37 @@ function replaceSummaryBlock(source, rendered) {
   return `${source.slice(0, afterStart)}\n\n${rendered}\n\n${source.slice(end)}`;
 }
 
+function replaceDetailsBlock(source, rendered) {
+  const start = source.indexOf(DETAILS_START);
+  const end = source.indexOf(DETAILS_END);
+  if (start < 0 || end < 0 || end < start) {
+    throw new Error(
+      "Benchmark details markers are missing; add benchmark-details markers before generating docs",
+    );
+  }
+  const afterStart = start + DETAILS_START.length;
+  return `${source.slice(0, afterStart)}\n\n${rendered}\n\n${source.slice(end)}`;
+}
+
 async function desiredOutputs(artifact, options) {
   const [enSource, zhSource] = await Promise.all([
     readFile(options.enSummary, "utf8"),
     readFile(options.zhSummary, "utf8"),
   ]);
   const outputs = [
-    [options.enOutput, renderDetails(artifact, "en")],
-    [options.zhOutput, renderDetails(artifact, "zh")],
     [
       options.enSummary,
-      replaceSummaryBlock(enSource, renderSummary(artifact, "en")),
+      replaceDetailsBlock(
+        replaceSummaryBlock(enSource, renderSummary(artifact, "en")),
+        renderDetails(artifact, "en"),
+      ),
     ],
     [
       options.zhSummary,
-      replaceSummaryBlock(zhSource, renderSummary(artifact, "zh")),
+      replaceDetailsBlock(
+        replaceSummaryBlock(zhSource, renderSummary(artifact, "zh")),
+        renderDetails(artifact, "zh"),
+      ),
     ],
   ];
   return Promise.all(
@@ -434,7 +398,6 @@ async function main() {
       stale.push(path);
       continue;
     }
-    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, content, "utf8");
     console.log(`Wrote ${path}`);
   }
