@@ -16,28 +16,6 @@ export const BENCHMARK_PACKAGES = Object.freeze([
   "autocannon",
 ]);
 
-/**
- * Packages executed by the Framework-native Product-stack Enterprise API
- * suite. The list is deliberately separate from the Adapter Matrix: a runner
- * must only claim freshness for packages it actually loads.
- */
-export const FRAMEWORK_NATIVE_BENCHMARK_PACKAGES = Object.freeze([
-  "fastify",
-  "autocannon",
-  "@fastify/helmet",
-  "@fastify/jwt",
-  "@fastify/request-context",
-  "@nestjs/common",
-  "@nestjs/core",
-  "@nestjs/jwt",
-  "@nestjs/platform-fastify",
-  "class-transformer",
-  "class-validator",
-  "jose",
-  "reflect-metadata",
-  "rxjs",
-]);
-
 function assertExactVersion(packageName, version) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version ?? "")) {
     throw new Error(

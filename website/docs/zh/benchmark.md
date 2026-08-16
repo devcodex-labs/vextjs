@@ -2,14 +2,14 @@
 
 这份基准用于帮助你选择 Vext HTTP Adapter。它固定同一个 Vext 应用，在相同的轻量 Normal 负载下比较五个受支持的 Adapter。它适合作为 Adapter 选型输入，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
 
-如需查看 Vext Native、原生 Fastify 与 Nest + Fastify 之间独立的 Framework-native 产品栈 API 对比，请参阅 [Framework-native 产品栈 API 基准测试](/zh/enterprise-benchmark)。它保持等价的生产形态能力，而非比较裸 HTTP 路径；其契约和结果不会与本 Adapter Matrix 混合。
-
 ## 先看结论
 
 - **这是 Adapter 对比，不是跨框架排行榜。** 每一行均使用相同的 Vext routes、Normal bootstrap、handler 模式、HTTP 契约、中间件 fixture 和压测协议；唯一变量是 Adapter。
 - **本机和本负载下 Native 的吞吐最高。** 这是当前环境观测，不是它在所有环境中都最优的承诺。
 - **本样本中 Fastify 与 Koa 的吞吐随后，Hono 与 Express 则取舍各自的编程模型和生态。** 对于较小差异，请结合 CV 和延迟数据判断。
 - **先按集成和迁移需求选择，再用你的业务复测。** Native 是依赖更轻的默认路径；需要相应生态时选择 Fastify、Express、Koa 或 Hono。
+
+> **范围说明：** 本页比较同一个 Vext Normal 应用通过不同 Vext Adapter 的开销。表中的 `Fastify`、`Hono`、`Express` 和 `Koa` 列不是这些框架的独立或裸性能，也不代表它们各自推荐生产配置的性能。生产选型请以你的应用、实际中间件与部署配置的压测为准。
 
 <!-- benchmark-results:start -->
 

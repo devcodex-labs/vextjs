@@ -173,7 +173,7 @@ export default {
 };
 ```
 
-Benchmark methodology: [Adapter Matrix](https://devcodex-labs.github.io/vextjs/benchmark) · [Framework-native product-stack API benchmark](https://devcodex-labs.github.io/vextjs/enterprise-benchmark). The latter compares equal production-shaped capabilities rather than bare HTTP paths; it publishes data only after an accepted formal artifact. Reproduce with `npm run test:bench` or `npm run test:bench:enterprise` in this repo.
+Benchmark methodology: [Adapter Matrix](https://devcodex-labs.github.io/vextjs/benchmark). It keeps one Vext application fixed and compares the supported adapters; reproduce it with `npm run test:bench` in this repo.
 
 ---
 

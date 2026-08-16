@@ -260,13 +260,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "OpenTelemetry", link: "/examples/opentelemetry" },
     ],
   },
-  {
-    text: "Benchmarking",
-    items: [
-      { text: "Adapter Matrix", link: "/benchmark" },
-      { text: "Framework-native API", link: "/enterprise-benchmark" },
-    ],
-  },
+  { text: "Benchmarking", link: "/benchmark" },
 ];
 
 const englishFrontendSidebar: SidebarGroup[] = [
@@ -430,13 +424,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
     ],
   },
-  {
-    text: "基准测试",
-    items: [
-      { text: "Adapter Matrix", link: "/zh/benchmark" },
-      { text: "Framework-native API", link: "/zh/enterprise-benchmark" },
-    ],
-  },
+  { text: "基准测试", link: "/zh/benchmark" },
 ];
 
 const chineseFrontendSidebar: SidebarGroup[] = [

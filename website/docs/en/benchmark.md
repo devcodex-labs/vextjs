@@ -2,14 +2,14 @@
 
 These benchmarks help you choose a Vext HTTP adapter. They keep the Vext application fixed and compare the five supported adapters under the same light Normal workload. They are an input to adapter selection—not a substitute for load-testing your application with its real middleware, authentication, logging, database access, and deployment topology.
 
-For a separate Framework-native product-stack API comparison across Vext Native, direct Fastify, and Nest + Fastify, see the [Framework-native product-stack API benchmark](/enterprise-benchmark). It keeps equivalent production-shaped capabilities enabled rather than comparing bare HTTP paths; its protocol and results are never merged into this Adapter Matrix.
-
 ## At a glance
 
 - **This is an adapter comparison, not a cross-framework league table.** Each row runs the same Vext routes, Normal bootstrap, handler mode, HTTP contract, middleware fixture, and load protocol; only the adapter changes.
 - **Native has the highest throughput in this host and workload.** That is a local observation, not a claim that it is universally best.
 - **Fastify and Koa are the next fastest adapters in this sample; Hono and Express trade throughput for their own programming and ecosystem choices.** Use the detailed CV and latency data before treating small differences as meaningful.
 - **Choose for integration and migration needs first, then reproduce with your workload.** Native is the dependency-light default. Select Fastify, Express, Koa, or Hono when their ecosystem is the better fit.
+
+> **Scope:** This page compares the cost of the same Vext Normal application through different Vext adapters. The `Fastify`, `Hono`, `Express`, and `Koa` columns are not standalone/raw-framework results and do not represent performance under each framework's recommended production configuration. Make production decisions from benchmarks of your application, real middleware, and deployment configuration.
 
 <!-- benchmark-results:start -->
 

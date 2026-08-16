@@ -34,31 +34,6 @@ Native adapter 使用 Node.js 内置 `http.createServer` + `route-core` 轻量�
 - **middleware-chain**：真实 route-level middleware chain，测 adapter 中间件链执行器。
 - **Vext Normal**：通过正式 bootstrap + `defineRoutes()` + router-loader 使用对应 adapter，关闭可选中间件；它不是 Core。
 
-## Framework-native 产品栈 API 套件（独立口径）
-
-`framework-native/` 不修改也不复用主 Adapter Matrix 的语义。它比较 Vext Native、原生 Fastify、以及 Nest + 同版本 Fastify，在同一个 `POST /api/users/:userId/orders` 契约下覆盖请求关联、JWT 认证与授权、校验、服务组合、结构化日志、安全响应头、内存仓储边界、错误处理及一条真实的受控外部 HTTP 调用。用户文档在 [Framework-native 产品栈 API 基准测试](https://devcodex-labs.github.io/vextjs/zh/enterprise-benchmark)：正式 artifact 的完整样本始终留在同一页面，不会跳转到 GitHub 或第二个结果页。
-
-这不是裸 HTTP/路由排名：生产形态能力不能靠“全部关掉”来比较。Raw/native-core 仍可用于各自栈的维护诊断，但不与本套件混合。目标实现采用有文档依据的推荐生产路径，允许受维护的生态集成而不机械限制第一方 npm 包；runner 对实际执行的 Fastify、Nest、JWT、上下文、校验、日志和 Autocannon 依赖执行 npm `latest`、manifest、lockfile 与安装树一致性校验。
-
-```bash
-# 任意支持主机：快速实现与 conformance 验证，不产生公开数据
-npm run build
-npm run test:bench:enterprise -- --smoke
-
-# 本地 pilot 仍然不可引用
-npm run test:bench:enterprise -- --pilot
-
-# Linux x64：仅在资格 pilot 已接受后按固定协议运行正式测试
-taskset -c 4-7 node test/benchmark/framework-native/run-framework-native-suite.mjs \
-  --formal --load-cpus 4-7 --target-cpus 0-3
-
-# 只接受 formal artifact；将完整结果投影到同一双语用户页面
-npm run generate:enterprise-benchmark-docs
-npm run verify:enterprise-benchmark-docs
-```
-
-当前 `linux-x64-v1` 为 `pilot-required`：它固定 50 connections、pipelining 1、10 秒预热、30 秒测量、7 轮轮转和 CV ≤ 15%，但尚未接受资格 pilot。因此 runner 会拒绝把任何本地/pilot 结果发布到站点。正式前先以 telemetry-on 执行所有成功/失败/负向契约和 canonical semantic hash；随后重启 telemetry-off 的 target/sidecar 才测量吞吐，避免测试计数污染结果。
-
 ## 🚀 使用方法
 
 ### 用户主基准：Vext Adapter Matrix
