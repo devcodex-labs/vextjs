@@ -59,8 +59,8 @@ describe("benchmark report semantics", () => {
     expect(runner).toContain("median.samples = samples.map");
     expect(en).not.toContain("Core shows");
     expect(zh).not.toContain("Core 有 `N/A`");
-    expect(en).toContain("Raw-framework and shortest-path measurements");
-    expect(zh).toContain("裸框架与最短路径测量");
+    expect(en).toContain("They should not rank user-facing adapter choices.");
+    expect(zh).toContain("因此不应用作用户选型排名。");
   });
 
   it("describes the actual Normal global middleware telemetry", () => {
