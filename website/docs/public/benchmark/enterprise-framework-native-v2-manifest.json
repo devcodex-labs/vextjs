@@ -1,6 +1,11 @@
 {
   "schemaVersion": 1,
   "suite": "framework-native-enterprise-api-windows-v2",
-  "status": "pending",
-  "reason": "No independently accepted formal artifact is available."
+  "status": "accepted",
+  "acceptedAt": "2026-08-16T09:41:45.059Z",
+  "sourceCommit": "150ac6c3e217f030c0546c7cc3e6e50e977ae10b",
+  "rawArtifactSha256": "6291f75e81b6e6cff269e8b52240d829addd3fded4f4f8e08a2387dea62685e1",
+  "acceptedArtifactSha256": "f52a740ef9e355dda7a04e5382f7bf19f71a35aeaa0bc93a23ed7a6aca6cd454",
+  "validatorSourceSha256": "2ab7f38eeb4b8a129e3c988c35f0a256333245ec562a63410b82127ab37bb0aa",
+  "protocol": "windows-x64-v2"
 }
