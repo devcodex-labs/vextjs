@@ -52,7 +52,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^1.0.1"
+    "vextjs": "^1.0.2"
   }
 }
 ```

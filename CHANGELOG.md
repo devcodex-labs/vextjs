@@ -12,18 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- `vext create` now emits English-first user source in TypeScript/JavaScript and full-stack/API-only modes; explicit locale resources remain language-specific.
-- Route handlers now infer `req.valid(location)` from their inline `validate` schema through `schema-dsl@3.0.4`; explicit generics remain a compatibility escape hatch for dynamic schemas.
-- Top-level `RouteOptions.responses` now compiles JSON response schemas once at route registration and shares the exact/family/default contract across all five adapters, OpenAPI, runtime/static route manifests, and generated client types; documentation-only `docs.responses.schema` keeps the legacy `JSON.stringify` behavior.
-- The direct `monsqlize` dependency is pinned to `3.3.0`; `database.monsqlizeOptions` forwards a typed runtime-validated advanced allowlist, `app.monsqlize` retains the complete raw instance (including manually registered typed Model descriptors), and `app.db` remains a stable facade whose collection/model results expose Vector Search and relation-protected deletion. MonSQLize and Vext now share the single locked `schema-dsl@3.0.4` installation.
+No user-facing changes are currently queued.
 
 ## Version History
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [1.0.2] | 2026-08-17 | Patch | Runtime contract fixes, OpenAPI/upload lifecycle documentation, adapter-matrix benchmark documentation, dependency and release hardening [view](./changelogs/v1.0.2.md) |
 | [1.0.1] | 2026-08-10 | Patch | Docs/release validation: English product README, locale-specific AI indexes, `npx vextjs create` cold-start, identity/contract/compare URL fixes [view](./changelogs/v1.0.1.md) |
 | [1.0.0] | 2026-08-10 | Major | 首个稳定 v1：schema-dsl v3 / monsqlize 3.1 固定 GA 依赖、完整 route-native 前端运行时、SSR starter、文档与发布安全门禁；包含 Hono Node 流式响应桥生命周期修复 [查看](./changelogs/v1.0.0.md) |
 | [0.3.8] | 2026-05-31 | Patch | 发布前收口：补齐 adapter/body-limit/cluster 验证闭环，移除 npm 包 sourcemap 产物，并同步 vext-test 外部消费者验证 [查看](./changelogs/v0.3.8.md) |
@@ -67,7 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Detailed Changelogs](./changelogs/)
 
-[Unreleased]: https://github.com/devcodex-labs/vextjs/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/devcodex-labs/vextjs/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/devcodex-labs/vextjs/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/devcodex-labs/vextjs/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/devcodex-labs/vextjs/compare/v0.3.8...v1.0.0
 [0.3.8]: https://github.com/devcodex-labs/vextjs/compare/v0.3.7...v0.3.8

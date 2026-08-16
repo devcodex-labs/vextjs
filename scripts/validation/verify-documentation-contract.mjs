@@ -10,6 +10,9 @@ const renderedRoot = path.join(root, "website", "dist");
 const renderedBasePath = "/vextjs";
 const renderedOnly = process.argv.includes("--rendered");
 const failures = [];
+const packageVersion = JSON.parse(
+  readFileSync(path.join(root, "package.json"), "utf8"),
+).version;
 
 function fail(message) {
   failures.push(message);
@@ -191,7 +194,11 @@ function verifyWebsiteNavigationContract() {
     }
   }
 
-  const versionMenu = sectionBetween(navSource, 'en: "v1.0.1"', "  },\n];");
+  const versionMenu = sectionBetween(
+    navSource,
+    `en: "v${packageVersion}"`,
+    "  },\n];",
+  );
   if (versionMenu.includes('en: "Contributing"')) {
     fail("website version menu must not duplicate Contributing");
   }
@@ -1217,9 +1224,9 @@ function verifyRenderedMachineArtifacts() {
   if (manifest.schemaVersion !== "vext.docs-manifest/v1") {
     fail("website/dist/docs-manifest.json must declare vext.docs-manifest/v1");
   }
-  if (manifest.frameworkVersion !== "1.0.1") {
+  if (manifest.frameworkVersion !== packageVersion) {
     fail(
-      "website/dist/docs-manifest.json must declare framework version 1.0.1",
+      `website/dist/docs-manifest.json must declare framework version ${packageVersion}`,
     );
   }
   if (!Array.isArray(manifest.entries)) {

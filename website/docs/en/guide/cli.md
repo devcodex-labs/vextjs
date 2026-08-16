@@ -725,7 +725,7 @@ All commands support the following global options:
 ```bash
 # View version
 vext --version
-# Output: vextjs v1.0.1
+# Output: vextjs v1.0.2
 
 # View help
 vext --help
