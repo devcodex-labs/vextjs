@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { format } from "prettier";
+
 import {
   FRAMEWORK_NATIVE_V2_SUITE_ID,
   TARGETS,
@@ -434,15 +436,24 @@ async function readAccepted(path) {
   return { artifact, acceptedSha256: sha256(content) };
 }
 
+async function renderFormattedSection(page, artifact, acceptedSha256) {
+  const section = artifact
+    ? renderArtifact(page, artifact, acceptedSha256)
+    : renderPending(page);
+  return (await format(section, { filepath: page.path })).trimEnd();
+}
+
 async function main() {
   const options = parseArgs();
   const { artifact, acceptedSha256 } = await readAccepted(options.input);
   const manifest = `${JSON.stringify(publicationManifest(artifact, acceptedSha256), null, 2)}\n`;
   for (const page of pages) {
     const current = await readFile(page.path, "utf8");
-    const expected = artifact
-      ? renderArtifact(page, artifact, acceptedSha256)
-      : renderPending(page);
+    const expected = await renderFormattedSection(
+      page,
+      artifact,
+      acceptedSha256,
+    );
     if (options.check) {
       if (currentSection(current).trim() !== expected.trim()) {
         throw new Error(`${page.path} does not match accepted artifact state`);
