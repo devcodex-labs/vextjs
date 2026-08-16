@@ -45,6 +45,15 @@ import { createVextApiClient } from "vextjs/frontend";
 
 Use them when you need a typed client boundary. Do not add them to simple pages just to read first-screen data.
 
+## Advanced Frontend Integrations
+
+`vextjs/frontend` also exposes a small set of advanced integration APIs. They are for adapters, custom tooling, or bespoke browser bootstraps—not the default path for application pages.
+
+- `defineFrontendAdapter()` is an identity helper for an implementation of `VextFrontendAdapter`.
+- `VextBrowserRuntime` and `configureVextBrowserRuntime()` power Vext's generated browser entry. Regular applications should use the generated entry plus `Link`, `Form`, and navigation hooks instead of manually creating a runtime. A custom bootstrap must own one browser runtime for its environment.
+
+For programmatic asset upload, see [Build and Deploy](./build-and-deploy#programmatic-upload-integration).
+
 ## Plain Fetch Is Fine
 
 For small client interactions after hydration:

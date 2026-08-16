@@ -6,14 +6,25 @@ Vext 前端数据从服务端开始。Route handler 调用 services，准备 JSO
 
 ```ts
 export default (app) => {
-  app.get("/dashboard", { cache: { ttl: 30_000 } }, async (req, res) => {
-    const summary = await app.services.dashboard.summary(req.user.id);
-    res.render("dashboard", {
-      summary,
-    });
-  });
+  app.get(
+    "/dashboard",
+    { auth: true, cache: { ttl: 30_000 } },
+    async (req, res) => {
+      const { userId } = req.auth;
+      if (!userId) {
+        req.app.throw(401, "控制台需要已认证的用户 ID");
+      }
+
+      const summary = await app.services.dashboard.summary(userId);
+      res.render("dashboard", {
+        summary,
+      });
+    },
+  );
 };
 ```
+
+应用注册 `auth()` 后，`auth: true` 负责保护路由，`req.auth` 承载框架提供的身份与 claims。用户资料属于业务数据：应由自己的 service 加载，不能假设 Vext 会注入 `req.user`。
 
 页面在 SSR 和 hydration 中接收同一份对象：
 
@@ -25,16 +36,23 @@ export default function DashboardPage(props: { summary: DashboardSummary }) {
 
 ## Layout Data
 
-导航、用户菜单、工作区信息、后台权限等 shell 级数据放在 `options.layoutData`：
+导航、用户菜单、工作区信息、后台权限等 shell 级数据放在 `options.layoutData`。下面的 handler 片段假定所在路由已经声明 `auth: true`：
 
 ```ts
+const { userId } = req.auth;
+if (!userId) {
+  req.app.throw(401, "控制台需要已认证的用户 ID");
+}
+
+const user = await app.services.user.findById(userId);
+
 res.render(
   "admin/dashboard",
   { metrics },
   {
     layoutData: {
-      user: req.user,
-      nav: await app.services.nav.admin(req.user.id),
+      user,
+      nav: await app.services.nav.admin(userId),
     },
   },
 );

@@ -6,14 +6,25 @@ Frontend data in Vext starts on the server. Route handlers call services, prepar
 
 ```ts
 export default (app) => {
-  app.get("/dashboard", { cache: { ttl: 30_000 } }, async (req, res) => {
-    const summary = await app.services.dashboard.summary(req.user.id);
-    res.render("dashboard", {
-      summary,
-    });
-  });
+  app.get(
+    "/dashboard",
+    { auth: true, cache: { ttl: 30_000 } },
+    async (req, res) => {
+      const { userId } = req.auth;
+      if (!userId) {
+        req.app.throw(401, "Dashboard requires an authenticated user ID");
+      }
+
+      const summary = await app.services.dashboard.summary(userId);
+      res.render("dashboard", {
+        summary,
+      });
+    },
+  );
 };
 ```
+
+After the app registers `auth()`, `auth: true` protects the route while `req.auth` carries the framework identity and claims. A user profile is application data: load it through your own service instead of assuming that Vext injects `req.user`.
 
 The page receives the same object during SSR and hydration:
 
@@ -25,16 +36,23 @@ export default function DashboardPage(props: { summary: DashboardSummary }) {
 
 ## Layout Data
 
-Use `options.layoutData` for shell-level data such as navigation, user menus, workspace metadata, or admin permissions:
+Use `options.layoutData` for shell-level data such as navigation, user menus, workspace metadata, or admin permissions. The following handler fragment assumes the route is protected with `auth: true`:
 
 ```ts
+const { userId } = req.auth;
+if (!userId) {
+  req.app.throw(401, "Dashboard requires an authenticated user ID");
+}
+
+const user = await app.services.user.findById(userId);
+
 res.render(
   "admin/dashboard",
   { metrics },
   {
     layoutData: {
-      user: req.user,
-      nav: await app.services.nav.admin(req.user.id),
+      user,
+      nav: await app.services.nav.admin(userId),
     },
   },
 );

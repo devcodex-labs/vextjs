@@ -65,6 +65,10 @@ vext deploy assets
 
 `vext deploy assets` 只接受 option 参数，不接受额外位置参数。需要取值的参数必须提供非 option 值；例如 `--manifest --dry-run`、`--target-dir --dry-run` 会直接失败，而不是把后一个 flag 当作路径。
 
+## 程序化上传集成
+
+普通发布应使用 `vext deploy assets`。如果工具链自己负责编排发布，可以从 `vextjs/frontend` 导入 `deployFrontendAssets`；它使用与 CLI 相同的 deploy manifest 和 upload plan，并需要 resolved frontend configuration 与 manifest path。只有工具链自己拥有云厂商集成时，才传入自定义 upload adapter。
+
 ## CDN 与增量上传
 
 `deploy-manifest.json` 记录可上传静态资源：

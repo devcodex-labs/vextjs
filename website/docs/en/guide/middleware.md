@@ -154,6 +154,10 @@ Specify middleware for routes via `options.middlewares`:
 
 For production authentication, prefer the built-in `auth()` middleware plus `RouteOptions.auth` wrapped in a local route guard helper. This section only demonstrates the lower-level middleware reference mechanism.
 
+:::tip Authentication and authorization
+Use `auth()` to resolve identity into `req.auth`, then use [`RouteOptions.auth`](../api/route-definition#auth) to protect a route and keep its OpenAPI security declaration aligned. Keep application-specific permission resources in a local helper. For a complete `permission-core` integration, see the [permission-core Auth example](../examples/permission-core-auth).
+:::
+
 ```typescript
 // src/routes/admin.ts
 import { defineRoutes } from "vextjs";

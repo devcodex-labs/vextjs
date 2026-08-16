@@ -154,6 +154,10 @@ export default {
 
 生产认证建议优先使用内置 `auth()` 中间件，并通过本地 route guard helper 封装 `RouteOptions.auth`。本节只演示更底层的 middleware 引用机制。
 
+:::tip 认证与授权
+使用 `auth()` 将身份解析到 `req.auth`，再通过 [`RouteOptions.auth`](../api/route-definition#auth) 保护路由，并让 OpenAPI security 声明保持一致。业务特定的权限资源应集中在本地 helper 中。完整的 `permission-core` 集成见 [permission-core Auth 示例](../examples/permission-core-auth)。
+:::
+
 ```typescript
 // src/routes/admin.ts
 import { defineRoutes } from "vextjs";

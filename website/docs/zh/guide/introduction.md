@@ -75,8 +75,9 @@ app.post(
     docs: { summary: "创建用户" },
   },
   async (req, res) => {
-    // req.body 已通过校验，类型安全
-    const user = await app.services.user.create(req.body);
+    // 通过 req.valid() 读取已校验、类型化的数据；req.body 保留原始输入。
+    const body = req.valid("body");
+    const user = await app.services.user.create(body);
     res.json(user);
   },
 );

@@ -84,6 +84,10 @@ vext deploy assets
 
 `vext deploy assets` accepts options only and rejects extra positional arguments. Options that require values must receive non-option values; for example, `--manifest --dry-run` and `--target-dir --dry-run` fail instead of treating the next flag as a path.
 
+## Programmatic Upload Integration
+
+Use `vext deploy assets` for ordinary deployments. Tooling that owns its own release orchestration can import `deployFrontendAssets` from `vextjs/frontend`; it uses the same deploy manifest and upload plan as the CLI, and requires a resolved frontend configuration plus the manifest path. Pass a custom upload adapter only when your tooling owns that cloud-provider integration.
+
 ## CDN and Incremental Upload
 
 `deploy-manifest.json` records static assets that can be uploaded:

@@ -75,8 +75,9 @@ app.post(
     docs: { summary: "Create user" },
   },
   async (req, res) => {
-    // req.body has passed verification and is type safe
-    const user = await app.services.user.create(req.body);
+    // Read the validated, typed body; req.body retains the raw input.
+    const body = req.valid("body");
+    const user = await app.services.user.create(body);
     res.json(user);
   },
 );

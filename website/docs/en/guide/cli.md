@@ -29,6 +29,7 @@ npm run build # → vext build
 | `vext create <name>` | Create a new project                                               | Project initialization               |
 | `vext dev`           | Start development mode                                             | Daily development                    |
 | `vext build`         | Build project                                                      | Build before deployment              |
+| `vext deploy assets` | Upload built frontend assets                                       | Frontend CDN/static asset deployment |
 | `vext typegen`       | Generate declaration + service dependency diagnosis (experimental) | TS/JS project engineering assistance |
 | `vext doctor routes` | Static route diagnosis + inspect / manifest (experimental)         | OpenAPI / routing management         |
 | `vext start`         | Start production mode                                              | Production deployment                |

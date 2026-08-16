@@ -13,7 +13,7 @@ import { createTestApp } from "vextjs/testing";
 **Core Design**:
 
 - **Zero network I/O**: `TestRequest` does not start the HTTP server internally, directly constructs the `(req, res)` handler through `adapter.buildHandler()`, and uses the Mock object in memory to simulate the request. Faster than `supertest`, can be run in parallel in CI without port conflicts.
-- **Zero Configuration**: Current limiting, silent logging, and random ports are disabled by default and can be used out of the box.
+- **Zero Configuration**: Rate limiting is disabled and logging is silent by default. `TestRequest` does not open an HTTP listener; `port: 0` is only an isolated test configuration default.
 - **Chained API**: A chained request constructor similar to `supertest` style, supporting `await` to directly obtain the response.
 - **Safe Exit**: `config._testMode = true` prevents `shutdown()` from calling `process.exit(0)`.
 
@@ -76,21 +76,23 @@ interface CreateTestAppOptions {
   routes?: boolean;
   middlewares?: boolean;
   rootDir?: string;
+  devOverlay?: (error: unknown) => string;
 }
 ```
 
 ### Field description
 
-| Field          | Type                    | Default Value   | Description                                                                            |
-| -------------- | ----------------------- | --------------- | -------------------------------------------------------------------------------------- |
-| `config`       | `Partial<VextConfig>`   | `{}`            | Override the default configuration (deeply merged into the test default configuration) |
-| `plugins`      | `boolean`               | `false`         | Whether to load `src/plugins/` (not loaded by default in the test environment)         |
-| `setupPlugins` | `Function`              | `undefined`     | Manually register plugins (replacing automatic scanning)                               |
-| `services`     | `boolean`               | `true`          | Whether to load `src/services/`                                                        |
-| `mockServices` | `Partial<VextServices>` | `undefined`     | Manually inject mock services                                                          |
-| `routes`       | `boolean`               | `true`          | Whether to load `src/routes/`                                                          |
-| `middlewares`  | `boolean`               | `true`          | Whether to load `src/middlewares/`                                                     |
-| `rootDir`      | `string`                | `process.cwd()` | Project root directory (used to locate the `src/` subdirectory)                        |
+| Field          | Type                         | Default Value   | Description                                                                            |
+| -------------- | ---------------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `config`       | `Partial<VextConfig>`        | `{}`            | Override the default configuration (deeply merged into the test default configuration) |
+| `plugins`      | `boolean`                    | `false`         | Whether to load `src/plugins/` (not loaded by default in the test environment)         |
+| `setupPlugins` | `Function`                   | `undefined`     | Manually register plugins (replacing automatic scanning)                               |
+| `services`     | `boolean`                    | `true`          | Whether to load `src/services/`                                                        |
+| `mockServices` | `Partial<VextServices>`      | `undefined`     | Manually inject mock services                                                          |
+| `routes`       | `boolean`                    | `true`          | Whether to load `src/routes/`                                                          |
+| `middlewares`  | `boolean`                    | `true`          | Whether to load `src/middlewares/`                                                     |
+| `rootDir`      | `string`                     | `process.cwd()` | Project root directory (used to locate the `src/` subdirectory)                        |
+| `devOverlay`   | `(error: unknown) => string` | `undefined`     | Optional HTML error renderer when the request accepts `text/html`                      |
 
 ---
 
@@ -112,7 +114,7 @@ testApp = await createTestApp({
 
 ```typescript
 {
-  port: 0, // Random port to avoid conflicts
+  port: 0, // Isolated test configuration; TestRequest does not listen
   host: '127.0.0.1',
   logger: { level: 'silent' }, // Log silently
   rateLimit: {
@@ -130,6 +132,8 @@ testApp = await createTestApp({
 ```
 
 Merge priority from lowest to highest is `DEFAULT_CONFIG` → `test defaults` → `config parameters`. Explicitly setting `rateLimit.enabled`, `accessLog.enabled`, or `session.enabled` to `true` registers the same built-in runtime used by production and development.
+
+`TestRequest` invokes the built handler directly, so its requests never bind or connect to this port.
 
 ---
 

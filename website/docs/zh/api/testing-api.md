@@ -13,7 +13,7 @@ import { createTestApp } from "vextjs/testing";
 **核心设计**：
 
 - **零网络 I/O**：`TestRequest` 内部不启动 HTTP 服务器，直接通过 `adapter.buildHandler()` 构造 `(req, res)` handler，用内存中的 Mock 对象模拟请求。比 `supertest` 更快，CI 中可并行运行无端口冲突。
-- **零配置**：默认禁用限流、静默日志、随机端口，开箱即用。
+- **零配置**：默认禁用限流并使用静默日志。`TestRequest` 不会打开 HTTP listener；`port: 0` 只是隔离测试的配置默认值。
 - **链式 API**：类似 `supertest` 风格的链式请求构造器，支持 `await` 直接获取响应。
 - **安全退出**：`config._testMode = true` 阻止 `shutdown()` 调用 `process.exit(0)`。
 
@@ -76,21 +76,23 @@ interface CreateTestAppOptions {
   routes?: boolean;
   middlewares?: boolean;
   rootDir?: string;
+  devOverlay?: (error: unknown) => string;
 }
 ```
 
 ### 字段说明
 
-| 字段           | 类型                    | 默认值          | 说明                                          |
-| -------------- | ----------------------- | --------------- | --------------------------------------------- |
-| `config`       | `Partial<VextConfig>`   | `{}`            | 覆盖默认配置（深度合并到测试默认配置之上）    |
-| `plugins`      | `boolean`               | `false`         | 是否加载 `src/plugins/`（测试环境默认不加载） |
-| `setupPlugins` | `Function`              | `undefined`     | 手动注册插件（替代自动扫描）                  |
-| `services`     | `boolean`               | `true`          | 是否加载 `src/services/`                      |
-| `mockServices` | `Partial<VextServices>` | `undefined`     | 手动注入 mock services                        |
-| `routes`       | `boolean`               | `true`          | 是否加载 `src/routes/`                        |
-| `middlewares`  | `boolean`               | `true`          | 是否加载 `src/middlewares/`                   |
-| `rootDir`      | `string`                | `process.cwd()` | 项目根目录（用于定位 `src/` 子目录）          |
+| 字段           | 类型                         | 默认值          | 说明                                          |
+| -------------- | ---------------------------- | --------------- | --------------------------------------------- |
+| `config`       | `Partial<VextConfig>`        | `{}`            | 覆盖默认配置（深度合并到测试默认配置之上）    |
+| `plugins`      | `boolean`                    | `false`         | 是否加载 `src/plugins/`（测试环境默认不加载） |
+| `setupPlugins` | `Function`                   | `undefined`     | 手动注册插件（替代自动扫描）                  |
+| `services`     | `boolean`                    | `true`          | 是否加载 `src/services/`                      |
+| `mockServices` | `Partial<VextServices>`      | `undefined`     | 手动注入 mock services                        |
+| `routes`       | `boolean`                    | `true`          | 是否加载 `src/routes/`                        |
+| `middlewares`  | `boolean`                    | `true`          | 是否加载 `src/middlewares/`                   |
+| `rootDir`      | `string`                     | `process.cwd()` | 项目根目录（用于定位 `src/` 子目录）          |
+| `devOverlay`   | `(error: unknown) => string` | `undefined`     | 请求接受 `text/html` 时的可选 HTML 错误渲染器 |
 
 ---
 
@@ -112,7 +114,7 @@ testApp = await createTestApp({
 
 ```typescript
 {
-  port: 0,                // 随机端口，避免冲突
+  port: 0,                // 隔离测试配置；TestRequest 不监听端口
   host: '127.0.0.1',
   logger: { level: 'silent' },  // 日志静默
   rateLimit: {
@@ -130,6 +132,8 @@ testApp = await createTestApp({
 ```
 
 配置合并优先级从低到高为：`DEFAULT_CONFIG` → `测试默认值` → `config 参数`。显式设置 `rateLimit.enabled`、`accessLog.enabled` 或 `session.enabled` 为 `true` 时，会注册与生产、开发环境相同的内置运行时。
+
+`TestRequest` 直接调用已构建的 handler，因此其请求不会绑定或连接到这个端口。
 
 ---
 

@@ -45,6 +45,15 @@ import { createVextApiClient } from "vextjs/frontend";
 
 只有需要 typed client 边界时才使用。简单页面不要为了读取首屏数据而引入它们。
 
+## 高级前端集成
+
+`vextjs/frontend` 还公开了一小组高级集成 API，适用于 adapter、定制工具链或自定义浏览器启动，而不是普通应用页面的默认路径。
+
+- `defineFrontendAdapter()` 是实现 `VextFrontendAdapter` 时使用的 identity helper。
+- `VextBrowserRuntime` 与 `configureVextBrowserRuntime()` 驱动 Vext 生成的浏览器入口。普通应用应使用生成入口以及 `Link`、`Form` 和导航 hooks，不应手动创建 runtime。自定义启动必须为其环境拥有唯一的浏览器 runtime。
+
+程序化上传 assets 见[构建与部署](./build-and-deploy#程序化上传集成)。
+
 ## 普通 Fetch 也可以
 
 Hydration 后的小型交互可以直接使用：

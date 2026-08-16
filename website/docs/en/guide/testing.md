@@ -265,13 +265,13 @@ expect(res.text).toContain('"code":0');
 
 The application created by `createTestApp()` is in test mode (`_testMode: true`), which has the following differences from production mode:
 
-| Features         | Test Mode                    | Production Mode             |
-| ---------------- | ---------------------------- | --------------------------- |
-| HTTP Listening   | ❌ Not Starting              | ✅ Listening Port           |
-| `process.exit()` | ❌ Not called                | ✅ Called on shutdown       |
-| Log level        | Default `silent`             | Determined by configuration |
-| Current limit    | Relaxed to 100000 by default | Determined by configuration |
-| Shutdown timeout | Default 1 second             | Determined by configuration |
+| Features         | Test Mode           | Production Mode             |
+| ---------------- | ------------------- | --------------------------- |
+| HTTP Listening   | ❌ Not Starting     | ✅ Listening Port           |
+| `process.exit()` | ❌ Not called       | ✅ Called on shutdown       |
+| Log level        | Default `silent`    | Determined by configuration |
+| Rate limiting    | Disabled by default | Determined by configuration |
+| Shutdown timeout | Default 1 second    | Determined by configuration |
 
 ## Practical example
 
