@@ -11,11 +11,12 @@ The earlier Enterprise workload suite has been removed. It used artificial
 latency injection and did not establish a sufficiently comparable product-stack
 contract, so its numbers are not retained as a reference.
 
-The replacement suite is implemented as `framework-native-product-stack-enterprise-api`.
-Its `linux-x64-v1` protocol is currently `pilot-required`; therefore no formal
-cross-framework number is published below. A local smoke or pilot proves the
-implementation and conformance only. It is intentionally non-citable until a
-clean Linux x64 qualification pilot is reviewed and the protocol is accepted.
+The replacement suite is `framework-native-enterprise-api-windows-v2`. Its
+accepted `windows-x64-v2` protocol is designed for this Windows host, but no
+formal cross-framework number is published until a clean committed candidate
+passes host qualification, all 162 timed samples, and an independent artifact
+validator. A local smoke or pilot proves implementation behavior only and is
+intentionally non-citable.
 
 ## Why this is not a bare-performance benchmark
 
@@ -37,29 +38,31 @@ ranked against this product-stack result.
 
 ## Fairness contract
 
-Every target implements `POST /api/users/:userId/orders` and the same five
-workloads. The runner proves the observable contract before it measures rate.
+Every target implements `POST /api/users/:userId/orders` and the same six
+timed workloads. The runner proves the observable contract before it measures
+rate.
 
-| Shared requirement               | Contract held constant                                                                                                                                         |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Correlation                      | `x-request-id`, tenant, and trace values propagate into the success/error envelope and the controlled outbound request.                                        |
-| Authentication and authorization | A valid signed JWT creates an order; a missing JWT returns 401; a valid read-only JWT returns 403.                                                             |
-| Validation                       | An authenticated invalid `quantity` returns 422 before a repository write.                                                                                     |
-| Success semantics                | A 201 response has the same business order, pricing checksum, totals, and response security headers.                                                           |
-| Side effects                     | Exactly one in-memory repository write for a success; no write for every failure.                                                                              |
-| Structured logging               | Each target emits its normal structured event to an in-process discard sink, so terminal or disk I/O does not decide the comparison.                           |
-| External I/O                     | The external-success workload makes one real TCP/HTTP request to an owned local quote sidecar. The sidecar is not presented as a database or Redis substitute. |
-| Negative probes                  | Wrong method, wrong content type, and malformed JWT must all reject and produce no write. They are conformance probes, not measured workloads.                 |
+| Shared requirement               | Contract held constant                                                                                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correlation                      | `x-request-id`, tenant, and trace values propagate into the success/error envelope and the controlled outbound request.                                                                |
+| Authentication and authorization | A valid signed JWT creates an order; a missing JWT returns 401; a valid read-only JWT returns 403.                                                                                     |
+| Validation                       | An authenticated invalid `quantity` returns 422 before a repository write.                                                                                                             |
+| Success semantics                | A 201 response has the same business order, pricing checksum, totals, and response security headers.                                                                                   |
+| Side effects                     | Exactly one in-memory repository write for a success; no write for every failure.                                                                                                      |
+| Structured logging               | Each target emits its normal completed access event to a drained local stdout pipe. The runner neither parses nor counts those logs during measurement.                                |
+| External I/O                     | Two external-success workloads make one real TCP/HTTP request to an owned local quote sidecar with nominal 20 ms or 40 ms delay. It is not a database or Redis substitute.             |
+| Negative probes                  | Wrong method, wrong content type, internal error, malformed JWT, unknown field, and decimal coercion must reject without a write. They are conformance probes, not measured workloads. |
 
 The three target implementations are intentionally framework-native:
 
-| Capability          | VextJS + Native Adapter                                     | Fastify                    | NestJS + Fastify                                                            |
-| ------------------- | ----------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- |
-| Request context     | Vext request ID and built-in AsyncLocalStorage context      | `@fastify/request-context` | Nest AsyncLocalStorage middleware recipe                                    |
-| JWT and permission  | Vext `auth()` plus `jose` verification and route permission | `@fastify/jwt` route hook  | `@nestjs/jwt` in a `CanActivate` guard                                      |
-| Validation          | Vext compiled route validation                              | Fastify route JSON Schema  | `ValidationPipe`, DTO decorators, `class-validator` and `class-transformer` |
-| Service composition | Startup-loaded Vext services                                | Startup-composed closures  | Provider constructor injection                                              |
-| Security headers    | Vext `securityHeaders: basic`                               | `@fastify/helmet`          | `@fastify/helmet` on the Fastify host                                       |
+| Capability          | VextJS + Native Adapter                                              | Fastify                                           | NestJS + Fastify                                                            |
+| ------------------- | -------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
+| Request context     | Vext request ID and built-in AsyncLocalStorage context               | `@fastify/request-context`                        | Nest AsyncLocalStorage middleware recipe                                    |
+| JWT and permission  | Vext `auth()` plus `jose` verification and route permission          | `@fastify/jwt` route hook                         | `@nestjs/jwt` in a `CanActivate` guard                                      |
+| Validation          | Vext route validation with public strict `app.setValidator()` plugin | Fastify route JSON Schema with strict Ajv options | `ValidationPipe`, DTO decorators, `class-validator` and `class-transformer` |
+| Service composition | Startup-loaded Vext services                                         | Startup-composed closures                         | Provider constructor injection                                              |
+| Error/access event  | Public Vext error lifecycle hook plus normal access log              | Error handler plus `onResponse`                   | Nest exception filter plus Fastify `onResponse`                             |
+| Security headers    | Vext `securityHeaders: basic`                                        | `@fastify/helmet`                                 | `@fastify/helmet` on the Fastify host                                       |
 
 “Official implementation” here means a documented or recommended production
 path. It does not artificially restrict a framework to first-party npm package
@@ -69,13 +72,14 @@ implementation manifest and versions that were actually executed.
 
 ## Workloads
 
-| ID                      | Expected status | What runs                                                                                                                                                                                   |
-| ----------------------- | --------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `success-cpu`           |             201 | JWT verification, authorization, request context, validation, controller/service composition, small deterministic pricing work, repository write, response headers, and structured logging. |
-| `success-external-http` |             201 | The same path plus one controlled outbound HTTP quote request.                                                                                                                              |
-| `validation-422`        |             422 | Valid JWT and permission followed by rejected body validation; no business write.                                                                                                           |
-| `authentication-401`    |             401 | Missing JWT rejection before authorization, validation, or business handling.                                                                                                               |
-| `authorization-403`     |             403 | Valid JWT without the order-write role rejected before validation or business handling.                                                                                                     |
+| ID      | Expected status | What runs                                                                                                                                                               |
+| ------- | --------------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EW-01` |             201 | Authenticated success with JWT, authorization, context, strict validation, service/repository, deterministic CPU pricing, security headers, and completed access event. |
+| `EW-02` |             201 | The same path plus one real local HTTP quote with nominal 20 ms delay; actual P50/P95/P99 are gated.                                                                    |
+| `EW-03` |             201 | The same path plus one real local HTTP quote with nominal 40 ms delay; actual P50/P95/P99 are gated.                                                                    |
+| `EW-04` |             422 | Authenticated strict validation failure before business read/write.                                                                                                     |
+| `EW-05` |             401 | Missing JWT rejection before authorization, validation, or business handling.                                                                                           |
+| `EW-06` |             403 | Valid read-only JWT rejection before validation or business handling.                                                                                                   |
 
 ## Correctness before throughput
 
@@ -85,56 +89,86 @@ framework-native capability execution for every target. It then compares a
 versioned canonical semantic projection using SHA-256.
 
 The semantic hash deliberately does **not** compare raw response bytes. JSON
-whitespace, key order, framework-specific serialization details, and generated
-repository IDs are not a fairness requirement. Status, media type, required
-security headers, correlation, business order semantics, error kind, and rejected
-field set are canonicalized and hashed instead.
+whitespace, key order, framework-specific serialization details, generated
+repository IDs, and per-request IDs/traces are not a fairness requirement.
+Status, media type, required security headers, business order semantics, error
+kind, and rejected-field set are canonicalized and hashed. Request, tenant, and
+trace correlation are verified against the request headers before hashing; the
+hash records that stable invariant rather than volatile identifier values.
 
-Only after that proof passes does the runner restart fresh targets and the quote
-sidecar with per-request test telemetry disabled. Rate measurement cannot contain
-test counter updates. The runner rotates target order each round, rejects HTTP
-errors/timeouts/unexpected status distributions, records P50/P97.5/P99, and
-applies the protocol CV gate.
+Only after that proof passes does the runner start fresh measurement-only target,
+sidecar, and load processes. The timed process contains no observer, control
+route, application sampler, or per-request test counter. The load process uses
+Autocannon's documented `setupRequest` factory to generate deterministic unique
+request IDs on the isolated load CPU role. The runner records P50/P95/P99,
+status distributions, CPU time, Windows Working Set, sidecar delay distribution,
+and child-process affinity readback.
+
+Before application startup, each fresh sidecar, target, and load process stops
+at an IPC pre-start handshake. The runner proves that the IPC PID is the owned
+child, applies and reads back its role CPU affinity, then releases the processes
+in fixed sidecar → target → load order. This happens before semantic probing,
+warmup, and the timed window. Any identity, affinity, or startup mismatch fails
+the entire raw run; the runner never retries or stitches an individual sample.
+
+Before every fresh target's warmup, the runner sends one untimed semantic probe
+to that exact measurement fixture. Its canonical hash must match the recorded
+cross-framework conformance hash for the workload, preventing a measurement
+fixture from silently drifting while only preserving the same HTTP status.
 
 ## Formal protocol and reproducibility
 
-The candidate `linux-x64-v1` protocol fixes 50 connections, pipelining 1, a
-10-second warmup, a 30-second measurement window, seven rotated rounds, and a
-maximum RPS CV of 15%. A formal run additionally requires:
+The accepted `windows-x64-v2` protocol fixes 50 connections, pipelining 1, a
+10-second warmup, a 30-second measurement window, and nine paired balanced
+blocks (162 timed samples). Each target/workload must have RPS CV ≤15%. A formal
+run additionally requires:
 
-- accepted protocol status after a qualification pilot;
-- clean source provenance on Linux x64;
-- explicitly declared, non-overlapping load-generator and target CPU sets;
-- exact installed versions matching `package.json`, lockfile, and npm `latest`;
-- conformance pass for all five workloads and three negative probes.
+- a clean committed Windows x64 candidate and exact installed dependency versions;
+- a 60-second host qualification, AC/no-battery status, non-Power-Saver plan,
+  and four non-overlapping physical-core roles (`load`, `target`, `dependency`,
+  `control`) each with background CPU ≤10%;
+- a pre-start PID/affinity handshake for every owned child, plus affinity
+  readback before warmup and after measurement;
+- load CPU ≤85% in every target measurement window; plus same-factory no-op
+  ceiling headroom of at least 2× the highest target RPS for every workload.
+  The ceiling's own load CPU is recorded and may saturate: it measures generator
+  capacity, not a target-measurement bottleneck;
+- real 20 ms and 40 ms sidecar calibration gates, including at least 8 ms
+  measured P50 separation; and
+- semantic conformance for six timed workloads and six negative probes, followed
+  by an independent validator that recomputes every gate and a fixed-seed,
+  10,000-iteration paired block bootstrap.
 
 ```bash
-# Build once; a fast implementation/conformance smoke on any supported host.
+# Build once; a focused non-citable implementation smoke on Windows.
 npm run build
-npm run test:bench:enterprise -- --smoke
+npm run test:bench:enterprise -- --smoke --sample-limit 3
 
-# A local pilot is evidence only and never becomes documentation data.
+# A full pilot is evidence only and never becomes documentation data.
 npm run test:bench:enterprise -- --pilot
 
-# After protocol acceptance, run the fixed formal shape on Linux x64.
-taskset -c 4-7 node test/benchmark/framework-native/run-framework-native-suite.mjs \
-  --formal --load-cpus 4-7 --target-cpus 0-3
+# Only from a clean committed Windows candidate: create raw evidence,
+# independently validate it, then project accepted data into this same page.
+npm run test:bench:enterprise -- --formal --output test/benchmark/.artifacts/framework-native-v2-raw.json
+node test/benchmark/framework-native/v2/validate-artifact.mjs \
+  --input test/benchmark/.artifacts/framework-native-v2-raw.json \
+  --output test/benchmark/.artifacts/framework-native-v2-accepted.json
 
 # Project an accepted formal artifact into this same page, or verify it has not drifted.
 npm run generate:enterprise-benchmark-docs
 npm run verify:enterprise-benchmark-docs
 ```
 
-The documentation generator does not project a non-citable artifact. When an accepted
-formal run exists, this page will contain its exact framework versions, source
-identity, environment, semantic hashes, summary, and every round sample — no
-GitHub-only handoff and no separate results page.
+The documentation generator does not project a non-citable artifact. When an
+accepted formal run exists, this page contains exact framework versions, source
+identity, Windows qualification, semantic hashes, paired uncertainty, headroom,
+and every sample — no GitHub-only handoff and no separate results page.
 
 <!-- framework-native-results:start -->
 
-## Accepted formal result
+## Accepted Windows result
 
-No accepted formal artifact has been published yet.
+No independently accepted Windows formal artifact has been published. Smoke and pilot observations are deliberately not shown as benchmark results.
 
 <!-- framework-native-results:end -->
 
@@ -142,8 +176,11 @@ No accepted formal artifact has been published yet.
 
 - These results do not rank every Node.js framework or predict every production
   application.
-- The controlled quote sidecar validates real outbound HTTP behavior; it does
-  not model a database, Redis, network topology, or vendor service latency.
+- The controlled quote sidecar validates real outbound HTTP behavior; its
+  nominal 20 ms/40 ms delay is not a model of a database, Redis, network
+  topology, or vendor-service latency.
+- Windows process affinity reduces interference but is not physical-core
+  exclusivity. The result is explicitly limited to the recorded qualified host.
 - Compare only artifacts with the same formal protocol and recorded environment.
 - Raw/native-core measurements remain useful internal diagnostics, but they do
   not answer this page's product-stack question and are never merged into its

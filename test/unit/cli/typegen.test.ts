@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { typegenCommand } from "../../../src/cli/typegen.js";
@@ -11,12 +20,25 @@ const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 const FIXTURES_DIR = join(process.cwd(), "test", "fixtures", "typegen");
 const GOLDEN_DIR = join(process.cwd(), "test", "golden", "typegen");
 
+async function makeTreeWritable(root: string): Promise<void> {
+  const entries = await readdir(root, { withFileTypes: true });
+  await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = join(root, entry.name);
+      if (entry.isDirectory()) await makeTreeWritable(entryPath);
+      else await chmod(entryPath, 0o600);
+    }),
+  );
+  await chmod(root, 0o700);
+}
+
 async function copyFixtureToTemp(fixtureName: string): Promise<string> {
   const tempRoot = await mkdtemp(
     join(tmpdir(), `vext-typegen-${fixtureName}-`),
   );
   const projectRoot = join(tempRoot, "project");
   await cp(join(FIXTURES_DIR, fixtureName), projectRoot, { recursive: true });
+  await makeTreeWritable(projectRoot);
   return projectRoot;
 }
 
