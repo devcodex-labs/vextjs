@@ -34,7 +34,13 @@
 
 fixture 有意关闭这些 GET 场景不使用的可选请求能力：access log、生成的 request ID、CORS、rate limit、response wrap、body parser、request context、session、CSRF、security headers、frontend render 和应用日志。它仍保留 Normal bootstrap 与路由生命周期。因此比较具有聚焦性和可复现性，但它不是全能力生产负载，也不是数据库/I/O 基准。
 
-裸框架与最短路径测量仍作为维护者诊断保留；它们回答的是另一个问题，不用于本页的 Adapter 排名。
+### 为什么不发布“生产栈排行”或“裸路径排行”？
+
+生产压测是上线前的必要步骤，但认证、日志、安全、中间件、数据与外部 I/O、部署拓扑、硬件和业务复杂度都会不同。把这些结果放进一张跨框架 RPS 表，测到的是整套应用组合，不能可靠归因为框架或 Adapter。
+
+另一端的裸路径或最短 HTTP 路径对维护者有诊断价值，但会省略 Vext 使用者实际选择的 Normal bootstrap、路由生命周期、请求/响应适配和中间件集成，因此不应用作用户选型排名。
+
+本页固定同一个 Vext Normal 应用与压测协议，只更换 Adapter。它衡量的是固定、可复现负载下的 **Vext Adapter 集成路径开销**，不是 Fastify、Hono、Express 或 Koa 的独立性能。生产选型仍应以你的真实应用压测为准。
 
 ### 如何选择
 

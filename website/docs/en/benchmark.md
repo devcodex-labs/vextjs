@@ -34,7 +34,13 @@ The user-facing choice is **which Vext adapter to use**, so every target runs th
 
 The fixture deliberately turns off optional request features that these GET scenarios do not use: access logging, generated request IDs, CORS, rate limiting, response wrapping, body parsing, request context, session, CSRF, security headers, frontend rendering, and application logging. It retains the Normal bootstrap and route lifecycle. This makes the comparison focused and repeatable; it is not an all-features production or database/I/O benchmark.
 
-Raw-framework and shortest-path measurements remain maintainer diagnostics. They answer a different question and are intentionally not used to rank adapters on this page.
+### Why not publish “production-stack” or “bare-path” rankings?
+
+Production load tests are essential before release, but authentication, logging, security, middleware, data and external I/O, deployment topology, hardware, and business complexity all vary. Put those results in one cross-framework RPS table and you measure the full application stack; you cannot reliably attribute the result to the framework or adapter.
+
+At the other extreme, bare paths or the shortest HTTP path are useful maintainer diagnostics, but they omit the Normal bootstrap, route lifecycle, request/response adaptation, and middleware integration that Vext users actually select. They should not rank user-facing adapter choices.
+
+This page fixes the same Vext Normal application and load protocol, then changes only the adapter. It measures the **Vext adapter integration-path cost** under a fixed, reproducible workload, not the independent performance of Fastify, Hono, Express, or Koa. Production decisions should still use load tests of your real application.
 
 ### Choosing an adapter
 
