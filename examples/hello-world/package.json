@@ -5,10 +5,17 @@
   "type": "module",
   "description": "VextJS hello-world example",
   "scripts": {
-    "start": "vext start",
-    "dev": "vext dev"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node start.js",
+    "dev": "vext dev",
+    "test": "node --test test/contract.test.mjs"
   },
   "dependencies": {
     "vextjs": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.4.0"
   }
 }

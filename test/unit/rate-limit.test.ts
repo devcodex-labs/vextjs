@@ -30,6 +30,26 @@ function createMockRes(): VextResponse & {
 }
 
 describe("createRateLimitMiddleware", () => {
+  it("keeps direct factory calls active when enabled is omitted", async () => {
+    const middleware = createRateLimitMiddleware(
+      { max: 10, window: 60 },
+      () => ({
+        check: async () => ({
+          allowed: true,
+          remaining: 9,
+          resetAt: Math.ceil(Date.now() / 1000) + 60,
+        }),
+      }),
+    );
+    const res = createMockRes();
+    const next = vi.fn();
+
+    await middleware(createMockReq(), res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.headers.get("RateLimit-Limit")).toBe("10");
+  });
+
   it("skips rate limiting when route override is false", async () => {
     const middleware = createRateLimitMiddleware(
       { enabled: true, max: 1, window: 60 },

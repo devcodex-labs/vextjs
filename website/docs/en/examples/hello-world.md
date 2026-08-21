@@ -1,6 +1,36 @@
-# HelloWorld
+# Hello World
 
-The simplest VextJS project to help you understand the basic structure and working of the framework.
+## Executable 2.x Reference
+
+The release contract for this page is the checked-in
+[`examples/hello-world`](https://github.com/devcodex-labs/vextjs/tree/main/examples/hello-world)
+project. It is a deliberately small JavaScript application with `checkJs`
+typechecking, the Native adapter, explicit `rateLimit.enabled: false`, Vext
+Docs, and exactly two routes: `GET /` and `GET /health`.
+
+```bash
+cd examples/hello-world
+npm install
+npm run typecheck
+npm run build
+npm test
+npm start
+```
+
+After startup, verify `/`, `/health`, `/openapi.json`, and `/docs`. The example
+uses `"vextjs": "file:../.."` only inside this repository; generated and normal
+consumer projects install the published `vextjs` package.
+
+The source directory is authoritative: its file-tree contract, scripts,
+typecheck/build, HTTP endpoints, OpenAPI output, and Docs branding are validated
+before release.
+
+## Extended TypeScript Tutorial
+
+The walkthrough below is a separate teaching variant. It demonstrates extra
+validation and response APIs, but it is not the executable release fixture and
+must not be used to infer that those extra routes exist in
+`examples/hello-world`.
 
 ## Complete project structure
 

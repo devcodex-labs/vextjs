@@ -8,7 +8,7 @@
  *   4. 注册 onClose 钩子并建立失败路径清理
  *   5. 连接数据库（Fail Fast）
  *   6. 加载 Model 定义（本地 + shared 包）
- *   7. 挂载 app.db（MonSQLizeConnection）+ app.monsqlize（原始实例）
+ *   7. 将原始 MonSQLize 实例作为唯一入口挂载到 app.db
  *
  * 设计原则：
  *   - onClose 与 setup 失败路径都清理资源（确保启动异常时不遗留临时实例）
@@ -258,7 +258,7 @@ export async function setupMonSQLize(
 
   // ── 4. 连接数据库（Fail Fast）─────────────────────────────
   try {
-    const connection = await timeMonSQLize(
+    const database = await timeMonSQLize(
       options,
       "worker.builtinPlugin.monsqlize.connect",
       () => createConnection(monsqlize, app),
@@ -275,8 +275,7 @@ export async function setupMonSQLize(
       options,
       "worker.builtinPlugin.monsqlize.extend",
       () => {
-        app.extend("db", connection);
-        app.extend("monsqlize", monsqlize);
+        app.extend("db", database);
       },
     );
   } catch (err) {

@@ -57,6 +57,25 @@ The package is `vextjs`; its installed CLI binary is `vext`. Use `npx vextjs cre
 | Authentication, sessions, cache, and errors multiply | One request lifecycle                                         | JSON, HTML, and page navigation cross the same policies |
 | Tooling becomes a project of its own                 | CLI, esbuild frontend delivery, testing, and production start | A shorter path from scaffold to deployable Node service |
 
+## 2.0.0 candidate highlights
+
+- **Framework-level SEO** — configure metadata, canonical URLs, robots, and
+  build/runtime sitemaps through `frontend.seo`; route/render metadata can vary
+  per page while deployment origins stay explicit and fail closed.
+- **Pure HTML SSR routes** — set `hydration: "none"` on a rendered route to emit
+  server HTML without a React browser entry, page payload, or React runtime.
+- **One database surface** — `app.db` is the raw MonSQLize instance, including
+  transactions, pools, events, diagnostics, and the Vext-provided read-only
+  Mongo client getter; `app.monsqlize` is removed.
+- **Safer defaults** — global rate limiting is off until
+  `rateLimit.enabled: true` is configured.
+- **Coherent tooling** — OpenAPI Docs uses the Vext mark, favicon, teal/cyan
+  light/dark tokens, and green/amber mark accents; executable Hello World and MongoDB CRUD fixtures
+  verify install, typecheck, build, runtime, and OpenAPI contracts.
+- **Clear type ownership** — new TypeScript full-stack projects separate
+  `src/types/shared`, `src/types/frontend`, and framework-owned
+  `src/types/generated`; existing project trees are not rewritten.
+
 ## One route model
 
 The default starter demonstrates the same service feeding a server-rendered page and a documented API route:
@@ -93,8 +112,8 @@ Routes remain the URL authority. Services own reusable business work. `res.json(
 - **Convention routing** — file path under `src/routes/**` → URL prefix; `(path, options, handler)` API
 - **Plugins & services** — topological plugin load; `src/services/**` → `app.services`
 - **Validation & route contracts** — [schema-dsl](https://www.npmjs.com/package/schema-dsl), response schemas, OpenAPI, and generated client types
-- **OpenAPI + Docs Renderer** — `/openapi.json` and interactive first-party `/docs`
-- **Database lifecycle** — setting `config.database` activates built-in MonSQLize connections, model loading, and cleanup
+- **OpenAPI + branded Docs Renderer** — `/openapi.json` and interactive first-party `/docs`
+- **Database lifecycle** — setting `config.database` activates the raw MonSQLize instance at `app.db`, model loading, and cleanup
 - **Route cache** — `cache: 60` / tags / Vary
 - **Session, cookies, CSRF, auth, security headers** — first-party contracts
 - **Production lifecycle** — graceful shutdown, cluster workers, heartbeats, and rolling restart
@@ -102,9 +121,10 @@ Routes remain the URL authority. Services own reusable business work. `res.json(
 
 ### Full-stack UI (same routes)
 
-- React **SSR / hydration** via `res.render()`
+- React **SSR / hydration** via `res.render()`, plus route-level `hydration: "none"` for pure HTML
 - **Same-route client navigation** — browser navigation reuses the existing server route lifecycle
 - Static / revalidate freshness and local image/font pipeline
+- **SEO / sitemap / robots** — framework configuration with per-page metadata and dynamic URL providers
 - **Typed API client** generation (`dist/client/api.generated.ts` when frontend build + `apiClient` are enabled)
 - **Vext JSCSS** (`vextjs/style`) and esbuild-powered frontend delivery — one toolchain
 
@@ -114,6 +134,7 @@ Routes remain the URL authority. Services own reusable business work. `res.json(
 - **Three-tier hot reload** — route hot swap, service/model structural reload, and safe cold restart
 - **React Fast Refresh** — frontend updates without restarting the backend runtime
 - **Testing** — `createTestApp` from `vextjs/testing` without binding a real HTTP port
+- **Executable examples** — `examples/hello-world` and `examples/crud-api` carry their own typecheck, build, runtime, and contract tests
 
 ---
 
@@ -129,6 +150,7 @@ my-app/
 │   ├── plugins/
 │   ├── middlewares/
 │   ├── frontend/        # pages, components, styles, assets
+│   ├── types/           # shared / frontend / generated declarations (TS)
 │   ├── preload/         # process-level early scripts
 │   └── locales/
 ├── package.json
@@ -148,7 +170,7 @@ VextJS is a strong fit when:
 
 ## Boundaries
 
-VextJS uses **route-native SSR**: `src/routes/**` + `res.render()` provide SSR, hydration, Suspense, opt-in Streaming SSR, same-route navigation, static/revalidate freshness, and local media. It intentionally does not implement React Server Components, Server Functions or Actions, partial prerendering (PPR), or third-party bundler plugin ecosystems. Those models would introduce a second execution or routing authority and weaken the framework's single-route contract.
+VextJS uses **route-native SSR**: `src/routes/**` + `res.render()` provide SSR, normal hydration or pure-HTML `hydration: "none"`, Suspense, opt-in Streaming SSR, same-route navigation, static/revalidate freshness, and local media. It does not currently implement selective/partial hydration, an Islands component model, React Server Components, Server Functions or Actions, partial prerendering (PPR), or third-party bundler plugin ecosystems. Those models require additional execution and asset boundaries; Vext does not claim them until those contracts exist.
 
 Read the exact lifecycle, trade-offs, and exclusions in [Frontend boundaries and roadmap](https://devcodex-labs.github.io/vextjs/frontend/boundaries-and-roadmap). Implementation guides cover [rendering modes](https://devcodex-labs.github.io/vextjs/frontend/rendering-modes), [data flow](https://devcodex-labs.github.io/vextjs/frontend/data-flow), [assets and media](https://devcodex-labs.github.io/vextjs/frontend/static-assets-and-cdn), and the [typed API client](https://devcodex-labs.github.io/vextjs/frontend/api-client-and-contracts).
 
@@ -212,6 +234,11 @@ Select profile with `vext start --config <name>` or `VEXT_CONFIG=<name>` (do not
 
 Common fields: `port`, `host`, `adapter`, `logger`, `cors`, `bodyParser`, `rateLimit`, `openapi`, `frontend`, `cache`, `session`, `shutdown`. See the [configuration guide](https://devcodex-labs.github.io/vextjs/guide/configuration) and [configuration reference](https://devcodex-labs.github.io/vextjs/api/config) before changing production behavior.
 
+`rateLimit` is disabled by default and installs middleware only when
+`rateLimit.enabled === true`. Framework SEO is configured under
+`frontend.seo`; frontend/backend runtime configuration remains under
+`src/config/`.
+
 ---
 
 ## Testing
@@ -251,7 +278,9 @@ Chinese documentation: site locale `/zh` (this package ships one English README 
 
 ## Migration
 
-Schema-dsl v3 / monsqlize / frontend contracts: **[MIGRATION.md](./MIGRATION.md)**.
+The v1 → v2 database surface, rate-limit default, validation status, scaffold
+types, SEO, and no-hydration changes are documented in
+**[MIGRATION.md](./MIGRATION.md)**.
 
 ---
 

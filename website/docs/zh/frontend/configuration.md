@@ -11,6 +11,7 @@
 - [核心字段](#核心字段)
 - [Build 字段](#build-字段)
 - [Deploy 字段](#deploy-字段)
+- [SEO 字段](#seo-字段)
 - [I18n 字段](#i18n-字段)
 - [Dev 字段](#dev-字段)
 - [SPA Fallback 字段](#spa-fallback-字段)
@@ -18,14 +19,15 @@
 
 ## 决定要配置什么
 
-| 需要什么                  | 先从哪里开始     | 配置项                                                          | 会发生什么                                                                  | 如何验证                                     |
-| ------------------------- | ---------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
-| SSR React 页面            | `frontend: true` | 不需要其它字段                                                  | Vext 发现 `src/frontend`，构建 browser + SSR 输出，并从应用 origin 提供它们 | `vext build` 后执行 `vext start`             |
-| 不同的源码布局            | 内置目录约定     | `root`、`pages`、`componentsDir`、`styles.entry` 或 `assetsDir` | 只改变发现路径，生成 entry 仍由 Vext 管理                                   | build 后加载一个页面和全局样式               |
-| 浏览器兼容或体积目标      | 生产默认值       | `build`、`vendorChunks` 或 `budgets`                            | 改变 esbuild 输出、报告阈值或浏览器支持范围                                 | 检查 `size-report.json` 和生产页面           |
-| CDN 承担 immutable assets | 同源交付         | `deploy.assetBaseUrl`，可选 `deploy.upload`                     | 生成的 JS/CSS URL 指向 CDN；HTML/SSR 仍由 Node 负责                         | dry-run upload，再请求 SSR 页面和 hash asset |
-| client-router 子应用      | 不捕获 fallback  | `spaFallback.scopes`                                            | 只有已声明路径会交给 browser shell                                          | 检查 scope 内 URL 与被排除的 `/api/**` URL   |
-| 多语言页面文案            | 默认关闭         | `i18n`                                                          | 生成 locale artifacts 与请求感知的 document language                        | build 后请求两个 locale                      |
+| 需要什么                   | 先从哪里开始     | 配置项                                                          | 会发生什么                                                                  | 如何验证                                     |
+| -------------------------- | ---------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
+| SSR React 页面             | `frontend: true` | 不需要其它字段                                                  | Vext 发现 `src/frontend`，构建 browser + SSR 输出，并从应用 origin 提供它们 | `vext build` 后执行 `vext start`             |
+| 不同的源码布局             | 内置目录约定     | `root`、`pages`、`componentsDir`、`styles.entry` 或 `assetsDir` | 只改变发现路径，生成 entry 仍由 Vext 管理                                   | build 后加载一个页面和全局样式               |
+| 浏览器兼容或体积目标       | 生产默认值       | `build`、`vendorChunks` 或 `budgets`                            | 改变 esbuild 输出、报告阈值或浏览器支持范围                                 | 检查 `size-report.json` 和生产页面           |
+| CDN 承担 immutable assets  | 同源交付         | `deploy.assetBaseUrl`，可选 `deploy.upload`                     | 生成的 JS/CSS URL 指向 CDN；HTML/SSR 仍由 Node 负责                         | dry-run upload，再请求 SSR 页面和 hash asset |
+| 可被搜索引擎发现的公开页面 | SEO 默认关闭     | `seo`，以及路由/render 元数据                                   | canonical/meta 与可选 sitemap/robots 由框架统一生成                         | 检查两个页面 canonical 与选定 SEO 产物       |
+| client-router 子应用       | 不捕获 fallback  | `spaFallback.scopes`                                            | 只有已声明路径会交给 browser shell                                          | 检查 scope 内 URL 与被排除的 `/api/**` URL   |
+| 多语言页面文案             | 默认关闭         | `i18n`                                                          | 生成 locale artifacts 与请求感知的 document language                        | build 后请求两个 locale                      |
 
 不要因为字段存在就添加它。默认值刻意保持 runtime 简洁：React + esbuild、SSR 开启、buffered streaming、浏览器代码拆分开启、生产浏览器压缩开启，且没有 CDN/upload adapter。
 
@@ -231,6 +233,26 @@ React 相关 browser external 必须提供 `externalRuntime` 映射，否则构�
 | `frontend.deploy.upload.exclude`                | `["**/*.map"]`                            | 不上传的文件                                                  |
 
 `assetBaseUrl` 必须是绝对 URL。`deploy-manifest.json` 会上传 JS、CSS、import 型媒体和复制的 public 文件；默认不上传 SSR HTML 和 source map。每次更换 adapter、prefix 或 include/exclude 规则前，都要先执行 `vext deploy assets --dry-run`。
+
+## SEO 字段
+
+`frontend.seo` 是框架级 SEO 入口。不配置时关闭；配置该对象后，`enabled` 默认是 `true`。
+
+```ts
+frontend: {
+  seo: {
+    publicOrigin: process.env.PUBLIC_ORIGIN ?? "https://www.example.com",
+    titleTemplate: "%s | Example",
+    defaults: { description: "Example 应用" },
+    sitemap: {},
+    robots: {},
+  },
+}
+```
+
+`publicOrigin` 标识部署 origin，Vext 会把它与每个请求 pathname 组合，因此动态页面不会共用一个固定 URL。静态元数据放在路由级 `frontend.seo`；依赖页面数据的元数据放在 `res.render(..., { seo })`。`sitemap` 与 `robots` 均可选择 `"build"` 或 `"runtime"` 模式，有限多域名部署使用命名 `origins`。
+
+动态 canonical、provider、Host 选择、产物与无 hydration 示例见 [SEO、Sitemap 与 Robots](/zh/frontend/seo-sitemap)，完整嵌套字段见 [API 参考](../api/config#vextfrontendconfig)。
 
 ## I18n 字段
 

@@ -68,9 +68,13 @@ my-app/
 │   │   ├── zh-CN.ts           # 中文语言包
 │   │   └── en-US.ts           # 英文语言包
 │   │
-│   └── types/
-│       └── generated/         # typegen reference shim（TS 项目）
-│           └── index.d.ts
+│   └── types/                 # 应用自有的类型边界（TS 项目）
+│       ├── shared/
+│       │   └── greeting.d.ts  # 前后端安全共享契约示例
+│       ├── frontend/
+│       │   └── home.d.ts      # 仅前端声明示例
+│       └── generated/         # 仅由 vext typegen 管理
+│           └── index.d.ts     # typegen 后生成；脚手架初始为 .gitkeep
 │
 ├── .vext/
 │   ├── client/                # 开发期前端构建产物
@@ -181,6 +185,33 @@ export default defineBootstrapConfig({
 - `vext dev` 将客户端构建到 `.vext/client/`
 - `vext build` 将生产资源写入 `dist/client/`
 - `vext start` 服务生产客户端、SSR renderer 与静态资源；未知 HTML 路径是否 fallback 取决于 `frontend.spaFallback.scopes[]`
+
+### `src/types/` — 应用类型边界
+
+新建 TypeScript 全栈项目时，`vext create` 会生成以下明确结构：
+
+```text
+src/types/
+├── shared/
+│   └── greeting.d.ts
+├── frontend/
+│   └── home.d.ts
+└── generated/
+    └── .gitkeep # 执行 vext typegen 后生成/补充 index.d.ts
+```
+
+- `src/types/shared/` 放置前后端均可安全导入的契约。
+- `src/types/frontend/` 放置浏览器侧声明，不能导入 Node-only 或 server-only 模块。
+- `src/types/generated/` 是框架生成区，请勿手工维护；`vext typegen` 可以更新其中声明。
+
+TypeScript API-only 模板没有前端消费者，因此只创建
+`src/types/generated/`；JavaScript 模板不创建 `src/types/`。Vext 不预建
+`src/types/server/`：后端专属类型优先与 route、service、plugin 或 Model 就近放置，
+等确实出现后端跨模块共享契约时，项目可自行增加 server 目录。
+
+该变化只影响新脚手架。现有项目不会被移动、重命名或删除，`vext typegen` 也仍然
+只管理 `src/types/generated/`。前后端运行配置继续统一放在 `src/config/`，不能放进
+任何 types 目录。
 
 ### `public/` — 前端静态资源
 

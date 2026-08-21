@@ -6,7 +6,7 @@
  *
  *   1. 插件连接（setupMonSQLize → connect → app.db 可用）
  *   2. Collection CRUD（insertOne / findOne / find / updateOne / deleteOne）
- *   3. Model 注册与使用（monsqlize.model(name, def) → model.create / model.find）
+ *   3. Model 注册与使用（app.db.model(name) → model.insertOne / model.find）
  *   4. 连接关闭（onClose → monsqlize.close()）
  *   5. 多次连接/断开循环（验证无资源泄漏）
  *   6. 配置校验（缺少必要配置时 Fail Fast）
@@ -198,7 +198,7 @@ describe("MonSQLize 插件集成测试", () => {
   // ═══════════════════════════════════════════════════════════
 
   describe("插件连接生命周期", () => {
-    it("setupMonSQLize 成功连接并挂载 app.db 和 app.monsqlize", async () => {
+    it("setupMonSQLize 成功连接并只挂载 raw app.db", async () => {
       const { app, closeHooks, extendedProps } = createMockApp({
         config: { uri: mongoUri },
         logger: false,
@@ -211,9 +211,11 @@ describe("MonSQLize 插件集成测试", () => {
       expect(extendedProps.has("db")).toBe(true);
       expect(extendedProps.get("db")).toBeDefined();
 
-      // 验证 app.monsqlize 已挂载
-      expect(extendedProps.has("monsqlize")).toBe(true);
-      expect(extendedProps.get("monsqlize")).toBeDefined();
+      expect(extendedProps.get("db")).toBe((app as any).db);
+      expect(extendedProps.has("monsqlize")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(app, "monsqlize")).toBe(
+        false,
+      );
 
       // 验证 onClose 钩子已注册
       expect(closeHooks.length).toBeGreaterThanOrEqual(1);
@@ -255,14 +257,17 @@ describe("MonSQLize 插件集成测试", () => {
       try {
         await setupMonSQLize(app, "/nonexistent-src-dir");
 
-        const raw = extendedProps.get("monsqlize") as MonSQLize;
-        const db = extendedProps.get("db") as Record<string, any>;
-        expect(raw).toBe((app as any).monsqlize);
-        expect(db).toBe((app as any).db);
-        expect(typeof raw.withTransaction).toBe("function");
-        expect(db.withTransaction).toBeUndefined();
+        const raw = extendedProps.get("db") as MonSQLize & Record<string, any>;
+        const db = (app as any).db as MonSQLize & Record<string, any>;
+        expect(raw).toBe(db);
+        expect(typeof db.withTransaction).toBe("function");
+        expect(typeof db.db).toBe("function");
+        expect(typeof db.use).toBe("function");
+        expect(typeof db.scopedModel).toBe("function");
+        expect(typeof db.on).toBe("function");
+        expect(typeof db.getSyncStats).toBe("function");
 
-        const defaults = raw.getDefaults();
+        const defaults = db.getDefaults();
         expect(defaults.findMaxLimit).toBe(1_234);
         expect(defaults.findMaxSkip).toBe(5_678);
         expect(defaults.requireCursorSecret).toBe(true);
@@ -283,7 +288,7 @@ describe("MonSQLize 插件集成测试", () => {
           schema: { name: "string!" },
         });
         Model.define(descriptor);
-        const descriptorModel = raw.model(descriptor);
+        const descriptorModel = db.model(descriptor);
         await descriptorModel.insertOne({ name: "descriptor-ready" });
         const descriptorDocument = await descriptorModel.findOne({
           name: "descriptor-ready",
@@ -305,7 +310,7 @@ describe("MonSQLize 插件集成测试", () => {
       await setupMonSQLize(app, "/nonexistent-src-dir");
 
       expect(extendedProps.has("db")).toBe(true);
-      expect(extendedProps.has("monsqlize")).toBe(true);
+      expect(extendedProps.has("monsqlize")).toBe(false);
 
       const infoCalls = (app.logger.info as ReturnType<typeof vi.fn>).mock
         .calls;
@@ -604,10 +609,10 @@ describe("MonSQLize 插件集成测试", () => {
   });
 
   // ═══════════════════════════════════════════════════════════
-  // 4. 连接对象（MonSQLizeConnection）API
+  // 4. raw app.db API
   // ═══════════════════════════════════════════════════════════
 
-  describe("连接对象 API", () => {
+  describe("raw app.db API", () => {
     let app: VextApp;
     let closeHooks: Array<() => Promise<void> | void>;
 
@@ -650,15 +655,33 @@ describe("MonSQLize 插件集成测试", () => {
       // MongoClient 应有 db() 方法和 close() 方法
       expect(typeof client.db).toBe("function");
       expect(typeof client.close).toBe("function");
+      expect(Object.getOwnPropertyDescriptor(db, "client")).toMatchObject({
+        enumerable: true,
+        configurable: false,
+        set: undefined,
+      });
+      expect(Reflect.set(db, "client", {})).toBe(false);
     });
 
-    it("app.monsqlize 暴露原始 MonSQLize 实例", () => {
-      const monsqlize = (app as any).monsqlize;
+    it("连接关闭后 client getter 明确拒绝返回失效句柄", async () => {
+      const db = (app as any).db;
 
-      expect(monsqlize).toBeDefined();
-      expect(typeof monsqlize.connect).toBe("function");
-      expect(typeof monsqlize.close).toBe("function");
-      expect(typeof monsqlize.collection).toBe("function");
+      await executeCloseHooks(closeHooks);
+      closeHooks.length = 0;
+
+      expect(() => db.client).toThrow("MongoDB client is not available");
+    });
+
+    it("app.db 暴露完整原始 MonSQLize 能力且无第二入口", () => {
+      const db = (app as any).db;
+
+      expect(typeof db.connect).toBe("function");
+      expect(typeof db.close).toBe("function");
+      expect(typeof db.collection).toBe("function");
+      expect(typeof db.withTransaction).toBe("function");
+      expect(Object.prototype.hasOwnProperty.call(app, "monsqlize")).toBe(
+        false,
+      );
     });
 
     it("不同集合名返回独立的集合访问器", async () => {
@@ -712,8 +735,8 @@ describe("MonSQLize 插件集成测试", () => {
       (MonSQLize as any).Model._clear();
     });
 
-    it("通过 Model.define() 注册并通过 monsqlize.model() 获取 Model", () => {
-      const monsqlize = (app as any).monsqlize;
+    it("通过 Model.define() 注册并通过 app.db.model() 获取 Model", () => {
+      const db = (app as any).db;
 
       // 使用静态方法注册 Model（schema 使用 DSL 函数格式）
       (MonSQLize as any).Model.define("model_user_reg_test", {
@@ -726,7 +749,7 @@ describe("MonSQLize 插件集成测试", () => {
       });
 
       // 通过实例方法获取 Model
-      const UserModel = monsqlize.model("model_user_reg_test");
+      const UserModel = db.model("model_user_reg_test");
       expect(UserModel).toBeDefined();
     });
 
@@ -748,8 +771,32 @@ describe("MonSQLize 插件集成测试", () => {
       expect(ProductModel).toBeDefined();
     });
 
+    it("soft-delete 继续提供 deletedCount 兼容字段", async () => {
+      const db = (app as any).db;
+      (MonSQLize as any).Model.define("model_soft_delete_compat_test", {
+        schema: (d: typeof dsl) =>
+          d({
+            slug: "string!",
+          }),
+        options: {
+          softDelete: { enabled: true, field: "deletedAt" },
+        },
+      });
+      const ModelWithSoftDelete = db.model("model_soft_delete_compat_test");
+      await ModelWithSoftDelete.insertOne({ slug: "intro" });
+
+      const result = await ModelWithSoftDelete.deleteOne({ slug: "intro" });
+
+      expect(result.modifiedCount).toBe(1);
+      expect(result.deletedCount).toBe(1);
+      expect(await ModelWithSoftDelete.findOne({ slug: "intro" })).toBeNull();
+      expect(
+        await ModelWithSoftDelete.findOneWithDeleted({ slug: "intro" }),
+      ).not.toBeNull();
+    });
+
     it("Model create 和 findOne 操作", async () => {
-      const monsqlize = (app as any).monsqlize;
+      const db = (app as any).db;
 
       // 注册 Model（使用 DSL 函数格式）
       (MonSQLize as any).Model.define("model_order_crud_test", {
@@ -761,7 +808,7 @@ describe("MonSQLize 插件集成测试", () => {
           }),
       });
 
-      const OrderModel = monsqlize.model("model_order_crud_test");
+      const OrderModel = db.model("model_order_crud_test");
 
       // 使用 Model insertOne 创建文档
       const result = await OrderModel.insertOne({
@@ -783,7 +830,7 @@ describe("MonSQLize 插件集成测试", () => {
     });
 
     it("Model find 查询多个文档", async () => {
-      const monsqlize = (app as any).monsqlize;
+      const db = (app as any).db;
 
       (MonSQLize as any).Model.define("model_tag_find_test", {
         schema: (d: typeof dsl) =>
@@ -793,7 +840,7 @@ describe("MonSQLize 插件集成测试", () => {
           }),
       });
 
-      const TagModel = monsqlize.model("model_tag_find_test");
+      const TagModel = db.model("model_tag_find_test");
 
       // 批量插入
       await TagModel.insertOne({ name: "JavaScript", group: "language" });
@@ -827,8 +874,8 @@ describe("MonSQLize 插件集成测试", () => {
 
       await setupMonSQLize(app, "/nonexistent-src-dir");
 
-      const monsqlize = (app as any).monsqlize;
-      const defaults = monsqlize.getDefaults();
+      const db = (app as any).db;
+      const defaults = db.getDefaults();
       expect(defaults.maxTimeMS).toBe(5000);
       expect(defaults.findLimit).toBe(20);
 
@@ -843,8 +890,8 @@ describe("MonSQLize 插件集成测试", () => {
 
       await setupMonSQLize(app, "/nonexistent-src-dir");
 
-      const monsqlize = (app as any).monsqlize;
-      const defaults = monsqlize.getDefaults();
+      const db = (app as any).db;
+      const defaults = db.getDefaults();
       expect(defaults.maxTimeMS).toBe(2000);
       expect(defaults.findLimit).toBe(10);
 
@@ -862,8 +909,8 @@ describe("MonSQLize 插件集成测试", () => {
 
       await setupMonSQLize(app, "/nonexistent-src-dir");
 
-      const monsqlize = (app as any).monsqlize;
-      const cache = monsqlize.getCache();
+      const db = (app as any).db;
+      const cache = db.getCache();
       // 缓存实例应存在
       expect(cache).toBeDefined();
 
@@ -884,8 +931,8 @@ describe("MonSQLize 插件集成测试", () => {
 
       await setupMonSQLize(app, "/nonexistent-src-dir");
 
-      const monsqlize = (app as any).monsqlize;
-      const health = await monsqlize.health();
+      const db = (app as any).db;
+      const health = await db.health();
 
       expect(health.status).toBe("up");
       expect(health.connected).toBe(true);

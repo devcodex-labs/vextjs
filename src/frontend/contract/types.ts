@@ -1,3 +1,5 @@
+import type { VextJsonValue } from "../../types/errors.js";
+
 export type VextFrontendFramework = "react" | (string & {});
 
 export type {
@@ -232,6 +234,146 @@ export interface VextFrontendApiClientConfig {
   enabled?: boolean;
 }
 
+export type VextSeoRobotsDirective = string | readonly string[];
+
+export interface VextSeoImage {
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+  type?: string;
+}
+
+export interface VextOpenGraphMetadata {
+  title?: string;
+  description?: string;
+  type?: string;
+  url?: string;
+  siteName?: string;
+  locale?: string;
+  images?: readonly (string | VextSeoImage)[];
+}
+
+export interface VextTwitterMetadata {
+  card?: "summary" | "summary_large_image" | "app" | "player";
+  site?: string;
+  creator?: string;
+  title?: string;
+  description?: string;
+  images?: readonly string[];
+}
+
+export interface VextSeoAlternate {
+  hrefLang: string;
+  href: string;
+}
+
+export interface VextSeoMetadata {
+  title?: string;
+  description?: string;
+  robots?: VextSeoRobotsDirective;
+  /** Absolute site pathname. The configured public origin is added later. */
+  canonical?: string;
+  openGraph?: VextOpenGraphMetadata;
+  twitter?: VextTwitterMetadata;
+  alternates?: readonly VextSeoAlternate[];
+  jsonLd?: VextJsonValue | readonly VextJsonValue[];
+}
+
+export interface VextRouteFrontendSeoOptions extends VextSeoMetadata {
+  /** Selects one of the finite origins declared by frontend.seo.origins. */
+  originKey?: string;
+  /** Set false to exclude a materialized page from generated sitemaps. */
+  index?: boolean;
+}
+
+export interface VextRenderSeoOptions extends VextSeoMetadata {
+  originKey?: string;
+}
+
+export interface VextSitemapEntry {
+  originKey?: string;
+  pathname: string;
+  lastmod?: string | Date;
+  changefreq?:
+    | "always"
+    | "hourly"
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "yearly"
+    | "never";
+  priority?: number;
+}
+
+export interface VextSitemapEntriesContext {
+  readonly mode: "build" | "runtime";
+  readonly origin: string;
+  readonly originKey?: string;
+  readonly signal: AbortSignal;
+}
+
+export type VextSitemapEntriesProvider = (
+  context: VextSitemapEntriesContext,
+) => readonly VextSitemapEntry[] | PromiseLike<readonly VextSitemapEntry[]>;
+
+export interface VextFrontendSitemapConfig {
+  mode?: "build" | "runtime";
+  path?: string;
+  includeStatic?: boolean;
+  entries?: VextSitemapEntriesProvider;
+  maxUrlsPerFile?: number;
+}
+
+export interface VextRobotsGroup {
+  userAgent: string | readonly string[];
+  allow?: string | readonly string[];
+  disallow?: string | readonly string[];
+  crawlDelay?: number;
+}
+
+export interface VextFrontendRobotsConfig {
+  mode?: "build" | "runtime";
+  path?: "/robots.txt";
+  groups?: readonly VextRobotsGroup[];
+}
+
+export interface VextFrontendSeoConfig {
+  enabled?: boolean;
+  publicOrigin?: string;
+  origins?: Readonly<Record<string, string>>;
+  titleTemplate?: string;
+  defaults?: VextSeoMetadata;
+  sitemap?: false | VextFrontendSitemapConfig;
+  robots?: false | VextFrontendRobotsConfig;
+}
+
+export interface ResolvedVextFrontendSeoConfig {
+  /** Distinguishes omission from an explicit enabled:false override. */
+  configured: boolean;
+  enabled: boolean;
+  publicOrigin?: string;
+  origins: Readonly<Record<string, string>>;
+  titleTemplate?: string;
+  defaults: VextSeoMetadata;
+  sitemap:
+    | false
+    | {
+        mode: "build" | "runtime";
+        path: string;
+        includeStatic: boolean;
+        entries?: VextSitemapEntriesProvider;
+        maxUrlsPerFile: number;
+      };
+  robots:
+    | false
+    | {
+        mode: "build" | "runtime";
+        path: "/robots.txt";
+        groups: readonly VextRobotsGroup[];
+      };
+}
+
 export interface VextFrontendConfig {
   enabled?: boolean;
   framework?: VextFrontendFramework;
@@ -253,6 +395,7 @@ export interface VextFrontendConfig {
   deploy?: VextFrontendDeployConfig;
   render?: VextFrontendRenderConfig;
   errorPages?: VextFrontendErrorPagesConfig;
+  seo?: VextFrontendSeoConfig;
   i18n?: VextFrontendI18nConfig;
   dev?: VextFrontendDevConfig;
   adapter?: VextFrontendAdapter;
@@ -378,6 +521,7 @@ export interface ResolvedVextFrontendConfig {
     default: string;
     status: Record<string, string>;
   };
+  seo: ResolvedVextFrontendSeoConfig;
   i18n: Required<VextFrontendI18nConfig>;
   dev: Required<VextFrontendDevConfig>;
   adapter?: VextFrontendAdapter;
@@ -437,6 +581,10 @@ export interface VextRouteFreshnessIdentity {
   staticParams?: ReadonlyArray<Record<string, string>>;
   /** Present only when SSR body rendering is intentionally disabled. */
   clientOnly?: true;
+  /** Present only for routes that intentionally omit Vext browser hydration. */
+  hydration?: "none";
+  /** Normalized route-level SEO declaration used by renderer/static identity. */
+  seo?: VextRouteFrontendSeoOptions;
   /** Route-side persistent freshness invalidation tags. */
   tags?: readonly string[];
   /** Explicit frontend page id for static materialization. */
@@ -711,7 +859,8 @@ export interface VextFrontendStaticArtifact {
   page: string;
   params: Record<string, string>;
   html: string;
-  data: string;
+  /** Omitted for hydration:none documents. */
+  data?: string;
   bytes: number;
   assets: string[];
 }

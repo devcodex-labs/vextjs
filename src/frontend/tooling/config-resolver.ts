@@ -5,6 +5,7 @@ import type {
   VextFrontendExternalRuntimeEntry,
   VextFrontendImageFormat,
   VextFrontendMediaConfig,
+  VextFrontendSeoConfig,
   ResolvedVextFrontendConfig,
   VextFrontendBuildBudgetsConfig,
   VextFrontendSpaFallbackConfig,
@@ -96,6 +97,7 @@ export function resolveFrontendConfig(
     "config.frontend.indexHtml",
   );
   const spaFallback = normalizeSpaFallback(raw?.spaFallback);
+  const seo = normalizeSeo(raw?.seo);
   const apiClient = raw?.apiClient;
   const media = normalizeMedia(raw?.media);
   const build = raw?.build ?? {};
@@ -243,6 +245,7 @@ export function resolveFrontendConfig(
       default: raw?.errorPages?.default ?? "error/default",
       status: normalizeErrorPages(raw?.errorPages?.status),
     },
+    seo,
     i18n: {
       enabled: raw?.i18n?.enabled ?? false,
       source: resolveFrontendPath(
@@ -269,6 +272,281 @@ export function resolveFrontendConfig(
     },
     adapter: raw?.adapter,
   };
+}
+
+function normalizeSeo(
+  value: VextFrontendSeoConfig | undefined,
+): ResolvedVextFrontendConfig["seo"] {
+  if (value === undefined) {
+    return {
+      configured: false,
+      enabled: false,
+      origins: {},
+      defaults: {},
+      sitemap: false,
+      robots: false,
+    };
+  }
+
+  const publicOrigin = normalizePublicOrigin(
+    value.publicOrigin,
+    "config.frontend.seo.publicOrigin",
+  );
+  const origins = Object.fromEntries(
+    Object.entries(value.origins ?? {})
+      .map(([key, origin]) => {
+        if (!/^[a-z0-9._-]+$/iu.test(key)) {
+          throw new Error(
+            `[vextjs] config.frontend.seo.origins key "${key}" is invalid.`,
+          );
+        }
+        return [
+          key,
+          normalizePublicOrigin(origin, `config.frontend.seo.origins.${key}`)!,
+        ] as const;
+      })
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+  const titleTemplate = value.titleTemplate?.trim();
+  if (value.titleTemplate !== undefined && !titleTemplate) {
+    throw new Error(
+      "[vextjs] config.frontend.seo.titleTemplate must be a non-empty string.",
+    );
+  }
+  if (titleTemplate && !titleTemplate.includes("%s")) {
+    throw new Error(
+      '[vextjs] config.frontend.seo.titleTemplate must contain the "%s" placeholder.',
+    );
+  }
+  assertSeoMetadata(value.defaults, "config.frontend.seo.defaults");
+
+  const sitemap = normalizeSitemap(value.sitemap);
+  const robots = normalizeRobots(value.robots);
+  if (sitemap !== false && robots !== false && sitemap.path === robots.path) {
+    throw new Error(
+      "[vextjs] config.frontend.seo sitemap and robots paths must be different.",
+    );
+  }
+  if (
+    value.enabled !== false &&
+    (sitemap !== false || robots !== false) &&
+    !publicOrigin &&
+    Object.keys(origins).length === 0
+  ) {
+    throw new Error(
+      "[vextjs] config.frontend.seo requires publicOrigin or declared origins when sitemap or robots is enabled.",
+    );
+  }
+
+  return {
+    configured: true,
+    enabled: value.enabled !== false,
+    publicOrigin,
+    origins,
+    titleTemplate,
+    defaults: value.defaults ?? {},
+    sitemap,
+    robots,
+  };
+}
+
+function normalizeSitemap(
+  value: VextFrontendSeoConfig["sitemap"],
+): ResolvedVextFrontendConfig["seo"]["sitemap"] {
+  if (value === undefined || value === false) return false;
+  const mode = value.mode ?? "build";
+  if (mode !== "build" && mode !== "runtime") {
+    throw new Error(
+      '[vextjs] config.frontend.seo.sitemap.mode must be "build" or "runtime".',
+    );
+  }
+  const maxUrlsPerFile = value.maxUrlsPerFile ?? 50_000;
+  if (
+    !Number.isInteger(maxUrlsPerFile) ||
+    maxUrlsPerFile <= 0 ||
+    maxUrlsPerFile > 50_000
+  ) {
+    throw new Error(
+      "[vextjs] config.frontend.seo.sitemap.maxUrlsPerFile must be an integer from 1 through 50000.",
+    );
+  }
+  if (value.entries !== undefined && typeof value.entries !== "function") {
+    throw new Error(
+      "[vextjs] config.frontend.seo.sitemap.entries must be a function.",
+    );
+  }
+  return {
+    mode,
+    path: normalizeSeoOutputPath(
+      value.path ?? "/sitemap.xml",
+      "config.frontend.seo.sitemap.path",
+    ),
+    includeStatic: value.includeStatic ?? true,
+    entries: value.entries,
+    maxUrlsPerFile,
+  };
+}
+
+function normalizeRobots(
+  value: VextFrontendSeoConfig["robots"],
+): ResolvedVextFrontendConfig["seo"]["robots"] {
+  if (value === undefined || value === false) return false;
+  const mode = value.mode ?? "build";
+  if (mode !== "build" && mode !== "runtime") {
+    throw new Error(
+      '[vextjs] config.frontend.seo.robots.mode must be "build" or "runtime".',
+    );
+  }
+  if (value.path !== undefined && value.path !== "/robots.txt") {
+    throw new Error(
+      '[vextjs] config.frontend.seo.robots.path must be "/robots.txt".',
+    );
+  }
+  const groups = value.groups ?? [{ userAgent: "*", allow: "/" }];
+  for (const [index, group] of groups.entries()) {
+    if (!isNonEmptyStringList(group.userAgent)) {
+      throw new Error(
+        `[vextjs] config.frontend.seo.robots.groups[${index}].userAgent must be a non-empty string or string array.`,
+      );
+    }
+    for (const key of ["allow", "disallow"] as const) {
+      if (group[key] !== undefined && !isNonEmptyStringList(group[key])) {
+        throw new Error(
+          `[vextjs] config.frontend.seo.robots.groups[${index}].${key} must be a non-empty string or string array.`,
+        );
+      }
+    }
+    if (
+      group.crawlDelay !== undefined &&
+      (!Number.isFinite(group.crawlDelay) || group.crawlDelay < 0)
+    ) {
+      throw new Error(
+        `[vextjs] config.frontend.seo.robots.groups[${index}].crawlDelay must be a non-negative number.`,
+      );
+    }
+  }
+  return { mode, path: "/robots.txt", groups };
+}
+
+function normalizePublicOrigin(
+  value: string | undefined,
+  label: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`[vextjs] ${label} must be an absolute http(s) URL.`);
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      `[vextjs] ${label} must be an absolute http(s) URL without userinfo, query, or hash.`,
+    );
+  }
+  const pathname = url.pathname.replace(/\/+$/u, "");
+  return `${url.origin}${pathname === "/" ? "" : pathname}`;
+}
+
+function normalizeSeoOutputPath(value: string, label: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    throw new Error(
+      `[vextjs] ${label} must be a root absolute file pathname without query, hash, or traversal.`,
+    );
+  }
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.endsWith("/") ||
+    value.includes("?") ||
+    value.includes("#") ||
+    value.includes("\\") ||
+    !decoded.startsWith("/") ||
+    decoded.startsWith("//") ||
+    decoded.endsWith("/") ||
+    decoded.includes("?") ||
+    decoded.includes("#") ||
+    decoded.includes("\\") ||
+    hasDotPathSegment(value) ||
+    hasDotPathSegment(decoded)
+  ) {
+    throw new Error(
+      `[vextjs] ${label} must be a root absolute file pathname without query, hash, or traversal.`,
+    );
+  }
+  return value;
+}
+
+function hasDotPathSegment(value: string): boolean {
+  return value
+    .split("/")
+    .some((segment) => segment === "." || segment === "..");
+}
+
+function assertSeoMetadata(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (!isJsonSafeRecord(value)) {
+    throw new Error(`[vextjs] ${label} must be a JSON-safe object.`);
+  }
+  const canonical = value.canonical;
+  if (canonical !== undefined) {
+    normalizeSeoPathname(canonical, `${label}.canonical`);
+  }
+}
+
+function normalizeSeoPathname(value: unknown, label: string): string {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("?") ||
+    value.includes("#")
+  ) {
+    throw new Error(
+      `[vextjs] ${label} must be an absolute pathname without query or hash.`,
+    );
+  }
+  return value;
+}
+
+function isJsonSafeRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(isJsonSafeValue)
+  );
+}
+
+function isJsonSafeValue(value: unknown): boolean {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonSafeValue);
+  return isJsonSafeRecord(value);
+}
+
+function isNonEmptyStringList(value: unknown): boolean {
+  return (
+    (typeof value === "string" && value.trim().length > 0) ||
+    (Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((entry) => typeof entry === "string" && entry.trim()))
+  );
 }
 
 function normalizeExternalRuntime(

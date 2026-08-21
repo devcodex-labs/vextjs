@@ -1,5 +1,7 @@
 import type { CookieSerializeOptions } from "./cookies.js";
 import type { VextHeaderValue, VextHeaders } from "./headers.js";
+import type { VextRenderSeoOptions } from "../frontend/contract/types.js";
+import type { VextJsonValue } from "./errors.js";
 
 /**
  * VextResponse — 框架统一响应对象接口
@@ -30,7 +32,15 @@ export interface VextRenderHeadOptions {
   title?: string;
   description?: string;
   meta?: Record<string, string>;
+  /** @internal Ordered repeated name-based meta projected from options.seo. */
+  nameMeta?: ReadonlyArray<{ name: string; content: string }>;
+  /** @internal Structured property-based meta projected from options.seo. */
+  properties?: Record<string, string>;
+  /** @internal Ordered repeated property-based meta projected from options.seo. */
+  propertyMeta?: ReadonlyArray<{ property: string; content: string }>;
   links?: Array<Record<string, string>>;
+  /** @internal JSON-LD projected from options.seo. */
+  jsonLd?: VextJsonValue | readonly VextJsonValue[];
 }
 
 export interface VextRenderOptions {
@@ -40,6 +50,8 @@ export interface VextRenderOptions {
   status?: number;
   headers?: VextHeaders;
   head?: VextRenderHeadOptions;
+  /** Per-render SEO metadata merged after app and route defaults. */
+  seo?: VextRenderSeoOptions;
   nonce?: string;
   locale?: string;
   messages?: Record<string, unknown>;

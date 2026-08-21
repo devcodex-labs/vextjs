@@ -576,6 +576,34 @@ app.get("/admin/cache-stats", {}, async (req, res) => {
 
 ---
 
+#### `app.db`
+
+唯一数据库入口。存在 `config.database` 时，Vext 会把同一个原始 `MonSQLize` 实例
+挂载到这里；未配置数据库时，该属性不可用。
+
+```typescript
+db?: VextDatabase; // MonSQLize + Vext 补充的只读 client getter
+```
+
+`app.db` 不是 facade 或 Proxy，因此可以直接使用完整上游实例能力：
+`collection()`、`model()`、`use()`、`pool()`、`scopedModel()`、
+`withTransaction()`、`sync()`、事件、诊断和管理方法。Vext v2 不再暴露第二个
+`app.monsqlize` 属性。
+
+```typescript
+const users = app.db?.collection("users");
+const User = app.db?.model("users");
+const Invoice = app.db?.use("billing").model("BillingInvoice");
+const session = app.db?.client.startSession();
+```
+
+Model 注册键是精确键。`use()` 和 `pool()` 只选择数据库或连接池 scope，不会自动
+添加 scope 前缀，也不会回落到变换后的键；只有 Model 显式注册 `key` 别名时短名
+才有效。优雅关闭时由 Vext 负责清理数据库连接，应用不应在另一个 `onClose` 中再次
+关闭 `app.db`。详见[数据库指南](/guide/database)。
+
+---
+
 #### `app.adapter`
 
 底层适配器实例（由 `resolveAdapter()` 解析后挂载）。
@@ -1010,15 +1038,9 @@ app.onReady(() => {
 onClose(handler: () => Promise<void> | void): void;
 ```
 
-适用于：关闭数据库连接、刷新日志缓冲区、取消定时任务等。
+适用于：关闭应用自有连接、刷新日志缓冲区、取消定时任务等。内置数据库插件会自动关闭 `app.db`。
 
 ```typescript
-// 数据库连接清理
-app.onClose(async () => {
-  await app.db.disconnect();
-  app.logger.info("数据库连接已关闭");
-});
-
 // 定时任务取消
 app.onClose(() => {
   clearInterval(healthCheckTimer);

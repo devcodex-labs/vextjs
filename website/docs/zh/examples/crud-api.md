@@ -1,6 +1,30 @@
 # CRUD API
 
-一个完整的 RESTful CRUD API 示例，展示 VextJS 的服务层、中间件、参数校验、错误处理等核心能力。
+## 可执行 2.x 权威示例
+
+本页的发布合同是仓库中的
+[`examples/crud-api`](https://github.com/devcodex-labs/vextjs/tree/main/examples/crud-api)
+项目。它是 TypeScript Todo API，使用隔离 MongoDB 数据库，以及只通过 `app.db` 暴露的 raw MonSQLize 实例。
+
+```powershell
+cd examples/crud-api
+$env:MONGODB_URI = "mongodb://127.0.0.1:27017/vext_crud_example"
+npm install
+npm run typecheck
+npm run build
+npm test
+npm start
+```
+
+model 声明 `collection: "todos"`，因此 service 使用精确 raw registry key：`app.db.model("todos")`。应用显式关闭全局 rate limit，并启用 OpenAPI/Vext Docs。
+
+实际 endpoint 是 `GET /`、`GET /todos`、`POST /todos`、`GET /todos/:id`、`PATCH /todos/:id` 与 `DELETE /todos/:id`。所有必填 path `id` 都使用 `string:1-!`：缺失/非法 path 参数会在 handler 执行前返回 HTTP 400，并在 OpenAPI 中显示 `required: true`；body/query 校验失败仍为 HTTP 422。
+
+发布验证会安装、typecheck、build、启动并实际执行 Mongo CRUD 生命周期；mock 数据库不计为通过。
+
+## 扩展内存/Auth 教学变体
+
+下方 walkthrough 是单独的 users + 内存存储 + auth middleware 教学变体，可用于了解更多 API，但它不是可执行 `examples/crud-api` fixture 或其 endpoint 合同。
 
 ## 项目结构
 
@@ -918,16 +942,16 @@ handler 中 app.throw(404, '用户不存在')
 
 ### 设计模式
 
-| 模式                 | 说明                                                  |
-| -------------------- | ----------------------------------------------------- |
-| **三段式路由**       | `app.method(path, options, handler)` — 声明式配置     |
-| **服务层分离**       | 业务逻辑封装在 `src/services/` 中，路由只做编排       |
-| **中间件白名单**     | 路由级中间件必须在 `config.middlewares` 中声明        |
+| 模式                 | 说明                                                                          |
+| -------------------- | ----------------------------------------------------------------------------- |
+| **三段式路由**       | `app.method(path, options, handler)` — 声明式配置                             |
+| **服务层分离**       | 业务逻辑封装在 `src/services/` 中，路由只做编排                               |
+| **中间件白名单**     | 路由级中间件必须在 `config.middlewares` 中声明                                |
 | **Auth 保护**        | `auth()` 填充 `req.auth`，`RouteOptions.auth` 保护路由并驱动 OpenAPI security |
-| **声明式校验**       | `validate` 使用 schema-dsl DSL 语法，自动类型转换     |
-| **统一错误处理**     | `app.throw()` 抛出错误，框架自动转为标准格式          |
-| **出口包装**         | 所有成功响应自动包装为 `{ code: 0, data, requestId }` |
-| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档         |
+| **声明式校验**       | `validate` 使用 schema-dsl DSL 语法，自动类型转换                             |
+| **统一错误处理**     | `app.throw()` 抛出错误，框架自动转为标准格式                                  |
+| **出口包装**         | 所有成功响应自动包装为 `{ code: 0, data, requestId }`                         |
+| **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档                                 |
 
 ## 下一步
 

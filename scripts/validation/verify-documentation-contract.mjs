@@ -458,6 +458,14 @@ function requireTokens(relativePath, tokens) {
   }
 }
 
+function requireFiles(label, relativePaths) {
+  for (const relativePath of relativePaths) {
+    if (!existsSync(path.join(root, relativePath))) {
+      fail(`${label} is missing required file: ${relativePath}`);
+    }
+  }
+}
+
 function forbidTokens(relativePath, tokens) {
   const content = read(relativePath);
   for (const token of tokens) {
@@ -642,6 +650,9 @@ function verifyFrontendConfigurationReferenceContracts() {
     ["VextFrontendI18nConfig", "i18n."],
     ["VextFrontendDevConfig", "dev."],
     ["VextFrontendApiClientConfig", "apiClient."],
+    ["VextFrontendSeoConfig", "seo."],
+    ["VextFrontendSitemapConfig", "seo.sitemap."],
+    ["VextFrontendRobotsConfig", "seo.robots."],
   ];
   const extensionTokens = [
     "`VextFrontendAdapter`",
@@ -797,6 +808,251 @@ function verifyFrontendStreamingDocumentationContract() {
   }
 }
 
+function verifyFrontendSeoAndNoHydrationDocumentationContract() {
+  requireFiles("bilingual frontend SEO documentation", [
+    "website/docs/en/frontend/seo-sitemap.md",
+    "website/docs/zh/frontend/seo-sitemap.md",
+  ]);
+
+  for (const locale of ["en", "zh"]) {
+    const seoDocs = `website/docs/${locale}/frontend/seo-sitemap.md`;
+    const renderingDocs = `website/docs/${locale}/frontend/rendering-modes.md`;
+    const hydrationDocs = `website/docs/${locale}/frontend/hydration.md`;
+    const routeDocs = `website/docs/${locale}/api/route-definition.md`;
+    const openapiDocs = `website/docs/${locale}/guide/openapi.md`;
+
+    requireTokens(seoDocs, [
+      "frontend.seo",
+      "publicOrigin",
+      "origins",
+      "sitemap",
+      "robots",
+      "originKey",
+      'mode: "build"',
+      'mode: "runtime"',
+      "res.render(..., { seo })",
+      "app.db",
+      "Cache-Control: no-store",
+      'hydration: "none"',
+      "Selective",
+      "Partial",
+      "Islands",
+      "PPR",
+      "`RouteOptions.frontend`",
+      "`inline object literal`",
+    ]);
+    requireTokens(renderingDocs, [
+      'hydration: "none"',
+      "__vext.page.json",
+      "browser runtime",
+      "Selective/Partial",
+      "Islands",
+      "PPR",
+    ]);
+    requireTokens(hydrationDocs, [
+      'hydration: "none"',
+      "__VEXT_DATA__",
+      'data-vext-hydration="none"',
+      "Selective/Partial",
+      "Islands",
+      "PPR",
+      "E:\\Worker\\vextjs-test",
+      "`RouteOptions.frontend`",
+      "`inline object literal`",
+      "res.render(..., { seo })",
+    ]);
+    requireTokens(routeDocs, [
+      'hydration?: "full" | "none"',
+      "originKey?: string",
+      "clientOnly",
+      "Vext/React",
+      "`RouteOptions.frontend`",
+      "`inline object literal`",
+      "res.render(..., { seo })",
+    ]);
+    requireTokens(openapiDocs, ["Vext Docs Renderer", "favicon", "/docs"]);
+
+    if (locale === "en") {
+      requireTokens(openapiDocs, ["teal/cyan", "green/amber"]);
+      forbidTokens(openapiDocs, ["purple/cyan"]);
+    } else {
+      requireTokens(openapiDocs, ["青绿/青色", "绿色/琥珀色"]);
+      forbidTokens(openapiDocs, ["紫色/青色"]);
+    }
+  }
+
+  requireTokens("website/rspress.config.ts", [
+    'en: "v2.0.0"',
+    'zh: "v2.0.0"',
+    'link: "/frontend/seo-sitemap"',
+    'link: "/zh/frontend/seo-sitemap"',
+  ]);
+}
+
+function verifyExecutableExampleDocumentationContract() {
+  for (const locale of ["en", "zh"]) {
+    requireTokens(`website/docs/${locale}/examples/hello-world.md`, [
+      "examples/hello-world",
+      "npm run typecheck",
+      "npm run build",
+      "npm test",
+      "npm start",
+      "rateLimit.enabled: false",
+      "GET /health",
+    ]);
+    requireTokens(`website/docs/${locale}/examples/crud-api.md`, [
+      "examples/crud-api",
+      "MONGODB_URI",
+      'app.db.model("todos")',
+      "string:1-!",
+      "HTTP 400",
+      "required: true",
+      "HTTP 422",
+      "mock",
+    ]);
+    forbidTokens(`website/docs/${locale}/examples/crud-api.md`, [
+      "app.monsqlize",
+    ]);
+  }
+}
+
+function verifyV2MigrationAndDatabaseDocumentationContract() {
+  const localeContracts = {
+    en: {
+      database: [
+        "app.db — raw MonSQLize instance",
+        "exact raw `MonSQLize` instance",
+        'app.db.model("users")',
+        'model("BillingInvoice")',
+        'model("CnBillingOrder")',
+        "app.db.scopedModel",
+        "no separate `app.monsqlize` entry point in v2",
+        "index.ts` is a normal Model file",
+      ],
+      databaseStale: [
+        "app.monsqlize — original instance",
+        "const monsqlize = app.monsqlize",
+        "automatically add prefix",
+        "Equivalent short chain",
+        "`index.ts` → skip",
+      ],
+      middleware: [
+        "rateLimit.enabled === true",
+        "emits no rate-limit",
+        "HTTP 429",
+        "override: { rateLimit: false }",
+        "app.setRateLimiter()",
+        "createRateLimitMiddleware()",
+      ],
+      configuration: [
+        "does not install the middleware",
+        "app.setRateLimiter()",
+        "raw `app.db`",
+      ],
+      structure: [
+        "src/types/shared",
+        "src/types/frontend",
+        "src/types/generated",
+        "TypeScript API-only",
+        "JavaScript templates do not create",
+        "does not pre-create `src/types/server/`",
+        "runtime configuration still belongs",
+      ],
+      app: [
+        "The single database entry point",
+        "exact raw `MonSQLize` instance",
+        "Vext v2 does not expose a second `app.monsqlize` property",
+        "Model registry keys are exact",
+      ],
+    },
+    zh: {
+      database: [
+        "app.db — 原始 MonSQLize 实例",
+        "同一个原始 `MonSQLize` 实例",
+        'app.db.model("users")',
+        'model("BillingInvoice")',
+        'model("CnBillingOrder")',
+        "app.db.scopedModel",
+        "v2 不再提供独立的",
+        "index.ts` 是普通 Model 文件",
+      ],
+      databaseStale: [
+        "app.monsqlize — 原始实例",
+        "const monsqlize = app.monsqlize",
+        "自动加前缀（dbName + modelName）",
+        "等价短链",
+        "`index.ts` → 跳过",
+      ],
+      middleware: [
+        "rateLimit.enabled === true",
+        "不会产生",
+        "HTTP 429",
+        "override: { rateLimit: false }",
+        "app.setRateLimiter()",
+        "createRateLimitMiddleware()",
+      ],
+      configuration: [
+        "不安装限流中间件",
+        "app.setRateLimiter()",
+        "原始 `app.db`",
+      ],
+      structure: [
+        "src/types/shared",
+        "src/types/frontend",
+        "src/types/generated",
+        "TypeScript API-only",
+        "JavaScript 模板不创建",
+        "不预建",
+        "运行配置继续统一放在 `src/config/`",
+      ],
+      app: [
+        "唯一数据库入口",
+        "同一个原始 `MonSQLize` 实例",
+        "Vext v2 不再暴露第二个",
+        "Model 注册键是精确键",
+      ],
+    },
+  };
+
+  for (const [locale, contract] of Object.entries(localeContracts)) {
+    const guideRoot = `website/docs/${locale}/guide`;
+    requireTokens(`${guideRoot}/database.md`, contract.database);
+    forbidTokens(`${guideRoot}/database.md`, contract.databaseStale);
+    requireTokens(`${guideRoot}/middleware.md`, contract.middleware);
+    requireTokens(`${guideRoot}/configuration.md`, contract.configuration);
+    requireTokens(`${guideRoot}/project-structure.md`, contract.structure);
+    requireTokens(`website/docs/${locale}/api/app.md`, contract.app);
+  }
+
+  requireTokens("MIGRATION.md", [
+    "# Migrating to vextjs v2",
+    "app.db is the only database surface",
+    "Model lookups use exact registry keys",
+    "Global rate limiting is opt-in",
+    "Path validation failures use HTTP 400",
+    'hydration: "none"',
+    "src/types/generated/",
+    "Existing project directories are not moved",
+    "Historical: migrating to vextjs v1",
+  ]);
+  requireTokens("CHANGELOG.md", [
+    "2.0.0 candidate",
+    "Framework-level `frontend.seo`",
+    "Removed the duplicate `app.monsqlize` property",
+    "does not claim that",
+  ]);
+  requireTokens("README.md", [
+    "## 2.0.0 candidate highlights",
+    "Framework-level SEO",
+    'hydration: "none"',
+    "One database surface",
+    "rateLimit.enabled: true",
+    "selective/partial hydration",
+    "examples/crud-api",
+    "src/types/generated",
+  ]);
+}
+
 function verifyFrontendNavigationDocumentationContract() {
   const apiTokens = [
     "`Link`",
@@ -937,6 +1193,15 @@ function verifyExampleAndMetadata() {
       'examples/hello-world/package.json must declare "vextjs": "file:../.."',
     );
   }
+  if (
+    examplePackage.scripts?.typecheck !== "tsc --noEmit" ||
+    examplePackage.scripts?.build !== "tsc" ||
+    examplePackage.scripts?.start !== "node start.js"
+  ) {
+    fail(
+      "examples/hello-world must expose executable typecheck/build/start scripts",
+    );
+  }
 
   requireTokens("examples/hello-world/README.md", [
     "npm install",
@@ -949,6 +1214,14 @@ function verifyExampleAndMetadata() {
     '"native"   — 默认',
     '默认使用 "native"',
     "Vext Docs Renderer",
+    "rateLimit",
+    "enabled: false",
+  ]);
+  requireTokens("examples/hello-world/README.md", [
+    "npm run typecheck",
+    "npm run build",
+    "npm start",
+    "rateLimit.enabled: false",
   ]);
   forbidTokens("examples/hello-world/README.md", [
     "symlink（已配置）",
@@ -959,6 +1232,58 @@ function verifyExampleAndMetadata() {
   forbidTokens("examples/hello-world/src/config/default.js", [
     '不配置时默认使用 "hono"',
     "Swagger UI",
+  ]);
+
+  requireFiles("examples/crud-api", [
+    "examples/crud-api/package.json",
+    "examples/crud-api/README.md",
+    "examples/crud-api/tsconfig.json",
+    "examples/crud-api/src/config/default.ts",
+    "examples/crud-api/src/models/todo.ts",
+    "examples/crud-api/src/services/todo.ts",
+    "examples/crud-api/src/routes/index.ts",
+    "examples/crud-api/src/routes/todos.ts",
+    "examples/crud-api/test/contract.test.mjs",
+  ]);
+  const crudPackage = readJson("examples/crud-api/package.json");
+  if (crudPackage?.dependencies?.vextjs !== "file:../..") {
+    fail('examples/crud-api/package.json must declare "vextjs": "file:../.."');
+  }
+  for (const script of ["typecheck", "build", "start", "test"]) {
+    if (typeof crudPackage?.scripts?.[script] !== "string") {
+      fail(`examples/crud-api must expose npm script: ${script}`);
+    }
+  }
+  requireTokens("examples/crud-api/src/config/default.ts", [
+    "MONGODB_URI is required",
+    "rateLimit",
+    "enabled: false",
+    "openapi",
+  ]);
+  requireTokens("examples/crud-api/src/models/todo.ts", [
+    'collection: "todos"',
+    'id: "string:1-!"',
+    'title: "string:1-120!"',
+  ]);
+  requireTokens("examples/crud-api/src/services/todo.ts", [
+    "const database = this.app.db",
+    'database.model<TodoDocument>("todos")',
+    "insertOne",
+    "findOne",
+    "upsertOne",
+    "deleteOne",
+  ]);
+  forbidTokens("examples/crud-api/src/services/todo.ts", ["app.monsqlize"]);
+  const crudRoutes = read("examples/crud-api/src/routes/todos.ts");
+  if ((crudRoutes.match(/id: "string:1-!"/g) ?? []).length !== 3) {
+    fail(
+      "examples/crud-api must use string:1-! for all three required id routes",
+    );
+  }
+  requireTokens("examples/crud-api/src/routes/todos.ts", [
+    'req.valid("param")',
+    'title: "string:1-120!"',
+    'limit: "integer:1-100?"',
   ]);
 
   requireTokens("CONTRIBUTING.md", [
@@ -1007,6 +1332,11 @@ function verifyReadmePublicEntryContract() {
     "React Fast Refresh",
     "Production lifecycle",
     "not an Edge runtime adapter",
+    "## 2.0.0 candidate highlights",
+    "Framework-level SEO",
+    'hydration: "none"',
+    "One database surface",
+    "rateLimit.enabled: true",
   ]);
   forbidTokens("README.md", [
     "vextjs.github.io",
@@ -1478,11 +1808,14 @@ if (renderedOnly) {
   verifyCliDocs();
   verifyPublicReferenceContracts();
   verifyFrontendStreamingDocumentationContract();
+  verifyFrontendSeoAndNoHydrationDocumentationContract();
   verifyFrontendNavigationDocumentationContract();
   verifyFrontendFreshnessMediaDocumentationContract();
   verifyJscssUserGuideDocumentationContract();
   verifyDocumentationGrowthContract();
   verifyExampleAndMetadata();
+  verifyExecutableExampleDocumentationContract();
+  verifyV2MigrationAndDatabaseDocumentationContract();
 }
 
 if (failures.length > 0) {

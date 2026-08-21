@@ -20,6 +20,11 @@ import {
   createFrontendNotFoundHandler,
 } from "../frontend/runtime/static-mount.js";
 import { createFrontendRenderMiddleware } from "../frontend/runtime/renderer.js";
+import {
+  needsFrontendSeoRuntimeEndpoints,
+  registerFrontendSeoEndpoints,
+} from "../frontend/runtime/seo-endpoints.js";
+import { resolveFrontendConfig } from "../frontend/tooling/config-resolver.js";
 import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
@@ -302,7 +307,7 @@ export async function bootstrap(
     // ── 步骤 ①++: 内置插件（MonSQLize）条件加载 ──────────
     //
     // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
-    // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
+    // 在用户插件之前执行，确保用户插件可安全依赖完整的原始 app.db。
     // 无 database 配置则跳过 setup，不加载数据库运行时与 hook。
     //
     if (shouldLoadMonSQLize(config as unknown as Record<string, unknown>)) {
@@ -408,8 +413,18 @@ export async function bootstrap(
     const openapiConfig = config.openapi;
     const openapiEnabled =
       openapiConfig?.enabled ?? process.env.NODE_ENV !== "production";
+    const frontendRuntimeConfig = resolveFrontendConfig(config.frontend, {
+      rootDir,
+      mode: "production",
+    });
+    const frontendSeoRuntimeEnabled = needsFrontendSeoRuntimeEndpoints(
+      frontendRuntimeConfig,
+    );
 
-    const collector = openapiEnabled ? new RouteMetadataCollector() : null;
+    const collector =
+      openapiEnabled || frontendSeoRuntimeEnabled
+        ? new RouteMetadataCollector()
+        : null;
 
     await startupProfiler.time(
       "start.routes",
@@ -429,6 +444,10 @@ export async function bootstrap(
         ),
       { phase: "routes" },
     );
+
+    registerFrontendSeoEndpoints(app, frontendRuntimeConfig, {
+      existingRoutes: collector?.getRegisteredRoutes() ?? [],
+    });
 
     // ── 步骤 ⑤+: 🆕 OpenAPI 文档生成 ─────────────────────
     //
@@ -515,11 +534,11 @@ export async function bootstrap(
     //   4. securityHeaders — 安全响应头（可选，放在 CORS 前）
     //   5. cors      — 处理跨域预检和响应头
     //   6. body-parser — 解析 JSON / URL-encoded 请求体
-    //   7. rate-limit — 速率限制
+    //   7. rate-limit — 速率限制（仅显式启用时）
     //   8. response-wrapper — 开启出口包装标志
     //   9. access-log — 洋葱模型 after-middleware（记录耗时/状态码/路径）
     //
-    // 🆕 性能优化：每个中间件仅在 enabled !== false 时注册。
+    // 按各中间件合同注册；rate-limit 是 opt-in，仅 enabled === true 时注册。
     // 禁用的中间件完全不进入中间件链，避免额外的请求级调度（之前是
     // 函数仍被调用但 fast-return，每请求仍有函数调用 + await next() 开销）。
     //
@@ -568,8 +587,8 @@ export async function bootstrap(
       app.adapter.registerMiddleware(bodyParserMiddleware);
     }
 
-    // 4. rate-limit（config.rateLimit.enabled，默认 true）
-    if (config.rateLimit?.enabled !== false) {
+    // 4. rate-limit（默认关闭，仅 enabled=true 时注册）
+    if (config.rateLimit?.enabled === true) {
       const rateLimitMiddleware = createRateLimitMiddleware(
         config.rateLimit,
         () => internals!.getRateLimiter(),

@@ -9,6 +9,7 @@ import type { VextRequest } from "../../../src/types/request.js";
 import type { VextResponse } from "../../../src/types/response.js";
 import { DEFAULT_CONFIG } from "../../../src/lib/app.js";
 import http from "node:http";
+import { Readable } from "node:stream";
 
 // ── 测试辅助 ─────────────────────────────────────────────────
 
@@ -189,6 +190,28 @@ describe("Fastify Adapter — VextAdapter 接口合规性", () => {
       expect(response.status).toBe(201);
       const body = JSON.parse(response.body);
       expect(body).toEqual({ received: true });
+    });
+
+    it("应等待 handler 返回后才启动的流式响应", async () => {
+      adapter.registerRoute("GET", "/delayed-stream", [
+        async (_req: VextRequest, res: VextResponse) => {
+          setTimeout(() => {
+            res
+              .status(201)
+              .stream(Readable.from(["delayed-stream"]), "text/plain");
+          }, 25);
+        },
+      ]);
+
+      handle = await adapter.listen(0, "127.0.0.1");
+      const response = await httpRequest({
+        port: handle.port,
+        path: "/delayed-stream",
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.headers["content-type"]).toContain("text/plain");
+      expect(response.body).toBe("delayed-stream");
     });
 
     it("应支持所有 HTTP 方法（PUT / PATCH / DELETE / HEAD / OPTIONS）", async () => {

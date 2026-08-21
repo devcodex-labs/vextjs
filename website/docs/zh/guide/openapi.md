@@ -2,6 +2,8 @@
 
 VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范 JSON，并通过 Vext Docs Renderer 提供默认 `/docs` 文档页。第三方文档工具请直接消费 `/openapi.json`。
 
+内置 renderer 与官网共用同一套 Vext 标记几何、青绿/青色 light/dark theme token、绿色/琥珀色标记辅色和 favicon。即使自定义 docs 路径，这些资产仍由 Vext 内置并保持一致，应用无需另装 OpenAPI UI 包。
+
 ## 快速开始
 
 ### 1. 启用 OpenAPI
@@ -507,11 +509,11 @@ app.get(
 
 #### 区分运行时授权、OpenAPI security 与 Docs access
 
-| 层级 | 配置字段 | 实际控制内容 | **不能**控制的内容 |
-| --- | --- | --- | --- |
-| 运行时路由授权 | `auth.required`、`roles`、`scopes`、`permissions`、`check` | 请求凭据/身份要求，以及路由的 401/403 判定 | 不会自动把运行时 scope 写成 OpenAPI OAuth scope |
-| OpenAPI operation security | `auth.security` 或手动 `docs.security` 覆盖 | 标准 OpenAPI `security` 的安全方案和 scope metadata | 不会在运行时执行 role、permission 或自定义 `check` |
-| Vext Docs access | `docs.access` 与 `openapi.docs.access.resolver` | Vext Docs 及其过滤文档数据中的可见性和 Try it out 过滤 | 不会保护真实 API route |
+| 层级                       | 配置字段                                                   | 实际控制内容                                           | **不能**控制的内容                                 |
+| -------------------------- | ---------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------- |
+| 运行时路由授权             | `auth.required`、`roles`、`scopes`、`permissions`、`check` | 请求凭据/身份要求，以及路由的 401/403 判定             | 不会自动把运行时 scope 写成 OpenAPI OAuth scope    |
+| OpenAPI operation security | `auth.security` 或手动 `docs.security` 覆盖                | 标准 OpenAPI `security` 的安全方案和 scope metadata    | 不会在运行时执行 role、permission 或自定义 `check` |
+| Vext Docs access           | `docs.access` 与 `openapi.docs.access.resolver`            | Vext Docs 及其过滤文档数据中的可见性和 Try it out 过滤 | 不会保护真实 API route                             |
 
 `auth.scopes` 是对 `req.auth.scopes` 的运行时判定，不会自动复制为 OAuth scopes。需要让 OpenAPI 消费者看到 OAuth scope 时，请显式声明，例如 `auth: { scopes: ["posts:write"], security: [{ oauth2: ["posts:write"] }] }`。`docs.access` 只用于描述或过滤文档受众；即使 operation 在 Docs 中隐藏，也必须保留路由自己的 `auth` 要求。
 

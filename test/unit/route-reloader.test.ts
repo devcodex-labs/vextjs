@@ -409,7 +409,11 @@ describe("reloadRoutes", () => {
 
       const options = createDefaultOptions({
         app: createMockApp({
-          config: { frontend: { enabled: true }, session: { enabled: true } },
+          config: {
+            frontend: { enabled: true },
+            session: { enabled: true },
+            rateLimit: { enabled: true },
+          },
         }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
@@ -505,7 +509,11 @@ describe("reloadRoutes", () => {
 
       const options = createDefaultOptions({
         app: createMockApp({
-          config: { frontend: { enabled: true }, session: { enabled: true } },
+          config: {
+            frontend: { enabled: true },
+            session: { enabled: true },
+            rateLimit: { enabled: true },
+          },
         }),
         resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
         builtinMiddlewares,
@@ -599,18 +607,19 @@ describe("reloadRoutes", () => {
       expect(freshAdapter.registerMiddleware).toHaveBeenCalledWith(corsMw);
     });
 
-    it("条件守卫 disabled → creator undefined → 对应中间件不被注册（D2 修复覆盖）", async () => {
+    it("rateLimit omitted 时即使 creator 常驻也不注册中间件", async () => {
       // 模拟 config.response.wrap = false → builtinMwCreators.responseWrapper = undefined
       // 模拟 config.cors.enabled = false → builtinMwCreators.createCorsMiddleware = undefined
       // 只注册 requestId 和 bodyParser（enabled = true）
       const reqIdMw = createMockMiddleware("requestId");
       const bodyMw = createMockMiddleware("bodyParser");
+      const createRateLimit = vi.fn(() => createMockMiddleware("rateLimit"));
 
       const builtinMiddlewares: BuiltinMiddlewareCreators = {
         createRequestIdMiddleware: vi.fn(() => reqIdMw),
         createCorsMiddleware: undefined, // cors disabled
         createBodyParserMiddleware: vi.fn(() => bodyMw),
-        createRateLimitMiddleware: undefined, // rateLimit disabled
+        createRateLimitMiddleware: createRateLimit,
         responseWrapper: undefined, // response.wrap = false
         createAccessLogMiddleware: undefined, // accessLog disabled
       };
@@ -635,6 +644,46 @@ describe("reloadRoutes", () => {
         2,
         bodyMw,
       );
+      expect(createRateLimit).not.toHaveBeenCalled();
+    });
+
+    it("按最新配置支持 rateLimit false → true → false", async () => {
+      const rateMw = createMockMiddleware("rateLimit");
+      const createRateLimit = vi.fn(() => rateMw);
+      const app = createMockApp({
+        config: { rateLimit: { enabled: false } },
+      });
+      const adapters = [
+        createMockAdapter(),
+        createMockAdapter(),
+        createMockAdapter(),
+      ];
+      const resolveAdapter = vi
+        .fn()
+        .mockImplementation(() => adapters.shift()!);
+      const options = createDefaultOptions({
+        app,
+        resolveAdapter: resolveAdapter as unknown as AdapterResolver,
+        builtinMiddlewares: {
+          createRateLimitMiddleware: createRateLimit,
+        },
+      });
+
+      const first = await reloadRoutes(options);
+      expect(createRateLimit).not.toHaveBeenCalled();
+
+      app.config.rateLimit = { enabled: true, max: 10 };
+      const second = await reloadRoutes(options);
+      expect(createRateLimit).toHaveBeenCalledTimes(1);
+      expect(createRateLimit).toHaveBeenLastCalledWith(app.config);
+
+      app.config.rateLimit = { enabled: false };
+      const third = await reloadRoutes(options);
+      expect(createRateLimit).toHaveBeenCalledTimes(1);
+
+      expect(first).toBeDefined();
+      expect(second).toBeDefined();
+      expect(third).toBeDefined();
     });
 
     it("应将 app.config 传递给内置中间件工厂", async () => {

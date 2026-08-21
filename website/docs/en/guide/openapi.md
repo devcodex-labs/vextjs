@@ -2,6 +2,11 @@
 
 VextJS has built-in automatic generation of OpenAPI documentation. Based on route `validate` and `docs` configuration, the framework generates an OpenAPI 3.0 JSON document and serves the default `/docs` page with the Vext Docs Renderer. Third-party documentation tools should consume `/openapi.json` directly.
 
+The built-in renderer uses the same Vext mark geometry, teal/cyan light/dark
+theme tokens, green/amber mark accents, and favicon as the documentation website.
+These assets are bundled by Vext and remain consistent at custom docs paths;
+applications do not need to install a separate OpenAPI UI package.
+
 ## Quick Start
 
 ### 1. Enable OpenAPI
@@ -515,11 +520,11 @@ Use `auth: { security: "bearerAuth" }` when you want to choose the security sche
 
 #### Keep runtime authorization, OpenAPI security, and Docs access separate
 
-| Layer | Configure it with | What it controls | What it does **not** control |
-| --- | --- | --- | --- |
-| Runtime route authorization | `auth.required`, `roles`, `scopes`, `permissions`, `check` | Credential/identity requirements and the route's 401/403 decision | It does not create OAuth scopes in the OpenAPI document by itself |
-| OpenAPI operation security | `auth.security` or the manual `docs.security` override | Standard OpenAPI `security` scheme and scope metadata | It does not execute roles, permissions, or a custom `check` at runtime |
-| Vext Docs access | `docs.access` with `openapi.docs.access.resolver` | Visibility and Try it out filtering in Vext Docs and its filtered docs data | It does not protect the actual API route |
+| Layer                       | Configure it with                                          | What it controls                                                            | What it does **not** control                                           |
+| --------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Runtime route authorization | `auth.required`, `roles`, `scopes`, `permissions`, `check` | Credential/identity requirements and the route's 401/403 decision           | It does not create OAuth scopes in the OpenAPI document by itself      |
+| OpenAPI operation security  | `auth.security` or the manual `docs.security` override     | Standard OpenAPI `security` scheme and scope metadata                       | It does not execute roles, permissions, or a custom `check` at runtime |
+| Vext Docs access            | `docs.access` with `openapi.docs.access.resolver`          | Visibility and Try it out filtering in Vext Docs and its filtered docs data | It does not protect the actual API route                               |
 
 `auth.scopes` is a runtime predicate against `req.auth.scopes`; it is not automatically copied into OAuth scopes. When an OpenAPI consumer must see OAuth scopes, declare them explicitly, for example `auth: { scopes: ["posts:write"], security: [{ oauth2: ["posts:write"] }] }`. Use `docs.access` only to describe or filter the documentation audience; keep the route's `auth` requirement in place even when an operation is hidden from Docs.
 

@@ -83,6 +83,7 @@ import { buildFrontendClient } from "../../frontend/tooling/client-build-compile
 import type { BuildFrontendClientResult } from "../../frontend/tooling/client-build-compiler.js";
 import { createFrontendNotFoundHandler } from "../../frontend/runtime/static-mount.js";
 import { createFrontendRenderMiddleware } from "../../frontend/runtime/renderer.js";
+import { registerFrontendSeoEndpoints } from "../../frontend/runtime/seo-endpoints.js";
 import {
   createFrontendDevEventBus,
   VEXT_FRONTEND_DEV_EVENT_PATH,
@@ -497,10 +498,10 @@ export async function devBootstrap(
     // ── 步骤 3.5: 内置插件（MonSQLize）条件加载（P0 修复）──
     //
     // 生产 bootstrap.ts 有此步骤，dev-bootstrap 原先缺失，
-    // 导致 dev 模式下 app.db / app.monsqlize 不存在。
+    // 导致 dev 模式下 app.db 不存在。
     //
     // 仅当 config.database 存在时才启用 MonSQLize 内置插件。
-    // 在用户插件之前执行，确保用户插件可安全依赖 app.db / app.monsqlize。
+    // 在用户插件之前执行，确保用户插件可安全依赖完整的原始 app.db。
     // 无 database 配置则跳过 setup，不加载数据库运行时与 hook。
     //
     // 注意：dev 模式使用 outDir（编译产物目录）而非 srcDir，
@@ -654,6 +655,10 @@ export async function devBootstrap(
       );
     }
 
+    registerFrontendSeoEndpoints(app, frontendRuntimeConfig, {
+      existingRoutes: collector.getRegisteredRoutes(),
+    });
+
     if (openapiEnabled) {
       await startupProfiler.time(
         "worker.openapi.register",
@@ -746,7 +751,7 @@ export async function devBootstrap(
     //   → frontend render → frontend dev events route → access-log
     //   → 插件全局中间件 → 错误处理 → 404
     //
-    // 🔧 D2/D3 修复：每个中间件仅在 enabled !== false 时注册（与生产 bootstrap.ts 对齐）。
+    // 与生产 bootstrap 对齐；rate-limit 是 opt-in，仅 enabled === true 时注册。
     // 禁用的中间件完全不进入中间件链，避免额外的请求级调度。
     // D3 修复：createRequestIdMiddleware 补传第四参数 localeConfig，
     // 确保 dev 模式下 store.locale 正确写入（i18n 语言解析生效）。
@@ -793,8 +798,8 @@ export async function devBootstrap(
       app.adapter.registerMiddleware(bodyParserMiddleware);
     }
 
-    // 4. rate-limit（config.rateLimit.enabled，默认 true）
-    if (config.rateLimit?.enabled !== false) {
+    // 4. rate-limit（默认关闭，仅 enabled=true 时注册）
+    if (config.rateLimit?.enabled === true) {
       const rateLimitMiddleware = createRateLimitMiddleware(
         config.rateLimit,
         () => internals!.getRateLimiter(),
@@ -1044,13 +1049,11 @@ export async function devBootstrap(
                 cfg.multipart as any,
               )) as any)
           : undefined,
-      createRateLimitMiddleware:
-        config.rateLimit?.enabled !== false
-          ? (((cfg: Record<string, unknown>) =>
-              createRateLimitMiddleware(cfg.rateLimit as any, () =>
-                internals!.getRateLimiter(),
-              )) as any)
-          : undefined,
+      // creator 必须常驻，soft reload 才能按最新配置支持 false ↔ true。
+      createRateLimitMiddleware: ((cfg: Record<string, unknown>) =>
+        createRateLimitMiddleware((cfg.rateLimit ?? {}) as any, () =>
+          internals!.getRateLimiter(),
+        )) as any,
       responseWrapper:
         config.response?.wrap !== false ? (responseWrapper as any) : undefined,
       createFrontendRenderMiddleware: isFrontendEnabled(config.frontend)

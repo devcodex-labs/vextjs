@@ -92,8 +92,8 @@ export interface VextValidationFieldError {
  * VextValidationError — 参数校验失败错误
  *
  * 当 validate 中间件校验请求参数失败时抛出此错误。
- * 全局错误处理中间件捕获后格式化为 422 响应：
- *   { code: 422, message: 'Validation failed', errors: [...], requestId: '...' }
+ * 全局错误处理中间件捕获后默认格式化为 422 响应。路径参数校验失败
+ * 使用 400，表示请求路径参数本身无效。
  *
  * @example
  * throw new VextValidationError([
@@ -103,13 +103,14 @@ export interface VextValidationFieldError {
  */
 export class VextValidationError extends Error {
   public override readonly name = "VextValidationError" as const;
-  public readonly status = 422;
 
   constructor(
     /** 校验失败的字段错误列表 */
     public readonly errors: VextValidationFieldError[],
     /** 错误消息（默认 'Validation failed'） */
     message: string = "Validation failed",
+    /** 路径参数失败使用 400，其他请求数据校验保持 422。 */
+    public readonly status: 400 | 422 = 422,
   ) {
     super(message);
 

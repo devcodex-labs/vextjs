@@ -798,6 +798,31 @@ describe("OpenAPIGenerator", () => {
       });
     });
 
+    it("string:1-! keeps strict type/runtime/OpenAPI path contracts aligned", () => {
+      const doc = generate([
+        createRoute("GET", "/posts/:slug", {
+          validate: { param: { slug: "string:1-!" } },
+        }),
+      ]);
+
+      const op = doc.paths["/posts/{slug}"].get!;
+      expect(op.parameters![0]).toMatchObject({
+        name: "slug",
+        in: "path",
+        required: true,
+        schema: { type: "string", minLength: 1 },
+      });
+      expect(op.responses["400"]).toMatchObject({
+        description: "Path parameter validation error",
+        content: {
+          "application/json": {
+            example: { code: 400, message: "Validation failed" },
+          },
+        },
+      });
+      expect(op.responses["422"]).toBeUndefined();
+    });
+
     it("多个路径参数", () => {
       const doc = generate([
         createRoute("GET", "/users/:userId/posts/:postId", {
@@ -2195,7 +2220,9 @@ describe("OpenAPIGenerator", () => {
         "Keep runtime authorization, OpenAPI security, and Docs access separate",
       );
       expect(zhApi).toContain("不会保护 route；API 访问控制仍应使用 `auth`");
-      expect(enApi).toContain("It does not protect the route; use `auth` for API access control");
+      expect(enApi).toContain(
+        "It does not protect the route; use `auth` for API access control",
+      );
     });
   });
 

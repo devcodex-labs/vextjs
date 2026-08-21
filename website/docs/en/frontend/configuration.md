@@ -14,6 +14,7 @@ when you need an exact field, default, or nested option.
 - [Core Fields](#core-fields)
 - [Build Fields](#build-fields)
 - [Deploy Fields](#deploy-fields)
+- [SEO Fields](#seo-fields)
 - [I18n Fields](#i18n-fields)
 - [Dev Fields](#dev-fields)
 - [SPA Fallback Fields](#spa-fallback-fields)
@@ -21,14 +22,15 @@ when you need an exact field, default, or nested option.
 
 ## Choose What to Configure
 
-| If you need…                           | Start with           | Configure                                                        | What changes                                                                                          | Verify                                                    |
-| -------------------------------------- | -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Server-rendered React pages            | `frontend: true`     | Nothing else                                                     | Vext discovers `src/frontend`, builds browser + SSR output, and serves both at the application origin | `vext build`, then `vext start`                           |
-| A different source layout              | Built-in folders     | `root`, `pages`, `componentsDir`, `styles.entry`, or `assetsDir` | Only discovery paths change; generated entries remain Vext-owned                                      | Build and load one page plus its global style             |
-| A browser-size or compatibility target | Production defaults  | `build`, `vendorChunks`, or `budgets`                            | esbuild output, report thresholds, or browser support changes                                         | Inspect `size-report.json` and a production page          |
-| CDN-hosted immutable assets            | Same-origin delivery | `deploy.assetBaseUrl` and optionally `deploy.upload`             | Generated JS/CSS URLs point at the CDN; Node still owns HTML/SSR                                      | Dry-run the upload and request an SSR page + hashed asset |
-| A client-router island                 | No fallback capture  | `spaFallback.scopes`                                             | Only declared paths are served by the browser shell                                                   | Check an in-scope URL and an excluded `/api/**` URL       |
-| Localized page copy                    | Disabled             | `i18n`                                                           | Locale artifacts and request-aware document language are generated                                    | Build and request two locales                             |
+| If you need…                           | Start with           | Configure                                                        | What changes                                                                                          | Verify                                                     |
+| -------------------------------------- | -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Server-rendered React pages            | `frontend: true`     | Nothing else                                                     | Vext discovers `src/frontend`, builds browser + SSR output, and serves both at the application origin | `vext build`, then `vext start`                            |
+| A different source layout              | Built-in folders     | `root`, `pages`, `componentsDir`, `styles.entry`, or `assetsDir` | Only discovery paths change; generated entries remain Vext-owned                                      | Build and load one page plus its global style              |
+| A browser-size or compatibility target | Production defaults  | `build`, `vendorChunks`, or `budgets`                            | esbuild output, report thresholds, or browser support changes                                         | Inspect `size-report.json` and a production page           |
+| CDN-hosted immutable assets            | Same-origin delivery | `deploy.assetBaseUrl` and optionally `deploy.upload`             | Generated JS/CSS URLs point at the CDN; Node still owns HTML/SSR                                      | Dry-run the upload and request an SSR page + hashed asset  |
+| Search-visible public pages            | SEO disabled         | `seo`, plus route/render metadata                                | Canonical/meta output and optional sitemap/robots become framework-owned                              | Inspect two page canonicals and the selected SEO artifacts |
+| A client-router island                 | No fallback capture  | `spaFallback.scopes`                                             | Only declared paths are served by the browser shell                                                   | Check an in-scope URL and an excluded `/api/**` URL        |
+| Localized page copy                    | Disabled             | `i18n`                                                           | Locale artifacts and request-aware document language are generated                                    | Build and request two locales                              |
 
 Avoid adding a field merely because it exists. The defaults deliberately keep
 the runtime small: React + esbuild, SSR on, buffered streaming, browser code
@@ -251,6 +253,33 @@ into a release-blocking gate.
 CSS, imported media, and copied public files; it does not upload SSR HTML or
 source maps by default. Use `vext deploy assets --dry-run` before every new
 adapter, prefix, or include/exclude rule.
+
+## SEO Fields
+
+`frontend.seo` is the framework-level SEO entry point. It is disabled when
+omitted; when the object is present, `enabled` defaults to `true`.
+
+```ts
+frontend: {
+  seo: {
+    publicOrigin: process.env.PUBLIC_ORIGIN ?? "https://www.example.com",
+    titleTemplate: "%s | Example",
+    defaults: { description: "Example application" },
+    sitemap: {},
+    robots: {},
+  },
+}
+```
+
+`publicOrigin` identifies the deployment origin. Vext combines it with each
+request pathname, so dynamic pages do not share one fixed URL. Use route-level
+`frontend.seo` for static metadata and `res.render(..., { seo })` for metadata
+derived from page data. `sitemap` and `robots` can use `"build"` or `"runtime"`
+mode; named `origins` support a finite multi-domain deployment.
+
+See [SEO, Sitemap, and Robots](/frontend/seo-sitemap) for dynamic canonical,
+provider, host-selection, output, and no-hydration examples. The exact nested
+field list is in the [API reference](../api/config#vextfrontendconfig).
 
 ## I18n Fields
 

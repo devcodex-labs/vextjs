@@ -407,7 +407,7 @@ export default {
 
 | Configuration item  | Type      | Default value         | Description                                       |
 | ------------------- | --------- | --------------------- | ------------------------------------------------- |
-| `rateLimit.enabled` | `boolean` | `true`                | Whether to enable global throttling               |
+| `rateLimit.enabled` | `boolean` | `false`               | Whether to install global throttling              |
 | `rateLimit.max`     | `number`  | `100`                 | Maximum number of requests within the time window |
 | `rateLimit.window`  | `number`  | `60`                  | Time window (seconds)                             |
 | `rateLimit.message` | `string`  | `'Too many requests'` | Rate limiting response message                    |
@@ -424,6 +424,10 @@ export default {
   },
 };
 ```
+
+When disabled or omitted, Vext does not install the middleware and emits no
+rate-limit headers or HTTP 429 responses. `app.setRateLimiter()` replaces the
+implementation only; it does not change this opt-in setting.
 
 :::tip Route-level current limiting coverage
 You can override the rate limiting configuration for a specific route in the route's `options.override.rateLimit`:
@@ -769,8 +773,8 @@ export default {
 ### Database configuration (`database`)
 
 Adding `database` activates Vext's built-in `monsqlize@3.3.0` lifecycle:
-connection normalization, logger bridging, model loading, `app.db` /
-`app.monsqlize` mounting, and shutdown cleanup. Use the first-class fields for
+connection normalization, logger bridging, model loading, raw `app.db`
+mounting, and shutdown cleanup. Use the first-class fields for
 those owned concerns. `database.monsqlizeOptions` is a typed, runtime-validated
 escape hatch for the documented advanced allowlist; protected or unknown keys
 fail before the upstream constructor runs.

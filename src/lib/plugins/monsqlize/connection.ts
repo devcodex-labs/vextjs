@@ -1,9 +1,8 @@
 /**
  * MonSQLize 连接管理
  *
- * 调用 monsqlize.connect() 建立数据库连接，
- * 返回增强的连接对象（MonSQLizeConnection），
- * 封装 collection / db / model / client 快捷访问。
+ * 调用 monsqlize.connect() 建立数据库连接，并在原始 MonSQLize 实例上
+ * 安装 Vext 的窄兼容扩展：只读 client 与 soft-delete 返回值归一化。
  *
  * Fail Fast：连接失败时直接抛出错误，终止框架启动。
  *
@@ -13,9 +12,11 @@
 
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
-import type { MonSQLizeConnection, PoolAccessor } from "./types.js";
+import type { VextDatabase } from "./types.js";
 
 const SOFT_DELETE_COMPAT_MARK = Symbol.for("vext.monsqlize.softDeleteCompat");
+const DATABASE_COMPAT_MARK = Symbol.for("vext.monsqlize.databaseCompat");
+const ACCESSOR_COMPAT_MARK = Symbol.for("vext.monsqlize.accessorCompat");
 
 type SoftDeleteCompatModel = Record<string | symbol, any> & {
   softDeleteConfig?: { enabled?: boolean };
@@ -78,132 +79,126 @@ function applySoftDeleteCompat<T>(model: T): T {
   return model;
 }
 
-/**
- * Fail-fast pool existence check via monSQLize's own diagnostics.
- * Throws immediately with monSQLize codes:
- * - NO_POOL_MANAGER when pools are not configured
- * - POOL_NOT_FOUND (with err.available) when the named pool is missing
- */
-function assertPoolExists(monsqlize: MonSQLize, poolName: string): void {
-  monsqlize.pool(poolName);
+type CompatTarget = Record<string | symbol, any>;
+
+function decorateModelAccessor(accessor: unknown): unknown {
+  if (!accessor || typeof accessor !== "object") {
+    return accessor;
+  }
+
+  const target = accessor as CompatTarget;
+  if (target[ACCESSOR_COMPAT_MARK]) {
+    return accessor;
+  }
+
+  const originalModel = target.model;
+  if (typeof originalModel === "function") {
+    target.model = (...args: unknown[]) =>
+      applySoftDeleteCompat(originalModel.apply(target, args));
+  }
+
+  const originalUse = target.use;
+  if (typeof originalUse === "function") {
+    target.use = (...args: unknown[]) =>
+      decorateModelAccessor(originalUse.apply(target, args));
+  }
+
+  Object.defineProperty(target, ACCESSOR_COMPAT_MARK, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+  });
+  return accessor;
 }
 
-/**
- * Build a pool-scoped accessor only after the pool has been validated.
- * Validation runs before the accessor object is created so callers cannot
- * obtain model/collection/use handles for a missing pool name.
- */
-function createPoolAccessor(
-  monsqlize: MonSQLize,
-  poolName: string,
-): PoolAccessor {
-  assertPoolExists(monsqlize, poolName);
+function installSoftDeleteCompat(monsqlize: MonSQLize): void {
+  const target = monsqlize as unknown as CompatTarget;
+  if (target[DATABASE_COMPAT_MARK]) {
+    return;
+  }
 
-  return {
-    model: (key: string) =>
-      applySoftDeleteCompat(monsqlize.scopedModel(key, { pool: poolName })),
+  for (const methodName of ["model", "scopedModel"] as const) {
+    const original = target[methodName];
+    if (typeof original === "function") {
+      Object.defineProperty(target, methodName, {
+        value: (...args: unknown[]) =>
+          applySoftDeleteCompat(original.apply(target, args)),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+    }
+  }
 
-    collection: (name: string) =>
-      monsqlize.scopedCollection(name, { pool: poolName }),
+  for (const methodName of ["use", "pool"] as const) {
+    const original = target[methodName];
+    if (typeof original === "function") {
+      Object.defineProperty(target, methodName, {
+        value: (...args: unknown[]) =>
+          decorateModelAccessor(original.apply(target, args)),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+    }
+  }
 
-    use(dbName: string) {
-      const dbPrefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
-      const poolPrefix = poolName.charAt(0).toUpperCase() + poolName.slice(1);
-      return {
-        model: (key: string) => {
-          const tail = key.charAt(0).toUpperCase() + key.slice(1);
-          // Prefer depth-2 keys (Pool+Db+Name) for models/<pool>/<db>/<name>.ts
-          const depth2Key = poolPrefix + dbPrefix + tail;
-          // Fall back to depth-1 keys (Db+Name) for models/<db>/<name>.ts
-          const depth1Key = dbPrefix + tail;
-          try {
-            return applySoftDeleteCompat(
-              monsqlize.scopedModel(depth2Key, {
-                pool: poolName,
-                database: dbName,
-              }),
-            );
-          } catch (err) {
-            const e = err as { code?: string };
-            if (e && e.code === "MODEL_NOT_DEFINED") {
-              return applySoftDeleteCompat(
-                monsqlize.scopedModel(depth1Key, {
-                  pool: poolName,
-                  database: dbName,
-                }),
-              );
-            }
-            throw err;
-          }
-        },
-        collection: (name: string) =>
-          monsqlize.scopedCollection(name, {
-            pool: poolName,
-            database: dbName,
-          }),
-      };
+  Object.defineProperty(target, DATABASE_COMPAT_MARK, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+  });
+}
+
+function assertClientSlotAvailable(monsqlize: MonSQLize): void {
+  if (Object.prototype.hasOwnProperty.call(monsqlize, "client")) {
+    throw new Error(
+      '[monsqlize] Cannot expose app.db.client because the MonSQLize instance already owns a "client" property.',
+    );
+  }
+}
+
+function installClientAccessor(monsqlize: MonSQLize): void {
+  assertClientSlotAvailable(monsqlize);
+  Object.defineProperty(monsqlize, "client", {
+    enumerable: true,
+    configurable: false,
+    get() {
+      const client = (monsqlize as unknown as CompatTarget)._adapter?.client;
+      if (!client) {
+        throw new Error(
+          "[monsqlize] MongoDB client is not available. " +
+            "Ensure the database connection is established before accessing app.db.client.",
+        );
+      }
+      return client;
     },
-  };
+  });
 }
 
 /**
  * 创建数据库连接
  *
- * 调用 monsqlize.connect() 建立连接，
- * 返回增强的连接对象（MonSQLizeConnection）。
+ * 调用 monsqlize.connect() 建立连接，返回同一个原始实例。
  *
  * @param monsqlize MonSQLize 实例（已配置，未连接）
  * @param app       插件上下文（用于日志输出）
- * @returns 增强的连接对象
+ * @returns 已连接且安装窄兼容扩展的原始 MonSQLize 实例
  * @throws 连接失败时抛出原始错误（Fail Fast）
  */
 export async function createConnection(
   monsqlize: MonSQLize,
   _app: VextPluginContext,
-): Promise<MonSQLizeConnection> {
+): Promise<VextDatabase> {
+  // 在产生连接 I/O 前先拒绝未来上游或测试替身的自有 client 冲突。
+  assertClientSlotAvailable(monsqlize);
+
   // ── 连接数据库（Fail Fast：失败则启动终止）──────────────
   await monsqlize.connect();
 
-  // ── 构建连接对象 ──────────────────────────────────────
-  const connection: MonSQLizeConnection = {
-    collection: (name: string) => monsqlize.collection(name),
+  // connect() 不应新增公开 client，但再次检查可防未来上游版本在连接期注入自有属性。
+  installClientAccessor(monsqlize);
+  installSoftDeleteCompat(monsqlize);
 
-    // db() — 已删除（R4：原实现调用不存在的 monsqlize.db()，为运行时 bug）
-
-    model: (name: string) => applySoftDeleteCompat(monsqlize.model(name)),
-
-    // R2：单参数；R1：补全 collection
-    use(dbName: string) {
-      const prefix = dbName.charAt(0).toUpperCase() + dbName.slice(1);
-      return {
-        model: (name: string) => {
-          const key = prefix + name.charAt(0).toUpperCase() + name.slice(1);
-          return applySoftDeleteCompat(monsqlize.model(key));
-        },
-        collection: (name: string) =>
-          monsqlize.scopedCollection(name, { database: dbName }),
-      };
-    },
-
-    // R3：pool(name) validates immediately, then returns a scoped accessor
-    pool(poolName: string) {
-      return createPoolAccessor(monsqlize, poolName);
-    },
-
-    // 暴露底层 MongoDB Client（事务等高级场景）
-    // MonSQLize 将 MongoClient 存储在 _adapter.client（而非 _client）
-    get client() {
-      const adapter = (monsqlize as any)._adapter;
-      const client = adapter?.client;
-      if (!client) {
-        throw new Error(
-          "[monsqlize] MongoDB client is not available. " +
-            "Ensure the database connection is established before accessing the client.",
-        );
-      }
-      return client;
-    },
-  };
-
-  return connection;
+  return monsqlize as VextDatabase;
 }

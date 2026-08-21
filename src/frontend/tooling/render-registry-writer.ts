@@ -509,8 +509,8 @@ function createInitialVextEnvelope(payload) {
 }
 
 function applyVextNavigationHead(head) {
+  document.querySelectorAll("[data-vext-managed-head], [data-vext-navigation-head]").forEach((node) => node.remove());
   if (typeof head.title === "string") document.title = head.title;
-  document.querySelectorAll("[data-vext-navigation-head]").forEach((node) => node.remove());
   if (typeof head.description === "string") {
     const meta = document.createElement("meta");
     meta.name = "description";
@@ -525,11 +525,39 @@ function applyVextNavigationHead(head) {
     meta.setAttribute("data-vext-navigation-head", "");
     document.head.appendChild(meta);
   }
+  for (const entry of head.nameMeta ?? []) {
+    const meta = document.createElement("meta");
+    meta.name = entry.name;
+    meta.content = entry.content;
+    meta.setAttribute("data-vext-navigation-head", "");
+    document.head.appendChild(meta);
+  }
+  for (const [property, content] of Object.entries(head.properties ?? {})) {
+    const meta = document.createElement("meta");
+    meta.setAttribute("property", property);
+    meta.content = String(content);
+    meta.setAttribute("data-vext-navigation-head", "");
+    document.head.appendChild(meta);
+  }
+  for (const entry of head.propertyMeta ?? []) {
+    const meta = document.createElement("meta");
+    meta.setAttribute("property", entry.property);
+    meta.content = entry.content;
+    meta.setAttribute("data-vext-navigation-head", "");
+    document.head.appendChild(meta);
+  }
   for (const attrs of head.links ?? []) {
     const link = document.createElement("link");
     for (const [name, value] of Object.entries(attrs)) link.setAttribute(name, String(value));
     link.setAttribute("data-vext-navigation-head", "");
     document.head.appendChild(link);
+  }
+  if (head.jsonLd !== undefined) {
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.textContent = JSON.stringify(head.jsonLd).replace(/</g, "\\u003c");
+    script.setAttribute("data-vext-navigation-head", "");
+    document.head.appendChild(script);
   }
 }
 

@@ -216,6 +216,14 @@ frontend: {
   revalidate?: number, // seconds; required by revalidate mode
   staticParams?: Array<Record<string, string | number | boolean>>,
   clientOnly?: boolean,
+  hydration?: "full" | "none",
+  seo?: {
+    title?: string,
+    description?: string,
+    canonical?: string,
+    originKey?: string,
+    index?: boolean,
+  },
   tags?: string[],
   page?: string,
   staticBudget?: {
@@ -230,6 +238,17 @@ frontend: {
 `"revalidate"` and is a positive interval in seconds. `clientOnly` keeps the
 route document/data/assets while intentionally skipping the server page body;
 it is not PPR or a second page route.
+
+`hydration: "none"` does the opposite of `clientOnly`: it requires and keeps
+the SSR page body but removes the Vext/React browser runtime, hydration data,
+and route JS preload. It cannot be combined with `clientOnly` or disabled SSR.
+`seo` is static, JSON-safe route metadata and is merged before per-render SEO.
+For a three-argument route, the route-options argument and its
+`RouteOptions.frontend` value must each be an `inline object literal` so the
+build index and runtime cannot diverge. Imported variables and helper return
+values are not executed by the build index; use `res.render(..., { seo })` for
+request-dependent metadata. See
+[SEO, Sitemap, and Robots](/frontend/seo-sitemap).
 
 ### Complete example
 

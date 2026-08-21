@@ -32,11 +32,13 @@ import { buildFrontendRouteAssets } from "./route-assets.js";
 import { createJscssBuildDefines } from "./jscss-extractor.js";
 import { writeStaticFrontendArtifacts } from "./static-artifact-writer.js";
 import { writeFrontendMediaArtifacts } from "./media-artifact-writer.js";
+import { writeFrontendSeoArtifacts } from "./seo-artifact-writer.js";
 
 export interface BuildFrontendClientOptions {
   rootDir: string;
   config: VextFrontendUserConfig | undefined;
   mode: VextFrontendMode;
+  signal?: AbortSignal;
 }
 
 export interface BuildFrontendClientResult {
@@ -52,6 +54,7 @@ export interface BuildFrontendClientResult {
   modulePath?: string;
   staticManifestPath?: string;
   mediaManifestPath?: string;
+  seoArtifactPaths?: string[];
   routeCount?: number;
   warnings: string[];
 }
@@ -268,6 +271,12 @@ export async function buildFrontendClient(
     config,
     mode: options.mode,
   });
+  const seoArtifacts = await writeFrontendSeoArtifacts({
+    rootDir: options.rootDir,
+    config,
+    staticArtifacts: staticArtifacts.artifacts,
+    signal: options.signal,
+  });
   const deployManifest = await buildFrontendDeployManifest({
     rootDir: options.rootDir,
     config,
@@ -310,6 +319,7 @@ export async function buildFrontendClient(
     modulePath: contract?.modulePath,
     staticManifestPath: staticArtifacts.manifestPath,
     mediaManifestPath: mediaArtifacts.manifestPath,
+    seoArtifactPaths: seoArtifacts.artifacts.map((artifact) => artifact.file),
     routeCount: contract?.routeCount,
     warnings: [
       ...buildResult.warnings.map((item) => item.text),
@@ -829,11 +839,11 @@ function renderExternalRuntimeTags(config: ResolvedVextFrontendConfig): string {
       ]
         .filter(Boolean)
         .join(" ");
-      return `<link ${attrs}>`;
+      return `<link ${attrs} data-vext-external-runtime>`;
     })
     .join("\n");
   return [
-    `<script type="importmap">${JSON.stringify(importMap)}</script>`,
+    `<script type="importmap" data-vext-external-runtime>${JSON.stringify(importMap)}</script>`,
     preloadTags,
   ]
     .filter(Boolean)

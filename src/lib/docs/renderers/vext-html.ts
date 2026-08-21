@@ -1,6 +1,9 @@
 import type { ResolvedVextDocsConfig } from "../types.js";
-
-const VEXT_DOCS_ASSET_VERSION = "20260706-b34";
+import {
+  VEXT_BRAND_ASSET_VERSION,
+  renderVextDocsThemeVariables,
+  renderVextMarkSvg,
+} from "../../brand/vext-brand.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -22,7 +25,7 @@ function safeJson(value: unknown): string {
 
 function versionedAssetUrl(value: string): string {
   const separator = value.includes("?") ? "&" : "?";
-  return `${value}${separator}v=${VEXT_DOCS_ASSET_VERSION}`;
+  return `${value}${separator}v=${VEXT_BRAND_ASSET_VERSION}`;
 }
 
 function renderCriticalBootScript(): string {
@@ -45,32 +48,14 @@ function renderCriticalBootScript(): string {
 function renderCriticalStyle(): string {
   return `<style id="vext-docs-critical-style">
 :root {
-  color-scheme: light;
-  --vext-bg: #f7f8fb;
-  --vext-panel: #ffffff;
-  --vext-text: #20242c;
-  --vext-muted: #6b7280;
-  --vext-line: #d8dee8;
-  --vext-panel-soft: #f3f6fb;
+${renderVextDocsThemeVariables("light")}
 }
 :root[data-vext-docs-theme="dark"] {
-  color-scheme: dark;
-  --vext-bg: #111827;
-  --vext-panel: #182233;
-  --vext-text: #f8fafc;
-  --vext-muted: #a9b4c5;
-  --vext-line: #334155;
-  --vext-panel-soft: #0f172a;
+${renderVextDocsThemeVariables("dark")}
 }
 @media (prefers-color-scheme: dark) {
   :root[data-vext-docs-theme="system"] {
-    color-scheme: dark;
-    --vext-bg: #111827;
-    --vext-panel: #182233;
-    --vext-text: #f8fafc;
-    --vext-muted: #a9b4c5;
-    --vext-line: #334155;
-    --vext-panel-soft: #0f172a;
+${renderVextDocsThemeVariables("dark")}
   }
 }
 * {
@@ -94,7 +79,15 @@ body {
   background: var(--vext-panel);
 }
 .vext-docs-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
   font-weight: 700;
+}
+.vext-docs-brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
 }
 .vext-docs-resizer {
   width: 8px;
@@ -193,7 +186,7 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
     endpoints: config.publicEndpoints,
     ui: config.ui,
     tryItOut: config.tryItOut,
-    assetVersion: VEXT_DOCS_ASSET_VERSION,
+    assetVersion: VEXT_BRAND_ASSET_VERSION,
     accessMode: config.access.mode,
     project: config.project,
   };
@@ -213,7 +206,7 @@ export function renderVextDocsHTML(config: ResolvedVextDocsConfig): string {
   <main id="vext-docs-root" class="vext-docs-shell">
     <div id="vext-docs-sidebar-backdrop" class="vext-docs-sidebar-backdrop" hidden></div>
     <aside id="vext-docs-sidebar" class="vext-docs-sidebar">
-      <div class="vext-docs-brand">Vext Docs</div>
+      <div class="vext-docs-brand">${renderVextMarkSvg({ className: "vext-docs-brand-mark", ariaHidden: true })}<span>Vext Docs</span></div>
       <div id="vext-docs-mobile-sidebar-tools" class="vext-docs-mobile-sidebar-tools" aria-label="Mobile documentation tools"></div>
       <nav id="vext-docs-nav" aria-label="Documentation sections">
         <div class="vext-docs-nav-skeleton" aria-hidden="true">

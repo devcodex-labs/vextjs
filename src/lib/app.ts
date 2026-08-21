@@ -805,7 +805,7 @@ export const DEFAULT_CONFIG: VextConfig = {
     credentials: false,
   },
   rateLimit: {
-    enabled: true,
+    enabled: false,
     max: 100,
     window: 60,
     message: "Too Many Requests",

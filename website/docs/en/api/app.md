@@ -578,6 +578,36 @@ app.get("/admin/cache-stats", {}, async (req, res) => {
 
 ---
 
+#### `app.db`
+
+The single database entry point. When `config.database` is present, Vext mounts
+the exact raw `MonSQLize` instance here; without database configuration the
+property remains unavailable.
+
+```typescript
+db?: VextDatabase; // MonSQLize plus Vext's read-only client getter
+```
+
+`app.db` is not a facade or Proxy, so the complete upstream instance API is
+available: `collection()`, `model()`, `use()`, `pool()`, `scopedModel()`,
+`withTransaction()`, `sync()`, events, diagnostics, and management methods.
+Vext v2 does not expose a second `app.monsqlize` property.
+
+```typescript
+const users = app.db?.collection("users");
+const User = app.db?.model("users");
+const Invoice = app.db?.use("billing").model("BillingInvoice");
+const session = app.db?.client.startSession();
+```
+
+Model registry keys are exact. `use()` and `pool()` select a database or pool
+scope but never prepend scope names or fall back to a transformed key. A short
+name is valid only when the Model explicitly registered that `key` alias. Vext
+owns connection cleanup during graceful shutdown; application code should not
+close `app.db` in a second `onClose` hook. See the [Database Guide](/guide/database).
+
+---
+
 #### `app.adapter`
 
 The underlying adapter instance (mounted after being resolved by `resolveAdapter()`).
@@ -1013,15 +1043,9 @@ Register graceful shutdown hooks and execute them in **LIFO** order when the SIG
 onClose(handler: () => Promise<void> | void): void;
 ```
 
-Applicable to: closing database connections, refreshing log buffers, canceling scheduled tasks, etc.
+Applicable to: closing application-owned connections, refreshing log buffers, canceling scheduled tasks, etc. Vext's built-in database plugin closes `app.db` automatically.
 
 ```typescript
-// Database connection cleanup
-app.onClose(async () => {
-  await app.db.disconnect();
-  app.logger.info("Database connection has been closed");
-});
-
 //Cancel the scheduled task
 app.onClose(() => {
   clearInterval(healthCheckTimer);

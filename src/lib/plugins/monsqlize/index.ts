@@ -7,12 +7,12 @@
  * 条件加载策略：
  *   - 仅当 app.config.database 存在时才执行 setup（无配置则不加载数据库运行时与 hook）
  *   - 由 bootstrap.ts 在用户插件加载之前注册（内置插件优先）
- *   - 用户插件可安全依赖 app.db / app.monsqlize
+ *   - 用户插件可安全依赖完整的原始 app.db
  *
  * 生命周期：
  *   1. bootstrap 检测到 config.database → 注册内置 monsqlize 插件
  *   2. plugin-loader 执行 setup() → 连接数据库 + 加载 Model + 挂载 app.db
- *   3. 用户插件 setup() → 可使用 app.db / app.monsqlize
+ *   3. 用户插件 setup() → 可使用 app.db
  *   4. app.onClose() → 自动关闭数据库连接
  *
  * @module lib/plugins/monsqlize/index
@@ -26,6 +26,7 @@ import { setupMonSQLize } from "./plugin.js";
 export type {
   MonSQLizeConnection,
   MonSQLizeDatabaseConfig,
+  VextDatabase,
   VextModelDefinition,
   VextMonSQLizeOptions,
 } from "./types.js";

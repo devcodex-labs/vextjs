@@ -1,0 +1,21 @@
+{
+  "name": "vextjs-crud-api-example",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Executable VextJS CRUD API example backed by MongoDB",
+  "scripts": {
+    "dev": "vext dev",
+    "typecheck": "tsc --noEmit",
+    "build": "vext build",
+    "start": "vext start",
+    "test": "node --test test/contract.test.mjs"
+  },
+  "dependencies": {
+    "vextjs": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.4.0"
+  }
+}

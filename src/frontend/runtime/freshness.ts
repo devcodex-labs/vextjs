@@ -14,7 +14,7 @@ export interface VextFrontendFreshnessKey {
   partition: string;
   policy: Pick<
     VextRouteFreshnessIdentity,
-    "mode" | "revalidate" | "clientOnly"
+    "mode" | "revalidate" | "clientOnly" | "hydration" | "seo"
   >;
 }
 

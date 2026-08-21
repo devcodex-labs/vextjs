@@ -269,6 +269,8 @@ describe("vext create", () => {
           "src/frontend/locales",
           "public",
           "src/types/generated",
+          "src/types/shared",
+          "src/types/frontend",
         ]),
       );
       expect(dirsSuffix).not.toEqual(
@@ -311,6 +313,8 @@ describe("vext create", () => {
           "public/vext-mark.svg",
           "public/favicon.svg",
           "src/types/generated/.gitkeep",
+          "src/types/shared/greeting.d.ts",
+          "src/types/frontend/home.d.ts",
         ]),
       );
     });
@@ -679,6 +683,14 @@ describe("vext create", () => {
         });
       });
 
+      it("TypeScript 模板显式安装 Node 运行时类型", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        const pkg = JSON.parse(files["package.json"]);
+        expect(pkg.devDependencies["@types/node"]).toBe("^20.19.0");
+      });
+
       it("fullstack alias 可按 NodeNext ESM 规则解析 TSX 源文件", async () => {
         await createCommand(["test-app", "--skip-install"]);
 
@@ -839,6 +851,22 @@ describe("vext create", () => {
 
         const files = getWrittenFiles();
         expect(files["src/config/default.ts"]).toContain("adapter: 'native'");
+      });
+
+      it("默认显式关闭 rateLimit", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/config/default.ts"]).toMatch(
+          /rateLimit:\s*\{\s*enabled: false,/,
+        );
+
+        vi.clearAllMocks();
+        setupFreshProject();
+        await createCommand(["test-app", "--js", "--skip-install"]);
+        expect(getWrittenFiles()["src/config/default.js"]).toMatch(
+          /rateLimit:\s*\{\s*enabled: false,/,
+        );
       });
 
       it("默认 fullstack 配置不写死 frontend outDir", async () => {
@@ -1174,6 +1202,65 @@ describe("vext create", () => {
         const files = getWrittenFiles();
         expect(files["src/types/generated/.gitkeep"]).toBe("");
       });
+
+      it("fullstack TS 按 shared/frontend/generated 边界生成类型", async () => {
+        await createCommand(["test-app", "--skip-install"]);
+
+        const files = getWrittenFiles();
+        expect(files["src/types/shared/greeting.d.ts"]).toContain(
+          "export interface GreetingDto",
+        );
+        expect(files["src/types/frontend/home.d.ts"]).toContain(
+          "import type { GreetingDto } from '../shared/greeting.js'",
+        );
+        expect(files["src/types/frontend/home.d.ts"]).toContain(
+          "export interface HomePageProps",
+        );
+        expect(files["src/types/frontend/home.d.ts"]).toContain(
+          "extends Record<string, unknown>",
+        );
+        expect(files["src/services/example.ts"]).toContain(
+          "import type { GreetingDto } from '../types/shared/greeting.js'",
+        );
+        expect(files["src/services/example.ts"]).toContain(
+          "Promise<GreetingDto>",
+        );
+        expect(files["src/routes/index.ts"]).toContain(
+          "import type { HomePageProps } from '../types/frontend/home.js'",
+        );
+        expect(files["src/routes/index.ts"]).toContain(
+          "const page: HomePageProps",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).toContain(
+          "import type { HomePageProps } from '../../types/frontend/home.js'",
+        );
+        expect(files["src/frontend/pages/index.tsx"]).not.toContain(
+          "type HomePageProps =",
+        );
+        expect(files["src/types/server/.gitkeep"]).toBeUndefined();
+      });
+
+      it("API TS 只保留 generated 输出目录，不生成前端或样例共享类型", async () => {
+        await createCommand([
+          "test-app",
+          "--template",
+          "api",
+          "--frontend",
+          "none",
+          "--skip-install",
+        ]);
+
+        const files = getWrittenFiles();
+        expect(files["src/types/generated/.gitkeep"]).toBe("");
+        expect(files["src/types/shared/greeting.d.ts"]).toBeUndefined();
+        expect(files["src/types/frontend/home.d.ts"]).toBeUndefined();
+        expect(files["src/services/example.ts"]).not.toContain(
+          "types/shared/greeting",
+        );
+        expect(files["src/services/example.ts"]).toContain(
+          "Promise<{ message: string }>",
+        );
+      });
     });
   });
 
@@ -1507,8 +1594,9 @@ describe("vext create", () => {
       const files = getWrittenFiles();
       // 模板文件：package.json + .gitignore + tsconfig.json +
       //           5 config files + routes/index.ts + services/example.ts +
-      //           generated/.gitkeep + 9 fullstack frontend/public files = 20
-      expect(Object.keys(files).length).toBe(20);
+      //           generated/.gitkeep + 2 authored type files +
+      //           9 fullstack frontend/public files = 22
+      expect(Object.keys(files).length).toBe(22);
     });
 
     it("JS 模式生成正确的文件数量", async () => {

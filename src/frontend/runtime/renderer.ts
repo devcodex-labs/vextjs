@@ -34,6 +34,13 @@ import {
 import { withVextMediaManifest } from "../media/server-runtime.js";
 import { VEXT_MEDIA_MANIFEST_SCRIPT_ID } from "../media/runtime.js";
 import type { VextFrontendMediaManifest } from "../media/types.js";
+import {
+  applyDocumentPolicy,
+  isNoHydrationRequest,
+  resolveDocumentPolicy,
+  type VextDocumentPolicy,
+} from "./document-policy.js";
+import { resolveSeoHead } from "./seo.js";
 
 const require = createRequire(import.meta.url);
 
@@ -271,12 +278,13 @@ export function createFrontendRenderer(
   return {
     enabled: true,
     streamPage: (page, props, renderOptions, currentStatus, res, req) => {
-      if (!shouldStreamRender(config.render, renderOptions)) {
+      if (!shouldStreamRender(config, renderOptions, req)) {
         const rendered = renderPageDocument({
           mode: options.mode,
           assets: loadAssets(),
           render: config.render,
           i18n: config.i18n,
+          seo: config.seo,
           page,
           props: props ?? {},
           options: renderOptions ?? {},
@@ -311,6 +319,7 @@ export function createFrontendRenderer(
         assets: loadAssets(),
         render: config.render,
         i18n: config.i18n,
+        seo: config.seo,
         page,
         props: props ?? {},
         options: renderOptions ?? {},
@@ -318,11 +327,17 @@ export function createFrontendRenderer(
         req,
       }),
     renderPageEnvelope: (page, props, renderOptions, currentStatus, req) => {
+      if (isNoHydrationRequest(req)) {
+        throw new Error(
+          '[vextjs] hydration="none" routes do not produce page envelopes.',
+        );
+      }
       const rendered = renderPageDocument({
         mode: options.mode,
         assets: loadAssets(),
         render: config.render,
         i18n: config.i18n,
+        seo: config.seo,
         page,
         props: props ?? {},
         options: renderOptions ?? {},
@@ -399,17 +414,24 @@ export function createFrontendRenderer(
         assets: loadAssets(),
         render: config.render,
         i18n: config.i18n,
+        seo: config.seo,
         payload,
         status,
         headers,
         req,
       }),
     renderCachedEnvelope: (payload, status, headers, req) => {
+      if (isNoHydrationRequest(req)) {
+        throw new Error(
+          '[vextjs] hydration="none" routes do not produce cached page envelopes.',
+        );
+      }
       const rendered = renderCachedDocument({
         mode: options.mode,
         assets: loadAssets(),
         render: config.render,
         i18n: config.i18n,
+        seo: config.seo,
         payload,
         status,
         headers,
@@ -560,6 +582,7 @@ export function createFrontendRenderMiddleware(
 export function isPageEnvelopeRequest(
   req: Pick<VextRequest, "headers">,
 ): boolean {
+  if (isNoHydrationRequest(req as VextRequest)) return false;
   if (req.headers["vext-navigation"] !== "1") return false;
   const accept = req.headers.accept ?? "";
   return accept
@@ -569,10 +592,11 @@ export function isPageEnvelopeRequest(
 }
 
 function shouldStreamRender(
-  render: FrontendRenderPolicy,
+  config: ResolvedVextFrontendConfig,
   options: VextRenderOptions | undefined,
+  req?: VextRequest,
 ): boolean {
-  return (options?.ssr ?? render.ssr) && render.streaming === "auto";
+  return resolveDocumentPolicy({ config, options, req }).streaming;
 }
 
 function streamRenderedPage(input: {
@@ -610,19 +634,26 @@ function streamRenderedPage(input: {
     input.props,
     input.options,
     input.mode,
+    input.config.seo,
     input.req,
   );
+  const documentPolicy = resolveDocumentPolicy({
+    config: input.config,
+    options: input.options,
+    req: input.req,
+  });
   const marker = "<!--vext-stream-body-->";
   const document = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
     mediaManifest: input.assets.mediaManifest,
     i18n: input.i18n,
-    head: input.options.head,
+    head: payload.head,
     headHtml: "",
     nonce: input.options.nonce,
     payload,
     bodyHtml: marker,
+    policy: documentPolicy,
   });
   const markerIndex = document.indexOf(marker);
   if (markerIndex === -1) {
@@ -727,6 +758,7 @@ function renderCachedDocument(input: {
   assets: FrontendRendererAssets;
   render: FrontendRenderPolicy;
   i18n: ResolvedVextFrontendConfig["i18n"];
+  seo: ResolvedVextFrontendConfig["seo"];
   payload: unknown;
   status: number;
   headers: VextHeaders;
@@ -744,6 +776,7 @@ function renderCachedDocument(input: {
     assets: input.assets,
     render: input.render,
     i18n: input.i18n,
+    seo: input.seo,
     page: cacheEntry.payload.page,
     props: cacheEntry.payload.props,
     options: cacheEntry.payload.options,
@@ -959,9 +992,18 @@ function createRenderPayload(
   props: Record<string, unknown>,
   options: VextRenderOptions,
   mode: VextFrontendMode,
+  seoConfig: ResolvedVextFrontendConfig["seo"],
   req?: VextRequest,
 ): VextRenderPayload {
   const identity = createRenderIdentity(manifest, page, req);
+  const freshness = resolveRouteFreshness(req);
+  const head = resolveSeoHead({
+    config: seoConfig,
+    pathname: req?.path ?? identity.url.split(/[?#]/u, 1)[0] ?? "/",
+    route: freshness.seo,
+    render: options.seo,
+    head: options.head,
+  });
   return {
     page,
     props,
@@ -972,8 +1014,8 @@ function createRenderPayload(
     routeId: identity.routeId,
     url: identity.url,
     layouts: resolveLayoutIds(manifest, page, options.layout),
-    head: options.head ?? {},
-    assets: resolvePageAssets(manifest, page),
+    head,
+    assets: resolvePageAssets(manifest, page, freshness.hydration),
     contractDigest: identity.cache.contractDigest,
     cache: identity.cache,
   };
@@ -1074,10 +1116,11 @@ function resolveLayoutIds(
 function resolvePageAssets(
   manifest: VextFrontendRenderManifest,
   page: string,
+  hydration?: "none",
 ): string[] {
   const route = manifest.routeAssets?.routes.find((item) => item.page === page);
   if (!route) return [];
-  return [
+  const assets = [
     ...new Set([
       ...route.scripts,
       ...route.styles,
@@ -1085,6 +1128,9 @@ function resolvePageAssets(
       ...route.externalScripts,
     ]),
   ];
+  return hydration === "none"
+    ? assets.filter((asset) => !/\.(?:m?js)(?:[?#]|$)/iu.test(asset))
+    : assets;
 }
 
 function isEnvelopeCache(value: unknown): value is VextPageEnvelopeCacheV1 {
@@ -1103,6 +1149,7 @@ function renderPageDocument(input: {
   assets: FrontendRendererAssets;
   render: FrontendRenderPolicy;
   i18n: ResolvedVextFrontendConfig["i18n"];
+  seo: ResolvedVextFrontendConfig["seo"];
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -1125,19 +1172,26 @@ function renderPageDocument(input: {
     input.props,
     input.options,
     input.mode,
+    input.seo,
     input.req,
   );
+  const documentPolicy = resolveDocumentPolicy({
+    config: { render: input.render },
+    options: input.options,
+    req: input.req,
+  });
   const ssr = renderServerPageBody(input);
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
     mediaManifest: input.assets.mediaManifest,
     i18n: input.i18n,
-    head: input.options.head,
+    head: payload.head,
     headHtml: ssr.head,
     nonce: input.options.nonce,
     payload,
     bodyHtml: ssr.html ?? "",
+    policy: documentPolicy,
   });
 
   return { html, status, headers, payload };
@@ -1237,6 +1291,7 @@ function renderErrorDocument(input: {
       mode: input.mode,
       assets: input.assets,
       i18n: input.config.i18n,
+      seo: input.config.seo,
       page: `error/${normalized.status}`,
       props,
       options: { ...options, status: normalized.status },
@@ -1250,6 +1305,7 @@ function renderErrorDocument(input: {
     assets: input.assets,
     render: input.config.render,
     i18n: input.config.i18n,
+    seo: input.config.seo,
     page,
     props,
     options: { ...options, status: normalized.status },
@@ -1301,6 +1357,7 @@ function isRenderErrorOptions(value: unknown): value is VextRenderErrorOptions {
     "status",
     "headers",
     "head",
+    "seo",
     "nonce",
     "locale",
     "messages",
@@ -1339,6 +1396,7 @@ function renderBuiltinErrorDocument(input: {
   mode: VextFrontendMode;
   assets: FrontendRendererAssets;
   i18n: ResolvedVextFrontendConfig["i18n"];
+  seo: ResolvedVextFrontendConfig["seo"];
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -1360,19 +1418,37 @@ function renderBuiltinErrorDocument(input: {
     input.assets.manifest,
     input.page,
     input.props,
-    input.options,
+    {
+      ...input.options,
+      head: input.options.head ?? { title: `${input.status} ${message}` },
+    },
     input.mode,
+    input.seo,
     input.req,
   );
+  const documentPolicy = resolveDocumentPolicy({
+    config: {
+      render: {
+        ssr: true,
+        streaming: "buffered",
+        fallback: "error",
+        timeoutMs: 0,
+        layout: true,
+      },
+    },
+    options: input.options,
+    req: input.req,
+  });
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
     mediaManifest: input.assets.mediaManifest,
     i18n: input.i18n,
-    head: input.options.head ?? { title: `${input.status} ${message}` },
+    head: payload.head,
     nonce: input.options.nonce,
     payload,
     bodyHtml: renderBuiltinErrorBody(input.status, message, error?.requestId),
+    policy: documentPolicy,
   });
 
   return { html, status: input.status, headers, payload };
@@ -1507,18 +1583,21 @@ function renderDocument(
     nonce?: string;
     payload: VextRenderPayload;
     bodyHtml: string;
+    policy: VextDocumentPolicy;
   },
 ): string {
   const payloadJson = serializeJsonForHtml(input.payload);
+  let html = template;
+  const renderedTitle = replaceDocumentTitle(html, input.head?.title);
+  html = renderedTitle.html;
   const headHtml = [
     renderRoutePreloads(input.manifest, input.page),
     renderMediaHead(input.mediaManifest),
-    renderHead(input.head),
+    renderHead(input.head, renderedTitle.replaced),
     input.headHtml,
   ]
     .filter(Boolean)
     .join("\n");
-  let html = template;
   html = renderDocumentLang(html, input.i18n, input.payload.options.locale);
 
   html = html.replace(
@@ -1539,7 +1618,7 @@ function renderDocument(
     html = addNonceToVextScripts(html, input.nonce);
   }
 
-  return html;
+  return applyDocumentPolicy(html, input.policy);
 }
 
 function renderDocumentLang(
@@ -1679,20 +1758,66 @@ function renderRoutePreloads(
     .join("\n");
 }
 
-function renderHead(head: VextRenderHeadOptions | undefined): string {
+function replaceDocumentTitle(
+  html: string,
+  title: string | undefined,
+): { html: string; replaced: boolean } {
+  if (!title) return { html, replaced: false };
+  const headPattern = /(<head\b[^>]*>)([\s\S]*?)(<\/head>)/iu;
+  const headMatch = headPattern.exec(html);
+  if (!headMatch) return { html, replaced: false };
+  const titlePattern = /<title\b([^>]*)>[\s\S]*?<\/title\s*>/iu;
+  if (!titlePattern.test(headMatch[2] ?? "")) {
+    return { html, replaced: false };
+  }
+  const nextHead = (headMatch[2] ?? "").replace(
+    titlePattern,
+    (_match, attributes: string) =>
+      `<title${attributes}>${escapeHtml(title)}</title>`,
+  );
+  return {
+    html: html.replace(
+      headPattern,
+      () => `${headMatch[1] ?? ""}${nextHead}${headMatch[3] ?? ""}`,
+    ),
+    replaced: true,
+  };
+}
+
+function renderHead(
+  head: VextRenderHeadOptions | undefined,
+  omitTitle = false,
+): string {
   if (!head) return "";
   const tags: string[] = [];
-  if (head.title) {
-    tags.push(`<title>${escapeHtml(head.title)}</title>`);
+  if (head.title && !omitTitle) {
+    tags.push(
+      `<title data-vext-managed-head="title">${escapeHtml(head.title)}</title>`,
+    );
   }
   if (head.description) {
     tags.push(
-      `<meta name="description" content="${escapeAttribute(head.description)}">`,
+      `<meta name="description" content="${escapeAttribute(head.description)}" data-vext-managed-head="meta:name:description">`,
     );
   }
   for (const [name, content] of Object.entries(head.meta ?? {})) {
     tags.push(
-      `<meta name="${escapeAttribute(name)}" content="${escapeAttribute(content)}">`,
+      `<meta name="${escapeAttribute(name)}" content="${escapeAttribute(content)}" data-vext-managed-head="meta:name:${escapeAttribute(name)}">`,
+    );
+  }
+  for (const entry of head.nameMeta ?? []) {
+    tags.push(
+      `<meta name="${escapeAttribute(entry.name)}" content="${escapeAttribute(entry.content)}" data-vext-managed-head="meta:name:${escapeAttribute(entry.name)}">`,
+    );
+  }
+  for (const [property, content] of Object.entries(head.properties ?? {})) {
+    tags.push(
+      `<meta property="${escapeAttribute(property)}" content="${escapeAttribute(content)}" data-vext-managed-head="meta:property:${escapeAttribute(property)}">`,
+    );
+  }
+  for (const entry of head.propertyMeta ?? []) {
+    tags.push(
+      `<meta property="${escapeAttribute(entry.property)}" content="${escapeAttribute(entry.content)}" data-vext-managed-head="meta:property:${escapeAttribute(entry.property)}">`,
     );
   }
   for (const attrs of head.links ?? []) {
@@ -1702,7 +1827,14 @@ function renderHead(head: VextRenderHeadOptions | undefined): string {
           `${escapeAttribute(name)}="${escapeAttribute(value)}"`,
       )
       .join(" ");
-    tags.push(`<link ${renderedAttrs}>`);
+    tags.push(
+      `<link ${renderedAttrs} data-vext-managed-head="link:${escapeAttribute(attrs.rel ?? "link")}">`,
+    );
+  }
+  if (head.jsonLd !== undefined) {
+    tags.push(
+      `<script type="application/ld+json" data-vext-managed-head="json-ld">${serializeJsonForHtml(head.jsonLd)}</script>`,
+    );
   }
   return tags.join("\n");
 }

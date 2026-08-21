@@ -134,6 +134,8 @@ function createRequestKey(
         ? { revalidate: freshness.revalidate }
         : {}),
       ...(freshness.clientOnly ? { clientOnly: true } : {}),
+      ...(freshness.hydration ? { hydration: freshness.hydration } : {}),
+      ...(freshness.seo ? { seo: freshness.seo } : {}),
     },
   };
 }

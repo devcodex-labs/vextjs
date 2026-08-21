@@ -143,4 +143,30 @@ defineRoutes((app) => {
 
     expect(diagnostics.map(formatDiagnostic)).toEqual([]);
   });
+
+  it("distinguishes required slug/id fields from optional fields", () => {
+    const diagnostics = compileTypeProbe(`
+import { defineRoutes } from "../../src/index.js";
+
+defineRoutes((app) => {
+  app.get("/posts/:slug", {
+    validate: {
+      param: { slug: "string:1-!" },
+      query: { preview: "string:1-?" },
+    },
+  }, (req, res) => {
+    const slug: string = req.valid("param").slug;
+    const preview: string | undefined = req.valid("query").preview;
+    // @ts-expect-error optional query data must not be widened to required.
+    const requiredPreview: string = req.valid("query").preview;
+    void slug;
+    void preview;
+    void requiredPreview;
+    res.json({ ok: true });
+  });
+});
+`);
+
+    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
+  });
 });

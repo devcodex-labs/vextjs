@@ -13,7 +13,10 @@ import type {
   ResponseCacheHubOptions,
   ResponseCacheStats,
 } from "response-cache-kit";
-import type { VextFrontendUserConfig } from "../frontend/contract/types.js";
+import type {
+  VextFrontendUserConfig,
+  VextRouteFrontendSeoOptions,
+} from "../frontend/contract/types.js";
 import type { VextRouteSessionOptions, VextSessionConfig } from "./session.js";
 import type { VextCsrfConfig } from "./csrf.js";
 import type { VextSecurityHeadersConfig } from "./security-headers.js";
@@ -102,7 +105,8 @@ export type VextLoggerLike = Partial<VextLogger>;
 /**
  * VextRateLimiter — 速率限制器接口
  *
- * 内置实现基于 flex-rate-limit，插件可通过 app.setRateLimiter() 替换。
+ * 全局限流显式启用时，内置实现基于 flex-rate-limit；插件可通过
+ * app.setRateLimiter() 替换实现，但该调用本身不会启用限流。
  */
 export interface VextRateLimiter {
   /** 检查是否允许请求通过 */
@@ -312,7 +316,7 @@ export interface VextCorsConfig {
  * 速率限制配置
  */
 export interface VextRateLimitConfig {
-  /** 是否启用速率限制（默认 true） */
+  /** 是否启用全局速率限制（默认 false；仅显式 true 时注册） */
   enabled?: boolean;
   /** 时间窗口内最大请求数（默认 100） */
   max?: number;
@@ -1428,7 +1432,7 @@ export interface VextApp {
   /**
    * 替换全局速率限制实现（插件专用）
    *
-   * 默认：flex-rate-limit
+   * 显式启用限流时默认使用 flex-rate-limit；本方法不会修改 enabled。
    * @param limiter 新的速率限制器实例
    */
   setRateLimiter(limiter: VextRateLimiter): void;
@@ -1447,13 +1451,14 @@ export interface VextApp {
    * 注册优雅关闭钩子（LIFO 顺序执行）
    *
    * SIGTERM/SIGINT 信号触发时，按注册的逆序执行所有关闭钩子。
-   * 适合：关闭数据库连接、刷新日志缓冲区、取消定时任务等。
+   * 适合：关闭应用自有连接、刷新日志缓冲区、取消定时任务等。
+   * 内置数据库插件会自动关闭 app.db。
    *
    * @param handler 关闭时执行的回调
    *
    * @example
    * app.onClose(async () => {
-   *   await app.db.disconnect()
+   *   await app.redis.quit()
    * })
    */
   onClose(handler: () => Promise<void> | void): void;
@@ -1805,6 +1810,15 @@ export interface VextRouteFrontendOptions {
 
   /** Prevent server page-body rendering while preserving document/data/assets. */
   clientOnly?: boolean;
+
+  /**
+   * Browser hydration policy. `none` keeps SSR HTML/CSS but omits the Vext and
+   * React browser runtime. It cannot be combined with clientOnly.
+   */
+  hydration?: "full" | "none";
+
+  /** Static, JSON-safe SEO metadata merged before per-render overrides. */
+  seo?: VextRouteFrontendSeoOptions;
 
   /** Stable invalidation tags for persisted public freshness entries. */
   tags?: ReadonlyArray<string>;

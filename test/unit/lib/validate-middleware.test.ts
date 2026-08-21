@@ -83,6 +83,29 @@ describe("buildValidateMiddleware hooks", () => {
     );
   });
 
+  it("returns a 400-class error for param validation and never calls handler", async () => {
+    const middleware = buildValidateMiddleware(
+      { param: { slug: "string:1-!" } },
+      () => ({
+        compile: () => () => ({
+          valid: false,
+          errors: [{ field: "slug", message: "Required" }],
+        }),
+      }),
+    )!;
+    const handler = vi.fn();
+
+    const error = await middleware(
+      createReq({ path: "/posts", route: "/posts/:slug", params: {} }),
+      {} as any,
+      handler,
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(VextValidationError);
+    expect((error as VextValidationError).status).toBe(400);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("validates cookie data and stores validated cookie result", async () => {
     const middleware = buildValidateMiddleware(
       { cookie: { sid: "string!" } },

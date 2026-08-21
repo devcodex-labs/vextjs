@@ -44,6 +44,9 @@ import type { RouteMetadata } from "./types.js";
  */
 export class RouteMetadataCollector {
   private routes: RouteMetadata[] = [];
+  private registeredRoutes: Array<
+    Pick<RouteMetadata, "method" | "path" | "sourceFile">
+  > = [];
 
   /**
    * 收集单条路由的元信息
@@ -64,6 +67,8 @@ export class RouteMetadataCollector {
     sourceFile: string,
     handler?: VextHandler,
   ): void {
+    this.registeredRoutes.push({ method, path, sourceFile });
+
     // 跳过隐藏路由（docs.hidden = true 的路由不出现在 OpenAPI 文档中）
     if (options.docs?.hidden) return;
 
@@ -88,6 +93,18 @@ export class RouteMetadataCollector {
   }
 
   /**
+   * 获取所有已注册用户路由，包括 OpenAPI 隐藏路由。
+   *
+   * 内建端点在写入 adapter 前使用该视图做保留路径冲突检查；它不改变
+   * getRoutes() 的 OpenAPI 可见性语义。
+   */
+  getRegisteredRoutes(): Array<
+    Pick<RouteMetadata, "method" | "path" | "sourceFile">
+  > {
+    return this.registeredRoutes.map((route) => ({ ...route }));
+  }
+
+  /**
    * 获取收集到的路由数量
    *
    * @returns 已收集的路由条数
@@ -104,5 +121,6 @@ export class RouteMetadataCollector {
    */
   clear(): void {
     this.routes = [];
+    this.registeredRoutes = [];
   }
 }

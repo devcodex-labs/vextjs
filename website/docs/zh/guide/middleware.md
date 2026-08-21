@@ -213,7 +213,7 @@ VextJS 内置了多个全局中间件，在所有路由之前自动执行。执�
 1. requestId      — 生成/透传请求唯一标识
 2. cors           — CORS 跨域处理
 3. bodyParser     — 请求体解析（JSON / URL-encoded）
-4. rateLimit      — 全局速率限制
+4. rateLimit      — 全局速率限制（仅 config.rateLimit.enabled === true 时）
 5. responseWrapper — 开启响应包装（{ code, data, requestId }）
 6. accessLog      — 访问日志记录
   ↓
@@ -226,7 +226,25 @@ VextJS 内置了多个全局中间件，在所有路由之前自动执行。执�
 errorHandler      — 全局错误处理（捕获任何阶段抛出的异常）
 ```
 
-全局中间件通过配置控制行为（如 `cors`、`rateLimit`），但不能被路由跳过——它们对所有路由生效。
+内置全局中间件通过配置控制。限流采用显式启用：省略 `rateLimit`，或
+`rateLimit.enabled` 不严格等于 `true` 时，Vext 不安装限流中间件，因此不会产生
+限流响应头或 HTTP 429。
+
+```typescript
+// src/config/default.ts
+export default {
+  rateLimit: {
+    enabled: true,
+    max: 100,
+    window: 60,
+  },
+};
+```
+
+全局限流启用后，路由可通过 `override: { rateLimit: false }` 跳过，也可传入
+路由级对象覆盖 `max`、`window` 或 `keyBy`。`app.setRateLimiter()` 只替换 limiter
+实现，不会隐式开启应用限流；导出的 `createRateLimitMiddleware()` 工厂也仍可用于
+显式手动组合。
 
 ### 路由级中间件
 
@@ -557,7 +575,7 @@ VextJS 内置以下全局中间件，通过配置项控制行为：
 | **requestId**       | `config.requestId`  | 生成/透传请求唯一标识                         |
 | **cors**            | `config.cors`       | CORS 跨域处理                                 |
 | **bodyParser**      | `config.bodyParser` | 请求体解析（JSON / URL-encoded）              |
-| **rateLimit**       | `config.rateLimit`  | 全局速率限制                                  |
+| **rateLimit**       | `config.rateLimit`  | 显式启用的全局限流；仅 `enabled: true` 时安装 |
 | **accessLog**       | `config.accessLog`  | 访问日志（method / path / status / duration） |
 | **responseWrapper** | `config.response`   | 响应出口包装 `{ code, data, requestId }`      |
 | **errorHandler**    | —                   | 全局错误处理（不可配置，始终启用）            |

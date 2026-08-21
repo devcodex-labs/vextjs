@@ -12,6 +12,9 @@ import { createRequestHookMiddleware } from "../middlewares/request-hook.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
 import { VEXT_FRONTEND_DEV_EVENT_PATH } from "../../frontend/runtime/dev-events.js";
+import { registerFrontendSeoEndpoints } from "../../frontend/runtime/seo-endpoints.js";
+import { resolveFrontendConfig } from "../../frontend/tooling/config-resolver.js";
+import type { VextFrontendUserConfig } from "../../frontend/contract/types.js";
 
 /**
  * route-reloader.ts — 路由重载（Fresh Adapter 策略）（Phase 2B）
@@ -440,8 +443,8 @@ export async function reloadRoutes(
   //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → rate-limit → response-wrapper
   //   → frontend render → frontend dev events route → access-log
   //
-  // 注意：builtinMwCreators 中对应 creator 为 undefined 时表示该中间件被禁用，
-  // route-reloader 通过 if 检查自动跳过，行为与 dev-bootstrap 条件守卫完全一致。
+  // 注意：rate-limit creator 始终存在，以支持配置热更新；是否注册必须读取
+  // app.config 的最新 enabled 值。其他 creator 仍可用 undefined 表示禁用。
   //
   if (builtinMiddlewares) {
     if (builtinMiddlewares.createRequestIdMiddleware) {
@@ -484,7 +487,13 @@ export async function reloadRoutes(
         ),
       );
     }
-    if (builtinMiddlewares.createRateLimitMiddleware) {
+    const rateLimitConfig = app.config.rateLimit as
+      | { enabled?: boolean }
+      | undefined;
+    if (
+      rateLimitConfig?.enabled === true &&
+      builtinMiddlewares.createRateLimitMiddleware
+    ) {
       freshAdapter.registerMiddleware(
         builtinMiddlewares.createRateLimitMiddleware(
           app.config as Record<string, unknown>,
@@ -604,6 +613,16 @@ export async function reloadRoutes(
       );
     }
 
+    const projectRoot = projectRootFromOutDir(outDir);
+    const frontendRuntimeConfig = resolveFrontendConfig(
+      (app.config as { frontend?: VextFrontendUserConfig }).frontend,
+      { rootDir: projectRoot, mode: "development" },
+    );
+    registerFrontendSeoEndpoints(app as any, frontendRuntimeConfig, {
+      adapter: freshAdapter as any,
+      existingRoutes: collector.getRegisteredRoutes(),
+    });
+
     // ── 6b. 🆕 重新生成 OpenAPI spec + 注册文档端点 ─────
     //
     // BUG-022 修复：热重载创建全新 adapter 实例后，
@@ -621,7 +640,6 @@ export async function reloadRoutes(
     );
 
     if (openapiEnabled) {
-      const projectRoot = projectRootFromOutDir(outDir);
       const generator = new OpenAPIGenerator(
         {
           title: (openapiCfg as Record<string, unknown>)?.title as

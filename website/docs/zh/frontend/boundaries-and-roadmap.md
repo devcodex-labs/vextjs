@@ -10,6 +10,8 @@
 - `src/routes/**` 作为 URL 和服务端数据入口
 - `res.render(page, props?, options?)`
 - React 19 SSR + hydration
+- 通过 `frontend.hydration: "none"` 提供路由级 SSR HTML，不加载 Vext/React hydration
+- 通过 `frontend.seo` 提供框架级 SEO 元数据以及 build/runtime sitemap 和 robots
 - 通过 `frontend.render.streaming: "auto"` 可选启用 Streaming SSR；默认仍为 `"buffered"`
 - 通过 `Link`、`Form`、fetcher 与 revalidation 复用同一路由，并支持 history、公共 layout 持久化、scroll/focus 恢复和 document fallback
 - 通过 `staticParams`、tags、single-flight、原子替换和 last-known-good recovery 提供 route-side static、revalidate 与 client-only freshness
@@ -77,6 +79,7 @@ cache、security、development、package、adapter 和 packed consumer acceptanc
 - React Server Components
 - Server Functions 与 Server Actions
 - partial prerendering（PPR）
+- Selective/Partial Hydration 与 Islands 架构
 - 更深的外部前端框架适配
 
 每个方向都需要独立需求、性能证据和兼容性复审，才能成为默认行为。
@@ -90,5 +93,6 @@ cache、security、development、package、adapter 和 packed consumer acceptanc
 - 为静态资源上传把云厂商 SDK 放进 core
 - 隐式抓取或代理远程图片，或下载远程字体
 - 把 Streaming SSR 等同于 React Server Components、Server Functions、Server Actions 或 PPR
+- 把页面级 `hydration: "none"` 描述成 Selective Hydration、Islands 或 PPR
 - 用 Webpack/Vite/Rollup/Rolldown 插件生态替换 esbuild 前端流水线
 - 新增一套并行 loader/action route DSL 或函数 action RPC transport

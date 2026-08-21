@@ -78,6 +78,21 @@ describe("内容协商 — devOverlay 已注入", () => {
     expect(textCall?.args[1]).toBe(422);
   });
 
+  it("Accept: text/html + param VextValidationError → 400 + HTML", () => {
+    const handler = createErrorHandler({}, mockOverlay);
+    const req = createMockReq("text/html");
+    const res = createMockRes();
+
+    handler(
+      new VextValidationError([], "Validation failed", 400),
+      req as any,
+      res as any,
+    );
+
+    const textCall = res.calls.find((c) => c.method === "text");
+    expect(textCall?.args[1]).toBe(400);
+  });
+
   it("Accept: text/html + HttpError(404) → 404 + HTML", () => {
     const handler = createErrorHandler({}, mockOverlay);
     const req = createMockReq("text/html");
@@ -171,6 +186,27 @@ describe("devOverlay 未注入（生产模式）", () => {
     const body = jsonCall?.args[0] as Record<string, unknown>;
     expect(body.code).toBe(422);
     expect(body.errors).toHaveLength(1);
+  });
+
+  it("param VextValidationError → 400 JSON", () => {
+    const handler = createErrorHandler({});
+    const req = createMockReq(undefined);
+    const res = createMockRes();
+
+    handler(
+      new VextValidationError(
+        [{ field: "slug", message: "Required" }],
+        "Validation failed",
+        400,
+      ),
+      req as any,
+      res as any,
+    );
+
+    const jsonCall = res.calls.find((c) => c.method === "rawJson");
+    expect(jsonCall?.args[1]).toBe(400);
+    const body = jsonCall?.args[0] as Record<string, unknown>;
+    expect(body.code).toBe(400);
   });
 });
 

@@ -3,6 +3,10 @@ import { createApp, DEFAULT_CONFIG } from "../../src/lib/app.js";
 import { createRequestIdMiddleware } from "../../src/lib/middlewares/request-id.js";
 
 describe("createApp", () => {
+  it("keeps the 2.0 global rate limit default disabled", () => {
+    expect(DEFAULT_CONFIG.rateLimit.enabled).toBe(false);
+  });
+
   it("validates the runtime config boundary", () => {
     expect(() => createApp(null as never)).toThrow(
       "[vextjs] createApp() config must be an object.",

@@ -14,6 +14,7 @@ hello-world/
 │   └── routes/
 │       └── index.js         # 路由定义（GET / + GET /health）
 ├── package.json             # 项目配置；通过 file:../.. 消费当前仓库
+├── tsconfig.json            # 对 JavaScript 示例执行 checkJs 类型检查
 ├── start.js                 # 生产模式启动脚本（monorepo 内使用）
 └── README.md                # 本文件
 ```
@@ -23,6 +24,9 @@ hello-world/
 ```bash
 cd examples/hello-world
 npm install
+npm run typecheck
+npm run build
+npm start
 ```
 
 真实用户项目使用 `npm install vextjs`，不需要手动创建 symlink。
@@ -170,8 +174,9 @@ export default {
 };
 ```
 
-框架自动补全的默认值包括：`requestId`、`cors`、`bodyParser`、`rateLimit`、`accessLog` 等，
-无需手动声明即可使用内置中间件的默认行为。
+框架自动补全 `requestId`、`cors`、`bodyParser`、`accessLog` 等默认值。
+VextJS 2.x 的全局 `rateLimit` 默认关闭，本示例在 `config` 中显式写出
+`rateLimit.enabled: false`；需要时请明确改为 `true` 并配置真实部署策略。
 
 ---
 

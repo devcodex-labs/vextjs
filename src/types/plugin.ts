@@ -133,7 +133,8 @@ export interface VextPlugin {
    *
    * SIGTERM/SIGINT 信号触发时，按注册的逆序执行。
    * plugin-loader 在 setup() 完成后自动将此钩子注册到 app.onClose()。
-   * 适合：关闭数据库连接、刷新日志缓冲区、取消定时任务。
+   * 适合：关闭插件自有连接、刷新日志缓冲区、取消定时任务。
+   * 内置数据库插件会自动关闭 app.db。
    *
    * 等价于在 setup() 中调用 app.onClose(() => ...)，
    * 但语义更清晰，生命周期意图更明确。
@@ -145,7 +146,7 @@ export interface VextPlugin {
    *   name: 'my-plugin',
    *   async setup(app) { ... },
    *   async onClose(app) {
-   *     await app.db.disconnect()
+   *     await app.redis.quit()
    *   },
    * })
    */

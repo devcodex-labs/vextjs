@@ -19,7 +19,7 @@ const RATE_LIMITER_OVERRIDDEN_KEY = Symbol.for("vextjs.rateLimiterOverridden");
  * 触发条件：
  *   - cluster.workers > 1 且框架内置 rate limiter 未被 app.setRateLimiter() 替换
  *   - cluster.workers = 1 或 cluster 未启用 → 不打印
- *   - rateLimit.enabled = false → 不打印
+ *   - rateLimit.enabled !== true → 不打印
  *   - 已调用 app.setRateLimiter() → 不打印（假设用户已处理）
  *
  * @module lib/cluster/cluster-checks
@@ -93,7 +93,7 @@ export function checkClusterCompatibility(
  * 意味着每个 Worker 独立计数。实际全局限流值 = workerCount × config.rateLimit.max。
  *
  * 检测逻辑：
- *   1. rateLimit.enabled === false → 不警告（用户已禁用）
+ *   1. rateLimit.enabled !== true → 不警告（默认关闭或用户已禁用）
  *   2. 用户通过 app.setRateLimiter() 设置了自定义 limiter → 不警告
  *      （假设用户使用了 Redis store 或其他分布式方案）
  *   3. 其余情况 → 输出 WARN
@@ -113,9 +113,9 @@ function checkRateLimitMemoryStore(
   const name = "rate-limit-memory-store";
   const config = app.config;
 
-  // rate limit 已禁用 → 不警告
+  // rate limit 默认关闭，只有显式 true 才进入内存 store 检查。
   const rateLimitConfig = config.rateLimit;
-  if (rateLimitConfig?.enabled === false) {
+  if (rateLimitConfig?.enabled !== true) {
     return { name, warned: false };
   }
 

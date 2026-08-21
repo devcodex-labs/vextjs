@@ -147,6 +147,22 @@ export default defineRoutes((app) => {
     frontend: {
       mode: "static",
       staticParams: [{ slug: "hello", page: 2 }, {}],
+      hydration: "none",
+      seo: {
+        title: "Static post",
+        description: "A statically rendered post",
+        robots: ["index", "follow"],
+        canonical: "/posts/hello",
+        openGraph: {
+          type: "article",
+          images: [{ url: "/og/post.png", width: 1200 }],
+        },
+        twitter: { card: "summary_large_image" },
+        alternates: [{ hrefLang: "en", href: "/posts/hello" }],
+        jsonLd: { "@type": "Article", headline: "Hello" },
+        originKey: "primary",
+        index: true,
+      },
       tags: ["posts", "news"],
       page: "posts/detail",
       staticBudget: { maxParams: 4, maxBytes: 4096 },
@@ -162,10 +178,77 @@ export default defineRoutes((app) => {
       mode: "static",
       source: "route-options",
       staticParams: [{ page: "2", slug: "hello" }, {}],
+      hydration: "none",
+      seo: {
+        title: "Static post",
+        description: "A statically rendered post",
+        robots: ["index", "follow"],
+        canonical: "/posts/hello",
+        openGraph: {
+          type: "article",
+          images: [{ url: "/og/post.png", width: 1200 }],
+        },
+        twitter: { card: "summary_large_image" },
+        alternates: [{ hrefLang: "en", href: "/posts/hello" }],
+        jsonLd: { "@type": "Article", headline: "Hello" },
+        originKey: "primary",
+        index: true,
+      },
       tags: ["news", "posts"],
       page: "posts/detail",
       staticBudget: { maxParams: 4, maxBytes: 4096 },
     });
+  });
+
+  it("fails closed when route frontend metadata cannot be statically projected", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-index-dynamic-"));
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/index.ts",
+      `import { defineRoutes } from "vextjs";
+
+const serverOnly = {
+  hydration: "none" as const,
+  seo: { title: "Dynamic declaration" },
+};
+
+export default defineRoutes((app) => {
+  app.get("/dynamic", { frontend: serverOnly }, async (_req, res) => {
+    res.render("index");
+  });
+});
+`,
+    );
+
+    await expect(buildRouteIndex(projectRoot)).rejects.toThrow(
+      /RouteOptions\.frontend.*inline JSON-safe object literal/u,
+    );
+  });
+
+  it("fails closed when the complete route options expression is runtime-owned", async () => {
+    projectRoot = await mkdtemp(
+      join(tmpdir(), "vext-route-index-options-expression-"),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/index.ts",
+      `import { defineRoutes } from "vextjs";
+
+const routeOptions = {
+  frontend: { hydration: "none" as const },
+};
+
+export default defineRoutes((app) => {
+  app.get("/dynamic", routeOptions, async (_req, res) => {
+    res.render("index");
+  });
+});
+`,
+    );
+
+    await expect(buildRouteIndex(projectRoot)).rejects.toThrow(
+      /route options.*inline object literal/u,
+    );
   });
 
   it("keeps literal response schemas and page-route classification in the static build manifest", async () => {

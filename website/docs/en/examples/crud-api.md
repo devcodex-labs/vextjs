@@ -1,6 +1,40 @@
 # CRUD API
 
-A complete RESTful CRUD API example, demonstrating VextJS's core capabilities such as service layer, middleware, parameter verification, and error handling.
+## Executable 2.x Reference
+
+The release contract for this page is the checked-in
+[`examples/crud-api`](https://github.com/devcodex-labs/vextjs/tree/main/examples/crud-api)
+project. It is a TypeScript Todo API backed by an isolated MongoDB database and
+the raw MonSQLize instance exposed only as `app.db`.
+
+```powershell
+cd examples/crud-api
+$env:MONGODB_URI = "mongodb://127.0.0.1:27017/vext_crud_example"
+npm install
+npm run typecheck
+npm run build
+npm test
+npm start
+```
+
+The model declares `collection: "todos"`, so the service uses the exact raw
+registry key `app.db.model("todos")`. The application explicitly keeps global
+rate limiting off and enables OpenAPI/Vext Docs.
+
+Its real endpoints are `GET /`, `GET /todos`, `POST /todos`,
+`GET /todos/:id`, `PATCH /todos/:id`, and `DELETE /todos/:id`. Every required
+path `id` uses `string:1-!`: missing/invalid path parameters return HTTP 400
+before the handler runs and appear as `required: true` in OpenAPI. Body and
+query validation failures remain HTTP 422.
+
+Release validation installs, typechecks, builds, starts, and exercises the
+actual Mongo-backed CRUD lifecycle; a mock database is not accepted.
+
+## Extended In-memory/Auth Tutorial
+
+The walkthrough below is a separate teaching variant with users, in-memory
+storage, and an auth middleware. It is useful for illustrating more APIs, but
+it is not the executable `examples/crud-api` fixture or its endpoint contract.
 
 ## Project structure
 
@@ -180,13 +214,17 @@ export default class UserService {
       { name: "Alice", email: "alice@example.com", age: 28, role: "admin" },
       { name: "Bob", email: "bob@example.com", age: 32, role: "user" },
       { name: "Charlie", email: "charlie@example.com", role: "user" },
-    ];for (const u of seedUsers) {
+    ];
+    for (const u of seedUsers) {
       const id = String(this.nextId++);
       const now = new Date().toISOString();
       this.users.set(id, { id, ...u, createdAt: now, updatedAt: now });
     }
 
-    this.logger.info({ count: this.users.size }, "Initial data has been loaded");
+    this.logger.info(
+      { count: this.users.size },
+      "Initial data has been loaded",
+    );
   }
 
   /**
@@ -271,7 +309,10 @@ export default class UserService {
     };
 
     this.users.set(id, user);
-    this.logger.info({ userId: id, email: data.email }, "User created successfully");
+    this.logger.info(
+      { userId: id, email: data.email },
+      "User created successfully",
+    );
 
     return user;
   }
@@ -294,7 +335,11 @@ export default class UserService {
     if (data.email && data.email !== user.email) {
       for (const u of this.users.values()) {
         if (u.email === data.email) {
-          this.app.throw(409, "The mailbox is already used by another user", 10002);
+          this.app.throw(
+            409,
+            "The mailbox is already used by another user",
+            10002,
+          );
         }
       }
     }
@@ -393,7 +438,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "User list",
-        description: "Query the user list in pages, supporting fuzzy search by name or email.",
+        description:
+          "Query the user list in pages, supporting fuzzy search by name or email.",
         responses: {
           200: {
             description: "Query successful",
@@ -467,7 +513,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Create user",
-        description: "Create a new user. Bearer Token authentication is required.",
+        description:
+          "Create a new user. Bearer Token authentication is required.",
         responses: {
           201: {
             description: "Created successfully",
@@ -551,7 +598,8 @@ export default defineRoutes((app) => {
       },
       docs: {
         summary: "Delete user",
-        description: "Delete the specified user. Bearer Token authentication is required. This operation is irreversible.",
+        description:
+          "Delete the specified user. Bearer Token authentication is required. This operation is irreversible.",
         responses: {
           204: { description: "Delete successfully (no response body)" },
           401: { description: "Not authenticated" },
@@ -912,16 +960,16 @@ app.throw(404, 'User does not exist') in handler
 
 ### Design patterns
 
-| Mode | Description |
-| -------------------- | ----------------------------------------------------- |
-| **Three-stage routing** | `app.method(path, options, handler)` — Declarative configuration |
-| **Service layer separation** | Business logic is encapsulated in `src/services/`, routing is only arranged |
-| **Middleware whitelist** | Route-level middleware must be declared in `config.middlewares` |
-| **Auth guard** | `auth()` fills `req.auth`; `RouteOptions.auth` protects routes and drives OpenAPI security |
-| **Declarative validation** | `validate` uses schema-dsl DSL syntax, automatic type conversion |
-| **Unified error handling** | `app.throw()` throws an error, and the framework automatically converts to a standard format |
-| **Export packaging** | All successful responses are automatically packaged as `{ code: 0, data, requestId }` |
-| **OpenAPI Auto-Generation** | Automatically generate API documentation from `validate` and `docs` configurations |
+| Mode                         | Description                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| **Three-stage routing**      | `app.method(path, options, handler)` — Declarative configuration                             |
+| **Service layer separation** | Business logic is encapsulated in `src/services/`, routing is only arranged                  |
+| **Middleware whitelist**     | Route-level middleware must be declared in `config.middlewares`                              |
+| **Auth guard**               | `auth()` fills `req.auth`; `RouteOptions.auth` protects routes and drives OpenAPI security   |
+| **Declarative validation**   | `validate` uses schema-dsl DSL syntax, automatic type conversion                             |
+| **Unified error handling**   | `app.throw()` throws an error, and the framework automatically converts to a standard format |
+| **Export packaging**         | All successful responses are automatically packaged as `{ code: 0, data, requestId }`        |
+| **OpenAPI Auto-Generation**  | Automatically generate API documentation from `validate` and `docs` configurations           |
 
 ## Next step
 

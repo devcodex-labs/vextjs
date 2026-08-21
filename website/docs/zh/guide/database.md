@@ -56,7 +56,7 @@ bootstrap()
 
 ### 加载时机
 
-MonSQLize 在**用户插件之前**加载，确保用户插件的 `setup()` 中可以安全使用 `app.db` 和 `app.monsqlize`：
+MonSQLize 在**用户插件之前**加载，确保用户插件的 `setup()` 中可以安全使用 `app.db`：
 
 ```
 createApp(config)
@@ -269,9 +269,12 @@ export default {
 };
 ```
 
-## app.db — 连接对象
+## app.db — 原始 MonSQLize 实例
 
-插件初始化成功后，`app.db` 上挂载了以下方法：
+插件初始化成功后，`app.db` 就是内置插件创建的同一个原始 `MonSQLize` 实例，
+Vext 不再增加 facade 或 Proxy。框架只在该对象上窄幅补充只读 `client` getter 和
+软删除返回值兼容，因此 `withTransaction()`、`on()`、`sync()`、`pool()`、
+`scopedModel()` 等上游实例能力都从唯一入口 `app.db` 访问。
 
 ### collection(name)
 
@@ -311,7 +314,9 @@ const total = await usersCol.countDocuments({ role: "admin" });
 获取已注册的 Model 操作对象（需先定义 Model，见下方 Model 章节）：
 
 ```typescript
-const User = app.db.model("User");
+// src/models/user.ts 导出 { collection: "users", ... } 时，根目录注册键
+// 就是精确的 "users"，不会自动单数化或转为 PascalCase。
+const User = app.db.model("users");
 
 // Model 提供更高级的 API（分页、缓存、校验等）
 const result = await User.findPage({ role: "admin" }, { page: 1, limit: 20 });
@@ -332,9 +337,9 @@ const invoice = await app.db
   .collection("invoices")
   .findOne({ _id: id });
 
-// use().model() 会自动加前缀（dbName + modelName）查找 Model key
-// 例：use('billing').model('Invoice') 内部查找 key = 'BillingInvoice'
-const Invoice = app.db.use("billing").model("Invoice");
+// use() 只切换数据库 scope，不会改写注册键。
+// models/billing/invoice.ts 这类 depth-1 文件注册为 BillingInvoice。
+const Invoice = app.db.use("billing").model("BillingInvoice");
 ```
 
 ### pool(poolName)
@@ -345,9 +350,10 @@ const Invoice = app.db.use("billing").model("Invoice");
 // 访问 cn 池的 orders 集合
 const order = await app.db.pool("cn").collection("orders").findOne({ _id: id });
 
-// cn 池 直接访问 Model（使用完整 key 或别名，数据库由 Model 定义的 connection.database 决定）
-const Invoice = app.db.pool("billing").model("Invoice"); // 别名，内部 key = 'BillingInvoice'
-const Invoice2 = app.db.pool("billing").model("BillingInvoice"); // 完整 key
+// 连接池中的 Model 查询仍使用精确注册键。
+const Invoice = app.db.pool("billing").model("BillingInvoice");
+// 只有 Model 显式声明 key: "Invoice" 时，短键才有效。
+const InvoiceAlias = app.db.pool("billing").model("Invoice");
 
 // cn 池 + billing 库（collection）
 const invoice = await app.db
@@ -356,21 +362,20 @@ const invoice = await app.db
   .collection("invoices")
   .findOne({});
 
-// cn 池 + billing 库 + Model（传入短名称，前缀逻辑同 use()）
-const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
-// 内部 key: BillingInvoice，database: billing，pool: cn
+// cn 池 + billing 库 + 精确的 Model 注册键
+const InvoiceCn = app.db.pool("cn").use("billing").model("BillingInvoice");
 
 // 深度-2 模型目录（models/cn/billing/order.ts）：注册键 = CnBillingOrder
-// pool().use().model() 链式访问会优先匹配 depth-2 键，未注册时自动回落到 depth-1（Db+Name）
+// scope accessor 不会自动添加前缀，也不会回落到另一个键。
 const Order1 = app.db.model("CnBillingOrder"); // 完整 key
-const Order2 = app.db.pool("cn").use("billing").model("Order"); // 等价短链
-// Order1 与 Order2 操作的是同一 collection（cn 池 / billing 库 / orders 集合）
+const Order2 = app.db.pool("cn").use("billing").model("CnBillingOrder");
+// 两者用不同的显式 scope 解析同一个已注册 Model。
 ```
 
 > ⚠️ `pool()` 会立即校验连接池是否存在，通过后才返回 accessor。未配置连接池管理器时抛出 `NO_POOL_MANAGER`；找不到指定池名时抛出 `POOL_NOT_FOUND`（`err.available` 含可用池列表）。model / collection / use 仅在校验通过后可用。
 
 > ℹ️ **`pool().use(dbName)` 中的 `dbName` 会覆盖 Model 定义中 `connection.database` 的值**。例如，Model 定义了 `connection.database: "billing"`，通过 `pool("cn").use("archive")` 访问时，实际查询将使用 `archive` 数据库而非 `billing`。
-> 如需直接用完整 key 并覆盖数据库/连接池，可通过 `app.monsqlize.scopedModel(key, { pool, database })` 访问底层 API。
+> 如需按精确 key 并显式覆盖数据库/连接池，请使用 `app.db.scopedModel(key, { pool, database })`。
 
 ### client
 
@@ -393,17 +398,16 @@ try {
 }
 ```
 
-## app.monsqlize — 原始实例
+## app.db 上的完整 MonSQLize API
 
-`app.monsqlize` 与内置插件创建的原始 `MonSQLize` 实例是同一个对象，不是
-Vext 缩减包装，因此完整的上游实例 API 仍然可用。`app.db` 刻意保持为小型、稳定
-facade，但其 `collection()` 与 `model()` 返回上游 3.3.0 类型。
+`app.db` 就是原始 `MonSQLize` 实例，不是 Vext 缩减包装；v2 不再提供独立的
+`app.monsqlize` 入口。
 
 ```typescript
-const monsqlize = app.monsqlize;
+const monsqlize = app.db;
 if (!monsqlize) throw new Error("Database is not configured");
 
-// 实例级完整能力保留在 app.monsqlize。
+// 实例级完整能力都保留在 app.db。
 await monsqlize.withTransaction(async (transaction) => {
   // ...
 });
@@ -426,9 +430,9 @@ await Product?.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
-普通 collection/model 路径使用 `app.db`；实例级事务、连接池、同步、事件、诊断与
-管理 API 使用 `app.monsqlize`。Vector Search 需要兼容的 MongoDB 部署和预先创建的
-索引。关系保护删除只覆盖已注册、已声明的关系；把结果视为完整证据前应检查 coverage。
+collection、Model、事务、连接池、同步、事件、诊断和管理 API 都使用唯一入口
+`app.db`。Vector Search 需要兼容的 MongoDB 部署和预先创建的索引。关系保护删除
+只覆盖已注册、已声明的关系；把结果视为完整证据前应检查 coverage。
 :::
 
 Vext 根包只导出 `VextMonSQLizeOptions` 等 Vext 自有集成类型，不镜像全部上游
@@ -454,15 +458,15 @@ const UserDescriptor = defineModel("users", {
 Model.define(UserDescriptor);
 
 export async function findUser(app: VextApp, email: string) {
-  const User = app.monsqlize?.model(UserDescriptor);
+  const User = app.db?.model(UserDescriptor);
   return User?.findOne({ email }); // email: string；age?: number
 }
 ```
 
 这是显式的上游注册路径。不要把 descriptor 作为 `src/models/*` 文件的默认导出：
-Vext 自动 Model 加载器仍接收 definition object，并从文件推导集合名。稳定的
-`app.db.model()` facade 也继续只接收字符串 key；需要 descriptor 携带的类型推导时，
-请使用 `app.monsqlize.model(descriptor)`。
+Vext 自动 Model 加载器仍接收 definition object，并按下文规则推导注册键。由于
+`app.db` 是原始实例，手动代码既可以把精确字符串键传给 `app.db.model()`，也可以
+传入上游类型化 descriptor。
 
 ## Model 定义
 
@@ -597,7 +601,7 @@ export default {
 app.db.model("BillingInvoice"); // 按集合名（全路径）
 app.db.model("Invoice"); // 按别名（短名）
 
-// 搭配 pool() 使用
+// scope 切换不会改写任一精确键
 app.db.pool("billing").model("BillingInvoice");
 app.db.pool("billing").model("Invoice");
 ```
@@ -612,7 +616,7 @@ src/
 │   ├── user.ts         → Model 名称: 'User'
 │   ├── order.ts        → Model 名称: 'Order'
 │   ├── product-item.ts → Model 名称: 'ProductItem'
-│   └── index.ts        → ⚠️ 跳过（不作为 Model）
+│   └── index.ts        → Model 名称: 'Index'（除非 collection/name 覆盖）
 ```
 
 文件名推断 Model 名称的规则：
@@ -620,8 +624,9 @@ src/
 - `user.ts` → `'User'`（首字母大写）
 - `order-item.ts` → `'OrderItem'`（kebab-case → PascalCase）
 - `user_role.ts` → `'UserRole'`（snake_case → PascalCase）
-- `.test.ts` / `.spec.ts` → 跳过（测试文件）
-- `index.ts` → 跳过
+- `.test.ts` / `.spec.ts` / `.d.ts` → 跳过
+- `_` 开头的文件 → 跳过
+- `index.ts` 是普通 Model 文件；位于根目录时推导为 `'Index'`
 
 ### 目录路由（自动绑定连接池 / 数据库）
 

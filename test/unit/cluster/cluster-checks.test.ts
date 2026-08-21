@@ -245,18 +245,17 @@ describe("checkClusterCompatibility", () => {
   // ── rateLimit 配置变体 ────────────────────────────────
 
   describe("rateLimit config variations", () => {
-    it("should handle rateLimit.enabled = undefined (treated as enabled)", () => {
+    it("treats rateLimit.enabled = undefined as disabled", () => {
       const app = createMockApp();
       // 修改 config 使 enabled 为 undefined
       (app.config.rateLimit as Record<string, unknown>).enabled = undefined;
 
       const results = checkClusterCompatibility(app, 4);
 
-      // enabled 不是 false → 触发检测 → 内存 store → 警告
       const rateLimitCheck = results.find(
         (r) => r.name === "rate-limit-memory-store",
       );
-      expect(rateLimitCheck!.warned).toBe(true);
+      expect(rateLimitCheck!.warned).toBe(false);
     });
 
     it("should handle rateLimit.enabled = true explicitly", () => {
@@ -281,22 +280,18 @@ describe("checkClusterCompatibility", () => {
       expect(rateLimitCheck!.message).toContain("= 0");
     });
 
-    it("should handle missing rateLimit config entirely", () => {
+    it("treats missing rateLimit config as disabled", () => {
       const app = createMockApp();
       // 删除整个 rateLimit 配置
       (app.config as Record<string, unknown>).rateLimit = undefined;
 
       const results = checkClusterCompatibility(app, 4);
 
-      // rateLimit 为 undefined → enabled 不是 false → 继续检测
-      // 但 max 也是 undefined，结果中应包含 "N/A" 或 0
       const rateLimitCheck = results.find(
         (r) => r.name === "rate-limit-memory-store",
       );
       expect(rateLimitCheck).toBeDefined();
-      // 具体行为取决于实现：rateLimit?.enabled === false 为 false（undefined !== false）
-      // 所以仍会触发警告
-      expect(rateLimitCheck!.warned).toBe(true);
+      expect(rateLimitCheck!.warned).toBe(false);
     });
   });
 

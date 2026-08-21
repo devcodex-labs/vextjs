@@ -107,22 +107,30 @@ function scanRouteEntries(
       const args = splitTopLevelArgs(callBody.slice(1, -1));
       const routePath = readStringLiteral(args[0] ?? "");
       if (!routePath) continue;
+      const method = match[1]!.toUpperCase();
+      const normalizedPath = normalizeRoutePath(prefix, routePath);
 
       const docs = readRouteDocs(args[1]);
       const responses = mergeRouteResponseDefinitions(
         readRouteResponseDefinitions(args[1], "responses"),
         docs.responses,
       );
-      const frontend = readRouteFrontend(args[1]);
+      const frontend =
+        args.length >= 3
+          ? readRouteFrontend(args[1], {
+              fileRelativePath,
+              method,
+              routePath: normalizedPath,
+            })
+          : undefined;
       const handler = args.length >= 3 ? args[2] : args[1];
-      const method = match[1]!.toUpperCase();
 
       entries.push({
         filePath,
         fileRelativePath,
         prefix,
         method,
-        path: normalizeRoutePath(prefix, routePath),
+        path: normalizedPath,
         docsSummary: docs.docsSummary,
         hasDocsSummary: docs.hasDocsSummary,
         operationId: docs.operationId,
@@ -140,22 +148,36 @@ function scanRouteEntries(
 
 /**
  * Statically projects the literal subset of RouteOptions.frontend used by the
- * build pipeline. Dynamic expressions remain runtime-owned and therefore
- * retain the legacy dynamic identity until the route is loaded.
+ * build pipeline. A three-argument route must keep its options and frontend
+ * metadata as inline object literals so build and runtime cannot diverge.
  */
 function readRouteFrontend(
   optionsArg: string | undefined,
+  context: { fileRelativePath: string; method: string; routePath: string },
 ): VextRouteFrontendOptions | undefined {
   const options = optionsArg?.trim();
-  if (!options?.startsWith("{")) return undefined;
+  if (!options?.startsWith("{")) {
+    throw new Error(
+      `[vextjs] ${context.fileRelativePath} ${context.method} ${context.routePath} route options must be an inline object literal so the build manifest can project them safely.`,
+    );
+  }
 
+  const frontendValue = readObjectEntryValue(options, "frontend")?.trim();
+  if (frontendValue === undefined) return undefined;
   const frontendObject = readObjectProperty(options, "frontend");
-  if (!frontendObject) return undefined;
+  if (!frontendObject) {
+    throw new Error(
+      `[vextjs] ${context.fileRelativePath} ${context.method} ${context.routePath} RouteOptions.frontend must be an inline JSON-safe object literal so hydration and SEO are identical at build time and runtime.`,
+    );
+  }
 
   const mode = readStringProperty(frontendObject, "mode");
   const revalidate = readNumberProperty(frontendObject, "revalidate");
   const staticParams = readObjectArrayProperty(frontendObject, "staticParams");
   const clientOnly = readOptionalBooleanProperty(frontendObject, "clientOnly");
+  const hydration = readStringProperty(frontendObject, "hydration");
+  const seoObject = readObjectProperty(frontendObject, "seo");
+  const seo = seoObject ? parseStaticSchemaObject(seoObject) : undefined;
   const tags = readStringArrayProperty(frontendObject, "tags");
   const page = readStringProperty(frontendObject, "page");
   const staticBudgetObject = readObjectProperty(frontendObject, "staticBudget");
@@ -175,6 +197,8 @@ function readRouteFrontend(
     revalidate: revalidate ?? undefined,
     staticParams: staticParams ?? undefined,
     clientOnly,
+    hydration: hydration ?? undefined,
+    seo: seo ?? undefined,
     tags: tags.length > 0 ? tags : undefined,
     page: page ?? undefined,
     staticBudget:
@@ -417,7 +441,14 @@ function parseStaticSchemaObject(
   if (!object || object.length !== source.trim().length) return undefined;
 
   const result: Record<string, unknown> = {};
-  for (const { key, value } of readObjectEntries(object)) {
+  const members = splitTopLevelArgs(object.slice(1, -1));
+  if (members.length === 1 && !members[0]) return result;
+  for (const [index, member] of members.entries()) {
+    if (!member && index === members.length - 1) continue;
+    const separator = findTopLevelPropertySeparator(member);
+    if (separator < 1) return undefined;
+    const key = member.slice(0, separator).trim();
+    const value = member.slice(separator + 1).trim();
     const property = readObjectEntryKey(key);
     const parsed = parseStaticSchemaValue(value);
     if (!property || parsed === undefined) return undefined;

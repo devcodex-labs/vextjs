@@ -61,6 +61,43 @@ describe("RouteOptions.frontend freshness identity", () => {
       }),
     ).toThrow("staticParams is only valid");
   });
+
+  it("includes no-hydration and normalized SEO in route identity without changing the legacy default", () => {
+    expect(
+      createRouteFreshnessIdentity({
+        frontend: {
+          hydration: "none",
+          seo: {
+            title: "  Article  ",
+            canonical: "/posts/hello",
+            originKey: "docs",
+            robots: ["index", "follow"],
+          },
+        },
+      }),
+    ).toEqual({
+      mode: "dynamic",
+      source: "route-options",
+      hydration: "none",
+      seo: {
+        title: "Article",
+        robots: ["index", "follow"],
+        canonical: "/posts/hello",
+        originKey: "docs",
+      },
+    });
+
+    expect(() =>
+      createRouteFreshnessIdentity({
+        frontend: { hydration: "none", clientOnly: true },
+      }),
+    ).toThrow("cannot be combined with clientOnly");
+    expect(() =>
+      createRouteFreshnessIdentity({
+        frontend: { seo: { canonical: "https://example.com/post" } },
+      }),
+    ).toThrow("absolute pathname");
+  });
 });
 
 describe("VextFrontendFreshnessStore", () => {

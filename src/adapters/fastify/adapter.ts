@@ -408,6 +408,10 @@ export function createFastifyAdapter(
           );
           markHandlerDone(reply.raw, completion);
           await completion;
+          // Fastify async handlers must return/await the reply when send() may
+          // happen after the handler chain resolves (for example React SSR
+          // calls res.stream() from onShellReady on a later turn).
+          return reply;
         },
       );
     },
@@ -516,6 +520,7 @@ export function createFastifyAdapter(
           );
           markHandlerDone(reply.raw, completion);
           await completion;
+          return reply;
         },
       );
     },

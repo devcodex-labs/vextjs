@@ -57,7 +57,7 @@ bootstrap()
 
 ### Loading time
 
-MonSQLize is loaded before user plugins, ensuring that `app.db` and `app.monsqlize` can be used safely in `setup()` of user plugins:
+MonSQLize is loaded before user plugins, ensuring that `app.db` can be used safely in `setup()` of user plugins:
 
 ```
 createApp(config)
@@ -271,9 +271,14 @@ export default {
 };
 ```
 
-## app.db — connection object
+## app.db — raw MonSQLize instance
 
-After the plug-in is initialized successfully, the following methods are mounted on `app.db`:
+After initialization, `app.db` is the exact raw `MonSQLize` instance created by
+the built-in plugin. Vext does not put it behind a facade or Proxy. It only
+decorates that same object with a read-only `client` getter and narrow
+soft-delete result compatibility, so upstream instance methods such as
+`withTransaction()`, `on()`, `sync()`, `pool()`, and `scopedModel()` remain
+available from the single `app.db` entry point.
 
 ### collection(name)
 
@@ -313,7 +318,9 @@ const total = await usersCol.countDocuments({ role: "admin" });
 Get the registered Model operation object (you need to define the Model first, see the Model chapter below):
 
 ```typescript
-const User = app.db.model("User");
+// src/models/user.ts exports { collection: "users", ... }, so the root key is
+// exactly "users". The lookup does not singularize or PascalCase it.
+const User = app.db.model("users");
 
 // Model provides more advanced API (paging, caching, verification, etc.)
 const result = await User.findPage({ role: "admin" }, { page: 1, limit: 20 });
@@ -334,9 +341,9 @@ const invoice = await app.db
   .collection("invoices")
   .findOne({ _id: id });
 
-// use().model() will automatically add prefix (dbName + modelName) to find the Model key
-//Example: use('billing').model('Invoice') internal search key = 'BillingInvoice'
-const Invoice = app.db.use("billing").model("Invoice");
+// use() changes the database scope; it does not rewrite the registry key.
+// A depth-1 file such as models/billing/invoice.ts is registered as BillingInvoice.
+const Invoice = app.db.use("billing").model("BillingInvoice");
 ```
 
 ### pool(poolName)
@@ -347,9 +354,10 @@ Switch to the specified connection pool and return accessors containing `collect
 //Access the orders collection of cn pool
 const order = await app.db.pool("cn").collection("orders").findOne({ _id: id });
 
-// cn pool direct access to Model (use full key or alias, database is determined by connection.database defined by Model)
-const Invoice = app.db.pool("billing").model("Invoice"); // Alias, internal key = 'BillingInvoice'
-const Invoice2 = app.db.pool("billing").model("BillingInvoice"); // Complete key
+// Direct Model access in a pool still uses the exact registered key.
+const Invoice = app.db.pool("billing").model("BillingInvoice");
+// A short key works only when the Model explicitly declares key: "Invoice".
+const InvoiceAlias = app.db.pool("billing").model("Invoice");
 
 // cn pool + billing library (collection)
 const invoice = await app.db
@@ -358,21 +366,20 @@ const invoice = await app.db
   .collection("invoices")
   .findOne({});
 
-// cn pool + billing library + Model (pass in the short name, the prefix logic is the same as use())
-const InvoiceCn = app.db.pool("cn").use("billing").model("Invoice");
-// Internal key: BillingInvoice, database: billing, pool: cn
+// cn pool + billing database + exact Model registry key
+const InvoiceCn = app.db.pool("cn").use("billing").model("BillingInvoice");
 
 // Depth-2 model directory (models/cn/billing/order.ts): Registration key = CnBillingOrder
-// pool().use().model() chain access will first match the depth-2 key, and will automatically fall back to depth-1 (Db+Name) when not registered.
+// Scope accessors do not add prefixes or fall back to another key.
 const Order1 = app.db.model("CnBillingOrder"); // Complete key
-const Order2 = app.db.pool("cn").use("billing").model("Order"); // Equivalent short chain
-// Order1 and Order2 operate on the same collection (cn pool/billing library/orders collection)
+const Order2 = app.db.pool("cn").use("billing").model("CnBillingOrder");
+// Order1 and Order2 resolve the same registered Model in different explicit scopes.
 ```
 
 > ⚠️ `pool()` will immediately check whether the connection pool exists before returning an accessor. If no pool manager is configured, it throws `NO_POOL_MANAGER`. If the named pool cannot be found, it throws `POOL_NOT_FOUND` (`err.available` contains the list of available pools). Model / collection / use are only reachable after this check succeeds.
 
 > ℹ️ **The `dbName` in `pool().use(dbName)` will overwrite the value of `connection.database` in the Model definition**. For example, Model defines `connection.database: "billing"`, and when accessed through `pool("cn").use("archive")`, the actual query will use the `archive` database instead of `billing`.
-> If you want to use the complete key directly and override the database/connection pool, you can access the underlying API through `app.monsqlize.scopedModel(key, { pool, database })`.
+> To resolve an exact key while overriding the database/connection pool explicitly, use `app.db.scopedModel(key, { pool, database })`.
 
 ### client
 
@@ -394,18 +401,16 @@ try {
 }
 ```
 
-## app.monsqlize — original instance
+## Full MonSQLize API on app.db
 
-`app.monsqlize` is the same raw `MonSQLize` instance created by the built-in
-plugin. It is not a reduced Vext wrapper, so the complete upstream instance API
-remains available. `app.db` intentionally stays a small stable facade, while
-its `collection()` and `model()` methods return the upstream 3.3.0 types.
+`app.db` is the raw `MonSQLize` instance, not a reduced Vext wrapper. There is
+no separate `app.monsqlize` entry point in v2.
 
 ```typescript
-const monsqlize = app.monsqlize;
+const monsqlize = app.db;
 if (!monsqlize) throw new Error("Database is not configured");
 
-// Full instance-only APIs stay on app.monsqlize.
+// Full instance APIs stay available from app.db.
 await monsqlize.withTransaction(async (transaction) => {
   // ...
 });
@@ -428,11 +433,11 @@ await Product?.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
-Use `app.db` for the common collection/model path and `app.monsqlize` for
-instance-wide transactions, pools, sync, events, diagnostics, and management
-APIs. Vector Search requires a compatible MongoDB deployment and a pre-created
-index. Relation-protected deletion only covers registered, declared relations;
-inspect the returned coverage before treating it as complete.
+Use the single `app.db` entry point for collections, Models, transactions,
+pools, sync, events, diagnostics, and management APIs. Vector Search requires a
+compatible MongoDB deployment and a pre-created index. Relation-protected
+deletion only covers registered, declared relations; inspect the returned
+coverage before treating it as complete.
 :::
 
 Vext's root package exports Vext-owned integration types such as
@@ -461,16 +466,16 @@ const UserDescriptor = defineModel("users", {
 Model.define(UserDescriptor);
 
 export async function findUser(app: VextApp, email: string) {
-  const User = app.monsqlize?.model(UserDescriptor);
+  const User = app.db?.model(UserDescriptor);
   return User?.findOne({ email }); // email: string; age?: number
 }
 ```
 
 This is an explicit upstream registration path. Do not export the descriptor
 as the default value of a `src/models/*` file: Vext's automatic Model loader
-continues to accept definition objects and derives the collection name from
-that file. The stable `app.db.model()` facade also remains key-based; use
-`app.monsqlize.model(descriptor)` when descriptor-carried inference is needed.
+continues to accept definition objects and derives the registry key using the
+rules below. Because `app.db` is the raw instance, manual code may pass either
+an exact string key or an upstream typed descriptor to `app.db.model()`.
 
 ## Model definition
 
@@ -605,7 +610,7 @@ After registration, both keys can be used:
 app.db.model("BillingInvoice"); // By collection name (full path)
 app.db.model("Invoice"); // By alias (short name)
 
-//Use with pool()
+// Scope changes do not transform either exact key.
 app.db.pool("billing").model("BillingInvoice");
 app.db.pool("billing").model("Invoice");
 ```
@@ -620,7 +625,7 @@ src/
 │ ├── user.ts → Model name: 'User'
 │ ├── order.ts → Model name: 'Order'
 │ ├── product-item.ts → Model Name: 'ProductItem'
-│ └── index.ts → ⚠️ Skip (not used as Model)
+│ └── index.ts → Model name: 'Index' unless collection/name overrides it
 ```
 
 Rules for inferring Model names from file names:
@@ -628,8 +633,9 @@ Rules for inferring Model names from file names:
 - `user.ts` → `'User'` (first letter is capitalized)
 - `order-item.ts` → `'OrderItem'` (kebab-case → PascalCase)
 - `user_role.ts` → `'UserRole'' (snake_case → PascalCase)
-- `.test.ts` / `.spec.ts` → skip (test file)
-- `index.ts` → skip
+- `.test.ts` / `.spec.ts` / `.d.ts` → skip
+- files prefixed with `_` → skip
+- `index.ts` is a normal Model file; at root it infers `'Index'`
 
 ### Directory routing (automatically binds connection pool/database)
 

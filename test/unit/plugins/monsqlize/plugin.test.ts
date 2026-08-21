@@ -4,7 +4,7 @@
  * 测试覆盖：
  *   - setupMonSQLize：配置校验、MonSQLize 实例创建、连接、Model 加载、app 挂载
  *   - buildMonSQLizeConfig：配置映射（缓存、多连接池、慢查询日志、日志桥接）
- *   - createConnection：连接对象封装（collection / db / model / client）
+ *   - createConnection：raw identity、完整能力、client 与 model 结果兼容
  *   - loadModels：本地 models/ + shared 包加载、deriveModelName 名称推断
  *   - shouldLoadMonSQLize：条件加载判断
  *   - createMonSQLizePlugin：插件工厂函数
@@ -117,10 +117,27 @@ function createMockMonSQLize() {
   const mockScopedModel = vi
     .fn()
     .mockReturnValue({ find: vi.fn(), create: vi.fn() });
-  const mockPool = vi.fn().mockReturnValue({
-    collection: mockScopedCollection,
-    model: mockScopedModel,
+  const createScopedAccessor = (scope: {
+    database?: string;
+    pool?: string;
+  }) => ({
+    collection: (name: string) => mockScopedCollection(name, scope),
+    model: (key: unknown) => mockScopedModel(key, scope),
   });
+  const mockUse = vi.fn((database: string) =>
+    createScopedAccessor({ database }),
+  );
+  const mockPool = vi.fn((pool: string) => ({
+    ...createScopedAccessor({ pool }),
+    use: (database: string) => createScopedAccessor({ pool, database }),
+  }));
+  const mockDb = vi.fn().mockReturnValue({ collection: mockCollection });
+  const mockWithTransaction = vi.fn(async (callback: () => unknown) =>
+    callback(),
+  );
+  const mockOn = vi.fn();
+  const mockStartSync = vi.fn().mockResolvedValue(undefined);
+  const mockGetSyncStats = vi.fn().mockReturnValue(null);
   const mockConnect = vi.fn().mockResolvedValue({ collection: mockCollection });
   const mockClose = vi.fn().mockResolvedValue(undefined);
 
@@ -128,10 +145,16 @@ function createMockMonSQLize() {
     connect: mockConnect,
     close: mockClose,
     collection: mockCollection,
+    db: mockDb,
+    use: mockUse,
     model: mockModel,
     pool: mockPool,
     scopedCollection: mockScopedCollection,
     scopedModel: mockScopedModel,
+    withTransaction: mockWithTransaction,
+    on: mockOn,
+    startSync: mockStartSync,
+    getSyncStats: mockGetSyncStats,
     _adapter: { client: { db: vi.fn(), close: vi.fn() } }, // mock MongoDB client via _adapter
   };
 
@@ -141,9 +164,15 @@ function createMockMonSQLize() {
     mockClose,
     mockCollection,
     mockModel,
+    mockDb,
+    mockUse,
     mockPool,
     mockScopedCollection,
     mockScopedModel,
+    mockWithTransaction,
+    mockOn,
+    mockStartSync,
+    mockGetSyncStats,
   };
 }
 
@@ -603,7 +632,8 @@ describe("setupMonSQLize", () => {
 
       expect(mockMonSQLize.mockConnect).toHaveBeenCalledOnce();
       expect(extendedProps.has("db")).toBe(true);
-      expect(extendedProps.has("monsqlize")).toBe(true);
+      expect(extendedProps.get("db")).toBe(mockMonSQLize.instance);
+      expect(extendedProps.has("monsqlize")).toBe(false);
       expect(recorded).toEqual(
         expect.arrayContaining([
           "worker.builtinPlugin.monsqlize.config",
@@ -627,15 +657,37 @@ describe("setupMonSQLize", () => {
       expect(extendedProps.has("db")).toBe(true);
     });
 
-    it("extends app with monsqlize property", async () => {
+    it("uses app.db as the only raw MonSQLize entry", async () => {
       const { app, extendedProps } = createMockApp({
         database: { config: { uri: "mongodb://localhost:27017/testdb" } },
       });
 
       await setupMonSQLize(app, "/tmp/src");
 
-      expect(app.extend).toHaveBeenCalledWith("monsqlize", expect.any(Object));
-      expect(extendedProps.has("monsqlize")).toBe(true);
+      expect(app.extend).toHaveBeenCalledTimes(1);
+      expect(app.extend).toHaveBeenCalledWith("db", mockMonSQLize.instance);
+      expect(extendedProps.get("db")).toBe(mockMonSQLize.instance);
+      expect(extendedProps.has("monsqlize")).toBe(false);
+    });
+
+    it("fails setup and closes the raw instance when app.db is occupied", async () => {
+      const { app } = createMockApp({
+        database: { config: { uri: "mongodb://localhost:27017/testdb" } },
+      });
+      (app as any).db = { consumerOwned: true };
+      (app.extend as ReturnType<typeof vi.fn>).mockImplementation(
+        (key: string) => {
+          if (key === "db") {
+            throw new Error("Property 'db' already exists on app");
+          }
+        },
+      );
+
+      await expect(setupMonSQLize(app, "/tmp/src")).rejects.toThrow(
+        "Property 'db' already exists on app",
+      );
+      expect(mockMonSQLize.mockClose).toHaveBeenCalledOnce();
+      expect((app as any).db).toEqual({ consumerOwned: true });
     });
 
     it("registers onClose hook before connecting", async () => {
@@ -1974,6 +2026,15 @@ describe("createConnection", () => {
     expect(mock.mockConnect).toHaveBeenCalledOnce();
   });
 
+  it("returns the exact raw MonSQLize instance", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+
+    const database = await createConnection(mock.instance as any, app);
+
+    expect(database).toBe(mock.instance);
+  });
+
   it("returns connection with collection method", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
@@ -2013,17 +2074,21 @@ describe("createConnection", () => {
     expect(result.deletedCount).toBe(1);
   });
 
-  it("returns connection with use() method (B1: db() removed)", async () => {
+  it("preserves raw db(), use(), transaction, event and sync capabilities", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
 
     const conn = await createConnection(mock.instance as any, app);
 
-    // use() returns scoped accessor
+    expect(typeof conn.db).toBe("function");
     expect(typeof conn.use).toBe("function");
-    const scoped = conn.use("billing");
-    expect(typeof scoped.model).toBe("function");
-    expect(typeof scoped.collection).toBe("function");
+    expect(conn.withTransaction).toBe(mock.mockWithTransaction);
+    expect(conn.on).toBe(mock.mockOn);
+    expect(conn.startSync).toBe(mock.mockStartSync);
+    expect(conn.getSyncStats).toBe(mock.mockGetSyncStats);
+
+    conn.db("analytics");
+    expect(mock.mockDb).toHaveBeenCalledWith("analytics");
   });
 
   it("use().collection() delegates to scopedCollection with database opt", async () => {
@@ -2038,15 +2103,18 @@ describe("createConnection", () => {
     });
   });
 
-  it("use().model() applies prefix logic for model key", async () => {
+  it("use().model() preserves the upstream key and scope semantics", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
 
     const conn = await createConnection(mock.instance as any, app);
     conn.use("billing").model("Invoice");
 
-    // prefix = 'Billing', key = 'BillingInvoice'
-    expect(mock.mockModel).toHaveBeenCalledWith("BillingInvoice");
+    expect(mock.mockUse).toHaveBeenCalledWith("billing");
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("Invoice", {
+      database: "billing",
+    });
+    expect(mock.mockModel).not.toHaveBeenCalled();
   });
 
   it("returns connection with pool() method (R3)", async () => {
@@ -2179,49 +2247,66 @@ describe("createConnection", () => {
     });
   });
 
-  it("pool().use().model() tries depth-2 key first then falls back to depth-1", async () => {
+  it("pool().use().model() forwards the exact key once", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
-
-    // 模拟 depth-2 key 未注册：首次调用抛 MODEL_NOT_DEFINED
-    let call = 0;
-    mock.mockScopedModel.mockImplementation((key: string) => {
-      call++;
-      if (call === 1) {
-        const err: any = new Error(`Model '${key}' is not defined.`);
-        err.code = "MODEL_NOT_DEFINED";
-        throw err;
-      }
-      return { _key: key };
-    });
 
     const conn = await createConnection(mock.instance as any, app);
     conn.pool("cn").use("billing").model("Invoice");
 
-    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(
-      1,
-      "CnBillingInvoice",
-      {
-        pool: "cn",
-        database: "billing",
-      },
-    );
-    expect(mock.mockScopedModel).toHaveBeenNthCalledWith(2, "BillingInvoice", {
+    expect(mock.mockScopedModel).toHaveBeenCalledTimes(1);
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("Invoice", {
       pool: "cn",
       database: "billing",
     });
   });
 
-  it("pool().use().model() uses depth-2 key directly when registered", async () => {
+  it("preserves descriptor identity through root, scoped, use and pool models", async () => {
     const mock = createMockMonSQLize();
     const { app } = createMockApp();
-    mock.mockScopedModel.mockReturnValue({ _ok: true } as any);
+    const descriptor = { collectionName: "typed_invoices" };
 
     const conn = await createConnection(mock.instance as any, app);
-    conn.pool("cn").use("billing").model("Order");
+    conn.model(descriptor as any);
+    conn.scopedModel(descriptor as any, { database: "billing" });
+    conn.use("billing").model(descriptor as any);
+    conn.pool("cn").model(descriptor as any);
 
-    expect(mock.mockScopedModel).toHaveBeenCalledTimes(1);
-    expect(mock.mockScopedModel).toHaveBeenCalledWith("CnBillingOrder", {
+    expect(mock.mockModel).toHaveBeenCalledWith(descriptor);
+    expect(mock.mockScopedModel).toHaveBeenCalledWith(descriptor, {
+      database: "billing",
+    });
+    expect(mock.mockScopedModel).toHaveBeenCalledWith(descriptor, {
+      pool: "cn",
+    });
+  });
+
+  it("normalizes soft-delete results from scoped, use and pool models", async () => {
+    const mock = createMockMonSQLize();
+    const { app } = createMockApp();
+    const createSoftDeleteModel = () => ({
+      softDeleteConfig: { enabled: true },
+      deleteMany: vi.fn().mockResolvedValue({ modifiedCount: 2 }),
+    });
+    mock.mockScopedModel.mockImplementation(createSoftDeleteModel);
+
+    const conn = await createConnection(mock.instance as any, app);
+    const scoped = await (
+      conn.scopedModel("Invoice", {
+        database: "billing",
+      }) as any
+    ).deleteMany({});
+    const used = await (conn.use("billing").model("Invoice") as any).deleteMany(
+      {},
+    );
+    const pooled = await (
+      conn.pool("cn").use("billing").model("Invoice") as any
+    ).deleteMany({});
+
+    expect(scoped.deletedCount).toBe(2);
+    expect(used.deletedCount).toBe(2);
+    expect(pooled.deletedCount).toBe(2);
+    expect(mock.mockScopedModel).toHaveBeenCalledWith("Invoice", {
       pool: "cn",
       database: "billing",
     });
@@ -2234,6 +2319,12 @@ describe("createConnection", () => {
     const conn = await createConnection(mock.instance as any, app);
 
     expect(conn.client).toBe(mock.instance._adapter.client);
+    expect(Object.getOwnPropertyDescriptor(conn, "client")).toMatchObject({
+      enumerable: true,
+      configurable: false,
+      set: undefined,
+    });
+    expect(Reflect.set(conn, "client", {})).toBe(false);
   });
 
   it("client getter throws when _adapter.client is null", async () => {
@@ -2254,6 +2345,20 @@ describe("createConnection", () => {
     await expect(createConnection(mock.instance as any, app)).rejects.toThrow(
       "Auth failed",
     );
+  });
+
+  it("fails before connect when the raw instance already owns client", async () => {
+    const mock = createMockMonSQLize();
+    Object.defineProperty(mock.instance, "client", {
+      value: {},
+      configurable: true,
+    });
+    const { app } = createMockApp();
+
+    await expect(createConnection(mock.instance as any, app)).rejects.toThrow(
+      'already owns a "client" property',
+    );
+    expect(mock.mockConnect).not.toHaveBeenCalled();
   });
 });
 
@@ -2287,7 +2392,7 @@ describe("integration: plugin lifecycle", () => {
     vi.restoreAllMocks();
   });
 
-  it("full setup → extend(db) → extend(monsqlize) → onClose → close()", async () => {
+  it("full setup → extend(raw db only) → onClose → close()", async () => {
     const { setupMonSQLize } =
       await import("../../../../src/lib/plugins/monsqlize/plugin.js");
     const { app, closeHooks, extendedProps } = createMockApp({
@@ -2299,7 +2404,8 @@ describe("integration: plugin lifecycle", () => {
 
     // Verify lifecycle
     expect(extendedProps.has("db")).toBe(true);
-    expect(extendedProps.has("monsqlize")).toBe(true);
+    expect(extendedProps.get("db")).toBe(mockMonSQLize.instance);
+    expect(extendedProps.has("monsqlize")).toBe(false);
     expect(closeHooks.length).toBe(1);
 
     // Simulate shutdown
@@ -2320,7 +2426,8 @@ describe("integration: plugin lifecycle", () => {
     await plugin.setup(app);
 
     expect(extendedProps.has("db")).toBe(true);
-    expect(extendedProps.has("monsqlize")).toBe(true);
+    expect(extendedProps.get("db")).toBe(mockMonSQLize.instance);
+    expect(extendedProps.has("monsqlize")).toBe(false);
     expect(closeHooks.length).toBe(1);
   });
 

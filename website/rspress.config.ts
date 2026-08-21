@@ -150,8 +150,8 @@ const navSource: NavItemSource[] = [
     ],
   },
   {
-    en: "v1.0.2",
-    zh: "v1.0.2",
+    en: "v2.0.0",
+    zh: "v2.0.0",
     items: [
       {
         en: "Changelog",
@@ -291,6 +291,7 @@ const englishFrontendSidebar: SidebarGroup[] = [
     items: [
       { text: "SSR", link: "/frontend/ssr" },
       { text: "Hydration", link: "/frontend/hydration" },
+      { text: "SEO, Sitemap, and Robots", link: "/frontend/seo-sitemap" },
       {
         text: "CSR and SPA Fallback",
         link: "/frontend/csr-and-spa-fallback",
@@ -452,6 +453,7 @@ const chineseFrontendSidebar: SidebarGroup[] = [
     items: [
       { text: "SSR", link: "/zh/frontend/ssr" },
       { text: "Hydration", link: "/zh/frontend/hydration" },
+      { text: "SEO、Sitemap 与 Robots", link: "/zh/frontend/seo-sitemap" },
       {
         text: "CSR 与 SPA Fallback",
         link: "/zh/frontend/csr-and-spa-fallback",

@@ -68,9 +68,13 @@ my-app/
 │ │ ├── zh-CN.ts # Chinese language pack
 │ │ └── en-US.ts # English language pack
 │ │
-│ └── types/
-│ └── generated/ # typegen reference shim (TS project)
-│ └── index.d.ts
+│ └── types/ # Application-owned declaration boundaries (TS projects)
+│   ├── shared/
+│   │ └── greeting.d.ts # Browser/server-safe shared contract example
+│   ├── frontend/
+│   │ └── home.d.ts # Frontend-only declaration example
+│   └── generated/ # Owned only by vext typegen
+│     └── index.d.ts # Created by typegen; scaffold starts with .gitkeep
 │
 ├── .vext/
 │ ├── client/ # development frontend build output
@@ -181,6 +185,40 @@ When `config.frontend.enabled` is true:
 - `vext dev` builds the client into `.vext/client/`
 - `vext build` writes production assets to `dist/client/`
 - `vext start` serves the production client, SSR renderer, and static assets; unmatched HTML fallback depends on `frontend.spaFallback.scopes[]`
+
+### `src/types/` — Application type boundaries
+
+For a new TypeScript full-stack project, `vext create` emits this explicit
+layout:
+
+```text
+src/types/
+├── shared/
+│   └── greeting.d.ts
+├── frontend/
+│   └── home.d.ts
+└── generated/
+    └── .gitkeep # replaced/supplemented by index.d.ts after vext typegen
+```
+
+- `src/types/shared/` is for browser/server-safe contracts that both sides may
+  import.
+- `src/types/frontend/` is for browser-facing declarations and must not import Node-only
+  or server-only modules.
+- `src/types/generated/` is framework-owned output. Do not hand-edit it;
+  `vext typegen` may update its declarations.
+
+The TypeScript API-only template creates only `src/types/generated/`, because
+it has no frontend consumer. JavaScript templates do not create `src/types/`.
+Vext deliberately does not pre-create `src/types/server/`: keep a server-only
+type next to its route, service, plugin, or Model until a real backend
+cross-module contract exists; teams may add a server directory later when that
+boundary becomes useful.
+
+This affects only newly scaffolded projects. Existing applications are not
+moved, renamed, or deleted, and `vext typegen` continues to own only
+`src/types/generated/`. Frontend and backend runtime configuration still belongs
+under `src/config/`, not under any type directory.
 
 ### `public/` — Frontend static assets
 

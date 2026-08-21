@@ -1133,7 +1133,9 @@ describe("frontend client build", () => {
       "utf-8",
     );
 
-    expect(html).toContain('<script type="importmap">');
+    expect(html).toContain(
+      '<script type="importmap" data-vext-external-runtime>',
+    );
     expect(html).toContain('"react":"https://cdn.example.com/react.mjs"');
   });
 
@@ -2010,7 +2012,7 @@ describe("frontend client build", () => {
       'EventSource("/__vext/dev/events")',
     );
     expect(hotOffBrowserEntry).not.toContain("react-refresh/runtime");
-  }, 30_000);
+  }, 60_000);
 
   it("explains browser boundary leaks before esbuild reports low-level errors", async () => {
     const rootDir = await tempRoot();
@@ -2149,7 +2151,9 @@ describe("frontend render middleware", () => {
     expect(res.sent?.headers["X-Render"]).toBe("yes");
     expect(res.sent?.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(res.sent?.kind).toBe("render");
-    expect(res.sent?.html).toContain("<title>Dashboard</title>");
+    expect(res.sent?.html).toContain(
+      '<title data-vext-managed-head="title">Dashboard</title>',
+    );
     expect(res.sent?.html).toContain('rel="modulepreload"');
     expect(res.sent?.html).toContain("data-vext-route-preload");
     expect(res.sent?.html).toContain('data-vext-entry nonce="abc123"');

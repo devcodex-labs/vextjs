@@ -3,6 +3,9 @@
 // 用户通过 import { ... } from 'vextjs' 访问所有公共 API 和类型。
 // 内部实现模块不在此处导出，仅暴露用户需要的接口。
 
+// 确保通过根入口只导入类型时，内置数据库的 VextApp 模块扩展仍会生效。
+import "./lib/plugins/monsqlize/types.js";
+
 // ── 类型导出 ────────────────────────────────────────────────────
 export type {
   // 中间件类型
@@ -226,6 +229,24 @@ export {
   session,
 } from "./lib/session.js";
 export type { VextMemorySessionStore } from "./lib/session.js";
+export type {
+  ResolvedVextFrontendSeoConfig,
+  VextFrontendRobotsConfig,
+  VextFrontendSeoConfig,
+  VextFrontendSitemapConfig,
+  VextOpenGraphMetadata,
+  VextRenderSeoOptions,
+  VextRobotsGroup,
+  VextRouteFrontendSeoOptions,
+  VextSeoAlternate,
+  VextSeoImage,
+  VextSeoMetadata,
+  VextSeoRobotsDirective,
+  VextSitemapEntriesContext,
+  VextSitemapEntriesProvider,
+  VextSitemapEntry,
+  VextTwitterMetadata,
+} from "./frontend/contract/types.js";
 export { createCacheSessionStore } from "./lib/session-store-adapters.js";
 export { createCsrfMiddleware, csrf } from "./lib/csrf.js";
 export {
@@ -319,6 +340,7 @@ export {
 export type {
   MonSQLizeConnection,
   MonSQLizeDatabaseConfig,
+  VextDatabase,
   VextModelDefinition,
   VextMonSQLizeOptions,
 } from "./lib/plugins/monsqlize/index.js";

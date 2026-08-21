@@ -23,12 +23,13 @@ export function normalizeErrorForResponse(
   options: NormalizeErrorForResponseOptions = {},
 ): NormalizedErrorResponse {
   if (errorOrStatus instanceof VextValidationError) {
+    const status = errorOrStatus.status;
     return applyErrorOverrides(
       {
         error: errorOrStatus,
-        status: 422,
+        status,
         body: {
-          code: 422,
+          code: status,
           message: errorOrStatus.message,
           errors: errorOrStatus.errors,
           requestId: options.requestId,
@@ -157,9 +158,7 @@ function applyErrorOverrides(
   };
 }
 
-function readHttpError(
-  value: unknown,
-):
+function readHttpError(value: unknown):
   | {
       error: Error;
       status: number;

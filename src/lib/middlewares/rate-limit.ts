@@ -16,7 +16,7 @@ import type { VextRequest } from "../../types/request.js";
  *   3. 在响应头中注入标准速率限制信息（RateLimit-* headers）
  *
  * 配置项（config.rateLimit）：
- *   - enabled:  是否启用速率限制（默认 true）；false 时跳过所有限流检查
+ *   - enabled:  框架全局默认 false，仅显式 true 时注册；直接调用本工厂时省略视为启用
  *   - max:      每个时间窗口内最大请求数（默认 100）
  *   - window:   时间窗口（秒，默认 60）
  *   - message:  超过限制时的错误消息（默认 'Too Many Requests'）

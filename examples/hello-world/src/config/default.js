@@ -9,7 +9,7 @@
  */
 export default {
   // ── 服务器基础配置 ────────────────────────────────────
-  port: 3000, // 监听端口（1-65535）
+  port: Number(process.env.PORT ?? 3000), // 监听端口（1-65535）
   host: "0.0.0.0", // 监听地址（"0.0.0.0" 允许外部访问，"127.0.0.1" 仅本地）
 
   // ── Adapter 配置 ──────────────────────────────────────
@@ -53,6 +53,11 @@ export default {
   // ── 响应配置 ──────────────────────────────────────────
   response: {
     hideInternalErrors: false, // 生产环境建议设为 true，隐藏 500 错误的 stack 信息
+  },
+
+  // Global rate limiting is opt-in in VextJS 2.x.
+  rateLimit: {
+    enabled: false,
   },
 
   // ── OpenAPI 文档 ──────────────────────────────────────

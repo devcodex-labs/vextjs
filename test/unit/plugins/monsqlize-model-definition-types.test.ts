@@ -272,7 +272,7 @@ const UserDescriptor = defineModel("typed_users", {
 Model.define(UserDescriptor);
 
 async function assertDescriptorInference() {
-  const user = await app.monsqlize
+  const user = await app.db
     ?.model(UserDescriptor)
     .findOne({ email: "hello@example.com" });
   const email: string | undefined = user?.email;
@@ -284,27 +284,30 @@ async function assertDescriptorInference() {
   void invalidEmail;
 }
 
-// @ts-expect-error app.db remains a stable key-based facade.
 app.db?.model(UserDescriptor);
 
-app.monsqlize?.collection<{ embedding: number[] }>("items").vectorSearch({
+app.db?.collection<{ embedding: number[] }>("items").vectorSearch({
   index: "items_embedding",
   path: "embedding",
   queryVector: [0.1, 0.2],
   limit: 5,
   numCandidates: 50,
 });
-app.monsqlize?.model<{ embedding: number[] }>("Item").vectorSearch({
+app.db?.model<{ embedding: number[] }>("Item").vectorSearch({
   index: "items_embedding",
   path: "embedding",
   queryVector: [0.1, 0.2],
   limit: 5,
   exact: true,
 });
-app.monsqlize?.model("Item").checkRelationUsage({ _id: "item-1" });
-app.monsqlize?.model("Item").deleteOneWithRelations({ _id: "item-1" });
-app.monsqlize?.model("Item").forceDeleteWithRelations({ _id: "item-1" });
-app.monsqlize?.withTransaction(async () => "ok");
+app.db?.model("Item").checkRelationUsage({ _id: "item-1" });
+app.db?.model("Item").deleteOneWithRelations({ _id: "item-1" });
+app.db?.model("Item").forceDeleteWithRelations({ _id: "item-1" });
+app.db?.withTransaction(async () => "ok");
+app.db?.on("query", () => undefined);
+app.db?.startSync();
+app.db?.getSyncStats();
+app.db?.db("analytics");
 
 app.db?.collection("items").vectorSearch({
   index: "items_embedding",
@@ -314,8 +317,12 @@ app.db?.collection("items").vectorSearch({
   exact: true,
 });
 app.db?.model("Item").deleteOneWithRelations({ _id: "item-1" });
-// @ts-expect-error app.db remains a stable facade; use app.monsqlize for transactions.
-app.db?.withTransaction(async () => "nope");
+
+// @ts-expect-error app.monsqlize was removed in the 2.0 single-entry contract.
+app.monsqlize?.model("Item");
+
+// @ts-expect-error client is a readonly Vext extension.
+app.db!.client = app.db!.client;
 
 void database;
 void protectedOptions;

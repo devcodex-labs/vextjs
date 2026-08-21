@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { registerDocsEndpoints } from "../../../src/lib/docs/register-docs-endpoints.js";
+import { VEXT_DOCS_FAVICON_SVG } from "../../../src/lib/docs/renderers/vext-assets.js";
 import type { VextApp } from "../../../src/types/app.js";
 
 type RegisteredRoute = {
@@ -150,6 +151,8 @@ describe("registerDocsEndpoints", () => {
 
     expect(response.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(response.body).toContain("Vext Docs");
+    expect(response.body).toContain('class="vext-docs-brand-mark"');
+    expect(response.body).toContain('stroke="#12D6C6"');
     expect(response.body).toContain(
       '<html lang="en" data-vext-docs-theme="system" data-vext-docs-density="comfortable">',
     );
@@ -270,7 +273,7 @@ describe("registerDocsEndpoints", () => {
       "no-cache, max-age=0, must-revalidate",
     );
     expect(faviconResponse.body).toContain("<svg");
-    expect(faviconResponse.body).toContain("Vext Docs");
+    expect(faviconResponse.body).toBe(VEXT_DOCS_FAVICON_SVG);
   });
 
   it("uses assetsPublicPath only for browser-facing docs URLs", async () => {

@@ -3,6 +3,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
+import { VEXT_FAVICON_SVG, VEXT_MARK_SVG } from "../lib/brand/vext-brand.js";
 
 /**
  * vext create — 项目脚手架命令（Phase 4）
@@ -529,13 +530,20 @@ function getTemplateFiles(
   files[`src/routes/index.${ext}`] = generateIndexRoute(isTs, isFullstack);
 
   // ── src/services/example ──────────────────────────────
-  files[`src/services/example.${ext}`] = generateExampleService(isTs);
+  files[`src/services/example.${ext}`] = generateExampleService(
+    isTs,
+    isFullstack,
+  );
 
   if (isTs) {
     files["src/types/generated/.gitkeep"] = "";
   }
 
   if (isFullstack) {
+    if (isTs) {
+      files["src/types/shared/greeting.d.ts"] = generateGreetingType();
+      files["src/types/frontend/home.d.ts"] = generateFrontendHomeType();
+    }
     const viewExt = isTs ? "tsx" : "jsx";
     const localeExt = isTs ? "ts" : "js";
     files[`src/frontend/pages/index.${viewExt}`] =
@@ -577,7 +585,7 @@ function generatePackageJson(
   };
 
   const devDeps: Record<string, string> = {
-    ...(isTs ? { typescript: "^5.4.0" } : {}),
+    ...(isTs ? { "@types/node": "^20.19.0", typescript: "^5.4.0" } : {}),
     ...(isFullstack ? { "react-refresh": packageVersions.reactRefresh } : {}),
     ...(isFullstack && isTs
       ? { "@types/react": "^19.2.17", "@types/react-dom": "^19.2.3" }
@@ -820,6 +828,9 @@ function generateDefaultConfig(
 const config: VextUserConfig = {
   port: 3000,
   adapter: '${adapter}',
+  rateLimit: {
+    enabled: false,
+  },
 ${openapiBlock}${frontendBlock}
 }
 
@@ -831,6 +842,9 @@ export default config
 const config = {
   port: 3000,
   adapter: '${adapter}',
+  rateLimit: {
+    enabled: false,
+  },
 ${openapiBlock}${frontendBlock}
 }
 
@@ -898,16 +912,18 @@ function generateIndexRoute(isTs: boolean, isFullstack: boolean): string {
   if (isFullstack) {
     if (isTs) {
       return `import { defineRoutes } from 'vextjs'
+import type { HomePageProps } from '../types/frontend/home.js'
 
 export default defineRoutes((app) => {
   app.get('/', {}, async (req, res) => {
     const greeting = await app.services.example.greeting('Vext')
+    const page: HomePageProps = {
+      greeting,
+      renderedAt: new Date().toISOString(),
+    }
     res.render(
       'index',
-      {
-        greeting,
-        renderedAt: new Date().toISOString(),
-      },
+      page,
       {
         head: {
           title: 'Vext Runtime Launchpad',
@@ -1074,9 +1090,16 @@ export default defineRoutes((app) => {
 `;
 }
 
-function generateExampleService(isTs: boolean): string {
+function generateExampleService(isTs: boolean, isFullstack: boolean): string {
   if (isTs) {
-    return `import type { VextApp } from 'vextjs'
+    const greetingImport = isFullstack
+      ? "\nimport type { GreetingDto } from '../types/shared/greeting.js'"
+      : "";
+    const greetingReturnType = isFullstack
+      ? "GreetingDto"
+      : "{ message: string }";
+
+    return `import type { VextApp } from 'vextjs'${greetingImport}
 
 /**
  * ExampleService demonstrates the basic Vext service convention.
@@ -1096,7 +1119,7 @@ export default class ExampleService {
   }
 
   /** Generate a greeting message. */
-  async greeting(name: string): Promise<{ message: string }> {
+  async greeting(name: string): Promise<${greetingReturnType}> {
     this.app.logger.info('Generating greeting', { name })
     return { message: \`Hello, \${name}! Welcome to vext.\` }
   }
@@ -1128,9 +1151,28 @@ export default class ExampleService {
 `;
 }
 
+function generateGreetingType(): string {
+  return `export interface GreetingDto {
+  message: string
+}
+`;
+}
+
+function generateFrontendHomeType(): string {
+  return `import type { GreetingDto } from '../shared/greeting.js'
+
+export interface HomePageProps extends Record<string, unknown> {
+  greeting: GreetingDto
+  renderedAt: string
+}
+`;
+}
+
 function generateFrontendHomePage(isTs: boolean): string {
   const typeDefinitions = isTs
-    ? `type HomeMessages = {
+    ? `import type { HomePageProps } from '../../types/frontend/home.js'
+
+type HomeMessages = {
   home: {
     eyebrow: string
     title: string
@@ -1169,13 +1211,6 @@ function generateFrontendHomePage(isTs: boolean): string {
     localDocsAction: string
     footerLabel: string
   }
-}
-
-type HomePageProps = {
-  greeting: {
-    message: string
-  }
-  renderedAt: string
 }
 
 `
@@ -2421,26 +2456,11 @@ function generateFrontendDocument(name: string): string {
 }
 
 function generateVextMarkSvg(): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
-  <path d="M14 14L35 58L58 14" stroke="#12D6C6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M58 14L66 28L52 42" stroke="#5EE987" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="14" cy="14" r="4" fill="#F5BD4F"/>
-  <circle cx="35" cy="58" r="4" fill="#12D6C6"/>
-  <circle cx="58" cy="14" r="4" fill="#5EE987"/>
-</svg>
-`;
+  return VEXT_MARK_SVG;
 }
 
 function generateFaviconSvg(): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
-  <rect width="72" height="72" rx="16" fill="#071013"/>
-  <path d="M14 14L35 58L58 14" stroke="#12D6C6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M58 14L66 28L52 42" stroke="#5EE987" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="14" cy="14" r="4" fill="#F5BD4F"/>
-  <circle cx="35" cy="58" r="4" fill="#12D6C6"/>
-  <circle cx="58" cy="14" r="4" fill="#5EE987"/>
-</svg>
-`;
+  return VEXT_FAVICON_SVG;
 }
 
 // ── 帮助输出 ────────────────────────────────────────────────

@@ -23,7 +23,7 @@ export type DevOverlayFn = (err: unknown) => string;
  *
  * 三层错误匹配规则（按优先级）：
  *
- *   1. VextValidationError（422 Validation Failed）
+ *   1. VextValidationError（param 为 400，其余为 422）
  *      由 validate 中间件在 schema 校验失败时抛出。
  *      响应：{ code: 422, message: 'Validation failed', errors: [...], requestId }
  *      errors 数组包含每个字段的错误描述：[{ field: 'email', message: '...' }]
@@ -150,7 +150,10 @@ export function createErrorHandler(
         // 使用 error.name 字符串检测替代 instanceof，防止 CJS/ESM 双包 instanceof 失败
         let statusCode = 500;
         if (errObj.name === "VextValidationError") {
-          statusCode = 422;
+          statusCode =
+            (errObj as unknown as Record<string, unknown>).status === 400
+              ? 400
+              : 422;
         } else if (
           errObj.name === "HttpError" &&
           typeof (errObj as unknown as Record<string, unknown>).status ===

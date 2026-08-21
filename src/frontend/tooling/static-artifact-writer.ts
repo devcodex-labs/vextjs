@@ -161,8 +161,12 @@ async function writeStaticRouteArtifacts(input: {
     );
     const output = toStaticOutput(routePath);
     const html = rendered.html;
-    const data = `${JSON.stringify(rendered.payload, null, 2)}\n`;
-    const bytes = Buffer.byteLength(html) + Buffer.byteLength(data);
+    const noHydration = freshness.hydration === "none";
+    const data = noHydration
+      ? undefined
+      : `${JSON.stringify(rendered.payload, null, 2)}\n`;
+    const bytes =
+      Buffer.byteLength(html) + (data ? Buffer.byteLength(data) : 0);
     totalBytes += bytes;
     if (budget?.maxBytes !== undefined && totalBytes > budget.maxBytes) {
       throw new Error(
@@ -171,7 +175,7 @@ async function writeStaticRouteArtifacts(input: {
     }
 
     await writeStageFile(input.stageDir, output.html, html);
-    await writeStageFile(input.stageDir, output.data, data);
+    if (data) await writeStageFile(input.stageDir, output.data, data);
     input.artifacts.push({
       routeId:
         input.route.routeId ?? `${input.route.method} ${input.route.path}`,
@@ -179,7 +183,7 @@ async function writeStaticRouteArtifacts(input: {
       page,
       params: { ...params },
       html: output.html,
-      data: output.data,
+      ...(data ? { data: output.data } : {}),
       bytes,
       assets: rendered.payload.assets,
     });
@@ -226,6 +230,8 @@ function createStaticRequest(
           ? { staticParams: freshness.staticParams }
           : {}),
         ...(freshness.clientOnly ? { clientOnly: true } : {}),
+        ...(freshness.hydration ? { hydration: freshness.hydration } : {}),
+        ...(freshness.seo ? { seo: freshness.seo } : {}),
         ...(freshness.tags ? { tags: freshness.tags } : {}),
         ...(freshness.page ? { page: freshness.page } : {}),
         ...(freshness.staticBudget
@@ -299,7 +305,11 @@ async function publishStaticStage(
   artifacts: VextFrontendStaticArtifact[],
 ): Promise<void> {
   const files = [
-    ...new Set(artifacts.flatMap((artifact) => [artifact.html, artifact.data])),
+    ...new Set(
+      artifacts.flatMap((artifact) =>
+        artifact.data ? [artifact.html, artifact.data] : [artifact.html],
+      ),
+    ),
   ].sort((left, right) => left.localeCompare(right));
   for (const relativePath of files) {
     const source = path.join(stageDir, relativePath);

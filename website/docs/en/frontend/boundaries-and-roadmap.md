@@ -10,6 +10,8 @@ The current Vext frontend direction is:
 - `src/routes/**` as URL and server data entry
 - `res.render(page, props?, options?)`
 - React 19 SSR plus hydration
+- route-level SSR HTML without Vext/React hydration through `frontend.hydration: "none"`
+- framework SEO metadata plus build/runtime sitemap and robots through `frontend.seo`
 - opt-in Streaming SSR with `frontend.render.streaming: "auto"`; `"buffered"` remains the default
 - same-route page navigation with `Link`, `Form`, fetchers, revalidation, history, persistent common layouts, scroll/focus restoration, and document fallback
 - route-side static, revalidate, and client-only freshness with `staticParams`, tags, single-flight, atomic replacement, and last-known-good recovery
@@ -89,6 +91,7 @@ These are not first-phase commitments, but can be evaluated later:
 - React Server Components
 - Server Functions and Server Actions
 - partial prerendering (PPR)
+- Selective/Partial Hydration and an Islands architecture
 - deeper external framework adapters
 
 Each track needs separate requirements, performance evidence, and compatibility review before becoming default behavior.
@@ -102,5 +105,6 @@ Each track needs separate requirements, performance evidence, and compatibility 
 - adding cloud-provider SDKs to core for asset upload
 - implicitly fetching or proxying remote images, or downloading remote fonts
 - treating Streaming SSR as React Server Components, Server Functions, Server Actions, or PPR
+- describing page-level `hydration: "none"` as Selective Hydration, Islands, or PPR
 - replacing the esbuild frontend pipeline with a Webpack/Vite/Rollup/Rolldown plugin ecosystem
 - adding a parallel loader/action route DSL or function-action RPC transport

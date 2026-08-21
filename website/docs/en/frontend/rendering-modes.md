@@ -103,6 +103,34 @@ refresh fails. `tags` allow explicit invalidation. `clientOnly: true`
 preserves route, document, data, and asset behavior but intentionally omits the
 server page body. These policies are not PPR.
 
+## Server-only HTML without Hydration
+
+Use the existing route policy when an SSR page should ship HTML and CSS without
+the Vext or React browser runtime:
+
+```ts
+app.get(
+  "/legal/terms",
+  {
+    frontend: {
+      hydration: "none",
+      seo: { title: "Terms", description: "Current service terms" },
+    },
+  },
+  async (_req, res) => res.render("legal/terms"),
+);
+```
+
+The response remains a full SSR document. It keeps the page body, managed SEO,
+CSS, and scripts authored in `_document.html`, but omits hydration data, Vext
+browser entry, React/Vext external-runtime imports, and route JS preloads.
+Navigation to or from this route uses a full document request. Static mode
+writes HTML without a `__vext.page.json` sidecar.
+
+`hydration: "none"` requires SSR and cannot be combined with
+`clientOnly: true` or a per-render `ssr: false` override. It is a page-level
+policy, not Selective/Partial Hydration, an Islands architecture, or PPR.
+
 ## Hydrated Interactions
 
 After SSR, the browser hydrates the React tree. The same props and locale messages written into the document are reused by the client entry.
@@ -136,7 +164,8 @@ Use [Render Data and Cache](/frontend/render-data-and-cache) for cache keys, inv
 | Need                              | Recommended mode                            |
 | --------------------------------- | ------------------------------------------- |
 | Server data on first screen       | Buffered SSR, or opt-in streaming SSR       |
-| SEO or public content             | Buffered SSR, or opt-in streaming SSR       |
+| SEO or public content with no JS  | SSR plus `hydration: "none"`                |
+| SEO or interactive public content | Buffered SSR, or opt-in streaming SSR       |
 | Authenticated admin shell         | SSR for entry, optional scoped CSR inside   |
 | Highly interactive client routing | `spaFallback.scopes[]` for that route range |
 | API-only service                  | Disable frontend                            |

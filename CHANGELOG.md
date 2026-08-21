@@ -12,13 +12,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No user-facing changes are currently queued.
+### 2.0.0 candidate
+
+#### Added
+
+- Framework-level `frontend.seo` metadata, canonical, robots, and build/runtime
+  sitemap contracts, including per-page values, provider entries, and explicit
+  named deployment origins.
+- Route-level `hydration: "none"` for SSR pages that must emit HTML without a
+  client entry, serialized page payload, or React runtime.
+- Executable Hello World and MongoDB CRUD examples with install, typecheck,
+  build, runtime, validation, and OpenAPI assertions.
+- Explicit TypeScript scaffold boundaries under `src/types/shared`,
+  `src/types/frontend`, and framework-owned `src/types/generated`.
+
+#### Changed
+
+- `app.db` is now the single raw MonSQLize instance surface, preserving the
+  upstream API and adding only a read-only Mongo client getter plus narrow
+  soft-delete result compatibility.
+- Model lookup uses exact registered keys; database/pool scopes no longer
+  synthesize or fall back through prefixed keys.
+- Global rate limiting now defaults to off and is installed only when
+  `rateLimit.enabled === true`; direct factory and route override contracts are
+  preserved.
+- Path-parameter validation failures now return HTTP 400; body, query, header,
+  and cookie validation failures remain HTTP 422.
+- OpenAPI Docs now shares Vext brand geometry, favicon, teal/cyan light/dark
+  tokens, and green/amber mark accents with the frontend.
+- Three-argument routes now fail the build when the route-options argument or
+  `RouteOptions.frontend` value is not an `inline object literal`; dynamic
+  request metadata remains supported through `res.render(..., { seo })`.
+- Fastify handlers now retain reply ownership until a delayed SSR stream sends,
+  preventing React streaming responses from being finalized as an empty body.
+- New TypeScript scaffolds declare `@types/node`; existing project trees remain
+  untouched and `vext typegen` continues to own only `src/types/generated`.
+
+#### Removed
+
+- Removed the duplicate `app.monsqlize` property; use the raw `app.db` entry
+  point for collections, Models, transactions, pools, events, and diagnostics.
+
+This entry documents the local 2.0.0 package candidate and does not claim that
+the package has been published.
 
 ## Version History
 
 | Version | Date | Type | Key Theme |
 |---------|------|------|-----------|
 | [Unreleased] | — | — | — |
+| [2.0.0] | 2026-08-20 | Major candidate | Framework SEO/sitemaps, pure-HTML SSR routes, branded OpenAPI Docs, executable examples, raw `app.db`, explicit type boundaries, and opt-in rate limiting |
 | [1.0.2] | 2026-08-17 | Patch | Runtime contract fixes, OpenAPI/upload lifecycle documentation, adapter-matrix benchmark documentation, dependency and release hardening [view](./changelogs/v1.0.2.md) |
 | [1.0.1] | 2026-08-10 | Patch | Docs/release validation: English product README, locale-specific AI indexes, `npx vextjs create` cold-start, identity/contract/compare URL fixes [view](./changelogs/v1.0.1.md) |
 | [1.0.0] | 2026-08-10 | Major | 首个稳定 v1：schema-dsl v3 / monsqlize 3.1 固定 GA 依赖、完整 route-native 前端运行时、SSR starter、文档与发布安全门禁；包含 Hono Node 流式响应桥生命周期修复 [查看](./changelogs/v1.0.0.md) |
@@ -64,6 +107,7 @@ No user-facing changes are currently queued.
 - [Detailed Changelogs](./changelogs/)
 
 [Unreleased]: https://github.com/devcodex-labs/vextjs/compare/v1.0.2...HEAD
+[2.0.0]: https://github.com/devcodex-labs/vextjs/compare/v1.0.2...HEAD
 [1.0.2]: https://github.com/devcodex-labs/vextjs/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/devcodex-labs/vextjs/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/devcodex-labs/vextjs/compare/v0.3.8...v1.0.0

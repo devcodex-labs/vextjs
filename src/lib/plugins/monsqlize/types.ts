@@ -1,15 +1,20 @@
 /**
  * MonSQLize 内置插件类型定义
  *
- * 定义 MonSQLizeConnection（连接对象）和 MonSQLizeDatabaseConfig（数据库配置）。
+ * 定义 VextDatabase（原始 MonSQLize 实例）和 MonSQLizeDatabaseConfig（数据库配置）。
  * 通过 declare module 'vextjs' 扩展 VextApp 和 VextConfig 接口，
- * 使用户在 app.db / app.monsqlize / app.config.database 上获得完整类型提示。
+ * 使用户在 app.db / app.config.database 上获得完整类型提示。
  *
  * @module lib/plugins/monsqlize/types
  * @see 13-monsqlize-plugin.md §2.1（类型扩展）
  */
 
-import type { ModelDefinition, MonSQLizeOptions } from "monsqlize";
+import type {
+  ModelDefinition,
+  MongoConnectionState,
+  MonSQLize,
+  MonSQLizeOptions,
+} from "monsqlize";
 
 /**
  * Upstream MonSQLize options that Vext can safely forward without giving up
@@ -91,14 +96,8 @@ export type VextMonSQLizeOptions = Pick<
 // ── 扩展 VextApp / VextConfig ───────────────────────────────
 declare module "../../../types/app.js" {
   interface VextApp {
-    /** MonSQLize 连接对象（已连接，提供 collection / db / model 快捷方法） */
-    db?: MonSQLizeConnection;
-
-    /**
-     * 原始 MonSQLize 实例
-     * 用于高级场景（事务、底层操作、事件监听等）
-     */
-    monsqlize?: import("monsqlize").MonSQLize;
+    /** 已连接的原始 MonSQLize 实例；数据库能力统一从此入口访问。 */
+    db?: VextDatabase;
   }
 
   interface VextConfig {
@@ -107,66 +106,15 @@ declare module "../../../types/app.js" {
   }
 }
 
-// ── 连接对象（connect() 返回值的增强版）─────────────────────
+// ── 数据库入口 ──────────────────────────────────────────────
 
-/**
- * MonSQLize 连接对象
- *
- * 由插件在 setup 阶段创建并挂载到 app.db。
- * 封装 MonSQLize 实例的常用方法，提供简洁的 API。
- */
-/**
- * 连接池访问器
- *
- * 通过 app.db.pool(name) 获取，提供与 app.db 对称的访问接口。
- * 所有方法均将操作路由到指定连接池。
- */
-export interface PoolAccessor {
-  /** 获取指定池上的 Model 实例 */
-  model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-  /** 获取指定池上的原生 Collection */
-  collection: (
-    name: string,
-  ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
-  /** 切换数据库，返回限定池+库的访问器 */
-  use: (dbName: string) => {
-    model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-    collection: (
-      name: string,
-    ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
-  };
-}
+/** app.db 的公开类型：完整保留 MonSQLize 能力，并增加只读 MongoClient。 */
+export type VextDatabase = MonSQLize & {
+  readonly client: MongoConnectionState["client"];
+};
 
-export interface MonSQLizeConnection {
-  /** 获取集合操作对象 */
-  collection: (
-    name: string,
-  ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
-
-  // db() — 已移除（R4 Breaking Change）
-
-  /** 获取 Model 操作对象（需先定义 Model） */
-  model: (name: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-
-  /**
-   * 切换数据库作用域（R1 补全 collection，R2 改为单参数）
-   *
-   * `use('billing').model('Invoice')`     → key=BillingInvoice，默认池 billing库
-   * `use('billing').collection('orders')` → 默认池 billing库 orders集合
-   */
-  use: (dbName: string) => {
-    model: (key: string) => ReturnType<import("monsqlize").MonSQLize["model"]>;
-    collection: (
-      name: string,
-    ) => ReturnType<import("monsqlize").MonSQLize["collection"]>;
-  };
-
-  /** 切换连接池（R3 新增） */
-  pool: (name: string) => PoolAccessor;
-
-  /** 原始 MongoDB Client（事务等高级场景） */
-  readonly client: any;
-}
+/** @deprecated Use VextDatabase. */
+export type MonSQLizeConnection = VextDatabase;
 
 // ── 配置类型 ────────────────────────────────────────────────
 

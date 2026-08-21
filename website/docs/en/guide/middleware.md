@@ -212,7 +212,7 @@ Request entry
 1. requestId — generate/transmit the unique identifier of the request
 2. cors — CORS cross-domain processing
 3. bodyParser — request body parsing (JSON/URL-encoded)
-4. rateLimit — global rate limit
+4. rateLimit — global rate limit (only when config.rateLimit.enabled === true)
 5. responseWrapper — Turn on response packaging ({ code, data, requestId })
 6. accessLog — access logging
   ↓
@@ -225,7 +225,28 @@ Request entry
 errorHandler — global error handling (catch exceptions thrown at any stage)
 ```
 
-Global middleware controls behavior through configuration (such as `cors`, `rateLimit`), but cannot be skipped by routes - they take effect on all routes.
+Built-in global middleware is controlled through configuration. Rate limiting is
+opt-in: when `rateLimit` is omitted, or when `rateLimit.enabled` is not exactly
+`true`, Vext does not install the middleware and therefore emits no rate-limit
+headers or HTTP 429 responses.
+
+```typescript
+// src/config/default.ts
+export default {
+  rateLimit: {
+    enabled: true,
+    max: 100,
+    window: 60,
+  },
+};
+```
+
+After global rate limiting is enabled, a route can set
+`override: { rateLimit: false }` to skip it, or provide a route-level object to
+override `max`, `window`, or `keyBy`. Calling `app.setRateLimiter()` replaces
+the limiter implementation but does not opt the application into rate
+limiting. The exported `createRateLimitMiddleware()` factory also remains
+available for explicit manual composition.
 
 ### Routing-level middleware
 
@@ -551,15 +572,15 @@ The configured `middlewares` array uses a smart patch strategy: matching and mer
 
 VextJS has the following built-in global middleware, which controls behavior through configuration items:
 
-| Middleware          | Configuration items | Description                                               |
-| ------------------- | ------------------- | --------------------------------------------------------- |
-| **requestId**       | `config.requestId`  | Generate/transparently transmit request unique identifier |
-| **cors**            | `config.cors`       | CORS cross-domain processing                              |
-| **bodyParser**      | `config.bodyParser` | Request body parsing (JSON/URL-encoded)                   |
-| **rateLimit**       | `config.rateLimit`  | Global rate limit                                         |
-| **accessLog**       | `config.accessLog`  | Access log (method/path/status/duration)                  |
-| **responseWrapper** | `config.response`   | Response export wrapper `{ code, data, requestId }`       |
-| **errorHandler**    | —                   | Global error handling (not configurable, always enabled)  |
+| Middleware          | Configuration items | Description                                                   |
+| ------------------- | ------------------- | ------------------------------------------------------------- |
+| **requestId**       | `config.requestId`  | Generate/transparently transmit request unique identifier     |
+| **cors**            | `config.cors`       | CORS cross-domain processing                                  |
+| **bodyParser**      | `config.bodyParser` | Request body parsing (JSON/URL-encoded)                       |
+| **rateLimit**       | `config.rateLimit`  | Opt-in global rate limit; installed only with `enabled: true` |
+| **accessLog**       | `config.accessLog`  | Access log (method/path/status/duration)                      |
+| **responseWrapper** | `config.response`   | Response export wrapper `{ code, data, requestId }`           |
+| **errorHandler**    | —                   | Global error handling (not configurable, always enabled)      |
 
 See the [Configuration](/guide/configuration) chapter for details on various configuration options.
 

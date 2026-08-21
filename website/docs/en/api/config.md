@@ -247,7 +247,7 @@ Global rate limit configuration, implemented based on `flex-rate-limit`.
 
 | Field     | Type                 | Default Value         | Description                                       |
 | --------- | -------------------- | --------------------- | ------------------------------------------------- |
-| `enabled` | `boolean`            | `true`                | Whether to enable rate limiting                   |
+| `enabled` | `boolean`            | `false`               | Whether to enable global rate limiting            |
 | `max`     | `number`             | `100`                 | Maximum number of requests within the time window |
 | `window`  | `number`             | `60`                  | Time window (seconds)                             |
 | `message` | `string`             | `'Too Many Requests'` | Overrun error message                             |
@@ -256,6 +256,7 @@ Global rate limit configuration, implemented based on `flex-rate-limit`.
 ```typescript
 export default {
   rateLimit: {
+    enabled: true,
     max: 200,
     window: 120,
     //Limit flow by user ID (requires auth middleware to parse the user first)
@@ -273,7 +274,7 @@ export default {
 | `(req) => string` | Custom function, returns unique identifier |
 
 :::tip
-The routing level can override the global configuration via `options.override.rateLimit`, or set it to `false` to disable rate limiting.
+After global rate limiting is explicitly enabled, a route can override it via `options.override.rateLimit`, or set it to `false` to disable rate limiting.
 :::
 
 ---
@@ -849,6 +850,22 @@ Built-in frontend build and static serving configuration.
 | `spaFallback.scopes[].status`                          | `number`                             | `200`                                                        | HTTP status for a matched fallback                                                                     |
 | `apiClient`                                            | `boolean \| object`                  | `true`                                                       | Generate client contract artifacts                                                                     |
 | `apiClient.enabled`                                    | `boolean`                            | `true`                                                       | Whether to emit `client-contract.json` and `api.generated.ts`                                          |
+| `seo`                                                  | `VextFrontendSeoConfig`              | Not configured                                               | Framework SEO metadata and optional sitemap/robots; omission preserves legacy output                   |
+| `seo.enabled`                                          | `boolean`                            | `true` when configured                                       | Enables structured SEO and configured artifacts                                                        |
+| `seo.publicOrigin`                                     | `string`                             | None                                                         | Absolute HTTP(S) deployment origin combined with each page pathname                                    |
+| `seo.origins`                                          | `Record<string, string>`             | `{}`                                                         | Finite named origins for multi-domain runtime selection                                                |
+| `seo.titleTemplate`                                    | `string`                             | None                                                         | Title template containing the `%s` placeholder                                                         |
+| `seo.defaults`                                         | `VextSeoMetadata`                    | `{}`                                                         | Application-level title, description, robots, canonical, Open Graph, Twitter, alternates, and JSON-LD  |
+| `seo.sitemap`                                          | `false \| VextFrontendSitemapConfig` | `false`                                                      | Enables build-time or runtime sitemap output                                                           |
+| `seo.sitemap.mode`                                     | `'build' \| 'runtime'`               | `'build'`                                                    | Writes the artifact during build or serves it from a runtime endpoint                                  |
+| `seo.sitemap.path`                                     | `string`                             | `'/sitemap.xml'`                                             | Root-absolute sitemap pathname                                                                         |
+| `seo.sitemap.includeStatic`                            | `boolean`                            | `true`                                                       | Includes successful static page artifacts unless page SEO excludes them                                |
+| `seo.sitemap.entries`                                  | `VextSitemapEntriesProvider`         | None                                                         | Adds validated entries from `{ mode, origin, originKey, signal }`                                      |
+| `seo.sitemap.maxUrlsPerFile`                           | `number`                             | `50000`                                                      | URL limit before emitting a sitemap index and numbered chunks                                          |
+| `seo.robots`                                           | `false \| VextFrontendRobotsConfig`  | `false`                                                      | Enables build-time or runtime robots output                                                            |
+| `seo.robots.mode`                                      | `'build' \| 'runtime'`               | `'build'`                                                    | Writes the artifact during build or serves it from a runtime endpoint                                  |
+| `seo.robots.path`                                      | `'/robots.txt'`                      | `'/robots.txt'`                                              | Fixed robots pathname                                                                                  |
+| `seo.robots.groups`                                    | `VextRobotsGroup[]`                  | `[{ userAgent: '*', allow: '/' }]`                           | User-agent allow/disallow/crawl-delay groups                                                           |
 | `render`                                               | `object`                             | `{ ssr: true, streaming: 'buffered' }`                       | SSR, layout, fallback, and streaming controls                                                          |
 | `render.ssr`                                           | `boolean`                            | `true`                                                       | Enable SSR rendering                                                                                   |
 | `render.fallback`                                      | `'client' \| 'error'`                | `'client'`                                                   | Whether SSR failures fall back to a client shell or an error response                                  |
@@ -960,6 +977,8 @@ export default {
 ### Adapter extension contracts
 
 `frontend.adapter` is an explicit, in-process typed seam; it is not automatic plugin discovery. A `VextFrontendAdapter` provides `name`, `framework`, and an optional `resolveBuildOptions(config)`. The resolver receives the resolved frontend configuration and may return synchronous or asynchronous compiler options. It does not add another bundler, nor does it enable RSC, Server Functions, or PPR.
+
+`frontend.seo` is documented end-to-end in [SEO, Sitemap, and Robots](/frontend/seo-sitemap). `publicOrigin` is a deployment origin, not a fixed page URL: the current pathname or an explicit page canonical supplies the per-page portion. Runtime artifacts accept only exact declared hosts; providers do not receive `app` or `app.db` implicitly.
 
 For a delivery target other than the built-in local staging adapters, pass a `VextFrontendDeployUploadAdapter` object to `deploy.upload.adapter`. It provides `name` and `upload(input)`. Its `VextFrontendDeployUploadAdapterInput` contains `asset`, `sourcePath`, `uploadKey`, and `dryRun`; its `VextFrontendDeployUploadAdapterResult` must return `uploaded` and may return `url` and `etag`.
 
@@ -1196,7 +1215,7 @@ import { DEFAULT_CONFIG } from 'vextjs';
     credentials: false,
   },
   rateLimit: {
-    enabled: true,
+    enabled: false,
     max: 100,
     window: 60,
     message: 'Too Many Requests',

@@ -1,6 +1,27 @@
 # Hello World
 
-最简单的 VextJS 项目，帮助你理解框架的基本结构和工作方式。
+## 可执行 2.x 权威示例
+
+本页的发布合同是仓库中的
+[`examples/hello-world`](https://github.com/devcodex-labs/vextjs/tree/main/examples/hello-world)
+项目。它是刻意保持最小的 JavaScript 应用：使用 `checkJs` 类型检查、Native adapter、显式 `rateLimit.enabled: false`、Vext Docs，并且只有 `GET /` 与 `GET /health` 两个路由。
+
+```bash
+cd examples/hello-world
+npm install
+npm run typecheck
+npm run build
+npm test
+npm start
+```
+
+启动后验证 `/`、`/health`、`/openapi.json` 和 `/docs`。示例中的 `"vextjs": "file:../.."` 只用于本仓库；脚手架项目与普通用户项目安装发布后的 `vextjs` 包。
+
+源码目录是真相源：发布前会实际校验文件树、scripts、typecheck/build、HTTP endpoint、OpenAPI 输出与 Docs 品牌。
+
+## 扩展 TypeScript 教学变体
+
+下方 walkthrough 是单独的教学变体，用于展示更多校验和响应 API；它不是可执行发布 fixture，也不能据此推断 `examples/hello-world` 目录中存在这些额外路由。
 
 ## 完整项目结构
 

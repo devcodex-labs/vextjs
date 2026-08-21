@@ -437,7 +437,7 @@ export async function createTestApp(
   // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
   //
   // 🔧 同步 bootstrap.ts / dev-bootstrap.ts：
-  //   - 每个中间件仅在 enabled !== false 时注册（条件守卫）
+  //   - rate-limit 仅在 enabled === true 时注册；其他中间件保持各自条件守卫
   //   - createRequestIdMiddleware 补传第 3/4 参（propagateHeaders / localeConfig）
 
   // requestId（config.requestId.enabled，默认 true）
@@ -479,7 +479,7 @@ export async function createTestApp(
     app.adapter.registerMiddleware(bodyParserMiddleware);
   }
 
-  if (finalConfig.rateLimit?.enabled !== false) {
+  if (finalConfig.rateLimit?.enabled === true) {
     app.adapter.registerMiddleware(
       createRateLimitMiddleware(finalConfig.rateLimit, () =>
         internals.getRateLimiter(),

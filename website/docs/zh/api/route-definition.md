@@ -216,6 +216,14 @@ frontend: {
   revalidate?: number, // 秒；revalidate mode 必填
   staticParams?: Array<Record<string, string | number | boolean>>,
   clientOnly?: boolean,
+  hydration?: "full" | "none",
+  seo?: {
+    title?: string,
+    description?: string,
+    canonical?: string,
+    originKey?: string,
+    index?: boolean,
+  },
   tags?: string[],
   page?: string,
   staticBudget?: {
@@ -229,6 +237,10 @@ frontend: {
 `staticParams` 只允许用于 `"static"`。`revalidate` 只允许用于
 `"revalidate"`，且是正数秒级间隔。`clientOnly` 保留 route
 document/data/assets，同时有意跳过服务端 page body；它不是 PPR，也不是第二套路由。
+
+`hydration: "none"` 与 `clientOnly` 的方向相反：它要求并保留 SSR page body，但移除 Vext/React browser runtime、hydration data 与路由 JS preload。它不能与 `clientOnly` 或关闭 SSR 组合。`seo` 是静态、JSON-safe 的路由元数据，会在单次 render SEO 前合并。
+
+三参数路由的 route-options 参数及其 `RouteOptions.frontend` 值都必须是 `inline object literal`，避免构建索引与运行时产生分歧。构建索引不会执行导入变量或 helper 返回值；依赖请求数据的元数据应放在 `res.render(..., { seo })`。详见 [SEO、Sitemap 与 Robots](/zh/frontend/seo-sitemap)。
 
 ### 完整示例
 

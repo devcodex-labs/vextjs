@@ -616,7 +616,25 @@ export class OpenAPIGenerator {
     }
 
     // ── 通用错误响应（所有路由自动追加 4xx/5xx 引用）─────────
-    if (!operation.responses["422"] && options.validate) {
+    if (!operation.responses["400"] && options.validate?.param) {
+      operation.responses["400"] = {
+        description: "Path parameter validation error",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/ErrorResponse" },
+            example: {
+              code: 400,
+              message: "Validation failed",
+              requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
+          },
+        },
+      };
+    }
+    const hasNonParamValidation = Object.entries(options.validate ?? {}).some(
+      ([location, schema]) => location !== "param" && schema != null,
+    );
+    if (!operation.responses["422"] && hasNonParamValidation) {
       operation.responses["422"] = {
         description: "Validation error",
         content: {

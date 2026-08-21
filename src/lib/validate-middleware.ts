@@ -22,7 +22,7 @@ import { VextValidationError } from "../types/errors.js";
  *   2. 请求时校验（中间件被调用时）：
  *      按 param → query → header → cookie → body 顺序依次校验。
  *      - 全部通过 → 将校验后的数据写入 req._validated_<location>，调用 next()
- *      - 校验失败 → 抛出 VextValidationError(422, errors)
+ *      - 校验失败 → 抛出 VextValidationError；param 为 400，其余为 422
  *
  * 校验顺序说明：
  *   param → query → header → cookie → body
@@ -159,7 +159,7 @@ export function buildValidateMiddleware(
         //
         // 第一个失败的位置立即抛出，后续位置不再校验。
         // VextValidationError 被全局 error-handler 捕获，
-        // 格式化为 422 响应：{ code: 422, message: 'Validation failed', errors: [...] }
+        // param 失败格式化为 400；其他位置保持 422。
         //
         const errors = (result.errors ?? []).map((e) => ({
           field: e.field ?? "",
@@ -175,7 +175,11 @@ export function buildValidateMiddleware(
           });
         }
 
-        throw new VextValidationError(errors);
+        throw new VextValidationError(
+          errors,
+          "Validation failed",
+          loc === "param" ? 400 : 422,
+        );
       }
 
       // ── 校验通过 → 存储校验后的数据 ───────────────────

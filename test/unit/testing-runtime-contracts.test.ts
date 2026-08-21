@@ -215,6 +215,57 @@ describe("createTestApp runtime contract parity", () => {
     }
   });
 
+  it("keeps omitted and explicit-false rate limiting inactive", async () => {
+    for (const rateLimit of [undefined, { enabled: false }] as const) {
+      const rootDir = await createFixture();
+      const t = await createTestApp({
+        services: false,
+        rootDir,
+        ...(rateLimit ? { config: { rateLimit } } : {}),
+      });
+
+      try {
+        const first = await t.request.get("/runtime/limited");
+        const second = await t.request.get("/runtime/limited");
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+        expect(first.header("ratelimit-limit")).toBeUndefined();
+        expect(second.header("ratelimit-limit")).toBeUndefined();
+      } finally {
+        await t.close();
+        await rm(rootDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("does not let app.setRateLimiter implicitly enable the global chain", async () => {
+    const rootDir = await createFixture();
+    const check = vi.fn().mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetAt: Math.ceil(Date.now() / 1000) + 60,
+    });
+    const t = await createTestApp({
+      services: false,
+      rootDir,
+      setupPlugins(app) {
+        app.setRateLimiter({ check });
+      },
+    });
+
+    try {
+      const response = await t.request.get("/runtime/limited");
+
+      expect(response.status).toBe(200);
+      expect(response.header("ratelimit-limit")).toBeUndefined();
+      expect(check).not.toHaveBeenCalled();
+    } finally {
+      await t.close();
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("waits for after-middleware completion before resolving test responses", async () => {
     const rootDir = await createFixture();
     const events: string[] = [];

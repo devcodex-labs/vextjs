@@ -1,38 +1,16 @@
+import {
+  VEXT_FAVICON_SVG,
+  renderVextDocsThemeVariables,
+} from "../../brand/vext-brand.js";
+
 export const VEXT_DOCS_STYLE_CSS: string = `
 :root {
-  color-scheme: light;
-  --vext-bg: #f7f8fb;
-  --vext-panel: #ffffff;
-  --vext-text: #20242c;
-  --vext-muted: #6b7280;
-  --vext-line: #d8dee8;
-  --vext-accent: #2563eb;
-  --vext-accent-soft: #e8f0ff;
-  --vext-code: #111827;
-  --vext-success: #10b981;
-  --vext-panel-soft: #f3f6fb;
-  --vext-code-bg: #111827;
-  --vext-code-fg: #f9fafb;
-  --vext-card-shadow: 0 7px 18px rgba(15, 23, 42, 0.07);
-  --vext-card-shadow-hover: 0 10px 24px rgba(15, 23, 42, 0.11);
+${renderVextDocsThemeVariables("light")}
   --vext-density-scale: 1;
 }
 
 :root[data-vext-docs-theme="dark"] {
-  color-scheme: dark;
-  --vext-bg: #111827;
-  --vext-panel: #182233;
-  --vext-text: #f8fafc;
-  --vext-muted: #a9b4c5;
-  --vext-line: #334155;
-  --vext-accent: #60a5fa;
-  --vext-accent-soft: #1d365d;
-  --vext-code: #f8fafc;
-  --vext-panel-soft: #0f172a;
-  --vext-code-bg: #020617;
-  --vext-code-fg: #e5e7eb;
-  --vext-card-shadow: 0 7px 18px rgba(0, 0, 0, 0.24);
-  --vext-card-shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.34);
+${renderVextDocsThemeVariables("dark")}
 }
 
 :root[data-vext-docs-density="compact"] {
@@ -41,20 +19,7 @@ export const VEXT_DOCS_STYLE_CSS: string = `
 
 @media (prefers-color-scheme: dark) {
   :root[data-vext-docs-theme="system"] {
-    color-scheme: dark;
-    --vext-bg: #111827;
-    --vext-panel: #182233;
-    --vext-text: #f8fafc;
-    --vext-muted: #a9b4c5;
-    --vext-line: #334155;
-    --vext-accent: #60a5fa;
-    --vext-accent-soft: #1d365d;
-    --vext-code: #f8fafc;
-    --vext-panel-soft: #0f172a;
-    --vext-code-bg: #020617;
-    --vext-code-fg: #e5e7eb;
-    --vext-card-shadow: 0 7px 18px rgba(0, 0, 0, 0.24);
-    --vext-card-shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.34);
+${renderVextDocsThemeVariables("dark")}
   }
 }
 
@@ -147,8 +112,17 @@ body {
 }
 
 .vext-docs-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
   font-weight: 700;
   margin-bottom: 18px;
+}
+
+.vext-docs-brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
 }
 
 .vext-docs-content {
@@ -504,8 +478,8 @@ body {
   align-items: start;
   margin: 16px 22px 26px;
   padding: calc(18px * var(--vext-density-scale));
-  border: 1px solid #cbd5e1;
-  border-left: 4px solid #93c5fd;
+  border: 1px solid var(--vext-line);
+  border-left: 4px solid var(--vext-accent);
   border-radius: 8px;
   background: var(--vext-panel);
   box-shadow: var(--vext-card-shadow);
@@ -514,7 +488,7 @@ body {
 
 .vext-docs-operation:hover,
 .vext-docs-operation:focus-within {
-  border-color: #bfdbfe;
+  border-color: var(--vext-accent);
   border-left-color: var(--vext-accent);
   box-shadow: var(--vext-card-shadow-hover);
   transform: translateY(-1px);
@@ -536,7 +510,7 @@ body {
 .vext-docs-operation-body > .vext-docs-tryout {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e8edf5;
+  border-top: 1px solid var(--vext-line);
 }
 
 .vext-docs-method {
@@ -603,8 +577,8 @@ body {
 .vext-docs-code-item {
   margin: 16px 22px 26px;
   padding: 18px 20px 20px;
-  border: 1px solid #cbd5e1;
-  border-left: 4px solid #a7f3d0;
+  border: 1px solid var(--vext-line);
+  border-left: 4px solid var(--vext-success);
   border-radius: 8px;
   background: var(--vext-panel);
   box-shadow: var(--vext-card-shadow);
@@ -613,8 +587,8 @@ body {
 
 .vext-docs-code-item:hover,
 .vext-docs-code-item:focus-within {
-  border-color: #bbf7d0;
-  border-left-color: #10b981;
+  border-color: var(--vext-success);
+  border-left-color: var(--vext-success);
   box-shadow: var(--vext-card-shadow-hover);
   transform: translateY(-1px);
 }
@@ -630,7 +604,7 @@ body {
 .vext-docs-code-title {
   margin: 0 0 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e8edf5;
+  border-bottom: 1px solid var(--vext-line);
   font-size: 16px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -640,7 +614,7 @@ body {
 .vext-docs-code-section {
   margin: 16px 0 0;
   padding-top: 16px;
-  border-top: 1px solid #e8edf5;
+  border-top: 1px solid var(--vext-line);
   color: var(--vext-muted);
   line-height: 1.6;
 }
@@ -1199,7 +1173,7 @@ body {
 .vext-docs-nav-children {
   margin: 2px 0 8px 10px;
   padding-left: 8px;
-  border-left: 1px solid #e8edf5;
+  border-left: 1px solid var(--vext-line);
   display: grid;
   gap: 2px;
 }
@@ -1320,8 +1294,8 @@ body {
 
 .vext-docs-mark {
   border-radius: 3px;
-  background: #fef08a;
-  color: #111827;
+  background: var(--vext-mark-bg);
+  color: var(--vext-code);
   padding: 0 2px;
 }
 
@@ -1659,10 +1633,7 @@ body {
 }
 `;
 
-export const VEXT_DOCS_FAVICON_SVG: string = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vext Docs">
-  <rect width="64" height="64" rx="14" fill="#2563eb"/>
-  <path d="M16 18h9l7 21 7-21h9L36.5 48h-9L16 18Z" fill="#f8fafc"/>
-</svg>`;
+export const VEXT_DOCS_FAVICON_SVG: string = VEXT_FAVICON_SVG;
 
 export const VEXT_DOCS_APP_JS: string = `
 (() => {

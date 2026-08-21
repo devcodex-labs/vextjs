@@ -88,6 +88,27 @@ export default defineRoutes((app) => {
 
 对 persisted freshness entry 使用 `mode: "revalidate"` 和正数秒级 `revalidate` 间隔。Vext 会对并发刷新 single-flight、原子替换成功输出，并在刷新失败时保留 last-known-good 输出。`tags` 可用于显式 invalidation。`clientOnly: true` 保留 route、document、data 与 asset 行为，但有意不输出服务端 page body。这些策略不是 PPR。
 
+## 纯服务端 HTML，不加载 Hydration
+
+某个 SSR 页面只应发送 HTML 与 CSS、不加载 Vext/React 浏览器 runtime 时，使用既有路由策略：
+
+```ts
+app.get(
+  "/legal/terms",
+  {
+    frontend: {
+      hydration: "none",
+      seo: { title: "服务条款", description: "当前服务条款" },
+    },
+  },
+  async (_req, res) => res.render("legal/terms"),
+);
+```
+
+响应仍是完整 SSR document：保留页面 body、框架生成的 SEO、CSS 与 `_document.html` 中用户编写的 script，但省略 hydration data、Vext browser entry、React/Vext external-runtime import 和路由 JS preload。进入或离开该路由都使用完整 document 请求；static 模式只写 HTML，不生成 `__vext.page.json` sidecar。
+
+`hydration: "none"` 要求 SSR，不能与 `clientOnly: true` 或单次 render 的 `ssr: false` 组合。它是页面级策略，不是 Selective/Partial Hydration、Islands 架构或 PPR。
+
 ## Hydration 交互
 
 SSR 后浏览器会 hydrate React tree。写入 document 的 props 和 locale messages 会被 client entry 复用。
@@ -118,10 +139,11 @@ route response cache 可以缓存 `res.render()` 的 render payload：props、la
 
 ## 如何选择
 
-| 需求                  | 推荐模式                            |
-| --------------------- | ----------------------------------- |
-| 首屏需要服务端数据    | buffered SSR，或可选 streaming SSR  |
-| SEO 或公开内容        | buffered SSR，或可选 streaming SSR  |
-| 鉴权后台壳层          | SSR 入口，内部可局部 CSR            |
-| 高交互 client routing | 为该范围配置 `spaFallback.scopes[]` |
-| 纯 API 服务           | 关闭 frontend                       |
+| 需求                    | 推荐模式                            |
+| ----------------------- | ----------------------------------- |
+| 首屏需要服务端数据      | buffered SSR，或可选 streaming SSR  |
+| SEO/公开内容且不需要 JS | SSR + `hydration: "none"`           |
+| SEO/公开内容且需要交互  | buffered SSR，或可选 streaming SSR  |
+| 鉴权后台壳层            | SSR 入口，内部可局部 CSR            |
+| 高交互 client routing   | 为该范围配置 `spaFallback.scopes[]` |
+| 纯 API 服务             | 关闭 frontend                       |
