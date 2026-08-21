@@ -107,11 +107,36 @@ my-app/
 │ ├── preload/ # Optional preload sources; create with the first real preload file
 │ ├── routes/index.ts # URL handler and server data
 │ ├── services/example.ts # Example service
-│ └── types/generated/.gitkeep # Typegen output root (TS projects)
+│ └── types/
+│   ├── generated/.gitkeep # Vext-managed typegen output root (TS projects)
+│   ├── shared/
+│   │ └── greeting.d.ts # Application-owned data contract shared by server and UI
+│   └── frontend/
+│     └── home.d.ts # Application-owned page/render contract
 ├── package.json
 ├── tsconfig.json
 └── .gitignore
 ```
+
+#### Type directory boundaries
+
+The tree above is the default **TypeScript full-stack** starter. Its `src/types/**` folders have separate owners:
+
+| Location                 | Owner            | Use it for                                                                                                                                                                           |
+| ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/types/generated/**` | Vext tooling     | Declarations refreshed by `vext typegen`; do not hand-edit generated files.                                                                                                          |
+| `src/types/shared/**`    | Your application | Serializable data contracts shared by server code and the UI, such as `GreetingDto`.                                                                                                 |
+| `src/types/frontend/**`  | Your application | Page and render contracts consumed by the route that renders a page and by `src/frontend/**`, such as `HomePageProps`. Keep server-only implementation details out of this boundary. |
+
+`vext typegen` writes only `src/types/generated/**`; it does not replace application-owned files in `shared/**` or `frontend/**`.
+
+| Starter                                                | Initial `src/types/**` layout                  |
+| ------------------------------------------------------ | ---------------------------------------------- |
+| TypeScript full-stack (default)                        | `generated/**`, `shared/**`, and `frontend/**` |
+| TypeScript API-only (`--template api --frontend none`) | `generated/**` only                            |
+| JavaScript starter                                     | No `src/types` directory is created            |
+
+The scaffold does not reserve `src/types/server/**`. Keep a type that is private to one route or service next to that server owner; create your own server-oriented folder only when your application has a real shared server boundary.
 
 The starter deliberately does not create root or directory-level placeholder `README.md` files. Generated user source is English-first in both TypeScript and JavaScript, for full-stack and API-only templates; files under explicit locale directories are the only language-content exception. Conventional directories such as `src/middlewares/`, `src/plugins/`, `src/locales/`, and the canonical `src/preload/` remain supported and are created when you add real source files. The legacy project-root `preload/` directory is not scaffolded.
 
@@ -395,9 +420,11 @@ vext typegen [options]
 ```text
 .vext/types/services.generated.d.ts
 .vext/types/app-extensions.generated.d.ts
-src/types/generated/index.d.ts
+src/types/generated/index.d.ts # Vext-managed output; do not hand-edit
 .vext/manifest/services.json
 ```
+
+`src/types/generated/**` is the only `src/types/**` location written by `vext typegen`. The full-stack starter's `shared/**` and `frontend/**` folders are application-owned contracts; see [Generated directory structure](#generated-directory-structure) for their roles and template-specific availability.
 
 ### Example
 

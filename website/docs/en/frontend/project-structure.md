@@ -4,6 +4,7 @@
 
 - [Default Layout](#default-layout)
 - [Frontend Source Boundary](#frontend-source-boundary)
+- [Type Boundaries](#type-boundaries)
 - [Generated Files](#generated-files)
 - [Aliases](#aliases)
 - [Static Files](#static-files)
@@ -21,6 +22,12 @@ src/
       users.ts
   services/
     user.service.ts
+  types/
+    generated/
+    shared/
+      greeting.d.ts
+    frontend/
+      home.d.ts
   frontend/
     pages/
       index.tsx
@@ -67,6 +74,26 @@ Server and browser files are intentionally separate.
 | `src/frontend/locales/**` | server SSR + browser hydration | frontend page copy |
 
 Do not import `src/services/**`, database clients, secrets, `node:*`, or route handlers from `src/frontend/**`. The build leak scanner blocks this because server code must never enter the browser bundle.
+
+## Type Boundaries
+
+The TypeScript full-stack starter makes type ownership visible without creating a second backend tree:
+
+| Location                 | Owner            | Use for                                                                                                                                                                                  |
+| ------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/types/generated/**` | Vext tooling     | Output refreshed by `vext typegen`. Do not hand-edit generated declarations.                                                                                                             |
+| `src/types/shared/**`    | Your application | Serializable data contracts shared by server code and the UI. The starter's `GreetingDto` is one example.                                                                                |
+| `src/types/frontend/**`  | Your application | Page and render contracts shared by a rendering route and `src/frontend/**`. The starter's `HomePageProps` is one example. Keep server-only implementation details out of this boundary. |
+
+`vext typegen` writes only `src/types/generated/**`; it does not rewrite `shared/**` or `frontend/**`.
+
+| Starter                                                | Initial type directories                       |
+| ------------------------------------------------------ | ---------------------------------------------- |
+| TypeScript full-stack (default)                        | `generated/**`, `shared/**`, and `frontend/**` |
+| TypeScript API-only (`--template api --frontend none`) | `generated/**` only                            |
+| JavaScript starter                                     | No `src/types` directory                       |
+
+The scaffold does not reserve `src/types/server/**`. Keep a server-only type next to its route or service owner; introduce an application-specific server folder only after you have a real shared server boundary.
 
 ## Generated Files
 
@@ -152,4 +179,3 @@ export default {
 ```
 
 When `frontend.enabled=false`, Vext should not build frontend assets, mount frontend static files, or add frontend watchers to pure API projects.
-

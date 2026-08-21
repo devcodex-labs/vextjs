@@ -107,11 +107,36 @@ my-app/
 │   ├── preload/              # 可选 preload 源；添加首个真实文件时再创建
 │   ├── routes/index.ts       # URL handler 和服务端数据
 │   ├── services/example.ts   # 示例服务
-│   └── types/generated/.gitkeep # TypeScript 项目的 typegen 输出根
+│   └── types/
+│       ├── generated/.gitkeep # Vext/typegen 管理的输出根（TypeScript 项目）
+│       ├── shared/
+│       │   └── greeting.d.ts # 应用维护、供服务端和 UI 共用的数据契约
+│       └── frontend/
+│           └── home.d.ts     # 应用维护的页面/渲染契约
 ├── package.json
 ├── tsconfig.json
 └── .gitignore
 ```
+
+#### 类型目录边界
+
+上面的树对应默认的 **TypeScript 全栈** starter。`src/types/**` 中的三层目录有不同的所有权：
+
+| 位置                     | 所有者      | 用途                                                                                                                      |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `src/types/generated/**` | Vext 工具链 | `vext typegen` 刷新的声明输出；不要手动修改生成文件。                                                                     |
+| `src/types/shared/**`    | 应用代码    | 服务端与 UI 共用、可序列化的数据契约，例如 `GreetingDto`。                                                                |
+| `src/types/frontend/**`  | 应用代码    | 由渲染页面的 route 与 `src/frontend/**` 共同使用的页面/渲染契约，例如 `HomePageProps`；不要把服务端私有实现细节放进这里。 |
+
+`vext typegen` 只会写入 `src/types/generated/**`，不会覆盖应用维护的 `shared/**` 或 `frontend/**` 文件。
+
+| 脚手架模式                                              | 初始 `src/types/**` 结构                     |
+| ------------------------------------------------------- | -------------------------------------------- |
+| TypeScript 全栈（默认）                                 | `generated/**`、`shared/**` 与 `frontend/**` |
+| TypeScript API-only（`--template api --frontend none`） | 仅 `generated/**`                            |
+| JavaScript 脚手架                                       | 创建时不生成 `src/types` 目录                |
+
+脚手架不会预留 `src/types/server/**`。只被单个 route 或 service 使用的类型，应放在该服务端 owner 附近；只有你的应用形成真实的服务端共享边界时，再自行建立面向服务端的目录。
 
 脚手架不会生成根目录或目录级的占位 `README.md` 文件。TypeScript、JavaScript 的全栈与 API-only 模板所生成的用户源码均以英文为默认语言；只有显式 locale 目录下的语言资源不受该约束。`src/middlewares/`、`src/plugins/`、`src/locales/` 与规范的 `src/preload/` 等约定目录仍受支持；添加真实源码时会按需创建。历史项目根 `preload/` 不会由脚手架生成。
 
@@ -395,9 +420,11 @@ vext typegen [options]
 ```text
 .vext/types/services.generated.d.ts
 .vext/types/app-extensions.generated.d.ts
-src/types/generated/index.d.ts
+src/types/generated/index.d.ts # Vext 管理的输出；不要手动修改
 .vext/manifest/services.json
 ```
+
+`src/types/generated/**` 是 `vext typegen` 在 `src/types/**` 内唯一会写入的位置。全栈 starter 的 `shared/**` 与 `frontend/**` 是应用维护的契约目录；它们的职责与各模板的生成条件见[生成的目录结构](#生成的目录结构)。
 
 ### 示例
 

@@ -4,6 +4,7 @@
 
 - [默认目录](#默认目录)
 - [前端源码边界](#前端源码边界)
+- [类型目录边界](#类型目录边界)
 - [自动生成文件](#自动生成文件)
 - [Alias](#alias)
 - [静态文件](#静态文件)
@@ -21,6 +22,12 @@ src/
       users.ts
   services/
     user.service.ts
+  types/
+    generated/
+    shared/
+      greeting.d.ts
+    frontend/
+      home.d.ts
   frontend/
     pages/
       index.tsx
@@ -67,6 +74,26 @@ public/
 | `src/frontend/locales/**` | 服务端 SSR + 浏览器 hydration | 前端页面文案 |
 
 不要从 `src/frontend/**` import `src/services/**`、数据库客户端、密钥、`node:*` 或 route handler。构建期 leakScan 会阻断这类导入，因为服务端代码不能进入浏览器 bundle。
+
+## 类型目录边界
+
+TypeScript 全栈 starter 通过三层类型目录表达所有权，而不会再预设一套后端类型树：
+
+| 位置                     | 所有者      | 用途                                                                                                                                         |
+| ------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/types/generated/**` | Vext 工具链 | `vext typegen` 刷新的输出；不要手动修改生成声明。                                                                                            |
+| `src/types/shared/**`    | 应用代码    | 服务端与 UI 共用、可序列化的数据契约；starter 中的 `GreetingDto` 是一个例子。                                                                |
+| `src/types/frontend/**`  | 应用代码    | 由渲染页面的 route 与 `src/frontend/**` 共同使用的页面/渲染契约；starter 中的 `HomePageProps` 是一个例子。不要把服务端私有实现细节放进这里。 |
+
+`vext typegen` 只会写入 `src/types/generated/**`，不会重写 `shared/**` 或 `frontend/**`。
+
+| 脚手架模式                                              | 初始类型目录                                 |
+| ------------------------------------------------------- | -------------------------------------------- |
+| TypeScript 全栈（默认）                                 | `generated/**`、`shared/**` 与 `frontend/**` |
+| TypeScript API-only（`--template api --frontend none`） | 仅 `generated/**`                            |
+| JavaScript 脚手架                                       | 不生成 `src/types` 目录                      |
+
+脚手架不会预留 `src/types/server/**`。只被单个 route 或 service 使用的服务端类型，应放在该 owner 附近；只有应用形成真实的服务端共享边界时，再自行建立应用自定义的服务端目录。
 
 ## 自动生成文件
 
@@ -152,4 +179,3 @@ export default {
 ```
 
 `frontend.enabled=false` 时，Vext 不应构建前端资源、挂载前端静态文件，也不应给纯 API 项目增加前端 watcher 成本。
-
