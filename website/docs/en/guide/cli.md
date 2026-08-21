@@ -1,5 +1,9 @@
 # CLI commands
 
+:::warning Version channel
+This site follows `main` and currently previews `v2.0.0` (`next`). CLI output below uses the latest published npm release, `v1.0.2` (`stable`), until 2.0.0 is published.
+:::
+
 VextJS provides the `vext` command line tool, covering the complete life cycle of project creation, development, construction and deployment.
 
 ## Installation

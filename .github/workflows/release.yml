@@ -111,7 +111,7 @@ jobs:
           echo "✅ Versions match: v${PKG_VERSION}"
 
       - name: Verify docs version sync
-        run: bash scripts/check-version-sync.sh
+        run: bash scripts/check-version-sync.sh --release
 
   # ────────────────────────────────────────────────────────────
   # 3. 文档站构建验证

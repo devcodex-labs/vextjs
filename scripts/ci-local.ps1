@@ -76,34 +76,6 @@ function Run-Step {
     }
 }
 
-function Invoke-VersionCheck([string]$Version) {
-    $errs = 0
-    $pairs = @(
-        "website/rspress.config.ts|`"v$Version`""
-        "website/docs/guide/cli.md|vextjs v$Version"
-        "website/docs/guide/quick-start.md|`"vextjs`": `"^$Version`""
-        "README.md|`"vextjs`": `"^$Version`""
-        "CHANGELOG.md|[$Version]"
-    )
-    foreach ($pair in $pairs) {
-        $parts   = $pair -split "\|", 2
-        $file    = $parts[0]
-        $pattern = $parts[1]
-        if (-not (Test-Path $file)) {
-            Write-Host "  [SKIP] $file (not found)" -ForegroundColor Yellow
-            continue
-        }
-        $content = Get-Content $file -Raw
-        if ($content -match [regex]::Escape($pattern)) {
-            Write-Host "  [OK]   $file" -ForegroundColor Green
-        } else {
-            Write-Host "  [ERR]  $file - expected: $pattern" -ForegroundColor Red
-            $errs++
-        }
-    }
-    return $errs
-}
-
 # ── header ───────────────────────────────────────────────────
 
 Write-Host "vext local CI verification" -ForegroundColor White
@@ -112,14 +84,12 @@ if ($Quick) {
     Write-Host "[Quick mode] skipping e2e-tests and docs-build" -ForegroundColor Yellow
 }
 
-# ── 0. Version Check ────────────────────────────────────────
+# ── 0. Version Channel Check ────────────────────────────────
 
-Step-Start "Version Sync Check"
+Step-Start "Version Channel Check"
 try {
-    $ver = (node -p "require('./package.json').version" 2>&1)
-    Write-Host "  package.json: v$ver"
-    $verErrors = Invoke-VersionCheck -Version $ver
-    if ($verErrors -gt 0) { throw "$verErrors version mismatch(es)" }
+    & node scripts/check-version-sync.mjs
+    if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
     Step-Pass
 }
 catch {

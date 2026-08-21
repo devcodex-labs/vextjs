@@ -95,6 +95,12 @@ vext/
 
 ## 🔄 Contribution Workflow
 
+> **Maintainer workflow:** this project is currently maintained by its owner on
+> `main`. For an explicitly authorized maintenance task, the owner runs the
+> required local gates and pushes directly to `main`; no intermediate repository
+> branch or PR is required. External contributors should continue to use the
+> branch-and-PR workflow below.
+
 ### 1. Create a Branch
 
 ```bash

@@ -1,5 +1,9 @@
 # Quick start
 
+:::warning Version channel
+This site follows `main` and currently previews `v2.0.0` (`next`). The latest published npm release is `v1.0.2` (`stable`), so the install commands and dependency example below intentionally use the stable version until 2.0.0 is published.
+:::
+
 ## Method 1: Use scaffolding (recommended)
 
 VextJS provides the `vext create` command to create a runnable project. The default template proves the one-route model immediately: `/` renders React through `res.render()`, `/api/hello` returns JSON, and both use the generated example service. Choose API-only when no page runtime is needed.

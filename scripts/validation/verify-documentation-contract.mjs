@@ -196,7 +196,7 @@ function verifyWebsiteNavigationContract() {
 
   const versionMenu = sectionBetween(
     navSource,
-    `en: "v${packageVersion}"`,
+    'docsVersions.channel === "next"',
     "  },\n];",
   );
   if (versionMenu.includes('en: "Contributing"')) {
@@ -882,10 +882,33 @@ function verifyFrontendSeoAndNoHydrationDocumentationContract() {
   }
 
   requireTokens("website/rspress.config.ts", [
-    'en: "v2.0.0"',
-    'zh: "v2.0.0"',
+    'from "./version-channels.json"',
+    "docsVersions.stable",
+    "docsVersions.next",
+    "docsVersions.channel",
     'link: "/frontend/seo-sitemap"',
     'link: "/zh/frontend/seo-sitemap"',
+  ]);
+
+  requireTokens("website/docs/en/guide/quick-start.md", [
+    "Version channel",
+    "`stable`",
+    "`next`",
+  ]);
+  requireTokens("website/docs/en/guide/cli.md", [
+    "Version channel",
+    "`stable`",
+    "`next`",
+  ]);
+  requireTokens("website/docs/zh/guide/quick-start.md", [
+    "版本通道",
+    "`stable`",
+    "`next`",
+  ]);
+  requireTokens("website/docs/zh/guide/cli.md", [
+    "版本通道",
+    "`stable`",
+    "`next`",
   ]);
 }
 

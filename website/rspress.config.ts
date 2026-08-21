@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { defineConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
+import docsVersions from "./version-channels.json";
 
 const DEFAULT_DOCS_BASE = "/vextjs/";
 const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
@@ -150,8 +151,14 @@ const navSource: NavItemSource[] = [
     ],
   },
   {
-    en: "v2.0.0",
-    zh: "v2.0.0",
+    en:
+      docsVersions.channel === "next"
+        ? `v${docsVersions.next} (Next)`
+        : `v${docsVersions.stable}`,
+    zh:
+      docsVersions.channel === "next"
+        ? `v${docsVersions.next}（预览）`
+        : `v${docsVersions.stable}`,
     items: [
       {
         en: "Changelog",

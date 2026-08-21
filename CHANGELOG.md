@@ -48,6 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New TypeScript scaffolds declare `@types/node`; existing project trees remain
   untouched and `vext typegen` continues to own only `src/types/generated`.
 
+#### Fixed
+
+- SEO artifact output containment now treats POSIX and Windows separators,
+  drive paths, UNC paths, and traversal segments consistently on every host.
+- Ordinary `main` CI now distinguishes the unpublished 2.0.0 docs preview from
+  npm stable 1.0.2; tag releases retain an exact-version gate, and automatic
+  Pages deployment waits for the successful CI commit.
+
 #### Removed
 
 - Removed the duplicate `app.monsqlize` property; use the raw `app.db` entry

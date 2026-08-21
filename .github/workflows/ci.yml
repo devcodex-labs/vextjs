@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # vextjs CI — Lint → Typecheck → Unit → Integration → E2E → Coverage
 #
-# 触发条件：push / pull_request（所有分支）
+# 触发条件：push main / pull_request → main
 # Node.js 版本矩阵：20 / 22
 #
 # 流水线结构：
@@ -19,7 +19,7 @@ name: CI
 
 on:
   push:
-    branches: ["*"]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -37,12 +37,12 @@ env:
 
 jobs:
   # ────────────────────────────────────────────────────────────
-  # 0. Version Check（版本号一致性门禁）
+  # 0. Version Channel Check（候选与公开稳定版分层门禁）
   # ────────────────────────────────────────────────────────────
   version-check:
-    name: Version Sync Check
+    name: Version Channel Check
     runs-on: ubuntu-latest
-    # 版本一致性任何时候都应满足，push / PR 均运行
+    # 普通 CI 允许 next 候选与 npm stable 并存；tag release 另行 exact 校验。
 
     steps:
       - name: Checkout
@@ -53,7 +53,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run version sync check
+      - name: Run version channel check
         run: bash scripts/check-version-sync.sh
 
   # ────────────────────────────────────────────────────────────

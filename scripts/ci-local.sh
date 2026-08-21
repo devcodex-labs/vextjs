@@ -89,9 +89,9 @@ if $QUICK_MODE; then
 fi
 echo ""
 
-# ── 0. Version Check ────────────────────────────────────────
+# ── 0. Version Channel Check ────────────────────────────────
 
-step_start "Version Sync Check"
+step_start "Version Channel Check"
 # Keep one version-contract implementation for local CI and GitHub Actions.
 # Later steps already require Node.js/npx, so a separate grep-based copy only
 # creates drift when documentation paths or README version policy change.

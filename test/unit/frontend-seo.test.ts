@@ -250,7 +250,42 @@ describe("frontend sitemap and robots", () => {
     ).toThrow(/pathname/u);
   });
 
-  it("defends the writer boundary even if an unsafe resolved path is injected", async () => {
+  it.each([
+    "/../escape.xml",
+    "/..\\escape.xml",
+    "C:\\escape.xml",
+    "C:escape.xml",
+    "\\\\server\\share\\escape.xml",
+  ])(
+    "defends the writer boundary against portable path %s",
+    async (unsafePath) => {
+      const rootDir = await tempRoot();
+      const config = resolveFrontendConfig(
+        {
+          enabled: true,
+          seo: {
+            publicOrigin: "https://www.example.test",
+            sitemap: {},
+            robots: false,
+          },
+        },
+        { rootDir, mode: "production" },
+      );
+      (config.seo.sitemap as { path: string }).path = unsafePath;
+
+      await expect(
+        writeFrontendSeoArtifacts({
+          rootDir,
+          config,
+          staticArtifacts: [],
+        }),
+      ).rejects.toThrow(/outside config\.frontend\.outDir/u);
+      expect(existsSync(config.outDir)).toBe(false);
+      expect(existsSync(path.join(rootDir, "dist", "escape.xml"))).toBe(false);
+    },
+  );
+
+  it("normalizes a safe nested writer path across separators", async () => {
     const rootDir = await tempRoot();
     const config = resolveFrontendConfig(
       {
@@ -263,16 +298,18 @@ describe("frontend sitemap and robots", () => {
       },
       { rootDir, mode: "production" },
     );
-    (config.seo.sitemap as { path: string }).path = "/..\\escape.xml";
+    (config.seo.sitemap as { path: string }).path = "/seo\\nested/sitemap.xml";
 
-    await expect(
-      writeFrontendSeoArtifacts({
-        rootDir,
-        config,
-        staticArtifacts: [],
-      }),
-    ).rejects.toThrow(/outside config\.frontend\.outDir/u);
-    expect(existsSync(path.join(rootDir, "dist", "escape.xml"))).toBe(false);
+    const result = await writeFrontendSeoArtifacts({
+      rootDir,
+      config,
+      staticArtifacts: [],
+    });
+
+    expect(result.artifacts[0]?.file).toBe("seo/nested/sitemap.xml");
+    expect(
+      existsSync(path.join(config.outDir, "seo", "nested", "sitemap.xml")),
+    ).toBe(true);
   });
 
   it("propagates build cancellation to the sitemap provider", async () => {

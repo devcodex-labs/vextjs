@@ -441,7 +441,11 @@ function sitemapChunkPath(base: string, index: number): string {
 }
 
 function toOutputFile(pathname: string): string {
-  return pathname.replace(/^\/+/, "");
+  const portable = pathname.replaceAll("\\", "/");
+  if (portable.startsWith("//") || /^[A-Za-z]:/u.test(portable)) {
+    return portable;
+  }
+  return portable.replace(/^\/+/, "");
 }
 
 const SITEMAP_CHANGE_FREQUENCIES = new Set<string>([
@@ -455,8 +459,27 @@ const SITEMAP_CHANGE_FREQUENCIES = new Set<string>([
 ]);
 
 function resolveContainedOutputPath(rootDir: string, file: string): string {
+  // Host-native path parsing is not a security boundary: Linux otherwise
+  // accepts Windows traversal separators as ordinary filename characters.
+  const portable = file.replaceAll("\\", "/");
+  const segments = portable.split("/");
+  if (
+    portable.includes("\0") ||
+    path.posix.isAbsolute(portable) ||
+    path.win32.isAbsolute(portable) ||
+    /^[A-Za-z]:/u.test(portable) ||
+    segments.includes("..")
+  ) {
+    throw new Error(
+      `[vextjs] SEO output resolves outside config.frontend.outDir: ${file}`,
+    );
+  }
+
   const root = path.resolve(rootDir);
-  const target = path.resolve(root, file);
+  const target = path.resolve(
+    root,
+    ...segments.filter((segment) => segment !== "" && segment !== "."),
+  );
   const relative = path.relative(root, target);
   if (
     relative === "" ||

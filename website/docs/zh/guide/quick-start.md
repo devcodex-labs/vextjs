@@ -1,5 +1,9 @@
 # 快速开始
 
+:::warning 版本通道
+本站跟随 `main`，当前预览 `v2.0.0`（`next`）。npm 已发布的最新稳定版仍是 `v1.0.2`（`stable`），因此在 2.0.0 正式发布前，下面的安装命令和依赖示例会有意使用稳定版。
+:::
+
 ## 方式一：使用脚手架（推荐）
 
 VextJS 提供 `vext create` 命令创建可运行项目。默认模板会直接证明一套路由模型：`/` 通过 `res.render()` 渲染 React，`/api/hello` 返回 JSON，两者都调用生成的 example service；不需要页面运行时则选择 API-only。
