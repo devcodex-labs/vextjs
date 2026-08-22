@@ -53,9 +53,9 @@ The goal is to teach the physical boundary, not to expose a low-level bundler st
 
 ## Fix Patterns
 
-| Problem | Fix |
-|---------|-----|
-| Page imports a service | Move call to route handler and pass props. |
-| Component imports config | Pass public config via props or generated safe data. |
-| Shared util imports `node:*` | Split into `*.server.ts` and browser-safe util. |
-| API helper returns HTML | Check `Accept` header and SPA fallback scope. |
+| Problem                      | Fix                                                  |
+| ---------------------------- | ---------------------------------------------------- |
+| Page imports a service       | Move call to route handler and pass props.           |
+| Component imports config     | Pass public config via props or generated safe data. |
+| Shared util imports `node:*` | Split into `*.server.ts` and browser-safe util.      |
+| API helper returns HTML      | Check `Accept` header and SPA fallback scope.        |

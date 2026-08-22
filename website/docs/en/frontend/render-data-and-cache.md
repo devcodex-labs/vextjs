@@ -33,12 +33,16 @@ On a cache hit, Vext re-renders HTML from the cached payload with the current fr
 If multiple layouts need server data, collect that data in the route handler or a service and pass it through `layoutData`.
 
 ```ts
-res.render("admin/users", { users }, {
-  layoutData: {
-    shell: await app.services.admin.shell(req.user.id),
-    breadcrumbs: ["Admin", "Users"],
+res.render(
+  "admin/users",
+  { users },
+  {
+    layoutData: {
+      shell: await app.services.admin.shell(req.user.id),
+      breadcrumbs: ["Admin", "Users"],
+    },
   },
-});
+);
 ```
 
 This avoids hidden service calls from layout components and keeps cache keys visible at the route boundary.

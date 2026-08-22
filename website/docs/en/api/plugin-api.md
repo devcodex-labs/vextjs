@@ -122,9 +122,9 @@ setup(app: VextApp): Promise<void> | void;
 
 **Parameters**:
 
-| Parameters | Type | Description |
-| ----- | --------- | --------------------------------------------------------------- |
-| `app` | `VextApp` | Application instance (at this time `app.use()` is available, `app.services` has not been injected yet) |
+| Parameters | Type      | Description                                                                                            |
+| ---------- | --------- | ------------------------------------------------------------------------------------------------------ |
+| `app`      | `VextApp` | Application instance (at this time `app.use()` is available, `app.services` has not been injected yet) |
 
 **Key Notes**:
 
@@ -283,11 +283,11 @@ type VextMiddleware = (
 
 Three parameters:
 
-| Parameters | Type | Description |
-| ------ | --------------------- | -------------------------- |
-| `req` | `VextRequest` | Request object |
-| `res` | `VextResponse` | response object |
-| `next` | `() => Promise<void>` | Call the next middleware / handler |
+| Parameters | Type                  | Description                        |
+| ---------- | --------------------- | ---------------------------------- |
+| `req`      | `VextRequest`         | Request object                     |
+| `res`      | `VextResponse`        | response object                    |
+| `next`     | `() => Promise<void>` | Call the next middleware / handler |
 
 ### Onion model
 
@@ -605,15 +605,15 @@ Middleware not declared in the whitelist will throw a startup error when referen
 
 VextJS provides the following built-in middleware, which is automatically registered by `bootstrap` and does not require manual configuration:
 
-| Middleware | Function | Description |
-|---------------- | ---------------------------------- | ------------------ |
-| Request ID | `createRequestIdMiddleware()` | Request ID generation/transmission |
-| CORS | `createCorsMiddleware()` | Cross-domain resource sharing |
-| Body Parser | `createBodyParserMiddleware()` | Request body parsing |
-| Rate Limit | `createRateLimitMiddleware()` | Rate Limit |
-| Response Wrapper | `responseWrapper` | Export packaging |
-| Access Log | `createAccessLogMiddleware()` | Access Log |
-| Error Handler | `createErrorHandler()` | Error Handling |
+| Middleware       | Function                       | Description                        |
+| ---------------- | ------------------------------ | ---------------------------------- |
+| Request ID       | `createRequestIdMiddleware()`  | Request ID generation/transmission |
+| CORS             | `createCorsMiddleware()`       | Cross-domain resource sharing      |
+| Body Parser      | `createBodyParserMiddleware()` | Request body parsing               |
+| Rate Limit       | `createRateLimitMiddleware()`  | Rate Limit                         |
+| Response Wrapper | `responseWrapper`              | Export packaging                   |
+| Access Log       | `createAccessLogMiddleware()`  | Access Log                         |
+| Error Handler    | `createErrorHandler()`         | Error Handling                     |
 
 These middlewares can configure their behavior through `config` (see [Configuration Items](/api/config)), but cannot be registered repeatedly through `app.use()`.
 

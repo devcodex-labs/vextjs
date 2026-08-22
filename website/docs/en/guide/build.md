@@ -372,7 +372,7 @@ Recommended steps for deploying to production using `vext build`:
 
 ```bash
 # 1. Install dependencies
-npmci
+npm ci
 
 # 2. Compile
 npx vext build

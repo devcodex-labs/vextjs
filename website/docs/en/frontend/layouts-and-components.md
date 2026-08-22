@@ -29,12 +29,12 @@ Use layouts for stable page shells: nav, sidebars, account menus, breadcrumbs, a
 
 `options.layout` controls layout behavior.
 
-| Value | Meaning |
-|-------|---------|
+| Value             | Meaning                                  |
+| ----------------- | ---------------------------------------- |
 | `true` or omitted | Use the automatic directory layout chain |
-| `false` | Disable layouts for this render |
-| `string` | Use one named layout |
-| `string[]` | Use explicit layouts from outer to inner |
+| `false`           | Disable layouts for this render          |
+| `string`          | Use one named layout                     |
+| `string[]`        | Use explicit layouts from outer to inner |
 
 ```ts
 res.render("admin/dashboard", props, {
@@ -49,12 +49,16 @@ Use explicit layout selection when two routes in different directories share the
 Pass layout data through the third render argument.
 
 ```ts
-res.render("admin/dashboard", { stats }, {
-  layoutData: {
-    root: { user },
-    admin: { menu, permissions },
+res.render(
+  "admin/dashboard",
+  { stats },
+  {
+    layoutData: {
+      root: { user },
+      admin: { menu, permissions },
+    },
   },
-});
+);
 ```
 
 Keep layout data small and serializable. Prefer IDs, labels, URLs, and permission flags over raw ORM records.
@@ -71,7 +75,11 @@ export function AdminShell(props: {
 }) {
   return (
     <div className="admin-shell">
-      <aside>{props.menu.map((item) => <a href={item.href}>{item.label}</a>)}</aside>
+      <aside>
+        {props.menu.map((item) => (
+          <a href={item.href}>{item.label}</a>
+        ))}
+      </aside>
       <main>{props.children}</main>
     </div>
   );
@@ -110,4 +118,3 @@ The first render runs on the server and then hydrates in the browser. Avoid firs
 - Move browser-only work into `useEffect`.
 
 This keeps SSR HTML and browser hydration consistent.
-

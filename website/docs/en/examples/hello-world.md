@@ -244,10 +244,12 @@ bootstrap().catch((err) => {
 ### Development mode
 
 ```bash
-pnpmdev
+pnpm dev
 ```
 
-Development mode features:- Automatic hot reloading of file modifications (three-layer strategy: routing/service/configuration smart refresh)
+Development mode features:
+
+- Automatic hot reloading of file modifications (three-layer strategy: routing/service/configuration smart refresh)
 
 - Beautify log output (built-in pretty format)
 - Automatically enable OpenAPI documentation (visit `http://localhost:3000/docs`)

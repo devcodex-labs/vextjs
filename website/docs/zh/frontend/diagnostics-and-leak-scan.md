@@ -53,9 +53,9 @@ Fix: call the service in src/routes/** and pass data with res.render().
 
 ## 修复方式
 
-| 问题 | 修复 |
-|------|------|
-| 页面 import service | 移到 route handler 中调用，并通过 props 传入。 |
-| 组件 import config | 通过 props 或安全生成数据传入公开配置。 |
-| shared util import `node:*` | 拆成 `*.server.ts` 和浏览器安全 util。 |
-| API helper 拿到 HTML | 检查 `Accept` header 和 SPA fallback scope。 |
+| 问题                        | 修复                                           |
+| --------------------------- | ---------------------------------------------- |
+| 页面 import service         | 移到 route handler 中调用，并通过 props 传入。 |
+| 组件 import config          | 通过 props 或安全生成数据传入公开配置。        |
+| shared util import `node:*` | 拆成 `*.server.ts` 和浏览器安全 util。         |
+| API helper 拿到 HTML        | 检查 `Accept` header 和 SPA fallback scope。   |

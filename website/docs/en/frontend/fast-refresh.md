@@ -4,12 +4,12 @@ Fast Refresh is the default feedback path for React page, layout, and component 
 
 ## What It Handles
 
-| Change | Expected behavior |
-|--------|-------------------|
-| Page component edit | React Fast Refresh when the module is refresh-safe |
-| Shared component edit | React Fast Refresh across affected pages |
-| CSS or CSS Module edit | CSS update path when possible |
-| JSCSS style edit | Frontend rebuild plus stylesheet update |
+| Change                 | Expected behavior                                  |
+| ---------------------- | -------------------------------------------------- |
+| Page component edit    | React Fast Refresh when the module is refresh-safe |
+| Shared component edit  | React Fast Refresh across affected pages           |
+| CSS or CSS Module edit | CSS update path when possible                      |
+| JSCSS style edit       | Frontend rebuild plus stylesheet update            |
 
 Vext keeps the backend process running for frontend-only edits.
 

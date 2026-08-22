@@ -23,12 +23,16 @@ export default (app) => {
   app.get("/reports/:id", {}, async (req, res) => {
     const report = await app.services.reports.get(req.params.id);
 
-    res.render("reports/detail", { report }, {
-      head: { title: report.title },
-      layoutData: {
-        section: "reports",
+    res.render(
+      "reports/detail",
+      { report },
+      {
+        head: { title: report.title },
+        layoutData: {
+          section: "reports",
+        },
       },
-    });
+    );
   });
 };
 ```

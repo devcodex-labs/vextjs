@@ -6,8 +6,6 @@ This example shows how to connect [permission-core](https://devcodex-labs.github
 - `permission-core` owns authorization decisions such as `invoke + GET:/api/posts`.
 - A small route helper maps business permissions to `RouteOptions.auth` so each route does not repeat the auth middleware and resource strings.
 
-The verified consumer project is `vext-test`: `src/plugins/permission.ts`, `src/middlewares/permission-core-auth.ts`, `src/routes/auth-context.ts`, and `verify.mjs` cases `#246-#250`.
-
 ## 1. Install
 
 ```bash
@@ -224,7 +222,11 @@ app.delete(
   async (req, res) => {
     const assertPermission = req.auth.assert;
     if (!assertPermission) {
-      req.app.throw(500, "Permission provider is not configured", "AUTH_CONFIG_ERROR");
+      req.app.throw(
+        500,
+        "Permission provider is not configured",
+        "AUTH_CONFIG_ERROR",
+      );
       return;
     }
 
@@ -245,18 +247,9 @@ If permission-core denies the operation, Vext returns `AUTH_FORBIDDEN` through t
 
 ## 7. Verify
 
-The same flow is covered by `vext-test`:
+Verify this integration in your application's test suite after registering the middleware and routes. At minimum, assert:
 
-```bash
-cd ../vext-test
-npm run build
-npm run verify:core
-```
-
-The relevant assertions are:
-
-- `#246` identity and safe request context snapshot
-- `#247` permission-core `can()` allow
-- `#248` permission-core `can()` deny
-- `#249` missing, malformed, and unknown credential errors
-- `#250` `req.auth.assert()` plus OpenAPI `bearerAuth`
+- authentication fills the expected identity and a safe request context
+- permission-core `can()` allows an authorized operation and denies an unauthorized one
+- missing, malformed, and unknown credentials return the documented errors
+- `req.auth.assert()` returns `AUTH_FORBIDDEN` for a denied operation and the OpenAPI document declares `bearerAuth`

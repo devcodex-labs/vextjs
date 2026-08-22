@@ -4,12 +4,12 @@ Fast Refresh 是 `vext dev` 中 React 页面、layout 和组件修改的默认�
 
 ## 处理什么
 
-| 变更 | 期望行为 |
-|------|----------|
-| 页面组件修改 | 模块满足条件时 React Fast Refresh |
-| 公共组件修改 | 影响到的页面尽量 Fast Refresh |
-| CSS 或 CSS Module 修改 | 尽量走 CSS update |
-| JSCSS 修改 | 前端重建并更新样式 |
+| 变更                   | 期望行为                          |
+| ---------------------- | --------------------------------- |
+| 页面组件修改           | 模块满足条件时 React Fast Refresh |
+| 公共组件修改           | 影响到的页面尽量 Fast Refresh     |
+| CSS 或 CSS Module 修改 | 尽量走 CSS update                 |
+| JSCSS 修改             | 前端重建并更新样式                |
 
 前端文件修改时，Vext 会保持后端进程继续运行。
 

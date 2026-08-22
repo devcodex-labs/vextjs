@@ -6,8 +6,6 @@
 - `permission-core` 负责 `invoke + GET:/api/posts` 这类授权判断。
 - 一个轻量 route helper 负责把业务权限映射为 `RouteOptions.auth`，避免每个路由重复写认证中间件和资源字符串。
 
-已验证的外部消费者项目是 `vext-test`：对应 `src/plugins/permission.ts`、`src/middlewares/permission-core-auth.ts`、`src/routes/auth-context.ts`，以及 `verify.mjs` 的 `#246-#250`。
-
 ## 1. 安装
 
 ```bash
@@ -224,7 +222,11 @@ app.delete(
   async (req, res) => {
     const assertPermission = req.auth.assert;
     if (!assertPermission) {
-      req.app.throw(500, "Permission provider is not configured", "AUTH_CONFIG_ERROR");
+      req.app.throw(
+        500,
+        "Permission provider is not configured",
+        "AUTH_CONFIG_ERROR",
+      );
       return;
     }
 
@@ -245,18 +247,9 @@ app.delete(
 
 ## 7. 验证
 
-同一接入链路已经由 `vext-test` 覆盖：
+注册 middleware 和 routes 后，请在应用自己的测试套件中验证这一接入。至少应断言：
 
-```bash
-cd ../vext-test
-npm run build
-npm run verify:core
-```
-
-相关断言如下：
-
-- `#246` 身份填充与安全 request context 快照
-- `#247` permission-core `can()` 放行
-- `#248` permission-core `can()` 拒绝
-- `#249` 缺失、malformed、unknown token 错误码
-- `#250` `req.auth.assert()` 与 OpenAPI `bearerAuth`
+- 认证会填充预期的 identity 和安全的 request context
+- permission-core `can()` 会放行已授权操作并拒绝未授权操作
+- 缺失、malformed、unknown credential 会返回文档说明的错误
+- 被拒绝的操作中 `req.auth.assert()` 返回 `AUTH_FORBIDDEN`，且 OpenAPI document 声明 `bearerAuth`

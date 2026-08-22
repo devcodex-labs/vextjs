@@ -63,15 +63,15 @@ public/
 
 服务端和浏览器文件必须分开。
 
-| 位置 | 运行位置 | 用途 |
-|------|----------|------|
-| `src/routes/**` | 服务端 | URL 定义、`res.render()`、API 响应、鉴权、service 调用 |
-| `src/services/**` | 服务端 | 数据库访问、上游调用、业务逻辑 |
-| `src/frontend/pages/**` | 服务端 SSR + 浏览器 hydration | React 页面、layout、错误页、document 模板 |
-| `src/frontend/components/**` | 服务端 SSR + 浏览器 hydration | 可复用 UI 组件 |
-| `src/frontend/styles/**` | 构建/浏览器 | CSS、CSS Modules、JSCSS |
-| `src/frontend/assets/**` | 构建/浏览器 | import 型图片、字体、媒体文件 |
-| `src/frontend/locales/**` | 服务端 SSR + 浏览器 hydration | 前端页面文案 |
+| 位置                         | 运行位置                      | 用途                                                   |
+| ---------------------------- | ----------------------------- | ------------------------------------------------------ |
+| `src/routes/**`              | 服务端                        | URL 定义、`res.render()`、API 响应、鉴权、service 调用 |
+| `src/services/**`            | 服务端                        | 数据库访问、上游调用、业务逻辑                         |
+| `src/frontend/pages/**`      | 服务端 SSR + 浏览器 hydration | React 页面、layout、错误页、document 模板              |
+| `src/frontend/components/**` | 服务端 SSR + 浏览器 hydration | 可复用 UI 组件                                         |
+| `src/frontend/styles/**`     | 构建/浏览器                   | CSS、CSS Modules、JSCSS                                |
+| `src/frontend/assets/**`     | 构建/浏览器                   | import 型图片、字体、媒体文件                          |
+| `src/frontend/locales/**`    | 服务端 SSR + 浏览器 hydration | 前端页面文案                                           |
 
 不要从 `src/frontend/**` import `src/services/**`、数据库客户端、密钥、`node:*` 或 route handler。构建期 leakScan 会阻断这类导入，因为服务端代码不能进入浏览器 bundle。
 
@@ -128,13 +128,13 @@ dist/
 
 前端 resolver 提供默认 alias，避免大量相对路径。
 
-| Alias | 指向 |
-|-------|------|
-| `@frontend` | `src/frontend` |
-| `@pages` | `src/frontend/pages` |
+| Alias         | 指向                      |
+| ------------- | ------------------------- |
+| `@frontend`   | `src/frontend`            |
+| `@pages`      | `src/frontend/pages`      |
 | `@components` | `src/frontend/components` |
-| `@styles` | `src/frontend/styles` |
-| `@assets` | `src/frontend/assets` |
+| `@styles`     | `src/frontend/styles`     |
+| `@assets`     | `src/frontend/assets`     |
 
 ```tsx
 import { UserMenu } from "@components/UserMenu";

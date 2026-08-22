@@ -19,12 +19,12 @@ This keeps service access on the server and keeps the browser graph limited to f
 
 Page ids are relative to `src/frontend/pages/**`:
 
-| File | Page id |
-|------|---------|
-| `src/frontend/pages/index.tsx` | `index` |
-| `src/frontend/pages/about.tsx` | `about` |
+| File                                     | Page id           |
+| ---------------------------------------- | ----------------- |
+| `src/frontend/pages/index.tsx`           | `index`           |
+| `src/frontend/pages/about.tsx`           | `about`           |
 | `src/frontend/pages/admin/dashboard.tsx` | `admin/dashboard` |
-| `src/frontend/pages/error/default.tsx` | `error/default` |
+| `src/frontend/pages/error/default.tsx`   | `error/default`   |
 
 ## Rendering From a Route
 
@@ -32,21 +32,25 @@ Page ids are relative to `src/frontend/pages/**`:
 export default (app) => {
   app.get("/users/:id", {}, async (req, res) => {
     const user = await app.services.users.get(req.params.id);
-    res.render("users/detail", { user }, {
-      head: {
-        title: `${user.name} - Users`,
+    res.render(
+      "users/detail",
+      { user },
+      {
+        head: {
+          title: `${user.name} - Users`,
+        },
       },
-    });
+    );
   });
 };
 ```
 
 `res.render(page, props?, options?)` means:
 
-| Argument | Meaning |
-|----------|---------|
-| `page` | Page id under `src/frontend/pages/**`, without extension. |
-| `props` | JSON-safe data prepared on the server and reused by hydration. |
+| Argument  | Meaning                                                                 |
+| --------- | ----------------------------------------------------------------------- |
+| `page`    | Page id under `src/frontend/pages/**`, without extension.               |
+| `props`   | JSON-safe data prepared on the server and reused by hydration.          |
 | `options` | Status, head, layout data, locale/messages, nonce, and render behavior. |
 
 ## Route Files Stay Server-only

@@ -33,12 +33,16 @@ app.get("/reports", { cache: { ttl: 60_000 } }, async (req, res) => {
 如果多个 layout 需要服务端数据，应在 route handler 或 service 中集中准备，再通过 `layoutData` 传入。
 
 ```ts
-res.render("admin/users", { users }, {
-  layoutData: {
-    shell: await app.services.admin.shell(req.user.id),
-    breadcrumbs: ["Admin", "Users"],
+res.render(
+  "admin/users",
+  { users },
+  {
+    layoutData: {
+      shell: await app.services.admin.shell(req.user.id),
+      breadcrumbs: ["Admin", "Users"],
+    },
   },
-});
+);
 ```
 
 这可以避免 layout 组件暗中调用 services，也让 cache key 留在 route 边界。

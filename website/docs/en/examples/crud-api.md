@@ -861,7 +861,7 @@ describe("User CRUD", () => {
 ### Development mode
 
 ```bash
-pnpmdev
+pnpm dev
 ```
 
 After startup you can:

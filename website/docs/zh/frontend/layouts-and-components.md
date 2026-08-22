@@ -29,12 +29,12 @@ layout 适合稳定页面外壳：导航、侧边栏、账号菜单、面包屑�
 
 `options.layout` 控制 layout 行为。
 
-| 值 | 含义 |
-|----|------|
-| `true` 或省略 | 使用自动目录 layout chain |
-| `false` | 当前 render 禁用 layout |
-| `string` | 使用一个指定 layout |
-| `string[]` | 按 outer 到 inner 的顺序使用指定 layouts |
+| 值            | 含义                                     |
+| ------------- | ---------------------------------------- |
+| `true` 或省略 | 使用自动目录 layout chain                |
+| `false`       | 当前 render 禁用 layout                  |
+| `string`      | 使用一个指定 layout                      |
+| `string[]`    | 按 outer 到 inner 的顺序使用指定 layouts |
 
 ```ts
 res.render("admin/dashboard", props, {
@@ -49,12 +49,16 @@ res.render("admin/dashboard", props, {
 通过第三个 render 参数传递 layout 数据。
 
 ```ts
-res.render("admin/dashboard", { stats }, {
-  layoutData: {
-    root: { user },
-    admin: { menu, permissions },
+res.render(
+  "admin/dashboard",
+  { stats },
+  {
+    layoutData: {
+      root: { user },
+      admin: { menu, permissions },
+    },
   },
-});
+);
 ```
 
 layout data 应保持小而可序列化。优先传 ID、标签、URL、权限布尔值，不要把原始 ORM record 直接塞进去。
@@ -71,7 +75,11 @@ export function AdminShell(props: {
 }) {
   return (
     <div className="admin-shell">
-      <aside>{props.menu.map((item) => <a href={item.href}>{item.label}</a>)}</aside>
+      <aside>
+        {props.menu.map((item) => (
+          <a href={item.href}>{item.label}</a>
+        ))}
+      </aside>
       <main>{props.children}</main>
     </div>
   );
@@ -110,4 +118,3 @@ export function StatusBadge(props: { status: "open" | "closed" }) {
 - 浏览器专属逻辑放到 `useEffect`。
 
 这样可以保持 SSR HTML 与浏览器 hydration 一致。
-

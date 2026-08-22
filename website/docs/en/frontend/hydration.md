@@ -1,11 +1,14 @@
 # Hydration
 
-Hydration attaches the browser React tree to the HTML produced by SSR.
+## Summary
 
-Hydration is the default for interactive pages. It can be disabled for one SSR
-route without disabling the frontend application.
+Hydration is enabled by default. `hydration: "none"` still returns complete SSR HTML, CSS, and SEO; it does not return a blank page or turn SSR off.
 
-## What Is Reused
+It only prevents the Vext/React browser runtime from loading. React events, Vext Form, Vext fetcher, and framework-managed client navigation are therefore unavailable, while native HTML behavior still works as the browser normally provides it.
+
+## What default hydration does
+
+Hydration attaches the browser React tree to the HTML produced by SSR. In the default mode, Vext loads its browser entry and attaches the browser React tree to the already visible page, enabling Vext interactions and client navigation.
 
 Vext writes the render payload into the document so the client entry can hydrate without repeating first-screen service calls:
 
@@ -16,36 +19,44 @@ Vext writes the render payload into the document so the client entry can hydrate
 - head metadata used for the initial route
 - build id and route assets
 
-## Avoid Mismatch
+## Default mode compared with `hydration: "none"`
 
-Keep SSR and browser output deterministic:
+| Item                   | Default hydration                                                          | `hydration: "none"`                                                               |
+| ---------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Initial page load      | The SSR document displays, then the browser runtime loads and hydrates it. | The complete SSR document displays normally; no Vext/React browser runtime loads. |
+| SSR HTML               | Returned.                                                                  | The complete page HTML is still returned.                                         |
+| CSS                    | Returned and loaded.                                                       | Still returned and loaded.                                                        |
+| SEO                    | SSR metadata is available.                                                 | SSR metadata remains available.                                                   |
+| React events           | Available after hydration.                                                 | Unavailable; handlers such as `onClick` do not run.                               |
+| Vext Form              | Available.                                                                 | Unavailable.                                                                      |
+| Vext fetcher           | Available.                                                                 | Unavailable.                                                                      |
+| Vext client navigation | Available.                                                                 | Unavailable; navigation requires a full document navigation.                      |
+| Normal links           | Available.                                                                 | Still available; the browser performs a normal document navigation.               |
+| Normal HTML forms      | Available.                                                                 | Still available; the browser performs a normal form submission.                   |
+| Vext browser entry     | Emitted and loaded.                                                        | Not emitted.                                                                      |
+| `__VEXT_DATA__`        | Emitted for the client entry to reuse.                                     | Not emitted.                                                                      |
+| route JS preload       | Route JS preload is emitted.                                               | Route JS preload is not emitted.                                                  |
 
-| Risk                                | Better approach                                         |
-| ----------------------------------- | ------------------------------------------------------- |
-| `Date.now()` in render output       | Pass a timestamp from the route handler.                |
-| random ids in component render      | Generate stable ids before render or in effects.        |
-| browser-only APIs during SSR        | Guard with effects or client-only branches.             |
-| locale objects with different shape | Keep every locale file aligned with the default locale. |
+## Good and bad fits
 
-## Hydration Markers
+### Good fits
 
-Vext exposes low-noise runtime markers for tests and diagnostics:
+- Article detail pages.
+- Documentation pages.
+- Marketing pages.
+- SEO content pages.
+- Pages that only need server output.
+- Pages whose interaction is handled by independently loaded scripts that you own.
 
-```text
-data-vext-hydration="hydrating"
-data-vext-hydration="done"
-performance.measure("vext:hydration")
-```
+### Not good fits
 
-The browser does not need to print performance logs in production. Validation scripts read DOM and Performance API signals.
+- Admin pages.
+- Rich-text editors.
+- React-interactive pages for search, filtering, or pagination.
+- Pages that use Vext Form or fetcher.
+- Pages that depend on Vext client navigation.
 
-## Route Assets
-
-The render manifest records initial JS/CSS for each route. SSR can inject route-specific `modulepreload` entries so hydration does not discover the page chunk late.
-
-If production `vext start` sees an outdated manifest without route assets, it fails fast and asks for a rebuild.
-
-## Opt out for One SSR Page
+## Opt out for one SSR page
 
 ```ts
 app.get(
@@ -58,31 +69,89 @@ app.get(
 );
 ```
 
-Because hydration policy is projected into the build manifest, a
-three-argument route must keep its route-options argument and
-`RouteOptions.frontend` value as an `inline object literal`. Keep dynamic page
-metadata in `res.render(..., { seo })`.
+This route behaves as follows:
 
-This route outputs server-rendered HTML, CSS, SEO, and user-authored document
-scripts. It does not output `__VEXT_DATA__`, the Vext browser entry, React/Vext
-external runtime imports, or route JS preloads. Vext also marks the document
-with `data-vext-hydration="none"` for diagnostics.
+- Its first visit still returns complete SSR HTML.
+- The page displays normally and loads CSS.
+- Normal `<a>` links and normal HTML `<form>` elements still work.
+- React event handlers such as `onClick` do not run.
+- Vext Form, fetcher, and framework-managed same-document navigation do not run.
+- Moving from a `none` page to a hydrated page requires a full document navigation; hydration resumes after the destination page loads.
 
-Because no Vext browser runtime exists on this page, framework-managed same-
-document navigation, forms, fetchers, and React event handlers are not active.
-Use normal links/forms or user-authored standalone scripts. A later full
-document navigation to a hydrated route restores normal hydration there.
+Independently authored scripts that you put in the document are also retained; whether they work depends on the script itself, not on the Vext runtime.
 
-This policy applies to the whole page. Vext does not currently hydrate only a
-search box or comment area, and does not claim Selective/Partial Hydration,
-Islands, React Server Components, or Partial Prerendering (PPR).
+## Capabilities disabled by `none`
+
+A `hydration: "none"` page has no Vext/React browser runtime, so it cannot rely on behavior that the framework takes over after the page loads:
+
+- React event handlers and interactions that depend on React state do not run.
+- Vext Form does not take over or enhance forms.
+- Vext fetcher does not make framework-managed client requests.
+- Vext does not manage same-document client navigation.
+
+Keep the default hydration when the page needs those capabilities, or use standalone scripts that you load and maintain independently of the Vext runtime.
+
+## Whole-document scope and current limitations
+
+`hydration: "none"` applies to the entire document. It cannot disable hydration for only one React component. Vext cannot currently hydrate only a search box, comment area, or another local region.
+
+The current public surface also does not claim Selective/Partial Hydration, Islands, React Server Components, or Partial Prerendering (PPR). Do not treat this route-level switch as a partial-hydration mechanism.
+
+## Why there is no global configuration
+
+The public API currently has no global `hydration: "none"` setting. One application can contain both interactive pages and pure SSR pages; a global opt-out would remove React/Vext client capabilities from every page.
+
+If an entire site needs pure SSR, declare `hydration: "none"` on each route, or generate those route options consistently in your application's own route-registration layer. The latter is an application-level wrapper, not a Vext global configuration API.
+
+## Why route options must be an `inline object literal`
+
+Vext reads each route's hydration policy at build time and uses it to generate the route manifest and resource inventory. For that reason, the route-options argument and `RouteOptions.frontend` in a three-argument route must be written directly in the route declaration:
+
+```ts
+app.get("/article/:slug", { frontend: { hydration: "none" } }, handler);
+```
+
+The build index does not execute imported variables or helper return values, so extracting shared route options prevents the build-time manifest from reliably reading the policy. Keep request-dependent page metadata in `res.render(..., { seo })`.
+
+## Avoid Mismatch
+
+Keep SSR and browser output deterministic:
+
+| Risk                                | Better approach                                         |
+| ----------------------------------- | ------------------------------------------------------- |
+| `Date.now()` in render output       | Pass a timestamp from the route handler.                |
+| random ids in component render      | Generate stable ids before render or in effects.        |
+| browser-only APIs during SSR        | Guard with effects or client-only branches.             |
+| locale objects with different shape | Keep every locale file aligned with the default locale. |
+
+## Hydration markers
+
+Vext exposes low-noise runtime markers for tests and diagnostics:
+
+```text
+data-vext-hydration="hydrating"
+data-vext-hydration="done"
+performance.measure("vext:hydration")
+```
+
+A `hydration: "none"` document is marked with `data-vext-hydration="none"` so diagnostics can identify that the browser runtime is intentionally absent. The browser does not need to print performance logs in production; validation scripts read DOM and Performance API signals.
+
+## Route assets
+
+The render manifest records initial JS/CSS for each route. In the default mode, SSR can inject route-specific `modulepreload` entries so hydration does not discover the page chunk late. `hydration: "none"` does not emit those route JS preloads, but it does not remove CSS.
+
+If production `vext start` sees an outdated manifest without route assets, it fails fast and asks for a rebuild.
 
 ## Validation
 
-Use the consumer validation route:
+After editing documentation in this repository, run its documentation contract:
 
 ```bash
-npm --prefix E:\Worker\vextjs-test run verify:frontend-performance
+npm run verify:docs-contract
 ```
 
-It checks real browser navigation, frontend resource status, route preload, hydration marker, and `size-report.json`.
+This checks the repository documentation contract; it is not a browser-runtime test. To verify application behavior, use the application's own build, start, and browser-test flow and follow [Hydration validation](./hydration-validation).
+
+For a default-hydration route, expect the browser entry, route JS preload, `data-vext-hydration="done"`, and the `vext:hydration` Performance entry. For a `none` route, expect SSR HTML/CSS/SEO and `data-vext-hydration="none"`, but not the Vext browser entry, `__VEXT_DATA__`, route JS preload, the `done` marker, or the hydration Performance entry.
+
+<!-- Maintainer-only contract note: E:\Worker\vextjs-test is a machine-specific local companion project, not a public Vext command or path for readers to copy. -->

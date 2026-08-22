@@ -20,7 +20,7 @@ app.throw(400, "balance.insufficient", { balance: 50 }, 20001);
 app.throw(
   502,
   "payment.failed",
-  {orderId},
+  { orderId },
   {
     provider: "stripe",
     providerCode: "card_declined",

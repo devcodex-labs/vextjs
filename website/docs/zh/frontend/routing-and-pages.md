@@ -19,12 +19,12 @@ request URL
 
 page id 相对于 `src/frontend/pages/**`：
 
-| 文件 | Page id |
-|------|---------|
-| `src/frontend/pages/index.tsx` | `index` |
-| `src/frontend/pages/about.tsx` | `about` |
+| 文件                                     | Page id           |
+| ---------------------------------------- | ----------------- |
+| `src/frontend/pages/index.tsx`           | `index`           |
+| `src/frontend/pages/about.tsx`           | `about`           |
 | `src/frontend/pages/admin/dashboard.tsx` | `admin/dashboard` |
-| `src/frontend/pages/error/default.tsx` | `error/default` |
+| `src/frontend/pages/error/default.tsx`   | `error/default`   |
 
 ## 在 Route 中渲染
 
@@ -32,21 +32,25 @@ page id 相对于 `src/frontend/pages/**`：
 export default (app) => {
   app.get("/users/:id", {}, async (req, res) => {
     const user = await app.services.users.get(req.params.id);
-    res.render("users/detail", { user }, {
-      head: {
-        title: `${user.name} - Users`,
+    res.render(
+      "users/detail",
+      { user },
+      {
+        head: {
+          title: `${user.name} - Users`,
+        },
       },
-    });
+    );
   });
 };
 ```
 
 `res.render(page, props?, options?)` 三个参数含义：
 
-| 参数 | 含义 |
-|------|------|
-| `page` | `src/frontend/pages/**` 下的 page id，不含扩展名。 |
-| `props` | 服务端准备的 JSON-safe 数据，会在 hydration 中复用。 |
+| 参数      | 含义                                                          |
+| --------- | ------------------------------------------------------------- |
+| `page`    | `src/frontend/pages/**` 下的 page id，不含扩展名。            |
+| `props`   | 服务端准备的 JSON-safe 数据，会在 hydration 中复用。          |
 | `options` | status、head、layoutData、locale/messages、nonce 与渲染行为。 |
 
 ## Route 文件保持服务端属性

@@ -26,11 +26,11 @@ export default {
 };
 ```
 
-| Value | Behavior |
-|-------|----------|
+| Value      | Behavior                                                    |
+| ---------- | ----------------------------------------------------------- |
 | `"prompt"` | Browser shows a dev prompt after successful backend reload. |
-| `"auto"` | Browser reloads the current page automatically. |
-| `"off"` | Terminal logs the change; browser is not refreshed. |
+| `"auto"`   | Browser reloads the current page automatically.             |
+| `"off"`    | Terminal logs the change; browser is not refreshed.         |
 
 ## Recommended Default
 

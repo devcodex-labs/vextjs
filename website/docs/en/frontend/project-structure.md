@@ -63,15 +63,15 @@ Use the root `public/**` directory for URL-addressed files. Use `src/frontend/as
 
 Server and browser files are intentionally separate.
 
-| Location | Runs in | Use for |
-|----------|---------|---------|
-| `src/routes/**` | server | URL definitions, `res.render()`, API responses, auth checks, service calls |
-| `src/services/**` | server | database access, upstream calls, business logic |
-| `src/frontend/pages/**` | server SSR + browser hydration | React pages, layouts, error pages, document template |
-| `src/frontend/components/**` | server SSR + browser hydration | reusable UI components |
-| `src/frontend/styles/**` | build/browser | CSS, CSS Modules, JSCSS |
-| `src/frontend/assets/**` | build/browser | imported images, fonts, and media |
-| `src/frontend/locales/**` | server SSR + browser hydration | frontend page copy |
+| Location                     | Runs in                        | Use for                                                                    |
+| ---------------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `src/routes/**`              | server                         | URL definitions, `res.render()`, API responses, auth checks, service calls |
+| `src/services/**`            | server                         | database access, upstream calls, business logic                            |
+| `src/frontend/pages/**`      | server SSR + browser hydration | React pages, layouts, error pages, document template                       |
+| `src/frontend/components/**` | server SSR + browser hydration | reusable UI components                                                     |
+| `src/frontend/styles/**`     | build/browser                  | CSS, CSS Modules, JSCSS                                                    |
+| `src/frontend/assets/**`     | build/browser                  | imported images, fonts, and media                                          |
+| `src/frontend/locales/**`    | server SSR + browser hydration | frontend page copy                                                         |
 
 Do not import `src/services/**`, database clients, secrets, `node:*`, or route handlers from `src/frontend/**`. The build leak scanner blocks this because server code must never enter the browser bundle.
 
@@ -128,13 +128,13 @@ You normally edit `src/frontend/**`, not `.vext/generated/frontend/**`. Developm
 
 The frontend resolver provides stable aliases so imports do not depend on deep relative paths.
 
-| Alias | Points to |
-|-------|-----------|
-| `@frontend` | `src/frontend` |
-| `@pages` | `src/frontend/pages` |
+| Alias         | Points to                 |
+| ------------- | ------------------------- |
+| `@frontend`   | `src/frontend`            |
+| `@pages`      | `src/frontend/pages`      |
 | `@components` | `src/frontend/components` |
-| `@styles` | `src/frontend/styles` |
-| `@assets` | `src/frontend/assets` |
+| `@styles`     | `src/frontend/styles`     |
+| `@assets`     | `src/frontend/assets`     |
 
 ```tsx
 import { UserMenu } from "@components/UserMenu";
