@@ -1,8 +1,7 @@
 # Migrating to vextjs v2
 
 This guide covers application changes when moving from vextjs v1.x to the
-2.0.0 line. The current repository is a 2.0.0 package candidate; publishing is
-a separate release action.
+stable 2.0.0 release.
 
 ## Upgrade checklist
 
@@ -22,8 +21,9 @@ For the published release, the framework upgrade command is:
 npm install vextjs@2.0.0
 ```
 
-When validating this repository before publication, install the one generated
-`.tgz` candidate in the consumer instead of using a workspace/source link.
+When validating a source change before a later publication, install the one
+generated `.tgz` candidate in the consumer instead of using a workspace/source
+link.
 
 ## Breaking changes
 

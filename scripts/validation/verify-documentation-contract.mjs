@@ -16,6 +16,10 @@ const packageVersion = JSON.parse(
 const versionChannels = JSON.parse(
   readFileSync(path.join(root, "website", "version-channels.json"), "utf8"),
 );
+const stableReleaseDocumentation =
+  versionChannels.stable === packageVersion &&
+  versionChannels.next === packageVersion &&
+  versionChannels.channel === "stable";
 const requiredCapabilityIds = [
   "framework-seo",
   "whole-page-no-hydration",
@@ -1060,26 +1064,57 @@ function verifyFrontendSeoAndNoHydrationDocumentationContract() {
     'link: "/zh/frontend/seo-sitemap"',
   ]);
 
-  requireTokens("website/docs/en/guide/quick-start.md", [
-    "Version channel",
-    "`stable`",
-    "`next`",
-  ]);
-  requireTokens("website/docs/en/guide/cli.md", [
-    "Version channel",
-    "`stable`",
-    "`next`",
-  ]);
-  requireTokens("website/docs/zh/guide/quick-start.md", [
-    "版本通道",
-    "`stable`",
-    "`next`",
-  ]);
-  requireTokens("website/docs/zh/guide/cli.md", [
-    "版本通道",
-    "`stable`",
-    "`next`",
-  ]);
+  if (stableReleaseDocumentation) {
+    requireTokens("website/docs/en/guide/quick-start.md", [
+      "Stable release",
+      `stable \`v${packageVersion}\` release`,
+    ]);
+    requireTokens("website/docs/en/guide/cli.md", [
+      "Stable release",
+      `stable \`v${packageVersion}\` release`,
+      `vextjs v${packageVersion}`,
+    ]);
+    requireTokens("website/docs/zh/guide/quick-start.md", [
+      "稳定版本",
+      `稳定发布的 \`v${packageVersion}\``,
+    ]);
+    requireTokens("website/docs/zh/guide/cli.md", [
+      "稳定版本",
+      `稳定发布的 \`v${packageVersion}\``,
+      `vextjs v${packageVersion}`,
+    ]);
+    for (const locale of ["en", "zh"]) {
+      for (const page of ["quick-start.md", "cli.md"]) {
+        forbidTokens(`website/docs/${locale}/guide/${page}`, [
+          "currently previews",
+          "当前预览",
+          "until 2.0.0 is published",
+          "2.0.0 正式发布前",
+        ]);
+      }
+    }
+  } else {
+    requireTokens("website/docs/en/guide/quick-start.md", [
+      "Version channel",
+      "`stable`",
+      "`next`",
+    ]);
+    requireTokens("website/docs/en/guide/cli.md", [
+      "Version channel",
+      "`stable`",
+      "`next`",
+    ]);
+    requireTokens("website/docs/zh/guide/quick-start.md", [
+      "版本通道",
+      "`stable`",
+      "`next`",
+    ]);
+    requireTokens("website/docs/zh/guide/cli.md", [
+      "版本通道",
+      "`stable`",
+      "`next`",
+    ]);
+  }
 }
 
 function verifyExecutableExampleDocumentationContract() {
@@ -1228,23 +1263,15 @@ function verifyV2MigrationAndDatabaseDocumentationContract() {
     "Existing project directories are not moved",
     "Historical: migrating to vextjs v1",
   ]);
-  requireTokens("CHANGELOG.md", [
-    "2.0.0 candidate",
-    "detailed v2.0.0 candidate notes",
-    "raw `app.db` replaces `app.monsqlize`",
-    "does not claim that",
-  ]);
-  requireTokens("changelogs/v2.0.0.md", [
+  const changelogTokens = [
     "Documentation, configuration, and scaffold corrections",
     "VextConfigOverride",
     "active `local` and `bootstrap`",
     "VextJS parses `.env` files",
     "AI-first full-stack Node.js positioning",
     "built-in LLM, Agent, RAG system, or inference runtime",
-    "They do not create or imply a separately released `2.0.1`",
-  ]);
-  requireTokens("README.md", [
-    "## 2.0.0 candidate highlights",
+  ];
+  const readmeTokens = [
     "Framework-level SEO",
     'hydration: "none"',
     "One database surface",
@@ -1252,7 +1279,45 @@ function verifyV2MigrationAndDatabaseDocumentationContract() {
     "selective/partial hydration",
     "examples/crud-api",
     "src/types/generated",
-  ]);
+  ];
+  if (stableReleaseDocumentation) {
+    requireTokens("MIGRATION.md", ["stable 2.0.0 release"]);
+    requireTokens("CHANGELOG.md", [
+      "## [2.0.0] -",
+      "detailed v2.0.0 release notes",
+      "raw `app.db` replaces `app.monsqlize`",
+      "release qualification",
+    ]);
+    requireTokens("changelogs/v2.0.0.md", [
+      ...changelogTokens,
+      "**Type**: Major release",
+      "## Release qualification",
+    ]);
+    requireTokens("README.md", ["## 2.0.0 highlights", ...readmeTokens]);
+    forbidTokens("CHANGELOG.md", [
+      "2.0.0 candidate",
+      "does not claim that `2.0.0` has been published",
+    ]);
+    forbidTokens("changelogs/v2.0.0.md", [
+      "Unpublished major-version candidate",
+      "part of the unpublished `2.0.0`",
+    ]);
+  } else {
+    requireTokens("CHANGELOG.md", [
+      "2.0.0 candidate",
+      "detailed v2.0.0 candidate notes",
+      "raw `app.db` replaces `app.monsqlize`",
+      "does not claim that",
+    ]);
+    requireTokens("changelogs/v2.0.0.md", [
+      ...changelogTokens,
+      "They do not create or imply a separately released `2.0.1`",
+    ]);
+    requireTokens("README.md", [
+      "## 2.0.0 candidate highlights",
+      ...readmeTokens,
+    ]);
+  }
 }
 
 function verifyFrontendNavigationDocumentationContract() {
@@ -1541,7 +1606,9 @@ function verifyReadmePublicEntryContract() {
     "React Fast Refresh",
     "Production lifecycle",
     "not an Edge runtime adapter",
-    "## 2.0.0 candidate highlights",
+    stableReleaseDocumentation
+      ? "## 2.0.0 highlights"
+      : "## 2.0.0 candidate highlights",
     "Framework-level SEO",
     'hydration: "none"',
     "One database surface",

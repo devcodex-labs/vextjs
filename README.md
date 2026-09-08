@@ -59,7 +59,7 @@ The package is `vextjs`; its installed CLI binary is `vext`. Use `npx vextjs cre
 | Authentication, sessions, cache, and errors multiply | One request lifecycle                                         | JSON, HTML, and page navigation cross the same policies |
 | Tooling becomes a project of its own                 | CLI, esbuild frontend delivery, testing, and production start | A shorter path from scaffold to deployable Node service |
 
-## 2.0.0 candidate highlights
+## 2.0.0 highlights
 
 - **Framework-level SEO** — configure metadata, canonical URLs, robots, and
   build/runtime sitemaps through `frontend.seo`; route/render metadata can vary

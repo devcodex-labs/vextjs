@@ -1,7 +1,7 @@
 # Quick start
 
-:::warning Version channel
-This site follows `main` and currently previews `v2.0.0` (`next`). The latest published npm release is `v1.0.2` (`stable`), so the install commands and dependency example below intentionally use the stable version until 2.0.0 is published.
+:::tip Stable release
+This site documents the stable `v2.0.0` release. The install commands and dependency example below use the same published major version.
 :::
 
 ## Method 1: Use scaffolding (recommended)
@@ -56,7 +56,7 @@ npm install vextjs
     "build": "vext build"
   },
   "dependencies": {
-    "vextjs": "^1.0.2"
+    "vextjs": "^2.0.0"
   }
 }
 ```
