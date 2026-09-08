@@ -79,6 +79,7 @@ export default defineRoutes((app) => {
       fileRelativePath: "src/routes/api/v2/index.ts",
       method: "GET",
       prefix: "/api/v2",
+      subPath: "/health",
       path: "/api/v2/health",
       docsSummary: "Health check",
       hasDocsSummary: true,
@@ -1000,10 +1001,21 @@ export default defineRoutes((app) => {
         join(projectRoot, ".vext", "manifest", "routes.json"),
         "utf-8",
       ),
-    ) as { routes: Array<{ path: string; docsKind: string; schema: unknown }> };
+    ) as {
+      routes: Array<{
+        subPath: string;
+        path: string;
+        docsKind: string;
+        schema: unknown;
+      }>;
+    };
     expect(manifest.routes).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ path: "/", docsKind: "frontend-route" }),
+        expect.objectContaining({
+          subPath: "/",
+          path: "/",
+          docsKind: "frontend-route",
+        }),
         expect.objectContaining({
           path: "/api/health",
           docsKind: "backend-api",

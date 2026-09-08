@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, extname, join, relative, sep } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import fg from "fast-glob";
 import {
   isUnsupportedCommonJsRouteFileName,
@@ -11,6 +11,7 @@ import {
   assertCanonicalRouteFactoryBody,
   createCanonicalRouteIdentity,
   normalizeRegisteredRoutePath,
+  projectRouteFilePrefix,
   VEXT_ROUTE_METHODS,
 } from "../../lib/route-contract.js";
 import { detectRouteSourceDocsKind } from "../../lib/openapi/route-docs-kind.js";
@@ -83,6 +84,7 @@ export interface RouteIndexEntry {
   fileRelativePath: string;
   prefix: string;
   method: string;
+  subPath: string;
   path: string;
   docsSummary: string | null;
   hasDocsSummary: boolean;
@@ -169,7 +171,7 @@ function scanRouteEntries(
   routesDir: string,
 ): RouteIndexEntry[] {
   const source = readFileSync(filePath, "utf-8");
-  const prefix = filePathToRoutePrefix(filePath, routesDir);
+  const prefix = projectRouteFilePrefix(filePath, routesDir);
   const fileRelativePath = relative(rootDir, filePath).split(sep).join("/");
   const entries: RouteIndexEntry[] = [];
   const staticContext = collectConstBindings(source);
@@ -260,6 +262,7 @@ function scanRouteEntries(
         fileRelativePath,
         prefix,
         method,
+        subPath: routePath,
         path: normalizedPath,
         docsSummary: docs.docsSummary,
         hasDocsSummary: docs.hasDocsSummary,
@@ -304,7 +307,7 @@ function assertUniqueRouteFilePrefixes(
 ): void {
   const owners = new Map<string, string>();
   for (const filePath of routeFiles) {
-    const prefix = filePathToRoutePrefix(filePath, routesDir);
+    const prefix = projectRouteFilePrefix(filePath, routesDir);
     const identity = prefix.toLocaleLowerCase("en-US");
     const existing = owners.get(identity);
     if (existing) {
@@ -1869,32 +1872,6 @@ function isRegexLiteralStart(chars: readonly string[], index: number): boolean {
     "yield",
     "await",
   ].includes(word);
-}
-
-function filePathToRoutePrefix(filePath: string, routesDir: string): string {
-  let rel = relative(routesDir, filePath);
-  rel = rel.split(sep).join("/");
-
-  const ext = extname(rel);
-  rel = rel.slice(0, -ext.length);
-
-  if (rel === "index") {
-    rel = "";
-  } else if (rel.endsWith("/index")) {
-    rel = rel.slice(0, -"/index".length);
-  }
-
-  rel = rel.replace(/\[([^]]+)]/g, ":$1");
-
-  if (!rel.startsWith("/")) {
-    rel = `/${rel}`;
-  }
-
-  if (rel.length > 1 && rel.endsWith("/")) {
-    rel = rel.slice(0, -1);
-  }
-
-  return rel;
 }
 
 function escapeRegExp(value: string): string {

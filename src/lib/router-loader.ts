@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { join, relative, extname, sep } from "node:path";
+import { join } from "node:path";
 import type { VextApp, RouteOptions, VextCorsConfig } from "../types/app.js";
 import type { VextHandler, VextMiddleware } from "../types/middleware.js";
 import type { RouteDefinition } from "../types/route.js";
@@ -33,6 +33,7 @@ import { compareRoutePriority } from "./route-priority.js";
 import {
   createCanonicalRouteIdentity,
   normalizeRegisteredRoutePath,
+  projectRouteFilePrefix,
 } from "./route-contract.js";
 import { assertCorsCredentialPolicy } from "./cors-config.js";
 
@@ -235,7 +236,7 @@ export async function loadRoutes(
   // ── 3. 按文件路径推导路由前缀 ──────────────────────────────
   const routeEntries: RouteEntry[] = routeFiles.map((filePath) => ({
     filePath,
-    prefix: filePathToPrefix(filePath, routesDir),
+    prefix: projectRouteFilePrefix(filePath, routesDir),
   }));
 
   // ── 4. 检测前缀冲突 ──────────────────────────────────────
@@ -666,67 +667,6 @@ async function scanRouteFiles(dir: string): Promise<string[]> {
   }
 
   return files;
-}
-
-// ── 路径映射 ──────────────────────────────────────────────────
-
-/**
- * 文件路径 → 路由前缀转换
- *
- * 转换规则：
- *   1. 取相对路径（去掉 routesDir 前缀）
- *   2. 统一路径分隔符为 /
- *   3. 去掉扩展名
- *   4. index → 空字符串（使用上级目录路径）
- *   5. [param] 段 → :param（动态段转换）
- *   6. 确保以 / 开头
- *
- * @param filePath  路由文件的绝对路径
- * @param routesDir routes/ 目录的绝对路径
- * @returns 路由前缀（如 /users、/api/users、/users/:id）
- *
- * @example
- * filePathToPrefix('/app/src/routes/users.ts', '/app/src/routes')
- * // → '/users'
- *
- * filePathToPrefix('/app/src/routes/api/index.ts', '/app/src/routes')
- * // → '/api'
- *
- * filePathToPrefix('/app/src/routes/users/[id].ts', '/app/src/routes')
- * // → '/users/:id'
- */
-function filePathToPrefix(filePath: string, routesDir: string): string {
-  // 1. 取相对路径
-  let rel = relative(routesDir, filePath);
-
-  // 2. 统一路径分隔符为 /（Windows 兼容）
-  rel = rel.split(sep).join("/");
-
-  // 3. 去掉扩展名
-  const ext = extname(rel);
-  rel = rel.slice(0, -ext.length);
-
-  // 4. 处理 index（去除末尾的 /index）
-  if (rel === "index") {
-    rel = "";
-  } else if (rel.endsWith("/index")) {
-    rel = rel.slice(0, -"/index".length);
-  }
-
-  // 5. 动态段转换：[param] → :param
-  rel = rel.replace(/\[([^\]]+)\]/g, ":$1");
-
-  // 6. 确保以 / 开头
-  if (!rel.startsWith("/")) {
-    rel = `/${rel}`;
-  }
-
-  // 去除尾部 /（根路径 / 除外）
-  if (rel.length > 1 && rel.endsWith("/")) {
-    rel = rel.slice(0, -1);
-  }
-
-  return rel;
 }
 
 // ── 前缀冲突检测 ────────────────────────────────────────────

@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "allowedDifferences": {
+    "absoluteFilePath": "Static index and Doctor expose a host-specific absolute filePath; parity uses fileRelativePath as the portable source location.",
+    "runtimeOnly": ["handler", "options"],
+    "doctorOnly": [
+      "effectiveOperationId",
+      "operationIdSource",
+      "diagnostic.message",
+      "diagnostic.suggestedValue"
+    ]
+  },
+  "routes": [
+    {
+      "fileRelativePath": "src/routes/index.ts",
+      "prefix": "/",
+      "method": "GET",
+      "subPath": "/",
+      "path": "/",
+      "docs": {
+        "summary": "Root status",
+        "operationId": "getRootStatus",
+        "tags": ["status"],
+        "hidden": false,
+        "kind": "backend-api"
+      },
+      "schema": {
+        "schemaVersion": 1,
+        "request": {
+          "query": {
+            "schemaVersion": 1,
+            "kind": "vext-schema-ir",
+            "source": "validate",
+            "sourcePath": "validate.query",
+            "digest": "7725ec958dff5a30c1e78283949145b36e5584fa3dc834a603110433b9f51295",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "traceId": {
+                  "type": "string",
+                  "description": "Required. String.",
+                  "example": "string"
+                }
+              },
+              "required": ["traceId"]
+            }
+          }
+        },
+        "responses": [
+          {
+            "status": "200",
+            "contentType": "application/json",
+            "schema": {
+              "schemaVersion": 1,
+              "kind": "vext-schema-ir",
+              "source": "responses",
+              "sourcePath": "responses.200.schema",
+              "digest": "4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63",
+              "schema": {
+                "type": "object",
+                "properties": { "ok": { "type": "boolean" } },
+                "required": ["ok"],
+                "additionalProperties": false
+              }
+            }
+          }
+        ]
+      },
+      "freshness": { "mode": "dynamic", "source": "legacy-default" },
+      "diagnosticCodes": ["deprecated-docs-tags"]
+    },
+    {
+      "fileRelativePath": "src/routes/users/[id].ts",
+      "prefix": "/users/:id",
+      "method": "PATCH",
+      "subPath": "/profile/",
+      "path": "/users/:id/profile",
+      "docs": {
+        "summary": "Update one user profile",
+        "operationId": null,
+        "tags": [],
+        "hidden": false,
+        "kind": "backend-api"
+      },
+      "schema": { "schemaVersion": 1, "request": {}, "responses": [] },
+      "freshness": { "mode": "dynamic", "source": "legacy-default" },
+      "diagnosticCodes": ["auto-operation-id"]
+    },
+    {
+      "fileRelativePath": "src/routes/admin/metrics/index.ts",
+      "prefix": "/admin/metrics",
+      "method": "POST",
+      "subPath": "/daily/",
+      "path": "/admin/metrics/daily",
+      "docs": {
+        "summary": null,
+        "operationId": null,
+        "tags": [],
+        "hidden": false,
+        "kind": "backend-api"
+      },
+      "schema": { "schemaVersion": 1, "request": {}, "responses": [] },
+      "freshness": { "mode": "dynamic", "source": "legacy-default" },
+      "diagnosticCodes": ["auto-operation-id", "missing-docs-summary"]
+    }
+  ]
+}

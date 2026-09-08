@@ -1,15 +1,18 @@
 # ─────────────────────────────────────────────────────────────
-# vextjs Release — Tag Push → Full CI → npm Publish
+# vextjs Release — Manual Qualification / Tag Publication
 #
-# 触发条件：推送 v* 格式的 tag（如 v2.0.0, v2.1.0-rc.1）
+# 手动运行：仅 main 分支，完成候选与四格证据验收，不发布。
+# 正式发布：推送 v* 格式的 tag（如 v2.0.0, v2.1.0-rc.1）。
 # stable 版本发布到 npm latest；prerelease 版本发布到 npm next。
 #
 # 流水线结构：
-#   1. CI 验证（typecheck + build + 全量测试）
-#   2. 版本一致性检查
+#   1. 入口与版本一致性检查
+#   2. CI 验证（typecheck + build + 全量测试）
 #   3. 文档站构建验证（rspress build — 构建失败则阻断发版）
-#   4. final non-publishing preflight + npm publish（仅全部门禁通过后执行）
-#   5. GitHub Release 创建（附带 CHANGELOG 摘要）
+#   4. 冻结唯一候选，固定外部消费者提交
+#   5. Windows/Linux × Node 20/22 消费同一候选
+#   6. 汇总并验证外部证据（手动运行到此结束，不代表通过发布审查）
+#   7. 仅 tag push：final preflight → npm publish → GitHub Release
 #
 # 前置条件：
 #   - npm token 配置为 GitHub Secret: NPM_TOKEN
@@ -25,13 +28,14 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
 
-# 同一 tag 只运行一次
+# 同一事件与 ref 串行运行；手动验收与 tag 发布互不替代
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -43,6 +47,7 @@ jobs:
   # ────────────────────────────────────────────────────────────
   ci:
     name: CI Verification
+    needs: version-check
     runs-on: ubuntu-latest
 
     strategy:
@@ -96,22 +101,15 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify tag matches package.json version
-        run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
+      - name: Verify workflow entry and exact release tag
+        run: node scripts/release-entry.mjs
 
-          echo "Tag version:     ${TAG_VERSION}"
-          echo "Package version: ${PKG_VERSION}"
+      - name: Verify development docs version sync (qualification only)
+        if: github.event_name == 'workflow_dispatch'
+        run: bash scripts/check-version-sync.sh
 
-          if [[ "${TAG_VERSION}" != "${PKG_VERSION}" ]]; then
-            echo "❌ Version mismatch! Tag v${TAG_VERSION} does not match package.json v${PKG_VERSION}"
-            exit 1
-          fi
-
-          echo "✅ Versions match: v${PKG_VERSION}"
-
-      - name: Verify docs version sync
+      - name: Verify release docs version sync (tag publication only)
+        if: github.event_name == 'push'
         run: bash scripts/check-version-sync.sh --release
 
   # ────────────────────────────────────────────────────────────
@@ -119,6 +117,7 @@ jobs:
   # ────────────────────────────────────────────────────────────
   docs-build:
     name: Build Docs (Gate)
+    needs: version-check
     runs-on: ubuntu-latest
 
     steps:
@@ -149,12 +148,189 @@ jobs:
           NODE_ENV: production
 
   # ────────────────────────────────────────────────────────────
-  # 4. npm Publish
+  # 4. 冻结唯一候选并固定外部消费者提交
+  # ────────────────────────────────────────────────────────────
+  freeze-candidate:
+    name: Freeze immutable release candidate
+    runs-on: ubuntu-latest
+    needs: [ci, version-check, docs-build]
+
+    outputs:
+      consumer-commit: ${{ steps.consumer.outputs.commit }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve one external consumer commit
+        id: consumer
+        shell: bash
+        run: |
+          CONSUMER_COMMIT="$(git ls-remote https://github.com/devcodex-labs/vextjs-test.git refs/heads/main | awk '{print $1}')"
+          if [[ ! "${CONSUMER_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unable to resolve the vextjs-test main commit" >&2
+            exit 1
+          fi
+          echo "commit=${CONSUMER_COMMIT}" >> "${GITHUB_OUTPUT}"
+
+      - name: Freeze candidate tarball and semantic receipt
+        run: |
+          npm run freeze:release-candidate -- \
+            --output-dir "${RUNNER_TEMP}/vextjs-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --task-id "release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+      - name: Upload immutable candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vextjs-candidate-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────
+  # 5. 同一候选的 Windows/Linux × Node 20/22 外部消费矩阵
+  # ────────────────────────────────────────────────────────────
+  external-consumer:
+    name: External consumer / ${{ matrix.os }} / Node ${{ matrix.node-version }}
+    needs: freeze-candidate
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [20, 22]
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          path: vext-source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout fixed external consumer commit
+        uses: actions/checkout@v7
+        with:
+          repository: devcodex-labs/vextjs-test
+          ref: ${{ needs.freeze-candidate.outputs.consumer-commit }}
+          path: external-consumer
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Download immutable candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vextjs-candidate
+
+      - name: Run exact packed external consumer cell
+        shell: pwsh
+        working-directory: vext-source
+        run: |
+          $version = (node -p "require('./package.json').version").Trim()
+          $artifact = Join-Path '${{ runner.temp }}/vextjs-candidate' "vextjs-$version.tgz"
+          $receipt = Join-Path '${{ runner.temp }}/vextjs-candidate' 'candidate-receipt.json'
+          $platform = if ('${{ runner.os }}' -eq 'Windows') { 'win32' } else { 'linux' }
+          $cell = "${platform}-node${{ matrix.node-version }}"
+          $output = Join-Path '${{ runner.temp }}/external-evidence' $cell
+          node scripts/validation/run-external-consumer-cell.mjs `
+            --artifact $artifact `
+            --candidate-receipt $receipt `
+            --consumer-root '${{ github.workspace }}/external-consumer' `
+            --consumer-repo 'https://github.com/devcodex-labs/vextjs-test.git' `
+            --output-dir $output `
+            --material-prefix "cells/$cell" `
+            --platform $platform `
+            --node-major '${{ matrix.node-version }}' `
+            --run-id "${{ github.run_id }}-${{ github.run_attempt }}-$cell" `
+            --task-id 'release-${{ github.run_id }}-${{ github.run_attempt }}' `
+            --test-cell $cell
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload immutable cell materials
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vextjs-external-cell-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: ${{ runner.temp }}/external-evidence/
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────
+  # 6. 汇总并验证四格证据，形成唯一 qualified release artifact
+  # ────────────────────────────────────────────────────────────
+  aggregate-evidence:
+    name: Aggregate and verify external evidence
+    if: always() && needs.freeze-candidate.result == 'success'
+    needs: [freeze-candidate, external-consumer]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          path: vext-source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Download immutable candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualified-release/candidate
+
+      - name: Download all external consumer cell materials
+        uses: actions/download-artifact@v8
+        with:
+          pattern: vextjs-external-cell-*
+          path: ${{ runner.temp }}/qualified-release/cells
+          merge-multiple: true
+
+      - name: Assemble and verify versioned external evidence
+        working-directory: vext-source
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          node scripts/validation/assemble-external-evidence.mjs \
+            --records-dir "${RUNNER_TEMP}/qualified-release/cells" \
+            --output "${RUNNER_TEMP}/qualified-release/external-evidence.json" \
+            --artifact "${RUNNER_TEMP}/qualified-release/candidate/vextjs-${VERSION}.tgz" \
+            --candidate-receipt "${RUNNER_TEMP}/qualified-release/candidate/candidate-receipt.json"
+
+      - name: Upload qualified release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vextjs-qualified-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualified-release/
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────
+  # 7. npm Publish
   # ────────────────────────────────────────────────────────────
   publish:
     name: Publish to npm
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
-    needs: [ci, version-check, docs-build]
+    needs: aggregate-evidence
 
     permissions:
       contents: write
@@ -173,8 +349,28 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Download qualified release artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: vextjs-qualified-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualified-release
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Bind final preflight to qualified materials
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          CANDIDATE="${RUNNER_TEMP}/qualified-release/candidate/vextjs-${VERSION}.tgz"
+          RECEIPT="${RUNNER_TEMP}/qualified-release/candidate/candidate-receipt.json"
+          EVIDENCE="${RUNNER_TEMP}/qualified-release/external-evidence.json"
+          test -f "${CANDIDATE}"
+          test -f "${RECEIPT}"
+          test -f "${EVIDENCE}"
+          echo "VEXT_PREFLIGHT_VEXT_TARBALL=${CANDIDATE}" >> "${GITHUB_ENV}"
+          echo "VEXT_PREFLIGHT_CANDIDATE_RECEIPT=${RECEIPT}" >> "${GITHUB_ENV}"
+          echo "VEXT_EXTERNAL_EVIDENCE_FILE=${EVIDENCE}" >> "${GITHUB_ENV}"
 
       - name: Resolve release channel
         id: release-channel
@@ -196,10 +392,9 @@ jobs:
           VEXT_GITHUB_PRERELEASE: ${{ steps.release-channel.outputs.github_prerelease }}
 
       - name: Publish to npm
-        # prepublishOnly runs the same final preflight for manual publishes. CI
-        # has just executed it explicitly, so ignore lifecycle scripts here to
-        # avoid running the full suite twice for the identical checkout.
-        run: npm publish --ignore-scripts --provenance --access public --tag "${{ steps.release-channel.outputs.npm_dist_tag }}"
+        run: |
+          test -n "${VEXT_PREFLIGHT_VEXT_TARBALL:-}" && test -f "${VEXT_PREFLIGHT_VEXT_TARBALL}"
+          npm publish "${VEXT_PREFLIGHT_VEXT_TARBALL}" --ignore-scripts --provenance --access public --tag "${{ steps.release-channel.outputs.npm_dist_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

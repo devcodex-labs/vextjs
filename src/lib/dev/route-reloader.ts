@@ -579,7 +579,7 @@ export async function reloadRoutes(
     // .vext/dev/routes/ 读取新编译的 .js。
     //
     // loadRoutes 走与 bootstrap 完全一致的路径：
-    //   scanRouteFiles → filePathToPrefix → loadRouteFile →
+    //   scanRouteFiles → projectRouteFilePrefix → loadRouteFile →
     //   registerRouteDefinition（含中间件解析 + validate 构建）
     //
     // 🆕 BUG-022 修复：如果 openapiConfig 存在，创建 collector

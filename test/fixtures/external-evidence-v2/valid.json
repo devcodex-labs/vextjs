@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 2,
+  "artifactVersion": "2.0.0",
+  "records": [
+    {
+      "accepted": true,
+      "sourceCommit": "1111111111111111111111111111111111111111",
+      "platform": "win32",
+      "nodeVersion": "20.20.2",
+      "typescriptVersion": "5.9.3",
+      "testCell": "win32-node20",
+      "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "consumerRepo": "https://github.com/devcodex-labs/vextjs-test.git",
+      "consumerCommit": "2222222222222222222222222222222222222222",
+      "runId": "fixture-win32-node20",
+      "taskId": "5516fb86-bfa7-52eb-8aca-09e5be0e7d56",
+      "command": {
+        "executable": "npm",
+        "args": ["run", "verify:r0-consumer", "--", "--cell", "win32-node20"]
+      },
+      "cwd": ".",
+      "exitCode": 0,
+      "log": {
+        "path": "evidence/win32-node20.log",
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "result": {
+        "path": "evidence/win32-node20.result.json",
+        "status": "passed",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "inputRevision": {
+        "sourceCommit": "1111111111111111111111111111111111111111",
+        "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "consumerCommit": "2222222222222222222222222222222222222222",
+        "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    },
+    {
+      "accepted": true,
+      "sourceCommit": "1111111111111111111111111111111111111111",
+      "platform": "win32",
+      "nodeVersion": "22.23.2",
+      "typescriptVersion": "5.9.3",
+      "testCell": "win32-node22",
+      "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "consumerRepo": "https://github.com/devcodex-labs/vextjs-test.git",
+      "consumerCommit": "2222222222222222222222222222222222222222",
+      "runId": "fixture-win32-node22",
+      "taskId": "5516fb86-bfa7-52eb-8aca-09e5be0e7d56",
+      "command": {
+        "executable": "npm",
+        "args": ["run", "verify:r0-consumer", "--", "--cell", "win32-node22"]
+      },
+      "cwd": ".",
+      "exitCode": 0,
+      "log": {
+        "path": "evidence/win32-node22.log",
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "result": {
+        "path": "evidence/win32-node22.result.json",
+        "status": "passed",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "inputRevision": {
+        "sourceCommit": "1111111111111111111111111111111111111111",
+        "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "consumerCommit": "2222222222222222222222222222222222222222",
+        "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    },
+    {
+      "accepted": true,
+      "sourceCommit": "1111111111111111111111111111111111111111",
+      "platform": "linux",
+      "nodeVersion": "20.20.2",
+      "typescriptVersion": "5.9.3",
+      "testCell": "linux-node20",
+      "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "consumerRepo": "https://github.com/devcodex-labs/vextjs-test.git",
+      "consumerCommit": "2222222222222222222222222222222222222222",
+      "runId": "fixture-linux-node20",
+      "taskId": "5516fb86-bfa7-52eb-8aca-09e5be0e7d56",
+      "command": {
+        "executable": "npm",
+        "args": ["run", "verify:r0-consumer", "--", "--cell", "linux-node20"]
+      },
+      "cwd": ".",
+      "exitCode": 0,
+      "log": {
+        "path": "evidence/linux-node20.log",
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "result": {
+        "path": "evidence/linux-node20.result.json",
+        "status": "passed",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "inputRevision": {
+        "sourceCommit": "1111111111111111111111111111111111111111",
+        "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "consumerCommit": "2222222222222222222222222222222222222222",
+        "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    },
+    {
+      "accepted": true,
+      "sourceCommit": "1111111111111111111111111111111111111111",
+      "platform": "linux",
+      "nodeVersion": "22.23.2",
+      "typescriptVersion": "5.9.3",
+      "testCell": "linux-node22",
+      "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "consumerRepo": "https://github.com/devcodex-labs/vextjs-test.git",
+      "consumerCommit": "2222222222222222222222222222222222222222",
+      "runId": "fixture-linux-node22",
+      "taskId": "5516fb86-bfa7-52eb-8aca-09e5be0e7d56",
+      "command": {
+        "executable": "npm",
+        "args": ["run", "verify:r0-consumer", "--", "--cell", "linux-node22"]
+      },
+      "cwd": ".",
+      "exitCode": 0,
+      "log": {
+        "path": "evidence/linux-node22.log",
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "result": {
+        "path": "evidence/linux-node22.result.json",
+        "status": "passed",
+        "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "inputRevision": {
+        "sourceCommit": "1111111111111111111111111111111111111111",
+        "artifactSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "consumerCommit": "2222222222222222222222222222222222222222",
+        "candidateReceiptSHA256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  ]
+}

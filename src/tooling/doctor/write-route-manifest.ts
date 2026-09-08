@@ -30,6 +30,7 @@ export interface RouteManifestPayload {
     source: string;
     prefix: string;
     method: string;
+    subPath: string;
     path: string;
     docsKind: VextOpenAPIDocsKind;
     docsSummary: string | null;

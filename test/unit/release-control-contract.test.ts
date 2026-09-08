@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { classifyReleaseVersion } from "../../scripts/release-channel.mjs";
+import { classifyReleaseEntry } from "../../scripts/release-entry.mjs";
 import { verifyReleaseAncestry } from "../../scripts/verify-release-ancestry.mjs";
 
 function read(relativePath: string): string {
@@ -20,6 +21,76 @@ function jobBlock(workflow: string, name: string): string {
 }
 
 describe("release control contract", () => {
+  it("qualifies main manually without treating any manual event as publication", () => {
+    expect(
+      classifyReleaseEntry({
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/main",
+        version: "2.0.0",
+      }),
+    ).toBe("qualification");
+    for (const ref of [
+      "refs/heads/feature",
+      "refs/tags/v2.0.0",
+      "main",
+      undefined,
+    ]) {
+      expect(() =>
+        classifyReleaseEntry({
+          eventName: "workflow_dispatch",
+          ref,
+          version: "2.0.0",
+        }),
+      ).toThrow("requires refs/heads/main");
+    }
+  });
+
+  it("requires an exact pushed version tag for publication", () => {
+    for (const version of ["2.0.0", "2.1.0-rc.1"]) {
+      expect(
+        classifyReleaseEntry({
+          eventName: "push",
+          ref: `refs/tags/v${version}`,
+          version,
+        }),
+      ).toBe("publication");
+    }
+    for (const [eventName, ref] of [
+      ["push", "refs/tags/v1.0.0"],
+      ["push", "refs/heads/main"],
+      ["pull_request", "refs/tags/v2.0.0"],
+      [undefined, undefined],
+    ]) {
+      expect(() =>
+        classifyReleaseEntry({ eventName, ref, version: "2.0.0" }),
+      ).toThrow("requires a pushed tag");
+    }
+  });
+
+  it("gates all qualification jobs and isolates manual qualification from publication", () => {
+    const release = read(".github/workflows/release.yml");
+    const version = jobBlock(release, "version-check");
+    expect(release).toMatch(/^  workflow_dispatch:\s*$/mu);
+    expect(version).toContain("run: node scripts/release-entry.mjs");
+    expect(version).toContain(
+      "if: github.event_name == 'workflow_dispatch'\n        run: bash scripts/check-version-sync.sh\n",
+    );
+    expect(version).toContain(
+      "if: github.event_name == 'push'\n        run: bash scripts/check-version-sync.sh --release",
+    );
+    for (const job of ["ci", "docs-build"]) {
+      expect(jobBlock(release, job)).toContain("needs: version-check");
+    }
+    const publish = jobBlock(release, "publish");
+    expect(publish).toContain(
+      "if: github.event_name == 'push' && github.ref_type == 'tag'",
+    );
+    // Every remote publishing step remains inside the independently guarded job.
+    expect(release.slice(0, release.indexOf("  publish:"))).not.toMatch(
+      /run:.*npm publish|uses: softprops\/action-gh-release/u,
+    );
+  });
+
   it("maps stable and prerelease SemVer to one channel tuple", () => {
     expect(classifyReleaseVersion("2.0.0")).toEqual({
       version: "2.0.0",
@@ -76,6 +147,8 @@ describe("release control contract", () => {
     expect(publish).toContain(
       '--tag "${{ steps.release-channel.outputs.npm_dist_tag }}"',
     );
+    expect(publish).toContain('npm publish "${VEXT_PREFLIGHT_VEXT_TARBALL}"');
+    expect(publish).not.toContain("npm publish --ignore-scripts");
     expect(publish).toContain(
       "steps.release-channel.outputs.github_prerelease == 'true'",
     );
@@ -85,6 +158,63 @@ describe("release control contract", () => {
     expect(preflight).toContain("import { classifyReleaseVersion }");
     expect(preflight).toContain("scripts/verify-release-ancestry.mjs");
     expect(preflight).toContain("scripts/check-version-sync.mjs");
+    expect(preflight).toContain("VEXT_PREFLIGHT_CANDIDATE_RECEIPT");
+    expect(preflight).toContain("verifyReleaseCandidateSourceInputs");
+  });
+
+  it("qualifies one frozen tarball through the external four-cell matrix", () => {
+    const release = read(".github/workflows/release.yml");
+    const freeze = jobBlock(release, "freeze-candidate");
+    const external = jobBlock(release, "external-consumer");
+    const aggregate = jobBlock(release, "aggregate-evidence");
+    const publish = jobBlock(release, "publish");
+
+    expect(freeze).toContain("needs: [ci, version-check, docs-build]");
+    expect(freeze).toContain("devcodex-labs/vextjs-test.git refs/heads/main");
+    expect(freeze).toContain("npm run freeze:release-candidate");
+    expect(freeze).toContain("actions/upload-artifact@v7");
+    expect(freeze).toContain(
+      "vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}",
+    );
+
+    expect(external).toContain("os: [ubuntu-latest, windows-latest]");
+    expect(external).toContain("node-version: [20, 22]");
+    expect(external).toContain("repository: devcodex-labs/vextjs-test");
+    expect(external).toContain(
+      "ref: ${{ needs.freeze-candidate.outputs.consumer-commit }}",
+    );
+    expect(external).toContain("actions/download-artifact@v8");
+    expect(external).toContain("run-external-consumer-cell.mjs");
+    expect(external).toContain(
+      "--consumer-root '${{ github.workspace }}/external-consumer'",
+    );
+    expect(external).not.toContain("--consumer-cwd");
+    expect(external).toContain('--material-prefix "cells/$cell"');
+    expect(external).toContain(
+      "vextjs-external-cell-${{ matrix.os }}-node${{ matrix.node-version }}",
+    );
+
+    expect(aggregate).toContain(
+      "if: always() && needs.freeze-candidate.result == 'success'",
+    );
+    expect(aggregate).toContain("needs: [freeze-candidate, external-consumer]");
+    expect(aggregate).toContain("pattern: vextjs-external-cell-*");
+    expect(aggregate).toContain("merge-multiple: true");
+    expect(aggregate).toContain("assemble-external-evidence.mjs");
+    expect(aggregate).toContain("actions/upload-artifact@v7");
+    expect(aggregate).toContain(
+      "vextjs-qualified-release-${{ github.run_id }}-${{ github.run_attempt }}",
+    );
+
+    expect(publish).toContain("needs: aggregate-evidence");
+    expect(publish).toContain("actions/download-artifact@v8");
+    expect(publish).toContain("VEXT_PREFLIGHT_VEXT_TARBALL=");
+    expect(publish).toContain("VEXT_PREFLIGHT_CANDIDATE_RECEIPT=");
+    expect(publish).toContain("VEXT_EXTERNAL_EVIDENCE_FILE=");
+    expect(publish.indexOf("release:preflight:final")).toBeLessThan(
+      publish.indexOf("npm publish"),
+    );
+    expect(publish).toContain('npm publish "${VEXT_PREFLIGHT_VEXT_TARBALL}"');
   });
 
   it("runs one thresholded coverage script in CI and preflight", () => {

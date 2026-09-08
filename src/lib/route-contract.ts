@@ -1,3 +1,5 @@
+import { extname, relative, sep } from "node:path";
+
 export const VEXT_ROUTE_METHODS = [
   "get",
   "post",
@@ -20,6 +22,31 @@ const VEXT_ROUTE_METHOD_SET = new Set<string>(VEXT_ROUTE_METHODS);
 
 export function isVextRouteMethod(value: string): value is VextRouteMethod {
   return VEXT_ROUTE_METHOD_SET.has(value);
+}
+
+/**
+ * Canonical route-file prefix projection shared by runtime registration,
+ * project indexing, Doctor, and parity tests.
+ */
+export function projectRouteFilePrefix(
+  filePath: string,
+  routesDir: string,
+): string {
+  let relativePath = relative(routesDir, filePath).split(sep).join("/");
+  const extension = extname(relativePath);
+  relativePath = relativePath.slice(0, -extension.length);
+
+  if (relativePath === "index") {
+    relativePath = "";
+  } else if (relativePath.endsWith("/index")) {
+    relativePath = relativePath.slice(0, -"/index".length);
+  }
+
+  relativePath = relativePath.replace(/\[([^\]]+)\]/gu, ":$1");
+  if (!relativePath.startsWith("/")) relativePath = `/${relativePath}`;
+  return relativePath.length > 1 && relativePath.endsWith("/")
+    ? relativePath.slice(0, -1)
+    : relativePath;
 }
 
 /** Canonical path join used by runtime registration and static projection. */

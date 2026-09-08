@@ -66,6 +66,7 @@ export interface DoctorRouteRecord {
   filePath: string;
   fileRelativePath: string;
   method: string;
+  subPath: string;
   path: string;
   prefix: string;
   docsSummary: string | null;
@@ -175,6 +176,7 @@ function readRouteEntriesFromManifest(
       source?: string;
       prefix?: string;
       method?: string;
+      subPath?: string;
       path?: string;
       docsKind?: VextOpenAPIDocsKind;
       docsSummary?: string | null;
@@ -202,12 +204,16 @@ function readRouteEntriesFromManifest(
         route.operationIdSource === "explicit"
           ? (route.operationId ?? null)
           : null;
+      const prefix = route.prefix ?? "";
+      const normalizedPath = route.path ?? "/";
       return {
         filePath: join(rootDir, fileRelativePath),
         fileRelativePath,
-        prefix: route.prefix ?? "",
+        prefix,
         method: route.method ?? "GET",
-        path: route.path ?? "/",
+        subPath:
+          route.subPath ?? inferLegacyManifestSubPath(prefix, normalizedPath),
+        path: normalizedPath,
         docsSummary,
         hasDocsSummary: Boolean(docsSummary?.trim()),
         operationId,
@@ -337,6 +343,7 @@ function toDoctorRouteRecord(entry: RouteIndexEntry): DoctorRouteRecord {
     filePath: entry.filePath,
     fileRelativePath: entry.fileRelativePath,
     method: entry.method,
+    subPath: entry.subPath,
     path: entry.path,
     prefix: entry.prefix,
     docsSummary: entry.docsSummary,
@@ -421,6 +428,7 @@ function buildRouteManifestPayload(
       source: item.fileRelativePath,
       prefix: item.prefix,
       method: item.method,
+      subPath: item.subPath,
       path: item.path,
       docsKind: item.docsKind,
       docsSummary: item.docsSummary,
@@ -435,4 +443,11 @@ function buildRouteManifestPayload(
       layout: { state: "unresolved", paths: [] },
     })),
   };
+}
+
+function inferLegacyManifestSubPath(prefix: string, fullPath: string): string {
+  if (prefix === "" || prefix === "/") return fullPath;
+  if (fullPath === prefix) return "/";
+  if (fullPath.startsWith(`${prefix}/`)) return fullPath.slice(prefix.length);
+  return fullPath;
 }

@@ -4,6 +4,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { classifyReleaseVersion } from "./release-channel.mjs";
+import {
+  verifyReleaseCandidateReceipt,
+  verifyReleaseCandidateSourceInputs,
+} from "./validation/freeze-release-candidate.mjs";
+import { verifyExternalEvidenceFile } from "./validation/verify-external-evidence.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const finalMode = process.argv.includes("--final");
@@ -34,6 +39,9 @@ const schemaVersion = pkg.dependencies?.["schema-dsl"];
 const monsqlizeVersion = pkg.dependencies?.monsqlize;
 const files = new Set(pkg.files ?? []);
 let externalArtifactSha256;
+let frozenVextTarball;
+let candidateReceiptPath;
+let candidateReceiptVerification;
 
 assert(
   pkg.version === "0.3.26" ||
@@ -88,6 +96,14 @@ if (finalMode) {
     cwd: root,
     encoding: "utf8",
   });
+  const head = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const tree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
+    cwd: root,
+    encoding: "utf8",
+  });
   const isGithubTag =
     process.env.GITHUB_ACTIONS === "true" &&
     process.env.GITHUB_REF_TYPE === "tag";
@@ -127,41 +143,81 @@ if (finalMode) {
   const externalEvidenceFile = packageMajor
     ? `v${packageMajor}-external-validation.json`
     : "version-scoped-external-validation.json";
-  const externalEvidencePath = path.join(root, "release", externalEvidenceFile);
+  const externalEvidencePath = path.resolve(
+    root,
+    process.env.VEXT_EXTERNAL_EVIDENCE_FILE ??
+      path.join("release", externalEvidenceFile),
+  );
+  frozenVextTarball = process.env.VEXT_PREFLIGHT_VEXT_TARBALL
+    ? path.resolve(root, process.env.VEXT_PREFLIGHT_VEXT_TARBALL)
+    : undefined;
+  candidateReceiptPath = process.env.VEXT_PREFLIGHT_CANDIDATE_RECEIPT
+    ? path.resolve(root, process.env.VEXT_PREFLIGHT_CANDIDATE_RECEIPT)
+    : undefined;
   assert(
     existsSync(externalEvidencePath),
-    `release/${externalEvidenceFile} is missing`,
+    `external evidence is missing: ${externalEvidencePath}`,
   );
-  if (existsSync(externalEvidencePath)) {
-    const evidence = JSON.parse(readFileSync(externalEvidencePath, "utf8"));
-    externalArtifactSha256 = String(
-      evidence.artifactSha256 ?? "",
-    ).toLowerCase();
-    assert(
-      evidence.accepted === true,
-      "external consumer evidence must be accepted",
-    );
-    assert(
-      evidence.artifactVersion === pkg.version,
-      "external consumer artifactVersion must match package.json",
-    );
-    assert(
-      /^[a-f0-9]{64}$/.test(externalArtifactSha256),
-      "external consumer artifactSha256 must be a SHA256 digest",
-    );
-    assert(
-      typeof evidence.consumerRepo === "string" &&
-        evidence.consumerRepo.length > 0,
-      "external consumer repo identity is missing",
-    );
-    assert(
-      /^[a-f0-9]{40}$/i.test(evidence.consumerCommit ?? ""),
-      "external consumer commit must be a full commit SHA",
-    );
-    assert(
-      typeof evidence.runId === "string" && evidence.runId.length > 0,
-      "external consumer runId is missing",
-    );
+  assert(
+    frozenVextTarball !== undefined && existsSync(frozenVextTarball),
+    "final publish requires VEXT_PREFLIGHT_VEXT_TARBALL to reference the frozen physical tarball",
+  );
+  assert(
+    candidateReceiptPath !== undefined && existsSync(candidateReceiptPath),
+    "final publish requires VEXT_PREFLIGHT_CANDIDATE_RECEIPT to reference the frozen candidate receipt",
+  );
+  assert(
+    head.status === 0 && /^[a-f0-9]{40}$/iu.test(head.stdout.trim()),
+    "final publish requires a resolvable source commit",
+  );
+  assert(
+    tree.status === 0 && /^[a-f0-9]{40}$/iu.test(tree.stdout.trim()),
+    "final publish requires a resolvable source tree",
+  );
+  if (
+    frozenVextTarball &&
+    existsSync(frozenVextTarball) &&
+    candidateReceiptPath &&
+    existsSync(candidateReceiptPath) &&
+    head.status === 0 &&
+    tree.status === 0
+  ) {
+    try {
+      candidateReceiptVerification = verifyReleaseCandidateReceipt({
+        receiptPath: candidateReceiptPath,
+        artifactPath: frozenVextTarball,
+        expectedPackageName: pkg.name,
+        expectedArtifactVersion: pkg.version,
+        expectedSourceCommit: head.stdout.trim(),
+        expectedSourceTree: tree.stdout.trim(),
+      });
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (
+    existsSync(externalEvidencePath) &&
+    frozenVextTarball &&
+    existsSync(frozenVextTarball) &&
+    candidateReceiptVerification &&
+    head.status === 0
+  ) {
+    try {
+      const evidence = verifyExternalEvidenceFile({
+        evidencePath: externalEvidencePath,
+        artifactPath: frozenVextTarball,
+        candidateReceiptPath,
+        expectedPackageName: pkg.name,
+        expectedArtifactVersion: pkg.version,
+        expectedSourceCommit: head.stdout.trim(),
+        expectedSourceTree: tree.stdout.trim(),
+        expectedNodeRange: pkg.engines?.node,
+        requireMatrix: true,
+      });
+      externalArtifactSha256 = evidence.artifactSHA256;
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
   }
 }
 
@@ -224,6 +280,21 @@ const checks = [
 
 for (const [label, command, args] of checks) run(label, command, args);
 
+if (finalMode && candidateReceiptVerification) {
+  try {
+    verifyReleaseCandidateSourceInputs({
+      rootDir: root,
+      receipt: candidateReceiptVerification.receipt,
+    });
+    console.log(
+      "\n[release:preflight] frozen candidate source and pack-input closure",
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 const websiteModules = path.join(root, "website", "node_modules");
 if (!existsSync(websiteModules)) {
   run(
@@ -246,16 +317,17 @@ run("rendered documentation contract", npm, [
   "--",
   "--rendered",
 ]);
-run("pack dry-run", npm, ["pack", "--dry-run", "--json", "--ignore-scripts"]);
-run(
-  "isolated packed install",
-  npm,
-  ["run", "verify:pack-install"],
-  root,
-  externalArtifactSha256
+if (!finalMode) {
+  run("pack dry-run", npm, ["pack", "--dry-run", "--json", "--ignore-scripts"]);
+}
+run("isolated packed install", npm, ["run", "verify:pack-install"], root, {
+  ...(externalArtifactSha256
     ? { VEXT_EXPECTED_ARTIFACT_SHA256: externalArtifactSha256 }
-    : {},
-);
+    : {}),
+  ...(frozenVextTarball
+    ? { VEXT_PREFLIGHT_VEXT_TARBALL: frozenVextTarball }
+    : {}),
+});
 
 console.log(
   `\n${finalMode ? "Final" : "Source"} release preflight passed without publishing.`,
