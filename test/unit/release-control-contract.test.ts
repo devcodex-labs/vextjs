@@ -140,6 +140,9 @@ describe("release control contract", () => {
     const publishIndex = publish.indexOf("npm publish");
 
     expect(publish).toContain("fetch-depth: 0");
+    expect(publish).toContain("id-token: write");
+    expect(publish).toContain("npm install --global npm@11.19.1");
+    expect(publish).not.toContain("NPM_TOKEN");
     expect(publish).toContain("scripts/release-channel.mjs");
     expect(publish).toContain("main:refs/remotes/origin/main");
     expect(ancestryIndex).toBeGreaterThanOrEqual(0);

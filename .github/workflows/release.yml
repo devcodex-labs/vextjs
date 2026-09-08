@@ -15,7 +15,7 @@
 #   7. 仅 tag push：final preflight → npm publish → GitHub Release
 #
 # 前置条件：
-#   - npm token 配置为 GitHub Secret: NPM_TOKEN
+#   - npm 包已绑定本仓库 release.yml 的 GitHub Actions Trusted Publisher
 #   - 私有外部消费者读取 token 配置为 GitHub Secret: VEXTJS_TEST_TOKEN
 #     （迁移期间兼容既有 VEXTJS_GH_PAGES_TOKEN）
 #   - package.json 版本号已更新（与 tag 一致）
@@ -371,6 +371,9 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Setup npm for trusted publishing
+        run: npm install --global npm@11.19.1
+
       - name: Download qualified release artifact
         uses: actions/download-artifact@v8
         with:
@@ -417,8 +420,6 @@ jobs:
         run: |
           test -n "${VEXT_PREFLIGHT_VEXT_TARBALL:-}" && test -f "${VEXT_PREFLIGHT_VEXT_TARBALL}"
           npm publish "${VEXT_PREFLIGHT_VEXT_TARBALL}" --ignore-scripts --provenance --access public --tag "${{ steps.release-channel.outputs.npm_dist_tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

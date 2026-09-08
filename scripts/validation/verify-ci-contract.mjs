@@ -221,6 +221,8 @@ requireTokens(
   ],
 );
 requireOrderedTokens("release publish", releaseJobBlock("publish"), [
+  "id-token: write",
+  "npm install --global npm@11.19.1",
   "actions/download-artifact@v8",
   "VEXT_PREFLIGHT_VEXT_TARBALL=",
   "VEXT_PREFLIGHT_CANDIDATE_RECEIPT=",
@@ -228,5 +230,10 @@ requireOrderedTokens("release publish", releaseJobBlock("publish"), [
   "npm run release:preflight:final",
   'npm publish "${VEXT_PREFLIGHT_VEXT_TARBALL}"',
 ]);
+if (releaseJobBlock("publish").includes("NPM_TOKEN")) {
+  throw new Error(
+    "release publish must use npm Trusted Publishing instead of NPM_TOKEN",
+  );
+}
 
 console.log("CI workflow contract verified.");
