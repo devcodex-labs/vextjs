@@ -16,6 +16,8 @@
 #
 # 前置条件：
 #   - npm token 配置为 GitHub Secret: NPM_TOKEN
+#   - 私有外部消费者读取 token 配置为 GitHub Secret: VEXTJS_TEST_TOKEN
+#     （迁移期间兼容既有 VEXTJS_GH_PAGES_TOKEN）
 #   - package.json 版本号已更新（与 tag 一致）
 #
 # 用法：
@@ -156,7 +158,7 @@ jobs:
     needs: [ci, version-check, docs-build]
 
     outputs:
-      consumer-commit: ${{ steps.consumer.outputs.commit }}
+      consumer-commit: ${{ steps.consumer-checkout.outputs.commit }}
 
     steps:
       - name: Checkout source
@@ -173,16 +175,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Resolve one external consumer commit
-        id: consumer
+      - name: Verify external consumer credential
+        shell: bash
+        env:
+          VEXTJS_TEST_TOKEN: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}
+        run: |
+          test -n "${VEXTJS_TEST_TOKEN:-}" || {
+            echo "VEXTJS_TEST_TOKEN is required to read the private vextjs-test repository" >&2
+            exit 1
+          }
+
+      - name: Checkout external consumer main for commit resolution
+        id: consumer-checkout
+        uses: actions/checkout@v7
+        with:
+          repository: devcodex-labs/vextjs-test
+          ref: main
+          path: external-consumer-ref
+          fetch-depth: 1
+          persist-credentials: false
+          token: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}
+
+      - name: Verify one resolved external consumer commit
         shell: bash
         run: |
-          CONSUMER_COMMIT="$(git ls-remote https://github.com/devcodex-labs/vextjs-test.git refs/heads/main | awk '{print $1}')"
+          CONSUMER_COMMIT='${{ steps.consumer-checkout.outputs.commit }}'
           if [[ ! "${CONSUMER_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Unable to resolve the vextjs-test main commit" >&2
             exit 1
           fi
-          echo "commit=${CONSUMER_COMMIT}" >> "${GITHUB_OUTPUT}"
 
       - name: Freeze candidate tarball and semantic receipt
         run: |
@@ -227,6 +248,7 @@ jobs:
           path: external-consumer
           fetch-depth: 1
           persist-credentials: false
+          token: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v7

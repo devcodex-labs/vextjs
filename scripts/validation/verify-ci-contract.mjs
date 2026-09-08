@@ -164,7 +164,10 @@ requireTokens("CI aggregate", jobBlock("ci-ok"), [
 requireTokens("release freeze-candidate", releaseJobBlock("freeze-candidate"), [
   "needs: [ci, version-check, docs-build]",
   "npm run freeze:release-candidate",
-  "devcodex-labs/vextjs-test.git refs/heads/main",
+  "repository: devcodex-labs/vextjs-test",
+  "consumer-commit: ${{ steps.consumer-checkout.outputs.commit }}",
+  "VEXTJS_TEST_TOKEN: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}",
+  "persist-credentials: false",
   "actions/upload-artifact@v7",
   "vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}",
 ]);
@@ -191,6 +194,8 @@ requireTokens(
     "os: [ubuntu-latest, windows-latest]",
     "node-version: [20, 22]",
     "ref: ${{ needs.freeze-candidate.outputs.consumer-commit }}",
+    "token: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}",
+    "persist-credentials: false",
     "actions/download-artifact@v8",
     "run-external-consumer-cell.mjs",
     "vextjs-external-cell-${{ matrix.os }}-node${{ matrix.node-version }}",

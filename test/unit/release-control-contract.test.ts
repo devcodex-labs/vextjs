@@ -170,7 +170,14 @@ describe("release control contract", () => {
     const publish = jobBlock(release, "publish");
 
     expect(freeze).toContain("needs: [ci, version-check, docs-build]");
-    expect(freeze).toContain("devcodex-labs/vextjs-test.git refs/heads/main");
+    expect(freeze).toContain("repository: devcodex-labs/vextjs-test");
+    expect(freeze).toContain(
+      "consumer-commit: ${{ steps.consumer-checkout.outputs.commit }}",
+    );
+    expect(freeze).toContain(
+      "VEXTJS_TEST_TOKEN: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}",
+    );
+    expect(freeze).toContain("persist-credentials: false");
     expect(freeze).toContain("npm run freeze:release-candidate");
     expect(freeze).toContain("actions/upload-artifact@v7");
     expect(freeze).toContain(
@@ -180,6 +187,10 @@ describe("release control contract", () => {
     expect(external).toContain("os: [ubuntu-latest, windows-latest]");
     expect(external).toContain("node-version: [20, 22]");
     expect(external).toContain("repository: devcodex-labs/vextjs-test");
+    expect(external).toContain(
+      "token: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}",
+    );
+    expect(external).toContain("persist-credentials: false");
     expect(external).toContain(
       "ref: ${{ needs.freeze-candidate.outputs.consumer-commit }}",
     );
