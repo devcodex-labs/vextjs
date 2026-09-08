@@ -127,15 +127,32 @@ function readGitIdentity(rootDir) {
   return { commit, tree };
 }
 
-function assertCleanWorktree(rootDir) {
-  const status = runCapture(
+function readWorktreeStatus(rootDir, untrackedFiles) {
+  return runCapture(
     "git",
-    ["status", "--porcelain=v1", "--untracked-files=all"],
+    ["status", "--porcelain=v1", `--untracked-files=${untrackedFiles}`],
     rootDir,
     "git status",
   ).trim();
+}
+
+function assertCleanWorktree(rootDir) {
+  const status = readWorktreeStatus(rootDir, "all");
   if (status !== "") {
-    fail("git status", "requires a clean tracked and untracked worktree");
+    fail(
+      "git status",
+      `requires a clean tracked and untracked worktree; observed:\n${status}`,
+    );
+  }
+}
+
+function assertCleanTrackedWorktree(rootDir) {
+  const status = readWorktreeStatus(rootDir, "no");
+  if (status !== "") {
+    fail(
+      "git status",
+      `requires tracked files to remain clean; observed:\n${status}`,
+    );
   }
 }
 
@@ -447,7 +464,11 @@ export function verifyReleaseCandidateReceipt({
 }
 
 export function verifyReleaseCandidateSourceInputs({ rootDir, receipt }) {
-  assertCleanWorktree(rootDir);
+  // The candidate was frozen from a fully clean tree. Final preflight checks may
+  // leave package-excluded scratch files behind, so require tracked sources to
+  // remain clean and let the exact pack-input digest reject any untracked file
+  // that would alter the published package.
+  assertCleanTrackedWorktree(rootDir);
   const source = readGitIdentity(rootDir);
   if (
     !isRecord(receipt.source) ||
