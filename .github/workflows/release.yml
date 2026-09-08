@@ -175,6 +175,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Freeze candidate tarball and semantic receipt
+        run: |
+          npm run freeze:release-candidate -- \
+            --output-dir "${RUNNER_TEMP}/vextjs-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --task-id "release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
       - name: Verify external consumer credential
         shell: bash
         env:
@@ -204,12 +210,6 @@ jobs:
             echo "Unable to resolve the vextjs-test main commit" >&2
             exit 1
           fi
-
-      - name: Freeze candidate tarball and semantic receipt
-        run: |
-          npm run freeze:release-candidate -- \
-            --output-dir "${RUNNER_TEMP}/vextjs-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --task-id "release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
       - name: Upload immutable candidate
         uses: actions/upload-artifact@v7

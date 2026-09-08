@@ -171,6 +171,14 @@ requireTokens("release freeze-candidate", releaseJobBlock("freeze-candidate"), [
   "actions/upload-artifact@v7",
   "vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}",
 ]);
+requireOrderedTokens(
+  "release clean candidate freeze",
+  releaseJobBlock("freeze-candidate"),
+  [
+    "npm run freeze:release-candidate",
+    "Checkout external consumer main for commit resolution",
+  ],
+);
 requireTokens("release manual trigger", releaseWorkflow, [
   "  workflow_dispatch:",
 ]);

@@ -183,6 +183,9 @@ describe("release control contract", () => {
     expect(freeze).toContain(
       "vextjs-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}",
     );
+    expect(freeze.indexOf("npm run freeze:release-candidate")).toBeLessThan(
+      freeze.indexOf("Checkout external consumer main for commit resolution"),
+    );
 
     expect(external).toContain("os: [ubuntu-latest, windows-latest]");
     expect(external).toContain("node-version: [20, 22]");
