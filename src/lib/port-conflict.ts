@@ -1,6 +1,14 @@
-import { createServer } from "node:net";
+import { createServer, isIP } from "node:net";
+import { lookup } from "node:dns/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  parseLsofListeners,
+  parseNetstatListeners,
+  parseSsListeners,
+  selectPortListeners,
+  uniquePortOwner,
+} from "./port-listeners.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,25 +82,24 @@ export async function isPortOccupied(
 
 async function inspectPortConflictUnix(
   port: number,
+  host: string,
 ): Promise<PortConflictDetails> {
   try {
     const { stdout } = await execFileAsync("lsof", [
       "-nP",
       `-iTCP:${port}`,
       "-sTCP:LISTEN",
+      "-Fpcn",
     ]);
-    const lines = stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const dataLine = lines[1];
-    if (dataLine) {
-      const cols = dataLine.split(/\s+/);
-      const pid = Number(cols[1]);
+    const listeners = selectPortListeners(
+      parseLsofListeners(stdout),
+      port,
+      host,
+    );
+    if (listeners.length > 0) {
       return {
         occupied: true,
-        command: cols[0],
-        pid: Number.isInteger(pid) ? pid : undefined,
+        ...uniquePortOwner(listeners),
         source: "lsof",
       };
     }
@@ -102,16 +109,11 @@ async function inspectPortConflictUnix(
 
   try {
     const { stdout } = await execFileAsync("ss", ["-ltnp"]);
-    const line = stdout
-      .split(/\r?\n/)
-      .find((item) => item.includes(`:${port}`) && item.includes("LISTEN"));
-    if (line) {
-      const pidMatch = line.match(/pid=(\d+)/);
-      const commandMatch = line.match(/users:\(\(([^,"]+)/);
+    const listeners = selectPortListeners(parseSsListeners(stdout), port, host);
+    if (listeners.length > 0) {
       return {
         occupied: true,
-        pid: pidMatch ? Number(pidMatch[1]) : undefined,
-        command: commandMatch?.[1],
+        ...uniquePortOwner(listeners),
         source: "ss",
       };
     }
@@ -124,28 +126,18 @@ async function inspectPortConflictUnix(
 
 async function inspectPortConflictWindows(
   port: number,
+  host: string,
 ): Promise<PortConflictDetails> {
   try {
     const { stdout } = await execFileAsync("netstat", ["-ano"]);
-    const line = stdout
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .find(
-        (item) =>
-          item.startsWith("TCP") &&
-          item.includes(`:${port}`) &&
-          item.toUpperCase().includes("LISTENING"),
-      );
-
-    if (!line) {
-      return { occupied: true, source: "netstat" };
-    }
-
-    const cols = line.split(/\s+/);
-    const pid = Number(cols[4]);
+    const listeners = selectPortListeners(
+      parseNetstatListeners(stdout),
+      port,
+      host,
+    );
     return {
       occupied: true,
-      pid: Number.isInteger(pid) ? pid : undefined,
+      ...uniquePortOwner(listeners),
       source: "netstat",
     };
   } catch {
@@ -155,12 +147,21 @@ async function inspectPortConflictWindows(
 
 export async function inspectPortConflict(
   port: number,
-  _host?: string,
+  host?: string,
 ): Promise<PortConflictDetails> {
-  if (process.platform === "win32") {
-    return inspectPortConflictWindows(port);
+  // 使用与 net.listen(host) 一致的首次 DNS 结果；解析失败不能退化为任意地址。
+  let address = host || "*";
+  if (address !== "*" && !isIP(address)) {
+    try {
+      address = (await lookup(address)).address;
+    } catch {
+      return { occupied: true };
+    }
   }
-  return inspectPortConflictUnix(port);
+  if (process.platform === "win32") {
+    return inspectPortConflictWindows(port, address);
+  }
+  return inspectPortConflictUnix(port, address);
 }
 
 async function waitUntilPortFree(
@@ -181,11 +182,23 @@ async function waitUntilPortFree(
 export async function killPortOccupant(
   port: number,
   host?: string,
+  expectedDetails?: PortConflictDetails,
 ): Promise<PortConflictDetails> {
   const details = await inspectPortConflict(port, host);
   if (!details.pid) {
     throw new Error(
       `[vextjs] Port ${port} is occupied, but the owning process PID could not be determined.`,
+    );
+  }
+
+  if (expectedDetails && details.pid !== expectedDetails.pid) {
+    throw new Error(
+      `[vextjs] Port ${port} owning process changed since inspection; retry startup before stopping it.`,
+    );
+  }
+  if (details.pid === process.pid) {
+    throw new Error(
+      `[vextjs] Refusing to stop the current process on port ${port}.`,
     );
   }
 
@@ -216,6 +229,8 @@ export async function findNextAvailablePort(
   let lastSkippedError: unknown;
   for (let offset = 0; offset < maxAttempts; offset++) {
     const candidate = startPort + offset;
+    if (!Number.isInteger(candidate) || candidate < 1 || candidate > 65535)
+      break;
     try {
       if (!(await isPortOccupied(candidate, host))) {
         return candidate;
@@ -275,7 +290,11 @@ async function resolvePromptDecision(
     }
 
     if (decision === "kill") {
-      const killed = await killPortOccupant(options.port, options.host);
+      const killed = await killPortOccupant(
+        options.port,
+        options.host,
+        details,
+      );
       return {
         port: options.port,
         changed: false,
@@ -289,6 +308,7 @@ async function resolvePromptDecision(
       return { port: options.port, changed: false, action: "none", details };
     }
 
+    details = await inspectPortConflict(options.port, options.host);
     await delay(200);
   }
 }
@@ -312,7 +332,11 @@ export async function resolvePortConflict(
       return { port: nextPort, changed: true, action: "next", details };
     }
     case "kill": {
-      const killed = await killPortOccupant(options.port, options.host);
+      const killed = await killPortOccupant(
+        options.port,
+        options.host,
+        details,
+      );
       return {
         port: options.port,
         changed: false,

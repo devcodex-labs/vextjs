@@ -1,6 +1,9 @@
 import type { VextClientContract, VextClientRouteMethod } from "./types.js";
 
 type VextHeadersInit = ConstructorParameters<typeof Headers>[0];
+type ApiResponseFor<TMethod, TResponse> = TMethod extends "HEAD"
+  ? null
+  : TResponse;
 
 type RoutesByMethod<
   TContract extends VextClientContract,
@@ -109,7 +112,12 @@ export interface VextApiClient<
     options?: VextApiRequestOptionsFor<
       RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>
     >,
-  ): Promise<RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]>;
+  ): Promise<
+    ApiResponseFor<
+      TMethod,
+      RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]
+    >
+  >;
   GET<TPath extends PathFor<TContract, "GET">>(
     path: TPath,
     options?: VextApiRequestOptionsFor<
@@ -145,7 +153,7 @@ export interface VextApiClient<
     options?: VextApiRequestOptionsFor<
       RouteTypeFor<TContract, TRouteTypes, "HEAD", TPath>
     >,
-  ): Promise<RouteTypeFor<TContract, TRouteTypes, "HEAD", TPath>["response"]>;
+  ): Promise<null>;
   OPTIONS<TPath extends PathFor<TContract, "OPTIONS">>(
     path: TPath,
     options?: VextApiRequestOptionsFor<
@@ -173,7 +181,10 @@ export function createVextApiClient<
       RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>
     > = {},
   ): Promise<
-    RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]
+    ApiResponseFor<
+      TMethod,
+      RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]
+    >
   > => {
     const runtimeOptions = requestOptions as VextApiRequestOptions;
     const fetchImpl = options.fetch ?? globalThis.fetch;
@@ -206,7 +217,7 @@ export function createVextApiClient<
     }
 
     const response = await fetchImpl(url, init);
-    const body = await readResponseBody(response);
+    const body = await readResponseBody(response, method);
     if (!response.ok) {
       const errorBody = isRecord(body) ? body : {};
       throw new VextApiError({
@@ -221,12 +232,10 @@ export function createVextApiClient<
         details: errorBody.details,
       });
     }
-    return unwrapVextResponse(body) as RouteTypeFor<
-      TContract,
-      TRouteTypes,
+    return unwrapVextResponse(body) as ApiResponseFor<
       TMethod,
-      TPath
-    >["response"];
+      RouteTypeFor<TContract, TRouteTypes, TMethod, TPath>["response"]
+    >;
   };
 
   return {
@@ -290,9 +299,13 @@ function mergeHeaders(
   new Headers(source).forEach((value, key) => target.set(key, value));
 }
 
-async function readResponseBody(response: Response): Promise<unknown> {
+async function readResponseBody(
+  response: Response,
+  method: string,
+): Promise<unknown> {
   const contentType = response.headers.get("content-type") ?? "";
-  if (response.status === 204) return null;
+  if (method === "HEAD" || [204, 205, 304].includes(response.status))
+    return null;
   if (contentType.includes("application/json")) {
     return response.json();
   }

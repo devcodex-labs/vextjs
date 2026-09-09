@@ -371,11 +371,11 @@ export function createApp(config: VextConfig): {
       },
     },
 
-    // ── fetch 占位（由 bootstrap 在步骤 ④+ 覆盖为 createVextFetch 实例）──
+    // ── fetch 占位（由 bootstrap 在用户插件加载前初始化）──
     //
     // 在 createApp 阶段 fetch 尚未初始化（需要 config.fetch + requestId 配置）。
-    // 提供占位实现确保类型为非可选，bootstrap 会在 loadRoutes 之前赋值真实实现。
-    // 若路由 handler 在 bootstrap 赋值前调用 app.fetch，会收到明确的错误提示。
+    // 提供占位实现确保类型为非可选；生产和开发启动均在用户插件、服务和路由前赋值。
+    // 直接 createApp() 的调用者需自行完成初始化，提前访问会收到明确错误。
     fetch: Object.assign(
       async (_input: unknown, _init?: unknown): Promise<Response> => {
         throw new Error(

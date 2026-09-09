@@ -23,6 +23,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { VextApp } from "../../../../src/types/app.js";
 
+// 本文件验证注册/回滚规则，包解析由 consumer-resolution 的真实文件 fixture 验证。
+vi.mock("../../../../src/lib/consumer-resolver.js", () => ({
+  resolveConsumerModule: (_rootDir: string, specifier: string) => specifier,
+}));
+
 // ── 测试辅助：创建 mock app ─────────────────────────────────
 
 function createMockApp(configOverrides: Record<string, unknown> = {}): {

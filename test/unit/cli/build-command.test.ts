@@ -94,6 +94,15 @@ vi.mock("../../../src/cli/utils/detect-project.js", () => ({
   detectProject: mocks.detectProject,
 }));
 
+// 本文件只测命令编排；真实身份写入由 build-location 与消费者启动测试覆盖。
+vi.mock("../../../src/lib/build/build-location.js", async () => ({
+  ...(await vi.importActual<
+    typeof import("../../../src/lib/build/build-location.js")
+  >("../../../src/lib/build/build-location.js")),
+  beginBuild: vi.fn(() => ({})),
+  completeBuild: vi.fn(),
+}));
+
 vi.mock("../../../src/tooling/typegen/index.js", () => ({
   runTypegen: mocks.runTypegen,
 }));

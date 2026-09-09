@@ -788,6 +788,8 @@ models: {
 
 The shared package must default-export a model-definition object such as `{ User: { schema: ... } }`. Callback-style `registerModels()` packages are rejected because Vext cannot preflight, attribute ownership, or roll back keys registered through an opaque callback.
 
+Shared packages resolve from the service root, including hoisted monorepo dependencies and pnpm links. Resolution uses the Node `node` / `import` export conditions and accepts ESM defaults, CommonJS `module.exports`, and compiled `__esModule`/default wrappers. Development output directories do not change the dependency owner. Private export paths and missing compiled files produce errors; build the shared package before starting its consumers.
+
 ## Used in services
 
 ### Basic CRUD service

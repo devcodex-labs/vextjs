@@ -189,13 +189,17 @@ vext dev [options]
 
 - `error`：直接失败（默认）
 - `prompt`：在 TTY 环境下询问父进程如何处理
-- `kill`：尝试终止占用端口的进程
+- `kill`：核对本地监听地址、完整端口和唯一 PID 后尝试终止占用进程；执行前再次检查归属。多个进程、PID 不可见或归属变化时停止并报错，需要重新检查后重试。
 - `next`：自动选择下一个可用端口
 
 ```bash
 vext dev --port-conflict prompt
 vext start --port-conflict next
 ```
+
+在 monorepo 中，从具体服务目录执行命令，或为 `vext dev` 指定 `--root`。start、dev、cluster worker、包级 preload 和 TypeScript 检查都以该服务解析到的依赖为准，支持提升安装与 pnpm 链接；启动入口缺失时需构建或重新安装该版本的框架。Doctor/typegen 的源码结构分析不会因此要求框架启动产物已存在。
+
+项目语言按实际后端运行源码识别。JavaScript 项目可保留用于 `allowJs`/`checkJs` 的 `tsconfig.json`，仍使用 JavaScript 启动流程；实际存在后端 TypeScript 源文件时，即使没有 tsconfig，也需先构建再生产启动。声明、测试、默认 `src/client/` 和单独处理的 preload 不触发后端 TypeScript 判定。配置入口使用 `default.ts`、`default.js`、`default.mjs` 或 `default.cjs`；`default.mts`/`default.cts` 会给出明确的未支持诊断。
 
 #### 启动日志分层
 
@@ -264,7 +268,9 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 ## `vext build` — 构建项目
 
-将 TypeScript 源码编译为 JavaScript，生成生产可用的 `dist/` 目录；构建前会刷新 typegen 与 route manifest 这类工具产物。启用前端时，`vext build` 还会把浏览器客户端打包到 `dist/client/`。
+将 TypeScript 源码编译为 JavaScript，默认生成 `dist/`；构建前会刷新 typegen 与 route manifest。build、start 和产物检查按 `--outdir` → `VEXT_BUILD_OUTDIR` → `.vext/build-location.json` → `dist` 选择目录，`build --clean` 清理同一个目标。前端未显式配置 `frontend.outDir` 时输出到该目录的 `client/`。
+
+全部构建成功后才更新 `.vext/build-location.json`，其中的 buildId、profile 和目录必须与输出内 `.vext-build.json` 一致。中断或失败的同目录重建会阻止启动；位置记录损坏时可用 `vext build --outdir <目录>` 重建恢复。旧版无记录 `dist/` 保留结构检查，但没有构建身份保证。元数据不证明任意文件内容未被手动修改。
 
 ### 用法
 
@@ -326,7 +332,7 @@ vext build && vext start
 - `--typecheck` 开启时，在 generated 产物刷新后只执行项目本地的 `tsc --noEmit`；缺少本地 TypeScript 时给出可操作错误，不回退到网络解析
 - 使用 esbuild 进行服务端编译与前端打包
 - 不支持位置参数；`--outdir`、`--config` 等取值参数必须提供非 option 值
-- 输出目录默认为 `dist/`
+- 没有显式目录或成功构建记录时，输出目录为 `dist/`；下文 `dist/` 均表示此默认示例
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
 - 重复构建会自动移除已删除或重命名服务端源码留下的后端 stale 产物；`--clean` 表示先清空整个输出目录
@@ -502,7 +508,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ## `vext start` — 生产模式启动
 
-以生产模式启动项目。TypeScript 项目从 `dist/` 目录加载编译后的代码，需要先执行 `vext build`；如果缺少有效构建产物，命令会直接失败并提示使用 `vext build` 或开发期改用 `vext dev`。
+以生产模式启动项目。TypeScript 项目需先执行 `vext build`，start 从所选构建目录加载代码；缺少有效产物时会失败。未指定 `--config` / `VEXT_CONFIG` / 兼容 NODE_ENV profile 时，使用该产物记录的 profile，无记录时为 production。
+
+有效 compiled 部署可以省略 `src/`：携带 package.json、运行依赖、所选输出目录及 `.vext/build-location.json`，或通过 `--outdir` 选择输出；输出内 `.vext-build.json` 随产物保留。纯 JavaScript source 模式仍需源码。开发和再次构建也需源码。
 
 ### 用法
 
@@ -514,16 +522,17 @@ vext start [options]
 
 ### 选项
 
-| 选项                         | 说明                                     | 默认值         |
-| ---------------------------- | ---------------------------------------- | -------------- |
-| `--port <number>`            | 指定端口                                 | 配置文件中的值 |
-| `--host <address>`           | 指定监听地址                             | 配置文件中的值 |
-| `--config <name>`            | 加载 `src/config/<name>`                 | `production`   |
-| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error`        |
-| `--startup-profile`          | 输出生产启动阶段摘要与详细耗时           | —              |
-| `--startup-profile-json <p>` | 将生产启动阶段耗时写入 JSON 文件         | —              |
-| `--verbose-lifecycle`        | 输出详细生命周期日志                     | —              |
-| `-h, --help`                 | 显示帮助                                 | —              |
+| 选项                         | 说明                                     | 默认值                   |
+| ---------------------------- | ---------------------------------------- | ------------------------ |
+| `--port <number>`            | 指定端口                                 | 配置文件中的值           |
+| `--outdir <path>`            | 选择编译产物目录                         | 环境变量、成功记录、dist |
+| `--host <address>`           | 指定监听地址                             | 配置文件中的值           |
+| `--config <name>`            | 加载 `src/config/<name>`                 | `production`             |
+| `--port-conflict <strategy>` | 端口冲突策略（`error/prompt/kill/next`） | `error`                  |
+| `--startup-profile`          | 输出生产启动阶段摘要与详细耗时           | —                        |
+| `--startup-profile-json <p>` | 将生产启动阶段耗时写入 JSON 文件         | —                        |
+| `--verbose-lifecycle`        | 输出详细生命周期日志                     | —                        |
+| `-h, --help`                 | 显示帮助                                 | —                        |
 
 ### 示例
 
@@ -594,7 +603,7 @@ VEXT_CLUSTER=1 vext start
 - 非递归扫描
 - 项目级 preload 先执行，包级 preload 后执行
 - `.mjs` / `.js` 直接注入
-- `.ts` / `.mts` 会在启动前编译到 `.vext/preload/*.mjs` 再注入
+- dev 和纯 JS source 模式会在启动前将 `.ts` / `.mts` 编译为 `.vext/preload/*.mjs`；compiled start 使用所选产物内的 `preload/*.mjs`
 - `vext dev` 下若 `src/preload/` 里的文件发生变化，会触发 cold restart
 - 项目根 `preload/` 是仅用于迁移的临时兼容回退；使用时会输出迁移 warning。不要在两个目录同时放置支持的 preload 文件，Vext 会 fail-fast，避免脚本重复执行
 

@@ -22,8 +22,9 @@
  * @see 13-monsqlize-plugin.md §2.5（Model 自动加载）
  */
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
+import { resolveConsumerModule } from "../../consumer-resolver.js";
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
@@ -152,6 +153,7 @@ export async function loadModels(
   modelsConfig: MonSQLizeDatabaseConfig["models"] | undefined,
   app: VextPluginContext,
   srcDir: string,
+  rootDir = dirname(srcDir),
 ): Promise<ModelRegistrationHandle> {
   const config = {
     dir: modelsConfig?.dir ?? "models",
@@ -181,6 +183,7 @@ export async function loadModels(
       config.sharedPackage,
       app,
       config.validation,
+      rootDir,
     );
     for (const registration of shared.registrations) {
       try {
@@ -250,12 +253,15 @@ async function discoverSharedModels(
   packageName: string,
   app: VextPluginContext,
   mode: ModelValidationMode,
+  rootDir: string,
 ): Promise<ModelDiscoveryResult> {
   const registrations: DiscoveredRegistration[] = [];
   const modelIds = new Set<string>();
   let sharedModels: Record<string, unknown>;
   try {
-    sharedModels = (await import(packageName)) as Record<string, unknown>;
+    sharedModels = (await import(
+      resolveConsumerModule(rootDir, packageName)
+    )) as Record<string, unknown>;
   } catch (err) {
     reportModelIssue(
       app,
@@ -268,7 +274,7 @@ async function discoverSharedModels(
     return { registrations, modelIds };
   }
 
-  const defaultExport = sharedModels.default;
+  const defaultExport = unwrapModelDefault(sharedModels);
   if (
     defaultExport &&
     typeof defaultExport === "object" &&
@@ -381,15 +387,7 @@ async function discoverLocalModels(
     // Node.js 动态 import() CJS 模块时，把 module.exports 整体当作 default，
     // 导致 mod.default = { __esModule: true, default: { name, schema, ... } }（双层嵌套）。
     // 需要解包到真正的 definition 对象。
-    let definition = mod.default;
-    if (
-      definition &&
-      typeof definition === "object" &&
-      (definition as Record<string, unknown>).__esModule &&
-      (definition as Record<string, unknown>).default
-    ) {
-      definition = (definition as Record<string, unknown>).default;
-    }
+    const definition = unwrapModelDefault(mod);
 
     if (
       !definition ||
@@ -480,6 +478,19 @@ async function importModelFile(
   const { pathToFileURL } = await import("node:url");
   const fileUrl = pathToFileURL(filePath).href;
   return import(fileUrl);
+}
+
+function unwrapModelDefault(mod: Record<string, unknown>): unknown {
+  const definition = mod.default;
+  if (
+    definition &&
+    typeof definition === "object" &&
+    (definition as Record<string, unknown>).__esModule &&
+    (definition as Record<string, unknown>).default
+  ) {
+    return (definition as Record<string, unknown>).default;
+  }
+  return definition;
 }
 
 /**

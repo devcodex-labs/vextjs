@@ -53,13 +53,16 @@ describe("port-conflict", () => {
   });
 
   it("returns unchanged port when target port is free", async () => {
+    const { server, port } = await listenRandomPort();
+    servers.push(server);
+    await closeServer(server);
     const resolution = await resolvePortConflict({
       host: "127.0.0.1",
-      port: 43219,
+      port,
       strategy: "error",
     });
 
-    expect(resolution.port).toBe(43219);
+    expect(resolution.port).toBe(port);
     expect(resolution.changed).toBe(false);
     expect(resolution.action).toBe("none");
   });
@@ -129,6 +132,3 @@ describe("port-conflict", () => {
     expect(resolution.port).toBe(port);
   });
 });
-
-
-

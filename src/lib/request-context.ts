@@ -44,7 +44,7 @@ import type { VextAuthContextSnapshot } from "../types/auth.js";
  * 各字段由不同的中间件在请求生命周期中写入：
  *   - requestId:          requestId 中间件（步骤①）
  *   - locale:             i18n 中间件或 Accept-Language 解析（步骤①+）
- *   - propagatedHeaders:  requestId 中间件从入站请求捕获，供 app.fetch 透传到下游
+ *   - propagatedHeaders:  request-metadata 中间件从入站请求捕获，供 app.fetch 透传到下游
  */
 export interface RequestContextStore {
   /** 当前请求的唯一标识（由 requestId 中间件生成/透传） */
@@ -62,7 +62,7 @@ export interface RequestContextStore {
   /**
    * 需要透传到下游服务的入站请求头快照
    *
-   * 由 requestId 中间件根据 config.fetch.propagateHeaders 列表，
+   * 由 request-metadata 中间件根据 config.fetch.propagateHeaders 列表，
    * 从当前入站请求中提取对应头的值后写入。
    *
    * app.fetch 在构建出站请求时从此字段读取，自动注入到下游请求头。

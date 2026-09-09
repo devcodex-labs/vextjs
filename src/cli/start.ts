@@ -24,6 +24,7 @@ import {
   readRequiredOptionValueOrExit,
 } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
+import { resolveBuildLocation } from "../lib/build/build-location.js";
 
 /**
  * vext start — 生产模式启动命令（Phase 1）
@@ -32,7 +33,7 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
  *   1. 解析用户项目根目录（默认 process.cwd()）
  *   2. detectProject() 检测项目结构（src/ / config/ / tsconfig.json）
  *   3. 检测 dist/ 编译产物是否存在
- *   4. 解析实际入口文件路径（dist/ 优先，否则 node_modules/vextjs/dist/）
+ *   4. 从当前服务实际安装的 vextjs 包解析框架 bootstrap 入口
  *   5. fork 子进程运行 bootstrap.ts/bootstrap.js
  *   6. 转发 SIGTERM / SIGINT 给子进程（触发优雅关闭）
  *
@@ -60,6 +61,8 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
 // ── 类型定义 ────────────────────────────────────────────────
 
 interface StartOptions {
+  /** 指定已构建目录，覆盖最近成功构建记录 */
+  outdir?: string;
   /** 覆盖端口号 */
   port?: number;
   /** 覆盖监听地址 */
@@ -143,8 +146,6 @@ async function promptPortConflictDecision(
 export async function startCommand(args: string[] = []): Promise<void> {
   // ── 解析命令行参数 ────────────────────────────────────────
   const options = parseStartArgs(args);
-  const resolvedConfigProfile = resolveCliConfigProfile(options);
-  printConfigProfileWarning(resolvedConfigProfile);
   const commandStartedAt = performance.now();
   const readyLogger = {
     info(message: string) {
@@ -154,21 +155,31 @@ export async function startCommand(args: string[] = []): Promise<void> {
 
   // ── 检测项目结构 ──────────────────────────────────────────
   const rootDir = resolve(process.cwd());
-  const project = detectProject(rootDir);
+  const project = detectProject(rootDir, {
+    allowBuilt: true,
+    outDir: options.outdir,
+  });
+  const location = resolveBuildLocation(project.rootDir, options.outdir);
+  if (location.failure) throw new Error(`[vextjs] ${location.failure}`);
+  const resolvedConfigProfile = resolveCliConfigProfile(
+    options,
+    location.identity?.profile,
+  );
+  printConfigProfileWarning(resolvedConfigProfile);
 
   // ── 检测 dist/ 编译产物 ──────────────────────────────────
-  const dist = inspectDistBuild(project.rootDir);
+  const dist = inspectDistBuild(project.rootDir, location.outDir);
   const hasDist = project.language === "ts" ? dist.valid : false;
   const entryFile = resolveEntryFile(project);
 
   if (project.language === "ts" && !dist.valid) {
-    printBuildRequiredError(dist);
+    printBuildRequiredError(dist, location.outDir);
     process.exit(1);
   }
 
   // ── 打印启动信息 ──────────────────────────────────────────
   if (hasDist) {
-    console.log("[vextjs] start mode - built (node, from dist/)");
+    console.log(`[vextjs] start mode - built (node, from ${location.outDir})`);
   } else {
     console.log("[vextjs] start mode - JavaScript (node)");
   }
@@ -187,7 +198,10 @@ export async function startCommand(args: string[] = []): Promise<void> {
   // --import <file:///...> 形式追加到 execArgv。
   // 无预加载包时返回 []，不追加任何参数，行为与旧版完全一致。
   //
-  const preloads = await resolvePreloads(project.rootDir);
+  const preloads = await resolvePreloads(
+    project.rootDir,
+    hasDist ? { builtOutDir: location.outDir } : undefined,
+  );
   for (const fileUrl of preloads) {
     execArgv.push("--import", fileUrl);
   }
@@ -200,7 +214,13 @@ export async function startCommand(args: string[] = []): Promise<void> {
     VEXT_MODE: "start",
     VEXT_ROOT: project.rootDir,
     VEXT_START_PARENT_READY_LOG: "1",
+    VEXT_BUILD_OUTDIR: location.outDir,
   };
+
+  // 不继承调用 CLI 的其他服务/旧构建身份。
+  delete env.VEXT_BUILT;
+  delete env.VEXT_BUILD_ID;
+  if (location.identity) env.VEXT_BUILD_ID = location.identity.buildId;
 
   // dist/ 标记（bootstrap 可据此切换 srcDir）
   if (hasDist) {
@@ -358,12 +378,14 @@ export async function startCommand(args: string[] = []): Promise<void> {
 
 function resolveCliConfigProfile(
   options: StartOptions,
+  defaultProfile?: string,
 ): ReturnType<typeof resolveConfigProfile> {
   try {
     return resolveConfigProfile({
       cliProfile: options.configProfile,
       env: process.env,
       command: "start",
+      defaultProfile,
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
@@ -390,7 +412,12 @@ export function parseStartArgs(args: string[]): StartOptions {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
 
-    if (arg === "--port") {
+    if (arg === "--outdir") {
+      markUniqueOption(seenOptions, "--outdir");
+      const parsed = readRequiredOptionValueOrExit(args, i, arg, "<path>");
+      options.outdir = parsed.value;
+      i = parsed.nextIndex;
+    } else if (arg === "--port") {
       const parsed = readRequiredOptionValueOrExit(args, i, arg, "<number>");
       const portStr = parsed.value;
       const port = parseInt(portStr, 10);
@@ -473,13 +500,16 @@ export function parseStartArgs(args: string[]): StartOptions {
   return options;
 }
 
-function printBuildRequiredError(dist: {
-  hasDistDir: boolean;
-  missing: string[];
-}): void {
+function printBuildRequiredError(
+  dist: {
+    hasDistDir: boolean;
+    missing: string[];
+  },
+  outDir: string,
+): void {
   const reason = dist.hasDistDir
-    ? `invalid dist/ build, missing: ${dist.missing.join(", ")}`
-    : "dist/ build not found";
+    ? `invalid build at ${outDir}, missing: ${dist.missing.join(", ")}`
+    : `build not found at ${outDir}`;
 
   console.error(
     `[vextjs] Cannot run TypeScript project with vext start: ${reason}.`,
@@ -501,6 +531,7 @@ function printStartHelp(): void {
   Options that take values require a non-option value.
 
   Options:
+    --outdir <path>   Select compiled output (env, last successful build, then dist)
     --port <number>   Override the listening port
     --host <string>   Override the listening host
     --config <name>   Load src/config/<name> instead of the default profile
@@ -522,6 +553,7 @@ function printStartHelp(): void {
     $ vext start --startup-profile
 
   Environment variables:
+    VEXT_BUILD_OUTDIR Override output directory when --outdir is not set
     NODE_ENV          Runtime mode is forced to production by vext start
     VEXT_CONFIG       Load a named config profile when --config is not set
     VEXT_CLUSTER=1    Enable cluster mode

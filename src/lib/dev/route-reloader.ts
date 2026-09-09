@@ -209,6 +209,10 @@ export type NotFoundHandlerFactory = () => RouteReloaderMiddleware;
  * 保持与生产环境 bootstrap 完全一致的中间件栈。
  */
 export interface BuiltinMiddlewareCreators {
+  /** 请求 locale/传播头，不依赖 requestId enabled。 */
+  createRequestMetadataMiddleware?: (
+    config: Record<string, unknown>,
+  ) => RouteReloaderMiddleware;
   /**
    * 创建 requestId 中间件
    *
@@ -447,6 +451,13 @@ export async function reloadRoutes(
   // app.config 的最新 enabled 值。其他 creator 仍可用 undefined 表示禁用。
   //
   if (builtinMiddlewares) {
+    if (builtinMiddlewares.createRequestMetadataMiddleware) {
+      freshAdapter.registerMiddleware(
+        builtinMiddlewares.createRequestMetadataMiddleware(
+          app.config as Record<string, unknown>,
+        ),
+      );
+    }
     if (builtinMiddlewares.createRequestIdMiddleware) {
       freshAdapter.registerMiddleware(
         builtinMiddlewares.createRequestIdMiddleware(

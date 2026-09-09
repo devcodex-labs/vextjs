@@ -7,6 +7,8 @@ VextJS 提供了 **预加载（Preload）** 机制，允许以下两类来源在
 
 `vext start` / `vext dev` 会自动发现这些声明，并通过 `--import` 参数注入到子进程中。
 
+包级 preload 从当前服务声明的直接依赖解析实际包根，支持依赖提升和 pnpm 链接；包未导出 `package.json` 或只导出子路径也能读取其 preload 元数据。脚本路径相对该包根解析，按真实文件路径去重，不要求每个服务各有一份 `node_modules/<包名>`。
+
 ## 为什么需要预加载？
 
 某些工具（如 OpenTelemetry SDK）必须在应用代码加载**之前**完成初始化，才能正确 patch Node.js 内置模块（http、net、dns）和第三方库（MongoDB、pg、Redis 等）。
@@ -99,7 +101,7 @@ src/preload/
 
 #### TypeScript preload 的工作方式
 
-如果项目级 `src/preload/` 目录中包含 `.ts` / `.mts` 文件，CLI 会在启动前使用 `esbuild` 将其编译到：
+dev 和纯 JavaScript source 启动模式下，若 `src/preload/` 包含 `.ts` / `.mts`，CLI 会在启动前使用 `esbuild` 将其编译到：
 
 ```text
 .vext/preload/*.mjs
@@ -113,13 +115,7 @@ src/preload/01-bootstrap-port.ts
 → --import file:///.../.vext/preload/01-bootstrap-port.__compiled__.mjs
 ```
 
-这样做的目的，是在不改造 `vext build` 主编译链的前提下，同时保证：
-
-- `vext dev`
-- `vext start`
-- Cluster worker
-
-三条链路的 preload 行为一致。
+compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs`，不会重新编译源 preload。单进程和 cluster worker 使用同一选择，构建后修改源文件需重新构建才会生效。
 
 #### `vext dev` 下的行为
 
@@ -243,7 +239,7 @@ CLI 注入的 `--import` 与用户手动添加的 `--import` 不冲突。如果�
   - 项目根 `package.json`
   - `dist/`（其中已包含 `dist/preload/`，如被使用）
 
-`vext start` 会优先解析有源文件的 `src/preload/`；只有在它不可用时才把有源文件的历史项目根 `preload/` 作为带 warning 的回退，否则从已构建部署读取 `dist/preload/`。
+compiled `vext start` 只加载所选输出的 `preload/`。自定义输出时，随部署携带 `.vext/build-location.json` 和输出内 `.vext-build.json`，或用 `vext start --outdir <目录>` 选择产物；运行依赖也必须安装。有效编译部署无需源码。dev 和纯 JS source 启动优先使用 `src/preload/`，历史根 `preload/` 仅作为带 warning 的兼容回退。
 
 ## 编写自定义 preload
 

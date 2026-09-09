@@ -31,6 +31,7 @@ import { loadServices } from "../service-loader.js";
 import { loadRoutes } from "../router-loader.js";
 import { resolveAdapter } from "../adapter-resolver.js";
 import { createRequestIdMiddleware } from "../middlewares/request-id.js";
+import { createRequestMetadataMiddleware } from "../middlewares/request-metadata.js";
 import { createCorsMiddleware } from "../middlewares/cors.js";
 import { createBodyParserMiddleware } from "../middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
@@ -53,7 +54,8 @@ import {
   emitNotFoundRequestHooks,
 } from "../middlewares/request-hook.js";
 import { renderDevErrorPage } from "./error-overlay.js";
-import { createVextFetch, type VextFetchConfig } from "../fetch.js";
+import { type VextFetchConfig } from "../fetch.js";
+import { createAppFetch } from "../app-fetch.js";
 import { RouteMetadataCollector } from "../openapi/collector.js";
 import {
   OpenAPIGenerator,
@@ -511,7 +513,7 @@ export async function devBootstrap(
       config as unknown as Record<string, unknown>,
     );
     if (hasMonsqlize) {
-      const monsqlizePlugin = createMonSQLizePlugin(outDir);
+      const monsqlizePlugin = createMonSQLizePlugin(outDir, projectRoot);
       app.logger.debug(
         "[vext dev] built-in plugin: monsqlize (database config detected)",
       );
@@ -523,7 +525,10 @@ export async function devBootstrap(
       });
       internals.enterPluginSetup();
       try {
-        await setupMonSQLize(app, outDir, { startupProfiler });
+        await setupMonSQLize(app, outDir, {
+          startupProfiler,
+          rootDir: projectRoot,
+        });
         hooks.emitSafeSync("plugin:afterSetup", {
           plugin: monsqlizePlugin.name,
           sourceFile: "builtin:monsqlize",
@@ -545,6 +550,17 @@ export async function devBootstrap(
       app.logger.info("[vext dev] built-in plugin: monsqlize loaded");
     }
 
+    // 插件 setup、服务构造函数和路由工厂共用已初始化的 fetch。
+    // 与生产启动保持相同顺序；后续 requestId 中间件复用此配置。
+    const fetchConfig = config.fetch as VextFetchConfig | undefined;
+    await startupProfiler.time(
+      "worker.fetch",
+      () => {
+        app.fetch = createAppFetch(app, hooks) as unknown as VextApp["fetch"];
+      },
+      { phase: "fetch" },
+    );
+
     // ── 步骤 4: 加载插件 ─────────────────────────────────
     //
     // 从编译产物的 plugins/ 子目录加载（如果存在）
@@ -563,29 +579,6 @@ export async function devBootstrap(
     // ════════════════════════════════════════════════════════
     // 可重载阶段（首次执行）
     // ════════════════════════════════════════════════════════
-
-    // ── fetchConfig 提前提取（步骤 8 的 requestId 中间件需要用到）──
-    // 必须在步骤 5 之前定义，因为步骤 8 注册 requestId 中间件时
-    // 需要将 propagateHeaders 传入，而 fetchConfig 原本在步骤 8+ 才读取。
-    const fetchConfig = config.fetch as VextFetchConfig | undefined;
-
-    // ── 步骤 4+: 挂载 app.fetch（必须在 loadRoutes 之前）────
-    //
-    // 路由工厂执行时 handler 闭包会捕获真实 app。
-    // 若 app.fetch 在 loadRoutes 之后才赋值，路由中会暂时看不到出站 fetch 能力。
-    const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    await startupProfiler.time(
-      "worker.fetch",
-      () => {
-        app.fetch = createVextFetch(
-          app.logger,
-          fetchConfig ?? {},
-          requestIdHeader,
-          hooks,
-        ) as unknown as VextApp["fetch"];
-      },
-      { phase: "fetch" },
-    );
 
     // ── 步骤 5: 加载中间件定义 ───────────────────────────
     const middlewareRegistry = await startupProfiler.time(
@@ -753,21 +746,23 @@ export async function devBootstrap(
     //
     // 与生产 bootstrap 对齐；rate-limit 是 opt-in，仅 enabled === true 时注册。
     // 禁用的中间件完全不进入中间件链，避免额外的请求级调度。
-    // D3 修复：createRequestIdMiddleware 补传第四参数 localeConfig，
-    // 确保 dev 模式下 store.locale 正确写入（i18n 语言解析生效）。
+    // 请求元数据独立注册，关闭 requestId 不关闭 locale 或显式头传播。
     //
 
     // 1. requestId（config.requestId.enabled，默认 true）
     const builtinMiddlewaresStartedAt = performance.now();
+    app.adapter.registerMiddleware(
+      createRequestMetadataMiddleware(
+        fetchConfig?.propagateHeaders ?? [],
+        config.locale as
+          | import("../../types/app.js").VextLocaleConfig
+          | undefined,
+      ),
+    );
     if (config.requestId?.enabled !== false) {
-      const localeConfig = config.locale as
-        | import("../../types/app.js").VextLocaleConfig
-        | undefined;
       const requestIdMiddleware = createRequestIdMiddleware(
         config.requestId,
         () => internals!.getRequestIdGenerator(),
-        (fetchConfig?.propagateHeaders ?? []) as string[],
-        localeConfig,
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
@@ -1015,16 +1010,18 @@ export async function devBootstrap(
 
     // 🔧 D2/D3 修复（soft reload 侧）：
     // - 每个 creator 仅在对应 enabled 条件满足时注入（undefined 时 route-reloader 自动跳过）
-    // - createRequestIdMiddleware 补传 cfg.locale（D3 修复），确保热重载后 store.locale 仍写入
+    // - 元数据独立重建，确保关闭 ID 后热重载仍保留请求语言和传播头。
     const builtinMwCreators: BuiltinMiddlewareCreators = {
+      createRequestMetadataMiddleware: (cfg) =>
+        createRequestMetadataMiddleware(
+          (fetchConfig?.propagateHeaders ?? []) as string[],
+          cfg.locale as any,
+        ) as any,
       createRequestIdMiddleware:
         config.requestId?.enabled !== false
           ? (((cfg: Record<string, unknown>) =>
-              createRequestIdMiddleware(
-                cfg.requestId as any,
-                () => internals!.getRequestIdGenerator(),
-                (fetchConfig?.propagateHeaders ?? []) as string[],
-                cfg.locale as any, // D3 修复：补传 localeConfig
+              createRequestIdMiddleware(cfg.requestId as any, () =>
+                internals!.getRequestIdGenerator(),
               )) as any)
           : undefined,
       authContextMiddleware:

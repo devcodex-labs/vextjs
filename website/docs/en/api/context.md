@@ -194,7 +194,7 @@ Capabilities accessible via `req.app`:
 
 ### `signal`
 
-An `AbortSignal` bound to the request lifecycle. It is aborted when the client connection closes. When the route timeout middleware is active, its deadline signal is combined with the connection signal, so downstream work observes either cancellation source.
+An `AbortSignal` bound to the request lifecycle. It is aborted when the client disconnects while the request is still pending. Reading the complete request body or completing the response normally does not abort it. When the route timeout middleware is active, its deadline signal is combined with the connection signal, so downstream work observes either cancellation source.
 
 Pass the signal to APIs that support cancellation and still stop mutating application or response state after it is aborted:
 
@@ -371,7 +371,7 @@ The corresponding location must be configured in `options.validate` before `req.
 
 ### `onClose(handler)`
 
-Register request shutdown hook, triggered when the client disconnects.
+Register a request close hook that runs once when the response completes or the client disconnects early. Hooks registered after the request ends run immediately. A hook running after normal completion does not mean that `req.signal` was aborted.
 
 ```typescript
 function onClose(handler: () => void): void;

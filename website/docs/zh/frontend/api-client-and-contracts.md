@@ -4,6 +4,8 @@ Vext 页面首屏数据不需要生成 API client。首屏数据应优先使用 
 
 ## 主数据路径
 
+生成客户端的 `HEAD()` 和 `request("HEAD", ...)` 返回 `null`，类型也为 `Promise<null>`。204/205 响应返回 `null`；304 保留为 HTTP 错误，不因缺少 JSON 消息体变成解析错误。普通响应中的非空非法 JSON 仍会抛出解析错误。
+
 ```text
 route handler -> app.services -> res.render(page, props)
 ```

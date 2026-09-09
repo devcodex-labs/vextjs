@@ -24,6 +24,38 @@ afterEach(async () => {
 });
 
 describe("frontend deploy manifest validation", () => {
+  it("rejects an otherwise valid private file before invoking the upload adapter", async () => {
+    const fixture = await createFixture();
+    // Removing the public declaration leaves valid bytes/hash/path metadata.
+    // The upload entry itself must enforce the public boundary.
+    await writeFile(
+      path.join(fixture.config.outDir, "public-manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: "frontend-public-manifest",
+        buildId: "test",
+        files: [],
+      }),
+    );
+    await writeFile(fixture.manifestPath, JSON.stringify(fixture.manifest));
+    let calls = 0;
+    await expect(
+      deployFrontendAssets({
+        config: fixture.config,
+        manifestPath: fixture.manifestPath,
+        adapter: {
+          name: "probe",
+          async upload() {
+            calls++;
+            return { uploaded: true };
+          },
+        },
+      }),
+    ).rejects.toThrow("not a declared public file");
+    expect(calls).toBe(0);
+    expect(existsSync(fixture.config.deploy.upload.stateFile)).toBe(false);
+  });
+
   it.each([
     {
       name: "traversal file",
@@ -154,6 +186,15 @@ async function createFixture() {
   await mkdir(config.outDir, { recursive: true });
   const content = Buffer.from("asset-content\n");
   await writeFile(path.join(config.outDir, "asset.txt"), content);
+  await writeFile(
+    path.join(config.outDir, "public-manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "frontend-public-manifest",
+      buildId: "test",
+      files: ["asset.txt"],
+    }),
+  );
   const manifestPath = path.join(
     config.outDir,
     "deploy-manifest.external.json",

@@ -34,6 +34,8 @@ import type { StartupProfiler } from "../../startup-profiler.js";
 
 export interface SetupMonSQLizeOptions {
   startupProfiler?: StartupProfiler;
+  /** 消费者根目录；dev 编译目录不能作为依赖解析根。 */
+  rootDir?: string;
 }
 
 /**
@@ -282,7 +284,7 @@ export async function setupMonSQLize(
     modelRegistration = await timeMonSQLize(
       options,
       "worker.builtinPlugin.monsqlize.models",
-      () => loadModels(monsqlize, config!.models, app, srcDir),
+      () => loadModels(monsqlize, config!.models, app, srcDir, options.rootDir),
     );
 
     // ── 6. 挂载到 app ─────────────────────────────────────────

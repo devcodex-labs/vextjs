@@ -1,6 +1,7 @@
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { detectProject } from "./utils/detect-project.js";
+import { resolveFrameworkEntry } from "../lib/consumer-resolver.js";
 import { runDevPreflight } from "./utils/dev-preflight.js";
 import type { TsDiagnosticsMode } from "./utils/dev-preflight.js";
 import { resolvePreloads } from "./utils/preload.js";
@@ -257,15 +258,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   // ColdRestarter fork 此文件时，通过 VEXT_ROOT 环境变量
   // 传递用户项目根目录给 devBootstrap。
   //
-  const entryScript = join(
-    project.rootDir,
-    "node_modules",
-    "vextjs",
-    "dist",
-    "lib",
-    "dev",
-    "dev-entry.js",
-  );
+  const entryScript = resolveFrameworkEntry(project.rootDir, "dev");
 
   // ── 4. 创建 ColdRestarter ─────────────────────────────
   const restarterEnv: Record<string, string> = {

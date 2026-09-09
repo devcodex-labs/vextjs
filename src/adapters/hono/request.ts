@@ -11,7 +11,8 @@ import {
 import { parseQueryString } from "../../lib/query.js";
 import {
   addRequestCloseHandler,
-  fireRequestCloseHandlers,
+  bindNodeRequestLifecycle,
+  bindWebRequestLifecycle,
 } from "../../lib/request-close.js";
 
 /**
@@ -359,42 +360,14 @@ export function createVextRequest(c: Context, app: VextApp): VextRequest {
     enumerable: true,
   });
 
-  // Host close/abort + finishResponseSend both fire exactly-once shared handlers.
-  // Prefer Node IncomingMessage 'close' when the Node bridge provides
-  // env.incoming (fires on both normal completion and client abort).
-  // Fall back to AbortSignal for pure Web Request environments.
-  try {
-    const env = c.env as
-      | { incoming?: { on?: (event: string, cb: () => void) => void } }
-      | undefined;
-    const incoming = env?.incoming;
-    if (incoming && typeof incoming.on === "function") {
-      incoming.on("close", () => {
-        fireRequestCloseHandlers(req);
-      });
-    } else {
-      const signal = c.req.raw.signal;
-      if (signal) {
-        if (signal.aborted) {
-          fireRequestCloseHandlers(req);
-        } else {
-          signal.addEventListener(
-            "abort",
-            () => {
-              fireRequestCloseHandlers(req);
-            },
-            { once: true },
-          );
-        }
-      }
-    }
-  } catch {
-    // 某些环境下 close/abort 监听可能不可用，静默忽略
+  const incoming = (
+    c.env as { incoming?: import("node:http").IncomingMessage } | undefined
+  )?.incoming;
+  if (incoming && typeof incoming.once === "function") {
+    bindNodeRequestLifecycle(req, incoming, requestAbortController);
+  } else {
+    bindWebRequestLifecycle(req, c.req.raw.signal, requestAbortController);
   }
-
-  addRequestCloseHandler(req, () => {
-    requestAbortController.abort(new Error("[vextjs] Request closed"));
-  });
 
   return req;
 }

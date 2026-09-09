@@ -4,6 +4,8 @@ Vext has two static asset locations with different behavior.
 
 ## Asset Locations
 
+HTTP static access and upload use `public-manifest.json`; the output directory is not a public file tree. Server renderer outputs, their source maps, and internal metadata remain private under custom paths as well. HEAD reads no file content and preserves the GET representation's length, ETag, Last-Modified, and Content-Type.
+
 | Location                 | Behavior                                                            |
 | ------------------------ | ------------------------------------------------------------------- |
 | `src/frontend/assets/**` | Imported by TSX/CSS and processed through the frontend asset graph. |

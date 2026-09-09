@@ -4,6 +4,8 @@ Vext 有两个静态资源位置，它们行为不同。
 
 ## 资源位置
 
+构建产物的 HTTP 静态访问和上传均以 `public-manifest.json` 为边界，不能把整个 outDir 直接公开。自定义路径下的服务端 renderer、其 source map 和内部元数据同样保持私有。HEAD 不读取文件内容，保留 GET 的文件长度、ETag、Last-Modified 和 Content-Type。
+
 | 位置                     | 行为                                      |
 | ------------------------ | ----------------------------------------- |
 | `src/frontend/assets/**` | 被 TSX/CSS import，进入前端 asset graph。 |

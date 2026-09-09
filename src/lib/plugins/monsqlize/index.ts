@@ -56,12 +56,12 @@ import "./types.js";
  * }
  * ```
  */
-export function createMonSQLizePlugin(srcDir: string) {
+export function createMonSQLizePlugin(srcDir: string, rootDir?: string) {
   return definePlugin({
     name: "monsqlize",
 
     async setup(app) {
-      await setupMonSQLize(app, srcDir);
+      await setupMonSQLize(app, srcDir, { rootDir });
     },
   });
 }

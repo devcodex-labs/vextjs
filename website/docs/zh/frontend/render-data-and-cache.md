@@ -4,6 +4,8 @@ Render data 是服务端准备、用于生成 HTML 并支持 hydration 的 paylo
 
 ## 什么是 Render Data
 
+同一路径的 HTML 和导航 envelope 都设置 `Vary: Accept, Vext-Navigation, Vext-Build-Id`，并保留已有 Vary 值。带认证身份或 session 的页面使用 `Cache-Control: private, no-store`；缓冲 HTML、流式响应、错误页和缓存重放遵守相同规则，私有页面不会被自定义的 public 缓存头覆盖。
+
 对 `res.render()` 来说，render data 可以包含：
 
 - `props`

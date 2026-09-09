@@ -7,6 +7,8 @@ for cache and media behavior.
 
 ## Output
 
+Static HTTP serving and deployment upload use `public-manifest.json`, generated from public files, browser outputs, media, static pages, and SEO artifacts. Server renderer outputs, their source maps, and internal metadata remain private, including when `build.server.outFile` is customized. Files manually added to outDir after a build are not automatically public. Rebuild older output to generate the required public manifest. Upload validates this boundary before applying include/exclude patterns or invoking an adapter.
+
 When frontend is enabled, production output includes:
 
 ```text
@@ -16,6 +18,7 @@ dist/
     index.html
     assets/                         # browser JS, CSS, and imported files
     manifest.json
+    public-manifest.json            # shared public file list for HTTP and upload
     render-manifest.json
     server/renderer.cjs             # default; configurable with build.server.outFile
     deploy-manifest.json
@@ -28,11 +31,7 @@ dist/
     api.generated.ts                # when apiClient is enabled (the default)
 ```
 
-Only `dist/client/` is a fixed frontend boundary. The backend compiler keeps
-the application source layout under `dist/`; it does **not** create a fixed
-top-level `dist/server/` directory. The SSR renderer lives under the frontend
-output by default, so it can be described by `render-manifest.json` and be
-validated with the client assets as one closure.
+This is the default layout. `vext build --outdir build` writes the backend to `build/` and, unless `frontend.outDir` is explicit, the frontend to `build/client/`. `vext start` selects the same output through the successful build record, or an explicit `--outdir`. Backend output follows the source layout without a fixed top-level `dist/server/`. The SSR renderer lives under the selected frontend output and is validated with its manifest and client assets.
 
 `messages-manifest.json`, `media-manifest.json`, and `static-manifest.json`
 may be empty when the corresponding feature has no declared input. They are
@@ -43,7 +42,7 @@ while the backend CLI compiler defaults to external source maps.
 
 `vext start` serves the built client assets and uses `render-manifest.json` for
 SSR. In production, startup fails before listening when `index.html`,
-`render-manifest.json`, route asset metadata, or the referenced server renderer
+`render-manifest.json`, `public-manifest.json`, route asset metadata, or the referenced server renderer
 is missing or invalid; run `vext build` again to regenerate the complete
 closure.
 
@@ -51,7 +50,7 @@ closure.
 
 | Need                                  | Default / configuration                 | What changes                                                                    | Verify                                                             |
 | ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| One Node service owns HTML and assets | No `assetBaseUrl`                       | `vext start` serves `dist/client/**` from the same origin                       | Load a page and a hashed asset from the application origin         |
+| One Node service owns HTML and assets | No `assetBaseUrl`                       | `vext start` serves declared public files from the same origin                  | Load a page and a hashed asset from the application origin         |
 | A CDN owns immutable assets           | Absolute `frontend.deploy.assetBaseUrl` | Generated JS/CSS URLs point at the CDN; HTML and SSR remain on the Node runtime | Inspect generated HTML, then request the asset through the CDN URL |
 | Incremental asset upload              | `frontend.deploy.upload.enabled: true`  | `deploy-manifest.json` drives content-hash-aware upload                         | Run the dry run before the real upload                             |
 

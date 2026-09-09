@@ -23,6 +23,12 @@ import { buildFrontendClient } from "../../src/frontend/tooling/client-build-com
 import { buildFrontendDeployManifest } from "../../src/frontend/deploy/manifest.js";
 import { writeFrontendMediaArtifacts } from "../../src/frontend/tooling/media-artifact-writer.js";
 import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
+import { DEFAULT_CONFIG } from "../../src/lib/app.js";
+import { createNativeAdapter } from "../../src/adapters/native/adapter.js";
+import { createHonoAdapter } from "../../src/adapters/hono/adapter.js";
+import { createFastifyAdapter } from "../../src/adapters/fastify/adapter.js";
+import { createExpressAdapter } from "../../src/adapters/express/adapter.js";
+import { createKoaAdapter } from "../../src/adapters/koa/adapter.js";
 import { createFrontendDevEventBus } from "../../src/frontend/runtime/dev-events.js";
 import {
   VextApiError,
@@ -1023,6 +1029,7 @@ describe("frontend client build", () => {
     });
     await mkdir(config.outDir, { recursive: true });
     await writeFile(path.join(config.outDir, "safe.txt"), "safe");
+    await writePublicFixture(config.outDir, ["safe.txt"]);
     await writeFile(path.join(outsideDir, "secret.txt"), "secret");
     await symlink(
       outsideDir,
@@ -3021,6 +3028,145 @@ describe("frontend api client", () => {
 });
 
 describe("frontend static mount", () => {
+  it("enforces public files, HEAD metadata and private page headers over HTTP on every adapter", async () => {
+    const rootDir = await tempRoot();
+    await createMinimalFrontend(rootDir);
+    await mkdir(path.join(rootDir, "public"), { recursive: true });
+    await writeFile(path.join(rootDir, "public", "logo.txt"), "public asset");
+    const config = {
+      enabled: true,
+      apiClient: false,
+      build: {
+        server: { outFile: "dist/client/internal/custom.cjs", sourcemap: true },
+      },
+      render: { streaming: "auto" as const },
+    };
+    const result = await buildFrontendClient({
+      rootDir,
+      config,
+      mode: "production",
+    });
+    const renderManifest = JSON.parse(
+      await readFile(result.renderManifestPath!, "utf8"),
+    );
+    expect(existsSync(result.serverRendererPath!)).toBe(true);
+    expect(existsSync(`${result.serverRendererPath}.map`)).toBe(true);
+    const deployManifest = JSON.parse(
+      await readFile(result.deployManifestPath!, "utf8"),
+    );
+    expect(deployManifest.assets.map((asset: any) => asset.file)).toContain(
+      "logo.txt",
+    );
+    expect(
+      deployManifest.assets.some((asset: any) =>
+        asset.file.startsWith("internal/"),
+      ),
+    ).toBe(false);
+    await writeFile(
+      path.join(result.config.outDir, "unlisted.txt"),
+      "private addition",
+    );
+    const app = { config: DEFAULT_CONFIG } as any;
+    const adapters = [
+      createNativeAdapter({}, app),
+      createHonoAdapter(app),
+      createFastifyAdapter({}, app),
+      createExpressAdapter({}, app),
+      createKoaAdapter({}, app),
+    ];
+    for (const adapter of adapters) {
+      adapter.registerMiddleware(async (req, _res, next) => {
+        if (req.path.startsWith("/private"))
+          req.session = { id: "session-1" } as any;
+        await next();
+      });
+      adapter.registerMiddleware(
+        createFrontendRenderMiddleware({ rootDir, config, mode: "production" }),
+      );
+      adapter.registerRoute("GET", "/private", [
+        async (_req, res) => {
+          res.render(
+            "index",
+            {},
+            {
+              headers: {
+                "cache-control": "public, max-age=600",
+                vary: "Accept-Language",
+              },
+            },
+          );
+        },
+      ]);
+      adapter.registerNotFound(
+        createFrontendNotFoundHandler({
+          rootDir,
+          config,
+          mode: "production",
+          fallbackHandler: async (_req, res) => {
+            res.status(404).text("missing");
+          },
+        }),
+      );
+      const server = await adapter.listen(0, "127.0.0.1");
+      const base = `http://${server.host}:${server.port}`;
+      console.info(
+        `[frontend HTTP probe] ${adapter.name} pid=${process.pid} url=${base}`,
+      );
+      try {
+        const get = await fetch(`${base}/logo.txt`);
+        expect(await get.text()).toBe("public asset");
+        const head = await fetch(`${base}/logo.txt`, { method: "HEAD" });
+        expect(head.status).toBe(200);
+        expect(await head.text()).toBe("");
+        for (const header of [
+          "content-length",
+          "etag",
+          "last-modified",
+          "content-type",
+        ]) {
+          expect(head.headers.get(header), `${adapter.name}: ${header}`).toBe(
+            get.headers.get(header),
+          );
+        }
+        for (const file of [
+          "internal/custom.cjs",
+          "internal/custom.cjs.map",
+          "render-manifest.json",
+          "public-manifest.json",
+          "unlisted.txt",
+        ]) {
+          const response = await fetch(`${base}/${file}`);
+          expect(response.status, `${adapter.name}: ${file}`).toBe(404);
+          await response.text();
+        }
+        for (const accept of ["text/html", "application/vnd.vext.page+json"]) {
+          const response = await fetch(`${base}/private`, {
+            headers: {
+              Accept: accept,
+              "Vext-Navigation": accept === "text/html" ? "0" : "1",
+              "Vext-Build-Id": renderManifest.buildId,
+            },
+          });
+          expect(response.status, adapter.name).toBe(200);
+          expect(response.headers.get("cache-control"), adapter.name).toBe(
+            "private, no-store",
+          );
+          expect(response.headers.get("vary")).toContain("Accept-Language");
+          expect(response.headers.get("vary")).toContain("Vext-Navigation");
+          await response.text();
+        }
+        const missing = await fetch(`${base}/private-missing`, {
+          headers: { Accept: "text/html" },
+        });
+        expect(missing.status).toBe(404);
+        expect(missing.headers.get("cache-control")).toBe("private, no-store");
+        await missing.text();
+      } finally {
+        await server.close();
+      }
+    }
+  }, 60_000);
+
   it("fails production output readiness for incomplete SSR artifacts", async () => {
     const rootDir = await tempRoot();
     const outDir = path.join(rootDir, "dist", "client");
@@ -3085,6 +3231,10 @@ describe("frontend static mount", () => {
       "exports.renderPage = () => ({ html: '' });\n",
     );
 
+    expect(() => assertFrontendOutputReady(options)).toThrow(
+      "public-manifest.json",
+    );
+    await writePublicFixture(outDir, ["index.html"]);
     expect(() => assertFrontendOutputReady(options)).not.toThrow();
   });
 
@@ -3171,7 +3321,9 @@ describe("frontend static mount", () => {
 
     expect(fallbackCalled).toBe(0);
     expect(res.sent?.status).toBe(200);
-    expect(res.sent?.headers.Vary).toBe("Accept");
+    expect(res.sent?.headers.Vary).toBe(
+      "Accept, Vext-Navigation, Vext-Build-Id",
+    );
     expect(res.sent?.html).toContain('data-vext-page="app/shell"');
   });
 
@@ -3285,7 +3437,9 @@ describe("frontend static mount", () => {
 
     const payload = res.sent?.data as any;
     expect(res.sent?.status).toBe(404);
-    expect(res.sent?.headers.Vary).toBe("Accept");
+    expect(res.sent?.headers.Vary).toBe(
+      "Accept, Vext-Navigation, Vext-Build-Id",
+    );
     expect(res.sent?.html).toContain('data-vext-page="error/404"');
     expect(payload.props.error).toMatchObject({
       status: 404,
@@ -3364,6 +3518,13 @@ describe("frontend static mount", () => {
     await writeFile(path.join(outDir, "assets", "main-Q3BPGNZI.js"), "app");
     await writeFile(path.join(outDir, "assets", "main.js"), "app");
     await writeFile(path.join(outDir, "assets", "main-Q3BPGNZI.js.map"), "{}");
+    await writePublicFixture(outDir, [
+      "index.html",
+      "favicon.svg",
+      "assets/main-Q3BPGNZI.js",
+      "assets/main.js",
+      "assets/main-Q3BPGNZI.js.map",
+    ]);
 
     const handler = createFrontendNotFoundHandler({
       rootDir,
@@ -3420,6 +3581,7 @@ describe("frontend static mount", () => {
     const outDir = path.join(rootDir, "dist", "client");
     await mkdir(outDir, { recursive: true });
     await writeFile(path.join(outDir, "index.html"), "<main>app</main>");
+    await writePublicFixture(outDir, ["index.html"]);
 
     const handler = createFrontendNotFoundHandler({
       rootDir,
@@ -3488,6 +3650,21 @@ describe("frontend static mount", () => {
     expect(mismatchedEtagRes.streamed).toBe(true);
   });
 });
+
+async function writePublicFixture(
+  outDir: string,
+  files: string[],
+): Promise<void> {
+  await writeFile(
+    path.join(outDir, "public-manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "frontend-public-manifest",
+      buildId: "test",
+      files,
+    }),
+  );
+}
 
 async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "vext-frontend-"));

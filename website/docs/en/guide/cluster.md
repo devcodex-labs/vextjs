@@ -377,6 +377,8 @@ It is recommended to use `vext dev` (hot reload mode) instead of Cluster mode fo
 
 Master and Worker communicate through IPC messages. VextJS defines a standardized messaging protocol:
 
+When launched through `vext start`, the Windows CLI sends its shutdown request to the Master over the parent-child IPC channel. The Master uses the same graceful shutdown sequence to notify Workers, wait for exit, and remove its PID file. Terminating a process directly through the operating system does not guarantee that close hooks run.
+
 The message types below are the exact string literals of the IPC payload `type` field, without direction prefixes.
 
 ### Worker → Master message

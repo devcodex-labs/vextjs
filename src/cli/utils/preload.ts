@@ -1,7 +1,8 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolveConsumerPackage } from "../../lib/consumer-resolver.js";
 import {
   DIST_PRELOAD_DIR,
   formatLegacyProjectPreloadWarning,
@@ -26,7 +27,7 @@ const TS_PRELOAD_EXTENSIONS = new Set([".ts", ".mts"]);
  *   - 项目级 preload 支持 .mjs / .js / .ts / .mts
  *   - .ts / .mts 会在启动前编译到 .vext/preload/*.mjs 再注入
  *   - 包级 vext.preload 支持字符串或字符串数组
- *   - 路径基于 node_modules/<dep>/ 解析为绝对路径，再转 file:// URL
+ *   - 路径基于当前服务实际解析的依赖包根（含 hoisted/pnpm），再转 file:// URL
  *   - 包级 preload 解析失败只 warn，不阻断启动
  *   - 项目级 TS preload 编译失败视为启动前错误，直接抛出
  *
@@ -38,8 +39,18 @@ const TS_PRELOAD_EXTENSIONS = new Set([".ts", ".mts"]);
  *
  * @see 技术方案 §2.1 resolvePreloads 工具函数设计
  */
-export async function resolvePreloads(rootDir: string): Promise<string[]> {
-  const projectPreloads = await resolveProjectPreloads(rootDir);
+export async function resolvePreloads(
+  rootDir: string,
+  options: { builtOutDir?: string } = {},
+): Promise<string[]> {
+  const projectPreloads = options.builtOutDir
+    ? existsSync(join(options.builtOutDir, "preload"))
+      ? await resolvePreloadDirectory(
+          rootDir,
+          join(options.builtOutDir, "preload"),
+        )
+      : []
+    : await resolveProjectPreloads(rootDir);
   const packagePreloads = resolvePackagePreloads(rootDir);
 
   const merged = [...projectPreloads, ...packagePreloads];
@@ -150,15 +161,12 @@ function resolvePackagePreloads(rootDir: string): string[] {
   const preloads: string[] = [];
 
   for (const depName of deps) {
-    const depPkgPath = join(rootDir, "node_modules", depName, "package.json");
-    if (!existsSync(depPkgPath)) continue;
-
     let depPkg: Record<string, unknown>;
+    let depDir: string;
     try {
-      depPkg = JSON.parse(readFileSync(depPkgPath, "utf-8")) as Record<
-        string,
-        unknown
-      >;
+      const resolved = resolveConsumerPackage(rootDir, depName);
+      depPkg = resolved.manifest;
+      depDir = resolved.rootDir;
     } catch {
       console.warn(
         `[vextjs] preload: failed to parse ${depName}/package.json, skipping`,
@@ -181,7 +189,6 @@ function resolvePackagePreloads(rootDir: string): string[] {
     const relPaths = normalizePackagePreloadPaths(depName, vextField.preload);
 
     for (const relPath of relPaths) {
-      const depDir = join(rootDir, "node_modules", depName);
       const absPath = resolve(depDir, relPath);
 
       if (!existsSync(absPath)) {
@@ -192,7 +199,7 @@ function resolvePackagePreloads(rootDir: string): string[] {
       }
 
       // 转换为 file:// URL（--import 对 URL 语义最稳定，跨平台 Windows/Unix 一致）
-      preloads.push(pathToFileURL(absPath).href);
+      preloads.push(pathToFileURL(realpathSync(absPath)).href);
     }
   }
 

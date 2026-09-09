@@ -1,4 +1,5 @@
 import { lstat, readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import type {
   ResolvedVextFrontendConfig,
   VextFrontendDeployManifest,
@@ -8,10 +9,12 @@ import { isImmutableFrontendBundleAsset } from "../asset-cache-policy.js";
 import {
   normalizeSafeRelativePath,
   resolvePathInside,
+  assertRealPathInside,
 } from "../../lib/path-boundary.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
 import { joinPublicPath, joinUploadKey } from "./manifest.js";
+import { readFrontendPublicFiles } from "../public-artifacts.js";
 
 const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 const MAX_MANIFEST_ASSETS = 100_000;
@@ -138,15 +141,34 @@ export async function validateFrontendDeployManifest(
   config: ResolvedVextFrontendConfig,
 ): Promise<VextFrontendDeployManifest> {
   const manifest = parseFrontendDeployManifest(value);
+  const publicFiles = readFrontendPublicFiles(config.outDir);
+  const realRoot = assertRealPathInside(
+    config.outDir,
+    config.outDir,
+    "frontend output",
+    true,
+  );
   for (let index = 0; index < manifest.assets.length; index += 1) {
     const asset = manifest.assets[index]!;
+    if (!publicFiles.has(asset.file) || asset.file === "index.html") {
+      throw new Error(
+        `[vextjs] frontend deploy asset is not a declared public file: ${asset.file}`,
+      );
+    }
     const sourcePath = resolvePathInside(
       config.outDir,
       asset.file,
       `frontend deploy manifest asset[${index}].file`,
       { realpath: true },
     );
-    const sourceStat = await lstat(sourcePath);
+    if (
+      !publicFiles.has(path.relative(realRoot, sourcePath).replace(/\\/g, "/"))
+    ) {
+      throw new Error(
+        `[vextjs] frontend deploy asset resolves to a private file: ${asset.file}`,
+      );
+    }
+    const sourceStat = await lstat(path.resolve(config.outDir, asset.file));
     if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
       throw new Error(
         `[vextjs] frontend deploy manifest asset[${index}] must reference a regular file inside outDir.`,

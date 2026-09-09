@@ -24,6 +24,7 @@ import type { MiddlewareRegistry } from "../lib/middleware-loader.js";
 import { loadServices } from "../lib/service-loader.js";
 import { loadRoutes } from "../lib/router-loader.js";
 import { createRequestIdMiddleware } from "../lib/middlewares/request-id.js";
+import { createRequestMetadataMiddleware } from "../lib/middlewares/request-metadata.js";
 import { createCorsMiddleware } from "../lib/middlewares/cors.js";
 import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "../lib/middlewares/rate-limit.js";
@@ -447,17 +448,21 @@ export async function createTestApp(
   //
   // 🔧 同步 bootstrap.ts / dev-bootstrap.ts：
   //   - rate-limit 仅在 enabled === true 时注册；其他中间件保持各自条件守卫
-  //   - createRequestIdMiddleware 补传第 3/4 参（propagateHeaders / localeConfig）
+  //   - request-metadata 独立于 ID 开关注册，保持语言与显式头传播。
 
   // requestId（config.requestId.enabled，默认 true）
+  app.adapter.registerMiddleware(
+    createRequestMetadataMiddleware(
+      fetchCfg?.propagateHeaders ?? [],
+      finalConfig.locale as
+        | import("../types/app.js").VextLocaleConfig
+        | undefined,
+    ),
+  );
   if (finalConfig.requestId?.enabled !== false) {
     const requestIdMiddleware = createRequestIdMiddleware(
       finalConfig.requestId,
       () => internals.getRequestIdGenerator(),
-      fetchCfg?.propagateHeaders ?? [],
-      (finalConfig as Record<string, unknown>).locale as
-        | import("../types/app.js").VextLocaleConfig
-        | undefined,
     );
     app.adapter.registerMiddleware(requestIdMiddleware);
   }

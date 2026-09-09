@@ -4,6 +4,8 @@ Render data is the server-prepared payload used to produce HTML and hydrate the 
 
 ## What Is Render Data
 
+HTML and navigation envelopes at the same URL both vary on `Accept`, `Vext-Navigation`, and `Vext-Build-Id`, preserving existing Vary values. Pages with an authenticated identity or session use `Cache-Control: private, no-store`. Buffered HTML, streaming responses, error pages, and cache replay share this policy; custom public cache headers cannot override a private response.
+
 For `res.render()`, render data can include:
 
 - `props`

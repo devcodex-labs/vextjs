@@ -12,7 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+### Changed
+
+- Update `esbuild` to `0.28.2`, `flex-rate-limit` to `2.2.5`, and `response-cache-kit` to `1.2.2`.
+- Retain `schema-dsl@3.0.4` and `monsqlize@3.3.0`, the latest stable versions verified on 2026-09-09.
+- Add `import-meta-resolve@4.2.0` for consumer-relative ESM package resolution.
+
+### Fixed
+
+- Keep completed request bodies and normal responses from cancelling request signals across all five adapters; preserve disconnect cancellation and exactly-once cleanup.
+- Initialize `app.fetch` before user plugins and service constructors in production and development; handle bodyless HEAD/204/205/304 API responses.
+- Restrict frontend HTTP serving and uploads to generated public artifacts, including custom server renderer paths; preserve static HEAD metadata.
+- Apply consistent private cache and Vary headers to rendered HTML, navigation, streaming, errors, and cache replay.
+- Match port conflicts by the complete local endpoint and unique process owner; recheck ownership before stopping a process and keep next-port searches within the TCP port range.
+- Resolve framework entries, cluster workers, TypeScript diagnostics, preloads, and shared Models from the consuming service's installation, including hoisted and pnpm layouts and shared CJS default wrappers.
+- Handle the Windows CLI shutdown message in cluster masters and remove the parent message listener during cleanup.
+- Detect backend TypeScript from executable source files, allowing JavaScript projects with tsconfig files to start normally and excluding declaration files from compilation.
+- Share custom build locations across build, start, inspection, cleanup, cluster, frontend defaults, and compiled preloads; record successful build identity and reject incomplete rebuilds. Allow valid compiled deployments to start without source files.
+- Keep request locale and configured propagated headers active when request IDs are disabled, consistently across production, dev, hot reload, and testing.
 
 ## [2.0.0] - 2026-09-08
 

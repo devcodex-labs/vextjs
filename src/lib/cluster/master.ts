@@ -205,6 +205,20 @@ export class ClusterMaster extends EventEmitter {
     handler: () => void;
   }> = [];
 
+  /** CLI 在 Windows 通过 IPC 请求关闭，必须与 OS 信号进入同一关闭流程。 */
+  private readonly onParentMessage = (message: unknown): void => {
+    if (
+      !message ||
+      typeof message !== "object" ||
+      (message as Record<string, unknown>).type !== "shutdown"
+    )
+      return;
+    this.gracefulShutdown("IPC shutdown").catch((err) => {
+      console.error(`[cluster] shutdown error: ${(err as Error).message}`);
+      process.exit(1);
+    });
+  };
+
   /** 最新一次收到的 Worker 指标快照 */
   private workerMetrics = new Map<number, WorkerMetrics>();
 
@@ -957,6 +971,7 @@ export class ClusterMaster extends EventEmitter {
    * Windows 不支持 SIGHUP / SIGUSR2，仅注册 SIGTERM / SIGINT。
    */
   private registerSignals(): void {
+    process.on("message", this.onParentMessage);
     const registerHandler = (signal: string, handler: () => void) => {
       process.on(signal, handler);
       this.signalHandlers.push({ signal, handler });
@@ -1000,6 +1015,7 @@ export class ClusterMaster extends EventEmitter {
    * removeSignalHandlers — 移除所有已注册的信号处理器
    */
   private removeSignalHandlers(): void {
+    process.removeListener("message", this.onParentMessage);
     for (const { signal, handler } of this.signalHandlers) {
       process.removeListener(signal, handler);
     }

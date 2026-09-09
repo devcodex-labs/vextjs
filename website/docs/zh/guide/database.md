@@ -777,6 +777,8 @@ models: {
 
 共享包必须 default export Model 定义对象，例如 `{ User: { schema: ... } }`。回调式 `registerModels()` 包会被拒绝，因为 Vext 无法预检、归属所有权或回滚不透明回调注册的 key。
 
+共享包从当前服务根目录解析，支持 monorepo 提升安装和 pnpm 链接。使用 Node 的 `node` / `import` 条件选择 `exports`，可加载 ESM default、CommonJS `module.exports` 及编译后的 `__esModule`/default 包装。开发编译目录不改变依赖归属；被 `exports` 隐藏的入口或缺少的编译文件会明确报错。共享包应先完成自己的构建，再启动消费它的服务。
+
 ## 在服务中使用
 
 ### 基础 CRUD 服务

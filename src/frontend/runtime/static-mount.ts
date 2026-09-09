@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type { VextMiddleware } from "../../types/middleware.js";
 import {
   assertPathInside,
@@ -15,6 +16,10 @@ import type {
 import { getFrontendStaticCacheControl } from "../asset-cache-policy.js";
 import { resolveFrontendConfig } from "../tooling/config-resolver.js";
 import { createFrontendRenderer } from "./renderer.js";
+import {
+  createFrontendPublicFileReader,
+  readFrontendPublicFiles,
+} from "../public-artifacts.js";
 
 export interface CreateFrontendNotFoundHandlerOptions {
   rootDir: string;
@@ -35,6 +40,7 @@ export function createFrontendNotFoundHandler(
     return options.fallbackHandler;
   }
   const renderer = createFrontendRenderer(options);
+  const publicFiles = createFrontendPublicFileReader(config.outDir);
 
   return async (req, res, next) => {
     if (!isStaticMethod(req.method)) {
@@ -45,6 +51,7 @@ export function createFrontendNotFoundHandler(
       config.outDir,
       config.publicPath,
       req.path,
+      publicFiles(),
     );
     if (assetPath) {
       const served = serveFile(
@@ -63,7 +70,12 @@ export function createFrontendNotFoundHandler(
     );
     if (fallbackScope) {
       await options.onNotFound?.(req);
-      const rendered = tryRenderScopedFallback(res, renderer, fallbackScope);
+      const rendered = tryRenderScopedFallback(
+        req,
+        res,
+        renderer,
+        fallbackScope,
+      );
       if (rendered) return;
     }
 
@@ -122,6 +134,7 @@ export function assertFrontendOutputReady(
       `[vextjs] frontend server renderer is missing: ${path.relative(options.rootDir, rendererPath)}. Run "vext build" first.`,
     );
   }
+  readFrontendPublicFiles(config.outDir);
 }
 
 function readFrontendRenderManifest(
@@ -182,6 +195,7 @@ function resolveAssetPath(
   staticRoot: string,
   publicPath: string,
   requestPath: string,
+  publicFiles: ReadonlySet<string>,
 ): string | null {
   const pathname = safeDecodePath(requestPath);
   if (!pathname) return null;
@@ -200,6 +214,7 @@ function resolveAssetPath(
 
   const normalizedAsset = path.posix.normalize(relativeAsset);
   if (normalizedAsset.startsWith("../")) return null;
+  if (!publicFiles.has(normalizedAsset)) return null;
 
   let candidate: string;
   try {
@@ -208,7 +223,19 @@ function resolveAssetPath(
       path.resolve(staticRoot, normalizedAsset),
       "frontend static asset path",
     );
-    assertRealPathInside(staticRoot, candidate, "frontend static asset path");
+    const real = assertRealPathInside(
+      staticRoot,
+      candidate,
+      "frontend static asset path",
+    );
+    const realRoot = assertRealPathInside(
+      staticRoot,
+      staticRoot,
+      "frontend static root",
+      true,
+    );
+    if (!publicFiles.has(path.relative(realRoot, real).replace(/\\/g, "/")))
+      return null;
   } catch {
     return null;
   }
@@ -248,7 +275,11 @@ function serveFile(
   res.setHeader("Content-Length", String(stat.size));
 
   if (req.method === "HEAD") {
-    res.status(200).text("");
+    // text("") recalculates Content-Length in some adapters; an empty stream
+    // preserves the metadata of the GET representation without reading the file.
+    res
+      .status(200)
+      .stream(Readable.from([]), forcedContentType ?? mimeTypeFor(filePath));
     return true;
   }
 
@@ -322,6 +353,7 @@ function matchesScope(
 }
 
 function tryRenderScopedFallback(
+  req: Parameters<VextMiddleware>[0],
   res: Parameters<VextMiddleware>[1],
   renderer: ReturnType<typeof createFrontendRenderer>,
   scope: ResolvedVextFrontendSpaFallbackScope,
@@ -337,6 +369,7 @@ function tryRenderScopedFallback(
         ssr: scope.ssr,
       },
       res.statusCode,
+      req,
     );
     res._sendHtml(
       rendered.html,
@@ -366,11 +399,12 @@ function tryRenderHtmlNotFound(
       undefined,
       404,
       req.requestId,
+      req,
     );
     res._sendHtml(
       rendered.html,
       rendered.status,
-      { ...rendered.headers, Vary: "Accept" },
+      rendered.headers,
       "render",
       rendered.payload,
     );

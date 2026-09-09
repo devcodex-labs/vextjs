@@ -14,6 +14,7 @@ import type {
   VextFrontendMode,
 } from "../contract/types.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
+import { readFrontendPublicFiles } from "../public-artifacts.js";
 import { isImmutableFrontendBundleAsset } from "../asset-cache-policy.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
@@ -24,17 +25,6 @@ export interface BuildFrontendDeployManifestOptions {
   mode: VextFrontendMode;
   browserManifest: VextFrontendManifest;
 }
-
-const METADATA_FILES = new Set([
-  "deploy-manifest.json",
-  "index.html",
-  "manifest.json",
-  "messages-manifest.json",
-  "media-manifest.json",
-  "render-manifest.json",
-  "size-report.json",
-  "static-manifest.json",
-]);
 
 export async function buildFrontendDeployManifest(
   options: BuildFrontendDeployManifestOptions,
@@ -130,16 +120,17 @@ async function scanDeployableFiles(
   config: ResolvedVextFrontendConfig,
 ): Promise<string[]> {
   if (!existsSync(config.outDir)) return [];
+  const publicFiles = readFrontendPublicFiles(config.outDir);
   const files = await fg(config.deploy.upload.include, {
     cwd: config.outDir,
     onlyFiles: true,
     dot: true,
     followSymbolicLinks: false,
-    ignore: ["server/**", ...config.deploy.upload.exclude],
+    ignore: config.deploy.upload.exclude,
   });
   return files
     .map(normalizeRelativeFile)
-    .filter((file) => !METADATA_FILES.has(file));
+    .filter((file) => file !== "index.html" && publicFiles.has(file));
 }
 
 function classifyDeployAssetSource(

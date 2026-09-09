@@ -4,6 +4,10 @@ VextJS has a built-in enhanced HTTP client `app.fetch`, which is based on the No
 
 ## Function overview
 
+Production and development initialize `app.fetch` before user plugin `setup()`, service constructors, and route factories. These stages and `onReady` can call `app.fetch.create()`. Later outbound calls also use logger wrappers installed through `app.setLogger()`.
+
+`req.signal` is cancelled on an interrupted request, a premature disconnect, or a route timeout. Receiving a complete POST body and completing a normal response do not cancel it; `req.onClose()` still performs cleanup on completion or disconnect. For ordinary `app.fetch()`, `timeout` covers obtaining response headers, not the subsequent `response.text()` or `response.json()` call. Proxy and streaming calls follow their own cancellation and timeout contracts.
+
 | Capabilities              | Description                                                                                                                                                                        |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **requestId propagation** | Automatically read `requestId` from `requestContext` and inject it into the `x-request-id` header of outbound requests to achieve cross-service request tracking                   |
@@ -179,7 +183,7 @@ export default {
 :::
 
 :::tip propagateHeaders working principle
-After configuration, the `requestId` middleware will read the header value specified in the list from the inbound request header when each request comes in.
+The independent request metadata middleware captures the configured inbound headers, including when `requestId.enabled` is false.
 Write to `requestContext.store.propagatedHeaders`. `app.fetch` automatically reads and injects from the store during outbound requests.
 
 **No need to manually pass these headers on every `app.fetch` call** - the framework does the entire chain automatically.
@@ -413,7 +417,7 @@ The framework automatically completes the transparent transmission link when pro
 ```
 ① Inbound requests carry traceparent: 00-abc123-def456-01
          ↓
-② requestId middleware reads and writes store.propagatedHeaders
+② Request metadata middleware writes store.propagatedHeaders independently of requestId
          ↓
 ③ app.fetch reads from the store during outbound requests and injects them into the request header.
          ↓

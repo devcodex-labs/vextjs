@@ -15,7 +15,12 @@ import {
 } from "../lib/config-profile.js";
 import { readRequiredOptionValue } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
-import { assertSafeProjectOutputDirectory } from "../lib/path-boundary.js";
+import {
+  beginBuild,
+  completeBuild,
+  selectBuildOutput,
+  withBuildFrontendOutDir,
+} from "../lib/build/build-location.js";
 
 /**
  * vext build — 生产编译命令（Phase 2A）
@@ -109,11 +114,11 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   const rootDir = path.resolve(process.cwd());
   const project = detectProject(rootDir);
 
-  const outDir = assertSafeProjectOutputDirectory(
+  const outDir = selectBuildOutput(
     project.rootDir,
-    path.resolve(project.rootDir, options.outdir),
-    "build --outdir",
+    args.includes("--outdir") ? options.outdir : undefined,
   );
+  options.outdir = path.relative(project.rootDir, outDir);
 
   // ── 打印编译信息 ──────────────────────────────────────────
   console.log(
@@ -137,6 +142,13 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.log(`[vextjs] cleaned: ${outDir}`);
   }
 
+  const buildIdentity = beginBuild(
+    project.rootDir,
+    outDir,
+    resolvedConfigProfile.profile,
+    project.language === "ts" ? "compiled" : "source",
+  );
+
   if (project.language !== "ts") {
     const config = await loadConfig(path.join(project.srcDir, "config"), {
       rootDir: project.rootDir,
@@ -146,6 +158,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       configProfile: resolvedConfigProfile.profile,
     });
     if (!isFrontendEnabled(config.frontend)) {
+      completeBuild(project.rootDir, buildIdentity);
       console.log(
         "[vextjs] JavaScript project detected - no build step needed.",
       );
@@ -154,6 +167,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     }
     await refreshRouteManifest(project.rootDir);
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
+    completeBuild(project.rootDir, buildIdentity);
     return;
   }
 
@@ -250,6 +264,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       configProfile: resolvedConfigProfile.profile,
     });
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
+    completeBuild(project.rootDir, buildIdentity);
     console.log("");
     console.log("[vextjs] To start compiled output:");
     console.log("[vextjs]   vext start");
@@ -284,7 +299,7 @@ async function buildFrontendForCommand(
 ): Promise<BuildFrontendClientResult | undefined> {
   const result = await buildFrontendClient({
     rootDir,
-    config: withCliFrontendOutDir(frontend, options.outdir),
+    config: withBuildFrontendOutDir(frontend, options.outdir),
     mode: "production",
   });
   if (result.skipped) {
@@ -328,23 +343,6 @@ function isFrontendEnabled(
     frontend === true ||
     (typeof frontend === "object" && frontend.enabled === true)
   );
-}
-
-function withCliFrontendOutDir(
-  frontend: VextFrontendUserConfig | undefined,
-  outdir: string,
-): VextFrontendUserConfig | undefined {
-  if (outdir === "dist" || frontend === undefined || frontend === false) {
-    return frontend;
-  }
-  const clientOutDir = path.join(outdir, "client");
-  if (frontend === true) {
-    return { enabled: true, outDir: clientOutDir };
-  }
-  if (!frontend.outDir) {
-    return { ...frontend, outDir: clientOutDir };
-  }
-  return frontend;
 }
 
 // ── 参数解析 ────────────────────────────────────────────────

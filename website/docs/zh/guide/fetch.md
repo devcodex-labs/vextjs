@@ -4,6 +4,10 @@ VextJS 内置了增强版 HTTP 客户端 `app.fetch`，基于 Node.js 20+ 原生
 
 ## 功能概览
 
+生产启动与开发启动都会在用户插件 `setup()`、服务构造函数和路由工厂执行前初始化 `app.fetch`。这些阶段以及 `onReady` 中均可调用 `app.fetch.create()`；插件通过 `app.setLogger()` 设置的日志包装也会用于后续出站调用。
+
+`req.signal` 在请求中断、连接提前关闭或路由超时时取消。完整接收 POST 请求体、正常发送响应不会取消此信号；`req.onClose()` 仍在响应结束或断连时执行清理。普通 `app.fetch()` 的 `timeout` 覆盖取得响应头的阶段，不表示随后的 `response.text()` / `response.json()` 也必须在该时限内完成；代理和流式调用需按各自的取消与超时约定使用。
+
 | 能力               | 说明                                                                                                           |
 | ------------------ | -------------------------------------------------------------------------------------------------------------- |
 | **requestId 传播** | 自动从 `requestContext` 读取 `requestId`，注入到出站请求的 `x-request-id` 头，实现跨服务请求追踪               |
@@ -179,7 +183,7 @@ export default {
 :::
 
 :::tip propagateHeaders 工作原理
-配置后，`requestId` 中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
+配置后，独立的请求元数据中间件会在每个请求进入时，从入站请求头中读取列表中指定的头值，
 写入 `requestContext.store.propagatedHeaders`。`app.fetch` 出站请求时自动从 store 中读取并注入。
 
 **无需在每次 `app.fetch` 调用时手动传递这些头**——框架自动完成整个链路。
@@ -413,7 +417,7 @@ export default {
 ```
 ① 入站请求携带 traceparent: 00-abc123-def456-01
          ↓
-② requestId 中间件读取并写入 store.propagatedHeaders
+② 请求元数据中间件读取并写入 store.propagatedHeaders（不依赖 requestId 开关）
          ↓
 ③ app.fetch 出站请求时从 store 读取并注入到请求头
          ↓

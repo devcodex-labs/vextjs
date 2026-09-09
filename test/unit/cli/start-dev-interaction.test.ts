@@ -87,6 +87,11 @@ vi.mock("../../../src/cli/utils/detect-project.js", () => ({
   resolveEntryFile: mocks.resolveEntryFile,
 }));
 
+vi.mock("../../../src/lib/consumer-resolver.js", () => ({
+  resolveFrameworkEntry: (rootDir: string, entry: string) =>
+    `${rootDir}/node_modules/vextjs/dist/lib/${entry === "dev" ? "dev/dev-entry.js" : "bootstrap.js"}`,
+}));
+
 vi.mock("../../../src/cli/utils/preload.js", () => ({
   resolvePreloads: mocks.resolvePreloads,
 }));

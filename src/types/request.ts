@@ -135,7 +135,8 @@ export interface VextRequest<
   /**
    * 请求生命周期取消信号。
    *
-   * 连接关闭或响应完成后会进入 aborted 状态；配置了 RouteOptions.timeout 时，
+   * 请求中断或连接提前关闭时进入 aborted 状态；正常响应完成不会取消此信号。
+   * 配置了 RouteOptions.timeout 时，
    * 超时也会触发取消。执行数据库、远程请求或队列写入等可取消操作时，应把该
    * signal 继续传给下游，并在不可取消的提交前检查 `req.signal.aborted`。
    * 框架会阻止超时后的重复响应，但业务侧外部副作用仍需协作式取消。
@@ -171,12 +172,13 @@ export interface VextRequest<
   // ── 生命周期 ──────────────────────────────────────────────
 
   /**
-   * 注册请求关闭钩子（连接断开时触发）
+   * 注册请求结束钩子（响应完成或连接提前断开时触发）
    *
    * 主要用于 SSE / WebSocket：客户端断开时清理资源。
    * 内存安全：框架在 hooks 执行完毕后自动清空 hooks 数组，
    * 无需手动移除，不会因闭包引用造成内存泄漏。
-   * 每个 handler 作为底层 close listener 注册，并按 exactly-once 语义调用。
+   * 每个 handler 至多调用一次，结束后注册立即调用。正常结束只清理资源，
+   * 不取消 req.signal；完整接收请求体不会触发此钩子。
    *
    * @param handler 关闭时执行的回调
    * @example req.onClose(() => sseStream.close())

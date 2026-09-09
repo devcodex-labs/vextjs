@@ -39,6 +39,7 @@ import { loadMiddlewares } from "./middleware-loader.js";
 import { loadServices } from "./service-loader.js";
 import { loadRoutes } from "./router-loader.js";
 import { createRequestIdMiddleware } from "./middlewares/request-id.js";
+import { createRequestMetadataMiddleware } from "./middlewares/request-metadata.js";
 import { createCorsMiddleware } from "./middlewares/cors.js";
 import { createBodyParserMiddleware } from "./middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
@@ -60,7 +61,14 @@ import {
   createRequestHookMiddleware,
   emitNotFoundRequestHooks,
 } from "./middlewares/request-hook.js";
-import { createVextFetch, type VextFetchConfig } from "./fetch.js";
+import { type VextFetchConfig } from "./fetch.js";
+import { createAppFetch } from "./app-fetch.js";
+import { resolveFrameworkEntry } from "./consumer-resolver.js";
+import { detectProjectLanguage } from "./build/project-language.js";
+import {
+  resolveRuntimeBuildDirectory,
+  withBuildFrontendOutDir,
+} from "./build/build-location.js";
 import { setupShutdown } from "./shutdown.js";
 import { RouteMetadataCollector } from "./openapi/collector.js";
 import {
@@ -115,6 +123,15 @@ async function resolveStartupConfig(
     configProfile: resolvedConfigProfile.profile,
     meta: metadata,
   });
+
+  if (isBuilt || process.env.VEXT_BUILD_OUTDIR) {
+    rawConfig.frontend = withBuildFrontendOutDir(
+      rawConfig.frontend as
+        | import("../frontend/contract/types.js").VextFrontendUserConfig
+        | undefined,
+      resolveRuntimeBuildDirectory(rootDir),
+    );
+  }
 
   if (!cluster.isWorker) {
     const strategy = normalizePortConflictStrategy(
@@ -205,7 +222,9 @@ export async function bootstrap(
     // 已使用相对路径扫描目录，只需切换根路径即可，loader 代码无需修改。
     //
     const isBuilt = process.env.VEXT_BUILT === "1";
-    const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
+    const srcDir = isBuilt
+      ? resolveRuntimeBuildDirectory(rootDir)
+      : join(rootDir, "src");
 
     // ── 步骤 0: config-loader ─────────────────────────────
     // default → env → local 三层合并 + deepFreeze
@@ -311,7 +330,7 @@ export async function bootstrap(
     // 无 database 配置则跳过 setup，不加载数据库运行时与 hook。
     //
     if (shouldLoadMonSQLize(config as unknown as Record<string, unknown>)) {
-      const monsqlizePlugin = createMonSQLizePlugin(srcDir);
+      const monsqlizePlugin = createMonSQLizePlugin(srcDir, rootDir);
       app.logger.debug(
         "[vextjs] built-in plugin: monsqlize (database config detected)",
       );
@@ -352,6 +371,17 @@ export async function bootstrap(
       app.logger.info("[vextjs] built-in plugin: monsqlize loaded");
     }
 
+    // 插件 setup、服务构造函数和路由工厂共用已初始化的 fetch。
+    // 与开发启动保持相同顺序，避免构造阶段访问 fetch.create() 失败。
+    const fetchConfig = config.fetch as VextFetchConfig | undefined;
+    await startupProfiler.time(
+      "start.fetch",
+      () => {
+        app.fetch = createAppFetch(app, hooks) as unknown as VextApp["fetch"];
+      },
+      { phase: "fetch" },
+    );
+
     // ── 步骤 ②: plugin-loader ─────────────────────────────
     // 扫描 src/plugins/，拓扑排序（Kahn 算法），依次执行 setup()
     // 此阶段 app.use() 可用，插件可注册全局中间件
@@ -384,28 +414,6 @@ export async function bootstrap(
       "start.services",
       () => loadServices(app, join(srcDir, "services")),
       { phase: "services" },
-    );
-
-    // ── 步骤 ④+: 挂载 app.fetch（在 loadRoutes 之前）─────
-    //
-    // 🐛 修复 BUG-005：app.fetch 必须在 loadRoutes 之前赋值。
-    // 原因：executeRouteFactory 会让 route handler 闭包捕获真实 app。
-    // app.fetch 必须在 loadRoutes 前赋值，路由中才能立即访问同一个
-    // 运行时 app 实例上的出站 fetch 能力。
-    //
-    const fetchConfig = config.fetch as VextFetchConfig | undefined;
-    const requestIdHeader = config.requestId?.header ?? "x-request-id";
-    await startupProfiler.time(
-      "start.fetch",
-      () => {
-        app.fetch = createVextFetch(
-          app.logger,
-          fetchConfig ?? {},
-          requestIdHeader,
-          hooks,
-        ) as unknown as VextApp["fetch"];
-      },
-      { phase: "fetch" },
     );
 
     // ── 步骤 ⑤: router-loader ────────────────────────────
@@ -551,15 +559,16 @@ export async function bootstrap(
     const builtinMiddlewaresStartedAt = performance.now();
 
     // 1. requestId（config.requestId.enabled，默认 true）
+    app.adapter.registerMiddleware(
+      createRequestMetadataMiddleware(
+        fetchConfig?.propagateHeaders ?? [],
+        config.locale as import("../types/app.js").VextLocaleConfig | undefined,
+      ),
+    );
     if (config.requestId?.enabled !== false) {
-      const localeConfig = config.locale as
-        | import("../types/app.js").VextLocaleConfig
-        | undefined;
       const requestIdMiddleware = createRequestIdMiddleware(
         config.requestId,
         () => internals!.getRequestIdGenerator(),
-        fetchConfig?.propagateHeaders ?? [],
-        localeConfig,
       );
       app.adapter.registerMiddleware(requestIdMiddleware);
     }
@@ -1051,7 +1060,9 @@ if (isDirectRun && !alreadyStarted) {
 async function detectAndStart(rootDir: string): Promise<void> {
   const isBuilt = process.env.VEXT_BUILT === "1";
   ensureStartBuildReady(rootDir, isBuilt);
-  const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
+  const srcDir = isBuilt
+    ? resolveRuntimeBuildDirectory(rootDir)
+    : join(rootDir, "src");
 
   // ── 1. 预加载配置（仅用于检测 cluster.enabled）──────────
   //
@@ -1142,7 +1153,9 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   const startupProfiler = createStartupProfilerFromEnv(process.env);
   const isBuilt = process.env.VEXT_BUILT === "1";
   ensureStartBuildReady(rootDir, isBuilt);
-  const srcDir = isBuilt ? join(rootDir, "dist") : join(rootDir, "src");
+  const srcDir = isBuilt
+    ? resolveRuntimeBuildDirectory(rootDir)
+    : join(rootDir, "src");
 
   // 加载配置
   const configMeta: LoadConfigMetadata = {};
@@ -1178,9 +1191,7 @@ async function startClusterMaster(rootDir: string): Promise<void> {
 
   // 解析实际入口文件（与 cli/start.ts 中 resolveEntryFile 逻辑一致）
   // Worker 进程直接运行 bootstrap.ts/bootstrap.js
-  const entryFile = isBuilt
-    ? join(rootDir, "node_modules", "vextjs", "dist", "lib", "bootstrap.js")
-    : join(rootDir, "node_modules", "vextjs", "dist", "lib", "bootstrap.js");
+  const entryFile = resolveFrameworkEntry(rootDir, "bootstrap");
 
   // 配置 cluster.setupPrimary — 设置 Worker 进程的执行参数
   const execArgv: string[] = [];
@@ -1192,7 +1203,10 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 注入到 Worker 进程的 execArgv，使 Worker 继承预加载能力。
   //
   const { resolvePreloads } = await import("../cli/utils/preload.js");
-  const preloads = await resolvePreloads(rootDir);
+  const preloads = await resolvePreloads(
+    rootDir,
+    isBuilt ? { builtOutDir: srcDir } : undefined,
+  );
   for (const fileUrl of preloads) {
     execArgv.push("--import", fileUrl);
   }
@@ -1282,7 +1296,7 @@ function isFrontendEnabled(
 }
 
 function ensureStartBuildReady(rootDir: string, isBuilt: boolean): void {
-  if (isBuilt || !existsSync(join(rootDir, "tsconfig.json"))) {
+  if (isBuilt || detectProjectLanguage(rootDir) === "js") {
     return;
   }
 

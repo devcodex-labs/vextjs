@@ -8,8 +8,13 @@
     "strict": true,
     "paths": {
       "vextjs": ["src/index.ts"],
-      "vextjs/testing": ["src/testing/index.ts"]
+      "vextjs/testing": ["src/testing/index.ts"],
+      "vextjs/frontend": ["src/frontend/index.ts"]
     }
   },
-  "files": ["./config-override.ts", "./testing-config-override.ts"]
+  "files": [
+    "./config-override.ts",
+    "./testing-config-override.ts",
+    "./frontend-head-response.ts"
+  ]
 }

@@ -57,6 +57,13 @@ vi.mock("../../../src/tooling/typegen/index.js", () => ({
   runTypegen: mocks.runTypegen,
 }));
 
+vi.mock("../../../src/lib/consumer-resolver.js", () => ({
+  resolveConsumerPackage: (rootDir: string, name: string) => ({
+    rootDir: join(rootDir, "node_modules", name),
+    manifest: {},
+  }),
+}));
+
 import { runDevPreflight } from "../../../src/cli/utils/dev-preflight.js";
 
 describe("runDevPreflight", () => {

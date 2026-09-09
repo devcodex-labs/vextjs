@@ -8,7 +8,7 @@ import { assertBodySize } from "../../lib/middlewares/body-parser.js";
 import { flattenQueryRecord } from "../../lib/query.js";
 import {
   addRequestCloseHandler,
-  fireRequestCloseHandlers,
+  bindNodeRequestLifecycle,
 } from "../../lib/request-close.js";
 
 /**
@@ -25,7 +25,7 @@ import {
  *   - requestId: 由 requestId 中间件后续填充（初始空字符串）
  *   - ip: 根据 trustProxy 配置决定从 X-Forwarded-For 或 socket 读取
  *   - protocol: 根据 trustProxy 配置决定从 X-Forwarded-Proto 或默认值读取
- *   - onClose: 注册请求关闭钩子，连接断开时触发（通过 req.on('close')）
+ *   - onClose: 响应完成或连接提前断开时清理；完整接收请求体不触发
  *   - valid: 获取 validate 中间件校验后的数据
  *   - _getRawBody: 从请求流中读取原始请求体文本，供 vext body-parser 中间件使用
  *
@@ -208,14 +208,7 @@ export function createVextRequest(
     _getRawBodyBuffer: getRawBodyBuffer,
   };
 
-  // Host close + finishResponseSend both fire exactly-once shared handlers.
-  expressReq.on("close", () => {
-    fireRequestCloseHandlers(req);
-  });
-
-  addRequestCloseHandler(req, () => {
-    requestAbortController.abort(new Error("[vextjs] Request closed"));
-  });
+  bindNodeRequestLifecycle(req, expressReq, requestAbortController);
 
   return req;
 }

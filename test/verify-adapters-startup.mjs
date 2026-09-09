@@ -85,6 +85,26 @@ function setupTempProject(adapterName, port) {
   // 创建目录结构
   mkdirSync(join(tmpDir, "src", "config"), { recursive: true });
   mkdirSync(join(tmpDir, "src", "routes"), { recursive: true });
+  mkdirSync(join(tmpDir, "src", "plugins"), { recursive: true });
+  mkdirSync(join(tmpDir, "src", "services"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "src", "plugins", "probe.js"),
+    `export default {
+    name: "fetch-startup-probe",
+    setup(app) {
+      const probe = { setup: typeof app.fetch.create({ baseURL: "http://localhost" }) === "function", ready: false, logs: 0 };
+      app.setLogger(original => ({ ...original, debug(...args) { probe.logs++; original.debug(...args); } }));
+      app.extend("fetchStartupProbe", probe);
+      app.onReady(() => { probe.ready = typeof app.fetch.create({ baseURL: "http://localhost" }) === "function"; });
+    }
+  };`,
+  );
+  writeFileSync(
+    join(tmpDir, "src", "services", "probe.js"),
+    `export default class ProbeService {
+    constructor(app) { this.client = app.fetch.create({ baseURL: "http://localhost" }); }
+  }`,
+  );
 
   // 写入配置文件
   writeFileSync(
@@ -501,6 +521,23 @@ async function testAdapter(adapterName, port) {
     const { bootstrap } = await import(indexPath);
     bootstrapResult = await bootstrap(tmpDir);
     const { app, serverHandle } = bootstrapResult;
+    assert(
+      app.fetchStartupProbe?.setup === true,
+      "app.fetch.create unavailable during plugin setup",
+    );
+    assert(
+      app.fetchStartupProbe?.ready === true,
+      "app.fetch.create unavailable during onReady",
+    );
+    assert(
+      typeof app.services.probe.client === "function",
+      "app.fetch.create unavailable during service construction",
+    );
+    await (await app.fetch("data:text/plain,fetch-probe")).text();
+    assert(
+      app.fetchStartupProbe.logs > 0,
+      "app.fetch ignored the plugin logger wrapper",
+    );
 
     console.log(
       `│    → 启动成功: http://${serverHandle.host}:${serverHandle.port}`,

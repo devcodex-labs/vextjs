@@ -385,6 +385,8 @@ export default {
 
 Master 和 Worker 之间通过 IPC 消息通信。VextJS 定义了标准化的消息协议：
 
+由 `vext start` 启动时，Windows CLI 会通过父子 IPC 向 Master 发送关闭请求；Master 将其交给同一优雅关闭流程，通知 Worker、等待退出并清理 PID 文件。操作系统外部直接终止进程与此流程不同，不保证执行关闭钩子。
+
 下表中的消息类型是 IPC payload 中 `type` 字段的精确字符串字面量，不包含方向前缀。
 
 ### Worker → Master 消息

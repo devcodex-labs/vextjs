@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import fg from "fast-glob";
 import { fileURLToPath } from "node:url";
 import type {
   ResolvedVextFrontendConfig,
@@ -24,6 +25,11 @@ import { buildFrontendDeployManifest } from "../deploy/manifest.js";
 import { getFrontendContentType } from "../deploy/content-type.js";
 import { createSha256, createSriSha256 } from "../deploy/integrity.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
+import {
+  FRONTEND_INTERNAL_FILES,
+  FRONTEND_PUBLIC_MANIFEST,
+  type FrontendPublicManifest,
+} from "../public-artifacts.js";
 import {
   assertFrontendBudgets,
   buildFrontendSizeReport,
@@ -88,6 +94,14 @@ export async function buildFrontendClient(
   await rm(config.outDir, { recursive: true, force: true });
   await mkdir(config.outDir, { recursive: true });
 
+  const publicFiles = existsSync(config.publicDir)
+    ? await fg("**/*", {
+        cwd: config.publicDir,
+        onlyFiles: true,
+        dot: true,
+        followSymbolicLinks: false,
+      })
+    : [];
   if (existsSync(config.publicDir)) {
     await cp(config.publicDir, config.outDir, {
       recursive: true,
@@ -292,6 +306,51 @@ export async function buildFrontendClient(
     staticArtifacts: staticArtifacts.artifacts,
     signal: options.signal,
   });
+  const serverFiles = new Set(
+    Object.keys(serverBuildResult.metafile?.outputs ?? {})
+      .map((file) => toProjectRelativePath(config.outDir, path.resolve(file)))
+      .map((file) =>
+        process.platform === "win32" ? file.toLowerCase() : file,
+      ),
+  );
+  const publicCandidates = [
+    "index.html",
+    ...publicFiles,
+    ...Object.keys(buildResult.metafile?.outputs ?? {}).map((file) =>
+      toProjectRelativePath(config.outDir, path.resolve(file)),
+    ),
+    ...mediaArtifacts.manifest.images.flatMap((image) =>
+      image.variants.map((variant) => variant.file),
+    ),
+    ...mediaArtifacts.manifest.fonts.map((font) => font.file),
+    ...staticArtifacts.artifacts.flatMap((artifact) =>
+      artifact.data ? [artifact.html, artifact.data] : [artifact.html],
+    ),
+    ...seoArtifacts.artifacts.map((artifact) => artifact.file),
+  ];
+  for (const file of publicCandidates) {
+    const identity = process.platform === "win32" ? file.toLowerCase() : file;
+    if (
+      serverFiles.has(identity) ||
+      FRONTEND_INTERNAL_FILES.has(file.toLowerCase())
+    ) {
+      throw new Error(
+        `[vextjs] public frontend artifact conflicts with a private build output: ${file}`,
+      );
+    }
+  }
+  const publicManifest: FrontendPublicManifest = {
+    schemaVersion: 1,
+    kind: "frontend-public-manifest",
+    buildId,
+    files: [...new Set(publicCandidates)].sort(),
+  };
+  await writeFile(
+    path.join(config.outDir, FRONTEND_PUBLIC_MANIFEST),
+    `${JSON.stringify(publicManifest, null, 2)}\n`,
+    "utf8",
+  );
+
   const deployManifest = await buildFrontendDeployManifest({
     rootDir: options.rootDir,
     config,

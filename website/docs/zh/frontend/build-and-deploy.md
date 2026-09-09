@@ -13,6 +13,7 @@ dist/
     index.html
     assets/                         # 浏览器 JS、CSS 与 import 型资源
     manifest.json
+    public-manifest.json            # HTTP 静态服务与上传共同使用的公开文件清单
     render-manifest.json
     server/renderer.cjs             # 默认值；可由 build.server.outFile 配置
     deploy-manifest.json
@@ -25,17 +26,19 @@ dist/
     api.generated.ts                # apiClient 开启时（默认开启）
 ```
 
-只有 `dist/client/` 是固定的前端边界。后端编译器会在 `dist/` 下保持应用源码目录映射，并**不会**固定生成顶层 `dist/server/`。SSR renderer 默认位于前端输出内，因此可以由 `render-manifest.json` 与 client assets 作为同一个 closure 描述和校验。
+上图是默认目录。`vext build --outdir build` 会将后端写入 `build/`，前端未指定 `frontend.outDir` 时写入 `build/client/`；`vext start` 使用成功构建记录选择同一目录，也可用 `--outdir` 显式选择。后端保持源码目录映射，不固定生成顶层 `dist/server/`。SSR renderer 默认位于所选前端输出内，由 `render-manifest.json` 与 client assets 一起校验。
 
 当对应功能没有声明输入时，`messages-manifest.json`、`media-manifest.json` 与 `static-manifest.json` 可能为空，但仍是有效构建证据。关闭 `frontend.build.diagnostics.sizeReport` 时会故意不生成 `size-report.json`。Source map 同样取决于配置：浏览器生产构建默认不生成，后端 CLI 编译默认生成外部 source map。
 
-`vext start` 会服务已构建的 client assets，并使用 `render-manifest.json` 做 SSR。生产模式会在 listen 前检查 `index.html`、`render-manifest.json`、route asset metadata 以及其引用的 server renderer；任一缺失或无效都会失败，需重新执行 `vext build` 生成完整 closure。
+`vext start` 只提供 `public-manifest.json` 登记的静态文件，并使用 `render-manifest.json` 做 SSR。公开清单由 public 文件、浏览器构建、媒体、静态页面及 SEO 的实际产物生成；服务端 renderer、其 source map 和内部元数据不公开，自定义 `build.server.outFile` 也遵守此边界。构建后手动放入 outDir 的文件不会自动公开。
+
+生产模式会在 listen 前检查 `index.html`、`render-manifest.json`、route asset metadata、其引用的 server renderer 和公开文件清单；任一缺失或无效都会失败，需重新执行 `vext build`。上传入口同样校验公开清单，再应用 upload include/exclude，不会仅凭传入的 deploy manifest 上传私有文件。
 
 ## 选择交付形态
 
 | 需求                                  | 默认值 / 配置                           | 会发生什么                                                     | 如何验证                                |
 | ------------------------------------- | --------------------------------------- | -------------------------------------------------------------- | --------------------------------------- |
-| 一个 Node 服务同时提供 HTML 和 assets | 不设置 `assetBaseUrl`                   | `vext start` 同源服务 `dist/client/**`                         | 从应用 origin 请求页面和一个 hash asset |
+| 一个 Node 服务同时提供 HTML 和 assets | 不设置 `assetBaseUrl`                   | `vext start` 同源提供公开清单内的文件                          | 从应用 origin 请求页面和一个 hash asset |
 | CDN 提供 immutable assets             | 设置绝对 `frontend.deploy.assetBaseUrl` | 生成的 JS/CSS URL 指向 CDN；HTML 与 SSR 仍由 Node runtime 负责 | 检查生成 HTML，再通过 CDN URL 请求资源  |
 | 增量上传 assets                       | `frontend.deploy.upload.enabled: true`  | 由 `deploy-manifest.json` 按内容 hash 驱动上传                 | 先执行 dry-run，再执行真实上传          |
 

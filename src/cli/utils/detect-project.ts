@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import fg from "fast-glob";
+import { resolveFrameworkEntry } from "../../lib/consumer-resolver.js";
+import { detectProjectLanguage } from "../../lib/build/project-language.js";
+import { resolveBuildLocation } from "../../lib/build/build-location.js";
 
 import {
   SOURCE_GLOB,
@@ -18,7 +21,7 @@ import {
  * 从给定的工作目录（或向上查找）自动发现 vext 项目结构：
  *   - 项目根目录（package.json 所在位置）
  *   - 源码目录（rootDir/src）
- *   - 项目语言（TypeScript / JavaScript，由 tsconfig.json 存在性判断）
+ *   - 项目语言（TypeScript / JavaScript，由实际后端运行源码判断）
  *   - 框架启动入口文件（vextjs 内部 bootstrap 文件路径）
  *
  * Fail Fast 检测：
@@ -44,14 +47,14 @@ export interface ProjectInfo {
   /** 源码目录（rootDir/src 的绝对路径） */
   srcDir: string;
 
-  /** 项目语言（由 tsconfig.json 存在性推断） */
+  /** 项目语言（由实际后端运行源码判断，tsconfig 可供 JS 项目使用） */
   language: "ts" | "js";
 
   /**
    * 框架启动入口文件路径
    *
    * 始终指向 vextjs 框架内部的 bootstrap 文件：
-   * node_modules/vextjs/dist/lib/bootstrap.js
+   * 从当前服务解析的 vextjs 包内 dist/lib/bootstrap.js（支持 hoisted/pnpm）
    *
    * CLI 的 vext start 会 fork 此文件作为子进程入口。
    */
@@ -88,11 +91,31 @@ const SOURCE_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
  * @returns 项目信息
  * @throws 找不到 package.json / src / config / default 配置文件时抛出描述性错误
  */
-export function detectProject(cwd: string): ProjectInfo {
+export function detectProject(
+  cwd: string,
+  options: { allowBuilt?: boolean; outDir?: string } = {},
+): ProjectInfo {
   const rootDir = findProjectRoot(cwd);
 
   // ── 检测 src/ 目录 ──────────────────────────────────────
   const srcDir = path.join(rootDir, "src");
+  // 只有生产 start 可消费没有源码的部署包；dev/build/Doctor 仍要求源目录。
+  if (options.allowBuilt && !fs.existsSync(path.join(srcDir, "config"))) {
+    const location = resolveBuildLocation(rootDir, options.outDir);
+    if (
+      location.identity?.backend !== "source" &&
+      inspectDistBuild(rootDir, options.outDir).valid
+    ) {
+      return {
+        rootDir,
+        srcDir,
+        language: "ts",
+        get entryFile() {
+          return resolveFrameworkEntry(rootDir, "bootstrap");
+        },
+      };
+    }
+  }
   if (!fs.existsSync(srcDir)) {
     throw new Error(
       `[vextjs] src/ directory not found in ${rootDir}\n` +
@@ -101,8 +124,7 @@ export function detectProject(cwd: string): ProjectInfo {
   }
 
   // ── 检测语言 ────────────────────────────────────────────
-  const hasTsconfig = fs.existsSync(path.join(rootDir, "tsconfig.json"));
-  const language: "ts" | "js" = hasTsconfig ? "ts" : "js";
+  const language = detectProjectLanguage(rootDir);
 
   // ── 检测 config/ 目录 ───────────────────────────────────
   const configDir = path.join(srcDir, "config");
@@ -114,14 +136,19 @@ export function detectProject(cwd: string): ProjectInfo {
   }
 
   // ── 检测 config/default 文件 ────────────────────────────
-  const configExts =
-    language === "ts"
-      ? ["default.ts"]
-      : ["default.js", "default.mjs", "default.cjs"];
+  const configExts = ["default.ts", "default.js", "default.mjs", "default.cjs"];
   const hasDefaultConfig = configExts.some((ext) =>
     fs.existsSync(path.join(configDir, ext)),
   );
   if (!hasDefaultConfig) {
+    const unsupported = ["default.mts", "default.cts"].find((name) =>
+      fs.existsSync(path.join(configDir, name)),
+    );
+    if (unsupported) {
+      throw new Error(
+        `[vextjs] src/config/${unsupported} is not supported as a config entry. Use default.ts or default.js; backend compilation emits CommonJS .js files.`,
+      );
+    }
     throw new Error(
       `[vextjs] src/config/default.${language === "ts" ? "ts" : "js"} not found.\n` +
         `         This file is required and must contain your base configuration.`,
@@ -136,16 +163,15 @@ export function detectProject(cwd: string): ProjectInfo {
   // bootstrap.ts 内部通过 VEXT_MODE 环境变量检测到被 CLI fork，
   // 自动执行 bootstrap(rootDir) 启动流程。
   //
-  const entryFile = path.join(
+  return {
     rootDir,
-    "node_modules",
-    "vextjs",
-    "dist",
-    "lib",
-    "bootstrap.js",
-  );
-
-  return { rootDir, srcDir, language, entryFile };
+    srcDir,
+    language,
+    // Doctor/typegen 只检查源码结构，不要求预先安装可运行框架；启动时才解析入口。
+    get entryFile() {
+      return resolveFrameworkEntry(rootDir, "bootstrap");
+    },
+  };
 }
 
 // ── 辅助函数 ────────────────────────────────────────────────
@@ -189,17 +215,24 @@ export function findProjectRoot(cwd: string): string {
  * @param rootDir 项目根目录
  * @returns dist 构建产物检查结果
  */
-export function inspectDistBuild(rootDir: string): DistBuildInspection {
-  const distDir = path.join(rootDir, "dist");
-  const requiredFiles = getDistBuildRequiredFiles(rootDir);
+export function inspectDistBuild(
+  rootDir: string,
+  outDir?: string,
+): DistBuildInspection {
+  const location = resolveBuildLocation(rootDir, outDir);
+  const distDir = location.outDir;
+  const requiredFiles = getDistBuildRequiredFiles(rootDir, distDir);
   const missing = requiredFiles.filter((file) => !fs.existsSync(file));
 
   return {
-    valid: fs.existsSync(distDir) && missing.length === 0,
+    valid: fs.existsSync(distDir) && missing.length === 0 && !location.failure,
     hasDistDir: fs.existsSync(distDir),
-    missing: missing.map((file) =>
-      path.relative(rootDir, file).replace(/\\/g, "/"),
-    ),
+    missing: [
+      ...missing.map((file) =>
+        path.relative(rootDir, file).replace(/\\/g, "/"),
+      ),
+      ...(location.failure ? [location.failure] : []),
+    ],
   };
 }
 
@@ -213,18 +246,21 @@ export function hasDistBuild(rootDir: string): boolean {
   return inspectDistBuild(rootDir).valid;
 }
 
-function getDistBuildRequiredFiles(rootDir: string): string[] {
+function getDistBuildRequiredFiles(rootDir: string, outDir: string): string[] {
   const requiredFiles = [
-    path.join(rootDir, "dist", "package.json"),
-    path.join(rootDir, "dist", "config", "default.js"),
-    ...getCompiledSourceOutputFiles(rootDir),
-    ...getCompiledProjectPreloadOutputFiles(rootDir),
+    path.join(outDir, "package.json"),
+    path.join(outDir, "config", "default.js"),
+    ...getCompiledSourceOutputFiles(rootDir, outDir),
+    ...getCompiledProjectPreloadOutputFiles(rootDir, outDir),
   ];
 
   return [...new Set(requiredFiles)];
 }
 
-function getCompiledSourceOutputFiles(rootDir: string): string[] {
+function getCompiledSourceOutputFiles(
+  rootDir: string,
+  outDir: string,
+): string[] {
   const srcDir = path.join(rootDir, "src");
   if (!fs.existsSync(srcDir)) {
     return [];
@@ -238,11 +274,14 @@ function getCompiledSourceOutputFiles(rootDir: string): string[] {
     })
     .sort((a, b) => a.localeCompare(b))
     .map((file) =>
-      path.join(rootDir, "dist", file.replace(SOURCE_EXTENSION_PATTERN, ".js")),
+      path.join(outDir, file.replace(SOURCE_EXTENSION_PATTERN, ".js")),
     );
 }
 
-function getCompiledProjectPreloadOutputFiles(rootDir: string): string[] {
+function getCompiledProjectPreloadOutputFiles(
+  rootDir: string,
+  outDir: string,
+): string[] {
   const preloadDirectory = resolveProjectPreloadDirectory(rootDir);
   if (!preloadDirectory) {
     return [];
@@ -256,8 +295,7 @@ function getCompiledProjectPreloadOutputFiles(rootDir: string): string[] {
     .sort((a, b) => a.localeCompare(b))
     .map((name) =>
       path.join(
-        rootDir,
-        "dist",
+        outDir,
         PROJECT_PRELOAD_OUTPUT_DIR,
         name.replace(PROJECT_PRELOAD_FILE_PATTERN, ".mjs"),
       ),
@@ -267,7 +305,7 @@ function getCompiledProjectPreloadOutputFiles(rootDir: string): string[] {
 /**
  * resolveEntryFile — 解析实际的入口文件路径
  *
- * 入口文件始终指向框架内部的 bootstrap.js（node_modules/vextjs/dist/lib/bootstrap.js）。
+ * 入口文件始终指向当前服务解析到的 vextjs 包内部 bootstrap.js（支持 hoisted/pnpm）。
  * 用户项目的 dist/ 目录只包含用户业务代码的编译产物，不包含框架 bootstrap。
  *
  * dist/ 的存在与否通过 VEXT_BUILT 环境变量告知 bootstrap，

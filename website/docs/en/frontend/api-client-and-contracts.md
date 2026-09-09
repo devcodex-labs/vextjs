@@ -4,6 +4,8 @@ Vext pages do not need a generated API client for first-screen data. Use route h
 
 ## Primary Data Path
 
+Generated `HEAD()` and `request("HEAD", ...)` calls return `null` and are typed as `Promise<null>`. Responses with status 204/205 return `null`; 304 remains an HTTP error without attempting to parse a missing JSON body. Malformed JSON in an ordinary response still raises a parsing error.
+
 ```text
 route handler -> app.services -> res.render(page, props)
 ```

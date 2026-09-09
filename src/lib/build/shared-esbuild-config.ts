@@ -56,6 +56,8 @@ export const SOURCE_GLOB = "**/*.{ts,mts,cts,js,mjs,cjs}";
  */
 export const SOURCE_IGNORE = [
   "**/*.d.ts",
+  "**/*.d.mts",
+  "**/*.d.cts",
   "**/*.test.*",
   "**/*.spec.*",
   "**/__tests__/**",

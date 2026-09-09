@@ -637,6 +637,7 @@ function streamRenderedPage(input: {
     input.config.seo,
     input.req,
   );
+  applyPageCachePolicy(headers, payload.cache.noStore || status >= 400);
   const documentPolicy = resolveDocumentPolicy({
     config: input.config,
     options: input.options,
@@ -693,6 +694,8 @@ function streamRenderedPage(input: {
           ? error
           : new Error("[vextjs] streamed SSR failed."),
       currentStatus: status,
+      req: input.req,
+      requestId: input.req?.requestId,
     });
     sendRenderedHtml(input.res, rendered);
   };
@@ -784,14 +787,12 @@ function renderCachedDocument(input: {
     req: input.req,
   });
 
-  return {
-    ...rendered,
-    status: input.status,
-    headers: {
-      ...rendered.headers,
-      ...input.headers,
-    },
-  };
+  const headers = { ...rendered.headers, ...input.headers };
+  applyPageCachePolicy(
+    headers,
+    rendered.payload.cache.noStore || input.status >= 400,
+  );
+  return { ...rendered, status: input.status, headers };
 }
 
 function assertRenderCacheEntry(payload: unknown): VextRenderCacheEntry {
@@ -969,21 +970,37 @@ function pageEnvelopeHeaders(
     }
   }
   headers["Content-Type"] = `${VEXT_PAGE_MEDIA_TYPE}; charset=utf-8`;
-  const varyKey =
-    Object.keys(headers).find((name) => name.toLowerCase() === "vary") ??
-    "Vary";
-  const vary = String(headers[varyKey] ?? "")
+  applyPageCachePolicy(headers, noStore);
+  return headers;
+}
+
+/** HTML and navigation share a URL, so both representations must vary alike. */
+function applyPageCachePolicy(headers: VextHeaders, noStore: boolean): void {
+  const varyKeys = Object.keys(headers).filter(
+    (name) => name.toLowerCase() === "vary",
+  );
+  const vary = varyKeys
+    .map((name) => String(headers[name]))
+    .join(",")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
   for (const value of ["Accept", "Vext-Navigation", "Vext-Build-Id"]) {
-    if (!vary.some((item) => item.toLowerCase() === value.toLowerCase())) {
+    if (
+      !vary.includes("*") &&
+      !vary.some((item) => item.toLowerCase() === value.toLowerCase())
+    ) {
       vary.push(value);
     }
   }
-  headers[varyKey] = vary.join(", ");
-  if (noStore) headers["Cache-Control"] = "private, no-store";
-  return headers;
+  for (const name of varyKeys) delete headers[name];
+  headers.Vary = vary.join(", ");
+  if (noStore) {
+    for (const name of Object.keys(headers)) {
+      if (name.toLowerCase() === "cache-control") delete headers[name];
+    }
+    headers["Cache-Control"] = "private, no-store";
+  }
 }
 
 function createRenderPayload(
@@ -1175,6 +1192,7 @@ function renderPageDocument(input: {
     input.seo,
     input.req,
   );
+  applyPageCachePolicy(headers, payload.cache.noStore || status >= 400);
   const documentPolicy = resolveDocumentPolicy({
     config: { render: input.render },
     options: input.options,
@@ -1426,6 +1444,7 @@ function renderBuiltinErrorDocument(input: {
     input.seo,
     input.req,
   );
+  applyPageCachePolicy(headers, true);
   const documentPolicy = resolveDocumentPolicy({
     config: {
       render: {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { resolveConsumerPackage } from "../../lib/consumer-resolver.js";
 
 export interface LocalTscOptions {
   pretty?: boolean;
@@ -16,13 +17,19 @@ export function runLocalTsc(
   rootDir: string,
   options: LocalTscOptions = {},
 ): Promise<LocalTscResult> {
-  const localTscEntry = join(
-    rootDir,
-    "node_modules",
-    "typescript",
-    "bin",
-    "tsc",
-  );
+  let localTscEntry: string;
+  try {
+    localTscEntry = join(
+      resolveConsumerPackage(rootDir, "typescript").rootDir,
+      "bin",
+      "tsc",
+    );
+  } catch (error) {
+    return Promise.resolve({
+      exitCode: 1,
+      output: `[vextjs] Local TypeScript compiler not found for ${rootDir}. ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
   if (!existsSync(localTscEntry)) {
     return Promise.resolve({
       exitCode: 1,
