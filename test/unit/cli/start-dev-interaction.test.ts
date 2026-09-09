@@ -12,11 +12,11 @@ const mocks = vi.hoisted(() => {
   const resolvePreloads = vi.fn();
   const runDevPreflight = vi.fn();
   const shouldUsePolling = vi.fn();
-  const classifyChange = vi.fn(() => ({ action: "soft" }));
   const fork = vi.fn();
 
   const restarterInstances: MockColdRestarter[] = [];
   const watcherInstances: MockWatcher[] = [];
+  const owners: import("../../../src/lib/project/owner.js").ProjectOwner[] = [];
 
   class MockColdRestarter {
     options: Record<string, unknown>;
@@ -26,8 +26,11 @@ const mocks = vi.hoisted(() => {
     } = {};
     restart = vi.fn(async () => undefined);
     sendToChild = vi.fn();
+    requestOperation = vi.fn(async () => ({ success: true as const }));
     kill = vi.fn(async () => undefined);
     setExtraExecArgv = vi.fn();
+    isChildAlive = vi.fn(() => true);
+    getIsRestarting = vi.fn(() => false);
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -64,12 +67,12 @@ const mocks = vi.hoisted(() => {
     resolvePreloads,
     runDevPreflight,
     shouldUsePolling,
-    classifyChange,
     fork,
     MockColdRestarter,
     MockWatcher,
     restarterInstances,
     watcherInstances,
+    owners,
   };
 });
 
@@ -108,13 +111,24 @@ vi.mock("../../../src/lib/dev/file-watcher.js", () => ({
   VextFileWatcher: mocks.MockWatcher,
 }));
 
-vi.mock("../../../src/lib/dev/change-classifier.js", () => ({
-  classifyChange: mocks.classifyChange,
-}));
-
 vi.mock("../../../src/lib/dev/detect-polling.js", () => ({
   shouldUsePolling: mocks.shouldUsePolling,
 }));
+
+vi.mock("../../../src/lib/project/owner.js", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("../../../src/lib/project/owner.js")>();
+  return {
+    ...real,
+    acquireProjectOwner: async (
+      ...args: Parameters<typeof real.acquireProjectOwner>
+    ) => {
+      const owner = await real.acquireProjectOwner(...args);
+      mocks.owners.push(owner);
+      return owner;
+    },
+  };
+});
 
 import { startCommand } from "../../../src/cli/start.js";
 import { devCommand } from "../../../src/cli/dev.js";
@@ -209,9 +223,11 @@ describe("cli interaction: start/dev", () => {
       throw new Error("process.exit");
     }) as never);
 
+    const projectRoot = mkdtempSync(join(tmpdir(), "vext-interaction-"));
+    tempDirs.push(projectRoot);
     mocks.detectProject.mockReturnValue({
-      rootDir: "E:/Worker/vext-fixture",
-      srcDir: "E:/Worker/vext-fixture/src",
+      rootDir: projectRoot,
+      srcDir: join(projectRoot, "src"),
       language: "ts",
     });
     mocks.inspectDistBuild.mockReturnValue({
@@ -220,7 +236,7 @@ describe("cli interaction: start/dev", () => {
       missing: [],
     });
     mocks.resolveEntryFile.mockReturnValue(
-      "E:/Worker/vext-fixture/node_modules/vextjs/dist/lib/bootstrap.js",
+      join(projectRoot, "node_modules/vextjs/dist/lib/bootstrap.js"),
     );
     mocks.resolvePreloads.mockResolvedValue([]);
     mocks.runDevPreflight.mockResolvedValue({
@@ -237,7 +253,7 @@ describe("cli interaction: start/dev", () => {
     mocks.createInterface.mockReturnValue(readline);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     process.stdin.removeAllListeners("data");
     process.removeAllListeners("SIGINT");
     process.removeAllListeners("SIGTERM");
@@ -254,6 +270,7 @@ describe("cli interaction: start/dev", () => {
       writable: true,
     });
     vi.restoreAllMocks();
+    for (const owner of mocks.owners.splice(0)) await owner.release();
     for (const dir of tempDirs) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -513,8 +530,8 @@ describe("cli interaction: start/dev", () => {
     await flush();
 
     expect(restarter.restart).toHaveBeenCalledTimes(1);
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
     expect(consoleLogSpy).not.toHaveBeenCalledWith(
       expect.stringContaining("manual cold restart"),
@@ -675,8 +692,8 @@ describe("cli interaction: start/dev", () => {
       action: "soft",
     });
 
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
   });
 
@@ -721,8 +738,8 @@ describe("cli interaction: start/dev", () => {
     });
 
     expect(restarter.restart).toHaveBeenCalledTimes(2);
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
   });
 
@@ -764,7 +781,7 @@ describe("cli interaction: start/dev", () => {
     await flush();
     await flush();
 
-    await watcher.handlers.get("change")?.({
+    const savedChange = watcher.handlers.get("change")?.({
       files: [{ path: "src/routes/recovered.ts", type: "modify" }],
       action: "soft",
     });
@@ -774,6 +791,7 @@ describe("cli interaction: start/dev", () => {
       typegenOk: true,
       tsOk: false,
     });
+    await savedChange;
     await flush();
     await flush();
     await flush();
@@ -782,8 +800,8 @@ describe("cli interaction: start/dev", () => {
     expect(mocks.runDevPreflight).toHaveBeenCalledTimes(3);
     expect(restarter.kill).toHaveBeenCalledTimes(2);
     expect(restarter.restart).toHaveBeenCalledTimes(2);
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
   });
 
@@ -822,22 +840,23 @@ describe("cli interaction: start/dev", () => {
     await flush();
     await flush();
 
-    await watcher.handlers.get("change")?.({
+    const savedChange = watcher.handlers.get("change")?.({
       files: [{ path: "src/routes/starting.ts", type: "modify" }],
       action: "soft",
     });
 
     resolveReplacementRestart();
+    await savedChange;
     await flush();
     await flush();
     await flush();
     await flush();
 
     expect(mocks.runDevPreflight).toHaveBeenCalledTimes(3);
-    expect(restarter.kill).toHaveBeenCalledTimes(2);
+    expect(restarter.kill).toHaveBeenCalledTimes(1);
     expect(restarter.restart).toHaveBeenCalledTimes(3);
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
   });
 
@@ -852,12 +871,205 @@ describe("cli interaction: start/dev", () => {
       action: "client",
     });
 
-    expect(restarter.sendToChild).toHaveBeenCalledWith({
-      type: "frontend-rebuild",
+    expect(restarter.requestOperation).toHaveBeenCalledWith({
+      operation: "frontend-rebuild",
       files: [file],
     });
-    expect(restarter.sendToChild).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reload" }),
+    expect(restarter.requestOperation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "reload" }),
     );
+  });
+
+  it("devCommand serializes preflight, repeated saves and manual restart", async () => {
+    await devCommand([]);
+    let release!: (value: {
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }) => void;
+    mocks.runDevPreflight.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const watcher = mocks.watcherInstances[0]!;
+    const first = watcher.handlers.get("change")?.({
+      action: "soft",
+      files: [{ path: "src/routes/a.ts", type: "modify" }],
+    });
+    await vi.waitFor(() =>
+      expect(mocks.runDevPreflight).toHaveBeenCalledTimes(2),
+    );
+    const second = watcher.handlers.get("change")?.({
+      action: "soft",
+      files: [{ path: "src/routes/b.ts", type: "modify" }],
+    });
+    process.stdin.emit("data", "r");
+    await flush();
+    expect(mocks.runDevPreflight).toHaveBeenCalledTimes(2);
+    release({ ok: true, typegenOk: true, tsOk: true });
+    await Promise.all([first, second]);
+    await vi.waitFor(() =>
+      expect(mocks.restarterInstances[0]!.restart).toHaveBeenCalledTimes(2),
+    );
+    expect(mocks.restarterInstances[0]!.requestOperation).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(mocks.runDevPreflight).toHaveBeenCalledTimes(4);
+  });
+
+  it("devCommand keeps saves received during its initial preflight", async () => {
+    let release!: (value: {
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }) => void;
+    mocks.runDevPreflight.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const starting = devCommand([]);
+    await vi.waitFor(() =>
+      expect(mocks.runDevPreflight).toHaveBeenCalledTimes(1),
+    );
+    const watcher = mocks.watcherInstances[0]!;
+    expect(watcher.start).toHaveBeenCalledTimes(1);
+    const saved = watcher.handlers.get("change")?.({
+      action: "cold",
+      files: [{ path: "src/config/default.ts", type: "modify" }],
+    });
+    release({ ok: true, typegenOk: true, tsOk: true });
+    await starting;
+    await saved;
+    expect(mocks.restarterInstances[0]!.restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("devCommand waits for saturated work before retrying a saved file", async () => {
+    const { DevOperationQueue } =
+      await import("../../../src/lib/dev/operation-queue.js");
+    await devCommand([]);
+    let release!: (value: {
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }) => void;
+    mocks.runDevPreflight.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    process.stdin.emit("data", "r");
+    await vi.waitFor(() =>
+      expect(mocks.runDevPreflight).toHaveBeenCalledTimes(2),
+    );
+    for (let index = 1; index < 64; index++) process.stdin.emit("data", "r");
+    const run = DevOperationQueue.prototype.run;
+    let submissions = 0;
+    const submit = vi
+      .spyOn(DevOperationQueue.prototype, "run")
+      .mockImplementation(function (
+        this: InstanceType<typeof DevOperationQueue>,
+        operation,
+      ) {
+        submissions++;
+        // Bound the old immediate-retry loop so this regression cannot freeze Vitest.
+        if (submissions === 4)
+          release({ ok: true, typegenOk: true, tsOk: true });
+        return run.call(this, operation);
+      });
+    let timerSubmissions = 0;
+    const yielded = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        timerSubmissions = submissions;
+        release({ ok: true, typegenOk: true, tsOk: true });
+        resolve();
+      }, 0),
+    );
+    const saved = mocks.watcherInstances[0]!.handlers.get("change")?.({
+      action: "soft",
+      files: [{ path: "src/routes/saturated.ts", type: "modify" }],
+    });
+    try {
+      await yielded;
+      await saved;
+      expect(timerSubmissions).toBe(1);
+      expect(
+        mocks.restarterInstances[0]!.requestOperation,
+      ).toHaveBeenCalledWith({
+        operation: "reload",
+        files: [{ path: "src/routes/saturated.ts", type: "modify" }],
+      });
+    } finally {
+      submit.mockRestore();
+    }
+  });
+
+  it("devCommand shutdown cancels queued saves and cannot restart after a pending preflight finishes", async () => {
+    await devCommand([]);
+    let release!: (value: {
+      ok: boolean;
+      typegenOk: boolean;
+      tsOk: boolean;
+    }) => void;
+    mocks.runDevPreflight.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const watcher = mocks.watcherInstances[0]!;
+    const pending = watcher.handlers.get("change")?.({
+      action: "cold",
+      files: [{ path: "src/config/default.ts", type: "modify" }],
+    });
+    await vi.waitFor(() =>
+      expect(mocks.runDevPreflight).toHaveBeenCalledTimes(2),
+    );
+    processExitSpy.mockImplementation(() => undefined as never);
+    process.emit("SIGTERM");
+    release({ ok: true, typegenOk: true, tsOk: true });
+    await pending;
+    await vi.waitFor(() => expect(processExitSpy).toHaveBeenCalledWith(0));
+    expect(mocks.restarterInstances[0]!.restart).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.restarterInstances[0]!.requestOperation,
+    ).not.toHaveBeenCalled();
+    expect(watcher.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("devCommand restarts a dead worker instead of discarding a source save", async () => {
+    await devCommand([]);
+    const restarter = mocks.restarterInstances[0]!;
+    restarter.isChildAlive.mockReturnValue(false);
+    await mocks.watcherInstances[0]!.handlers.get("change")?.({
+      action: "soft",
+      files: [{ path: "src/routes/a.ts", type: "modify" }],
+    });
+    expect(restarter.restart).toHaveBeenCalledTimes(2);
+    expect(restarter.requestOperation).not.toHaveBeenCalled();
+  });
+
+  it("devCommand treats a missing operation reply as unknown state and recovers before the next save", async () => {
+    await devCommand([]);
+    const restarter = mocks.restarterInstances[0]!;
+    restarter.requestOperation.mockRejectedValueOnce(
+      new Error("IPC disconnected"),
+    );
+    const change = mocks.watcherInstances[0]!.handlers.get("change")!;
+    await change({
+      action: "soft",
+      files: [{ path: "src/routes/a.ts", type: "modify" }],
+    });
+    expect(restarter.kill).toHaveBeenCalled();
+    await change({
+      action: "soft",
+      files: [{ path: "src/routes/b.ts", type: "modify" }],
+    });
+    expect(restarter.restart).toHaveBeenCalledTimes(2);
+    expect(restarter.requestOperation).toHaveBeenCalledTimes(1);
   });
 });

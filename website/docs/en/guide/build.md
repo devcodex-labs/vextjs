@@ -73,7 +73,7 @@ src/                          dist/
 | ------------------ | --------------------------------------------------------------------- | ------------- |
 | `--outdir <path>`  | Output directory                                                      | `dist`        |
 | `--config <name>`  | Select the build-time config profile                                  | `production`  |
-| `--clean`          | Clean the output directory before compilation                         | `false`       |
+| `--clean`          | Clean recorded stale outputs after successful compilation             | `false`       |
 | `--sourcemap`      | Generate source map                                                   | `true`        |
 | `--no-sourcemap`   | Disable source map                                                    | —             |
 | `--minify`         | Compress output code (enabled by default; retained for compatibility) | `true`        |
@@ -84,7 +84,13 @@ src/                          dist/
 
 Production CLI builds minify backend output by default. Use `--no-minify` for a readable local inspection, or set `VEXT_BUILD_MINIFY=false` when that opt-out must be supplied by the environment. Frontend production minification continues to follow `frontend.build.minify`.
 
-Normal repeated builds automatically remove stale backend `dist/**/*.js` and `dist/**/*.js.map` outputs left by deleted or renamed server source files while preserving `dist/client/` frontend assets. Use `--clean` when you want to clear the entire output directory before compilation.
+Repeated builds remove obsolete outputs only after candidate compilation succeeds, using `.vext/freshness/v1/artifacts.json`. Backend JavaScript, source maps, project preloads, and business JSON commit together; compilation failures preserve the previous files. `--clean` follows the same ownership records and preserves unrecorded files.
+
+Nested JSON data, such as `src/locales/account/security/zh-CN.json`, keeps its directory and original bytes and supports backend imports. Frontend role directories, tests, and compilation metadata (`package.json` / `tsconfig*.json`) are excluded from business JSON copying. MCP structure and build guidance must use this same contract.
+
+Externally edited outputs or conflicting legacy files without ownership evidence produce `VEXT_OUTPUT_CONFLICT` with the affected path. Preserve, move, or verify those files before retrying, or choose a fresh `--outdir`. Existing files identical to the generated candidate can be adopted without rewriting.
+
+One writer owns a service root and its nested roots at a time. Competing `build` or `typegen` commands while `dev` is running return `VEXT_OWNER_BUSY`; separate service roots can run concurrently. Recovery metadata supports interrupted processes. Per-file atomic replacement does not imply simultaneous atomic visibility across all files; consumers must wait for successful completion.
 
 ## Frontend build
 
@@ -303,7 +309,9 @@ The esbuild configuration shared by both includes:
 - `platform: 'node'` — Node.js runtime
 - `target: 'node20'` — Minimum support for Node.js 20.19.0
 - `format: 'cjs'` — CommonJS output
-- `bundle: false` — compile file by file
+- Each backend source retains its own CommonJS `.js` output. esbuild resolves local references and marks modules external so hot reload keeps separate module identities.
+- Static local references, literal `import()`, and `require.resolve()` for `.ts/.js/.mts/.cts/.mjs/.cjs` map to their emitted `.js` files. Full and incremental compilation share JSONC, extends, and paths resolution.
+- Imports of excluded frontend files, out-of-root sources, or files without independent backend outputs produce diagnostics. A supported source extension does not imply that arbitrary runtime path expressions can be rewritten.
 - `treeShaking: true` — dead code elimination
 - `keepNames: true` — keep function names
 - `charset: 'utf8'` — UTF-8 encoding

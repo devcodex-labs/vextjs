@@ -2,6 +2,7 @@ import type {
   PortConflictDecision,
   PortConflictRequest,
 } from "./port-conflict.js";
+import { sendMessageToParent } from "./ipc-message.js";
 
 export async function requestPortConflictDecisionFromParent(
   request: PortConflictRequest,
@@ -20,6 +21,7 @@ export async function requestPortConflictDecisionFromParent(
       settled = true;
       clearTimeout(timer);
       process.removeListener("message", onMessage);
+      process.removeListener("disconnect", onDisconnect);
     };
 
     const timer = setTimeout(() => {
@@ -40,14 +42,29 @@ export async function requestPortConflictDecisionFromParent(
         (message as Record<string, unknown>).type === "port-conflict-decision"
       ) {
         cleanup();
-        const action = (message as Record<string, unknown>)
-          .action as PortConflictDecision | undefined;
-        resolve(action ?? "abort");
+        const action = (message as Record<string, unknown>).action;
+        resolve(
+          action === "retry" || action === "kill" || action === "next"
+            ? action
+            : "abort",
+        );
       }
     };
 
+    const fail = (error: unknown) => {
+      if (settled) return;
+      cleanup();
+      reject(error);
+    };
+    const onDisconnect = () =>
+      fail(
+        new Error(
+          "[vextjs] IPC parent disconnected while waiting for port decision",
+        ),
+      );
     process.on("message", onMessage);
-    process.send?.({ type: "port-conflict", ...request });
+    process.once("disconnect", onDisconnect);
+    sendMessageToParent({ type: "port-conflict", ...request }).catch(fail);
   });
 }
 
@@ -56,6 +73,8 @@ export function sendLifecycleLevelToParent(level: "concise" | "verbose"): void {
     return;
   }
 
-  process.send?.({ type: "lifecycle-config", level });
+  if (!process.send) return;
+  sendMessageToParent({ type: "lifecycle-config", level }).catch((error) => {
+    console.error("[vextjs] lifecycle notification failed:", error);
+  });
 }
-

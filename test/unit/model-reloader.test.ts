@@ -156,6 +156,69 @@ describe("reloadModels", () => {
   });
 
   describe("基础行为", () => {
+    it("使用配置的模型目录并只移除该目录中已删除的 owner source", async () => {
+      const dir = "data/entities";
+      const customDir = join(outDir, dir);
+      await mkdir(customDir, { recursive: true });
+      const file = join(customDir, "user.js");
+      await writeFile(
+        file,
+        'module.exports = { collection: "users", schema: {} };',
+      );
+      const app = {
+        ...createMockApp(),
+        config: { database: { models: { dir } } },
+      };
+      const handle = registerModelPlan(mockModel, app, []);
+      try {
+        const result = await reloadModels(app, outDir, new Set([file]));
+        expect(result.reloadedNames).toEqual(["users"]);
+        expect(mockRegistry.has("users")).toBe(true);
+        await rm(file);
+        await reloadModels(app, outDir, new Set([file]));
+        expect(mockRegistry.has("users")).toBe(false);
+      } finally {
+        handle.release();
+      }
+    });
+
+    it("目录读取失败不得当作删除并清空已注册模型", async () => {
+      const app = createMockApp();
+      const file = join(modelsDir, "user.js");
+      const definition = { collection: "users", schema: {} };
+      const handle = registerModelPlan(mockModel, app, [
+        { key: "users", definition, source: "local:user.js" },
+      ]);
+      try {
+        await rm(modelsDir, { recursive: true });
+        await writeFile(modelsDir, "not a directory");
+        await expect(
+          reloadModels(app, outDir, new Set([file])),
+        ).rejects.toThrow();
+        expect(mockRegistry.get("users")?.definition).toBe(definition);
+      } finally {
+        handle.release();
+      }
+    });
+
+    it("autoRegister=false 时不重新启用模型自动扫描", async () => {
+      const file = join(modelsDir, "user.js");
+      await writeFile(
+        file,
+        'module.exports = { collection: "users", schema: {} };',
+      );
+      const app = {
+        ...createMockApp(),
+        config: { database: { models: { autoRegister: false } } },
+      };
+      expect(await reloadModels(app, outDir, new Set([file]))).toEqual({
+        reloaded: 0,
+        unchanged: 0,
+        reloadedNames: [],
+      });
+      expect(mockModel.define).not.toHaveBeenCalled();
+    });
+
     it("应在 models 目录不存在时静默跳过", async () => {
       const emptyOutDir = await createTempDir();
       const app = createMockApp();

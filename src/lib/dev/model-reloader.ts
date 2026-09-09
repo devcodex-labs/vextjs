@@ -1,8 +1,9 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolveModelsDirectory } from "../project/layout.js";
+import { isExcludedConventionFileName } from "../project/source-roles.js";
 import { resolveModelEntry } from "../plugins/monsqlize/model-loader.js";
 import { loadMonSQLizeModelClass } from "../plugins/monsqlize/module.js";
 import {
@@ -15,7 +16,7 @@ import type {
 } from "../plugins/monsqlize/model-registry.js";
 
 // 在 ESM 环境中通过 createRequire 获取 CJS 的 require 函数。
-// model-reloader 需要 require() 加载 .vext/dev/models/ 下的 CJS 编译产物，
+// model-reloader 需要 require() 加载编译根内 models.dir 对应的 CJS 产物，
 // 以及 require.resolve 来解析模块路径。
 const esmRequire = createRequire(import.meta.url);
 
@@ -27,7 +28,7 @@ const esmRequire = createRequire(import.meta.url);
  *
  * 核心流程：
  *
- *   1. 扫描 outDir/models/ 下所有 .js 文件
+ *   1. 按配置解析 outDir 下的模型目录并扫描 .js 文件
  *   2. 筛选出在 invalidation set 中的文件（需要重载的）
  *   3. require/resolve 全部受影响文件并形成 validated plan
  *   4. 通过 app-owned registry 事务一次提交
@@ -57,6 +58,9 @@ const esmRequire = createRequire(import.meta.url);
  * 便于单元测试中构造 mock 对象。
  */
 export interface ModelReloaderApp {
+  config?: {
+    database?: { models?: { dir?: string; autoRegister?: boolean } };
+  };
   logger: {
     info(...args: unknown[]): void;
     warn(...args: unknown[]): void;
@@ -124,14 +128,14 @@ async function getModelClass(): Promise<ModelRegistryClass> {
  * @returns 所有 model .js 文件的绝对路径数组
  */
 async function scanModelDirectory(dir: string): Promise<string[]> {
-  if (!existsSync(dir)) return [];
-
   const files: string[] = [];
   let entries: Dirent[];
   try {
     entries = (await readdir(dir, { withFileTypes: true })) as Dirent[];
-  } catch {
-    return [];
+  } catch (error) {
+    // 缺失可代表删除；权限或目录类型错误不能被当作空候选提交。
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
 
   for (const entry of entries) {
@@ -145,16 +149,12 @@ async function scanModelDirectory(dir: string): Promise<string[]> {
     } else if (entry.isFile()) {
       // 只扫描 .js 文件（编译产物）
       if (!entry.name.endsWith(".js")) continue;
-      // 跳过 source map 和类型声明
-      if (entry.name.endsWith(".js.map") || entry.name.endsWith(".d.ts"))
-        continue;
-      // 跳过 _ 开头的文件
-      if (entry.name.startsWith("_")) continue;
+      if (isExcludedConventionFileName(entry.name)) continue;
       files.push(fullPath);
     }
   }
 
-  return files;
+  return files.sort();
 }
 
 function localModelSource(
@@ -179,6 +179,8 @@ function localModelSource(
   ) {
     return undefined;
   }
+  if (isExcludedConventionFileName(path.basename(compiledFile)))
+    return undefined;
   return `local:${relativePath.replaceAll("\\", "/")}`;
 }
 
@@ -191,7 +193,7 @@ function localModelSource(
  * 使用 monSQLize 3.3.0 registry API 与 VextJS app ownership 事务更新定义。
  *
  * 流程：
- *   1. 扫描 outDir/models/ 下所有 .js 文件
+ *   1. 按配置解析 outDir 下的模型目录并扫描 .js 文件
  *   2. 筛选出在 invalidation set 中的文件
  *   3. require/resolve 全部受影响 model，形成 validated plan
  *   4. 一次提交全部 primary/alias key
@@ -208,7 +210,13 @@ export async function reloadModels(
   outDir: string,
   invalidated: Set<string>,
 ): Promise<ModelReloadResult> {
-  const modelsDir = path.join(outDir, "models");
+  const config = app.config?.database?.models;
+  if (config?.autoRegister === false) {
+    return { reloaded: 0, unchanged: 0, reloadedNames: [] };
+  }
+  const modelsDir = resolveModelsDirectory(outDir, config?.dir);
+  const modelsLabel =
+    path.relative(outDir, modelsDir).replaceAll("\\", "/") || ".";
 
   // ── 1. 扫描所有 model 文件 ────────────────────────────
   const allModelFiles = await scanModelDirectory(modelsDir);
@@ -274,7 +282,7 @@ export async function reloadModels(
     const source = localModelSource(modelsDir, file);
     if (!source) {
       throw new Error(
-        `[hot-reload] models/${relativePath} — compiled model path is outside the models boundary`,
+        `[hot-reload] ${modelsLabel}/${relativePath} — compiled model path is outside the models boundary`,
       );
     }
     affectedSources.add(source);
@@ -282,7 +290,7 @@ export async function reloadModels(
     const mod = esmRequire(file);
     if (mod == null) {
       throw new Error(
-        `[hot-reload] models/${relativePath} — invalid export (expected default object)`,
+        `[hot-reload] ${modelsLabel}/${relativePath} — invalid export (expected default object)`,
       );
     }
 
@@ -301,7 +309,7 @@ export async function reloadModels(
       Array.isArray(definition)
     ) {
       throw new Error(
-        `[hot-reload] models/${relativePath} — invalid export (expected default object)`,
+        `[hot-reload] ${modelsLabel}/${relativePath} — invalid export (expected default object)`,
       );
     }
 
@@ -311,7 +319,7 @@ export async function reloadModels(
       const depthCount =
         relativePath.replace(/\.\w+$/, "").split(/[/\\]/).length - 1;
       throw new Error(
-        `[hot-reload] models/${relativePath} — directory depth ${depthCount} exceeds maximum (2)`,
+        `[hot-reload] ${modelsLabel}/${relativePath} — directory depth ${depthCount} exceeds maximum (2)`,
       );
     }
 
@@ -323,7 +331,7 @@ export async function reloadModels(
     validateModelRegistration(primary);
     if (plannedKeys.has(primary.key)) {
       throw new Error(
-        `[hot-reload] models/${relativePath} — model key '${primary.key}' conflicts with ${plannedKeys.get(primary.key)}`,
+        `[hot-reload] ${modelsLabel}/${relativePath} — model key '${primary.key}' conflicts with ${plannedKeys.get(primary.key)}`,
       );
     }
     plannedKeys.set(primary.key, source);
@@ -340,7 +348,7 @@ export async function reloadModels(
       validateModelRegistration(alias);
       if (plannedKeys.has(alias.key)) {
         throw new Error(
-          `[hot-reload] models/${relativePath} — model alias '${String(aliasValue)}' conflicts with ${plannedKeys.get(alias.key)}`,
+          `[hot-reload] ${modelsLabel}/${relativePath} — model alias '${String(aliasValue)}' conflicts with ${plannedKeys.get(alias.key)}`,
         );
       }
       plannedKeys.set(alias.key, source);

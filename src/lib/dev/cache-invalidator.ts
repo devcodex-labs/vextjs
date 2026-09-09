@@ -1,5 +1,6 @@
 import path from "node:path";
 import { createRequire } from "node:module";
+import { isPathInside } from "../path-boundary.js";
 
 // 在 ESM 环境中通过 createRequire 获取 CJS 的 require 函数。
 // cache-invalidator 需要访问 require.cache 和 require.resolve
@@ -181,7 +182,13 @@ export function computeInvalidationSet(
   //   2. require.resolve 需要文件实际存在于磁盘，对于已加载但被删除的文件会失败
   //   3. 在测试中注入的虚拟路径不存在于磁盘，但存在于 require.cache 中
   //
-  const queue: string[] = compiledFiles
+  const reloadAll = compiledFiles.some(
+    (file) => path.resolve(file) === path.resolve(outDir),
+  );
+  const seeds = reloadAll
+    ? Object.keys(esmRequire.cache).filter((file) => isPathInside(outDir, file))
+    : compiledFiles;
+  const queue: string[] = seeds
     .map((f) => {
       // 优先：直接检查 require.cache 中是否存在
       if (esmRequire.cache[f]) {
@@ -204,6 +211,7 @@ export function computeInvalidationSet(
     const current = queue.shift()!;
 
     if (invalidated.has(current)) continue;
+    if (!isPathInside(outDir, current)) continue;
 
     // ── 安全边界：不失效 node_modules ──────────────────
     //

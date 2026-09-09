@@ -1,4 +1,8 @@
 import { resolve } from "node:path";
+import {
+  acquireProjectOwner,
+  type ProjectOwner,
+} from "../lib/project/owner.js";
 import { createInterface } from "node:readline/promises";
 import { detectProject } from "./utils/detect-project.js";
 import { resolveFrameworkEntry } from "../lib/consumer-resolver.js";
@@ -6,10 +10,14 @@ import { runDevPreflight } from "./utils/dev-preflight.js";
 import type { TsDiagnosticsMode } from "./utils/dev-preflight.js";
 import { resolvePreloads } from "./utils/preload.js";
 import { ColdRestarter } from "../lib/dev/cold-restarter.js";
+import { DevOperationQueue } from "../lib/dev/operation-queue.js";
+import type { WorkerOperation } from "../lib/dev/worker-protocol.js";
 import type { ColdRestarterOptions } from "../lib/dev/cold-restarter.js";
 import { VextFileWatcher } from "../lib/dev/file-watcher.js";
 import type { FileChangeEvent } from "../lib/dev/file-watcher.js";
 import { classifyChange } from "../lib/dev/change-classifier.js";
+import type { ClassifierOptions } from "../lib/dev/change-classifier.js";
+import { isFrontendWatchLayout } from "../lib/project/layout.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
 import {
   createStartupProfiler,
@@ -181,11 +189,12 @@ async function promptPortConflictDecision(
 function printFileChanges(
   files: FileChangeEvent["files"],
   lifecycleLevel: "concise" | "verbose",
+  classifierOptions?: ClassifierOptions,
 ): void {
   if (lifecycleLevel === "verbose") {
     console.log(`\n[vext dev] ${files.length} file(s) changed:`);
     for (const f of files) {
-      const cls = classifyChange(f.path);
+      const cls = classifyChange(f.path, classifierOptions);
       const icon =
         cls.action === "cold"
           ? "\u{1F534}"
@@ -217,10 +226,38 @@ function printFileChanges(
  *
  * @param args 命令行参数（如 ['--poll', '--debounce', '200']）
  */
+interface DevCommandResources {
+  stop?: () => Promise<void>;
+  stopping?: boolean;
+}
+
 export async function devCommand(args: string[] = []): Promise<void> {
   const options = parseDevArgs(args);
   const resolvedConfigProfile = resolveCliConfigProfile(options);
   printConfigProfileWarning(resolvedConfigProfile);
+  const project = detectProject(resolve(options.root || process.cwd()));
+  const owner = await acquireProjectOwner(project.rootDir, "dev");
+  const resources: DevCommandResources = {};
+  try {
+    await owner.reserveOutputs([".vext", "src/config", "src/types/generated"]);
+    await owner.run(() =>
+      runDevCommand(options, resolvedConfigProfile, project, owner, resources),
+    );
+  } catch (error) {
+    await resources.stop?.();
+    await owner.release();
+    if (resources.stopping) return;
+    throw error;
+  }
+}
+
+async function runDevCommand(
+  options: DevCommandOptions,
+  resolvedConfigProfile: ReturnType<typeof resolveCliConfigProfile>,
+  project: ReturnType<typeof detectProject>,
+  owner: ProjectOwner,
+  resources: DevCommandResources,
+): Promise<void> {
   const hasLifecycleOverride =
     options.verboseLifecycle === true ||
     process.env.VEXT_LIFECYCLE_LEVEL === "verbose";
@@ -229,6 +266,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
     : "concise";
   let promptActive = false;
   let pendingTsDiagnostics: Promise<unknown> | null = null;
+  const operations = new DevOperationQueue();
+  const cleanupListeners: (() => void)[] = [];
   const startupProfiler = createStartupProfiler({
     enabled:
       options.startupProfile === true || Boolean(options.startupProfileJson),
@@ -242,8 +281,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
   };
 
   // ── 1. 检测项目结构 ────────────────────────────────────
-  const projectRoot = resolve(options.root || process.cwd());
-  const project = detectProject(projectRoot);
+  const classifierOptions: ClassifierOptions = {};
+  let watcher: VextFileWatcher | undefined;
 
   // ── 2. 打印欢迎信息 ────────────────────────────────────
   if (options.startupProfile || options.verboseLifecycle) {
@@ -301,7 +340,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   //
   const preloads = await startupProfiler.time(
     "main.preloads.resolve.initial",
-    () => resolvePreloads(project.rootDir),
+    () => owner.run(() => resolvePreloads(project.rootDir)),
     { phase: "main/preload" },
   );
   startupProfiler.mark("main.preloads.resolved.initial", 0, {
@@ -311,6 +350,7 @@ export async function devCommand(args: string[] = []): Promise<void> {
   const preloadExecArgv = preloads.flatMap((p) => ["--import", p]);
 
   const restarterOptions: ColdRestarterOptions = {
+    ownerGrant: owner.createGrant(),
     entryScript,
     env: restarterEnv,
     cwd: project.rootDir,
@@ -318,11 +358,27 @@ export async function devCommand(args: string[] = []): Promise<void> {
   };
 
   const restarter = new ColdRestarter(restarterOptions);
+  let stopTask: Promise<void> | undefined;
+  resources.stop = () => {
+    stopTask ??= (async () => {
+      watcher?.stop();
+      for (const cleanup of cleanupListeners.splice(0)) cleanup();
+      const drained = operations.close();
+      const results = await Promise.allSettled([restarter.kill(), drained]);
+      await pendingTsDiagnostics;
+      const failures = results
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason);
+      if (failures.length)
+        throw new AggregateError(failures, "[vext dev] shutdown incomplete");
+    })();
+    return stopTask;
+  };
 
   const refreshPreloads = async (): Promise<void> => {
     const latestPreloads = await startupProfiler.time(
       "main.preloads.resolve.refresh",
-      () => resolvePreloads(project.rootDir),
+      () => owner.run(() => resolvePreloads(project.rootDir)),
       { phase: "main/preload" },
     );
     startupProfiler.mark("main.preloads.resolved.refresh", 0, {
@@ -333,29 +389,41 @@ export async function devCommand(args: string[] = []): Promise<void> {
   };
 
   const runPreflight = async (reason: string): Promise<boolean> => {
+    operations.signal.throwIfAborted();
     const tsDiagnosticsMode: TsDiagnosticsMode = options.strictPreflight
       ? "blocking"
       : pendingTsDiagnostics
         ? "skip"
         : "async";
-    const result = await runDevPreflight({
-      rootDir: project.rootDir,
-      language: project.language,
-      reason,
-      tsDiagnosticsMode,
-      logTypegenDetails: Boolean(
-        options.startupProfile || options.verboseLifecycle,
-      ),
-    });
+    const result = await owner.run(() =>
+      runDevPreflight({
+        rootDir: project.rootDir,
+        language: project.language,
+        reason,
+        tsDiagnosticsMode,
+        logTypegenDetails: Boolean(
+          options.startupProfile || options.verboseLifecycle,
+        ),
+      }),
+    );
 
     if (result.tsDiagnosticsTask) {
-      const task = result.tsDiagnosticsTask.finally(() => {
-        if (pendingTsDiagnostics === task) {
-          pendingTsDiagnostics = null;
-        }
-      });
+      const task = result.tsDiagnosticsTask
+        .catch((error: unknown) => {
+          console.error(
+            "[vext dev] asynchronous TypeScript diagnostics failed:",
+            error,
+          );
+        })
+        .finally(() => {
+          if (pendingTsDiagnostics === task) {
+            pendingTsDiagnostics = null;
+          }
+        });
       pendingTsDiagnostics = task;
     }
+
+    operations.signal.throwIfAborted();
 
     if (result.ok) {
       return true;
@@ -370,18 +438,19 @@ export async function devCommand(args: string[] = []): Promise<void> {
   // restart 成功前保持为 true，使后续文件变更走 Cold Restart 而非 IPC HMR。
   let runtimeRecoveryRequired = false;
   let runtimeRecoveryInProgress = false;
-  let pendingRuntimeRecoveryReason: string | null = null;
+  let recoveryQueued = false;
 
   const restartChild = async (reason: string): Promise<void> => {
+    operations.signal.throwIfAborted();
     await refreshPreloads();
+    operations.signal.throwIfAborted();
     pendingReadyStartedAt = performance.now();
     await restarter.restart(reason);
+    operations.signal.throwIfAborted();
     runtimeRecoveryRequired = false;
   };
 
   const recoverRuntimeAfterMutation = async (reason: string): Promise<void> => {
-    if (runtimeRecoveryInProgress) return;
-
     runtimeRecoveryRequired = true;
     runtimeRecoveryInProgress = true;
     try {
@@ -407,23 +476,47 @@ export async function devCommand(args: string[] = []): Promise<void> {
       );
     } finally {
       runtimeRecoveryInProgress = false;
+    }
+  };
 
-      // 恢复期间的新保存不能丢弃：replacement child 可能已在保存前开始
-      // 初始化，因此无论本次恢复成功或失败，都以最近一次保存重放一次冷恢复。
-      const pendingReason = pendingRuntimeRecoveryReason;
-      pendingRuntimeRecoveryReason = null;
-      if (pendingReason) {
-        console.log(
-          "[vext dev] replaying changes saved during runtime recovery...",
-        );
-        void recoverRuntimeAfterMutation(pendingReason);
+  const runWorkerOperation = async (
+    operation: WorkerOperation,
+  ): Promise<void> => {
+    operations.signal.throwIfAborted();
+    let result;
+    try {
+      result = await restarter.requestOperation(operation);
+    } catch (error) {
+      if (!operations.signal.aborted) {
+        runtimeRecoveryRequired = true;
+        await restarter.kill();
       }
+      throw error;
+    }
+    operations.signal.throwIfAborted();
+    if (!result.success) {
+      runtimeRecoveryRequired ||= result.requestedColdRestart;
+      throw new Error(result.error);
     }
   };
 
   // 监听子进程事件
   restarter.setEvents({
     onChildMessage: (msg: unknown) => {
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "watch-layout"
+      ) {
+        const layout = (msg as Record<string, unknown>).layout;
+        if (isFrontendWatchLayout(layout)) {
+          Object.assign(classifierOptions, layout);
+          watcher?.updateClassifierOptions(classifierOptions);
+        } else {
+          console.error("[vext dev] rejected invalid worker watch layout");
+        }
+        return;
+      }
       // 子进程可能请求 cold restart（级联检测过大）
       if (
         typeof msg === "object" &&
@@ -476,13 +569,21 @@ export async function devCommand(args: string[] = []): Promise<void> {
           ((msg as Record<string, unknown>).reason as string) ||
           "child request";
         console.log(`\n[vext dev] child requested cold restart: ${reason}`);
-        if (runtimeRecoveryRequired) {
-          console.warn(
-            "[vext dev] runtime recovery already pending, ignoring duplicate request.",
-          );
-          return;
-        }
-        void recoverRuntimeAfterMutation(reason);
+        runtimeRecoveryRequired = true;
+        if (recoveryQueued || operations.signal.aborted) return;
+        recoveryQueued = true;
+        void operations
+          .run(async () => {
+            if (runtimeRecoveryRequired)
+              await recoverRuntimeAfterMutation(reason);
+          })
+          .catch((error: unknown) => {
+            if (!operations.signal.aborted)
+              console.error("[vext dev] runtime recovery failed:", error);
+          })
+          .finally(() => {
+            recoveryQueued = false;
+          });
         return;
       }
 
@@ -520,8 +621,18 @@ export async function devCommand(args: string[] = []): Promise<void> {
           },
         )
           .then((action) => {
-            restarter.sendToChild({ type: "port-conflict-decision", action });
+            if (!operations.signal.aborted)
+              return restarter.sendToChild({
+                type: "port-conflict-decision",
+                action,
+              });
           })
+          .catch((error: unknown) =>
+            console.error(
+              "[vext dev] port decision could not be delivered:",
+              error,
+            ),
+          )
           .finally(() => {
             promptActive = false;
           });
@@ -539,184 +650,145 @@ export async function devCommand(args: string[] = []): Promise<void> {
     },
   });
 
-  // ── 5. 首次启动 ────────────────────────────────────────
-  if (options.startupProfile || options.verboseLifecycle) {
-    console.log("[vext dev] starting initial compilation + server...");
-  }
-
-  try {
-    if (
-      !(await startupProfiler.time("main.preflight.initial", () =>
-        runPreflight("initial start"),
-      ))
-    ) {
-      console.error(
-        "[vext dev] initial checks failed. Waiting for changes...\n",
-      );
-    } else {
-      await startupProfiler.time("main.worker.ready", () =>
-        restartChild("initial start"),
-      );
-    }
-  } catch (err) {
-    console.error(
-      "[vext dev] initial start failed:",
-      err instanceof Error ? err.message : err,
-    );
-    console.error("[vext dev] fix the error and save a file to retry\n");
-    // 不退出 — 等待用户修复后 FileWatcher 触发 restart
-  }
-
   // ── 6. 创建并启动 FileWatcher ──────────────────────────
   const usePolling = options.poll ?? shouldUsePolling();
 
-  const watcher = new VextFileWatcher({
+  watcher = new VextFileWatcher({
     root: project.rootDir,
     debounce: options.debounce ?? 0,
     usePolling,
     pollInterval: options.pollInterval ?? 1000,
+    classifierOptions,
   });
 
-  watcher.on("change", async (event: FileChangeEvent) => {
+  const handleFileChanges = async (event: FileChangeEvent): Promise<void> => {
+    printFileChanges(event.files, lifecycleLevel, classifierOptions);
+    if (options.clear) console.clear();
+    const reason = event.files.map((file) => file.path).join(", ");
+    if (runtimeRecoveryRequired) {
+      await recoverRuntimeAfterMutation(reason);
+      return;
+    }
+    const preflightReason =
+      event.action === "cold"
+        ? "cold restart preflight"
+        : event.action === "client"
+          ? "client rebuild preflight"
+          : "soft reload preflight";
+    if (!(await runPreflight(preflightReason))) return;
+    if (
+      event.action === "cold" ||
+      (options.noHot && event.action !== "client") ||
+      !restarter.isChildAlive()
+    ) {
+      await restartChild(reason);
+      console.log("[vext dev] cold restart complete\n");
+      return;
+    }
+    const clientFiles = event.files.filter(
+      (file) =>
+        classifyChange(file.path, classifierOptions).action === "client",
+    );
+    const serverFiles = event.files.filter(
+      (file) => classifyChange(file.path, classifierOptions).action === "soft",
+    );
     try {
-      // ── 打印变更详情 ──────────────────────────────────
-      printFileChanges(event.files, lifecycleLevel);
-
-      if (options.clear) {
-        console.clear();
-      }
-
-      if (runtimeRecoveryInProgress) {
-        pendingRuntimeRecoveryReason =
-          event.files.map((file) => file.path).join(", ") || "file changes";
-        console.log(
-          "[vext dev] runtime recovery already in progress; queued current files for a retry if it cannot complete.",
-        );
-        return;
-      }
-
-      const preflightReason =
-        event.action === "cold"
-          ? "cold restart preflight"
-          : event.action === "client"
-            ? "client rebuild preflight"
-            : "soft reload preflight";
-      if (!(await runPreflight(preflightReason))) {
-        return;
-      }
-
-      if (runtimeRecoveryRequired) {
-        console.log(
-          "[vext dev] runtime recovery pending → cold restart instead of soft reload...",
-        );
-        try {
-          await restartChild(event.files.map((file) => file.path).join(", "));
-          console.log("[vext dev] cold restart complete\n");
-        } catch (err) {
-          console.error(
-            "[vext dev] restart failed:",
-            err instanceof Error ? err.message : err,
-          );
-          console.error("[vext dev] fix the error and save to retry\n");
-        }
-        return;
-      }
-
-      // ── Tier 3: 配置/插件变更 → Cold Restart ─────────
-      //
-      // 配置文件、插件、.env、package.json、tsconfig.json
-      // 的变更影响全局初始化阶段，无法在进程内安全热替换，
-      // 必须执行完整的 kill + fork。
-      //
-      if (event.action === "cold") {
-        console.log(
-          "[vext dev] config/plugin change detected \u2192 cold restart (Tier 3)...",
-        );
-        try {
-          await restartChild(event.files.map((f) => f.path).join(", "));
-          console.log("[vext dev] cold restart complete\n");
-        } catch (err) {
-          console.error(
-            "[vext dev] restart failed:",
-            err instanceof Error ? err.message : err,
-          );
-          console.error("[vext dev] fix the error and save to retry\n");
-        }
-        return;
-      }
-
-      const clientFiles = event.files.filter((file) =>
-        isFrontendClientFile(file.path),
-      );
-      if (clientFiles.length > 0) {
-        console.log("[vext dev] frontend client change detected -> rebuild...");
-        restarter.sendToChild({
-          type: "frontend-rebuild",
+      if (clientFiles.length)
+        await runWorkerOperation({
+          operation: "frontend-rebuild",
           files: clientFiles,
         });
-        if (event.action === "client") {
-          return;
-        }
-      }
-
-      // ── --no-hot 降级：soft 变更也走 Cold Restart ────
-      //
-      // 用户通过 --no-hot 或 VEXT_DEV_NO_HOT=1 禁用 soft reload，
-      // 所有变更都走 Cold Restart 路径。
-      //
-      if (options.noHot) {
-        const hasStructural = event.files.some(
-          (f) => f.type === "add" || f.type === "delete",
-        );
-        console.log(
-          `[vext dev] source change detected \u2192 cold restart (--no-hot) ` +
-            `[${hasStructural ? "structural" : "code"}]...`,
-        );
-        try {
-          await restartChild(event.files.map((f) => f.path).join(", "));
-          console.log("[vext dev] cold restart complete\n");
-        } catch (err) {
-          console.error(
-            "[vext dev] restart failed:",
-            err instanceof Error ? err.message : err,
-          );
-          console.error("[vext dev] fix the error and save to retry\n");
-        }
-        return;
-      }
-
-      // ── Tier 1/2: 业务代码变更 → IPC Soft Reload ────
-      //
-      // Tier 1 (modify): esbuild.transform() 单文件编译 (~3ms, O(1))
-      // Tier 2 (add/delete): ctx.rebuild() 全量增量编译 (~80ms)
-      //
-      // 通过 IPC 发送 { type: 'reload', files: [...] } 消息
-      // 到子进程，由 SoftReloader 执行完整的热重载流程。
-      //
-      const hasStructural = event.files.some(
-        (f) => f.type === "add" || f.type === "delete",
-      );
-      const tier = hasStructural ? "T2:structural" : "T1:code";
-      console.log(
-        `[vext dev] source change detected \u2192 soft reload [${tier}]...`,
-      );
-      restarter.sendToChild({
-        type: "reload",
-        files: event.files,
-      });
-    } catch (err) {
-      console.error(
-        "[vext dev] unexpected error in file watcher handler:",
-        err instanceof Error ? err.message : err,
-      );
-      if (err instanceof Error && err.stack) {
-        console.error(err.stack);
-      }
-      console.error("[vext dev] fix the error and save again to retry\n");
+      if (serverFiles.length)
+        await runWorkerOperation({ operation: "reload", files: serverFiles });
+    } catch (error) {
+      // 混合变更若只处理了一部分，下次有效操作必须以完整启动恢复一致状态。
+      if (clientFiles.length && serverFiles.length)
+        runtimeRecoveryRequired = true;
+      throw error;
     }
-  });
+  };
 
-  await watcher.start();
+  let pendingFileEvent: FileChangeEvent | undefined;
+  let fileTask: Promise<void> | undefined;
+  const enqueueFileChanges = (incoming: FileChangeEvent): Promise<void> => {
+    if (operations.signal.aborted) return Promise.resolve();
+    const files = new Map(
+      (pendingFileEvent?.files ?? []).map((file) => [file.path, file]),
+    );
+    for (const file of incoming.files) {
+      const previous = files.get(file.path);
+      files.set(
+        file.path,
+        previous && previous.type !== "modify" && file.type === "modify"
+          ? { ...file, type: "add" }
+          : { ...file },
+      );
+    }
+    const previousAction = pendingFileEvent?.action;
+    const cold =
+      incoming.action === "cold" ||
+      previousAction === "cold" ||
+      runtimeRecoveryInProgress ||
+      restarter.getIsRestarting();
+    pendingFileEvent = {
+      files: [...files.values()],
+      action: cold
+        ? "cold"
+        : incoming.action === "soft" || previousAction === "soft"
+          ? "soft"
+          : "client",
+    };
+    if (
+      files.size > 5000 ||
+      [...files.keys()].reduce(
+        (bytes, file) => bytes + Buffer.byteLength(file) + 64,
+        0,
+      ) >
+        1024 * 1024
+    )
+      pendingFileEvent = {
+        action: "cold",
+        files: [{ path: "src/", type: "modify" }],
+      };
+    if (fileTask) return fileTask;
+    const task = operations
+      .run(async (signal) => {
+        while (pendingFileEvent && !signal.aborted) {
+          const selected = pendingFileEvent;
+          pendingFileEvent = undefined;
+          try {
+            await handleFileChanges(selected);
+          } catch (error) {
+            if (!signal.aborted) {
+              console.error(
+                "[vext dev] file change could not be applied:",
+                error instanceof Error ? error.message : error,
+              );
+              console.error(
+                "[vext dev] fix the error and save again to retry\n",
+              );
+            }
+          }
+        }
+      })
+      .catch(async (error: unknown) => {
+        if (!operations.signal.aborted)
+          console.error("[vext dev] file change queue failed:", error);
+        await operations.waitForPending();
+      })
+      .finally(() => {
+        if (fileTask === task) fileTask = undefined;
+        if (operations.signal.aborted) pendingFileEvent = undefined;
+        else if (pendingFileEvent) {
+          const pending = pendingFileEvent;
+          pendingFileEvent = undefined;
+          return enqueueFileChanges(pending);
+        }
+      });
+    fileTask = task;
+    return task;
+  };
+  watcher.on("change", enqueueFileChanges);
 
   if (usePolling) {
     console.log(
@@ -731,25 +803,24 @@ export async function devCommand(args: string[] = []): Promise<void> {
   const cleanup = async () => {
     if (isCleaningUp) return;
     isCleaningUp = true;
+    resources.stopping = true;
 
     console.log("\n[vext dev] shutting down...");
 
-    watcher.stop();
-
-    try {
-      await restarter.kill();
-    } catch {
-      // 静默忽略 kill 错误
-    }
+    await resources.stop?.();
+    await owner.release();
 
     process.exit(0);
   };
 
-  process.on("SIGINT", () => {
+  const onParentSignal = () => {
     cleanup().catch(() => process.exit(1));
-  });
-  process.on("SIGTERM", () => {
-    cleanup().catch(() => process.exit(1));
+  };
+  process.on("SIGINT", onParentSignal);
+  process.on("SIGTERM", onParentSignal);
+  cleanupListeners.push(() => {
+    process.off("SIGINT", onParentSignal);
+    process.off("SIGTERM", onParentSignal);
   });
 
   // ── 8. 键盘交互 ────────────────────────────────────────
@@ -757,7 +828,8 @@ export async function devCommand(args: string[] = []): Promise<void> {
   // 仅在 TTY 环境下（交互式终端）启用：
   //   r — 手动触发 cold restart
   //   c — 清空控制台
-  //   h — 打印帮助
+  //   h — 手动触发全量 soft reload
+  //   ? — 打印帮助
   //   Ctrl+C (0x03) — 退出
   //
   if (process.stdin.isTTY) {
@@ -765,17 +837,17 @@ export async function devCommand(args: string[] = []): Promise<void> {
     process.stdin.resume();
     process.stdin.setEncoding("utf-8");
 
-    process.stdin.on("data", (key: string) => {
+    const onKey = (key: string) => {
       switch (key) {
         case "r":
           if (promptActive) break;
           console.log("\n[vext dev] manual cold restart...");
-          runPreflight("manual cold restart")
-            .then((ok) => {
-              if (!ok) {
-                return;
-              }
-              return restartChild("manual");
+          operations
+            .run(async () => {
+              if (runtimeRecoveryRequired)
+                await recoverRuntimeAfterMutation("manual");
+              else if (await runPreflight("manual cold restart"))
+                await restartChild("manual");
             })
             .catch((err: unknown) => {
               console.error(
@@ -794,15 +866,15 @@ export async function devCommand(args: string[] = []): Promise<void> {
           if (promptActive) break;
           // 手动触发 soft reload（全文件）
           console.log("\n[vext dev] manual soft reload (all sources)...");
-          runPreflight("manual soft reload")
-            .then((ok) => {
-              if (!ok) {
-                return;
-              }
-              restarter.sendToChild({
-                type: "reload",
-                files: [{ path: "src/", type: "modify" as const }],
-              });
+          operations
+            .run(async () => {
+              if (runtimeRecoveryRequired || !restarter.isChildAlive())
+                await recoverRuntimeAfterMutation("manual reload");
+              else if (await runPreflight("manual soft reload"))
+                await runWorkerOperation({
+                  operation: "reload",
+                  files: [{ path: "src/", type: "modify" }],
+                });
             })
             .catch((err: unknown) => {
               console.error(
@@ -825,12 +897,40 @@ export async function devCommand(args: string[] = []): Promise<void> {
           // 忽略其他按键
           break;
       }
+    };
+    process.stdin.on("data", onKey);
+    cleanupListeners.push(() => {
+      process.stdin.off("data", onKey);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
     });
   }
-}
-
-function isFrontendClientFile(filePath: string): boolean {
-  return filePath.startsWith("src/frontend/") || filePath.startsWith("public/");
+  await operations.run(async () => {
+    await watcher!.start();
+    if (options.startupProfile || options.verboseLifecycle)
+      console.log("[vext dev] starting initial compilation + server...");
+    try {
+      if (
+        !(await startupProfiler.time("main.preflight.initial", () =>
+          runPreflight("initial start"),
+        ))
+      )
+        console.error(
+          "[vext dev] initial checks failed. Waiting for changes...\n",
+        );
+      else
+        await startupProfiler.time("main.worker.ready", () =>
+          restartChild("initial start"),
+        );
+    } catch (error) {
+      if (operations.signal.aborted) throw error;
+      console.error(
+        "[vext dev] initial start failed:",
+        error instanceof Error ? error.message : error,
+      );
+      console.error("[vext dev] fix the error and save a file to retry\n");
+    }
+  });
 }
 
 // ── 参数解析 ────────────────────────────────────────────────
@@ -1136,7 +1236,7 @@ function printDevHelp(): void {
   Numeric options require complete integer values (for example, 3000x is invalid).
 
   Reload strategy (Tier 1/2/3):
-    T1  Code changes (modify)    → soft reload via esbuild.transform()
+    T1  Code changes (modify)    → soft reload via per-module compilation
     T2  Structural (add/delete)  → soft reload via ctx.rebuild()
     T3  Config/plugin/.env       → cold restart (kill + fork)
 

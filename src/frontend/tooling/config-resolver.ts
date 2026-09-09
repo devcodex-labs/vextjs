@@ -1,4 +1,8 @@
 import path from "node:path";
+import {
+  resolveFrontendLayout,
+  resolveProjectRolePath,
+} from "../../lib/project/layout.js";
 import type {
   VextFrontendDeployUploadAdapter,
   VextFrontendDeployUploadAdapterName,
@@ -48,68 +52,29 @@ export function resolveFrontendConfig(
         ? { enabled: false }
         : input;
   const enabled = raw?.enabled ?? false;
-  const root = resolveProjectPath(
-    options.rootDir,
-    raw?.root ?? "src/frontend",
-    "config.frontend.root",
-  );
+  const layout = resolveFrontendLayout(options.rootDir, raw, options.mode);
+  const {
+    root,
+    pagesDir,
+    componentsDir,
+    stylesEntry,
+    assetsDir,
+    outDir,
+    publicDir,
+    entry,
+    indexHtml,
+  } = layout;
   const pages = raw?.pages ?? {};
-  const pagesDir = resolveFrontendPath(
-    options.rootDir,
-    root,
-    pages.dir ?? "pages",
-    "config.frontend.pages.dir",
-  );
   const pageExtensions = pages.extensions ?? [".tsx", ".jsx", ".ts", ".js"];
-  const componentsDir = resolveFrontendPath(
-    options.rootDir,
-    root,
-    raw?.componentsDir ?? "components",
-    "config.frontend.componentsDir",
-  );
   const styles = raw?.styles ?? {};
-  const stylesEntry = resolveFrontendPath(
-    options.rootDir,
-    root,
-    styles.entry ?? path.join("styles", "index.css"),
-    "config.frontend.styles.entry",
-  );
   const jscss =
     typeof styles.jscss === "boolean"
       ? { enabled: styles.jscss }
       : (styles.jscss ?? {});
-  const assetsDir = resolveFrontendPath(
-    options.rootDir,
-    root,
-    raw?.assetsDir ?? "assets",
-    "config.frontend.assetsDir",
-  );
-  const outDir = resolveProjectPath(
-    options.rootDir,
-    raw?.outDir ??
-      (options.mode === "development" ? ".vext/client" : "dist/client"),
-    "config.frontend.outDir",
-  );
   assertSafeProjectOutputDirectory(
     options.rootDir,
     outDir,
     "config.frontend.outDir",
-  );
-  const publicDir = resolveProjectPath(
-    options.rootDir,
-    raw?.publicDir ?? "public",
-    "config.frontend.publicDir",
-  );
-  const entry = resolveProjectPath(
-    options.rootDir,
-    raw?.entry ??
-      path.join(".vext", "generated", "frontend", "browser-entry.tsx"),
-    "config.frontend.entry",
-  );
-  const indexHtml = resolveProjectPath(
-    options.rootDir,
-    raw?.indexHtml ?? path.join("src", "frontend", "pages", "_document.html"),
-    "config.frontend.indexHtml",
   );
   const spaFallback = normalizeSpaFallback(raw?.spaFallback);
   const seo = normalizeSeo(raw?.seo);
@@ -183,18 +148,8 @@ export function resolveFrontendConfig(
     pages: {
       dir: pagesDir,
       extensions: pageExtensions,
-      document: resolveFrontendPath(
-        options.rootDir,
-        root,
-        pages.document ?? path.join("pages", "_document.html"),
-        "config.frontend.pages.document",
-      ),
-      errorDir: resolveFrontendPath(
-        options.rootDir,
-        root,
-        pages.errorDir ?? path.join("pages", "error"),
-        "config.frontend.pages.errorDir",
-      ),
+      document: layout.document,
+      errorDir: layout.errorDir,
     },
     componentsDir,
     styles: {
@@ -214,7 +169,7 @@ export function resolveFrontendConfig(
     outDir,
     publicDir,
     publicPath: normalizePublicPath(raw?.publicPath ?? "/"),
-    alias: resolveAlias(options.rootDir, root, raw?.alias),
+    alias: layout.alias,
     spaFallback,
     apiClient: {
       enabled:
@@ -918,42 +873,13 @@ function normalizeErrorPages(
   );
 }
 
-function resolveAlias(
-  rootDir: string,
-  frontendRoot: string,
-  alias: Record<string, string> | undefined,
-): Record<string, string> {
-  const defaults: Record<string, string> = {
-    "@frontend": ".",
-    "@pages": "pages",
-    "@components": "components",
-    "@styles": "styles",
-    "@assets": "assets",
-  };
-  return Object.fromEntries(
-    Object.entries({ ...defaults, ...(alias ?? {}) }).map(([key, value]) => [
-      key,
-      resolveFrontendPath(
-        rootDir,
-        frontendRoot,
-        value,
-        `config.frontend.alias.${key}`,
-      ),
-    ]),
-  );
-}
-
 function resolveFrontendPath(
   rootDir: string,
   frontendRoot: string,
   value: string,
   label: string,
 ): string {
-  const resolved = path.isAbsolute(value)
-    ? value
-    : path.resolve(frontendRoot, value);
-  ensureInsideProject(rootDir, resolved, label);
-  return resolved;
+  return resolveProjectRolePath(rootDir, frontendRoot, value, label);
 }
 
 function resolveProjectPath(
@@ -961,22 +887,5 @@ function resolveProjectPath(
   value: string,
   label: string,
 ): string {
-  const resolved = path.resolve(rootDir, value);
-  ensureInsideProject(rootDir, resolved, label);
-  return resolved;
-}
-
-function ensureInsideProject(
-  rootDir: string,
-  resolved: string,
-  label: string,
-): void {
-  const relative = path.relative(rootDir, resolved);
-  if (
-    relative === "" ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
-    throw new Error(`[vextjs] ${label} must resolve inside the project root.`);
-  }
+  return resolveProjectRolePath(rootDir, rootDir, value, label);
 }

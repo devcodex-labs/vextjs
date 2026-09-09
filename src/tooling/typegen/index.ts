@@ -11,6 +11,7 @@ import {
 } from "./generate-app-extensions-dts.js";
 import { writeServiceManifestFile } from "./write-service-manifest.js";
 import { generateTypegenShim } from "./generate-typegen-shim.js";
+import { withProjectOwner } from "../../lib/project/owner.js";
 
 export interface RunTypegenOptions {
   rootDir: string;
@@ -30,6 +31,18 @@ export interface TypegenResult {
 }
 
 export async function runTypegen(
+  options: RunTypegenOptions,
+): Promise<TypegenResult> {
+  if (options.checkOnly) return runTypegenOwned(options);
+  return withProjectOwner(
+    options.rootDir,
+    "typegen",
+    [".vext", "src/types/generated"],
+    () => runTypegenOwned(options),
+  );
+}
+
+async function runTypegenOwned(
   options: RunTypegenOptions,
 ): Promise<TypegenResult> {
   const {

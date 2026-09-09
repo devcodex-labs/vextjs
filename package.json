@@ -148,6 +148,7 @@
     "fast-json-stringify": "7.0.1",
     "flex-rate-limit": "2.2.5",
     "import-meta-resolve": "4.2.0",
+    "jsonc-parser": "3.3.1",
     "monsqlize": "3.3.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -155,7 +156,7 @@
     "response-cache-kit": "1.2.2",
     "route-core": "0.0.7",
     "schema-dsl": "3.0.4",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
     "subset-font": "2.5.0"
   },
   "peerDependencies": {
@@ -190,18 +191,18 @@
     "@types/node": "22.19.13",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.9",
+    "@vitest/coverage-v8": "4.1.11",
     "autocannon": "8.0.0",
     "eslint": "10.2.1",
     "express": "5.2.1",
     "fastify": "5.12.3",
-    "hono": "4.13.2",
+    "hono": "4.13.7",
     "koa": "3.2.1",
     "mongodb-memory-server-core": "11.2.0",
     "prettier": "3.8.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.0",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   },
   "overrides": {
     "autocannon@8.0.0": {

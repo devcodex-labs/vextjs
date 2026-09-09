@@ -1,8 +1,9 @@
 import path from "node:path";
-import { rmSync, existsSync } from "node:fs";
+import { withProjectOwner } from "../lib/project/owner.js";
 import { detectProject } from "./utils/detect-project.js";
 import { BuildCompiler } from "../lib/build/build-compiler.js";
 import { loadConfig } from "../lib/config-loader.js";
+import { detectProjectLanguage } from "../lib/build/project-language.js";
 import {
   buildFrontendClient,
   type BuildFrontendClientResult,
@@ -120,6 +121,33 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   );
   options.outdir = path.relative(project.rootDir, outDir);
 
+  return withProjectOwner(
+    project.rootDir,
+    "build",
+    [outDir, ".vext", "src/config", "src/types/generated"],
+    () => executeBuild(project, options, resolvedConfigProfile),
+  );
+}
+
+async function executeBuild(
+  project: ReturnType<typeof detectProject>,
+  options: BuildCommandOptions,
+  resolvedConfigProfile: ReturnType<typeof resolveCliConfigProfile>,
+): Promise<void> {
+  const outDir = path.resolve(project.rootDir, options.outdir);
+
+  // 配置只求值一次，并在编译前提供目录事实；不能编完后再发现浏览器源被编入后端。
+  const config = await loadConfig(path.join(project.srcDir, "config"), {
+    rootDir: project.rootDir,
+    command: "build",
+    isBuilt: false,
+    mode: "production",
+    configProfile: resolvedConfigProfile.profile,
+  });
+  const frontend =
+    typeof config.frontend === "object" ? config.frontend : undefined;
+  project.language = detectProjectLanguage(project.rootDir, frontend);
+
   // ── 打印编译信息 ──────────────────────────────────────────
   console.log(
     project.language === "ts"
@@ -136,11 +164,11 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.log("[vextjs] sourcemap: disabled");
   }
 
-  // ── 清理旧产物（--clean） ─────────────────────────────────
-  if (options.clean && existsSync(outDir)) {
-    rmSync(outDir, { recursive: true });
-    console.log(`[vextjs] cleaned: ${outDir}`);
-  }
+  // 清理由各 producer 在候选成功后按归属清单提交，禁止提前递归删除输出目录。
+  if (options.clean)
+    console.log(
+      "[vextjs] clean: remove recorded stale outputs after a successful build; preserve unowned files.",
+    );
 
   const buildIdentity = beginBuild(
     project.rootDir,
@@ -150,13 +178,6 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   );
 
   if (project.language !== "ts") {
-    const config = await loadConfig(path.join(project.srcDir, "config"), {
-      rootDir: project.rootDir,
-      command: "build",
-      isBuilt: false,
-      mode: "production",
-      configProfile: resolvedConfigProfile.profile,
-    });
     if (!isFrontendEnabled(config.frontend)) {
       completeBuild(project.rootDir, buildIdentity);
       console.log(
@@ -185,7 +206,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
       const logger = diagnostic.level === "error" ? console.error : console.log;
       logger(`[vextjs] typegen ${diagnostic.level}: ${diagnostic.message}`);
     }
-    process.exit(1);
+    throw new Error("[vextjs] typegen found blocking issues; build aborted.");
   }
 
   await refreshRouteManifest(project.rootDir);
@@ -206,7 +227,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
         console.error(typecheckResult.output);
       }
       console.error("[vextjs] type check failed - build aborted");
-      process.exit(1);
+      throw new Error("[vextjs] TypeScript typecheck failed; build aborted.");
     }
   }
 
@@ -217,6 +238,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     outDir,
     sourcemap: options.sourcemap,
     minify: options.minify,
+    frontend,
   });
 
   try {
@@ -234,7 +256,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
           console.error(`  ${err.text}`);
         }
       }
-      process.exit(1);
+      throw new Error("[vextjs] backend compilation failed; build aborted.");
     }
 
     // ── 输出警告信息 ──────────────────────────────────────
@@ -256,13 +278,6 @@ export async function buildCommand(args: string[] = []): Promise<void> {
     console.log(`[vextjs]    files:   ${result.fileCount}`);
     console.log(`[vextjs]    time:    ${result.elapsed}ms`);
     console.log(`[vextjs]    output:  ${result.outDir}/`);
-    const config = await loadConfig(path.join(outDir, "config"), {
-      rootDir: project.rootDir,
-      command: "build",
-      isBuilt: true,
-      mode: "production",
-      configProfile: resolvedConfigProfile.profile,
-    });
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
     completeBuild(project.rootDir, buildIdentity);
     console.log("");
@@ -274,7 +289,7 @@ export async function buildCommand(args: string[] = []): Promise<void> {
   } catch (err) {
     console.error("[vextjs] build failed:");
     console.error(err);
-    process.exit(1);
+    throw err;
   }
 }
 
@@ -501,7 +516,7 @@ function printBuildHelp(): void {
   Options:
     --outdir <path>    Output directory (default: "dist")
     --config <name>    Load src/config/<name> for build-time config
-    --clean            Clean output directory before build
+    --clean            Clean recorded stale outputs after successful compilation
     --sourcemap        Generate source maps (default: true)
     --no-sourcemap     Disable source map generation
     --minify           Minify output code (default: true)

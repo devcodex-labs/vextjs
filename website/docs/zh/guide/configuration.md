@@ -109,6 +109,8 @@ provider 上下文字段：
 | `rootDir` / `configDir` | 当前项目与配置目录路径                                           |
 | `command` / `isBuilt`   | 当前启动命令与是否走编译产物                                     |
 
+`dev` 和 `build` 在后端编译前从 `src/config` 求值一次完整配置，先确定自定义前端等目录；这两个入口的 provider 上下文中 `configDir` 指向源码配置目录，`isBuilt=false`。后端编译、前端构建和开发监视复用本次配置，不为获取目录再次执行 provider。`start` 消费编译产物时仍使用产物配置目录与 `isBuilt=true`；不要把 `isBuilt` 当成“是否正在执行 build 命令”。
+
 约束：
 
 - provider 必须返回 **plain object patch** 或 `null`

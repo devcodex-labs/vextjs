@@ -109,6 +109,8 @@ provider context field:
 | `rootDir` / `configDir` | Current project and configuration directory path                                                                         |
 | `command` / `isBuilt`   | The current startup command and whether to compile the product                                                           |
 
+`dev` and `build` evaluate configuration once from `src/config` before backend compilation so custom frontend paths are known in advance. Their provider context uses the source configuration directory and `isBuilt=false`. Backend compilation, frontend builds, and development watching reuse that configuration instead of calling providers again for paths. A compiled `start` still uses the output configuration directory and `isBuilt=true`; `isBuilt` does not mean that the current command is `build`.
+
 Constraints:
 
 - provider must return **plain object patch** or `null`

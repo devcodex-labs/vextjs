@@ -2,12 +2,25 @@ import * as esbuild from "esbuild";
 import fg from "fast-glob";
 import path from "node:path";
 import fs from "node:fs";
+import { withProjectOwner } from "../project/owner.js";
+import {
+  withArtifactTransaction,
+  type ArtifactTransaction,
+  type ArtifactCandidate,
+} from "../project/artifact-transaction.js";
+import { createCompileFingerprint } from "./compile-fingerprint.js";
+import {
+  backendArtifactCandidates,
+  scanBackendJsonFiles,
+} from "./backend-artifacts.js";
+import { assertSafeProjectOutputDirectory } from "../path-boundary.js";
 
 import {
-  createBaseEsbuildConfig,
+  createBackendEsbuildConfig,
   SOURCE_GLOB,
-  SOURCE_IGNORE,
+  backendSourceIgnore,
 } from "./shared-esbuild-config.js";
+import type { FrontendLayoutInput } from "../project/layout.js";
 import {
   formatLegacyProjectPreloadWarning,
   PROJECT_PRELOAD_FILE_PATTERN,
@@ -60,6 +73,8 @@ import {
  * BuildCompiler 构造选项
  */
 export interface BuildCompilerOptions {
+  /** 已求值的前端目录配置，用于排除浏览器源；编译器不执行配置 provider。 */
+  frontend?: FrontendLayoutInput;
   /** 项目根目录（绝对路径） */
   rootDir: string;
 
@@ -130,23 +145,17 @@ export interface BuildResult {
  *   - config/test.* — 测试环境配置，生产不需要
  */
 const BUILD_EXTRA_IGNORE = [
-  "**/config/development.{ts,js,mts,mjs,cts,cjs}",
-  "**/config/local.{ts,js,mts,mjs,cts,cjs}",
-  "**/config/test.{ts,js,mts,mjs,cts,cjs}",
+  "**/config/development.{ts,js,mts,mjs,cts,cjs,json}",
+  "**/config/local.{ts,js,mts,mjs,cts,cjs,json}",
+  "**/config/test.{ts,js,mts,mjs,cts,cjs,json}",
   "preload/**",
-];
-
-const SOURCE_ENTRY_EXTENSION_PATTERN = /\.(ts|mts|cts|js|mjs|cjs)$/i;
-const OWNED_BACKEND_OUTPUT_GLOBS = ["**/*.js", "**/*.js.map"];
-const OWNED_BACKEND_OUTPUT_IGNORE = [
-  `${PROJECT_PRELOAD_OUTPUT_DIR}/**`,
-  "client/**",
 ];
 
 // ── BuildCompiler 类 ────────────────────────────────────────
 
 export class BuildCompiler {
-  private readonly options: Required<BuildCompilerOptions>;
+  private readonly options: Required<Omit<BuildCompilerOptions, "frontend">> &
+    Pick<BuildCompilerOptions, "frontend">;
 
   constructor(options: BuildCompilerOptions) {
     this.options = {
@@ -176,11 +185,44 @@ export class BuildCompiler {
    * @throws 当 src/ 目录为空（无源文件）时抛出错误
    */
   async build(): Promise<BuildResult> {
+    assertSafeProjectOutputDirectory(
+      this.options.rootDir,
+      this.options.outDir,
+      "backend output",
+    );
+    return withProjectOwner(
+      this.options.rootDir,
+      "build",
+      [this.options.outDir],
+      () =>
+        withArtifactTransaction(
+          {
+            rootDir: this.options.rootDir,
+            outDir: this.options.outDir,
+            producer: "backend",
+          },
+          (transaction) => this.buildOwned(transaction),
+        ),
+    );
+  }
+
+  private async buildOwned(
+    transaction: ArtifactTransaction,
+  ): Promise<BuildResult> {
     const { srcDir, outDir, sourcemap, minify } = this.options;
     const startTime = Date.now();
 
     // ── 1. 扫描源文件 ──────────────────────────────────────
     const entryPoints = await this.scanEntryPoints();
+    const scanJson = () =>
+      scanBackendJsonFiles(
+        this.options.rootDir,
+        srcDir,
+        this.options.frontend,
+        BUILD_EXTRA_IGNORE,
+      );
+    const jsonFiles = await scanJson();
+    const allInputs = [...entryPoints, ...jsonFiles];
 
     if (entryPoints.length === 0) {
       throw new Error(
@@ -189,8 +231,6 @@ export class BuildCompiler {
       );
     }
 
-    await this.cleanStaleBackendOutputs(entryPoints, sourcemap);
-
     // ── 2. 构建 esbuild 配置 ────────────────────────────────
     //
     // tsconfig 路径：使用项目根目录下的 tsconfig.json（如果存在）。
@@ -198,7 +238,18 @@ export class BuildCompiler {
     //
     const tsconfigPath = path.join(this.options.rootDir, "tsconfig.json");
     const hasTsconfig = fs.existsSync(tsconfigPath);
-    const baseConfig = createBaseEsbuildConfig(
+    const fingerprint = (entries = allInputs) =>
+      createCompileFingerprint({
+        rootDir: this.options.rootDir,
+        srcDir,
+        entryPoints: entries,
+        tsconfig: hasTsconfig ? tsconfigPath : undefined,
+        parameters: { mode: "production", sourcemap, minify, outDir },
+      });
+    const before = fingerprint();
+    const baseConfig = createBackendEsbuildConfig(
+      srcDir,
+      allInputs,
       hasTsconfig ? tsconfigPath : undefined,
     );
 
@@ -225,6 +276,7 @@ export class BuildCompiler {
 
         // 编译元信息（文件大小等，用于 CLI 报告输出）
         metafile: true,
+        write: false,
 
         // 生产模式特有：注入 NODE_ENV
         define: {
@@ -260,10 +312,19 @@ export class BuildCompiler {
     // 即使用户根 package.json 声明了 "type": "module"。
     // 与 DevCompiler 在 .vext/dev/ 写入 package.json 的逻辑保持一致。
     //
-    fs.writeFileSync(
-      path.join(outDir, "package.json"),
-      '{"type":"commonjs"}\n',
-    );
+    const outputs: ArtifactCandidate[] = [
+      ...backendArtifactCandidates(
+        srcDir,
+        outDir,
+        allInputs,
+        result.outputFiles ?? [],
+        jsonFiles,
+      ),
+      {
+        path: path.join(outDir, "package.json"),
+        contents: '{"type":"commonjs"}\n',
+      },
+    ];
 
     warnings.push(...result.warnings);
 
@@ -275,6 +336,7 @@ export class BuildCompiler {
       );
       preloadBuildCount = preloadBuild.fileCount;
       warnings.push(...preloadBuild.warnings);
+      outputs.push(...preloadBuild.outputs);
     } catch (err) {
       if (isBuildFailure(err)) {
         const elapsed = Date.now() - startTime;
@@ -293,14 +355,27 @@ export class BuildCompiler {
     }
 
     // ── 5. 统计编译结果 ────────────────────────────────────
+    const after = fingerprint([
+      ...(await this.scanEntryPoints()),
+      ...(await scanJson()),
+    ]);
+    if (before.digest !== after.digest)
+      throw new Error(
+        "[vextjs] Compiler inputs changed during build; retry before using these outputs.",
+      );
+    // 预加载的完整打包输入闭包尚未接入时，不声明该构建的 freshness。
+    await transaction.commit(outputs, {
+      inputDigest:
+        before.complete && preloadBuildCount === 0 ? before.digest : undefined,
+    });
     const elapsed = Date.now() - startTime;
     const outputFiles = Object.keys(result.metafile?.outputs ?? {});
     const jsFiles = outputFiles.filter((f) => f.endsWith(".js"));
 
     return {
       success: result.errors.length === 0,
-      fileCount: jsFiles.length + preloadBuildCount,
-      totalFiles: entryPoints.length + preloadBuildCount,
+      fileCount: jsFiles.length + jsonFiles.length + preloadBuildCount,
+      totalFiles: allInputs.length + preloadBuildCount,
       elapsed,
       outDir,
       warnings,
@@ -312,7 +387,11 @@ export class BuildCompiler {
   private async buildProjectPreloads(
     tsconfigPath: string | undefined,
     sourcemap: boolean,
-  ): Promise<{ fileCount: number; warnings: esbuild.Message[] }> {
+  ): Promise<{
+    fileCount: number;
+    warnings: esbuild.Message[];
+    outputs: ArtifactCandidate[];
+  }> {
     const sourceDirectory = resolveProjectPreloadDirectory(
       this.options.rootDir,
     );
@@ -321,10 +400,8 @@ export class BuildCompiler {
       PROJECT_PRELOAD_OUTPUT_DIR,
     );
 
-    fs.rmSync(outPreloadDir, { recursive: true, force: true });
-
     if (!sourceDirectory) {
-      return { fileCount: 0, warnings: [] };
+      return { fileCount: 0, warnings: [], outputs: [] };
     }
     if (sourceDirectory.kind === "legacy" && sourceDirectory.hasSourceFiles) {
       console.warn(formatLegacyProjectPreloadWarning());
@@ -340,6 +417,7 @@ export class BuildCompiler {
     );
     const warnings: esbuild.Message[] = [];
     let fileCount = 0;
+    const outputs: ArtifactCandidate[] = [];
 
     for (const entry of sortedEntries) {
       if (!entry.isFile()) continue;
@@ -352,7 +430,6 @@ export class BuildCompiler {
       );
       const outfile = path.join(outPreloadDir, outputName);
 
-      await fs.promises.mkdir(path.dirname(outfile), { recursive: true });
       const preloadResult = await esbuild.build({
         entryPoints: [sourcePath],
         bundle: true,
@@ -360,7 +437,7 @@ export class BuildCompiler {
         format: "esm",
         platform: "node",
         target: "node20",
-        write: true,
+        write: false,
         outfile,
         sourcemap: sourcemap ? "external" : false,
         logLevel: "silent",
@@ -368,10 +445,16 @@ export class BuildCompiler {
       });
 
       warnings.push(...preloadResult.warnings);
+      outputs.push(
+        ...(preloadResult.outputFiles ?? []).map((output) => ({
+          ...output,
+          source: sourcePath,
+        })),
+      );
       fileCount += 1;
     }
 
-    return { fileCount, warnings };
+    return { fileCount, warnings, outputs };
   }
 
   /**
@@ -388,65 +471,15 @@ export class BuildCompiler {
   async scanEntryPoints(): Promise<string[]> {
     return fg.glob(SOURCE_GLOB, {
       cwd: this.options.srcDir,
-      ignore: [...SOURCE_IGNORE, ...BUILD_EXTRA_IGNORE],
+      ignore: [
+        ...backendSourceIgnore(
+          this.options.rootDir,
+          this.options.srcDir,
+          this.options.frontend,
+        ),
+        ...BUILD_EXTRA_IGNORE,
+      ],
     });
-  }
-
-  private async cleanStaleBackendOutputs(
-    entryPoints: string[],
-    sourcemap: boolean,
-  ): Promise<void> {
-    const { outDir } = this.options;
-    if (!fs.existsSync(outDir)) {
-      return;
-    }
-
-    const expectedOutputs = this.createExpectedBackendOutputs(
-      entryPoints,
-      sourcemap,
-    );
-    const candidates = await fg.glob(OWNED_BACKEND_OUTPUT_GLOBS, {
-      cwd: outDir,
-      ignore: OWNED_BACKEND_OUTPUT_IGNORE,
-      onlyFiles: true,
-      dot: true,
-    });
-    const staleDirs = new Set<string>();
-
-    await Promise.all(
-      candidates.map(async (relativeOutput) => {
-        const outputPath = path.resolve(outDir, relativeOutput);
-        if (expectedOutputs.has(outputPath)) {
-          return;
-        }
-
-        await fs.promises.rm(outputPath, { force: true });
-        staleDirs.add(path.dirname(outputPath));
-      }),
-    );
-
-    await pruneEmptyDirectories(staleDirs, outDir);
-  }
-
-  private createExpectedBackendOutputs(
-    entryPoints: string[],
-    sourcemap: boolean,
-  ): Set<string> {
-    const expectedOutputs = new Set<string>();
-
-    for (const entryPoint of entryPoints) {
-      const outputPath = path.resolve(
-        this.options.outDir,
-        entryPoint.replace(SOURCE_ENTRY_EXTENSION_PATTERN, ".js"),
-      );
-      expectedOutputs.add(outputPath);
-
-      if (sourcemap) {
-        expectedOutputs.add(`${outputPath}.map`);
-      }
-    }
-
-    return expectedOutputs;
   }
 
   // ── Getter 方法 ──────────────────────────────────────────
@@ -483,39 +516,5 @@ function isBuildFailure(
     err !== null &&
     "errors" in err &&
     Array.isArray((err as Record<string, unknown>).errors)
-  );
-}
-
-async function pruneEmptyDirectories(
-  directories: Set<string>,
-  outDir: string,
-): Promise<void> {
-  const sortedDirectories = [...directories].sort(
-    (a, b) => b.length - a.length,
-  );
-
-  for (const directory of sortedDirectories) {
-    if (path.resolve(directory) === path.resolve(outDir)) {
-      continue;
-    }
-
-    try {
-      await fs.promises.rmdir(directory);
-    } catch (err) {
-      if (!isIgnorableDirectoryPruneError(err)) {
-        throw err;
-      }
-    }
-  }
-}
-
-function isIgnorableDirectoryPruneError(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    ["ENOTEMPTY", "ENOENT", "EPERM"].includes(
-      String((err as NodeJS.ErrnoException).code),
-    )
   );
 }

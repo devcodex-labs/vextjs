@@ -1,4 +1,9 @@
 import path from "node:path";
+import {
+  acquireProjectOwner,
+  currentProjectOwner,
+  type ProjectOwner,
+} from "../project/owner.js";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { existsSync, readdirSync } from "node:fs";
@@ -8,9 +13,18 @@ import { DevCompiler } from "./compiler.js";
 import type { CompileStats } from "./compiler.js";
 import { HotSwappableHandler } from "./hot-swappable-handler.js";
 import { SoftReloader } from "./soft-reloader.js";
+import { DevOperationQueue } from "./operation-queue.js";
+import { sendMessageToParent } from "../ipc-message.js";
+import {
+  readWorkerFiles,
+  readWorkerOperationRequest,
+  type WorkerOperation,
+  type WorkerOperationResult,
+} from "./worker-protocol.js";
 import { reloadModels as reloadModelDefs } from "./model-reloader.js";
 import type { ModelReloadResult } from "./model-reloader.js";
 import { finalizeConfig, loadRawConfig } from "../config-loader.js";
+import { createFrontendWatchLayout } from "../project/layout.js";
 import { resolveConfigProfile } from "../config-profile.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
@@ -177,6 +191,8 @@ function createRenderReloadEvent(
 
 function isRenderRelatedServerFile(filePath: string): boolean {
   return (
+    filePath === "src/" ||
+    filePath === "src" ||
     filePath.startsWith("src/routes/") ||
     filePath.startsWith("src/services/") ||
     filePath.startsWith("src/middlewares/")
@@ -235,6 +251,8 @@ function isRenderRelatedServerFile(filePath: string): boolean {
  * 包含启动后的资源引用，主要用于测试和调试。
  */
 interface DevBootstrapResult {
+  /** 统一停止入口：HTTP、插件、编译器、事件监听与写者身份一起释放。 */
+  close(): Promise<void>;
   /** VextApp 实例 */
   app: VextApp;
 
@@ -311,8 +329,8 @@ export interface DevBootstrapOptions {
  *
  * 流程：
  *   不可重载阶段：
- *     0. DevCompiler.start() → 全量编译 src/ → .vext/dev/
- *     1. loadConfig(outDir/config) → 从编译产物加载配置
+ *     0. loadConfig(src/config) → 一次求值配置，确定目录角色
+ *     1. DevCompiler.start() → 排除浏览器源后编译后端到 .vext/dev/
  *     2. createApp(config) → 创建 app + internals
  *     3. loadI18n(outDir/locales) → 加载 i18n 语言包
  *     4. loadPlugins(app, outDir/plugins) → 加载并执行插件 setup()
@@ -346,6 +364,27 @@ export interface DevBootstrapOptions {
 export async function devBootstrap(
   options: DevBootstrapOptions,
 ): Promise<DevBootstrapResult> {
+  const owner =
+    currentProjectOwner(options.projectRoot) ??
+    (await acquireProjectOwner(options.projectRoot, "dev"));
+  try {
+    await owner.reserveOutputs([
+      ".vext",
+      "src/config",
+      "src/types/generated",
+      options.outDir ?? ".vext/dev",
+    ]);
+    return await owner.run(() => devBootstrapOwned(options, owner));
+  } catch (error) {
+    if (!(error instanceof DevCleanupError)) await owner.release();
+    throw error;
+  }
+}
+
+async function devBootstrapOwned(
+  options: DevBootstrapOptions,
+  owner: ProjectOwner,
+): Promise<DevBootstrapResult> {
   const { projectRoot, skipIpc = false } = options;
   const srcDir = path.join(projectRoot, "src");
   const outDir = options.outDir ?? path.join(projectRoot, ".vext", "dev");
@@ -359,35 +398,23 @@ export async function devBootstrap(
   let hotHandler: HotSwappableHandler | null = null;
   let softReloader: SoftReloader | null = null;
   let restoreStartupLogger: (() => void) | undefined;
+  let startupCleanup: (() => Promise<void>) | undefined;
+  let closeFrontendEvents: (() => void) | undefined;
 
   try {
     // ════════════════════════════════════════════════════════
     // 不可重载阶段
     // ════════════════════════════════════════════════════════
 
-    // ── 步骤 0: DevCompiler 首次全量编译 ──────────────────
-    //
-    // 编译 src/ 下所有 .ts/.js/.mjs/.cjs 文件到 .vext/dev/
-    // 输出格式：CJS（require/module.exports），因为 dev 子进程
-    // 不带 tsx loader，需要直接 require 编译产物。
-    //
-    compiler = new DevCompiler({ srcDir, outDir, tsconfig });
-    const compileStats = await startupProfiler.time("worker.compile", () =>
-      compiler!.start(),
-    );
-
-    // ── 步骤 1: 加载配置 ─────────────────────────────────
-    //
-    // 从编译产物的 config/ 子目录加载（不是 src/config/）。
-    // dev 子进程不带 tsx loader，无法直接 require TS 文件。
-    // compiler.start() 已将 src/config/ 编译为 .vext/dev/config/ 下的 CJS .js
+    // 先复用配置模块加载器求值一次，目录事实再交给编译器和 parent watcher。
+    // 配置的 TS 导入由 user-module-loader 负责，不依赖完整后端先编译成功。
     //
     const resolvedConfigProfile = resolveConfigProfile({
       env: process.env,
       command: "dev",
     });
     const rawConfig = await startupProfiler.time("worker.config", () =>
-      loadRawConfig(path.join(outDir, "config"), {
+      loadRawConfig(path.join(srcDir, "config"), {
         rootDir: projectRoot,
         command: "dev",
         mode: "development",
@@ -418,8 +445,20 @@ export async function devBootstrap(
     }
 
     const config = finalizeConfig(rawConfig);
+    const frontend =
+      typeof config.frontend === "object" ? config.frontend : undefined;
+    if (!skipIpc && process.send) {
+      await sendMessageToParent({
+        type: "watch-layout",
+        layout: createFrontendWatchLayout(projectRoot, frontend),
+      });
+    }
+    compiler = new DevCompiler({ srcDir, outDir, tsconfig, frontend });
+    const compileStats = await startupProfiler.time("worker.compile", () =>
+      compiler!.start(),
+    );
     const lifecycleLevel = getLifecycleLevel(rawConfig);
-    sendLifecycleLevelToParent(lifecycleLevel);
+    if (!skipIpc) sendLifecycleLevelToParent(lifecycleLevel);
 
     // ── 步骤 2: createApp ────────────────────────────────
     const result = createApp({ ...config, _runtimeMode: "development" });
@@ -642,6 +681,7 @@ export async function devBootstrap(
     );
     let frontendRuntimeConfig = frontendBuild.config;
     const frontendDevEvents = createFrontendDevEventBus();
+    closeFrontendEvents = () => frontendDevEvents.close();
     if (!frontendBuild.skipped) {
       app.logger.info(
         `[vext dev] frontend built: ${path.relative(projectRoot, frontendBuild.config.outDir)}`,
@@ -1133,119 +1173,177 @@ export async function devBootstrap(
     // handleShutdown 需要在 IPC message 监听器中引用，
     // 因此必须在注册 process.on('message') 之前定义（避免 const TDZ 错误）。
     //
-    const handleShutdown = async () => {
+    const operations = new DevOperationQueue();
+    const activeReloads = new Set<Promise<unknown>>();
+    const trackReload = (task: Promise<unknown>) => {
+      activeReloads.add(task);
+      void task
+        .finally(() => activeReloads.delete(task))
+        .catch((error: unknown) => {
+          app.logger.error(
+            "[vext dev] worker operation response failed:",
+            String(error),
+          );
+        });
+    };
+    let shutdownTask: Promise<void> | undefined;
+    let readyTask: Promise<void> | undefined;
+    const handleShutdown = (): Promise<void> => {
+      shutdownTask ??= performShutdown();
+      return shutdownTask;
+    };
+    const performShutdown = async () => {
       app.logger.info("[vext dev] worker shutting down...");
-
-      try {
-        // 停止接受新请求
-        await serverHandle.close();
-      } catch {
-        // 静默忽略 server 关闭错误
+      if (readyTask) await Promise.allSettled([readyTask]);
+      await operations.close();
+      await Promise.allSettled([...activeReloads]);
+      const failures: unknown[] = [];
+      for (const close of [
+        () => serverHandle.close(),
+        () => internals!.shutdown(undefined, { skipExit: true }),
+        () => compiler!.dispose(),
+        () => frontendDevEvents.close(),
+      ]) {
+        try {
+          await close();
+        } catch (error) {
+          failures.push(error);
+        }
       }
-
-      try {
-        // 执行 onClose hooks（DB 断开、缓存清理等）
-        await internals!.shutdown();
-      } catch {
-        // 静默忽略 shutdown 错误
-      }
-
-      try {
-        // 释放 esbuild 资源
-        await compiler!.dispose();
-      } catch {
-        // 静默忽略 compiler dispose 错误
-      }
-
-      frontendDevEvents.close();
+      process.off("message", onMessage);
+      process.off("SIGTERM", onSignal);
+      process.off("SIGINT", onSignal);
+      if (failures.length) throw new DevCleanupError(failures);
+      await owner.release();
+    };
+    const exitAfterShutdown = () => {
+      void handleShutdown().then(
+        () => process.exit(0),
+        (error: unknown) => {
+          app.logger.error("[vext dev] worker shutdown failed:", String(error));
+          process.exit(1);
+        },
+      );
     };
 
-    // ── 步骤 12c: 注册 IPC 消息监听（reload + shutdown）──
-    //
-    // 主进程（cli/dev.ts）在 soft 类型的文件变更时，
-    // 通过 restarter.sendToChild({ type: 'reload', files: [...] })
-    // 发送 IPC 消息到本子进程。
-    //
-    // 本监听器接收消息后调用 softReloader.reload()
-    // 执行完整的 Soft Reload 流程。
-    //
-    // 🐛 修复 BUG-014：同时监听 { type: 'shutdown' } 消息，
-    // Windows 上 ColdRestarter 通过此 IPC 消息触发优雅关闭。
-    //
-    process.on("message", (msg: unknown) => {
-      if (typeof msg !== "object" || msg === null) return;
+    const sendOperationResult = async (
+      requestId: string | undefined,
+      result: WorkerOperationResult,
+    ): Promise<void> => {
+      if (!requestId || skipIpc || !process.send || !process.connected) return;
+      await sendMessageToParent({
+        type: "dev-operation-result",
+        requestId,
+        ...result,
+      });
+    };
 
-      const msgType = (msg as Record<string, unknown>).type;
-
-      if (msgType === "reload") {
-        const files = (msg as Record<string, unknown>)
-          .files as FileChangeInfo[];
-        if (Array.isArray(files) && files.length > 0) {
-          softReloader!
-            .reload(files)
-            .then((result) => {
-              if (result.success) {
-                const event = createRenderReloadEvent(
-                  files,
-                  frontendRuntimeConfig.dev.renderRefresh,
-                );
-                if (event) {
-                  frontendDevEvents.publish(event);
-                }
-              }
-            })
-            .catch((err: unknown) => {
-              const error = err instanceof Error ? err : new Error(String(err));
-              app.logger.error(
-                "[hot-reload] unexpected error in reload:",
-                error.message,
-              );
-              if (error.stack) {
-                app.logger.error(error.stack);
-              }
-            });
-        }
-      } else if (msgType === "frontend-rebuild") {
-        const files = ((msg as Record<string, unknown>).files ??
-          []) as FileChangeInfo[];
-        buildFrontendClient({
+    const executeOperation = async (
+      operation: WorkerOperation,
+      signal: AbortSignal,
+    ): Promise<WorkerOperationResult> => {
+      if (operation.operation === "reload") {
+        const result = await softReloader!.reload(operation.files);
+        signal.throwIfAborted();
+        if (!result.success)
+          return {
+            success: false,
+            requestedColdRestart: result.requestedColdRestart,
+            error: (
+              result.error ||
+              (result.requestedColdRestart
+                ? "cold restart required"
+                : "reload failed")
+            ).slice(0, 4096),
+          };
+        const event = createRenderReloadEvent(
+          operation.files,
+          frontendRuntimeConfig.dev.renderRefresh,
+        );
+        if (event) frontendDevEvents.publish(event);
+        return { success: true };
+      }
+      try {
+        const result = await buildFrontendClient({
           rootDir: projectRoot,
           config: config.frontend,
           mode: "development",
-        })
-          .then(async (result) => {
-            frontendRuntimeConfig = result.config;
-            if (!result.skipped) {
-              app.logger.info(
-                `[vext dev] frontend rebuilt: ${path.relative(projectRoot, result.config.outDir)}`,
-              );
-              frontendDevEvents.publish(
-                await createFrontendBuiltEvent(result, files),
-              );
-            }
-          })
-          .catch((err: unknown) => {
-            const error = err instanceof Error ? err : new Error(String(err));
-            app.logger.error(
-              "[vext dev] frontend rebuild failed:",
-              error.message,
-            );
-            frontendDevEvents.publish({
-              type: "frontend:error",
-              action: "prompt",
-              message: error.message,
-              files: files.map((file) => file.path),
-            });
-            if (error.stack) {
-              app.logger.error(error.stack);
-            }
-          });
-      } else if (msgType === "shutdown") {
-        handleShutdown().finally(() => {
-          process.exit(0);
         });
+        signal.throwIfAborted();
+        frontendRuntimeConfig = result.config;
+        if (!result.skipped) {
+          app.logger.info(
+            "[vext dev] frontend rebuilt: " +
+              path.relative(projectRoot, result.config.outDir),
+          );
+          frontendDevEvents.publish(
+            await createFrontendBuiltEvent(result, operation.files),
+          );
+        }
+        return { success: true };
+      } catch (error) {
+        if (signal.aborted) throw error;
+        const message =
+          (error instanceof Error ? error.message : String(error)) ||
+          "frontend rebuild failed";
+        app.logger.error("[vext dev] frontend rebuild failed:", message);
+        frontendDevEvents.publish({
+          type: "frontend:error",
+          action: "prompt",
+          message,
+          files: operation.files.map((file) => file.path),
+        });
+        return {
+          success: false,
+          requestedColdRestart: false,
+          error: message.slice(0, 4096),
+        };
       }
-    });
+    };
+
+    const onMessage = (msg: unknown) =>
+      owner.run(() => {
+        if (shutdownTask || typeof msg !== "object" || msg === null) return;
+        const value = msg as Record<string, unknown>;
+        if (value.type === "shutdown") {
+          exitAfterShutdown();
+          return;
+        }
+        const request = readWorkerOperationRequest(value);
+        let operation: WorkerOperation | undefined = request ?? undefined;
+        if (
+          !operation &&
+          (value.type === "reload" || value.type === "frontend-rebuild")
+        ) {
+          const files = readWorkerFiles(value.files ?? []);
+          if (files && (value.type === "frontend-rebuild" || files.length > 0))
+            operation = { operation: value.type, files };
+        }
+        if (!operation) return;
+        const selected = operation;
+        trackReload(
+          operations
+            .run((signal) => executeOperation(selected, signal))
+            .then(
+              (result) => sendOperationResult(request?.requestId, result),
+              (error: unknown) => {
+                const message =
+                  (error instanceof Error ? error.message : String(error)) ||
+                  "worker operation failed";
+                app.logger.error(
+                  "[vext dev] worker operation failed:",
+                  message,
+                );
+                return sendOperationResult(request?.requestId, {
+                  success: false,
+                  error: message.slice(0, 4096),
+                  requestedColdRestart: true,
+                });
+              },
+            ),
+        );
+      });
+    process.on("message", onMessage);
 
     // ── 步骤 14: 信号处理 ────────────────────────────────
     //
@@ -1261,20 +1359,20 @@ export async function devBootstrap(
     // handleShutdown 已在步骤 12c-pre 中定义（供 IPC + 信号共用）。
     //
 
-    process.once("SIGTERM", () => {
-      handleShutdown().finally(() => {
-        process.exit(0);
-      });
-    });
-
-    process.once("SIGINT", () => {
-      handleShutdown().finally(() => {
-        process.exit(0);
-      });
-    });
+    const onSignal = exitAfterShutdown;
+    process.once("SIGTERM", onSignal);
+    process.once("SIGINT", onSignal);
+    startupCleanup = handleShutdown;
 
     // ── 步骤 15: 执行 onReady 钩子 ──────────────────────
-    await startupProfiler.time("worker.onReady", () => internals!.runReady());
+    readyTask = Promise.resolve().then(() =>
+      startupProfiler.time("worker.onReady", () => internals!.runReady()),
+    );
+    await readyTask;
+    if (shutdownTask) {
+      await shutdownTask;
+      throw new Error("[vext dev] startup canceled by shutdown");
+    }
 
     // ── 步骤 16: IPC 就绪通知 ────────────────────────────
     //
@@ -1282,7 +1380,7 @@ export async function devBootstrap(
     // 放在 onReady 后发送，确保 parent 侧 startup summary 覆盖完整 ready 链路。
     //
     if (!skipIpc && process.send) {
-      process.send({
+      await sendMessageToParent({
         type: "ready",
         server: {
           host: serverHandle.host,
@@ -1311,9 +1409,14 @@ export async function devBootstrap(
       compileStats,
       hotHandler: hotHandler!,
       softReloader: softReloader!,
+      close: handleShutdown,
     };
   } catch (err) {
     restoreStartupLogger?.();
+    if (startupCleanup) {
+      await startupCleanup();
+      throw err;
+    }
 
     // ── 错误边界：清理已分配的资源 ─────────────────────────
     //
@@ -1321,31 +1424,41 @@ export async function devBootstrap(
     // 确保不会泄漏端口、文件句柄、esbuild 进程等资源。
     //
 
-    if (server) {
+    const cleanupFailures: unknown[] = [];
+    if (server?.listening) {
       try {
-        server.close();
-      } catch {
-        // 静默忽略
+        await new Promise<void>((resolve, reject) =>
+          server!.close((error) => (error ? reject(error) : resolve())),
+        );
+      } catch (error) {
+        cleanupFailures.push(error);
       }
     }
 
     if (internals) {
       try {
         await internals.shutdown(undefined, { skipExit: true });
-      } catch {
-        // 静默忽略
+      } catch (error) {
+        cleanupFailures.push(error);
       }
     }
 
     if (compiler) {
       try {
         await compiler.dispose();
-      } catch {
-        // 静默忽略
+      } catch (error) {
+        cleanupFailures.push(error);
       }
     }
 
-    // 重新抛出，由 dev-entry.ts 的 catch 处理
+    try {
+      closeFrontendEvents?.();
+    } catch (error) {
+      cleanupFailures.push(error);
+    }
+    if (cleanupFailures.length)
+      throw new DevCleanupError([err, ...cleanupFailures]);
+    // 资源已确认清理，才让外层释放 owner 并报告原始启动错误。
     throw err;
   }
 }
@@ -1406,4 +1519,12 @@ function createCachedOpenApiSpecProvider(generate: () => object): () => object {
     cached ??= generate();
     return cached;
   };
+}
+
+/** 仍有未确认关闭的资源时，不释放 writer 身份给下一进程。 */
+export class DevCleanupError extends AggregateError {
+  constructor(errors: unknown[]) {
+    super(errors, "[vext dev] cleanup incomplete; ownership remains protected");
+    this.name = "DevCleanupError";
+  }
 }

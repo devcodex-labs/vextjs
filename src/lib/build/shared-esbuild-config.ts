@@ -1,4 +1,14 @@
 import type { BuildOptions, Loader } from "esbuild";
+import fg from "fast-glob";
+import path from "node:path";
+import { createBackendModulePlugin } from "./backend-module-plugin.js";
+import { isPathInside } from "../path-boundary.js";
+import {
+  frontendSourceDirectories,
+  frontendSourceFiles,
+  resolveFrontendLayout,
+  type FrontendLayoutInput,
+} from "../project/layout.js";
 
 /**
  * shared-esbuild-config.ts — DevCompiler 与 BuildCompiler 共享的 esbuild 基础配置
@@ -61,8 +71,29 @@ export const SOURCE_IGNORE = [
   "**/*.test.*",
   "**/*.spec.*",
   "**/__tests__/**",
+  "**/*.__vext_compiled__*",
   "client/**",
 ];
+
+/** 全量构建和语言检测共享目录角色；frontend.root=src 时仍保留实际后端目录。 */
+export function backendSourceIgnore(
+  projectRoot: string,
+  sourceBase: string,
+  frontend?: FrontendLayoutInput,
+): string[] {
+  const layout = resolveFrontendLayout(projectRoot, frontend);
+  const relativePattern = (value: string): string =>
+    fg.escapePath(path.relative(sourceBase, value).replaceAll("\\", "/"));
+  return [
+    ...SOURCE_IGNORE,
+    ...frontendSourceDirectories(layout)
+      .filter((directory) => isPathInside(sourceBase, directory))
+      .map((directory) => `${relativePattern(directory)}/**`),
+    ...frontendSourceFiles(layout)
+      .filter((file) => isPathInside(sourceBase, file))
+      .map(relativePattern),
+  ];
+}
 
 // ── 共享基础配置 ────────────────────────────────────────────
 
@@ -121,7 +152,7 @@ export function createBaseEsbuildConfig(
     // bundle: false → 逐文件编译（file-by-file transform）
     //   - 保持每个源文件 → 一个输出文件的映射关系
     //   - 不解析 import/require 依赖图（Node.js 运行时自己解析）
-    //   - 与 esbuild.transform() 的单文件编译行为一致
+    //   - 后端编译器使用下方 createBackendEsbuildConfig 接入引用解析
     //
     bundle: false,
 
@@ -133,8 +164,7 @@ export function createBaseEsbuildConfig(
     // ── TypeScript 配置 ─────────────────────────────────
     //
     // tsconfig 路径传入 esbuild.context() 时，esbuild 会自动解析 extends 链。
-    // 传入 esbuild.transform() 时使用 tsconfigRaw（需手动展平），
-    // 由 DevCompiler 负责预解析（见 11a-dev-compiler.md §3 resolveTsconfig）。
+    // 全量与单文件编译均交给同一个 build API 解析，不维护第二份 extends 解析器。
     //
     ...(tsconfigPath !== undefined ? { tsconfig: tsconfigPath } : {}),
 
@@ -156,7 +186,7 @@ export function createBaseEsbuildConfig(
 /**
  * getLoaderForExtension — 从文件扩展名获取对应的 esbuild Loader
  *
- * 用于 esbuild.transform() 单文件编译场景（DevCompiler.compileSingle）。
+ * 用于需要独立推断 loader 的内部消费者。
  * .mjs / .cjs 映射为 'js' loader（esbuild 不区分 ESM/CJS 的 loader，
  * 输出格式由 format 选项决定）。
  *
@@ -165,4 +195,18 @@ export function createBaseEsbuildConfig(
  */
 export function getLoaderForExtension(ext: string): Loader {
   return LOADER_MAP[ext] ?? ("default" as Loader);
+}
+
+/** 开启解析回调但将本地模块 external，保持逐源文件输出和正确的运行时引用。 */
+export function createBackendEsbuildConfig(
+  srcDir: string,
+  entryPoints: readonly string[],
+  tsconfigPath?: string,
+): Partial<BuildOptions> {
+  return {
+    ...createBaseEsbuildConfig(tsconfigPath),
+    bundle: true,
+    packages: "external",
+    plugins: [createBackendModulePlugin(srcDir, entryPoints)],
+  };
 }

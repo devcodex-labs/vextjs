@@ -153,6 +153,7 @@ import { pathToFileURL } from "node:url";
 const ROOT = ${JSON.stringify(ROOT)};
 
 let serverHandle = null;
+let closeDev = null;
 
 process.on("message", async (msg) => {
   if (msg.type === "start") {
@@ -178,6 +179,7 @@ process.on("message", async (msg) => {
           projectRoot,
           skipIpc: true,
         });
+        closeDev = result.close;
         serverHandle = result.serverHandle;
         process.send({
           type: "ready",
@@ -195,7 +197,9 @@ process.on("message", async (msg) => {
     }
   } else if (msg.type === "shutdown") {
     try {
-      if (serverHandle) {
+      if (closeDev) {
+        await closeDev();
+      } else if (serverHandle) {
         await serverHandle.close();
       }
     } catch {

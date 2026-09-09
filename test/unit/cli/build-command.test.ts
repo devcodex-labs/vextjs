@@ -93,6 +93,9 @@ vi.mock("node:fs", async () => ({
 vi.mock("../../../src/cli/utils/detect-project.js", () => ({
   detectProject: mocks.detectProject,
 }));
+vi.mock("../../../src/lib/build/project-language.js", () => ({
+  detectProjectLanguage: vi.fn(() => "ts"),
+}));
 
 // 本文件只测命令编排；真实身份写入由 build-location 与消费者启动测试覆盖。
 vi.mock("../../../src/lib/build/build-location.js", async () => ({
@@ -153,11 +156,11 @@ describe("buildCommand", () => {
     await buildCommand(["--typecheck"]);
 
     expect(mocks.order).toEqual([
+      "loadConfig",
       "typegen",
       "doctor",
       "typecheck",
       "build",
-      "loadConfig",
       "frontend",
     ]);
     expect(mocks.runTypegen).toHaveBeenCalledWith({
@@ -177,15 +180,16 @@ describe("buildCommand", () => {
       stdio: "inherit",
     });
     expect(mocks.loadConfig).toHaveBeenCalledWith(
-      expect.stringMatching(/[\\/]dist[\\/]config$/),
+      expect.stringMatching(/[\\/]src[\\/]config$/),
       {
         rootDir: mocks.rootDir,
         command: "build",
         mode: "production",
         configProfile: "production",
-        isBuilt: true,
+        isBuilt: false,
       },
     );
+    expect(mocks.loadConfig).toHaveBeenCalledTimes(1);
     expect(mocks.buildFrontendClient).toHaveBeenCalledWith({
       rootDir: mocks.rootDir,
       config: {
@@ -210,13 +214,13 @@ describe("buildCommand", () => {
     await buildCommand(["--outdir", "build"]);
 
     expect(mocks.loadConfig).toHaveBeenCalledWith(
-      expect.stringMatching(/[\\/]build[\\/]config$/),
+      expect.stringMatching(/[\\/]src[\\/]config$/),
       {
         rootDir: mocks.rootDir,
         command: "build",
         mode: "production",
         configProfile: "production",
-        isBuilt: true,
+        isBuilt: false,
       },
     );
     expect(mocks.buildFrontendClient).toHaveBeenCalledWith({

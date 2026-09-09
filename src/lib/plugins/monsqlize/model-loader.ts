@@ -25,6 +25,7 @@
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { resolveConsumerModule } from "../../consumer-resolver.js";
+import { resolveModelsDirectory } from "../../project/layout.js";
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
@@ -201,7 +202,7 @@ export async function loadModels(
   }
 
   // ── 2. 加载本地 models/ 目录 ──────────────────────────────
-  const modelsDir = join(srcDir, config.dir);
+  const modelsDir = resolveModelsDirectory(srcDir, config.dir);
 
   if (!existsSync(modelsDir)) {
     if (!config.sharedPackage) {

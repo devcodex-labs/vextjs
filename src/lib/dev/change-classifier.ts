@@ -40,6 +40,9 @@ export interface ChangeClassification {
  * 用户自定义规则优先级高于内置规则。
  */
 export interface ClassifierOptions {
+  /** 已解析的项目相对目录；显式传入时替代默认 src/frontend、public。 */
+  frontendDirectories?: readonly string[];
+  frontendFiles?: readonly string[];
   /**
    * 额外的冷重启文件模式（glob 风格字符串）
    *
@@ -109,7 +112,7 @@ const IGNORE_PATTERNS: RegExp[] = [
   /^docs\//,
 ];
 
-const FRONTEND_CLIENT_PATTERNS: RegExp[] = [/^src\/frontend\//, /^public\//];
+const DEFAULT_FRONTEND_DIRECTORIES = ["src/frontend", "public"];
 
 /**
  * 源码文件模式
@@ -191,6 +194,20 @@ export function classifyChange(
   }
 
   // ── 4. 内置 IGNORE_PATTERNS ────────────────────────────
+  // public 中的 robots.txt、PDF 等也是可更新资产；生成区仍优先排除。
+  if (
+    !/^(?:node_modules|dist|build|\.vext|\.git)\//u.test(normalized) &&
+    ((options?.frontendDirectories ?? DEFAULT_FRONTEND_DIRECTORIES).some(
+      (directory) =>
+        normalized === directory || normalized.startsWith(`${directory}/`),
+    ) ||
+      options?.frontendFiles?.includes(normalized))
+  ) {
+    return {
+      action: "client",
+      reason: "frontend source or public asset change",
+    };
+  }
   for (const pattern of IGNORE_PATTERNS) {
     if (pattern.test(normalized)) {
       return {
@@ -201,12 +218,6 @@ export function classifyChange(
   }
 
   // ── 5. client assets → frontend rebuild ───────────────
-  for (const pattern of FRONTEND_CLIENT_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return { action: "client", reason: `frontend client change: ${pattern}` };
-    }
-  }
-
   // ── 6. src/ 下的源码文件 → soft ───────────────────────
   if (SOURCE_PATTERN.test(normalized)) {
     return { action: "soft", reason: "source code change" };
@@ -237,8 +248,8 @@ export function classifyChange(
 export function matchGlobPattern(filePath: string, pattern: string): boolean {
   // 将 glob 模式转为正则表达式
   const regexStr = pattern
-    // 先转义正则特殊字符（除了 * 和 ?）
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    // 先转义正则特殊字符；只有 * 参与此简化 glob 语法。
+    .replace(/[.?+^${}()|[\]\\]/g, "\\$&")
     // ** → 匹配任意路径（含 /）
     .replace(/\*\*/g, "\0GLOBSTAR\0")
     // * → 匹配路径段内的任意字符（不含 /）

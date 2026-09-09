@@ -431,9 +431,7 @@ async function testAdapter(adapterName, port) {
     console.log("│");
     console.log("│ 🔌 关闭服务...");
 
-    if (devResult.serverHandle?.close) {
-      await devResult.serverHandle.close();
-    }
+    await devResult.close();
 
     await sleep(SHUTDOWN_WAIT);
     console.log("│    → 已关闭");
@@ -459,9 +457,9 @@ async function testAdapter(adapterName, port) {
     }
 
     // 尝试关闭
-    if (devResult?.serverHandle?.close) {
+    if (devResult?.close) {
       try {
-        await devResult.serverHandle.close();
+        await devResult.close();
       } catch {
         // ignore
       }

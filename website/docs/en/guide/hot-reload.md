@@ -2,6 +2,14 @@
 
 VextJS has a built-in hot reload mechanism, started through the `vext dev` command. The framework watches file changes and selects a reload path by change boundary, from targeted handler replacement to a complete process restart.
 
+Frontend watch targets come from the resolved configuration, including custom `frontend.root`, page/component directories, and `publicDir` inside the project but outside `src/`. Native watching and polling cover arbitrary public asset extensions such as `robots.txt` and PDF, as well as backend `.mts/.cts` additions and deletions. Restarting after configuration changes updates the watch targets. Mixed frontend/backend batches go to their respective build paths. The development parent receives directory data without executing configuration providers again.
+
+The watcher establishes its baseline before initial checks and startup, so saves received during startup are processed afterward. Saves, manual restarts, and recovery run in sequence; repeated saves are coalesced by path while preserving the final add/delete state. Failed directory reads keep the last complete snapshot and retry with a diagnostic. Falling back to polling preserves pending changes.
+
+Reload completion comes from the worker's actual result. Compilation failures retain the last valid backend outputs; failures after runtime mutation, or an unconfirmed worker result, require cold recovery. In an interactive terminal, `h` reloads all backend sources, `r` restarts the worker, and `?` shows help. Cold restarts wait for the old worker to exit and the replacement to finish initialization. Shutdown prevents queued tasks from starting.
+
+Independent projects can run concurrently. Commands that write to the same real project root, including `dev`, `build`, and writing `typegen`, share ownership and report conflicts. `typegen --check` remains read-only. Each service still needs an available port; do not configure one service's directory as another service's output directory.
+
 Starting from `0.3.7`, `vext dev` will execute **dev preflight** once before each initial start, file change, manual reload / restart, and child process request cold restart:
 
 - Automatically run basic `typegen`, synchronize `.vext/types/*.generated.d.ts` and `src/types/generated/index.d.ts`

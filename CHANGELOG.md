@@ -17,9 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update `esbuild` to `0.28.2`, `flex-rate-limit` to `2.2.5`, and `response-cache-kit` to `1.2.2`.
 - Retain `schema-dsl@3.0.4` and `monsqlize@3.3.0`, the latest stable versions verified on 2026-09-09.
 - Add `import-meta-resolve@4.2.0` for consumer-relative ESM package resolution.
+- Add `jsonc-parser@3.3.1` for compile-input fingerprints and shared JSONC tooling. Update `sharp` to `0.35.4`, `hono` to `4.13.7`, and Vitest/coverage to the maintained `4.1.11` fixes.
 
 ### Fixed
 
+- Serialize dev saves, manual restarts, and recovery; preserve saves during initial startup and wait for actual worker results. Handle saturated queues without spinning, cancel pending work on shutdown, and detect IPC send failures or disconnection. Manual full reload invalidates only the current project's output cache.
+- Keep the last complete watch snapshot on read failures, preserve pending changes when falling back to polling, and merge add/delete events by their final state. Concurrent cold restarts wait for the covering worker generation instead of returning a queued success.
+- Serialize project writers across CLI processes and preserve child ownership until workers exit. Compile backend code, preloads, and nested JSON into candidates, then commit only recorded outputs with recovery metadata; preserve unowned or externally modified files. `build --clean` no longer deletes the output tree before compilation succeeds.
+- Verify dev cache input and output bytes, including inherited JSONC configuration and package/lock metadata; invalidate freshness after partial compilation. Keep last successful outputs when code, JSON, or preload compilation fails.
+
+- Share esbuild module resolution between full and incremental backend compilation, including NodeNext extension references and inherited path aliases; diagnose imports without backend outputs.
+- Resolve dev/build configuration once before backend compilation, exclude configured frontend role directories, and update native/polling watch targets from the same directory facts. Track arbitrary public assets and `.mts`/`.cts` changes, and reject out-of-root single-file compilation.
+- Resolve frontend documents, error pages, and default aliases from configured role directories while preserving explicit path overrides; reject source paths that escape through symbolic links.
+- Share the configured Model directory across startup, hot reload, and Docs; respect disabled auto-registration and preserve registered models when a directory cannot be read.
+- Preserve NodeNext `.mjs`/`.cjs` imports in generated service declarations and exclude `.d.mts`/`.d.cts` files from service discovery.
 - Keep completed request bodies and normal responses from cancelling request signals across all five adapters; preserve disconnect cancellation and exactly-once cleanup.
 - Initialize `app.fetch` before user plugins and service constructors in production and development; handle bodyless HEAD/204/205/304 API responses.
 - Restrict frontend HTTP serving and uploads to generated public artifacts, including custom server renderer paths; preserve static HEAD metadata.

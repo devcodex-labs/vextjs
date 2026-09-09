@@ -1,4 +1,5 @@
 import * as esbuild from "esbuild";
+import { withProjectOwner } from "../../lib/project/owner.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -80,6 +81,18 @@ export async function buildFrontendClient(
     return { skipped: true, config, warnings: [] };
   }
 
+  return withProjectOwner(
+    options.rootDir,
+    options.mode === "development" ? "dev" : "build",
+    [config.outDir, ".vext"],
+    () => buildFrontendClientOwned(options, config),
+  );
+}
+
+async function buildFrontendClientOwned(
+  options: BuildFrontendClientOptions,
+  config: ResolvedVextFrontendConfig,
+): Promise<BuildFrontendClientResult> {
   assertSafeProjectOutputDirectory(
     options.rootDir,
     config.outDir,

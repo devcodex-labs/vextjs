@@ -73,7 +73,7 @@ src/                          dist/
 | ------------------ | ----------------------------------------------- | ------------ |
 | `--outdir <path>`  | 输出目录                                        | `dist`       |
 | `--config <name>`  | 选择 build-time 配置 profile                    | `production` |
-| `--clean`          | 编译前清理输出目录                              | `false`      |
+| `--clean`          | 成功编译后按归属清单清理旧产物                  | `false`      |
 | `--sourcemap`      | 生成 source map                                 | `true`       |
 | `--no-sourcemap`   | 禁用 source map                                 | —            |
 | `--minify`         | 压缩输出代码（默认开启；保留兼容选项）          | `true`       |
@@ -84,7 +84,13 @@ src/                          dist/
 
 生产 CLI 构建默认压缩后端输出。需要本地阅读构建结果时使用 `--no-minify`；若必须由环境提供该开关，可设置 `VEXT_BUILD_MINIFY=false`。前端生产压缩仍由 `frontend.build.minify` 控制。
 
-普通重复构建会自动清理已删除或重命名服务端源码留下的 `dist/**/*.js` 与 `dist/**/*.js.map` 后端 stale 产物，并保留 `dist/client/` 前端产物；`--clean` 用于在编译前彻底清空整个输出目录。
+重复构建在候选编译成功后，依据 `.vext/freshness/v1/artifacts.json` 回收已删除或重命名源码对应的旧产物。后端 JavaScript、source map、项目 preload 和业务 JSON 一起提交；编译失败保留上一批有效文件。`--clean` 同样遵循归属清单，不会提前递归清空输出目录，也不会删除未登记的文件。
+
+嵌套 JSON 数据（例如 `src/locales/account/security/zh-CN.json`）保留目录和原始字节，支持后端模块导入。前端角色目录、测试文件以及作为编译元数据的 `package.json` / `tsconfig*.json` 不按业务 JSON 复制。MCP 的目录与构建流程说明必须使用同一规则。
+
+输出被手工修改，或旧版本留下的文件无法证明归属时，命令返回 `VEXT_OUTPUT_CONFLICT` 并指出路径。先保留、移动或核实这些文件再重试，亦可选择新的 `--outdir`；不要通过删除整个项目目录处理冲突。与本次候选字节完全一致的已有文件可以直接认领且不重写。
+
+同一服务根及其嵌套根同一时间只有一个写入者；`dev` 运行时竞争执行 `build` 或 `typegen` 会返回 `VEXT_OWNER_BUSY`。不同的独立服务可以同时开发。事务记录用于进程中断恢复；逐文件替换不等于操作系统支持多文件同时原子可见，运行流程必须等待构建成功。
 
 ## 前端构建
 
@@ -297,7 +303,9 @@ Error: Something went wrong
 - `platform: 'node'` — Node.js 运行时
 - `target: 'node20'` — 最低支持 Node.js 20.19.0
 - `format: 'cjs'` — CommonJS 输出
-- `bundle: false` — 逐文件编译
+- 每个后端源文件保留独立 CJS `.js` 产物；通过 esbuild 解析本地引用并标记为 external，避免合并模块而改变热重载身份
+- `.ts/.js/.mts/.cts/.mjs/.cjs` 的静态本地引用、字面量 `import()` 和 `require.resolve()` 映射到实际 `.js` 产物；tsconfig 的 JSONC、extends、paths 在全量与增量编译中使用相同解析
+- 后端引用被排除的前端文件、根外源码或没有独立产物的文件会报告错误；目录扫描支持不等于任意运行时动态表达式可转换
 - `treeShaking: true` — 死代码消除
 - `keepNames: true` — 保留函数名
 - `charset: 'utf8'` — UTF-8 编码

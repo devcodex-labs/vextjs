@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import fg from "fast-glob";
+import { resolveModelsDirectory } from "../../project/layout.js";
 import { resolveModelEntry } from "../../plugins/monsqlize/model-loader.js";
 import type { VextCodeDocItem, VextCodeDocsSourceConfig } from "../types.js";
 import { parseJSDocSymbols } from "./jsdoc-parser.js";
@@ -26,9 +26,9 @@ export async function loadModelCodeDocs(
   }
 
   const config = sourceConfig(options.source);
-  const modelsDir = join(
+  const modelsDir = resolveModelsDirectory(
     options.srcDir,
-    config.dir ?? options.modelsDir ?? "models",
+    config.dir ?? options.modelsDir,
   );
   const files = await scanModelSourceFiles(modelsDir, config);
   const items: VextCodeDocItem[] = [];
@@ -45,7 +45,9 @@ export async function loadModelCodeDocs(
       continue;
     }
     const modelKey = entry.registryKey;
-    const defaultSymbol = symbols.find((symbol) => symbol.exportName === "default");
+    const defaultSymbol = symbols.find(
+      (symbol) => symbol.exportName === "default",
+    );
 
     items.push(
       createModelDocItem(
@@ -57,7 +59,9 @@ export async function loadModelCodeDocs(
       ),
     );
 
-    for (const symbol of symbols.filter((entry) => entry.exportName !== "default")) {
+    for (const symbol of symbols.filter(
+      (entry) => entry.exportName !== "default",
+    )) {
       items.push({
         id: `model:${modelKey}#${symbol.exportName}`,
         kind: "model",
@@ -82,9 +86,7 @@ export async function loadModelCodeDocs(
 function createModelDocItem(
   modelKey: string,
   sourceFile: string,
-  symbol:
-    | ReturnType<typeof parseJSDocSymbols>[number]
-    | undefined,
+  symbol: ReturnType<typeof parseJSDocSymbols>[number] | undefined,
   staticDocs: ReturnType<typeof extractStaticModelDocs>,
   runtimeEntry: NonNullable<ReturnType<typeof resolveModelEntry>>,
 ): VextCodeDocItem {

@@ -1,5 +1,13 @@
 import { fork } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import type { ProjectOwnerGrant } from "../project/owner.js";
+import { randomUUID } from "node:crypto";
+import {
+  readWorkerOperationRequest,
+  readWorkerOperationResponse,
+  type WorkerOperation,
+  type WorkerOperationResult,
+} from "./worker-protocol.js";
 
 /**
  * cold-restarter.ts — Cold Restart 子进程管理器（Phase 2A）
@@ -22,7 +30,7 @@ import type { ChildProcess } from "node:child_process";
  * 设计约束：
  *   - 子进程入口是纯 JS（esbuild 已编译），无需 tsx/ts-node
  *   - IPC 通道通过 fork 的 stdio 配置自动创建
- *   - restart 有 isRestarting guard，防止快速连续触发导致并行 restart
+ *   - restart 按请求代次串行替换进程，待处理请求合并；调用者等待最新一代 ready
  *
  * @module lib/dev/cold-restarter
  * @see 11d-bootstrap-cli.md §1（Cold Restart 详细设计）
@@ -36,6 +44,8 @@ import type { ChildProcess } from "node:child_process";
  * ColdRestarter 构造选项
  */
 export interface ColdRestarterOptions {
+  /** 仅通过 fork IPC 交付，不写环境、日志或发现文件。 */
+  ownerGrant?: ProjectOwnerGrant;
   /**
    * dev 子进程入口脚本路径（绝对路径）
    *
@@ -123,13 +133,17 @@ export class ColdRestarter {
    */
   private child: ChildProcess | null = null;
 
-  /**
-   * 重启中 guard — 防止并行 restart
-   *
-   * 当 restart() 正在执行时，后续的 restart() 调用直接返回。
-   * 这避免了用户快速连续修改多个配置文件时触发多次 fork。
-   */
-  private isRestarting = false;
+  private requestedGeneration = 0;
+  private completedGeneration = 0;
+  private restartRunner: Promise<void> | undefined;
+  private activeStartup: AbortController | undefined;
+  private stopping = false;
+  private stopTask: Promise<void> | undefined;
+  private restartWaiters: {
+    generation: number;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }[] = [];
 
   /**
    * 标记是否由 restart 发起的 kill（区分预期退出和异常退出）
@@ -143,6 +157,7 @@ export class ColdRestarter {
   private readonly cwd: string | undefined;
   private extraExecArgv: string[];
   private events: ColdRestarterEvents = {};
+  private readonly ownerGrant: ProjectOwnerGrant | undefined;
 
   constructor(options: ColdRestarterOptions) {
     this.entryScript = options.entryScript;
@@ -151,6 +166,7 @@ export class ColdRestarter {
     this.env = options.env ?? {};
     this.cwd = options.cwd;
     this.extraExecArgv = options.extraExecArgv ?? [];
+    this.ownerGrant = options.ownerGrant;
   }
 
   /**
@@ -174,76 +190,112 @@ export class ColdRestarter {
   setExtraExecArgv(extraExecArgv: string[]): void {
     this.extraExecArgv = [...extraExecArgv];
   }
+  /** 每个调用等待其请求被实际 ready 的代次覆盖；合并调度不能提前成功。 */
+  restart(_reason: string): Promise<void> {
+    if (this.stopping)
+      return Promise.reject(new Error("[vext dev] worker is stopping"));
+    const generation = ++this.requestedGeneration;
+    const result = new Promise<void>((resolve, reject) =>
+      this.restartWaiters.push({ generation, resolve, reject }),
+    );
+    this.ensureRestartRunner();
+    return result;
+  }
 
-  /**
-   * restart — 执行 Cold Restart
-   *
-   * 完整流程：
-   *   1. 检查 isRestarting guard（防并行）
-   *   2. safeKill 旧子进程（SIGTERM → 超时 SIGKILL）
-   *   3. fork 新子进程（纯 JS 入口，无需 tsx）
-   *   4. 注册 IPC 消息监听 + 异常退出监听
-   *   5. waitForReady（等待子进程 `{ type: 'ready' }` 消息，超时 30s）
-   *
-   * @param reason 重启原因（用于日志输出，如 "initial start" 或文件路径）
-   * @throws 子进程启动超时或退出非零码时抛出错误
-   */
-  async restart(_reason: string): Promise<void> {
-    if (this.isRestarting) {
-      // 已经在重启中，合并（不重复执行）
+  private ensureRestartRunner(): void {
+    if (
+      this.restartRunner ||
+      this.stopping ||
+      this.completedGeneration >= this.requestedGeneration
+    )
       return;
+    // 同一轮同步请求先合并；实际启动过程中到达的请求留给下一代。
+    const runner = Promise.resolve()
+      .then(() => this.drainRestarts())
+      .catch((error: unknown) => {
+        this.completedGeneration = this.requestedGeneration;
+        this.settleRestarts(this.requestedGeneration, error);
+      });
+    this.restartRunner = runner;
+    void runner.finally(() => {
+      if (this.restartRunner === runner) this.restartRunner = undefined;
+      this.ensureRestartRunner();
+    });
+  }
+
+  private settleRestarts(generation: number, error?: unknown): void {
+    const ready = this.restartWaiters.filter(
+      (waiter) => waiter.generation <= generation,
+    );
+    this.restartWaiters = this.restartWaiters.filter(
+      (waiter) => waiter.generation > generation,
+    );
+    for (const waiter of ready) {
+      if (error === undefined) waiter.resolve();
+      else waiter.reject(error);
     }
+  }
 
-    this.isRestarting = true;
+  private async drainRestarts(): Promise<void> {
+    while (
+      !this.stopping &&
+      this.completedGeneration < this.requestedGeneration
+    ) {
+      const generation = this.requestedGeneration;
+      const controller = new AbortController();
+      this.activeStartup = controller;
+      try {
+        await this.performRestart(controller.signal);
+        this.completedGeneration = generation;
+        // 有更新的请求时，旧调用也等待最新代，避免调用方把消息发给正被替换的 worker。
+        if (generation === this.requestedGeneration)
+          this.settleRestarts(generation);
+      } catch (error) {
+        this.completedGeneration = generation;
+        this.settleRestarts(generation, error);
+      } finally {
+        if (this.activeStartup === controller) this.activeStartup = undefined;
+      }
+    }
+  }
 
-    try {
-      // ── 1. 安全终止旧进程 ──────────────────────────────
-      if (this.child && !this.child.killed) {
-        this.isExpectedKill = true;
+  private async performRestart(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    if (this.child) {
+      this.isExpectedKill = true;
+      try {
         await this.safeKill(this.child);
+      } finally {
         this.isExpectedKill = false;
       }
-      this.child = null;
-
-      // ── 2. Fork 新进程 ─────────────────────────────────
-      //
-      // 注意：不需要 tsx loader 或 --import tsx/esm，
-      // 因为 esbuild 已将 TS 源码编译为 CJS .js 文件。
-      // 子进程入口（dev-entry.js）是纯 JS。
-      //
-      const childEnv: Record<string, string> = {
-        ...(process.env as Record<string, string>),
-        VEXT_DEV_MODE: "1",
-        ...this.env,
-      };
-
-      // 🆕 合并父进程现有 Node.js 标志（防止覆盖 --inspect、--max-old-space-size 等），
-      // 追加 --enable-source-maps 使 Error.stack 自动翻译为 .ts 源码路径（dev 模式调试），
-      // 追加 extraExecArgv（预加载模块 --import，如 @devcodex/opentelemetry SDK 初始化）
-      const devExecArgv = [
-        ...process.execArgv.filter((f) => f !== "--enable-source-maps"),
-        "--enable-source-maps",
-        ...this.extraExecArgv,
-      ];
-
-      const child = fork(this.entryScript, [], {
-        env: childEnv,
-        stdio: ["inherit", "inherit", "inherit", "ipc"],
-        cwd: this.cwd,
-        execArgv: devExecArgv,
-      });
-      this.child = child;
-      this.setupChildListeners(child);
-
-      // ── 4. 等待新进程就绪 ──────────────────────────────
-      try {
-        await this.waitForReady(child);
-      } catch (err) {
-        await this.cleanupFailedStartup(child);
-        throw err;
-      }
-    } finally {
-      this.isRestarting = false;
+    }
+    this.child = null;
+    signal.throwIfAborted();
+    const childEnv: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      VEXT_DEV_MODE: "1",
+      ...this.env,
+    };
+    if (this.ownerGrant) childEnv.VEXT_DEV_OWNER_REQUIRED = "1";
+    else delete childEnv.VEXT_DEV_OWNER_REQUIRED;
+    const devExecArgv = [
+      ...process.execArgv.filter((flag) => flag !== "--enable-source-maps"),
+      "--enable-source-maps",
+      ...this.extraExecArgv,
+    ];
+    const child = fork(this.entryScript, [], {
+      env: childEnv,
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+      cwd: this.cwd,
+      execArgv: devExecArgv,
+    });
+    this.child = child;
+    this.setupChildListeners(child);
+    try {
+      await this.waitForReady(child, signal);
+    } catch (error) {
+      await this.cleanupFailedStartup(child);
+      throw error;
     }
   }
 
@@ -254,29 +306,126 @@ export class ColdRestarter {
    *   - `{ type: 'reload', files: [...] }` — soft reload 指令
    *   - `{ type: 'shutdown' }` — 优雅关闭指令
    *
-   * 如果子进程不存在或 IPC 通道已断开，静默忽略（不抛出错误）。
+   * 返回传输完成；业务执行结果由 requestOperation 的独立回执确认。
    *
    * @param msg 要发送的消息（可序列化的对象）
    */
-  sendToChild(msg: unknown): void {
-    if (this.child?.connected) {
-      this.child.send(msg as object);
-    }
+  sendToChild(msg: unknown): Promise<void> {
+    return this.sendMessage(this.child, msg);
   }
 
-  /**
-   * kill — 终止子进程（用于进程退出清理）
-   *
-   * 在 CLI 退出时调用，确保子进程被正确清理。
-   * 使用与 restart 相同的 safeKill 流程（SIGTERM → 超时 SIGKILL）。
-   */
-  async kill(): Promise<void> {
-    if (this.child && !this.child.killed) {
-      this.isExpectedKill = true;
-      await this.safeKill(this.child);
-      this.isExpectedKill = false;
-      this.child = null;
-    }
+  private sendMessage(child: ChildProcess | null, msg: unknown): Promise<void> {
+    if (!child || child !== this.child || !child.connected || this.stopping)
+      return Promise.reject(new Error("[vext dev] worker IPC is unavailable"));
+    return new Promise<void>((resolve, reject) => {
+      try {
+        child.send(msg as object, (error) =>
+          error ? reject(error) : resolve(),
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /** 回执只接受当前 child 和本次随机 ID；queued / send callback 均不是完成。 */
+  requestOperation(
+    operation: WorkerOperation,
+    timeout = 30_000,
+  ): Promise<WorkerOperationResult> {
+    const child = this.child;
+    if (!child?.connected || this.stopping)
+      return Promise.reject(new Error("[vext dev] worker IPC is unavailable"));
+    const request = readWorkerOperationRequest({
+      type: "dev-operation",
+      requestId: randomUUID(),
+      ...operation,
+    });
+    if (!request)
+      return Promise.reject(new Error("[vext dev] invalid worker operation"));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timer);
+        child.off("message", onMessage);
+        child.off("exit", onExit);
+        child.off("disconnect", onDisconnect);
+        child.off("error", fail);
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        cleanup();
+        reject(error);
+      };
+      const onMessage = (value: unknown) => {
+        const response = readWorkerOperationResponse(value);
+        if (settled || !response || response.requestId !== request.requestId)
+          return;
+        cleanup();
+        resolve(
+          response.success
+            ? { success: true }
+            : {
+                success: false,
+                error: response.error,
+                requestedColdRestart: response.requestedColdRestart,
+              },
+        );
+      };
+      const onExit = () =>
+        fail(new Error("[vext dev] worker exited before operation completion"));
+      const onDisconnect = () =>
+        fail(
+          new Error(
+            "[vext dev] worker IPC disconnected before operation completion",
+          ),
+        );
+      const timer = setTimeout(
+        () =>
+          fail(
+            new Error(
+              "[vext dev] worker operation timed out; runtime state is unverified",
+            ),
+          ),
+        timeout,
+      );
+      child.on("message", onMessage);
+      child.once("exit", onExit);
+      child.once("disconnect", onDisconnect);
+      child.once("error", fail);
+      void this.sendMessage(child, request).catch(fail);
+    });
+  }
+  /** 取消尚未完成的启动，并观察到子进程退出后才完成关闭。 */
+  kill(): Promise<void> {
+    if (this.stopTask) return this.stopTask;
+    this.stopping = true;
+    const canceled = new Error(
+      "[vext dev] worker restart canceled by shutdown",
+    );
+    this.activeStartup?.abort(canceled);
+    this.settleRestarts(this.requestedGeneration, canceled);
+    const task = (async () => {
+      try {
+        await this.restartRunner;
+        this.completedGeneration = this.requestedGeneration;
+        if (this.child) {
+          this.isExpectedKill = true;
+          try {
+            await this.safeKill(this.child);
+          } finally {
+            this.isExpectedKill = false;
+          }
+          this.child = null;
+        }
+      } finally {
+        this.stopping = false;
+        this.stopTask = undefined;
+      }
+    })();
+    this.stopTask = task;
+    return task;
   }
 
   /**
@@ -292,154 +441,130 @@ export class ColdRestarter {
    * 检查是否正在重启中
    */
   getIsRestarting(): boolean {
-    return this.isRestarting;
+    return this.restartWaiters.length > 0 || this.stopping;
   }
 
   /**
    * 检查子进程是否存活
    */
   isChildAlive(): boolean {
-    return this.child !== null && !this.child.killed;
+    return (
+      this.child !== null &&
+      this.child.exitCode === null &&
+      this.child.signalCode === null
+    );
   }
-
-  // ── 私有方法 ──────────────────────────────────────────────
-
-  /**
-   * safeKill — 安全终止子进程
-   *
-   * 流程：
-   *   1. 通知子进程关闭：
-   *      - Windows: 优先通过 IPC 发送 { type: 'shutdown' } 消息（触发子进程优雅关闭）
-   *        IPC 不可用时降级为 child.kill('SIGTERM')
-   *      - Unix: 发送 SIGTERM（触发子进程 process.on('SIGTERM') 处理器）
-   *   2. 等待子进程退出（最多 killTimeout ms）
-   *   3. 超时后发送 SIGKILL 强制终止
-   *
-   * 🐛 修复 BUG-014：Windows 上 child.kill('SIGTERM') 不会触发子进程的
-   * process.on('SIGTERM') 处理器——Node.js 在 Windows 上直接调用
-   * TerminateProcess API 杀死进程，导致 onClose hooks 不执行。
-   *
-   * 使用 Promise + 双重退出监听确保在任何情况下都能 resolve：
-   *   - 正常退出：'exit' 事件触发 → resolve
-   *   - 超时强制终止：SIGKILL → 'exit' 事件 → resolve
-   *
-   * @param child 要终止的子进程
-   */
+  /** 只有观察到 exit 才算停止完成；发出 kill 信号不是退出证据。 */
   private async safeKill(child: ChildProcess): Promise<void> {
-    return new Promise<void>((resolve) => {
-      let resolved = false;
-      let exited = false;
-      const done = () => {
-        if (!resolved) {
-          resolved = true;
-          resolve();
-        }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let forced: NodeJS.Timeout | undefined;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(graceful);
+        if (forced) clearTimeout(forced);
+        child.off("exit", onExit);
+        child.off("error", onError);
+        if (error) reject(error);
+        else resolve();
       };
-
-      // 监听退出事件
-      child.once("exit", () => {
-        exited = true;
-        clearTimeout(timer);
-        done();
-      });
-
-      // 第一步: 通知子进程优雅关闭
-      if (process.platform === "win32" && child.connected) {
-        // Windows: 通过 IPC 消息通知子进程执行优雅关闭
-        // dev-bootstrap 的 process.on('message') 已监听 { type: 'shutdown' }
+      const onExit = () => finish();
+      const onError = (error: Error) => finish(error);
+      const graceful = setTimeout(() => {
+        if (settled) return;
         try {
-          child.send({ type: "shutdown" });
-        } catch {
-          // IPC 发送失败，降级为 kill
+          child.kill("SIGKILL");
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        forced = setTimeout(
+          () =>
+            finish(
+              new Error(
+                "[vext dev] worker did not exit after forced termination; ownership remains protected",
+              ),
+            ),
+          2000,
+        );
+      }, this.killTimeout);
+      child.once("exit", onExit);
+      child.once("error", onError);
+      try {
+        if (process.platform === "win32" && child.connected) {
+          child.send({ type: "shutdown" }, (error) => {
+            if (error && !settled) {
+              try {
+                child.kill("SIGTERM");
+              } catch (failure) {
+                finish(
+                  failure instanceof Error
+                    ? failure
+                    : new Error(String(failure)),
+                );
+              }
+            }
+          });
+        } else {
           child.kill("SIGTERM");
         }
-      } else {
-        // Unix: 标准 SIGTERM 信号（触发子进程 process.on('SIGTERM') 处理器）
-        child.kill("SIGTERM");
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error(String(error)));
       }
-
-      // 第二步: 超时后 SIGKILL（强制终止）
-      const timer = setTimeout(() => {
-        if (!exited) {
-          child.kill("SIGKILL");
-        }
-        // SIGKILL 后 exit 事件通常很快触发，
-        // 但作为保险也在这里调用 done()
-        done();
-      }, this.killTimeout);
     });
   }
-
-  /**
-   * waitForReady — 等待子进程发送 ready 消息
-   *
-   * 子进程在 devBootstrap 完成初始化后发送 `{ type: 'ready' }` IPC 消息。
-   * 本方法等待该消息，超时则视为启动失败。
-   *
-   * 异常处理：
-   *   - 超时（readyTimeout）→ reject + Error
-   *   - 子进程 error 事件 → reject + 原始 Error
-   *   - 子进程退出（非零码）→ reject + Error
-   *
-   * @param child 要等待的子进程
-   * @throws 超时或子进程异常退出时抛出错误
-   */
-  private async waitForReady(child: ChildProcess): Promise<void> {
+  private async waitForReady(
+    child: ChildProcess,
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
     return new Promise<void>((resolve, reject) => {
       let settled = false;
-
       const cleanup = () => {
         settled = true;
         clearTimeout(timer);
-        child.removeListener("message", onMessage);
-        child.removeListener("error", onError);
-        child.removeListener("exit", onExit);
+        child.off("message", onMessage);
+        child.off("error", onError);
+        child.off("exit", onExit);
+        signal.removeEventListener("abort", onAbort);
       };
-
-      const timer = setTimeout(() => {
-        if (!settled) {
-          cleanup();
-          reject(
+      const fail = (error: unknown) => {
+        if (settled) return;
+        cleanup();
+        reject(error);
+      };
+      const timer = setTimeout(
+        () =>
+          fail(
             new Error(
               `[vext dev] worker startup timeout (${this.readyTimeout}ms)`,
             ),
-          );
-        }
-      }, this.readyTimeout);
-
-      const onMessage = (msg: unknown) => {
+          ),
+        this.readyTimeout,
+      );
+      const onMessage = (message: unknown) => {
         if (
           !settled &&
-          typeof msg === "object" &&
-          msg !== null &&
-          (msg as Record<string, unknown>).type === "ready"
+          message &&
+          typeof message === "object" &&
+          (message as Record<string, unknown>).type === "ready"
         ) {
           cleanup();
           resolve();
         }
       };
-
-      const onError = (err: Error) => {
-        if (!settled) {
-          cleanup();
-          reject(err);
-        }
-      };
-
-      const onExit = (code: number | null) => {
-        if (!settled) {
-          cleanup();
-          reject(
-            new Error(
-              `[vext dev] worker exited with code ${code ?? "unknown"}`,
-            ),
-          );
-        }
-      };
-
+      const onError = (error: Error) => fail(error);
+      const onExit = (code: number | null) =>
+        fail(
+          new Error(`[vext dev] worker exited with code ${code ?? "unknown"}`),
+        );
+      const onAbort = () => fail(signal.reason);
       child.on("message", onMessage);
       child.once("error", onError);
       child.once("exit", onExit);
+      signal.addEventListener("abort", onAbort, { once: true });
     });
   }
 
@@ -447,7 +572,7 @@ export class ColdRestarter {
     if (this.child !== child) return;
 
     const isExited = child.exitCode !== null || child.signalCode !== null;
-    if (!child.killed && !isExited) {
+    if (!isExited) {
       this.isExpectedKill = true;
       try {
         await this.safeKill(child);
@@ -477,6 +602,21 @@ export class ColdRestarter {
     //   - { type: 'request-cold-restart', reason: '...' } — 级联检测过大
     //
     child.on("message", (msg: unknown) => {
+      if (
+        this.ownerGrant &&
+        msg &&
+        typeof msg === "object" &&
+        (msg as Record<string, unknown>).type === "owner-request"
+      ) {
+        if (child.connected)
+          child.send(
+            { type: "owner-grant", grant: this.ownerGrant },
+            (error) => {
+              if (error) this.activeStartup?.abort(error);
+            },
+          );
+        return;
+      }
       if (this.events.onChildMessage) {
         this.events.onChildMessage(msg);
       }

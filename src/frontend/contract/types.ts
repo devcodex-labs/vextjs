@@ -16,7 +16,9 @@ export type VextFrontendMode = "development" | "production";
 export interface VextFrontendPagesConfig {
   dir?: string;
   extensions?: string[];
+  /** Relative to frontend.root when explicit; otherwise <pages.dir>/_document.html. */
   document?: string;
+  /** Relative to frontend.root when explicit; otherwise <pages.dir>/error. */
   errorDir?: string;
 }
 
@@ -393,10 +395,12 @@ export interface VextFrontendConfig {
   assetsDir?: string;
   media?: VextFrontendMediaConfig;
   entry?: string;
+  /** Relative to the project root when explicit; otherwise the resolved pages.document. */
   indexHtml?: string;
   outDir?: string;
   publicDir?: string;
   publicPath?: string;
+  /** Overrides resolve from frontend.root; default aliases follow the resolved role directories. */
   alias?: Record<string, string>;
   spaFallback?: boolean | VextFrontendSpaFallbackConfig;
   apiClient?: boolean | VextFrontendApiClientConfig;

@@ -60,6 +60,21 @@ switch (mode) {
     });
     break;
 
+  case 'operation-ack':
+    process.send({ type: 'ready' });
+    process.on('message', (msg) => {
+      if (msg.type !== 'dev-operation') return;
+      const path = msg.files[0]?.path;
+      if (path === 'src/timeout.ts') return;
+      if (path === 'src/exit.ts') { process.exit(0); return; }
+      const base = { type: 'dev-operation-result', requestId: msg.requestId };
+      process.send({ ...base, success: true, error: 'invalid mixed variant' });
+      setTimeout(() => process.send(path === 'src/fail.ts'
+        ? { ...base, success: false, error: 'compile failed', requestedColdRestart: false }
+        : { ...base, success: true }), 120);
+    });
+    break;
+
   case 'slow-shutdown':
     process.on('SIGTERM', () => {
       setTimeout(() => {
@@ -134,6 +149,7 @@ function createModeFileWorkerScript(tmpDir: string): string {
 import { readFileSync } from 'node:fs';
 
 const mode = readFileSync(process.env.WORKER_MODE_FILE, 'utf8').trim();
+process.send({ type: 'observed-mode', mode });
 
 if (mode === 'ready') {
   process.send({ type: 'ready' });
@@ -256,6 +272,97 @@ describe("ColdRestarter", () => {
   // ── restart 行为 ──────────────────────────────────────────
 
   describe("restart 行为", () => {
+    it("失败的启动代次不得丢弃其间收到的下一次请求", async () => {
+      const modeFile = path.join(tmpDir, "mode.txt");
+      fs.writeFileSync(modeFile, "no-ready");
+      restarter = new ColdRestarter({
+        entryScript: createModeFileWorkerScript(tmpDir),
+        env: { WORKER_MODE_FILE: modeFile },
+        readyTimeout: 1000,
+        killTimeout: 1000,
+      });
+      let observed = false;
+      restarter.setEvents({
+        onChildMessage: (message) => {
+          if (
+            message &&
+            typeof message === "object" &&
+            (message as Record<string, unknown>).type === "observed-mode"
+          )
+            observed = true;
+        },
+      });
+      const first = restarter.restart("invalid generation").then(
+        () => "ready",
+        () => "failed",
+      );
+      await waitFor(() => observed);
+      const firstPid = restarter.getChildPid()!;
+      fs.writeFileSync(modeFile, "ready");
+      const second = restarter.restart("fixed generation");
+      expect(await first).toBe("failed");
+      await second;
+      expect(restarter.isChildAlive()).toBe(true);
+      expect(restarter.getChildPid()).not.toBe(firstPid);
+      expect(isProcessAlive(firstPid)).toBe(false);
+    });
+
+    it("并发调用不能在任何 worker ready 之前报告完成", async () => {
+      restarter = new ColdRestarter({
+        entryScript: workerScript,
+        env: { WORKER_MODE: "delay-ready" },
+      });
+      let secondCompleted = false;
+      const first = restarter.restart("first");
+      const second = restarter.restart("second").then(() => {
+        secondCompleted = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const completedTooEarly = secondCompleted;
+      await Promise.all([first, second]);
+      expect(completedTooEarly).toBe(false);
+      expect(restarter.isChildAlive()).toBe(true);
+    });
+
+    it("启动过程中到达的新请求必须由后续 ready 代次覆盖", async () => {
+      restarter = new ColdRestarter({
+        entryScript: workerScript,
+        env: { WORKER_MODE: "delay-ready" },
+      });
+      const first = restarter.restart("first");
+      await waitFor(() => restarter!.getChildPid() !== null, 1000);
+      const originalPid = restarter.getChildPid()!;
+      const second = restarter.restart("changed while starting");
+      await Promise.all([first, second]);
+      expect(restarter.getChildPid()).not.toBe(originalPid);
+      expect(isProcessAlive(originalPid)).toBe(false);
+    });
+
+    it("kill 取消启动中的请求并等待进程退出", async () => {
+      restarter = new ColdRestarter({
+        entryScript: workerScript,
+        env: { WORKER_MODE: "delay-ready" },
+        killTimeout: 1000,
+      });
+      const first = restarter.restart("first").then(
+        () => "ready",
+        () => "canceled",
+      );
+      await waitFor(() => restarter!.getChildPid() !== null, 1000);
+      const originalPid = restarter.getChildPid()!;
+      const second = restarter.restart("pending").then(
+        () => "ready",
+        () => "canceled",
+      );
+      await restarter.kill();
+      expect(await Promise.all([first, second])).toEqual([
+        "canceled",
+        "canceled",
+      ]);
+      expect(restarter.getChildPid()).toBeNull();
+      expect(isProcessAlive(originalPid)).toBe(false);
+    });
+
     it("多次 restart 应终止旧进程并启动新进程", async () => {
       restarter = new ColdRestarter({
         entryScript: workerScript,
@@ -295,12 +402,11 @@ describe("ColdRestarter", () => {
         isFirstAlive = false;
       }
 
-      // 旧进程可能已退出或即将退出
-      // 新进程应存活
+      expect(isFirstAlive).toBe(false);
       expect(restarter.isChildAlive()).toBe(true);
     });
 
-    it("isRestarting guard 应防止并行 restart", async () => {
+    it("同步请求应合并为一代且等待 ready", async () => {
       restarter = new ColdRestarter({
         entryScript: workerScript,
         env: { WORKER_MODE: "delay-ready" },
@@ -428,6 +534,60 @@ describe("ColdRestarter", () => {
   // ── IPC 通信 ──────────────────────────────────────────────
 
   describe("IPC 通信", () => {
+    it("operation 等待实际回执并拒绝成功与失败混合的消息", async () => {
+      restarter = new ColdRestarter({
+        entryScript: workerScript,
+        env: { WORKER_MODE: "operation-ack" },
+      });
+      await restarter.restart("IPC result");
+      let completed = false;
+      const operation = restarter
+        .requestOperation({
+          operation: "reload",
+          files: [{ path: "src/ok.ts", type: "modify" }],
+        })
+        .then((result) => {
+          completed = true;
+          return result;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(completed).toBe(false);
+      expect(await operation).toEqual({ success: true });
+      expect(
+        await restarter.requestOperation({
+          operation: "reload",
+          files: [{ path: "src/fail.ts", type: "modify" }],
+        }),
+      ).toEqual({
+        success: false,
+        error: "compile failed",
+        requestedColdRestart: false,
+      });
+    });
+
+    it("operation 超时和 child 退出都不能报告成功", async () => {
+      restarter = new ColdRestarter({
+        entryScript: workerScript,
+        env: { WORKER_MODE: "operation-ack" },
+      });
+      await restarter.restart("IPC failures");
+      await expect(
+        restarter.requestOperation(
+          {
+            operation: "reload",
+            files: [{ path: "src/timeout.ts", type: "modify" }],
+          },
+          50,
+        ),
+      ).rejects.toThrow("timed out");
+      await expect(
+        restarter.requestOperation({
+          operation: "reload",
+          files: [{ path: "src/exit.ts", type: "modify" }],
+        }),
+      ).rejects.toThrow(/exited|disconnected/);
+    });
+
     it("sendToChild 应向子进程发送 IPC 消息", async () => {
       restarter = new ColdRestarter({
         entryScript: workerScript,
@@ -445,7 +605,10 @@ describe("ColdRestarter", () => {
       await restarter.restart("ipc test");
 
       // 发送测试消息
-      restarter.sendToChild({ type: "reload", files: ["src/routes/user.ts"] });
+      await restarter.sendToChild({
+        type: "reload",
+        files: ["src/routes/user.ts"],
+      });
 
       // 等待回显
       await waitFor(() => {
@@ -471,18 +634,17 @@ describe("ColdRestarter", () => {
       });
     });
 
-    it("sendToChild 对无子进程应为 no-op（不抛出）", () => {
+    it("sendToChild 对无子进程应报告无法传输", async () => {
       restarter = new ColdRestarter({
         entryScript: workerScript,
       });
 
-      // 无子进程时发送消息 — 不应抛出
-      expect(() => {
-        restarter!.sendToChild({ type: "test" });
-      }).not.toThrow();
+      await expect(restarter.sendToChild({ type: "test" })).rejects.toThrow(
+        "IPC is unavailable",
+      );
     });
 
-    it("sendToChild 对已退出的子进程应为 no-op", async () => {
+    it("sendToChild 对已退出的子进程应报告无法传输", async () => {
       restarter = new ColdRestarter({
         entryScript: workerScript,
         env: { WORKER_MODE: "ready" },
@@ -491,10 +653,9 @@ describe("ColdRestarter", () => {
       await restarter.restart("test");
       await restarter.kill();
 
-      // 子进程已退出 — 发送消息不应抛出
-      expect(() => {
-        restarter!.sendToChild({ type: "test" });
-      }).not.toThrow();
+      await expect(restarter.sendToChild({ type: "test" })).rejects.toThrow(
+        "IPC is unavailable",
+      );
     });
 
     it("子进程发送 request-cold-restart 应触发 onChildMessage 回调", async () => {

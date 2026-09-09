@@ -1,9 +1,14 @@
-import { watch, statSync, existsSync, readdirSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { EventEmitter } from "node:events";
 import { classifyChange } from "./change-classifier.js";
 import type { ClassifierOptions } from "./change-classifier.js";
+import {
+  readWatchSnapshot,
+  readWatchTargets,
+  type WatchSnapshot,
+  type WatchTarget,
+} from "./watch-snapshot.js";
 
 /**
  * file-watcher.ts — VextFileWatcher 文件监听器（Phase 2A）
@@ -13,13 +18,13 @@ import type { ClassifierOptions } from "./change-classifier.js";
  *   1. **监听** `src/` 目录（含 `src/preload/`）、兼容的项目根 `preload/`、`public/` 和根目录配置文件的变更
  *   2. **分类** 变更文件为 `cold`（冷重启）、`soft`（热替换）、`client`（前端重建）或 `ignore`（忽略）
  *   3. **识别变更类型**（`modify` / `add` / `delete`）— 决定走 Tier 1 还是 Tier 2 编译路径
- *   4. **防抖合并** 100ms 窗口内的多个变更为一次 reload 事件
+ *   4. **防抖合并** 配置窗口内的变更，按窗口前后存在性确定最终事件
  *   5. **Docker 兼容** — inotify 不可用时自动降级为 polling
  *
  * 重要设计约束：
  *   - FileWatcher 监听的是 `src/` **源码目录**，不是 `.vext/dev/` 编译产物目录。
  *     这避免了 esbuild 编译输出触发二次变更事件的问题。
- *   - 使用 Node.js 内置 `fs.watch`（零外部依赖），不依赖 chokidar 等第三方库。
+ *   - fs.watch 事件提示和轮询共用完整扫描器；读失败保留上一快照并重试。
  *   - 防抖窗口默认 0ms（不开启），文件变更立即触发重载；可通过 --debounce 选项开启。
  *
  * 事件：
@@ -50,10 +55,8 @@ export interface WatcherOptions {
   pollInterval?: number;
 
   /**
-   * 用户自定义分类选项（从 config.dev 传入）
-   *
-   * 允许用户在配置文件中自定义 coldPatterns / ignorePatterns，
-   * 覆盖内置的文件分类规则。
+   * 内部分类与已解析目录 DTO；coldPatterns / ignorePatterns 是监听器扩展点，
+   * 不是 config.dev 的公开配置键。
    */
   classifierOptions?: ClassifierOptions;
 }
@@ -62,8 +65,8 @@ export interface WatcherOptions {
  * 单个文件的变更信息
  *
  * 用于分级编译决策：
- *   - `modify` → Tier 1（compileSingle，~1-5ms）
- *   - `add` / `delete` → Tier 2（rebuildWithNewEntryPoints，~50-600ms）
+ *   - `modify` → Tier 1（批量编译变更文件）
+ *   - `add` / `delete` → Tier 2（重建编译入口集合）
  */
 export interface FileChangeInfo {
   /** 相对于项目根目录的文件路径（使用 / 分隔符，如 "src/routes/user.ts"） */
@@ -101,86 +104,30 @@ interface PendingChange {
   type: "modify" | "add" | "delete";
 }
 
-/**
- * 可关闭的资源接口（统一管理 FSWatcher 和 polling 定时器）
- */
-interface Closeable {
-  close(): void;
-}
-
-const ROOT_COLD_FILES = new Set([
-  "package.json",
-  "package-lock.json",
-  "npm-shrinkwrap.json",
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "bun.lock",
-  "bun.lockb",
-  "tsconfig.json",
-]);
-
-const ENV_FILE_PATTERN = /^\.env(\..+)?$/;
-
-function isRootColdFile(fileName: string): boolean {
-  const normalized = fileName.replace(/\\/g, "/");
-  if (normalized.includes("/")) return false;
-  return ROOT_COLD_FILES.has(normalized) || ENV_FILE_PATTERN.test(normalized);
-}
-
 // ── VextFileWatcher 类 ──────────────────────────────────────
 
 export class VextFileWatcher extends EventEmitter {
-  /**
-   * 活跃的 watcher 列表（fs.watch 实例或 polling 定时器包装）
-   *
-   * stop() 时遍历关闭所有 watcher。
-   */
-  private watchers: Closeable[] = [];
-
-  /** 当前挂载的兼容项目根 preload/ 目录 watcher（如存在） */
-  private preloadWatcher: Closeable | null = null;
-
-  /** 当前挂载的 public 目录 watcher（如存在） */
-  private publicWatcher: Closeable | null = null;
-
-  /**
-   * 防抖期间暂存的变更集合
-   *
-   * key: 相对于项目根目录的文件路径（/ 分隔符）
-   * value: 分类动作 + 变更类型
-   *
-   * 同一文件在防抖窗口内多次变更时，cold 优先级最高。
-   */
+  private nativeWatchers = new Map<
+    string,
+    WatchTarget & { watcher: FSWatcher }
+  >();
+  private running = false;
+  private generation = 0;
+  private configurationRevision = 0;
+  private initializing = false;
+  private startTask: Promise<void> | undefined;
+  private scanRunner: Promise<void> | undefined;
+  private scanRequested = false;
+  private dirtyPaths = new Set<string>();
+  private snapshot: WatchSnapshot = new Map();
   private pendingChanges = new Map<string, PendingChange>();
-
-  /**
-   * 防抖定时器
-   *
-   * 每次收到新变更时重置定时器。
-   * 定时器到期后调用 flush() 合并发射事件。
-   */
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  /**
-   * 配置选项（已填充默认值）
-   */
+  private debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private lastScanError: string | undefined;
   private readonly options: Required<
     Omit<WatcherOptions, "classifierOptions">
-  > & {
-    classifierOptions?: ClassifierOptions;
-  };
-
-  /**
-   * v2.2：已知文件路径集合，用于区分 add 和 modify
-   *
-   * 在 start() 时扫描 src/ 初始化，后续根据文件变更事件维护：
-   *   - add 事件 → 加入集合
-   *   - delete 事件 → 从集合移除
-   *
-   * fs.watch 的 'rename' 事件无法直接区分新建和删除，
-   * 需要配合 existsSync + knownFiles 来判断。
-   */
-  private knownFiles = new Set<string>();
+  > & { classifierOptions?: ClassifierOptions };
 
   constructor(options: WatcherOptions) {
     super();
@@ -189,739 +136,263 @@ export class VextFileWatcher extends EventEmitter {
       usePolling: false,
       pollInterval: 1000,
       ...options,
+      root: resolve(options.root),
     };
   }
 
-  // ── 启动 ────────────────────────────────────────────────
+  /** 配置由 child 一次求值；parent 只消费目录 DTO，不执行用户配置。 */
+  updateClassifierOptions(options: ClassifierOptions): void {
+    this.options.classifierOptions = { ...options };
+    this.configurationRevision++;
+    this.requestScan();
+  }
 
-  /**
-   * start — 启动文件监听
-   *
-   * 流程：
-   *   1. 扫描 src/ 初始化已知文件集合（knownFiles）
-   *   2. 根据 usePolling 选项决定监听模式：
-   *      - polling = false → 使用 fs.watch（递归监听 src/ + 单文件监听根配置）
-   *      - polling = true → 使用 setInterval 定期扫描
-   *
-   * 监听目标：
-   *   - src/ 目录（递归，所有源码文件变更）
-   *   - preload/ 目录（非递归，项目级 preload 文件变更）
-   *   - public/ 目录（递归，前端静态资源）
-   *   - 根目录配置文件（package.json, tsconfig.json）
-   *   - .env 文件（.env, .env.local, .env.production 等）
-   */
-  async start(): Promise<void> {
-    const { root, usePolling } = this.options;
-
-    // v2.2: 初始化已知文件集合（用于区分 add/modify/delete）
-    await this.initKnownFiles(root);
-
-    if (usePolling) {
-      this.startPolling();
-      return;
-    }
-
-    // ── 递归监听 src/ 目录 ──────────────────────────────
-    const srcDir = join(root, "src");
-
-    try {
-      const watcher = watch(
-        srcDir,
-        {
-          recursive: true,
-          persistent: true,
-        },
-        (eventType, filename) => {
-          if (!filename) return;
-
-          const relativePath = relative(root, join(srcDir, filename));
-          const normalizedPath = relativePath.replace(/\\/g, "/");
-
-          // v2.2 修复：根据 eventType 和文件系统状态准确判断变更类型
-          //
-          // fs.watch 的 eventType 语义：
-          //   'change'  → 文件内容修改（Windows/macOS/Linux 一致）
-          //   'rename'  → 文件新建、删除、或重命名（无法直接区分）
-          //
-          // v2.1 Bug：所有事件 changeType 默认为 'modify'，Tier 2 永远不触发。
-          // v2.2 Fix：
-          //   - 'change' 事件 → 'modify'
-          //   - 'rename' 事件 → 用 existsSync 判断文件是否存在：
-          //     - 存在 + 不在 knownFiles 中 → 'add'（新文件）
-          //     - 存在 + 在 knownFiles 中 → 'modify'（某些平台 rename 后同名写回）
-          //     - 不存在 → 'delete'
-          const changeType = this.detectChangeType(
-            eventType,
-            normalizedPath,
-            join(srcDir, filename),
-          );
-
-          this.onFileChange(normalizedPath, changeType);
-        },
-      );
-
-      watcher.on("error", (err) => {
-        // Docker 中 inotify 可能报 ENOSPC，降级为 polling
-        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
-          console.warn(
-            "[vext dev] inotify limit reached, falling back to polling",
-          );
-          this.restartWithPolling();
-        }
-      });
-
-      this.watchers.push(watcher);
-    } catch {
-      // src/ 目录不存在时静默跳过
-    }
-
-    // ── 兼容 preload/ 目录监听（非递归；src/preload/ 已由 src watcher 覆盖）──
-    this.attachPreloadWatcher(root);
-    this.attachPublicWatcher(root);
-
-    // ── 项目根目录监听（补足兼容 preload/public 和根冷重启文件动态变化）────
-    try {
-      const watcher = watch(
-        root,
-        {
-          recursive: false,
-          persistent: true,
-        },
-        (eventType, filename) => {
-          if (!filename) return;
-
-          const normalized = String(filename).replace(/\\/g, "/");
-          if (isRootColdFile(normalized)) {
-            const changeType = this.detectChangeType(
-              eventType,
-              normalized,
-              join(root, normalized),
-            );
-            this.onFileChange(normalized, changeType);
-          }
-          if (normalized === "preload" || normalized.startsWith("preload/")) {
-            void this.reconcilePreloadWatcher(root);
-          }
-          if (normalized.startsWith("public")) {
-            void this.reconcilePublicWatcher(root);
-          }
-        },
-      );
-
-      watcher.on("error", (err) => {
-        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
-          console.warn(
-            "[vext dev] inotify limit reached, falling back to polling",
-          );
-          this.restartWithPolling();
-        }
-      });
-
-      this.watchers.push(watcher);
-    } catch {
-      // 根目录监听失败时静默跳过
-    }
-
-    // ── 根目录配置文件单独监听 ──────────────────────────
-    //
-    // 配置文件变更触发 Cold Restart，需要在 src/ 外单独监听。
-    // 这些文件通常在项目根目录（与 src/ 同级）。
-    //
-    for (const configFile of this.findRootColdFiles(root)) {
-      const fullPath = join(root, configFile);
+  start(): Promise<void> {
+    if (this.running) return this.startTask ?? Promise.resolve();
+    this.running = true;
+    this.initializing = true;
+    const generation = ++this.generation;
+    const task = (async () => {
       try {
-        statSync(fullPath);
-        const watcher = watch(fullPath, () => {
-          // 配置文件只关心内容修改，不关心 add/delete
-          this.onFileChange(configFile, "modify");
-        });
-        this.watchers.push(watcher);
-      } catch {
-        // 文件不存在，跳过
+        let revision: number;
+        let snapshot: WatchSnapshot;
+        do {
+          revision = this.configurationRevision;
+          snapshot = await readWatchSnapshot(
+            this.options.root,
+            this.options.classifierOptions,
+          );
+          if (!this.isCurrent(generation)) return;
+        } while (revision !== this.configurationRevision);
+        this.snapshot = snapshot;
+        this.initializing = false;
+        if (this.options.usePolling) this.startPolling();
+        else this.reconcileNativeWatchers(generation);
+        // 挂载与初次扫描之间的变化也必须得到下一轮检查。
+        this.requestScan();
+      } catch (error) {
+        if (this.isCurrent(generation)) this.stop();
+        throw error;
+      } finally {
+        if (this.generation === generation) this.startTask = undefined;
       }
-    }
+    })();
+    this.startTask = task;
+    return task;
   }
 
-  // ── 停止 ────────────────────────────────────────────────
-
-  /**
-   * stop — 停止所有 watcher 并清理状态
-   *
-   * 关闭所有 fs.watch 实例和 polling 定时器，
-   * 清空 pending 变更和已知文件集合。
-   *
-   * 调用后可通过 start() 重新启动。
-   */
   stop(): void {
-    for (const watcher of this.watchers) {
-      watcher.close();
-    }
-    this.watchers = [];
-
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-
+    this.running = false;
+    this.generation++;
+    this.initializing = false;
+    this.startTask = undefined;
+    this.scanRunner = undefined;
+    this.scanRequested = false;
+    this.closeNativeWatchers();
+    clearTimeout(this.debounceTimer);
+    clearTimeout(this.retryTimer);
+    clearInterval(this.pollTimer);
+    this.debounceTimer = this.retryTimer = this.pollTimer = undefined;
     this.pendingChanges.clear();
-    this.knownFiles.clear();
-    this.preloadWatcher = null;
-    this.publicWatcher = null;
+    this.dirtyPaths.clear();
+    this.snapshot = new Map();
+    this.lastScanError = undefined;
   }
 
-  // ── 内部方法 ──────────────────────────────────────────────
+  private isCurrent(generation: number): boolean {
+    return this.running && this.generation === generation;
+  }
 
-  /**
-   * findRootColdFiles — 查找根目录下会触发冷重启的文件
-   *
-   * 覆盖 package.json、主流依赖 lockfile、tsconfig.json，以及
-   * .env、.env.local、.env.production、.env.development 等。
-   *
-   * @param root 项目根目录
-   * @returns 根目录冷重启文件名列表
-   */
-  private findRootColdFiles(root: string): string[] {
-    const files = new Set(ROOT_COLD_FILES);
-    try {
-      const entries = readdirSync(root, { encoding: "utf-8" });
-      for (const entry of entries) {
-        if (isRootColdFile(entry)) {
-          files.add(entry);
+  private closeNativeWatchers(): void {
+    for (const { watcher } of this.nativeWatchers.values()) watcher.close();
+    this.nativeWatchers.clear();
+  }
+
+  private reconcileNativeWatchers(generation: number): void {
+    if (!this.isCurrent(generation) || this.options.usePolling) return;
+    const targets = readWatchTargets(
+      this.options.root,
+      this.options.classifierOptions,
+    );
+    for (const [target, current] of this.nativeWatchers) {
+      const next = targets.get(target);
+      if (
+        !next ||
+        next.identity !== current.identity ||
+        next.recursive !== current.recursive
+      ) {
+        current.watcher.close();
+        this.nativeWatchers.delete(target);
+      }
+    }
+    for (const [target, descriptor] of targets) {
+      if (this.nativeWatchers.has(target)) continue;
+      try {
+        const watcher = watch(
+          target,
+          { recursive: descriptor.recursive, persistent: true },
+          (_event, filename) => {
+            if (!this.isCurrent(generation)) return;
+            const hint = filename
+              ? relative(
+                  this.options.root,
+                  join(target, String(filename)),
+                ).replaceAll("\\", "/")
+              : undefined;
+            this.requestScan(hint);
+          },
+        );
+        watcher.on("error", (error: Error) => {
+          if (
+            this.isCurrent(generation) &&
+            this.nativeWatchers.get(target)?.watcher === watcher
+          )
+            this.fallbackToPolling(error);
+        });
+        this.nativeWatchers.set(target, { ...descriptor, watcher });
+      } catch (error) {
+        this.fallbackToPolling(error);
+        return;
+      }
+    }
+  }
+
+  private fallbackToPolling(error: unknown): void {
+    if (!this.running) return;
+    console.warn(
+      "[vext dev] native file watch failed; falling back to polling:",
+      error,
+    );
+    this.closeNativeWatchers();
+    this.options.usePolling = true;
+    this.startPolling();
+    // 保留已知快照和积压事件；重新 start 会丢掉降级期间的修改。
+    this.requestScan();
+  }
+
+  private startPolling(): void {
+    if (this.pollTimer) return;
+    const generation = this.generation;
+    this.pollTimer = setInterval(() => {
+      if (this.isCurrent(generation) && !this.scanRunner) this.requestScan();
+    }, this.options.pollInterval);
+  }
+
+  private requestScan(hint?: string): void {
+    if (!this.running) return;
+    if (hint) this.dirtyPaths.add(hint);
+    this.scanRequested = true;
+    if (this.initializing || this.scanRunner) return;
+    const generation = this.generation;
+    const runner = Promise.resolve().then(() => this.drainScans(generation));
+    this.scanRunner = runner;
+    void runner.finally(() => {
+      if (this.scanRunner !== runner) return;
+      this.scanRunner = undefined;
+      if (this.isCurrent(generation) && this.scanRequested) this.requestScan();
+    });
+  }
+
+  private async drainScans(generation: number): Promise<void> {
+    while (this.isCurrent(generation) && this.scanRequested) {
+      this.scanRequested = false;
+      const hints = this.dirtyPaths;
+      this.dirtyPaths = new Set();
+      const revision = this.configurationRevision;
+      try {
+        const next = await readWatchSnapshot(
+          this.options.root,
+          this.options.classifierOptions,
+        );
+        if (!this.isCurrent(generation)) return;
+        if (revision !== this.configurationRevision) {
+          for (const hint of hints) this.dirtyPaths.add(hint);
+          this.scanRequested = true;
+          continue;
         }
-      }
-    } catch {
-      files.add(".env"); // fallback: 至少覆盖常见 env 文件
-    }
-    return [...files];
-  }
-
-  /**
-   * detectChangeType — 根据 fs.watch 事件类型和文件系统状态判断变更类型（v2.2）
-   *
-   * fs.watch 的 eventType 语义在不同平台有差异：
-   *
-   * | 平台    | eventType='change' | eventType='rename'          |
-   * |---------|-------------------|-----------------------------|
-   * | macOS   | 内容修改           | 新建/删除/重命名              |
-   * | Windows | 内容修改           | rename 可能触发两次            |
-   * | Linux   | 内容修改           | vim 写文件时可能报 rename       |
-   *
-   * 此方法统一处理跨平台差异：
-   *   - 'change' → 'modify'
-   *   - 'rename' → 检查文件是否存在 + knownFiles 集合来区分 add/modify/delete
-   *
-   * @param eventType fs.watch 回调的 eventType 参数
-   * @param normalizedPath 相对于项目根的规范化路径（/ 分隔符）
-   * @param absolutePath 文件的绝对路径（用于 existsSync 检查）
-   * @returns 变更类型
-   */
-  private detectChangeType(
-    eventType: string,
-    normalizedPath: string,
-    absolutePath: string,
-  ): "modify" | "add" | "delete" {
-    if (eventType === "change") {
-      if (!this.knownFiles.has(normalizedPath) && existsSync(absolutePath)) {
-        this.knownFiles.add(normalizedPath);
-        return "add";
-      }
-      // 内容修改（所有平台一致）
-      return "modify";
-    }
-
-    // eventType === 'rename'：可能是新建、删除或重命名
-    if (existsSync(absolutePath)) {
-      // 文件存在
-      if (this.knownFiles.has(normalizedPath)) {
-        // 已知文件 — 可能是某些平台将内容修改也报为 rename
-        // 或者是 Vim/Emacs 的 "delete + rename" 策略中的 rename 阶段
-        return "modify";
-      } else {
-        // 新文件 — add
-        this.knownFiles.add(normalizedPath);
-        return "add";
-      }
-    } else {
-      // 文件不存在 — delete
-      this.knownFiles.delete(normalizedPath);
-      return "delete";
-    }
-  }
-
-  /**
-   * initKnownFiles — 初始化已知文件集合（v2.2）
-   *
-   * 启动时扫描 src/ 目录，记录所有已存在的文件路径。
-   * 后续 detectChangeType() 通过检查文件是否在 knownFiles 中
-   * 来区分 add 和 modify。
-   *
-   * @param root 项目根目录
-   */
-  private async initKnownFiles(root: string): Promise<void> {
-    this.knownFiles.clear();
-    const srcDir = join(root, "src");
-    const files = [
-      ...(await this.walkDirectory(srcDir)),
-      ...(await this.listPreloadFiles(root)),
-      ...(await this.listPublicFiles(root)),
-      ...this.findExistingRootColdFilePaths(root),
-    ];
-    for (const file of files) {
-      const rel = relative(root, file).replace(/\\/g, "/");
-      this.knownFiles.add(rel);
-    }
-  }
-
-  private attachPreloadWatcher(root: string): void {
-    if (this.preloadWatcher) return;
-
-    const preloadDir = join(root, "preload");
-
-    try {
-      const watcher = watch(
-        preloadDir,
-        {
-          recursive: false,
-          persistent: true,
-        },
-        (eventType, filename) => {
-          if (!filename) return;
-
-          const relativePath = relative(root, join(preloadDir, filename));
-          const normalizedPath = relativePath.replace(/\\/g, "/");
-
-          const changeType = this.detectChangeType(
-            eventType,
-            normalizedPath,
-            join(preloadDir, filename),
-          );
-
-          this.onFileChange(normalizedPath, changeType);
-        },
-      );
-
-      watcher.on("error", (err) => {
-        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
+        this.reconcileNativeWatchers(generation);
+        const changes: FileChangeInfo[] = [];
+        for (const [file, stamp] of next) {
+          const previous = this.snapshot.get(file);
+          if (previous === undefined) changes.push({ path: file, type: "add" });
+          else if (stamp !== previous || hints.has(file))
+            changes.push({ path: file, type: "modify" });
+        }
+        for (const file of this.snapshot.keys()) {
+          if (!next.has(file)) changes.push({ path: file, type: "delete" });
+        }
+        this.snapshot = next;
+        for (const change of changes)
+          this.onFileChange(change.path, change.type);
+        if (this.lastScanError !== undefined) {
+          this.lastScanError = undefined;
+          console.info("[vext dev] file monitoring recovered");
+        }
+      } catch (error) {
+        if (!this.isCurrent(generation)) return;
+        for (const hint of hints) this.dirtyPaths.add(hint);
+        this.scanRequested = false;
+        const detail = error instanceof Error ? error.message : String(error);
+        if (detail !== this.lastScanError) {
+          this.lastScanError = detail;
           console.warn(
-            "[vext dev] inotify limit reached, falling back to polling",
+            "[vext dev] file scan failed; retaining previous state and retrying:",
+            error,
           );
-          this.restartWithPolling();
         }
-      });
-
-      this.preloadWatcher = watcher;
-      this.watchers.push(watcher);
-    } catch {
-      // 兼容 preload/ 目录不存在时静默跳过
-    }
-  }
-
-  private async reconcilePreloadWatcher(root: string): Promise<void> {
-    const preloadDir = join(root, "preload");
-
-    if (!existsSync(preloadDir)) {
-      for (const filePath of [...this.knownFiles]) {
-        if (!filePath.startsWith("preload/")) continue;
-        this.knownFiles.delete(filePath);
-        this.onFileChange(filePath, "delete");
-      }
-
-      if (this.preloadWatcher) {
-        this.preloadWatcher.close();
-        this.preloadWatcher = null;
-      }
-      return;
-    }
-
-    if (!this.preloadWatcher) {
-      this.attachPreloadWatcher(root);
-    }
-
-    const currentFiles = await this.listPreloadFiles(root);
-    for (const file of currentFiles) {
-      const relativePath = relative(root, file).replace(/\\/g, "/");
-      if (this.knownFiles.has(relativePath)) continue;
-      this.knownFiles.add(relativePath);
-      this.onFileChange(relativePath, "add");
-    }
-  }
-
-  private attachPublicWatcher(root: string): void {
-    if (this.publicWatcher) return;
-
-    const publicDir = join(root, "public");
-
-    try {
-      const watcher = watch(
-        publicDir,
-        {
-          recursive: true,
-          persistent: true,
-        },
-        (eventType, filename) => {
-          if (!filename) return;
-
-          const relativePath = relative(root, join(publicDir, filename));
-          const normalizedPath = relativePath.replace(/\\/g, "/");
-
-          const changeType = this.detectChangeType(
-            eventType,
-            normalizedPath,
-            join(publicDir, filename),
-          );
-
-          this.onFileChange(normalizedPath, changeType);
-        },
-      );
-
-      watcher.on("error", (err) => {
-        if ((err as NodeJS.ErrnoException).code === "ENOSPC") {
-          console.warn(
-            "[vext dev] inotify limit reached, falling back to polling",
-          );
-          this.restartWithPolling();
+        if (!this.retryTimer) {
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = undefined;
+            if (this.isCurrent(generation)) this.requestScan();
+          }, this.options.pollInterval);
         }
-      });
-
-      this.publicWatcher = watcher;
-      this.watchers.push(watcher);
-    } catch {
-      // public/ 目录不存在时静默跳过
+        return;
+      }
     }
   }
 
-  private async reconcilePublicWatcher(root: string): Promise<void> {
-    const publicDir = join(root, "public");
-
-    if (!existsSync(publicDir)) {
-      for (const filePath of [...this.knownFiles]) {
-        if (!filePath.startsWith("public/")) continue;
-        this.knownFiles.delete(filePath);
-        this.onFileChange(filePath, "delete");
-      }
-
-      if (this.publicWatcher) {
-        this.publicWatcher.close();
-        this.publicWatcher = null;
-      }
-      return;
-    }
-
-    if (!this.publicWatcher) {
-      this.attachPublicWatcher(root);
-    }
-
-    const currentFiles = await this.listPublicFiles(root);
-    for (const file of currentFiles) {
-      const relativePath = relative(root, file).replace(/\\/g, "/");
-      if (this.knownFiles.has(relativePath)) continue;
-      this.knownFiles.add(relativePath);
-      this.onFileChange(relativePath, "add");
-    }
-  }
-
-  /**
-   * onFileChange — 处理文件变更事件
-   *
-   * 调用 classifyChange() 分类文件变更，忽略 ignore 类型，
-   * 将 cold/soft 类型加入 pending 集合，启动防抖定时器。
-   *
-   * 合并策略：
-   *   - 同一文件在防抖窗口内多次变更 → 保留最高优先级的 action（cold > soft > client）
-   *   - 不同文件独立记录
-   *
-   * @param relativePath 相对于项目根目录的文件路径（/ 分隔符）
-   * @param changeType 变更类型
-   */
   private onFileChange(
     relativePath: string,
-    changeType: "modify" | "add" | "delete",
+    changeType: FileChangeInfo["type"],
   ): void {
+    if (!this.running) return;
     const classification = classifyChange(
       relativePath,
       this.options.classifierOptions,
     );
     if (classification.action === "ignore") return;
-
-    // 合并到 pending 集合
-    // 如果已经有一个 cold，保持 cold（cold 优先级最高）
     const existing = this.pendingChanges.get(relativePath);
-    if (
-      !existing ||
-      compareActionPriority(classification.action, existing.action) > 0
-    ) {
+    // 首次 add 表示窗口开始时不存在；后续 modify 不能抹掉这个事实。
+    const existed = existing ? existing.type !== "add" : changeType !== "add";
+    const present = changeType !== "delete";
+    if (!existed && !present) this.pendingChanges.delete(relativePath);
+    else
       this.pendingChanges.set(relativePath, {
-        action: classification.action,
-        type: changeType,
+        action:
+          existing &&
+          compareActionPriority(existing.action, classification.action) > 0
+            ? existing.action
+            : classification.action,
+        type: !present ? "delete" : existed ? "modify" : "add",
       });
-    }
-
-    // 防抖：重置定时器
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-    }
+    clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => this.flush(), this.options.debounce);
   }
 
-  /**
-   * flush — 将 pending 变更合并为一个 FileChangeEvent 并发射
-   *
-   * 在防抖定时器到期后调用。
-   * 将 pendingChanges Map 转换为 FileChangeEvent 并发射 'change' 事件。
-   *
-   * action 合并规则：
-   *   - 只要有一个文件的 action 为 'cold' → 整体 action = 'cold'
-   *   - 有 server source 文件 → 整体 action = 'soft'
-   *   - 只有 client 文件 → 整体 action = 'client'
-   */
   private flush(): void {
-    if (this.pendingChanges.size === 0) return;
-
-    const files: FileChangeInfo[] = [...this.pendingChanges.entries()].map(
-      ([filePath, info]) => ({ path: filePath, type: info.type }),
-    );
-    const hasCold = [...this.pendingChanges.values()].some(
-      (v) => v.action === "cold",
-    );
-    const hasSoft = [...this.pendingChanges.values()].some(
-      (v) => v.action === "soft",
-    );
-
-    const event: FileChangeEvent = {
-      files,
-      action: hasCold ? "cold" : hasSoft ? "soft" : "client",
-    };
-
+    this.debounceTimer = undefined;
+    if (!this.running || this.pendingChanges.size === 0) return;
+    const files = [...this.pendingChanges]
+      .sort(([a], [b]) => a.localeCompare(b, "en"))
+      .map(([path, info]) => ({ path, type: info.type }));
+    const values = [...this.pendingChanges.values()];
+    const action = values.some((value) => value.action === "cold")
+      ? "cold"
+      : values.some((value) => value.action === "soft")
+        ? "soft"
+        : "client";
     this.pendingChanges.clear();
-    this.debounceTimer = null;
-
-    this.emit("change", event);
-  }
-
-  /**
-   * restartWithPolling — 当 inotify 限制时降级为 polling 模式
-   *
-   * 关闭所有现有 watcher，切换到 polling 模式重新开始监听。
-   * 这是 Docker 容器中 inotify 报 ENOSPC 时的降级策略。
-   */
-  private restartWithPolling(): void {
-    this.stop();
-    this.options.usePolling = true;
-    this.startPolling();
-  }
-
-  /**
-   * startPolling — Polling 降级方案
-   *
-   * 适用于 Docker 挂载卷、网络文件系统等 fs.watch 不可靠的环境。
-   *
-   * 工作原理：
-   *   1. 初始扫描建立基线（记录所有文件的 mtime）
-   *   2. 每隔 pollInterval 毫秒重新扫描
-   *   3. 对比前后两轮的文件列表和 mtime：
-   *      - 新出现的文件 → add
-   *      - mtime 变化的文件 → modify
-   *      - 消失的文件 → delete
-   *
-   * v2.2 改进：polling 模式也能正确检测 add/delete
-   * （通过对比前后两轮文件列表的差集）。
-   *
-   * 也会监听根目录配置文件（package.json, tsconfig.json, .env*）。
-   */
-  private startPolling(): void {
-    const { root, pollInterval } = this.options;
-    const fileStats = new Map<string, number>(); // path → mtime
-    let initialized = false;
-
-    const poll = async () => {
-      const srcDir = join(root, "src");
-      const files = [
-        ...(await this.walkDirectory(srcDir)),
-        ...(await this.listPreloadFiles(root)),
-        ...(await this.listPublicFiles(root)),
-      ];
-      const currentPaths = new Set<string>();
-
-      for (const file of files) {
-        const relativePath = relative(root, file).replace(/\\/g, "/");
-        currentPaths.add(relativePath);
-
-        try {
-          const stat = statSync(file);
-          const mtime = stat.mtimeMs;
-          const prev = fileStats.get(relativePath);
-
-          if (prev === undefined) {
-            // 新文件（首轮扫描除外）
-            if (initialized) {
-              this.onFileChange(relativePath, "add");
-            }
-          } else if (prev !== mtime) {
-            // 内容修改
-            this.onFileChange(relativePath, "modify");
-          }
-          fileStats.set(relativePath, mtime);
-        } catch {
-          // stat 失败，可能已删除（下面的删除检测会处理）
-        }
-      }
-
-      // 轮询根目录冷重启文件（package.json、lockfile、tsconfig.json、.env*）
-      for (const configFile of this.findRootColdFiles(root)) {
-        const fullPath = join(root, configFile);
-        try {
-          const stat = statSync(fullPath);
-          const mtime = stat.mtimeMs;
-          const prev = fileStats.get(configFile);
-          currentPaths.add(configFile);
-
-          if (prev === undefined) {
-            fileStats.set(configFile, mtime);
-            if (initialized) {
-              this.onFileChange(configFile, "add");
-            }
-          } else if (prev !== mtime) {
-            fileStats.set(configFile, mtime);
-            this.onFileChange(configFile, "modify");
-          }
-        } catch {
-          // 文件不存在或 stat 失败
-        }
-      }
-
-      // 检测已删除的文件
-      for (const [trackedPath] of fileStats) {
-        if (!currentPaths.has(trackedPath)) {
-          fileStats.delete(trackedPath);
-          this.onFileChange(trackedPath, "delete");
-        }
-      }
-
-      if (!initialized) {
-        initialized = true;
-      }
-    };
-
-    // 初始扫描（建立基线）
-    const srcDir = join(root, "src");
-    Promise.all([
-      this.walkDirectory(srcDir),
-      this.listPreloadFiles(root),
-      this.listPublicFiles(root),
-    ])
-      .then(([srcFiles, preloadFiles, publicFiles]) => {
-        for (const file of [...srcFiles, ...preloadFiles, ...publicFiles]) {
-          const relativePath = relative(root, file).replace(/\\/g, "/");
-          try {
-            const stat = statSync(file);
-            fileStats.set(relativePath, stat.mtimeMs);
-          } catch {
-            // ignore
-          }
-        }
-
-        // 也记录根冷重启文件的初始 mtime
-        for (const configFile of this.findRootColdFiles(root)) {
-          try {
-            const stat = statSync(join(root, configFile));
-            fileStats.set(configFile, stat.mtimeMs);
-          } catch {
-            // ignore
-          }
-        }
-
-        initialized = true;
-      })
-      .catch(() => {
-        initialized = true;
-      });
-
-    const timer = setInterval(() => {
-      poll().catch(() => {
-        // polling 错误静默处理
-      });
-    }, pollInterval);
-
-    // 包装定时器为 Closeable 接口，统一由 stop() 管理
-    this.watchers.push({ close: () => clearInterval(timer) } as Closeable);
-  }
-
-  /**
-   * walkDirectory — 递归遍历目录，返回所有匹配的文件路径
-   *
-   * 遍历规则：
-   *   - 跳过以 `.` 开头的隐藏目录（如 .git, .vext）
-   *   - 跳过 node_modules 目录
-   *   - 收集 server 代码与 frontend client 常见资源文件
-   *
-   * @param dir 要遍历的目录绝对路径
-   * @returns 匹配的文件绝对路径列表
-   */
-  private async walkDirectory(dir: string): Promise<string[]> {
-    const results: string[] = [];
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          // 跳过隐藏目录和 node_modules
-          if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
-            results.push(...(await this.walkDirectory(fullPath)));
-          }
-        } else if (
-          /\.(ts|tsx|js|jsx|mjs|cjs|json|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|ttf|eot)$/.test(
-            entry.name,
-          )
-        ) {
-          results.push(fullPath);
-        }
-      }
-    } catch {
-      // 目录不存在或无权限
-    }
-    return results;
-  }
-
-  /**
-   * listPreloadFiles — 列出兼容项目根 preload/ 目录中的一级文件
-   *
-   * 仅收集项目级 preload 支持的候选文件类型，且不递归子目录。
-   */
-  private async listPreloadFiles(root: string): Promise<string[]> {
-    const preloadDir = join(root, "preload");
-    const results: string[] = [];
-
-    try {
-      const entries = await readdir(preloadDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isFile()) continue;
-        if (/\.(ts|mts|js|mjs)$/.test(entry.name)) {
-          results.push(join(preloadDir, entry.name));
-        }
-      }
-    } catch {
-      // preload/ 目录不存在或无权限
-    }
-
-    return results;
-  }
-
-  private async listPublicFiles(root: string): Promise<string[]> {
-    return this.walkDirectory(join(root, "public"));
-  }
-
-  private findExistingRootColdFilePaths(root: string): string[] {
-    const files: string[] = [];
-    for (const fileName of this.findRootColdFiles(root)) {
-      const fullPath = join(root, fileName);
-      try {
-        statSync(fullPath);
-        files.push(fullPath);
-      } catch {
-        // 文件不存在，跳过
-      }
-    }
-    return files;
+    this.emit("change", { files, action } satisfies FileChangeEvent);
   }
 }
 

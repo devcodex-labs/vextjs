@@ -327,6 +327,28 @@ describe("cache-invalidator", () => {
   // ── computeInvalidationSet ──────────────────────────────
 
   describe("computeInvalidationSet", () => {
+    it("全量目录请求覆盖已缓存业务文件并保留配置和其他项目", () => {
+      const outDir = testPath("full-reload");
+      const route = path.join(outDir, "routes", "index.js");
+      const config = path.join(outDir, "config", "default.js");
+      const other = testPath("full-reload-other", "route.js");
+      injectCacheEntry(route);
+      injectCacheEntry(config);
+      injectCacheEntry(other, [route]);
+      const result = computeInvalidationSet([outDir], outDir);
+      expect(result.invalidated).toEqual(new Set([route]));
+    });
+
+    it("反向依赖传播不得越过当前输出目录", () => {
+      const outDir = testPath("scoped-reload");
+      const service = path.join(outDir, "services", "a.js");
+      const other = testPath("scoped-reload-other", "index.js");
+      injectCacheEntry(service);
+      injectCacheEntry(other, [service]);
+      const result = computeInvalidationSet([service], outDir);
+      expect(result.invalidated).toEqual(new Set([service]));
+    });
+
     it("空文件列表应返回空失效集合", () => {
       const result = computeInvalidationSet([], testOutDir());
 

@@ -517,6 +517,21 @@ describe("SoftReloader", () => {
   // ════════════════════════════════════════════════════════════
 
   describe("并发保护", () => {
+    it("手动全量标记重建全部入口并失效当前输出缓存", async () => {
+      const compiler = createMockCompiler();
+      const reloader = new SoftReloader(
+        createDefaultOptions({ compiler: compiler as any }),
+      );
+      const result = await reloader.reload([{ path: "src/", type: "modify" }]);
+      expect(result.success).toBe(true);
+      expect(compiler.rebuildWithNewEntryPoints).toHaveBeenCalledTimes(1);
+      expect(compiler.compileFiles).not.toHaveBeenCalled();
+      expect(invalidateAndEvict).toHaveBeenCalledWith(
+        [compiler.getOutDir()],
+        compiler.getOutDir(),
+      );
+    });
+
     it("第一次 reload 执行期间，第二次 reload 应排队", async () => {
       let resolveFirst!: () => void;
       const firstPromise = new Promise<void>((resolve) => {
@@ -607,7 +622,7 @@ describe("SoftReloader", () => {
       expect(reloader.getSuccessCount()).toBe(2);
     });
 
-    it("排队的 reload 返回占位结果（success: true）", async () => {
+    it("排队的 reload 必须等待真实结果，不能提前返回 success", async () => {
       let resolveFirst!: () => void;
       const firstPromise = new Promise<void>((resolve) => {
         resolveFirst = resolve;
@@ -631,16 +646,22 @@ describe("SoftReloader", () => {
 
       await new Promise((r) => setTimeout(r, 10));
 
-      const result = await reloader.reload([
-        { path: "src/services/auth.ts", type: "modify" },
-      ]);
-
-      // 排队时立即返回占位结果
-      expect(result.success).toBe(true);
-      expect(result.elapsed).toBe(0);
+      let completed = false;
+      const queued = reloader
+        .reload([{ path: "src/services/auth.ts", type: "modify" }])
+        .then((result) => {
+          completed = true;
+          return result;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const completedBeforeExecution = completed;
 
       resolveFirst();
-      await reload1;
+      const [firstResult, queuedResult] = await Promise.all([reload1, queued]);
+      expect(completedBeforeExecution).toBe(false);
+      expect(queuedResult).toEqual(firstResult);
+      expect(queuedResult.success).toBe(true);
+      expect(reloader.getSuccessCount()).toBe(2);
     });
 
     it("运行态失败请求 cold restart 后应丢弃队列并停止后续 reload", async () => {
@@ -666,15 +687,18 @@ describe("SoftReloader", () => {
         ]);
         await new Promise((resolve) => setTimeout(resolve, 10));
 
-        const queuedResult = await reloader.reload([
+        const queued = reloader.reload([
           { path: "src/services/auth.ts", type: "modify" },
         ]);
-        expect(queuedResult.success).toBe(true);
         expect(reloader.hasPendingChanges()).toBe(true);
 
         releaseRouteReload();
         const failedResult = await firstReload;
         expect(failedResult.requestedColdRestart).toBe(true);
+        expect(await queued).toMatchObject({
+          success: false,
+          requestedColdRestart: true,
+        });
         expect(reloader.hasPendingChanges()).toBe(false);
         expect(compiler.compileFiles).toHaveBeenCalledTimes(1);
 
@@ -953,10 +977,13 @@ describe("SoftReloader", () => {
         expect(result.success).toBe(false);
         expect(result.requestedColdRestart).toBe(true);
         expect(hotHandler.swap).not.toHaveBeenCalled();
-        expect(send).toHaveBeenCalledWith({
-          type: "request-cold-restart",
-          reason: "soft reload failed after runtime mutation",
-        });
+        expect(send).toHaveBeenCalledWith(
+          {
+            type: "request-cold-restart",
+            reason: "soft reload failed after runtime mutation",
+          },
+          expect.any(Function),
+        );
       } finally {
         process.send = originalSend;
       }

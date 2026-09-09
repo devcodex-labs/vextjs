@@ -1,4 +1,9 @@
-import { devBootstrap } from "./dev-bootstrap.js";
+import { devBootstrap, DevCleanupError } from "./dev-bootstrap.js";
+import {
+  acquireProjectOwner,
+  adoptProjectOwner,
+  type ProjectOwnerGrant,
+} from "../project/owner.js";
 
 /**
  * dev-entry.ts — Dev 子进程入口（Phase 2A）
@@ -44,7 +49,90 @@ if (!projectRoot) {
 
 // ── 执行 devBootstrap ──────────────────────────────────────
 
-devBootstrap({ projectRoot }).catch((err: unknown) => {
+async function startOwnedWorker(rootDir: string): Promise<void> {
+  const grant =
+    process.env.VEXT_DEV_OWNER_REQUIRED === "1"
+      ? await new Promise<ProjectOwnerGrant>((resolve, reject) => {
+          const cleanup = () => {
+            clearTimeout(timer);
+            process.off("message", onMessage);
+            process.off("disconnect", onGrantDisconnect);
+          };
+          const timer = setTimeout(() => {
+            cleanup();
+            reject(new Error("[vext dev] parent owner grant timed out"));
+          }, 5000);
+          const onMessage = (value: unknown) => {
+            if (
+              value &&
+              typeof value === "object" &&
+              (value as Record<string, unknown>).type === "owner-grant"
+            ) {
+              cleanup();
+              resolve((value as { grant: ProjectOwnerGrant }).grant);
+            }
+          };
+          const onGrantDisconnect = () => {
+            cleanup();
+            reject(
+              new Error("[vext dev] parent disconnected before owner grant"),
+            );
+          };
+          process.on("message", onMessage);
+          process.once("disconnect", onGrantDisconnect);
+          if (!process.connected || !process.send) {
+            cleanup();
+            reject(new Error("[vext dev] missing parent IPC channel"));
+          } else
+            process.send({ type: "owner-request" }, (error) => {
+              if (error) {
+                cleanup();
+                reject(error);
+              }
+            });
+        })
+      : undefined;
+  const owner = grant
+    ? await adoptProjectOwner(rootDir, grant)
+    : await acquireProjectOwner(rootDir, "dev");
+  let close: (() => Promise<void>) | undefined;
+  let disconnected = false;
+  let disconnectDeadline: NodeJS.Timeout | undefined;
+  const onDisconnect = () => {
+    disconnected = true;
+    disconnectDeadline = setTimeout(() => process.exit(1), 2000);
+    if (close)
+      void close().then(
+        () => {
+          clearTimeout(disconnectDeadline);
+          process.exit(0);
+        },
+        (error: unknown) => {
+          console.error("[vext dev] orphan worker cleanup failed:", error);
+          clearTimeout(disconnectDeadline);
+          process.exit(1);
+        },
+      );
+  };
+  process.once("disconnect", onDisconnect);
+  try {
+    const result = await owner.run(() =>
+      devBootstrap({ projectRoot: rootDir }),
+    );
+    close = result.close;
+    if (disconnected) {
+      await close();
+      clearTimeout(disconnectDeadline);
+      process.exit(0);
+    }
+  } catch (error) {
+    process.off("disconnect", onDisconnect);
+    if (!(error instanceof DevCleanupError)) await owner.release();
+    throw error;
+  }
+}
+
+startOwnedWorker(projectRoot).catch((err: unknown) => {
   // devBootstrap 内部已做资源清理（server/compiler/internals），
   // 这里只需要输出错误信息并退出。
   //

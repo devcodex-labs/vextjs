@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sendMessageToParent } from "../ipc-message.js";
 
 import type { DevCompiler } from "./compiler.js";
 import type { HotSwappableHandler } from "./hot-swappable-handler.js";
@@ -272,6 +273,7 @@ export class SoftReloader {
    * 暂存到待处理队列中，当前 reload 完成后自动处理队列。
    */
   private reloadLock = false;
+  private reloadTask: Promise<SoftReloadResult> | null = null;
 
   /**
    * 待处理的变更文件队列
@@ -349,7 +351,13 @@ export class SoftReloader {
         // 按 path 去重，保留最新的 type
         const map = new Map(this.pendingReload.map((f) => [f.path, f]));
         for (const f of changedFiles) {
-          map.set(f.path, f);
+          const previous = map.get(f.path);
+          map.set(
+            f.path,
+            previous && previous.type !== "modify" && f.type === "modify"
+              ? { ...f, type: "add" }
+              : f,
+          );
         }
         this.pendingReload = [...map.values()];
       } else {
@@ -358,25 +366,20 @@ export class SoftReloader {
       this.logger.debug(
         `[hot-reload] reload in progress, queued ${changedFiles.length} file(s)`,
       );
-      // 返回一个"已排队"的占位结果
-      return {
-        success: true,
-        requestedColdRestart: false,
-        elapsed: 0,
-        compileTime: 0,
-        cacheTime: 0,
-        i18nTime: 0,
-        middlewareTime: 0,
-        serviceTime: 0,
-        modelTime: 0,
-        routeTime: 0,
-        swapTime: 0,
-        tier: "T1:code",
-        evictedModules: 0,
-      };
+      // 排队不等于处理成功；所有调用等到覆盖积压变更的真实结果。
+      return this.reloadTask!;
     }
 
     this.reloadLock = true;
+    this.reloadTask = Promise.resolve().then(() =>
+      this.drainReloads(changedFiles),
+    );
+    return this.reloadTask;
+  }
+
+  private async drainReloads(
+    changedFiles: FileChangeInfo[],
+  ): Promise<SoftReloadResult> {
     let lastResult: SoftReloadResult;
 
     try {
@@ -403,6 +406,7 @@ export class SoftReloader {
       return lastResult;
     } finally {
       this.reloadLock = false;
+      this.reloadTask = null;
     }
   }
 
@@ -458,7 +462,15 @@ export class SoftReloader {
 
     this.coldRestartRequested = true;
     this.pendingReload = null;
-    process.send?.({ type: "request-cold-restart", reason });
+    if (process.send)
+      sendMessageToParent({ type: "request-cold-restart", reason }).catch(
+        (error) => {
+          this.logger.error(
+            "[vext dev] cold restart notification failed:",
+            error,
+          );
+        },
+      );
   }
 
   // ── 私有方法 ──────────────────────────────────────────────
@@ -498,9 +510,12 @@ export class SoftReloader {
     // 此后失败不能只保留旧 handler，必须让父进程替换当前 Worker。
     let requiresColdRestartOnFailure = false;
 
-    const hasStructuralChange = changedFiles.some(
-      (f) => f.type === "add" || f.type === "delete",
+    const reloadAll = changedFiles.some(
+      (file) => file.path === "src/" || file.path === "src",
     );
+    const hasStructuralChange =
+      reloadAll ||
+      changedFiles.some((f) => f.type === "add" || f.type === "delete");
     const tier: "T1:code" | "T2:structural" = hasStructuralChange
       ? "T2:structural"
       : "T1:code";
@@ -528,9 +543,9 @@ export class SoftReloader {
 
       const outDir = this.compiler.getOutDir();
       const filePaths = changedFiles.map((f) => f.path);
-      const compiledFiles = filePaths.map((f) =>
-        this.compiler.resolveCompiled(f),
-      );
+      const compiledFiles = reloadAll
+        ? [outDir]
+        : filePaths.map((f) => this.compiler.resolveCompiled(f));
 
       // 从缓存失效开始即可能出现部分运行态变更；即使该操作自身抛错，
       // 也必须走冷重启而不是继续复用旧 handler。
@@ -568,7 +583,7 @@ export class SoftReloader {
 
       // ── Step 2: 重载 i18n ───────────────────────────────
 
-      if (shouldReloadLocales(filePaths)) {
+      if (reloadAll || shouldReloadLocales(filePaths)) {
         await reloadLocales({
           outDir,
           logger: this.logger,

@@ -446,8 +446,8 @@ describe("DevCompiler", () => {
       expect(stats.fileCount).toBe(4);
     });
 
-    it("应清空已有的 outDir（确保干净状态）", async () => {
-      // 预先在 outDir 创建一个残留文件
+    it("应保留没有归属记录的输出目录文件", async () => {
+      // 不能仅凭扩展名把用户已有文件认作编译产物。
       fs.mkdirSync(outDir, { recursive: true });
       fs.writeFileSync(path.join(outDir, "stale.js"), "// stale file\n");
 
@@ -459,8 +459,9 @@ describe("DevCompiler", () => {
 
       await compiler.start();
 
-      // 残留文件应被清除
-      expect(fs.existsSync(path.join(outDir, "stale.js"))).toBe(false);
+      expect(fs.readFileSync(path.join(outDir, "stale.js"), "utf8")).toBe(
+        "// stale file\n",
+      );
       // 正常编译产物应存在
       expect(fs.existsSync(path.join(outDir, "index.js"))).toBe(true);
     });
@@ -483,8 +484,11 @@ describe("DevCompiler", () => {
       await compiler.start();
       await compiler.dispose();
 
-      const cachedOutput = "exports.version = 'cached-output';\n";
-      fs.writeFileSync(path.join(outDir, "index.js"), cachedOutput);
+      const cachedOutput = fs.readFileSync(
+        path.join(outDir, "index.js"),
+        "utf8",
+      );
+      const cachedMtime = fs.statSync(path.join(outDir, "index.js")).mtimeMs;
 
       compiler = new DevCompiler({
         srcDir,
@@ -494,9 +498,33 @@ describe("DevCompiler", () => {
       const stats = await compiler.start();
 
       expect(stats.cacheHit).toBe(true);
+      expect(fs.statSync(path.join(outDir, "index.js")).mtimeMs).toBe(
+        cachedMtime,
+      );
       expect(fs.readFileSync(path.join(outDir, "index.js"), "utf-8")).toBe(
         cachedOutput,
       );
+    });
+
+    it("不把被外部修改的编译输出当缓存命中，也不覆盖修改", async () => {
+      compiler = new DevCompiler({
+        srcDir,
+        outDir,
+        tsconfig: path.join(projectRoot, "tsconfig.json"),
+      });
+      await compiler.start();
+      await compiler.dispose();
+      const file = path.join(outDir, "index.js");
+      fs.writeFileSync(file, "external edit");
+      compiler = new DevCompiler({
+        srcDir,
+        outDir,
+        tsconfig: path.join(projectRoot, "tsconfig.json"),
+      });
+      await expect(compiler.start()).rejects.toMatchObject({
+        code: "VEXT_OUTPUT_CONFLICT",
+      });
+      expect(fs.readFileSync(file, "utf8")).toBe("external edit");
     });
   });
 
@@ -847,9 +875,9 @@ describe("DevCompiler", () => {
     });
   });
 
-  // ── tsconfig extends 展平 ─────────────────────────────
+  // ── tsconfig extends 解析 ─────────────────────────────
 
-  describe("tsconfig extends 展平", () => {
+  describe("tsconfig extends 解析", () => {
     it("应正确处理 tsconfig 的 extends 链", async () => {
       // 创建 base tsconfig
       fs.writeFileSync(
@@ -883,11 +911,11 @@ describe("DevCompiler", () => {
         tsconfig: path.join(projectRoot, "tsconfig.json"),
       });
 
-      // start 内部会调用 resolveTsconfig 展平 extends 链
+      // 全量与增量均由 esbuild 解析 extends 链。
       const stats = await compiler.start();
 
       expect(stats.fileCount).toBeGreaterThan(0);
-      // 编译应成功（如果 extends 解析失败，esbuild.transform 可能行为不一致）
+      // 编译后的行为另由 backend-modules 测试验证。
       expect(fs.existsSync(path.join(outDir, "index.js"))).toBe(true);
     });
 
