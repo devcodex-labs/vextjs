@@ -4,7 +4,11 @@ import { assertRealPathInside, resolvePathInside } from "../path-boundary.js";
 
 export class ProjectFileReadError extends Error {
   readonly code = "VEXT_FILE_UNVERIFIED";
-  constructor(file: string, reason: string) {
+  constructor(
+    file: string,
+    reason: string,
+    readonly kind: "limit" | "changed" | "unverified" = "unverified",
+  ) {
     super(`[vextjs] Cannot read a consistent project file ${file}: ${reason}`);
     this.name = "ProjectFileReadError";
   }
@@ -37,7 +41,7 @@ export function readProjectFile(
       maxBytes < 0 ||
       maxBytes > bufferConstants.MAX_LENGTH)
   ) {
-    throw new ProjectFileReadError(relativeFile, "invalid byte limit");
+    throw new ProjectFileReadError(relativeFile, "invalid byte limit", "limit");
   }
   const file = resolvePathInside(rootDir, relativeFile, "project file", {
     realpath: true,
@@ -53,7 +57,11 @@ export function readProjectFile(
     throw new ProjectFileReadError(relativeFile, "not a regular file");
   }
   if (before.size > BigInt(maxBytes ?? bufferConstants.MAX_LENGTH)) {
-    throw new ProjectFileReadError(relativeFile, "byte limit exceeded");
+    throw new ProjectFileReadError(
+      relativeFile,
+      "byte limit exceeded",
+      "limit",
+    );
   }
 
   // Windows不提供这两个POSIX flags；其余平台仅在宿主提供时使用。
@@ -66,7 +74,11 @@ export function readProjectFile(
   try {
     descriptor = fs.openSync(file, flags);
     if (!sameFile(before, fs.fstatSync(descriptor, { bigint: true }))) {
-      throw new ProjectFileReadError(relativeFile, "changed before reading");
+      throw new ProjectFileReadError(
+        relativeFile,
+        "changed before reading",
+        "changed",
+      );
     }
     assertRealPathInside(rootDir, file, "project file");
     const size = Number(before.size);
@@ -81,18 +93,30 @@ export function readProjectFile(
         offset,
       );
       if (count === 0)
-        throw new ProjectFileReadError(relativeFile, "truncated while reading");
+        throw new ProjectFileReadError(
+          relativeFile,
+          "truncated while reading",
+          "changed",
+        );
       offset += count;
     }
     // 最多额外读取一个字节，发现增长也不扩大已分配的正文缓冲区。
     if (fs.readSync(descriptor, Buffer.allocUnsafe(1), 0, 1, size) !== 0) {
-      throw new ProjectFileReadError(relativeFile, "grew while reading");
+      throw new ProjectFileReadError(
+        relativeFile,
+        "grew while reading",
+        "changed",
+      );
     }
     if (
       !sameFile(before, fs.fstatSync(descriptor, { bigint: true })) ||
       !sameFile(before, fs.lstatSync(file, { bigint: true }))
     ) {
-      throw new ProjectFileReadError(relativeFile, "changed while reading");
+      throw new ProjectFileReadError(
+        relativeFile,
+        "changed while reading",
+        "changed",
+      );
     }
     assertRealPathInside(rootDir, file, "project file");
     return bytes;
@@ -105,6 +129,7 @@ export function readProjectFile(
       throw new ProjectFileReadError(
         relativeFile,
         "path changed while reading",
+        "changed",
       );
     }
     throw error;
