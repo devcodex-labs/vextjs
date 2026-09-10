@@ -23,6 +23,7 @@ import {
   digestOrNull,
 } from "./artifact-journal.js";
 import { prepareArtifactScope, type ArtifactChange } from "./artifact-scope.js";
+import { recoverTemporaryArtifacts } from "./temporary-artifact.js";
 
 export interface ArtifactCandidate {
   path: string;
@@ -202,6 +203,7 @@ export async function withArtifactGroupTransaction<T>(
       );
   };
   try {
+    await recoverTemporaryArtifacts(owner);
     recoverArtifactFiles(root);
     let original = readArtifactFile(
       root,

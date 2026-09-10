@@ -158,7 +158,7 @@ export interface VextFrontendRenderer {
   ): VextRenderedPageEnvelope;
 }
 
-interface FrontendRendererAssets {
+export interface FrontendRendererAssets {
   manifest: VextFrontendRenderManifest;
   mediaManifest?: VextFrontendMediaManifest;
   template: string;
@@ -190,6 +190,21 @@ interface VextServerRendererModule {
 
 export function createFrontendRenderer(
   options: CreateFrontendRendererOptions,
+): VextFrontendRenderer {
+  return createRenderer(options);
+}
+
+/** 构建器内部入口：整次渲染只使用本代资产，公开运行时入口保持磁盘加载。 */
+export function createFrontendRendererWithAssets(
+  options: CreateFrontendRendererOptions,
+  readAssets: () => FrontendRendererAssets,
+): VextFrontendRenderer {
+  return createRenderer(options, readAssets);
+}
+
+function createRenderer(
+  options: CreateFrontendRendererOptions,
+  readAssets?: () => FrontendRendererAssets,
 ): VextFrontendRenderer {
   const config = isResolvedFrontendConfig(options.config)
     ? options.config
@@ -246,6 +261,7 @@ export function createFrontendRenderer(
 
   let cachedAssets: FrontendRendererAssets | undefined;
   const loadAssets = (): FrontendRendererAssets => {
+    if (readAssets) return readAssets();
     if (options.mode === "production" && cachedAssets) {
       return cachedAssets;
     }

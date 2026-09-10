@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Generate frontend sources, browser/server bundles, media, static pages, SEO, deploy metadata, and budget reports as one candidate set before committing both output roles. Preserve prior files on failures and recover interrupted temporary JSCSS execution; keep native ESM, top-level await, logical module paths, and isolated worker cleanup.
 - Serialize dev saves, manual restarts, and recovery; preserve saves during initial startup and wait for actual worker results. Handle saturated queues without spinning, cancel pending work on shutdown, and detect IPC send failures or disconnection. Manual full reload invalidates only the current project's output cache.
 - Keep the last complete watch snapshot on read failures, preserve pending changes when falling back to polling, and merge add/delete events by their final state. Concurrent cold restarts wait for the covering worker generation instead of returning a queued success.
 - Serialize project writers across CLI processes and preserve child ownership until workers exit. Compile backend code, preloads, and nested JSON into candidates, then commit only recorded outputs with recovery metadata; preserve unowned or externally modified files. `build --clean` no longer deletes the output tree before compilation succeeds.

@@ -17,6 +17,7 @@ import type {
 } from "../contract/types.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 import { createFrontendRenderer } from "../runtime/renderer.js";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import {
   buildClientContract,
   type RoutesManifestPayload,
@@ -48,35 +49,80 @@ export async function writeStaticFrontendArtifacts(
       "utf-8",
     ),
   ) as VextFrontendRenderManifest;
-  const staticRoutes = contract.routes.filter(
-    (route) => route.freshness?.mode === "static",
-  );
+  const planned = await createStaticFrontendArtifacts({
+    ...options,
+    contract,
+    renderManifest,
+    renderer: createFrontendRenderer({
+      rootDir: options.rootDir,
+      mode: options.mode,
+      config: options.config,
+    }),
+  });
   const stageDir = path.join(
     options.config.outDir,
     `.vext-static-stage-${randomUUID()}`,
   );
-  const artifacts: VextFrontendStaticArtifact[] = [];
-
   try {
     await mkdir(stageDir, { recursive: true });
-    const renderer = createFrontendRenderer({
-      rootDir: options.rootDir,
-      mode: options.mode,
-      config: options.config,
-    });
-    for (const route of staticRoutes) {
-      await writeStaticRouteArtifacts({
-        route,
-        renderManifest,
-        renderer,
+    for (const file of planned.files) {
+      if (file.path === planned.result.manifestPath) continue;
+      await writeStageFile(
         stageDir,
-        artifacts,
-      });
+        path.relative(options.config.outDir, file.path).replaceAll("\\", "/"),
+        Buffer.from(file.contents).toString("utf8"),
+      );
     }
-    await publishStaticStage(stageDir, options.config.outDir, artifacts);
+    await publishStaticStage(
+      stageDir,
+      options.config.outDir,
+      planned.result.artifacts,
+    );
   } catch (error) {
     await rm(stageDir, { recursive: true, force: true });
     throw error;
+  }
+
+  const manifest = planned.files.find(
+    (file) => file.path === planned.result.manifestPath,
+  )!;
+  await writeFile(manifest.path, manifest.contents);
+  return planned.result;
+}
+
+export async function createStaticFrontendArtifacts(
+  options: WriteStaticFrontendArtifactsOptions & {
+    contract: VextClientContract;
+    renderManifest: VextFrontendRenderManifest;
+    renderer: ReturnType<typeof createFrontendRenderer>;
+    signal?: AbortSignal;
+  },
+): Promise<{
+  result: WriteStaticFrontendArtifactsResult;
+  files: ArtifactCandidate[];
+}> {
+  const { contract, renderManifest, renderer } = options;
+  const artifacts: VextFrontendStaticArtifact[] = [];
+  const files: ArtifactCandidate[] = [];
+  for (const route of contract.routes.filter(
+    (route) => route.freshness?.mode === "static",
+  )) {
+    options.signal?.throwIfAborted();
+    await createStaticRouteArtifacts({
+      route,
+      renderManifest,
+      renderer,
+      artifacts,
+      write(relative, contents) {
+        const target = resolvePathInside(
+          options.config.outDir,
+          relative,
+          "frontend static artifact path",
+          { realpath: true },
+        );
+        files.push({ path: target, contents });
+      },
+    });
   }
 
   const manifest: VextFrontendStaticManifest = {
@@ -87,12 +133,11 @@ export async function writeStaticFrontendArtifacts(
     artifacts,
   };
   const manifestPath = path.join(options.config.outDir, "static-manifest.json");
-  await writeFile(
-    manifestPath,
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf-8",
-  );
-  return { manifestPath, artifacts };
+  files.push({
+    path: manifestPath,
+    contents: `${JSON.stringify(manifest, null, 2)}\n`,
+  });
+  return { result: { manifestPath, artifacts }, files };
 }
 
 async function readStaticRouteContract(
@@ -127,11 +172,11 @@ async function readStaticRouteContract(
   );
 }
 
-async function writeStaticRouteArtifacts(input: {
+async function createStaticRouteArtifacts(input: {
   route: VextClientRouteContract;
   renderManifest: VextFrontendRenderManifest;
   renderer: ReturnType<typeof createFrontendRenderer>;
-  stageDir: string;
+  write(relative: string, content: string): void;
   artifacts: VextFrontendStaticArtifact[];
 }): Promise<void> {
   const freshness = input.route.freshness;
@@ -175,8 +220,8 @@ async function writeStaticRouteArtifacts(input: {
       );
     }
 
-    await writeStageFile(input.stageDir, output.html, html);
-    if (data) await writeStageFile(input.stageDir, output.data, data);
+    input.write(output.html, html);
+    if (data) input.write(output.data, data);
     input.artifacts.push({
       routeId:
         input.route.routeId ?? `${input.route.method} ${input.route.path}`,

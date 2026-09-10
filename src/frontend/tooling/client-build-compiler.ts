@@ -2,7 +2,7 @@ import * as esbuild from "esbuild";
 import { withProjectOwner } from "../../lib/project/owner.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import { fileURLToPath } from "node:url";
@@ -17,12 +17,12 @@ import type {
   VextFrontendUserConfig,
 } from "../contract/types.js";
 import { resolveFrontendConfig } from "./config-resolver.js";
-import { writeClientContractFromRouteManifest } from "./client-contract-writer.js";
+import { createClientContractArtifacts } from "./client-contract-writer.js";
 import {
   type FrontendRenderRegistryResult,
-  writeFrontendRenderRegistry,
+  createFrontendRenderRegistryArtifacts,
 } from "./render-registry-writer.js";
-import { buildFrontendDeployManifest } from "../deploy/manifest.js";
+import { buildFrontendDeployManifestFromCandidates } from "../deploy/manifest.js";
 import { getFrontendContentType } from "../deploy/content-type.js";
 import { createSha256, createSriSha256 } from "../deploy/integrity.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
@@ -37,11 +37,20 @@ import {
 } from "./size-report.js";
 import { buildFrontendRouteAssets } from "./route-assets.js";
 import { createJscssBuildDefines } from "./jscss-extractor.js";
-import { writeStaticFrontendArtifacts } from "./static-artifact-writer.js";
-import { writeFrontendMediaArtifacts } from "./media-artifact-writer.js";
-import { writeFrontendSeoArtifacts } from "./seo-artifact-writer.js";
+import { createStaticFrontendArtifacts } from "./static-artifact-writer.js";
+import { createFrontendMediaArtifacts } from "./media-artifact-writer.js";
+import { createFrontendSeoArtifacts } from "./seo-artifact-writer.js";
+import { ArtifactDraft } from "../../lib/project/artifact-draft.js";
+import { withArtifactGroupTransaction } from "../../lib/project/artifact-transaction.js";
+import { createArtifactDraftPlugin } from "../../lib/build/artifact-draft-plugin.js";
+import { evaluateGeneratedModule } from "../../lib/build/generated-module.js";
+import {
+  createFrontendRendererWithAssets,
+  type FrontendRendererAssets,
+} from "../runtime/renderer.js";
 import {
   assertPathInside,
+  assertRealPathInside,
   assertSafeProjectOutputDirectory,
 } from "../../lib/path-boundary.js";
 
@@ -93,6 +102,39 @@ async function buildFrontendClientOwned(
   options: BuildFrontendClientOptions,
   config: ResolvedVextFrontendConfig,
 ): Promise<BuildFrontendClientResult> {
+  const outputs = [
+    {
+      outDir: path.join(options.rootDir, ".vext/generated/frontend"),
+      producer: "frontend-generated",
+    },
+    { outDir: config.outDir, producer: "frontend" },
+  ];
+  return withArtifactGroupTransaction(
+    { rootDir: options.rootDir, outputs },
+    async (transaction) => {
+      const draft = new ArtifactDraft(options.rootDir, outputs);
+      try {
+        options.signal?.throwIfAborted();
+        const result = await createFrontendClientArtifacts(
+          options,
+          config,
+          draft,
+        );
+        options.signal?.throwIfAborted();
+        await transaction.commit(draft.updates());
+        return result;
+      } finally {
+        draft.close();
+      }
+    },
+  );
+}
+
+async function createFrontendClientArtifacts(
+  options: BuildFrontendClientOptions,
+  config: ResolvedVextFrontendConfig,
+  draft: ArtifactDraft,
+): Promise<BuildFrontendClientResult> {
   assertSafeProjectOutputDirectory(
     options.rootDir,
     config.outDir,
@@ -104,9 +146,6 @@ async function buildFrontendClientOwned(
     "config.frontend.build.server.outFile",
   );
 
-  await rm(config.outDir, { recursive: true, force: true });
-  await mkdir(config.outDir, { recursive: true });
-
   const publicFiles = existsSync(config.publicDir)
     ? await fg("**/*", {
         cwd: config.publicDir,
@@ -115,19 +154,29 @@ async function buildFrontendClientOwned(
         followSymbolicLinks: false,
       })
     : [];
-  if (existsSync(config.publicDir)) {
-    await cp(config.publicDir, config.outDir, {
-      recursive: true,
-      force: true,
-      errorOnExist: false,
+  for (const file of publicFiles) {
+    const source = path.join(config.publicDir, file);
+    assertRealPathInside(options.rootDir, source, "frontend public source");
+    const entry = await lstat(source);
+    if (!entry.isFile() || entry.isSymbolicLink())
+      throw new Error(
+        `[vextjs] frontend public source must be a regular file: ${file}`,
+      );
+    draft.add({
+      path: path.join(config.outDir, file),
+      contents: await readFile(source),
+      source,
     });
   }
 
-  const registry = await writeFrontendRenderRegistry({
+  const registryArtifacts = await createFrontendRenderRegistryArtifacts({
     rootDir: options.rootDir,
     config,
     mode: options.mode,
+    signal: options.signal,
   });
+  const registry = registryArtifacts.result;
+  for (const file of registryArtifacts.files) draft.add(file);
   if (config.build.diagnostics.leakScan) {
     await assertRegistrySourcesHaveNoServerLeaks(
       config,
@@ -136,18 +185,21 @@ async function buildFrontendClientOwned(
     );
   }
 
-  if (!existsSync(config.entry)) {
+  if (!draft.has(config.entry) && !existsSync(config.entry)) {
     throw new Error(
       `[vextjs] frontend entry not found: ${path.relative(options.rootDir, config.entry)}`,
     );
   }
 
+  const contractArtifacts = await createClientContractArtifacts({
+    rootDir: options.rootDir,
+    outDir: config.outDir,
+  });
   const contract = config.apiClient.enabled
-    ? await writeClientContractFromRouteManifest({
-        rootDir: options.rootDir,
-        outDir: config.outDir,
-      })
+    ? contractArtifacts.result
     : undefined;
+  if (config.apiClient.enabled)
+    for (const file of contractArtifacts.files) draft.add(file);
   const nodePaths = resolveFrontendNodePaths(options.rootDir);
 
   const browserEntryPoints = [config.entry, registry.vendorEntryPath].filter(
@@ -155,6 +207,7 @@ async function buildFrontendClientOwned(
   );
   assertBrowserExternalRuntimeMappings(config);
   const buildResult = await esbuild.build({
+    write: false,
     entryPoints: browserEntryPoints,
     bundle: true,
     platform: "browser",
@@ -199,6 +252,7 @@ async function buildFrontendClientOwned(
       ...createJscssBuildDefines(config),
     },
     plugins: [
+      createArtifactDraftPlugin(draft),
       createAssetInlineLimitPlugin(config),
       createCssModulesPlugin(config),
       createReactRefreshRegistrationPlugin(
@@ -211,6 +265,7 @@ async function buildFrontendClientOwned(
     nodePaths,
     logLevel: "warning",
   });
+  for (const file of buildResult.outputFiles) draft.add(file);
   if (config.build.diagnostics.leakScan) {
     assertBrowserMetafileHasNoServerLeaks(
       config,
@@ -219,8 +274,8 @@ async function buildFrontendClientOwned(
     );
   }
 
-  await mkdir(path.dirname(config.build.server.outFile), { recursive: true });
   const serverBuildResult = await esbuild.build({
+    write: false,
     entryPoints: [registry.serverEntryPath],
     bundle: true,
     platform: "node",
@@ -238,23 +293,31 @@ async function buildFrontendClientOwned(
         options.mode === "production" ? '"production"' : '"development"',
       ...createJscssBuildDefines(config),
     },
-    plugins: [createFrontendServerResolverPlugin(config)],
+    plugins: [
+      createArtifactDraftPlugin(draft),
+      createFrontendServerResolverPlugin(config),
+    ],
     nodePaths,
     logLevel: "warning",
   });
+  for (const file of serverBuildResult.outputFiles) draft.add(file);
 
   const manifest = await attachManifestAssetMetadata(
     config,
     buildManifest(config, buildResult.metafile, options.mode),
+    (file) => draft.read(file),
   );
   const manifestPath = path.join(config.outDir, "manifest.json");
-  const routeAssets = await buildFrontendRouteAssets({
-    rootDir: options.rootDir,
-    config,
-    manifest,
-    metafile: buildResult.metafile,
-    registry,
-  });
+  const routeAssets = await buildFrontendRouteAssets(
+    {
+      rootDir: options.rootDir,
+      config,
+      manifest,
+      metafile: buildResult.metafile,
+      registry,
+    },
+    (file) => draft.read(file),
+  );
   const manifestRouteAssets = config.build.diagnostics.performanceReport
     ? routeAssets
     : stripRouteAssetPerformanceMetrics(routeAssets);
@@ -283,42 +346,75 @@ async function buildFrontendClientOwned(
     config.outDir,
     "messages-manifest.json",
   );
-  await writeFile(
-    manifestPath,
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf-8",
+  draft.add({
+    path: manifestPath,
+    contents: `${JSON.stringify(manifest, null, 2)}\n`,
+  });
+  draft.add({
+    path: renderManifestPath,
+    contents: `${JSON.stringify(renderManifest, null, 2)}\n`,
+  });
+  draft.add({
+    path: messagesManifestPath,
+    contents: `${JSON.stringify(messagesManifest, null, 2)}\n`,
+  });
+  const template = await renderIndexHtml(config, manifest);
+  draft.add(
+    { path: path.join(config.outDir, "index.html"), contents: template },
+    { replace: true },
   );
-  await writeFile(
-    renderManifestPath,
-    `${JSON.stringify(renderManifest, null, 2)}\n`,
-    "utf-8",
-  );
-  await writeFile(
-    messagesManifestPath,
-    `${JSON.stringify(messagesManifest, null, 2)}\n`,
-    "utf-8",
-  );
-  await writeFile(
-    path.join(config.outDir, "index.html"),
-    await renderIndexHtml(config, manifest),
-    "utf-8",
-  );
-  const mediaArtifacts = await writeFrontendMediaArtifacts({
+  const mediaPlan = await createFrontendMediaArtifacts({
     rootDir: options.rootDir,
     config,
     mode: options.mode,
   });
-  const staticArtifacts = await writeStaticFrontendArtifacts({
+  const mediaArtifacts = mediaPlan.result;
+  for (const file of mediaPlan.files) draft.add(file);
+  let renderAssets: FrontendRendererAssets | undefined;
+  const renderer = createFrontendRendererWithAssets(
+    { rootDir: options.rootDir, config, mode: options.mode },
+    () => {
+      renderAssets ??= {
+        manifest: renderManifest,
+        mediaManifest: mediaArtifacts.manifest,
+        template,
+        serverRendererPath: config.build.server.outFile,
+        serverRenderer: evaluateGeneratedModule<
+          FrontendRendererAssets["serverRenderer"]
+        >(draft.read(config.build.server.outFile), config.build.server.outFile),
+      };
+      return renderAssets;
+    },
+  );
+  const staticPlan = await createStaticFrontendArtifacts({
     rootDir: options.rootDir,
     config,
     mode: options.mode,
+    contract: contractArtifacts.contract,
+    renderManifest,
+    renderer,
+    signal: options.signal,
   });
-  const seoArtifacts = await writeFrontendSeoArtifacts({
+  const staticArtifacts = staticPlan.result;
+  for (const file of staticPlan.files)
+    draft.add(file, {
+      replace: path.relative(config.outDir, file.path) === "index.html",
+    });
+  const seoPlan = await createFrontendSeoArtifacts({
     rootDir: options.rootDir,
     config,
     staticArtifacts: staticArtifacts.artifacts,
     signal: options.signal,
+    contract: contractArtifacts.contract,
   });
+  const seoArtifacts = seoPlan.result;
+  for (const file of seoPlan.files) {
+    if (draft.has(file.path))
+      throw new Error(
+        `[vextjs] SEO output conflicts with an existing public/build file: ${path.relative(config.outDir, file.path)}`,
+      );
+    draft.add(file);
+  }
   const serverFiles = new Set(
     Object.keys(serverBuildResult.metafile?.outputs ?? {})
       .map((file) => toProjectRelativePath(config.outDir, path.resolve(file)))
@@ -358,40 +454,50 @@ async function buildFrontendClientOwned(
     buildId,
     files: [...new Set(publicCandidates)].sort(),
   };
-  await writeFile(
-    path.join(config.outDir, FRONTEND_PUBLIC_MANIFEST),
-    `${JSON.stringify(publicManifest, null, 2)}\n`,
-    "utf8",
-  );
+  draft.add({
+    path: path.join(config.outDir, FRONTEND_PUBLIC_MANIFEST),
+    contents: `${JSON.stringify(publicManifest, null, 2)}\n`,
+  });
 
-  const deployManifest = await buildFrontendDeployManifest({
-    rootDir: options.rootDir,
-    config,
-    mode: options.mode,
-    browserManifest: manifest,
-  });
-  const sizeReport = await buildFrontendSizeReport({
-    config,
-    deployManifest,
-    routes: routeAssets.routes,
-  });
+  const deployManifest = await buildFrontendDeployManifestFromCandidates(
+    {
+      rootDir: options.rootDir,
+      config,
+      mode: options.mode,
+      browserManifest: manifest,
+    },
+    {
+      files: draft
+        .files()
+        .filter((file) => isPathInside(file, config.outDir))
+        .map((file) => toProjectRelativePath(config.outDir, file)),
+      publicFiles: publicManifest.files,
+      read: (file) => draft.read(file),
+    },
+  );
+  const sizeReport = await buildFrontendSizeReport(
+    {
+      config,
+      deployManifest,
+      routes: routeAssets.routes,
+    },
+    (file) => draft.read(file),
+  );
   assertFrontendBudgets(config, sizeReport);
   if (config.build.diagnostics.sizeReport) {
     const persistedSizeReport = config.build.diagnostics.performanceReport
       ? sizeReport
       : stripSizeReportRouteMetrics(sizeReport);
-    await writeFile(
-      path.join(config.outDir, "size-report.json"),
-      `${JSON.stringify(persistedSizeReport, null, 2)}\n`,
-      "utf-8",
-    );
+    draft.add({
+      path: path.join(config.outDir, "size-report.json"),
+      contents: `${JSON.stringify(persistedSizeReport, null, 2)}\n`,
+    });
   }
   const deployManifestPath = path.join(config.outDir, "deploy-manifest.json");
-  await writeFile(
-    deployManifestPath,
-    `${JSON.stringify(deployManifest, null, 2)}\n`,
-    "utf-8",
-  );
+  draft.add({
+    path: deployManifestPath,
+    contents: `${JSON.stringify(deployManifest, null, 2)}\n`,
+  });
 
   return {
     skipped: false,
@@ -587,11 +693,12 @@ function buildManifest(
 async function attachManifestAssetMetadata(
   config: ResolvedVextFrontendConfig,
   manifest: VextFrontendManifest,
+  readAsset: (file: string) => Buffer | Promise<Buffer>,
 ): Promise<VextFrontendManifest> {
   const assets = await Promise.all(
     manifest.assets.map(async (asset) => {
       const filePath = publicAssetPathToFile(config, asset.path);
-      const content = await readFile(filePath);
+      const content = await readAsset(filePath);
       return {
         ...asset,
         sha256: createSha256(content),

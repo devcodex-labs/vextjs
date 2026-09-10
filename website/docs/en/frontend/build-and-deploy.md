@@ -7,6 +7,8 @@ for cache and media behavior.
 
 ## Output
 
+Generated sources and final frontend assets commit in one transaction. Browser and server compilation, media, static pages, SEO, deploy metadata, and budgets all consume the current candidates before replacing the previous generation. Failures preserve old files; unrecorded files remain private. A later build with project ownership recovers interrupted commits. Replacement is atomic per file, so consumers use the completed build result as the consistency boundary. Upload runs after a successful build; upload failures do not roll back committed local assets. See the [build workflow](../guide/build).
+
 Static HTTP serving and deployment upload use `public-manifest.json`, generated from public files, browser outputs, media, static pages, and SEO artifacts. Server renderer outputs, their source maps, and internal metadata remain private, including when `build.server.outFile` is customized. Files manually added to outDir after a build are not automatically public. Rebuild older output to generate the required public manifest. Upload validates this boundary before applying include/exclude patterns or invoking an adapter.
 
 When frontend is enabled, production output includes:

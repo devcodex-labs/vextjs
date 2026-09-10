@@ -5,11 +5,17 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import fg from "fast-glob";
 import type { ResolvedVextFrontendConfig } from "../contract/types.js";
+import { withProjectOwner } from "../../lib/project/owner.js";
+import { ArtifactDraft } from "../../lib/project/artifact-draft.js";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
+import { createArtifactDraftPlugin } from "../../lib/build/artifact-draft-plugin.js";
+import { evaluateGeneratedEsmString } from "../../lib/build/generated-esm.js";
 
 export interface ExtractJscssOptions {
   rootDir: string;
   generatedDir: string;
   config: ResolvedVextFrontendConfig;
+  signal?: AbortSignal;
 }
 
 export interface ExtractJscssResult {
@@ -32,45 +38,93 @@ export function createJscssBuildDefines(
 export async function extractJscssStyles(
   options: ExtractJscssOptions,
 ): Promise<ExtractJscssResult> {
+  return withProjectOwner(
+    options.rootDir,
+    "build",
+    [options.generatedDir],
+    async () => {
+      const planned = await createJscssArtifacts(options);
+      for (const file of planned.artifacts) {
+        await mkdir(path.dirname(file.path), { recursive: true });
+        await writeFile(file.path, file.contents);
+      }
+      return planned.result;
+    },
+  );
+}
+
+export async function createJscssArtifacts(
+  options: ExtractJscssOptions,
+): Promise<{ result: ExtractJscssResult; artifacts: ArtifactCandidate[] }> {
   if (!options.config.styles.jscss.enabled) {
-    return { files: [], cssText: "" };
+    return { result: { files: [], cssText: "" }, artifacts: [] };
   }
 
   const files = await scanJscssFiles(options.config);
   if (files.length === 0) {
-    return { files, cssText: "" };
+    return { result: { files, cssText: "" }, artifacts: [] };
   }
 
-  await mkdir(options.generatedDir, { recursive: true });
   const entryPath = path.join(options.generatedDir, "jscss-extract-entry.ts");
   const bundlePath = path.join(options.generatedDir, "jscss-extract.mjs");
   const cssPath = path.join(options.generatedDir, "vext-jscss.css");
 
-  await writeFile(
-    entryPath,
-    renderExtractorEntry(options.generatedDir, files),
-    "utf-8",
-  );
-
-  await esbuild.build({
-    entryPoints: [entryPath],
-    outfile: bundlePath,
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node20",
-    logLevel: "silent",
-    define: createJscssBuildDefines(options.config),
-    plugins: [createJscssResolverPlugin(options.config)],
-  });
-
-  const module = (await import(
-    `${pathToFileURL(bundlePath).href}?v=${Date.now()}`
-  )) as { default?: string };
-  const cssText = module.default ?? "";
-  await writeFile(cssPath, cssText ? `${cssText}\n` : "", "utf-8");
-
-  return { files, cssPath, cssText };
+  const draft = new ArtifactDraft(options.rootDir, [
+    { outDir: options.generatedDir, producer: "frontend-generated" },
+  ]);
+  const artifacts: ArtifactCandidate[] = [
+    {
+      path: entryPath,
+      contents: renderExtractorEntry(options.generatedDir, files),
+    },
+  ];
+  draft.add(artifacts[0]!);
+  try {
+    const built = await esbuild.build({
+      entryPoints: [entryPath],
+      outfile: bundlePath,
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target: "node20",
+      logLevel: "silent",
+      write: false,
+      define: createJscssBuildDefines(options.config),
+      // 保留同一个原生 meta 对象，解构/别名读取也必须看到最终逻辑位置。
+      banner: {
+        js: [
+          `import.meta.url = ${JSON.stringify(pathToFileURL(bundlePath).href)};`,
+          `import.meta.filename = ${JSON.stringify(bundlePath)};`,
+          `import.meta.dirname = ${JSON.stringify(path.dirname(bundlePath))};`,
+        ].join("\n"),
+      },
+      plugins: [
+        createArtifactDraftPlugin(draft),
+        createJscssResolverPlugin(options.config),
+      ],
+    });
+    const bundle = built.outputFiles.find(
+      (file) => path.relative(bundlePath, file.path) === "",
+    );
+    if (!bundle) throw new Error("[vextjs] JSCSS bundle was not generated.");
+    const cssText = await withProjectOwner(
+      options.rootDir,
+      "build",
+      [options.generatedDir],
+      () =>
+        evaluateGeneratedEsmString({
+          rootDir: options.rootDir,
+          logicalPath: bundlePath,
+          contents: bundle.contents,
+          signal: options.signal,
+        }),
+    );
+    artifacts.push({ path: bundlePath, contents: bundle.contents });
+    artifacts.push({ path: cssPath, contents: cssText ? `${cssText}\n` : "" });
+    return { result: { files, cssPath, cssText }, artifacts };
+  } finally {
+    draft.close();
+  }
 }
 
 async function scanJscssFiles(
@@ -81,6 +135,7 @@ async function scanJscssFiles(
     cwd: config.root,
     absolute: true,
     onlyFiles: true,
+    followSymbolicLinks: false,
     ignore: ["**/*.d.ts", "**/*.test.*", "**/*.spec.*"],
   });
   return files.sort((a, b) => a.localeCompare(b));

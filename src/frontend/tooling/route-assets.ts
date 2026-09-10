@@ -21,6 +21,7 @@ export interface BuildFrontendRouteAssetsOptions {
 
 export async function buildFrontendRouteAssets(
   options: BuildFrontendRouteAssetsOptions,
+  readAsset: (file: string) => Buffer | Promise<Buffer> = readFile,
 ): Promise<VextFrontendRouteAssetsManifest> {
   const outputs = options.metafile?.outputs ?? {};
   const outputEntries = Object.entries(outputs);
@@ -53,6 +54,7 @@ export async function buildFrontendRouteAssets(
     options.registry.pages.map((page) =>
       buildRouteAssetsForPage({
         ...options,
+        readAsset,
         outputEntries,
         assetByPath,
         browserEntryScripts,
@@ -66,6 +68,7 @@ export async function buildFrontendRouteAssets(
 
 async function buildRouteAssetsForPage(
   input: BuildFrontendRouteAssetsOptions & {
+    readAsset: (file: string) => Buffer | Promise<Buffer>;
     outputEntries: Array<[string, esbuild.Metafile["outputs"][string]]>;
     assetByPath: Map<string, VextFrontendManifestAsset>;
     browserEntryScripts: string[];
@@ -127,7 +130,11 @@ async function buildRouteAssetsForPage(
     ...browserEntryClosureScripts,
     ...routeClosureScripts.map((asset) => asset.path),
   ]);
-  const jsSizes = await sumCompressedAssets(input.config, initialScripts);
+  const jsSizes = await sumCompressedAssets(
+    input.config,
+    initialScripts,
+    input.readAsset,
+  );
   return {
     page: input.page.id,
     routePath: input.page.routePath,
@@ -211,12 +218,13 @@ function outputToManifestAsset(
 async function sumCompressedAssets(
   config: ResolvedVextFrontendConfig,
   assetPaths: string[],
+  readAsset: (file: string) => Buffer | Promise<Buffer>,
 ): Promise<{ raw: number; gzip: number; brotli: number }> {
   let raw = 0;
   let gzip = 0;
   let brotli = 0;
   for (const assetPath of unique(assetPaths)) {
-    const content = await readFile(publicAssetPathToFile(config, assetPath));
+    const content = await readAsset(publicAssetPathToFile(config, assetPath));
     raw += content.byteLength;
     gzip += gzipSync(content).byteLength;
     brotli += brotliCompressSync(content).byteLength;

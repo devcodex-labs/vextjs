@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import type {
   ResolvedVextFrontendConfig,
   VextClientContract,
@@ -32,8 +33,59 @@ export interface WriteFrontendSeoArtifactsResult {
 export async function writeFrontendSeoArtifacts(
   options: WriteFrontendSeoArtifactsOptions,
 ): Promise<WriteFrontendSeoArtifactsResult> {
+  const plan = await createFrontendSeoArtifacts(options);
+  for (const file of plan.files) {
+    if (existsSync(file.path))
+      throw new Error(
+        `[vextjs] SEO output conflicts with an existing public/build file: ${path.relative(options.config.outDir, file.path)}`,
+      );
+  }
+  if (!plan.files.length) return plan.result;
+  const stage = path.join(
+    options.config.outDir,
+    `.vext-seo-stage-${randomUUID()}`,
+  );
+  const committedTargets: string[] = [];
+  try {
+    for (const file of plan.files) {
+      const staged = resolveContainedOutputPath(
+        stage,
+        path.relative(options.config.outDir, file.path),
+      );
+      await mkdir(path.dirname(staged), { recursive: true });
+      await writeFile(staged, file.contents);
+    }
+    for (const file of plan.files) {
+      await mkdir(path.dirname(file.path), { recursive: true });
+      await copyFile(
+        resolveContainedOutputPath(
+          stage,
+          path.relative(options.config.outDir, file.path),
+        ),
+        file.path,
+        constants.COPYFILE_EXCL,
+      );
+      committedTargets.push(file.path);
+    }
+  } catch (error) {
+    for (const target of committedTargets)
+      await rm(target, { force: true }).catch(() => undefined);
+    throw error;
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
+  return plan.result;
+}
+
+/** 使用本代契约与静态页面生成候选；输出存在性与归属由最终提交者核验。 */
+export async function createFrontendSeoArtifacts(
+  options: WriteFrontendSeoArtifactsOptions & { contract?: VextClientContract },
+): Promise<{
+  result: WriteFrontendSeoArtifactsResult;
+  files: ArtifactCandidate[];
+}> {
   const seo = options.config.seo;
-  if (!seo.enabled) return { artifacts: [] };
+  if (!seo.enabled) return { result: { artifacts: [] }, files: [] };
   const files = new Map<
     string,
     {
@@ -92,67 +144,28 @@ export async function writeFrontendSeoArtifacts(
     ...file,
     file: toOutputFile(file.pathname),
   }));
-  for (const artifact of planned) {
-    const target = resolveContainedOutputPath(
-      options.config.outDir,
-      artifact.file,
-    );
-    if (existsSync(target)) {
-      throw new Error(
-        `[vextjs] SEO output conflicts with an existing public/build file: ${artifact.pathname}`,
-      );
-    }
-  }
-  if (planned.length === 0) return { artifacts: [] };
-
-  const stage = path.join(
-    options.config.outDir,
-    `.vext-seo-stage-${randomUUID()}`,
-  );
-  const committedTargets: string[] = [];
-  try {
-    for (const artifact of planned) {
-      const staged = resolveContainedOutputPath(stage, artifact.file);
-      await mkdir(path.dirname(staged), { recursive: true });
-      await writeFile(staged, artifact.content, "utf-8");
-    }
-    for (const artifact of planned) {
-      const target = resolveContainedOutputPath(
-        options.config.outDir,
-        artifact.file,
-      );
-      await mkdir(path.dirname(target), { recursive: true });
-      await copyFile(
-        resolveContainedOutputPath(stage, artifact.file),
-        target,
-        constants.COPYFILE_EXCL,
-      );
-      committedTargets.push(target);
-    }
-  } catch (error) {
-    for (const target of committedTargets) {
-      await rm(target, { force: true }).catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    await rm(stage, { recursive: true, force: true });
-  }
-
   return {
-    artifacts: planned.map(({ file, pathname, contentType }) => ({
-      file,
-      pathname,
-      contentType,
+    files: planned.map((artifact) => ({
+      path: resolveContainedOutputPath(options.config.outDir, artifact.file),
+      contents: artifact.content,
     })),
+    result: {
+      artifacts: planned.map(({ file, pathname, contentType }) => ({
+        file,
+        pathname,
+        contentType,
+      })),
+    },
   };
 }
 
 export async function collectBuildSitemapEntries(
-  options: WriteFrontendSeoArtifactsOptions,
+  options: WriteFrontendSeoArtifactsOptions & { contract?: VextClientContract },
 ): Promise<VextSitemapEntry[]> {
   const sitemap = options.config.seo.sitemap;
   if (sitemap === false) return [];
-  const contract = await readClientContract(options.config.outDir);
+  const contract =
+    options.contract ?? (await readClientContract(options.config.outDir));
   const routesById = new Map(
     contract.routes.map((route) => [
       route.routeId ?? `${route.method} ${route.path}`,

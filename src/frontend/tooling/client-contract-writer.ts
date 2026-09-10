@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import type {
   VextClientContract,
   VextClientResponseContract,
@@ -47,6 +48,20 @@ export interface WriteClientContractResult {
 export async function writeClientContractFromRouteManifest(
   options: WriteClientContractOptions,
 ): Promise<WriteClientContractResult> {
+  const plan = await createClientContractArtifacts(options);
+  await mkdir(options.outDir, { recursive: true });
+  for (const file of plan.files) await writeFile(file.path, file.contents);
+  return plan.result;
+}
+
+/** 只读取路由输入并生成候选，统一前端构建在其他阶段成功后提交这些字节。 */
+export async function createClientContractArtifacts(
+  options: WriteClientContractOptions,
+): Promise<{
+  result: WriteClientContractResult;
+  files: ArtifactCandidate[];
+  contract: VextClientContract;
+}> {
   const routeManifestPath =
     options.routeManifestPath ??
     path.join(options.rootDir, ".vext", "manifest", "routes.json");
@@ -60,25 +75,32 @@ export async function writeClientContractFromRouteManifest(
   const routeContractPath = path.join(options.outDir, "route-contract.json");
   const modulePath = path.join(options.outDir, "api.generated.ts");
 
-  await mkdir(options.outDir, { recursive: true });
-  await writeFile(
-    contractPath,
-    `${JSON.stringify(contract, null, 2)}\n`,
-    "utf-8",
-  );
-  await writeFile(
-    routeContractPath,
-    `${JSON.stringify({ ...contract, kind: "route-contract" }, null, 2)}\n`,
-    "utf-8",
-  );
-  await writeFile(modulePath, renderApiModule(contract), "utf-8");
-
   return {
-    contractPath,
-    routeContractPath,
-    modulePath,
-    routeCount: contract.routes.length,
-    warnings: contract.warnings,
+    files: [
+      {
+        path: contractPath,
+        contents: `${JSON.stringify(contract, null, 2)}\n`,
+        source: routeManifestPath,
+      },
+      {
+        path: routeContractPath,
+        contents: `${JSON.stringify({ ...contract, kind: "route-contract" }, null, 2)}\n`,
+        source: routeManifestPath,
+      },
+      {
+        path: modulePath,
+        contents: renderApiModule(contract),
+        source: routeManifestPath,
+      },
+    ],
+    contract,
+    result: {
+      contractPath,
+      routeContractPath,
+      modulePath,
+      routeCount: contract.routes.length,
+      warnings: contract.warnings,
+    },
   };
 }
 

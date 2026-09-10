@@ -20,10 +20,11 @@ export interface BuildFrontendSizeReportOptions {
 
 export async function buildFrontendSizeReport(
   options: BuildFrontendSizeReportOptions,
+  readAsset: (file: string) => Buffer | Promise<Buffer> = readFile,
 ): Promise<VextFrontendSizeReport> {
   const assets = await Promise.all(
     options.deployManifest.assets.map((asset) =>
-      buildAssetMetric(options.config, asset),
+      buildAssetMetric(options.config, asset, readAsset),
     ),
   );
   const initialJs = assets.filter(
@@ -182,8 +183,9 @@ export function assertFrontendBudgets(
 async function buildAssetMetric(
   config: ResolvedVextFrontendConfig,
   asset: VextFrontendDeployManifestAsset,
+  readAsset: (file: string) => Buffer | Promise<Buffer>,
 ): Promise<VextFrontendSizeMetric> {
-  const content = await readFile(path.join(config.outDir, asset.file));
+  const content = await readAsset(path.join(config.outDir, asset.file));
   return {
     path: asset.path,
     bytes: asset.bytes,

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { lstat, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
+import micromatch from "micromatch";
 import {
   normalizeSafeRelativePath,
   resolvePathInside,
@@ -30,6 +31,74 @@ export async function buildFrontendDeployManifest(
   options: BuildFrontendDeployManifestOptions,
 ): Promise<VextFrontendDeployManifest> {
   const files = await scanDeployableFiles(options.config);
+  return createDeployManifest(options, files, async (absolutePath) => {
+    const [content, fileStat, linkStat] = await Promise.all([
+      readFile(absolutePath),
+      stat(absolutePath),
+      lstat(absolutePath),
+    ]);
+    if (!fileStat.isFile() || linkStat.isSymbolicLink())
+      throw new Error(
+        `[vextjs] frontend deploy asset must be a regular file inside outDir: ${absolutePath}`,
+      );
+    return content;
+  });
+}
+
+/** 构建器内部候选入口；公开磁盘入口与此入口共用同一清单生成逻辑。 */
+export async function buildFrontendDeployManifestFromCandidates(
+  options: BuildFrontendDeployManifestOptions,
+  candidates: {
+    files: string[];
+    publicFiles: readonly string[];
+    read(file: string): Buffer;
+  },
+): Promise<VextFrontendDeployManifest> {
+  const publicFiles = new Set(candidates.publicFiles);
+  const tasks = fg.generateTasks(options.config.deploy.upload.include, {
+    dot: true,
+    ignore: options.config.deploy.upload.exclude,
+  });
+  const files = [
+    ...new Set(
+      tasks.flatMap((task) => {
+        const directoryExcludes = task.negative.filter(
+          (pattern) =>
+            pattern.endsWith("/**") ||
+            !fg.isDynamicPattern(path.posix.basename(pattern)),
+        );
+        return micromatch(candidates.files, task.positive, {
+          dot: true,
+          ignore: task.negative,
+        }).filter((file) => {
+          // fast-glob 会停止遍历命中的静态目录；候选列表需保留相同的目录剪枝语义。
+          for (
+            let directory = path.posix.dirname(file);
+            directory !== "." && directory !== task.base;
+            directory = path.posix.dirname(directory)
+          ) {
+            if (micromatch.isMatch(directory, directoryExcludes, { dot: true }))
+              return false;
+          }
+          return true;
+        });
+      }),
+    ),
+  ];
+  return createDeployManifest(
+    options,
+    files
+      .map(normalizeRelativeFile)
+      .filter((file) => file !== "index.html" && publicFiles.has(file)),
+    candidates.read,
+  );
+}
+
+async function createDeployManifest(
+  options: BuildFrontendDeployManifestOptions,
+  files: string[],
+  readAsset: (file: string) => Buffer | Promise<Buffer>,
+): Promise<VextFrontendDeployManifest> {
   const entryFiles = new Set(
     options.browserManifest.assets
       .filter((asset) => asset.entryPoint)
@@ -44,22 +113,13 @@ export async function buildFrontendDeployManifest(
       "frontend deploy asset file",
       { realpath: true },
     );
-    const [content, fileStat, linkStat] = await Promise.all([
-      readFile(absolutePath),
-      stat(absolutePath),
-      lstat(absolutePath),
-    ]);
-    if (!fileStat.isFile() || linkStat.isSymbolicLink()) {
-      throw new Error(
-        `[vextjs] frontend deploy asset must be a regular file inside outDir: ${file}`,
-      );
-    }
+    const content = await readAsset(absolutePath);
     const source = classifyDeployAssetSource(options.config, file);
     assets.push({
       file,
       path: joinPublicPath(getAssetBase(options.config), file),
       uploadKey: joinUploadKey(options.config.deploy.upload.prefix, file),
-      bytes: fileStat.size,
+      bytes: content.byteLength,
       sha256: createSha256(content),
       integrity: createSriSha256(content),
       contentType: getFrontendContentType(file),

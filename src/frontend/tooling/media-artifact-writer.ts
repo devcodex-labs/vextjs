@@ -5,6 +5,7 @@ import path from "node:path";
 import fg from "fast-glob";
 import sharp from "sharp";
 import subsetFont from "subset-font";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import type {
   ResolvedVextFrontendConfig,
   VextFrontendMode,
@@ -43,12 +44,6 @@ interface ParsedFontDefinition extends VextFontDefinition {
   definitionFile: string;
 }
 
-interface StagedMediaFile {
-  file: string;
-  stagePath: string;
-  bytes: number;
-}
-
 /**
  * Direct local-media worker. It deliberately has no esbuild plugin, cloud SDK,
  * command wrapper, remote fetch, or remote cache layer.
@@ -56,6 +51,7 @@ interface StagedMediaFile {
 export async function writeFrontendMediaArtifacts(
   input: WriteFrontendMediaArtifactsOptions,
 ): Promise<WriteFrontendMediaArtifactsResult> {
+  const plan = await createFrontendMediaArtifacts(input);
   const { config } = input;
   const manifestPath = path.join(config.outDir, "media-manifest.json");
   const stageDir = path.join(config.outDir, ".vext-media-stage");
@@ -68,28 +64,18 @@ export async function writeFrontendMediaArtifacts(
   await mkdir(stageDir, { recursive: true });
 
   try {
-    const staged: StagedMediaFile[] = [];
-    const images = await writeLocalImageVariants(config, stageDir, staged);
-    const fonts = await writeLocalFontSubsets(config, stageDir, staged);
-    const totalBytes = staged.reduce((total, item) => total + item.bytes, 0);
-    if (totalBytes > config.media.maxBytes) {
-      throw new Error(
-        `[vextjs] local media output (${totalBytes} bytes) exceeds config.frontend.media.maxBytes (${config.media.maxBytes} bytes).`,
+    for (const file of plan.files) {
+      if (file.path === manifestPath) continue;
+      await writeFile(
+        path.join(stageDir, path.basename(file.path)),
+        file.contents,
       );
     }
 
     await rm(targetDir, { recursive: true, force: true });
     await mkdir(path.dirname(targetDir), { recursive: true });
     await rename(stageDir, targetDir);
-    const manifest: VextFrontendMediaManifest = {
-      schemaVersion: 1,
-      kind: "frontend-media-manifest",
-      generatedAt: STABLE_FRONTEND_GENERATED_AT,
-      assetBaseUrl: getAssetBase(config),
-      totalBytes,
-      images,
-      fonts,
-    };
+    const manifest = plan.result.manifest;
     await writeFile(
       manifestPath,
       `${JSON.stringify(manifest, null, 2)}\n`,
@@ -103,19 +89,54 @@ export async function writeFrontendMediaArtifacts(
   }
 }
 
-async function writeLocalImageVariants(
+/** 图片/字体和清单先完整生成，解码、子集或预算失败不会修改上一代产物。 */
+export async function createFrontendMediaArtifacts(
+  input: WriteFrontendMediaArtifactsOptions,
+): Promise<{
+  result: WriteFrontendMediaArtifactsResult;
+  files: ArtifactCandidate[];
+}> {
+  const { config } = input;
+  const files: ArtifactCandidate[] = [];
+  const images = await createLocalImageVariants(config, files);
+  const fonts = await createLocalFontSubsets(config, files);
+  const totalBytes = files.reduce(
+    (total, file) => total + Buffer.byteLength(file.contents),
+    0,
+  );
+  if (totalBytes > config.media.maxBytes)
+    throw new Error(
+      `[vextjs] local media output (${totalBytes} bytes) exceeds config.frontend.media.maxBytes (${config.media.maxBytes} bytes).`,
+    );
+  const manifest: VextFrontendMediaManifest = {
+    schemaVersion: 1,
+    kind: "frontend-media-manifest",
+    generatedAt: STABLE_FRONTEND_GENERATED_AT,
+    assetBaseUrl: getAssetBase(config),
+    totalBytes,
+    images,
+    fonts,
+  };
+  const manifestPath = path.join(config.outDir, "media-manifest.json");
+  files.push({
+    path: manifestPath,
+    contents: `${JSON.stringify(manifest, null, 2)}\n`,
+  });
+  return { result: { manifestPath, manifest }, files };
+}
+
+async function createLocalImageVariants(
   config: ResolvedVextFrontendConfig,
-  stageDir: string,
-  staged: StagedMediaFile[],
+  files: ArtifactCandidate[],
 ): Promise<VextFrontendMediaImage[]> {
   if (!existsSync(config.assetsDir)) return [];
-  const files = await fg(RASTER_GLOB, {
+  const sources = await fg(RASTER_GLOB, {
     cwd: config.assetsDir,
     absolute: true,
     onlyFiles: true,
   });
   const images: VextFrontendMediaImage[] = [];
-  for (const filePath of files.sort((left, right) =>
+  for (const filePath of sources.sort((left, right) =>
     left.localeCompare(right),
   )) {
     const source = path.relative(config.root, filePath).replace(/\\/gu, "/");
@@ -170,8 +191,6 @@ async function writeLocalImageVariants(
           format,
           quality: config.media.images.quality,
         });
-        const stagePath = path.join(stageDir, outputName);
-        await writeFile(stagePath, output);
         const file = path.posix.join(
           config.build.client.assetsDir,
           "media",
@@ -181,7 +200,11 @@ async function writeLocalImageVariants(
           1,
           Math.round((height * variantWidth) / width),
         );
-        staged.push({ file, stagePath, bytes: output.byteLength });
+        files.push({
+          path: path.join(config.outDir, file),
+          contents: output,
+          source: filePath,
+        });
         variants.push({
           file,
           src: joinAssetBase(config, file),
@@ -226,10 +249,9 @@ async function transformImage(input: {
   return pipeline.png({ compressionLevel: 9 }).toBuffer();
 }
 
-async function writeLocalFontSubsets(
+async function createLocalFontSubsets(
   config: ResolvedVextFrontendConfig,
-  stageDir: string,
-  staged: StagedMediaFile[],
+  files: ArtifactCandidate[],
 ): Promise<VextFrontendMediaFont[]> {
   const definitions = await scanFontDefinitions(config);
   const emitted = new Map<string, VextFrontendMediaFont>();
@@ -283,8 +305,6 @@ async function writeLocalFontSubsets(
       );
     }
     const outputName = `font-${identity.slice(0, 24)}.woff2`;
-    const stagePath = path.join(stageDir, outputName);
-    await writeFile(stagePath, output);
     const file = path.posix.join(
       config.build.client.assetsDir,
       "media",
@@ -311,7 +331,11 @@ async function writeLocalFontSubsets(
       integrity: createSriSha256(output),
       contentType: "font/woff2",
     };
-    staged.push({ file, stagePath, bytes: output.byteLength });
+    files.push({
+      path: path.join(config.outDir, file),
+      contents: output,
+      source: sourcePath,
+    });
     emitted.set(identity, font);
   }
   return [...emitted.values()].sort((left, right) =>

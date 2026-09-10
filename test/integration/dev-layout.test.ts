@@ -256,6 +256,36 @@ describe("built dev worker with dynamic directory configuration", () => {
       expect(
         await (await fetch(`http://127.0.0.1:${port}/robots.txt`)).text(),
       ).toBe("User-agent: *\nAllow: /");
+      const frontendManifestPath = path.join(
+        root,
+        ".vext/client/manifest.json",
+      );
+      const lastFrontend = await readFile(frontendManifestPath, "utf8");
+      await write("src/web/main.ts", "export const = invalid;");
+      await write("static/robots.txt", "recovered frontend");
+      const frontendFailed = await operation(child, "frontend-rebuild", [
+        { path: "src/web/main.ts", type: "modify" },
+        { path: "static/robots.txt", type: "modify" },
+      ]);
+      expect(frontendFailed.success).toBe(false);
+      expect(await readFile(frontendManifestPath, "utf8")).toBe(lastFrontend);
+      expect(
+        await (await fetch(`http://127.0.0.1:${port}/robots.txt`)).text(),
+      ).toBe("User-agent: *\nAllow: /");
+      await write(
+        "src/web/main.ts",
+        'document.body.dataset.ready = "recovered";',
+      );
+      const frontendRecovered = await operation(child, "frontend-rebuild", [
+        { path: "src/web/main.ts", type: "modify" },
+      ]);
+      expect(frontendRecovered.success).toBe(true);
+      expect(await readFile(frontendManifestPath, "utf8")).not.toBe(
+        lastFrontend,
+      );
+      expect(
+        await (await fetch(`http://127.0.0.1:${port}/robots.txt`)).text(),
+      ).toBe("recovered frontend");
       const route = (status: string) =>
         `import { defineRoutes } from 'vextjs'; export default defineRoutes(app => { app.get('/health', {}, async (_req, res) => { res.json({ status: '${status}' }); }); });`;
       await write("src/routes/index.ts", route("updated"));

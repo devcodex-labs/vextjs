@@ -94,6 +94,10 @@ One writer owns a service root and its nested roots at a time. Competing `build`
 
 ## Frontend build
 
+The frontend first generates candidate sources and assets. Browser compilation, SSR, media, static pages, SEO, and budgets must all succeed before `.vext/generated/frontend/` and the configured `frontend.outDir` commit together. A failed rebuild preserves the previous generation; development keeps serving its valid static assets until a corrected rebuild succeeds. Identical candidates are not rewritten. Only recorded obsolete files are removed, and unrecorded files are not automatically served or uploaded.
+
+JSCSS retains native ESM and top-level `await` in a disposable build worker. Its module directory keeps the final logical location for relative imports. The worker and temporary module are cleaned up after execution, including the worker's module cache; parent-process globals are not shared. Recovery uses receipts and content hashes for interrupted temporary files and preserves externally modified files as conflicts.
+
 When `config.frontend.enabled` is true, the browser pipeline uses esbuild in bundle mode:
 
 ```text

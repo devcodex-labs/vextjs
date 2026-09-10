@@ -11,14 +11,17 @@ import type {
   VextFrontendPageRegistryEntry,
 } from "../contract/types.js";
 import {
-  extractJscssStyles,
+  createJscssArtifacts,
   type ExtractJscssResult,
 } from "./jscss-extractor.js";
+import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
+import { withProjectOwner } from "../../lib/project/owner.js";
 
 export interface WriteFrontendRenderRegistryOptions {
   rootDir: string;
   config: ResolvedVextFrontendConfig;
   mode: VextFrontendMode;
+  signal?: AbortSignal;
 }
 
 export interface FrontendRenderRegistryResult {
@@ -39,8 +42,28 @@ export interface FrontendRenderRegistryResult {
 export async function writeFrontendRenderRegistry(
   options: WriteFrontendRenderRegistryOptions,
 ): Promise<FrontendRenderRegistryResult> {
+  return withProjectOwner(
+    options.rootDir,
+    options.mode === "development" ? "dev" : "build",
+    [resolveGeneratedDir(options.rootDir, options.config)],
+    async () => {
+      const planned = await createFrontendRenderRegistryArtifacts(options);
+      for (const file of planned.files) {
+        await mkdir(path.dirname(file.path), { recursive: true });
+        await writeFile(file.path, file.contents);
+      }
+      return planned.result;
+    },
+  );
+}
+
+export async function createFrontendRenderRegistryArtifacts(
+  options: WriteFrontendRenderRegistryOptions,
+): Promise<{
+  result: FrontendRenderRegistryResult;
+  files: ArtifactCandidate[];
+}> {
   const generatedDir = resolveGeneratedDir(options.rootDir, options.config);
-  await mkdir(generatedDir, { recursive: true });
 
   const [pages, layouts, errorPages, locales] = await Promise.all([
     scanPages(options.rootDir, options.config),
@@ -63,19 +86,22 @@ export async function writeFrontendRenderRegistry(
         )
       : undefined;
   const serverEntryPath = path.join(generatedDir, "server-renderer.ts");
-  const jscss = await extractJscssStyles({
+  const jscssArtifacts = await createJscssArtifacts({
     rootDir: options.rootDir,
     generatedDir,
     config: options.config,
+    signal: options.signal,
   });
+  const jscss = jscssArtifacts.result;
   const registryInput = { pages, layouts, errorPages, locales };
 
-  const writes = [
-    writeFile(registryPath, renderRegistryModule(registryInput), "utf-8"),
-    writeFile(runtimePath, renderRuntimeModule(), "utf-8"),
-    writeFile(
-      browserEntryPath,
-      renderBrowserEntryModule(
+  const files: ArtifactCandidate[] = [
+    ...jscssArtifacts.artifacts,
+    { path: registryPath, contents: renderRegistryModule(registryInput) },
+    { path: runtimePath, contents: renderRuntimeModule() },
+    {
+      path: browserEntryPath,
+      contents: renderBrowserEntryModule(
         options.mode,
         options.config,
         generatedDir,
@@ -83,44 +109,43 @@ export async function writeFrontendRenderRegistry(
         registryInput,
         jscss.cssPath,
       ),
-      "utf-8",
-    ),
-    writeFile(
-      serverEntryPath,
-      renderServerRendererModule(
+    },
+    {
+      path: serverEntryPath,
+      contents: renderServerRendererModule(
         options.mode,
         generatedDir,
         options.rootDir,
         options.config.i18n.defaultLocale,
         registryInput,
       ),
-      "utf-8",
-    ),
+    },
   ];
   if (vendorEntryPath) {
-    writes.push(
-      writeFile(
-        vendorEntryPath,
-        renderVendorEntryModule(options.config.build.vendorChunks.packages),
-        "utf-8",
+    files.push({
+      path: vendorEntryPath,
+      contents: renderVendorEntryModule(
+        options.config.build.vendorChunks.packages,
       ),
-    );
+    });
   }
-  await Promise.all(writes);
 
   return {
-    generatedDir,
-    browserEntryPath,
-    serverEntryPath,
-    vendorEntryPath,
-    runtimePath,
-    registryPath,
-    jscss,
-    pages,
-    layouts,
-    errorPages,
-    locales,
-    warnings: [],
+    files,
+    result: {
+      generatedDir,
+      browserEntryPath,
+      serverEntryPath,
+      vendorEntryPath,
+      runtimePath,
+      registryPath,
+      jscss,
+      pages,
+      layouts,
+      errorPages,
+      locales,
+      warnings: [],
+    },
   };
 }
 
