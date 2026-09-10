@@ -1,8 +1,14 @@
 import { readFileSync, existsSync, realpathSync } from "node:fs";
-import { mkdir, readdir } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveConsumerPackage } from "../../lib/consumer-resolver.js";
+import { assertRealPathInside } from "../../lib/path-boundary.js";
+import { withProjectOwner } from "../../lib/project/owner.js";
+import {
+  withArtifactTransaction,
+  type ArtifactCandidate,
+} from "../../lib/project/artifact-transaction.js";
 import {
   DIST_PRELOAD_DIR,
   formatLegacyProjectPreloadWarning,
@@ -43,14 +49,17 @@ export async function resolvePreloads(
   rootDir: string,
   options: { builtOutDir?: string } = {},
 ): Promise<string[]> {
-  const projectPreloads = options.builtOutDir
-    ? existsSync(join(options.builtOutDir, "preload"))
-      ? await resolvePreloadDirectory(
-          rootDir,
-          join(options.builtOutDir, "preload"),
-        )
-      : []
+  const projectFiles = options.builtOutDir
+    ? await resolvePreloadDirectory(
+        rootDir,
+        join(options.builtOutDir, "preload"),
+      )
     : await resolveProjectPreloads(rootDir);
+  const projectPreloads = await compileProjectPreloads(
+    rootDir,
+    projectFiles,
+    options.builtOutDir === undefined,
+  );
   const packagePreloads = resolvePackagePreloads(rootDir);
 
   const merged = [...projectPreloads, ...packagePreloads];
@@ -83,9 +92,6 @@ async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
   }
 
   const distPreloadDir = join(rootDir, DIST_PRELOAD_DIR);
-  if (!existsSync(distPreloadDir)) {
-    return [];
-  }
   return resolvePreloadDirectory(rootDir, distPreloadDir);
 }
 
@@ -93,7 +99,13 @@ async function resolvePreloadDirectory(
   rootDir: string,
   preloadDir: string,
 ): Promise<string[]> {
-  const entries = await readdir(preloadDir, { withFileTypes: true });
+  assertRealPathInside(rootDir, preloadDir, "project preload directory");
+  const entries = await readdir(preloadDir, { withFileTypes: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    },
+  );
   const sortedEntries = [...entries].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
@@ -117,17 +129,62 @@ async function resolvePreloadDirectory(
       continue;
     }
 
+    assertRealPathInside(rootDir, fullPath, "project preload file");
     if (JS_PRELOAD_EXTENSIONS.has(extension)) {
-      preloads.push(pathToFileURL(fullPath).href);
+      preloads.push(fullPath);
       continue;
     }
 
     if (TS_PRELOAD_EXTENSIONS.has(extension)) {
-      preloads.push(await compileProjectTypeScriptPreload(rootDir, fullPath));
+      preloads.push(fullPath);
     }
   }
 
   return preloads;
+}
+
+async function compileProjectPreloads(
+  rootDir: string,
+  files: readonly string[],
+  cleanSourceCache: boolean,
+): Promise<string[]> {
+  const cacheDir = join(rootDir, PRELOAD_CACHE_DIR);
+  const compiled = new Map<string, string>();
+  const sources = new Map<string, string>();
+  for (const file of files) {
+    if (!TS_PRELOAD_EXTENSIONS.has(extname(file).toLowerCase())) continue;
+    const stem = basename(file).replace(/\.(mts|ts)$/i, "");
+    const output = resolve(cacheDir, `${stem}.__compiled__.mjs`);
+    const key = process.platform === "win32" ? output.toLowerCase() : output;
+    const previous = sources.get(key);
+    if (previous) {
+      throw new Error(
+        `[vextjs] preload: ${previous} and ${file} target the same compiled file: ${output}`,
+      );
+    }
+    sources.set(key, file);
+    compiled.set(file, output);
+  }
+  const urls = () =>
+    files.map((file) => pathToFileURL(compiled.get(file) ?? file).href);
+  // 纯读取不登记写者；源列表清空后仍回收已有归属，绝不按扩展名删除未知文件。
+  if (compiled.size === 0 && (!cleanSourceCache || !existsSync(cacheDir)))
+    return urls();
+  return withProjectOwner(rootDir, "build", [cacheDir], () =>
+    withArtifactTransaction(
+      { rootDir, outDir: cacheDir, producer: "preload-cache" },
+      async (transaction) => {
+        const candidates: ArtifactCandidate[] = [];
+        for (const [file, output] of compiled) {
+          candidates.push(
+            await compileProjectTypeScriptPreload(rootDir, file, output),
+          );
+        }
+        await transaction.commit(candidates);
+        return urls();
+      },
+    ),
+  );
 }
 
 function resolvePackagePreloads(rootDir: string): string[] {
@@ -245,28 +302,29 @@ function describePreloadValue(value: unknown): string {
 async function compileProjectTypeScriptPreload(
   rootDir: string,
   filePath: string,
-): Promise<string> {
+  compiledFile: string,
+): Promise<ArtifactCandidate> {
   const { build } = await import("esbuild");
-  const cacheDir = join(rootDir, PRELOAD_CACHE_DIR);
-  await mkdir(cacheDir, { recursive: true });
-
-  const filename = basename(filePath).replace(/\.(mts|ts)$/i, "");
-  const compiledFile = join(cacheDir, `${filename}.__compiled__.mjs`);
   const tsconfigPath = join(rootDir, "tsconfig.json");
 
   try {
-    await build({
+    const result = await build({
       entryPoints: [filePath],
       bundle: true,
       packages: "external",
       format: "esm",
       platform: "node",
       target: "node20",
-      write: true,
+      write: false,
       outfile: compiledFile,
       logLevel: "silent",
       ...(existsSync(tsconfigPath) ? { tsconfig: tsconfigPath } : {}),
     });
+    const output = result.outputFiles?.[0];
+    if (!output || result.outputFiles.length !== 1) {
+      throw new Error("Expected one compiled preload module.");
+    }
+    return { path: compiledFile, contents: output.contents, source: filePath };
   } catch (error) {
     const message =
       error instanceof Error
@@ -276,6 +334,4 @@ async function compileProjectTypeScriptPreload(
       `[vextjs] preload: failed to compile TypeScript preload ${filePath}\n${message}`,
     );
   }
-
-  return pathToFileURL(resolve(compiledFile)).href;
 }

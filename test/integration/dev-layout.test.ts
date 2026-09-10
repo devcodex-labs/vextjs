@@ -98,9 +98,14 @@ async function waitForText(url: string, expected: string): Promise<void> {
   const deadline = Date.now() + 10_000;
   let last = "no response";
   while (Date.now() < deadline) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
-    last = `${response.status} ${await response.text()}`;
-    if (last === `200 ${expected}`) return;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      last = `${response.status} ${await response.text()}`;
+      if (last === `200 ${expected}`) return;
+    } catch (error) {
+      // 编译期间的单次超时仍受外层总时限约束，不能提前结束轮询。
+      last = String(error);
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Expected ${expected} at ${url}; last response: ${last}`);

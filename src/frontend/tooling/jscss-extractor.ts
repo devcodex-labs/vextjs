@@ -2,7 +2,7 @@ import * as esbuild from "esbuild";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import fg from "fast-glob";
 import type { ResolvedVextFrontendConfig } from "../contract/types.js";
 import { withProjectOwner } from "../../lib/project/owner.js";
@@ -10,6 +10,7 @@ import { ArtifactDraft } from "../../lib/project/artifact-draft.js";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import { createArtifactDraftPlugin } from "../../lib/build/artifact-draft-plugin.js";
 import { evaluateGeneratedEsmString } from "../../lib/build/generated-esm.js";
+import { logicalModuleMetaBanner } from "../../lib/build/logical-module-meta.js";
 
 export interface ExtractJscssOptions {
   rootDir: string;
@@ -90,14 +91,7 @@ export async function createJscssArtifacts(
       logLevel: "silent",
       write: false,
       define: createJscssBuildDefines(options.config),
-      // 保留同一个原生 meta 对象，解构/别名读取也必须看到最终逻辑位置。
-      banner: {
-        js: [
-          `import.meta.url = ${JSON.stringify(pathToFileURL(bundlePath).href)};`,
-          `import.meta.filename = ${JSON.stringify(bundlePath)};`,
-          `import.meta.dirname = ${JSON.stringify(path.dirname(bundlePath))};`,
-        ].join("\n"),
-      },
+      banner: { js: logicalModuleMetaBanner(bundlePath) },
       plugins: [
         createArtifactDraftPlugin(draft),
         createJscssResolverPlugin(options.config),

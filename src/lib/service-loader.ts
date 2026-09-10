@@ -1,9 +1,9 @@
-import { readdir, stat, readFile, writeFile, unlink } from "node:fs/promises";
+import { readdir, stat, readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { VextApp, VextLogger } from "../types/app.js";
 import type { VextInternalHooks } from "../types/hooks.js";
 import { resolveModuleDefault } from "./interop.js";
-import { pathToFileURL } from "node:url";
+import { importUserModule } from "./user-module-loader.js";
 import {
   SUPPORTED_SERVICE_EXTENSIONS,
   shouldExcludeServiceFileName,
@@ -51,6 +51,8 @@ import { wrapServiceInstance } from "./service-hooks.js";
  * loadServices 配置选项
  */
 export interface LoadServicesOptions {
+  /** 由框架调用点传递真实服务根；独立 helper 默认限于给定 servicesDir。 */
+  rootDir?: string;
   /**
    * 是否执行循环依赖检测
    *
@@ -122,7 +124,11 @@ export async function loadServices(
     const flatKey = keys.join(".");
 
     // 4.2 动态 import 获取 default export
-    const ServiceClass = await loadServiceFile(filePath, flatKey);
+    const ServiceClass = await loadServiceFile(
+      filePath,
+      flatKey,
+      options.rootDir ?? servicesDir,
+    );
 
     // 4.3 实例化 service（new ServiceClass(app)）
     let instance: unknown;
@@ -286,8 +292,8 @@ function setNestedKey(
  *        Node.js / Vite resolver 均不做 .js → .ts 自动回退
  *   修复：调用 esbuild build()（bundle:true）将 .ts 及所有本地相对依赖
  *   打包为单一 .mjs，npm 包保持 external 以复用项目 node_modules。
- *   临时文件写到源文件同目录（确保 npm 包 node_modules 查找路径正确），
- *   import 完成后在 finally 中清理。
+ *   共享 user-module-loader 在真实项目 owner 下执行并核对临时收据后清理，
+ *   保持同目录模块解析；TS service 每次加载重新求值，不使用配置模块缓存。
  *
  * @param filePath service 文件的绝对路径
  * @param flatKey  service key 的扁平化表示（用于错误信息，如 'payment.stripe'）
@@ -297,44 +303,10 @@ function setNestedKey(
 async function loadServiceFile(
   filePath: string,
   flatKey: string,
+  rootDir: string,
 ): Promise<Function> {
-  let tmpFile: string | undefined;
-
   try {
-    let fileUrl: string;
-
-    if (extname(filePath) === ".ts") {
-      // ── TypeScript 源文件：esbuild bundle → 临时 .mjs → import ──────
-      //
-      // bundle:true    — 将所有本地相对 import 递归解析并内联，
-      //                  esbuild 原生理解 .ts，自动完成 .js → .ts 重映射
-      // packages:external — npm 包保持原样，Node.js 从源文件所在目录向上查找
-      // write:false    — 编译产物通过 outputFiles 返回，不写磁盘
-      // tmpFile 写到源文件同目录，命名含 .__vext_compiled__ 使 shouldExclude()
-      // 将其过滤，避免被 scanServiceFiles() 重复扫描
-      //
-      const { build } = await import("esbuild");
-      const buildResult = await build({
-        entryPoints: [filePath],
-        bundle: true,
-        packages: "external",
-        format: "esm",
-        platform: "node",
-        target: "node20",
-        write: false,
-        logLevel: "silent",
-      });
-
-      const compiledCode = buildResult.outputFiles![0]!.text;
-
-      tmpFile = `${filePath.slice(0, -3)}.__vext_compiled__${Date.now()}.mjs`;
-      await writeFile(tmpFile, compiledCode, "utf-8");
-      fileUrl = pathToFileUrl(tmpFile);
-    } else {
-      fileUrl = pathToFileUrl(filePath);
-    }
-
-    const mod = await import(fileUrl);
+    const mod = await importUserModule(filePath, rootDir, { cache: false });
 
     const ServiceClass = resolveModuleDefault<Function>(mod);
 
@@ -373,12 +345,8 @@ async function loadServiceFile(
       `[vextjs] Failed to load service file: ${filePath}\n` +
         `         Service key: ${flatKey}\n` +
         `         ${(err as Error).message}`,
+      { cause: err },
     );
-  } finally {
-    // 返回调用方前完成 best-effort 清理，避免目录清理与未决 unlink 竞态。
-    if (tmpFile) {
-      await unlink(tmpFile).catch(() => {});
-    }
   }
 }
 
@@ -555,15 +523,6 @@ async function directoryExists(dirPath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * 将文件系统路径转为 file:// URL
- *
- * dynamic import 在 Windows 上需要 file:// 协议前缀才能正确加载。
- */
-function pathToFileUrl(filePath: string): string {
-  return pathToFileURL(filePath).href;
 }
 
 /**

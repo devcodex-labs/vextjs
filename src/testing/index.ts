@@ -413,12 +413,13 @@ export async function createTestApp(
       finalConfig.middlewares,
       app.logger,
       finalConfig.logger?.lifecycleLevel ?? "concise",
+      rootDir,
     );
   }
 
   // ── 5. Services ──────────────────────────────────────
   if (shouldLoadServices) {
-    await loadServices(app, join(srcDir, "services"));
+    await loadServices(app, join(srcDir, "services"), { rootDir });
   }
   // mock services 覆盖（后执行，优先级更高）
   if (mockServices) {

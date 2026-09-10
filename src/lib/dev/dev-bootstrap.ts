@@ -628,12 +628,15 @@ async function devBootstrapOwned(
           config.middlewares ?? [],
           app.logger,
           config.logger?.lifecycleLevel ?? "concise",
+          projectRoot,
         ),
     );
 
     // ── 步骤 6: 加载服务 ─────────────────────────────────
     await startupProfiler.time("worker.services", () =>
-      loadServices(app, path.join(outDir, "services")),
+      loadServices(app, path.join(outDir, "services"), {
+        rootDir: projectRoot,
+      }),
     );
 
     // ── 步骤 7: 加载路由 ─────────────────────────────────

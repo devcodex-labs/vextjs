@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /** Canonical project source directory for application preloads. */
@@ -84,10 +84,13 @@ function hasProjectPreloadFiles(directory: string): boolean {
 }
 
 function isDirectory(filePath: string): boolean {
-  if (!existsSync(filePath)) return false;
   try {
-    return statSync(filePath).isDirectory();
-  } catch {
-    return false;
+    if (!statSync(filePath).isDirectory()) {
+      throw new Error(`[vextjs] preload: ${filePath} must be a directory.`);
+    }
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 }

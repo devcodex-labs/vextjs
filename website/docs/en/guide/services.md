@@ -2,6 +2,8 @@
 
 VextJS adopts a **layered architecture** and concentrates business logic on the service layer (Service Layer). Service files are placed in the `src/services/` directory, automatically scanned, instantiated and injected into `app.services` by the framework, and accessed through `app.services.xxx` in the routing handler.
 
+When `createTestApp()` loads TS service sources directly, it uses the framework's compiler and native ESM execution without an additional TS loader. Loading a TS service again evaluates it again and creates a new instance. Its `import.meta.url` / `filename` / `dirname` identify the source file, and owned temporary execution files are checked and cleaned before loading returns. Dev and compiled production runtime continue to use their respective compiled outputs and existing reload lifecycle.
+
 ## Design concept
 
 ```
@@ -18,8 +20,7 @@ Data layer (models) ← Data access (provided through plugins)
 
 This layering enables:
 
--Business logic can be reused between different routes
-
+- Business logic can be reused between different routes
 - The service layer can be unit tested independently (not relying on HTTP)
 - Switching the underlying Adapter does not affect the business code
 

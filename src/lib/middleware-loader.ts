@@ -107,6 +107,7 @@ export async function loadMiddlewares(
   declarations: MiddlewareDecl[],
   logger: VextLogger,
   lifecycleLevel: "concise" | "verbose" = "concise",
+  rootDir: string = middlewaresDir,
 ): Promise<MiddlewareRegistry> {
   const registry = Object.create(null) as MiddlewareRegistry;
   const declaredNames = new Set<string>();
@@ -157,7 +158,7 @@ export async function loadMiddlewares(
     }
 
     // ── 2. 动态 import ────────────────────────────────────
-    const mod = await importMiddlewareFile(fullPath, name);
+    const mod = await importMiddlewareFile(fullPath, name, rootDir);
 
     const handler = resolveModuleDefault(mod);
 
@@ -396,14 +397,16 @@ function resolveFile(middlewaresDir: string, name: string): string | null {
 async function importMiddlewareFile(
   fullPath: string,
   name: string,
+  rootDir: string,
 ): Promise<Record<string, unknown>> {
   try {
-    return await importUserModule(fullPath);
+    return await importUserModule(fullPath, rootDir);
   } catch (err) {
     throw new Error(
       `[vextjs] Failed to import middleware "${name}".\n` +
         `         File: ${fullPath}\n` +
         `         ${(err as Error).message}`,
+      { cause: err },
     );
   }
 }

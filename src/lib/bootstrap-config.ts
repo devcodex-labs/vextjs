@@ -172,9 +172,10 @@ function validateProviderDefinition(
 
 async function importBootstrapDefinition(
   filePath: string,
+  rootDir: string,
 ): Promise<BootstrapConfigDefinition> {
   const { resolveModuleDefault } = await import("./interop.js");
-  const mod = await importUserModule(filePath);
+  const mod = await importUserModule(filePath, rootDir);
   const rawExport = resolveModuleDefault<unknown>(mod);
   return normalizeDefinition(rawExport, filePath);
 }
@@ -268,7 +269,10 @@ export async function loadBootstrapConfigPatch(
     return {};
   }
 
-  const definition = await importBootstrapDefinition(bootstrapFile);
+  const definition = await importBootstrapDefinition(
+    bootstrapFile,
+    options.rootDir,
+  );
   let mergedPatch: Record<string, unknown> = {};
 
   for (const provider of definition.providers) {

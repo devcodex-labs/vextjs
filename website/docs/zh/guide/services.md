@@ -2,6 +2,8 @@
 
 VextJS 采用 **分层架构**，将业务逻辑集中在服务层（Service Layer）。服务文件放在 `src/services/` 目录下，由框架自动扫描、实例化并注入到 `app.services`，路由 handler 中通过 `app.services.xxx` 访问。
 
+`createTestApp()` 直接加载 TS service 源文件时使用框架内置编译和原生 ESM 执行，无需额外 TS loader；再次加载 TS service 会重新求值并创建新实例。其 `import.meta.url` / `filename` / `dirname` 指向源文件位置，临时执行文件在返回前完成归属校验和清理。dev 与 compiled 生产运行仍使用各自的编译输出和既有重载流程。
+
 ## 设计理念
 
 ```

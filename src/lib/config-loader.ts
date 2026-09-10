@@ -2759,11 +2759,12 @@ function validateNonNegativeFiniteNumber(value: unknown, path: string): void {
  */
 async function importConfigFile(
   filePath: string,
+  rootDir: string,
 ): Promise<Record<string, unknown>> {
   // 延迟导入 interop 工具（避免循环依赖风险）
   const { resolveModuleDefault } = await import("./interop.js");
 
-  const mod = await importUserModule(filePath);
+  const mod = await importUserModule(filePath, rootDir);
 
   const defaultExport = resolveModuleDefault<Record<string, unknown>>(mod);
 
@@ -2811,6 +2812,7 @@ export async function loadRawConfig(
           command: options.command,
         }).profile;
   const mode = options.mode ?? getDefaultRuntimeMode(options.command);
+  const rootDir = options.rootDir ?? path.dirname(path.dirname(configDir));
 
   // ── 1. 加载 default（必须存在）────────────────────────
   const defaultFile = resolveConfigFile(configDir, "default");
@@ -2820,7 +2822,7 @@ export async function loadRawConfig(
         `         This file is required. It defines all configuration defaults.`,
     );
   }
-  const userDefaultConfig = await importConfigFile(defaultFile);
+  const userDefaultConfig = await importConfigFile(defaultFile, rootDir);
 
   // ── 1b. 以 DEFAULT_CONFIG 为基底，深度合并用户 default ──
   //
@@ -2853,17 +2855,20 @@ export async function loadRawConfig(
 
   // ── 2. 加载 profile 文件（可选）──────────────────────────
   const profileFile = resolveConfigFile(configDir, configProfile);
-  const profileConfig = profileFile ? await importConfigFile(profileFile) : {};
+  const profileConfig = profileFile
+    ? await importConfigFile(profileFile, rootDir)
+    : {};
 
   // ── 3. 加载 local（可选，不存在则静默跳过）──────────────
   const localFile = resolveConfigFile(configDir, "local");
-  const localConfig = localFile ? await importConfigFile(localFile) : {};
+  const localConfig = localFile
+    ? await importConfigFile(localFile, rootDir)
+    : {};
 
   // ── 4. 合并 ────────────────────────────────────────────
   let merged = applyConfigLayer(defaultConfig, profileConfig);
   merged = applyConfigLayer(merged, localConfig);
 
-  const rootDir = options.rootDir ?? path.dirname(path.dirname(configDir));
   const providerPatch = await loadBootstrapConfigPatch({
     rootDir,
     configDir,

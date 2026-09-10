@@ -1,33 +1,45 @@
-import { unlink, writeFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { realpathSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { assertPathInside } from "./path-boundary.js";
+import { withProjectOwner } from "./project/owner.js";
+import { withTemporaryArtifact } from "./project/temporary-artifact.js";
+import { logicalModuleMetaBanner } from "./build/logical-module-meta.js";
 
-let compiledModuleSequence = 0;
 const userModuleCache = new Map<string, Promise<Record<string, unknown>>>();
 
 /** Import a user module while supporting TypeScript on every supported Node line. */
-export function importUserModule(
+export async function importUserModule(
   filePath: string,
+  rootDir: string,
+  options: { cache?: boolean } = {},
 ): Promise<Record<string, unknown>> {
-  const cached = userModuleCache.get(filePath);
+  const root = realpathSync.native(path.resolve(rootDir));
+  const filename = realpathSync.native(path.resolve(filePath));
+  assertPathInside(root, filename, "user module");
+  if (path.extname(filename).toLowerCase() !== ".ts") {
+    return (await import(pathToFileURL(filename).href)) as Record<
+      string,
+      unknown
+    >;
+  }
+  const key = `${pathToFileURL(root).href}\n${pathToFileURL(filename).href}`;
+  const load = () =>
+    withProjectOwner(root, "build", [], () => loadUserModule(filename, root));
+  if (options.cache === false) return load();
+  const cached = userModuleCache.get(key);
   if (cached) return cached;
 
-  const pending = loadUserModule(filePath);
-  userModuleCache.set(filePath, pending);
-  void pending.catch(() => userModuleCache.delete(filePath));
+  const pending = load();
+  userModuleCache.set(key, pending);
+  void pending.catch(() => userModuleCache.delete(key));
   return pending;
 }
 
 async function loadUserModule(
   filePath: string,
+  rootDir: string,
 ): Promise<Record<string, unknown>> {
-  if (extname(filePath).toLowerCase() !== ".ts") {
-    return (await import(pathToFileURL(filePath).href)) as Record<
-      string,
-      unknown
-    >;
-  }
-
   const { build } = await import("esbuild");
   const result = await build({
     entryPoints: [filePath],
@@ -38,6 +50,7 @@ async function loadUserModule(
     target: "node20",
     write: false,
     logLevel: "silent",
+    banner: { js: logicalModuleMetaBanner(filePath) },
   });
   const output = result.outputFiles?.[0];
   if (!output) {
@@ -46,16 +59,17 @@ async function loadUserModule(
     );
   }
 
-  const sequence = ++compiledModuleSequence;
-  const compiledPath = `${filePath.slice(0, -3)}.__vext_compiled__${process.pid}-${Date.now()}-${sequence}.mjs`;
-  await writeFile(compiledPath, output.text, "utf8");
-
-  try {
-    return (await import(pathToFileURL(compiledPath).href)) as Record<
-      string,
-      unknown
-    >;
-  } finally {
-    await unlink(compiledPath).catch(() => undefined);
-  }
+  // 导出可能含函数、class 和父进程状态，必须在当前进程按原生 ESM 求值。
+  return withTemporaryArtifact(
+    {
+      rootDir,
+      logicalPath: `${filePath.slice(0, -3)}.mjs`,
+      contents: output.contents,
+    },
+    async (compiledPath) =>
+      (await import(pathToFileURL(compiledPath).href)) as Record<
+        string,
+        unknown
+      >,
+  );
 }

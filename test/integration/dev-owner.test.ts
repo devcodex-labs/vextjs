@@ -57,7 +57,7 @@ function run(cli: string, root: string, args: string[]) {
   });
   const completed = new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", (code) => resolve(code));
+    child.once("close", (code) => resolve(code));
   });
   return { child, completed, output: () => output };
 }
@@ -69,6 +69,135 @@ async function stop(child: ChildProcess, completed: Promise<unknown>) {
 }
 
 describe("built CLI project ownership", () => {
+  it("preserves the running worker and whole preload cache after a compile failure, then restarts with the repaired generation", async () => {
+    const repository = process.cwd();
+    const cli = path.join(repository, "dist/cli/index.js");
+    const root = await mkdtemp(path.join(tmpdir(), "vext-cli-preload-"));
+    const selectedPort = await port();
+    let running: ReturnType<typeof run> | undefined;
+    try {
+      const write = async (file: string, content: string) => {
+        const target = path.join(root, file);
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, content);
+      };
+      await mkdir(path.join(root, "node_modules"));
+      await symlink(
+        repository,
+        path.join(root, "node_modules/vextjs"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await write(
+        "package.json",
+        JSON.stringify({
+          name: "preload-transaction",
+          type: "module",
+          dependencies: { vextjs: "2.0.0" },
+        }),
+      );
+      await write(
+        "src/config/default.js",
+        `export default { port: ${selectedPort}, host: '127.0.0.1', adapter: 'native', frontend: false, logger: { level: 'error' } };`,
+      );
+      await write(
+        "src/routes/index.js",
+        `import { defineRoutes } from 'vextjs'; export default defineRoutes(app => { app.get('/health', {}, async (_req, res) => res.json({ value: process.env.VEXT_PRELOAD_FIRST + ':' + process.env.VEXT_PRELOAD_LAST, pid: process.pid })); });`,
+      );
+      const preload = (name: string, value: string) =>
+        `const value: string = ${JSON.stringify(value)}; process.env.${name} = value;`;
+      await write(
+        "src/preload/01-first.ts",
+        preload("VEXT_PRELOAD_FIRST", "old-first"),
+      );
+      await write(
+        "src/preload/02-last.mts",
+        preload("VEXT_PRELOAD_LAST", "old-last"),
+      );
+      running = run(cli, root, [
+        "dev",
+        "--poll",
+        "--poll-interval",
+        "50",
+        "--debounce",
+        "80",
+      ]);
+      console.log(
+        `[CLI preload probe] command=node ${cli} dev --poll --poll-interval 50 --debounce 80 cwd=${root} pid=${running.child.pid} url=http://127.0.0.1:${selectedPort}`,
+      );
+      const response = async () => {
+        const result = await fetch(`http://127.0.0.1:${selectedPort}/health`, {
+          signal: AbortSignal.timeout(1500),
+        });
+        expect(result.status).toBe(200);
+        return (await result.json()).data as { value: string; pid: number };
+      };
+      let originalPid = 0;
+      await waitFor(async () => {
+        const current = await response();
+        expect(current.value).toBe("old-first:old-last");
+        originalPid = current.pid;
+      }, "initial preload HTTP");
+      const paths = [
+        ".vext/preload/01-first.__compiled__.mjs",
+        ".vext/preload/02-last.__compiled__.mjs",
+      ];
+      const before = await Promise.all(
+        paths.map((file) => readFile(path.join(root, file), "utf8")),
+      );
+      await write(
+        "src/preload/01-first.ts",
+        preload("VEXT_PRELOAD_FIRST", "new-first"),
+      );
+      await write("src/preload/02-last.mts", "export const broken: = ;");
+      await waitFor(async () => {
+        expect(running!.output()).toContain(
+          "failed to compile TypeScript preload",
+        );
+      }, "failed preload diagnostics");
+      expect(
+        await Promise.all(
+          paths.map((file) => readFile(path.join(root, file), "utf8")),
+        ),
+      ).toEqual(before);
+      expect(await response()).toEqual({
+        value: "old-first:old-last",
+        pid: originalPid,
+      });
+      await write(
+        "src/preload/02-last.mts",
+        preload("VEXT_PRELOAD_LAST", "new-last"),
+      );
+      await waitFor(async () => {
+        const current = await response();
+        expect(current.value).toBe("new-first:new-last");
+        expect(current.pid).not.toBe(originalPid);
+      }, "repaired preload HTTP");
+    } catch (error) {
+      throw new Error(`${String(error)}\n${running?.output() ?? ""}`, {
+        cause: error,
+      });
+    } finally {
+      if (running) await stop(running.child, running.completed);
+      await waitFor(async () => {
+        const probe = createServer();
+        try {
+          probe.listen(selectedPort, "127.0.0.1");
+          await once(probe, "listening");
+        } finally {
+          if (probe.listening)
+            await new Promise<void>((resolve) => probe.close(() => resolve()));
+        }
+      }, "preload fixture port released");
+      console.log(
+        `[CLI preload probe] closed pid=${running?.child.pid} released port=${selectedPort}`,
+      );
+      await waitFor(
+        () => rm(root, { recursive: true, force: true }),
+        "preload fixture handles released",
+      );
+    }
+  }, 45_000);
+
   it("applies a port change saved while the initial configuration provider is still loading", async () => {
     const repository = process.cwd();
     const cli = path.join(repository, "dist/cli/index.js");

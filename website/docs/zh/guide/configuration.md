@@ -12,6 +12,8 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 
 运行时合并允许后层只声明需要覆盖的字段。TypeScript 则有意区分项目基础配置与后层 patch：`default.ts` 使用 `VextUserConfig`，环境 profile 与 local 配置文件使用 `VextConfigOverride`，`createTestApp()` 采用同一覆盖合同。bootstrap provider 继续使用 JSON-like `Record<string, unknown>` patch，并由现有运行时校验。
 
+直接加载 TypeScript 配置源码时，框架负责编译，不要求额外安装 TS loader。模块在当前应用进程中执行，支持顶层 `await`，模块导出的 provider 函数仍可使用当前进程状态；同一进程对同一个 TS 配置模块复用求值结果。`import.meta.url` / `filename` / `dirname` 指向该模块的源码位置。临时执行文件由框架管理，正常加载和加载失败都会清理；发现外部改动时会保留冲突文件并报告错误。compiled 生产模式继续加载选定构建目录中的配置产物。
+
 ### 配置文件
 
 | 文件                        | 用途                                   | 是否必须 |

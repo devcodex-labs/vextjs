@@ -156,7 +156,10 @@ export async function withTemporaryArtifact<T>(
       "Temporary module must be .mjs or .cjs.",
     );
   await owner.reserveOutputs([
-    path.dirname(logical),
+    // 项目根已由 root owner 独占；一般输出锁仍禁止把整个根作为产物目录。
+    ...(path.relative(root, path.dirname(logical)) === ""
+      ? []
+      : [path.dirname(logical)]),
     path.join(root, DIRECTORY),
   ]);
   await recoverTemporaryArtifacts(owner);

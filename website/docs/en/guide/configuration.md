@@ -12,6 +12,8 @@ Framework built-in defaults → default.ts → {configProfile}.ts → local.ts �
 
 Runtime merging lets later layers declare only the fields they override. TypeScript intentionally distinguishes the project base from those later patches: `default.ts` uses `VextUserConfig`, while environment profile and local config files use `VextConfigOverride`; `createTestApp()` applies the same override contract. Bootstrap providers keep their JSON-like `Record<string, unknown>` patch contract and runtime validation.
 
+When loading TypeScript config sources directly, the framework compiles them without requiring an additional TS loader. Modules execute in the current application process, support top-level `await`, and their exported provider functions retain access to that process's state. Evaluation of the same TS config module is reused within one process. `import.meta.url` / `filename` / `dirname` identify the module's source location. The framework manages temporary execution files and cleans them after successful or failed loading; externally modified files are preserved and reported as conflicts. Compiled production mode continues to load config artifacts from the selected build output.
+
 ### Configuration file
 
 | File                        | Purpose                                                      | Is it necessary |

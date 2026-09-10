@@ -403,6 +403,7 @@ export async function bootstrap(
           config.middlewares ?? [],
           app.logger,
           config.logger?.lifecycleLevel ?? "concise",
+          rootDir,
         ),
       { phase: "middleware" },
     );
@@ -412,7 +413,7 @@ export async function bootstrap(
     // 加载完成后执行循环依赖静态检测（正则 + DFS）
     await startupProfiler.time(
       "start.services",
-      () => loadServices(app, join(srcDir, "services")),
+      () => loadServices(app, join(srcDir, "services"), { rootDir }),
       { phase: "services" },
     );
 
