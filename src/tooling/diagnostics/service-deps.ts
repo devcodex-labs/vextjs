@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { relative } from "node:path";
+import { SourceViewError } from "../source-view/types.js";
+import { normalizeSourcePath } from "../source-view/policy.js";
 import {
   buildProjectIndex,
   type ProjectIndex,
@@ -25,13 +27,33 @@ export async function analyzeServiceDependencies(
   options: { index?: ProjectIndex } = {},
 ): Promise<ServiceDependencyReport> {
   const index = options.index ?? (await buildProjectIndex(rootDir));
+  return analyzeIndexedServiceDependencies(index);
+}
+
+/** 依赖分析与类型生成共用索引的源码代次，不重新读盘。 */
+export function analyzeIndexedServiceDependencies(
+  index: ProjectIndex,
+): ServiceDependencyReport {
   const knownKeys = new Set(
     index.serviceEntries.map((entry) => entry.serviceKey),
   );
   const graph = new Map<string, Set<string>>();
 
   for (const entry of index.serviceEntries) {
-    graph.set(entry.serviceKey, await collectDependencies(entry, knownKeys));
+    const sourcePath = normalizeSourcePath(
+      relative(index.source.rootDir, entry.filePath),
+    );
+    const record = index.source.view.record(index.source.rootId, sourcePath);
+    const source = index.source.view.read(index.source.rootId, sourcePath);
+    if (record?.role !== "service" || source === undefined) {
+      throw new SourceViewError(
+        "VEXT_SOURCE_UNVERIFIED",
+        "Indexed service source is absent from its sealed view: " +
+          sourcePath +
+          ".",
+      );
+    }
+    graph.set(entry.serviceKey, collectDependencies(source, entry, knownKeys));
   }
 
   const diagnostics: ServiceDependencyDiagnostic[] = [];
@@ -48,12 +70,12 @@ export async function analyzeServiceDependencies(
   return { diagnostics, graph };
 }
 
-async function collectDependencies(
+function collectDependencies(
+  source: string,
   entry: ServiceIndexEntry,
   knownKeys: Set<string>,
-): Promise<Set<string>> {
+): Set<string> {
   const deps = new Set<string>();
-  const source = await readFile(entry.filePath, "utf-8");
   const accessPattern =
     /(?:\bapp|this\.app)\.services((?:\.[A-Za-z_$][\w$]*)+)/gu;
 

@@ -1,6 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import fg from "fast-glob";
+import { join, resolve } from "node:path";
+import { assertPathInside } from "../../lib/path-boundary.js";
+import { SourceViewError, type SourceView } from "../source-view/types.js";
+import {
+  collectProjectSources,
+  PROJECT_SOURCE_ROOT_ID,
+  projectSourceDirectory,
+  type ProjectSourceOptions,
+} from "./source-input.js";
 import {
   filePathToServiceKeys,
   toGeneratedImportPath,
@@ -34,19 +40,14 @@ export interface AppExtensionIndexEntry {
 }
 
 export interface ProjectIndex {
+  readonly source: {
+    readonly view: SourceView;
+    readonly rootId: string;
+    readonly rootDir: string;
+  };
   serviceEntries: ServiceIndexEntry[];
   appExtensions: AppExtensionIndexEntry[];
 }
-
-const SOURCE_PATTERNS = ["**/*.{ts,mts,cts,js,mjs,cjs}"];
-const COMMON_IGNORE_PATTERNS = [
-  "**/_*/**",
-  "**/_*",
-  "**/*.d.ts",
-  "**/*.test.*",
-  "**/*.spec.*",
-  "**/*.__vext_compiled__*",
-];
 
 const LIFECYCLE_METHODS: Array<Exclude<ExtensionSourceKind, "declaration">> = [
   "setup",
@@ -57,30 +58,27 @@ const LIFECYCLE_METHODS: Array<Exclude<ExtensionSourceKind, "declaration">> = [
 export async function buildProjectIndex(
   rootDir: string,
 ): Promise<ProjectIndex> {
-  const servicesDir = join(rootDir, "src", "services");
-  const pluginsDir = join(rootDir, "src", "plugins");
+  const view = await collectProjectSources(rootDir, ["service", "plugin"]);
+  return buildProjectIndexFromSourceView(rootDir, view);
+}
+
+/** 只投影封存正文，供 CLI 与候选 Overlay 分析复用。 */
+export function buildProjectIndexFromSourceView(
+  rootDir: string,
+  view: SourceView,
+  options: ProjectSourceOptions = {},
+): ProjectIndex {
+  rootDir = resolve(rootDir);
+  const rootId = options.rootId ?? PROJECT_SOURCE_ROOT_ID;
+  const servicesDir = join(rootDir, projectSourceDirectory("service", options));
+  const pluginsDir = join(rootDir, projectSourceDirectory("plugin", options));
   const paths = getTypegenGeneratedPaths(rootDir);
 
-  const serviceFiles = existsSync(servicesDir)
-    ? await fg(SOURCE_PATTERNS, {
-        cwd: servicesDir,
-        absolute: true,
-        onlyFiles: true,
-        ignore: COMMON_IGNORE_PATTERNS,
-      })
-    : [];
-
-  const pluginFiles = existsSync(pluginsDir)
-    ? await fg(SOURCE_PATTERNS, {
-        cwd: pluginsDir,
-        absolute: true,
-        onlyFiles: true,
-        ignore: COMMON_IGNORE_PATTERNS,
-      })
-    : [];
-
-  const serviceEntries = serviceFiles
-    .map((filePath) => {
+  const serviceEntries = view
+    .list({ rootId, roles: ["service"] })
+    .map((record) => {
+      const filePath = join(rootDir, record.path);
+      assertPathInside(servicesDir, filePath, "indexed service source");
       const keySegments = filePathToServiceKeys(filePath, servicesDir);
       return {
         filePath,
@@ -91,11 +89,26 @@ export async function buildProjectIndex(
     })
     .sort((a, b) => a.serviceKey.localeCompare(b.serviceKey));
 
-  const appExtensions = pluginFiles
-    .flatMap((filePath) => scanAppExtensions(filePath, paths.appExtensionsDts))
+  const appExtensions = view
+    .list({ rootId, roles: ["plugin"] })
+    .flatMap((record) => {
+      const filePath = join(rootDir, record.path);
+      assertPathInside(pluginsDir, filePath, "indexed plugin source");
+      const source = view.read(rootId, record.path);
+      if (source === undefined) {
+        throw new SourceViewError(
+          "VEXT_SOURCE_UNVERIFIED",
+          "Indexed plugin source is absent from its sealed view: " +
+            record.path +
+            ".",
+        );
+      }
+      return scanAppExtensions(filePath, paths.appExtensionsDts, source);
+    })
     .sort((a, b) => a.propertyKey.localeCompare(b.propertyKey));
 
   return {
+    source: Object.freeze({ view, rootId, rootDir }),
     serviceEntries,
     appExtensions,
   };
@@ -104,8 +117,8 @@ export async function buildProjectIndex(
 function scanAppExtensions(
   pluginFile: string,
   generatedFilePath: string,
+  source: string,
 ): AppExtensionIndexEntry[] {
-  const source = readFileSync(pluginFile, "utf-8");
   const declared = scanDeclaredAppExtensions(
     source,
     pluginFile,

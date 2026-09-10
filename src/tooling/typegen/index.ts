@@ -3,9 +3,12 @@ import type {
   GeneratedFileDraft,
 } from "../../lib/project/generated-files.js";
 import { publishGeneratedFiles } from "../../lib/project/generated-files.js";
-import { buildProjectIndex } from "../project-index/index.js";
 import {
-  analyzeServiceDependencies,
+  buildProjectIndex,
+  type ProjectIndex,
+} from "../project-index/index.js";
+import {
+  analyzeIndexedServiceDependencies,
   type ServiceDependencyDiagnostic,
 } from "../diagnostics/service-deps.js";
 import { createServicesDts } from "./generate-services-dts.js";
@@ -34,6 +37,21 @@ export interface TypegenResult {
   manifest?: GeneratedFileResult;
 }
 
+export type TypegenGenerationOptions = Pick<
+  RunTypegenOptions,
+  | "generateServices"
+  | "generateAppExtensions"
+  | "generateShim"
+  | "writeManifest"
+>;
+
+export interface TypegenDraftResult {
+  files: GeneratedFileDraft[];
+  diagnostics: ServiceDependencyDiagnostic[];
+  warnings: string[];
+  manifest?: GeneratedFileDraft;
+}
+
 export async function runTypegen(
   options: RunTypegenOptions,
 ): Promise<TypegenResult> {
@@ -46,19 +64,19 @@ export async function runTypegen(
   );
 }
 
-async function runTypegenOwned(
-  options: RunTypegenOptions,
-): Promise<TypegenResult> {
+/** 只返回本代候选和诊断；所有磁盘比较、owner 与提交由运行入口负责。 */
+export function createTypegenDrafts(
+  index: ProjectIndex,
+  options: TypegenGenerationOptions,
+): TypegenDraftResult {
   const {
-    rootDir,
     generateServices,
     generateAppExtensions,
     generateShim = true,
-    checkOnly = false,
     writeManifest = false,
   } = options;
 
-  const index = await buildProjectIndex(rootDir);
+  const rootDir = index.source.rootDir;
   const drafts: GeneratedFileDraft[] = [];
   const warnings: string[] = [];
 
@@ -82,7 +100,7 @@ async function runTypegenOwned(
     );
   }
 
-  const serviceDeps = await analyzeServiceDependencies(rootDir, { index });
+  const serviceDeps = analyzeIndexedServiceDependencies(index);
   const manifestDraft = writeManifest
     ? createServiceManifestFile(
         rootDir,
@@ -91,7 +109,27 @@ async function runTypegenOwned(
         serviceDeps,
       )
     : undefined;
-  const blocked = serviceDeps.diagnostics.some(
+
+  return {
+    files: drafts,
+    warnings,
+    diagnostics: serviceDeps.diagnostics,
+    manifest: manifestDraft,
+  };
+}
+
+async function runTypegenOwned(
+  options: RunTypegenOptions,
+): Promise<TypegenResult> {
+  const { rootDir, checkOnly = false } = options;
+  const index = await buildProjectIndex(rootDir);
+  const {
+    files: drafts,
+    warnings,
+    diagnostics,
+    manifest: manifestDraft,
+  } = createTypegenDrafts(index, options);
+  const blocked = diagnostics.some(
     (diagnostic) => diagnostic.level === "error",
   );
   const results = await publishGeneratedFiles(
@@ -116,7 +154,7 @@ async function runTypegenOwned(
   return {
     ok: !hasErrors,
     files,
-    diagnostics: serviceDeps.diagnostics,
+    diagnostics,
     warnings,
     manifest,
   };

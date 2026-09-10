@@ -460,6 +460,8 @@ vext typegen --services --root ./examples/hello-world
 
 ### Applicable Boundary
 
+- A typegen invocation shares one sealed source capture across its service inventory, plugin extensions, dependency diagnostics, and generated candidates. Diagnosis does not reread files or execute project modules. Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) are excluded as services; type imports for `.mts` / `.cts` sources use `.mjs` / `.cjs` respectively.
+- Sources require valid UTF-8. Each capture allows up to 5000 files, 2MiB per file, and 64MiB total; exceeded limits, read errors, or files disappearing after discovery report errors. Doctor source analysis uses the same limits. A sealed analysis is not an atomic directory-tree snapshot and does not guarantee that sources remain unchanged afterward.
 - Selected declarations, the shim, and the optional service manifest are committed together after dependency checks. Blocking diagnostics, unreadable outputs, or ownership conflicts preserve existing files. Unselected declarations remain, while the shim references only the selected declarations.
 - `--check` compares actual files without writing outputs or ownership records and can run alongside a development service. Missing or different content is stale; read failures retain their diagnostic. Identical output is not rewritten. Review and resolve manual edits to generated files before regenerating.
 - `typegen` as a whole still belongs to the **tooling-only** capability and will not enter the main runtime path of `vext start`;

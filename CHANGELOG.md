@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Share sealed service and plugin sources across project indexing, dependency diagnostics, and pure typegen candidate generation. Exclude NodeNext declaration files from the service index and prevent later disk edits from contaminating an existing analysis.
 - Derive Doctor route entries and source fingerprints from one sealed source view. Analyze current sources by default instead of trusting disk manifests; preserve historical snapshot identities, report stale or unverified sources, and leave missing metadata unknown. Bound source discovery and release streams on cancellation or limits.
 - Read artifact and owner metadata through a bounded file descriptor, detecting growth, replacement, and deletion during reads. Preserve raw bytes and reject inconsistent state instead of treating it as missing or fresh.
 - Recover verified owner-registry temporary files after interrupted writes under the existing process mutex. Preserve partial, changed, or legacy candidates for inspection, keep recovery bounded, and leave authoritative records intact on failed replacement.
