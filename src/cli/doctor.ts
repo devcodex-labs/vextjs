@@ -35,7 +35,7 @@ export async function doctorCommand(args: string[] = []): Promise<void> {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log(
-      `[vext doctor] target=${result.target} routeFiles=${result.routeFileCount} routes=${result.routeCount} errors=${result.summary.errors} warnings=${result.summary.warnings} infos=${result.summary.infos}`,
+      `[vext doctor] target=${result.target} source=${result.sourceFreshness} routeFiles=${result.routeFileCount} routes=${result.routeCount} errors=${result.summary.errors} warnings=${result.summary.warnings} infos=${result.summary.infos}`,
     );
 
     if (result.inspect) {

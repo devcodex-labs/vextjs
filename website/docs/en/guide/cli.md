@@ -495,7 +495,7 @@ Value options such as `--root` / `-C` require a non-option value; `--root --json
 | `--json`           | Output machine-readable JSON                       | `false`           |
 | `--write-inspect`  | Write `.vext/inspect/routes.json`                  | `false`           |
 | `--write-manifest` | Write `.vext/manifest/routes.json`                 | `false`           |
-| `--refresh`        | Skip cache manifest and rescan routing diagnostics | `false`           |
+| `--refresh`        | Compatibility option; current sources are already analyzed by default | `false` |
 | `--manifest-only`  | Explicitly read the existing manifest snapshot     | `false`           |
 | `--root <path>`    | Specify the project root directory                 | Current directory |
 | `-C <path>`        | `--root` alias                                     | —                 |
@@ -518,7 +518,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ### Current boundary
 
-- Doctor-generated route manifests carry a fingerprint and source-file inventory. By default Doctor reuses a manifest only when it matches current route sources; stale manifests are rebuilt. `--manifest-only` is an explicit snapshot read and cannot be combined with `--refresh` or `--write-manifest`.
+- Doctor analyzes the route sources captured for this invocation. Route entries, the fingerprint, and the source-file inventory come from the same raw bytes; disk manifests are not reused as static-analysis caches. `--refresh` remains a compatibility option.
+- CLI text, JSON, and inspect reports include `sourceFreshness`: `current` identifies this invocation's source analysis. `--manifest-only` preserves the historical snapshot's own source identity: a different fingerprint is `stale`; a missing or merely matching declared fingerprint is `unverified`. Missing fingerprints remain `null`; missing schema, freshness, or docsKind metadata remains unknown with a diagnostic. `ok` only means there are no blocking diagnostics; it does not attest to a historical snapshot or guarantee the disk has not changed after analysis.
+- `--manifest-only` cannot be combined with `--refresh` or `--write-manifest`. Historical snapshots have size and format checks; corrupt data or out-of-bound source paths report errors.
 - With both `--write-inspect --write-manifest`, the two outputs are committed together. An unreadable or externally modified output preserves existing files and reports an error. Ordinary diagnosis is read-only; writing shares ownership with dev/build for the same project.
 - The development service also collects and generates the route manifest using the same ownership record as Doctor. A manifest is diagnostic or build input; its existence does not prove that the service has started, a reload generation has completed, or diagnostics contain no blocking issue.
 - The current route manifest and services manifest are still maintained hierarchically and are not merged into a single overall manifest;

@@ -4,6 +4,9 @@ import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 export interface RouteInspectPayload {
   schemaVersion: 1;
   target: "routes";
+  sourceFingerprint?: string | null;
+  sourceFiles?: string[];
+  sourceFreshness?: "current" | "stale" | "unverified";
   routeFileCount: number;
   routeCount: number;
   summary: {

@@ -1,12 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
-import fg from "fast-glob";
 import {
   isUnsupportedCommonJsRouteFileName,
-  ROUTE_IGNORE_PATTERNS,
-  ROUTE_SOURCE_PATTERNS,
   shouldIncludeRouteFilePath,
 } from "../../lib/route-file-policy.js";
+import { assertPathInside } from "../../lib/path-boundary.js";
+import { type SourceView, SourceViewError } from "../source-view/types.js";
+import {
+  collectProjectSources,
+  projectSourceDirectory,
+  PROJECT_SOURCE_ROOT_ID,
+  type ProjectSourceOptions,
+} from "./source-input.js";
 import {
   assertCanonicalRouteFactoryBody,
   createCanonicalRouteIdentity,
@@ -104,24 +108,28 @@ export interface RouteSourceSnapshot {
 export async function createRouteSourceSnapshot(
   rootDir: string,
 ): Promise<RouteSourceSnapshot> {
-  const routesDir = join(rootDir, "src", "routes");
-  if (!existsSync(routesDir)) {
-    return { fingerprint: createDigest([]), files: [] };
-  }
-  const routeFiles = (
-    await fg(ROUTE_SOURCE_PATTERNS, {
-      cwd: routesDir,
-      absolute: true,
-      onlyFiles: true,
-      ignore: ROUTE_IGNORE_PATTERNS,
+  return projectRouteSourceSnapshot(
+    await collectProjectSources(rootDir, ["route"]),
+  );
+}
+
+export function projectRouteSourceSnapshot(
+  view: SourceView,
+  options: ProjectSourceOptions = {},
+): RouteSourceSnapshot {
+  const sources = view
+    .list({
+      rootId: options.rootId ?? PROJECT_SOURCE_ROOT_ID,
+      roles: ["route"],
     })
-  ).sort((left, right) => left.localeCompare(right));
-  const sources = routeFiles.map((filePath) => ({
-    file: relative(rootDir, filePath).split(sep).join("/"),
-    content: readFileSync(filePath, "utf-8"),
-  }));
+    .map((record) => ({ file: record.path, sha256: record.sha256 }));
   return {
-    fingerprint: createDigest(sources),
+    fingerprint: createDigest({
+      schemaVersion: 2,
+      sourcePolicy: "vext-route-source-v2",
+      directory: projectSourceDirectory("route", options),
+      sources,
+    }),
     files: sources.map((source) => source.file),
   };
 }
@@ -129,19 +137,24 @@ export async function createRouteSourceSnapshot(
 export async function buildRouteIndex(
   rootDir: string,
 ): Promise<RouteIndexEntry[]> {
-  const routesDir = join(rootDir, "src", "routes");
-  if (!existsSync(routesDir)) {
-    return [];
-  }
+  return buildRouteIndexFromSourceView(
+    rootDir,
+    await collectProjectSources(rootDir, ["route"]),
+  );
+}
 
-  const routeFiles = (
-    await fg(ROUTE_SOURCE_PATTERNS, {
-      cwd: routesDir,
-      absolute: true,
-      onlyFiles: true,
-      ignore: ROUTE_IGNORE_PATTERNS,
-    })
-  ).sort((left, right) => left.localeCompare(right));
+export function buildRouteIndexFromSourceView(
+  rootDir: string,
+  view: SourceView,
+  options: ProjectSourceOptions = {},
+): RouteIndexEntry[] {
+  const routesDir = join(rootDir, projectSourceDirectory("route", options));
+  const rootId = options.rootId ?? PROJECT_SOURCE_ROOT_ID;
+  const routeFiles = view.list({ rootId, roles: ["route"] }).map((record) => {
+    const filePath = join(rootDir, record.path);
+    assertPathInside(routesDir, filePath, "route source");
+    return filePath;
+  });
   const commonJsRoute = routeFiles.find((filePath) =>
     isUnsupportedCommonJsRouteFileName(basename(filePath)),
   );
@@ -157,7 +170,18 @@ export async function buildRouteIndex(
     .sort((left, right) => left.localeCompare(right));
   assertUniqueRouteFilePrefixes(includedFiles, rootDir, routesDir);
   const entries = includedFiles
-    .flatMap((filePath) => scanRouteEntries(filePath, rootDir, routesDir))
+    .flatMap((filePath) => {
+      const source = view.read(
+        rootId,
+        relative(rootDir, filePath).split(sep).join("/"),
+      );
+      if (source === undefined)
+        throw new SourceViewError(
+          "VEXT_SOURCE_UNVERIFIED",
+          "Route source was not sealed: " + filePath + ".",
+        );
+      return scanRouteEntries(filePath, rootDir, routesDir, source);
+    })
     .sort((a, b) =>
       `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),
     );
@@ -169,8 +193,8 @@ function scanRouteEntries(
   filePath: string,
   rootDir: string,
   routesDir: string,
+  source: string,
 ): RouteIndexEntry[] {
-  const source = readFileSync(filePath, "utf-8");
   const prefix = projectRouteFilePrefix(filePath, routesDir);
   const fileRelativePath = relative(rootDir, filePath).split(sep).join("/");
   const entries: RouteIndexEntry[] = [];

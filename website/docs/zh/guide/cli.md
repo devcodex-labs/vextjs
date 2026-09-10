@@ -483,7 +483,7 @@ vext doctor <target> [options]
 | `--json`           | 输出机器可读 JSON                   | `false`  |
 | `--write-inspect`  | 写入 `.vext/inspect/routes.json`    | `false`  |
 | `--write-manifest` | 写入 `.vext/manifest/routes.json`   | `false`  |
-| `--refresh`        | 跳过缓存 manifest，重新扫描路由诊断 | `false`  |
+| `--refresh`        | 兼容选项；默认已分析当前源码       | `false`  |
 | `--manifest-only`  | 显式读取已有 manifest 快照          | `false`  |
 | `--root <path>`    | 指定项目根目录                      | 当前目录 |
 | `-C <path>`        | `--root` 别名                       | —        |
@@ -506,7 +506,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ### 当前边界
 
-- Doctor 生成的 route manifest 携带 fingerprint 与源码文件清单。默认只复用与当前 route source 匹配的 manifest，stale manifest 会重新构建；`--manifest-only` 是显式 snapshot 读取，不能与 `--refresh` 或 `--write-manifest` 组合。
+- Doctor 默认分析本次封存的路由源码，用同一份原始字节生成路由条目、fingerprint 与源码文件清单，不复用磁盘 manifest 作为静态分析缓存。`--refresh` 保留为兼容选项。
+- CLI 文本、JSON 和 inspect 报告均标明 `sourceFreshness`：`current` 表示本次源码分析；`--manifest-only` 保留历史快照自身的来源信息，摘要不同为 `stale`，摘要缺失或仅声明匹配为 `unverified`。缺少摘要用 `null` 表示，缺失的 schema、freshness 或 docsKind 保持未知并给出诊断。`ok` 仅表示没有阻断诊断，不代表历史快照已重新验证，也不保证分析结束后磁盘没有再次修改。
+- `--manifest-only` 不能与 `--refresh` 或 `--write-manifest` 组合。历史快照读取有大小与格式校验，损坏或越界来源会报告错误。
 - 同时指定 `--write-inspect --write-manifest` 时，两份结果一起提交；任一输出不可读或被外部修改，均保留原文件并报告错误。普通诊断是只读的，写入模式与同一项目的 dev/build 共用写入权。
 - 运行中的开发服务也会收集并生成 route manifest，与 Doctor 共用该文件的归属记录。清单是诊断或构建输入；它的存在不能证明服务已启动、某一代重载已完成，或诊断没有阻断项。
 - 当前 route manifest 与 services manifest 仍分层维护，不合并为单一总 manifest；

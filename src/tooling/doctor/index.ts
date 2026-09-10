@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
-  buildRouteIndex,
-  createRouteSourceSnapshot,
-  type RouteIndexEntry,
+  buildRouteIndexFromSourceView,
+  projectRouteSourceSnapshot,
 } from "../project-index/scan-routes.js";
+import { collectProjectSources } from "../project-index/source-input.js";
+import {
+  readDoctorRouteSnapshot,
+  type SnapshotRouteEntry,
+} from "./route-snapshot.js";
 import { inferOperationId } from "../../lib/openapi/operation-id.js";
 import { createRouteId } from "../../frontend/contract/schema-ir.js";
 import type {
@@ -36,7 +38,9 @@ export interface DoctorDiagnostic {
     | "missing-tags"
     | "deprecated-docs-tags"
     | "doctor-routes-ok"
-    | "doctor-no-routes";
+    | "doctor-no-routes"
+    | "snapshot-source-state"
+    | "snapshot-incomplete";
   message: string;
   filePath?: string;
   fileRelativePath?: string;
@@ -77,9 +81,9 @@ export interface DoctorRouteRecord {
   operationIdSource: "explicit" | "inferred";
   tags: string[];
   hidden: boolean;
-  docsKind: VextOpenAPIDocsKind;
-  schema: VextRouteSchemaContractV1;
-  freshness: VextRouteFreshnessIdentity;
+  docsKind?: VextOpenAPIDocsKind;
+  schema?: VextRouteSchemaContractV1;
+  freshness?: VextRouteFreshnessIdentity;
 }
 
 export interface DoctorResult {
@@ -92,8 +96,9 @@ export interface DoctorResult {
   routes: DoctorRouteRecord[];
   inspect?: GeneratedFileResult;
   manifest?: GeneratedFileResult;
-  sourceFingerprint: string;
+  sourceFingerprint: string | null;
   sourceFiles: string[];
+  sourceFreshness: "current" | "stale" | "unverified";
 }
 
 export async function runDoctor(
@@ -117,32 +122,65 @@ async function runDoctorOwned(
       "[vextjs] doctor --manifest-only cannot be combined with --write-manifest because a stale snapshot must not be re-attested as current.",
     );
   }
-  const sourceSnapshot = await createRouteSourceSnapshot(options.rootDir);
-  let routeEntries: RouteIndexEntry[];
+  const sourceView = await collectProjectSources(options.rootDir, ["route"]);
+  const currentSnapshot = projectRouteSourceSnapshot(sourceView);
+  let sourceSnapshot: { fingerprint: string | null; files: string[] } =
+    currentSnapshot;
+  let sourceFreshness: DoctorResult["sourceFreshness"] = "current";
+  let routeEntries: SnapshotRouteEntry[];
+  const snapshotDiagnostics: DoctorDiagnostic[] = [];
   if (options.manifestOnly) {
-    const snapshot = readRouteEntriesFromManifest(options.rootDir);
+    const snapshot = readDoctorRouteSnapshot(options.rootDir);
     if (!snapshot) {
       throw new Error(
         "[vextjs] doctor --manifest-only requires an existing .vext/manifest/routes.json snapshot.",
       );
     }
-    routeEntries = snapshot;
-  } else if (options.refresh === true) {
-    routeEntries = await buildRouteIndex(options.rootDir);
+    routeEntries = snapshot.entries;
+    sourceSnapshot = {
+      fingerprint: snapshot.sourceFingerprint,
+      files: snapshot.sourceFiles,
+    };
+    sourceFreshness =
+      snapshot.sourceFingerprint !== null &&
+      snapshot.sourceFingerprint !== currentSnapshot.fingerprint
+        ? "stale"
+        : "unverified";
+    snapshotDiagnostics.push({
+      level: "warn",
+      group: "tooling",
+      blocking: false,
+      code: "snapshot-source-state",
+      message:
+        "Stored route snapshot is " +
+        sourceFreshness +
+        "; its projection was not rechecked against current source.",
+    });
+    if (snapshot.incompleteFields.length > 0)
+      snapshotDiagnostics.push({
+        level: "warn",
+        group: "tooling",
+        blocking: false,
+        code: "snapshot-incomplete",
+        message:
+          "Stored snapshot omits metadata: " +
+          snapshot.incompleteFields.join(", ") +
+          ".",
+      });
   } else {
-    routeEntries =
-      readRouteEntriesFromManifest(
-        options.rootDir,
-        sourceSnapshot.fingerprint,
-      ) ?? (await buildRouteIndex(options.rootDir));
+    // 同一 View 产生摘要和投影；未认证的磁盘 manifest 不能充当静态事实缓存。
+    routeEntries = buildRouteIndexFromSourceView(options.rootDir, sourceView);
   }
-  const diagnostics = analyzeRoutes(routeEntries);
+  const diagnostics = [...analyzeRoutes(routeEntries), ...snapshotDiagnostics];
   const routes = routeEntries.map((entry) => toDoctorRouteRecord(entry));
   const summary = summarizeDiagnostics(diagnostics);
   const inspectDraft = writeInspect
     ? createRouteInspectFile(options.rootDir, {
         schemaVersion: 1,
         target: "routes",
+        sourceFingerprint: sourceSnapshot.fingerprint,
+        sourceFiles: sourceSnapshot.files,
+        sourceFreshness,
         routeFileCount: new Set(routeEntries.map((item) => item.filePath)).size,
         routeCount: routeEntries.length,
         summary,
@@ -180,86 +218,11 @@ async function runDoctorOwned(
     manifest,
     sourceFingerprint: sourceSnapshot.fingerprint,
     sourceFiles: sourceSnapshot.files,
+    sourceFreshness,
   };
 }
 
-function readRouteEntriesFromManifest(
-  rootDir: string,
-  expectedFingerprint?: string,
-): RouteIndexEntry[] | null {
-  const manifestPath = join(rootDir, ".vext", "manifest", "routes.json");
-  if (!existsSync(manifestPath)) {
-    return null;
-  }
-
-  const payload = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
-    sourceFingerprint?: string;
-    routes?: Array<{
-      fileRelativePath?: string;
-      source?: string;
-      prefix?: string;
-      method?: string;
-      subPath?: string;
-      path?: string;
-      docsKind?: VextOpenAPIDocsKind;
-      docsSummary?: string | null;
-      summary?: string | null;
-      operationId?: string | null;
-      operationIdSource?: "explicit" | "inferred";
-      tags?: string[];
-      hidden?: boolean;
-      schema?: VextRouteSchemaContractV1;
-      freshness?: VextRouteFreshnessIdentity;
-    }>;
-  };
-  if (
-    expectedFingerprint !== undefined &&
-    payload.sourceFingerprint !== expectedFingerprint
-  ) {
-    return null;
-  }
-
-  return (payload.routes ?? [])
-    .map((route) => {
-      const fileRelativePath = route.fileRelativePath ?? route.source ?? "";
-      const docsSummary = route.docsSummary ?? route.summary ?? null;
-      const operationId =
-        route.operationIdSource === "explicit"
-          ? (route.operationId ?? null)
-          : null;
-      const prefix = route.prefix ?? "";
-      const normalizedPath = route.path ?? "/";
-      return {
-        filePath: join(rootDir, fileRelativePath),
-        fileRelativePath,
-        prefix,
-        method: route.method ?? "GET",
-        subPath:
-          route.subPath ?? inferLegacyManifestSubPath(prefix, normalizedPath),
-        path: normalizedPath,
-        docsSummary,
-        hasDocsSummary: Boolean(docsSummary?.trim()),
-        operationId,
-        tags: route.tags ?? [],
-        hidden: route.hidden ?? false,
-        docsKind: route.docsKind ?? "backend-api",
-        schema: route.schema ?? {
-          schemaVersion: 1,
-          request: {},
-          responses: [],
-        },
-        freshness: route.freshness ?? {
-          mode: "dynamic",
-          source: "legacy-default",
-        },
-      } satisfies RouteIndexEntry;
-    })
-    .sort((a, b) =>
-      `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`),
-    );
-}
-
-function analyzeRoutes(routeEntries: RouteIndexEntry[]): DoctorDiagnostic[] {
+function analyzeRoutes(routeEntries: SnapshotRouteEntry[]): DoctorDiagnostic[] {
   if (routeEntries.length === 0) {
     return [
       {
@@ -267,13 +230,13 @@ function analyzeRoutes(routeEntries: RouteIndexEntry[]): DoctorDiagnostic[] {
         group: "tooling",
         blocking: false,
         code: "doctor-no-routes",
-        message: "No route files were found under src/routes.",
+        message: "No routes were found in this analysis input.",
       },
     ];
   }
 
   const diagnostics: DoctorDiagnostic[] = [];
-  const duplicateMap = new Map<string, RouteIndexEntry[]>();
+  const duplicateMap = new Map<string, SnapshotRouteEntry[]>();
 
   for (const entry of routeEntries) {
     const routeKey = `${entry.method} ${entry.path}`;
@@ -361,7 +324,7 @@ function analyzeRoutes(routeEntries: RouteIndexEntry[]): DoctorDiagnostic[] {
   return diagnostics;
 }
 
-function toDoctorRouteRecord(entry: RouteIndexEntry): DoctorRouteRecord {
+function toDoctorRouteRecord(entry: SnapshotRouteEntry): DoctorRouteRecord {
   return {
     filePath: entry.filePath,
     fileRelativePath: entry.fileRelativePath,
@@ -409,8 +372,12 @@ function summarizeDiagnostics(diagnostics: DoctorDiagnostic[]): DoctorSummary {
 function buildRouteManifestPayload(
   routes: DoctorRouteRecord[],
   diagnostics: DoctorDiagnostic[],
-  sourceSnapshot: { fingerprint: string; files: string[] },
+  sourceSnapshot: { fingerprint: string | null; files: string[] },
 ): RouteManifestPayload {
+  if (sourceSnapshot.fingerprint === null)
+    throw new Error(
+      "[vextjs] Cannot publish a route manifest without source identity.",
+    );
   const missingDocsSummary = diagnostics.filter(
     (item) => item.code === "missing-docs-summary",
   ).length;
@@ -446,31 +413,28 @@ function buildRouteManifestPayload(
       missingTags,
       duplicateRoutes,
     },
-    routes: routes.map((item) => ({
-      fileRelativePath: item.fileRelativePath,
-      source: item.fileRelativePath,
-      prefix: item.prefix,
-      method: item.method,
-      subPath: item.subPath,
-      path: item.path,
-      docsKind: item.docsKind,
-      docsSummary: item.docsSummary,
-      summary: item.docsSummary,
-      routeId: createRouteId(item.method, item.path),
-      operationId: item.effectiveOperationId,
-      operationIdSource: item.operationIdSource,
-      tags: item.tags,
-      hidden: item.hidden,
-      schema: item.schema,
-      freshness: item.freshness,
-      layout: { state: "unresolved", paths: [] },
-    })),
+    routes: routes.map((item) => {
+      if (!item.docsKind || !item.schema || !item.freshness)
+        throw new Error("[vextjs] Cannot publish incomplete route metadata.");
+      return {
+        fileRelativePath: item.fileRelativePath,
+        source: item.fileRelativePath,
+        prefix: item.prefix,
+        method: item.method,
+        subPath: item.subPath,
+        path: item.path,
+        docsKind: item.docsKind,
+        docsSummary: item.docsSummary,
+        summary: item.docsSummary,
+        routeId: createRouteId(item.method, item.path),
+        operationId: item.effectiveOperationId,
+        operationIdSource: item.operationIdSource,
+        tags: item.tags,
+        hidden: item.hidden,
+        schema: item.schema,
+        freshness: item.freshness,
+        layout: { state: "unresolved", paths: [] },
+      };
+    }),
   };
-}
-
-function inferLegacyManifestSubPath(prefix: string, fullPath: string): string {
-  if (prefix === "" || prefix === "/") return fullPath;
-  if (fullPath === prefix) return "/";
-  if (fullPath.startsWith(`${prefix}/`)) return fullPath.slice(prefix.length);
-  return fullPath;
 }

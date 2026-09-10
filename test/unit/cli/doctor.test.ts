@@ -199,7 +199,7 @@ export default defineRoutes((app) => {
     expect(manifestPayload.routes[0]?.operationIdSource).toBe("inferred");
   });
 
-  it("automatically rebuilds stale manifests and reserves stale reads for --manifest-only", async () => {
+  it("analyzes current sources and preserves historical identities with --manifest-only", async () => {
     projectRoot = await mkdtemp(join(tmpdir(), "vext-doctor-fingerprint-"));
     await writeProjectFile(
       projectRoot,
@@ -243,6 +243,7 @@ export default defineRoutes((app) => {
     const current = JSON.parse(String(consoleLog.mock.calls[0]?.[0] ?? "{}"));
     expect(current.routes[0]?.path).toBe("/after");
     expect(current.sourceFingerprint).not.toBe(first.sourceFingerprint);
+    expect(current.sourceFreshness).toBe("current");
 
     consoleLog.mockClear();
     await doctorCommand([
@@ -254,6 +255,8 @@ export default defineRoutes((app) => {
     ]);
     const snapshot = JSON.parse(String(consoleLog.mock.calls[0]?.[0] ?? "{}"));
     expect(snapshot.routes[0]?.path).toBe("/before");
+    expect(snapshot.sourceFingerprint).toBe(first.sourceFingerprint);
+    expect(snapshot.sourceFreshness).toBe("stale");
 
     await expect(
       doctorCommand([
