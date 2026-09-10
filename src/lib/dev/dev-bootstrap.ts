@@ -335,7 +335,7 @@ export interface DevBootstrapOptions {
  *     0. loadConfig(src/config) → 一次求值配置，确定目录角色
  *     1. DevCompiler.start() → 排除浏览器源后编译后端到 .vext/dev/
  *     2. createApp(config) → 创建 app + internals
- *     3. loadI18n(outDir/locales) → 加载 i18n 语言包
+ *     3. loadI18n(app, localeLayout.directory) → 加载应用独立语言包
  *     4. loadPlugins(app, outDir/plugins) → 加载并执行插件 setup()
  *
  *   可重载阶段（首次执行）：
@@ -511,12 +511,10 @@ async function devBootstrapOwned(
           outDir,
           config.locale?.directory,
         );
-        const loadedLocales = await loadI18n(
-          localeLayout.directory,
-          app.logger,
-          getAppSchemaRuntime(app).replaceMessages,
-          { rootDir: projectRoot, compiled: localeLayout.compiled },
-        );
+        const loadedLocales = await loadI18n(app, localeLayout.directory, {
+          rootDir: projectRoot,
+          compiled: localeLayout.compiled,
+        });
         if (loadedLocales.length)
           app.logger.info(
             `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,

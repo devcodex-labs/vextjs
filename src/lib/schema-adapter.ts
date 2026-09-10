@@ -477,16 +477,16 @@ function createI18nError(
 }
 
 /**
- * 配置 schema-dsl 全局设置
+ * 配置独立 schema-dsl 调用的全局设置
  *
  * 封装 `dsl.config()`。
- * i18n-loader 通过此方法注册语言包到 schema-dsl。
+ * 不配置应用级错误消息；应用字典由 loadI18n(app, directory) 加载并隔离。
  *
  * @param options 配置选项（i18n / cache / patterns 等）
  *
  * @example
  * ```typescript
- * // 注册语言包
+ * // 注册独立 schema 校验使用的语言包
  * schemaAdapter.configure({
  *   i18n: {
  *     locales: {
@@ -644,7 +644,7 @@ export const schemaAdapter = {
   /** 创建 I18nError 实例（不抛出，由调用方决定抛出时机） */
   createI18nError,
 
-  /** 配置 schema-dsl 全局设置（i18n 语言包 / 缓存 / 自定义规则） */
+  /** 配置独立 schema-dsl 全局设置；应用字典使用 loadI18n(app, directory)。 */
   configure,
 
   /**

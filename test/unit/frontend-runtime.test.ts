@@ -17,7 +17,6 @@ import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolve
 import {
   assertClientContractMatchesRouteManifest,
   buildClientContract,
-  writeClientContractFromRouteManifest,
 } from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
 import {
@@ -27,7 +26,10 @@ import {
 } from "../../src/lib/build/build-location.js";
 import { buildFrontendDeployManifest } from "../../src/frontend/deploy/manifest.js";
 import { readFrontendDeployManifestFile } from "../../src/frontend/deploy/manifest-validator.js";
-import { writeFrontendMediaArtifacts } from "../../src/frontend/tooling/media-artifact-writer.js";
+import {
+  commitClientCandidate,
+  commitMediaCandidate,
+} from "../helpers/frontend-artifacts.js";
 import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
 import { DEFAULT_CONFIG } from "../../src/lib/app.js";
 import { createNativeAdapter } from "../../src/adapters/native/adapter.js";
@@ -546,7 +548,7 @@ describe("frontend client contract", () => {
       "utf-8",
     );
 
-    await writeClientContractFromRouteManifest({ rootDir, outDir });
+    await commitClientCandidate({ rootDir, outDir });
     const firstContract = await readFile(
       path.join(outDir, "client-contract.json"),
       "utf-8",
@@ -556,7 +558,7 @@ describe("frontend client contract", () => {
       "utf-8",
     );
 
-    await writeClientContractFromRouteManifest({ rootDir, outDir });
+    await commitClientCandidate({ rootDir, outDir });
 
     expect(
       await readFile(path.join(outDir, "client-contract.json"), "utf-8"),
@@ -821,7 +823,7 @@ describe("frontend client build", () => {
     );
     await mkdir(config.outDir, { recursive: true });
 
-    const result = await writeFrontendMediaArtifacts({
+    const result = await commitMediaCandidate({
       rootDir,
       config,
       mode: "production",
@@ -852,7 +854,7 @@ describe("frontend client build", () => {
       'export const blocked = defineFont({ src: "https://fonts.example.test/font.ttf", family: "Blocked", license: "OFL-1.1" });\n',
     );
     await expect(
-      writeFrontendMediaArtifacts({ rootDir, config, mode: "production" }),
+      commitMediaCandidate({ rootDir, config, mode: "production" }),
     ).rejects.toThrow(/remote source/u);
   });
 
@@ -1205,7 +1207,8 @@ describe("frontend client build", () => {
     expect(Object.keys(targetAssets)).toHaveLength(
       deployManifest.assets.length,
     );
-    expect(targetAssets["app/v1/static/logo.txt"]).toMatchObject({
+    // Filesystem state is relative to the physical target directory, which already includes the prefix.
+    expect(targetAssets["static/logo.txt"]).toMatchObject({
       sha256: expect.any(String),
       bytes: "logo-v1".length,
     });

@@ -174,7 +174,7 @@ Through the Adapter architecture, the core of the framework is completely decoup
 
 ## Environmental requirements
 
-- **Node.js** >= 20.19.0
+- Requires Node.js **`^20.19.0 || >=22.12.0`**
 - **TypeScript** 5.x (recommended, pure JavaScript is also supported)
 
 ## Next step

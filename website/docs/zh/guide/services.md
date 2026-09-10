@@ -261,7 +261,9 @@ export default class OrderService {
 ```
 
 ::::warning 避免循环依赖
-`service-loader` 内置循环依赖检测。如果 `ServiceA` 和 `ServiceB` 相互依赖，框架会在启动时报错。
+`service-loader` 和 `vext doctor` 共用有限的静态依赖图；识别出的 `ServiceA` 与 `ServiceB` 相互依赖会在启动时报错。默认导出构造函数的第一个参数是注入来源，参数可命名为 `app`、`application` 等；直接保存到实例属性（含 TypeScript 参数属性）及可追溯的局部别名均可识别。命名空间服务支持静态字符串访问。
+
+注释、字符串和无关局部对象不产生依赖。动态服务名、重赋值、继承或无法追溯的来源会报告分析不完整；运行时预检输出警告，Doctor 保留不完整状态。静态图不能证明所有运行路径都没有循环，也不会执行业务代码来补全结论。
 
 **✅ 正确做法** — 在方法中延迟访问：
 

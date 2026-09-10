@@ -9,7 +9,6 @@ import {
   reloadLocales,
   shouldReloadLocales,
 } from "../../src/lib/dev/i18n-reloader.js";
-import { createAppSchemaRuntime } from "../../src/lib/schema-adapter.js";
 import { createApp, DEFAULT_CONFIG } from "../../src/lib/app.js";
 import {
   getAppSchemaRuntime,
@@ -205,7 +204,11 @@ describe("locale catalog contract", () => {
       path.join(directory, "en-US.cjs"),
       'module.exports = { "order.payment.declined": "Declined" };',
     );
-    const runtime = createAppSchemaRuntime("zh-CN");
+    const { app } = createApp({
+      ...DEFAULT_CONFIG,
+      locale: { default: "zh-CN" },
+    });
+    const runtime = getAppSchemaRuntime(app);
     try {
       expect(
         scanLocaleSources(directory).map((source) => [
@@ -216,7 +219,7 @@ describe("locale catalog contract", () => {
         ["en-US", ""],
         ["zh-CN", "order.payment"],
       ]);
-      await loadI18n(directory, logger as never, runtime.replaceMessages, {
+      await loadI18n(app, directory, {
         compiled: true,
       });
       const error = runtime.createI18nError("order.payment.declined", {

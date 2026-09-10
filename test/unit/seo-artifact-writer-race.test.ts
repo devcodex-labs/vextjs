@@ -1,43 +1,13 @@
-import { constants, type PathLike } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { withProjectOwner } from "../../src/lib/project/owner.js";
+import { withArtifactTransaction } from "../../src/lib/project/artifact-transaction.js";
 
 const tempDirs: string[] = [];
 
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
-  const raceAtRobots = async (
-    operation: () => Promise<unknown>,
-    target: PathLike,
-  ) => {
-    if (String(target).endsWith("robots.txt")) {
-      await actual.writeFile(target, "concurrent-owner", "utf-8");
-      const error = Object.assign(new Error("simulated EEXIST race"), {
-        code: "EEXIST",
-      });
-      throw error;
-    }
-    return operation();
-  };
-
-  return {
-    ...actual,
-    copyFile: vi.fn((source: PathLike, target: PathLike) =>
-      raceAtRobots(
-        () => actual.copyFile(source, target, constants.COPYFILE_EXCL),
-        target,
-      ),
-    ),
-    rename: vi.fn((source: PathLike, target: PathLike) =>
-      raceAtRobots(() => actual.rename(source, target), target),
-    ),
-  };
-});
-
 afterEach(async () => {
-  vi.clearAllMocks();
   await Promise.all(
     tempDirs
       .splice(0)
@@ -46,10 +16,10 @@ afterEach(async () => {
 });
 
 describe("SEO artifact writer ownership", () => {
-  it("rolls back only files committed by this writer during an EEXIST race", async () => {
+  it("preserves a file created after SEO planning and refuses a partial commit", async () => {
     const { resolveFrontendConfig } =
       await import("../../src/frontend/tooling/config-resolver.js");
-    const { writeFrontendSeoArtifacts } =
+    const { createFrontendSeoArtifacts } =
       await import("../../src/frontend/tooling/seo-artifact-writer.js");
     const rootDir = await fsPromises.mkdtemp(
       path.join(os.tmpdir(), "vext-seo-race-"),
@@ -68,8 +38,25 @@ describe("SEO artifact writer ownership", () => {
     );
 
     await expect(
-      writeFrontendSeoArtifacts({ rootDir, config, staticArtifacts: [] }),
-    ).rejects.toMatchObject({ code: "EEXIST" });
+      withProjectOwner(rootDir, "build", [config.outDir], () =>
+        withArtifactTransaction(
+          { rootDir, outDir: config.outDir, producer: "frontend" },
+          async (transaction) => {
+            const plan = await createFrontendSeoArtifacts({
+              rootDir,
+              config,
+              staticArtifacts: [],
+            });
+            await fsPromises.mkdir(config.outDir, { recursive: true });
+            await fsPromises.writeFile(
+              path.join(config.outDir, "robots.txt"),
+              "concurrent-owner",
+            );
+            await transaction.commit(plan.files);
+          },
+        ),
+      ),
+    ).rejects.toThrow(/conflict|unowned/i);
     await expect(
       fsPromises.readFile(path.join(config.outDir, "robots.txt"), "utf-8"),
     ).resolves.toBe("concurrent-owner");

@@ -22,12 +22,12 @@ describe("analyzeServiceDependencies", () => {
     await writeProjectFile(
       projectRoot,
       "src/services/user.ts",
-      'export default app => ({ run: () => app.services["payment"].stripe.charge() });',
+      'export default class User { constructor(private app: any) {} run() { return this.app.services["payment"].stripe.charge(); } }',
     );
     await writeProjectFile(
       projectRoot,
       "src/services/payment/stripe.ts",
-      '/* app.services.user.run() */ export default { text: "app.services.user.run()" };',
+      '/* app.services.user.run() */ export default class Stripe { text = "app.services.user.run()"; charge() { return 42; } }',
     );
     const result = await analyzeServiceDependencies(projectRoot);
     expect([...result.graph.get("user")!]).toEqual(["payment.stripe"]);
@@ -89,10 +89,10 @@ describe("analyzeServiceDependencies", () => {
       projectRoot,
       "src/services/payment/stripe.ts",
       `export default class StripeService {
-  constructor(_app: any) {}
+  constructor(private app: any) {}
 
-  useUser(app: any) {
-    return app.services.user;
+  useUser() {
+    return this.app.services.user;
   }
 }
 `,

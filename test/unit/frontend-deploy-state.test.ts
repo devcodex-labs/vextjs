@@ -16,6 +16,7 @@ import {
   FrontendDeployError,
 } from "../../src/frontend/deploy/uploader.js";
 import { readFrontendDeployState } from "../../src/frontend/deploy/state.js";
+import { createFilesystemDeployAdapter } from "../../src/frontend/deploy/adapters/filesystem.js";
 import {
   createSha256,
   createSriSha256,
@@ -31,7 +32,7 @@ afterEach(async () => {
   for (const root of roots.splice(0))
     await rm(root, { recursive: true, force: true });
 });
-async function fixture() {
+async function fixture(contentPrefix = "") {
   const root = await mkdtemp(path.join(tmpdir(), "vext-deploy-v2-"));
   roots.push(root);
   const config = resolveFrontendConfig(
@@ -52,7 +53,7 @@ async function fixture() {
   await mkdir(config.outDir, { recursive: true });
   const assets: VextFrontendDeployManifest["assets"] = [];
   for (const file of ["a.txt", "b.txt"]) {
-    const content = Buffer.from(file);
+    const content = Buffer.from(contentPrefix + file);
     await writeFile(path.join(config.outDir, file), content);
     assets.push({
       file,
@@ -120,6 +121,137 @@ async function failure(
 }
 
 describe("frontend deploy target state v2", () => {
+  it.each(["same-size", "larger", "deleted"])(
+    "does not trust stale filesystem state after %s target changes",
+    async (kind) => {
+      const f = await fixture();
+      await deployFrontendAssets(f);
+      const destination = path.join(
+        f.config.deploy.upload.targetDir!,
+        "release/a.txt",
+      );
+      if (kind === "deleted") await rm(destination);
+      else
+        await writeFile(
+          destination,
+          kind === "same-size" ? "other" : "longer-than-the-recorded-file",
+        );
+      const retry = await deployFrontendAssets(f);
+      expect(retry).toMatchObject({ uploaded: 1, skipped: 1 });
+      expect(await readFile(destination, "utf8")).toBe("a.txt");
+    },
+  );
+
+  it("reconciles sequential writes from another service instead of skipping its overwritten files", async () => {
+    const first = await fixture();
+    const second = await fixture("other-service-");
+    const adapter = createFilesystemDeployAdapter(
+      first.config.deploy.upload.targetDir!,
+    );
+    await deployFrontendAssets({ ...first, adapter });
+    await deployFrontendAssets({ ...second, adapter });
+    const retry = await deployFrontendAssets({ ...first, adapter });
+    expect(retry).toMatchObject({ uploaded: 2, skipped: 0 });
+    expect(
+      await readFile(
+        path.join(first.config.deploy.upload.targetDir!, "release/a.txt"),
+        "utf8",
+      ),
+    ).toBe("a.txt");
+  });
+
+  it("shares state across parent/child targetDir aliases of the same physical directory", async () => {
+    const f = await fixture();
+    const first = await deployFrontendAssets({
+      ...f,
+      config: uploadConfig(f.config, { prefix: "sub/release" }),
+    });
+    const second = await deployFrontendAssets({
+      ...f,
+      config: uploadConfig(f.config, {
+        targetDir: path.join(f.config.deploy.upload.targetDir!, "sub"),
+        prefix: "release",
+      }),
+    });
+    expect(second.targetId).toBe(first.targetId);
+    expect(second.skipped).toBe(2);
+    expect(
+      Object.keys(
+        (await readFrontendDeployState(first.stateFile)).targets[
+          first.targetId!
+        ]!.assets,
+      ),
+    ).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it.each(["same-directory", "ancestor-directory", "independent-directory"])(
+    "coordinates physical writes for %s",
+    async (kind) => {
+      const f = await fixture();
+      const firstConfig = uploadConfig(f.config, { prefix: "sub/release" });
+      const firstAdapter = createFilesystemDeployAdapter(
+        firstConfig.deploy.upload.targetDir!,
+      );
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((done) => {
+        enter = done;
+      });
+      const gate = new Promise<void>((done) => {
+        release = done;
+      });
+      const upload = firstAdapter.upload.bind(firstAdapter);
+      firstAdapter.upload = async (input) => {
+        enter();
+        await gate;
+        return upload(input);
+      };
+      const running = deployFrontendAssets({
+        ...f,
+        config: firstConfig,
+        adapter: firstAdapter,
+      });
+      await Promise.race([
+        entered,
+        running.then(() => {
+          throw new Error("Upload did not enter");
+        }),
+      ]);
+      const secondConfig = uploadConfig(f.config, {
+        targetDir: path.join(
+          f.config.deploy.upload.targetDir!,
+          kind === "independent-directory" ? "other" : "sub",
+        ),
+        prefix: kind === "ancestor-directory" ? "" : "release",
+        stateFile: path.join(f.root, ".vext/deploy/independent.json"),
+      });
+      const secondAdapter = createFilesystemDeployAdapter(
+        secondConfig.deploy.upload.targetDir!,
+      );
+      const secondUpload = vi.spyOn(secondAdapter, "upload");
+      try {
+        const pending = deployFrontendAssets({
+          ...f,
+          config: secondConfig,
+          adapter: secondAdapter,
+        });
+        if (kind === "independent-directory")
+          expect((await pending).uploaded).toBe(2);
+        else {
+          await expect(pending).rejects.toMatchObject({
+            code: "VEXT_OWNER_BUSY",
+          });
+          expect(secondUpload).not.toHaveBeenCalled();
+        }
+      } finally {
+        release();
+        await running;
+      }
+      expect(
+        (await deployFrontendAssets({ ...f, config: secondConfig })).uploaded,
+      ).toBe(kind === "independent-directory" ? 0 : 2);
+    },
+  );
   it("partitions filesystem targets, profiles and prefixes while ignoring public URL changes", async () => {
     const f = await fixture();
     const first = await deployFrontendAssets(f);

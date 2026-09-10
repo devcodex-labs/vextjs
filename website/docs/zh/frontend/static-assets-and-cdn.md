@@ -66,6 +66,10 @@ frontend: {
 
 Deploy manifest 被视为不可信输入。每个 asset path 都必须规范化、保持相对且唯一，并在 lexical 与 realpath 两层都被前端输出目录包含。绝对/traversal 条目、逃逸的符号链接、重复 upload key 或 size/sha256 漂移，都会在传输任何资源前终止 plan 与 upload。
 
+内置 `filesystem` 上传按实际 `targetDir + prefix` 目录识别目标。同一服务和 profile 中，父目录加 prefix 与直接指定子目录会复用同一目标状态；本地写入按物理目录协调，同目标和祖先重叠目标不能并发上传，独立目录可并行。目录链接会规范化，不能通过别名绕开冲突。自定义 adapter 仍通过稳定 `targetIdentity` 标识存储命名空间。后端构建、前端提交和上传分别完成，不构成跨阶段原子事务。
+
+本地状态命中后还会核对目标文件的实际大小和 SHA-256，防止另一个服务/profile 先后覆盖或删除文件后错误跳过；读取上限为该资源的预期大小。路径或读取一致性无法验证时中止计划。该校验增加本地读取成本，不要求自定义远端 adapter 提供未声明的探测 API。
+
 ## 本地媒体流水线
 
 `config.frontend.media` 只编译 `src/frontend/assets/**` 下的本地栅格图片。它会把内容寻址的图片 variants 与 media manifest 写入普通前端输出，因此这些文件会进入 SRI 和增量 deploy closure。

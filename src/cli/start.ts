@@ -47,7 +47,7 @@ import { resolveBuildLocation } from "../lib/build/build-location.js";
  *   - VEXT_ROOT=<rootDir> — 传递项目根目录给 bootstrap
  *   - VEXT_BUILT=1 — 当使用 dist/ 编译产物时设置
  *   - NODE_ENV — 固定为 'production'
- *   - VEXT_CONFIG — 配置 profile（默认 production，可由 --config/VEXT_CONFIG 覆盖）
+ *   - VEXT_CONFIG — 配置 profile；CLI/env 显式选择优先，否则沿用成功构建身份，缺记录才默认 production
  *
  * 命令行参数（Phase 1 基础版）：
  *   --port <number>   覆盖配置中的端口

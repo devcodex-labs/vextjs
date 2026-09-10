@@ -41,6 +41,41 @@ describe("resolvePreloads", () => {
     await expect(resolvePreloads(rootDir)).resolves.toEqual([]);
   });
 
+  it("reads empty and populated external compiled output without source fallback", async () => {
+    const rootDir = createTmpProject();
+    const builtOutDir = createTmpProject();
+    writeProjectPackageJson(rootDir);
+    await expect(resolvePreloads(rootDir, { builtOutDir })).resolves.toEqual(
+      [],
+    );
+    fs.mkdirSync(path.join(builtOutDir, "preload"));
+    const compiled = path.join(builtOutDir, "preload", "init.mjs");
+    fs.writeFileSync(compiled, "export {};");
+    fs.mkdirSync(path.join(rootDir, "src/preload"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDir, "src/preload", "source.mjs"),
+      "throw new Error('not built');",
+    );
+    await expect(resolvePreloads(rootDir, { builtOutDir })).resolves.toEqual([
+      pathToFileURL(compiled).href,
+    ]);
+  });
+
+  it("rejects a compiled preload directory that links outside the selected artifact", async () => {
+    const rootDir = createTmpProject();
+    const builtOutDir = createTmpProject();
+    const escaped = createTmpProject();
+    writeProjectPackageJson(rootDir);
+    fs.symlinkSync(
+      escaped,
+      path.join(builtOutDir, "preload"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await expect(resolvePreloads(rootDir, { builtOutDir })).rejects.toThrow(
+      /remain inside/,
+    );
+  });
+
   it("collects project-level JS preloads before package-level preloads", async () => {
     const rootDir = createTmpProject();
 

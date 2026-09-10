@@ -261,7 +261,9 @@ export default class OrderService {
 ```
 
 ::::warning avoid circular dependencies
-`service-loader` has built-in circular dependency detection. If `ServiceA` and `ServiceB` depend on each other, the framework will report an error at startup.
+`service-loader` and `vext doctor` share a bounded static dependency graph. A detected cycle between `ServiceA` and `ServiceB` fails startup. The first constructor parameter of the default export is the injected application, regardless of its name. Direct instance assignments, TypeScript parameter properties, and traceable local aliases are supported, including static string access to namespaced services.
+
+Comments, strings, and unrelated local objects do not create dependencies. Dynamic service names, reassignment, inheritance, and untraceable origins report incomplete analysis. The runtime precheck warns and Doctor retains that incomplete status. A static graph does not prove that every runtime path is cycle-free, and analysis does not execute business code to fill its gaps.
 
 **✅ DON'T DO** — Delay access in a method:
 

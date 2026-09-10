@@ -113,7 +113,7 @@ export function backendSourceIgnore(
  *   - treeShaking: true — 移除未使用的导出（即使不 bundle 也有效，可去除死代码分支）
  *   - keepNames: true — 保留函数/类名称（错误堆栈可读性、日志中可识别具名函数）
  *   - charset: 'utf8' — 强制 UTF-8 编码（避免 ASCII escape 导致中文乱码）
- *   - target: 'node20' — 与 package.json engines.node >= 20.19.0 对齐
+ *   - target: 'node20' — 语法下限；实际 engines 为 ^20.19.0 || >=22.12.0
  *
  * @param tsconfigPath tsconfig.json 路径（可选，默认 undefined 由 esbuild 自动查找）
  * @returns esbuild 基础配置对象
@@ -203,11 +203,12 @@ export function createBackendEsbuildConfig(
   srcDir: string,
   entryPoints: readonly string[],
   tsconfigPath?: string,
+  dependencyScope?: string,
 ): Partial<BuildOptions> {
   return {
     ...createBaseEsbuildConfig(tsconfigPath),
     bundle: true,
     packages: "external",
-    plugins: [createBackendModulePlugin(srcDir, entryPoints)],
+    plugins: [createBackendModulePlugin(srcDir, entryPoints, dependencyScope)],
   };
 }

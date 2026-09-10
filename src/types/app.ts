@@ -1045,7 +1045,7 @@ export interface VextDevConfig {
  * 配置文件位置：
  *   - src/config/default.ts    — 所有配置项的基准值
  *   - src/config/{env}.ts      — 环境覆盖（development / production / ...）
- *   - src/config/local.ts      — 本地覆盖（最高优先级，不提交 git）
+ *   - src/config/local.ts      — dev/test 本地层；生产不隐式加载，provider/CLI 后层仍可覆盖
  */
 export interface VextConfig {
   /** 应用独立的语言协商与消息目录配置。 */

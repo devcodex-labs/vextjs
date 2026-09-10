@@ -19,7 +19,6 @@ describe("shared AST route factory contract", () => {
     '(app) => { app?.get("/optional", () => {}); }',
     '(app) => { app["get"]("/computed", () => {}); }',
     '(app) => { app = other; app.get("/rebound", () => {}); }',
-    '(app) => { function child(app) { app.get("/shadow", () => {}); } }',
     '(app) => { app.get("/a", () => {}), app.get("/b", () => {}); }',
   ])("rejects hidden or ambiguous registrations: %s", (source) => {
     expect(() => assertCanonicalRouteFactorySource(source)).toThrow(
@@ -33,4 +32,28 @@ describe("shared AST route factory contract", () => {
       ),
     ).toBe(1);
   });
+
+  it.each([
+    '(app) => { app.get("/", (req, res) => { const app = 1; res.json(app); }); }',
+    '(app) => { app.get("/", (app, res) => res.json(app.path)); }',
+    '(app) => { app.get("/", () => { { const { app } = other; app.get(); } return app.services; }); }',
+    '(app) => { app.get("/", () => { try {} catch (app) { app.get(); } }); }',
+    '(app) => { app.get("/", () => { if (true) { var app = other; } app.get(); }); }',
+    '(app) => { function child(app) { app.get("/shadow", () => {}); } app.get("/", () => {}); }',
+  ])("accepts independent lexical bindings inside handlers: %s", (source) => {
+    expect(assertCanonicalRouteFactorySource(source)).toBe(1);
+  });
+
+  it.each([
+    '(app) => { function child() { app.get("/nested", () => {}); } app.get("/", () => {}); }',
+    '(app) => { const alias = app; alias.get("/", () => {}); }',
+    '(app) => { app.get("/", () => { app = other; }); }',
+  ])(
+    "still rejects use of the actual app binding to escape registration: %s",
+    (source) => {
+      expect(() => assertCanonicalRouteFactorySource(source)).toThrow(
+        /direct top-level/,
+      );
+    },
+  );
 });

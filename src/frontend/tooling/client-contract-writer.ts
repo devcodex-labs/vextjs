@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import type {
@@ -43,15 +43,6 @@ export interface WriteClientContractResult {
   modulePath: string;
   routeCount: number;
   warnings: readonly string[];
-}
-
-export async function writeClientContractFromRouteManifest(
-  options: WriteClientContractOptions,
-): Promise<WriteClientContractResult> {
-  const plan = await createClientContractArtifacts(options);
-  await mkdir(options.outDir, { recursive: true });
-  for (const file of plan.files) await writeFile(file.path, file.contents);
-  return plan.result;
 }
 
 /** 只读取路由输入并生成候选，统一前端构建在其他阶段成功后提交这些字节。 */

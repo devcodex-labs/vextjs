@@ -539,10 +539,10 @@ export function deriveModelName(filePath: string): string {
  * | 0    | `order.ts`             | 行为不变，registry key = def.collection ?? def.name ?? PascalCase(file) |
  * | 1    | `a/order.ts`           | key = 'AOrder'，自动注入 name:'order', connection:{database:'a'} |
  * | 2    | `c/a/order.ts`         | key = 'CAOrder'，自动注入 name:'order', connection:{pool:'c',database:'a'} |
- * | >= 3 | `x/c/a/order.ts`       | 返回 null（调用方应发出警告并跳过）               |
+ * | >= 3 | `x/c/a/order.ts`       | 返回 null（调用方按 strict 失败 / lenient 警告跳过） |
  *
  * **优先级：**
- * - 用户在定义对象中显式设置的 `collection` / `name` / `connection` 字段均会覆盖自动推断值。
+ * - 显式 `collection` / `name` 控制集合名，`connection` 整体替代目录推断；深度 1–2 的 primary 注册键仍由完整路径生成。
  *
  * @param file  相对于 models/ 目录的文件路径，如 'a/order.ts' 或 'order.ts'
  * @param def   Model 定义对象（来自文件的 export default）

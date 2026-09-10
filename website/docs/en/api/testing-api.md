@@ -23,6 +23,8 @@ import { createTestApp } from "vextjs/testing";
 
 `createTestApp` is a test App factory function that creates a complete test application instance.
 
+Application dictionaries load before plugins, services, and routes. The default `rootDir/src/locales` can be overridden with `config.locale.directory`; module subdirectories, JSON, and script dictionaries are supported. Missing directories give an empty dictionary, invalid formats fail initialization, and scripts execute as modules. This does not read project configuration files, run a configuration provider, or automatically connect a database. To reload explicitly, call the root export `loadI18n(testApp.app, directory)`; see [Internationalization](/guide/i18n).
+
 ### Function signature
 
 ```typescript

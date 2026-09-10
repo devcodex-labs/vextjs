@@ -66,6 +66,10 @@ This changes generated asset URLs. Upload is controlled separately by `frontend.
 
 The deploy manifest is treated as untrusted input. Every asset path must be normalized, relative, unique, and contained by the frontend output in both lexical and realpath terms. Absolute/traversal entries, escaping symbolic links, duplicate upload keys, or size/sha256 drift stop planning and upload before any asset is transferred.
 
+The built-in `filesystem` adapter identifies its target by the physical `targetDir + prefix` directory. Within the same service and profile, a parent directory plus a prefix shares target state with a directly configured child directory. Local writes coordinate by physical directory: identical or ancestor-overlapping targets cannot upload concurrently, while independent directories can. Directory links are canonicalized. Custom adapters identify their storage namespace through a stable `targetIdentity`. Backend builds, frontend commits, and uploads are separate operations, not one cross-stage atomic transaction.
+
+After a local state hit, the planner also verifies the destination's current size and SHA-256. Another service/profile overwriting or deleting a file cannot cause a false skip. Reads are bounded by the asset's expected size; unverifiable paths or inconsistent reads abort planning. This adds local reads without assuming an undeclared remote inspection API on custom adapters.
+
 ## Local Media Pipeline
 
 `config.frontend.media` compiles only local raster files found under

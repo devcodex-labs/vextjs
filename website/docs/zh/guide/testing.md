@@ -79,6 +79,8 @@ interface CreateTestAppOptions {
 `database`。因此测试若新增这个可选 section，必须提供包含必填连接 `config` 的
 完整 database 配置；不能指望不存在的前层补齐半截 database。
 
+语言包在插件、服务和路由初始化前加载：默认读取 `rootDir/src/locales`，自定义目录通过 `config.locale.directory` 指定，解析规则与正常启动一致。模块子目录、JSON 和脚本字典均支持；脚本会执行。缺目录使用空字典，损坏字典使测试应用初始化失败。此步骤不会额外加载项目配置文件、执行配置 provider 或自动连接数据库。
+
 ### 常见配置场景
 
 #### 自定义端口和日志级别

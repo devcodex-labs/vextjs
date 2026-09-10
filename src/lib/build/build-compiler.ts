@@ -10,6 +10,12 @@ import {
 } from "../project/artifact-transaction.js";
 import { createCompileFingerprint } from "./compile-fingerprint.js";
 import {
+  BACKEND_DEPENDENCY_SCOPE,
+  EXTERNAL_PRELOAD_PAYLOAD_DIR,
+  backendDependencyScopeArtifact,
+  needsBackendDependencyScope,
+} from "./backend-dependency-scope.js";
+import {
   backendArtifactCandidates,
   scanBackendJsonFiles,
 } from "./backend-artifacts.js";
@@ -251,6 +257,9 @@ export class BuildCompiler {
       srcDir,
       allInputs,
       hasTsconfig ? tsconfigPath : undefined,
+      needsBackendDependencyScope(this.options.rootDir, outDir)
+        ? path.join(outDir, BACKEND_DEPENDENCY_SCOPE)
+        : undefined,
     );
 
     // ── 3. 执行编译 ────────────────────────────────────────
@@ -354,6 +363,10 @@ export class BuildCompiler {
       throw err;
     }
 
+    if (needsBackendDependencyScope(this.options.rootDir, outDir)) {
+      outputs.push(backendDependencyScopeArtifact(outDir, outputs));
+    }
+
     // ── 5. 统计编译结果 ────────────────────────────────────
     const after = fingerprint([
       ...(await this.scanEntryPoints()),
@@ -428,7 +441,17 @@ export class BuildCompiler {
         PROJECT_PRELOAD_FILE_PATTERN,
         ".mjs",
       );
-      const outfile = path.join(outPreloadDir, outputName);
+      const scoped = needsBackendDependencyScope(
+        this.options.rootDir,
+        this.options.outDir,
+      );
+      const outfile = scoped
+        ? path.join(
+            this.options.outDir,
+            EXTERNAL_PRELOAD_PAYLOAD_DIR,
+            outputName,
+          )
+        : path.join(outPreloadDir, outputName);
 
       const preloadResult = await esbuild.build({
         entryPoints: [sourcePath],
@@ -445,6 +468,13 @@ export class BuildCompiler {
       });
 
       warnings.push(...preloadResult.warnings);
+      if (scoped) {
+        // ESM 静态依赖在模块执行前解析，必须先注册作用域再动态加载真正的 preload。
+        outputs.push({
+          path: path.join(outPreloadDir, outputName),
+          contents: `import "../${BACKEND_DEPENDENCY_SCOPE}";\nawait import(${JSON.stringify(`../${EXTERNAL_PRELOAD_PAYLOAD_DIR}/${outputName}`)});\n`,
+        });
+      }
       outputs.push(
         ...(preloadResult.outputFiles ?? []).map((output) => ({
           ...output,

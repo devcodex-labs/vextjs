@@ -28,7 +28,6 @@ import { createApp } from "./app.js";
 import type { AppInternals } from "./app.js";
 import { resolveAdapter } from "./adapter-resolver.js";
 import { loadI18n } from "./i18n-loader.js";
-import { getAppSchemaRuntime } from "./i18n/app-runtime.js";
 import { resolveLocaleDirectory } from "./project/layout.js";
 import { loadPlugins } from "./plugin-loader.js";
 import {
@@ -167,7 +166,7 @@ async function resolveStartupConfig(
  *
  * 启动流程（步骤 0 ~ ⑨）：
  *
- *   0. config-loader：加载 default → env → local 三层配置 + deepFreeze
+ *   0. 配置：default → profile → dev/test local → provider → CLI → 最终校验与 deepFreeze
  *   ①  createApp(config)：创建 app + internals（logger / throw / validator / adapter）
  *   ①+ i18n 语言包自动加载：扁平/模块目录合并后提交给当前app的runtime
  *   ②  plugin-loader：扫描 src/plugins/，拓扑排序 + setup()（app.use() 可用窗口）
@@ -227,7 +226,7 @@ export async function bootstrap(
       : join(rootDir, "src");
 
     // ── 步骤 0: config-loader ─────────────────────────────
-    // default → env → local 三层合并 + deepFreeze
+    // default → profile → dev/test local；随后应用 provider 和显式覆盖并最终校验。
     const rawConfig = await startupProfiler.time(
       "start.config.raw",
       () =>
@@ -288,12 +287,10 @@ export async function bootstrap(
           srcDir,
           config.locale?.directory,
         );
-        const loadedLocales = await loadI18n(
-          localeLayout.directory,
-          app.logger,
-          getAppSchemaRuntime(app).replaceMessages,
-          { rootDir, compiled: localeLayout.compiled },
-        );
+        const loadedLocales = await loadI18n(app, localeLayout.directory, {
+          rootDir,
+          compiled: localeLayout.compiled,
+        });
         if (loadedLocales.length)
           app.logger.info(
             `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
@@ -389,7 +386,7 @@ export async function bootstrap(
 
     // ── 步骤 ④: service-loader ────────────────────────────
     // 扫描 src/services/，实例化（new ServiceClass(app)）注入 app.services
-    // 加载完成后执行循环依赖静态检测（正则 + DFS）
+    // 加载后复用有限语法绑定图检测循环依赖；动态来源明确报告不完整。
     await startupProfiler.time(
       "start.services",
       () => loadServices(app, join(srcDir, "services"), { rootDir }),

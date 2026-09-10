@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RouteOptions } from "../../types/app.js";
 import type { VextRequest } from "../../types/request.js";
@@ -18,10 +15,6 @@ import type {
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
 import { createFrontendRenderer } from "../runtime/renderer.js";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
-import {
-  buildClientContract,
-  type RoutesManifestPayload,
-} from "./client-contract-writer.js";
 
 export interface WriteStaticFrontendArtifactsOptions {
   rootDir: string;
@@ -32,62 +25,6 @@ export interface WriteStaticFrontendArtifactsOptions {
 export interface WriteStaticFrontendArtifactsResult {
   manifestPath: string;
   artifacts: VextFrontendStaticArtifact[];
-}
-
-/**
- * Materializes declared `RouteOptions.frontend.mode: "static"` closures after
- * both browser and server build outputs exist. The render is staged first;
- * only a fully successful closure is published into the physical deploy tree.
- */
-export async function writeStaticFrontendArtifacts(
-  options: WriteStaticFrontendArtifactsOptions,
-): Promise<WriteStaticFrontendArtifactsResult> {
-  const contract = await readStaticRouteContract(options);
-  const renderManifest = JSON.parse(
-    await readFile(
-      path.join(options.config.outDir, "render-manifest.json"),
-      "utf-8",
-    ),
-  ) as VextFrontendRenderManifest;
-  const planned = await createStaticFrontendArtifacts({
-    ...options,
-    contract,
-    renderManifest,
-    renderer: createFrontendRenderer({
-      rootDir: options.rootDir,
-      mode: options.mode,
-      config: options.config,
-    }),
-  });
-  const stageDir = path.join(
-    options.config.outDir,
-    `.vext-static-stage-${randomUUID()}`,
-  );
-  try {
-    await mkdir(stageDir, { recursive: true });
-    for (const file of planned.files) {
-      if (file.path === planned.result.manifestPath) continue;
-      await writeStageFile(
-        stageDir,
-        path.relative(options.config.outDir, file.path).replaceAll("\\", "/"),
-        Buffer.from(file.contents).toString("utf8"),
-      );
-    }
-    await publishStaticStage(
-      stageDir,
-      options.config.outDir,
-      planned.result.artifacts,
-    );
-  } catch (error) {
-    await rm(stageDir, { recursive: true, force: true });
-    throw error;
-  }
-
-  const manifest = planned.files.find(
-    (file) => file.path === planned.result.manifestPath,
-  )!;
-  await writeFile(manifest.path, manifest.contents);
-  return planned.result;
 }
 
 export async function createStaticFrontendArtifacts(
@@ -138,38 +75,6 @@ export async function createStaticFrontendArtifacts(
     contents: `${JSON.stringify(manifest, null, 2)}\n`,
   });
   return { result: { manifestPath, artifacts }, files };
-}
-
-async function readStaticRouteContract(
-  options: WriteStaticFrontendArtifactsOptions,
-): Promise<VextClientContract> {
-  const contractPath = path.join(options.config.outDir, "client-contract.json");
-  if (existsSync(contractPath)) {
-    return JSON.parse(
-      await readFile(contractPath, "utf-8"),
-    ) as VextClientContract;
-  }
-  const routeManifestPath = path.join(
-    options.rootDir,
-    ".vext",
-    "manifest",
-    "routes.json",
-  );
-  if (!existsSync(routeManifestPath)) {
-    return {
-      schemaVersion: 1,
-      kind: "client-contract",
-      source: "routes-manifest",
-      generatedAt: STABLE_FRONTEND_GENERATED_AT,
-      routes: [],
-      warnings: [],
-    };
-  }
-  return buildClientContract(
-    JSON.parse(
-      await readFile(routeManifestPath, "utf-8"),
-    ) as RoutesManifestPayload,
-  );
 }
 
 async function createStaticRouteArtifacts(input: {
@@ -333,50 +238,4 @@ function toStaticOutput(routePath: string): { html: string; data: string } {
     html: path.posix.join(directory, "index.html").replace(/^\.\//u, ""),
     data: path.posix.join(directory, "__vext.page.json").replace(/^\.\//u, ""),
   };
-}
-
-async function writeStageFile(
-  stageDir: string,
-  relativePath: string,
-  content: string,
-): Promise<void> {
-  const filePath = resolvePathInside(
-    stageDir,
-    relativePath,
-    "frontend static stage artifact path",
-    { realpath: true },
-  );
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, content, "utf-8");
-}
-
-async function publishStaticStage(
-  stageDir: string,
-  outDir: string,
-  artifacts: VextFrontendStaticArtifact[],
-): Promise<void> {
-  const files = [
-    ...new Set(
-      artifacts.flatMap((artifact) =>
-        artifact.data ? [artifact.html, artifact.data] : [artifact.html],
-      ),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-  for (const relativePath of files) {
-    const source = resolvePathInside(
-      stageDir,
-      relativePath,
-      "frontend static staged artifact path",
-      { realpath: true },
-    );
-    const target = resolvePathInside(
-      outDir,
-      relativePath,
-      "frontend static publish artifact path",
-      { realpath: true },
-    );
-    await mkdir(path.dirname(target), { recursive: true });
-    await rename(source, target);
-  }
-  await rm(stageDir, { recursive: true, force: true });
 }

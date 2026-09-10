@@ -23,6 +23,8 @@ import { createTestApp } from "vextjs/testing";
 
 `createTestApp` 是测试用 App 工厂函数，创建一个完整的测试应用实例。
 
+在插件、服务、路由之前加载应用字典，默认目录为 `rootDir/src/locales`，支持通过 `config.locale.directory` 覆盖、模块子目录、JSON 和脚本字典。缺目录使用空字典，格式错误使初始化失败，脚本按模块执行。它不读取项目配置文件或执行配置 provider，也不自动连接数据库。需要显式重载时，调用根入口 `loadI18n(testApp.app, directory)`；详见 [国际化](/guide/i18n)。
+
 ### 函数签名
 
 ```typescript

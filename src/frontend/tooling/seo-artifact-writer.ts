@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
-import { constants, existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
 import type {
@@ -28,53 +27,6 @@ export interface VextFrontendSeoArtifact {
 
 export interface WriteFrontendSeoArtifactsResult {
   artifacts: VextFrontendSeoArtifact[];
-}
-
-export async function writeFrontendSeoArtifacts(
-  options: WriteFrontendSeoArtifactsOptions,
-): Promise<WriteFrontendSeoArtifactsResult> {
-  const plan = await createFrontendSeoArtifacts(options);
-  for (const file of plan.files) {
-    if (existsSync(file.path))
-      throw new Error(
-        `[vextjs] SEO output conflicts with an existing public/build file: ${path.relative(options.config.outDir, file.path)}`,
-      );
-  }
-  if (!plan.files.length) return plan.result;
-  const stage = path.join(
-    options.config.outDir,
-    `.vext-seo-stage-${randomUUID()}`,
-  );
-  const committedTargets: string[] = [];
-  try {
-    for (const file of plan.files) {
-      const staged = resolveContainedOutputPath(
-        stage,
-        path.relative(options.config.outDir, file.path),
-      );
-      await mkdir(path.dirname(staged), { recursive: true });
-      await writeFile(staged, file.contents);
-    }
-    for (const file of plan.files) {
-      await mkdir(path.dirname(file.path), { recursive: true });
-      await copyFile(
-        resolveContainedOutputPath(
-          stage,
-          path.relative(options.config.outDir, file.path),
-        ),
-        file.path,
-        constants.COPYFILE_EXCL,
-      );
-      committedTargets.push(file.path);
-    }
-  } catch (error) {
-    for (const target of committedTargets)
-      await rm(target, { force: true }).catch(() => undefined);
-    throw error;
-  } finally {
-    await rm(stage, { recursive: true, force: true });
-  }
-  return plan.result;
 }
 
 /** 使用本代契约与静态页面生成候选；输出存在性与归属由最终提交者核验。 */

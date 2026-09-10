@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/vextjs.svg)](https://www.npmjs.com/package/vextjs)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20.19.0-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%5E20.19.0%20%7C%7C%20%3E%3D22.12.0-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Docs](https://img.shields.io/badge/docs-devcodex--labs.github.io-informational)](https://devcodex-labs.github.io/vextjs/)
 
@@ -12,7 +12,7 @@ VextJS is an **AI-first full-stack Node.js application framework** built around 
 
 AI-first describes the engineering surface: conventions, scaffolding, typed contracts, OpenAPI, and machine-readable documentation give AI coding assistants explicit inputs for AI-assisted development. VextJS does not include a built-in LLM, Agent, RAG system, or inference runtime.
 
-The npm package name is `vextjs`; the CLI binary is `vext`. Requires **Node.js >=20.19.0**. Cold-start from the registry with **`npx vextjs …`**. After install, use project scripts or local `npx vext`.
+The npm package name is `vextjs`; the CLI binary is `vext`. Requires Node.js **`^20.19.0 || >=22.12.0`**. Cold-start from the registry with **`npx vextjs …`**. After install, use project scripts or local `npx vext`.
 
 **Docs:** https://devcodex-labs.github.io/vextjs/ · **Migration:** [MIGRATION.md](./MIGRATION.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
 

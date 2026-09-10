@@ -41,7 +41,7 @@ export interface ChangeClassification {
 /**
  * 用户自定义分类选项
  *
- * 通过 config.dev.coldPatterns / config.dev.ignorePatterns 配置。
+ * 仅由内部调用方传入 ClassifierOptions；不是 config.dev 的公开配置项。
  * 用户自定义规则优先级高于内置规则。
  */
 export interface ClassifierOptions {

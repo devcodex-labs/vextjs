@@ -69,7 +69,34 @@ export async function acquireProjectOwner(
   rootDir: string,
   purpose: "dev" | "build" | "typegen",
 ): Promise<ProjectOwner> {
-  const identity = createIdentity(canonicalRoot(rootDir), purpose);
+  return acquireOwner(canonicalRoot(rootDir), purpose);
+}
+
+/** 部署仅独占实际输出范围；复用registry的祖先重叠检查，不独占整个服务。 */
+export async function withOutputDirectoryOwner<T>(
+  directory: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const parent = context.getStore();
+  if (parent) await parent.assertActive();
+  const owner = await acquireOwner(
+    canonicalPath(directory),
+    "deploy",
+    parent?.identity,
+  );
+  try {
+    return await operation();
+  } finally {
+    await owner.release();
+  }
+}
+
+async function acquireOwner(
+  realRoot: string,
+  purpose: "dev" | "build" | "typegen" | "deploy",
+  parentIdentity?: OwnerIdentity,
+): Promise<ProjectOwner> {
+  const identity = createIdentity(realRoot, purpose);
   const credential = randomBytes(32).toString("hex");
   const outputs = new Map<string, OwnerEndpoint>();
   let endpoint: OwnerEndpoint | undefined;
@@ -181,6 +208,9 @@ export async function acquireProjectOwner(
       await reclaimInactiveOwnerRecords(records);
       for (let i = records.length - 1; i >= 0; i--) {
         const record = records[i]!;
+        // build --upload-assets仍持有自己的项目owner；独立部署scope之间照常互斥。
+        if (parentIdentity && sameOwner(record.identity, parentIdentity))
+          continue;
         if (
           !isPathInside(identity.realRoot, record.identity.realRoot, true) &&
           !isPathInside(record.identity.realRoot, identity.realRoot, true) &&

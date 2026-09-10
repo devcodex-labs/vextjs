@@ -423,7 +423,7 @@ export default defineRoutes((app) => {
   app.post("/items", { validate: { body: { name: z.string() } } }, handler);
 });
 `,
-      /opaque\/imported schema objects and other call chains are not supported/u,
+      /binding z is mutable, reassigned, or unsupported/u,
     ],
     [
       "untrusted schemaAdapter provenance",
@@ -435,7 +435,7 @@ export default defineRoutes((app) => {
   } } }, handler);
 });
 `,
-      /opaque\/imported schema objects and other call chains are not supported/u,
+      /binding schemaAdapter is mutable, reassigned, or unsupported/u,
     ],
   ])(
     "fails closed for unsupported schema value: %s",

@@ -22,6 +22,8 @@ import { loadPlugins } from "../lib/plugin-loader.js";
 import { loadMiddlewares } from "../lib/middleware-loader.js";
 import type { MiddlewareRegistry } from "../lib/middleware-loader.js";
 import { loadServices } from "../lib/service-loader.js";
+import { loadI18n } from "../lib/i18n-loader.js";
+import { resolveLocaleDirectory } from "../lib/project/layout.js";
 import { loadRoutes } from "../lib/router-loader.js";
 import { createRequestIdMiddleware } from "../lib/middlewares/request-id.js";
 import { createRequestMetadataMiddleware } from "../lib/middlewares/request-metadata.js";
@@ -306,6 +308,8 @@ const TEST_DEFAULTS: Partial<VextConfig> = {
  *
  * **集成测试**：保持 `services: true`（默认），`service-loader` 自动处理编译。
  *
+ * locale按rootDir及config.locale.directory解析（默认src/locales），在插件/服务前加载。
+ * JSON只读，脚本字典会执行模块；坏字典拒绝初始化。此helper不执行用户配置provider或自动连接数据库。
  * @param options 创建选项（全部可选）
  * @returns 包含 app、request、close 的测试 App 实例
  *
@@ -370,6 +374,16 @@ export async function createTestApp(
 
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
+  const localeLayout = resolveLocaleDirectory(
+    rootDir,
+    srcDir,
+    finalConfig.locale?.directory,
+  );
+  // 与正式启动一致，在插件/服务执行前加载；坏字典使初始化失败而非返回失真的测试app。
+  await loadI18n(app, localeLayout.directory, {
+    rootDir,
+    compiled: localeLayout.compiled,
+  });
   const hooks = app.hooks as VextInternalHooks;
   const sessionRuntime = createConfiguredSessionRuntime(finalConfig.session);
   app.onClose(sessionRuntime.close);

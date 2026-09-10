@@ -14,7 +14,7 @@ VextJS 提供官方 Nacos 插件 [`@devcodex/nacos`](https://www.npmjs.com/packa
 ## 前置条件
 
 - Nacos Server 2.x（已实测 nacos@2.6.1）
-- Node.js >= 20.19.0
+- 当前框架要求 Node.js **`^20.19.0 || >=22.12.0`**
 - VextJS >= 0.3.2
 
 ## 一、推荐：使用 `@devcodex/nacos` 官方插件

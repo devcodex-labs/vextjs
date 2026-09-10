@@ -1,6 +1,5 @@
 import * as esbuild from "esbuild";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fg from "fast-glob";
@@ -34,24 +33,6 @@ export function createJscssBuildDefines(
     __VEXT_JSCSS_DYNAMIC_VARS__: JSON.stringify(jscss.dynamicVars),
     __VEXT_JSCSS_RECIPES__: JSON.stringify(jscss.recipes),
   };
-}
-
-export async function extractJscssStyles(
-  options: ExtractJscssOptions,
-): Promise<ExtractJscssResult> {
-  return withProjectOwner(
-    options.rootDir,
-    "build",
-    [options.generatedDir],
-    async () => {
-      const planned = await createJscssArtifacts(options);
-      for (const file of planned.artifacts) {
-        await mkdir(path.dirname(file.path), { recursive: true });
-        await writeFile(file.path, file.contents);
-      }
-      return planned.result;
-    },
-  );
 }
 
 export async function createJscssArtifacts(

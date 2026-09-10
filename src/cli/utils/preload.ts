@@ -51,7 +51,7 @@ export async function resolvePreloads(
 ): Promise<string[]> {
   const projectFiles = options.builtOutDir
     ? await resolvePreloadDirectory(
-        rootDir,
+        options.builtOutDir,
         join(options.builtOutDir, "preload"),
       )
     : await resolveProjectPreloads(rootDir);
@@ -96,10 +96,11 @@ async function resolveProjectPreloads(rootDir: string): Promise<string[]> {
 }
 
 async function resolvePreloadDirectory(
-  rootDir: string,
+  readRoot: string,
   preloadDir: string,
 ): Promise<string[]> {
-  assertRealPathInside(rootDir, preloadDir, "project preload directory");
+  // start先验证构建身份；compiled读取边界是该产物根，依赖解析仍由服务rootDir负责。
+  assertRealPathInside(readRoot, preloadDir, "project preload directory");
   const entries = await readdir(preloadDir, { withFileTypes: true }).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
@@ -129,7 +130,7 @@ async function resolvePreloadDirectory(
       continue;
     }
 
-    assertRealPathInside(rootDir, fullPath, "project preload file");
+    assertRealPathInside(readRoot, fullPath, "project preload file");
     if (JS_PRELOAD_EXTENSIONS.has(extension)) {
       preloads.push(fullPath);
       continue;

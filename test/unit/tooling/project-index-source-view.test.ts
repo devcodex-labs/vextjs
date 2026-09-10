@@ -105,14 +105,14 @@ export default definePlugin({ name: "dynamic", setup(app) {
     write(
       root,
       "src/services/a.ts",
-      "export default class A { get() { return this.app.services.b; } }\n",
+      "export default class A { constructor(private app: any) {} get() { return this.app.services.b; } }\n",
     );
     write(root, "src/services/b.ts", "export default class B {}\n");
     const index = await buildProjectIndex(root);
     write(
       root,
       "src/services/b.ts",
-      "export default class B { get() { return this.app.services.a; } }\n",
+      "export default class B { constructor(private app: any) {} get() { return this.app.services.a; } }\n",
     );
     const report = await analyzeServiceDependencies(root, { index });
     expect([...report.graph.get("a")!]).toEqual(["b"]);
@@ -147,7 +147,7 @@ export default definePlugin({ name: "dynamic", setup(app) {
     write(
       root,
       "src/services/a.ts",
-      "export default class A { get() { return this.app.services.b; } }\n",
+      "export default class A { constructor(private app: any) {} get() { return this.app.services.b; } }\n",
     );
     write(root, "src/services/b.ts", "export default class B {}\n");
     write(
@@ -163,7 +163,7 @@ export default definePlugin({ name: "dynamic", setup(app) {
         path: "src/services/a.ts",
         expectedSha256: base.record("project", "src/services/a.ts")!.sha256,
         bytes: Buffer.from(
-          "export default class A { get() { return this.app.services.c; } }\n",
+          "export default class A { constructor(private app: any) {} get() { return this.app.services.c; } }\n",
         ),
       },
       {
@@ -352,7 +352,7 @@ export default definePlugin({ name: "dynamic", setup(app) {
     write(
       root,
       "src/services/a.ts",
-      "throw new Error('Do not execute sources'); export default class A { get() { return this.app.services.b; } }\n",
+      "throw new Error('Do not execute sources'); export default class A { constructor(private app: any) {} get() { return this.app.services.b; } }\n",
     );
     write(root, "src/services/b.ts", "export default class B {}\n");
     write(

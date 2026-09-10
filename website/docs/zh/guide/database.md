@@ -665,7 +665,7 @@ app.db.pool("billing").model("BillingInvoice");
 app.db.pool("billing").model("Invoice");
 ```
 
-> **注意**：如果别名与已注册的其他 Model 冲突，别名注册会被跳过（不覆盖现有注册），仅集合名有效。
+> **注意**：primary 注册键与 `key` 别名作为一个 Model 注册组检查冲突。默认 `validation: "strict"` 下冲突使加载失败；显式 `"lenient"` 会警告并跳过有问题的注册组，不保证只丢弃别名而保留 primary。
 
 Model 文件放在 `src/models/` 目录下，插件会自动扫描并注册：
 
@@ -693,14 +693,14 @@ src/
 
 **目录深度规则：**
 
-| 目录结构                         | 注册键名                                    | 自动注入                                            |
-| -------------------------------- | ------------------------------------------- | --------------------------------------------------- |
-| `models/order.ts`                | `Order`（或 `def.collection` / `def.name`） | 无（行为不变）                                      |
-| `models/billing/invoice.ts`      | `BillingInvoice`                            | `connection: { database: 'billing' }`               |
-| `models/main/billing/invoice.ts` | `MainBillingInvoice`                        | `connection: { pool: 'main', database: 'billing' }` |
-| `models/a/b/c/invoice.ts`        | ❌ 跳过（超出最大深度 2，输出警告）         | —                                                   |
+| 目录结构                         | 注册键名                                           | 自动注入                                            |
+| -------------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| `models/order.ts`                | `Order`（或 `def.collection` / `def.name`）        | 无（行为不变）                                      |
+| `models/billing/invoice.ts`      | `BillingInvoice`                                   | `connection: { database: 'billing' }`               |
+| `models/main/billing/invoice.ts` | `MainBillingInvoice`                               | `connection: { pool: 'main', database: 'billing' }` |
+| `models/a/b/c/invoice.ts`        | ❌ 超出最大深度 2：strict 失败，lenient 警告并跳过 | —                                                   |
 
-> 💡 目录深度超过 2 层时，vext 会输出警告日志并跳过该文件。如需更复杂的路由，请在 Model 文件中显式设置 `connection` 字段。
+> 💡 显式 `connection` 不会放宽最大扫描深度。如需更复杂的数据库路由，将文件放在受支持的深度内并显式设置连接信息，或通过共享 Model 定义包组织。
 
 **示例：按业务领域拆分 Model**
 
@@ -734,7 +734,7 @@ export default {
 // };
 ```
 
-**注入优先级：** 若 Model 文件已显式设置 `connection` 或 `name`/`collection`，则优先使用显式值，目录路由不会覆盖。
+**三种名称与注入优先级：** 根目录 primary 注册键为 `collection ?? name ?? PascalCase(file)`；一至二级目录的 primary 始终由完整相对路径生成（如 `BillingInvoice`）。`collection` / `name` 决定真实集合名；目录模式未显式设置时使用原始文件名 `invoice`，不会把 `BillingInvoice` 当集合名。`key` 另外增加精确别名，不改 primary。显式 `connection` 整体优先；目录不会补齐或覆盖其中字段。`app.db.model()` 按精确注册键访问，`app.db.collection()` 则直接访问集合。
 
 ### Model 加载配置
 

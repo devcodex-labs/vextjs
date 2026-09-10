@@ -30,6 +30,8 @@ const workspace = process.env.VEXT_EXAMPLES_WORKSPACE
 mkdirSync(workspace, { recursive: true });
 const records = [];
 let database;
+let databaseRecord;
+let failure;
 
 function start(args, cwd, env) {
   const invocation = resolveValidationCommand("npm", args);
@@ -140,6 +142,18 @@ try {
       downloadDir: path.join(root, ".cache/mongodb-binaries"),
     },
   });
+  const databaseInfo = database.instanceInfo;
+  const databaseProcess = databaseInfo?.instance.mongodProcess;
+  databaseRecord = {
+    command: databaseProcess?.spawnargs,
+    cwd: process.cwd(),
+    pid: databaseProcess?.pid,
+    port: databaseInfo?.port,
+    url: database.getUri("vext_example"),
+    dbPath: databaseInfo?.dbPath,
+    cleanup: "pending",
+  };
+  console.log(JSON.stringify({ phase: "database-start", ...databaseRecord }));
   for (const name of ["hello-world", "crud-api"]) {
     const cwd = path.join(workspace, name);
     cpSync(path.join(root, "examples", name), cwd, {
@@ -254,30 +268,45 @@ try {
       );
     }
   }
+} catch (error) {
+  failure = String(error);
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  try {
+    if (database) {
+      await database.stop();
+      if (databaseRecord?.port) await portProbe(databaseRecord.port);
+      if (databaseRecord)
+        databaseRecord.cleanup = "process stopped; listener released";
+      console.log(
+        JSON.stringify({ phase: "database-closed", ...databaseRecord }),
+      );
+    }
+  } catch (error) {
+    failure ??= String(error);
+    console.error(error);
+    process.exitCode = 1;
+  }
+  // Publish one result only after application and database cleanup has succeeded.
+  const status = failure ? "FAIL" : "PASS";
   writeFileSync(
     path.join(workspace, "result.json"),
     JSON.stringify(
       {
-        status: "PASS",
+        status,
+        ...(failure ? { error: failure } : {}),
         node: process.version,
         tarball,
         sha256: createHash("sha256")
           .update(readFileSync(tarball))
           .digest("hex"),
         records,
+        database: databaseRecord,
       },
       null,
       2,
     ),
   );
-  console.log(JSON.stringify({ status: "PASS", workspace }));
-} catch (error) {
-  writeFileSync(
-    path.join(workspace, "result.json"),
-    JSON.stringify({ status: "FAIL", error: String(error), records }, null, 2),
-  );
-  console.error(error);
-  process.exitCode = 1;
-} finally {
-  if (database) await database.stop();
+  console.log(JSON.stringify({ status, workspace }));
 }

@@ -14,7 +14,7 @@ Recommended to use in layers:
 ## Preconditions
 
 - Nacos Server 2.x (tested nacos@2.6.1)
-- Node.js >= 20.19.0
+- The current framework requires Node.js **`^20.19.0 || >=22.12.0`**
 - VextJS >= 0.3.2
 
 ## 1. Recommendation: Use the `@devcodex/nacos` official plug-in

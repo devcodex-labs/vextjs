@@ -9,8 +9,8 @@ import {
   renderRobotsTxt,
   renderSitemapDocuments,
   validateSitemapEntries,
-  writeFrontendSeoArtifacts,
 } from "../../src/frontend/tooling/seo-artifact-writer.js";
+import { commitSeoCandidate } from "../helpers/frontend-artifacts.js";
 import {
   resolveSeoHead,
   selectRuntimeOrigin,
@@ -492,7 +492,7 @@ describe("frontend sitemap and robots", () => {
       (config.seo.sitemap as { path: string }).path = unsafePath;
 
       await expect(
-        writeFrontendSeoArtifacts({
+        commitSeoCandidate({
           rootDir,
           config,
           staticArtifacts: [],
@@ -518,7 +518,7 @@ describe("frontend sitemap and robots", () => {
     );
     (config.seo.sitemap as { path: string }).path = "/seo\\nested/sitemap.xml";
 
-    const result = await writeFrontendSeoArtifacts({
+    const result = await commitSeoCandidate({
       rootDir,
       config,
       staticArtifacts: [],
@@ -558,7 +558,7 @@ describe("frontend sitemap and robots", () => {
       { rootDir, mode: "production" },
     );
     const controller = new AbortController();
-    const write = writeFrontendSeoArtifacts({
+    const write = commitSeoCandidate({
       rootDir,
       config,
       staticArtifacts: [],
@@ -588,7 +588,7 @@ describe("frontend sitemap and robots", () => {
     );
     await mkdir(config.outDir, { recursive: true });
 
-    const result = await writeFrontendSeoArtifacts({
+    const result = await commitSeoCandidate({
       rootDir,
       config,
       staticArtifacts: [
@@ -646,12 +646,12 @@ describe("frontend sitemap and robots", () => {
     );
 
     await expect(
-      writeFrontendSeoArtifacts({
+      commitSeoCandidate({
         rootDir: conflictRoot,
         config: conflictConfig,
         staticArtifacts: [],
       }),
-    ).rejects.toThrow(/conflicts with an existing public\/build file/u);
+    ).rejects.toThrow(/conflict|unowned/i);
     expect(
       await readFile(path.join(conflictConfig.outDir, "sitemap.xml"), "utf-8"),
     ).toBe("user-owned");

@@ -676,7 +676,7 @@ app.db.pool("billing").model("BillingInvoice");
 app.db.pool("billing").model("Invoice");
 ```
 
-> **Note**: If the alias conflicts with other registered Models, the alias registration will be skipped (existing registration will not be overwritten), and only the collection name is valid.
+> **Note**: The primary key and `key` alias are checked as one Model registration group. A conflict fails loading under the default `validation: "strict"`; explicit `"lenient"` warns and skips the invalid group. It does not promise to discard only the alias while retaining the primary.
 
 Model files are placed in the `src/models/` directory, and the plug-in will automatically scan and register:
 
@@ -693,7 +693,7 @@ Rules for inferring Model names from file names:
 
 - `user.ts` → `'User'` (first letter is capitalized)
 - `order-item.ts` → `'OrderItem'` (kebab-case → PascalCase)
-- `user_role.ts` → `'UserRole'' (snake_case → PascalCase)
+- `user_role.ts` → `'UserRole'` (snake_case → PascalCase)
 - `.test.ts` / `.spec.ts` / `.d.ts` → skip
 - files prefixed with `_` → skip
 - `index.ts` is a normal Model file; at root it infers `'Index'`
@@ -704,14 +704,14 @@ Placing the Model file in a subdirectory of `models/` allows vext to automatical
 
 **Directory depth rules:**
 
-| Directory structure              | Registration key name                          | Automatic injection                                 |
-| -------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| `models/order.ts`                | `Order` (or `def.collection` / `def.name`)     | None (no change in behavior)                        |
-| `models/billing/invoice.ts`      | `BillingInvoice`                               | `connection: { database: 'billing' }`               |
-| `models/main/billing/invoice.ts` | `MainBillingInvoice`                           | `connection: { pool: 'main', database: 'billing' }` |
-| `models/a/b/c/invoice.ts`        | ❌ skip (max depth 2 exceeded, output warning) | —                                                   |
+| Directory structure              | Registration key name                                     | Automatic injection                                 |
+| -------------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
+| `models/order.ts`                | `Order` (or `def.collection` / `def.name`)                | None (no change in behavior)                        |
+| `models/billing/invoice.ts`      | `BillingInvoice`                                          | `connection: { database: 'billing' }`               |
+| `models/main/billing/invoice.ts` | `MainBillingInvoice`                                      | `connection: { pool: 'main', database: 'billing' }` |
+| `models/a/b/c/invoice.ts`        | ❌ depth exceeds 2: strict fails; lenient warns and skips | —                                                   |
 
-> 💡 When the directory depth exceeds 2 levels, vext will output a warning log and skip the file. For more complex routing, explicitly set the `connection` field in the Model file.
+> 💡 An explicit `connection` does not relax the maximum scan depth. For more complex database routing, keep files within the supported depth and specify connection details, or organize definitions in a shared Model package.
 
 **Example: Split Model by Business Area**
 
@@ -745,7 +745,7 @@ export default {
 // };
 ```
 
-**Injection priority:** If the Model file has explicitly set `connection` or `name`/`collection`, the explicit value will be used first and directory routing will not override it.
+**Three names and injection priority:** At root, the primary registration key is `collection ?? name ?? PascalCase(file)`. At directory depths one and two, the primary always comes from the full relative path, such as `BillingInvoice`. `collection` / `name` determines the actual collection; without either, directory routing uses the raw filename `invoice`, not `BillingInvoice`. `key` adds a separate exact alias without changing the primary. An explicit `connection` wins as a whole; directory routing does not fill or override its fields. `app.db.model()` accepts exact registration keys; `app.db.collection()` directly addresses a collection.
 
 ### Model loading configuration
 

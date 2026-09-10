@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import sharp from "sharp";
@@ -42,51 +42,6 @@ export interface WriteFrontendMediaArtifactsResult {
 
 interface ParsedFontDefinition extends VextFontDefinition {
   definitionFile: string;
-}
-
-/**
- * Direct local-media worker. It deliberately has no esbuild plugin, cloud SDK,
- * command wrapper, remote fetch, or remote cache layer.
- */
-export async function writeFrontendMediaArtifacts(
-  input: WriteFrontendMediaArtifactsOptions,
-): Promise<WriteFrontendMediaArtifactsResult> {
-  const plan = await createFrontendMediaArtifacts(input);
-  const { config } = input;
-  const manifestPath = path.join(config.outDir, "media-manifest.json");
-  const stageDir = path.join(config.outDir, ".vext-media-stage");
-  const targetDir = path.join(
-    config.outDir,
-    config.build.client.assetsDir,
-    "media",
-  );
-  await rm(stageDir, { recursive: true, force: true });
-  await mkdir(stageDir, { recursive: true });
-
-  try {
-    for (const file of plan.files) {
-      if (file.path === manifestPath) continue;
-      await writeFile(
-        path.join(stageDir, path.basename(file.path)),
-        file.contents,
-      );
-    }
-
-    await rm(targetDir, { recursive: true, force: true });
-    await mkdir(path.dirname(targetDir), { recursive: true });
-    await rename(stageDir, targetDir);
-    const manifest = plan.result.manifest;
-    await writeFile(
-      manifestPath,
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      "utf-8",
-    );
-    return { manifestPath, manifest };
-  } catch (error) {
-    await rm(stageDir, { recursive: true, force: true });
-    await rm(manifestPath, { force: true });
-    throw error;
-  }
 }
 
 /** 图片/字体和清单先完整生成，解码、子集或预算失败不会修改上一代产物。 */

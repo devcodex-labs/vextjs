@@ -82,6 +82,8 @@ optional section must provide a complete database configuration, including its
 required connection `config`; a half database has no earlier test layer to
 complete it.
 
+Dictionaries load before plugins, services, and routes. The default is `rootDir/src/locales`; set `config.locale.directory` for a custom directory using the normal startup resolver. Module subdirectories, JSON, and script dictionaries are supported; scripts execute. A missing directory gives an empty dictionary, while an invalid dictionary fails test application initialization. This step does not load project configuration files, execute a configuration provider, or automatically connect a database.
+
 ### Common configuration scenarios
 
 #### Custom port and log level

@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import { scanLocaleSources } from "../../lib/i18n/catalog.js";
@@ -16,7 +15,6 @@ import {
   type ExtractJscssResult,
 } from "./jscss-extractor.js";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
-import { withProjectOwner } from "../../lib/project/owner.js";
 
 export interface WriteFrontendRenderRegistryOptions {
   rootDir: string;
@@ -38,24 +36,6 @@ export interface FrontendRenderRegistryResult {
   errorPages: VextFrontendErrorPageRegistryEntry[];
   locales: VextFrontendLocaleRegistryEntry[];
   warnings: string[];
-}
-
-export async function writeFrontendRenderRegistry(
-  options: WriteFrontendRenderRegistryOptions,
-): Promise<FrontendRenderRegistryResult> {
-  return withProjectOwner(
-    options.rootDir,
-    options.mode === "development" ? "dev" : "build",
-    [resolveGeneratedDir(options.rootDir, options.config)],
-    async () => {
-      const planned = await createFrontendRenderRegistryArtifacts(options);
-      for (const file of planned.files) {
-        await mkdir(path.dirname(file.path), { recursive: true });
-        await writeFile(file.path, file.contents);
-      }
-      return planned.result;
-    },
-  );
 }
 
 export async function createFrontendRenderRegistryArtifacts(

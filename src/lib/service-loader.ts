@@ -10,6 +10,10 @@ import {
   filePathToServiceKeys,
 } from "../shared/service-paths.js";
 import { wrapServiceInstance } from "./service-hooks.js";
+import {
+  collectServiceDependencies,
+  findServiceDependencyCycles,
+} from "./service-dependencies.js";
 
 /**
  * service-loader.ts — 服务层自动加载器
@@ -25,7 +29,7 @@ import { wrapServiceInstance } from "./service-hooks.js";
  *   4. 文件路径 → 嵌套 service key（kebab-case → camelCase）
  *   5. new mod.default(app) 实例化，通过 setNestedKey 挂载到 app.services
  *   6. Fail Fast：key 冲突、非 class 导出
- *   7. 所有 service 加载完成后，执行循环依赖静态检测（源码正则分析 + DFS）
+ *   7. 所有 service 加载完成后，执行与Doctor同源的词法绑定依赖检测
  *
  * 路径映射示例：
  *   services/user.ts            → app.services.user
@@ -167,11 +171,7 @@ export async function loadServices(
 
   // ── 5. 循环依赖检测 ───────────────────────────────────────
   if (checkCircularDeps && serviceFileMap.size > 0) {
-    await checkServiceCircularDeps(
-      app.services as Record<string, unknown>,
-      serviceFileMap,
-      app.logger,
-    );
+    await checkServiceCircularDeps(serviceFileMap, app.logger);
   }
 
   app.logger.info(`[vextjs] ${serviceFileMap.size} service(s) loaded`);
@@ -353,162 +353,49 @@ async function loadServiceFile(
 // ── 循环依赖检测 ──────────────────────────────────────────────
 
 /**
- * checkServiceCircularDeps — 静态分析 service 间循环依赖
- *
- * 检测策略（静态源码分析）：
- *   1. 读取每个 service 文件的源码文本
- *   2. 正则匹配 this.app.services.<key> 或 app.services.<key> 调用
- *   3. 构建有向依赖图（serviceKey → 依赖的 serviceKey 集合）
- *   4. DFS 检测环路，发现环路则 Fail Fast
- *
- * 优点：在 bootstrap 阶段完成检测，不增加请求路径检查
- * 缺点：无法检测动态拼接的 key（如 app.services[name]），但此模式极少见
- *
- * @param services       app.services 对象（用于获取所有 key）
- * @param serviceFiles   serviceKey → 源文件绝对路径的映射
- * @param logger         VextLogger 实例
+ * 预检与Doctor共享注入绑定及环路算法；无法证明的源码只警告，不把静态未知伪装成通过。
+ * 服务由new ServiceClass(app)创建，检查仍不增加请求路径开销。
  */
 async function checkServiceCircularDeps(
-  services: Record<string, unknown>,
   serviceFiles: Map<string, string>,
   logger: VextLogger,
 ): Promise<void> {
-  // 1. 获取所有扁平化的 service key
-  const allKeys = flattenServiceKeys(services);
-
-  if (allKeys.length <= 1) {
-    // 只有 0 或 1 个 service，不可能存在循环依赖
-    return;
-  }
-
-  // 2. 构建依赖图
   const graph = new Map<string, Set<string>>();
-
-  for (const key of allKeys) {
-    graph.set(key, new Set());
-  }
-
-  for (const key of allKeys) {
-    const filePath = serviceFiles.get(key);
-    if (!filePath) continue;
-
-    let source: string;
+  const knownKeys = new Set(serviceFiles.keys());
+  let incomplete = false;
+  for (const [key, filePath] of serviceFiles) {
     try {
-      source = await readFile(filePath, "utf-8");
-    } catch {
-      // 文件读取失败时跳过该 service 的依赖分析
-      logger.debug(
-        `[service-loader] Could not read source for circular dep check: ${filePath}`,
+      const source = await readFile(filePath, "utf-8");
+      const result = collectServiceDependencies(
+        source,
+        filePath,
+        key,
+        knownKeys,
       );
-      continue;
-    }
-
-    const deps = graph.get(key)!;
-
-    // 匹配 this.app.services.xxx 或 app.services.xxx
-    // 支持嵌套访问如 app.services.payment.stripe
-    // 注意：访问可能带方法调用（app.services.b.value()），需回退到已知 service key 前缀
-    const regex =
-      /(?:this\.)?app\.services\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(source)) !== null) {
-      let dep = match[1]!;
-      // 最长前缀匹配：payment.stripe.charge -> payment.stripe -> payment
-      while (dep && !allKeys.includes(dep)) {
-        const idx = dep.lastIndexOf(".");
-        if (idx < 0) {
-          dep = "";
-          break;
-        }
-        dep = dep.slice(0, idx);
+      graph.set(key, result.dependencies);
+      if (result.incomplete) {
+        incomplete = true;
+        logger.warn(
+          `[service-loader] Service dependency analysis is incomplete: ${filePath}`,
+        );
       }
-      // 跳过自引用与未知 key
-      if (!dep || dep === key) continue;
-      deps.add(dep);
-    }
-  }
-
-  // 3. DFS 检测环路
-  const visited = new Set<string>();
-  const stack = new Set<string>();
-
-  function dfs(node: string, path: string[]): void {
-    if (stack.has(node)) {
-      const cycleStart = path.indexOf(node);
-      const cycle = [...path.slice(cycleStart), node].join(" → ");
-      throw new Error(
-        `[vextjs] Circular dependency detected in services: ${cycle}\n` +
-          `         Break the cycle by extracting shared logic into a separate service or utility.`,
+    } catch (error) {
+      incomplete = true;
+      logger.warn(
+        `[service-loader] Could not analyze service dependencies: ${filePath}: ${String(error)}`,
       );
     }
-    if (visited.has(node)) return;
-
-    visited.add(node);
-    stack.add(node);
-    path.push(node);
-
-    const deps = graph.get(node);
-    if (deps) {
-      for (const dep of deps) {
-        dfs(dep, [...path]);
-      }
-    }
-
-    stack.delete(node);
-    path.pop();
   }
-
-  for (const key of allKeys) {
-    if (!visited.has(key)) {
-      dfs(key, []);
-    }
-  }
-
-  logger.debug(
-    `[service-loader] Circular dependency check passed (${allKeys.length} services)`,
-  );
-}
-
-/**
- * flattenServiceKeys — 将嵌套的 services 对象扁平化为 key 列表
- *
- * 遍历 services 对象，将叶节点（非纯对象的值）的路径拼接为扁平 key。
- * 纯对象（命名空间）继续递归展开。
- *
- * 示例：
- *   { user: UserService, payment: { stripe: StripeService } }
- *   → ['user', 'payment.stripe']
- *
- * @param obj    services 对象（或子对象）
- * @param prefix 当前路径前缀
- * @returns 所有叶节点的扁平化 key 数组
- */
-function flattenServiceKeys(
-  obj: Record<string, unknown>,
-  prefix: string = "",
-): string[] {
-  const keys: string[] = [];
-
-  for (const [key, value] of Object.entries(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
-
-    if (
-      value !== null &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      Object.getPrototypeOf(value) === Object.prototype
-    ) {
-      // 纯对象 → 命名空间，继续递归
-      keys.push(
-        ...flattenServiceKeys(value as Record<string, unknown>, fullKey),
-      );
-    } else {
-      // 叶节点 → service 实例
-      keys.push(fullKey);
-    }
-  }
-
-  return keys;
+  const cycle = findServiceDependencyCycles(graph)[0];
+  if (cycle)
+    throw new Error(
+      `[vextjs] Circular dependency detected in services: ${cycle.join(" → ")}\n` +
+        "         Break the cycle by extracting shared logic into a separate service or utility.",
+    );
+  if (!incomplete)
+    logger.debug(
+      `[service-loader] Circular dependency check passed (${knownKeys.size} services)`,
+    );
 }
 
 // ── 工具函数 ──────────────────────────────────────────────────

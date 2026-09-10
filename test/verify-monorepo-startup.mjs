@@ -88,7 +88,14 @@ async function allocatePort() {
 }
 
 try {
-  for (const [layout, mode, language, cluster, customOutput] of [
+  for (const [
+    layout,
+    mode,
+    language,
+    cluster,
+    customOutput,
+    hasProjectPreload = true,
+  ] of [
     ["hoisted", "start", "js", false],
     ["pnpm", "start", "ts", false],
     ["hoisted", "dev", "ts", false],
@@ -96,8 +103,12 @@ try {
     ["hoisted", "start", "js", true],
     ["pnpm", "start", "ts", false, "build/api"],
     ["hoisted", "start", "ts", true, "release/server"],
+    ["pnpm", "start", "ts", false, "../../artifacts/api", false],
+    ["pnpm", "start", "ts", false, "../../artifacts/api", true],
+    ["hoisted", "start", "ts", true, "../../artifacts/api", false],
+    ["hoisted", "start", "ts", true, "../../artifacts/api", true],
   ]) {
-    const name = `${layout}-${mode}-${language}${cluster ? "-cluster" : ""}${customOutput ? "-custom" : ""}`;
+    const name = `${layout}-${mode}-${language}${cluster ? "-cluster" : ""}${customOutput ? (customOutput.startsWith("../") ? "-external" : "-custom") : ""}${hasProjectPreload ? "" : "-empty-preload"}`;
     const root = join(workspace, name);
     const service = join(root, "apps/api");
     const packageDir =
@@ -202,11 +213,12 @@ try {
     const cli = join(packageDir, "dist/cli/index.js");
     if (language === "ts" && mode === "start") {
       if (customOutput) {
-        write(
-          service,
-          "src/preload/project.ts",
-          'process.env.VEXT_PROJECT_PRELOAD_PROBE = "compiled";',
-        );
+        if (hasProjectPreload)
+          write(
+            service,
+            "src/preload/project.ts",
+            'import { defineRoutes } from "vextjs"; if (typeof defineRoutes !== "function") throw new Error("preload dependency identity failed"); process.env.VEXT_PROJECT_PRELOAD_PROBE = "compiled";',
+          );
         write(service, "src/config/staging.ts", "export default {};");
         write(service, "src/utils/retired.ts", "export const retired = true;");
       }
@@ -223,7 +235,10 @@ try {
       if (customOutput) {
         const locationPath = join(service, ".vext/build-location.json");
         const first = JSON.parse(readFileSync(locationPath, "utf8"));
-        assert.equal(first.outDir, customOutput);
+        assert.equal(
+          resolve(service, first.outDir),
+          resolve(service, customOutput),
+        );
         assert.equal(
           existsSync(join(service, customOutput, "utils/retired.js")),
           true,
@@ -264,11 +279,12 @@ try {
         );
         await command(cli, ["build", "--config", "staging"], service);
         // 编译后改动源 preload：start/cluster 必须仍消费同一份编译产物。
-        write(
-          service,
-          "src/preload/project.ts",
-          'throw new Error("unbuilt source preload was executed");',
-        );
+        if (hasProjectPreload)
+          write(
+            service,
+            "src/preload/project.ts",
+            'throw new Error("unbuilt source preload was executed");',
+          );
         if (cluster) {
           // 源码目录由本 fixture 创建；验证教程所述仅携带生产产物的部署。
           rmSync(join(service, "src"), { recursive: true });
@@ -283,7 +299,11 @@ try {
     );
     const child = fork(
       cli,
-      [mode, ...(mode === "dev" ? ["--strict-preflight"] : [])],
+      [
+        mode,
+        ...(mode === "dev" ? ["--strict-preflight"] : []),
+        ...(mode === "start" && customOutput ? ["--outdir", customOutput] : []),
+      ],
       {
         cwd: service,
         execArgv: ["--import", pathToFileURL(control).href],
@@ -347,7 +367,10 @@ try {
       assert.equal(body.data.requestId, "");
       assert.equal(response.headers.get("x-request-id"), null);
       if (customOutput) {
-        assert.equal(body.data.projectPreload, "compiled");
+        assert.equal(
+          body.data.projectPreload,
+          hasProjectPreload ? "compiled" : undefined,
+        );
         assert.equal(body.data.profile, "staging");
       }
       if (mode === "dev") {

@@ -49,6 +49,49 @@ function view(files: Record<string, string>) {
 }
 
 describe("sealed static module graph", () => {
+  it.each([
+    "mutate(options);",
+    "const alias = options; mutate(alias);",
+    "const wrapped = { options }; mutate(wrapped);",
+    "const alias = options; alias.docs.summary = 'changed';",
+    "(() => mutate(options))();",
+    "function change() { mutate(options); } change();",
+    "options.items.push('changed');",
+  ])(
+    "invalidates options exposed during synchronous factory execution: %s",
+    (mutation) => {
+      const graph = new StaticModuleGraph(
+        view({
+          "route.ts": `import { defineRoutes } from 'vextjs'; const options = { docs: { summary: 'original' }, items: [] }; export const result = options; export default defineRoutes(app => { ${mutation} app.get('/', options, () => {}); });`,
+        }),
+      );
+      const module = graph.module("service", "route.ts");
+      expect(
+        graph.project(
+          graph.expression(module, module.bindings.get("result")!),
+          "options",
+        ),
+      ).toMatchObject({ completeness: "unknown" });
+    },
+  );
+
+  it("keeps readonly registration, delayed handlers and shadowed arguments distinct", () => {
+    const graph = new StaticModuleGraph(
+      view({
+        "route.ts": `import { defineRoutes } from 'vextjs'; const options = { docs: { summary: 'original' } }; export const result = options; export default defineRoutes(app => { { const options = {}; mutate(options); } app.get('/', options, () => mutate(options)); });`,
+      }),
+    );
+    const module = graph.module("service", "route.ts");
+    expect(
+      graph.project(
+        graph.expression(module, module.bindings.get("result")!),
+        "options",
+      ),
+    ).toMatchObject({
+      completeness: "complete",
+      value: { docs: { summary: "original" } },
+    });
+  });
   it("tracks named imports, explicit re-exports and data spreads without evaluating modules", () => {
     const source = view({
       "schema.ts":

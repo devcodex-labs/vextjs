@@ -5,6 +5,8 @@ import {
   sourceValueReferences as valueReferences,
 } from "../../lib/source-syntax.js";
 import { schemaAdapter } from "../../lib/schema-adapter.js";
+import { createSourceBindings } from "../../lib/source-bindings.js";
+import { isVextRouteMethod } from "../../lib/route-factory-contract.js";
 import type { SourceView } from "../source-view/types.js";
 import { sourceModuleReferences } from "./module-path.js";
 
@@ -221,8 +223,123 @@ export class StaticModuleGraph {
         }
       }
     }
-    walkSourceSyntax(program, (node, parent, ancestors) => {
-      if (parent) module.parents.set(node, parent);
+    const lexical = createSourceBindings(program);
+    const functions = new Set<Node>();
+    const factories = new Map<Node, Node>();
+    const isFunction = (node: Node) =>
+      [
+        "FunctionDeclaration",
+        "FunctionExpression",
+        "ArrowFunctionExpression",
+      ].includes(node.type);
+    const localValue = (node: Node): Node => {
+      node = unwrapStaticNode(node);
+      if (node.type !== "Identifier") return node;
+      const declaration = lexical.resolve(node)?.declaration;
+      return declaration?.type === "VariableDeclarator" && declaration.init
+        ? unwrapStaticNode(declaration.init)
+        : (declaration ?? node);
+    };
+    const frameworkCall = (node: Node, name: string): boolean => {
+      if (node.type !== "CallExpression") return false;
+      const callee =
+        node.callee.type === "MemberExpression"
+          ? node.callee.object
+          : node.callee;
+      return (
+        callee.type === "Identifier" &&
+        lexical.resolve(callee)?.declaration.type === "ImportDeclaration" &&
+        module.imports.get(callee.name)?.source === "vextjs" &&
+        module.imports.get(callee.name)?.name === name
+      );
+    };
+    const registration = (node: Node, ancestors: readonly Node[]): boolean => {
+      if (
+        node.type !== "CallExpression" ||
+        node.callee.type !== "MemberExpression"
+      )
+        return false;
+      const callee = node.callee;
+      if (
+        callee.object.type !== "Identifier" ||
+        callee.computed ||
+        callee.property.type !== "Identifier" ||
+        !isVextRouteMethod(callee.property.name)
+      )
+        return false;
+      const factory = [...ancestors]
+        .reverse()
+        .find((ancestor) => factories.has(ancestor));
+      const param = factory && factories.get(factory);
+      return (
+        param?.type === "Identifier" &&
+        lexical.resolve(callee.object) === lexical.resolve(param)
+      );
+    };
+    // 已知同步入口（模块、defineRoutes工厂、立即调用函数）传播执行阶段。
+    // handler本身是延迟入口；未知helper接收的callback不能假设一定延迟。
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      walkSourceSyntax(program, (node, parent, ancestors) => {
+        if (parent) module.parents.set(node, parent);
+        if (
+          node.type !== "CallExpression" ||
+          ancestors.some(
+            (ancestor) => isFunction(ancestor) && !functions.has(ancestor),
+          )
+        )
+          return;
+        const add = (candidate: Node) => {
+          const value = localValue(candidate);
+          if (isFunction(value) && !functions.has(value)) {
+            functions.add(value);
+            expanded = true;
+          }
+          return value;
+        };
+        if (frameworkCall(node, "defineRoutes") && node.arguments[0]) {
+          const factory = add(node.arguments[0]);
+          if (
+            factory.type === "FunctionExpression" ||
+            factory.type === "ArrowFunctionExpression"
+          )
+            if (factory.params[0]) factories.set(factory, factory.params[0]);
+        } else {
+          add(node.callee);
+          if (!registration(node, ancestors))
+            for (const argument of node.arguments)
+              if (isFunction(unwrapStaticNode(argument))) add(argument);
+        }
+      });
+    }
+    const origins = (node: Node, seen = new Set<Node>()): Set<string> => {
+      const result = new Set<string>();
+      walkSourceSyntax(node, (value) => {
+        if (isFunction(value)) return false;
+        if (
+          value.type !== "Identifier" ||
+          !lexical.isReference(value) ||
+          seen.has(value)
+        )
+          return;
+        seen.add(value);
+        const declaration = lexical.resolve(value)?.declaration;
+        if (declaration?.type === "ImportDeclaration") result.add(value.name);
+        else if (
+          declaration?.type === "VariableDeclarator" &&
+          declaration.init
+        ) {
+          if (module.bindings.get(value.name) === declaration.init)
+            result.add(value.name);
+          else
+            for (const name of origins(declaration.init, seen))
+              result.add(name);
+        }
+      });
+      return result;
+    };
+    walkSourceSyntax(program, (node, _parent, ancestors) => {
       const target =
         node.type === "AssignmentExpression"
           ? node.left
@@ -231,47 +348,40 @@ export class StaticModuleGraph {
             : node.type === "UnaryExpression" && node.operator === "delete"
               ? node.argument
               : undefined;
-      const name = target && assignedRoot(target);
-      if (name && !shadowed(name, ancestors)) module.invalid.add(name);
+      if (target) for (const name of origins(target)) module.invalid.add(name);
       if (
-        node.type === "CallExpression" &&
-        !ancestors.some(
-          (ancestor) =>
-            ancestor.type === "FunctionDeclaration" ||
-            ancestor.type === "FunctionExpression" ||
-            ancestor.type === "ArrowFunctionExpression",
+        node.type !== "CallExpression" ||
+        ancestors.some(
+          (ancestor) => isFunction(ancestor) && !functions.has(ancestor),
         )
-      ) {
-        const callee =
-          node.callee.type === "MemberExpression"
-            ? node.callee.object
-            : node.callee;
-        const binding =
-          callee.type === "Identifier"
-            ? module.imports.get(callee.name)
-            : undefined;
-        if (
-          binding?.source === "vextjs" &&
-          (binding.name === "defineRoutes" ||
-            (binding.name === "schemaAdapter" &&
-              node.callee.type === "MemberExpression" &&
-              !node.callee.computed &&
-              node.callee.property.type === "Identifier" &&
-              node.callee.property.name === "compileField"))
-        )
-          return;
-        for (const argument of node.arguments) {
-          for (const escaped of valueReferences(argument)) {
-            if (
-              !shadowed(escaped, ancestors) &&
-              (module.imports.has(escaped) ||
-                (module.bindings.has(escaped) &&
-                  mayBeMutable(module.bindings.get(escaped), module.bindings)))
-            )
-              module.invalid.add(escaped);
-          }
-        }
+      )
+        return;
+      if (frameworkCall(node, "defineRoutes") || registration(node, ancestors))
+        return;
+      if (
+        frameworkCall(node, "schemaAdapter") &&
+        node.callee.type === "MemberExpression" &&
+        !node.callee.computed &&
+        nameOf(node.callee.property) === "compileField"
+      )
+        return;
+      for (const argument of node.arguments) {
+        for (const name of origins(argument))
+          if (
+            module.imports.has(name) ||
+            (module.bindings.has(name) &&
+              mayBeMutable(module.bindings.get(name), module.bindings))
+          )
+            module.invalid.add(name);
       }
+      // 对象方法同样可能变异接收者，例如 options.values.push(...)。
+      if (
+        node.callee.type === "MemberExpression" &&
+        node.callee.object.type !== "CallExpression"
+      )
+        for (const name of origins(node.callee.object))
+          if (module.bindings.has(name) || module.imports.has(name))
+            module.invalid.add(name);
     });
     // 对同模块 const 别名的写入同样使原对象失去不可变证据。
     let changed = true;

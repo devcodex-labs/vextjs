@@ -5,7 +5,10 @@ import type {
 } from "../contract/types.js";
 import { canonicalProjectRoot } from "../../lib/path-boundary.js";
 import { validateConfigProfileName } from "../../lib/config-profile.js";
-import { createFilesystemDeployAdapter } from "./adapters/filesystem.js";
+import {
+  createFilesystemDeployAdapter,
+  filesystemDeployDirectory,
+} from "./adapters/filesystem.js";
 import { createMockDeployAdapter } from "./adapters/mock.js";
 
 export function resolveDeployAdapter(
@@ -45,19 +48,28 @@ export function resolveDeployTarget(
       "[vextjs] deploy adapter targetIdentity must be a non-empty stable string.",
     );
   const simulation = adapter.name === "mock";
+  const physicalDirectory = filesystemDeployDirectory(
+    adapter,
+    config.deploy.upload.prefix,
+  );
   const digest = (value: unknown) =>
     createHash("sha256").update(JSON.stringify(value)).digest("hex");
-  const storage = identity
-    ? [adapter.name, identity, config.deploy.upload.prefix, simulation]
-    : null;
+  const storage = physicalDirectory
+    ? ["filesystem-directory", physicalDirectory, simulation]
+    : identity
+      ? [adapter.name, identity, config.deploy.upload.prefix, simulation]
+      : null;
   return {
+    physicalDirectory,
     targetId: storage
       ? digest([canonicalProjectRoot(config.projectRoot), profile, ...storage])
       : null,
     simulation,
     // 同一 namespace 的父/子 prefix 可能指向同一个对象，写锁按 namespace 串行。
-    storageLockKey: storage
-      ? "frontend-deploy-target:" + digest([adapter.name, identity, simulation])
-      : null,
+    storageLockKey:
+      storage && !physicalDirectory
+        ? "frontend-deploy-target:" +
+          digest([adapter.name, identity, simulation])
+        : null,
   };
 }

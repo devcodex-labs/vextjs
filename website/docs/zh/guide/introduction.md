@@ -176,7 +176,7 @@ VextJS 当前不提供 `@Controller` / `@Get` / `@Inject` / `@Service` 等装饰
 
 ## 环境要求
 
-- **Node.js** >= 20.19.0
+- 要求 Node.js **`^20.19.0 || >=22.12.0`**
 - **TypeScript** 5.x（推荐，也支持纯 JavaScript）
 
 ## 下一步

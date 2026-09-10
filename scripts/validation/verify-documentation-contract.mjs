@@ -514,6 +514,81 @@ function verifyCliDocs() {
   }
 }
 
+// Compare the documented engine constraint with the package source of truth.
+// Negative probes retain the concrete contradictions that token-only checks missed.
+function sharedFoundationDocErrors(content, engines, locale) {
+  const errors = [];
+  const requirement = content.match(
+    /(?:Requires|requires|要求) Node\.js \*\*`([^`]+)`\*\*/u,
+  )?.[1];
+  if (requirement !== engines)
+    errors.push("Node.js requirement differs from package.engines.node");
+  if (/(?:Requires|requires|要求)\s+(?:\*\*)?Node\.js\s*>=/u.test(content))
+    errors.push("stale open-ended Node.js requirement");
+  if (locale) {
+    const row = content
+      .split(/\r?\n/u)
+      .find((line) => /^\|\s*`--clean`\s*\|/u.test(line));
+    const description = row ? splitTableRow(row)[1] : "";
+    const rule =
+      locale === "zh"
+        ? /成功.*归属.*陈旧/u
+        : /owned stale outputs after successful/u;
+    if (!rule.test(description))
+      errors.push("--clean must describe successful owned-output cleanup");
+    if (
+      /编译前清理输出目录|先清空整个输出目录|Clean the output directory before compilation|clears the entire output directory first/iu.test(
+        content,
+      )
+    )
+      errors.push("stale destructive --clean description");
+  }
+  return errors;
+}
+
+function verifySharedFoundationDocumentationContract() {
+  const engines = readJson("package.json").engines.node;
+  for (const [relativePath, locale] of [
+    ["README.md", null],
+    ["website/docs/en/guide/cli.md", "en"],
+    ["website/docs/zh/guide/cli.md", "zh"],
+    ["website/docs/en/guide/introduction.md", null],
+    ["website/docs/zh/guide/introduction.md", null],
+    ["website/docs/en/examples/nacos-integration.md", null],
+    ["website/docs/zh/examples/nacos-integration.md", null],
+  ])
+    for (const error of sharedFoundationDocErrors(
+      read(relativePath),
+      engines,
+      locale,
+    ))
+      fail(`${relativePath}: ${error}`);
+  const valid = `Requires Node.js **\`${engines}\`**\n| \`--clean\` | Remove owned stale outputs after successful candidate compilation | false |`;
+  const negatives = [
+    valid.replace(engines, ">=20.19.0"),
+    valid + "\nRequires Node.js >=20.19.0.",
+    valid.replace(
+      "Remove owned stale outputs after successful candidate compilation",
+      "Clean the output directory before compilation",
+    ),
+    valid + "\n--clean clears the entire output directory first",
+  ];
+  if (
+    sharedFoundationDocErrors(valid, engines, "en").length ||
+    negatives.some(
+      (value) => sharedFoundationDocErrors(value, engines, "en").length === 0,
+    )
+  )
+    fail("Shared foundation documentation negative probes failed");
+  forbidTokens("src/lib/dev/change-classifier.ts", [
+    "config.dev.coldPatterns",
+    "config.dev.ignorePatterns",
+  ]);
+  forbidTokens("src/lib/schema-adapter.ts", [
+    "i18n-loader 通过此方法注册语言包",
+  ]);
+}
+
 function requireTokens(relativePath, tokens) {
   const content = read(relativePath);
   for (const token of tokens) {
@@ -1593,7 +1668,6 @@ function verifyReadmePublicEntryContract() {
     "npx vextjs create",
     "res.render",
     "Apache-2.0",
-    ">=20.19.0",
     "https://devcodex-labs.github.io/vextjs/",
     "https://github.com/devcodex-labs/vextjs",
     "https://devcodex-labs.github.io/vextjs/llms.txt",
@@ -2444,6 +2518,7 @@ if (renderedOnly) {
   verifyMarkdownTables();
   verifyWebsiteNavigationContract();
   verifyCliDocs();
+  verifySharedFoundationDocumentationContract();
   verifyPublicReferenceContracts();
   verifyFrontendStreamingDocumentationContract();
   verifyRouteProjectionDocumentationContract();

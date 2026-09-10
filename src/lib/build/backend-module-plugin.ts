@@ -27,9 +27,22 @@ function isStaticString(node: SyntaxNode): boolean {
 }
 
 /** 逐文件输出的动态路径由Node运行时解析，不让esbuild按尚不存在的.js源码枚举glob。 */
-function preserveRuntimeImports(filename: string, source: string): string {
+function preserveRuntimeImports(
+  filename: string,
+  source: string,
+  scoped = false,
+): string {
   const edited = new MagicString(source);
-  walkSourceSyntax(parseSourceSyntax(filename, source), (node) => {
+  const syntax = parseSourceSyntax(filename, source);
+  if (scoped) {
+    // shebang 必须仍在首行；位置取自共享 AST，避免二次解析和文本猜测。
+    const start = syntax.hashbang?.end ?? 0;
+    edited.appendLeft(
+      start,
+      `${start ? "\n" : ""}import "vext:dependency-scope";\n`,
+    );
+  }
+  walkSourceSyntax(syntax, (node) => {
     const argument =
       node.type === "ImportExpression"
         ? node.source
@@ -69,16 +82,50 @@ export function backendOutputPath(sourcePath: string): string {
 export function createBackendModulePlugin(
   srcDir: string,
   entryPoints: readonly string[],
+  dependencyScope?: string,
 ): Plugin {
   const outputs = new Map<string, string>();
   const resolving = Symbol("vext-backend-resolve");
   return {
     name: "vext-backend-modules",
     setup(build) {
+      if (dependencyScope) {
+        build.onResolve({ filter: /^vext:dependency-scope$/ }, (args) => ({
+          path: args.importer,
+          namespace: "vext-dependency-scope",
+        }));
+        build.onLoad(
+          { filter: /.*/, namespace: "vext-dependency-scope" },
+          (args) => {
+            const output = path.resolve(
+              build.initialOptions.outdir!,
+              path.relative(srcDir, args.path),
+            );
+            let scope = path
+              .relative(path.dirname(output), dependencyScope)
+              .replaceAll("\\", "/");
+            if (!scope.startsWith("./") && !scope.startsWith("../"))
+              scope = `./${scope}`;
+            // 虚拟 ESM 的副作用先于用户依赖执行；esbuild 负责标识符隔离及 sourcemap。
+            return {
+              contents: `import bind from ${JSON.stringify(scope)}; bind(module); export {};`,
+              loader: "js",
+            };
+          },
+        );
+        build.onResolve(
+          { filter: /.*/, namespace: "vext-dependency-scope" },
+          (args) => ({
+            path: args.path,
+            external: true,
+          }),
+        );
+      }
       build.onLoad({ filter: /\.(?:ts|mts|cts|js|mjs|cjs)$/i }, (args) => ({
         contents: preserveRuntimeImports(
           args.path,
           readFileSync(args.path, "utf8"),
+          dependencyScope !== undefined,
         ),
         loader: /\.(?:ts|mts|cts)$/iu.test(args.path) ? "ts" : "js",
         resolveDir: path.dirname(args.path),

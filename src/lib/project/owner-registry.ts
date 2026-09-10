@@ -25,7 +25,7 @@ export interface OwnerIdentity {
   pid: number;
   processStartIdentity: string;
   producerVersion: string;
-  purpose: "dev" | "build" | "typegen" | "worker";
+  purpose: "dev" | "build" | "typegen" | "worker" | "deploy";
 }
 
 export interface OwnerRecord {
@@ -134,7 +134,9 @@ export function isOwnerIdentity(value: unknown): value is OwnerIdentity {
     typeof record.producerVersion === "string" &&
     record.producerVersion.length > 0 &&
     record.producerVersion.length <= 100 &&
-    ["dev", "build", "typegen", "worker"].includes(String(record.purpose))
+    ["dev", "build", "typegen", "worker", "deploy"].includes(
+      String(record.purpose),
+    )
   );
 }
 

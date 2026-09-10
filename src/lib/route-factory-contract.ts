@@ -1,5 +1,6 @@
 import type { CallExpression, Expression, Node } from "oxc-parser";
 import { parseSourceSyntax, walkSourceSyntax } from "./source-syntax.js";
+import { createSourceBindings } from "./source-bindings.js";
 import type { CanonicalRouteFactoryValidationOptions } from "./route-contract.js";
 
 export const VEXT_ROUTE_METHODS = [
@@ -61,6 +62,8 @@ export function collectRouteFactoryRegistrations(
     );
   }
   const param = factory.params[0].name;
+  const bindings = createSourceBindings(factory);
+  const appBinding = bindings.resolve(factory.params[0]);
   const fail = (method?: string): never => {
     throw new Error(
       `[vextjs] ${label}${method ? ` ${method.toUpperCase()}` : ""} route registration must use a direct top-level statement with ${param}.method(path, handler) or ${param}.method(path, options, handler); bracket access, extracted/destructured methods, helpers, and runtime control flow are not supported.`,
@@ -83,7 +86,7 @@ export function collectRouteFactoryRegistrations(
     if (
       member.type !== "MemberExpression" ||
       member.object.type !== "Identifier" ||
-      member.object.name !== param ||
+      bindings.resolve(member.object) !== appBinding ||
       member.computed ||
       member.property.type !== "Identifier" ||
       !isVextRouteMethod(member.property.name)
@@ -113,7 +116,13 @@ export function collectRouteFactoryRegistrations(
     registrations.add(call);
   }
   walkSourceSyntax(factory.body, (node, parent, ancestors) => {
-    if (node.type !== "Identifier" || node.name !== param || !parent) return;
+    if (
+      node.type !== "Identifier" ||
+      !parent ||
+      !bindings.isReference(node) ||
+      bindings.resolve(node) !== appBinding
+    )
+      return;
     if (
       parent.type === "MemberExpression" &&
       parent.property === node &&

@@ -5,7 +5,8 @@ import { importUserModule } from "./user-module-loader.js";
 import { resolveModuleDefault } from "./interop.js";
 import { scanLocaleSources } from "./i18n/catalog.js";
 import { projectLocaleMessages, type LocaleMessages } from "./i18n/messages.js";
-import type { VextLogger } from "../types/app.js";
+import type { VextApp } from "../types/app.js";
+import { getAppSchemaRuntime } from "./i18n/app-runtime.js";
 
 const localeRequire = createRequire(import.meta.url);
 
@@ -64,16 +65,25 @@ export async function readLocaleCatalog(
   }
   return projectLocaleMessages(loaded);
 }
+/**
+ * 将指定目录的完整消息集合加载到一个框架创建的app，应用之间互不影响。
+ * 通常由启动流程根据config.locale.directory调用；脚本字典会执行模块代码。
+ * @param app createApp或createTestApp创建的应用
+ * @param localesDir 明确选定的locale目录
+ * @param options 源模块解析根及是否读取编译产物
+ * @returns 已加载的规范化语言名；缺目录返回[]并清空该app的目录消息
+ * @throws 目录、模块或消息校验失败时抛错，保留该app此前的消息
+ */
 export async function loadI18n(
+  app: VextApp,
   localesDir: string,
-  logger: VextLogger,
-  replaceMessages: (locales: LocaleMessages) => void,
   options: { rootDir?: string; compiled?: boolean } = {},
 ): Promise<string[]> {
+  const runtime = getAppSchemaRuntime(app);
   const locales = await readLocaleCatalog(localesDir, options);
-  replaceMessages(locales);
+  runtime.replaceMessages(locales);
   const loaded = Object.keys(locales).sort();
   if (loaded.length)
-    logger.debug(`[vextjs] i18n candidate loaded: ${loaded.join(", ")}`);
+    app.logger.debug(`[vextjs] i18n candidate loaded: ${loaded.join(", ")}`);
   return loaded;
 }

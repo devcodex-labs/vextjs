@@ -286,7 +286,7 @@ vext build [options]
 | ------------------ | ----------------------------------------------- | ------------ |
 | `--outdir <path>`  | 输出目录                                        | `dist`       |
 | `--config <name>`  | 加载 `src/config/<name>` 作为构建期配置         | `production` |
-| `--clean`          | 编译前清理输出目录                              | `false`      |
+| `--clean`          | 候选编译成功后清理归属清单中的陈旧产物          | `false`      |
 | `--sourcemap`      | 生成 source map                                 | `true`       |
 | `--no-sourcemap`   | 禁用 source map                                 | —            |
 | `--minify`         | 压缩输出代码（默认开启；保留兼容选项）          | `true`       |
@@ -309,7 +309,7 @@ vext build
 # 刷新 generated / manifest 后执行类型检查，再构建
 vext build --typecheck
 
-# 清理旧 dist 后构建
+# 构建成功后清理已归属的陈旧产物
 vext build --clean
 
 # 指定输出目录
@@ -337,7 +337,7 @@ vext build && vext start
 - 没有显式目录或成功构建记录时，输出目录为 `dist/`；下文 `dist/` 均表示此默认示例
 - 保持源码目录结构
 - 默认生成 `.js` 和 `.js.map` 文件；不会在 `dist/` 中生成声明文件
-- 重复构建会自动移除已删除或重命名服务端源码留下的后端 stale 产物；`--clean` 表示先清空整个输出目录
+- 重复构建会在候选成功后移除已删除或重命名服务端源码留下的已归属陈旧产物；`--clean` 也遵循归属清单，保留未知文件。编译失败保留上一代成功产物；未知文件占用目标路径时报告冲突。
 - 解析后的输出若是项目根、源码根或其父目录，破坏性清理会 fail closed；前端输出、资源目录、命名模式与 server outfile 也必须留在声明的构建边界内
 - 启用前端时，会生成 `dist/client/index.html`、`manifest.json`、`deploy-manifest.json`、`size-report.json`、静态资源与 client contract 产物
 - 使用 `--upload-assets` 时，会读取 `dist/client/deploy-manifest.json`，按 sha256 和 `frontend.deploy.upload.stateFile` 增量上传静态资源
@@ -625,6 +625,8 @@ VEXT_CLUSTER=1 vext start
 - 项目级 preload 先执行，包级 preload 后执行
 - `.mjs` / `.js` 直接注入
 - dev 和纯 JS source 模式会在启动前将 `.ts` / `.mts` 编译为 `.vext/preload/*.mjs`；compiled start 使用所选产物内的 `preload/*.mjs`
+- 显式外部输出目录同样适用：start 先验证构建身份，再以所选产物根约束 preload 读取。空目录不会回退到源码，逃逸该产物根的链接会被拒绝；依赖包仍从服务根解析。单进程与 cluster 使用同一规则。
+- 外部后端产物包含受管的 `.vext-dependencies.cjs`；项目 preload 入口先建立依赖作用域，再加载 `.vext-preload/` 中的编译内容。部署需携带完整产物目录及服务的 `package.json`、运行时依赖，并保留服务与产物的相对位置；源码可以省略。不要单独搬移辅助文件或把多个服务的产物混放到同一输出目录。
 - `vext dev` 下若 `src/preload/` 里的文件发生变化，会触发 cold restart
 - 项目根 `preload/` 是仅用于迁移的临时兼容回退；使用时会输出迁移 warning。不要在两个目录同时放置支持的 preload 文件，Vext 会 fail-fast，避免脚本重复执行
 
@@ -833,7 +835,7 @@ vext --help
 
 ### 如何指定 Node.js 版本？
 
-VextJS 要求 Node.js >= 20.19.0。推荐在项目根目录创建 `.node-version` 或 `.nvmrc` 文件指定版本：
+VextJS 要求 Node.js **`^20.19.0 || >=22.12.0`**。建议使用 Node.js 22（至少 22.12.0）或 24 的最新 LTS 补丁版，并在项目根目录创建 `.node-version` 或 `.nvmrc` 文件指定版本：
 
 ```bash
 echo "22" > .node-version

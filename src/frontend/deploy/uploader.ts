@@ -12,6 +12,7 @@ import {
   ProjectOwnerError,
 } from "../../lib/project/owner-endpoint.js";
 import { resolveDeployAdapter, resolveDeployTarget } from "./target.js";
+import { withOutputDirectoryOwner } from "../../lib/project/owner.js";
 import { createSha256 } from "./integrity.js";
 import { joinUploadKey } from "./manifest.js";
 import { readFrontendDeployManifestFile } from "./manifest-validator.js";
@@ -112,7 +113,9 @@ export async function deployFrontendAssets(
             url: upload.url,
           });
         } catch (error) {
-          invalidated.push(item.asset.uploadKey);
+          invalidated.push(
+            target.physicalDirectory ? item.asset.file : item.asset.uploadKey,
+          );
           assets.push({
             ...base,
             status: "unconfirmed",
@@ -161,7 +164,7 @@ export async function deployFrontendAssets(
         const next = previous?.assets ?? {};
         for (const key of invalidated) delete next[key];
         for (const asset of confirmed)
-          next[asset.uploadKey] = {
+          next[target.physicalDirectory ? asset.file : asset.uploadKey] = {
             sha256: asset.sha256,
             bytes: asset.bytes,
             uploadedAt,
@@ -213,7 +216,9 @@ export async function deployFrontendAssets(
         throw error;
       }
       try {
-        return await run();
+        return await (target.physicalDirectory
+          ? withOutputDirectoryOwner(target.physicalDirectory, run)
+          : run());
       } finally {
         await endpoint?.close();
       }
