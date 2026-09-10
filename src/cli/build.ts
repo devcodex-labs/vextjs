@@ -19,6 +19,7 @@ import { markUniqueOption } from "./utils/option-occurrence.js";
 import {
   beginBuild,
   completeBuild,
+  failBuild,
   selectBuildOutput,
   withBuildFrontendOutDir,
 } from "../lib/build/build-location.js";
@@ -27,12 +28,12 @@ import {
  * vext build — 生产编译命令（Phase 2A）
  *
  * 将用户项目的 TypeScript 源码通过 esbuild 编译为 JavaScript，
- * 输出到 dist/ 目录。编译完成后，`vext start` 检测到 dist/ 存在时
- * 直接用 `node` 运行，不再依赖 tsx 运行时。
+ * 默认输出到 dist/ 目录。全部阶段成功并提交构建身份后，`vext start`
+ * 才能直接用 `node` 运行选中的编译产物，不再依赖 tsx 运行时。
  *
  * 命令行参数：
  *   --outdir <path>    输出目录（默认 'dist'）
- *   --clean            编译前清理输出目录（默认 false）
+ *   --clean            候选成功后按归属清单清理旧产物（默认 false）
  *   --no-sourcemap     不生成 source map（默认生成）
  *   --minify           代码压缩（默认 true；保留兼容选项）
  *   --no-minify        不压缩代码
@@ -41,7 +42,7 @@ import {
  *
  * 用法示例：
  *   vext build                    基本编译
- *   vext build --clean            清理旧产物后编译
+ *   vext build --clean            成功编译后清理已归属旧产物
  *   vext build --outdir build     指定输出目录
  *   vext build --no-sourcemap     不生成 source map
  *   vext build --no-minify        保留未压缩的可读输出
@@ -64,7 +65,7 @@ interface BuildCommandOptions {
   /** 输出目录（相对于项目根目录） */
   outdir: string;
 
-  /** 编译前清理输出目录 */
+  /** 候选成功后按归属清单清理旧产物 */
   clean: boolean;
 
   /** 生成 source map */
@@ -96,12 +97,11 @@ interface BuildCommandOptions {
  * 流程：
  *   1. 解析命令行参数（CLI 参数 > 环境变量 > 默认值）
  *   2. detectProject() 检测项目结构
- *   3. JavaScript 项目 → 提示无需编译并退出
- *   4. --clean → 清理旧产物
- *   5. 刷新 typegen 与 route manifest（供类型检查/工具链消费）
- *   6. --typecheck → 执行 tsc --noEmit
- *   7. BuildCompiler.build() 执行编译
- *   8. 输出编译报告（文件数、耗时、输出目录）
+ *   3. 获得项目写入权，求值配置一次，再登记 building 身份
+ *   4. TS 项目刷新 typegen、route manifest，并按需执行类型检查及后端编译
+ *   5. 构建启用的前端，并按需上传资源；纯 JS 无前端时无需编译
+ *   6. 全部阶段成功后成对提交 ready 身份；失败只标记当前代为 failed
+ *   7. 输出最终成功报告；每类产物在候选成功后按归属清单清理旧文件
  *
  * @param args 命令行参数（如 ['--clean', '--minify']）
  */
@@ -170,16 +170,48 @@ async function executeBuild(
       "[vextjs] clean: remove recorded stale outputs after a successful build; preserve unowned files.",
     );
 
-  const buildIdentity = beginBuild(
+  const buildIdentity = await beginBuild(
     project.rootDir,
     outDir,
     resolvedConfigProfile.profile,
     project.language === "ts" ? "compiled" : "source",
   );
 
+  try {
+    await executeBuildStages(project, options, config);
+    await completeBuild(project.rootDir, buildIdentity);
+  } catch (error) {
+    try {
+      await failBuild(project.rootDir, buildIdentity);
+    } catch (stateError) {
+      throw new AggregateError(
+        [error, stateError],
+        "[vextjs] Build failed and its state could not be finalized; inspect the preserved recovery state.",
+      );
+    }
+    throw error;
+  }
+  console.log("[vextjs] ✅ build complete");
+  if (project.language === "ts") {
+    console.log("");
+    console.log("[vextjs] To start compiled output:");
+    console.log("[vextjs]   vext start");
+    console.log(
+      `[vextjs]   vext start --config ${resolvedConfigProfile.profile}`,
+    );
+  }
+}
+
+async function executeBuildStages(
+  project: ReturnType<typeof detectProject>,
+  options: BuildCommandOptions,
+  config: Awaited<ReturnType<typeof loadConfig>>,
+): Promise<void> {
+  const outDir = path.resolve(project.rootDir, options.outdir);
+  const frontend =
+    typeof config.frontend === "object" ? config.frontend : undefined;
   if (project.language !== "ts") {
     if (!isFrontendEnabled(config.frontend)) {
-      completeBuild(project.rootDir, buildIdentity);
       console.log(
         "[vextjs] JavaScript project detected - no build step needed.",
       );
@@ -188,7 +220,6 @@ async function executeBuild(
     }
     await refreshRouteManifest(project.rootDir);
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
-    completeBuild(project.rootDir, buildIdentity);
     return;
   }
 
@@ -274,18 +305,11 @@ async function executeBuild(
 
     // ── 输出编译报告 ────────────────────────────────────────
     console.log("");
-    console.log("[vextjs] ✅ build complete");
+    console.log("[vextjs] backend compiled");
     console.log(`[vextjs]    files:   ${result.fileCount}`);
     console.log(`[vextjs]    time:    ${result.elapsed}ms`);
     console.log(`[vextjs]    output:  ${result.outDir}/`);
     await buildFrontendForCommand(project.rootDir, config.frontend, options);
-    completeBuild(project.rootDir, buildIdentity);
-    console.log("");
-    console.log("[vextjs] To start compiled output:");
-    console.log("[vextjs]   vext start");
-    console.log(
-      `[vextjs]   vext start --config ${resolvedConfigProfile.profile}`,
-    );
   } catch (err) {
     console.error("[vextjs] build failed:");
     console.error(err);
@@ -302,8 +326,7 @@ async function refreshRouteManifest(rootDir: string): Promise<void> {
     refresh: true,
   });
   if (!doctorResult.ok) {
-    console.error("[vextjs] route diagnostics failed - build aborted");
-    process.exit(1);
+    throw new Error("[vextjs] route diagnostics failed - build aborted");
   }
 }
 
@@ -387,7 +410,7 @@ function resolveCliConfigProfile(
  * 支持的参数：
  *   --outdir <path>    输出目录（默认 'dist'）
  *   --config <name>    选择 build-time 配置 profile（默认 production）
- *   --clean            编译前清理（默认 false）
+ *   --clean            候选成功后按归属清单清理旧产物（默认 false）
  *   --sourcemap        生成 source map（默认 true）
  *   --no-sourcemap     不生成 source map
  *   --minify           代码压缩（默认 true；保留兼容选项）

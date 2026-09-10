@@ -64,25 +64,25 @@ describe("production build location consumers", () => {
       detectProject(root, { allowBuilt: true, outDir: "release" }).language,
     ).toBe("ts");
   });
-  it("does not treat a source-mode record as a compiled-only deployment", () => {
-    completeBuild(
+  it("does not treat a source-mode record as a compiled-only deployment", async () => {
+    await completeBuild(
       root,
-      beginBuild(root, join(root, "release"), "production", "source"),
+      await beginBuild(root, join(root, "release"), "production", "source"),
     );
     rmSync(join(root, "src"), { recursive: true });
     expect(() => detectProject(root, { allowBuilt: true })).toThrow(/src/);
   });
-  it("only commits a completed build and invalidates a failed rebuild of the same output", () => {
-    const initial = beginBuild(
+  it("only commits a completed build and invalidates a failed rebuild of the same output", async () => {
+    const initial = await beginBuild(
       root,
       join(root, "build"),
       "staging",
       "compiled",
     );
     expect(resolveBuildLocation(root).outDir).toBe(join(root, "dist"));
-    completeBuild(root, initial);
+    await completeBuild(root, initial);
     expect(resolveBuildLocation(root).identity?.profile).toBe("staging");
-    const second = beginBuild(
+    const second = await beginBuild(
       root,
       join(root, "build"),
       "production",
@@ -90,32 +90,32 @@ describe("production build location consumers", () => {
     );
     expect(resolveBuildLocation(root).failure).toMatch(/identity/);
     expect(selectBuildOutput(root)).toBe(join(root, "build"));
-    completeBuild(root, second);
+    await completeBuild(root, second);
     expect(resolveBuildLocation(root).failure).toBeUndefined();
   });
-  it("preserves the last successful output when a different output fails", () => {
-    completeBuild(
+  it("preserves the last successful output when a different output fails", async () => {
+    await completeBuild(
       root,
-      beginBuild(root, join(root, "good"), "staging", "compiled"),
+      await beginBuild(root, join(root, "good"), "staging", "compiled"),
     );
-    beginBuild(root, join(root, "bad"), "production", "compiled");
+    await beginBuild(root, join(root, "bad"), "production", "compiled");
     expect(resolveBuildLocation(root).outDir).toBe(join(root, "good"));
     expect(resolveBuildLocation(root).failure).toBeUndefined();
     expect(resolveBuildLocation(root, "bad").failure).toMatch(/identity/);
   });
-  it("recovers corrupt location metadata through an explicit rebuild directory", () => {
+  it("recovers corrupt location metadata through an explicit rebuild directory", async () => {
     write(".vext/build-location.json", "{");
     expect(selectBuildOutput(root, "release")).toBe(join(root, "release"));
-    completeBuild(
+    await completeBuild(
       root,
-      beginBuild(root, join(root, "release"), "production", "compiled"),
+      await beginBuild(root, join(root, "release"), "production", "compiled"),
     );
     expect(resolveBuildLocation(root).failure).toBeUndefined();
   });
-  it("uses explicit output before environment and recorded output", () => {
-    completeBuild(
+  it("uses explicit output before environment and recorded output", async () => {
+    await completeBuild(
       root,
-      beginBuild(root, join(root, "recorded"), "production", "compiled"),
+      await beginBuild(root, join(root, "recorded"), "production", "compiled"),
     );
     const previous = process.env.VEXT_BUILD_OUTDIR;
     process.env.VEXT_BUILD_OUTDIR = "environment";

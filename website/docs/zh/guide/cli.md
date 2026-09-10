@@ -270,7 +270,9 @@ vext dev --startup-profile-json .vext/inspect/startup-profile.json
 
 将 TypeScript 源码编译为 JavaScript，默认生成 `dist/`；构建前会刷新 typegen 与 route manifest。build、start 和产物检查按 `--outdir` → `VEXT_BUILD_OUTDIR` → `.vext/build-location.json` → `dist` 选择目录，`build --clean` 清理同一个目标。前端未显式配置 `frontend.outDir` 时输出到该目录的 `client/`。
 
-全部构建成功后才更新 `.vext/build-location.json`，其中的 buildId、profile 和目录必须与输出内 `.vext-build.json` 一致。中断或失败的同目录重建会阻止启动；位置记录损坏时可用 `vext build --outdir <目录>` 重建恢复。旧版无记录 `dist/` 保留结构检查，但没有构建身份保证。元数据不证明任意文件内容未被手动修改。
+完成项目识别和配置求值后，构建登记 `building` 身份。后端、前端及可选上传全部成功，才通过同一事务提交 `.vext/build-location.json` 和输出内 `.vext-build.json` 的 `ready` 状态，并输出最终成功提示；两者的 buildId、profile、backend 和目录必须一致。产物阶段失败时只将当前代标为 `failed`，不推进成功位置。同目录失败或中断会阻止启动；不同输出目录失败不会使上一份成功目录失效。准备阶段失败尚未开始产物构建，不改动上一份身份。
+
+启动遇到未完成事务或已登记身份被外部改写时会失败。下一次构建先验证并恢复中断事务；较旧或失败代不能自行标记成功，必须重新构建。已登记的位置记录被删除时不会退回 `dist` 启动或构建，需明确选择目标目录。位置记录缺失或损坏时可显式选择 `vext build --outdir <目录>`，但该选项不会绕过已登记文件的归属冲突；先核实冲突文件，或选择新的输出目录。旧版无记录 `dist/` 保留结构检查，没有构建身份保证。构建身份校验不代表逐个校验所有业务产物内容。
 
 ### 用法
 
@@ -516,6 +518,8 @@ vext doctor routes --write-inspect --write-manifest --json
 以生产模式启动项目。TypeScript 项目需先执行 `vext build`，start 从所选构建目录加载代码；缺少有效产物时会失败。未指定 `--config` / `VEXT_CONFIG` / 兼容 NODE_ENV profile 时，使用该产物记录的 profile，无记录时为 production。
 
 有效 compiled 部署可以省略 `src/`：携带 package.json、运行依赖、所选输出目录及 `.vext/build-location.json`，或通过 `--outdir` 选择输出；输出内 `.vext-build.json` 随产物保留。纯 JavaScript source 模式仍需源码。开发和再次构建也需源码。
+
+`.vext/freshness/` 是绑定本地项目真实路径的归属与中断恢复记录，不是可迁移的部署清单。部署到另一个目录时按上述清单复制成功产物，不复制整个 `.vext/`；存在未完成事务的工作目录应先恢复并重新成功构建，再制作部署包。
 
 ### 用法
 

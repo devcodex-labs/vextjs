@@ -9,6 +9,16 @@ const mocks = vi.hoisted(() => {
     rootDir,
     existsSync: vi.fn(() => false),
     rmSync: vi.fn(),
+    beginBuild: vi.fn(async () => {
+      order.push("begin");
+      return { buildId: "test-build" };
+    }),
+    completeBuild: vi.fn(async () => {
+      order.push("complete");
+    }),
+    failBuild: vi.fn(async () => {
+      order.push("failed");
+    }),
     runLocalTsc: vi.fn(async () => {
       order.push("typecheck");
       return { exitCode: 0, output: "" };
@@ -102,8 +112,9 @@ vi.mock("../../../src/lib/build/build-location.js", async () => ({
   ...(await vi.importActual<
     typeof import("../../../src/lib/build/build-location.js")
   >("../../../src/lib/build/build-location.js")),
-  beginBuild: vi.fn(() => ({})),
-  completeBuild: vi.fn(),
+  beginBuild: mocks.beginBuild,
+  completeBuild: mocks.completeBuild,
+  failBuild: mocks.failBuild,
 }));
 
 vi.mock("../../../src/tooling/typegen/index.js", () => ({
@@ -157,11 +168,13 @@ describe("buildCommand", () => {
 
     expect(mocks.order).toEqual([
       "loadConfig",
+      "begin",
       "typegen",
       "doctor",
       "typecheck",
       "build",
       "frontend",
+      "complete",
     ]);
     expect(mocks.runTypegen).toHaveBeenCalledWith({
       rootDir: mocks.rootDir,
@@ -198,6 +211,66 @@ describe("buildCommand", () => {
       mode: "production",
     });
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "typegen",
+    "doctor",
+    "typecheck",
+    "backend",
+    "frontend",
+    "complete",
+  ])(
+    "records %s failure without reporting a completed build",
+    async (stage) => {
+      if (stage === "typegen")
+        mocks.runTypegen.mockResolvedValueOnce({
+          ok: false,
+          files: [],
+          diagnostics: [],
+          warnings: [],
+        });
+      if (stage === "doctor")
+        mocks.runDoctor.mockResolvedValueOnce({ ok: false });
+      if (stage === "typecheck")
+        mocks.runLocalTsc.mockResolvedValueOnce({
+          exitCode: 1,
+          output: "type failure",
+        });
+      if (stage === "backend")
+        mocks.build.mockRejectedValueOnce(new Error("backend failed"));
+      if (stage === "frontend")
+        mocks.buildFrontendClient.mockRejectedValueOnce(
+          new Error("frontend failed"),
+        );
+      if (stage === "complete")
+        mocks.completeBuild.mockRejectedValueOnce(new Error("commit failed"));
+      await expect(buildCommand(["--typecheck"])).rejects.toThrow();
+      expect(mocks.failBuild).toHaveBeenCalledOnce();
+      expect(mocks.order.at(-1)).toBe("failed");
+      if (stage !== "complete")
+        expect(mocks.completeBuild).not.toHaveBeenCalled();
+      expect(
+        consoleLogSpy.mock.calls
+          .flat()
+          .some((value) => String(value).includes("✅ build complete")),
+      ).toBe(false);
+    },
+  );
+
+  it("preserves both the phase failure and the failure-state error", async () => {
+    const original = new Error("frontend failed");
+    const recovery = new Error("state conflict");
+    mocks.buildFrontendClient.mockRejectedValueOnce(original);
+    mocks.failBuild.mockRejectedValueOnce(recovery);
+    await expect(buildCommand()).rejects.toMatchObject({
+      errors: [original, recovery],
+    });
+    expect(
+      consoleLogSpy.mock.calls
+        .flat()
+        .some((value) => String(value).includes("✅ build complete")),
+    ).toBe(false);
   });
 
   it("passes custom build outdir to frontend output when outDir is omitted", async () => {

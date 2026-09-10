@@ -362,9 +362,10 @@ describe("cli interaction: start/dev", () => {
   it("startCommand should allow JavaScript projects without a dist build", async () => {
     const child = createMockChild();
     mocks.fork.mockReturnValue(child);
+    const projectRoot = tempDirs[0]!;
     mocks.detectProject.mockReturnValueOnce({
-      rootDir: "E:/Worker/vext-js-fixture",
-      srcDir: "E:/Worker/vext-js-fixture/src",
+      rootDir: projectRoot,
+      srcDir: join(projectRoot, "src"),
       language: "js",
     });
     mocks.inspectDistBuild.mockReturnValueOnce({

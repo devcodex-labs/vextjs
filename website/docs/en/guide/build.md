@@ -92,6 +92,8 @@ Externally edited outputs or conflicting legacy files without ownership evidence
 
 One writer owns a service root and its nested roots at a time. Competing `build` or `typegen` commands while `dev` is running return `VEXT_OWNER_BUSY`; separate service roots can run concurrently. Recovery metadata supports interrupted processes. Per-file atomic replacement does not imply simultaneous atomic visibility across all files; consumers must wait for successful completion.
 
+After configuration preparation, `.vext-build.json` inside the output records `building`. All artifact stages and optional upload must succeed before it and `.vext/build-location.json` commit together as `ready`. A failed generation becomes `failed`, blocking startup from that output. Startup rejects pending transactions and externally modified recorded identities. Producers retain their individual transaction boundaries: failure in the frontend or remote upload after a backend commit does not roll back every build file or remote resource. See [CLI build behavior](./cli.md) for identity and portable deployment details.
+
 ## Frontend build
 
 The frontend first generates candidate sources and assets. Browser compilation, SSR, media, static pages, SEO, and budgets must all succeed before `.vext/generated/frontend/` and the configured `frontend.outDir` commit together. A failed rebuild preserves the previous generation; development keeps serving its valid static assets until a corrected rebuild succeeds. Identical candidates are not rewritten. Only recorded obsolete files are removed, and unrecorded files are not automatically served or uploaded.

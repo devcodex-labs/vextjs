@@ -274,7 +274,9 @@ Frontend files under `src/frontend/**` and static assets under `public/**` trigg
 
 Compile TypeScript to JavaScript, refreshing typegen and route manifests first. Build, start, and output inspection select `--outdir`, then `VEXT_BUILD_OUTDIR`, then `.vext/build-location.json`, and finally `dist`. `build --clean` cleans the same selected output. Unless `frontend.outDir` is explicit, frontend output follows its `client/` subdirectory.
 
-Only a complete successful build updates `.vext/build-location.json`. Its buildId, profile, and directory must match `.vext-build.json` inside the output. A failed or interrupted rebuild of that output blocks startup. Recover a corrupt location record with `vext build --outdir <directory>`. Legacy `dist/` without records retains structural inspection but has no build identity guarantee. Metadata does not prove that arbitrary file contents have not been manually changed.
+After project detection and configuration evaluation, the build records a `building` identity. Only after the backend, frontend, and optional upload succeed does one transaction commit `ready` to both `.vext/build-location.json` and `.vext-build.json` inside the output, followed by the final success message. Their buildId, profile, backend, and directory must agree. A failed artifact stage marks only the current generation `failed` and leaves the successful location unchanged. Failure or interruption in the same output blocks startup; failure in a different output does not invalidate the previous successful directory. Preparation failures do not start an artifact build or change the previous identity.
+
+Startup rejects pending transactions and externally modified recorded identities. The next build verifies and recovers interrupted transactions; older or failed generations cannot mark themselves successful. Deleting a recorded location does not fall back to starting or building `dist`; select the intended output explicitly. An explicit `vext build --outdir <directory>` can select output when the location record is missing or corrupt, but does not bypass recorded ownership conflicts. Inspect conflicting files or select a fresh output directory. Legacy `dist/` without records retains structural inspection without build identity guarantees. Identity validation does not verify every business artifact's contents.
 
 ### Usage
 
@@ -528,6 +530,8 @@ vext doctor routes --write-inspect --write-manifest --json
 Start in production mode. TypeScript requires `vext build`; start loads the selected output and rejects invalid artifacts. Without `--config`, `VEXT_CONFIG`, or a legacy NODE_ENV profile, start uses the recorded build profile, falling back to production for legacy output.
 
 A valid compiled deployment may omit `src/`: carry package.json, runtime dependencies, the output directory, and `.vext/build-location.json`, or select output with `--outdir`. Keep `.vext-build.json` inside the output. Plain JavaScript source mode, development, and rebuilding still require source files.
+
+`.vext/freshness/` contains local ownership and recovery state bound to the project's real path. It is not a portable deployment manifest. When deploying elsewhere, copy the successful artifacts listed above instead of the entire `.vext/` directory. Recover any pending transaction and complete a successful build before assembling a deployment package.
 
 ### Usage
 
