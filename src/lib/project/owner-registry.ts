@@ -1,12 +1,13 @@
 import {
   lstatSync,
   mkdirSync,
+  opendirSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { assertRealPathInside } from "../path-boundary.js";
 import { readProjectFile } from "./read-project-file.js";
@@ -30,6 +31,80 @@ export interface OwnerIdentity {
 export interface OwnerRecord {
   identity: OwnerIdentity;
   participants: OwnerIdentity[];
+}
+
+const MAX_REGISTRY_BYTES = 1024 * 1024;
+const REGISTRY_TEMPORARY_PATTERN =
+  /^registry\.json\.([0-9a-f]{64})\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/u;
+const LEGACY_REGISTRY_TEMPORARY_PATTERN =
+  /^registry\.json\.[0-9a-f-]{36}\.tmp$/u;
+
+function registryDigest(content: string | Buffer): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+/** 仅由已持有registry互斥的调用点使用；名字和原字节共同证明可回收候选。 */
+function removeVerifiedRegistryTemporary(
+  directory: string,
+  name: string,
+  digest: string,
+): void {
+  const bytes = readProjectFile(directory, name, MAX_REGISTRY_BYTES);
+  if (bytes === null) return;
+  if (registryDigest(bytes) !== digest)
+    throw new Error("candidate content differs from its recorded digest");
+  const file = path.join(directory, name);
+  assertRealPathInside(directory, file, "owner registry temporary");
+  rmSync(file);
+}
+
+function preserveRegistryTemporary(
+  directory: string,
+  name: string,
+  reason: unknown,
+): void {
+  console.warn(
+    `[vextjs] Preserved unverified owner registry temporary ${path.join(directory, name)}: ${String(reason)}`,
+  );
+}
+
+function recoverRegistryTemporaries(directory: string): void {
+  const entries = opendirSync(directory);
+  let examined = 0;
+  try {
+    for (let scanned = 0; scanned < 65_536; scanned++) {
+      const entry = entries.readSync();
+      if (!entry) return;
+      const candidate = REGISTRY_TEMPORARY_PATTERN.exec(entry.name);
+      const legacy = LEGACY_REGISTRY_TEMPORARY_PATTERN.test(entry.name);
+      if (!candidate && !legacy) continue;
+      if (examined === 16) {
+        console.warn(
+          "[vextjs] Owner registry temporary recovery reached its batch limit; remaining files are retained for inspection or a later operation.",
+        );
+        return;
+      }
+      examined++;
+      if (!candidate) {
+        preserveRegistryTemporary(
+          directory,
+          entry.name,
+          "legacy candidate has no content digest",
+        );
+        continue;
+      }
+      try {
+        removeVerifiedRegistryTemporary(directory, entry.name, candidate[1]!);
+      } catch (error) {
+        preserveRegistryTemporary(directory, entry.name, error);
+      }
+    }
+    console.warn(
+      "[vextjs] Owner registry recovery reached its directory entry limit; uninspected files are retained.",
+    );
+  } finally {
+    entries.closeSync();
+  }
 }
 
 export function identityKey(identity: OwnerIdentity): string {
@@ -181,7 +256,11 @@ export async function withOwnerRegistry<T>(
     assertRealPathInside(directory, file, "owner registry");
     let records: OwnerRecord[] = [];
     try {
-      const bytes = readProjectFile(directory, "registry.json", 1024 * 1024);
+      const bytes = readProjectFile(
+        directory,
+        "registry.json",
+        MAX_REGISTRY_BYTES,
+      );
       const data: unknown =
         bytes === null
           ? { schemaVersion: 1, records: [] }
@@ -220,6 +299,8 @@ export async function withOwnerRegistry<T>(
           `Owner registry must be inspected before recovery: ${String(error)}`,
         );
     }
+    // 权威索引损坏时先保留候选作为检查材料；不先清理再发现索引不可读。
+    recoverRegistryTemporaries(directory);
     const before = JSON.stringify(records);
     const result = await operation(records);
     if (records.length > 512)
@@ -230,17 +311,34 @@ export async function withOwnerRegistry<T>(
     const after = JSON.stringify(records);
     if (after !== before) {
       const content = `${JSON.stringify({ schemaVersion: 1, records })}\n`;
-      if (Buffer.byteLength(content) > 1024 * 1024)
+      if (Buffer.byteLength(content) > MAX_REGISTRY_BYTES)
         throw new ProjectOwnerError(
           "VEXT_OWNER_UNVERIFIED",
           "Owner registry exceeds its size limit.",
         );
-      const temporary = `${file}.${randomUUID()}.tmp`;
+      const digest = registryDigest(content);
+      const temporaryName = `registry.json.${digest}.${randomUUID()}.tmp`;
+      const temporary = path.join(directory, temporaryName);
       try {
         writeFileSync(temporary, content, { flag: "wx", mode: 0o600 });
+        const candidate = readProjectFile(
+          directory,
+          temporaryName,
+          MAX_REGISTRY_BYTES,
+        );
+        if (candidate === null || registryDigest(candidate) !== digest) {
+          throw new ProjectOwnerError(
+            "VEXT_OWNER_UNVERIFIED",
+            "Owner registry candidate changed before commit.",
+          );
+        }
         renameSync(temporary, file);
       } finally {
-        rmSync(temporary, { force: true });
+        try {
+          removeVerifiedRegistryTemporary(directory, temporaryName, digest);
+        } catch (error) {
+          preserveRegistryTemporary(directory, temporaryName, error);
+        }
       }
     }
     return result;

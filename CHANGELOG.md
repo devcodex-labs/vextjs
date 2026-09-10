@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Read artifact and owner metadata through a bounded file descriptor, detecting growth, replacement, and deletion during reads. Preserve raw bytes and reject inconsistent state instead of treating it as missing or fresh.
+- Recover verified owner-registry temporary files after interrupted writes under the existing process mutex. Preserve partial, changed, or legacy candidates for inspection, keep recovery bounded, and leave authoritative records intact on failed replacement.
 - Publish build identities through shared ownership and recovery transactions. Reject stale completion, interrupted commits, and externally modified recorded identities; mark failed generations without moving the successful location. Report final build success only after every selected stage and optional upload completes, while preserving portable deployments without local recovery state.
 - Commit selected typegen outputs and paired Doctor reports through shared artifact ownership; preserve previous files on blocking diagnostics or conflicts and keep check mode read-only. Pass actual project directories through route reloads and commit route manifests only after handler and cache preparation succeed.
 - Commit each complete TS/MTS preload cache generation together, detect output collisions and external edits, and preserve old caches on compilation failure. Report unreadable or invalid preload directories instead of silently loading older build output.
