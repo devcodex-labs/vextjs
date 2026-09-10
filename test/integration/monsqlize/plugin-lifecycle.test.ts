@@ -38,6 +38,10 @@ import { setupMonSQLize } from "../../../src/lib/plugins/monsqlize/plugin.js";
 import { shouldLoadMonSQLize } from "../../../src/lib/plugins/monsqlize/index.js";
 import MonSQLize, { defineModel, Model } from "monsqlize";
 import { dsl } from "schema-dsl";
+import {
+  registerModelPlan,
+  type ModelRegistrationHandle,
+} from "../../../src/lib/plugins/monsqlize/model-registry.js";
 
 // ── 超时配置 ────────────────────────────────────────────────
 // mongodb-memory-server-core 首次下载二进制文件可能需要较长时间，
@@ -709,6 +713,93 @@ describe("MonSQLize 插件集成测试", () => {
   // ═══════════════════════════════════════════════════════════
 
   describe("Model 注册与使用", () => {
+    it("真实Model注册表支持两app共享、冲突原子拒绝、多库路由及独立关闭", async () => {
+      const services = [
+        createMockApp({
+          config: { uri: mongoUri },
+          logger: false,
+          models: { autoRegister: false },
+        }),
+        createMockApp({
+          config: { uri: mongoUri },
+          logger: false,
+          models: { autoRegister: false },
+        }),
+      ];
+      const handles: ModelRegistrationHandle[] = [];
+      const definition = {
+        schema: (d: typeof dsl) => d({ marker: "string!" }),
+        collection: "vext_owner_orders",
+        connection: { database: "vext_owner_billing" },
+      };
+      const registration = {
+        key: "VextOwnerBillingOrder",
+        source: "billing/order.js",
+        definition,
+      };
+      try {
+        for (const service of services)
+          await setupMonSQLize(service.app, "/nonexistent-src-dir");
+        for (const service of services)
+          handles.push(
+            registerModelPlan(Model as any, service.app, [registration]),
+          );
+        const original = Model.get(registration.key)?.definition;
+        expect(() =>
+          registerModelPlan(Model as any, createMockApp({}).app, [
+            { key: "VextOwnerShouldNotExist", source: "new.js", definition },
+            {
+              ...registration,
+              definition: {
+                ...definition,
+                collection: "conflicting_collection",
+              },
+            },
+          ]),
+        ).toThrow(/different definition/);
+        expect(Model.has("VextOwnerShouldNotExist")).toBe(false);
+        expect(Model.get(registration.key)?.definition).toBe(original);
+        await (services[0]!.app as any).db
+          .model(registration.key)
+          .insertOne({ marker: "shared-row" });
+        expect(
+          await (services[1]!.app as any).db
+            .model(registration.key)
+            .findOne({ marker: "shared-row" }),
+        ).toMatchObject({ marker: "shared-row" });
+        const direct = new MonSQLize({
+          type: "mongodb",
+          databaseName: "vext_owner_billing",
+          config: { uri: mongoUri },
+          logger: false,
+        });
+        try {
+          await direct.connect();
+          expect(
+            await direct
+              .collection("vext_owner_orders")
+              .findOne({ marker: "shared-row" }),
+          ).toMatchObject({ marker: "shared-row" });
+        } finally {
+          await direct.close();
+        }
+        handles[0]!.release();
+        await executeCloseHooks(services[0]!.closeHooks.splice(0));
+        expect(Model.has(registration.key)).toBe(true);
+        expect(
+          await (services[1]!.app as any).db
+            .model(registration.key)
+            .findOne({ marker: "shared-row" }),
+        ).toMatchObject({ marker: "shared-row" });
+        handles[1]!.release();
+        expect(Model.has(registration.key)).toBe(false);
+      } finally {
+        for (const handle of handles.reverse()) handle.release();
+        for (const service of services)
+          await executeCloseHooks(service.closeHooks.splice(0));
+      }
+    });
+
     let app: VextApp;
     let closeHooks: Array<() => Promise<void> | void>;
 

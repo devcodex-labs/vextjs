@@ -308,7 +308,7 @@ describe("SoftReloader", () => {
       });
 
       const reloader = new SoftReloader(options);
-      await reloader.reload([{ path: "src/routes/user.ts", type: "modify" }]);
+      await reloader.reload([{ path: "src/locales/zh-CN.ts", type: "modify" }]);
 
       expect(callOrder).toEqual([
         "compile",
@@ -1098,6 +1098,43 @@ describe("SoftReloader", () => {
   // ════════════════════════════════════════════════════════════
 
   describe("i18n 重载", () => {
+    it("自定义语言目录及外部 helper 引起的字典失效应触发替换", async () => {
+      const options = createDefaultOptions({
+        config: { locale: { directory: "src/translations" } },
+      });
+      vi.mocked(invalidateAndEvict).mockReturnValue({
+        invalidated: new Set([
+          "/project/.vext/dev/translations/order/en-US.js",
+        ]),
+        evicted: 1,
+        cascadeDetected: false,
+      } as never);
+      const result = await new SoftReloader(options).reload([
+        { path: "src/common/messages.ts", type: "modify" },
+      ]);
+      expect(result.success).toBe(true);
+      expect(reloadLocales).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localesDir: expect.stringMatching(/[\\/]translations$/),
+          compiled: true,
+        }),
+      );
+    });
+
+    it("字典候选失败必须使本代重载失败，不能发布成功 handler", async () => {
+      const options = createDefaultOptions();
+      vi.mocked(reloadLocales).mockResolvedValue({
+        loadedLocales: [],
+        failedFiles: ["order/en-US.json"],
+        configured: false,
+      });
+      const result = await new SoftReloader(options).reload([
+        { path: "src/locales/order/en-US.json", type: "modify" },
+      ]);
+      expect(result.success).toBe(false);
+      expect(result.requestedColdRestart).toBe(true);
+      expect(options.hotHandler.swap).not.toHaveBeenCalled();
+    });
     it("变更包含 locales/ 文件时应触发 i18n 重载", async () => {
       vi.mocked(shouldReloadLocales).mockReturnValue(true);
 
@@ -1106,7 +1143,6 @@ describe("SoftReloader", () => {
 
       await reloader.reload([{ path: "src/locales/zh-CN.ts", type: "modify" }]);
 
-      expect(shouldReloadLocales).toHaveBeenCalled();
       expect(reloadLocales).toHaveBeenCalledTimes(1);
     });
 

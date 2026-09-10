@@ -1,6 +1,6 @@
 # 项目结构
 
-VextJS 遵循 **约定优于配置** 的设计理念，通过固定的目录结构实现自动扫描、加载和注册，无需手动配置路由映射或服务注入。
+VextJS 提供默认目录约定及自动加载入口。用户可以沿用自己的架构和公共目录规范；有自动扫描语义的入口与普通 import 目录需要区分，支持配置的角色可使用实际配置覆盖。
 
 ## 标准目录结构
 
@@ -95,6 +95,103 @@ my-app/
 └── tsconfig.json              # TypeScript 配置
 ```
 
+## 默认角色、公共校验与功能模块
+
+下列目录按真实需求创建；目录名本身不会增加自动注册能力。默认结构可由项目规范覆盖，实际 Loader 入口仍须保留或显式委托。
+
+```text
+my-app/
+├── src/
+│   ├── schemas/                         # 可复用 schema，普通命名 export/import
+│   │   └── order/payment.ts
+│   ├── validators/                      # 业务规则函数，service/route 显式调用
+│   │   └── order/can-pay.ts
+│   ├── models/                          # 启用数据库后由 models Loader 注册
+│   │   ├── user.ts                      # collection=users → model("users")
+│   │   ├── billing/invoice.ts           # model("BillingInvoice")
+│   │   └── cn/billing/invoice.ts        # model("CnBillingInvoice")
+│   ├── modules/                         # 可选功能模块，不自动扫描
+│   │   └── order/
+│   │       ├── payment.ts               # 业务实现
+│   │       └── types.ts                 # 模块私有类型
+│   ├── routes/orders.ts                # defineRoutes 中显式委托业务函数
+│   ├── services/order.ts               # 自动注入入口，可导入 modules/order
+│   ├── locales/order/payment/
+│   │   ├── zh-CN.json                  # 后端错误/验证文案
+│   │   └── en-US.json
+│   └── frontend/
+│       ├── hooks/                       # 普通 import 的浏览器 hooks
+│       ├── locales/order/payment/
+│       │   ├── zh-CN.json              # 独立的浏览器文案
+│       │   └── en-US.json
+│       └── assets/                      # import 后进入前端构建图
+├── public/                              # 启用前端后复制的公开文件
+├── test/
+│   ├── unit/                            # 纯函数与模块测试
+│   ├── integration/                     # 框架/数据库集成
+│   ├── e2e/                             # 实际 HTTP 或浏览器
+│   └── fixtures/                        # 测试数据，不作为生产存储
+└── storage/                             # 用户持久数据，不进入构建清理
+    ├── uploads/                         # 私有上传，公开须应用显式实现
+    └── exports/                         # 用户生成文件
+```
+
+`schemas` 负责结构、格式与输入输出合同；`validators` 负责库存、支付资格等业务判断，避免与 schema 校验重复。二者均通过普通 import 使用，没有 `app.schemas` 或 `app.validators` 注入。数据库、网络及副作用留在明确的 service/plugin 中，不在共享 schema 顶层执行。跨前后端共享的模块必须同时满足浏览器依赖边界；服务器凭据、DB 实例和文件系统代码不能因放进 shared 目录就变为浏览器可用。
+
+路由模块保持同步 `defineRoutes(app => { app.get(...); })` 注册，handler 内委托功能模块。前端 page 文件是 renderer 的页面入口，URL 仍由后端路由及 `res.render()` 绑定。用户将 schemas 改成 contracts/validation 时，更新普通 import；不能据此猜出不存在的 Loader 配置项。
+
+### 各角色的实际源扩展名
+
+| 角色                                       | 支持的源码                              | 发现/调用边界                                                             |
+| ------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------- |
+| routes                                     | .ts、.js、.mjs                          | 递归；.cjs 明确拒绝；.mts/.cts 不作为路由入口                             |
+| services                                   | .ts、.mts、.cts、.js、.mjs、.cjs        | 递归注入，index 是普通 key 段；声明/测试/私有文件不注入                   |
+| config、middleware、plugin、model          | .ts、.js、.mjs、.cjs                    | config 按名称选择；middleware 按挂载名称解析；plugin/model 按各自规则扫描 |
+| preload                                    | .ts、.mts、.js、.mjs                    | src/preload 顶层有序入口，不能同时启用两个 preload 源目录                 |
+| backend locales                            | .ts、.mts、.cts、.js、.mjs、.cjs、.json | 模块/二级目录投影；重复最终 key 报来源冲突                                |
+| frontend pages                             | 默认 .tsx、.jsx、.ts、.js               | pages.extensions 可配置；不代表任意扩展都有编译 loader                    |
+| types、schemas、validators、utils、modules | 按实际消费者工具链                      | 普通 import；.d.ts/.d.mts/.d.cts 只提供类型，不执行                       |
+
+通用模块加载器能编译某种扩展名，不等于所有角色都会发现它。TypeScript 服务声明按 NodeNext 将 .mts/.cts 分别引用为 .mjs/.cjs；后端部署编译的内部输出映射由框架维护，业务不要手写生成文件路径。
+
+### Monorepo 与多个服务
+
+```text
+workspace/
+├── package.json                         # workspaces 与包管理器脚本
+├── pnpm-workspace.yaml                  # 仅 pnpm workspace 使用
+├── packages/
+│   ├── contracts/
+│   │   ├── package.json                 # 真实 exports / types
+│   │   ├── src/order.ts
+│   │   └── dist/                        # 共享包自己的 build 生成
+│   └── models/
+│       ├── package.json                 # 默认导出的 model 映射
+│       ├── src/index.ts
+│       └── dist/
+└── apps/
+    ├── api/
+    │   ├── package.json                 # 声明 vextjs 与共享包依赖
+    │   ├── src/                         # 本服务完整目录
+    │   ├── .vext/                       # 本服务受管状态
+    │   ├── dist/                        # 本服务构建输出
+    │   └── storage/                     # 本服务持久数据
+    └── admin/
+        ├── package.json                 # 可使用不同 Vext 版本
+        ├── src/
+        ├── .vext/
+        ├── dist/
+        └── storage/
+```
+
+先按依赖拓扑构建共享包，再从各服务目录执行自己的 dev/build/typegen/start。框架解析该服务真正安装的 exports、ESM/CJS 条件和声明，不自动安装依赖，也不自动构建任意 workspace 包。共享包生产入口必须可执行；静态 sourceExports 不能代替 JS 产物或声明。
+
+默认后端编译不支持通过相对 TS import 越过服务根来打包任意兄弟包；共享业务代码使用包 exports。显式 models.dir/config/locale 读取根与本服务的写入区分离。模型/文案的外部读取根变化使用冷重启；其他共享包要由 workspace 任务编排触发构建/服务重启。native ESM/CJS 的无缓存导入仅刷新入口，不承诺清除整棵传递依赖缓存。
+
+每个服务独立占用业务端口与构建 owner，同一真实服务根（包括路径别名）只允许一个 writer；同一个或嵌套输出目录发生冲突时明确失败。显式外部 outDir 可放在 workspace 的专用 artifacts 目录，但不能指向源码、其他 package 或持久数据目录。构建状态和输出清单决定可清理的文件，不手工删除别人的 .vext 或整片共享目录。
+
+模型路径的连接推导、显式 connection 整体覆盖与 sharedPackage 默认映射详见[数据库](/guide/database)。更多服务隔离说明见[部署](/guide/deployment)。
+
 ## 各目录详解
 
 ### `src/config/` — 配置目录
@@ -102,7 +199,7 @@ my-app/
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {profile}.ts → local.ts → bootstrap provider patch → CLI override
+框架内置默认值 → default.ts → {profile}.ts → local.ts（仅 development/test 运行模式）→ bootstrap provider patch → CLI override
 ```
 
 | 文件             | 用途                                                         | 是否必须 |
@@ -518,7 +615,7 @@ VextJS 项目必须声明为 ESM 模块：
 
 ## 构建产物 `dist/`
 
-执行 `vext build` 后，`src/` 下的 TypeScript 文件会被编译到 `dist/` 目录，保持相同的目录结构。生产模式下（`vext start`）直接从 `dist/` 加载。
+执行 `vext build` 后，后端源码和已声明 JSON 运行资源按源输出映射生成。输出位置依次取 CLI/environment、最近成功构建记录、默认 `dist/`；前端关闭时同名后端目录仍参与后端编译。下面展示默认输出，构建清单和 buildId 决定启动及清理依据。
 
 ```
 dist/
@@ -538,8 +635,8 @@ dist/
 
 :::tip 开发 vs 生产
 
-- **`vext dev`**：直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），支持热重载
-- **`vext start`**：从 `dist/` 加载 `.js` 文件，需要先执行 `vext build`
+- **`vext dev`**：TypeScript 后端先编译到本服务 .vext/dev，再启动 worker；增量维护文件和 JSON，失败保留上一有效版本或明确请求冷重启
+- **`vext start`**：使用成功构建记录与实际后端模式；TypeScript 生产服务需先 build，JavaScript 源模式不因存在 tsconfig 就变成编译模式
   - 启用前端时，生产启动还要求存在 `dist/client/index.html`
     :::
 

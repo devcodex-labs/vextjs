@@ -16,6 +16,7 @@ import {
   SourceViewError,
   type SourceFileRef,
   type SourceInput,
+  type RootRef,
   type SourceView,
   type SourceViewOptions,
 } from "./types.js";
@@ -35,6 +36,11 @@ export async function collectSourceView(
   options: SourceViewOptions & {
     readonly files: Iterable<SourceFileRef>;
     readonly signal?: AbortSignal;
+    /** 仅扩展声明的读取清单；新增项仍通过同一根、去重、字节与数量校验。 */
+    readonly dependencies?: (
+      input: SourceInput,
+      root: RootRef,
+    ) => Iterable<SourceFileRef>;
   },
 ): Promise<SourceView> {
   const signal = options.signal;
@@ -99,6 +105,16 @@ export async function collectSourceView(
       totalBytes += bytes.length;
       assertSourceBudget(inputs.length + 1, totalBytes, limits);
       inputs.push({ ...ref, bytes });
+      for (const dependency of options.dependencies?.(
+        { ...ref, bytes: Buffer.from(bytes) },
+        root,
+      ) ?? []) {
+        const next = normalizeSourceRef(dependency, declaredRoots);
+        const key = sourceKey(next.rootId, next.path);
+        if (files.has(key)) continue;
+        assertSourceBudget(files.size + 1, totalBytes, limits);
+        files.set(key, next);
+      }
       if (inputs.length % 16 === 0) await yieldToEventLoop();
     }
     checkCancellation(signal);

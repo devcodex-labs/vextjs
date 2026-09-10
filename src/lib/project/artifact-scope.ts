@@ -55,7 +55,7 @@ export function prepareArtifactScope(
   const contents = new Map<string, Buffer>();
   const candidateKeys = new Set<string>();
   for (const file of update.files) {
-    const relative = artifactRelativePath(root, file.path);
+    const relative = artifactRelativePath(root, file.path, true);
     const key = artifactFileKey(relative);
     if (
       !relative.startsWith(`${outputDir}/`) ||
@@ -69,7 +69,7 @@ export function prepareArtifactScope(
     const source =
       file.source === undefined
         ? undefined
-        : artifactRelativePath(root, file.source);
+        : artifactRelativePath(root, file.source, true);
     contents.set(relative, bytes);
     next.set(relative, {
       path: relative,
@@ -79,7 +79,7 @@ export function prepareArtifactScope(
   }
   const changes: ArtifactChange[] = [];
   for (const relative of new Set([...previous.keys(), ...next.keys()])) {
-    const before = readArtifactFile(root, relative);
+    const before = readArtifactFile(root, relative, undefined, true);
     const actual = digestOrNull(before);
     const recorded = previous.get(relative)?.sha256;
     const desired = next.get(relative)?.sha256 ?? null;

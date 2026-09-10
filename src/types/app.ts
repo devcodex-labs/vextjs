@@ -355,7 +355,7 @@ export interface VextLocaleConfig {
   default?: string;
   /** 支持的语言代码列表（如 ['zh-CN', 'en-US']），用于 Accept-Language 头匹配 */
   supported?: string[];
-  /** 语言包目录路径（可选） */
+  /** 相对服务根或显式绝对路径；默认 src/locales，src 内目录随编译输出映射。 */
   directory?: string;
 }
 
@@ -1039,7 +1039,7 @@ export interface VextDevConfig {
 /**
  * VextConfig — 框架运行时配置（只读）
  *
- * 由 config-loader 通过 default → env → local 三层合并后 deepFreeze 生成。
+ * 由 config-loader 合并 default → profile → local（仅开发/测试）→ provider → CLI 后 deepFreeze。
  * 运行时通过 app.config 访问，不可修改。
  *
  * 配置文件位置：
@@ -1048,6 +1048,8 @@ export interface VextDevConfig {
  *   - src/config/local.ts      — 本地覆盖（最高优先级，不提交 git）
  */
 export interface VextConfig {
+  /** 应用独立的语言协商与消息目录配置。 */
+  locale?: VextLocaleConfig;
   /** HTTP 监听端口（默认 3000） */
   port: number;
 
@@ -1390,7 +1392,7 @@ export interface VextApp {
   /**
    * 最终合并后的运行时配置（只读）
    *
-   * 由 config-loader 加载 default → env → local 三层合并并 deepFreeze。
+   * 由 config-loader 合并配置各层并 deepFreeze；local 只在 development/test 模式加载。
    */
   config: Readonly<VextConfig>;
 

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -34,6 +34,50 @@ afterEach(async () => {
 });
 
 describe("backend module output references", () => {
+  for (const mode of ["build", "dev"] as const) {
+    it(`${mode} preserves root JSON, optional require, and dynamic NodeNext paths`, async () => {
+      const f = await fixture();
+      await f.write(
+        "package.json",
+        '{"name":"runtime-resource","type":"module"}',
+      );
+      await f.write("src/handlers/one.ts", "export const value = 42;");
+      const source = [
+        "// 中文 🧪 keeps original source positions",
+        'export const name = require("../package.json").name;',
+        'export function optional() { try { return require("./missing.js"); } catch { return "fallback"; } }',
+        'export const load = (name: string) => require("./handlers/" + name + ".js").value;',
+        "export const loadAsync = (name: string) => import(`./handlers/${name}.js`);",
+      ].join("\n");
+      const entry = await f.write("src/index.ts", source);
+      const outDir =
+        mode === "dev" ? path.join(f.rootDir, ".vext/dev") : f.outDir;
+      const dev =
+        mode === "dev" ? new DevCompiler({ ...f, outDir }) : undefined;
+      try {
+        if (dev) await dev.start();
+        else
+          expect(
+            (await new BuildCompiler({ ...f, minify: true }).build()).success,
+          ).toBe(true);
+        for (const incremental of dev ? [false, true] : [false]) {
+          if (incremental) await dev!.compileSingle(entry);
+          const output = path.join(outDir, "index.js");
+          delete f.require.cache[output];
+          const loaded = f.require(output);
+          const sourceMap = JSON.parse(readFileSync(`${output}.map`, "utf8"));
+          expect(sourceMap.sourcesContent).toContain(source);
+          expect(loaded.name).toBe("runtime-resource");
+          expect(loaded.optional()).toBe("fallback");
+          expect(loaded.load("one")).toBe(42);
+          expect((await loaded.loadAsync("one")).value).toBe(42);
+          expect(() => loaded.load("missing")).toThrow(/Cannot find module/);
+        }
+      } finally {
+        await dev?.dispose();
+      }
+    });
+  }
   for (const mode of ["build", "dev"] as const) {
     it.each([
       ["ts", "js"],
@@ -138,7 +182,10 @@ describe("backend module output references", () => {
       "src/frontend/browser.ts",
       "export const value = window.location.href;",
     );
-    const result = await new BuildCompiler(f).build();
+    const result = await new BuildCompiler({
+      ...f,
+      frontend: { enabled: true },
+    }).build();
     expect(result.success).toBe(false);
     expect(result.errors.map((error) => error.text).join("\n")).toMatch(
       /backend|excluded|frontend/,

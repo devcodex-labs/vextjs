@@ -19,7 +19,7 @@ Thank you for your interest in contributing to vext! We welcome contributions of
 
 ### Prerequisites
 
-- **Node.js** >= 20.19.0
+- **Node.js** matching package.json engines: ^20.19.0 or >=22.12.0
 - **npm** >= 9.0.0
 - **Git**
 
@@ -41,6 +41,9 @@ npm ci  # Use ci for reproducible installs
 ```bash
 # Type check
 npx tsc --noEmit
+
+# Build the package before runtime / CLI integration tests
+npm run build
 
 # Run all tests
 npm test
@@ -69,6 +72,9 @@ vext/
 │   │   ├── middlewares/   # Built-in middlewares
 │   │   ├── openapi/       # OpenAPI / Swagger generation
 │   │   └── plugins/       # Built-in plugins (monsqlize)
+│   ├── frontend/          # Frontend contracts, build, runtime, assets and deploy
+│   ├── tooling/           # SourceView, static project graph, Doctor and typegen
+│   ├── shared/            # Contracts shared by real runtime/tooling consumers
 │   ├── testing/           # Test utilities (createTestApp)
 │   └── types/             # TypeScript type definitions
 ├── test/
@@ -89,7 +95,7 @@ vext/
 - **Adapters**: vext supports 5 HTTP adapters (Hono, Fastify, Express, Koa, Native). All adapters implement the `VextAdapter` interface and must pass the same test suite.
 - **Middleware Chain**: Uses an onion model (`executeChain` with `dispatch(i)` recursion). Global middlewares are prepended to route-level chains.
 - **Service Loader**: Auto-scans `src/services/` and injects instances into `app.services`.
-- **Config Loader**: Merges `default` → `{NODE_ENV}` → `local` config files with environment variable overrides.
+- **Config Loader**: Merges defaults → selected profile → local (development/test runtime modes only) → bootstrap providers → CLI overrides. Production does not implicitly evaluate local config.
 
 ---
 
@@ -164,6 +170,7 @@ Push your branch and open a PR against `main`.
 - All public APIs must have JSDoc with `@param`, `@returns`, and `@example` where helpful
 - Use `// ── Section Name ──` comment separators for file organization
 - Keep comments meaningful — explain _why_, not _what_
+- Choose Chinese or English from the task intent, module conventions and team information. Explain public behavior, units, ownership, concurrency and failure recovery; do not add line-by-line narration of obvious code.
 
 ### File Organization
 
@@ -329,7 +336,7 @@ If your PR introduces a breaking change:
 
 1. Add `💥` to the PR title
 2. Document the breaking change in the PR body
-3. Explain the migration path for users
+3. Record the reason and affected current contracts. While the framework has no users, do not add speculative historical adapters or new migration documentation.
 4. Breaking changes will be batched into the next major version
 
 ---
@@ -376,6 +383,14 @@ If you want to contribute a new adapter:
 6. Update `src/cli/create.ts` to include the adapter in `VALID_ADAPTERS` and `ADAPTER_DEPS`
 
 ---
+
+## Framework and MCP maintenance contract
+
+Every requirement, dependency upgrade, behavior change or bug fix must assess its public API, configuration, CLI, directory roles, documentation, examples and tests together. Run `npm run verify:public-surface`; adding/removing an unmapped public item fails. The documentation gate includes the same check. Update a mapping only after checking its behavior and limits, never merely to silence the gate.
+
+MCP implementation is still pending. B-stage behavior mappings are recorded in `test/fixtures/public-surface/coverage.json` and the implementation report. When MCP is implemented, each affected capability, knowledge topic, rule, Recipe, workflow, Prompt, Skill and schema must be updated in the same requirement/version, or have a specific no-impact reason. Do not maintain a second static parser, independent default-value table or copied template engine.
+
+Distinguish unit/in-memory TestApp checks from actual bootstrap, HTTP, browser and database verification. Missing prerequisites or failed cleanup cannot be reported as success. For local package-consumer checks, build first, then use `npm run verify:installed-workspaces -- npm` or `-- pnpm`; these perform real installs and record dependency trees. The two managers can use the same tarball through `VEXT_INSTALLED_TARBALL`. They do not substitute for the final cross-platform release matrix.
 
 ## 📄 License
 

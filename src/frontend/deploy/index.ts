@@ -14,4 +14,4 @@ export {
   writeFrontendDeployState,
   type VextFrontendDeployState,
 } from "./state.js";
-export { deployFrontendAssets } from "./uploader.js";
+export { deployFrontendAssets, FrontendDeployError } from "./uploader.js";

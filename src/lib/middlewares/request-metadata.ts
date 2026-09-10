@@ -1,11 +1,13 @@
 import { requestContext } from "../request-context.js";
-import type { VextLocaleConfig } from "../../types/app.js";
+import type { VextApp, VextLocaleConfig } from "../../types/app.js";
+import { bindRequestLocaleOwner } from "../i18n/app-runtime.js";
 import type { VextMiddleware } from "../../types/middleware.js";
 
 /** 请求语言和显式传播头有独立生命周期，不受 requestId.enabled 控制。 */
 export function createRequestMetadataMiddleware(
   propagateHeaderNames: string[] = [],
   localeConfig?: VextLocaleConfig,
+  app?: VextApp,
 ): VextMiddleware {
   const headers = propagateHeaderNames.map((name) => name.toLowerCase());
   const defaultLocale = localeConfig?.default ?? "en-US";
@@ -18,6 +20,7 @@ export function createRequestMetadataMiddleware(
   return async (req, _res, next) => {
     const store = requestContext.getStore();
     if (store) {
+      if (app) bindRequestLocaleOwner(app);
       const accept = req.headers["accept-language"];
       store.locale =
         accept && supported.size > 0

@@ -12,6 +12,9 @@ export interface ServiceManifestPayload {
   schemaVersion: 1;
   kind: "services-manifest";
   target: "services";
+  sourceRevision: string | null;
+  complete: boolean;
+  incompleteFiles: string[];
   serviceCount: number;
   appExtensionCount: number;
   summary: {
@@ -50,6 +53,7 @@ export function createServiceManifestFile(
   entries: ServiceIndexEntry[],
   appExtensions: AppExtensionIndexEntry[],
   dependencyReport: ServiceDependencyReport,
+  projection?: ServiceManifestProjection,
 ): GeneratedFileDraft {
   const filePath = getTypegenGeneratedPaths(rootDir).serviceManifest;
   const content = `${JSON.stringify(
@@ -58,6 +62,7 @@ export function createServiceManifestFile(
       entries,
       appExtensions,
       dependencyReport,
+      projection,
     ),
     null,
     2,
@@ -65,11 +70,18 @@ export function createServiceManifestFile(
   return { filePath, content, producer: "service-manifest" };
 }
 
+export interface ServiceManifestProjection {
+  sourceRevision: string;
+  complete: boolean;
+  incompleteFiles: string[];
+}
+
 export function buildServiceManifestPayload(
   rootDir: string,
   entries: ServiceIndexEntry[],
   appExtensions: AppExtensionIndexEntry[],
   dependencyReport: ServiceDependencyReport,
+  projection?: ServiceManifestProjection,
 ): ServiceManifestPayload {
   const mergedAppExtensions = mergeAppExtensions(appExtensions).entries;
   const dependencyEdges = [...dependencyReport.graph.entries()]
@@ -101,6 +113,15 @@ export function buildServiceManifestPayload(
     schemaVersion: 1,
     kind: "services-manifest",
     target: "services",
+    sourceRevision: projection?.sourceRevision ?? null,
+    complete: projection?.complete ?? false,
+    incompleteFiles: [
+      ...new Set(
+        projection?.incompleteFiles ?? dependencyReport.incompleteFiles,
+      ),
+    ]
+      .map((file) => toPortableRelativePath(rootDir, file))
+      .sort(),
     serviceCount: services.length,
     appExtensionCount: mergedAppExtensions.length,
     summary: {

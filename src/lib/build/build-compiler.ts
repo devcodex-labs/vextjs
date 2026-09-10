@@ -13,7 +13,7 @@ import {
   backendArtifactCandidates,
   scanBackendJsonFiles,
 } from "./backend-artifacts.js";
-import { assertSafeProjectOutputDirectory } from "../path-boundary.js";
+import { assertExplicitOutputDirectory } from "../path-boundary.js";
 
 import {
   createBackendEsbuildConfig,
@@ -185,7 +185,7 @@ export class BuildCompiler {
    * @throws 当 src/ 目录为空（无源文件）时抛出错误
    */
   async build(): Promise<BuildResult> {
-    assertSafeProjectOutputDirectory(
+    assertExplicitOutputDirectory(
       this.options.rootDir,
       this.options.outDir,
       "backend output",

@@ -208,6 +208,7 @@ try {
           'process.env.VEXT_PROJECT_PRELOAD_PROBE = "compiled";',
         );
         write(service, "src/config/staging.ts", "export default {};");
+        write(service, "src/utils/retired.ts", "export const retired = true;");
       }
       await command(
         cli,
@@ -223,10 +224,15 @@ try {
         const locationPath = join(service, ".vext/build-location.json");
         const first = JSON.parse(readFileSync(locationPath, "utf8"));
         assert.equal(first.outDir, customOutput);
+        assert.equal(
+          existsSync(join(service, customOutput, "utils/retired.js")),
+          true,
+        );
+        rmSync(join(service, "src/utils/retired.ts"));
         write(
           service,
           `${customOutput}/stale.txt`,
-          "remove me through recorded --clean",
+          "user-owned file must survive --clean",
         );
         await command(
           cli,
@@ -234,8 +240,12 @@ try {
           service,
         );
         assert.equal(
-          existsSync(join(service, customOutput, "stale.txt")),
+          existsSync(join(service, customOutput, "utils/retired.js")),
           false,
+        );
+        assert.equal(
+          readFileSync(join(service, customOutput, "stale.txt"), "utf8"),
+          "user-owned file must survive --clean",
         );
         const routePath = join(service, "src/routes/index.ts");
         const route = readFileSync(routePath, "utf8");
@@ -373,6 +383,11 @@ try {
         evidence.at(-1).softReload = true;
       }
       evidence.at(-1).passed = true;
+    } catch (error) {
+      evidence.at(-1).failure = String(error);
+      throw new Error(`${name} failed: ${String(error)}\n${output}`, {
+        cause: error,
+      });
     } finally {
       if (!exited && child.connected) child.send({ type: "test-stop" });
       const stopped = await Promise.race([
@@ -394,6 +409,7 @@ try {
       }
       if (port) await portReleased(port);
       evidence.at(-1).stopped = stopped;
+      evidence.at(-1).output = output;
       assert.ok(stopped, `CLI failed to stop gracefully: ${output}`);
     }
     console.log(`PASS ${name}`);

@@ -229,7 +229,7 @@ Dev reload: **T1/T2** soft reload (ms), **T3** cold restart (config/plugins/env)
 ## Configuration
 
 ```text
-built-in defaults → default → {profile} → local → bootstrap providers → CLI overrides
+built-in defaults → default → {profile} → local (development/test only) → bootstrap providers → CLI overrides
 ```
 
 Select profile with `vext start --config <name>` or `VEXT_CONFIG=<name>` (do not rely on baked `process.env.NODE_ENV` after `vext build` for profile selection).

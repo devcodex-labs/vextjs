@@ -1,7 +1,7 @@
 /**
  * config-loader.ts — 配置加载器
  *
- * 负责加载并合并配置文件（default → config profile → local），
+ * 负责加载并合并配置文件（default → config profile → local，仅开发/测试），
  * 执行 Fail Fast 校验，然后 deepFreeze 返回只读配置对象。
  *
  * 合并规则（含 CJS interop 支持）：
@@ -14,7 +14,7 @@
  *   ├── default.ts       — 基准配置（必须存在）
  *   ├── development.ts   — 开发 profile 覆盖（可选）
  *   ├── production.ts    — 生产 profile 覆盖（可选）
- *   └── local.ts         — 本地覆盖（最高优先级，可选，不提交 git）
+ *   └── local.ts         — development/test 模式本地覆盖（可选，provider/CLI 仍可覆盖）
  *
  * @module lib/config-loader
  * @see 05-config.md §5（配置合并规则）
@@ -699,6 +699,16 @@ function validateConfig(config: Record<string, unknown>): void {
     if (locale.default !== undefined && typeof locale.default !== "string") {
       throw new Error(
         `[vextjs] config.locale.default must be a string (e.g. "zh-CN"), got: ${typeof locale.default}`,
+      );
+    }
+    if (
+      locale.directory !== undefined &&
+      (typeof locale.directory !== "string" ||
+        locale.directory.trim() === "" ||
+        locale.directory.includes("\0"))
+    ) {
+      throw new Error(
+        "[vextjs] config.locale.directory must be a non-empty path without NUL bytes.",
       );
     }
     if (locale.supported !== undefined) {
@@ -2764,7 +2774,9 @@ async function importConfigFile(
   // 延迟导入 interop 工具（避免循环依赖风险）
   const { resolveModuleDefault } = await import("./interop.js");
 
-  const mod = await importUserModule(filePath, rootDir);
+  const mod = await importUserModule(filePath, rootDir, {
+    readRoot: path.dirname(filePath),
+  });
 
   const defaultExport = resolveModuleDefault<Record<string, unknown>>(mod);
 
@@ -2783,7 +2795,7 @@ async function importConfigFile(
 /**
  * 加载并合并配置文件
  *
- * 合并顺序：default → {configProfile} → local
+ * 合并顺序：default → {configProfile} → local（仅 development/test）→ provider → CLI
  * 合并完成后执行 Fail Fast 校验，通过后 deepFreeze 返回只读对象。
  *
  * @param configDir 配置目录绝对路径（通常为 path.join(projectRoot, 'src/config')）
@@ -2859,8 +2871,9 @@ export async function loadRawConfig(
     ? await importConfigFile(profileFile, rootDir)
     : {};
 
-  // ── 3. 加载 local（可选，不存在则静默跳过）──────────────
-  const localFile = resolveConfigFile(configDir, "local");
+  // local 属于开发/测试覆盖；生产的源码启动与编译启动必须使用同一配置层。
+  const localFile =
+    mode === "production" ? null : resolveConfigFile(configDir, "local");
   const localConfig = localFile
     ? await importConfigFile(localFile, rootDir)
     : {};
@@ -2890,7 +2903,7 @@ export async function loadRawConfig(
   //   VEXT_PORT → 覆盖 merged.port
   //   VEXT_HOST → 覆盖 merged.host
   //
-  // 优先级链：DEFAULT_CONFIG < user default < env < local < CLI 环境变量
+  // 优先级链：DEFAULT_CONFIG < user default < profile < local（非生产）< provider < CLI
   //
   // 🐛 修复：BUG-013 — CLI --port/--host 参数设置了 VEXT_PORT/VEXT_HOST 环境变量，
   //    但 loadConfig 从未读取这些环境变量，导致端口覆盖静默失效。

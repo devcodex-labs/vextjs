@@ -122,15 +122,23 @@ describe("resolved project role paths", () => {
     });
   });
 
-  it("rejects a model source directory outside its source base", async () => {
+  it("reads an explicitly configured model root outside src without changing its model key", async () => {
     const rootDir = await project();
-    await expect(
-      loadModelCodeDocs({
-        srcDir: path.join(rootDir, "src"),
-        modelsDir: "../other",
-        source: true,
-      }),
-    ).rejects.toThrow(/inside|relative/);
+    await mkdir(path.join(rootDir, "other"));
+    await writeFile(
+      path.join(rootDir, "other/user.ts"),
+      'export default { collection: "users", schema: { name: "string!" } };',
+    );
+    const docs = await loadModelCodeDocs({
+      srcDir: path.join(rootDir, "src"),
+      modelsDir: "../other",
+      source: true,
+    });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({
+      sourceFile: "../other/user.ts",
+      model: { registryKey: "users" },
+    });
   });
 });
 

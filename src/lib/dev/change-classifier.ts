@@ -1,3 +1,8 @@
+import path from "node:path";
+import { isPathInside } from "../path-boundary.js";
+import type { BackendWatchDirectory } from "../project/layout.js";
+import { isTemporaryModuleFileName } from "../project/source-roles.js";
+
 /**
  * change-classifier.ts — 文件变更分类器（Phase 2A）
  *
@@ -43,6 +48,9 @@ export interface ClassifierOptions {
   /** 已解析的项目相对目录；显式传入时替代默认 src/frontend、public。 */
   frontendDirectories?: readonly string[];
   frontendFiles?: readonly string[];
+  /** 已解析的读取根；rootDir仅由parent自身设置，不接受worker覆盖。 */
+  rootDir?: string;
+  backendDirectories?: readonly BackendWatchDirectory[];
   /**
    * 额外的冷重启文件模式（glob 风格字符串）
    *
@@ -128,6 +136,7 @@ const SOURCE_PATTERN = /^src\/.*\.(ts|mts|cts|js|mjs|cjs)$/;
  * classifyChange — 对单个文件变更进行分类
  *
  * 分类优先级（从高到低）：
+ *   0. 框架临时执行模块 → ignore（不属于业务源）
  *   1. 用户自定义 ignorePatterns → ignore
  *   2. 用户自定义 coldPatterns → cold
  *   3. 内置 COLD_PATTERNS → cold
@@ -159,6 +168,9 @@ export function classifyChange(
   // 路径规范化：确保使用 / 分隔符（Windows 兼容）
   const normalized = relativePath.replace(/\\/g, "/");
 
+  if (isTemporaryModuleFileName(path.posix.basename(normalized)))
+    return { action: "ignore", reason: "framework temporary execution module" };
+
   // ── 1. 用户自定义 ignorePatterns（最高优先级）────────────
   if (options?.ignorePatterns) {
     for (const pattern of options.ignorePatterns) {
@@ -184,6 +196,23 @@ export function classifyChange(
   }
 
   // ── 3. 内置 COLD_PATTERNS ─────────────────────────────
+  if (options?.rootDir) {
+    const file = path.resolve(options.rootDir, relativePath);
+    const directory = options.backendDirectories?.find((item) =>
+      isPathInside(item.path, file, true),
+    );
+    if (directory)
+      return {
+        action: directory.action,
+        reason: "configured backend read directory",
+      };
+  }
+  // 默认locale JSON也是服务器运行资源，必须进入真实reload链。
+  if (
+    normalized.startsWith("src/locales/") &&
+    /\.(?:json|[cm]?[jt]s)$/u.test(normalized)
+  )
+    return { action: "soft", reason: "locale source change" };
   for (const pattern of COLD_PATTERNS) {
     if (pattern.test(normalized)) {
       return {

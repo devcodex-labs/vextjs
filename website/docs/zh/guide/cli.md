@@ -361,7 +361,7 @@ vext build && vext start
 
 ## `vext deploy assets` — 上传前端静态资源
 
-读取 `dist/client/deploy-manifest.json`，把前端构建产物中的 JS、CSS、图片、字体和 `public/**` 资源上传到配置的目标。首期内置 `filesystem` 与 `mock` adapter；普通云厂商上传可通过后续自定义 adapter 承接。
+读取最近成功构建和解析后的 `frontend.outDir/deploy-manifest.json`，把公开清单内的 JS、CSS、图片、字体和 `public/**` 资源上传到配置目标。内置 `filesystem` 与 `mock` adapter；云厂商上传可使用自定义 adapter。
 
 ### 用法
 
@@ -373,17 +373,18 @@ vext deploy assets [options]
 
 ### 选项
 
-| 选项                  | 说明                                    | 默认值                             |
-| --------------------- | --------------------------------------- | ---------------------------------- |
-| `--outdir <path>`     | 构建输出目录                            | `dist`                             |
-| `--config <name>`     | 加载指定的前端部署配置                  | `production`                       |
-| `--manifest <path>`   | 指定 deploy manifest 路径               | `dist/client/deploy-manifest.json` |
-| `--adapter <name>`    | 上传 adapter，例如 `filesystem`、`mock` | 配置值                             |
-| `--target-dir <path>` | `filesystem` adapter 写入目录           | 配置值                             |
-| `--prefix <path>`     | 上传 key 前缀                           | 配置值                             |
-| `--state-file <path>` | 增量上传状态文件                        | 配置值                             |
-| `--dry-run`           | 只输出上传计划，不写入目标              | `false`                            |
-| `-h, --help`          | 显示帮助                                | —                                  |
+| 选项                  | 说明                                    | 默认值                                          |
+| --------------------- | --------------------------------------- | ----------------------------------------------- |
+| `--outdir <path>`     | 显式选择后端构建输出                    | 成功构建记录，缺省 `dist`                       |
+| `--config <name>`     | 显式选择部署 profile                    | 成功构建的 profile                              |
+| `--manifest <path>`   | 指定 deploy manifest 路径               | 解析后的 `frontend.outDir/deploy-manifest.json` |
+| `--adapter <name>`    | 上传 adapter，例如 `filesystem`、`mock` | 配置值                                          |
+| `--target-dir <path>` | `filesystem` adapter 写入目录           | 配置值                                          |
+| `--prefix <path>`     | 上传 key 前缀                           | 配置值                                          |
+| `--state-file <path>` | 增量上传状态文件                        | 配置值                                          |
+| `--dry-run`           | 只输出上传计划，不写入目标              | `false`                                         |
+| `--json`              | 输出结果或错误及逐资源状态的 JSON       | `false`                                         |
+| `-h, --help`          | 显示帮助                                | —                                               |
 
 ### 示例
 
@@ -449,7 +450,8 @@ vext typegen --services --root ./examples/hello-world
 ### 适用边界
 
 - 同一次 typegen 的服务清单、插件扩展、依赖诊断和生成候选共用一份封存源码，不在诊断阶段重新读盘，也不执行项目模块。`.d.ts`、`.d.mts`、`.d.cts` 声明文件不作为服务；源码中的 `.mts` / `.cts` 类型导入分别映射为 `.mjs` / `.cjs`。
-- 源码按 UTF-8 严格读取；一次采集最多 5000 个文件、单文件 2MiB、合计 64MiB，超限、读取失败或发现后文件消失会报告错误。Doctor 的源码分析使用相同限制。封存分析不等于整个目录树的原子快照，也不保证分析结束后源码没有再次改变。
+- 源码按 UTF-8 严格读取。默认预算为 5000 个文件、单文件 2MiB、合计 64MiB，目录发现最多消费 50000 个条目；可通过 `VEXT_SOURCE_MAX_FILES`、`VEXT_SOURCE_MAX_FILE_BYTES`、`VEXT_SOURCE_MAX_TOTAL_BYTES`、`VEXT_SOURCE_MAX_SCAN_ENTRIES` 指定非负整数覆盖，字节项单位为 byte。Doctor、typegen 和构建中的静态采集共用此策略；内部显式调用参数优先于环境。超限表示分析未完整完成，会报出原因，不输出空的成功结果。这些预算不限制服务运行，也不是 MCP 响应预算。
+- 项目根内的目录链接保留逻辑路径，例如 `src/routes/billing` 链接到项目内共享目录后仍使用 `/billing` 前缀。目录循环、越过已声明根的链接和文件链接明确报告无法完成分析，不静默漏掉路由。封存分析不是整个目录树的原子快照，仍需在提交时核对源码是否改变。
 - 选中的声明、shim 和可选 service manifest 会在依赖检查完成后一起提交。阻断诊断、不可读输出或归属冲突会保留原有文件；未选中的声明不被删除，shim 只引用本次选中的声明。
 - `--check` 只比较实际文件，不写输出或归属记录，可在开发服务运行时执行。缺失或内容不符报告 stale；读取失败会保留具体错误。同内容生成不重写文件。手动修改生成文件后，应先核对并处理冲突，再重新生成。
 - `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `vext start` 的 runtime 主路径；
@@ -459,7 +461,11 @@ vext typegen --services --root ./examples/hello-world
 - `--write-manifest` 会把 service 索引、`app.extend()` / `defineAppExtensions<{ ... }>()` 聚合结果与服务依赖图摘要写入 `.vext/manifest/services.json`；
 - 更多 generated 声明示例可结合 [服务](./services) 与 [插件](./plugins) 文档查看。
 
+service manifest 同时记录 `sourceRevision`、`complete`、`incompleteFiles`，绑定当次封存源码；文件生成不代表静态推断完整。无法证明插件扩展或依赖时保留 incomplete，不把当前摘要补写到旧 manifest 来伪造新鲜度。
+
 ## `vext doctor routes` — 静态路由诊断（experimental）
+
+`vext doctor all` 使用独立的综合分析，检查路由、服务依赖和可静态证明的插件扩展，JSON 中列出 profile、valid、每域状态与证据。运行配置、数据库连接等未实测域保留未检查状态；`routes` 只检查路由，不将部分检查冒充整个项目健康。
 
 扫描 `src/routes/` 中的静态路由元数据，输出重复路由、缺失 `docs.summary`、自动推断 `operationId` 等诊断，并可将结果落盘到 inspect / manifest 产物中。
 
@@ -473,23 +479,23 @@ vext doctor <target> [options]
 
 ### Targets
 
-| Target   | 说明                                         |
-| -------- | -------------------------------------------- |
-| `routes` | 扫描静态路由元数据与 OpenAPI 相关字段        |
-| `all`    | 当前仍是 `routes` 的别名，用于保留后续扩展位 |
+| Target   | 说明                                                   |
+| -------- | ------------------------------------------------------ |
+| `routes` | 扫描静态路由元数据与 OpenAPI 相关字段                  |
+| `all`    | 检查路由合同、服务依赖和插件扩展，输出分域完整性与证据 |
 
 ### 选项
 
-| 选项               | 说明                                | 默认值   |
-| ------------------ | ----------------------------------- | -------- |
-| `--json`           | 输出机器可读 JSON                   | `false`  |
-| `--write-inspect`  | 写入 `.vext/inspect/routes.json`    | `false`  |
-| `--write-manifest` | 写入 `.vext/manifest/routes.json`   | `false`  |
-| `--refresh`        | 兼容选项；默认已分析当前源码       | `false`  |
-| `--manifest-only`  | 显式读取已有 manifest 快照          | `false`  |
-| `--root <path>`    | 指定项目根目录                      | 当前目录 |
-| `-C <path>`        | `--root` 别名                       | —        |
-| `-h, --help`       | 显示帮助                            | —        |
+| 选项               | 说明                              | 默认值   |
+| ------------------ | --------------------------------- | -------- |
+| `--json`           | 输出机器可读 JSON                 | `false`  |
+| `--write-inspect`  | 写入 `.vext/inspect/routes.json`  | `false`  |
+| `--write-manifest` | 写入 `.vext/manifest/routes.json` | `false`  |
+| `--refresh`        | 兼容选项；默认已分析当前源码      | `false`  |
+| `--manifest-only`  | 显式读取已有 manifest 快照        | `false`  |
+| `--root <path>`    | 指定项目根目录                    | 当前目录 |
+| `-C <path>`        | `--root` 别名                     | —        |
+| `-h, --help`       | 显示帮助                          | —        |
 
 ### 产物定位
 
@@ -507,6 +513,8 @@ vext doctor routes --write-inspect --write-manifest --json
 ```
 
 ### 当前边界
+
+- `profile` 为 `static-routes` 或 `static-project`。`domains` 逐域报告 `checked`、`not-present`、`unsupported`、`incomplete`；动态服务访问和无法完整投影的插件会保留局限。`valid` 仅在该静态 profile 的必需项完整且没有错误时为 true；`ok` 仅表示没有错误诊断。configuration、models、frontend、runtime 的实际配置/运行验证不属于该静态 profile，不能把它们的 unsupported 解释为能力未启用。
 
 - Doctor 默认分析本次封存的路由源码，用同一份原始字节生成路由条目、fingerprint 与源码文件清单，不复用磁盘 manifest 作为静态分析缓存。`--refresh` 保留为兼容选项。
 - CLI 文本、JSON 和 inspect 报告均标明 `sourceFreshness`：`current` 表示本次源码分析；`--manifest-only` 保留历史快照自身的来源信息，摘要不同为 `stale`，摘要缺失或仅声明匹配为 `unverified`。缺少摘要用 `null` 表示，缺失的 schema、freshness 或 docsKind 保持未知并给出诊断。`ok` 仅表示没有阻断诊断，不代表历史快照已重新验证，也不保证分析结束后磁盘没有再次修改。

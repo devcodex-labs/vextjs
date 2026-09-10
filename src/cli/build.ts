@@ -178,8 +178,18 @@ async function executeBuild(
   );
 
   try {
-    await executeBuildStages(project, options, config);
-    await completeBuild(project.rootDir, buildIdentity);
+    const frontendBuild = await executeBuildStages(
+      project,
+      { ...options, configProfile: resolvedConfigProfile.profile },
+      config,
+    );
+    await completeBuild(
+      project.rootDir,
+      buildIdentity,
+      frontendBuild && !frontendBuild.skipped
+        ? frontendBuild.config.outDir
+        : undefined,
+    );
   } catch (error) {
     try {
       await failBuild(project.rootDir, buildIdentity);
@@ -206,7 +216,7 @@ async function executeBuildStages(
   project: ReturnType<typeof detectProject>,
   options: BuildCommandOptions,
   config: Awaited<ReturnType<typeof loadConfig>>,
-): Promise<void> {
+): Promise<BuildFrontendClientResult | undefined> {
   const outDir = path.resolve(project.rootDir, options.outdir);
   const frontend =
     typeof config.frontend === "object" ? config.frontend : undefined;
@@ -219,8 +229,7 @@ async function executeBuildStages(
       return;
     }
     await refreshRouteManifest(project.rootDir);
-    await buildFrontendForCommand(project.rootDir, config.frontend, options);
-    return;
+    return buildFrontendForCommand(project.rootDir, config.frontend, options);
   }
 
   // ── 工具产物刷新 ────────────────────────────────────────
@@ -309,7 +318,11 @@ async function executeBuildStages(
     console.log(`[vextjs]    files:   ${result.fileCount}`);
     console.log(`[vextjs]    time:    ${result.elapsed}ms`);
     console.log(`[vextjs]    output:  ${result.outDir}/`);
-    await buildFrontendForCommand(project.rootDir, config.frontend, options);
+    return await buildFrontendForCommand(
+      project.rootDir,
+      config.frontend,
+      options,
+    );
   } catch (err) {
     console.error("[vextjs] build failed:");
     console.error(err);
@@ -364,10 +377,11 @@ async function buildFrontendForCommand(
       config: result.config,
       manifestPath: result.deployManifestPath,
       dryRun: options.deployDryRun,
+      configProfile: options.configProfile,
     });
     console.log(
       `[vextjs] frontend assets ${deployResult.dryRun ? "planned" : "uploaded"}: ` +
-        `${deployResult.uploaded} uploaded, ${deployResult.skipped} skipped, ` +
+        `${deployResult.uploaded} uploaded, ${deployResult.simulated} simulated, ${deployResult.skipped} skipped, ` +
         `${deployResult.bytesUploaded} bytes`,
     );
   }

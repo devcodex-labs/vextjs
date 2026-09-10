@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { withProjectOwner } from "../project/owner.js";
 import {
   withArtifactGroupTransaction,
@@ -19,12 +19,16 @@ import {
 import { artifactFileKey } from "../project/artifact-scope.js";
 import { validateConfigProfileName } from "../config-profile.js";
 import {
-  assertRealPathInside,
-  assertSafeProjectOutputDirectory,
+  assertExplicitOutputDirectory,
   isPathInside,
-  normalizeSafeRelativePath,
+  canonicalProjectRoot,
+  canonicalPath,
 } from "../path-boundary.js";
 import type { VextFrontendUserConfig } from "../../frontend/contract/types.js";
+import {
+  FRONTEND_PUBLIC_MANIFEST,
+  parseFrontendPublicManifest,
+} from "../../frontend/public-artifacts.js";
 
 const LOCATION_FILE = ".vext/build-location.json";
 const IDENTITY_FILE = ".vext-build.json";
@@ -37,6 +41,7 @@ export interface BuildIdentity {
   buildId: string;
   profile: string;
   backend: "compiled" | "source";
+  frontend?: { outDir: string; buildId: string; publicManifestSha256: string };
 }
 
 export interface BuildLocation {
@@ -47,14 +52,14 @@ export interface BuildLocation {
 }
 
 function safeOutput(rootDir: string, value: string): string {
-  const output = assertSafeProjectOutputDirectory(
+  const output = assertExplicitOutputDirectory(
     rootDir,
     resolve(rootDir, value),
     "build outdir",
   );
   const metadata = join(rootDir, ".vext");
   // 后端生产清理不得包含运行态，也不得借内部 symlink 覆盖源码。
-  const real = assertRealPathInside(rootDir, output, "build outdir");
+  const real = canonicalPath(output);
   for (const protectedRoot of [
     metadata,
     ...["src", "test", "tests", "node_modules", ".git"].map((name) =>
@@ -85,8 +90,9 @@ function readIdentity(
   try {
     const bytes = readArtifactFile(
       rootDir,
-      artifactRelativePath(rootDir, file),
+      artifactRelativePath(rootDir, file, true),
       MAX_IDENTITY_BYTES,
+      true,
     );
     if (bytes === null) return undefined;
     const value = JSON.parse(bytes.toString("utf8")) as BuildIdentity;
@@ -102,9 +108,34 @@ function readIdentity(
       typeof value.profile !== "string"
     )
       throw new Error("unsupported or incomplete build identity");
-    normalizeSafeRelativePath(value.outDir, "build outdir");
+    // 外部输出以显式绝对身份存储；普通项目仍保持可部署的相对目录。
+    if (
+      artifactRelativePath(rootDir, resolve(rootDir, value.outDir), true) !==
+      value.outDir
+    )
+      throw new Error("build output reference is not canonical");
     validateConfigProfileName(value.profile, "build profile");
     safeOutput(rootDir, value.outDir);
+    if (value.frontend !== undefined) {
+      const frontend = value.frontend;
+      if (
+        !frontend ||
+        typeof frontend.outDir !== "string" ||
+        typeof frontend.buildId !== "string" ||
+        !frontend.buildId ||
+        frontend.buildId.length > 128 ||
+        typeof frontend.publicManifestSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(frontend.publicManifestSha256)
+      )
+        throw new Error("invalid frontend build identity");
+      const output = assertExplicitOutputDirectory(
+        rootDir,
+        resolve(rootDir, frontend.outDir),
+        "frontend build output",
+      );
+      if (artifactRelativePath(rootDir, output, true) !== frontend.outDir)
+        throw new Error("frontend output reference is not canonical");
+    }
     return { identity: value, bytes };
   } catch (error) {
     throw new Error(
@@ -113,22 +144,27 @@ function readIdentity(
   }
 }
 
-function readBuildOwnership(rootDir: string): Map<string, string> {
-  const realRoot = realpathSync.native(resolve(rootDir));
+function readBuildOwnership(
+  rootDir: string,
+  producer?: string,
+): Map<string, string> {
+  const realRoot = canonicalProjectRoot(rootDir);
   const manifest = parseArtifactManifest(
     readArtifactFile(
       rootDir,
       ARTIFACT_MANIFEST_FILE,
       MAX_ARTIFACT_METADATA_BYTES,
     ),
-    process.platform === "win32" ? realRoot.toLowerCase() : realRoot,
+    realRoot,
   );
   return new Map(
-    manifest.scopes.flatMap((scope) =>
-      scope.files.map(
-        (file) => [artifactFileKey(file.path), file.sha256] as const,
+    manifest.scopes
+      .filter((scope) => producer === undefined || scope.producer === producer)
+      .flatMap((scope) =>
+        scope.files.map(
+          (file) => [artifactFileKey(file.path), file.sha256] as const,
+        ),
       ),
-    ),
   );
 }
 
@@ -165,7 +201,7 @@ export function resolveBuildLocation(
   ];
   const ownershipMismatch = selected.some(({ file, bytes }) => {
     const digest = managedFiles.get(
-      artifactFileKey(artifactRelativePath(rootDir, file)),
+      artifactFileKey(artifactRelativePath(rootDir, file, true)),
     );
     return (
       digest !== undefined &&
@@ -180,12 +216,35 @@ export function resolveBuildLocation(
       marker.buildId !== identity.buildId ||
       marker.profile !== identity.profile ||
       marker.backend !== identity.backend ||
+      JSON.stringify(marker.frontend) !== JSON.stringify(identity.frontend) ||
       marker.outDir !== identity.outDir ||
       resolve(rootDir, identity.outDir) !== outDir);
+  let frontendMismatch = false;
+  if (identity?.frontend) {
+    try {
+      const file = join(
+        resolve(rootDir, identity.frontend.outDir),
+        FRONTEND_PUBLIC_MANIFEST,
+      );
+      const bytes = readArtifactFile(
+        rootDir,
+        artifactRelativePath(rootDir, file, true),
+        8 * 1024 * 1024,
+        true,
+      );
+      frontendMismatch =
+        !bytes ||
+        artifactDigest(bytes) !== identity.frontend.publicManifestSha256 ||
+        parseFrontendPublicManifest(bytes).buildId !==
+          identity.frontend.buildId;
+    } catch {
+      frontendMismatch = true;
+    }
+  }
   return {
     outDir,
     identity,
-    ...(pendingTransaction || ownershipMismatch || mismatch
+    ...(pendingTransaction || ownershipMismatch || mismatch || frontendMismatch
       ? {
           failure: pendingTransaction
             ? "an artifact transaction is pending; rebuild to recover before starting"
@@ -218,7 +277,7 @@ export function selectBuildOutput(
   return safeOutput(rootDir, override ?? recorded?.outDir ?? "dist");
 }
 
-/** 固定控制文件的旧版本迁移与后续状态写入共用产物事务；不开放任意覆盖接口。 */
+/** 固定控制文件的状态写入共用产物事务；不开放任意覆盖或历史迁移接口。 */
 async function publishBuildIdentities(
   rootDir: string,
   records: { file: string; value: BuildIdentity }[],
@@ -239,24 +298,30 @@ async function publishBuildIdentities(
         { rootDir, outputs: updates },
         async (transaction) => {
           if (!validateCurrent()) return;
-          // 先登记尚未受管的旧控制文件原字节，使后续 journal 能验证与恢复前值。
-          // 已受管文件仍受原摘要约束；外部修改不能借迁移重新认证。
-          const legacy = updates
+          // 未受管的固定控制文件也可能因中断而损坏。登记回滚原像后重建当前格式，
+          // 不解释/转换历史schema；已受管文件仍受原摘要约束，不能重新认证外部修改。
+          const owned = readBuildOwnership(rootDir, "build-state");
+          const baseline = updates
             .map((update) => ({
               ...update,
               files: update.files.flatMap((file) => {
-                const bytes = readArtifactFile(
+                const reference = artifactRelativePath(
                   rootDir,
-                  artifactRelativePath(rootDir, file.path),
-                  MAX_IDENTITY_BYTES,
+                  file.path,
+                  true,
                 );
-                return bytes === null
-                  ? []
-                  : [{ path: file.path, contents: bytes }];
+                if (owned.has(artifactFileKey(reference))) return [];
+                const contents = readArtifactFile(
+                  rootDir,
+                  reference,
+                  MAX_IDENTITY_BYTES,
+                  true,
+                );
+                return contents ? [{ path: file.path, contents }] : [];
               }),
             }))
             .filter((update) => update.files.length > 0);
-          if (legacy.length) await transaction.commit(legacy);
+          if (baseline.length) await transaction.commit(baseline);
           await transaction.commit(updates);
         },
       ),
@@ -293,7 +358,7 @@ export async function beginBuild(
   const identity: BuildIdentity = {
     schemaVersion: 1,
     status: "building",
-    outDir: relative(rootDir, safeOutput(rootDir, outDir)).replace(/\\/g, "/"),
+    outDir: artifactRelativePath(rootDir, safeOutput(rootDir, outDir), true),
     buildId: randomUUID(),
     profile: validateConfigProfileName(profile),
     backend,
@@ -311,23 +376,83 @@ export async function beginBuild(
 export async function completeBuild(
   rootDir: string,
   identity: BuildIdentity,
+  frontendOutDir?: string,
 ): Promise<void> {
-  const ready: BuildIdentity = { ...identity, status: "ready" };
   const outDir = safeOutput(rootDir, identity.outDir);
-  await publishBuildIdentities(
+  const output = frontendOutDir
+    ? assertExplicitOutputDirectory(
+        rootDir,
+        resolve(rootDir, frontendOutDir),
+        "frontend build output",
+      )
+    : undefined;
+  return withProjectOwner(
     rootDir,
-    [
-      { file: join(outDir, IDENTITY_FILE), value: ready },
-      { file: join(rootDir, LOCATION_FILE), value: ready },
-    ],
-    () => {
-      if (currentBuildIdentity(rootDir, identity).status === "failed") {
-        throw new ArtifactError(
-          "VEXT_OUTPUT_CONFLICT",
-          "A failed build must be rebuilt before completion.",
+    "build",
+    [outDir, join(rootDir, ".vext"), ...(output ? [output] : [])],
+    async () => {
+      const ready: BuildIdentity = { ...identity, status: "ready" };
+      if (output) {
+        const file = artifactRelativePath(
+          rootDir,
+          join(output, FRONTEND_PUBLIC_MANIFEST),
+          true,
         );
+        const bytes = readArtifactFile(rootDir, file, 8 * 1024 * 1024, true);
+        const ownership = readBuildOwnership(rootDir, "frontend");
+        if (
+          !bytes ||
+          ownership.get(artifactFileKey(file)) !== artifactDigest(bytes)
+        )
+          throw new ArtifactError(
+            "VEXT_OUTPUT_UNVERIFIED",
+            "Frontend public manifest is missing or differs from its recorded producer.",
+          );
+        const publicManifest = parseFrontendPublicManifest(bytes);
+        const renderFile = artifactRelativePath(
+          rootDir,
+          join(output, "render-manifest.json"),
+          true,
+        );
+        const renderBytes = readArtifactFile(
+          rootDir,
+          renderFile,
+          8 * 1024 * 1024,
+          true,
+        );
+        if (
+          !renderBytes ||
+          ownership.get(artifactFileKey(renderFile)) !==
+            artifactDigest(renderBytes) ||
+          JSON.parse(renderBytes.toString("utf8"))?.buildId !==
+            publicManifest.buildId
+        )
+          throw new ArtifactError(
+            "VEXT_OUTPUT_CONFLICT",
+            "Frontend render/public manifests belong to different builds or differ from their recorded producer.",
+          );
+        ready.frontend = {
+          outDir: artifactRelativePath(rootDir, output, true),
+          buildId: publicManifest.buildId,
+          publicManifestSha256: artifactDigest(bytes),
+        };
       }
-      return true;
+      await publishBuildIdentities(
+        rootDir,
+        [
+          { file: join(outDir, IDENTITY_FILE), value: ready },
+          { file: join(rootDir, LOCATION_FILE), value: ready },
+        ],
+        () => {
+          if (currentBuildIdentity(rootDir, identity).status === "failed") {
+            throw new ArtifactError(
+              "VEXT_OUTPUT_CONFLICT",
+              "A failed build must be rebuilt before completion.",
+            );
+          }
+          return true;
+        },
+      );
     },
   );
 }

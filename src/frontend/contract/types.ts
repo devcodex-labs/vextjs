@@ -159,6 +159,8 @@ export type VextFrontendDeployUploadAdapterName =
 
 export interface VextFrontendDeployUploadAdapter {
   name: string;
+  /** 稳定存储目标身份（账户/桶/namespace 等）；不要包含凭据或公共 URL。缺失时禁用跨运行跳过。 */
+  targetIdentity?: string;
   upload(
     input: VextFrontendDeployUploadAdapterInput,
   ): Promise<VextFrontendDeployUploadAdapterResult>;
@@ -169,6 +171,7 @@ export interface VextFrontendDeployUploadAdapterInput {
   sourcePath: string;
   uploadKey: string;
   dryRun: boolean;
+  signal?: AbortSignal;
 }
 
 export interface VextFrontendDeployUploadAdapterResult {
@@ -425,6 +428,7 @@ export interface ResolvedVextFrontendSpaFallbackScope {
 }
 
 export interface ResolvedVextFrontendConfig {
+  projectRoot: string;
   enabled: boolean;
   framework: VextFrontendFramework;
   root: string;
@@ -565,6 +569,37 @@ export interface VextSchemaIRV1 {
   schema: Record<string, unknown>;
   digest: string;
   ref?: string;
+  /** 静态源码证据；不参与 schema.digest，也不作为运行时配置已知的证明。 */
+  projection?: {
+    completeness: "complete";
+    validator: "default-schema-dsl";
+    sources: Record<
+      string,
+      {
+        rootId: string;
+        file: string;
+        start: number;
+        end: number;
+        symbols: readonly string[];
+      }
+    >;
+    fields: readonly VextSchemaFieldProjectionV1[];
+  };
+}
+
+export interface VextSchemaFieldProjectionV1 {
+  /** JSON Pointer，相对本位置的 schema 数据对象。 */
+  path: string;
+  required: boolean;
+  nullable: boolean | "unknown";
+  defaultValue?: unknown;
+  input: {
+    schema?: Record<string, unknown>;
+    completeness: "complete" | "unknown";
+    reason?: string;
+  };
+  output: { schema: Record<string, unknown>; completeness: "complete" };
+  coercion: "schema-dsl-smart" | "none";
 }
 
 export interface VextRouteResponseSchemaV1 {
@@ -698,6 +733,8 @@ export interface VextFrontendDeployManifestAsset {
 export interface VextFrontendDeployManifest {
   schemaVersion: 1;
   kind: "frontend-deploy-manifest";
+  /** 构建器清单绑定公开产物代次；手动清单未提供时仅能校验资源字节。 */
+  buildId?: string;
   generatedAt: string;
   mode: VextFrontendMode;
   outDir: string;
@@ -718,11 +755,15 @@ export interface VextFrontendDeployPlanItem {
   asset: VextFrontendDeployManifestAsset;
   sourcePath: string;
   status: "upload" | "skip";
-  reason: "missing-state" | "hash-changed" | "unchanged";
+  reason: "missing-state" | "hash-changed" | "unchanged" | "unknown-target";
   previousSha256?: string;
 }
 
 export interface VextFrontendDeployPlan {
+  targetId: string | null;
+  simulation: boolean;
+  stateDigest: string | null;
+  manifestDigest: string;
   manifestPath: string;
   outDir: string;
   items: VextFrontendDeployPlanItem[];
@@ -736,6 +777,10 @@ export interface VextFrontendDeployPlan {
 }
 
 export interface VextFrontendDeployResult {
+  targetId: string | null;
+  simulated: number;
+  unconfirmed: number;
+  cancelled: boolean;
   manifestPath: string;
   stateFile: string;
   dryRun: boolean;
@@ -745,7 +790,14 @@ export interface VextFrontendDeployResult {
   assets: Array<{
     file: string;
     uploadKey: string;
-    status: "uploaded" | "skipped" | "planned";
+    status:
+      | "uploaded"
+      | "skipped"
+      | "planned"
+      | "simulated"
+      | "unconfirmed"
+      | "cancelled";
+    error?: string;
     url?: string;
   }>;
 }
@@ -771,6 +823,7 @@ export interface VextFrontendErrorPageRegistryEntry {
 export interface VextFrontendLocaleRegistryEntry {
   locale: string;
   file: string;
+  namespace?: string;
 }
 
 export type VextFrontendAssetGroup =

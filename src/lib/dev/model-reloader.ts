@@ -209,12 +209,13 @@ export async function reloadModels(
   app: ModelReloaderApp,
   outDir: string,
   invalidated: Set<string>,
+  projectRoot?: string,
 ): Promise<ModelReloadResult> {
   const config = app.config?.database?.models;
   if (config?.autoRegister === false) {
     return { reloaded: 0, unchanged: 0, reloadedNames: [] };
   }
-  const modelsDir = resolveModelsDirectory(outDir, config?.dir);
+  const modelsDir = resolveModelsDirectory(outDir, config?.dir, projectRoot);
   const modelsLabel =
     path.relative(outDir, modelsDir).replaceAll("\\", "/") || ".";
 

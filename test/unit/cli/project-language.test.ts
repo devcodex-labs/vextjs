@@ -54,20 +54,25 @@ describe("project language", () => {
     },
   );
 
-  it("does not mistake declarations, frontend, tests or standalone preloads for backend TS", () => {
+  it("does not mistake declarations, tests or standalone preloads for backend TS", () => {
     const root = project("default.js");
     write(root, "tsconfig.json", "{}");
     for (const file of [
       "types.d.ts",
       "types.d.mts",
       "types.d.cts",
-      "client/page.ts",
       "routes/a.test.ts",
       "preload/instrument.ts",
     ]) {
       write(root, `src/${file}`, "export {};");
     }
     expect(detectProject(root).language).toBe("js");
+  });
+
+  it("keeps a client-named backend directory when frontend was not enabled", () => {
+    const root = project("default.js");
+    write(root, "src/client/page.ts", "export const backendHelper = 1;");
+    expect(detectProject(root).language).toBe("ts");
   });
 
   it.each(["mts", "cts"])(

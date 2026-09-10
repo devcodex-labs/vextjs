@@ -9,6 +9,7 @@ import {
 } from "./types.js";
 
 export const DEFAULT_SOURCE_LIMITS: Readonly<SourceLimits> = Object.freeze({
+  maxScanEntries: 50_000,
   maxFiles: 5000,
   maxFileBytes: 2 * 1024 * 1024,
   maxTotalBytes: 64 * 1024 * 1024,
@@ -126,9 +127,47 @@ export function copySourceRoots(
       );
     }
     paths.add(realPath);
+    if (
+      root.sourceExports !== undefined &&
+      (!root.packageName || root.kind !== "shared")
+    )
+      throw new SourceViewError(
+        "VEXT_SOURCE_UNVERIFIED",
+        "Source exports require a named shared package.",
+      );
+    if (
+      root.packageName !== undefined &&
+      !/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/iu.test(root.packageName)
+    )
+      throw new SourceViewError(
+        "VEXT_SOURCE_UNVERIFIED",
+        "Invalid shared package name.",
+      );
+    const sourceExports =
+      root.sourceExports === undefined
+        ? undefined
+        : Object.freeze(
+            Object.fromEntries(
+              Object.entries(root.sourceExports).map(([subpath, file]) => {
+                if (subpath !== ".")
+                  normalizeSourcePath(
+                    subpath.startsWith("./") ? subpath.slice(2) : "",
+                  );
+                return [subpath, normalizeSourcePath(file)];
+              }),
+            ),
+          );
     copied.set(
       root.id,
-      Object.freeze({ id: root.id, realPath, kind: root.kind }),
+      Object.freeze({
+        id: root.id,
+        realPath,
+        kind: root.kind,
+        ...(root.packageName === undefined
+          ? {}
+          : { packageName: root.packageName }),
+        ...(sourceExports === undefined ? {} : { sourceExports }),
+      }),
     );
   }
   return copied;
@@ -168,7 +207,7 @@ export function assertSourceBudget(
   ) {
     throw new SourceViewError(
       "VEXT_SOURCE_LIMIT",
-      "Source inventory exceeds its file count or total byte budget.",
+      `Source inventory is incomplete: file count or total byte budget exceeded (${count}/${limits.maxFiles} files, ${bytes}/${limits.maxTotalBytes} bytes). Adjust VEXT_SOURCE_MAX_FILES or VEXT_SOURCE_MAX_TOTAL_BYTES, or pass explicit source limits.`,
     );
   }
 }

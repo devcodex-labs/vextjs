@@ -20,6 +20,10 @@
  */
 
 import { createRequire } from "node:module";
+import { createRuntime } from "schema-dsl/runtime";
+import type { SchemaDslRuntime } from "schema-dsl/runtime";
+import type { LocaleMessages } from "./i18n/messages.js";
+import { canonicalLocale } from "./i18n/catalog.js";
 import {
   dsl,
   validate as schemaDslValidate,
@@ -497,6 +501,100 @@ function configure(options: Parameters<typeof dsl.config>[0]): void {
   dsl.config(options);
   configureCjsSchemaDsl(options);
   clearCompiledSchemaCache();
+}
+
+export interface AppSchemaRuntime {
+  replaceMessages(locales: LocaleMessages): void;
+  validate: SchemaDslRuntime["validate"];
+  createI18nError: typeof createI18nError;
+  dispose(): void;
+}
+
+/** 编译仍使用可信全局DSL扩展；消息、校验缓存和默认语言归当前app所有。 */
+export function createAppSchemaRuntime(
+  defaultLocale = "en-US",
+): AppSchemaRuntime {
+  defaultLocale = canonicalLocale(defaultLocale) ?? defaultLocale;
+  let locales: LocaleMessages = Object.create(null);
+  let disposed = false;
+  const runtimeFor = (messages: LocaleMessages) =>
+    createRuntime({
+      locale: defaultLocale,
+      messageProvider: ({ key, locale, fallback }) => {
+        const entry = messages[locale]?.[key] ?? messages[defaultLocale]?.[key];
+        return typeof entry === "string" ||
+          (entry &&
+            typeof entry === "object" &&
+            "message" in entry &&
+            typeof entry.message === "string")
+          ? (entry as import("schema-dsl/runtime").SchemaDslMessageValue)
+          : fallback;
+      },
+    });
+  let runtime = runtimeFor(locales);
+  return {
+    replaceMessages(candidate) {
+      if (disposed) throw new Error("[vextjs] App schema runtime is disposed.");
+      // 候选完整复制并构造成功后才切换；旧请求使用的字典不被逐项修改。
+      const messages = structuredClone(candidate);
+      const next = runtimeFor(messages);
+      const previous = runtime;
+      runtime = next;
+      locales = messages;
+      previous.dispose();
+    },
+    validate(schema, data, options) {
+      return runtime.validate(
+        schema,
+        data,
+        options?.locale
+          ? {
+              ...options,
+              locale: canonicalLocale(options.locale) ?? options.locale,
+            }
+          : options,
+      );
+    },
+    createI18nError(code, paramsOrLocale, statusCode, locale) {
+      const requestedLocale =
+        typeof paramsOrLocale === "string"
+          ? paramsOrLocale
+          : (locale ?? defaultLocale);
+      const selectedLocale =
+        canonicalLocale(requestedLocale) ?? requestedLocale;
+      const params = getI18nParams(paramsOrLocale);
+      const message =
+        locales[selectedLocale]?.[code] ?? locales[defaultLocale]?.[code];
+      const declaredStatus =
+        message && typeof message === "object" && "statusCode" in message
+          ? message.statusCode
+          : undefined;
+      const resolvedStatus =
+        statusCode ??
+        (typeof declaredStatus === "number" &&
+        Number.isInteger(declaredStatus) &&
+        declaredStatus >= 100 &&
+        declaredStatus <= 599
+          ? declaredStatus
+          : undefined);
+      const error = runtime.createI18nError(
+        code,
+        params,
+        resolvedStatus,
+        selectedLocale,
+      );
+      if (params)
+        error.message = renderLegacyMustacheParams(error.message, params);
+      return error;
+    },
+    dispose() {
+      if (!disposed) {
+        disposed = true;
+        runtime.dispose();
+        locales = Object.create(null);
+      }
+    },
+  };
 }
 
 // ── 统一导出 ────────────────────────────────────────────────

@@ -458,6 +458,7 @@ export async function createTestApp(
       finalConfig.locale as
         | import("../types/app.js").VextLocaleConfig
         | undefined,
+      app,
     ),
   );
   if (finalConfig.requestId?.enabled !== false) {

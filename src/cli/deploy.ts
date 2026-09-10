@@ -6,18 +6,24 @@ import {
   printConfigProfileWarning,
   resolveConfigProfile,
 } from "../lib/config-profile.js";
-import { deployFrontendAssets } from "../frontend/deploy/index.js";
+import {
+  deployFrontendAssets,
+  FrontendDeployError,
+} from "../frontend/deploy/index.js";
+import {
+  resolveBuildLocation,
+  withBuildFrontendOutDir,
+} from "../lib/build/build-location.js";
 import { resolveFrontendConfig } from "../frontend/tooling/config-resolver.js";
 import type {
   ResolvedVextFrontendConfig,
   VextFrontendDeployUploadAdapterName,
-  VextFrontendUserConfig,
 } from "../frontend/contract/types.js";
 import { readRequiredOptionValue } from "./utils/command-args.js";
-import { markUniqueOption } from "./utils/option-occurrence.js";
+import { assertUniqueOption } from "./utils/option-occurrence.js";
 
 interface DeployAssetsCommandOptions {
-  outdir: string;
+  outdir?: string;
   manifest?: string;
   dryRun: boolean;
   adapter?: VextFrontendDeployUploadAdapterName;
@@ -25,6 +31,7 @@ interface DeployAssetsCommandOptions {
   prefix?: string;
   stateFile?: string;
   configProfile?: string;
+  json?: boolean;
 }
 
 export async function deployCommand(args: string[] = []): Promise<void> {
@@ -33,15 +40,23 @@ export async function deployCommand(args: string[] = []): Promise<void> {
     printDeployHelp();
     process.exit(0);
   }
-  if (subcommand !== "assets") {
-    console.error(`[vextjs] Unknown deploy command: "${subcommand ?? ""}"\n`);
-    printDeployHelp();
-    process.exit(1);
-  }
   try {
+    if (subcommand !== "assets") {
+      throw new Error(`[vextjs] Unknown deploy command: "${subcommand ?? ""}"`);
+    }
     await deployAssetsCommand(args.slice(1));
   } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
+    if (args.includes("--json"))
+      console.log(
+        JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof FrontendDeployError
+            ? { result: error.result }
+            : {}),
+        }),
+      );
+    else console.error(error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }
@@ -51,22 +66,38 @@ async function deployAssetsCommand(args: string[]): Promise<void> {
   const resolvedConfigProfile = resolveCliConfigProfile(options);
   printConfigProfileWarning(resolvedConfigProfile);
   const rootDir = detectProject(path.resolve(process.cwd())).rootDir;
-  const configDir = resolveConfigDir(rootDir, options.outdir);
+  const location = resolveBuildLocation(rootDir, options.outdir);
+  if (location.failure) throw new Error(`[vextjs] ${location.failure}`);
+  const profile =
+    resolvedConfigProfile.source === "default"
+      ? (location.identity?.profile ?? resolvedConfigProfile.profile)
+      : resolvedConfigProfile.profile;
+  const builtConfigDir = path.join(location.outDir, "config");
+  const isBuilt = existsSync(builtConfigDir);
+  const configDir = isBuilt ? builtConfigDir : path.join(rootDir, "src/config");
   const config = await loadConfig(configDir, {
     rootDir,
     command: "build",
-    isBuilt: configDir.includes(`${path.sep}${options.outdir}${path.sep}`),
+    isBuilt,
     mode: "production",
-    configProfile: resolvedConfigProfile.profile,
+    configProfile: profile,
   });
-  const frontend = withCliFrontendOutDir(config.frontend, options.outdir);
+  const frontend = withBuildFrontendOutDir(config.frontend, location.outDir);
   const resolved = withDeployCliOverrides(
     resolveFrontendConfig(frontend, { rootDir, mode: "production" }),
     rootDir,
     options,
   );
   if (!resolved.enabled) {
-    console.log("[vextjs] frontend deploy skipped: frontend is disabled");
+    console.log(
+      options.json
+        ? JSON.stringify({
+            ok: true,
+            status: "not-present",
+            reason: "frontend-disabled",
+          })
+        : "[vextjs] frontend deploy skipped: frontend is disabled",
+    );
     return;
   }
   const manifestPath = options.manifest
@@ -80,18 +111,39 @@ async function deployAssetsCommand(args: string[]): Promise<void> {
       )}\nRun "vext build" first, or pass --manifest <path>.`,
     );
   }
-  const result = await deployFrontendAssets({
-    config: resolved,
-    manifestPath,
-    dryRun: options.dryRun,
-  });
+  const controller = new AbortController();
+  const cancel = () =>
+    controller.abort(new Error("Frontend deployment cancelled by signal."));
+  process.once("SIGINT", cancel);
+  process.once("SIGTERM", cancel);
+  let result;
+  try {
+    result = await deployFrontendAssets({
+      config: resolved,
+      manifestPath,
+      dryRun: resolved.deploy.upload.dryRun,
+      configProfile: profile,
+      signal: controller.signal,
+    });
+  } finally {
+    process.removeListener("SIGINT", cancel);
+    process.removeListener("SIGTERM", cancel);
+  }
+  if (options.json) {
+    console.log(JSON.stringify({ ok: true, result }));
+    return;
+  }
   console.log(
-    `[vextjs] frontend assets ${result.dryRun ? "planned" : "uploaded"}`,
+    `[vextjs] frontend assets ${result.dryRun ? "planned" : result.simulated ? "simulated" : "uploaded"}`,
   );
   console.log(`[vextjs] manifest: ${path.relative(rootDir, manifestPath)}`);
   console.log(`[vextjs] state:    ${path.relative(rootDir, result.stateFile)}`);
   console.log(`[vextjs] uploaded: ${result.uploaded}`);
   console.log(`[vextjs] skipped:  ${result.skipped}`);
+  console.log(`[vextjs] simulated: ${result.simulated}`);
+  console.log(
+    `[vextjs] target: ${result.targetId ?? "unknown (incremental state disabled)"}`,
+  );
   console.log(`[vextjs] bytes:    ${result.bytesUploaded}`);
 }
 
@@ -99,7 +151,7 @@ export function parseDeployAssetsArgs(
   args: string[],
 ): DeployAssetsCommandOptions {
   const options: DeployAssetsCommandOptions = {
-    outdir: process.env.VEXT_BUILD_OUTDIR || "dist",
+    outdir: process.env.VEXT_BUILD_OUTDIR || undefined,
     dryRun: false,
   };
   const seenOptions = new Set<string>();
@@ -121,7 +173,7 @@ export function parseDeployAssetsArgs(
         }
         break;
       case "--config":
-        markUniqueOption(seenOptions, "--config");
+        assertUniqueOption(seenOptions, "--config");
         {
           const parsed = readDeployOptionValue(args, i, arg, "<name>");
           options.configProfile = parsed.value;
@@ -159,21 +211,18 @@ export function parseDeployAssetsArgs(
       case "--dry-run":
         options.dryRun = true;
         break;
+      case "--json":
+        options.json = true;
+        break;
       case "--help":
       case "-h":
         printDeployAssetsHelp();
         process.exit(0);
         break;
       default:
-        if (arg?.startsWith("--")) {
-          console.error(`[vextjs] Unknown option: "${arg}"\n`);
-          printDeployAssetsHelp();
-          process.exit(1);
-        }
-        console.error(`[vextjs] Unknown argument: "${arg}"\n`);
-        printDeployAssetsHelp();
-        process.exit(1);
-        break;
+        throw new Error(
+          `[vextjs] Unknown ${arg?.startsWith("-") ? "option" : "argument"}: "${arg}"`,
+        );
     }
   }
   return options;
@@ -182,40 +231,12 @@ export function parseDeployAssetsArgs(
 function resolveCliConfigProfile(
   options: DeployAssetsCommandOptions,
 ): ReturnType<typeof resolveConfigProfile> {
-  try {
-    return resolveConfigProfile({
-      cliProfile: options.configProfile,
-      env: process.env,
-      command: "build",
-      displayCommand: "deploy assets",
-    });
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
-}
-
-function resolveConfigDir(rootDir: string, outdir: string): string {
-  const builtConfigDir = path.join(rootDir, outdir, "config");
-  if (existsSync(builtConfigDir)) return builtConfigDir;
-  return path.join(rootDir, "src", "config");
-}
-
-function withCliFrontendOutDir(
-  frontend: VextFrontendUserConfig | undefined,
-  outdir: string,
-): VextFrontendUserConfig | undefined {
-  if (outdir === "dist" || frontend === undefined || frontend === false) {
-    return frontend;
-  }
-  const clientOutDir = path.join(outdir, "client");
-  if (frontend === true) {
-    return { enabled: true, outDir: clientOutDir };
-  }
-  if (!frontend.outDir) {
-    return { ...frontend, outDir: clientOutDir };
-  }
-  return frontend;
+  return resolveConfigProfile({
+    cliProfile: options.configProfile,
+    env: process.env,
+    command: "build",
+    displayCommand: "deploy assets",
+  });
 }
 
 function withDeployCliOverrides(
@@ -249,12 +270,7 @@ function readDeployOptionValue(
   optionName: string,
   valueLabel: string,
 ) {
-  try {
-    return readRequiredOptionValue(args, index, optionName, valueLabel);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
+  return readRequiredOptionValue(args, index, optionName, valueLabel);
 }
 
 function normalizeDeployPrefix(value: string): string {
@@ -287,7 +303,7 @@ function printDeployAssetsHelp(): void {
   Options that take values require a non-option value.
 
   Options:
-    --outdir <path>       Build output directory (default: "dist")
+    --outdir <path>       Build output directory (default: recorded build location, then "dist")
     --config <name>       Load config profile for frontend deploy settings
     --manifest <path>     Deploy manifest path
     --adapter <name>      Upload adapter: filesystem, mock, or custom adapter name
@@ -295,6 +311,7 @@ function printDeployAssetsHelp(): void {
     --prefix <path>       Upload key prefix
     --state-file <path>   Incremental deploy state file
     --dry-run             Print upload plan without writing assets
+    --json                Print the result and confirmed/unknown per-asset outcomes as JSON
     -h, --help            Show this help message
 
   Examples:

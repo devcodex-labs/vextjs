@@ -100,11 +100,14 @@
     "verify:package-composition": "node scripts/validation/verify-package-composition.mjs",
     "verify:adapters": "node test/verify-adapters-startup.mjs",
     "verify:monorepo": "node test/verify-monorepo-startup.mjs",
+    "verify:installed-workspaces": "node test/verify-installed-workspaces.mjs",
+    "verify:examples": "node test/verify-examples.mjs",
     "verify:benchmark-deps": "node test/benchmark/verify-latest-dependencies.mjs",
     "verify:schema-v3": "node scripts/validation/check-schema-v3-adaptation.mjs",
     "verify:pack-install": "node scripts/validation/verify-packed-install.mjs",
     "verify:external-evidence": "node scripts/validation/verify-external-evidence.mjs",
     "verify:docs-contract": "node scripts/validation/verify-documentation-contract.mjs",
+    "verify:public-surface": "node scripts/validation/verify-public-surface.mjs",
     "verify:ci-contract": "node scripts/validation/verify-ci-contract.mjs",
     "verify:release-ancestry": "node scripts/verify-release-ancestry.mjs",
     "verify:response-serializer": "node scripts/validation/benchmark-response-serialization.mjs"
@@ -140,7 +143,7 @@
   },
   "homepage": "https://devcodex-labs.github.io/vextjs/",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "dependencies": {
     "esbuild": "0.28.2",
@@ -149,8 +152,10 @@
     "flex-rate-limit": "2.2.5",
     "import-meta-resolve": "4.2.0",
     "jsonc-parser": "3.3.1",
+    "magic-string": "1.3.1",
     "micromatch": "4.0.8",
     "monsqlize": "3.3.0",
+    "oxc-parser": "0.149.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-refresh": "0.18.0",

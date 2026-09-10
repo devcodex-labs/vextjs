@@ -5,6 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   runDoctor,
+  analyzeDoctorSourceView,
   type DoctorResult,
 } from "../../../src/tooling/doctor/index.js";
 import {
@@ -42,6 +43,62 @@ afterEach(() => {
 });
 
 describe("Doctor source identity", () => {
+  it("analyzes every supported static domain from one sealed input without disk access", async () => {
+    const root = fixture();
+    fs.writeFileSync(path.join(root, "src/routes/index.ts"), source("/probe"));
+    fs.mkdirSync(path.join(root, "src/services"));
+    fs.writeFileSync(
+      path.join(root, "src/services/a.ts"),
+      "export default app => ({ run: () => app.services.b.run() });",
+    );
+    fs.writeFileSync(
+      path.join(root, "src/services/b.ts"),
+      "export default app => ({ run: () => app.services.a.run() });",
+    );
+    const view = await collectProjectSources(root, [
+      "route",
+      "service",
+      "plugin",
+    ]);
+    const open = vi.spyOn(fs, "openSync").mockImplementation(() => {
+      throw new Error("unexpected disk read");
+    });
+    const result = analyzeDoctorSourceView(root, view, { target: "all" });
+    expect(result.profile).toBe("static-project");
+    expect(result.ok).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ group: "services", level: "error" }),
+    );
+    expect(result.domains).toContainEqual(
+      expect.objectContaining({ domain: "plugins", status: "not-present" }),
+    );
+    expect(result.domains).toContainEqual(
+      expect.objectContaining({
+        domain: "configuration",
+        status: "unsupported",
+        required: false,
+      }),
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("keeps dynamic services incomplete without claiming a successful project validation", async () => {
+    const root = fixture();
+    fs.mkdirSync(path.join(root, "src/services"));
+    fs.writeFileSync(
+      path.join(root, "src/services/dynamic.ts"),
+      "export default app => ({ run: key => app.services[key].run() });",
+    );
+    const result = await runDoctor({ rootDir: root, target: "all" });
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.domains).toContainEqual(
+      expect.objectContaining({ domain: "services", status: "incomplete" }),
+    );
+    expect(fs.existsSync(path.join(root, ".vext"))).toBe(false);
+  });
+
   it("never publishes routes with a fingerprint from different source bytes", async () => {
     const root = fixture();
     const file = path.join(root, "src/routes/index.ts");

@@ -351,6 +351,8 @@ Proxy request: options > target (config.fetch.proxy[] single item) > global conf
 
 ### Timeout
 
+Ordinary `app.fetch` clears its timeout when response headers arrive, allowing a slow body to finish. The caller's `init.signal` or `Request.signal` continues to cancel body consumption. Each retry has a new attempt timer. The `app.fetch.proxy` timeout also covers forwarding the upstream body, and a disconnected client cancels the upstream request.
+
 - Implemented using `AbortController` + `setTimeout`
 - `Error` is thrown after timeout, message format: `[app.fetch] GET https://... timed out after 10000ms`
 - If `init.signal` is passed in at the same time, it will be merged with the timeout signal - any trigger will abort the request

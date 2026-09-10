@@ -31,7 +31,12 @@ function write(relative: string, bytes: string) {
 }
 function compiler(mode: "dev" | "build") {
   const outDir = path.join(root, mode === "dev" ? ".vext/dev" : "dist");
-  const production = new BuildCompiler({ rootDir: root, srcDir, outDir });
+  const production = new BuildCompiler({
+    rootDir: root,
+    srcDir,
+    outDir,
+    frontend: { enabled: true },
+  });
   return {
     outDir,
     async compile() {
@@ -43,6 +48,7 @@ function compiler(mode: "dev" | "build") {
         dev = new DevCompiler({
           srcDir,
           outDir,
+          frontend: { enabled: true },
           tsconfig: path.join(root, "tsconfig.json"),
         });
         await dev.start();

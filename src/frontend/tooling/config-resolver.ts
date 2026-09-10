@@ -25,7 +25,7 @@ import {
 } from "../contract/seo-normalization.js";
 import {
   assertPathInside,
-  assertSafeProjectOutputDirectory,
+  assertExplicitOutputDirectory,
   normalizeSafeRelativePath,
 } from "../../lib/path-boundary.js";
 
@@ -71,7 +71,7 @@ export function resolveFrontendConfig(
     typeof styles.jscss === "boolean"
       ? { enabled: styles.jscss }
       : (styles.jscss ?? {});
-  assertSafeProjectOutputDirectory(
+  assertExplicitOutputDirectory(
     options.rootDir,
     outDir,
     "config.frontend.outDir",
@@ -108,10 +108,9 @@ export function resolveFrontendConfig(
     "es2022",
   );
   const serverBuild = build.server ?? {};
-  const serverOutFile = resolveProjectPath(
+  const serverOutFile = path.resolve(
     options.rootDir,
     serverBuild.outFile ?? path.join(outDir, "server", "renderer.cjs"),
-    "config.frontend.build.server.outFile",
   );
   assertPathInside(
     outDir,
@@ -142,6 +141,7 @@ export function resolveFrontendConfig(
   );
 
   return {
+    projectRoot: path.resolve(options.rootDir),
     enabled,
     framework: raw?.framework ?? "react",
     root,

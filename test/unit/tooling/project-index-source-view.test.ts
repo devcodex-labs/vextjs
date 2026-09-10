@@ -48,6 +48,58 @@ afterEach(() => {
 });
 
 describe("project index source views", () => {
+  it("uses AST keys for nested declarations and actual lifecycle registrations only", async () => {
+    const root = fixture();
+    write(
+      root,
+      "src/plugins/probe.ts",
+      `
+import { defineAppExtensions as declare, definePlugin as plugin } from "vextjs";
+// export const appExtensions = defineAppExtensions<{ fake: string }>();
+export const appExtensions = declare<{ nested: { data: { count: number } }; after: string }>();
+function setup(app) { app.extend("outside", 1); }
+export default plugin({ name: "probe", setup(app) {
+  const value = { text: "fakeMethod() { app.extend('imaginary', false) }" };
+  app.extend("actual", value);
+} });`,
+    );
+    const index = await buildProjectIndex(root);
+    expect(index.appExtensions.map((item) => item.propertyKey)).toEqual([
+      "actual",
+      "after",
+      "nested",
+    ]);
+    expect(
+      index.appExtensions.find((item) => item.propertyKey === "actual")
+        ?.inferredTypeText,
+    ).toBe("{ text: string; }");
+    expect(index.appExtensionIncompleteFiles).toEqual([]);
+  });
+
+  it("keeps conditional/computed registration incomplete without executing plugin code", async () => {
+    const root = fixture();
+    const file = "src/plugins/dynamic.ts";
+    write(
+      root,
+      file,
+      `import { definePlugin } from "vextjs";
+throw new Error("must not execute");
+export default definePlugin({ name: "dynamic", setup(app) {
+  if (process.env.EXTRA) app.extend("conditional", true);
+  app.extend(process.env.KEY, 1);
+} });`,
+    );
+    const index = await buildProjectIndex(root);
+    expect(index.appExtensionIncompleteFiles).toEqual([path.join(root, file)]);
+    expect(index.appExtensions).toEqual([
+      expect.objectContaining({
+        propertyKey: "conditional",
+        confidence: "low",
+        inferredTypeText: "unknown",
+      }),
+    ]);
+  });
+
   it("retains the indexed service generation when disk changes before dependency analysis", async () => {
     const root = fixture();
     write(
@@ -229,6 +281,71 @@ describe("project index source views", () => {
       buildProjectIndexFromSourceView(root, view, { rootId: "first" }),
     ).toThrow();
   });
+
+  it("does not emit unbound local types or attest app aliases as complete", async () => {
+    const root = fixture();
+    write(
+      root,
+      "src/plugins/extra.ts",
+      `import { definePlugin } from "vextjs";
+      interface Local { value: number }
+      export default definePlugin({ setup(app) {
+        app.extend("local", { get(value: Local): Local { return value; } });
+        const alias = app;
+        alias.extend("hidden", 1);
+      } });`,
+    );
+    const index = await buildProjectIndex(root);
+    expect(index.appExtensionIncompleteFiles).toEqual([
+      path.join(root, "src/plugins/extra.ts"),
+    ]);
+    expect(index.appExtensions).toEqual([
+      expect.objectContaining({
+        propertyKey: "local",
+        inferredTypeText: "unknown",
+        confidence: "low",
+      }),
+    ]);
+    const draft = createTypegenDrafts(index, {
+      generateAppExtensions: true,
+      generateServices: false,
+    });
+    expect(draft.complete).toBe(false);
+    expect(draft.files.map((file) => file.content).join("\n")).not.toContain(
+      "value: Local",
+    );
+    expect(fs.existsSync(path.join(root, ".vext"))).toBe(false);
+  });
+
+  it.each([
+    "mutate(value)",
+    "mutate({ wrapper: value })",
+    "const wrapper = { value }; mutate(wrapper)",
+  ])(
+    "does not attest an escaped plugin extension value: %s",
+    async (mutation) => {
+      const root = fixture();
+      write(
+        root,
+        "src/plugins/escape.ts",
+        `import { definePlugin } from "vextjs"; export default definePlugin({ setup(app) { const value = { name: "before" }; ${mutation}; app.extend("extra", value); } });`,
+      );
+      const index = await buildProjectIndex(root);
+      expect(index.appExtensions).toEqual([
+        expect.objectContaining({
+          propertyKey: "extra",
+          inferredTypeText: "unknown",
+          confidence: "low",
+        }),
+      ]);
+      expect(
+        createTypegenDrafts(index, {
+          generateAppExtensions: true,
+          generateServices: false,
+        }).complete,
+      ).toBe(false);
+    },
+  );
 
   it("reads each source once during actual typegen and never executes project modules", async () => {
     const root = fixture();

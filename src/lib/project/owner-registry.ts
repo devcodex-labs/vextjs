@@ -31,6 +31,8 @@ export interface OwnerIdentity {
 export interface OwnerRecord {
   identity: OwnerIdentity;
   participants: OwnerIdentity[];
+  /** 真实输出路径；登记与重叠检查在同一个registry互斥中提交。 */
+  outputs?: string[];
 }
 
 const MAX_REGISTRY_BYTES = 1024 * 1024;
@@ -280,6 +282,15 @@ export async function withOwnerRegistry<T>(
             item &&
             isOwnerIdentity(item.identity) &&
             item.identity.purpose !== "worker" &&
+            (item.outputs === undefined ||
+              (Array.isArray(item.outputs) &&
+                item.outputs.length <= 64 &&
+                item.outputs.every(
+                  (output) =>
+                    typeof output === "string" &&
+                    path.isAbsolute(output) &&
+                    !output.includes("\0"),
+                ))) &&
             Array.isArray(item.participants) &&
             item.participants.length <= 16 &&
             item.participants.every(

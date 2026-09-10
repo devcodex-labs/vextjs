@@ -19,7 +19,7 @@ hello-world/
 └── README.md                # 本文件
 ```
 
-本示例在 `package.json` 中使用 `"vextjs": "file:../.."` 消费当前仓库。首次运行前先安装依赖：
+本示例在 `package.json` 中使用 `"vextjs": "file:../.."` 消费当前仓库。先在仓库根完成 `npm ci` 和 `npm run build`，再安装示例依赖：
 
 ```bash
 cd examples/hello-world
@@ -37,7 +37,7 @@ npm start
 
 ### 生产模式（`vext start`）
 
-生产模式使用编译后的代码运行，适用于部署环境。
+本示例是 JavaScript 源模式；tsconfig 用于 checkJs，不改变运行模式。TypeScript 应用则先由框架 build 生成生产输出。
 
 **方式 1 — CLI 命令（推荐）：**
 

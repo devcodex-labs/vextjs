@@ -3,6 +3,7 @@ import { assertRealPathInside, isPathInside } from "../path-boundary.js";
 
 /** 仅接收已解析的配置值；不加载配置模块，也不创建目录。 */
 export interface FrontendLayoutInput {
+  enabled?: boolean;
   root?: string;
   pages?: { dir?: string; document?: string; errorDir?: string };
   componentsDir?: string;
@@ -64,10 +65,69 @@ export interface FrontendWatchLayout {
   frontendFiles: string[];
 }
 
+export interface BackendWatchDirectory {
+  path: string;
+  action: "soft" | "cold";
+}
+
+export interface ProjectWatchLayout extends FrontendWatchLayout {
+  backendDirectories: BackendWatchDirectory[];
+}
+
+/** 只从已求值配置投影读取目录；外部模块用进程重启刷新原生ESM/CJS依赖缓存。 */
+export function createProjectWatchLayout(
+  projectRoot: string,
+  input: {
+    frontend?: FrontendLayoutInput;
+    localeDirectory?: string;
+    modelsDirectory?: string;
+  },
+): ProjectWatchLayout {
+  const src = path.resolve(projectRoot, "src");
+  const backendDirectories = [
+    resolveLocaleDirectory(projectRoot, src, input.localeDirectory).directory,
+    resolveModelsDirectory(src, input.modelsDirectory, projectRoot),
+  ].map((directory) => ({
+    path: directory,
+    action: isPathInside(src, directory, true)
+      ? ("soft" as const)
+      : ("cold" as const),
+  }));
+  return {
+    ...createFrontendWatchLayout(projectRoot, input.frontend),
+    backendDirectories,
+  };
+}
+
+export function isProjectWatchLayout(
+  value: unknown,
+): value is ProjectWatchLayout {
+  if (!isFrontendWatchLayout(value)) return false;
+  const directories = (value as unknown as Record<string, unknown>)
+    .backendDirectories;
+  return (
+    Array.isArray(directories) &&
+    directories.length <= 20 &&
+    directories.every(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        typeof item.path === "string" &&
+        item.path.length <= 4096 &&
+        !item.path.includes("\0") &&
+        path.isAbsolute(item.path) &&
+        path.resolve(item.path) === item.path &&
+        (item.action === "cold" || item.action === "soft"),
+    )
+  );
+}
+
 export function createFrontendWatchLayout(
   projectRoot: string,
   input?: FrontendLayoutInput,
 ): FrontendWatchLayout {
+  if (input?.enabled !== true)
+    return { frontendDirectories: [], frontendFiles: [] };
   const layout = resolveFrontendLayout(projectRoot, input, "development");
   const relative = (value: string): string =>
     path.relative(projectRoot, value).replaceAll("\\", "/");
@@ -128,14 +188,34 @@ export function resolveProjectRolePath(
 export function resolveModelsDirectory(
   sourceBase: string,
   directory = "models",
+  projectRoot?: string,
 ): string {
-  return resolveProjectRolePath(
-    sourceBase,
-    sourceBase,
-    directory,
-    "models.dir",
-    true,
-  );
+  // 用户显式配置的是读取根；不把此路径注册成输出或允许清理的目录。
+  if (!projectRoot) return path.resolve(sourceBase, directory);
+  const source = path.join(projectRoot, "src");
+  const configured = path.resolve(source, directory);
+  return isPathInside(source, configured, true)
+    ? path.resolve(sourceBase, path.relative(source, configured))
+    : configured;
+}
+
+/** locale.directory 相对服务根；源码内目录随编译根映射，显式外部目录只读。 */
+export function resolveLocaleDirectory(
+  projectRoot: string,
+  sourceBase: string,
+  directory?: string,
+): { directory: string; compiled: boolean } {
+  const source = path.join(projectRoot, "src");
+  const configured = path.resolve(projectRoot, directory ?? "src/locales");
+  const mapped = isPathInside(source, configured, true)
+    ? path.resolve(sourceBase, path.relative(source, configured))
+    : configured;
+  return {
+    directory: mapped,
+    compiled:
+      path.resolve(sourceBase) !== path.resolve(source) &&
+      isPathInside(sourceBase, mapped, true),
+  };
 }
 
 export function resolveFrontendLayout(
@@ -197,9 +277,9 @@ export function resolveFrontendLayout(
       "entry",
     ),
     indexHtml: projectPath(input.indexHtml ?? document, "indexHtml"),
-    outDir: projectPath(
+    outDir: path.resolve(
+      projectRoot,
       input.outDir ?? (mode === "development" ? ".vext/client" : "dist/client"),
-      "outDir",
     ),
   };
 }

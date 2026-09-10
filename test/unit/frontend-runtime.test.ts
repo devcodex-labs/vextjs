@@ -20,7 +20,13 @@ import {
   writeClientContractFromRouteManifest,
 } from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
+import {
+  beginBuild,
+  completeBuild,
+  resolveBuildLocation,
+} from "../../src/lib/build/build-location.js";
 import { buildFrontendDeployManifest } from "../../src/frontend/deploy/manifest.js";
+import { readFrontendDeployManifestFile } from "../../src/frontend/deploy/manifest-validator.js";
 import { writeFrontendMediaArtifacts } from "../../src/frontend/tooling/media-artifact-writer.js";
 import { createFrontendRenderMiddleware } from "../../src/frontend/runtime/renderer.js";
 import { DEFAULT_CONFIG } from "../../src/lib/app.js";
@@ -228,15 +234,21 @@ describe("frontend config resolver", () => {
     });
   });
 
-  it("rejects paths outside project root", async () => {
+  it("allows explicit external output while keeping source roots inside the project", async () => {
     const rootDir = await tempRoot();
 
-    expect(() =>
+    expect(
       resolveFrontendConfig(
         { enabled: true, outDir: "../outside" },
         { rootDir, mode: "production" },
+      ).outDir,
+    ).toBe(path.resolve(rootDir, "../outside"));
+    expect(() =>
+      resolveFrontendConfig(
+        { enabled: true, root: "../outside" },
+        { rootDir, mode: "production" },
       ),
-    ).toThrow("config.frontend.outDir");
+    ).toThrow("config.frontend.root");
   });
 
   it("rejects destructive frontend output roots and traversal-capable build paths", async () => {
@@ -854,49 +866,109 @@ describe("frontend client build", () => {
     ).toThrow(/local font source/u);
   });
 
-  it("injects bundled CSS and entry script into index.html", async () => {
-    const rootDir = await tempRoot();
-    const clientDir = path.join(rootDir, "src", "frontend", "entry");
-    await mkdir(clientDir, { recursive: true });
-    await writeFile(
-      path.join(clientDir, "main.js"),
-      'import "./styles.css";\ndocument.body.dataset.ready = "1";\n',
-    );
-    await writeFile(
-      path.join(clientDir, "styles.css"),
-      "body { color: red; }\n",
-    );
-    await writeFile(
-      path.join(clientDir, "index.html"),
-      '<!doctype html><html><head></head><body><div id="root"></div></body></html>',
-    );
+  it.each([false, true])(
+    "injects bundled CSS and entry script and binds the public manifest (external=%s)",
+    async (external) => {
+      const rootDir = await tempRoot();
+      const output = external
+        ? path.join(await tempRoot(), "client")
+        : path.join(rootDir, "dist/client");
+      const identity = await beginBuild(
+        rootDir,
+        path.join(rootDir, "dist"),
+        "staging",
+        "compiled",
+      );
+      const clientDir = path.join(rootDir, "src", "frontend", "entry");
+      await mkdir(clientDir, { recursive: true });
+      await writeFile(
+        path.join(clientDir, "main.js"),
+        'import "./styles.css";\ndocument.body.dataset.ready = "1";\n',
+      );
+      await writeFile(
+        path.join(clientDir, "styles.css"),
+        "body { color: red; }\n",
+      );
+      await writeFile(
+        path.join(clientDir, "index.html"),
+        '<!doctype html><html><head></head><body><div id="root"></div></body></html>',
+      );
 
-    const result = await buildFrontendClient({
-      rootDir,
-      mode: "production",
-      config: {
-        enabled: true,
-        entry: "src/frontend/entry/main.js",
-        indexHtml: "src/frontend/entry/index.html",
-        apiClient: false,
-      },
-    });
+      const result = await buildFrontendClient({
+        rootDir,
+        mode: "production",
+        config: {
+          enabled: true,
+          entry: "src/frontend/entry/main.js",
+          outDir: output,
+          indexHtml: "src/frontend/entry/index.html",
+          apiClient: false,
+        },
+      });
 
-    const html = await readFile(
-      path.join(result.config.outDir, "index.html"),
-      "utf-8",
-    );
-    expect(html).toMatch(
-      /<link rel="stylesheet" href="\/assets\/main-[^"]+\.css" data-vext-style>/,
-    );
-    expect(html).toMatch(
-      /<script type="module" src="\/assets\/main-[^"]+\.js" data-vext-entry><\/script>/,
-    );
-    expect(result.renderManifestPath).toBeDefined();
-    expect(result.deployManifestPath).toBeDefined();
-    expect(result.messagesManifestPath).toBeDefined();
-    expect(result.serverRendererPath).toBeDefined();
-  });
+      const html = await readFile(
+        path.join(result.config.outDir, "index.html"),
+        "utf-8",
+      );
+      expect(html).toMatch(
+        /<link rel="stylesheet" href="\/assets\/main-[^"]+\.css" data-vext-style>/,
+      );
+      expect(html).toMatch(
+        /<script type="module" src="\/assets\/main-[^"]+\.js" data-vext-entry><\/script>/,
+      );
+      expect(result.renderManifestPath).toBeDefined();
+      expect(result.deployManifestPath).toBeDefined();
+      expect(result.messagesManifestPath).toBeDefined();
+      expect(result.serverRendererPath).toBeDefined();
+      const deployManifest = await readFrontendDeployManifestFile(
+        result.deployManifestPath!,
+      );
+      const diskManifest = await buildFrontendDeployManifest({
+        rootDir,
+        config: result.config,
+        mode: "production",
+        browserManifest: JSON.parse(
+          await readFile(result.manifestPath!, "utf8"),
+        ),
+      });
+      expect(deployManifest).toEqual(diskManifest);
+      expect(deployManifest.assets.length).toBeGreaterThan(0);
+      const diskNames = await readdir(output, { recursive: true });
+      for (const asset of deployManifest.assets)
+        expect(diskNames.map((name) => name.replaceAll("\\", "/"))).toContain(
+          asset.file,
+        );
+      if (external) expect(path.isAbsolute(deployManifest.outDir)).toBe(true);
+      await completeBuild(rootDir, identity, result.config.outDir);
+      const location = resolveBuildLocation(rootDir);
+      expect(location.failure).toBeUndefined();
+      expect(location.identity?.profile).toBe("staging");
+      const publicFile = path.join(output, "public-manifest.json");
+      const publicBytes = await readFile(publicFile, "utf8");
+      const publicManifest = JSON.parse(publicBytes);
+      expect(location.identity?.frontend?.buildId).toBe(publicManifest.buildId);
+      await writeFile(
+        publicFile,
+        JSON.stringify({ ...publicManifest, buildId: "different-build" }),
+      );
+      expect(resolveBuildLocation(rootDir).failure).toBeDefined();
+      await expect(
+        deployFrontendAssets({
+          config: result.config,
+          manifestPath: result.deployManifestPath!,
+          adapter: {
+            name: "probe",
+            async upload() {
+              throw new Error("must not upload");
+            },
+          },
+          dryRun: true,
+        }),
+      ).rejects.toThrow("different builds");
+      await writeFile(publicFile, publicBytes);
+      expect(resolveBuildLocation(rootDir).failure).toBeUndefined();
+    },
+  );
 
   it("materializes static route HTML/data closure into the physical deploy manifest", async () => {
     const rootDir = await tempRoot();
@@ -1128,10 +1200,12 @@ describe("frontend client build", () => {
     const deployState = JSON.parse(
       await readFile(result.config.deploy.upload.stateFile, "utf-8"),
     );
-    expect(Object.keys(deployState.assets)).toHaveLength(
+    const targetAssets = deployState.targets[firstUpload.targetId!].assets;
+    expect(deployState.schemaVersion).toBe(2);
+    expect(Object.keys(targetAssets)).toHaveLength(
       deployManifest.assets.length,
     );
-    expect(deployState.assets["app/v1/static/logo.txt"]).toMatchObject({
+    expect(targetAssets["app/v1/static/logo.txt"]).toMatchObject({
       sha256: expect.any(String),
       bytes: "logo-v1".length,
     });
@@ -1176,16 +1250,16 @@ describe("frontend client build", () => {
     expect(dryRun.uploaded).toBe(0);
     expect(existsSync(stateFile)).toBe(false);
 
-    const declined = await deployFrontendAssets({
-      config: result.config,
-      manifestPath: result.deployManifestPath!,
-      adapter: declinedAdapter,
+    await expect(
+      deployFrontendAssets({
+        config: result.config,
+        manifestPath: result.deployManifestPath!,
+        adapter: declinedAdapter,
+      }),
+    ).rejects.toMatchObject({
+      result: { uploaded: 0, unconfirmed: deployManifest.assets.length },
     });
-    const emptyState = JSON.parse(await readFile(stateFile, "utf-8"));
-
-    expect(declined.uploaded).toBe(0);
-    expect(declined.skipped).toBe(deployManifest.assets.length);
-    expect(Object.keys(emptyState.assets)).toHaveLength(0);
+    expect(existsSync(stateFile)).toBe(false);
 
     let successCalls = 0;
     const successful = await deployFrontendAssets({
@@ -1193,6 +1267,7 @@ describe("frontend client build", () => {
       manifestPath: result.deployManifestPath!,
       adapter: {
         name: "successful",
+        targetIdentity: "test-bucket",
         async upload() {
           successCalls += 1;
           return { uploaded: true };
@@ -1203,13 +1278,16 @@ describe("frontend client build", () => {
 
     expect(successful.uploaded).toBe(deployManifest.assets.length);
     expect(successCalls).toBe(deployManifest.assets.length);
-    expect(Object.keys(JSON.parse(populatedState).assets)).toHaveLength(
-      deployManifest.assets.length,
-    );
+    expect(
+      Object.keys(
+        JSON.parse(populatedState).targets[successful.targetId!].assets,
+      ),
+    ).toHaveLength(deployManifest.assets.length);
 
     const staleState = JSON.parse(populatedState);
-    const staleUploadKey = Object.keys(staleState.assets)[0];
-    staleState.assets[staleUploadKey].sha256 = "stale";
+    const staleAssets = staleState.targets[successful.targetId!].assets;
+    const staleUploadKey = Object.keys(staleAssets)[0];
+    staleAssets[staleUploadKey].sha256 = "0".repeat(64);
     const staleStateText = `${JSON.stringify(staleState, null, 2)}\n`;
     await writeFile(stateFile, staleStateText, "utf-8");
 
@@ -2506,13 +2584,16 @@ describe("frontend render middleware", () => {
     expect(payload.props.error.details).toEqual({ resource: "user" });
   });
 
-  it("renders React page with nested layout and useVextI18n()", async () => {
+  it("renders React page with nested layout and module locales through useVextI18n()", async () => {
     const rootDir = await tempRoot();
     const frontendDir = path.join(rootDir, "src", "frontend");
     await mkdir(path.join(frontendDir, "pages", "admin"), {
       recursive: true,
     });
     await mkdir(path.join(frontendDir, "locales"), { recursive: true });
+    await mkdir(path.join(frontendDir, "locales", "order", "payment"), {
+      recursive: true,
+    });
     await writeFile(
       path.join(frontendDir, "pages", "_document.html"),
       "<!doctype html><html><head>{vext.styles}</head><body>{vext.root}{vext.data}{vext.entry}</body></html>",
@@ -2523,11 +2604,15 @@ describe("frontend render middleware", () => {
     );
     await writeFile(
       path.join(frontendDir, "pages", "admin", "index.tsx"),
-      'import { useVextI18n } from "vextjs/frontend";\nexport default function AdminPage(props) { const i18n = useVextI18n(); return <main><h1>{i18n.title}</h1><span>{props.stats.users}</span></main>; }\n',
+      'import { useVextI18n } from "vextjs/frontend";\nexport default function AdminPage(props) { const i18n = useVextI18n(); return <main><h1>{i18n.title}</h1><p>{i18n.order.payment.title}</p><span>{props.stats.users}</span></main>; }\n',
     );
     await writeFile(
       path.join(frontendDir, "locales", "en-US.ts"),
       "export default { title: 'Admin Home' };\n",
+    );
+    await writeFile(
+      path.join(frontendDir, "locales", "order", "payment", "en-US.json"),
+      '{"title":"Payment"}',
     );
     await buildFrontendClient({
       rootDir,
@@ -2558,6 +2643,7 @@ describe("frontend render middleware", () => {
 
     expect(res.sent?.html).toContain('data-layout="admin"');
     expect(res.sent?.html).toContain("<h1>Admin Home</h1>");
+    expect(res.sent?.html).toContain("<p>Payment</p>");
     expect(res.sent?.html).toContain("<span>7</span>");
     expect(res.sent?.html).toContain("<nav>Overview</nav>");
   });

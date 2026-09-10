@@ -27,6 +27,7 @@ import {
   afterAll,
   beforeEach,
   afterEach,
+  vi,
 } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -977,8 +978,6 @@ describe("CRUD integration tests", () => {
     });
 
     it("does not call process.exit on close (testMode)", async () => {
-      // 验证 _testMode = true 阻止 process.exit
-      // 如果 process.exit 被调用，测试本身会终止（不会到达这里）
       const t = await createTestApp({
         rootDir: projectRoot,
         services: false,
@@ -987,10 +986,15 @@ describe("CRUD integration tests", () => {
         },
       });
 
-      await t.close();
-
-      // 如果执行到这里，说明 process.exit 没有被调用
-      expect(true).toBe(true);
+      const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit must not run in test mode");
+      });
+      try {
+        await t.close();
+        expect(exit).not.toHaveBeenCalled();
+      } finally {
+        exit.mockRestore();
+      }
     });
   });
 

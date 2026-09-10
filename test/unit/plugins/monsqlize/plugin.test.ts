@@ -1982,52 +1982,7 @@ describe("loadModels", () => {
 
   // ── 本地 Model 加载 ───────────────────────────────────────
 
-  it("loads local model files from models/ directory", async () => {
-    vi.resetModules();
-
-    vi.doMock("node:fs", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:fs")>();
-      return { ...actual, existsSync: vi.fn().mockReturnValue(true) };
-    });
-
-    vi.doMock("monsqlize", () => ({
-      default: Object.assign(vi.fn(), {
-        Model: createMockModelRegistry().ModelClass,
-      }),
-    }));
-
-    vi.doMock("fast-glob", () => ({
-      default: vi.fn().mockResolvedValue(["user.ts"]),
-    }));
-
-    // Mock node:url for importModelFile
-    vi.doMock("node:url", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:url")>();
-      return {
-        ...actual,
-        pathToFileURL: vi
-          .fn()
-          .mockReturnValue({ href: "file:///tmp/src/models/user.ts" }),
-      };
-    });
-
-    const mod =
-      await import("../../../../src/lib/plugins/monsqlize/model-loader.js");
-    const monsqlize = createMockMonsqlize() as any;
-    const { app } = createMockApp();
-
-    // We need to actually mock the dynamic import of the model file
-    // This is tricky because loadModels does dynamic import internally
-    // Instead, let's just verify the integration up to the point of file scanning
-    // and test deriveModelName separately
-
-    // For a full integration test we'd need to set up actual files or a more
-    // sophisticated import mock. The deriveModelName tests above cover the
-    // name inference logic thoroughly.
-
-    // Test that existsSync is called with correct path
-    expect(true).toBe(true); // Placeholder — core logic tested via other tests
-  });
+  // 实际文件加载由model-loader-atomic与真实MongoDB生命周期集成用例验证。
 
   // ── 默认配置 ──────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ import {
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
 import { joinPublicPath, joinUploadKey } from "./manifest.js";
-import { readFrontendPublicFiles } from "../public-artifacts.js";
+import { readFrontendPublicManifest } from "../public-artifacts.js";
 
 const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 const MAX_MANIFEST_ASSETS = 100_000;
@@ -51,6 +51,7 @@ export function parseFrontendDeployManifest(
     [
       "schemaVersion",
       "kind",
+      "buildId",
       "generatedAt",
       "mode",
       "outDir",
@@ -70,16 +71,29 @@ export function parseFrontendDeployManifest(
     root.generatedAt,
     "frontend deploy manifest.generatedAt",
   );
+  const buildId =
+    root.buildId === undefined
+      ? undefined
+      : expectNonEmptyString(root.buildId, "frontend deploy manifest.buildId");
+  if (buildId && buildId.length > 128)
+    throw new Error(
+      "[vextjs] frontend deploy manifest.buildId exceeds 128 characters.",
+    );
   const mode = root.mode;
   if (mode !== "development" && mode !== "production") {
     throw new Error(
       '[vextjs] frontend deploy manifest.mode must be "development" or "production".',
     );
   }
-  const outDir = expectCanonicalRelativePath(
-    root.outDir,
-    "frontend deploy manifest.outDir",
-  );
+  const outDir =
+    typeof root.outDir === "string" &&
+    path.isAbsolute(root.outDir) &&
+    path.resolve(root.outDir).replaceAll("\\", "/") === root.outDir
+      ? root.outDir
+      : expectCanonicalRelativePath(
+          root.outDir,
+          "frontend deploy manifest.outDir",
+        );
   const publicPath = expectBasePath(
     root.publicPath,
     "frontend deploy manifest.publicPath",
@@ -126,6 +140,7 @@ export function parseFrontendDeployManifest(
   return {
     schemaVersion: 1,
     kind: "frontend-deploy-manifest",
+    ...(buildId === undefined ? {} : { buildId }),
     generatedAt,
     mode,
     outDir,
@@ -141,7 +156,15 @@ export async function validateFrontendDeployManifest(
   config: ResolvedVextFrontendConfig,
 ): Promise<VextFrontendDeployManifest> {
   const manifest = parseFrontendDeployManifest(value);
-  const publicFiles = readFrontendPublicFiles(config.outDir);
+  const publicManifest = readFrontendPublicManifest(config.outDir);
+  if (
+    manifest.buildId !== undefined &&
+    manifest.buildId !== publicManifest.buildId
+  )
+    throw new Error(
+      "[vextjs] frontend deploy manifest and public manifest belong to different builds. Run vext build again.",
+    );
+  const publicFiles = new Set(publicManifest.files);
   const realRoot = assertRealPathInside(
     config.outDir,
     config.outDir,

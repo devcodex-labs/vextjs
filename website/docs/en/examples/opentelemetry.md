@@ -584,11 +584,11 @@ opentelemetryPlugin({
   // ── Life cycle ──────────────────────────────────────
   lifecycle: {
     onStart: (_ctx, req) => {
-      req.logger.info({ requestId: req.requestId }, "request started");
+      req.app.logger.info({ requestId: req.requestId }, "request started");
     },
     onEnd: (ctx, req, info) => {
       if (info.statusCode >= 500) {
-        req.logger.error(
+        req.app.logger.error(
           { traceId: info.traceId },
           `${ctx.method} ${ctx.route ?? ctx.path} failed in ${info.latencyMs}ms`,
         );
@@ -745,41 +745,42 @@ If `@opentelemetry/auto-instrumentations-node` is not installed:
 
 ## Advanced usage
 
-### Manually track business operations (withSpan)`withSpan()` is the recommended way to track custom business operations. It encapsulates `tracer.startActiveSpan()` with try/catch/finally and automatically handles `span.end()`, `span.recordException()` and `span.setStatus()`, the three most easily missed things.
+### Manually track business operations (withSpan)
+
+`withSpan()` tracks custom business operations. It wraps `tracer.startActiveSpan()` with try/catch/finally and handles `span.end()`, `span.recordException()` and `span.setStatus()`.
 
 #### VextJS plugin (via `app.otel.withSpan`)
+
+This route fragment requires the OTel plugin setup described above, a business-owned `src/services/payment.ts` service exposing `process(id)`, and typegen. Use a payment-service test double for verification. Each request executes the payment operation exactly once.
 
 ```typescript
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.post("/payments", async (req, res) => {
-    // ① Simplest: no contact with span at all (only tracking life cycle)
-    const resultBasic = await req.app.otel!.withSpan("payment.process", () =>
-      processPayment(req.body.id),
-    );
+  app.post(
+    "/payments",
+    { validate: { body: { id: "string!" } } },
+    async (req, res) => {
+      const payment = await req.app.otel!.withSpan(
+        "payment.process",
+        async (span) => {
+          const result = await req.app.services.payment.process(
+            req.valid("body").id,
+          );
+          span.setAttribute("payment.result", result.status);
+          return result;
+        },
+        {
+          attributes: {
+            "payment.provider": "stripe",
+            "payment.currency": "USD",
+          },
+        },
+      );
 
-    // ② With static initial attributes
-    const resultWithAttrs = await req.app.otel!.withSpan(
-      "payment.process",
-      () => processPayment(req.body.id),
-      {
-        attributes: { "payment.provider": "stripe", "payment.currency": "USD" },
-      },
-    );
-
-    // ③ Dynamic attributes (when relying on execution results, access span through callback parameters)
-    const resultWithDynamicAttrs = await req.app.otel!.withSpan(
-      "payment.process",
-      async (span) => {
-        const res = await processPayment(req.body.id);
-        span.setAttribute("payment.result", res.status);
-        return res;
-      },
-    );
-
-    res.json(resultWithDynamicAttrs);
-  });
+      res.json(payment);
+    },
+  );
 });
 ```
 

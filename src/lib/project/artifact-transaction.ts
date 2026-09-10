@@ -5,6 +5,7 @@ import { currentProjectOwner, type ProjectOwner } from "./owner.js";
 import { listenOwnerEndpoint, ProjectOwnerError } from "./owner-endpoint.js";
 import {
   ARTIFACT_MANIFEST_FILE,
+  ARTIFACT_JOURNAL_FILE,
   ARTIFACT_STATE_DIRECTORY,
   MAX_ARTIFACT_METADATA_BYTES,
   ArtifactError,
@@ -19,11 +20,16 @@ import {
 import {
   commitArtifactFiles,
   recoverArtifactFiles,
+  artifactRecoveryPlan,
   conflict,
   digestOrNull,
 } from "./artifact-journal.js";
 import { prepareArtifactScope, type ArtifactChange } from "./artifact-scope.js";
 import { recoverTemporaryArtifacts } from "./temporary-artifact.js";
+import {
+  assertExplicitOutputDirectory,
+  isPathInside,
+} from "../path-boundary.js";
 
 export interface ArtifactCandidate {
   path: string;
@@ -62,9 +68,9 @@ function pruneDeletedDirectories(
   outputDir: string,
   deleted: string[],
 ): void {
-  const boundary = artifactPath(root, outputDir);
+  const boundary = artifactPath(root, outputDir, true);
   for (const file of deleted) {
-    let directory = path.dirname(artifactPath(root, file));
+    let directory = path.dirname(artifactPath(root, file, true));
     while (
       directory !== boundary &&
       path.relative(boundary, directory) !== ""
@@ -144,7 +150,9 @@ export async function withArtifactGroupTransaction<T>(
       "Invalid artifact output scope count.",
     );
   const describe = (target: ArtifactScopeTarget) => {
-    const outputDir = artifactRelativePath(root, target.outDir);
+    if (!isPathInside(root, target.outDir))
+      assertExplicitOutputDirectory(root, target.outDir, "artifact output");
+    const outputDir = artifactRelativePath(root, target.outDir, true);
     if (
       !/^[a-z][a-z0-9-]{0,47}$/u.test(target.producer) ||
       outputDir.startsWith(`${ARTIFACT_STATE_DIRECTORY}/`) ||
@@ -171,8 +179,10 @@ export async function withArtifactGroupTransaction<T>(
       );
     return descriptor;
   };
+  const recovery = artifactRecoveryPlan(root);
   await owner.reserveOutputs([
     ...options.outputs.map((target) => target.outDir),
+    ...recovery.outputs,
     path.join(root, ARTIFACT_STATE_DIRECTORY),
   ]);
   const deadline = Date.now() + 10_000;
@@ -204,6 +214,19 @@ export async function withArtifactGroupTransaction<T>(
   };
   try {
     await recoverTemporaryArtifacts(owner);
+    if (
+      digestOrNull(
+        readArtifactFile(
+          root,
+          ARTIFACT_JOURNAL_FILE,
+          MAX_ARTIFACT_METADATA_BYTES,
+        ),
+      ) !== recovery.digest
+    )
+      throw new ArtifactError(
+        "VEXT_OUTPUT_CONFLICT",
+        "Recovery state changed while acquiring output locks; retry the operation.",
+      );
     recoverArtifactFiles(root);
     let original = readArtifactFile(
       root,
@@ -222,7 +245,9 @@ export async function withArtifactGroupTransaction<T>(
           scope.producerVersion === owner.identity.producerVersion &&
           scope.files.every(
             (file) =>
-              digestOrNull(readArtifactFile(root, file.path)) === file.sha256,
+              digestOrNull(
+                readArtifactFile(root, file.path, undefined, true),
+              ) === file.sha256,
           )
         );
       },

@@ -12,17 +12,15 @@
  *     - Windows 路径分隔符兼容
  *     - 空列表 → false
  *   - reloadLocales：i18n 热替换
- *     - locales 目录不存在 → 静默跳过
- *     - locales 目录为空 → 静默跳过
+ *     - locales 目录不存在 / 为空 → 提交空字典，清理已删除消息
  *     - 正常加载语言文件（require 编译产物 .js）
  *     - 多个语言文件加载
  *     - 调用 configureI18n 回调
  *     - 无 configureI18n 回调时只加载不注册
  *     - configureI18n 回调失败时打印警告
- *     - require 失败的文件 → 跳过并记录
- *     - 无效 export（非对象） → 跳过并记录
+ *     - require 失败或无效 export → 拒绝整批候选，保留原字典
  *     - 非语言文件被忽略
- *     - 同一语言代码去重（只取第一个）
+ *     - 同一语言和命名空间重复源 → 明确冲突
  *   - createI18nReloader：预配置重载函数
  *
  * 策略：
@@ -189,8 +187,9 @@ describe("isLocaleFile", () => {
       expect(isLocaleFile("config.json")).toBe(false);
     });
 
-    it("应拒绝 Zh-CN.js（语言码首字母大写）", () => {
-      expect(isLocaleFile("Zh-CN.js")).toBe(false);
+    it("应规范化语言码大小写", () => {
+      expect(isLocaleFile("Zh-CN.js")).toBe(true);
+      expect(extractLocaleCode("Zh-CN.js")).toBe("zh-CN");
     });
 
     it("应拒绝 zh-.js（区域码为空）", () => {
@@ -330,28 +329,26 @@ describe("reloadLocales", () => {
       expect(result.configured).toBe(false);
     });
 
-    it("应在目录不存在时记录 debug 日志", async () => {
+    it("应在目录删除后提交空字典", async () => {
       await mkdir(outDir, { recursive: true });
 
       const logger = createMockLogger();
-      await reloadLocales({ outDir, logger });
-
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("locales directory not found"),
-      );
+      const configureI18n = vi.fn();
+      const result = await reloadLocales({ outDir, logger, configureI18n });
+      expect(result.configured).toBe(true);
+      expect(configureI18n).toHaveBeenCalledExactlyOnceWith({});
     });
 
-    it("应在目录为空（无语言文件）时记录 debug 日志", async () => {
+    it("应在没有语言文件时提交空字典", async () => {
       await mkdir(localesDir, { recursive: true });
       // 放一个非语言文件
       await writeFile(join(localesDir, "index.js"), "module.exports = {}");
 
       const logger = createMockLogger();
-      await reloadLocales({ outDir, logger });
-
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("no locale files found"),
-      );
+      const configureI18n = vi.fn();
+      const result = await reloadLocales({ outDir, logger, configureI18n });
+      expect(result.failedFiles).toEqual([]);
+      expect(configureI18n).toHaveBeenCalledExactlyOnceWith({});
     });
   });
 
@@ -490,10 +487,7 @@ describe("reloadLocales", () => {
 
       expect(result.loadedLocales).toEqual(["zh-CN"]);
       expect(result.configured).toBe(false);
-      // 应记录 debug 日志说明无回调
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("no configureI18n callback"),
-      );
+      expect(result.failedFiles).toEqual([]);
     });
 
     it("应在 configureI18n 回调失败时设置 configured=false 并打印警告", async () => {
@@ -513,14 +507,15 @@ describe("reloadLocales", () => {
         configureI18n,
       });
 
-      expect(result.loadedLocales).toEqual(["zh-CN"]);
+      expect(result.loadedLocales).toEqual([]);
+      expect(result.failedFiles).toEqual(["locales"]);
       expect(result.configured).toBe(false);
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("failed to configure i18n"),
+        expect.stringContaining("i18n config failed"),
       );
     });
 
-    it("应在无加载成功的语言文件时不调用 configureI18n", async () => {
+    it("应在无语言文件时替换为空字典", async () => {
       await mkdir(localesDir, { recursive: true });
       // 只有非语言文件
       await writeFile(join(localesDir, "index.js"), "module.exports = {}");
@@ -529,14 +524,14 @@ describe("reloadLocales", () => {
       const logger = createMockLogger();
       await reloadLocales({ outDir, logger, configureI18n });
 
-      expect(configureI18n).not.toHaveBeenCalled();
+      expect(configureI18n).toHaveBeenCalledExactlyOnceWith({});
     });
   });
 
   // ── 错误处理 ──────────────────────────────────────────
 
   describe("错误处理", () => {
-    it("应在 require 失败时跳过该文件并记录警告", async () => {
+    it("应在任一 require 失败时拒绝整批字典并记录来源", async () => {
       await mkdir(localesDir, { recursive: true });
       // 写一个会抛出错误的文件
       await writeFile(
@@ -557,11 +552,12 @@ describe("reloadLocales", () => {
         configureI18n,
       });
 
-      expect(result.loadedLocales).toEqual(["en-US"]);
+      expect(result.loadedLocales).toEqual([]);
       expect(result.failedFiles).toEqual(["zh-CN.js"]);
-      expect(result.configured).toBe(true);
+      expect(result.configured).toBe(false);
+      expect(configureI18n).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("failed to load locale file"),
+        expect.stringContaining("zh-CN.js"),
       );
     });
 
@@ -737,11 +733,11 @@ describe("reloadLocales", () => {
       expect(result.loadedLocales).toEqual(["de"]);
     });
 
-    it("应为忽略的非语言文件记录 debug 日志", async () => {
+    it("不应执行非语言文件", async () => {
       await mkdir(localesDir, { recursive: true });
       await writeFile(
         join(localesDir, "helper.js"),
-        "module.exports = { util: true }",
+        "throw new Error('helper must not execute')",
       );
       await writeFile(
         join(localesDir, "zh-CN.js"),
@@ -749,26 +745,22 @@ describe("reloadLocales", () => {
       );
 
       const logger = createMockLogger();
-      await reloadLocales({ outDir, logger });
-
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("skipping non-locale file"),
-      );
+      const result = await reloadLocales({ outDir, logger });
+      expect(result.failedFiles).toEqual([]);
+      expect(result.loadedLocales).toEqual(["zh-CN"]);
     });
   });
 
   // ── 去重 ──────────────────────────────────────────────
 
   describe("去重", () => {
-    it("应对同一语言代码只加载第一个匹配文件", async () => {
+    it("应拒绝同一语言和命名空间的不同扩展名重复源", async () => {
       await mkdir(localesDir, { recursive: true });
-      // 在实际场景中不太可能出现同名文件，但测试去重逻辑
-      // 由于 readdir 返回的顺序可能不确定，
-      // 我们只验证 loadedLocales 中每个语言代码只出现一次
       await writeFile(
         join(localesDir, "zh-CN.js"),
         createLocaleFileContent({ key: "value1" }),
       );
+      await writeFile(join(localesDir, "zh-CN.json"), '{"key":"value2"}');
 
       const configureI18n = vi.fn();
       const logger = createMockLogger();
@@ -778,9 +770,11 @@ describe("reloadLocales", () => {
         configureI18n,
       });
 
-      // 确保只有一个 zh-CN
-      const zhCount = result.loadedLocales.filter((c) => c === "zh-CN").length;
-      expect(zhCount).toBe(1);
+      expect(result.configured).toBe(false);
+      expect(configureI18n).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringMatching(/zh-CN\.js.*zh-CN\.json/),
+      );
     });
   });
 
@@ -858,9 +852,10 @@ describe("reloadLocales", () => {
       expect(result).toHaveProperty("failedFiles");
       expect(result).toHaveProperty("configured");
 
-      expect(result.loadedLocales).toEqual(["zh-CN"]);
+      expect(result.loadedLocales).toEqual([]);
       expect(result.failedFiles).toEqual(["en-US.js"]);
-      expect(result.configured).toBe(true);
+      expect(result.configured).toBe(false);
+      expect(configureI18n).not.toHaveBeenCalled();
     });
 
     it("应在目录不存在时返回空结果", async () => {
@@ -898,8 +893,8 @@ describe("reloadLocales", () => {
       });
 
       expect(result.loadedLocales).toEqual([]);
-      expect(result.configured).toBe(false);
-      expect(configureI18n).not.toHaveBeenCalled();
+      expect(result.configured).toBe(true);
+      expect(configureI18n).toHaveBeenCalledExactlyOnceWith({});
     });
 
     it("应处理语言文件导出空对象", async () => {
@@ -1017,11 +1012,10 @@ describe("reloadLocales", () => {
         configureI18n,
       });
 
-      expect(result.loadedLocales).toContain("zh-CN");
-      expect(result.loadedLocales).toContain("fr");
-      expect(result.loadedLocales).not.toContain("en-US");
+      expect(result.loadedLocales).toEqual([]);
       expect(result.failedFiles).toEqual(["en-US.js"]);
-      expect(result.configured).toBe(true);
+      expect(result.configured).toBe(false);
+      expect(configureI18n).not.toHaveBeenCalled();
     });
   });
 });
@@ -1094,9 +1088,8 @@ describe("createI18nReloader", () => {
     const result = await reloader(outDir);
 
     expect(result.loadedLocales).toEqual([]);
-    expect(logger.debug).toHaveBeenCalledWith(
-      expect.stringContaining("locales directory not found"),
-    );
+    expect(result.failedFiles).toEqual([]);
+    expect(result.configured).toBe(false);
   });
 
   it("应支持多次调用", async () => {

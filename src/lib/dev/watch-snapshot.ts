@@ -1,8 +1,9 @@
 import { statSync, type Stats } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { isPathInside } from "../path-boundary.js";
 import { resolveProjectRolePath } from "../project/layout.js";
+import { isTemporaryModuleFileName } from "../project/source-roles.js";
 import { classifyChange, type ClassifierOptions } from "./change-classifier.js";
 
 /** 仅用于发现变更；编译缓存另以源码字节 SHA256 判断 freshness。 */
@@ -95,6 +96,13 @@ function watchDirectories(
       continue;
     directories.push({ path: directory, recursive: true, allFiles: true });
   }
+  for (const directory of options?.backendDirectories ?? []) {
+    directories.push({
+      path: resolve(directory.path),
+      recursive: true,
+      allFiles: true,
+    });
+  }
   return directories;
 }
 
@@ -129,6 +137,8 @@ export async function readWatchSnapshot(
     for (const entry of entries.sort((a, b) =>
       a.name.localeCompare(b.name, "en"),
     )) {
+      // 采集和事件分类共同排除临时模块；防止启动时捕获、删除后触发冷重启。
+      if (entry.isFile() && isTemporaryModuleFileName(entry.name)) continue;
       const file = join(directory.path, entry.name);
       const allFiles =
         directory.allFiles ||
@@ -184,12 +194,15 @@ export function readWatchTargets(
   for (const directory of watchDirectories(root, options)) {
     let target = directory.path;
     let stat = optionalStat(target);
-    while (!stat?.isDirectory() && isPathInside(root, target)) {
-      target = dirname(target);
+    while (!stat?.isDirectory()) {
+      const parent = dirname(target);
+      if (parent === target) break;
+      target = parent;
       stat = optionalStat(target);
     }
     if (target === root || !stat?.isDirectory()) continue;
-    const recursive = directory.recursive || target !== directory.path;
+    // 缺失的外部角色只监听最近父目录的创建事件，不能递归监听其无关兄弟目录。
+    const recursive = target === directory.path ? directory.recursive : false;
     const current = targets.get(target);
     targets.set(target, {
       recursive: recursive || current?.recursive === true,

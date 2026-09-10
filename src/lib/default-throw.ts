@@ -67,7 +67,7 @@ export type VextThrowFn = {
  * 完成 i18n 翻译后构造 HttpError 抛出。
  *
  * 之所以是工厂函数而非直接导出函数，是为了：
- *   1. 未来可能需要注入依赖（如 logger）
+ *   1. 注入当前 app 的错误工厂和请求语言，避免全局字典串用
  *   2. 与 app.setThrow(wrapper) 的 wrapper 模式对齐
  *   3. 测试时可方便地创建独立实例
  *
@@ -92,7 +92,10 @@ export type VextThrowFn = {
  * defaultThrow(400, 'balance.insufficient', { balance: 50 }, 50001)
  * ```
  */
-export function createDefaultThrow(): VextThrowFn {
+export function createDefaultThrow(
+  createError: typeof schemaAdapter.createI18nError = schemaAdapter.createI18nError,
+  getLocale: () => string | undefined = () => requestContext.getStore()?.locale,
+): VextThrowFn {
   const defaultThrow = (
     statusOrKey: number | string | VextThrowOptions,
     messageOrParams?: string | Record<string, unknown>,
@@ -107,6 +110,8 @@ export function createDefaultThrow(): VextThrowFn {
         options.params ?? {},
         options.code,
         options.details,
+        createError,
+        getLocale(),
       );
     }
 
@@ -126,11 +131,10 @@ export function createDefaultThrow(): VextThrowFn {
           : {};
 
       // 从请求上下文获取 locale
-      const store = requestContext.getStore();
-      const locale = store?.locale;
+      const locale = getLocale();
 
       // 通过 schemaAdapter 查找 i18n 配置（可能包含 statusCode）
-      const i18nErr = schemaAdapter.createI18nError(
+      const i18nErr = createError(
         messageKey,
         shorthandParams,
         undefined, // statusCode 留空，让 i18n 配置决定
@@ -184,7 +188,15 @@ export function createDefaultThrow(): VextThrowFn {
       }
     }
 
-    throwTranslatedHttpError(status, message, params, bizCodeArg, details);
+    throwTranslatedHttpError(
+      status,
+      message,
+      params,
+      bizCodeArg,
+      details,
+      createError,
+      getLocale(),
+    );
   };
 
   return defaultThrow as VextThrowFn;
@@ -196,6 +208,8 @@ function throwTranslatedHttpError(
   params: Record<string, unknown>,
   bizCodeArg: number | string | undefined,
   details: unknown,
+  createError: typeof schemaAdapter.createI18nError,
+  locale: string | undefined,
 ): never {
   // ── 从请求上下文获取 locale（线程安全，避免全局竞态）──
   //
@@ -206,8 +220,6 @@ function throwTranslatedHttpError(
   //   正确做法：从 AsyncLocalStorage（requestContext）读取当前请求的 locale，
   //   并将其显式传给 I18nError.create() 的第 4 个参数。
   //
-  const store = requestContext.getStore();
-  const locale = store?.locale; // 由请求级中间件写入（见 06b-error.md §1.7）
 
   // ── 核心流程 ──────────────────────────────────────────
   //
@@ -226,12 +238,7 @@ function throwTranslatedHttpError(
 
   // 使用 schemaAdapter 防腐层创建 I18nError（不抛出）
   // 第 4 参数显式传 locale → 每个请求独立，不依赖全局 Locale.currentLocale
-  const i18nErr = schemaAdapter.createI18nError(
-    message,
-    params,
-    status,
-    locale,
-  );
+  const i18nErr = createError(message, params, status, locale);
 
   // 业务错误码优先级：用户显式传入 > locale 配置中的 code > undefined
   //

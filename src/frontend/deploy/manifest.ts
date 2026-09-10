@@ -15,8 +15,12 @@ import type {
   VextFrontendMode,
 } from "../contract/types.js";
 import { STABLE_FRONTEND_GENERATED_AT } from "../contract/metadata.js";
-import { readFrontendPublicFiles } from "../public-artifacts.js";
+import {
+  readFrontendPublicFiles,
+  readFrontendPublicManifest,
+} from "../public-artifacts.js";
 import { isImmutableFrontendBundleAsset } from "../asset-cache-policy.js";
+import { artifactRelativePath } from "../../lib/project/artifact-manifest.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
 
@@ -25,24 +29,32 @@ export interface BuildFrontendDeployManifestOptions {
   config: ResolvedVextFrontendConfig;
   mode: VextFrontendMode;
   browserManifest: VextFrontendManifest;
+  buildId?: string;
 }
 
 export async function buildFrontendDeployManifest(
   options: BuildFrontendDeployManifestOptions,
 ): Promise<VextFrontendDeployManifest> {
   const files = await scanDeployableFiles(options.config);
-  return createDeployManifest(options, files, async (absolutePath) => {
-    const [content, fileStat, linkStat] = await Promise.all([
-      readFile(absolutePath),
-      stat(absolutePath),
-      lstat(absolutePath),
-    ]);
-    if (!fileStat.isFile() || linkStat.isSymbolicLink())
-      throw new Error(
-        `[vextjs] frontend deploy asset must be a regular file inside outDir: ${absolutePath}`,
-      );
-    return content;
-  });
+  const buildId = existsSync(options.config.outDir)
+    ? readFrontendPublicManifest(options.config.outDir).buildId
+    : undefined;
+  return createDeployManifest(
+    { ...options, buildId },
+    files,
+    async (absolutePath) => {
+      const [content, fileStat, linkStat] = await Promise.all([
+        readFile(absolutePath),
+        stat(absolutePath),
+        lstat(absolutePath),
+      ]);
+      if (!fileStat.isFile() || linkStat.isSymbolicLink())
+        throw new Error(
+          `[vextjs] frontend deploy asset must be a regular file inside outDir: ${absolutePath}`,
+        );
+      return content;
+    },
+  );
 }
 
 /** 构建器内部候选入口；公开磁盘入口与此入口共用同一清单生成逻辑。 */
@@ -135,6 +147,7 @@ async function createDeployManifest(
   return {
     schemaVersion: 1,
     kind: "frontend-deploy-manifest",
+    ...(options.buildId === undefined ? {} : { buildId: options.buildId }),
     generatedAt: STABLE_FRONTEND_GENERATED_AT,
     mode: options.mode,
     outDir: toProjectRelativePath(options.rootDir, options.config.outDir),
@@ -216,5 +229,5 @@ function readAdapterName(
 }
 
 function toProjectRelativePath(baseDir: string, filePath: string): string {
-  return path.relative(baseDir, filePath).replace(/\\/g, "/");
+  return artifactRelativePath(baseDir, filePath, true);
 }

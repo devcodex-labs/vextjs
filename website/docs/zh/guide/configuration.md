@@ -7,7 +7,7 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 框架启动时，`config-loader` 按以下顺序加载配置文件并深度合并：
 
 ```
-框架内置默认值 → default.ts → {configProfile}.ts → local.ts → bootstrap provider patch → CLI override
+框架内置默认值 → default.ts → {configProfile}.ts → local.ts（仅 development/test）→ bootstrap provider patch → CLI override
 ```
 
 运行时合并允许后层只声明需要覆盖的字段。TypeScript 则有意区分项目基础配置与后层 patch：`default.ts` 使用 `VextUserConfig`，环境 profile 与 local 配置文件使用 `VextConfigOverride`，`createTestApp()` 采用同一覆盖合同。bootstrap provider 继续使用 JSON-like `Record<string, unknown>` patch，并由现有运行时校验。
@@ -40,7 +40,7 @@ vext start --config sg-sit
 VEXT_CONFIG=sg-sit vext start
 ```
 
-Vext 就会按同一套合并链路加载：`default -> sg-sit -> local -> bootstrap provider patch -> CLI override`。
+上述生产启动使用 `default -> sg-sit -> bootstrap provider patch -> CLI override`。`local.ts` 只在 development/test 运行模式加载；生产 build 与 start（JS 源码或编译后的 TS）均不隐式执行它。部署覆盖使用显式 profile 或 bootstrap provider；选择自定义 profile 不改变运行模式。
 
 :::warning Build、Runtime 与 Config Profile 的语义
 `vext build` 会将用户源码中的 `process.env.NODE_ENV` 静态注入为 `"production"`，`vext start` 运行时也会使用 production runtime mode。配置 profile 是独立概念，由 `--config` / `VEXT_CONFIG` 决定。

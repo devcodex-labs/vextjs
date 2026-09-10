@@ -51,7 +51,7 @@ import {
 import {
   assertPathInside,
   assertRealPathInside,
-  assertSafeProjectOutputDirectory,
+  assertExplicitOutputDirectory,
 } from "../../lib/path-boundary.js";
 
 export interface BuildFrontendClientOptions {
@@ -135,7 +135,7 @@ async function createFrontendClientArtifacts(
   config: ResolvedVextFrontendConfig,
   draft: ArtifactDraft,
 ): Promise<BuildFrontendClientResult> {
-  assertSafeProjectOutputDirectory(
+  assertExplicitOutputDirectory(
     options.rootDir,
     config.outDir,
     "config.frontend.outDir",
@@ -465,6 +465,7 @@ async function createFrontendClientArtifacts(
       config,
       mode: options.mode,
       browserManifest: manifest,
+      buildId,
     },
     {
       files: draft
@@ -1245,6 +1246,14 @@ function resolveVextFrontendRuntimeImport(
 ): string | undefined {
   if (importPath === "vextjs/frontend/navigation-runtime") {
     return resolveVextNavigationRuntimeModule();
+  }
+  if (importPath === "vextjs/frontend/locale-runtime") {
+    const sourcePath = fileURLToPath(
+      new URL("../../lib/i18n/messages.ts", import.meta.url),
+    );
+    return existsSync(sourcePath)
+      ? sourcePath
+      : fileURLToPath(new URL("../../lib/i18n/messages.js", import.meta.url));
   }
   if (importPath === "vextjs/frontend/media-runtime") {
     return resolveVextMediaRuntimeModule();

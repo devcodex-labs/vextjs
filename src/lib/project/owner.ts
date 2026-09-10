@@ -1,9 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { realpathSync } from "node:fs";
 import path from "node:path";
 import packageMetadata from "../../../package.json" with { type: "json" };
-import { assertRealPathInside, isPathInside } from "../path-boundary.js";
+import {
+  assertExplicitOutputDirectory,
+  assertRealPathInside,
+  canonicalPath,
+  isPathInside,
+  canonicalProjectRoot as canonicalRoot,
+} from "../path-boundary.js";
 import {
   listenOwnerEndpoint,
   ProjectOwnerError,
@@ -36,11 +41,6 @@ export interface ProjectOwner {
 }
 
 const context = new AsyncLocalStorage<ProjectOwner>();
-
-function canonicalRoot(rootDir: string): string {
-  const real = realpathSync.native(path.resolve(rootDir));
-  return process.platform === "win32" ? real.toLowerCase() : real;
-}
 
 function createIdentity(
   realRoot: string,
@@ -95,37 +95,68 @@ export async function acquireProjectOwner(
     const candidates = [
       ...new Set(
         paths.map((target) => {
-          const real = assertRealPathInside(
-            identity.realRoot,
-            path.resolve(identity.realRoot, target),
-            "owned output",
-          );
-          return process.platform === "win32" ? real.toLowerCase() : real;
+          const absolute = path.resolve(identity.realRoot, target);
+          if (isPathInside(identity.realRoot, absolute))
+            assertRealPathInside(identity.realRoot, absolute, "owned output");
+          else
+            assertExplicitOutputDirectory(
+              identity.realRoot,
+              absolute,
+              "owned output",
+            );
+          return canonicalPath(absolute);
         }),
       ),
     ].sort();
     const added: string[] = [];
     try {
-      for (const target of candidates) {
-        if (
-          [...outputs.keys()].some((existing) =>
-            isPathInside(existing, target, true),
-          )
-        )
-          continue;
-        if (outputs.size >= 64)
+      await withOwnerRegistry(async (records) => {
+        await reclaimInactiveOwnerRecords(records);
+        const record = records.find((item) =>
+          sameOwner(item.identity, identity),
+        );
+        if (!record)
           throw new ProjectOwnerError(
             "VEXT_OWNER_UNVERIFIED",
-            "Output target capacity exceeded.",
+            "Output owner registration changed.",
           );
-        await assertActive();
-        const lease = await listenOwnerEndpoint(
-          `output:${target}`,
-          () => identity,
-        );
-        outputs.set(target, lease);
-        added.push(target);
-      }
+        for (const other of records) {
+          if (sameOwner(other.identity, identity)) continue;
+          const overlap = candidates.find((target) =>
+            [other.identity.realRoot, ...(other.outputs ?? [])].some(
+              (existing) =>
+                isPathInside(existing, target, true) ||
+                isPathInside(target, existing, true),
+            ),
+          );
+          if (overlap)
+            throw new ProjectOwnerError(
+              "VEXT_OWNER_BUSY",
+              `Output overlaps another writer: ${overlap} (${other.identity.realRoot}).`,
+            );
+        }
+        for (const target of candidates) {
+          if (
+            [...outputs.keys()].some((existing) =>
+              isPathInside(existing, target, true),
+            )
+          )
+            continue;
+          if (outputs.size >= 64)
+            throw new ProjectOwnerError(
+              "VEXT_OWNER_UNVERIFIED",
+              "Output target capacity exceeded.",
+            );
+          await assertActive();
+          const lease = await listenOwnerEndpoint(
+            `output:${target}`,
+            () => identity,
+          );
+          outputs.set(target, lease);
+          added.push(target);
+        }
+        record.outputs = [...outputs.keys()].sort();
+      });
     } catch (error) {
       for (const target of added.reverse()) {
         await outputs.get(target)?.close();
@@ -152,7 +183,12 @@ export async function acquireProjectOwner(
         const record = records[i]!;
         if (
           !isPathInside(identity.realRoot, record.identity.realRoot, true) &&
-          !isPathInside(record.identity.realRoot, identity.realRoot, true)
+          !isPathInside(record.identity.realRoot, identity.realRoot, true) &&
+          !(record.outputs ?? []).some(
+            (output) =>
+              isPathInside(output, identity.realRoot, true) ||
+              isPathInside(identity.realRoot, output, true),
+          )
         )
           continue;
         for (const writer of [record.identity, ...record.participants]) {
@@ -351,8 +387,11 @@ export async function adoptProjectOwner(
   return owner;
 }
 
-export function currentProjectOwner(rootDir: string): ProjectOwner | undefined {
+export function currentProjectOwner(
+  rootDir?: string,
+): ProjectOwner | undefined {
   const current = context.getStore();
+  if (rootDir === undefined) return current;
   return current?.identity.realRoot === canonicalRoot(rootDir)
     ? current
     : undefined;

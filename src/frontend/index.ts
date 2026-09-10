@@ -107,6 +107,7 @@ export {
   createFrontendDeployPlan,
   createMockDeployAdapter,
   deployFrontendAssets,
+  FrontendDeployError,
   joinUploadKey,
 } from "./deploy/index.js";
 export {

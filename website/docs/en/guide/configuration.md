@@ -7,7 +7,7 @@ VextJS uses a **multi-layer configuration merging** mechanism to support configu
 When the framework starts, `config-loader` loads configuration files and merges them deeply in the following order:
 
 ```
-Framework built-in defaults → default.ts → {configProfile}.ts → local.ts → bootstrap provider patch → CLI override
+Framework built-in defaults → default.ts → {configProfile}.ts → local.ts (development/test only) → bootstrap provider patch → CLI override
 ```
 
 Runtime merging lets later layers declare only the fields they override. TypeScript intentionally distinguishes the project base from those later patches: `default.ts` uses `VextUserConfig`, while environment profile and local config files use `VextConfigOverride`; `createTestApp()` applies the same override contract. Bootstrap providers keep their JSON-like `Record<string, unknown>` patch contract and runtime validation.
@@ -40,7 +40,7 @@ vext start --config sg-sit
 VEXT_CONFIG=sg-sit vext start
 ```
 
-Vext will be loaded according to the same set of merge links: `default -> sg-sit -> local -> bootstrap provider patch -> CLI override`.
+This production start uses `default -> sg-sit -> bootstrap provider patch -> CLI override`. `local.ts` is loaded only in development/test runtime modes. Production build and start, for both JS sources and compiled TS, do not implicitly evaluate it. Use an explicit profile or bootstrap provider for deployment overrides; a custom profile does not change the runtime mode.
 
 :::warning Build, Runtime, and Config Profile semantics
 `vext build` statically injects `process.env.NODE_ENV` in user source code as `"production"`, and `vext start` runs with production runtime mode. Config profile selection is independent and is controlled by `--config` / `VEXT_CONFIG`.

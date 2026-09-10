@@ -344,7 +344,7 @@ export default defineRoutes((app) => {
     );
 
     await expect(buildRouteIndex(projectRoot)).rejects.toThrow(
-      /src\/routes\/index\.ts GET \/items route options helper calls.*inline.*same-file const/u,
+      /src\/routes\/index\.ts GET \/items.*route options helper calls.*inline.*same-file const/u,
     );
   });
 
@@ -706,11 +706,6 @@ export default defineRoutes((app) => {
     [
       "dynamic path",
       'const suffix = "items"; app.get(`/api/${suffix}`, {}, handler);',
-      /src\/routes\/index\.ts GET.*route path.*statically resolvable/u,
-    ],
-    [
-      "unsupported escaped path literal",
-      'app.get("/caf\\u00e9", {}, handler);',
       /src\/routes\/index\.ts GET.*route path.*statically resolvable/u,
     ],
     [

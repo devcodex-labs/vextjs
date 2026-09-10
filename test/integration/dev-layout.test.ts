@@ -44,7 +44,7 @@ async function stopWorker(child: ChildProcess): Promise<void> {
 async function operation(
   child: ChildProcess,
   kind: "reload" | "frontend-rebuild",
-  files: { path: string; type: "modify" }[],
+  files: { path: string; type: "add" | "modify" | "delete" }[],
 ): Promise<Record<string, unknown>> {
   const requestId = randomUUID();
   return new Promise((resolve, reject) => {
@@ -147,7 +147,7 @@ describe("built dev worker with dynamic directory configuration", () => {
       }
       await write(
         "src/config/default.ts",
-        `export default { port: ${port}, host: "127.0.0.1", adapter: "native", logger: { level: "error" } };`,
+        `export default { port: ${port}, host: "127.0.0.1", adapter: "native", locale: { default: "en-US", supported: ["en-US", "zh-CN"] }, logger: { level: "error" } };`,
       );
       await write(
         "src/config/bootstrap.ts",
@@ -165,6 +165,16 @@ describe("built dev worker with dynamic directory configuration", () => {
         `import { defineRoutes } from "vextjs";
         export default defineRoutes(app => { app.get("/health", {}, async (_req, res) => { res.json({ status: "ok" }); }); });`,
       );
+      await write(
+        "src/routes/localized.ts",
+        `import { defineRoutes } from "vextjs"; export default defineRoutes(app => { app.get("/", { docs: { hidden: true } }, req => req.app.throw("order.payment.denied")); });`,
+      );
+      const localeFile = "src/locales/order/payment/en-US.json";
+      const locale = (message: string) =>
+        JSON.stringify({
+          "order.payment.denied": { code: 40901, message, statusCode: 409 },
+        });
+      await write(localeFile, locale("initial message"));
       await write("src/web/main.ts", 'document.body.dataset.ready = "yes";');
       await write(
         "src/web/pages/_document.html",
@@ -243,6 +253,65 @@ describe("built dev worker with dynamic directory configuration", () => {
       const health = await fetch(`http://127.0.0.1:${port}/health`);
       expect(health.status).toBe(200);
       expect(await health.json()).toMatchObject({ data: { status: "ok" } });
+      const localized = async (language = "en-US") => {
+        const response = await fetch(`http://127.0.0.1:${port}/localized`, {
+          headers: { "accept-language": language },
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      expect(await localized()).toMatchObject({
+        status: 409,
+        body: { code: 40901, message: "initial message" },
+      });
+      await write(localeFile, locale("updated message"));
+      expect(
+        await operation(child, "reload", [
+          { path: localeFile, type: "modify" },
+        ]),
+      ).toMatchObject({ success: true });
+      expect(await localized()).toMatchObject({
+        body: { message: "updated message" },
+      });
+      await write(localeFile, "{invalid json");
+      expect(
+        await operation(child, "reload", [
+          { path: localeFile, type: "modify" },
+        ]),
+      ).toMatchObject({ success: false, requestedColdRestart: false });
+      expect(await localized()).toMatchObject({
+        body: { message: "updated message" },
+      });
+      await write(localeFile, locale("recovered message"));
+      expect(
+        await operation(child, "reload", [
+          { path: localeFile, type: "modify" },
+        ]),
+      ).toMatchObject({ success: true });
+      expect(await localized()).toMatchObject({
+        body: { message: "recovered message" },
+      });
+      const chineseFile = "src/locales/order/payment/zh-CN.json";
+      await write(chineseFile, locale("付款被拒绝"));
+      expect(
+        await operation(child, "reload", [{ path: chineseFile, type: "add" }]),
+      ).toMatchObject({ success: true });
+      expect(await localized("zh-CN")).toMatchObject({
+        body: { message: "付款被拒绝" },
+      });
+      await rm(path.join(root, chineseFile));
+      expect(
+        await operation(child, "reload", [
+          { path: chineseFile, type: "delete" },
+        ]),
+      ).toMatchObject({ success: true });
+      expect(await localized("zh-CN")).toMatchObject({
+        body: { message: "recovered message" },
+      });
+      expect(
+        existsSync(
+          path.join(root, ".vext/dev/locales/order/payment/zh-CN.json"),
+        ),
+      ).toBe(false);
       await waitForText(`http://127.0.0.1:${port}/robots.txt`, "User-agent: *");
       await write("static/robots.txt", "User-agent: *\nDisallow: /private");
       child.send({

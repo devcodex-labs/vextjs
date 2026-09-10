@@ -2,6 +2,12 @@ import { join, resolve } from "node:path";
 import { assertPathInside } from "../../lib/path-boundary.js";
 import { SourceViewError, type SourceView } from "../source-view/types.js";
 import {
+  parseSourceSyntax,
+  walkSourceSyntax,
+  sourceValueReferences,
+  type SyntaxNode,
+} from "../../lib/source-syntax.js";
+import {
   collectProjectSources,
   PROJECT_SOURCE_ROOT_ID,
   projectSourceDirectory,
@@ -47,6 +53,7 @@ export interface ProjectIndex {
   };
   serviceEntries: ServiceIndexEntry[];
   appExtensions: AppExtensionIndexEntry[];
+  appExtensionIncompleteFiles?: string[];
 }
 
 const LIFECYCLE_METHODS: Array<Exclude<ExtensionSourceKind, "declaration">> = [
@@ -57,9 +64,14 @@ const LIFECYCLE_METHODS: Array<Exclude<ExtensionSourceKind, "declaration">> = [
 
 export async function buildProjectIndex(
   rootDir: string,
+  options: ProjectSourceOptions = {},
 ): Promise<ProjectIndex> {
-  const view = await collectProjectSources(rootDir, ["service", "plugin"]);
-  return buildProjectIndexFromSourceView(rootDir, view);
+  const view = await collectProjectSources(
+    rootDir,
+    ["service", "plugin"],
+    options,
+  );
+  return buildProjectIndexFromSourceView(rootDir, view, options);
 }
 
 /** 只投影封存正文，供 CLI 与候选 Overlay 分析复用。 */
@@ -89,6 +101,7 @@ export function buildProjectIndexFromSourceView(
     })
     .sort((a, b) => a.serviceKey.localeCompare(b.serviceKey));
 
+  const appExtensionIncompleteFiles: string[] = [];
   const appExtensions = view
     .list({ rootId, roles: ["plugin"] })
     .flatMap((record) => {
@@ -103,7 +116,9 @@ export function buildProjectIndexFromSourceView(
             ".",
         );
       }
-      return scanAppExtensions(filePath, paths.appExtensionsDts, source);
+      const scan = scanAppExtensions(filePath, paths.appExtensionsDts, source);
+      if (scan.incomplete) appExtensionIncompleteFiles.push(filePath);
+      return scan.entries;
     })
     .sort((a, b) => a.propertyKey.localeCompare(b.propertyKey));
 
@@ -111,6 +126,7 @@ export function buildProjectIndexFromSourceView(
     source: Object.freeze({ view, rootId, rootDir }),
     serviceEntries,
     appExtensions,
+    appExtensionIncompleteFiles,
   };
 }
 
@@ -118,428 +134,390 @@ function scanAppExtensions(
   pluginFile: string,
   generatedFilePath: string,
   source: string,
-): AppExtensionIndexEntry[] {
-  const declared = scanDeclaredAppExtensions(
-    source,
-    pluginFile,
-    generatedFilePath,
-  );
-  const declaredKeys = new Set(declared.map((entry) => entry.propertyKey));
-  const legacy = scanLegacyAppExtendCalls(source, pluginFile).filter(
-    (entry) => !declaredKeys.has(entry.propertyKey),
-  );
-  return [...declared, ...legacy];
-}
-
-function scanDeclaredAppExtensions(
-  source: string,
-  pluginFile: string,
-  generatedFilePath: string,
-): AppExtensionIndexEntry[] {
+): { entries: AppExtensionIndexEntry[]; incomplete: boolean } {
+  const program = parseSourceSyntax(pluginFile, source);
   const entries: AppExtensionIndexEntry[] = [];
-  const declarationPattern =
-    /export\s+const\s+appExtensions\s*=\s*defineAppExtensions\s*<\s*\{([\s\S]*?)\}\s*>\s*\(/gu;
-  const importPath = toGeneratedImportPath(generatedFilePath, pluginFile);
-
-  for (const match of source.matchAll(declarationPattern)) {
-    const body = match[1] ?? "";
-    for (const propertyKey of extractObjectTypeKeys(body)) {
-      entries.push({
-        pluginFile,
-        propertyKey,
-        inferredTypeText: `typeof import("${importPath}").appExtensions[${renderTypeStringLiteral(propertyKey)}]`,
-        sourceKind: "declaration",
-        confidence: "high",
-      });
+  let incomplete = false;
+  const factories = new Map<string, string>();
+  for (const node of program.body) {
+    if (node.type !== "ImportDeclaration" || node.source.value !== "vextjs")
+      continue;
+    for (const specifier of node.specifiers) {
+      if (
+        specifier.type === "ImportSpecifier" &&
+        specifier.importKind !== "type"
+      ) {
+        factories.set(
+          specifier.local.name,
+          specifier.imported.type === "Identifier"
+            ? specifier.imported.name
+            : String(specifier.imported.value),
+        );
+      }
     }
   }
+  const text = (node: SyntaxNode) => source.slice(node.start, node.end);
+  const keyOf = (node: SyntaxNode): string | undefined =>
+    node.type === "Identifier"
+      ? node.name
+      : node.type === "Literal" && typeof node.value === "string"
+        ? node.value
+        : undefined;
+  const unwrap = (node: SyntaxNode): SyntaxNode => {
+    while (
+      node.type === "TSAsExpression" ||
+      node.type === "TSSatisfiesExpression" ||
+      node.type === "TSNonNullExpression"
+    )
+      node = node.expression;
+    return node;
+  };
 
-  return entries;
-}
-
-function scanLegacyAppExtendCalls(
-  source: string,
-  pluginFile: string,
-): AppExtensionIndexEntry[] {
-  const entries: AppExtensionIndexEntry[] = [];
-
-  for (const lifecycle of LIFECYCLE_METHODS) {
-    for (const block of findLifecycleBlocks(source, lifecycle)) {
-      const callPattern = new RegExp(
-        `${escapeRegExp(block.paramName)}\\.extend\\s*\\(\\s*([\"'\`])([^\"'\`]+)\\1\\s*,`,
-        "gu",
-      );
-
-      for (const match of block.body.matchAll(callPattern)) {
-        const propertyKey = match[2];
-        if (!propertyKey) continue;
-        if (!isRuntimeAppExtensionKey(propertyKey)) continue;
-
-        const valueStart = match.index + match[0].length;
-        const valueExpression = readCallArgument(block.body, valueStart);
-        const inferred = inferLegacyValueType(block.body, valueExpression);
-
+  for (const node of program.body) {
+    if (
+      node.type !== "ExportNamedDeclaration" ||
+      node.declaration?.type !== "VariableDeclaration"
+    )
+      continue;
+    for (const declaration of node.declaration.declarations) {
+      if (
+        declaration.id.type !== "Identifier" ||
+        declaration.id.name !== "appExtensions"
+      )
+        continue;
+      const init = declaration.init && unwrap(declaration.init);
+      if (
+        node.declaration.kind !== "const" ||
+        init?.type !== "CallExpression" ||
+        init.callee.type !== "Identifier" ||
+        factories.get(init.callee.name) !== "defineAppExtensions"
+      ) {
+        incomplete = true;
+        continue;
+      }
+      const type = init.typeArguments?.params[0];
+      if (type?.type !== "TSTypeLiteral") {
+        incomplete = true;
+        continue;
+      }
+      for (const member of type.members) {
+        if (
+          member.type !== "TSPropertySignature" &&
+          member.type !== "TSMethodSignature"
+        ) {
+          incomplete = true;
+          continue;
+        }
+        const key = !member.computed ? keyOf(member.key) : undefined;
+        if (!key) {
+          incomplete = true;
+          continue;
+        }
         entries.push({
           pluginFile,
-          propertyKey,
-          inferredTypeText: inferred.typeText,
-          sourceKind: lifecycle,
-          confidence: inferred.confidence,
+          propertyKey: key,
+          inferredTypeText: `typeof import("${toGeneratedImportPath(generatedFilePath, pluginFile)}").appExtensions[${renderTypeStringLiteral(key)}]`,
+          sourceKind: "declaration",
+          confidence: "high",
         });
       }
     }
   }
-
-  return entries;
-}
-
-function findLifecycleBlocks(
-  source: string,
-  lifecycle: Exclude<ExtensionSourceKind, "declaration">,
-): Array<{ paramName: string; body: string }> {
-  const blocks: Array<{ paramName: string; body: string }> = [];
-  const methodPattern = new RegExp(
-    `${lifecycle}\\s*\\(\\s*([A-Za-z_$][\\w$]*)[^)]*\\)\\s*\\{`,
-    "gu",
-  );
-
-  for (const match of source.matchAll(methodPattern)) {
-    const openBrace = source.indexOf("{", match.index);
-    const body = readBalanced(source, openBrace, "{", "}");
-    const paramName = match[1];
-    if (paramName && body) {
-      blocks.push({ paramName, body: body.slice(1, -1) });
-    }
-  }
-
-  const propertyPattern = new RegExp(
-    `${lifecycle}\\s*:\\s*(?:async\\s*)?\\(?\\s*([A-Za-z_$][\\w$]*)[^)]*\\)?\\s*=>\\s*\\{`,
-    "gu",
-  );
-
-  for (const match of source.matchAll(propertyPattern)) {
-    const openBrace = source.indexOf("{", match.index);
-    const body = readBalanced(source, openBrace, "{", "}");
-    const paramName = match[1];
-    if (paramName && body) {
-      blocks.push({ paramName, body: body.slice(1, -1) });
-    }
-  }
-
-  return blocks;
-}
-
-function inferLegacyValueType(
-  lifecycleBody: string,
-  valueExpression: string,
-): { typeText: string; confidence: InferenceConfidence } {
-  const value = valueExpression.trim();
-  if (!value) {
-    return { typeText: "unknown", confidence: "low" };
-  }
-
-  if (value.startsWith("{")) {
-    return {
-      typeText: inferObjectLiteralType(value),
-      confidence: "medium",
-    };
-  }
-
-  if (/^(true|false)$/u.test(value)) {
-    return { typeText: "boolean", confidence: "medium" };
-  }
-  if (/^-?\d+(?:\.\d+)?$/u.test(value)) {
-    return { typeText: "number", confidence: "medium" };
-  }
-  if (/^["'`]/u.test(value)) {
-    return { typeText: "string", confidence: "medium" };
-  }
-
-  const identifier = /^[A-Za-z_$][\w$]*/u.exec(value)?.[0];
-  if (identifier) {
-    const initializer = findConstObjectInitializer(lifecycleBody, identifier);
-    if (initializer) {
-      return {
-        typeText: inferObjectLiteralType(initializer),
-        confidence: "medium",
-      };
-    }
-  }
-
-  return { typeText: "unknown", confidence: "low" };
-}
-
-function inferObjectLiteralType(objectLiteral: string): string {
-  const body = objectLiteral.trim().replace(/^\{|\}$/gu, "");
-  const members: string[] = [];
-
-  const methodPattern =
-    /(?:async\s+)?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?::\s*([^\{]+?))?\s*\{/gu;
-  for (const match of body.matchAll(methodPattern)) {
-    const name = match[1];
-    const params = normalizeParams(match[2] ?? "");
-    const returnType = normalizeReturnType(match[3], match[0]);
-    if (name) {
-      members.push(`${name}(${params}): ${returnType};`);
-    }
-  }
-
-  const propertyPattern =
-    /(?:^|,|\n)\s*([A-Za-z_$][\w$]*)\s*:\s*(true|false|-?\d+(?:\.\d+)?|["'`][\s\S]*?["'`])/gu;
-  for (const match of body.matchAll(propertyPattern)) {
-    const name = match[1];
-    const value = match[2] ?? "";
-    if (name && !members.some((item) => item.startsWith(`${name}(`))) {
-      members.push(`${name}: ${inferPrimitiveLiteralType(value)};`);
-    }
-  }
-
-  if (members.length === 0) {
-    return "Record<string, unknown>";
-  }
-
-  return `{ ${members.join(" ")} }`;
-}
-
-function normalizeParams(paramsText: string): string {
-  const params = paramsText
-    .split(",")
-    .map((param) => param.trim())
-    .filter(Boolean)
-    .map((param) => {
-      if (param.includes(":")) {
-        return param;
-      }
-      return `${param}: any`;
+  const declared = new Set(entries.map((entry) => entry.propertyKey));
+  const portableType = (type: SyntaxNode): boolean => {
+    let portable = true;
+    walkSourceSyntax(type, (node) => {
+      // 引用本地类型必须经exported appExtensions声明；不能复制失去作用域的类型名。
+      if (
+        node.type === "TSTypeQuery" ||
+        node.type === "TSImportType" ||
+        node.type === "TSTypeParameterDeclaration"
+      )
+        portable = false;
+      if (
+        node.type === "TSTypeReference" &&
+        (node.typeName.type !== "Identifier" ||
+          ![
+            "Promise",
+            "Array",
+            "ReadonlyArray",
+            "Record",
+            "Map",
+            "Set",
+            "Date",
+          ].includes(node.typeName.name))
+      )
+        portable = false;
     });
-  return params.join(", ");
-}
-
-function normalizeReturnType(
-  explicitReturnType: string | undefined,
-  signatureText: string,
-): string {
-  const cleaned = explicitReturnType?.trim().replace(/,$/u, "");
-  if (cleaned) {
-    return cleaned;
-  }
-  return signatureText.trim().startsWith("async ") ? "Promise<any>" : "any";
-}
-
-function inferPrimitiveLiteralType(value: string): string {
-  if (/^(true|false)$/u.test(value)) return "boolean";
-  if (/^-?\d+(?:\.\d+)?$/u.test(value)) return "number";
-  return "string";
-}
-
-function findConstObjectInitializer(
-  body: string,
-  identifier: string,
-): string | null {
-  const pattern = new RegExp(
-    `\\bconst\\s+${escapeRegExp(identifier)}\\s*=`,
-    "u",
-  );
-  const match = pattern.exec(body);
-  if (!match) return null;
-
-  const openBrace = body.indexOf("{", match.index + match[0].length);
-  if (openBrace < 0) return null;
-  return readBalanced(body, openBrace, "{", "}");
-}
-
-function extractObjectTypeKeys(body: string): string[] {
-  const keys: string[] = [];
-  let index = 0;
-
-  while (index < body.length) {
-    index = skipTypeWhitespaceAndDelimiters(body, index);
-    if (body.startsWith("readonly", index)) {
-      index = skipTypeWhitespaceAndDelimiters(body, index + "readonly".length);
-    }
-
-    const keyToken = readTypePropertyKey(body, index);
-    if (!keyToken) {
-      index++;
-      continue;
-    }
-
-    const key = keyToken.key;
-    index = keyToken.end;
-    index = skipTypeWhitespaceAndDelimiters(body, index);
-    if (body[index] === "?") {
-      index++;
-      index = skipTypeWhitespaceAndDelimiters(body, index);
-    }
-
-    if (body[index] === ":") {
-      keys.push(key);
-      index = consumeTypeValue(body, index + 1);
-      continue;
-    }
-
-    index++;
-  }
-
-  return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
-}
-
-function readTypePropertyKey(
-  body: string,
-  index: number,
-): { key: string; end: number } | null {
-  const char = body[index];
-  if (char === '"' || char === "'") {
-    return readQuotedTypePropertyKey(body, index, char);
-  }
-
-  const keyMatch = /^[A-Za-z_$][\w$]*/u.exec(body.slice(index));
-  if (!keyMatch) return null;
-
-  const key = keyMatch[0];
-  return { key, end: index + key.length };
-}
-
-function readQuotedTypePropertyKey(
-  body: string,
-  index: number,
-  quote: '"' | "'",
-): { key: string; end: number } | null {
-  let key = "";
-  let escaped = false;
-
-  for (let current = index + 1; current < body.length; current++) {
-    const char = body[current]!;
-
-    if (escaped) {
-      key += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-
-    if (char === quote) {
-      return { key, end: current + 1 };
-    }
-
-    key += char;
-  }
-
-  return null;
-}
-
-function skipTypeWhitespaceAndDelimiters(body: string, index: number): number {
-  let current = index;
-  while (current < body.length && /[\s;,]/u.test(body[current] ?? "")) {
-    current++;
-  }
-  return current;
-}
-
-function consumeTypeValue(body: string, index: number): number {
-  let current = index;
-  let depth = 0;
-  let quote: string | null = null;
-  let escaped = false;
-
-  while (current < body.length) {
-    const char = body[current]!;
-
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === quote) quote = null;
-      current++;
-      continue;
-    }
-
-    if (char === '"' || char === "'" || char === "`") {
-      quote = char;
-      current++;
-      continue;
-    }
-
-    if (char === "{" || char === "(" || char === "[" || char === "<") {
-      depth++;
-    } else if (char === "}" || char === ")" || char === "]" || char === ">") {
-      depth = Math.max(0, depth - 1);
-    } else if ((char === ";" || char === ",") && depth === 0) {
-      return current + 1;
-    }
-
-    current++;
-  }
-
-  return current;
-}
-
-function readCallArgument(source: string, startIndex: number): string {
-  let index = startIndex;
-  while (/\s/u.test(source[index] ?? "")) index++;
-
-  if (source[index] === "{") {
-    return readBalanced(source, index, "{", "}") ?? "";
-  }
-  if (source[index] === "(") {
-    return readBalanced(source, index, "(", ")") ?? "";
-  }
-
-  let end = index;
-  while (end < source.length && source[end] !== ")" && source[end] !== "\n") {
-    if (source[end] === ",") break;
-    end++;
-  }
-  return source.slice(index, end);
-}
-
-function readBalanced(
-  source: string,
-  openIndex: number,
-  openChar: "{" | "(" | "[",
-  closeChar: "}" | ")" | "]",
-): string | null {
-  if (openIndex < 0 || source[openIndex] !== openChar) return null;
-
-  let depth = 0;
-  let quote: string | null = null;
-  let escaped = false;
-
-  for (let i = openIndex; i < source.length; i++) {
-    const char = source[i]!;
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        quote = null;
+    return portable;
+  };
+  for (const node of program.body) {
+    if (node.type !== "ExportDefaultDeclaration") continue;
+    let value = unwrap(node.declaration);
+    if (
+      value.type === "CallExpression" &&
+      value.callee.type === "Identifier" &&
+      factories.get(value.callee.name) === "definePlugin"
+    ) {
+      const argument = value.arguments[0];
+      if (!argument || argument.type === "SpreadElement") {
+        incomplete = true;
+        continue;
       }
+      value = unwrap(argument);
+    }
+    if (value.type !== "ObjectExpression") {
+      incomplete = true;
       continue;
     }
-
-    if (char === '"' || char === "'" || char === "`") {
-      quote = char;
-      continue;
-    }
-
-    if (char === openChar) {
-      depth++;
-    } else if (char === closeChar) {
-      depth--;
-      if (depth === 0) {
-        return source.slice(openIndex, i + 1);
+    for (const property of value.properties) {
+      if (property.type !== "Property") {
+        incomplete = true;
+        continue;
       }
+      const lifecycle = !property.computed ? keyOf(property.key) : undefined;
+      if (
+        !LIFECYCLE_METHODS.includes(
+          lifecycle as (typeof LIFECYCLE_METHODS)[number],
+        )
+      )
+        continue;
+      const fn = property.value;
+      if (
+        fn.type !== "FunctionExpression" &&
+        fn.type !== "ArrowFunctionExpression"
+      ) {
+        incomplete = true;
+        continue;
+      }
+      if (!fn.body) {
+        incomplete = true;
+        continue;
+      }
+      const body = fn.body;
+      const app = fn.params[0];
+      if (app?.type !== "Identifier") {
+        incomplete = true;
+        continue;
+      }
+      const bindings = new Map<string, SyntaxNode>();
+      const mutable = new Set<string>();
+      if (body.type === "BlockStatement")
+        for (const statement of body.body) {
+          if (
+            statement.type === "VariableDeclaration" &&
+            statement.kind === "const"
+          )
+            for (const declaration of statement.declarations) {
+              if (declaration.id.type === "Identifier" && declaration.init)
+                bindings.set(declaration.id.name, declaration.init);
+            }
+        }
+      walkSourceSyntax(body, (current) => {
+        if (
+          current.type === "VariableDeclarator" &&
+          current.init &&
+          unwrap(current.init).type === "Identifier" &&
+          (unwrap(current.init) as { name: string }).name === app.name
+        )
+          incomplete = true;
+        if (current.type === "CallExpression") {
+          const frameworkCall =
+            current.callee.type === "MemberExpression" &&
+            current.callee.object.type === "Identifier" &&
+            current.callee.object.name === app.name &&
+            !current.callee.computed;
+          for (const argument of current.arguments)
+            for (const reference of sourceValueReferences(argument)) {
+              if (reference === app.name) incomplete = true;
+              if (
+                !frameworkCall &&
+                bindings.has(reference) &&
+                unwrap(bindings.get(reference)!).type !== "Literal"
+              )
+                mutable.add(reference);
+            }
+        }
+        if (
+          current.type === "AssignmentExpression" ||
+          current.type === "UpdateExpression"
+        ) {
+          let target: SyntaxNode =
+            current.type === "AssignmentExpression"
+              ? current.left
+              : current.argument;
+          while (target.type === "MemberExpression") target = target.object;
+          if (target.type === "Identifier") mutable.add(target.name);
+        }
+      });
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [name, value] of bindings)
+          for (const reference of sourceValueReferences(value)) {
+            if (
+              !bindings.has(reference) ||
+              unwrap(bindings.get(reference)!).type === "Literal"
+            )
+              continue;
+            if (mutable.has(name) || mutable.has(reference)) {
+              if (!mutable.has(name) || !mutable.has(reference)) changed = true;
+              mutable.add(name);
+              mutable.add(reference);
+            }
+          }
+      }
+      if (mutable.has(app.name)) incomplete = true;
+      const infer = (
+        input: SyntaxNode,
+        visited = new Set<string>(),
+      ): { type: string; confidence: InferenceConfidence } => {
+        const value = unwrap(input);
+        if (
+          value.type === "Identifier" &&
+          !visited.has(value.name) &&
+          !mutable.has(value.name)
+        ) {
+          const init = bindings.get(value.name);
+          if (init) return infer(init, new Set([...visited, value.name]));
+        }
+        if (
+          value.type === "Literal" &&
+          ["string", "number", "boolean"].includes(typeof value.value)
+        )
+          return { type: typeof value.value, confidence: "medium" };
+        if (
+          value.type === "UnaryExpression" &&
+          value.operator === "-" &&
+          value.argument.type === "Literal" &&
+          typeof value.argument.value === "number"
+        )
+          return { type: "number", confidence: "medium" };
+        if (value.type === "ObjectExpression") {
+          const methods: string[] = [];
+          const properties: string[] = [];
+          for (const property of value.properties) {
+            if (
+              property.type !== "Property" ||
+              property.computed ||
+              property.kind !== "init"
+            )
+              return { type: "unknown", confidence: "low" };
+            const key = keyOf(property.key);
+            if (!key) return { type: "unknown", confidence: "low" };
+            const renderedKey = /^[A-Za-z_$][\w$]*$/u.test(key)
+              ? key
+              : renderTypeStringLiteral(key);
+            const value = unwrap(property.value);
+            if (
+              property.method &&
+              (value.type === "FunctionExpression" ||
+                value.type === "ArrowFunctionExpression")
+            ) {
+              if (
+                value.typeParameters ||
+                value.params.some(
+                  (param) =>
+                    param.type !== "Identifier" ||
+                    (param.typeAnnotation &&
+                      !portableType(param.typeAnnotation)),
+                ) ||
+                (value.returnType && !portableType(value.returnType))
+              )
+                return { type: "unknown", confidence: "low" };
+              const params = value.params
+                .map((param) => {
+                  if (param.type !== "Identifier") return "";
+                  return param.typeAnnotation
+                    ? text(param)
+                    : param.name + ": any";
+                })
+                .join(", ");
+              const returns = value.returnType
+                ? text(value.returnType).replace(/^:\s*/u, "")
+                : value.async
+                  ? "Promise<any>"
+                  : "any";
+              methods.push(renderedKey + "(" + params + "): " + returns + ";");
+            } else {
+              const child = infer(value, visited);
+              if (child.confidence === "low")
+                return { type: "unknown", confidence: "low" };
+              properties.push(renderedKey + ": " + child.type + ";");
+            }
+          }
+          return {
+            type:
+              methods.length + properties.length
+                ? "{ " + [...methods, ...properties].join(" ") + " }"
+                : "Record<string, unknown>",
+            confidence: "medium",
+          };
+        }
+        return { type: "unknown", confidence: "low" };
+      };
+      walkSourceSyntax(body, (call, _parent, ancestors) => {
+        if (
+          call.type === "CallExpression" &&
+          call.arguments.some(
+            (argument) =>
+              argument.type === "Identifier" && argument.name === app.name,
+          )
+        )
+          incomplete = true;
+        if (
+          call.type !== "CallExpression" ||
+          call.callee.type !== "MemberExpression" ||
+          call.callee.object.type !== "Identifier" ||
+          call.callee.object.name !== app.name
+        )
+          return;
+        if (call.callee.computed) {
+          incomplete = true;
+          return;
+        }
+        const method = !call.callee.computed
+          ? keyOf(call.callee.property)
+          : undefined;
+        if (method !== "extend") return;
+        const keyNode = call.arguments[0];
+        const key =
+          keyNode?.type === "Literal" && typeof keyNode.value === "string"
+            ? keyNode.value
+            : undefined;
+        if (!key) {
+          incomplete = true;
+          return;
+        }
+        if (declared.has(key)) return;
+        if (!isRuntimeAppExtensionKey(key)) return;
+        const argument = call.arguments[1];
+        const conditional = ancestors.some((ancestor) =>
+          [
+            "IfStatement",
+            "ConditionalExpression",
+            "SwitchStatement",
+            "ForStatement",
+            "ForOfStatement",
+            "WhileStatement",
+            "FunctionExpression",
+            "ArrowFunctionExpression",
+          ].includes(ancestor.type),
+        );
+        const inferred =
+          argument && argument.type !== "SpreadElement" && !conditional
+            ? infer(argument)
+            : { type: "unknown", confidence: "low" as const };
+        if (inferred.confidence === "low") incomplete = true;
+        entries.push({
+          pluginFile,
+          propertyKey: key,
+          inferredTypeText: inferred.type,
+          sourceKind: lifecycle as Exclude<ExtensionSourceKind, "declaration">,
+          confidence: inferred.confidence,
+        });
+      });
     }
   }
-
-  return null;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return { entries, incomplete };
 }

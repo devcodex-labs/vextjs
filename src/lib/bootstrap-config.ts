@@ -175,7 +175,9 @@ async function importBootstrapDefinition(
   rootDir: string,
 ): Promise<BootstrapConfigDefinition> {
   const { resolveModuleDefault } = await import("./interop.js");
-  const mod = await importUserModule(filePath, rootDir);
+  const mod = await importUserModule(filePath, rootDir, {
+    readRoot: path.dirname(filePath),
+  });
   const rawExport = resolveModuleDefault<unknown>(mod);
   return normalizeDefinition(rawExport, filePath);
 }

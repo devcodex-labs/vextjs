@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseDeployAssetsArgs } from "../../../src/cli/deploy.js";
+import {
+  deployCommand,
+  parseDeployAssetsArgs,
+} from "../../../src/cli/deploy.js";
 
 describe("deploy assets command", () => {
-  function expectDeployArgsToExit(args: string[], expectedError: string): void {
+  function expectDeployArgsToFail(args: string[], expectedError: string): void {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const exit = vi.spyOn(process, "exit").mockImplementation(((
       code?: number,
@@ -11,8 +14,11 @@ describe("deploy assets command", () => {
     }) as typeof process.exit);
 
     try {
-      expect(() => parseDeployAssetsArgs(args)).toThrow("process.exit(1)");
-      expect(error).toHaveBeenCalledWith(expectedError);
+      expect(() => parseDeployAssetsArgs(args)).toThrow(
+        expectedError.trimEnd(),
+      );
+      expect(error).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
     } finally {
       error.mockRestore();
       exit.mockRestore();
@@ -36,7 +42,7 @@ describe("deploy assets command", () => {
   });
 
   it("rejects duplicate --config options", () => {
-    expectDeployArgsToExit(
+    expectDeployArgsToFail(
       ["--config", "one", "--config", "two"],
       "[vextjs] --config may only be specified once",
     );
@@ -51,7 +57,7 @@ describe("deploy assets command", () => {
     ["--prefix", "<path>"],
     ["--state-file", "<path>"],
   ])("%s 缺少值时应失败", (option, valueLabel) => {
-    expectDeployArgsToExit(
+    expectDeployArgsToFail(
       [option],
       `[vextjs] Option "${option}" requires a value: ${valueLabel}`,
     );
@@ -64,18 +70,18 @@ describe("deploy assets command", () => {
     ["--prefix", "<path>"],
     ["--state-file", "<path>"],
   ])("%s 后跟另一个 flag 时应失败", (option, valueLabel) => {
-    expectDeployArgsToExit(
+    expectDeployArgsToFail(
       [option, "--dry-run"],
       `[vextjs] Option "${option}" requires a value: ${valueLabel}; received option-like value "--dry-run"`,
     );
   });
 
   it("未知位置参数应失败", () => {
-    expectDeployArgsToExit(["extra"], '[vextjs] Unknown argument: "extra"\n');
+    expectDeployArgsToFail(["extra"], '[vextjs] Unknown argument: "extra"\n');
   });
 
   it("dry-run 后的未知位置参数也应失败", () => {
-    expectDeployArgsToExit(
+    expectDeployArgsToFail(
       ["--dry-run", "extra"],
       '[vextjs] Unknown argument: "extra"\n',
     );
@@ -86,4 +92,29 @@ describe("deploy assets command", () => {
       "[vextjs] --prefix must not contain '..'.",
     );
   });
+
+  it.each([
+    ["unknown", "--json"],
+    ["assets", "--manifest", "--json"],
+    ["assets", "--unknown", "--json"],
+    ["assets", "extra", "--json"],
+    ["assets", "--config", "one", "--config", "two", "--json"],
+    ["assets", "--config", "../outside", "--json"],
+  ])(
+    "prints one JSON result for invalid command arguments: %j",
+    async (...args) => {
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(process, "exit").mockImplementation(((code) => {
+        throw new Error(`process.exit(${code})`);
+      }) as typeof process.exit);
+      await expect(deployCommand(args)).rejects.toThrow("process.exit(1)");
+      expect(stdout).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(stdout.mock.calls[0]![0])).toMatchObject({
+        ok: false,
+        error: expect.any(String),
+      });
+      expect(stderr).not.toHaveBeenCalled();
+    },
+  );
 });

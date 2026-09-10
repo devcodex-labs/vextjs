@@ -174,3 +174,7 @@ examples/*/package-lock.json
 # AI dev guidelines (prevent accidental commit to project repo)
 .ai-memory/
 reports/
+
+# Local browser verification output (sources live in test/fixtures)
+.playwright-cli/
+output/playwright/

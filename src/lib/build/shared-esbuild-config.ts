@@ -72,7 +72,6 @@ export const SOURCE_IGNORE = [
   "**/*.spec.*",
   "**/__tests__/**",
   "**/*.__vext_compiled__*",
-  "client/**",
 ];
 
 /** 全量构建和语言检测共享目录角色；frontend.root=src 时仍保留实际后端目录。 */
@@ -81,6 +80,8 @@ export function backendSourceIgnore(
   sourceBase: string,
   frontend?: FrontendLayoutInput,
 ): string[] {
+  // 目录名称本身不启用前端；API 服务可以使用 src/frontend 存放后端模块。
+  if (frontend?.enabled !== true) return [...SOURCE_IGNORE];
   const layout = resolveFrontendLayout(projectRoot, frontend);
   const relativePattern = (value: string): string =>
     fg.escapePath(path.relative(sourceBase, value).replaceAll("\\", "/"));

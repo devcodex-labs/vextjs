@@ -443,24 +443,16 @@ function createAttemptLease(
   timeoutReason: Error,
 ): AttemptLease {
   const controller = new AbortController();
+  // 原生组合信号保持正文阶段的调用方取消；dispose只结束本次计时，
+  // 不把fetch返回Response误当成正文已经消费完成。
+  const signal = AbortSignal.any([parentSignal, controller.signal]);
   let timedOut = false;
   let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const onParentAbort = () => {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
-    controller.abort(parentSignal.reason);
-  };
-
-  if (parentSignal.aborted) {
-    onParentAbort();
-  } else {
-    parentSignal.addEventListener("abort", onParentAbort, { once: true });
+  if (!signal.aborted) {
     timer = setTimeout(() => {
       timer = undefined;
-      if (controller.signal.aborted) return;
+      if (signal.aborted) return;
       timedOut = true;
       controller.abort(timeoutReason);
     }, timeout);
@@ -468,7 +460,7 @@ function createAttemptLease(
   }
 
   return {
-    signal: controller.signal,
+    signal,
     didTimeout: () => timedOut,
     dispose() {
       if (disposed) return;
@@ -477,7 +469,6 @@ function createAttemptLease(
         clearTimeout(timer);
         timer = undefined;
       }
-      parentSignal.removeEventListener("abort", onParentAbort);
     },
   };
 }

@@ -4,6 +4,10 @@ import { ProjectFileReadError, readProjectFile } from "./read-project-file.js";
 import {
   assertPathInside,
   assertRealPathInside,
+  assertExplicitOutputDirectory,
+  canonicalPath,
+  physicalPath,
+  isPathInside,
   normalizeSafeRelativePath,
 } from "../path-boundary.js";
 
@@ -24,7 +28,7 @@ export class ArtifactError extends Error {
 }
 
 export interface ArtifactFile {
-  /** 项目根相对路径；保存字节身份，不以扩展名推定归属。 */
+  /** 项目内为相对路径；显式外部scope使用规范化绝对路径。保存字节身份。 */
   path: string;
   sha256: string;
   source?: string;
@@ -54,7 +58,27 @@ export function isArtifactDigest(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
 }
 
-export function artifactPath(root: string, relative: string): string {
+export function artifactPath(
+  root: string,
+  relative: string,
+  allowExternal = false,
+): string {
+  if (allowExternal && path.isAbsolute(relative)) {
+    const target = path.resolve(relative);
+    const normalized = canonicalPath(target).replaceAll("\\", "/");
+    const identity =
+      process.platform === "win32" ? relative.toLowerCase() : relative;
+    if (identity !== normalized || isPathInside(root, target, true))
+      throw new ArtifactError(
+        "VEXT_OUTPUT_UNVERIFIED",
+        `External artifact path is not canonical: ${relative}`,
+      );
+    normalizeSafeRelativePath(
+      path.relative(path.parse(target).root, target),
+      "external artifact path",
+    );
+    return target;
+  }
   const portable = normalizeSafeRelativePath(relative, "artifact path");
   if (/[<>:"|?*]/u.test(portable)) {
     throw new ArtifactError(
@@ -71,7 +95,16 @@ export function artifactPath(root: string, relative: string): string {
   return target;
 }
 
-export function artifactRelativePath(root: string, target: string): string {
+export function artifactRelativePath(
+  root: string,
+  target: string,
+  allowExternal = false,
+): string {
+  if (allowExternal && !isPathInside(root, target, true)) {
+    const reference = physicalPath(target).replaceAll("\\", "/");
+    artifactPath(root, reference, true);
+    return reference;
+  }
   const relative = path
     .relative(root, path.resolve(target))
     .replaceAll("\\", "/");
@@ -84,10 +117,13 @@ export function readArtifactFile(
   root: string,
   relative: string,
   maxBytes?: number,
+  allowExternal = false,
 ): Buffer | null {
-  artifactPath(root, relative);
+  const target = artifactPath(root, relative, allowExternal);
   try {
-    return readProjectFile(root, relative, maxBytes);
+    return allowExternal && path.isAbsolute(relative)
+      ? readProjectFile(path.dirname(target), path.basename(target), maxBytes)
+      : readProjectFile(root, relative, maxBytes);
   } catch (error) {
     if (error instanceof ProjectFileReadError) {
       throw new ArtifactError("VEXT_OUTPUT_UNVERIFIED", error.message);
@@ -130,7 +166,9 @@ export function parseArtifactManifest(
       ) {
         throw new Error("Invalid manifest scope");
       }
-      artifactPath(realRoot, scope.outputDir);
+      const output = artifactPath(realRoot, scope.outputDir, true);
+      if (path.isAbsolute(scope.outputDir))
+        assertExplicitOutputDirectory(realRoot, output, "artifact output");
       ids.add(scope.id);
       for (const file of scope.files) {
         if (
@@ -141,8 +179,9 @@ export function parseArtifactManifest(
           (file.source !== undefined && typeof file.source !== "string")
         )
           throw new Error("Invalid manifest file");
-        artifactPath(realRoot, file.path);
-        if (file.source !== undefined) artifactPath(realRoot, file.source);
+        artifactPath(realRoot, file.path, true);
+        if (file.source !== undefined)
+          artifactPath(realRoot, file.source, true);
         const key =
           process.platform === "win32" ? file.path.toLowerCase() : file.path;
         if (outputs.has(key))

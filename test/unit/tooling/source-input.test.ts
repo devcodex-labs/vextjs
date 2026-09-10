@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
-import fg from "fast-glob";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { collectProjectSources } from "../../../src/tooling/project-index/source-input.js";
 import { buildRouteIndexFromSourceView } from "../../../src/tooling/project-index/scan-routes.js";
@@ -26,6 +24,7 @@ function write(
 }
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) {
     expect(fs.realpathSync.native(root)).toBe(root);
     expect(path.dirname(root)).toBe(fs.realpathSync.native(os.tmpdir()));
@@ -95,7 +94,7 @@ describe("project source discovery", () => {
     );
   });
 
-  it("does not traverse internal junctions and rejects a role root that escapes the project", async () => {
+  it("rejects undeclared escaping junctions instead of reporting incomplete routes as empty", async () => {
     const root = fixture();
     const outside = fixture();
     write(root, "src/routes/index.ts");
@@ -105,11 +104,9 @@ describe("project source discovery", () => {
       path.join(root, "src/routes/linked"),
       process.platform === "win32" ? "junction" : "dir",
     );
-    expect(
-      (await collectProjectSources(root, ["route"]))
-        .list()
-        .map((record) => record.path),
-    ).toEqual(["src/routes/index.ts"]);
+    await expect(collectProjectSources(root, ["route"])).rejects.toThrow(
+      "inside",
+    );
     fs.symlinkSync(
       outside,
       path.join(root, "escaped"),
@@ -122,57 +119,95 @@ describe("project source discovery", () => {
     ).rejects.toThrow("inside");
   });
 
-  it("closes its actual discovery stream when the file budget is exceeded", async () => {
+  it("preserves logical route prefixes for internal directory links and diagnoses cycles", async () => {
+    const root = fixture();
+    write(
+      root,
+      "shared/routes/index.ts",
+      'import { defineRoutes } from "vextjs"; export default defineRoutes(app => { app.get("/list", (_req, res) => res.json({})); });',
+    );
+    fs.mkdirSync(path.join(root, "src/routes"), { recursive: true });
+    fs.symlinkSync(
+      path.join(root, "shared/routes"),
+      path.join(root, "src/routes/billing"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const view = await collectProjectSources(root, ["route"]);
+    expect(view.list().map((record) => record.path)).toEqual([
+      "src/routes/billing/index.ts",
+    ]);
+    expect(buildRouteIndexFromSourceView(root, view)[0]?.path).toBe(
+      "/billing/list",
+    );
+    fs.symlinkSync(
+      path.join(root, "src/routes"),
+      path.join(root, "shared/routes/loop"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await expect(collectProjectSources(root, ["route"])).rejects.toThrow(
+      /cycle.*incomplete/,
+    );
+  });
+
+  it("closes its actual directory handle when the file budget is exceeded", async () => {
     const root = fixture();
     write(root, "src/routes/a.ts");
     write(root, "src/routes/b.ts");
-    const original = fg.stream;
-    const streams: Readable[] = [];
-    vi.spyOn(fg, "stream").mockImplementation((...args) => {
-      const stream = original(...args);
-      if (!(stream instanceof Readable)) throw new Error("Unexpected stream");
-      streams.push(stream);
-      return stream;
+    const original = fs.promises.opendir;
+    const handles: fs.Dir[] = [];
+    vi.spyOn(fs.promises, "opendir").mockImplementation(async (...args) => {
+      const handle = await original(...args);
+      handles.push(handle);
+      return handle;
     });
     await expect(
       collectProjectSources(root, ["route"], { limits: { maxFiles: 1 } }),
     ).rejects.toMatchObject({ code: "VEXT_SOURCE_LIMIT" });
-    expect(streams).toHaveLength(1);
-    await vi.waitFor(() => expect(streams[0]!.closed).toBe(true));
+    expect(handles).toHaveLength(1);
+    expect(() => handles[0]!.read()).toThrow(/Directory handle was closed/);
   });
 
-  it("cancels an active stream and does not reread mutable role options after collection starts", async () => {
+  it("cancels discovery and does not reread mutable role options after collection starts", async () => {
     const root = fixture();
     write(root, "src/routes/index.ts");
     const baseline = await collectProjectSources(root, ["route"]);
     const options = { directories: { route: "src/routes" } };
-    const original = fg.stream;
-    const streams: Readable[] = [];
-    const spy = vi.spyOn(fg, "stream").mockImplementation((...args) => {
-      const stream = original(...args);
-      if (!(stream instanceof Readable)) throw new Error("Unexpected stream");
-      streams.push(stream);
-      queueMicrotask(() => {
-        options.directories.route = "wrong";
-      });
-      return stream;
-    });
-    expect(
-      (await collectProjectSources(root, ["route"], options)).revision,
-    ).toBe(baseline.revision);
+    const pending = collectProjectSources(root, ["route"], options);
+    options.directories.route = "wrong";
+    expect((await pending).revision).toBe(baseline.revision);
     const controller = new AbortController();
-    spy.mockImplementation((...args) => {
-      const stream = original(...args);
-      if (!(stream instanceof Readable)) throw new Error("Unexpected stream");
-      streams.push(stream);
-      queueMicrotask(() => controller.abort());
-      return stream;
+    const aborted = collectProjectSources(root, ["route"], {
+      signal: controller.signal,
     });
-    await expect(
-      collectProjectSources(root, ["route"], { signal: controller.signal }),
-    ).rejects.toMatchObject({ code: "VEXT_SOURCE_CANCELLED" });
-    await vi.waitFor(() =>
-      expect(streams.every((stream) => stream.closed)).toBe(true),
+    controller.abort();
+    await expect(aborted).rejects.toMatchObject({
+      code: "VEXT_SOURCE_CANCELLED",
+    });
+  });
+
+  it("uses explicit host budgets across consumers and allows per-operation overrides", async () => {
+    const root = fixture();
+    write(root, "src/routes/a.ts");
+    write(root, "src/routes/b.ts");
+    vi.stubEnv("VEXT_SOURCE_MAX_FILES", "1");
+    await expect(collectProjectSources(root, ["route"])).rejects.toThrow(
+      /incomplete.*VEXT_SOURCE_MAX_FILES/,
+    );
+    expect(
+      (
+        await collectProjectSources(root, ["route"], {
+          limits: { maxFiles: 2 },
+        })
+      ).list(),
+    ).toHaveLength(2);
+    vi.stubEnv("VEXT_SOURCE_MAX_FILES", "invalid");
+    await expect(collectProjectSources(root, ["route"])).rejects.toThrow(
+      /Invalid source budget/,
+    );
+    vi.stubEnv("VEXT_SOURCE_MAX_FILES", "2");
+    vi.stubEnv("VEXT_SOURCE_MAX_SCAN_ENTRIES", "1");
+    await expect(collectProjectSources(root, ["route"])).rejects.toThrow(
+      /VEXT_SOURCE_MAX_SCAN_ENTRIES/,
     );
   });
 });

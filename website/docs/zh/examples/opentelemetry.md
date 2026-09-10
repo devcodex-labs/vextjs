@@ -586,11 +586,11 @@ opentelemetryPlugin({
   // ── 生命周期 ─────────────────────────────────────────
   lifecycle: {
     onStart: (_ctx, req) => {
-      req.logger.info({ requestId: req.requestId }, "request started");
+      req.app.logger.info({ requestId: req.requestId }, "request started");
     },
     onEnd: (ctx, req, info) => {
       if (info.statusCode >= 500) {
-        req.logger.error(
+        req.app.logger.error(
           { traceId: info.traceId },
           `${ctx.method} ${ctx.route ?? ctx.path} failed in ${info.latencyMs}ms`,
         );
@@ -753,37 +753,36 @@ export {};
 
 #### VextJS 插件（通过 `app.otel.withSpan`）
 
+以下是路由片段：先按本页安装并注册 OTel 插件，实现业务服务 `src/services/payment.ts` 的 `process(id)` 方法，再运行 typegen。测试时用支付服务替身；一次请求只执行一次支付操作。
+
 ```typescript
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.post("/payments", async (req, res) => {
-    // ① 最简：完全不接触 span（仅追踪生命周期）
-    const resultBasic = await req.app.otel!.withSpan("payment.process", () =>
-      processPayment(req.body.id),
-    );
+  app.post(
+    "/payments",
+    { validate: { body: { id: "string!" } } },
+    async (req, res) => {
+      const payment = await req.app.otel!.withSpan(
+        "payment.process",
+        async (span) => {
+          const result = await req.app.services.payment.process(
+            req.valid("body").id,
+          );
+          span.setAttribute("payment.result", result.status);
+          return result;
+        },
+        {
+          attributes: {
+            "payment.provider": "stripe",
+            "payment.currency": "USD",
+          },
+        },
+      );
 
-    // ② 带静态初始属性
-    const resultWithAttrs = await req.app.otel!.withSpan(
-      "payment.process",
-      () => processPayment(req.body.id),
-      {
-        attributes: { "payment.provider": "stripe", "payment.currency": "USD" },
-      },
-    );
-
-    // ③ 动态属性（依赖执行结果时，通过回调参数访问 span）
-    const resultWithDynamicAttrs = await req.app.otel!.withSpan(
-      "payment.process",
-      async (span) => {
-        const res = await processPayment(req.body.id);
-        span.setAttribute("payment.result", res.status);
-        return res;
-      },
-    );
-
-    res.json(resultWithDynamicAttrs);
-  });
+      res.json(payment);
+    },
+  );
 });
 ```
 

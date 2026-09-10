@@ -3,25 +3,45 @@ import type {
   VextFrontendDeployManifest,
   VextFrontendDeployPlan,
   VextFrontendDeployPlanItem,
+  VextFrontendDeployUploadAdapter,
 } from "../contract/types.js";
 import { resolvePathInside } from "../../lib/path-boundary.js";
 import { validateFrontendDeployManifest } from "./manifest-validator.js";
-import { readFrontendDeployState } from "./state.js";
+import { readFrontendDeployStateSnapshot } from "./state.js";
+import { resolveDeployAdapter, resolveDeployTarget } from "./target.js";
+import { createSha256 } from "./integrity.js";
 
 export async function createFrontendDeployPlan(
   manifest: VextFrontendDeployManifest,
   config: ResolvedVextFrontendConfig,
   manifestPath: string,
+  options: {
+    adapter?: VextFrontendDeployUploadAdapter;
+    configProfile?: string;
+  } = {},
 ): Promise<VextFrontendDeployPlan> {
   const validatedManifest = await validateFrontendDeployManifest(
     manifest,
     config,
   );
-  const state = await readFrontendDeployState(config.deploy.upload.stateFile);
+  const snapshot = await readFrontendDeployStateSnapshot(
+    config.deploy.upload.stateFile,
+  );
+  const target = resolveDeployTarget(
+    config,
+    options.adapter ?? resolveDeployAdapter(config),
+    options.configProfile,
+  );
+  const previousAssets = target.targetId
+    ? snapshot.state.targets[target.targetId]?.assets
+    : undefined;
   const items: VextFrontendDeployPlanItem[] = validatedManifest.assets.map(
     (asset, index) => {
-      const previous = state.assets[asset.uploadKey];
-      const changed = !previous || previous.sha256 !== asset.sha256;
+      const previous = previousAssets?.[asset.uploadKey];
+      const changed =
+        !previous ||
+        previous.sha256 !== asset.sha256 ||
+        previous.bytes !== asset.bytes;
       return {
         asset,
         sourcePath: resolvePathInside(
@@ -31,17 +51,25 @@ export async function createFrontendDeployPlan(
           { realpath: true },
         ),
         status: changed ? "upload" : "skip",
-        reason: !previous
-          ? "missing-state"
-          : changed
-            ? "hash-changed"
-            : "unchanged",
+        reason: !target.targetId
+          ? "unknown-target"
+          : !previous
+            ? "missing-state"
+            : changed
+              ? "hash-changed"
+              : "unchanged",
         previousSha256: previous?.sha256,
       };
     },
   );
 
   return {
+    targetId: target.targetId,
+    simulation: target.simulation,
+    stateDigest: snapshot.digest,
+    manifestDigest: createSha256(
+      Buffer.from(JSON.stringify(validatedManifest)),
+    ),
     manifestPath,
     outDir: config.outDir,
     items,

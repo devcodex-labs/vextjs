@@ -5,7 +5,7 @@ import path from "node:path";
 
 const mocks = vi.hoisted(() => {
   const index = {
-    source: { rootDir: "" },
+    source: { rootDir: "", view: { revision: "sealed-index-fixture" } },
     serviceEntries: [
       {
         filePath: "",
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     analyzeIndexedServiceDependencies: vi.fn(() => ({
       diagnostics: [],
       graph: new Map(),
+      incompleteFiles: [],
     })),
   };
 });

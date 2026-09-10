@@ -2,6 +2,9 @@
   "schemaVersion": 1,
   "kind": "services-manifest",
   "target": "services",
+  "sourceRevision": "<source-revision>",
+  "complete": true,
+  "incompleteFiles": [],
   "serviceCount": 5,
   "appExtensionCount": 5,
   "summary": {
@@ -15,43 +18,31 @@
   "services": [
     {
       "serviceKey": "2026Report",
-      "keySegments": [
-        "2026Report"
-      ],
+      "keySegments": ["2026Report"],
       "fileRelativePath": "src/services/2026-report.ts",
       "importPath": "../../src/services/2026-report.js"
     },
     {
       "serviceKey": "default",
-      "keySegments": [
-        "default"
-      ],
+      "keySegments": ["default"],
       "fileRelativePath": "src/services/default.ts",
       "importPath": "../../src/services/default.js"
     },
     {
       "serviceKey": "payment.stripe",
-      "keySegments": [
-        "payment",
-        "stripe"
-      ],
+      "keySegments": ["payment", "stripe"],
       "fileRelativePath": "src/services/payment/stripe.ts",
       "importPath": "../../src/services/payment/stripe.js"
     },
     {
       "serviceKey": "payment.stripe.v2",
-      "keySegments": [
-        "payment",
-        "stripe.v2"
-      ],
+      "keySegments": ["payment", "stripe.v2"],
       "fileRelativePath": "src/services/payment/stripe.v2.ts",
       "importPath": "../../src/services/payment/stripe.v2.js"
     },
     {
       "serviceKey": "userProfile",
-      "keySegments": [
-        "userProfile"
-      ],
+      "keySegments": ["userProfile"],
       "fileRelativePath": "src/services/user-profile.ts",
       "importPath": "../../src/services/user-profile.js"
     }
@@ -60,60 +51,40 @@
     {
       "propertyKey": "dash-key",
       "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"dash-key\"]",
-      "pluginRelativePaths": [
-        "src/plugins/mailer.ts"
-      ],
-      "sourceKinds": [
-        "declaration"
-      ],
+      "pluginRelativePaths": ["src/plugins/mailer.ts"],
+      "sourceKinds": ["declaration"],
       "confidence": "high",
       "conflict": false
     },
     {
       "propertyKey": "default",
       "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"default\"]",
-      "pluginRelativePaths": [
-        "src/plugins/mailer.ts"
-      ],
-      "sourceKinds": [
-        "declaration"
-      ],
+      "pluginRelativePaths": ["src/plugins/mailer.ts"],
+      "sourceKinds": ["declaration"],
       "confidence": "high",
       "conflict": false
     },
     {
       "propertyKey": "mailer",
       "inferredTypeText": "{ send(to: string, subject: string, body: string): Promise<void>; }",
-      "pluginRelativePaths": [
-        "src/plugins/mailer.ts"
-      ],
-      "sourceKinds": [
-        "setup"
-      ],
+      "pluginRelativePaths": ["src/plugins/mailer.ts"],
+      "sourceKinds": ["setup"],
       "confidence": "medium",
       "conflict": false
     },
     {
       "propertyKey": "metrics.v2",
       "inferredTypeText": "typeof import(\"../../src/plugins/mailer.js\").appExtensions[\"metrics.v2\"]",
-      "pluginRelativePaths": [
-        "src/plugins/mailer.ts"
-      ],
-      "sourceKinds": [
-        "declaration"
-      ],
+      "pluginRelativePaths": ["src/plugins/mailer.ts"],
+      "sourceKinds": ["declaration"],
       "confidence": "high",
       "conflict": false
     },
     {
       "propertyKey": "readyState",
       "inferredTypeText": "{ value: boolean; }",
-      "pluginRelativePaths": [
-        "src/plugins/mailer.ts"
-      ],
-      "sourceKinds": [
-        "onReady"
-      ],
+      "pluginRelativePaths": ["src/plugins/mailer.ts"],
+      "sourceKinds": ["onReady"],
       "confidence": "medium",
       "conflict": false
     }

@@ -77,6 +77,7 @@ const expectedAllowedDifferences = {
   absoluteFilePath:
     "Static index and Doctor expose a host-specific absolute filePath; parity uses fileRelativePath as the portable source location.",
   runtimeOnly: ["handler", "options"],
+  staticOnly: ["schema.*.projection"],
   doctorOnly: [
     "effectiveOperationId",
     "operationIdSource",
@@ -92,7 +93,16 @@ async function readContract(): Promise<ParityContract> {
 }
 
 function canonicalRoute(input: CanonicalRouteInput): CanonicalRoute {
-  return { ...input, semanticDigest: createDigest(input) };
+  const schema = structuredClone(input.schema);
+  for (const ir of [
+    ...Object.values(schema.request),
+    ...schema.responses.flatMap((response) =>
+      response.schema ? [response.schema] : [],
+    ),
+  ])
+    delete ir.projection;
+  const semantic = { ...input, schema };
+  return { ...semantic, semanticDigest: createDigest(semantic) };
 }
 
 function sortCanonicalRoutes(routes: CanonicalRoute[]): CanonicalRoute[] {

@@ -2316,6 +2316,7 @@ export const VEXT_DOCS_APP_JS: string = `
 
   const emitAuthChange = () => {
     document.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+    for (const panel of document.querySelectorAll(".vext-docs-tryout")) panel.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
   };
 
   const createBlock = (value) => {
@@ -3181,12 +3182,22 @@ export const VEXT_DOCS_APP_JS: string = `
     if (hasTryItOutHookConfig()) headersPanel.appendChild(createHookNote());
 
     let bodyInput = null;
+    let contentTypeInput = null;
     const bodyPanel = document.createElement("div");
     bodyPanel.className = "vext-docs-tryout-panel-grid";
     if (!["get", "head"].includes(method.toLowerCase())) {
+      contentTypeInput = document.createElement("select");
+      const contentTypes = Object.keys(operation.requestBody && operation.requestBody.content || {});
+      for (const contentType of contentTypes.length ? contentTypes : ["application/json"]) {
+        const option = document.createElement("option");
+        option.value = contentType;
+        option.textContent = contentType;
+        contentTypeInput.appendChild(option);
+      }
+      bodyPanel.appendChild(wrapControl("Content type", contentTypeInput));
       bodyInput = document.createElement("textarea");
-      bodyInput.placeholder = buildBodyPlaceholder(operation);
-      bodyInput.value = buildBodyPlaceholder(operation);
+      bodyInput.placeholder = buildBodyPlaceholder(operation, contentTypeInput.value);
+      bodyInput.value = bodyInput.placeholder;
       bodyPanel.appendChild(wrapControl("Request body", bodyInput));
     } else {
       const emptyBody = document.createElement("p");
@@ -3276,10 +3287,12 @@ export const VEXT_DOCS_APP_JS: string = `
         ...normalizeHeaders(parseHeaders(headersEditor.rawInput.value)),
       };
       const headers = { ...auth.headers, ...manualHeaders };
-      const body = bodyInput && bodyInput.value.trim() ? bodyInput.value : "";
+      const contentType = contentTypeInput ? contentTypeInput.value : getRequestBodyContentType(operation);
+      if (bodyInput && !supportedBodyType(contentType)) throw new Error("This console does not encode " + contentType + ". Use a client that supports this media type; no request was sent.");
+      const body = bodyInput ? bodyInput.value : "";
       let autoContentTypeHeader = false;
       if (body && !headers["content-type"]) {
-        headers["content-type"] = getRequestBodyContentType(operation);
+        headers["content-type"] = contentType;
         autoContentTypeHeader = true;
       }
       return {
@@ -3306,6 +3319,7 @@ export const VEXT_DOCS_APP_JS: string = `
       headerRows: headersEditor.snapshot(),
       headerRaw: headersEditor.rawInput.value,
       body: bodyInput ? bodyInput.value : "",
+      contentType: contentTypeInput ? contentTypeInput.value : "",
     });
 
     function restoreSnapshot(snapshot) {
@@ -3323,6 +3337,7 @@ export const VEXT_DOCS_APP_JS: string = `
       queryEditor.rawInput.value = snapshot.queryRaw || "";
       headersEditor.restore(snapshot.headerRows || []);
       headersEditor.rawInput.value = snapshot.headerRaw || "";
+      if (contentTypeInput && Array.from(contentTypeInput.options).some(option => option.value === snapshot.contentType)) contentTypeInput.value = snapshot.contentType;
       if (bodyInput) bodyInput.value = snapshot.body || "";
       renderCustomServer();
       renderServerVariables();
@@ -3410,14 +3425,19 @@ export const VEXT_DOCS_APP_JS: string = `
     queryEditor.onChange = updateConsole;
     headersEditor.onChange = updateConsole;
     if (bodyInput) bindUpdate(bodyInput);
-    const syncAuthChange = () => {
-      if (!item.isConnected) {
-        document.removeEventListener(AUTH_CHANGE_EVENT, syncAuthChange);
-        return;
-      }
-      updateConsole();
-    };
-    document.addEventListener(AUTH_CHANGE_EVENT, syncAuthChange);
+    // 监听绑定面板自身，切换操作移除DOM后即可回收，不在document保留旧面板闭包。
+    details.addEventListener(AUTH_CHANGE_EVENT, updateConsole);
+    if (contentTypeInput) {
+      const bodyDrafts = new Map();
+      let previousType = contentTypeInput.value;
+      contentTypeInput.addEventListener("change", () => {
+        bodyDrafts.set(previousType, bodyInput.value);
+        previousType = contentTypeInput.value;
+        bodyInput.placeholder = buildBodyPlaceholder(operation, previousType);
+        bodyInput.value = bodyDrafts.has(previousType) ? bodyDrafts.get(previousType) : bodyInput.placeholder;
+        updateConsole();
+      });
+    }
 
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -4091,17 +4111,37 @@ export const VEXT_DOCS_APP_JS: string = `
       .join("&");
   };
 
-  const buildBodyPlaceholder = (operation) => {
-    const first = getFirstContentEntry(operation.requestBody && operation.requestBody.content);
-    if (!first || !first.entry || !first.entry.schema) {
-      return "{\\n  \\"name\\": \\"Vext\\"\\n}";
+  const bodyMediaType = (contentType) => String(contentType || "").split(";")[0].trim().toLowerCase();
+
+  const isJsonBodyType = (contentType) => {
+    const type = bodyMediaType(contentType);
+    return type === "application/json" || type.endsWith("+json");
+  };
+
+  const supportedBodyType = (contentType) => isJsonBodyType(contentType) || bodyMediaType(contentType).startsWith("text/") || bodyMediaType(contentType) === "application/x-www-form-urlencoded";
+
+  const buildBodyPlaceholder = (operation, contentType) => {
+    const content = operation.requestBody && operation.requestBody.content || {};
+    const entry = content[contentType || getRequestBodyContentType(operation)] || {};
+    const example = entry.example !== undefined ? entry.example : entry.schema ? sampleFromSchema(entry.schema) : { name: "Vext" };
+    if (isJsonBodyType(contentType)) return JSON.stringify(example, null, 2);
+    if (bodyMediaType(contentType) === "application/x-www-form-urlencoded" && example && typeof example === "object") {
+      const form = new URLSearchParams();
+      for (const [key, value] of Object.entries(example)) {
+        for (const item of Array.isArray(value) ? value : [value]) {
+          // Nested form encoding depends on the API contract; do not invent bracket/dot rules.
+          if (item !== null && typeof item === "object") return "";
+          form.append(key, item === null ? "" : String(item));
+        }
+      }
+      return form.toString();
     }
-    return JSON.stringify(sampleFromSchema(first.entry.schema), null, 2);
+    return typeof example === "string" ? example : JSON.stringify(example, null, 2);
   };
 
   const getRequestBodyContentType = (operation) => {
     const first = getFirstContentEntry(operation.requestBody && operation.requestBody.content);
-    return first && first.key ? first.key : "application/json";
+    return first ? first.contentType : "application/json";
   };
 
   const sampleFromSchema = (schema) => {
@@ -4258,8 +4298,9 @@ export const VEXT_DOCS_APP_JS: string = `
 
   const jsonLiteral = (value) => JSON.stringify(value, null, 2);
 
-  const bodyExpression = (body) => {
+  const bodyExpression = (body, contentType) => {
     if (!body) return "";
+    if (!isJsonBodyType(contentType)) return JSON.stringify(body);
     try {
       return "JSON.stringify(" + jsonLiteral(JSON.parse(body)) + ")";
     } catch {
@@ -4281,7 +4322,7 @@ export const VEXT_DOCS_APP_JS: string = `
     if (Object.keys(request.headers || {}).length > 0) {
       lines.push("  headers: " + indentMultiline(jsonLiteral(request.headers), 2) + ",");
     }
-    const body = bodyExpression(request.body);
+    const body = bodyExpression(request.body, request.headers["content-type"]);
     if (body) lines.push("  body: " + body + ",");
     lines.push("});");
     return lines.join("\\n");
@@ -4293,7 +4334,7 @@ export const VEXT_DOCS_APP_JS: string = `
       "const response = await fetch(" + JSON.stringify(request.displayUrl || request.target) + ", {",
       "  method: " + JSON.stringify(request.method) + (Object.keys(request.headers || {}).length > 0 || request.body ? "," : ""),
       Object.keys(request.headers || {}).length > 0 ? "  headers: " + indentMultiline(jsonLiteral(request.headers), 2) + (request.body ? "," : "") : "",
-      request.body ? "  body: " + bodyExpression(request.body) + "," : "",
+      request.body ? "  body: " + bodyExpression(request.body, request.headers["content-type"]) + "," : "",
       "});",
       "const data = await response.text();",
     ].filter(Boolean).join("\\n");
@@ -4306,7 +4347,7 @@ export const VEXT_DOCS_APP_JS: string = `
     }
     if (request.body) {
       try {
-        lines.push("  data: " + indentMultiline(jsonLiteral(JSON.parse(request.body)), 2) + ",");
+        lines.push("  data: " + indentMultiline(jsonLiteral(isJsonBodyType(request.headers["content-type"]) ? JSON.parse(request.body) : request.body), 2) + ",");
       } catch {
         lines.push("  data: " + JSON.stringify(request.body) + ",");
       }

@@ -17,7 +17,7 @@ import { VextFileWatcher } from "../lib/dev/file-watcher.js";
 import type { FileChangeEvent } from "../lib/dev/file-watcher.js";
 import { classifyChange } from "../lib/dev/change-classifier.js";
 import type { ClassifierOptions } from "../lib/dev/change-classifier.js";
-import { isFrontendWatchLayout } from "../lib/project/layout.js";
+import { isProjectWatchLayout } from "../lib/project/layout.js";
 import { shouldUsePolling } from "../lib/dev/detect-polling.js";
 import {
   createStartupProfiler,
@@ -281,7 +281,7 @@ async function runDevCommand(
   };
 
   // ── 1. 检测项目结构 ────────────────────────────────────
-  const classifierOptions: ClassifierOptions = {};
+  const classifierOptions: ClassifierOptions = { rootDir: project.rootDir };
   let watcher: VextFileWatcher | undefined;
 
   // ── 2. 打印欢迎信息 ────────────────────────────────────
@@ -509,8 +509,13 @@ async function runDevCommand(
         (msg as Record<string, unknown>).type === "watch-layout"
       ) {
         const layout = (msg as Record<string, unknown>).layout;
-        if (isFrontendWatchLayout(layout)) {
-          Object.assign(classifierOptions, layout);
+        if (isProjectWatchLayout(layout)) {
+          Object.assign(classifierOptions, {
+            frontendDirectories: layout.frontendDirectories,
+            frontendFiles: layout.frontendFiles,
+            backendDirectories: layout.backendDirectories,
+            rootDir: project.rootDir,
+          });
           watcher?.updateClassifierOptions(classifierOptions);
         } else {
           console.error("[vext dev] rejected invalid worker watch layout");

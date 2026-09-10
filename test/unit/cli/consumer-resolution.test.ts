@@ -11,7 +11,10 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Model } from "monsqlize";
-import { detectProject } from "../../../src/cli/utils/detect-project.js";
+import {
+  detectProject,
+  resolveEntryFile,
+} from "../../../src/cli/utils/detect-project.js";
 import { resolvePreloads } from "../../../src/cli/utils/preload.js";
 import { runLocalTsc } from "../../../src/cli/utils/local-tsc.js";
 import { loadModels } from "../../../src/lib/plugins/monsqlize/model-loader.js";
@@ -122,7 +125,11 @@ describe("consumer package resolution", () => {
     framework(workspace);
     const local = framework(service);
     rmSync(local);
-    expect(() => detectProject(service).entryFile).toThrow("bootstrap.js");
+    const info = detectProject(service);
+    expect(info.entryFile).toBeNull();
+    expect(info.entryError).toContain("bootstrap.js");
+    expect(() => JSON.stringify({ ...info })).not.toThrow();
+    expect(() => resolveEntryFile(info)).toThrow("bootstrap.js");
   });
 
   it("loads hoisted package preloads even when package.json is private and no main exists", async () => {

@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { currentProjectOwner, type ProjectOwner } from "./owner.js";
 import { listenOwnerEndpoint, ProjectOwnerError } from "./owner-endpoint.js";
 import {
+  isTemporaryModuleFileName,
+  TEMPORARY_MODULE_PREFIX,
+} from "./source-roles.js";
+import {
   ARTIFACT_STATE_DIRECTORY,
   ArtifactError,
   artifactDigest,
@@ -70,9 +74,10 @@ function parseReceipt(root: string, file: string): TemporaryReceipt | null {
       file !== `${DIRECTORY}/${receipt.id}.json` ||
       typeof receipt.file !== "string" ||
       !isArtifactDigest(receipt.sha256) ||
-      !new RegExp(`^\\.vext-exec-${receipt.id}\\.(?:mjs|cjs)$`, "u").test(
-        path.posix.basename(receipt.file),
-      )
+      !isTemporaryModuleFileName(path.posix.basename(receipt.file)) ||
+      !path.posix
+        .basename(receipt.file)
+        .startsWith(`${TEMPORARY_MODULE_PREFIX}${receipt.id}.`)
     )
       throw new Error("Receipt identity differs");
     artifactPath(root, receipt.file);
@@ -171,7 +176,10 @@ export async function withTemporaryArtifact<T>(
   const id = randomUUID();
   const file = artifactRelativePath(
     root,
-    path.join(path.dirname(logical), `.vext-exec-${id}${extension}`),
+    path.join(
+      path.dirname(logical),
+      `${TEMPORARY_MODULE_PREFIX}${id}${extension}`,
+    ),
   );
   const receiptFile = `${DIRECTORY}/${id}.json`;
   const contents = Buffer.from(options.contents);

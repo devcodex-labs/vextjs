@@ -17,6 +17,27 @@ async function writeProjectFile(
 describe("analyzeServiceDependencies", () => {
   let projectRoot: string;
 
+  it("tracks the longest registered service prefix and ignores strings/comments", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-service-deps-"));
+    await writeProjectFile(
+      projectRoot,
+      "src/services/user.ts",
+      'export default app => ({ run: () => app.services["payment"].stripe.charge() });',
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/services/payment/stripe.ts",
+      '/* app.services.user.run() */ export default { text: "app.services.user.run()" };',
+    );
+    const result = await analyzeServiceDependencies(projectRoot);
+    expect([...result.graph.get("user")!]).toEqual(["payment.stripe"]);
+    expect([...result.graph.get("payment.stripe")!]).toEqual([]);
+    expect(result.incompleteFiles).toEqual([]);
+    expect(result.diagnostics.some((item) => item.level === "error")).toBe(
+      false,
+    );
+  });
+
   afterEach(async () => {
     if (projectRoot) {
       await rm(projectRoot, { recursive: true, force: true });
@@ -79,7 +100,9 @@ describe("analyzeServiceDependencies", () => {
 
     const report = await analyzeServiceDependencies(projectRoot);
 
-    expect(report.diagnostics.some((item) => item.level === "error")).toBe(true);
+    expect(report.diagnostics.some((item) => item.level === "error")).toBe(
+      true,
+    );
     expect(report.diagnostics[0]?.message).toContain("user");
     expect(report.diagnostics[0]?.message).toContain("payment.stripe");
   });
@@ -140,4 +163,3 @@ describe("analyzeServiceDependencies", () => {
     expect(report.diagnostics[0]?.level).toBe("info");
   });
 });
-

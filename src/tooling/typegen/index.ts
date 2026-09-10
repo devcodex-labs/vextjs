@@ -19,6 +19,7 @@ import {
 import { createServiceManifestFile } from "./write-service-manifest.js";
 import { createTypegenShim } from "./generate-typegen-shim.js";
 import { withProjectOwner } from "../../lib/project/owner.js";
+import type { ProjectSourceOptions } from "../project-index/source-input.js";
 
 export interface RunTypegenOptions {
   rootDir: string;
@@ -27,10 +28,12 @@ export interface RunTypegenOptions {
   generateShim?: boolean;
   checkOnly?: boolean;
   writeManifest?: boolean;
+  sourceOptions?: ProjectSourceOptions;
 }
 
 export interface TypegenResult {
   ok: boolean;
+  complete: boolean;
   files: GeneratedFileResult[];
   diagnostics: ServiceDependencyDiagnostic[];
   warnings: string[];
@@ -46,6 +49,7 @@ export type TypegenGenerationOptions = Pick<
 >;
 
 export interface TypegenDraftResult {
+  complete: boolean;
   files: GeneratedFileDraft[];
   diagnostics: ServiceDependencyDiagnostic[];
   warnings: string[];
@@ -101,16 +105,29 @@ export function createTypegenDrafts(
   }
 
   const serviceDeps = analyzeIndexedServiceDependencies(index);
+  const incomplete = [
+    ...serviceDeps.incompleteFiles,
+    ...(index.appExtensionIncompleteFiles ?? []),
+  ];
+  for (const file of incomplete)
+    warnings.push(`Static projection is incomplete: ${file}`);
+  const complete = incomplete.length === 0 && warnings.length === 0;
   const manifestDraft = writeManifest
     ? createServiceManifestFile(
         rootDir,
         index.serviceEntries,
         index.appExtensions,
         serviceDeps,
+        {
+          sourceRevision: index.source.view.revision,
+          complete,
+          incompleteFiles: incomplete,
+        },
       )
     : undefined;
 
   return {
+    complete,
     files: drafts,
     warnings,
     diagnostics: serviceDeps.diagnostics,
@@ -122,8 +139,9 @@ async function runTypegenOwned(
   options: RunTypegenOptions,
 ): Promise<TypegenResult> {
   const { rootDir, checkOnly = false } = options;
-  const index = await buildProjectIndex(rootDir);
+  const index = await buildProjectIndex(rootDir, options.sourceOptions);
   const {
+    complete,
     files: drafts,
     warnings,
     diagnostics,
@@ -153,6 +171,7 @@ async function runTypegenOwned(
 
   return {
     ok: !hasErrors,
+    complete,
     files,
     diagnostics,
     warnings,

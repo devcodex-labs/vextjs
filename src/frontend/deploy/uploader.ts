@@ -5,91 +5,220 @@ import type {
   VextFrontendDeployResult,
   VextFrontendDeployUploadAdapter,
 } from "../contract/types.js";
-import { createFilesystemDeployAdapter } from "./adapters/filesystem.js";
-import { createMockDeployAdapter } from "./adapters/mock.js";
+import { readFile } from "node:fs/promises";
+import { canonicalPath } from "../../lib/path-boundary.js";
+import {
+  listenOwnerEndpoint,
+  ProjectOwnerError,
+} from "../../lib/project/owner-endpoint.js";
+import { resolveDeployAdapter, resolveDeployTarget } from "./target.js";
+import { createSha256 } from "./integrity.js";
 import { joinUploadKey } from "./manifest.js";
 import { readFrontendDeployManifestFile } from "./manifest-validator.js";
 import { createFrontendDeployPlan } from "./planner.js";
-import { writeFrontendDeployState } from "./state.js";
+import {
+  readFrontendDeployStateSnapshot,
+  writeFrontendDeployState,
+  withFrontendDeployStateLock,
+} from "./state.js";
 
 export interface DeployFrontendAssetsOptions {
   config: ResolvedVextFrontendConfig;
   manifestPath: string;
   dryRun?: boolean;
   adapter?: VextFrontendDeployUploadAdapter;
+  configProfile?: string;
+  signal?: AbortSignal;
+}
+
+export class FrontendDeployError extends Error {
+  constructor(
+    message: string,
+    readonly result: VextFrontendDeployResult,
+  ) {
+    super(message);
+  }
 }
 
 export async function deployFrontendAssets(
   options: DeployFrontendAssetsOptions,
 ): Promise<VextFrontendDeployResult> {
-  const manifest = applyDeployConfigOverrides(
-    await readFrontendDeployManifestFile(options.manifestPath),
-    options.config,
-  );
-  const dryRun = options.dryRun ?? options.config.deploy.upload.dryRun;
-  const plan = await createFrontendDeployPlan(
-    manifest,
-    options.config,
-    options.manifestPath,
-  );
-  const adapter = options.adapter ?? resolveDeployAdapter(options.config);
-  const validatedAssets = plan.items.map((item) => item.asset);
-  const uploadedAssets: VextFrontendDeployManifestAsset[] = [];
-  const confirmedStateUploadKeys = new Set<string>();
-  const assets: VextFrontendDeployResult["assets"] = [];
-
-  await runWithConcurrency(
-    plan.items,
-    options.config.deploy.upload.concurrency,
-    async (item) => {
-      if (item.status === "skip") {
-        assets.push({
-          file: item.asset.file,
-          uploadKey: item.asset.uploadKey,
-          status: "skipped",
-        });
-        confirmedStateUploadKeys.add(item.asset.uploadKey);
-        return;
+  const config = {
+    ...options.config,
+    deploy: {
+      ...options.config.deploy,
+      upload: {
+        ...options.config.deploy.upload,
+        stateFile: canonicalPath(options.config.deploy.upload.stateFile),
+      },
+    },
+  };
+  const dryRun = options.dryRun ?? config.deploy.upload.dryRun;
+  const adapter = options.adapter ?? resolveDeployAdapter(config);
+  const target = resolveDeployTarget(config, adapter, options.configProfile);
+  const run = async (): Promise<VextFrontendDeployResult> => {
+    const manifest = applyDeployConfigOverrides(
+      await readFrontendDeployManifestFile(options.manifestPath),
+      config,
+    );
+    const plan = await createFrontendDeployPlan(
+      manifest,
+      config,
+      options.manifestPath,
+      { adapter, configProfile: options.configProfile },
+    );
+    const confirmed: VextFrontendDeployManifestAsset[] = [];
+    const invalidated: string[] = [];
+    const assets: VextFrontendDeployResult["assets"] = [];
+    await runWithConcurrency(
+      plan.items,
+      config.deploy.upload.concurrency,
+      async (item) => {
+        const base = { file: item.asset.file, uploadKey: item.asset.uploadKey };
+        if (options.signal?.aborted) {
+          assets.push({ ...base, status: "cancelled" });
+          return;
+        }
+        if (item.status === "skip") {
+          assets.push({ ...base, status: "skipped" });
+          return;
+        }
+        // dry-run 不调用自定义 adapter，框架可以保证零目标/状态写入。
+        if (dryRun) {
+          assets.push({ ...base, status: "planned" });
+          return;
+        }
+        try {
+          const upload = await adapter.upload({
+            asset: item.asset,
+            sourcePath: item.sourcePath,
+            uploadKey: item.asset.uploadKey,
+            dryRun: false,
+            signal: options.signal,
+          });
+          if (!upload.uploaded)
+            throw new Error("Upload adapter did not confirm success.");
+          // 不能用已发生变化的本地文件摘要为远端内容背书。
+          if (
+            createSha256(await readFile(item.sourcePath)) !== item.asset.sha256
+          )
+            throw new Error(
+              "Deploy source changed while uploading; remote content is unconfirmed.",
+            );
+          confirmed.push(item.asset);
+          assets.push({
+            ...base,
+            status: target.simulation ? "simulated" : "uploaded",
+            url: upload.url,
+          });
+        } catch (error) {
+          invalidated.push(item.asset.uploadKey);
+          assets.push({
+            ...base,
+            status: "unconfirmed",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+    );
+    const result: VextFrontendDeployResult = {
+      targetId: target.targetId,
+      manifestPath: options.manifestPath,
+      stateFile: config.deploy.upload.stateFile,
+      dryRun,
+      uploaded: assets.filter((item) => item.status === "uploaded").length,
+      simulated: assets.filter((item) => item.status === "simulated").length,
+      skipped: assets.filter((item) => item.status === "skipped").length,
+      unconfirmed: assets.filter((item) => item.status === "unconfirmed")
+        .length,
+      cancelled: options.signal?.aborted ?? false,
+      bytesUploaded:
+        dryRun || target.simulation
+          ? 0
+          : confirmed.reduce((sum, asset) => sum + asset.bytes, 0),
+      assets: assets.sort((a, b) => a.file.localeCompare(b.file)),
+    };
+    if (!dryRun && target.targetId) {
+      const snapshot = await readFrontendDeployStateSnapshot(
+        config.deploy.upload.stateFile,
+      ).catch((error: unknown) => {
+        throw new FrontendDeployError(
+          error instanceof Error ? error.message : String(error),
+          result,
+        );
+      });
+      if (snapshot.digest !== plan.stateDigest)
+        throw new FrontendDeployError(
+          "[vextjs] Frontend deploy state changed after planning; remote results require reconciliation.",
+          result,
+        );
+      const previous = snapshot.state.targets[target.targetId];
+      const changed =
+        confirmed.length > 0 ||
+        invalidated.some((key) => previous?.assets[key] !== undefined);
+      if (changed) {
+        const uploadedAt = new Date().toISOString();
+        const next = previous?.assets ?? {};
+        for (const key of invalidated) delete next[key];
+        for (const asset of confirmed)
+          next[asset.uploadKey] = {
+            sha256: asset.sha256,
+            bytes: asset.bytes,
+            uploadedAt,
+          };
+        snapshot.state.updatedAt = uploadedAt;
+        snapshot.state.targets[target.targetId] = {
+          simulation: target.simulation,
+          manifestDigest: plan.manifestDigest,
+          assets: next,
+        };
+        try {
+          await writeFrontendDeployState(
+            config.deploy.upload.stateFile,
+            snapshot.state,
+            plan.stateDigest,
+          );
+        } catch (error) {
+          throw new FrontendDeployError(
+            error instanceof Error ? error.message : String(error),
+            result,
+          );
+        }
       }
-      const result = await adapter.upload({
-        asset: item.asset,
-        sourcePath: item.sourcePath,
-        uploadKey: item.asset.uploadKey,
-        dryRun,
-      });
-      assets.push({
-        file: item.asset.file,
-        uploadKey: item.asset.uploadKey,
-        status: dryRun ? "planned" : result.uploaded ? "uploaded" : "skipped",
-        url: result.url,
-      });
-      if (!dryRun && result.uploaded) {
-        uploadedAssets.push(item.asset);
-        confirmedStateUploadKeys.add(item.asset.uploadKey);
+    }
+    if (result.unconfirmed || result.cancelled)
+      throw new FrontendDeployError(
+        "[vextjs] Frontend deployment incomplete: " +
+          (assets.find((asset) => asset.error)?.error ?? "cancelled"),
+        result,
+      );
+    return result;
+  };
+  if (dryRun) return run();
+  return withFrontendDeployStateLock(
+    config.deploy.upload.stateFile,
+    async () => {
+      let endpoint;
+      try {
+        if (target.storageLockKey)
+          endpoint = await listenOwnerEndpoint(target.storageLockKey, () => ({
+            pid: process.pid,
+          }));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EADDRINUSE")
+          throw new ProjectOwnerError(
+            "VEXT_OWNER_BUSY",
+            "Frontend storage target already has a writer.",
+          );
+        throw error;
+      }
+      try {
+        return await run();
+      } finally {
+        await endpoint?.close();
       }
     },
   );
-
-  if (!dryRun) {
-    await writeFrontendDeployState(
-      options.config.deploy.upload.stateFile,
-      validatedAssets.filter((asset) =>
-        confirmedStateUploadKeys.has(asset.uploadKey),
-      ),
-    );
-  }
-
-  return {
-    manifestPath: options.manifestPath,
-    stateFile: options.config.deploy.upload.stateFile,
-    dryRun,
-    uploaded: dryRun ? 0 : uploadedAssets.length,
-    skipped: assets.filter((asset) => asset.status === "skipped").length,
-    bytesUploaded: dryRun
-      ? 0
-      : uploadedAssets.reduce((sum, asset) => sum + asset.bytes, 0),
-    assets: assets.sort((a, b) => a.file.localeCompare(b.file)),
-  };
 }
 
 function applyDeployConfigOverrides(
@@ -112,26 +241,6 @@ function applyDeployConfigOverrides(
       uploadKey: joinUploadKey(prefix, asset.file),
     })),
   };
-}
-
-function resolveDeployAdapter(
-  config: ResolvedVextFrontendConfig,
-): VextFrontendDeployUploadAdapter {
-  const adapter = config.deploy.upload.adapter;
-  if (typeof adapter !== "string") return adapter;
-  if (adapter === "mock") return createMockDeployAdapter();
-  if (adapter === "filesystem") {
-    if (!config.deploy.upload.targetDir) {
-      throw new Error(
-        "[vextjs] config.frontend.deploy.upload.targetDir is required for filesystem upload.",
-      );
-    }
-    return createFilesystemDeployAdapter(
-      config.deploy.upload.targetDir,
-      config.deploy.upload.publicBaseUrl ?? config.deploy.assetBaseUrl,
-    );
-  }
-  throw new Error(`[vextjs] Unsupported frontend deploy adapter: ${adapter}`);
 }
 
 async function runWithConcurrency<T>(

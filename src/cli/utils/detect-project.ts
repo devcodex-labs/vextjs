@@ -4,6 +4,13 @@ import fg from "fast-glob";
 import { resolveFrameworkEntry } from "../../lib/consumer-resolver.js";
 import { detectProjectLanguage } from "../../lib/build/project-language.js";
 import { resolveBuildLocation } from "../../lib/build/build-location.js";
+import { canonicalProjectRoot } from "../../lib/path-boundary.js";
+import {
+  ARTIFACT_MANIFEST_FILE,
+  MAX_ARTIFACT_METADATA_BYTES,
+  parseArtifactManifest,
+  readArtifactFile,
+} from "../../lib/project/artifact-manifest.js";
 
 import {
   SOURCE_GLOB,
@@ -58,7 +65,9 @@ export interface ProjectInfo {
    *
    * CLI 的 vext start 会 fork 此文件作为子进程入口。
    */
-  entryFile: string;
+  entryFile: string | null;
+  /** 描述阶段保留缺失原因；启动入口在真正执行时重新解析。 */
+  entryError?: string;
 }
 
 /**
@@ -110,9 +119,7 @@ export function detectProject(
         rootDir,
         srcDir,
         language: "ts",
-        get entryFile() {
-          return resolveFrameworkEntry(rootDir, "bootstrap");
-        },
+        ...inspectFrameworkEntry(rootDir),
       };
     }
   }
@@ -167,10 +174,7 @@ export function detectProject(
     rootDir,
     srcDir,
     language,
-    // Doctor/typegen 只检查源码结构，不要求预先安装可运行框架；启动时才解析入口。
-    get entryFile() {
-      return resolveFrameworkEntry(rootDir, "bootstrap");
-    },
+    ...inspectFrameworkEntry(rootDir),
   };
 }
 
@@ -261,6 +265,22 @@ function getCompiledSourceOutputFiles(
   rootDir: string,
   outDir: string,
 ): string[] {
+  const root = canonicalProjectRoot(rootDir);
+  const manifest = parseArtifactManifest(
+    readArtifactFile(root, ARTIFACT_MANIFEST_FILE, MAX_ARTIFACT_METADATA_BYTES),
+    root,
+  );
+  const backend = manifest.scopes.find(
+    (scope) =>
+      scope.producer === "backend" &&
+      path.relative(
+        path.resolve(root, scope.outputDir),
+        path.resolve(outDir),
+      ) === "",
+  );
+  // 成功构建记录包含已解析的角色与真实输出；检查阶段不再次执行配置或猜浏览器目录。
+  if (backend)
+    return backend.files.map((file) => path.resolve(root, file.path));
   const srcDir = path.join(rootDir, "src");
   if (!fs.existsSync(srcDir)) {
     return [];
@@ -317,5 +337,18 @@ function getCompiledProjectPreloadOutputFiles(
 export function resolveEntryFile(project: ProjectInfo): string {
   // 始终使用框架内部的 bootstrap 文件
   // CLI 通过 VEXT_BUILT=1 环境变量告知 bootstrap 从 dist/ 加载用户代码
-  return project.entryFile;
+  return resolveFrameworkEntry(project.rootDir, "bootstrap");
+}
+
+function inspectFrameworkEntry(
+  rootDir: string,
+): Pick<ProjectInfo, "entryFile" | "entryError"> {
+  try {
+    return { entryFile: resolveFrameworkEntry(rootDir, "bootstrap") };
+  } catch (error) {
+    return {
+      entryFile: null,
+      entryError: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

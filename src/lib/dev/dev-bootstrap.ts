@@ -6,7 +6,7 @@ import {
 } from "../project/owner.js";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
 import { DevCompiler } from "./compiler.js";
@@ -24,7 +24,10 @@ import {
 import { reloadModels as reloadModelDefs } from "./model-reloader.js";
 import type { ModelReloadResult } from "./model-reloader.js";
 import { finalizeConfig, loadRawConfig } from "../config-loader.js";
-import { createFrontendWatchLayout } from "../project/layout.js";
+import {
+  createProjectWatchLayout,
+  resolveLocaleDirectory,
+} from "../project/layout.js";
 import { resolveConfigProfile } from "../config-profile.js";
 import { createApp } from "../app.js";
 import type { AppInternals } from "../app.js";
@@ -33,7 +36,7 @@ import {
   createNodeServerOptions,
 } from "../server-config.js";
 import { loadI18n } from "../i18n-loader.js";
-import { schemaAdapter } from "../schema-adapter.js";
+import { getAppSchemaRuntime } from "../i18n/app-runtime.js";
 import { loadPlugins } from "../plugin-loader.js";
 import {
   createMonSQLizePlugin,
@@ -450,7 +453,11 @@ async function devBootstrapOwned(
     if (!skipIpc && process.send) {
       await sendMessageToParent({
         type: "watch-layout",
-        layout: createFrontendWatchLayout(projectRoot, frontend),
+        layout: createProjectWatchLayout(projectRoot, {
+          frontend,
+          localeDirectory: config.locale?.directory,
+          modelsDirectory: resolveConfiguredModelsDir(config),
+        }),
       });
     }
     compiler = new DevCompiler({ srcDir, outDir, tsconfig, frontend });
@@ -494,44 +501,26 @@ async function devBootstrapOwned(
     //
     // 从编译产物的 locales/ 子目录加载（如果存在）
     //
-    // 两种模式自动检测（与生产 bootstrap 保持一致）：
-    //   Mode A（平铺文件）：locales/zh-CN.js → loadI18n() 动态 import + 注册
-    //   Mode B（子目录）  ：locales/user/zh-CN.js → schema-dsl 递归扫描
+    // 与生产共用catalog；编译产物含模块目录及JSON，不回退全局字典。
     //
     await startupProfiler.time(
       "worker.i18n",
       async () => {
-        const localesDir = path.join(outDir, "locales");
-        if (existsSync(localesDir)) {
-          const loadedLocales = await loadI18n(localesDir, app.logger);
-          if (loadedLocales.length > 0) {
-            // Mode A: 平铺文件加载成功
-            app.logger.info(
-              `[vext dev] i18n locales loaded: ${loadedLocales.join(", ")}`,
-            );
-          } else {
-            // Mode B fallback: 检查是否存在子目录（如 user/, auth/）
-            // 如果有子目录，交给 schema-dsl 的内置递归扫描处理
-            try {
-              const entries = readdirSync(localesDir, { withFileTypes: true });
-              const hasSubDirs = entries.some((e) => e.isDirectory());
-              if (hasSubDirs) {
-                schemaAdapter.configure({ i18n: localesDir });
-                const subDirs = entries
-                  .filter((e) => e.isDirectory())
-                  .map((e) => e.name);
-                app.logger.info(
-                  `[vext dev] i18n locales loaded (subdirectory mode): ${subDirs.join(", ")}`,
-                );
-              }
-            } catch (err) {
-              app.logger.warn(
-                { error: (err as Error).message },
-                "[vext dev] Failed to scan locales subdirectories, i18n may not work",
-              );
-            }
-          }
-        }
+        const localeLayout = resolveLocaleDirectory(
+          projectRoot,
+          outDir,
+          config.locale?.directory,
+        );
+        const loadedLocales = await loadI18n(
+          localeLayout.directory,
+          app.logger,
+          getAppSchemaRuntime(app).replaceMessages,
+          { rootDir: projectRoot, compiled: localeLayout.compiled },
+        );
+        if (loadedLocales.length)
+          app.logger.info(
+            `[vextjs] i18n locales loaded: ${loadedLocales.join(", ")}`,
+          );
       },
       { phase: "i18n" },
     );
@@ -800,6 +789,7 @@ async function devBootstrapOwned(
         config.locale as
           | import("../../types/app.js").VextLocaleConfig
           | undefined,
+        app,
       ),
     );
     if (config.requestId?.enabled !== false) {
@@ -1048,7 +1038,7 @@ async function devBootstrapOwned(
     //
     const reloadModelsClosure = hasMonsqlize
       ? (invalidated: Set<string>): Promise<ModelReloadResult> =>
-          reloadModelDefs(app as any, outDir, invalidated)
+          reloadModelDefs(app as any, outDir, invalidated, projectRoot)
       : undefined;
 
     // 🔧 D2/D3 修复（soft reload 侧）：
@@ -1059,6 +1049,7 @@ async function devBootstrapOwned(
         createRequestMetadataMiddleware(
           (fetchConfig?.propagateHeaders ?? []) as string[],
           cfg.locale as any,
+          app,
         ) as any,
       createRequestIdMiddleware:
         config.requestId?.enabled !== false
@@ -1159,6 +1150,7 @@ async function devBootstrapOwned(
           (app.config as any).securityHeaders,
         )) as any,
       builtinMiddlewares: builtinMwCreators,
+      configureI18n: getAppSchemaRuntime(app).replaceMessages,
       getGlobalMiddlewares: () => internals!.getGlobalMiddlewares() as any,
       // 🆕 monSQLize 热重载：传递 reloadModels 闭包（仅当 monsqlize 已加载）
       reloadModels: reloadModelsClosure,

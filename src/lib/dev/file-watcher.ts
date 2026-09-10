@@ -137,12 +137,16 @@ export class VextFileWatcher extends EventEmitter {
       pollInterval: 1000,
       ...options,
       root: resolve(options.root),
+      classifierOptions: {
+        ...options.classifierOptions,
+        rootDir: resolve(options.root),
+      },
     };
   }
 
   /** 配置由 child 一次求值；parent 只消费目录 DTO，不执行用户配置。 */
   updateClassifierOptions(options: ClassifierOptions): void {
-    this.options.classifierOptions = { ...options };
+    this.options.classifierOptions = { ...options, rootDir: this.options.root };
     this.configurationRevision++;
     this.requestScan();
   }

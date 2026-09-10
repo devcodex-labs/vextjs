@@ -308,6 +308,10 @@ async function createJSProject(
   adapter = "hono",
 ): Promise<string> {
   const rootDir = await mkdtemp(join(tmpdir(), "vext-cli-e2e-js-"));
+  await writeFile(
+    join(rootDir, "package.json"),
+    JSON.stringify({ name: "cli-js-fixture", private: true, type: "module" }),
+  );
 
   const srcDir = join(rootDir, "src");
   await mkdir(join(srcDir, "config"), { recursive: true });
@@ -514,6 +518,8 @@ function waitForExit(
   child: ChildProcess,
   timeoutMs = 10_000,
 ): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null)
+    return Promise.resolve(child.exitCode);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
@@ -636,7 +642,13 @@ describe("E2E: CLI help and version", () => {
     try {
       const result = await runProcess(
         "node",
-        [CLI_ENTRY, "create", "first-project", "second-project", "--skip-install"],
+        [
+          CLI_ENTRY,
+          "create",
+          "first-project",
+          "second-project",
+          "--skip-install",
+        ],
         { cwd: rootDir, timeout: 10_000 },
       );
 
@@ -721,10 +733,8 @@ describe("E2E: vext build", () => {
         },
       });
 
-      // JS 项目应该提示无需编译
-      if (result.exitCode === 0) {
-        expect(result.stdout).toContain("JavaScript");
-      }
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toContain("JavaScript");
     } finally {
       await cleanupDir(jsDir);
     }
@@ -785,11 +795,9 @@ describe("E2E: vext start lifecycle", () => {
         if (!ready) {
           const stdout = getStdout();
           const stderr = getStderr();
-          // 如果服务器未能启动（可能是模块解析问题），跳过后续断言
-          console.warn(
+          throw new Error(
             `[cli-e2e] Server did not start on port ${port}.\nstdout: ${stdout}\nstderr: ${stderr}`,
           );
-          return;
         }
 
         // 发送请求验证服务器正在运行
@@ -822,18 +830,15 @@ describe("E2E: vext start lifecycle", () => {
 
         // 验证端口已释放
         await sleep(500);
-        try {
-          await fetch(`http://127.0.0.1:${port}/`, {
+        await expect(
+          fetch(`http://127.0.0.1:${port}/`, {
             signal: AbortSignal.timeout(1000),
-          });
-          // 如果仍然可以连接，端口未释放
-          expect.unreachable("Port should be released after SIGTERM");
-        } catch {
-          // 预期：连接被拒绝
-        }
+          }),
+        ).rejects.toThrow();
       } catch (err) {
         // 确保子进程被清理
         if (!child.killed) child.kill("SIGKILL");
+        await waitForExit(child, 5000);
         throw err;
       }
     } finally {
@@ -863,8 +868,7 @@ describe("E2E: vext start lifecycle", () => {
         );
 
         if (!ready) {
-          console.warn("[cli-e2e] Server did not start, skipping test");
-          return;
+          throw new Error(`[cli-e2e] Server did not start on port ${port}`);
         }
 
         const res = await fetch(`http://127.0.0.1:${port}/health`, {
@@ -912,8 +916,7 @@ describe("E2E: vext start lifecycle", () => {
         );
 
         if (!ready) {
-          console.warn("[cli-e2e] Server did not start, skipping test");
-          return;
+          throw new Error(`[cli-e2e] Server did not start on port ${port}`);
         }
 
         const res = await fetch(

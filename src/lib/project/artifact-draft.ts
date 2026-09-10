@@ -1,5 +1,8 @@
 import path from "node:path";
-import { isPathInside } from "../path-boundary.js";
+import {
+  assertExplicitOutputDirectory,
+  isPathInside,
+} from "../path-boundary.js";
 import {
   ArtifactError,
   MAX_ARTIFACT_FILES,
@@ -30,10 +33,20 @@ export class ArtifactDraft {
       );
     this.targets = targets.map((target) => ({
       target: { ...target },
-      path: artifactPath(rootDir, artifactRelativePath(rootDir, target.outDir)),
+      path: artifactPath(
+        rootDir,
+        artifactRelativePath(rootDir, target.outDir, true),
+        true,
+      ),
     }));
     for (let index = 0; index < this.targets.length; index++) {
       const current = this.targets[index]!;
+      if (!isPathInside(rootDir, current.path))
+        assertExplicitOutputDirectory(
+          rootDir,
+          current.path,
+          "artifact draft output",
+        );
       for (const previous of this.targets.slice(0, index)) {
         if (
           isPathInside(previous.path, current.path, true) ||
@@ -77,7 +90,8 @@ export class ArtifactDraft {
     this.assertActive();
     const absolute = artifactPath(
       this.rootDir,
-      artifactRelativePath(this.rootDir, file.path),
+      artifactRelativePath(this.rootDir, file.path, true),
+      true,
     );
     if (!this.owns(absolute))
       throw new ArtifactError(

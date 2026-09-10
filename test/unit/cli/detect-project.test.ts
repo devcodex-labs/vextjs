@@ -93,7 +93,6 @@ describe("inspectDistBuild", () => {
     writeFile(rootDir, "src/config/default.ts", "export default {};\n");
     writeFile(rootDir, "src/config/local.ts", "export default {};\n");
     writeFile(rootDir, "src/routes/user.test.ts", "export default {};\n");
-    writeFile(rootDir, "src/client/page.ts", "export default {};\n");
     writeFile(rootDir, "src/preload/README.md", "# preload\n");
     writeFile(rootDir, "dist/package.json", '{"type":"commonjs"}\n');
     writeFile(rootDir, "dist/config/default.js", "module.exports = {};\n");
@@ -102,6 +101,12 @@ describe("inspectDistBuild", () => {
       valid: true,
       hasDistDir: true,
       missing: [],
+    });
+    writeFile(rootDir, "src/client/page.ts", "export default {};\n");
+    expect(inspectDistBuild(rootDir)).toEqual({
+      valid: false,
+      hasDistDir: true,
+      missing: ["dist/client/page.js"],
     });
   });
 });

@@ -35,7 +35,7 @@ export async function doctorCommand(args: string[] = []): Promise<void> {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log(
-      `[vext doctor] target=${result.target} source=${result.sourceFreshness} routeFiles=${result.routeFileCount} routes=${result.routeCount} errors=${result.summary.errors} warnings=${result.summary.warnings} infos=${result.summary.infos}`,
+      `[vext doctor] target=${result.target} profile=${result.profile} valid=${result.valid} source=${result.sourceFreshness} routeFiles=${result.routeFileCount} routes=${result.routeCount} errors=${result.summary.errors} warnings=${result.summary.warnings} infos=${result.summary.infos}`,
     );
 
     if (result.inspect) {
@@ -132,7 +132,9 @@ function printDoctorHelp(): void {
 
   Targets:
     routes              Analyze static route metadata and duplicate definitions
-    all                 Alias of routes for Phase 2 bootstrap
+    all                 Analyze routes, service dependencies and plugin extensions
+                        Reports checked/not-present/unsupported/incomplete per domain.
+                        valid applies only to the declared static profile, not runtime readiness.
 
   Options:
     --json              Print machine-readable JSON output

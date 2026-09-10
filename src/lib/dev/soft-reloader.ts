@@ -18,7 +18,9 @@ import type {
   NotFoundHandlerFactory,
   BuiltinMiddlewareCreators,
 } from "./route-reloader.js";
-import { reloadLocales, shouldReloadLocales } from "./i18n-reloader.js";
+import { reloadLocales } from "./i18n-reloader.js";
+import { resolveLocaleDirectory } from "../project/layout.js";
+import { isPathInside } from "../path-boundary.js";
 import type { ConfigureI18nFn } from "./i18n-reloader.js";
 import { reportMemoryIfNeeded } from "./memory-monitor.js";
 import type { MemoryReport } from "./memory-monitor.js";
@@ -584,12 +586,29 @@ export class SoftReloader {
 
       // ── Step 2: 重载 i18n ───────────────────────────────
 
-      if (reloadAll || shouldReloadLocales(filePaths)) {
-        await reloadLocales({
+      const localeLayout = resolveLocaleDirectory(
+        this.compiler.getProjectRoot(),
+        outDir,
+        (this.config.locale as { directory?: string } | undefined)?.directory,
+      );
+      if (
+        reloadAll ||
+        [...compiledFiles, ...cacheResult.invalidated].some((file) =>
+          isPathInside(localeLayout.directory, file, true),
+        )
+      ) {
+        const localeResult = await reloadLocales({
+          localesDir: localeLayout.directory,
+          rootDir: this.compiler.getProjectRoot(),
+          compiled: localeLayout.compiled,
           outDir,
           logger: this.logger,
           configureI18n: this.configureI18n,
         });
+        if (localeResult.failedFiles.length > 0)
+          throw new Error(
+            `[hot-reload] Locale replacement failed: ${localeResult.failedFiles.join(", ")}`,
+          );
       }
       i18nEnd = performance.now();
 

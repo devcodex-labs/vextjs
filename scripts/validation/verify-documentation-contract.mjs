@@ -2,6 +2,10 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  collectPublicSurface,
+  validatePublicSurface,
+} from "./verify-public-surface.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..", "..");
@@ -1554,7 +1558,7 @@ function verifyExampleAndMetadata() {
   ]);
 
   requireTokens("CONTRIBUTING.md", [
-    "Node.js** >= 20.19.0",
+    "^20.19.0 or >=22.12.0",
     "YOUR_USERNAME/vextjs.git",
     "cd vextjs",
     "Apache License 2.0",
@@ -2431,6 +2435,12 @@ if (renderedOnly) {
   verifyRenderedMachineArtifacts();
   verifyRenderedAnchors();
 } else {
+  failures.push(
+    ...validatePublicSurface(
+      collectPublicSurface(),
+      readJson("test/fixtures/public-surface/coverage.json"),
+    ),
+  );
   verifyMarkdownTables();
   verifyWebsiteNavigationContract();
   verifyCliDocs();

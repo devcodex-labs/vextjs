@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createFrontendWatchLayout,
   isFrontendWatchLayout,
+  createProjectWatchLayout,
+  isProjectWatchLayout,
 } from "../../src/lib/project/layout.js";
 import {
   classifyChange,
@@ -14,6 +16,9 @@ import {
   VextFileWatcher,
   type FileChangeEvent,
 } from "../../src/lib/dev/file-watcher.js";
+import { readWatchSnapshot } from "../../src/lib/dev/watch-snapshot.js";
+import { withProjectOwner } from "../../src/lib/project/owner.js";
+import { withTemporaryArtifact } from "../../src/lib/project/temporary-artifact.js";
 
 const roots: string[] = [];
 const watchers: VextFileWatcher[] = [];
@@ -50,9 +55,162 @@ function nextChange(
 }
 
 describe("dev watcher resolved layout", () => {
+  it.each([false, true])(
+    "ignores executable config temporaries while observing real config changes (poll=%s)",
+    async (usePolling) => {
+      const root = await mkdtemp(path.join(tmpdir(), "vext-watch-temporary-"));
+      roots.push(root);
+      const directory = path.join(root, "src/config");
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, "default.ts"), "export default {};");
+      const watcher = new VextFileWatcher({
+        root,
+        usePolling,
+        pollInterval: 30,
+        debounce: 15,
+      });
+      watchers.push(watcher);
+      const events: FileChangeEvent[] = [];
+      watcher.on("change", (event) => events.push(event));
+      await withProjectOwner(root, "dev", [directory], async () => {
+        await withTemporaryArtifact(
+          {
+            rootDir: root,
+            logicalPath: path.join(directory, "default.mjs"),
+            contents: "export default {};",
+          },
+          async (temporary) => {
+            const relative = path
+              .relative(root, temporary)
+              .replaceAll("\\", "/");
+            expect(
+              classifyChange(relative, { coldPatterns: ["src/**"] }).action,
+            ).toBe("ignore");
+            expect((await readWatchSnapshot(root)).has(relative)).toBe(false);
+            await watcher.start();
+          },
+        );
+        await withTemporaryArtifact(
+          {
+            rootDir: root,
+            logicalPath: path.join(directory, "default.cjs"),
+            contents: "module.exports = {};",
+          },
+          async (temporary) => {
+            const relative = path
+              .relative(root, temporary)
+              .replaceAll("\\", "/");
+            expect((await readWatchSnapshot(root)).has(relative)).toBe(false);
+            const changed = nextChange(
+              watcher,
+              "src/config/default.ts",
+              "modify",
+            );
+            await writeFile(
+              path.join(directory, "default.ts"),
+              "export default { port: 3123 };",
+            );
+            expect((await changed).action).toBe("cold");
+          },
+        );
+        const added = nextChange(watcher, "src/config/development.ts", "add");
+        await writeFile(
+          path.join(directory, "development.ts"),
+          "export default {};",
+        );
+        await added;
+      });
+      expect(
+        events
+          .flatMap((event) => event.files)
+          .some((file) => file.path.includes(".vext-exec-")),
+      ).toBe(false);
+      expect(classifyChange("src/config/.env.local").action).toBe("cold");
+      expect(classifyChange("src/config/.vext-exec-user.mjs").action).toBe(
+        "cold",
+      );
+    },
+  );
+
+  it.each([false, true])(
+    "observes locale JSON and explicit external model sources through the real watcher (poll=%s)",
+    async (usePolling) => {
+      const root = await mkdtemp(path.join(tmpdir(), "vext-watch-backend-"));
+      roots.push(root);
+      const shared = await mkdtemp(path.join(tmpdir(), "vext-watch-shared-"));
+      roots.push(shared);
+      await mkdir(path.join(root, "src/translations/order"), {
+        recursive: true,
+      });
+      await writeFile(
+        path.join(root, "src/translations/order/en-US.json"),
+        '{"title":"before"}',
+      );
+      await writeFile(
+        path.join(shared, "user.ts"),
+        'export default { collection: "users" };',
+      );
+      const layout = createProjectWatchLayout(root, {
+        localeDirectory: "src/translations",
+        modelsDirectory: shared,
+      });
+      expect(isProjectWatchLayout(layout)).toBe(true);
+      expect(
+        classifyChange("src/frontend/helper.ts", { ...layout, rootDir: root })
+          .action,
+      ).toBe("soft");
+      const watcher = new VextFileWatcher({
+        root,
+        usePolling,
+        pollInterval: 30,
+        debounce: 15,
+        classifierOptions: layout,
+      });
+      watchers.push(watcher);
+      await watcher.start();
+      const changed = nextChange(
+        watcher,
+        "src/translations/order/en-US.json",
+        "modify",
+      );
+      await writeFile(
+        path.join(root, "src/translations/order/en-US.json"),
+        '{"title":"after"}',
+      );
+      expect((await changed).action).toBe("soft");
+      const added = nextChange(
+        watcher,
+        "src/translations/order/zh-CN.json",
+        "add",
+      );
+      await writeFile(
+        path.join(root, "src/translations/order/zh-CN.json"),
+        '{"title":"新文案"}',
+      );
+      expect((await added).action).toBe("soft");
+      const deleted = nextChange(
+        watcher,
+        "src/translations/order/en-US.json",
+        "delete",
+      );
+      await rm(path.join(root, "src/translations/order/en-US.json"));
+      expect((await deleted).action).toBe("soft");
+      const sharedChange = nextChange(
+        watcher,
+        path.relative(root, path.join(shared, "user.ts")).replaceAll("\\", "/"),
+      );
+      await writeFile(
+        path.join(shared, "user.ts"),
+        'export default { collection: "users", fields: { name: "string" } };',
+      );
+      expect((await sharedChange).action).toBe("cold");
+    },
+  );
+
   it("projects only portable paths and preserves explicit classification overrides", () => {
     const root = path.resolve("project");
     const layout = createFrontendWatchLayout(root, {
+      enabled: true,
       root: "web",
       publicDir: "static",
     });
@@ -105,6 +263,7 @@ describe("dev watcher resolved layout", () => {
       );
       await writeFile(path.join(root, "static/robots.txt"), "User-agent: *");
       const layout = createFrontendWatchLayout(root, {
+        enabled: true,
         root: "web",
         publicDir: "static",
       });
@@ -150,7 +309,7 @@ describe("dev watcher resolved layout", () => {
     watchers.push(watcher);
     await watcher.start();
     watcher.updateClassifierOptions(
-      createFrontendWatchLayout(root, { root: "web" }),
+      createFrontendWatchLayout(root, { enabled: true, root: "web" }),
     );
     const event = nextChange(watcher, "web/pages/new.tsx");
     await writeFile(

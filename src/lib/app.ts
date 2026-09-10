@@ -5,7 +5,12 @@ import {
 } from "./logger.js";
 import { createDefaultThrow } from "./default-throw.js";
 import { createHookManager } from "./hooks.js";
-import { schemaAdapter } from "./schema-adapter.js";
+import {
+  schemaAdapter,
+  createAppSchemaRuntime,
+  type AppSchemaRuntime,
+} from "./schema-adapter.js";
+import { appRequestLocale, bindAppSchemaRuntime } from "./i18n/app-runtime.js";
 import type { DslDefinition } from "./schema-adapter.js";
 import type { VextAdapter } from "../types/adapter.js";
 import type {
@@ -16,6 +21,7 @@ import type {
   VextRateLimiter,
   VextRuntimeLogger,
   VextLoggerLike,
+  VextLocaleConfig,
 } from "../types/app.js";
 import type { VextFetch } from "./fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
@@ -180,7 +186,14 @@ export function createApp(config: VextConfig): {
   const readyHooks: Array<() => Promise<void> | void> = [];
   const globalMiddlewares: VextMiddleware[] = [];
 
-  let _validator: VextValidator = createSchemaAdapterValidator();
+  const schemaRuntime = createAppSchemaRuntime(
+    (config.locale as VextLocaleConfig | undefined)?.default,
+  );
+  closeHooks.push(() => schemaRuntime.dispose());
+  let _validator: VextValidator = createSchemaAdapterValidator(
+    schemaRuntime,
+    () => appRequestLocale(app),
+  );
   let _rateLimiter: VextRateLimiter | null = null;
   let _requestIdGenerator: (() => string) | null = null;
   let _locked = false; // 路由注册完成后锁定（步骤⑤之后），禁止 app.use()
@@ -212,7 +225,9 @@ export function createApp(config: VextConfig): {
   //   - 从 requestContext（AsyncLocalStorage）获取请求级 locale（并发安全）
   //   - 翻译后的 message + 业务码 封装为 HttpError 抛出
   //
-  const defaultThrow = createDefaultThrow();
+  const defaultThrow = createDefaultThrow(schemaRuntime.createI18nError, () =>
+    appRequestLocale(app),
+  );
 
   // ── 创建响应缓存核心（response-cache-kit）────────────────
   //
@@ -681,6 +696,7 @@ export function createApp(config: VextConfig): {
     },
   };
 
+  bindAppSchemaRuntime(app, schemaRuntime);
   return { app, internals };
 }
 
@@ -990,7 +1006,10 @@ function createRouteMethodPlaceholder(
  *
  * 插件可通过 app.setValidator() 替换为 Zod / Yup 等第三方校验库。
  */
-function createSchemaAdapterValidator(): VextValidator {
+function createSchemaAdapterValidator(
+  runtime: AppSchemaRuntime,
+  getLocale: () => string | undefined,
+): VextValidator {
   return {
     compile(schema: Record<string, unknown>) {
       // 将 DSL 定义编译为 JSON Schema（通过防腐层）
@@ -998,7 +1017,9 @@ function createSchemaAdapterValidator(): VextValidator {
 
       // 返回校验函数
       return (data: unknown) => {
-        const result = schemaAdapter.validate(compiledSchema, data);
+        const result = runtime.validate(compiledSchema, data, {
+          locale: getLocale(),
+        });
 
         return {
           valid: result.valid,

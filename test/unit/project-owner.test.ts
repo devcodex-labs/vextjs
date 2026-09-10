@@ -180,9 +180,8 @@ describe("project writer ownership", () => {
     await expect(owner.reserveOutputs(["redirect/dist"])).rejects.toThrow(
       /inside/,
     );
-    await expect(owner.reserveOutputs(["../outside"])).rejects.toThrow(
-      /inside/,
-    );
+    await owner.reserveOutputs(["../outside"]);
+    await expect(owner.reserveOutputs([".."])).rejects.toThrow(/ancestor/);
     await owner.reserveOutputs(["dist"]);
     await owner.release();
     await expect(owner.assertActive()).rejects.toMatchObject({

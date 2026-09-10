@@ -1,9 +1,14 @@
 import { join } from "node:path";
 import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
+import type { DoctorResult } from "./index.js";
 
 export interface RouteInspectPayload {
   schemaVersion: 1;
-  target: "routes";
+  target: DoctorResult["target"];
+  profile: DoctorResult["profile"];
+  valid: boolean;
+  sourceRevision: string;
+  domains: DoctorResult["domains"];
   sourceFingerprint?: string | null;
   sourceFiles?: string[];
   sourceFreshness?: "current" | "stale" | "unverified";

@@ -50,6 +50,10 @@ closure.
 
 ## Choose a Delivery Shape
 
+Successful build records bind the backend identity and profile to the frontend public manifest's `buildId` and byte digest. Both public and render manifests must belong to the same recorded producer generation before the build location becomes ready. Generated deploy manifests carry that frontend `buildId`; uploads validate the generation and each asset's bytes. A manually supplied manifest without `buildId` proves asset integrity only, not build identity.
+
+An explicit `frontend.outDir` or backend `--outdir` may select a separate output outside the service. Metadata uses canonical absolute references for external outputs and relative references for ordinary outputs. Source, other-service and runtime-state overlaps are rejected, and artifact filename case is preserved. Rebuild after moving an external output. Production dependencies must resolve from the actual output directory under Node's rules; Vext does not embed the development machine's dependency paths.
+
 | Need                                  | Default / configuration                 | What changes                                                                    | Verify                                                             |
 | ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | One Node service owns HTML and assets | No `assetBaseUrl`                       | `vext start` serves declared public files from the same origin                  | Load a page and a hashed asset from the application origin         |
@@ -84,6 +88,8 @@ vext deploy assets
 ```
 
 `vext deploy assets` accepts options only and rejects extra positional arguments. Options that require values must receive non-option values; for example, `--manifest --dry-run` and `--target-dir --dry-run` fail instead of treating the next flag as a path.
+
+Standalone upload uses the same successful build location as `vext start`, including its recorded profile. Select explicitly with `--outdir` or `--config`. The default manifest comes from the resolved `frontend.outDir`, without assuming `dist/client`. `--json` returns `{ ok: true, result }` on success and `{ ok: false, error, result? }` on failure. Failures after upload begins retain per-asset results.
 
 ## Programmatic Upload Integration
 
@@ -125,7 +131,15 @@ bundler or cloud-plugin ecosystem for this path.
 
 ## Incremental Upload
 
-The upload state file stores known sha256 values. Unchanged assets are skipped, so images and fonts are not uploaded again on every release.
+Upload state uses `schemaVersion: 2` at the same default path, `.vext/deploy/frontend-assets-state.json`. Each target stores confirmed sha256 values and byte counts; unchanged assets are skipped only for that target. Target identity includes the canonical service root, profile, adapter type, storage identity, and prefix. Filesystem targets use their canonical path. Changing target or profile uploads again; changing the public URL alone does not identify a different storage destination.
+
+Custom adapters may provide a stable `targetIdentity` string, such as an account and bucket identifier, without credentials. Without it, uploads still work but cannot skip assets across runs. Return `{ uploaded: true }` from `upload(input)` only after remote success is confirmed; adapters can consume `input.signal`. A false result or thrown error is reported as `unconfirmed`.
+
+`mock` is a reserved simulation adapter name. Its separate state partition reports `simulated`, never real `uploaded` counts. A dry run does not call the adapter or write target/state files. Unknown state formats fail explicitly and retain the original file; Vext does not guess their target identity.
+
+One writer owns a state file or known storage target at a time. Partial failures and cancellation still atomically save confirmed successes; pending assets are not recorded as successful. Retry processes unconfirmed assets again. Remote uploads have no whole-operation rollback guarantee. Programmatic callers can inspect `FrontendDeployError.result` for per-asset results. External state changes are preserved and reported as conflicts; use the result to reconcile remote contents.
+
+Different prefixes in the same known storage namespace are serialized too, preventing parent/child prefix overlap. This coordinates local writers, not writers on different machines. State reads are bounded to 64 MiB; oversized or unverifiable files fail without replacing the original bytes. With `--json`, argument and execution failures both produce one JSON line and a nonzero exit code.
 
 Keep `stateFile` outside the frontend outDir because build output is normally cleaned.
 

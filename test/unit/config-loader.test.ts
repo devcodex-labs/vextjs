@@ -2177,20 +2177,39 @@ describe("loadConfig — config profile selection", () => {
     expect(config.port).toBe(3100);
   });
 
-  it("applies local config after the selected profile", async () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "local.js"),
-      `module.exports = { host: "local.local" };\n`,
-    );
+  it.each(["dev", "test"] as const)(
+    "applies local config after the selected profile in %s",
+    async (command) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "local.js"),
+        `module.exports = { host: "local.local" };\n`,
+      );
 
-    const config = await loadConfig(tmpDir, {
-      command: "start",
-      configProfile: "sg-sit",
-    });
+      const config = await loadConfig(tmpDir, {
+        command,
+        configProfile: "sg-sit",
+      });
 
-    expect(config.port).toBe(3100);
-    expect(config.host).toBe("local.local");
-  });
+      expect(config.port).toBe(3100);
+      expect(config.host).toBe("local.local");
+    },
+  );
+
+  it.each(["start", "build"] as const)(
+    "does not evaluate local config in production %s",
+    async (command) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "local.js"),
+        'throw new Error("development-only local was executed");',
+      );
+      const config = await loadConfig(tmpDir, {
+        command,
+        configProfile: "sg-sit",
+      });
+      expect(config.port).toBe(3100);
+      expect(config.host).toBe("sg-sit.local");
+    },
+  );
 
   it("deeply merges a complete base database with profile and local patches", async () => {
     fs.writeFileSync(

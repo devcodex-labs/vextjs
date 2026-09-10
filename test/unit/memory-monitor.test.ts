@@ -805,16 +805,6 @@ describe("模块级便捷函数", () => {
       expect(r1.reported).toBe(true);
       expect(r2.reported).toBe(false);
     });
-
-    it("多次调用使用同一个内部实例", () => {
-      reportMemoryIfNeeded(1);
-      reportMemoryIfNeeded(2);
-      reportMemoryIfNeeded(3);
-
-      // 由于 defaultMonitor 不暴露 getSnapshots，
-      // 我们通过不抛错来验证复用正常
-      expect(true).toBe(true);
-    });
   });
 
   describe("resetDefaultMonitor", () => {

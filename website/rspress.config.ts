@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { defineConfig } from "@rspress/core";
+import { defineConfig, type Sidebar, type UserConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
 import docsVersions from "./version-channels.json";
 
@@ -27,13 +27,7 @@ const docsSiteUrl = trimTrailingSlash(
 const docsHomeUrl = `${docsSiteUrl}/`;
 const docsOgImage = `${docsSiteUrl}/og-card.svg`;
 
-type SidebarGroup = {
-  text: string;
-  items: Array<{
-    text: string;
-    link: string;
-  }>;
-};
+type SidebarGroup = Sidebar[string][number];
 
 type NavItemSource =
   | {
@@ -515,7 +509,7 @@ const chineseFrontendSidebar: SidebarGroup[] = [
   },
 ];
 
-export default defineConfig({
+const siteConfig: UserConfig = {
   root: path.join(__dirname, "docs"),
   base: docsBase,
   lang: "en",
@@ -590,9 +584,6 @@ export default defineConfig({
           "/frontend/": englishFrontendSidebar,
           "/": englishSidebar,
         },
-        footer: {
-          message: "Released under the Apache-2.0 License.",
-        },
       },
       {
         lang: "zh",
@@ -604,9 +595,6 @@ export default defineConfig({
         sidebar: {
           "/zh/frontend/": chineseFrontendSidebar,
           "/zh/": chineseSidebar,
-        },
-        footer: {
-          message: "基于 Apache-2.0 License 发布。",
         },
       },
     ],
@@ -624,8 +612,11 @@ export default defineConfig({
       },
     ],
     footer: {
-      message: "Released under the Apache-2.0 License.",
+      message:
+        "Released under the Apache-2.0 License · 基于 Apache-2.0 许可发布。",
     },
     lastUpdated: true,
   },
-});
+};
+
+export default defineConfig(siteConfig);

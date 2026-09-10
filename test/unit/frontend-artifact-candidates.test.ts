@@ -82,6 +82,7 @@ describe("frontend artifact candidate generation", () => {
         config,
         mode: "production" as const,
         browserManifest,
+        buildId: "test",
       };
       const actual = await buildFrontendDeployManifestFromCandidates(options, {
         files,

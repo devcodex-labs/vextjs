@@ -2,6 +2,9 @@ export interface RootRef {
   readonly id: string;
   readonly realPath: string;
   readonly kind: "service" | "shared";
+  /** 显式分析映射，由collector与真实package声明交叉校验；不改变运行时exports。 */
+  readonly packageName?: string;
+  readonly sourceExports?: Readonly<Record<string, string>>;
 }
 
 export interface SourceFileRef {
@@ -20,6 +23,7 @@ export interface SourceRecord extends SourceFileRef {
 
 export interface SourceView {
   readonly revision: string;
+  roots(): readonly RootRef[];
   list(filter?: {
     rootId?: string;
     roles?: readonly string[];
@@ -33,6 +37,8 @@ export interface SourceInput extends SourceFileRef {
 }
 
 export interface SourceLimits {
+  /** 目录发现的总条目预算，包含最终未选择的文件；不等于MCP响应预算。 */
+  readonly maxScanEntries?: number;
   readonly maxFiles: number;
   readonly maxFileBytes: number;
   readonly maxTotalBytes: number;

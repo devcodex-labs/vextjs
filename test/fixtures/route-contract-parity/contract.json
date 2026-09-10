@@ -3,6 +3,7 @@
   "allowedDifferences": {
     "absoluteFilePath": "Static index and Doctor expose a host-specific absolute filePath; parity uses fileRelativePath as the portable source location.",
     "runtimeOnly": ["handler", "options"],
+    "staticOnly": ["schema.*.projection"],
     "doctorOnly": [
       "effectiveOperationId",
       "operationIdSource",

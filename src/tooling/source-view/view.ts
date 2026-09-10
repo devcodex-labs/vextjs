@@ -96,7 +96,14 @@ function seal(state: ViewState): SourceView {
         rolePolicyVersion: state.rolePolicyVersion,
         roots: [...state.roots.values()]
           .sort((a, b) => compareText(a.id, b.id))
-          .map((root) => [root.id, root.kind]),
+          .map((root) => [
+            root.id,
+            root.kind,
+            root.packageName ?? null,
+            Object.entries(root.sourceExports ?? {}).sort(([a], [b]) =>
+              compareText(a, b),
+            ),
+          ]),
         files: records.map((record) => [
           record.rootId,
           record.path,
@@ -108,6 +115,7 @@ function seal(state: ViewState): SourceView {
     .digest("hex");
   const view: SourceView = Object.freeze({
     revision,
+    roots: () => Object.freeze([...state.roots.values()]),
     list(filter?: { rootId?: string; roles?: readonly string[] }) {
       if (!filter) return records;
       const roles =

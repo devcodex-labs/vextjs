@@ -351,6 +351,8 @@ export default {
 
 ### 超时
 
+普通 `app.fetch` 的 `timeout` 在收到响应头后结束，慢正文不会因此被中止；调用方的 `init.signal` 或 `Request.signal` 仍持续控制正文读取。重试会使用新的单次计时。`app.fetch.proxy` 的超时则覆盖上游正文转发，客户端断开会取消上游请求。
+
 - 使用 `AbortController` + `setTimeout` 实现
 - 超时后抛出 `Error`，消息格式：`[app.fetch] GET https://... timed out after 10000ms`
 - 如果同时传入了 `init.signal`，会与超时 signal 合并——任一触发都中止请求

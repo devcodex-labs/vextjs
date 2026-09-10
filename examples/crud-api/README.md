@@ -10,6 +10,8 @@ facade alias such as `Todo`.
 
 ## Run
 
+From the repository root, run `npm ci` and `npm run build` first, then change to `examples/crud-api`. Its `file:../..` dependency consumes the built framework package. The commands below run from that example directory.
+
 Use a dedicated MongoDB database. The example intentionally refuses to start
 without `MONGODB_URI`; a mock or shared development database is not treated as
 successful verification.

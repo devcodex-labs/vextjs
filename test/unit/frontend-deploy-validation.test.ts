@@ -58,6 +58,12 @@ describe("frontend deploy manifest validation", () => {
 
   it.each([
     {
+      name: "build generation drift",
+      mutate(manifest: VextFrontendDeployManifest) {
+        manifest.buildId = "different-build";
+      },
+    },
+    {
       name: "traversal file",
       mutate(manifest: VextFrontendDeployManifest) {
         manifest.assets[0]!.file = "../../secret.txt";
@@ -134,14 +140,20 @@ describe("frontend deploy manifest validation", () => {
       recursive: true,
     });
     const stateText = `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: "frontend-deploy-state",
       updatedAt: new Date(0).toISOString(),
-      assets: {
-        "../outside": {
-          sha256: fixture.manifest.assets[0]!.sha256,
-          bytes: fixture.manifest.assets[0]!.bytes,
-          uploadedAt: new Date(0).toISOString(),
+      targets: {
+        ["0".repeat(64)]: {
+          simulation: false,
+          manifestDigest: "1".repeat(64),
+          assets: {
+            "../outside": {
+              sha256: fixture.manifest.assets[0]!.sha256,
+              bytes: fixture.manifest.assets[0]!.bytes,
+              uploadedAt: new Date(0).toISOString(),
+            },
+          },
         },
       },
     })}\n`;

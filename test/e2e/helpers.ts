@@ -511,20 +511,28 @@ export async function startE2EApp(project: E2EProject): Promise<E2EApp> {
  *
  * @param app 已启动的 E2E 应用
  */
-export async function stopE2EApp(app: E2EApp): Promise<void> {
-  try {
-    // 先关闭 HTTP server（停止接受新连接）
-    await app.result.serverHandle.close();
-  } catch {
-    // 静默忽略
-  }
-
-  try {
-    // 执行 onClose hooks（清理资源），skipExit 避免 process.exit
-    await app.result.internals.shutdown(undefined, { skipExit: true });
-  } catch {
-    // 静默忽略
-  }
+const stoppedApps = new WeakMap<E2EApp, Promise<void>>();
+export function stopE2EApp(app: E2EApp): Promise<void> {
+  const previous = stoppedApps.get(app);
+  if (previous) return previous;
+  const cleanup = (async () => {
+    const errors: unknown[] = [];
+    // 即使停止监听失败也执行资源清理；失败必须让测试失败，不能静默通过。
+    try {
+      await app.result.serverHandle.close();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await app.result.internals.shutdown(undefined, { skipExit: true });
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length)
+      throw new AggregateError(errors, "E2E application cleanup failed");
+  })();
+  stoppedApps.set(app, cleanup);
+  return cleanup;
 }
 
 // ── HTTP 请求工具 ────────────────────────────────────────────

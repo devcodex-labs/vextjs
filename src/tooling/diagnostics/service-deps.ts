@@ -2,6 +2,11 @@ import { relative } from "node:path";
 import { SourceViewError } from "../source-view/types.js";
 import { normalizeSourcePath } from "../source-view/policy.js";
 import {
+  parseSourceSyntax,
+  walkSourceSyntax,
+  type SyntaxNode,
+} from "../../lib/source-syntax.js";
+import {
   buildProjectIndex,
   type ProjectIndex,
   type ServiceIndexEntry,
@@ -20,6 +25,7 @@ export interface ServiceDependencyDiagnostic {
 export interface ServiceDependencyReport {
   diagnostics: ServiceDependencyDiagnostic[];
   graph: Map<string, Set<string>>;
+  incompleteFiles: string[];
 }
 
 export async function analyzeServiceDependencies(
@@ -38,6 +44,7 @@ export function analyzeIndexedServiceDependencies(
     index.serviceEntries.map((entry) => entry.serviceKey),
   );
   const graph = new Map<string, Set<string>>();
+  const incompleteFiles: string[] = [];
 
   for (const entry of index.serviceEntries) {
     const sourcePath = normalizeSourcePath(
@@ -53,7 +60,9 @@ export function analyzeIndexedServiceDependencies(
           ".",
       );
     }
-    graph.set(entry.serviceKey, collectDependencies(source, entry, knownKeys));
+    const collected = collectDependencies(source, entry, knownKeys);
+    graph.set(entry.serviceKey, collected.dependencies);
+    if (collected.incomplete) incompleteFiles.push(entry.filePath);
   }
 
   const diagnostics: ServiceDependencyDiagnostic[] = [];
@@ -67,27 +76,61 @@ export function analyzeIndexedServiceDependencies(
     });
   }
 
-  return { diagnostics, graph };
+  return { diagnostics, graph, incompleteFiles };
 }
 
 function collectDependencies(
   source: string,
   entry: ServiceIndexEntry,
   knownKeys: Set<string>,
-): Set<string> {
+): { dependencies: Set<string>; incomplete: boolean } {
   const deps = new Set<string>();
-  const accessPattern =
-    /(?:\bapp|this\.app)\.services((?:\.[A-Za-z_$][\w$]*)+)/gu;
-
-  for (const match of source.matchAll(accessPattern)) {
-    const dep = (match[1] ?? "").split(".").filter(Boolean).join(".");
-    if (!dep || dep === entry.serviceKey || !knownKeys.has(dep)) {
-      continue;
-    }
-    deps.add(dep);
-  }
-
-  return deps;
+  let incomplete = false;
+  const chain = (node: SyntaxNode): (string | null)[] | undefined => {
+    if (node.type === "Identifier") return [node.name];
+    if (node.type === "ThisExpression") return ["this"];
+    if (node.type !== "MemberExpression") return undefined;
+    const parent = chain(node.object);
+    if (!parent) return undefined;
+    const key =
+      !node.computed && node.property.type === "Identifier"
+        ? node.property.name
+        : node.property.type === "Literal" &&
+            typeof node.property.value === "string"
+          ? node.property.value
+          : null;
+    return [...parent, key];
+  };
+  walkSourceSyntax(parseSourceSyntax(entry.filePath, source), (node) => {
+    if (node.type !== "MemberExpression") return;
+    const parts = chain(node);
+    if (!parts) return;
+    const offset =
+      parts[0] === "app" && parts[1] === "services"
+        ? 2
+        : parts[0] === "this" && parts[1] === "app" && parts[2] === "services"
+          ? 3
+          : 0;
+    if (!offset) return;
+    const keys = parts.slice(offset);
+    if (keys.length === 0 || keys.some((key) => key === null))
+      incomplete = true;
+    const candidates = [...knownKeys]
+      .filter((key) => {
+        const segments = key.split(".");
+        return (
+          segments.length <= keys.length &&
+          segments.every((segment, i) => keys[i] === segment)
+        );
+      })
+      .sort((a, b) => b.length - a.length);
+    const dependency = candidates[0];
+    if (dependency && dependency !== entry.serviceKey) deps.add(dependency);
+    if (!dependency && keys.length > 0) incomplete = true;
+    // Consume the complete member chain once; comments and strings never become edges.
+    return false;
+  });
+  return { dependencies: deps, incomplete };
 }
 
 function detectCycles(

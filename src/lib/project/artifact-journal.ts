@@ -9,10 +9,10 @@ import {
   MAX_ARTIFACT_METADATA_BYTES,
   ArtifactError,
   artifactDigest,
-  artifactPath,
+  artifactPath as resolveArtifactPath,
   isArtifactDigest,
   parseArtifactManifest,
-  readArtifactFile,
+  readArtifactFile as readScopedArtifactFile,
 } from "./artifact-manifest.js";
 
 interface JournalEntry {
@@ -26,6 +26,41 @@ interface Journal {
   realRoot: string;
   transactionId: string;
   entries: JournalEntry[];
+}
+
+// Journal目标由before/after两份完整manifest交叉验证；外部绝对引用仅在此受管范围内执行。
+const artifactPath = (root: string, reference: string) =>
+  resolveArtifactPath(root, reference, true);
+const readArtifactFile = (root: string, reference: string, maxBytes?: number) =>
+  readScopedArtifactFile(root, reference, maxBytes, true);
+
+/** 在取得manifest互斥前声明恢复写入范围；互斥内再次核对摘要，禁止事后补锁。 */
+export function artifactRecoveryPlan(root: string): {
+  digest: string | null;
+  outputs: string[];
+} {
+  const bytes = readArtifactFile(
+    root,
+    ARTIFACT_JOURNAL_FILE,
+    MAX_ARTIFACT_METADATA_BYTES,
+  );
+  if (!bytes) return { digest: null, outputs: [] };
+  const journal = parseJournal(bytes, root);
+  const outputs = new Set<string>();
+  const changed = new Set(
+    journal.entries.slice(0, -1).map((entry) => entry.path),
+  );
+  for (const kind of ["before", "after"] as const) {
+    const manifest = parseArtifactManifest(
+      readBlob(root, journal, journal.entries.length - 1, kind),
+      root,
+    );
+    for (const scope of manifest.scopes) {
+      if (scope.files.some((file) => changed.has(file.path)))
+        outputs.add(artifactPath(root, scope.outputDir));
+    }
+  }
+  return { digest: artifactDigest(bytes), outputs: [...outputs].sort() };
 }
 
 export function digestOrNull(bytes: Buffer | null): string | null {

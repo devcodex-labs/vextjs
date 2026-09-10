@@ -358,17 +358,22 @@ export class DevCompiler {
   }
 
   private assertBackendSource(file: string): void {
-    const layout = resolveFrontendLayout(
-      this.getProjectRoot(),
-      this.frontend,
-      "development",
-    );
+    const layout =
+      this.frontend?.enabled === true
+        ? resolveFrontendLayout(
+            this.getProjectRoot(),
+            this.frontend,
+            "development",
+          )
+        : undefined;
     const isFrontend =
-      frontendSourceDirectories(layout).some(
+      layout !== undefined &&
+      (frontendSourceDirectories(layout).some(
         (directory) =>
           isPathInside(this.srcDir, directory) &&
           isPathInside(directory, file, true),
-      ) || frontendSourceFiles(layout).includes(path.resolve(file));
+      ) ||
+        frontendSourceFiles(layout).includes(path.resolve(file)));
     const name = path.basename(file);
     if (
       isFrontend ||

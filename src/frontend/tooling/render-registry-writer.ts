@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
+import { scanLocaleSources } from "../../lib/i18n/catalog.js";
 import type {
   ResolvedVextFrontendConfig,
   VextFrontendErrorPageRegistryEntry,
@@ -275,20 +276,11 @@ async function scanLocales(
   config: ResolvedVextFrontendConfig,
 ): Promise<VextFrontendLocaleRegistryEntry[]> {
   if (!existsSync(config.i18n.source)) return [];
-  const files = await fg(["**/*.{ts,js,json}"], {
-    cwd: config.i18n.source,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/*.d.ts", "**/*.test.*", "**/*.spec.*"],
-  });
-
-  return files
-    .map((filePath) => ({
-      locale: stripKnownExtension(
-        normalizeRelativePath(path.relative(config.i18n.source, filePath)),
-        [".ts", ".js", ".json"],
-      ),
-      file: normalizeRelativePath(path.relative(rootDir, filePath)),
+  return scanLocaleSources(config.i18n.source)
+    .map((source) => ({
+      locale: source.locale,
+      ...(source.namespace ? { namespace: source.namespace } : {}),
+      file: normalizeRelativePath(path.relative(rootDir, source.absolutePath)),
     }))
     .sort((a, b) => a.locale.localeCompare(b.locale));
 }
@@ -452,6 +444,7 @@ ${styleImports ? `${styleImports}\n` : ""}${devImport}import { createElement, us
 import { hydrateRoot } from "react-dom/client";
 import { registry } from "./page-registry";
 import { VextRenderProvider, configureVextBrowserRuntime } from "./vext-runtime";
+import { projectLocaleMessages } from "vextjs/frontend/locale-runtime";
 ${moduleLoaders}
 
 ${renderSharedBrowserRendererHelpers(config.i18n.defaultLocale, config.i18n.clientLoad)}
@@ -648,6 +641,7 @@ import { createElement } from "react";
 import { renderToPipeableStream, renderToString } from "react-dom/server";
 import { registry } from "./page-registry";
 import { VextRenderProvider } from "./vext-runtime";
+import { projectLocaleMessages } from "vextjs/frontend/locale-runtime";
 ${moduleImports}
 
 export { registry };
@@ -944,7 +938,7 @@ function renderRuntimeMaps(input: {
   return `const pageModules = ${renderObjectMap(input.pages, "pageModule", "id")};
 const layoutModules = ${renderObjectMap(input.layouts, "layoutModule", "id")};
 const errorPageModules = ${renderObjectMap(input.errorPages, "errorPageModule", "id")};
-const localeModules = ${renderObjectMap(input.locales, "localeModule", "locale")};
+const localeModules = ${renderLocaleMap(input.locales, (_entry, index) => `localeModule${index}`)};
 `;
 }
 
@@ -961,8 +955,23 @@ function renderModuleLoaders(
   return `const pageModules = ${renderLoaderMap(generatedDir, rootDir, input.pages, "id")};
 const layoutModules = ${renderLoaderMap(generatedDir, rootDir, input.layouts, "id")};
 const errorPageModules = ${renderLoaderMap(generatedDir, rootDir, input.errorPages, "id")};
-const localeModules = ${renderLoaderMap(generatedDir, rootDir, input.locales, "locale")};
+const localeModules = ${renderLocaleMap(input.locales, (entry) => `() => import(${JSON.stringify(toImportSpecifier(generatedDir, path.join(rootDir, entry.file)))})`)};
 `;
+}
+
+function renderLocaleMap(
+  entries: VextFrontendLocaleRegistryEntry[],
+  value: (entry: VextFrontendLocaleRegistryEntry, index: number) => string,
+): string {
+  const groups = new Map<string, string[]>();
+  entries.forEach((entry, index) => {
+    const group = groups.get(entry.locale) ?? [];
+    group.push(
+      `{ locale: ${JSON.stringify(entry.locale)}, namespace: ${JSON.stringify(entry.namespace ?? "")}, file: ${JSON.stringify(entry.file)}, module: ${value(entry, index)} }`,
+    );
+    groups.set(entry.locale, group);
+  });
+  return `{${[...groups].map(([locale, sources]) => `${JSON.stringify(locale)}: [${sources.join(", ")}]`).join(", ")}}`;
 }
 
 function renderLoaderMap<
@@ -992,7 +1001,9 @@ function renderObjectMap<T extends { id?: string; locale?: string }>(
 }
 
 function renderSharedRendererHelpers(defaultLocale: string): string {
-  return `function createVextTree(page, props, options) {
+  return `const compiledLocaleMessages = projectLocaleMessages(Object.values(localeModules).flat().map(source => ({ ...source, messages: source.module.default ?? source.module.messages ?? source.module })), "nested");
+
+function createVextTree(page, props, options) {
   const Page = readComponent(pageModules[page] ?? errorPageModules[page], page);
   let tree = createElement(Page, props);
   for (const layout of resolveLayoutChain(page, options.layout).reverse()) {
@@ -1041,10 +1052,7 @@ function resolveLayoutChain(page, layoutOption) {
 }
 
 function resolveI18nContext(options) {
-  const allMessages = {};
-  for (const [locale, module] of Object.entries(localeModules)) {
-    allMessages[locale] = module.default ?? module.messages ?? module;
-  }
+  const allMessages = compiledLocaleMessages;
   const defaultLocale = ${JSON.stringify(defaultLocale)};
   const locale = options.locale ?? defaultLocale ?? Object.keys(allMessages)[0] ?? "";
   const messages =
@@ -1135,15 +1143,18 @@ async function resolveI18nContext(options) {
 }
 
 async function readLocaleMessages(locale, fallbackLocale) {
-  const loader =
+  const sources =
     localeModules[locale] ??
     (fallbackLocale ? localeModules[fallbackLocale] : undefined);
-  if (!loader) {
+  if (!sources) {
     return { locale: "", messages: {} };
   }
-  const module = await loader();
-  const messages = module.default ?? module.messages ?? module;
   const resolvedLocale = localeModules[locale] ? locale : fallbackLocale;
+  const loaded = await Promise.all(sources.map(async source => {
+    const module = await source.module();
+    return { ...source, messages: module.default ?? module.messages ?? module };
+  }));
+  const messages = projectLocaleMessages(loaded, "nested")[resolvedLocale] ?? {};
   return { locale: resolvedLocale ?? locale, messages };
 }
 `;

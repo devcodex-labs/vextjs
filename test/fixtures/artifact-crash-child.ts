@@ -8,7 +8,7 @@ import {
 import { ARTIFACT_MANIFEST_FILE } from "../../src/lib/project/artifact-manifest.js";
 
 const root = process.argv[2]!;
-const outDir = path.join(root, "dist");
+const outDir = process.argv[5] ?? path.join(root, "dist");
 const phase = process.argv[3] ?? "output";
 const grouped = process.argv[4] === "group";
 const generatedDir = path.join(root, ".vext/generated/frontend");
@@ -31,40 +31,44 @@ fs.renameSync = (source, target) => {
   )
     process.kill(process.pid, "SIGKILL");
 };
-void withProjectOwner(root, "build", [outDir], () =>
-  grouped
-    ? withArtifactGroupTransaction(
-        {
-          rootDir: root,
-          outputs: [
-            { outDir, producer: "backend" },
-            { outDir: generatedDir, producer: "frontend-generated" },
-          ],
-        },
-        (value) =>
-          value.commit([
-            {
-              outDir,
-              producer: "backend",
-              files: [{ path: path.join(outDir, "a.js"), contents: "new a" }],
-            },
-            {
-              outDir: generatedDir,
-              producer: "frontend-generated",
-              files: [
-                { path: path.join(generatedDir, "b.js"), contents: "new b" },
-              ],
-            },
-          ]),
-      )
-    : withArtifactTransaction(
-        { rootDir: root, outDir, producer: "backend" },
-        (value) =>
-          value.commit([
-            { path: path.join(outDir, "a.js"), contents: "new a" },
-            { path: path.join(outDir, "b.js"), contents: "new b" },
-          ]),
-      ),
+void withProjectOwner(
+  root,
+  "build",
+  grouped ? [outDir, generatedDir] : [outDir],
+  () =>
+    grouped
+      ? withArtifactGroupTransaction(
+          {
+            rootDir: root,
+            outputs: [
+              { outDir, producer: "backend" },
+              { outDir: generatedDir, producer: "frontend-generated" },
+            ],
+          },
+          (value) =>
+            value.commit([
+              {
+                outDir,
+                producer: "backend",
+                files: [{ path: path.join(outDir, "a.js"), contents: "new a" }],
+              },
+              {
+                outDir: generatedDir,
+                producer: "frontend-generated",
+                files: [
+                  { path: path.join(generatedDir, "b.js"), contents: "new b" },
+                ],
+              },
+            ]),
+        )
+      : withArtifactTransaction(
+          { rootDir: root, outDir, producer: "backend" },
+          (value) =>
+            value.commit([
+              { path: path.join(outDir, "a.js"), contents: "new a" },
+              { path: path.join(outDir, "b.js"), contents: "new b" },
+            ]),
+        ),
 ).then(
   () => process.exit(0),
   (error) => {

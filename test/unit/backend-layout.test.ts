@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BuildCompiler } from "../../src/lib/build/build-compiler.js";
 import { DevCompiler } from "../../src/lib/dev/compiler.js";
 import { detectProjectLanguage } from "../../src/lib/build/project-language.js";
+import { inspectDistBuild } from "../../src/cli/utils/detect-project.js";
 
 const roots: string[] = [];
 async function fixture() {
@@ -38,13 +39,22 @@ describe("backend compiler role boundaries", () => {
         `${path.relative(f.srcDir, path.join(f.rootDir, root))}/pages/home.ts`,
         "export const browserOnly: string = 'browser';",
       );
-      expect(detectProjectLanguage(f.rootDir, { root })).toBe("js");
+      expect(detectProjectLanguage(f.rootDir, { enabled: true, root })).toBe(
+        "js",
+      );
+      expect(detectProjectLanguage(f.rootDir, { enabled: false, root })).toBe(
+        "ts",
+      );
     },
   );
 
   it("build and dev exclude every configured browser role, including roles outside frontend.root", async () => {
     const f = await fixture();
-    const frontend = { root: "src/web(ui)", componentsDir: "../common-ui" };
+    const frontend = {
+      enabled: true,
+      root: "src/web(ui)",
+      componentsDir: "../common-ui",
+    };
     await f.write(
       "web(ui)/pages/home.ts",
       "export const browserOnly: string = 'browser';",
@@ -64,6 +74,7 @@ describe("backend compiler role boundaries", () => {
       false,
     );
     expect(existsSync(path.join(f.outDir, "common-ui/button.js"))).toBe(false);
+    expect(inspectDistBuild(f.rootDir).valid).toBe(true);
     const dev = new DevCompiler({
       ...options,
       outDir: path.join(f.rootDir, ".vext/dev"),
@@ -75,6 +86,28 @@ describe("backend compiler role boundaries", () => {
       );
       await f.write("web(ui)/new.ts", "export const added = true;");
       expect((await dev.rebuildWithNewEntryPoints()).fileCount).toBe(2);
+    } finally {
+      await dev.dispose();
+    }
+  });
+
+  it("builds and incrementally updates a backend module under a disabled frontend directory", async () => {
+    const f = await fixture();
+    const file = await f.write("frontend/worker.ts", "export const value = 1;");
+    expect(
+      (await new BuildCompiler({ ...f, frontend: { enabled: false } }).build())
+        .success,
+    ).toBe(true);
+    expect(existsSync(path.join(f.outDir, "frontend/worker.js"))).toBe(true);
+    const dev = new DevCompiler({
+      ...f,
+      outDir: path.join(f.rootDir, ".vext/dev"),
+      frontend: { enabled: false },
+    });
+    try {
+      expect((await dev.start()).fileCount).toBe(3);
+      await f.write("frontend/worker.ts", "export const value = 2;");
+      await expect(dev.compileSingle(file)).resolves.toBeDefined();
     } finally {
       await dev.dispose();
     }

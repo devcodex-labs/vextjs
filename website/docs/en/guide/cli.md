@@ -368,7 +368,7 @@ vext build && vext start
 
 ## `vext deploy assets` — Upload frontend static assets
 
-Read `dist/client/deploy-manifest.json` and upload JavaScript, CSS, images, fonts, and copied `public/**` resources to the configured target. The first built-in adapters are `filesystem` and `mock`; cloud vendors can be connected through a custom deploy adapter.
+Read the successful build record and the resolved `frontend.outDir/deploy-manifest.json`, then upload declared public JavaScript, CSS, images, fonts, and copied `public/**` resources. Built-in adapters are `filesystem` and `mock`; cloud vendors can use a custom deploy adapter.
 
 ### Usage
 
@@ -380,17 +380,18 @@ vext deploy assets [options]
 
 ### Options
 
-| Options               | Description                                    | Default                            |
-| --------------------- | ---------------------------------------------- | ---------------------------------- |
-| `--outdir <path>`     | Build output directory                         | `dist`                             |
-| `--config <name>`     | Load the named frontend deploy configuration   | `production`                       |
-| `--manifest <path>`   | Deploy manifest path                           | `dist/client/deploy-manifest.json` |
-| `--adapter <name>`    | Upload adapter, such as `filesystem` or `mock` | Config value                       |
-| `--target-dir <path>` | Filesystem adapter target directory            | Config value                       |
-| `--prefix <path>`     | Upload key prefix                              | Config value                       |
-| `--state-file <path>` | Incremental upload state file                  | Config value                       |
-| `--dry-run`           | Print the upload plan without writing assets   | `false`                            |
-| `-h, --help`          | Show help                                      | —                                  |
+| Options               | Description                                     | Default                                         |
+| --------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `--outdir <path>`     | Select backend build output                     | Successful build record, else `dist`            |
+| `--config <name>`     | Select the deploy profile                       | Successful build profile                        |
+| `--manifest <path>`   | Deploy manifest path                            | Resolved `frontend.outDir/deploy-manifest.json` |
+| `--adapter <name>`    | Upload adapter, such as `filesystem` or `mock`  | Config value                                    |
+| `--target-dir <path>` | Filesystem adapter target directory             | Config value                                    |
+| `--prefix <path>`     | Upload key prefix                               | Config value                                    |
+| `--state-file <path>` | Incremental upload state file                   | Config value                                    |
+| `--dry-run`           | Print the upload plan without writing assets    | `false`                                         |
+| `--json`              | Output JSON results or errors with asset status | `false`                                         |
+| `-h, --help`          | Show help                                       | —                                               |
 
 ### Example
 
@@ -461,7 +462,8 @@ vext typegen --services --root ./examples/hello-world
 ### Applicable Boundary
 
 - A typegen invocation shares one sealed source capture across its service inventory, plugin extensions, dependency diagnostics, and generated candidates. Diagnosis does not reread files or execute project modules. Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) are excluded as services; type imports for `.mts` / `.cts` sources use `.mjs` / `.cjs` respectively.
-- Sources require valid UTF-8. Each capture allows up to 5000 files, 2MiB per file, and 64MiB total; exceeded limits, read errors, or files disappearing after discovery report errors. Doctor source analysis uses the same limits. A sealed analysis is not an atomic directory-tree snapshot and does not guarantee that sources remain unchanged afterward.
+- Sources require valid UTF-8. Default budgets are 5000 files, 2MiB per file, 64MiB total, and 50000 entries during directory discovery. Override them with non-negative integers in `VEXT_SOURCE_MAX_FILES`, `VEXT_SOURCE_MAX_FILE_BYTES`, `VEXT_SOURCE_MAX_TOTAL_BYTES`, and `VEXT_SOURCE_MAX_SCAN_ENTRIES`; byte limits use bytes. Doctor, typegen, and build-time source collection share this policy, with explicit internal call options taking priority. Exceeding a budget reports incomplete analysis rather than an empty success. These budgets do not limit service execution or MCP response sizes.
+- Directory links within the project retain their logical paths: a `src/routes/billing` link still contributes the `/billing` prefix. Cycles, links escaping a declared root, and file links report incomplete analysis instead of silently omitting routes. A sealed analysis is not an atomic directory-tree snapshot; sources must still be checked before committing outputs.
 - Selected declarations, the shim, and the optional service manifest are committed together after dependency checks. Blocking diagnostics, unreadable outputs, or ownership conflicts preserve existing files. Unselected declarations remain, while the shim references only the selected declarations.
 - `--check` compares actual files without writing outputs or ownership records and can run alongside a development service. Missing or different content is stale; read failures retain their diagnostic. Identical output is not rewritten. Review and resolve manual edits to generated files before regenerating.
 - `typegen` as a whole still belongs to the **tooling-only** capability and will not enter the main runtime path of `vext start`;
@@ -471,7 +473,11 @@ vext typegen --services --root ./examples/hello-world
 - `--write-manifest` will write the service index, `app.extend()` / `defineAppExtensions<{ ... }>()` aggregation results and service dependency graph summary into `.vext/manifest/services.json`;
 - More examples of generated declarations can be viewed in conjunction with the [Services](./services) and [Plugins](./plugins) documentation.
 
+The service manifest records `sourceRevision`, `complete` and `incompleteFiles` from the sealed source view. Generated files do not prove complete inference. Unknown plugin extensions/dependencies remain incomplete; current hashes are never attached to old manifests to fabricate freshness.
+
 ## `vext doctor routes` — Static routing diagnosis (experimental)
+
+`vext doctor all` performs a separate aggregate analysis of routes, service dependencies and statically provable plugin extensions. JSON includes profile, valid, per-domain status and evidence. Effective runtime configuration and database connectivity remain unchecked without runtime evidence; `routes` is scoped to routes.
 
 Scan the static route metadata in `src/routes/`, output diagnostics such as duplicate routes, missing `docs.summary`, automatic inference of `operationId`, etc., and save the results to the inspect/manifest product.
 
@@ -485,23 +491,23 @@ Value options such as `--root` / `-C` require a non-option value; `--root --json
 
 ### Targets
 
-| Target   | Description                                                                     |
-| -------- | ------------------------------------------------------------------------------- |
-| `routes` | Scan static route metadata and OpenAPI related fields                           |
-| `all`    | Currently still an alias of `routes`, used to reserve subsequent extension bits |
+| Target   | Description                                                                                  |
+| -------- | -------------------------------------------------------------------------------------------- |
+| `routes` | Scan static route metadata and OpenAPI related fields                                        |
+| `all`    | Analyze route contracts, service dependencies and plugin extensions with per-domain evidence |
 
 ### Options
 
-| Options            | Description                                        | Default           |
-| ------------------ | -------------------------------------------------- | ----------------- |
-| `--json`           | Output machine-readable JSON                       | `false`           |
-| `--write-inspect`  | Write `.vext/inspect/routes.json`                  | `false`           |
-| `--write-manifest` | Write `.vext/manifest/routes.json`                 | `false`           |
-| `--refresh`        | Compatibility option; current sources are already analyzed by default | `false` |
-| `--manifest-only`  | Explicitly read the existing manifest snapshot     | `false`           |
-| `--root <path>`    | Specify the project root directory                 | Current directory |
-| `-C <path>`        | `--root` alias                                     | —                 |
-| `-h, --help`       | Show help                                          | —                 |
+| Options            | Description                                                           | Default           |
+| ------------------ | --------------------------------------------------------------------- | ----------------- |
+| `--json`           | Output machine-readable JSON                                          | `false`           |
+| `--write-inspect`  | Write `.vext/inspect/routes.json`                                     | `false`           |
+| `--write-manifest` | Write `.vext/manifest/routes.json`                                    | `false`           |
+| `--refresh`        | Compatibility option; current sources are already analyzed by default | `false`           |
+| `--manifest-only`  | Explicitly read the existing manifest snapshot                        | `false`           |
+| `--root <path>`    | Specify the project root directory                                    | Current directory |
+| `-C <path>`        | `--root` alias                                                        | —                 |
+| `-h, --help`       | Show help                                                             | —                 |
 
 ### Product positioning
 
@@ -519,6 +525,8 @@ vext doctor routes --write-inspect --write-manifest --json
 ```
 
 ### Current boundary
+
+- `profile` is `static-routes` or `static-project`. Each entry in `domains` reports `checked`, `not-present`, `unsupported`, or `incomplete`. Dynamic service access and incomplete plugin projections retain their limitations. `valid` requires every mandatory check in that static profile to be complete and free of errors; `ok` only means there are no error diagnostics. Configuration, models, frontend and runtime execution checks are outside this static profile. Their unsupported status does not mean those capabilities are disabled.
 
 - Doctor analyzes the route sources captured for this invocation. Route entries, the fingerprint, and the source-file inventory come from the same raw bytes; disk manifests are not reused as static-analysis caches. `--refresh` remains a compatibility option.
 - CLI text, JSON, and inspect reports include `sourceFreshness`: `current` identifies this invocation's source analysis. `--manifest-only` preserves the historical snapshot's own source identity: a different fingerprint is `stale`; a missing or merely matching declared fingerprint is `unverified`. Missing fingerprints remain `null`; missing schema, freshness, or docsKind metadata remains unknown with a diagnostic. `ok` only means there are no blocking diagnostics; it does not attest to a historical snapshot or guarantee the disk has not changed after analysis.

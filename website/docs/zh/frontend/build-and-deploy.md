@@ -38,6 +38,10 @@ dist/
 
 ## 选择交付形态
 
+成功构建记录同时保存后端构建身份、profile、前端公开清单的 `buildId` 与字节摘要；只有公开清单和渲染清单都属于受管的同一代次，才提交成功位置。自动生成的部署清单携带同一前端 `buildId`，上传前校验代次与逐资源内容。手工清单未提供 `buildId` 时只能证明资源字节一致，不能证明构建代次。
+
+`frontend.outDir` 和后端 `--outdir` 可显式指定服务目录外的独立输出，元数据使用规范化绝对路径；普通项目仍保存相对路径。框架拒绝与源码、其他服务或运行态重叠的目标，并保留产物文件名大小写。移动外部输出时需要重新构建记录；部署后的 Node 依赖必须能从实际输出目录按 Node 规则解析，框架不会把原开发机的依赖绝对路径写进生产包。
+
 | 需求                                  | 默认值 / 配置                           | 会发生什么                                                     | 如何验证                                |
 | ------------------------------------- | --------------------------------------- | -------------------------------------------------------------- | --------------------------------------- |
 | 一个 Node 服务同时提供 HTML 和 assets | 不设置 `assetBaseUrl`                   | `vext start` 同源提供公开清单内的文件                          | 从应用 origin 请求页面和一个 hash asset |
@@ -70,6 +74,8 @@ vext deploy assets
 
 `vext deploy assets` 只接受 option 参数，不接受额外位置参数。需要取值的参数必须提供非 option 值；例如 `--manifest --dry-run`、`--target-dir --dry-run` 会直接失败，而不是把后一个 flag 当作路径。
 
+独立上传与 `vext start` 读取同一成功构建位置，使用其中记录的 profile；`--outdir`、`--config` 可显式选择。默认 manifest 来自解析后的 `frontend.outDir`，不会固定猜测 `dist/client`。`--json` 返回 `{ ok: true, result }`；失败返回 `{ ok: false, error, result? }`，上传开始后的失败保留逐资源结果。
+
 ## 程序化上传集成
 
 普通发布应使用 `vext deploy assets`。如果工具链自己负责编排发布，可以从 `vextjs/frontend` 导入 `deployFrontendAssets`；它使用与 CLI 相同的 deploy manifest 和 upload plan，并需要 resolved frontend configuration 与 manifest path。只有工具链自己拥有云厂商集成时，才传入自定义 upload adapter。
@@ -101,7 +107,15 @@ HTML 默认不上传，因为 SSR 仍属于服务端 runtime。Source map 默认
 
 ## 增量上传
 
-上传 state file 会记录已知 sha256。未变化的资源会跳过，因此图片和字体不会每次发布都重新上传。
+上传 state 使用 `schemaVersion: 2`，默认路径仍为 `.vext/deploy/frontend-assets-state.json`。每个目标单独保存已确认成功的 sha256 与字节数；同一目标未变化的资源才跳过。目标身份包括服务真实根、profile、adapter 类型、实际存储身份和 prefix；filesystem 使用目标真实路径。改变目标或 profile 会重新上传；只改变公开 URL 不代表更换存储。
+
+自定义 adapter 可以提供稳定字符串 `targetIdentity`，例如账号与 bucket 的组合，不包含凭据。未提供身份时仍可上传，但不跨运行跳过。`upload(input)` 仅在远端确认成功后返回 `{ uploaded: true }`，并可消费 `input.signal`；返回 false 或抛错会标为 `unconfirmed`。
+
+`mock` 是保留的模拟 adapter 名称，写入独立模拟分区，结果报告 `simulated` 而不计入 `uploaded`。`dry-run` 不调用 adapter，不写目标或 state。状态格式未知会明确报错并保留原文件，不猜测历史状态对应的目标。
+
+同一 state 或已知存储目标只允许一个 writer。部分失败或取消时，已确认成功项仍会原子保存，待执行项不会冒充成功；重试会重新处理未确认项。远端上传没有整体回滚承诺。程序化入口抛出的 `FrontendDeployError.result` 包含逐资源结果；状态被外部改动时保留外部文件并报冲突，依据结果核对远端。
+
+同一已知存储命名空间的不同 prefix 也串行，防止父子 prefix 相互覆盖；这是本机 writer 协调，不是跨机器分布式锁。状态文件读取上限为 64 MiB，超限/不可验证文件报错并保留原字节。`--json` 的参数错误和执行错误都通过单行 JSON 报告，退出码非零。
 
 `stateFile` 应放在 frontend outDir 外，因为 build 输出通常会清理。
 

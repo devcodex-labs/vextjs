@@ -872,21 +872,15 @@ upstream vext_backend {
 
 ### Prometheus Metrics Endpoint
 
-Combined with [OpenTelemetry access example](/examples/opentelemetry) to expose Prometheus indicators:
+Initialize a real Prometheus Exporter following the [OpenTelemetry example](/examples/opentelemetry), and configure the collector for its actual port and path. An ordinary `res.json()` response is not a Prometheus metrics endpoint.
 
-```typescript
-app.get(
-  "/metrics",
-  {
-    override: { rateLimit: false },
-  },
-  async (req, res) => {
-    // OpenTelemetry Prometheus Exporter will expose metrics at this endpoint
-    // See OpenTelemetry access example for details
-    res.json({ message: "See /examples/opentelemetry for setup" });
-  },
-);
-```
+## Shared resources across services
+
+Each service uses its own cwd, profile, business port, generated outputs and persistent data directory. Different ports do not isolate same-domain cookies. Choose cookie names, path/domain and Session store namespaces according to whether sessions should be shared.
+
+Response caching, MonSQLize query caching, Session and rate limiting are different systems. Check key prefixes/namespaces, TTL units and invalidation scope before sharing stores. Vext does not rename user configuration based on inferred intent. Estimate connections as each process's pool limit × workers × services, plus independent pools/proxies; actual external limits need deployment evidence.
+
+Model registrations in multiple apps within one process have owners: equivalent definitions can share a key; conflicting definitions fail before registration; closing one app releases only its references. Registry keys and databases/pools are distinct; see [Database](/guide/database). Separate processes have separate registries but may still share external stores.
 
 ## Next step
 

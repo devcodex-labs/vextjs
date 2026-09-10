@@ -856,21 +856,15 @@ upstream vext_backend {
 
 ### Prometheus 指标端点
 
-结合 [OpenTelemetry 接入示例](/examples/opentelemetry) 暴露 Prometheus 指标：
+按 [OpenTelemetry 接入示例](/examples/opentelemetry) 初始化真实 Prometheus Exporter，配置采集器访问它实际监听的端口与路径。普通 `res.json()` 响应不提供 Prometheus 指标，不能作为 exporter 的替代。
 
-```typescript
-app.get(
-  "/metrics",
-  {
-    override: { rateLimit: false },
-  },
-  async (req, res) => {
-    // OpenTelemetry Prometheus Exporter 会在此端点暴露指标
-    // 详见 OpenTelemetry 接入示例
-    res.json({ message: "See /examples/opentelemetry for setup" });
-  },
-);
-```
+## 多服务的共享资源边界
+
+每个服务使用自己的 cwd、配置 profile、业务端口、生成目录和持久数据目录。不同端口不会隔离同域 Cookie；按实际共享意图选择 cookie 名、path/domain 和 Session store namespace。需要独立会话时显式配置隔离，不能只改端口。
+
+响应缓存、MonSQLize 查询缓存、Session 与限流存储是不同的系统。共享 Redis/数据库前核对 key prefix/namespace、TTL 单位和失效范围；框架不擅自重命名用户配置。连接预算按每进程池上限 × worker 数 × 服务数计算，再加独立 pools/代理；外部真实上限需要部署证据。
+
+同进程多 app 的 Model 注册按 owner 维护：相同定义可共享；不同定义抢同一 key 在注册前失败；关闭只释放本 app 的引用。库/池选择与注册 key 不同，详见[数据库](/guide/database)。多进程各自有注册表，外部数据库和缓存仍可能共享。
 
 ## 下一步
 

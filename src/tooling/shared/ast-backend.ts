@@ -1,3 +1,5 @@
-export async function loadAstBackend(): Promise<never> {
-  throw new Error("[vextjs] AST tooling backend is not bundled.");
+export async function loadAstBackend(): Promise<
+  typeof import("../../lib/source-syntax.js")
+> {
+  return import("../../lib/source-syntax.js");
 }

@@ -43,13 +43,27 @@ async function nativeModule(root: string, filename: string) {
     bundle: true,
     platform: "node",
     format: "cjs",
-    external: ["esbuild"],
+    external: ["esbuild", "import-meta-resolve"],
+    define: { "import.meta.url": "__testImportMetaUrl" },
+    banner: {
+      js: "const __testImportMetaUrl = require('node:url').pathToFileURL(__filename).href;",
+    },
     logLevel: "silent",
   });
-  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
   fs.symlinkSync(
     path.dirname(require.resolve("esbuild/package.json")),
     path.join(root, "node_modules/esbuild"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  fs.symlinkSync(
+    path.dirname(require.resolve("oxc-parser/package.json")),
+    path.join(root, "node_modules/oxc-parser"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  fs.symlinkSync(
+    path.dirname(require.resolve("import-meta-resolve/package.json")),
+    path.join(root, "node_modules/import-meta-resolve"),
     process.platform === "win32" ? "junction" : "dir",
   );
   return promisify(execFile)(process.execPath, [runner, root, filename], {
@@ -227,4 +241,112 @@ describe("user module ownership and execution", () => {
     expect(temporaryFiles(external)).toEqual([]);
     expect(fs.existsSync(path.join(external, ".vext"))).toBe(false);
   });
+
+  it("inherits the service owner when a public helper uses its narrower module directory", async () => {
+    const root = project();
+    const directory = path.join(root, "src/services");
+    fs.mkdirSync(directory, { recursive: true });
+    const file = path.join(directory, "user.ts");
+    fs.writeFileSync(file, "export const answer: number = 42;");
+    await withProjectOwner(root, "dev", [], async () => {
+      expect((await importUserModule(file, directory)).answer).toBe(42);
+      expect(receipts(root)).toEqual([]);
+      expect(fs.existsSync(path.join(directory, ".vext"))).toBe(false);
+    });
+    expect(temporaryFiles(directory)).toEqual([]);
+  });
+
+  it("loads an explicit shared TS root using service-owned temporary files and original dependency resolution", async () => {
+    const root = project();
+    const shared = project();
+    const dependency = path.join(
+      shared,
+      "node_modules",
+      "shared-locale-dependency",
+    );
+    fs.mkdirSync(dependency, { recursive: true });
+    fs.writeFileSync(
+      path.join(dependency, "package.json"),
+      JSON.stringify({
+        type: "module",
+        exports: { import: "./import.js", require: "./require.cjs" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dependency, "import.js"),
+      'export default "import condition";',
+    );
+    fs.writeFileSync(
+      path.join(dependency, "require.cjs"),
+      'module.exports = "require condition";',
+    );
+    fs.writeFileSync(
+      path.join(shared, "value.mjs"),
+      'export default "original location";',
+    );
+    const filename = path.join(shared, "value.ts");
+    fs.writeFileSync(
+      filename,
+      `import dependency from 'shared-locale-dependency';
+      export const value = dependency;
+      export async function later() { const target = './value.mjs'; return (await import(target)).default; }
+      export async function laterPackage() { const target = 'shared-locale-dependency'; return (await import(target)).default; }`,
+    );
+    const loaded = await importUserModule(filename, root, { readRoot: shared });
+    expect(loaded.value).toBe("import condition");
+    expect(await (loaded.later as () => Promise<string>)()).toBe(
+      "original location",
+    );
+    expect(await (loaded.laterPackage as () => Promise<string>)()).toBe(
+      "import condition",
+    );
+    expect(fs.existsSync(path.join(shared, ".vext"))).toBe(false);
+    expect(temporaryFiles(shared)).toEqual([]);
+    expect(temporaryFiles(path.join(root, ".vext/runtime-modules"))).toEqual(
+      [],
+    );
+    expect(receipts(root)).toEqual([]);
+  });
+
+  it.each(["mjs", "cjs"])(
+    "refreshes a native .%s entry when cache=false",
+    async (extension) => {
+      const root = project();
+      const filename = path.join(root, "entry." + extension);
+      const source = (value: number) =>
+        extension === "cjs"
+          ? `module.exports = ${value};`
+          : `export default ${value};`;
+      fs.writeFileSync(filename, source(1));
+      expect(
+        (await importUserModule(filename, root, { cache: false })).default,
+      ).toBe(1);
+      fs.writeFileSync(filename, source(2));
+      expect(
+        (await importUserModule(filename, root, { cache: false })).default,
+      ).toBe(2);
+      expect(temporaryFiles(root)).toEqual([]);
+    },
+  );
+
+  it.each(["mts", "cts"])(
+    "compiles explicit .%s modules without a TypeScript runtime hook",
+    async (extension) => {
+      const root = project();
+      const filename = path.join(root, `module.${extension}`);
+      fs.writeFileSync(
+        filename,
+        extension === "cts"
+          ? "const value: number = 42; module.exports = { value };"
+          : "export const value: number = 42;",
+      );
+      const loaded = await importUserModule(filename, root);
+      expect(
+        extension === "cts"
+          ? (loaded.default as { value: number }).value
+          : loaded.value,
+      ).toBe(42);
+      expect(receipts(root)).toEqual([]);
+    },
+  );
 });

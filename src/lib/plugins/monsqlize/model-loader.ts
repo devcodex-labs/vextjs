@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { resolveConsumerModule } from "../../consumer-resolver.js";
 import { resolveModelsDirectory } from "../../project/layout.js";
+import { importUserModule } from "../../user-module-loader.js";
 import type { MonSQLize } from "monsqlize";
 import type { VextPluginContext } from "../../../types/plugin.js";
 import type { MonSQLizeDatabaseConfig } from "./types.js";
@@ -202,7 +203,7 @@ export async function loadModels(
   }
 
   // ── 2. 加载本地 models/ 目录 ──────────────────────────────
-  const modelsDir = resolveModelsDirectory(srcDir, config.dir);
+  const modelsDir = resolveModelsDirectory(srcDir, config.dir, rootDir);
 
   if (!existsSync(modelsDir)) {
     if (!config.sharedPackage) {
@@ -217,6 +218,7 @@ export async function loadModels(
       app,
       config.validation,
       plan,
+      rootDir,
     );
     for (const modelId of local.modelIds) modelIds.add(modelId);
   }
@@ -351,6 +353,7 @@ async function discoverLocalModels(
   app: VextPluginContext,
   mode: ModelValidationMode,
   plan: Map<string, DiscoveredRegistration>,
+  rootDir: string,
 ): Promise<ModelDiscoveryResult> {
   const registrations: DiscoveredRegistration[] = [];
   const modelIds = new Set<string>();
@@ -372,7 +375,7 @@ async function discoverLocalModels(
 
     let mod: Record<string, unknown>;
     try {
-      mod = await importModelFile(filePath);
+      mod = await importUserModule(filePath, rootDir, { readRoot: modelsDir });
     } catch (err) {
       reportModelIssue(
         app,
@@ -473,14 +476,6 @@ async function discoverLocalModels(
  * @param filePath Model 文件绝对路径
  * @returns 模块导出对象
  */
-async function importModelFile(
-  filePath: string,
-): Promise<Record<string, unknown>> {
-  const { pathToFileURL } = await import("node:url");
-  const fileUrl = pathToFileURL(filePath).href;
-  return import(fileUrl);
-}
-
 function unwrapModelDefault(mod: Record<string, unknown>): unknown {
   const definition = mod.default;
   if (

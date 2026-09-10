@@ -81,7 +81,7 @@ async function buildRouteAssetsForPage(
     ...resolveLayoutChain(input.registry.layouts, input.page.id).map(
       (layout) => layout.file,
     ),
-    resolveDefaultLocaleFile(input),
+    ...resolveDefaultLocaleFiles(input),
   ].filter((file): file is string => Boolean(file));
   const outputFiles = collectOutputsForSources(
     input.rootDir,
@@ -251,14 +251,14 @@ function resolveLayoutChain(
     .sort((a, b) => (a.directory ?? "").length - (b.directory ?? "").length);
 }
 
-function resolveDefaultLocaleFile(
+function resolveDefaultLocaleFiles(
   input: BuildFrontendRouteAssetsOptions,
-): string | undefined {
+): string[] {
   const defaultLocale = input.config.i18n.defaultLocale;
-  if (defaultLocale === "inherit") return undefined;
-  return input.registry.locales.find(
-    (locale) => locale.locale === defaultLocale,
-  )?.file;
+  if (defaultLocale === "inherit") return [];
+  return input.registry.locales
+    .filter((locale) => locale.locale === defaultLocale)
+    .map((locale) => locale.file);
 }
 
 function outputToPublicPath(

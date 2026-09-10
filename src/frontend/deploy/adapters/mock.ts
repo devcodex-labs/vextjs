@@ -7,6 +7,7 @@ import type {
 export function createMockDeployAdapter(): VextFrontendDeployUploadAdapter {
   return {
     name: "mock",
+    targetIdentity: "mock",
     async upload(
       input: VextFrontendDeployUploadAdapterInput,
     ): Promise<VextFrontendDeployUploadAdapterResult> {

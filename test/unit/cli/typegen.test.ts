@@ -12,6 +12,7 @@ import {
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { typegenCommand } from "../../../src/cli/typegen.js";
+import { buildProjectIndex } from "../../../src/tooling/project-index/index.js";
 
 const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -137,7 +138,17 @@ describe("typegenCommand", () => {
       '"metrics.v2": typeof import("../../src/plugins/mailer.js").appExtensions["metrics.v2"];',
     );
     expect(appExtensionsGenerated).not.toContain("bad-key");
-    expect(servicesManifest).toBe(expectedServicesManifest);
+    const sealedRevision = (await buildProjectIndex(projectRoot)).source.view
+      .revision;
+    const manifest = JSON.parse(servicesManifest);
+    expect(manifest.sourceRevision).toBe(sealedRevision);
+    expect(
+      JSON.stringify(
+        { ...manifest, sourceRevision: "<source-revision>" },
+        null,
+        2,
+      ),
+    ).toBe(JSON.stringify(JSON.parse(expectedServicesManifest), null, 2));
     expect(shimGenerated).toContain(".vext/types/services.generated.d.ts");
     expect(shimGenerated).toContain(
       ".vext/types/app-extensions.generated.d.ts",

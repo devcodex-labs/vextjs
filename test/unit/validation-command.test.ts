@@ -58,6 +58,25 @@ describe("validation command invocation", () => {
     ).toThrow("Cannot locate npm-cli.js");
   });
 
+  it("resolves pnpm JS and native launchers from explicit Windows PATH entries", () => {
+    const pnpm = "D:\\tools\\node_modules\\pnpm\\bin\\pnpm.cjs";
+    expect(
+      resolveValidationCommand("pnpm.cmd", ["install", "a & b"], {
+        ...options,
+        env: { Path: "D:\\tools" },
+        isFile: (value: string) => value === pnpm,
+      }),
+    ).toEqual({ command: node, args: [pnpm, "install", "a & b"] });
+    const launcher = "D:\\tools\\pnpm.exe";
+    expect(
+      resolveValidationCommand("pnpm", ["--version"], {
+        ...options,
+        env: { PATH: "relative;D:\\tools" },
+        isFile: (value: string) => value === launcher,
+      }),
+    ).toEqual({ command: launcher, args: ["--version"] });
+  });
+
   it("does not change Linux npm or native commands", () => {
     expect(
       resolveValidationCommand("npm", ["--version"], { platform: "linux" }),
