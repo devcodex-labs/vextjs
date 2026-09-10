@@ -90,6 +90,8 @@ Nested JSON data, such as `src/locales/account/security/zh-CN.json`, keeps its d
 
 Externally edited outputs or conflicting legacy files without ownership evidence produce `VEXT_OUTPUT_CONFLICT` with the affected path. Preserve, move, or verify those files before retrying, or choose a fresh `--outdir`. Existing files identical to the generated candidate can be adopted without rewriting.
 
+Growth, replacement, or deletion of ownership and build records during a read produces an unverified-state error, rather than being treated as an initially missing record. Wait for the modification to finish, then inspect or recover as directed. Single-file verification does not provide a simultaneous atomic snapshot of the entire directory tree.
+
 One writer owns a service root and its nested roots at a time. Competing `build` or `typegen` commands while `dev` is running return `VEXT_OWNER_BUSY`; separate service roots can run concurrently. Recovery metadata supports interrupted processes. Per-file atomic replacement does not imply simultaneous atomic visibility across all files; consumers must wait for successful completion.
 
 After configuration preparation, `.vext-build.json` inside the output records `building`. All artifact stages and optional upload must succeed before it and `.vext/build-location.json` commit together as `ready`. A failed generation becomes `failed`, blocking startup from that output. Startup rejects pending transactions and externally modified recorded identities. Producers retain their individual transaction boundaries: failure in the frontend or remote upload after a backend commit does not roll back every build file or remote resource. See [CLI build behavior](./cli.md) for identity and portable deployment details.

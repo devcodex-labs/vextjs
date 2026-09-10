@@ -1,7 +1,6 @@
 import {
   lstatSync,
   mkdirSync,
-  readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -10,6 +9,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { assertRealPathInside } from "../path-boundary.js";
+import { readProjectFile } from "./read-project-file.js";
 import {
   listenOwnerEndpoint,
   ownerRegistryDirectory,
@@ -181,10 +181,11 @@ export async function withOwnerRegistry<T>(
     assertRealPathInside(directory, file, "owner registry");
     let records: OwnerRecord[] = [];
     try {
-      const stat = lstatSync(file);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024)
-        throw new Error("Invalid owner registry file or size");
-      const data: unknown = JSON.parse(readFileSync(file, "utf8"));
+      const bytes = readProjectFile(directory, "registry.json", 1024 * 1024);
+      const data: unknown =
+        bytes === null
+          ? { schemaVersion: 1, records: [] }
+          : JSON.parse(bytes.toString("utf8"));
       if (
         !data ||
         typeof data !== "object" ||

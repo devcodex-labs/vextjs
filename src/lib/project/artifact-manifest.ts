@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
+import { ProjectFileReadError, readProjectFile } from "./read-project-file.js";
 import {
   assertPathInside,
   assertRealPathInside,
@@ -85,22 +85,13 @@ export function readArtifactFile(
   relative: string,
   maxBytes?: number,
 ): Buffer | null {
-  const target = artifactPath(root, relative);
+  artifactPath(root, relative);
   try {
-    const stat = fs.lstatSync(target);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      (maxBytes !== undefined && stat.size > maxBytes)
-    ) {
-      throw new ArtifactError(
-        "VEXT_OUTPUT_UNVERIFIED",
-        `Invalid artifact file: ${relative}`,
-      );
-    }
-    return fs.readFileSync(target);
+    return readProjectFile(root, relative, maxBytes);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (error instanceof ProjectFileReadError) {
+      throw new ArtifactError("VEXT_OUTPUT_UNVERIFIED", error.message);
+    }
     throw error;
   }
 }
