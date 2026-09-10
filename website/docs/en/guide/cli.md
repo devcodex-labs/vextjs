@@ -458,6 +458,8 @@ vext typegen --services --root ./examples/hello-world
 
 ### Applicable Boundary
 
+- Selected declarations, the shim, and the optional service manifest are committed together after dependency checks. Blocking diagnostics, unreadable outputs, or ownership conflicts preserve existing files. Unselected declarations remain, while the shim references only the selected declarations.
+- `--check` compares actual files without writing outputs or ownership records and can run alongside a development service. Missing or different content is stale; read failures retain their diagnostic. Identical output is not rewritten. Review and resolve manual edits to generated files before regenerating.
 - `typegen` as a whole still belongs to the **tooling-only** capability and will not enter the main runtime path of `vext start`;
 - `vext dev` will automatically execute basic `typegen` in preflight, `vext build` will also refresh generated declarations and manifests before optional typecheck and compilation;
 - TypeScript semantic diagnostics are output asynchronously after ready / reload by default; if you want to block startup or reload like the old behavior, you can use `--strict-preflight` or `VEXT_DEV_STRICT_PREFLIGHT=1`;
@@ -492,6 +494,7 @@ Value options such as `--root` / `-C` require a non-option value; `--root --json
 | `--write-inspect`  | Write `.vext/inspect/routes.json`                  | `false`           |
 | `--write-manifest` | Write `.vext/manifest/routes.json`                 | `false`           |
 | `--refresh`        | Skip cache manifest and rescan routing diagnostics | `false`           |
+| `--manifest-only`  | Explicitly read the existing manifest snapshot     | `false`           |
 | `--root <path>`    | Specify the project root directory                 | Current directory |
 | `-C <path>`        | `--root` alias                                     | —                 |
 | `-h, --help`       | Show help                                          | —                 |
@@ -513,7 +516,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ### Current boundary
 
-- Route manifests carry a fingerprint and source-file inventory. By default Doctor reuses a manifest only when it matches current route sources; stale manifests are rebuilt. `--manifest-only` is an explicit snapshot read and cannot be combined with `--refresh` or `--write-manifest`.
+- Doctor-generated route manifests carry a fingerprint and source-file inventory. By default Doctor reuses a manifest only when it matches current route sources; stale manifests are rebuilt. `--manifest-only` is an explicit snapshot read and cannot be combined with `--refresh` or `--write-manifest`.
+- With both `--write-inspect --write-manifest`, the two outputs are committed together. An unreadable or externally modified output preserves existing files and reports an error. Ordinary diagnosis is read-only; writing shares ownership with dev/build for the same project.
+- The development service also collects and generates the route manifest using the same ownership record as Doctor. A manifest is diagnostic or build input; its existence does not prove that the service has started, a reload generation has completed, or diagnostics contain no blocking issue.
 - The current route manifest and services manifest are still maintained hierarchically and are not merged into a single overall manifest;
 - When `docs.operationId` is missing, the doctor will give an `auto-operation-id` information prompt according to the runtime behavior instead of false warning;
 - The routing side is still in charge of `doctor routes --write-manifest`; the service side is in charge of `typegen --write-manifest`.

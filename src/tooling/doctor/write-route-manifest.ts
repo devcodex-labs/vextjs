@@ -5,8 +5,7 @@ import type {
   VextRouteSchemaContractV1,
 } from "../../frontend/contract/types.js";
 import type { VextOpenAPIDocsKind } from "../../lib/openapi/types.js";
-import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
-import { writeGeneratedFile } from "../typegen/write-generated-file.js";
+import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 
 export interface RouteManifestPayload {
   schemaVersion: 1;
@@ -46,11 +45,11 @@ export interface RouteManifestPayload {
   }>;
 }
 
-export async function writeRouteManifestFile(
+export function createRouteManifestFile(
   rootDir: string,
   payload: RouteManifestPayload,
-): Promise<GeneratedFileResult> {
+): GeneratedFileDraft {
   const filePath = join(rootDir, ".vext", "manifest", "routes.json");
   const content = `${JSON.stringify(payload, null, 2)}\n`;
-  return writeGeneratedFile(filePath, content);
+  return { filePath, content, producer: "route-manifest" };
 }

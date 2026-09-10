@@ -16,6 +16,8 @@ Starting from `0.3.7`, `vext dev` will execute **dev preflight** once before eac
 - TypeScript semantic diagnosis is output asynchronously after ready / reload by default
 - If the basic typegen finds a blocking issue, this round of reload / restart will be skipped; if you want TypeScript semantic diagnosis to also block, you can use `--strict-preflight`
 
+Route reloads use the compiler's actual project root, source directory, and output directory. A deeper custom output does not change source mapping or the manifest location. `.vext/manifest/routes.json` is committed after handler construction and cache clearing succeed; a commit conflict prevents replacement and triggers cold recovery. During initial startup, the manifest is generated first as frontend build input, so use startup completion to establish readiness and the actual reload result to establish that a change took effect.
+
 ## Quick Start
 
 ```bash

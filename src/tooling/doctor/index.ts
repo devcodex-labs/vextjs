@@ -12,10 +12,12 @@ import type {
   VextRouteSchemaContractV1,
 } from "../../frontend/contract/types.js";
 import type { VextOpenAPIDocsKind } from "../../lib/openapi/types.js";
-import type { GeneratedFileResult } from "../typegen/write-generated-file.js";
-import { writeRouteInspectFile } from "./write-route-inspect.js";
+import type { GeneratedFileResult } from "../../lib/project/generated-files.js";
+import { createRouteInspectFile } from "./write-route-inspect.js";
+import { publishGeneratedFiles } from "../../lib/project/generated-files.js";
+import { withProjectOwner } from "../../lib/project/owner.js";
 import {
-  writeRouteManifestFile,
+  createRouteManifestFile,
   type RouteManifestPayload,
 } from "./write-route-manifest.js";
 
@@ -97,6 +99,16 @@ export interface DoctorResult {
 export async function runDoctor(
   options: RunDoctorOptions,
 ): Promise<DoctorResult> {
+  if (!options.writeInspect && !options.writeManifest)
+    return runDoctorOwned(options);
+  return withProjectOwner(options.rootDir, "typegen", [".vext"], () =>
+    runDoctorOwned(options),
+  );
+}
+
+async function runDoctorOwned(
+  options: RunDoctorOptions,
+): Promise<DoctorResult> {
   const target = options.target ?? "routes";
   const writeInspect = options.writeInspect ?? false;
   const writeManifest = options.writeManifest ?? false;
@@ -127,8 +139,8 @@ export async function runDoctor(
   const diagnostics = analyzeRoutes(routeEntries);
   const routes = routeEntries.map((entry) => toDoctorRouteRecord(entry));
   const summary = summarizeDiagnostics(diagnostics);
-  const inspect = writeInspect
-    ? await writeRouteInspectFile(options.rootDir, {
+  const inspectDraft = writeInspect
+    ? createRouteInspectFile(options.rootDir, {
         schemaVersion: 1,
         target: "routes",
         routeFileCount: new Set(routeEntries.map((item) => item.filePath)).size,
@@ -138,11 +150,22 @@ export async function runDoctor(
         routes,
       })
     : undefined;
-  const manifest = writeManifest
-    ? await writeRouteManifestFile(
+  const manifestDraft = writeManifest
+    ? createRouteManifestFile(
         options.rootDir,
         buildRouteManifestPayload(routes, diagnostics, sourceSnapshot),
       )
+    : undefined;
+
+  const generated = await publishGeneratedFiles(options.rootDir, [
+    ...(inspectDraft ? [inspectDraft] : []),
+    ...(manifestDraft ? [manifestDraft] : []),
+  ]);
+  const inspect = inspectDraft
+    ? generated.find((file) => file.filePath === inspectDraft.filePath)
+    : undefined;
+  const manifest = manifestDraft
+    ? generated.find((file) => file.filePath === manifestDraft.filePath)
     : undefined;
 
   return {

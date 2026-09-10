@@ -27,7 +27,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -46,6 +46,7 @@ import {
   type ReloadRoutesOptions,
   type BuiltinMiddlewareCreators,
 } from "../../src/lib/dev/route-reloader.js";
+import { acquireProjectOwner } from "../../src/lib/project/owner.js";
 
 // ── 测试辅助 ────────────────────────────────────────────────
 
@@ -192,6 +193,8 @@ describe("reloadRoutes", () => {
 
     return {
       app,
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       outDir,
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
@@ -1080,6 +1083,130 @@ describe("reloadRoutes", () => {
     });
   });
 
+  describe("manifest publication", () => {
+    function collectRoute(routePath: string): RoutesLoader {
+      return async (_app, _routesDir, _options, collector) => {
+        collector?.addRoute(
+          "GET",
+          routePath,
+          {},
+          join(outDir, "routes", "index.js"),
+        );
+      };
+    }
+
+    it.each(["handler", "cache"])(
+      "preserves the previous manifest when %s preparation fails",
+      async (failure) => {
+        const options = createDefaultOptions({
+          loadRoutes: collectRoute("/before"),
+        });
+        await reloadRoutes(options);
+        const filePath = join(tempDir, ".vext", "manifest", "routes.json");
+        const before = await readFile(filePath);
+        options.loadRoutes = collectRoute("/after");
+        if (failure === "handler") {
+          options.resolveAdapter = async () =>
+            createMockAdapter({
+              buildHandler() {
+                throw new Error("late failure");
+              },
+            });
+        } else {
+          options.app.cache = {
+            async clear() {
+              throw new Error("late failure");
+            },
+          };
+        }
+        await expect(reloadRoutes(options)).rejects.toThrow("late failure");
+        expect(await readFile(filePath)).toEqual(before);
+      },
+    );
+
+    it("propagates a manifest ownership conflict and does not return a replacement handler", async () => {
+      const options = createDefaultOptions({
+        loadRoutes: collectRoute("/before"),
+      });
+      await reloadRoutes(options);
+      const filePath = join(tempDir, ".vext", "manifest", "routes.json");
+      await writeFile(filePath, '{"external":true}\n');
+      options.loadRoutes = collectRoute("/after");
+      const original = options.app.adapter;
+      await expect(reloadRoutes(options)).rejects.toMatchObject({
+        code: "VEXT_OUTPUT_CONFLICT",
+      });
+      expect(options.app.adapter).toBe(original);
+      expect(await readFile(filePath, "utf8")).toBe('{"external":true}\n');
+    });
+
+    it("uses the explicit root and source directories with a deeper custom output", async () => {
+      outDir = join(tempDir, ".cache", "backend", "nested", "development");
+      await mkdir(join(outDir, "routes"), { recursive: true });
+      await mkdir(join(tempDir, "source", "routes"), { recursive: true });
+      await writeFile(
+        join(tempDir, "source", "routes", "index.mts"),
+        "export default [];\n",
+      );
+      const load = vi.fn(collectRoute("/custom"));
+      await reloadRoutes(
+        createDefaultOptions({
+          srcDir: join(tempDir, "source"),
+          loadRoutes: load,
+        }),
+      );
+      expect(load.mock.calls[0]?.[2]).toMatchObject({ rootDir: tempDir });
+      const payload = JSON.parse(
+        await readFile(
+          join(tempDir, ".vext", "manifest", "routes.json"),
+          "utf8",
+        ),
+      );
+      expect(payload.routes[0].fileRelativePath).toBe(
+        "source/routes/index.mts",
+      );
+      await expect(
+        readFile(
+          join(
+            tempDir,
+            ".cache",
+            "backend",
+            ".vext",
+            "manifest",
+            "routes.json",
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("preserves the manifest when the routes directory is replaced with a file", async () => {
+      const load = vi.fn(collectRoute("/before"));
+      const options = createDefaultOptions({ loadRoutes: load });
+      await reloadRoutes(options);
+      const filePath = join(tempDir, ".vext", "manifest", "routes.json");
+      const before = await readFile(filePath);
+      load.mockClear();
+      await rm(join(outDir, "routes"), { recursive: true });
+      await writeFile(join(outDir, "routes"), "external file");
+      await expect(reloadRoutes(options)).rejects.toThrow("not a directory");
+      expect(load).not.toHaveBeenCalled();
+      expect(await readFile(filePath)).toEqual(before);
+    });
+
+    it("rejects a competing owner before evaluating the route loader", async () => {
+      const owner = await acquireProjectOwner(tempDir, "dev");
+      const options = createDefaultOptions();
+      try {
+        await expect(reloadRoutes(options)).rejects.toMatchObject({
+          code: "VEXT_OWNER_BUSY",
+        });
+        expect(options.loadRoutes).not.toHaveBeenCalled();
+      } finally {
+        await owner.release();
+      }
+    });
+  });
+
   // ── 日志输出 ──────────────────────────────────────────
 
   describe("日志输出", () => {
@@ -1090,7 +1217,7 @@ describe("reloadRoutes", () => {
       await reloadRoutes(options);
 
       expect(app.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("routes reloaded via fresh adapter"),
+        expect.stringContaining("routes prepared via fresh adapter"),
       );
     });
 
@@ -1238,6 +1365,8 @@ describe("createSimpleRouteReloader", () => {
 
   it("应返回一个函数", () => {
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: vi.fn(() =>
         createMockAdapter(),
@@ -1264,6 +1393,8 @@ describe("createSimpleRouteReloader", () => {
     const createNotFoundHandlerFn = vi.fn(() => createMockNotFoundHandler());
 
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: resolveAdapterFn as unknown as AdapterResolver,
       loadRoutes: loadRoutesFn as unknown as RoutesLoader,
@@ -1289,6 +1420,8 @@ describe("createSimpleRouteReloader", () => {
     const loadRoutesFn = vi.fn(async () => {});
 
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: vi.fn(() =>
         createMockAdapter(),
@@ -1318,6 +1451,8 @@ describe("createSimpleRouteReloader", () => {
     const freshAdapter = createMockAdapter();
 
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: vi.fn(() => freshAdapter) as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
@@ -1346,6 +1481,8 @@ describe("createSimpleRouteReloader", () => {
     });
 
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: resolveAdapterFn as unknown as AdapterResolver,
       loadRoutes: vi.fn(async () => {}) as unknown as RoutesLoader,
@@ -1394,6 +1531,8 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     return {
       app,
       outDir,
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       middlewareDefs: {} as MiddlewareRegistry,
       globalMiddlewares: [],
       resolveAdapter: vi.fn(
@@ -1603,6 +1742,8 @@ describe("reloadRoutes — OpenAPI 重新注册 (BUG-022)", () => {
     };
 
     const reloader = createSimpleRouteReloader({
+      rootDir: tempDir,
+      srcDir: join(tempDir, "src"),
       app: createMockApp(),
       resolveAdapter: vi.fn(
         async () => freshAdapter,

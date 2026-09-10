@@ -4,8 +4,7 @@ import type {
   ServiceIndexEntry,
 } from "../project-index/index.js";
 import type { ServiceDependencyReport } from "../diagnostics/service-deps.js";
-import type { GeneratedFileResult } from "./write-generated-file.js";
-import { writeGeneratedFile } from "./write-generated-file.js";
+import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 import { mergeAppExtensions } from "./merge-app-extensions.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
 
@@ -46,13 +45,12 @@ export interface ServiceManifestPayload {
   };
 }
 
-export async function writeServiceManifestFile(
+export function createServiceManifestFile(
   rootDir: string,
   entries: ServiceIndexEntry[],
   appExtensions: AppExtensionIndexEntry[],
   dependencyReport: ServiceDependencyReport,
-  options: { checkOnly?: boolean } = {},
-): Promise<GeneratedFileResult> {
+): GeneratedFileDraft {
   const filePath = getTypegenGeneratedPaths(rootDir).serviceManifest;
   const content = `${JSON.stringify(
     buildServiceManifestPayload(
@@ -64,7 +62,7 @@ export async function writeServiceManifestFile(
     null,
     2,
   )}\n`;
-  return writeGeneratedFile(filePath, content, options);
+  return { filePath, content, producer: "service-manifest" };
 }
 
 export function buildServiceManifestPayload(

@@ -446,6 +446,8 @@ vext typegen --services --root ./examples/hello-world
 
 ### 适用边界
 
+- 选中的声明、shim 和可选 service manifest 会在依赖检查完成后一起提交。阻断诊断、不可读输出或归属冲突会保留原有文件；未选中的声明不被删除，shim 只引用本次选中的声明。
+- `--check` 只比较实际文件，不写输出或归属记录，可在开发服务运行时执行。缺失或内容不符报告 stale；读取失败会保留具体错误。同内容生成不重写文件。手动修改生成文件后，应先核对并处理冲突，再重新生成。
 - `typegen` 整体仍属于 **tooling-only** 能力，不会进入 `vext start` 的 runtime 主路径；
 - `vext dev` 会在 preflight 中自动执行基础 `typegen`，`vext build` 也会在可选 typecheck 与编译前刷新 generated 声明和 manifest；
 - TypeScript 语义诊断默认在 ready / reload 后异步输出；如果希望像旧行为一样阻塞启动或重载，可使用 `--strict-preflight` 或 `VEXT_DEV_STRICT_PREFLIGHT=1`；
@@ -480,6 +482,7 @@ vext doctor <target> [options]
 | `--write-inspect`  | 写入 `.vext/inspect/routes.json`    | `false`  |
 | `--write-manifest` | 写入 `.vext/manifest/routes.json`   | `false`  |
 | `--refresh`        | 跳过缓存 manifest，重新扫描路由诊断 | `false`  |
+| `--manifest-only`  | 显式读取已有 manifest 快照          | `false`  |
 | `--root <path>`    | 指定项目根目录                      | 当前目录 |
 | `-C <path>`        | `--root` 别名                       | —        |
 | `-h, --help`       | 显示帮助                            | —        |
@@ -501,7 +504,9 @@ vext doctor routes --write-inspect --write-manifest --json
 
 ### 当前边界
 
-- Route manifest 会携带 fingerprint 与源码文件清单。Doctor 默认只复用与当前 route source 匹配的 manifest，stale manifest 会重新构建；`--manifest-only` 是显式 snapshot 读取，不能与 `--refresh` 或 `--write-manifest` 组合。
+- Doctor 生成的 route manifest 携带 fingerprint 与源码文件清单。默认只复用与当前 route source 匹配的 manifest，stale manifest 会重新构建；`--manifest-only` 是显式 snapshot 读取，不能与 `--refresh` 或 `--write-manifest` 组合。
+- 同时指定 `--write-inspect --write-manifest` 时，两份结果一起提交；任一输出不可读或被外部修改，均保留原文件并报告错误。普通诊断是只读的，写入模式与同一项目的 dev/build 共用写入权。
+- 运行中的开发服务也会收集并生成 route manifest，与 Doctor 共用该文件的归属记录。清单是诊断或构建输入；它的存在不能证明服务已启动、某一代重载已完成，或诊断没有阻断项。
 - 当前 route manifest 与 services manifest 仍分层维护，不合并为单一总 manifest；
 - `docs.operationId` 缺失时，doctor 会按 runtime 行为给出 `auto-operation-id` 信息提示，而不是误报 warning；
 - 路由侧仍由 `doctor routes --write-manifest` 负责；service 侧则由 `typegen --write-manifest` 负责。

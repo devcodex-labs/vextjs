@@ -79,6 +79,7 @@ export type MiddlewareLoader = (
   declarations: unknown[],
   logger: SoftReloaderLogger,
   lifecycleLevel?: "concise" | "verbose",
+  rootDir?: string,
 ) => Promise<MiddlewareRegistry>;
 
 /**
@@ -599,6 +600,7 @@ export class SoftReloader {
         (this.config.middlewares as unknown[]) ?? [],
         this.logger,
         this.lifecycleLevel,
+        this.compiler.getProjectRoot(),
       );
       mwEnd = performance.now();
 
@@ -624,6 +626,8 @@ export class SoftReloader {
       const globalMiddlewares = this.getGlobalMiddlewares();
       const routeResult = await reloadRoutes({
         app: this.app,
+        rootDir: this.compiler.getProjectRoot(),
+        srcDir: this.compiler.getSrcDir(),
         outDir,
         middlewareDefs,
         globalMiddlewares,

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Commit selected typegen outputs and paired Doctor reports through shared artifact ownership; preserve previous files on blocking diagnostics or conflicts and keep check mode read-only. Pass actual project directories through route reloads and commit route manifests only after handler and cache preparation succeed.
 - Commit each complete TS/MTS preload cache generation together, detect output collisions and external edits, and preserve old caches on compilation failure. Report unreadable or invalid preload directories instead of silently loading older build output.
 - Share owned temporary module loading across TypeScript config, middleware, and services. Preserve native ESM, logical source metadata, live functions, and each loader's evaluation lifecycle; recover interrupted execution without removing externally changed files.
 - Generate frontend sources, browser/server bundles, media, static pages, SEO, deploy metadata, and budget reports as one candidate set before committing both output roles. Preserve prior files on failures and recover interrupted temporary JSCSS execution; keep native ESM, top-level await, logical module paths, and isolated worker cleanup.

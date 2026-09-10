@@ -1,13 +1,11 @@
 import { relative, sep } from "node:path";
-import type { GeneratedFileResult } from "./write-generated-file.js";
-import { writeGeneratedFile } from "./write-generated-file.js";
+import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
 
-export async function generateTypegenShim(
+export function createTypegenShim(
   rootDir: string,
   generatedFiles: string[],
-  options: { checkOnly?: boolean } = {},
-): Promise<GeneratedFileResult> {
+): GeneratedFileDraft {
   const paths = getTypegenGeneratedPaths(rootDir);
   const references = generatedFiles
     .map((filePath) => toReferencePath(paths.shimDts, filePath))
@@ -19,7 +17,7 @@ export async function generateTypegenShim(
     "",
   ].join("\n");
 
-  return writeGeneratedFile(paths.shimDts, content, options);
+  return { filePath: paths.shimDts, content, producer: "typegen-shim" };
 }
 
 function toReferencePath(fromFile: string, toFile: string): string {

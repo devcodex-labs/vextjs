@@ -673,7 +673,7 @@ async function devBootstrapOwned(
     //
     const collectedRoutes = collector.getRoutes();
     await startupProfiler.time("worker.routeManifest", () =>
-      writeDevRouteManifest(projectRoot, collectedRoutes),
+      writeDevRouteManifest(projectRoot, collectedRoutes, { srcDir, outDir }),
     );
     const frontendBuild = await startupProfiler.time("worker.frontend", () =>
       buildFrontendClient({

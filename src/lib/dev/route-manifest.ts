@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, extname, join, relative, sep } from "node:path";
+import { statSync } from "node:fs";
+import { extname, isAbsolute, join, relative, sep } from "node:path";
+import { publishGeneratedFiles } from "../project/generated-files.js";
 import { inferOperationId } from "../openapi/operation-id.js";
 import type { RouteMetadata, VextOpenAPIDocsKind } from "../openapi/types.js";
 import {
@@ -51,28 +51,40 @@ export interface DevRouteManifestPayload {
   }>;
 }
 
+interface DevRouteSourceLayout {
+  srcDir: string;
+  outDir: string;
+}
+
 export async function writeDevRouteManifest(
   rootDir: string,
   routes: RouteMetadata[],
+  layout: DevRouteSourceLayout,
 ): Promise<void> {
   const filePath = join(rootDir, ".vext", "manifest", "routes.json");
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(
-    filePath,
-    `${JSON.stringify(buildDevRouteManifestPayload(rootDir, routes), null, 2)}\n`,
-    "utf-8",
-  );
+  await publishGeneratedFiles(rootDir, [
+    {
+      filePath,
+      content: `${JSON.stringify(buildDevRouteManifestPayload(rootDir, routes, layout), null, 2)}\n`,
+      producer: "route-manifest",
+    },
+  ]);
 }
 
 export function buildDevRouteManifestPayload(
   rootDir: string,
   routes: RouteMetadata[],
+  layout: DevRouteSourceLayout,
 ): DevRouteManifestPayload {
   const records = routes.map((route) => {
     const docs = route.options.docs;
     const operationId =
       docs?.operationId ?? inferOperationId(route.method, route.path);
-    const fileRelativePath = toSourceRelativePath(rootDir, route.sourceFile);
+    const fileRelativePath = toSourceRelativePath(
+      rootDir,
+      route.sourceFile,
+      layout,
+    );
     const docsSummary = docs?.summary ?? null;
     return {
       fileRelativePath,
@@ -141,11 +153,16 @@ function toPortableRelativePath(rootDir: string, filePath: string): string {
   return relative(rootDir, filePath).split(sep).join("/");
 }
 
-function toSourceRelativePath(rootDir: string, filePath: string): string {
-  const devDir = join(rootDir, ".vext", "dev");
-  const devRelative = relative(devDir, filePath);
+function toSourceRelativePath(
+  rootDir: string,
+  filePath: string,
+  layout: DevRouteSourceLayout,
+): string {
+  const devRelative = relative(layout.outDir, filePath);
   if (
-    devRelative.startsWith("..") ||
+    devRelative === ".." ||
+    devRelative.startsWith(`..${sep}`) ||
+    isAbsolute(devRelative) ||
     devRelative === "" ||
     extname(devRelative) !== ".js"
   ) {
@@ -153,12 +170,22 @@ function toSourceRelativePath(rootDir: string, filePath: string): string {
   }
 
   const withoutExt = devRelative.slice(0, -".js".length);
+  const matches: string[] = [];
   for (const ext of [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"]) {
-    const sourcePath = join(rootDir, "src", `${withoutExt}${ext}`);
-    if (existsSync(sourcePath)) {
-      return toPortableRelativePath(rootDir, sourcePath);
+    const sourcePath = join(layout.srcDir, `${withoutExt}${ext}`);
+    try {
+      if (!statSync(sourcePath).isFile()) {
+        throw new Error(`[vextjs] Route source is not a file: ${sourcePath}`);
+      }
+      matches.push(sourcePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-
-  return toPortableRelativePath(rootDir, filePath);
+  if (matches.length > 1) {
+    throw new Error(
+      `[vextjs] Ambiguous compiled route source for ${filePath}: ${matches.join(", ")}`,
+    );
+  }
+  return toPortableRelativePath(rootDir, matches[0] ?? filePath);
 }

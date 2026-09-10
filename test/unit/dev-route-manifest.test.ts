@@ -50,7 +50,10 @@ describe("buildDevRouteManifestPayload", () => {
       ),
     };
 
-    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+    const payload = buildDevRouteManifestPayload(rootDir, [route], {
+      srcDir: path.join(rootDir, "src"),
+      outDir: path.join(rootDir, ".vext", "dev"),
+    });
 
     expect(payload.routes[0]?.fileRelativePath).toBe(
       "src/routes/admin/users.ts",
@@ -62,6 +65,41 @@ describe("buildDevRouteManifestPayload", () => {
     expect(payload.routes[0]?.docsKind).toBe("backend-api");
   });
 
+  it.each(["ambiguous", "directory"])(
+    "diagnoses %s source mappings instead of choosing a guessed source",
+    (kind) => {
+      const rootDir = createTempRoot();
+      const srcDir = path.join(rootDir, "src");
+      const outDir = path.join(rootDir, ".cache", "nested", "backend");
+      fs.mkdirSync(path.join(srcDir, "routes"), { recursive: true });
+      const source = path.join(srcDir, "routes", "index.ts");
+      if (kind === "directory") fs.mkdirSync(source);
+      else {
+        fs.writeFileSync(source, "export default [];\n");
+        fs.writeFileSync(
+          path.join(srcDir, "routes", "index.mts"),
+          "export default [];\n",
+        );
+      }
+      expect(() =>
+        buildDevRouteManifestPayload(
+          rootDir,
+          [
+            {
+              method: "GET",
+              path: "/",
+              options: {},
+              sourceFile: path.join(outDir, "routes", "index.js"),
+            },
+          ],
+          { srcDir, outDir },
+        ),
+      ).toThrow(
+        kind === "directory" ? "not a file" : "Ambiguous compiled route source",
+      );
+    },
+  );
+
   it("preserves frontend document classification for downstream diagnostics", () => {
     const rootDir = createTempRoot();
     const route: RouteMetadata = {
@@ -72,7 +110,10 @@ describe("buildDevRouteManifestPayload", () => {
       docsKind: "frontend-route",
     };
 
-    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+    const payload = buildDevRouteManifestPayload(rootDir, [route], {
+      srcDir: path.join(rootDir, "src"),
+      outDir: path.join(rootDir, ".vext", "dev"),
+    });
 
     expect(payload.routes[0]).toMatchObject({
       source: "src/routes/index.ts",
@@ -94,7 +135,10 @@ describe("buildDevRouteManifestPayload", () => {
       sourceFile: path.join(rootDir, "src", "routes", "users.ts"),
     };
 
-    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+    const payload = buildDevRouteManifestPayload(rootDir, [route], {
+      srcDir: path.join(rootDir, "src"),
+      outDir: path.join(rootDir, ".vext", "dev"),
+    });
 
     expect(payload.routes[0]?.fileRelativePath).toBe("src/routes/users.ts");
     expect(payload.routes[0]?.operationId).toBe("createUser");
@@ -131,7 +175,10 @@ describe("buildDevRouteManifestPayload", () => {
       sourceFile: path.join(rootDir, "src", "routes", "users.ts"),
     };
 
-    const payload = buildDevRouteManifestPayload(rootDir, [route]);
+    const payload = buildDevRouteManifestPayload(rootDir, [route], {
+      srcDir: path.join(rootDir, "src"),
+      outDir: path.join(rootDir, ".vext", "dev"),
+    });
     const record = payload.routes[0];
 
     expect(record?.routeId).toMatch(/^route_[a-f0-9]{16}$/);
@@ -188,7 +235,10 @@ describe("buildDevRouteManifestPayload", () => {
       sourceFile: path.join(rootDir, "src", "routes", "users.ts"),
     };
 
-    const record = buildDevRouteManifestPayload(rootDir, [route]).routes[0];
+    const record = buildDevRouteManifestPayload(rootDir, [route], {
+      srcDir: path.join(rootDir, "src"),
+      outDir: path.join(rootDir, ".vext", "dev"),
+    }).routes[0];
     const family = record?.schema.responses.find(
       (response) => response.status === "2xx",
     );

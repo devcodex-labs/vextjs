@@ -1,8 +1,5 @@
 import type { ServiceIndexEntry } from "../project-index/index.js";
-import {
-  writeGeneratedFile,
-  type GeneratedFileResult,
-} from "./write-generated-file.js";
+import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
 import { renderTypePropertyKey } from "./property-key.js";
 
@@ -11,11 +8,10 @@ interface ServiceTreeNode {
   typeText?: string;
 }
 
-export async function generateServicesDts(
+export function createServicesDts(
   rootDir: string,
   entries: ServiceIndexEntry[],
-  options: { checkOnly?: boolean } = {},
-): Promise<GeneratedFileResult> {
+): GeneratedFileDraft {
   const filePath = getTypegenGeneratedPaths(rootDir).servicesDts;
 
   const tree = createServiceTree(entries);
@@ -36,7 +32,7 @@ export async function generateServicesDts(
     .filter((line, index, arr) => !(line === "" && arr[index - 1] === ""))
     .join("\n");
 
-  return writeGeneratedFile(filePath, content, options);
+  return { filePath, content, producer: "typegen-types" };
 }
 
 function createServiceTree(entries: ServiceIndexEntry[]): ServiceTreeNode {

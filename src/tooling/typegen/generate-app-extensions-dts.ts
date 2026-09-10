@@ -1,22 +1,18 @@
 import type { AppExtensionIndexEntry } from "../project-index/index.js";
 import { mergeAppExtensions } from "./merge-app-extensions.js";
-import {
-  writeGeneratedFile,
-  type GeneratedFileResult,
-} from "./write-generated-file.js";
+import type { GeneratedFileDraft } from "../../lib/project/generated-files.js";
 import { getTypegenGeneratedPaths } from "./generated-paths.js";
 import { renderTypePropertyKey } from "./property-key.js";
 
 export interface AppExtensionsGenerationResult {
-  file: GeneratedFileResult;
+  file: GeneratedFileDraft;
   warnings: string[];
 }
 
-export async function generateAppExtensionsDts(
+export function createAppExtensionsDts(
   rootDir: string,
   entries: AppExtensionIndexEntry[],
-  options: { checkOnly?: boolean } = {},
-): Promise<AppExtensionsGenerationResult> {
+): AppExtensionsGenerationResult {
   const filePath = getTypegenGeneratedPaths(rootDir).appExtensionsDts;
 
   const merged = mergeAppExtensions(entries);
@@ -38,7 +34,7 @@ export async function generateAppExtensionsDts(
   ];
 
   return {
-    file: await writeGeneratedFile(filePath, lines.join("\n"), options),
+    file: { filePath, content: lines.join("\n"), producer: "typegen-types" },
     warnings: merged.warnings,
   };
 }

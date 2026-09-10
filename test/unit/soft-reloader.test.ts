@@ -1758,6 +1758,8 @@ describe("SoftReloader", () => {
 
       expect(reloadRoutes).toHaveBeenCalledWith({
         app: expect.anything(),
+        rootDir: "/project",
+        srcDir: "/project/src",
         outDir: "/project/.vext/dev",
         middlewareDefs: expect.anything(),
         globalMiddlewares: expect.anything(),

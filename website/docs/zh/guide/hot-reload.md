@@ -16,6 +16,8 @@ VextJS 内置热重载机制，通过 `vext dev` 命令启动开发模式。框�
 - TypeScript 语义诊断默认在 ready / reload 后异步输出
 - 如果基础 typegen 发现 blocking issue，则跳过本轮 reload / restart；如需让 TypeScript 语义诊断也阻塞，可使用 `--strict-preflight`
 
+路由重载使用编译器的真实项目根、源码目录和输出目录；自定义更深的输出目录不会改变源码映射或清单位置。新处理器构建和缓存清理成功后才提交 `.vext/manifest/routes.json`，提交冲突会阻止替换并进入冷重启恢复。首次启动时，该清单先作为前端构建输入生成，因此判断服务就绪应使用启动完成回执，判断重载生效应使用实际重载结果。
+
 ## 快速开始
 
 ```bash

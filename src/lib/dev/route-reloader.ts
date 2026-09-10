@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { RouteMetadataCollector } from "../openapi/collector.js";
 import {
   OpenAPIGenerator,
@@ -11,6 +11,7 @@ import type { OpenAPIConfig } from "../openapi/types.js";
 import { createRequestHookMiddleware } from "../middlewares/request-hook.js";
 import type { VextInternalHooks } from "../../types/hooks.js";
 import { writeDevRouteManifest } from "./route-manifest.js";
+import { withProjectOwner } from "../project/owner.js";
 import { VEXT_FRONTEND_DEV_EVENT_PATH } from "../../frontend/runtime/dev-events.js";
 import { registerFrontendSeoEndpoints } from "../../frontend/runtime/seo-endpoints.js";
 import { resolveFrontendConfig } from "../../frontend/tooling/config-resolver.js";
@@ -311,7 +312,13 @@ export interface ReloadRoutesOptions {
   /** VextApp 实例 */
   app: RouteReloaderApp;
 
-  /** 编译产物目录（.vext/dev/ 的绝对路径） */
+  /** 由调用方传入的真实项目根，不能从可配置输出目录反推。 */
+  rootDir: string;
+
+  /** 与 compiler 使用相同的源码目录。 */
+  srcDir: string;
+
+  /** 编译产物目录（绝对路径） */
   outDir: string;
 
   /** 中间件注册表（从 middleware-loader 加载的） */
@@ -410,8 +417,18 @@ export interface RouteReloadResult {
 export async function reloadRoutes(
   options: ReloadRoutesOptions,
 ): Promise<RouteReloadResult> {
+  return withProjectOwner(options.rootDir, "dev", [".vext/manifest"], () =>
+    reloadRoutesOwned(options),
+  );
+}
+
+async function reloadRoutesOwned(
+  options: ReloadRoutesOptions,
+): Promise<RouteReloadResult> {
   const {
     app,
+    rootDir: projectRoot,
+    srcDir,
     outDir,
     middlewareDefs,
     globalMiddlewares,
@@ -603,7 +620,18 @@ export async function reloadRoutes(
       (openapiCfg as Record<string, unknown>).enabled !== false;
     const collector = new RouteMetadataCollector();
 
-    if (existsSync(routesDir)) {
+    let routesPresent = true;
+    try {
+      if (!statSync(routesDir).isDirectory()) {
+        throw new Error(
+          `[vextjs] Routes path is not a directory: ${routesDir}`,
+        );
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      routesPresent = false;
+    }
+    if (routesPresent) {
       await loadRoutesFn(
         app,
         routesDir,
@@ -613,7 +641,7 @@ export async function reloadRoutes(
           sessionMiddleware: builtinMiddlewares?.sessionMiddleware,
           corsMiddleware: routeCorsMiddleware,
           freshImports: true,
-          rootDir: projectRootFromOutDir(outDir),
+          rootDir: projectRoot,
           frontendMode: "development",
         },
         collector,
@@ -624,7 +652,6 @@ export async function reloadRoutes(
       );
     }
 
-    const projectRoot = projectRootFromOutDir(outDir);
     const frontendRuntimeConfig = resolveFrontendConfig(
       (app.config as { frontend?: VextFrontendUserConfig }).frontend,
       { rootDir: projectRoot, mode: "development" },
@@ -641,14 +668,6 @@ export async function reloadRoutes(
     // 必须重新生成 spec 并注册端点。
     //
     const routes = collector.getRoutes();
-    await writeDevRouteManifest(projectRootFromOutDir(outDir), routes).catch(
-      (error: unknown) => {
-        app.logger.warn(
-          { error: error instanceof Error ? error.message : String(error) },
-          "[hot-reload] failed to write route manifest",
-        );
-      },
-    );
 
     if (openapiEnabled) {
       const generator = new OpenAPIGenerator(
@@ -723,7 +742,7 @@ export async function reloadRoutes(
           | Record<string, unknown>
           | undefined,
         rootDir: projectRoot,
-        srcDir: path.join(projectRoot, "src"),
+        srcDir,
         modelsDir: (openapiCfg as Record<string, unknown>)?.docsModelsDir as
           | string
           | undefined,
@@ -748,9 +767,12 @@ export async function reloadRoutes(
     }
 
     app.logger.info(
-      `[hot-reload] routes reloaded via fresh adapter (${freshAdapter.name})`,
+      `[hot-reload] routes prepared via fresh adapter (${freshAdapter.name})`,
     );
 
+    // handler 与缓存准备均成功才提交；提交失败不返回可供 swap 的结果。
+    // 此清单是构建输入，运行态就绪仍以 SoftReloader 的实际 swap 回执为准。
+    await writeDevRouteManifest(projectRoot, routes, { srcDir, outDir });
     return {
       handler,
       adapter: freshAdapter,
@@ -784,10 +806,6 @@ function createCachedOpenApiSpecProvider(generate: () => object): () => object {
   };
 }
 
-function projectRootFromOutDir(outDir: string): string {
-  return path.resolve(outDir, "..", "..");
-}
-
 // ── 简化版重载函数 ──────────────────────────────────────────
 
 /**
@@ -804,6 +822,8 @@ function projectRootFromOutDir(outDir: string): string {
  * // 初始化时
  * const reloadRoutesFn = createSimpleRouteReloader({
  *   app,
+ *   rootDir,
+ *   srcDir,
  *   resolveAdapter,
  *   loadRoutes,
  *   createErrorHandler,
@@ -819,6 +839,8 @@ function projectRootFromOutDir(outDir: string): string {
  */
 export function createSimpleRouteReloader(deps: {
   app: RouteReloaderApp;
+  rootDir: string;
+  srcDir: string;
   resolveAdapter: AdapterResolver;
   loadRoutes: RoutesLoader;
   createErrorHandler: ErrorHandlerFactory;
@@ -831,6 +853,8 @@ export function createSimpleRouteReloader(deps: {
   return (outDir: string) =>
     reloadRoutes({
       app: deps.app,
+      rootDir: deps.rootDir,
+      srcDir: deps.srcDir,
       outDir,
       middlewareDefs: deps.middlewareDefs,
       globalMiddlewares: deps.globalMiddlewares,
