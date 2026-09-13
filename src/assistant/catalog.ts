@@ -230,8 +230,8 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C30",
     "Skill/Workflow",
-    "提供可选逻辑 Skill 与 Tools-only 工作流等价路径。",
-    "planned",
+    "提供可选逻辑 Skill 与 Tools-only 工作流等价路径；当前可通过 CLI 导出官方 Skill，宿主原生安装仍需后续同步能力。",
+    "partial",
   ),
   capability("C31", "资源与 Prompt", "注册固定 11 Resources 和 4 Prompts。"),
   capability(

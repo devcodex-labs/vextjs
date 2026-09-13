@@ -12,6 +12,8 @@ The current development line adds `vext mcp --root <dir>` as the bundled stdio M
 
 Before release, `npm run verify:pack-install` validates the packed installation across ESM/CJS, TypeScript contracts, runtime smoke tests, and an MCP stdio smoke test. The real platform, database, browser, and five-host matrix remains part of the release workflow and cannot be replaced by local protocol simulation alone.
 
+The optional Skill is bundled with the package. Use `vext mcp skill check` to inspect its manifest, `vext mcp skill print` to print the Markdown, or `vext mcp skill write --output <file>` to write it to a user-selected path. The command only exports the official Skill; it does not modify Codex, Claude, Cursor, VS Code, or Grok MCP configuration. Native host installation remains part of the later sync capability.
+
 :::tip Stable release
 This site documents the stable `v2.0.0` release. The CLI output below uses that published version.
 :::

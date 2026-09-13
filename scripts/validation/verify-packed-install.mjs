@@ -222,6 +222,104 @@ async function runRuntimeSmokes(consumerRoot) {
   }
 }
 
+async function runPackedCli(consumerRoot, args) {
+  const cli = path.join(
+    consumerRoot,
+    "node_modules",
+    "vextjs",
+    "dist",
+    "cli",
+    "index.js",
+  );
+  return await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, ...args], {
+      cwd: consumerRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (code) => {
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
+      reject(
+        new Error(
+          `packed CLI ${args.join(" ")} failed with code ${code ?? "unknown"}\n${stderr}`,
+        ),
+      );
+    });
+  });
+}
+
+async function runPackedMcpSkillSmoke(consumerRoot) {
+  const check = JSON.parse(
+    await runPackedCli(consumerRoot, ["mcp", "skill", "check"]),
+  );
+  if (
+    check.status !== "ok" ||
+    check.skill?.name !== "vextjs-official-mcp" ||
+    !/^[a-f0-9]{64}$/.test(check.skill?.digest ?? "") ||
+    check.hostNativeInstall !== "not-managed-by-this-command"
+  ) {
+    throw new Error("Packed MCP Skill manifest is invalid.");
+  }
+
+  const printed = await runPackedCli(consumerRoot, ["mcp", "skill", "print"]);
+  if (!printed.includes("VextJS Official MCP Skill")) {
+    throw new Error("Packed MCP Skill print did not include the Skill title.");
+  }
+
+  const outputPath = path.join(
+    consumerRoot,
+    "skill-output",
+    "vextjs-official-mcp",
+    "SKILL.md",
+  );
+  const writeResult = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "skill",
+      "write",
+      "--output",
+      outputPath,
+    ]),
+  );
+  if (writeResult.status !== "written") {
+    throw new Error("Packed MCP Skill write did not write the output file.");
+  }
+  const content = readFileSync(outputPath, "utf8");
+  if (
+    !content.includes(
+      "Use this skill when helping with a project that depends on VextJS",
+    )
+  ) {
+    throw new Error("Packed MCP Skill written file has unexpected content.");
+  }
+  const upToDateResult = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "skill",
+      "write",
+      "--output",
+      outputPath,
+    ]),
+  );
+  if (upToDateResult.status !== "up-to-date") {
+    throw new Error("Packed MCP Skill rewrite did not report up-to-date.");
+  }
+  console.log("Packed MCP Skill smoke passed.");
+}
+
 async function runPackedMcpSmoke(consumerRoot) {
   const fixture = path.join(consumerRoot, "mcp-fixture");
   mkdirSync(path.join(fixture, "src", "config"), { recursive: true });
@@ -621,6 +719,7 @@ async function main() {
   await runPackedTypeContract(consumer);
   await runRuntimeSmokes(consumer);
   await runPackedMcpSmoke(consumer);
+  await runPackedMcpSkillSmoke(consumer);
 
   console.log(`Packed install verified for vextjs@${pkg.version}`);
   console.log(`Evidence workspace retained at: ${workspace}`);

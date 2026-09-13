@@ -300,7 +300,7 @@ describe("Vext MCP server", () => {
       );
       const plannedCapability = await client.callTool({
         name: "vext_capability_check",
-        arguments: { capability: "C30" },
+        arguments: { capability: "C29" },
       });
       expect(plannedCapability.structuredContent).toMatchObject({
         status: "ok",
@@ -311,6 +311,17 @@ describe("Vext MCP server", () => {
           ],
         },
       });
+      const skillCapability = await client.callTool({
+        name: "vext_capability_check",
+        arguments: { capability: "C30" },
+      });
+      expect(skillCapability.structuredContent).toMatchObject({
+        status: "ok",
+        data: { projectState: "partial" },
+      });
+      expect(JSON.stringify(skillCapability.structuredContent)).toContain(
+        "vext mcp skill check",
+      );
       const releaseCapability = await client.callTool({
         name: "vext_capability_check",
         arguments: { capability: "C32" },

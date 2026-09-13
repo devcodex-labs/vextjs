@@ -12,6 +12,8 @@
 
 发布前的同包验收使用 `npm run verify:pack-install` 覆盖打包安装后的 ESM/CJS、TypeScript 合同、运行时 smoke 和 MCP stdio smoke。真实平台、数据库、浏览器和五宿主矩阵仍属于发布验收流程，不能只用本地协议模拟替代。
 
+可选 Skill 随包构建，可用 `vext mcp skill check` 查看摘要、`vext mcp skill print` 输出 Markdown，或用 `vext mcp skill write --output <file>` 写入用户指定位置。该命令只导出官方 Skill，不会修改 Codex、Claude、Cursor、VS Code 或 Grok 的 MCP 配置；宿主原生安装仍按后续同步能力处理。
+
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。
 :::
