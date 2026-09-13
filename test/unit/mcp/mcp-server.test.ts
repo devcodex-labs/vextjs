@@ -107,6 +107,13 @@ describe("Vext MCP server", () => {
         arguments: { section: "summary" },
       });
       expect(inspect.structuredContent).toMatchObject({ status: "ok" });
+      const config = await client.callTool({
+        name: "vext_project_inspect",
+        arguments: { section: "config" },
+      });
+      expect(JSON.stringify(config.structuredContent)).toContain(
+        "devMcpSources",
+      );
       const knowledge = await client.callTool({
         name: "vext_knowledge_search",
         arguments: { query: "job", limit: 5 },
@@ -133,10 +140,22 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(stale.structuredContent)).toContain(
         "VEXT_CONTEXT_STALE",
       );
+      const workspaceCapability = await client.callTool({
+        name: "vext_capability_check",
+        arguments: { capability: "C23" },
+      });
+      expect(workspaceCapability.structuredContent).toMatchObject({
+        status: "ok",
+        data: { projectState: "enabled" },
+      });
       const resource = await client.readResource({
         uri: "vext://catalog/recipes",
       });
       expect(resource.contents[0]?.text).toContain("RCP-17");
+      const structure = await client.readResource({
+        uri: "vext://project/structure",
+      });
+      expect(structure.contents[0]?.text).toContain("workspace");
     } finally {
       await client.close();
       await server.close();

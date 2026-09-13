@@ -154,8 +154,7 @@ function registerTools(
         data: {
           capabilityId: item.id,
           frameworkSupport: item.status === "planned" ? "partial" : "supported",
-          projectState:
-            project.identity.sourceState === "complete" ? "enabled" : "unknown",
+          projectState: projectStateForCapability(project, item.id),
           knownIssueIds: [],
           missingPrerequisites:
             item.status === "planned"
@@ -534,6 +533,7 @@ function readResource(uri: string, rootDir: string, version: string): unknown {
         status: "ok",
         identity: project.identity,
         structureDecisions: project.structureDecisions,
+        assistant: project.assistant,
       };
     case "vext://runtime/snapshot":
       return {
@@ -555,6 +555,7 @@ function projectSection(project: VextMcpProjectInspection, section: string) {
     identity: project.identity,
     section,
     summary: project.snapshot.sections[section] ?? null,
+    details: projectSectionDetails(project, section),
     availability:
       project.snapshot.sections[section]?.state === "known"
         ? "available"
@@ -576,9 +577,49 @@ function filterInspection(
       status: "ok",
       identity: project.identity,
       structureDecisions: project.structureDecisions,
+      assistant: project.assistant,
     };
   }
   return projectSection(project, section);
+}
+
+function projectSectionDetails(
+  project: VextMcpProjectInspection,
+  section: string,
+) {
+  if (section === "config") {
+    return {
+      devMcp: project.assistant.devMcp,
+      devMcpSources: project.assistant.devMcpSources,
+      workspaceConfig: project.assistant.workspace
+        ? {
+            path: project.assistant.workspace.path,
+            digest: project.assistant.workspace.digest,
+            policyDefaultsDigest:
+              project.assistant.workspace.policyDefaultsDigest,
+          }
+        : null,
+    };
+  }
+  if (section === "services") {
+    return {
+      workspaceServices: project.assistant.workspace?.config.services ?? [],
+    };
+  }
+  if (section === "models") {
+    return {
+      sharedModelPackages:
+        project.assistant.workspace?.config.sharedPackages?.filter(
+          (item) => item.kind === "models",
+        ) ?? [],
+    };
+  }
+  if (section === "ownership" || section === "structure") {
+    return {
+      workspace: project.assistant.workspace,
+    };
+  }
+  return null;
 }
 
 function inspect(rootDir: string, version: string): VextMcpProjectInspection {
@@ -617,6 +658,26 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
     ];
   }
   return [];
+}
+
+function projectStateForCapability(
+  project: VextMcpProjectInspection,
+  capabilityId: string,
+): "enabled" | "partial" | "unknown" {
+  if (capabilityId === "C23") {
+    return project.assistant.workspace?.config.services?.length
+      ? "enabled"
+      : "unknown";
+  }
+  if (capabilityId === "C24") {
+    return project.assistant.workspace?.config.sharedPackages?.length
+      ? "enabled"
+      : "unknown";
+  }
+  if (capabilityId === "C29") {
+    return project.assistant.devMcp.enabled ? "partial" : "unknown";
+  }
+  return project.identity.sourceState === "complete" ? "enabled" : "unknown";
 }
 
 function jsonSchema<T>(schema: Record<string, unknown>) {
