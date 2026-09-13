@@ -158,7 +158,7 @@ function registerTools(
         data: {
           capabilityId: item.id,
           frameworkSupport: item.status === "planned" ? "partial" : "supported",
-          projectState: projectStateForCapability(project, item.id),
+          projectState: projectStateForCapability(project, item),
           knownIssueIds: [],
           missingPrerequisites:
             item.status === "planned"
@@ -685,8 +685,9 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
 
 function projectStateForCapability(
   project: VextMcpProjectInspection,
-  capabilityId: string,
+  item: (typeof VEXT_MCP_CAPABILITIES)[number],
 ): "enabled" | "partial" | "unknown" {
+  const capabilityId = item.id;
   if (capabilityId === "C23") {
     return project.assistant.workspace?.config.services?.length
       ? "enabled"
@@ -700,6 +701,7 @@ function projectStateForCapability(
   if (capabilityId === "C29") {
     return project.assistant.devMcp.enabled ? "partial" : "unknown";
   }
+  if (item.status === "planned") return "unknown";
   if (capabilityId === "C18") return "unknown";
   return project.identity.sourceState === "complete" ? "enabled" : "unknown";
 }
