@@ -25,7 +25,7 @@ describe("Vext MCP host sync planning", () => {
       "codex",
       "vscode",
     ]);
-    expect(plan.targets[0]?.action).toBe("plan-managed-entry");
+    expect(plan.targets[0]?.action).toBe("write-managed-entry");
     expect(plan.targets[0]?.args).toContain("--root");
   });
 
@@ -129,6 +129,82 @@ describe("Vext MCP host sync planning", () => {
       expect(
         await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
       ).toBe("{ bad json");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("writes TOML host config entries with a managed block", async () => {
+    const root = await createProject();
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand(["sync", "--root", root, "--host", "codex", "--json"]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result).toMatchObject({
+        status: "ok",
+        applied: {
+          status: "ok",
+          targets: [{ host: "codex", status: "written" }],
+        },
+      });
+      const toml = await readFile(
+        path.join(root, ".codex", "config.toml"),
+        "utf8",
+      );
+      expect(toml).toContain("# BEGIN VEXT MCP MANAGED");
+      expect(toml).toContain("[mcp_servers.");
+      expect(toml).toContain('command = "node"');
+      expect(toml).toContain('"mcp"');
+
+      logs.length = 0;
+      await mcpCommand(["sync", "--root", root, "--host", "codex", "--json"]);
+      const second = JSON.parse(logs.at(-1) ?? "{}");
+      expect(second.applied).toMatchObject({
+        targets: [{ status: "up-to-date" }],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("blocks unmanaged TOML tables with the same service key", async () => {
+    const root = await createProject();
+    const plan = createVextMcpHostSyncPlan({
+      rootDir: root,
+      frameworkVersion: "2.0.0",
+      host: "codex",
+      mode: "write",
+    });
+    await mkdir(path.join(root, ".codex"), { recursive: true });
+    await writeFile(
+      path.join(root, ".codex", "config.toml"),
+      `[mcp_servers.${plan.serviceKey}]
+command = "node"
+args = ["custom.js"]
+`,
+      "utf8",
+    );
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand(["sync", "--root", root, "--host", "codex", "--json"]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result.applied).toMatchObject({
+        status: "partial",
+        targets: [{ host: "codex", status: "blocked" }],
+      });
+      expect(
+        await readFile(path.join(root, ".codex", "config.toml"), "utf8"),
+      ).toContain('args = ["custom.js"]');
     } finally {
       spy.mockRestore();
     }

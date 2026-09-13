@@ -20,7 +20,7 @@ export interface VextMcpWrittenFile {
 export interface VextMcpHostSyncApplyTarget {
   host: string;
   configPath: string;
-  status: "written" | "up-to-date" | "planned-only" | "blocked";
+  status: "written" | "up-to-date" | "blocked";
   reason: string;
 }
 
@@ -39,10 +39,7 @@ export async function applyVextMcpHostSyncPlan(
   }
   return {
     schemaVersion: 1,
-    status: targets.some(
-      (target) =>
-        target.status === "planned-only" || target.status === "blocked",
-    )
+    status: targets.some((target) => target.status === "blocked")
       ? "partial"
       : "ok",
     launcher,
@@ -55,15 +52,10 @@ async function applyTarget(
   plan: VextMcpHostSyncPlan,
   target: VextMcpHostSyncTarget,
 ): Promise<VextMcpHostSyncApplyTarget> {
-  if (target.configFormat !== "json") {
-    return {
-      host: target.host,
-      configPath: target.configPath,
-      status: "planned-only",
-      reason: target.reason,
-    };
-  }
   const absolutePath = path.join(plan.rootDir, target.configPath);
+  if (target.configFormat === "toml") {
+    return await applyTomlTarget(absolutePath, target);
+  }
   const current = await readOptionalText(absolutePath);
   const source = current ?? "{}\n";
   const errors: ParseError[] = [];
@@ -98,6 +90,30 @@ async function applyTarget(
     configPath: target.configPath,
     status: written.status,
     reason: "Managed MCP server entry written with JSONC structural edits.",
+  };
+}
+
+async function applyTomlTarget(
+  absolutePath: string,
+  target: VextMcpHostSyncTarget,
+): Promise<VextMcpHostSyncApplyTarget> {
+  const current = await readOptionalText(absolutePath);
+  const source = current ?? "";
+  const next = createTomlManagedEntry(source, target);
+  if (next.status === "blocked") {
+    return {
+      host: target.host,
+      configPath: target.configPath,
+      status: "blocked",
+      reason: next.reason,
+    };
+  }
+  const written = await writeIfChanged(absolutePath, next.content);
+  return {
+    host: target.host,
+    configPath: target.configPath,
+    status: written.status,
+    reason: "Managed MCP server entry written with TOML managed-block edits.",
   };
 }
 
@@ -146,4 +162,88 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
     null,
     2,
   )}\n`;
+}
+
+function createTomlManagedEntry(
+  source: string,
+  target: VextMcpHostSyncTarget,
+): { status: "ok"; content: string } | { status: "blocked"; reason: string } {
+  const begin = `# BEGIN VEXT MCP MANAGED ${target.entryKey}`;
+  const end = `# END VEXT MCP MANAGED ${target.entryKey}`;
+  const hasBegin = source.includes(begin);
+  const hasEnd = source.includes(end);
+  if (hasBegin !== hasEnd) {
+    return {
+      status: "blocked",
+      reason:
+        "Host TOML config contains an incomplete Vext managed block; it was not modified.",
+    };
+  }
+  const block = createTomlManagedBlock(target, begin, end);
+  if (hasBegin) {
+    const beginIndex = source.indexOf(begin);
+    const endIndex = source.indexOf(end, beginIndex);
+    if (source.indexOf(begin, beginIndex + begin.length) !== -1) {
+      return {
+        status: "blocked",
+        reason:
+          "Host TOML config contains multiple Vext managed blocks for the same entry; it was not modified.",
+      };
+    }
+    const replaceEnd = endIndex + end.length;
+    const includeTrailingNewline =
+      source.slice(replaceEnd, replaceEnd + 2) === "\r\n"
+        ? 2
+        : source.slice(replaceEnd, replaceEnd + 1) === "\n"
+          ? 1
+          : 0;
+    return {
+      status: "ok",
+      content:
+        source.slice(0, beginIndex) +
+        block +
+        source.slice(replaceEnd + includeTrailingNewline),
+    };
+  }
+  if (hasTomlMcpServerTable(source, target.entryKey)) {
+    return {
+      status: "blocked",
+      reason:
+        "Host TOML config already contains an unmanaged table for this MCP server key; it was not modified.",
+    };
+  }
+  const separator =
+    source.trim().length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";
+  return { status: "ok", content: `${source}${separator}${block}` };
+}
+
+function createTomlManagedBlock(
+  target: VextMcpHostSyncTarget,
+  begin: string,
+  end: string,
+): string {
+  return `${begin}
+[${target.configRootKey}.${tomlQuotedString(target.entryKey)}]
+command = ${tomlQuotedString(target.command)}
+args = [${target.args.map(tomlQuotedString).join(", ")}]
+${end}
+`;
+}
+
+function hasTomlMcpServerTable(source: string, entryKey: string): boolean {
+  const escaped = escapeRegExp(entryKey);
+  return new RegExp(
+    String.raw`^\s*\[\s*mcp_servers\s*\.\s*(?:"${escaped}"|${escaped})\s*\]\s*(?:#.*)?$`,
+    "m",
+  ).test(source);
+}
+
+function tomlQuotedString(value: string): string {
+  return JSON.stringify(value)
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

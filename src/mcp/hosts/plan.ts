@@ -147,14 +147,11 @@ function createTarget(input: {
     command: "node",
     args: [input.launcherAbsolutePath, "mcp", "--root", input.rootDir],
     localOnly: true,
-    action:
-      input.descriptor.configFormat === "json"
-        ? "write-managed-entry"
-        : "plan-managed-entry",
+    action: "write-managed-entry",
     reason:
       input.descriptor.configFormat === "json"
-        ? "JSON/JSONC host config can be written by vext mcp sync; TOML hosts remain plan-only in this batch."
-        : "TOML host config remains dry-run/check only in this batch to avoid lossy comment-preservation behavior.",
+        ? "JSON/JSONC host config can be written by vext mcp sync with structural edits."
+        : "TOML host config can be written by vext mcp sync with a managed block; existing unmanaged same-key tables are blocked.",
     notes: [input.descriptor.notes],
   };
 }

@@ -12,7 +12,7 @@
 
 发布前的同包验收使用 `npm run verify:pack-install` 覆盖打包安装后的 ESM/CJS、TypeScript 合同、运行时 smoke 和 MCP stdio smoke。真实平台、数据库、浏览器和五宿主矩阵仍属于发布验收流程，不能只用本地协议模拟替代。
 
-宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry。Codex 与 Grok 的 TOML 配置仍保持计划层，真实 TOML 最小编辑、协作写入、回读校验和宿主刷新仍按后续同步批次处理。
+宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry，为 Codex 与 Grok 等 TOML 宿主写入 Vext 受管块。若 TOML 中已有同名非受管 table，会返回 blocked 并保留原文件；真实宿主刷新和五宿主回读验收仍按后续同步批次处理。
 
 可选 Skill 随包构建，可用 `vext mcp skill check` 查看摘要、`vext mcp skill print` 输出 Markdown，或用 `vext mcp skill write --output <file>` 写入用户指定位置。该命令只导出官方 Skill，不会修改 Codex、Claude、Cursor、VS Code 或 Grok 的 MCP 配置；宿主原生安装仍按后续同步能力处理。
 

@@ -378,6 +378,37 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
   ) {
     throw new Error("Packed MCP sync write smoke returned unexpected output.");
   }
+  const tomlFixture = path.join(consumerRoot, "mcp-sync-toml-write-fixture");
+  mkdirSync(path.join(tomlFixture, "src", "config"), { recursive: true });
+  writeFileSync(
+    path.join(tomlFixture, "package.json"),
+    `${JSON.stringify({ name: "packed-mcp-sync-toml-write-fixture", version: "1.0.0", type: "module", dependencies: { vextjs: pkg.version } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(tomlFixture, "src", "config", "default.ts"),
+    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "auto" } } };\n',
+  );
+  const tomlWritten = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "sync",
+      "--root",
+      tomlFixture,
+      "--host",
+      "codex",
+      "--json",
+    ]),
+  );
+  const tomlConfig = path.join(tomlFixture, ".codex", "config.toml");
+  if (
+    tomlWritten.status !== "ok" ||
+    tomlWritten.applied?.targets?.[0]?.status !== "written" ||
+    !readFileSync(tomlConfig, "utf8").includes("# BEGIN VEXT MCP MANAGED")
+  ) {
+    throw new Error(
+      "Packed MCP sync TOML write smoke returned unexpected output.",
+    );
+  }
   console.log("Packed MCP sync plan/write smoke passed.");
 }
 

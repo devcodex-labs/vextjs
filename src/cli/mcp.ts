@@ -180,7 +180,7 @@ function printMcpSyncHelp(): void {
 
   Notes:
     Without --check or --dry-run, sync writes the project launcher/state and JSON
-    host config entries. TOML hosts remain plan-only in this batch.
+    host config entries or TOML managed blocks.
 `);
 }
 
