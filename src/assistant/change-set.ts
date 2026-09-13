@@ -36,6 +36,34 @@ export interface VextMcpChangeSetResult {
   missingEvidence: string[];
 }
 
+export interface VextMcpValidationFileResult {
+  path: string | null;
+  verdict: "valid" | "invalid";
+  directory?: VextMcpCandidateDirectory;
+  issues: string[];
+}
+
+export interface VextMcpCandidateDirectory {
+  prefix: string;
+  source:
+    | "default"
+    | "project-section"
+    | "workspace-service"
+    | "workspace-shared-package";
+  role?: string;
+  serviceId?: string;
+  packageId?: string;
+  packageKind?: string;
+}
+
+export interface VextMcpValidationResult {
+  verdict: "valid" | "invalid" | "incomplete";
+  diagnostics: string[];
+  fileCount: number;
+  files: VextMcpValidationFileResult[];
+  allowedDirectories: VextMcpCandidateDirectory[];
+}
+
 const SUPPORTED_RECIPES = new Map([
   ["RCP-01", "api-route"],
   ["api-route", "api-route"],
@@ -177,17 +205,15 @@ export function generateMcpChangeSet(
 export function validateMcpChangeSetInput(
   input: VextValidateChangesInput,
   project?: VextMcpProjectInspection,
-): {
-  verdict: "valid" | "invalid" | "incomplete";
-  diagnostics: string[];
-  fileCount: number;
-} {
+): VextMcpValidationResult {
   if (input.changeSet) {
     const validation = validateMcpChangeSet(input.changeSet, project);
     return {
       verdict: validation.ok ? "valid" : "invalid",
       diagnostics: validation.diagnostics,
       fileCount: validation.fileCount,
+      files: validation.files,
+      allowedDirectories: validation.allowedDirectories,
     };
   }
   if (input.files) {
@@ -196,12 +222,16 @@ export function validateMcpChangeSetInput(
       verdict: validation.ok ? "valid" : "invalid",
       diagnostics: validation.diagnostics,
       fileCount: validation.fileCount,
+      files: validation.files,
+      allowedDirectories: validation.allowedDirectories,
     };
   }
   return {
     verdict: "incomplete",
     diagnostics: ["changeSet or files is required."],
     fileCount: 0,
+    files: [],
+    allowedDirectories: candidateDirectoryPolicy(project),
   };
 }
 
@@ -424,6 +454,8 @@ function validateMcpChangeSet(
   ok: boolean;
   diagnostics: string[];
   fileCount: number;
+  files: VextMcpValidationFileResult[];
+  allowedDirectories: VextMcpCandidateDirectory[];
 } {
   if (!isRecord(value)) return invalidCandidate("changeSet must be an object.");
   if (value.schemaVersion !== 1)
@@ -452,6 +484,8 @@ function validateMcpChangeSet(
     ok: validation.ok && diagnostics.length === 0,
     diagnostics,
     fileCount: validation.fileCount,
+    files: validation.files,
+    allowedDirectories: validation.allowedDirectories,
   };
 }
 
@@ -462,51 +496,88 @@ function validateCandidateFiles(
   ok: boolean;
   diagnostics: string[];
   fileCount: number;
+  files: VextMcpValidationFileResult[];
+  allowedDirectories: VextMcpCandidateDirectory[];
 } {
+  const allowedDirectories = candidateDirectoryPolicy(project);
   if (files.length < 1 || files.length > 50) {
     return invalidCandidate(
       "files must contain 1 to 50 entries.",
       files.length,
+      allowedDirectories,
     );
   }
   const seen = new Set<string>();
   const diagnostics: string[] = [];
-  const allowedPrefixes = candidateDirectoryPrefixes(project);
+  const fileResults: VextMcpValidationFileResult[] = [];
   for (const file of files) {
+    const fileIssues: string[] = [];
     if (!isRecord(file)) {
-      diagnostics.push("file entry must be an object.");
+      const issue = "file entry must be an object.";
+      diagnostics.push(issue);
+      fileResults.push({ path: null, verdict: "invalid", issues: [issue] });
       continue;
     }
     if (file.action !== undefined && file.action !== "create") {
-      diagnostics.push("Only create actions are supported in this batch.");
+      fileIssues.push("Only create actions are supported in this batch.");
     }
     if (typeof file.path !== "string" || !isSafeRelativePath(file.path)) {
-      diagnostics.push("file.path must be a safe relative path.");
+      fileIssues.push("file.path must be a safe relative path.");
+      diagnostics.push(...fileIssues);
+      fileResults.push({
+        path: typeof file.path === "string" ? file.path : null,
+        verdict: "invalid",
+        issues: fileIssues,
+      });
       continue;
     }
-    if (!isAllowedCandidatePath(file.path, allowedPrefixes)) {
-      diagnostics.push(
+    const directory = findCandidateDirectory(file.path, allowedDirectories);
+    if (!directory) {
+      fileIssues.push(
         `${file.path} is outside supported Vext candidate directories.`,
       );
     }
     if (project && existsSync(path.join(project.identity.rootDir, file.path))) {
-      diagnostics.push(
+      fileIssues.push(
         `${file.path} already exists; create-only candidates must not overwrite files.`,
       );
     }
     if (seen.has(file.path))
-      diagnostics.push(`Duplicate file path ${file.path}.`);
+      fileIssues.push(`Duplicate file path ${file.path}.`);
     seen.add(file.path);
     if (typeof file.content !== "string")
-      diagnostics.push(`${file.path} content must be a string.`);
+      fileIssues.push(`${file.path} content must be a string.`);
     if (file.encoding !== undefined && file.encoding !== "utf8")
-      diagnostics.push(`${file.path} encoding must be utf8.`);
+      fileIssues.push(`${file.path} encoding must be utf8.`);
+    diagnostics.push(...fileIssues);
+    fileResults.push({
+      path: file.path,
+      verdict: fileIssues.length === 0 ? "valid" : "invalid",
+      directory,
+      issues: fileIssues,
+    });
   }
-  return { ok: diagnostics.length === 0, diagnostics, fileCount: files.length };
+  return {
+    ok: diagnostics.length === 0,
+    diagnostics,
+    fileCount: files.length,
+    files: fileResults,
+    allowedDirectories,
+  };
 }
 
-function invalidCandidate(message: string, fileCount = 0) {
-  return { ok: false, diagnostics: [message], fileCount };
+function invalidCandidate(
+  message: string,
+  fileCount = 0,
+  allowedDirectories: VextMcpCandidateDirectory[] = [],
+) {
+  return {
+    ok: false,
+    diagnostics: [message],
+    fileCount,
+    files: [],
+    allowedDirectories,
+  };
 }
 
 function toKebabName(value: string): string | null {
@@ -549,46 +620,75 @@ function isSafeRelativePath(value: string): boolean {
   );
 }
 
-function candidateDirectoryPrefixes(
+function candidateDirectoryPolicy(
   project: VextMcpProjectInspection | undefined,
-): string[] {
+): VextMcpCandidateDirectory[] {
   if (!project) {
-    return DEFAULT_SERVICE_CANDIDATE_PATHS.map((item) =>
-      normalizeCandidatePrefix(item),
-    );
+    return DEFAULT_SERVICE_CANDIDATE_PATHS.map((item) => ({
+      prefix: normalizeCandidatePrefix(item),
+      source: "default" as const,
+    })).filter((item) => item.prefix);
   }
-  const prefixes = new Set<string>();
+  const directories = new Map<string, VextMcpCandidateDirectory>();
   for (const role of DEFAULT_CANDIDATE_SECTION_ROLES) {
     const section = project.snapshot.sections[role];
     if (!section) continue;
-    addCandidatePrefix(prefixes, section.actualPath ?? section.defaultPath);
+    addCandidateDirectory(
+      directories,
+      section.actualPath ?? section.defaultPath,
+      {
+        source: "project-section",
+        role,
+      },
+    );
   }
   for (const service of project.assistant.workspace?.config.services ?? []) {
     for (const candidatePath of DEFAULT_SERVICE_CANDIDATE_PATHS) {
-      addCandidatePrefix(
-        prefixes,
+      addCandidateDirectory(
+        directories,
         path.posix.join(service.root, candidatePath),
+        {
+          source: "workspace-service",
+          serviceId: service.id,
+        },
       );
     }
   }
   for (const sharedPackage of project.assistant.workspace?.config
     .sharedPackages ?? []) {
-    addCandidatePrefix(prefixes, sharedPackage.root);
+    addCandidateDirectory(directories, sharedPackage.root, {
+      source: "workspace-shared-package",
+      packageId: sharedPackage.id,
+      packageKind: sharedPackage.kind,
+    });
     for (const exportedPath of Object.values(sharedPackage.sourceExports)) {
-      addCandidatePrefix(
-        prefixes,
+      addCandidateDirectory(
+        directories,
         path.posix.join(sharedPackage.root, path.posix.dirname(exportedPath)),
+        {
+          source: "workspace-shared-package",
+          packageId: sharedPackage.id,
+          packageKind: sharedPackage.kind,
+        },
       );
     }
   }
-  return [...prefixes].sort();
+  return [...directories.values()].sort((a, b) =>
+    a.prefix.localeCompare(b.prefix),
+  );
 }
 
-function addCandidatePrefix(prefixes: Set<string>, value: string | null): void {
+function addCandidateDirectory(
+  directories: Map<string, VextMcpCandidateDirectory>,
+  value: string | null,
+  metadata: Omit<VextMcpCandidateDirectory, "prefix">,
+): void {
   if (!value) return;
   if (!isSafeRelativePath(value)) return;
   const prefix = normalizeCandidatePrefix(value);
-  if (prefix) prefixes.add(prefix);
+  if (prefix && !directories.has(prefix)) {
+    directories.set(prefix, { prefix, ...metadata });
+  }
 }
 
 function normalizeCandidatePrefix(value: string): string {
@@ -596,12 +696,14 @@ function normalizeCandidatePrefix(value: string): string {
   return normalized === "." ? "" : `${normalized}/`;
 }
 
-function isAllowedCandidatePath(
+function findCandidateDirectory(
   value: string,
-  allowedPrefixes: string[],
-): boolean {
+  directories: VextMcpCandidateDirectory[],
+): VextMcpCandidateDirectory | undefined {
   const normalized = value.replaceAll("\\", "/");
-  return allowedPrefixes.some((prefix) => normalized.startsWith(prefix));
+  return directories
+    .filter((directory) => normalized.startsWith(directory.prefix))
+    .sort((a, b) => b.prefix.length - a.prefix.length)[0];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

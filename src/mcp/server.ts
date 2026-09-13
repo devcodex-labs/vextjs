@@ -267,6 +267,8 @@ function registerTools(
           steps: ["Input shape was accepted by the protocol layer."],
           diagnostics: validation.diagnostics,
           fileCount: validation.fileCount,
+          files: validation.files,
+          allowedDirectories: validation.allowedDirectories,
           missingEvidence:
             validation.verdict === "valid"
               ? []

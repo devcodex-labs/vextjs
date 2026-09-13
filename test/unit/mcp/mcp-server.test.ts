@@ -190,7 +190,20 @@ describe("Vext MCP server", () => {
       });
       expect(sharedPackageFile.structuredContent).toMatchObject({
         status: "ok",
-        data: { verdict: "valid", fileCount: 1 },
+        data: {
+          verdict: "valid",
+          fileCount: 1,
+          files: [
+            {
+              path: "packages/models/src/order.ts",
+              verdict: "valid",
+              directory: {
+                source: "workspace-shared-package",
+                packageId: "models",
+              },
+            },
+          ],
+        },
       });
       const unsupportedDirectory = await client.callTool({
         name: "vext_validate_changes",
@@ -207,7 +220,10 @@ describe("Vext MCP server", () => {
       });
       expect(unsupportedDirectory.structuredContent).toMatchObject({
         status: "ok",
-        data: { verdict: "invalid" },
+        data: {
+          verdict: "invalid",
+          files: [{ path: "docs/notes.md", verdict: "invalid" }],
+        },
       });
       expect(JSON.stringify(unsupportedDirectory.structuredContent)).toContain(
         "outside supported Vext candidate directories",
