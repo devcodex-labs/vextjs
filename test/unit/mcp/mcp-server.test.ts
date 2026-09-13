@@ -32,6 +32,11 @@ describe("Vext MCP catalog", () => {
     expect(result.catalogDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(result.matches.some((match) => match.id === "C34")).toBe(true);
     expect(result.unknownIds).toEqual([]);
+    expect(
+      searchMcpCatalog({ query: "候选 校验 目录", limit: 10 }).matches.some(
+        (match) => match.id === "C27",
+      ),
+    ).toBe(true);
   });
 });
 

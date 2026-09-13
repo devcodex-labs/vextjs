@@ -425,7 +425,7 @@ function registerPrompts(server: McpServer): void {
     },
     async (args) =>
       promptResult(
-        `Create ${args.kind} module ${args.moduleName} with WF-01: inspect project, check capability, request a recipe draft, validate the candidate, let the host apply files, then run build/tests/docs checks.`,
+        `Create ${args.kind} module ${args.moduleName} with WF-01: inspect project structure, check capability, request a create-only Recipe ChangeSet, validate identity/directories/overwrite safety, let the host apply files, then execute the returned requiredHostSteps for build/tests/docs checks.`,
       ),
   );
 
@@ -467,7 +467,7 @@ function registerPrompts(server: McpServer): void {
     },
     async (args) =>
       promptResult(
-        `Review Vext changes: ${args.changeSummary}. Bind a baseline, inspect affected consumers, validate compatibility, and report positive and negative evidence. Focus: ${args.focus ?? "standard"}.`,
+        `Review Vext changes: ${args.changeSummary}. Bind a baseline, inspect affected consumers and MCP directory policy, validate compatibility and candidate diagnostics, then report positive and negative evidence. Focus: ${args.focus ?? "standard"}.`,
       ),
   );
 

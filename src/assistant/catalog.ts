@@ -80,7 +80,7 @@ export const VEXT_MCP_WORKFLOWS: VextMcpCatalogItem[] = [
   workflow(
     "WF-01",
     "create-vext-module",
-    "inspect → capability → generate → validate → 宿主应用 → 检查/测试/文档。",
+    "inspect → capability → generate ChangeSet → validate directories/identity/overwrite → 宿主应用 → 按 requiredHostSteps 检查/测试/文档。",
   ),
   workflow(
     "WF-02",
@@ -108,7 +108,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C02",
     "目录结构与角色发现",
-    "发现 routes/services/models/frontend/config/docs/mocks/jobs 等角色目录。",
+    "发现 routes/services/models/schemas/utils/shared-types/frontend/config/docs/mocks/jobs 等角色目录。",
   ),
   capability(
     "C03",
@@ -194,32 +194,32 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C23",
     "Monorepo workspace",
-    "识别 vext.workspace.json 服务和 shared packages。",
+    "识别 vext.workspace.json 服务、shared packages，并用于候选目录策略。",
     "partial",
   ),
   capability(
     "C24",
     "共享 contracts/models",
-    "识别共享包 sourceExports 与消费者反向影响。",
+    "识别共享包 sourceExports，并在候选校验中标注 shared package 来源。",
     "partial",
   ),
   capability("C25", "代码注释策略", "按项目语言和用户规范判断注释语言及密度。"),
   capability(
     "C26",
     "变更草稿",
-    "生成 ChangeSet 候选并绑定 baseSha256。",
-    "planned",
+    "为 17 条 Recipe 生成 create-only ChangeSet 候选并绑定项目身份。",
+    "partial",
   ),
   capability(
     "C27",
     "候选校验",
-    "对 changeSet/files 做 syntax/standard/strict 校验。",
-    "planned",
+    "校验 changeSet/files 的身份、目录策略、已有文件、重复路径、编码和 create-only 边界，并返回文件级解释。",
+    "partial",
   ),
   capability(
     "C28",
     "宿主操作流程",
-    "输出启动、重启、测试、构建、部署等宿主步骤。",
+    "按候选目录角色输出启动、重启、测试、构建、部署等宿主流程建议；命令仍由宿主执行。",
   ),
   capability(
     "C29",
@@ -273,17 +273,17 @@ export const VEXT_MCP_RULES: VextMcpCatalogItem[] = [
   rule(
     "R04",
     "baseline-required",
-    "进入生成/校验前必须绑定完整项目身份或返回 incomplete。",
+    "生成/校验可携带 expectedIdentity；过期项目身份返回 VEXT_CONTEXT_STALE，ChangeSet baseIdentity 不匹配会 invalid。",
   ),
   rule(
     "R05",
     "default-not-forced",
-    "默认目录是建议，不强制创建空目录；用户项目规范优先。",
+    "默认目录是建议，不强制创建空目录；候选目录从项目 section 与 workspace 派生，用户项目规范优先。",
   ),
   rule(
     "R06",
     "managed-mcp-update",
-    "项目需求、API、配置、依赖、目录、脚本变化时必须判定 MCP 影响并同步。",
+    "项目需求、API、配置、依赖、目录、脚本、测试/文档流程变化时必须判定 MCP 知识、Recipe、Resources、Prompts、校验和报告是否同步。",
   ),
 ];
 
