@@ -4,6 +4,10 @@
 
 Use `vext job list`, `vext job inspect <name>`, `vext job run <name>`, `vext job enqueue <name>`, `vext job scheduler`, `vext job worker`, `vext job runs`, and `vext job status <runId>` for background jobs. The commands load the headless Job runtime and do not start an HTTP server. See [Jobs](/guide/jobs).
 
+## MCP command
+
+The current development line adds `vext mcp --root <dir>` as the bundled stdio MCP server. It binds to one Vext project root, registers 7 Tools, 11 Resources, and 4 Prompts, and exposes bounded project inspection plus built-in Vext knowledge search. The MCP server does not execute shell commands, start or restart services, apply file changes, run tests, or modify host MCP configuration; it returns analysis, readiness diagnostics, and host-execution steps. Later MCP work packages will fill in ChangeSet generation, candidate validation, runtime bridge inspection, host sync, and full recipe coverage.
+
 :::tip Stable release
 This site documents the stable `v2.0.0` release. The CLI output below uses that published version.
 :::
@@ -40,6 +44,7 @@ npm run build # → vext build
 | `vext deploy assets` | Upload built frontend assets                                       | Frontend CDN/static asset deployment |
 | `vext typegen`       | Generate declaration + service dependency diagnosis (experimental) | TS/JS project engineering assistance |
 | `vext doctor routes` | Static route diagnosis + inspect / manifest (experimental)         | OpenAPI / routing management         |
+| `vext mcp`           | Start bundled stdio MCP server (current development line)          | AI-host project inspection           |
 | `vext start`         | Start production mode                                              | Production deployment                |
 | `vext stop`          | Stop service                                                       | Cluster mode management              |
 | `vext reload`        | Rolling restart                                                    | Zero-downtime updates                |

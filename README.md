@@ -213,6 +213,7 @@ Invoke via `npx vextjs <cmd>` (package) or, inside a project, `npx vext <cmd>` /
 | `vext start`         | Run production / built output                |
 | `vext typegen`       | Generate `app.services` / `app.extend` types |
 | `vext doctor routes` | Static route diagnostics (experimental)      |
+| `vext mcp`           | Start the bundled MCP stdio server           |
 
 ```bash
 npx vextjs create my-app

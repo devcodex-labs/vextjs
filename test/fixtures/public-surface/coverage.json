@@ -1169,6 +1169,12 @@
       ]
     },
     {
+      "document": "guide/cli",
+      "contract": "Bundled MCP stdio CLI entry for AI-host project inspection and Vext knowledge discovery.",
+      "limits": "The MCP command binds one project root and does not execute shell commands, run servers, apply changes, run tests, modify host MCP configuration, or expose a public TypeScript export.",
+      "items": ["cli:mcp"]
+    },
+    {
       "document": "guide/logger",
       "contract": "日志、sink、生命周期与请求日志。",
       "limits": "日志等级不等于业务健康；消费者负责自定义sink生命周期。",

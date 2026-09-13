@@ -110,7 +110,8 @@
     "verify:public-surface": "node scripts/validation/verify-public-surface.mjs",
     "verify:ci-contract": "node scripts/validation/verify-ci-contract.mjs",
     "verify:release-ancestry": "node scripts/verify-release-ancestry.mjs",
-    "verify:response-serializer": "node scripts/validation/benchmark-response-serialization.mjs"
+    "verify:response-serializer": "node scripts/validation/benchmark-response-serialization.mjs",
+    "verify:mcp": "node test/verify-mcp-stdio.mjs"
   },
   "keywords": [
     "vext",
@@ -146,6 +147,7 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
     "croner": "^10.0.1",
     "esbuild": "0.28.2",
     "fast-glob": "3.3.3",
@@ -193,6 +195,7 @@
   "devDependencies": {
     "@hono/node-server": "2.1.1",
     "@koa/router": "15.7.0",
+    "@modelcontextprotocol/client": "2.0.0",
     "@types/express": "5.0.6",
     "@types/koa": "3.0.1",
     "@types/micromatch": "4.0.10",

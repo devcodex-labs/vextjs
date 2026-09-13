@@ -4,6 +4,10 @@
 
 后台任务使用 `vext job list`、`vext job inspect <name>`、`vext job run <name>`、`vext job enqueue <name>`、`vext job scheduler`、`vext job worker`、`vext job runs` 和 `vext job status <runId>`。这些命令加载 headless Job runtime，不启动 HTTP 服务。详见 [任务与 Jobs](/zh/guide/jobs)。
 
+## MCP 命令
+
+当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查与内置 Vext 知识搜索。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、就绪诊断和需要宿主执行的步骤。后续 MCP 工作包会继续补齐 ChangeSet 生成、候选校验、运行态 Bridge 检查、宿主同步和完整 Recipe 覆盖。
+
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。
 :::
@@ -40,6 +44,7 @@ npm run build  # → vext build
 | `vext deploy assets` | 上传前端静态资源                                  | 前端 CDN/静态发布  |
 | `vext typegen`       | 生成声明 + service 依赖诊断（experimental）       | TS/JS 项目工程辅助 |
 | `vext doctor routes` | 静态路由诊断 + inspect / manifest（experimental） | OpenAPI / 路由治理 |
+| `vext mcp`           | 启动随包提供的 stdio MCP 服务（当前开发线）       | AI 宿主项目检查    |
 | `vext start`         | 生产模式启动                                      | 生产部署           |
 | `vext stop`          | 停止服务                                          | Cluster 模式管理   |
 | `vext reload`        | 滚动重启                                          | 零停机更新         |

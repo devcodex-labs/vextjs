@@ -11,6 +11,7 @@ import { statusCommand } from "./status.js";
 import { doctorCommand } from "./doctor.js";
 import { typegenCommand } from "./typegen.js";
 import { jobCommand } from "./job.js";
+import { mcpCommand } from "./mcp.js";
 
 /**
  * vext CLI — 框架命令行入口（Phase 1）
@@ -57,6 +58,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   doctor: doctorCommand,
   typegen: typegenCommand,
   job: jobCommand,
+  mcp: mcpCommand,
 };
 
 // ── 未实现命令占位 ──────────────────────────────────────────
@@ -158,6 +160,7 @@ function printHelp(): void {
     doctor                Preview static diagnostics (experimental)
     typegen               Generate declarations and run tooling diagnostics (experimental)
     job                   List, inspect, run, or start Job worker runtime
+    mcp                   Start the Vext MCP stdio server
 
   Global options:
     -h, --help            Show this help message
@@ -172,6 +175,7 @@ function printHelp(): void {
     vext doctor --help    Show doctor command options
     vext typegen --help   Show typegen command options
     vext job --help       Show job command options
+    vext mcp --help       Show mcp command options
     vext deploy --help    Show deploy command options
 
   Examples:

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add the bundled `vext mcp` stdio server with the fixed 7 Tools / 11 Resources / 4 Prompts protocol surface, bounded project inspection, built-in Vext knowledge search, and a real MCP stdio verification script.
+
 ### Changed
 
 - Update `esbuild` to `0.28.2`, `flex-rate-limit` to `2.2.5`, and `response-cache-kit` to `1.2.2`.
