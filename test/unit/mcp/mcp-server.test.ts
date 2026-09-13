@@ -146,6 +146,17 @@ describe("Vext MCP server", () => {
         status: "ok",
         data: { verdict: "valid", fileCount: 1 },
       });
+      const routeDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-01", name: "Account Profile" },
+      });
+      expect(routeDraft.structuredContent).toMatchObject({
+        status: "ok",
+        data: { kind: "change-set", verdict: "ready" },
+      });
+      expect(JSON.stringify(routeDraft.structuredContent)).toContain(
+        "src/routes/account-profile.ts",
+      );
       const invalid = await client.callTool({
         name: "vext_generate_changes",
         arguments: { recipeId: "RCP-01", name: "../bad" },

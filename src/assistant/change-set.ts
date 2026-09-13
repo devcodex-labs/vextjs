@@ -35,10 +35,20 @@ export interface VextMcpChangeSetResult {
 }
 
 const SUPPORTED_RECIPES = new Map([
+  ["RCP-01", "api-route"],
+  ["api-route", "api-route"],
+  ["RCP-05", "service"],
+  ["service", "service"],
+  ["RCP-09", "locale"],
+  ["locale", "locale"],
+  ["RCP-10", "test"],
+  ["test", "test"],
   ["RCP-11", "type-contract"],
   ["type-contract", "type-contract"],
   ["RCP-12", "utility"],
   ["utility", "utility"],
+  ["RCP-16", "mock-scenario"],
+  ["mock-scenario", "mock-scenario"],
   ["RCP-17", "job-handler"],
   ["job-handler", "job-handler"],
 ]);
@@ -140,8 +150,72 @@ function filesForRecipe(
   project: VextMcpProjectInspection,
 ): VextMcpChangeSetFile[] {
   if (recipe === "type-contract") return [typeContractFile(name, input)];
+  if (recipe === "api-route") return [apiRouteFile(name)];
+  if (recipe === "service") return [serviceFile(name)];
+  if (recipe === "locale") return localeFiles(name, input);
+  if (recipe === "test") return [testFile(name)];
+  if (recipe === "mock-scenario") return [mockScenarioFile(name)];
   if (recipe === "utility") return [utilityFile(name)];
   return [jobHandlerFile(name, input, project)];
+}
+
+function apiRouteFile(name: string): VextMcpChangeSetFile {
+  const routePath = `/${name}`;
+  return {
+    path: `src/routes/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a conventional Vext API route file.",
+    content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      docs: { summary: "Read ${escapeString(routePath)}" },\n    },\n    (_req, res) => {\n      res.json({ ok: true, resource: "${escapeString(name)}" });\n    },\n  );\n});\n`,
+  };
+}
+
+function serviceFile(name: string): VextMcpChangeSetFile {
+  const className = `${toPascalName(name)}Service`;
+  return {
+    path: `src/services/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a service owned by the application service loader.",
+    content: `export default class ${className} {\n  async health() {\n    return { ok: true };\n  }\n}\n`,
+  };
+}
+
+function localeFiles(
+  name: string,
+  input: VextGenerateChangesInput,
+): VextMcpChangeSetFile[] {
+  const locale = readStringOption(input.options, "locale") ?? "en-US";
+  const messageKey = `${name}.example`;
+  return [
+    {
+      path: `src/locales/${name}/${locale}.json`,
+      action: "create",
+      encoding: "utf8",
+      reason: "Create a feature-scoped locale JSON file.",
+      content: `${JSON.stringify({ [messageKey]: { code: 40000, message: "Example message" } }, null, 2)}\n`,
+    },
+  ];
+}
+
+function testFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `test/unit/${name}.test.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a focused Vitest unit test skeleton.",
+    content: `import { describe, expect, it } from "vitest";\n\ndescribe("${escapeString(name)}", () => {\n  it("defines the expected behavior", () => {\n    expect(true).toBe(true);\n  });\n});\n`,
+  };
+}
+
+function mockScenarioFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/mocks/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create an application-owned mock scenario module.",
+    content: `export const ${toCamelName(name)}Mock = {\n  id: "${escapeString(name)}",\n  status: "ready",\n};\n`,
+  };
 }
 
 function typeContractFile(
