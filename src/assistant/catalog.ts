@@ -157,12 +157,7 @@ export const VEXT_MCP_RECIPES: VextMcpCatalogItem[] = [
   recipe("RCP-14", "frontend-layout", "生成页面 layout 并绑定消费者。"),
   recipe("RCP-15", "reusable-schema", "生成可复用 schema 并绑定消费者。"),
   recipe("RCP-16", "mock-scenario", "生成前后端 mock 场景与测试替身。"),
-  recipe(
-    "RCP-17",
-    "job-handler",
-    "生成 Job 定义、手动/队列/定时执行候选。",
-    "partial",
-  ),
+  recipe("RCP-17", "job-handler", "生成 Job 定义、手动/队列/定时执行候选。"),
 ];
 
 export const VEXT_MCP_WORKFLOWS: VextMcpCatalogItem[] = [
@@ -297,13 +292,11 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
     "C26",
     "变更草稿",
     "为 17 条 Recipe 生成 create-only ChangeSet 候选并绑定项目身份。",
-    "partial",
   ),
   capability(
     "C27",
     "候选校验",
     "校验 changeSet/files 的身份、目录策略、已有文件、重复路径、编码和 create-only 边界，并返回文件级解释。",
-    "partial",
   ),
   capability(
     "C28",
@@ -333,7 +326,6 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
     "C33",
     "依赖知识",
     "登记 schema-dsl、response-cache-kit、flex-rate-limit、esbuild、monsqlize 的版本与 Vext 使用边界，可通过 knowledge 搜索。",
-    "partial",
   ),
   capability(
     "C34",
@@ -443,7 +435,7 @@ function capability(
   id: string,
   title: string,
   summary: string,
-  status: VextMcpCatalogItem["status"] = "partial",
+  status: VextMcpCatalogItem["status"] = "available",
 ): VextMcpCatalogItem {
   return {
     id,
@@ -466,7 +458,7 @@ function rule(id: string, title: string, summary: string): VextMcpCatalogItem {
     title,
     summary,
     body: `${title}：${summary}`,
-    status: "partial",
+    status: "available",
     sourceRefs: ["requirements/06-协议配置与配方合同.md"],
   };
 }
@@ -488,7 +480,7 @@ function dependencyKnowledge(
     body: `${title}（${version}）：${summary}\n${guidance
       .map((item) => `- ${item}`)
       .join("\n")}`,
-    status: "partial",
+    status: "available",
     sourceRefs,
   };
 }
@@ -497,7 +489,7 @@ function recipe(
   id: string,
   title: string,
   summary: string,
-  status: VextMcpCatalogItem["status"] = "planned",
+  status: VextMcpCatalogItem["status"] = "available",
 ): VextMcpCatalogItem {
   return {
     id,
@@ -539,7 +531,7 @@ function workflow(
     title,
     summary,
     body: `${title} 工作流：${summary}`,
-    status: "partial",
+    status: "available",
     sourceRefs: [
       "requirements/02-完整技术方案.md#Resources、Prompts 和缺能力宿主",
     ],

@@ -179,7 +179,7 @@ function registerTools(
     {
       title: "Generate Vext changes",
       description:
-        "Prepare deterministic ChangeSet drafts for a fixed Recipe. The first MCP batch only exposes readiness and missing-input diagnostics.",
+        "Prepare deterministic create-only ChangeSet drafts for supported Vext Recipes and bind them to the inspected project identity.",
       inputSchema: jsonSchema<VextMcpToolInputMap["vext_generate_changes"]>(
         VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_generate_changes,
       ),
@@ -243,7 +243,7 @@ function registerTools(
     {
       title: "Validate Vext changes",
       description:
-        "Validate ChangeSet or file candidates. The first MCP batch returns incomplete-baseline diagnostics until WP-05/WP-06/WP-09 are implemented.",
+        "Validate ChangeSet or file candidates against project identity, directory policy, create-only safety, duplicate paths, encoding, and host validation steps.",
       inputSchema: jsonSchema<VextMcpToolInputMap["vext_validate_changes"]>(
         VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_validate_changes,
       ),
@@ -285,7 +285,7 @@ function registerTools(
     {
       title: "Check Vext project",
       description:
-        "Run bounded static project checks. The first MCP batch reports directory/source-state findings without executing host commands.",
+        "Run bounded static project checks and return diagnostics without executing host commands.",
       inputSchema: jsonSchema<VextMcpToolInputMap["vext_project_check"]>(
         VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_project_check,
       ),
@@ -335,7 +335,7 @@ function registerTools(
     {
       title: "Inspect Vext runtime",
       description:
-        "Inspect runtime bridge state if available. The first MCP batch does not start dev servers or read raw logs.",
+        "Inspect managed runtime snapshot state if available. MCP does not start dev servers or read raw logs.",
       inputSchema: jsonSchema<VextMcpToolInputMap["vext_runtime_inspect"]>(
         VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_runtime_inspect,
       ),
@@ -692,7 +692,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C32") {
     return [
-      "Run npm run verify:pack-install before release; complete the remaining platform and real-host matrix in the release workflow.",
+      "Run npm run verify:pack-install before release; successful runs clean temporary install workspaces by default, and the remaining platform and real-host matrix stays in the release workflow.",
     ];
   }
   return [];

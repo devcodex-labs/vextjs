@@ -5,7 +5,9 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  VEXT_MCP_CAPABILITIES,
   VEXT_MCP_PROMPT_NAMES,
+  VEXT_MCP_RECIPES,
   VEXT_MCP_RESOURCE_URIS,
   VEXT_MCP_TOOL_NAMES,
   searchMcpCatalog,
@@ -48,6 +50,24 @@ describe("Vext MCP catalog", () => {
       title: "schema-dsl",
     });
     expect(dependency.matches[0]?.summary).toContain("3.0.4");
+  });
+
+  it("marks implemented recipe and knowledge surfaces as available", () => {
+    expect(VEXT_MCP_RECIPES.find((item) => item.id === "RCP-17")).toMatchObject(
+      { status: "available" },
+    );
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C26"),
+    ).toMatchObject({ status: "available" });
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C27"),
+    ).toMatchObject({ status: "available" });
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C33"),
+    ).toMatchObject({ status: "available" });
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C18"),
+    ).toMatchObject({ status: "partial" });
   });
 });
 
