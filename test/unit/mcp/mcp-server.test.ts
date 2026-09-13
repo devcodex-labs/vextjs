@@ -119,6 +119,33 @@ describe("Vext MCP server", () => {
         arguments: { query: "job", limit: 5 },
       });
       expect(JSON.stringify(knowledge.structuredContent)).toContain("C34");
+      const draft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: {
+          recipeId: "RCP-11",
+          name: "Billing Event",
+          options: { description: "Billing event contract." },
+        },
+      });
+      expect(draft.structuredContent).toMatchObject({
+        status: "ok",
+        data: { kind: "change-set", verdict: "ready" },
+      });
+      expect(JSON.stringify(draft.structuredContent)).toContain(
+        "src/types/shared/billing-event.d.ts",
+      );
+      const validateDraft = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          changeSet: (
+            draft.structuredContent as { data: { changeSet: unknown } }
+          ).data.changeSet,
+        },
+      });
+      expect(validateDraft.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "valid", fileCount: 1 },
+      });
       const invalid = await client.callTool({
         name: "vext_generate_changes",
         arguments: { recipeId: "RCP-01", name: "../bad" },

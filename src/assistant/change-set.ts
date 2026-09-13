@@ -1,0 +1,297 @@
+import type {
+  VextGenerateChangesInput,
+  VextValidateChangesInput,
+} from "./contracts.js";
+import type { VextMcpProjectInspection } from "./project-inspector.js";
+
+export interface VextMcpChangeSetFile {
+  path: string;
+  action: "create";
+  encoding: "utf8";
+  content: string;
+  reason: string;
+}
+
+export interface VextMcpChangeSet {
+  schemaVersion: 1;
+  kind: "change-set";
+  recipeId: string;
+  recipeTitle: string;
+  name: string;
+  baseIdentity: {
+    projectId: string;
+    contextRevision: string | null;
+  };
+  files: VextMcpChangeSetFile[];
+  warnings: string[];
+  requiredHostSteps: string[];
+}
+
+export interface VextMcpChangeSetResult {
+  status: "ready" | "unsupported" | "invalid";
+  changeSet?: VextMcpChangeSet;
+  diagnostics: string[];
+  missingEvidence: string[];
+}
+
+const SUPPORTED_RECIPES = new Map([
+  ["RCP-11", "type-contract"],
+  ["type-contract", "type-contract"],
+  ["RCP-12", "utility"],
+  ["utility", "utility"],
+  ["RCP-17", "job-handler"],
+  ["job-handler", "job-handler"],
+]);
+
+const SAFE_SEGMENT_PATTERN = /^[a-z][a-z0-9-]{0,119}$/;
+
+export function generateMcpChangeSet(
+  input: VextGenerateChangesInput,
+  project: VextMcpProjectInspection,
+): VextMcpChangeSetResult {
+  const recipe = SUPPORTED_RECIPES.get(input.recipeId);
+  if (!recipe) {
+    return {
+      status: "unsupported",
+      diagnostics: [
+        `Recipe ${input.recipeId} is registered but its generator is not implemented in this batch.`,
+      ],
+      missingEvidence: [
+        "A generator implementation for this recipe is not available yet.",
+      ],
+    };
+  }
+  const normalizedName = toKebabName(input.name);
+  if (!normalizedName) {
+    return {
+      status: "invalid",
+      diagnostics: [
+        "name must be a kebab-case identifier after normalization.",
+      ],
+      missingEvidence: [],
+    };
+  }
+  const files = filesForRecipe(recipe, normalizedName, input, project);
+  const changeSet: VextMcpChangeSet = {
+    schemaVersion: 1,
+    kind: "change-set",
+    recipeId: input.recipeId,
+    recipeTitle: recipe,
+    name: normalizedName,
+    baseIdentity: {
+      projectId: project.identity.projectId,
+      contextRevision: project.identity.contextRevision,
+    },
+    files,
+    warnings: project.identity.contextRevision
+      ? []
+      : [
+          "Project contextRevision is unavailable; inspect a complete project before applying.",
+        ],
+    requiredHostSteps: [
+      "Review every file in the ChangeSet before applying it.",
+      "Apply the candidate files in the host workspace only after checking for existing files.",
+      "Run typecheck, focused tests, and any affected docs checks after applying.",
+    ],
+  };
+  const validation = validateMcpChangeSet(changeSet);
+  if (!validation.ok) {
+    return {
+      status: "invalid",
+      diagnostics: validation.diagnostics,
+      missingEvidence: [],
+    };
+  }
+  return { status: "ready", changeSet, diagnostics: [], missingEvidence: [] };
+}
+
+export function validateMcpChangeSetInput(input: VextValidateChangesInput): {
+  verdict: "valid" | "invalid" | "incomplete";
+  diagnostics: string[];
+  fileCount: number;
+} {
+  if (input.changeSet) {
+    const validation = validateMcpChangeSet(input.changeSet);
+    return {
+      verdict: validation.ok ? "valid" : "invalid",
+      diagnostics: validation.diagnostics,
+      fileCount: validation.fileCount,
+    };
+  }
+  if (input.files) {
+    const validation = validateCandidateFiles(input.files);
+    return {
+      verdict: validation.ok ? "valid" : "invalid",
+      diagnostics: validation.diagnostics,
+      fileCount: validation.fileCount,
+    };
+  }
+  return {
+    verdict: "incomplete",
+    diagnostics: ["changeSet or files is required."],
+    fileCount: 0,
+  };
+}
+
+function filesForRecipe(
+  recipe: string,
+  name: string,
+  input: VextGenerateChangesInput,
+  project: VextMcpProjectInspection,
+): VextMcpChangeSetFile[] {
+  if (recipe === "type-contract") return [typeContractFile(name, input)];
+  if (recipe === "utility") return [utilityFile(name)];
+  return [jobHandlerFile(name, input, project)];
+}
+
+function typeContractFile(
+  name: string,
+  input: VextGenerateChangesInput,
+): VextMcpChangeSetFile {
+  const interfaceName = `${toPascalName(name)}Contract`;
+  const description =
+    readStringOption(input.options, "description") ??
+    "Shared serializable contract.";
+  return {
+    path: `src/types/shared/${name}.d.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create an application-owned shared type contract.",
+    content: `/** ${escapeComment(description)} */\nexport interface ${interfaceName} {\n  /** Stable identifier supplied by the application. */\n  id: string;\n}\n`,
+  };
+}
+
+function utilityFile(name: string): VextMcpChangeSetFile {
+  const functionName = toCamelName(name);
+  return {
+    path: `src/utils/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a small owner-near utility module.",
+    content: `export function ${functionName}<T>(value: T): T {\n  return value;\n}\n`,
+  };
+}
+
+function jobHandlerFile(
+  name: string,
+  input: VextGenerateChangesInput,
+  project: VextMcpProjectInspection,
+): VextMcpChangeSetFile {
+  const jobName = readStringOption(input.options, "jobName") ?? name;
+  const queue = readStringOption(input.options, "queue") ?? "default";
+  const jobsRoot = project.snapshot.sections.jobs?.actualPath ?? "src/jobs";
+  return {
+    path: `${jobsRoot}/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a Vext Job handler skeleton for host-side review.",
+    content: `import { defineJob } from "vextjs";\n\nexport default defineJob({\n  name: "${escapeString(jobName)}",\n  queue: "${escapeString(queue)}",\n  async handler(ctx) {\n    ctx.logger?.info({ job: "${escapeString(jobName)}" }, "job started");\n  },\n});\n`,
+  };
+}
+
+function validateMcpChangeSet(value: unknown): {
+  ok: boolean;
+  diagnostics: string[];
+  fileCount: number;
+} {
+  if (!isRecord(value)) return invalidCandidate("changeSet must be an object.");
+  if (value.schemaVersion !== 1)
+    return invalidCandidate("changeSet.schemaVersion must be 1.");
+  if (value.kind !== "change-set")
+    return invalidCandidate("changeSet.kind must be change-set.");
+  if (!Array.isArray(value.files))
+    return invalidCandidate("changeSet.files must be an array.");
+  return validateCandidateFiles(value.files);
+}
+
+function validateCandidateFiles(files: unknown[]): {
+  ok: boolean;
+  diagnostics: string[];
+  fileCount: number;
+} {
+  if (files.length < 1 || files.length > 50) {
+    return invalidCandidate(
+      "files must contain 1 to 50 entries.",
+      files.length,
+    );
+  }
+  const seen = new Set<string>();
+  const diagnostics: string[] = [];
+  for (const file of files) {
+    if (!isRecord(file)) {
+      diagnostics.push("file entry must be an object.");
+      continue;
+    }
+    if (file.action !== undefined && file.action !== "create") {
+      diagnostics.push("Only create actions are supported in this batch.");
+    }
+    if (typeof file.path !== "string" || !isSafeRelativePath(file.path)) {
+      diagnostics.push("file.path must be a safe relative path.");
+      continue;
+    }
+    if (seen.has(file.path))
+      diagnostics.push(`Duplicate file path ${file.path}.`);
+    seen.add(file.path);
+    if (typeof file.content !== "string")
+      diagnostics.push(`${file.path} content must be a string.`);
+    if (file.encoding !== undefined && file.encoding !== "utf8")
+      diagnostics.push(`${file.path} encoding must be utf8.`);
+  }
+  return { ok: diagnostics.length === 0, diagnostics, fileCount: files.length };
+}
+
+function invalidCandidate(message: string, fileCount = 0) {
+  return { ok: false, diagnostics: [message], fileCount };
+}
+
+function toKebabName(value: string): string | null {
+  const normalized = value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/[ _]+/g, "-")
+    .toLowerCase();
+  return SAFE_SEGMENT_PATTERN.test(normalized) ? normalized : null;
+}
+
+function toPascalName(value: string): string {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+function toCamelName(value: string): string {
+  const pascal = toPascalName(value);
+  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+}
+
+function readStringOption(
+  options: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = options?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isSafeRelativePath(value: string): boolean {
+  const normalized = value.replaceAll("\\", "/");
+  return (
+    normalized.length > 0 &&
+    normalized.length <= 260 &&
+    !/^(?:[A-Za-z]:|\/)/.test(normalized) &&
+    !/(^|\/)\.\.(?:\/|$)/.test(normalized) &&
+    !normalized.includes("\0")
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function escapeString(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function escapeComment(value: string): string {
+  return value.replaceAll("*/", "*\\/");
+}

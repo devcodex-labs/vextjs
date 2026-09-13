@@ -14,6 +14,10 @@ import {
   searchMcpCatalog,
 } from "../assistant/catalog.js";
 import {
+  generateMcpChangeSet,
+  validateMcpChangeSetInput,
+} from "../assistant/change-set.js";
+import {
   VEXT_MCP_TOOL_INPUT_SCHEMAS,
   createAssistantFailure,
   parseMcpToolInput,
@@ -194,6 +198,23 @@ function registerTools(
           item.id === input.value.recipeId ||
           item.title === input.value.recipeId,
       );
+      const generated = generateMcpChangeSet(input.value, project);
+      if (generated.status === "ready" && generated.changeSet) {
+        return toolResult({
+          schemaVersion: 1,
+          status: "ok",
+          data: {
+            kind: "change-set",
+            recipeId: input.value.recipeId,
+            verdict: "ready",
+            changeSet: generated.changeSet,
+            diagnostics: [],
+            missingEvidence: [],
+            applyReadiness: "host-review-required",
+            requiredHostSteps: generated.changeSet.requiredHostSteps,
+          },
+        });
+      }
       return toolResult({
         schemaVersion: 1,
         status: "ok",
@@ -203,13 +224,9 @@ function registerTools(
           decisions: recipe ? [recipe.summary] : [],
           verdict: recipe ? "incomplete" : "invalid",
           diagnostics: recipe
-            ? [
-                "ChangeSet generation is registered but will be implemented in the recipe work packages.",
-              ]
+            ? generated.diagnostics
             : [`Unknown recipeId ${input.value.recipeId}.`],
-          missingEvidence: [
-            "WP-09+ recipe implementation is not complete in this MCP batch.",
-          ],
+          missingEvidence: generated.missingEvidence,
           applyReadiness: "blocked",
           requiredHostSteps: [
             "Run vext_project_inspect before requesting generation.",
@@ -240,19 +257,20 @@ function registerTools(
         project,
       );
       if (identityFailure) return identityFailure;
+      const validation = validateMcpChangeSetInput(input.value);
       return toolResult({
         schemaVersion: 1,
         status: "ok",
         data: {
-          kind: "incomplete-baseline",
-          verdict: "incomplete",
+          kind: "candidate-validation",
+          verdict: validation.verdict,
           steps: ["Input shape was accepted by the protocol layer."],
-          diagnostics: [
-            "Full ChangeSet normalization and candidate validation are implemented in later work packages.",
-          ],
-          missingEvidence: [
-            "Complete baseline and validation engine are not available in this MCP batch.",
-          ],
+          diagnostics: validation.diagnostics,
+          fileCount: validation.fileCount,
+          missingEvidence:
+            validation.verdict === "valid"
+              ? []
+              : ["Fix the reported candidate diagnostics before applying."],
           requiredHostSteps: [
             "Run project build/typecheck/tests in the host after applying any manual changes.",
           ],
