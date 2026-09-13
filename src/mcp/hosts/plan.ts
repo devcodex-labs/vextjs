@@ -16,6 +16,7 @@ export interface VextMcpHostSyncPlanOptions {
   frameworkVersion: string;
   host?: VextMcpHostId;
   mode: "check" | "dry-run" | "write";
+  includeSkill?: boolean;
 }
 
 export interface VextMcpHostSyncPlan {
@@ -38,8 +39,17 @@ export interface VextMcpHostSyncPlan {
     hosts: VextMcpHostId[];
     sources: string[];
   };
+  skill: {
+    include: boolean;
+    targets: VextMcpHostSkillTarget[];
+  };
   targets: VextMcpHostSyncTarget[];
   warnings: string[];
+}
+
+export interface VextMcpHostSkillTarget {
+  host: VextMcpHostId;
+  path: string;
 }
 
 export interface VextMcpHostSyncTarget {
@@ -124,6 +134,16 @@ export function createVextMcpHostSyncPlan(
       sync: project.assistant.devMcp.sync,
       hosts: declaredHosts,
       sources: project.assistant.devMcpSources,
+    },
+    skill: {
+      include: options.includeSkill === true,
+      targets:
+        options.includeSkill === true
+          ? targets.map((target) => ({
+              host: target.host,
+              path: target.skillPath,
+            }))
+          : [],
     },
     targets,
     warnings,

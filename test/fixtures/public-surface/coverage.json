@@ -1184,7 +1184,7 @@
     {
       "document": "guide/cli",
       "contract": "Bundled MCP stdio CLI entry for AI-host project inspection, Vext knowledge discovery, and optional Skill export.",
-      "limits": "The MCP command binds one project root and does not execute shell commands, run servers, apply changes, run tests, modify host MCP configuration, or expose a public TypeScript export. Skill commands only inspect or export the bundled Skill to a user-selected path.",
+      "limits": "The MCP command binds one project root and does not execute shell commands, run servers, apply changes, run tests, or expose a public TypeScript export. Skill commands only inspect or export the bundled Skill to a user-selected path; sync --skill writes project-local host Skill paths without overwriting different existing files.",
       "items": [
         "cli:mcp",
         "cli:mcp:--check",
@@ -1195,6 +1195,7 @@
         "cli:mcp:--json",
         "cli:mcp:--output",
         "cli:mcp:--root",
+        "cli:mcp:--skill",
         "cli:mcp:-h"
       ]
     },

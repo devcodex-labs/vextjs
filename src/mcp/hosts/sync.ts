@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser";
 
+import { VEXT_MCP_SKILL_CONTENT } from "../../assistant/skill.js";
 import type { VextMcpHostSyncPlan, VextMcpHostSyncTarget } from "./plan.js";
 
 export interface VextMcpHostSyncApplyResult {
@@ -10,6 +11,7 @@ export interface VextMcpHostSyncApplyResult {
   launcher: VextMcpWrittenFile;
   state: VextMcpWrittenFile;
   targets: VextMcpHostSyncApplyTarget[];
+  skills: VextMcpHostSkillApplyTarget[];
 }
 
 export interface VextMcpWrittenFile {
@@ -26,6 +28,14 @@ export interface VextMcpHostSyncApplyTarget {
   reason: string;
 }
 
+export interface VextMcpHostSkillApplyTarget {
+  host: string;
+  path: string;
+  status: "written" | "up-to-date" | "blocked";
+  verified: boolean;
+  reason: string;
+}
+
 export async function applyVextMcpHostSyncPlan(
   plan: VextMcpHostSyncPlan,
 ): Promise<VextMcpHostSyncApplyResult> {
@@ -39,16 +49,24 @@ export async function applyVextMcpHostSyncPlan(
   for (const target of plan.targets) {
     targets.push(await applyTarget(plan, target));
   }
+  const skills: VextMcpHostSkillApplyTarget[] = [];
+  if (plan.skill.include) {
+    for (const target of plan.targets) {
+      skills.push(await applySkillTarget(plan, target));
+    }
+  }
   return {
     schemaVersion: 1,
-    status: targets.some(
-      (target) => target.status === "blocked" || !target.verified,
-    )
-      ? "partial"
-      : "ok",
+    status:
+      targets.some(
+        (target) => target.status === "blocked" || !target.verified,
+      ) || skills.some((skill) => skill.status === "blocked" || !skill.verified)
+        ? "partial"
+        : "ok",
     launcher,
     state,
     targets,
+    skills,
   };
 }
 
@@ -139,6 +157,36 @@ async function applyTomlTarget(
   };
 }
 
+async function applySkillTarget(
+  plan: VextMcpHostSyncPlan,
+  target: VextMcpHostSyncTarget,
+): Promise<VextMcpHostSkillApplyTarget> {
+  const absolutePath = path.join(plan.rootDir, target.skillPath);
+  const content = `${VEXT_MCP_SKILL_CONTENT.trimEnd()}\n`;
+  const current = await readOptionalText(absolutePath);
+  if (current !== null && current !== content) {
+    return {
+      host: target.host,
+      path: target.skillPath,
+      status: "blocked",
+      verified: false,
+      reason:
+        "Skill file already exists with different content; it was not modified.",
+    };
+  }
+  const written = await writeIfChanged(absolutePath, content);
+  const verified = (await readOptionalText(absolutePath)) === content;
+  return {
+    host: target.host,
+    path: target.skillPath,
+    status: written.status,
+    verified,
+    reason: verified
+      ? "Bundled project-local Skill file is present."
+      : "Skill file was written but read-back verification failed.",
+  };
+}
+
 async function writeIfChanged(
   filePath: string,
   content: string,
@@ -180,6 +228,7 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
         command: target.command,
         args: target.args,
       })),
+      skills: plan.skill,
     },
     null,
     2,

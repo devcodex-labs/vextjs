@@ -14,7 +14,7 @@
 
 宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry，为 Codex 与 Grok 等 TOML 宿主写入 Vext 受管块。写入结果会返回目标级 `verified` 回读校验；若 TOML 中已有同名非受管 table，会返回 blocked 并保留原文件；真实宿主刷新和五宿主运行验收仍按后续同步批次处理。
 
-可选 Skill 随包构建，可用 `vext mcp skill check` 查看摘要、`vext mcp skill print` 输出 Markdown，或用 `vext mcp skill write --output <file>` 写入用户指定位置。该命令只导出官方 Skill，不会修改 Codex、Claude、Cursor、VS Code 或 Grok 的 MCP 配置；宿主原生安装仍按后续同步能力处理。
+可选 Skill 随包构建，可用 `vext mcp skill check` 查看摘要、`vext mcp skill print` 输出 Markdown，或用 `vext mcp skill write --output <file>` 写入用户指定位置。`vext mcp sync --skill` 会按所选宿主的项目内 Skill 路径写入官方 Skill；若目标文件已存在且内容不同，会返回 blocked 并保留原文件。
 
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。

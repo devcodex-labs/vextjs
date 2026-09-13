@@ -411,6 +411,31 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
       "Packed MCP sync TOML write smoke returned unexpected output.",
     );
   }
+  const skillWritten = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "sync",
+      "--root",
+      writeFixture,
+      "--host",
+      "vscode",
+      "--skill",
+      "--json",
+    ]),
+  );
+  if (
+    skillWritten.status !== "ok" ||
+    skillWritten.applied?.skills?.[0]?.status !== "written" ||
+    skillWritten.applied?.skills?.[0]?.verified !== true ||
+    !readFileSync(
+      path.join(writeFixture, ".github", "skills", "vextjs", "SKILL.md"),
+      "utf8",
+    ).includes("VextJS Official MCP Skill")
+  ) {
+    throw new Error(
+      "Packed MCP sync Skill write smoke returned unexpected output.",
+    );
+  }
   console.log("Packed MCP sync plan/write smoke passed.");
 }
 

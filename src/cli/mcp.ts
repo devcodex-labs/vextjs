@@ -39,7 +39,7 @@ export async function mcpCommand(args: string[] = []): Promise<void> {
 function printMcpHelp(): void {
   console.log(`
   Usage: vext mcp [options]
-         vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--json]
+         vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--skill] [--json]
          vext mcp skill <check|print|write> [options]
 
   Options:
@@ -52,6 +52,7 @@ function printMcpHelp(): void {
 
   Sync:
     vext mcp sync --root . --host vscode --json
+    vext mcp sync --root . --host codex --skill --json
     vext mcp sync --root . --check --json
     vext mcp sync --root . --dry-run --host codex --json
 
@@ -73,6 +74,7 @@ async function mcpSyncCommand(args: string[]): Promise<void> {
     frameworkVersion: readFrameworkVersion(),
     host: options.host,
     mode: options.mode,
+    includeSkill: options.includeSkill,
   });
   const result = {
     status: "ok",
@@ -93,6 +95,7 @@ function parseMcpSyncArgs(args: string[]): {
   rootDir: string;
   host?: VextMcpHostId;
   mode: "check" | "dry-run" | "write";
+  includeSkill: boolean;
   json: boolean;
   help: boolean;
 } {
@@ -100,6 +103,7 @@ function parseMcpSyncArgs(args: string[]): {
   let host: VextMcpHostId | undefined;
   let check = false;
   let dryRun = false;
+  let includeSkill = false;
   let json = false;
   let help = false;
   for (let index = 0; index < args.length; index += 1) {
@@ -139,6 +143,9 @@ function parseMcpSyncArgs(args: string[]): {
       case "--json":
         json = true;
         break;
+      case "--skill":
+        includeSkill = true;
+        break;
       case "--help":
       case "-h":
         help = true;
@@ -147,7 +154,9 @@ function parseMcpSyncArgs(args: string[]): {
         throw new Error(`[vextjs] Unknown vext mcp sync argument: ${arg}`);
     }
   }
-  if (help) return { rootDir, host, mode: "check", json, help };
+  if (help) {
+    return { rootDir, host, mode: "check", includeSkill, json, help };
+  }
   if (check && dryRun) {
     throw new Error(
       "[vextjs] vext mcp sync --check and --dry-run are mutually exclusive.",
@@ -157,6 +166,7 @@ function parseMcpSyncArgs(args: string[]): {
     rootDir,
     host,
     mode: check ? "check" : dryRun ? "dry-run" : "write",
+    includeSkill,
     json,
     help,
   };
@@ -168,7 +178,7 @@ function isVextMcpHostId(value: string): value is VextMcpHostId {
 
 function printMcpSyncHelp(): void {
   console.log(`
-  Usage: vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--json]
+  Usage: vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--skill] [--json]
 
   Options:
     --root <dir>          Vext service root
@@ -176,11 +186,13 @@ function printMcpSyncHelp(): void {
     --check               Compare intent and print the plan without writes
     --dry-run             Print the planned managed entry without writes
     --json                Print a single JSON object
+    --skill               Also write bundled project-local Skill file(s)
     -h, --help            Show this help message
 
   Notes:
     Without --check or --dry-run, sync writes the project launcher/state and JSON
-    host config entries or TOML managed blocks.
+    host config entries or TOML managed blocks. --skill writes project-local
+    Skill files only when the target file is missing or already managed by Vext.
 `);
 }
 

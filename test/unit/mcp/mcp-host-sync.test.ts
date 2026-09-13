@@ -172,6 +172,100 @@ describe("Vext MCP host sync planning", () => {
     }
   });
 
+  it("writes project-local Skill files when requested", async () => {
+    const root = await createProject();
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand([
+        "sync",
+        "--root",
+        root,
+        "--host",
+        "vscode",
+        "--skill",
+        "--json",
+      ]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result.plan.skill).toMatchObject({
+        include: true,
+        targets: [{ host: "vscode", path: ".github/skills/vextjs/SKILL.md" }],
+      });
+      expect(result.applied).toMatchObject({
+        status: "ok",
+        skills: [{ host: "vscode", status: "written", verified: true }],
+      });
+      const skill = await readFile(
+        path.join(root, ".github", "skills", "vextjs", "SKILL.md"),
+        "utf8",
+      );
+      expect(skill).toContain("VextJS Official MCP Skill");
+
+      logs.length = 0;
+      await mcpCommand([
+        "sync",
+        "--root",
+        root,
+        "--host",
+        "vscode",
+        "--skill",
+        "--json",
+      ]);
+      const second = JSON.parse(logs.at(-1) ?? "{}");
+      expect(second.applied).toMatchObject({
+        skills: [{ status: "up-to-date", verified: true }],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("blocks different project-local Skill files", async () => {
+    const root = await createProject();
+    await mkdir(path.join(root, ".github", "skills", "vextjs"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, ".github", "skills", "vextjs", "SKILL.md"),
+      "# Custom Skill\n",
+      "utf8",
+    );
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand([
+        "sync",
+        "--root",
+        root,
+        "--host",
+        "vscode",
+        "--skill",
+        "--json",
+      ]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result.applied).toMatchObject({
+        status: "partial",
+        skills: [{ host: "vscode", status: "blocked", verified: false }],
+      });
+      expect(
+        await readFile(
+          path.join(root, ".github", "skills", "vextjs", "SKILL.md"),
+          "utf8",
+        ),
+      ).toBe("# Custom Skill\n");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("blocks unmanaged TOML tables with the same service key", async () => {
     const root = await createProject();
     const plan = createVextMcpHostSyncPlan({

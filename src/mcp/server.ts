@@ -687,7 +687,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C30") {
     return [
-      "Use vext mcp skill check, print, or write --output <file> to inspect or export the bundled Skill; host-native installation remains explicit host work.",
+      "Use vext mcp skill check, print, or write --output <file> to inspect or export the bundled Skill; use vext mcp sync --skill to write project-local host Skill paths.",
     ];
   }
   if (capabilityId === "C32") {
