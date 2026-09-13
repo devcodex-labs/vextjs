@@ -287,6 +287,17 @@ describe("Vext MCP server", () => {
         status: "ok",
         data: { projectState: "enabled" },
       });
+      const runtimeCapability = await client.callTool({
+        name: "vext_capability_check",
+        arguments: { capability: "C18" },
+      });
+      expect(runtimeCapability.structuredContent).toMatchObject({
+        status: "ok",
+        data: { projectState: "unknown" },
+      });
+      expect(JSON.stringify(runtimeCapability.structuredContent)).toContain(
+        "Runtime Bridge is not implemented yet",
+      );
       const resource = await client.readResource({
         uri: "vext://catalog/recipes",
       });

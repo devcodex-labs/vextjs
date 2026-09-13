@@ -670,6 +670,11 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
       "Use vext job list/inspect/run/enqueue/scheduler/worker through the host when runtime evidence is required.",
     ];
   }
+  if (capabilityId === "C18") {
+    return [
+      "Runtime Bridge is not implemented yet; use host-run dev/start/job commands for runtime evidence.",
+    ];
+  }
   if (["C15", "C16", "C17", "C28"].includes(capabilityId)) {
     return [
       "MCP returns the flow; the host executes the matching npm/vext command and records evidence.",
@@ -695,6 +700,7 @@ function projectStateForCapability(
   if (capabilityId === "C29") {
     return project.assistant.devMcp.enabled ? "partial" : "unknown";
   }
+  if (capabilityId === "C18") return "unknown";
   return project.identity.sourceState === "complete" ? "enabled" : "unknown";
 }
 
