@@ -52,9 +52,13 @@ export default defineJob({
 
 启动内置 scheduler。它会筛选带 `schedule` 的 Job，按 cron 或 interval 计算 due time，获取 scheduler lease，然后创建 run record。`config.jobs.scheduler.mode = "inline"` 时到点直接执行；`"enqueue"` 时只入队，由 worker 执行。
 
+Scheduler lease 通过 `jobs.scheduler.lease.ttl` 控制持有时间，通过 `jobs.scheduler.lease.renewInterval` 控制续期间隔。未拿到 lease 的 scheduler 不会推进自身调度窗口，因此后续获得 lease 后仍能按 `misfirePolicy` 处理错过的 tick。
+
 ## `startJobWorker(runtime, options)`
 
 启动 worker 轮询循环。worker 会 heartbeat、claim pending run、执行 Job，并把 success、failed、timeout 或 cancelled 写回 store。多个 worker 可以并行运行，run lease 会避免同一个 run 被两个 worker 同时执行。
+
+Worker 认领 run 时会同时检查全局并发和单 Job 并发：全局上限来自 `jobs.worker.concurrency`，单 Job 上限来自 `defineJob({ concurrency })`，未声明时使用 `jobs.defaults.concurrency`，最低为 `1`。
 
 ## `createJobStore(options)`
 
@@ -141,16 +145,18 @@ export default {
 };
 ```
 
-| 字段                          | 默认值         | 说明                                            |
-| ----------------------------- | -------------- | ----------------------------------------------- |
-| `jobs.enabled`                | `true`         | 是否允许 Job 发现                               |
-| `jobs.dir`                    | `'jobs'`       | 相对 `src/` 的 Job 目录                         |
-| `jobs.store.type`             | `'file'`       | `memory` 或 `file`                              |
-| `jobs.store.dir`              | `'.vext/jobs'` | file store 数据目录，相对项目根                 |
-| `jobs.scheduler.mode`         | `'inline'`     | `inline` 到点直接执行，`enqueue` 只入队         |
-| `jobs.scheduler.tickInterval` | `1000`         | scheduler tick 间隔，毫秒                       |
-| `jobs.scheduler.lease.ttl`    | `30000`        | scheduler lease 过期时间                        |
-| `jobs.worker.concurrency`     | `4`            | worker 全局并发                                 |
-| `jobs.worker.pollInterval`    | `1000`         | worker 轮询间隔，毫秒                           |
-| `jobs.worker.shutdownTimeout` | `10000`        | 关闭时等待 running job 的时间                   |
-| `jobs.defaults`               | 见示例         | Job 未声明 timeout/retry/concurrency 时的默认值 |
+| 字段                                 | 默认值         | 说明                                              |
+| ------------------------------------ | -------------- | ------------------------------------------------- |
+| `jobs.enabled`                       | `true`         | 是否允许 Job 发现                                 |
+| `jobs.dir`                           | `'jobs'`       | 相对 `src/` 的 Job 目录                           |
+| `jobs.store.type`                    | `'file'`       | `memory` 或 `file`                                |
+| `jobs.store.dir`                     | `'.vext/jobs'` | file store 数据目录，相对项目根                   |
+| `jobs.scheduler.mode`                | `'inline'`     | `inline` 到点直接执行，`enqueue` 只入队           |
+| `jobs.scheduler.tickInterval`        | `1000`         | scheduler tick 间隔，毫秒                         |
+| `jobs.scheduler.lease.ttl`           | `30000`        | scheduler lease 过期时间                          |
+| `jobs.scheduler.lease.renewInterval` | `10000`        | scheduler lease 续期间隔，需小于等于 TTL          |
+| `jobs.worker.concurrency`            | `4`            | worker 全局并发                                   |
+| `jobs.worker.pollInterval`           | `1000`         | worker 轮询间隔，毫秒                             |
+| `jobs.worker.shutdownTimeout`        | `10000`        | 关闭时等待 running job 的时间                     |
+| `jobs.defaults`                      | 见示例         | Job 未声明 timeout/retry/concurrency 时的默认值   |
+| `jobs.defaults.concurrency`          | `1`            | 单 Job 默认并发上限；worker 会按 Job 名称分别限制 |

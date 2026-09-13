@@ -20,27 +20,56 @@ export async function startJobScheduler(
   const lease = config?.lease;
   const leaseEnabled = lease?.enabled !== false;
   const leaseTtl = lease?.ttl ?? 30000;
+  const leaseRenewInterval = Math.min(
+    lease?.renewInterval ?? Math.max(1000, Math.floor(leaseTtl / 2)),
+    leaseTtl,
+  );
+  let hasLease = !leaseEnabled;
+  let lastLeaseRenewedAt = 0;
   let previousTick = new Date(Date.now() - tickInterval);
 
   while (!options.signal?.aborted) {
     const now = new Date();
-    const allowed =
-      !leaseEnabled ||
-      (await runtime.store.acquireSchedulerLease(ownerId, leaseTtl, now));
+    if (leaseEnabled) {
+      if (!hasLease) {
+        hasLease = await runtime.store.acquireSchedulerLease(
+          ownerId,
+          leaseTtl,
+          now,
+        );
+        if (hasLease) lastLeaseRenewedAt = now.getTime();
+      } else if (now.getTime() - lastLeaseRenewedAt >= leaseRenewInterval) {
+        hasLease = await runtime.store.renewSchedulerLease(
+          ownerId,
+          leaseTtl,
+          now,
+        );
+        if (!hasLease) {
+          hasLease = await runtime.store.acquireSchedulerLease(
+            ownerId,
+            leaseTtl,
+            now,
+          );
+        }
+        if (hasLease) lastLeaseRenewedAt = now.getTime();
+      }
+    }
+    const allowed = !leaseEnabled || hasLease;
     if (allowed) {
       await tickJobScheduler(runtime, {
         ownerId,
         now,
         previousTick,
       });
+      previousTick = now;
     }
-    previousTick = now;
     if (options.once) break;
     await delay(tickInterval, undefined, { signal: options.signal }).catch(
       () => undefined,
     );
   }
-  await runtime.store.releaseSchedulerLease(ownerId);
+  if (leaseEnabled && hasLease)
+    await runtime.store.releaseSchedulerLease(ownerId);
 }
 
 export interface TickJobSchedulerOptions {

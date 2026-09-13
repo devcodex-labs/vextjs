@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type {
@@ -7,7 +7,6 @@ import type {
   VextJobListRunsOptions,
   VextJobRunRecord,
   VextJobStore,
-  VextJobStoreEnqueueInput,
 } from "../types.js";
 
 interface FileJobStoreState {
@@ -29,6 +28,7 @@ const EMPTY_STATE: FileJobStoreState = {
   workers: {},
   runs: [],
 };
+const LOCK_STALE_MS = 30_000;
 
 export function createFileJobStore(
   options: CreateFileJobStoreOptions,
@@ -194,10 +194,22 @@ async function withLock<T>(lockDir: string, fn: () => Promise<T>): Promise<T> {
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      await removeStaleLock(lockDir);
       await delay(10);
     }
   }
   throw new Error("[vextjs] Timed out waiting for job store lock.");
+}
+
+async function removeStaleLock(lockDir: string): Promise<void> {
+  try {
+    const metadata = await stat(lockDir);
+    if (Date.now() - metadata.mtimeMs > LOCK_STALE_MS) {
+      await rm(lockDir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
 }
 
 async function readState(stateFile: string): Promise<FileJobStoreState> {

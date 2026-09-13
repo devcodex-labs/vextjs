@@ -52,9 +52,13 @@ Runs one job through the inline runner. Payload validation uses the app validato
 
 Starts the built-in scheduler. It filters jobs with `schedule`, calculates due times from cron or interval configuration, acquires the scheduler lease, and creates run records. With `config.jobs.scheduler.mode = "inline"`, due runs execute immediately. With `"enqueue"`, the scheduler only enqueues runs for workers.
 
+The scheduler lease is controlled by `jobs.scheduler.lease.ttl` and renewed on `jobs.scheduler.lease.renewInterval`. A scheduler that does not own the lease does not advance its local scheduling window, so if it later acquires the lease it still applies `misfirePolicy` to missed ticks.
+
 ## `startJobWorker(runtime, options)`
 
 Starts the worker polling loop. The worker heartbeats, claims pending runs, executes jobs, and writes success, failed, timeout, or cancelled status back to the store. Multiple workers can run in parallel; run leases prevent the same run from being executed twice at the same time.
+
+Workers enforce both global and per-job concurrency. The global limit comes from `jobs.worker.concurrency`; the per-job limit comes from `defineJob({ concurrency })`, falls back to `jobs.defaults.concurrency`, and is clamped to at least `1`.
 
 ## `createJobStore(options)`
 
@@ -141,16 +145,18 @@ export default {
 };
 ```
 
-| Field                         | Default        | Description                                            |
-| ----------------------------- | -------------- | ------------------------------------------------------ |
-| `jobs.enabled`                | `true`         | Enables job discovery                                  |
-| `jobs.dir`                    | `'jobs'`       | Job directory relative to `src/`                       |
-| `jobs.store.type`             | `'file'`       | `memory` or `file`                                     |
-| `jobs.store.dir`              | `'.vext/jobs'` | File store data directory relative to project root     |
-| `jobs.scheduler.mode`         | `'inline'`     | `inline` executes due runs, `enqueue` only queues them |
-| `jobs.scheduler.tickInterval` | `1000`         | Scheduler tick interval in milliseconds                |
-| `jobs.scheduler.lease.ttl`    | `30000`        | Scheduler lease TTL                                    |
-| `jobs.worker.concurrency`     | `4`            | Worker global concurrency                              |
-| `jobs.worker.pollInterval`    | `1000`         | Worker polling interval in milliseconds                |
-| `jobs.worker.shutdownTimeout` | `10000`        | Time to wait for running jobs during shutdown          |
-| `jobs.defaults`               | See example    | Default timeout/retry/concurrency for jobs             |
+| Field                                | Default        | Description                                                       |
+| ------------------------------------ | -------------- | ----------------------------------------------------------------- |
+| `jobs.enabled`                       | `true`         | Enables job discovery                                             |
+| `jobs.dir`                           | `'jobs'`       | Job directory relative to `src/`                                  |
+| `jobs.store.type`                    | `'file'`       | `memory` or `file`                                                |
+| `jobs.store.dir`                     | `'.vext/jobs'` | File store data directory relative to project root                |
+| `jobs.scheduler.mode`                | `'inline'`     | `inline` executes due runs, `enqueue` only queues them            |
+| `jobs.scheduler.tickInterval`        | `1000`         | Scheduler tick interval in milliseconds                           |
+| `jobs.scheduler.lease.ttl`           | `30000`        | Scheduler lease TTL                                               |
+| `jobs.scheduler.lease.renewInterval` | `10000`        | Scheduler lease renewal interval; keep it no larger than the TTL  |
+| `jobs.worker.concurrency`            | `4`            | Worker global concurrency                                         |
+| `jobs.worker.pollInterval`           | `1000`         | Worker polling interval in milliseconds                           |
+| `jobs.worker.shutdownTimeout`        | `10000`        | Time to wait for running jobs during shutdown                     |
+| `jobs.defaults`                      | See example    | Default timeout/retry/concurrency for jobs                        |
+| `jobs.defaults.concurrency`          | `1`            | Default per-job concurrency limit enforced by workers by job name |

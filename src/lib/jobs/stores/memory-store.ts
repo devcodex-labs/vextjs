@@ -4,7 +4,6 @@ import type {
   VextJobListRunsOptions,
   VextJobRunRecord,
   VextJobStore,
-  VextJobStoreEnqueueInput,
 } from "../types.js";
 
 interface LeaseState {

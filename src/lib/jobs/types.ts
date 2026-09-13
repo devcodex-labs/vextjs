@@ -164,7 +164,6 @@ export interface VextJobRunOptions {
   trigger?: VextJobTriggerType;
   scheduledAt?: Date | string;
   idempotencyKey?: string;
-  store?: VextJobStore;
 }
 
 export interface VextJobRunResult<TResult = unknown> {

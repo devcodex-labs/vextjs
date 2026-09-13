@@ -13,6 +13,40 @@ src/
 
 `src/jobs/**` 是默认约定，不是强制规范。服务使用其他目录时可配置 `config.jobs.dir`。在 monorepo 中，每个 service root 拥有独立 registry，因此不同服务可以使用相同 Job 名称而不互相冲突。
 
+## 配置入口
+
+Job 配置写在 `src/config/default.ts`、`src/config/production.ts` 或通过 `--config <profile>` 选择的 profile 中。HTTP 配置和 Job 配置共享同一个 Vext app 生命周期，但运行进程是分开的：`vext start` 负责 HTTP，`vext job scheduler` 负责到点生成任务，`vext job worker` 负责消费队列。
+
+```ts
+import type { VextUserConfig } from "vextjs";
+
+const config: VextUserConfig = {
+  jobs: {
+    dir: "jobs",
+    store: { type: "file", dir: ".vext/jobs" },
+    scheduler: {
+      mode: "enqueue",
+      timezone: "Asia/Shanghai",
+      lease: { enabled: true, ttl: 30_000, renewInterval: 10_000 },
+    },
+    worker: {
+      concurrency: 4,
+      pollInterval: 1000,
+      lease: { ttl: 30_000 },
+    },
+    defaults: {
+      timeout: 30_000,
+      retry: { attempts: 3, delay: 1000, backoff: "exponential" },
+      concurrency: 1,
+    },
+  },
+};
+
+export default config;
+```
+
+`config.jobs.dir` 相对 `src/` 解析；`store.dir` 相对项目根解析。多个基于 VextJS 的服务同时运行时，每个服务应使用自己的项目根或独立 `store.dir`，避免不同服务共享 `.vext/jobs` 后互相看到对方的 run record。需要跨服务统一调度时，应显式接入自定义数据库/队列 store，并把 Job 名称设计成带服务前缀的全局唯一名称。
+
 ## 定义 Job
 
 ```ts
@@ -103,6 +137,18 @@ vext job status <runId>
 
 `vext job run` 会立即执行一次 Job 并写入 run record。`vext job enqueue` 只创建 pending run，等待 worker 领取。`vext job scheduler` 启动内置 scheduler，扫描带 `schedule` 的 Job 并创建 due run。`vext job worker` 轮询 store 中的 pending run，领取后执行。
 
+## 触发方式怎么选
+
+| 方式        | 入口                                                | 适用场景                              | 注意事项                                               |
+| ----------- | --------------------------------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| 手动执行    | `vext job run <name>`                               | 运维补偿、一次性脚本、本地调试        | 立即执行，不等待 worker；仍会写入 run record           |
+| 手动入队    | `vext job enqueue <name>`                           | 需要异步执行、削峰、排队的业务动作    | 需要至少一个 `vext job worker` 消费队列                |
+| 定时 inline | `vext job scheduler` + `scheduler.mode = "inline"`  | 小项目、单进程、低频任务              | scheduler 自己执行 handler；不适合重任务或多实例高可用 |
+| 定时入队    | `vext job scheduler` + `scheduler.mode = "enqueue"` | 企业部署、可扩缩 worker、需要队列隔离 | 推荐生产默认；scheduler 只生成 run，worker 执行        |
+| 测试执行    | `createTestJobRunner()`                             | 单元测试、服务 mock、payload 校验     | 使用测试 app，不启动 HTTP 端口                         |
+
+生产环境优先选择“定时入队”：scheduler 副本负责计算 due time，worker 副本负责消耗 run。这样可以独立扩缩 worker，也可以在重任务卡住时保持 scheduler 轻量。
+
 ## Store 与运行记录
 
 默认 store 是 `file`，位置为 `.vext/jobs`。它会保存 scheduler lease、worker heartbeat、run record、run lease、trigger、payload、status、attempts、duration、result 和 error 摘要。
@@ -113,7 +159,7 @@ vext job status <runId>
 
 - `vext start` 和 HTTP cluster worker 默认不执行 Job，避免每个 HTTP worker 都触发同一任务。
 - Scheduler 由 `vext job scheduler` 显式启动；多个 scheduler 同时存在时，只有拿到 scheduler lease 的实例会创建 due run。
-- Worker 由 `vext job worker` 显式启动；多个 worker 可并行运行，通过 run lease 避免同一 run 被重复执行。
+- Worker 由 `vext job worker` 显式启动；多个 worker 可并行运行，通过 run lease 避免同一 run 被重复执行。Worker 会同时遵守 `jobs.worker.concurrency` 全局并发和单个 Job 的 `concurrency` / `jobs.defaults.concurrency` 上限。
 - HTTP rolling restart 不会自动重启 Job scheduler/worker，部署系统应分别管理 HTTP、scheduler 和 worker。
 - Job runtime 关闭时会走与 HTTP 启动一致的 `app.onClose()` 生命周期，释放数据库、插件和日志资源。
 
@@ -137,6 +183,31 @@ HTTP 服务:
 HTTP cluster 的职责是处理入站 HTTP 流量，不负责 Job。不要在每个 HTTP worker 中自行启动 scheduler，否则会重复创建任务。单机生产可使用 systemd、PM2、Docker Compose 分别管理 HTTP、scheduler、worker。Kubernetes 建议拆成三个 Deployment，scheduler 副本数可以大于 1，但所有副本必须共享同一 store，依靠 lease 选出实际调度者。
 
 Job handler 仍应按业务幂等设计。框架能避免同一 run 被多个 worker 同时领取，但无法替业务系统保证外部副作用只发生一次，例如支付、发券、发邮件和调用第三方 API。此类任务应使用业务唯一键、数据库唯一索引或外部服务幂等键。
+
+### 部署模板
+
+单机 systemd / PM2 / Docker Compose 可拆成三个进程：
+
+```bash
+# HTTP
+vext start
+
+# Scheduler，企业部署建议 enqueue
+vext job scheduler --config production
+
+# Worker，可按 CPU、IO 和依赖限流水平扩缩
+vext job worker --config production
+```
+
+Kubernetes 推荐三个 Deployment：
+
+```text
+vext-http      replicas: N   command: vext start
+vext-scheduler replicas: 1+  command: vext job scheduler --config production
+vext-worker    replicas: M   command: vext job worker --config production
+```
+
+`scheduler` 可以有多个副本做高可用，但它们必须共享同一个 store，且 `jobs.scheduler.lease.enabled` 应保持开启。`worker` 可以横向扩容，扩容前需要确认外部依赖的连接池、API 限流、数据库锁和 Job 自身幂等策略能承受并发。`file` store 只适合同机或共享卷；跨节点高可用和高吞吐场景应使用自定义数据库/Redis/队列 store。
 
 ## 测试
 

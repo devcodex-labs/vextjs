@@ -9,6 +9,7 @@ The next release is in development. Shared foundation repairs include:
 - External compiled output retains each service's dependency scope for CommonJS, native dynamic imports, and ESM preloads. Runtime helpers share the backend artifact transaction; deployment preserves the relative service/output layout.
 - Filesystem deployment coordinates physical directory overlaps and shares state across equivalent directory/prefix representations.
 - Private frontend writers without production consumers are removed; candidate generation and artifact transactions remain the shared write path.
+- Enterprise Jobs add a scheduler/worker runtime, per-job concurrency enforcement, scheduler lease renewal, stale file-store lock recovery, CLI operations, docs source metadata, and bilingual deployment documentation.
 - README, bilingual guides, and public comments describe the exact Node engine range, owned-output cleanup, configuration layers, and current analysis boundaries.
 
 These changes are not a published release. MCP implementation is still pending separate requirements and design acceptance.

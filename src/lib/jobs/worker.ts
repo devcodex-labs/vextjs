@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { VextJobRuntime } from "./job-runtime.js";
+import type { VextLoadedJob } from "./types.js";
 
 export interface StartJobWorkerOptions {
   ownerId?: string;
@@ -18,20 +19,28 @@ export async function startJobWorker(
   const pollInterval = worker?.pollInterval ?? 1000;
   const leaseTtl = worker?.lease?.ttl ?? 30000;
   const running = new Set<Promise<void>>();
+  const runningByJob = new Map<string, number>();
 
   while (!options.signal?.aborted) {
     await runtime.store.heartbeatWorker(ownerId);
     while (running.size < concurrency) {
+      const availableJobNames = getAvailableJobNames(runtime, runningByJob);
+      if (availableJobNames.length === 0) break;
       const record = await runtime.store.claimNextRun({
         ownerId,
         leaseTtl,
+        jobNames: availableJobNames,
       });
       if (!record) break;
+      incrementRunningJob(runningByJob, record.jobName);
       const promise = executeClaimedRun(
         runtime,
         record.id,
         record.jobName,
-      ).finally(() => running.delete(promise));
+      ).finally(() => {
+        decrementRunningJob(runningByJob, record.jobName);
+        running.delete(promise);
+      });
       running.add(promise);
     }
     if (options.once) break;
@@ -60,4 +69,48 @@ async function executeClaimedRun(
     trigger: record?.trigger,
     scheduledAt: record?.scheduledAt,
   });
+}
+
+function getAvailableJobNames(
+  runtime: VextJobRuntime,
+  runningByJob: Map<string, number>,
+): string[] {
+  return runtime.registry
+    .list()
+    .filter((job) => {
+      const limit = resolveJobConcurrency(runtime, job);
+      return (runningByJob.get(job.name) ?? 0) < limit;
+    })
+    .map((job) => job.name);
+}
+
+function resolveJobConcurrency(
+  runtime: VextJobRuntime,
+  job: VextLoadedJob,
+): number {
+  return Math.max(
+    1,
+    job.definition.concurrency ??
+      runtime.config.jobs?.defaults?.concurrency ??
+      1,
+  );
+}
+
+function incrementRunningJob(
+  runningByJob: Map<string, number>,
+  jobName: string,
+): void {
+  runningByJob.set(jobName, (runningByJob.get(jobName) ?? 0) + 1);
+}
+
+function decrementRunningJob(
+  runningByJob: Map<string, number>,
+  jobName: string,
+): void {
+  const next = (runningByJob.get(jobName) ?? 1) - 1;
+  if (next <= 0) {
+    runningByJob.delete(jobName);
+    return;
+  }
+  runningByJob.set(jobName, next);
 }

@@ -193,11 +193,61 @@ describe("Job framework", () => {
       await runtime.close();
     }
   });
+
+  it("honors per-job concurrency while claiming queued runs", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    const runtime = await createRuntime({
+      workerConcurrency: 2,
+      jobs: {
+        "billing.sync": defineJob({
+          concurrency: 1,
+          handler: async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            await new Promise<void>((resolve) => releases.push(resolve));
+            active -= 1;
+            return "ok";
+          },
+        }),
+      },
+    });
+
+    try {
+      const first = await runtime.enqueue("billing.sync");
+      const second = await runtime.enqueue("billing.sync");
+      const worker = startJobWorker(runtime, {
+        ownerId: "worker-a",
+        once: true,
+      });
+      await waitUntil(() => releases.length === 1);
+      await expect(runtime.getRun(first.id)).resolves.toMatchObject({
+        status: "running",
+      });
+      await expect(runtime.getRun(second.id)).resolves.toMatchObject({
+        status: "queued",
+      });
+      releases[0]?.();
+      await worker;
+      expect(maxActive).toBe(1);
+      await expect(runtime.getRun(first.id)).resolves.toMatchObject({
+        status: "success",
+      });
+      await expect(runtime.getRun(second.id)).resolves.toMatchObject({
+        status: "queued",
+      });
+    } finally {
+      releases.splice(0).forEach((release) => release());
+      await runtime.close();
+    }
+  });
 });
 
 async function createRuntime(options: {
   jobs: Parameters<typeof createTestJobRunner>[0]["jobs"];
   schedulerMode?: "inline" | "enqueue";
+  workerConcurrency?: number;
 }): Promise<VextJobRuntime> {
   const runner = await createTestJobRunner({
     services: false,
@@ -205,6 +255,10 @@ async function createRuntime(options: {
       jobs: {
         store: "memory",
         scheduler: { mode: options.schedulerMode ?? "inline" },
+        worker:
+          options.workerConcurrency === undefined
+            ? undefined
+            : { concurrency: options.workerConcurrency },
       },
     },
     jobs: options.jobs,
@@ -261,4 +315,14 @@ async function runAndRecord(
     error: result.error ? String(result.error) : undefined,
   });
   return result;
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > 1000) {
+      throw new Error("Timed out waiting for condition.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
