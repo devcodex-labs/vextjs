@@ -305,13 +305,11 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
     "C29",
     "宿主配置同步",
     "为 Codex/Claude/Cursor/VS Code/Grok 生成宿主 MCP 同步计划；当前可写 JSON/JSONC 宿主配置、TOML 受管块和 launcher，并返回写后回读校验与宿主刷新提示。",
-    "partial",
   ),
   capability(
     "C30",
     "Skill/Workflow",
     "提供可选逻辑 Skill 与 Tools-only 工作流等价路径；当前可通过 CLI 导出官方 Skill，并可通过 vext mcp sync --skill 写入项目内宿主 Skill 路径。",
-    "partial",
   ),
   capability("C31", "资源与 Prompt", "注册固定 11 Resources 和 4 Prompts。"),
   capability(

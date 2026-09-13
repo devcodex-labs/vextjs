@@ -761,10 +761,10 @@ function projectStateForCapability(
       : "unknown";
   }
   if (capabilityId === "C29") {
-    return project.assistant.devMcp.hosts.length ? "partial" : "unknown";
+    return project.assistant.devMcp.hosts.length ? "enabled" : "unknown";
   }
   if (capabilityId === "C30") {
-    return project.identity.sourceState === "complete" ? "partial" : "unknown";
+    return project.identity.sourceState === "complete" ? "enabled" : "unknown";
   }
   if (capabilityId === "C32") {
     return project.identity.sourceState === "complete" ? "partial" : "unknown";

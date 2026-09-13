@@ -75,6 +75,12 @@ describe("Vext MCP catalog", () => {
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C34"),
     ).toMatchObject({ status: "available" });
     expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C29"),
+    ).toMatchObject({ status: "available" });
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C30"),
+    ).toMatchObject({ status: "available" });
+    expect(
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C18"),
     ).toMatchObject({ status: "partial" });
   });
@@ -481,7 +487,7 @@ describe("Vext MCP server", () => {
       });
       expect(hostSyncCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: { projectState: "partial" },
+        data: { projectState: "enabled" },
       });
       expect(JSON.stringify(hostSyncCapability.structuredContent)).toContain(
         "vext mcp sync",
@@ -492,7 +498,7 @@ describe("Vext MCP server", () => {
       });
       expect(skillCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: { projectState: "partial" },
+        data: { projectState: "enabled" },
       });
       expect(JSON.stringify(skillCapability.structuredContent)).toContain(
         "vext mcp skill check",
