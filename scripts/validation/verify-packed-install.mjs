@@ -343,13 +343,42 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
   );
   if (
     sync.status !== "ok" ||
-    sync.dryRunOnly !== true ||
+    sync.applied !== undefined ||
     sync.plan?.targets?.[0]?.host !== "codex" ||
     sync.plan?.targets?.[0]?.configPath !== ".codex/config.toml"
   ) {
     throw new Error("Packed MCP sync plan smoke returned unexpected output.");
   }
-  console.log("Packed MCP sync plan smoke passed.");
+  const writeFixture = path.join(consumerRoot, "mcp-sync-write-fixture");
+  mkdirSync(path.join(writeFixture, "src", "config"), { recursive: true });
+  writeFileSync(
+    path.join(writeFixture, "package.json"),
+    `${JSON.stringify({ name: "packed-mcp-sync-write-fixture", version: "1.0.0", type: "module", dependencies: { vextjs: pkg.version } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(writeFixture, "src", "config", "default.ts"),
+    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["vscode"], sync: "auto" } } };\n',
+  );
+  const written = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "sync",
+      "--root",
+      writeFixture,
+      "--host",
+      "vscode",
+      "--json",
+    ]),
+  );
+  if (
+    written.status !== "ok" ||
+    written.applied?.targets?.[0]?.status !== "written" ||
+    !existsSync(path.join(writeFixture, ".vscode", "mcp.json")) ||
+    !existsSync(path.join(writeFixture, ".vext", "mcp", "launcher.cjs"))
+  ) {
+    throw new Error("Packed MCP sync write smoke returned unexpected output.");
+  }
+  console.log("Packed MCP sync plan/write smoke passed.");
 }
 
 async function runPackedMcpSmoke(consumerRoot) {

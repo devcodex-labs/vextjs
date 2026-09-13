@@ -682,7 +682,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C29") {
     return [
-      "Use vext mcp sync --root <dir> --check or --dry-run to inspect host sync targets; this batch does not write host config files.",
+      "Use vext mcp sync --root <dir> to write launcher/state and JSON host entries; use --check or --dry-run for read-only plans. TOML hosts remain plan-only in this batch.",
     ];
   }
   if (capabilityId === "C30") {

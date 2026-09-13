@@ -15,13 +15,13 @@ export interface VextMcpHostSyncPlanOptions {
   rootDir: string;
   frameworkVersion: string;
   host?: VextMcpHostId;
-  mode: "check" | "dry-run";
+  mode: "check" | "dry-run" | "write";
 }
 
 export interface VextMcpHostSyncPlan {
   schemaVersion: 1;
   status: "ok" | "blocked";
-  mode: "check" | "dry-run";
+  mode: "check" | "dry-run" | "write";
   rootDir: string;
   projectId: string;
   contextRevision: string | null;
@@ -52,7 +52,7 @@ export interface VextMcpHostSyncTarget {
   command: string;
   args: string[];
   localOnly: boolean;
-  action: "plan-managed-entry" | "blocked";
+  action: "plan-managed-entry" | "write-managed-entry" | "blocked";
   reason: string;
   notes: string[];
 }
@@ -147,9 +147,14 @@ function createTarget(input: {
     command: "node",
     args: [input.launcherAbsolutePath, "mcp", "--root", input.rootDir],
     localOnly: true,
-    action: "plan-managed-entry",
+    action:
+      input.descriptor.configFormat === "json"
+        ? "write-managed-entry"
+        : "plan-managed-entry",
     reason:
-      "dry-run/check only: this version reports the managed entry and launcher content but does not edit host config files.",
+      input.descriptor.configFormat === "json"
+        ? "JSON/JSONC host config can be written by vext mcp sync; TOML hosts remain plan-only in this batch."
+        : "TOML host config remains dry-run/check only in this batch to avoid lossy comment-preservation behavior.",
     notes: [input.descriptor.notes],
   };
 }

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -50,15 +50,85 @@ describe("Vext MCP host sync planning", () => {
       const result = JSON.parse(logs.at(-1) ?? "{}");
       expect(result).toMatchObject({
         status: "ok",
-        dryRunOnly: true,
         plan: {
           mode: "check",
           targets: [{ host: "codex", configPath: ".codex/config.toml" }],
         },
       });
-      expect(result.plan.targets[0].reason).toContain(
-        "does not edit host config",
+      expect(result.plan.targets[0].reason).toContain("TOML host config");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("writes launcher, state, and JSON host config entries by default", async () => {
+    const root = await createProject();
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand(["sync", "--root", root, "--host", "vscode", "--json"]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result).toMatchObject({
+        status: "ok",
+        applied: {
+          status: "ok",
+          launcher: { status: "written" },
+          state: { status: "written" },
+          targets: [{ host: "vscode", status: "written" }],
+        },
+      });
+      const config = JSON.parse(
+        await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
       );
+      const entry = Object.values(config.servers)[0] as {
+        command: string;
+        args: string[];
+      };
+      expect(entry.command).toBe("node");
+      expect(entry.args).toContain("mcp");
+      expect(
+        await readFile(path.join(root, ".vext", "mcp", "launcher.cjs"), "utf8"),
+      ).toContain('dist", "cli", "index.js');
+
+      logs.length = 0;
+      await mcpCommand(["sync", "--root", root, "--host", "vscode", "--json"]);
+      const second = JSON.parse(logs.at(-1) ?? "{}");
+      expect(second.applied).toMatchObject({
+        launcher: { status: "up-to-date" },
+        state: { status: "up-to-date" },
+        targets: [{ status: "up-to-date" }],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("blocks malformed JSON host config without overwriting it", async () => {
+    const root = await createProject();
+    await mkdir(path.join(root, ".vscode"), { recursive: true });
+    await writeFile(path.join(root, ".vscode", "mcp.json"), "{ bad json", {
+      encoding: "utf8",
+    });
+    const logs: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((message?: unknown) => {
+        logs.push(String(message));
+      });
+    try {
+      await mcpCommand(["sync", "--root", root, "--host", "vscode", "--json"]);
+      const result = JSON.parse(logs.at(-1) ?? "{}");
+      expect(result.applied).toMatchObject({
+        status: "partial",
+        targets: [{ host: "vscode", status: "blocked" }],
+      });
+      expect(
+        await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
+      ).toBe("{ bad json");
     } finally {
       spy.mockRestore();
     }

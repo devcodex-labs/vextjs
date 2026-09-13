@@ -11,6 +11,7 @@ import {
   VEXT_MCP_SKILL_CONTENT,
 } from "../assistant/skill.js";
 import { createVextMcpHostSyncPlan } from "../mcp/hosts/plan.js";
+import { applyVextMcpHostSyncPlan } from "../mcp/hosts/sync.js";
 import { parseMcpCliArgs, serveVextMcpStdio } from "../mcp/server.js";
 
 export async function mcpCommand(args: string[] = []): Promise<void> {
@@ -38,7 +39,7 @@ export async function mcpCommand(args: string[] = []): Promise<void> {
 function printMcpHelp(): void {
   console.log(`
   Usage: vext mcp [options]
-         vext mcp sync --root <dir> (--check|--dry-run) [--host <id>] [--json]
+         vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--json]
          vext mcp skill <check|print|write> [options]
 
   Options:
@@ -50,6 +51,7 @@ function printMcpHelp(): void {
     start dev servers, apply changes, or modify host MCP configuration.
 
   Sync:
+    vext mcp sync --root . --host vscode --json
     vext mcp sync --root . --check --json
     vext mcp sync --root . --dry-run --host codex --json
 
@@ -74,8 +76,11 @@ async function mcpSyncCommand(args: string[]): Promise<void> {
   });
   const result = {
     status: "ok",
-    dryRunOnly: true,
     plan,
+    applied:
+      options.mode === "write"
+        ? await applyVextMcpHostSyncPlan(plan)
+        : undefined,
   };
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -87,7 +92,7 @@ async function mcpSyncCommand(args: string[]): Promise<void> {
 function parseMcpSyncArgs(args: string[]): {
   rootDir: string;
   host?: VextMcpHostId;
-  mode: "check" | "dry-run";
+  mode: "check" | "dry-run" | "write";
   json: boolean;
   help: boolean;
 } {
@@ -148,12 +153,13 @@ function parseMcpSyncArgs(args: string[]): {
       "[vextjs] vext mcp sync --check and --dry-run are mutually exclusive.",
     );
   }
-  if (!check && !dryRun) {
-    throw new Error(
-      "[vextjs] vext mcp sync currently requires --check or --dry-run; writing host config is not implemented in this batch.",
-    );
-  }
-  return { rootDir, host, mode: check ? "check" : "dry-run", json, help };
+  return {
+    rootDir,
+    host,
+    mode: check ? "check" : dryRun ? "dry-run" : "write",
+    json,
+    help,
+  };
 }
 
 function isVextMcpHostId(value: string): value is VextMcpHostId {
@@ -162,7 +168,7 @@ function isVextMcpHostId(value: string): value is VextMcpHostId {
 
 function printMcpSyncHelp(): void {
   console.log(`
-  Usage: vext mcp sync --root <dir> (--check|--dry-run) [--host <id>] [--json]
+  Usage: vext mcp sync --root <dir> [--check|--dry-run] [--host <id>] [--json]
 
   Options:
     --root <dir>          Vext service root
@@ -173,8 +179,8 @@ function printMcpSyncHelp(): void {
     -h, --help            Show this help message
 
   Notes:
-    This batch only plans host sync and launcher content. It does not write host
-    configuration files. Real host config edits remain a later explicit sync step.
+    Without --check or --dry-run, sync writes the project launcher/state and JSON
+    host config entries. TOML hosts remain plan-only in this batch.
 `);
 }
 
