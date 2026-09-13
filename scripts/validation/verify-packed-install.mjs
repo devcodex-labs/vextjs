@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -217,6 +219,76 @@ async function runRuntimeSmokes(consumerRoot) {
           );
       });
     });
+  }
+}
+
+async function runPackedMcpSmoke(consumerRoot) {
+  const fixture = path.join(consumerRoot, "mcp-fixture");
+  mkdirSync(path.join(fixture, "src", "config"), { recursive: true });
+  writeFileSync(
+    path.join(fixture, "package.json"),
+    `${JSON.stringify({ name: "packed-mcp-fixture", version: "1.0.0", type: "module", dependencies: { vextjs: pkg.version } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(fixture, "tsconfig.json"),
+    `${JSON.stringify({ compilerOptions: { module: "NodeNext" } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(fixture, "src", "config", "default.ts"),
+    "export default { server: { port: 3000 } };\n",
+  );
+
+  const client = new Client(
+    { name: "vextjs-packed-mcp-smoke", version: "1.0.0" },
+    { versionNegotiation: { mode: "legacy" } },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [
+      path.join(
+        consumerRoot,
+        "node_modules",
+        "vextjs",
+        "dist",
+        "cli",
+        "index.js",
+      ),
+      "mcp",
+      "--root",
+      fixture,
+    ],
+    cwd: fixture,
+    stderr: "pipe",
+  });
+  try {
+    await client.connect(transport);
+    const tools = await client.listTools();
+    if (tools.tools.length !== 7)
+      throw new Error(
+        `Expected 7 packed MCP tools, received ${tools.tools.length}.`,
+      );
+    const resources = await client.listResources();
+    if (resources.resources.length !== 11)
+      throw new Error(
+        `Expected 11 packed MCP resources, received ${resources.resources.length}.`,
+      );
+    const prompts = await client.listPrompts();
+    if (prompts.prompts.length !== 4)
+      throw new Error(
+        `Expected 4 packed MCP prompts, received ${prompts.prompts.length}.`,
+      );
+    const inspect = await client.callTool({
+      name: "vext_project_inspect",
+      arguments: { section: "summary" },
+    });
+    if (
+      !JSON.stringify(inspect.structuredContent).includes("packed-mcp-fixture")
+    ) {
+      throw new Error("Packed MCP inspect did not return fixture identity.");
+    }
+    console.log("Packed MCP stdio smoke passed.");
+  } finally {
+    await client.close();
   }
 }
 
@@ -548,6 +620,7 @@ async function main() {
   });
   await runPackedTypeContract(consumer);
   await runRuntimeSmokes(consumer);
+  await runPackedMcpSmoke(consumer);
 
   console.log(`Packed install verified for vextjs@${pkg.version}`);
   console.log(`Evidence workspace retained at: ${workspace}`);
