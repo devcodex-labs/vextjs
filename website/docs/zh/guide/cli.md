@@ -10,6 +10,8 @@
 
 `vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。运行态 Bridge 检查、宿主 MCP 配置同步和更细的业务级生成器仍按后续工作包继续。
 
+发布前的同包验收使用 `npm run verify:pack-install` 覆盖打包安装后的 ESM/CJS、TypeScript 合同、运行时 smoke 和 MCP stdio smoke。真实平台、数据库、浏览器和五宿主矩阵仍属于发布验收流程，不能只用本地协议模拟替代。
+
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。
 :::

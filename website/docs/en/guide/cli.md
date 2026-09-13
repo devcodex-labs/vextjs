@@ -10,6 +10,8 @@ The current development line adds `vext mcp --root <dir>` as the bundled stdio M
 
 `vext_validate_changes` checks project identity, directory policy, existing-file overwrites, duplicate paths, encoding, and the create-only boundary. Its response includes each file verdict, the matched directory source, and `requiredHostSteps`. Directory policy comes from the project structure, default Vext directories, and `vext.workspace.json(c)` services/sharedPackages; default directories are recommendations and are not created automatically. Runtime Bridge inspection, host MCP configuration sync, and deeper business-grade generators remain later work packages.
 
+Before release, `npm run verify:pack-install` validates the packed installation across ESM/CJS, TypeScript contracts, runtime smoke tests, and an MCP stdio smoke test. The real platform, database, browser, and five-host matrix remains part of the release workflow and cannot be replaced by local protocol simulation alone.
+
 :::tip Stable release
 This site documents the stable `v2.0.0` release. The CLI output below uses that published version.
 :::

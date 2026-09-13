@@ -237,8 +237,8 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C32",
     "发布验收矩阵",
-    "维护发布前多平台、多宿主、同 tgz 验收证据。",
-    "planned",
+    "维护发布前多平台、多宿主、同 tgz 验收证据；当前已接入同包 MCP stdio 安装烟测，真实宿主矩阵仍需发布阶段补齐。",
+    "partial",
   ),
   capability(
     "C33",

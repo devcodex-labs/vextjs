@@ -311,6 +311,17 @@ describe("Vext MCP server", () => {
           ],
         },
       });
+      const releaseCapability = await client.callTool({
+        name: "vext_capability_check",
+        arguments: { capability: "C32" },
+      });
+      expect(releaseCapability.structuredContent).toMatchObject({
+        status: "ok",
+        data: { projectState: "partial" },
+      });
+      expect(JSON.stringify(releaseCapability.structuredContent)).toContain(
+        "verify:pack-install",
+      );
       const resource = await client.readResource({
         uri: "vext://catalog/recipes",
       });

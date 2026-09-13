@@ -680,6 +680,11 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
       "MCP returns the flow; the host executes the matching npm/vext command and records evidence.",
     ];
   }
+  if (capabilityId === "C32") {
+    return [
+      "Run npm run verify:pack-install before release; complete the remaining platform and real-host matrix in the release workflow.",
+    ];
+  }
   return [];
 }
 
@@ -700,6 +705,9 @@ function projectStateForCapability(
   }
   if (capabilityId === "C29") {
     return project.assistant.devMcp.enabled ? "partial" : "unknown";
+  }
+  if (capabilityId === "C32") {
+    return project.identity.sourceState === "complete" ? "partial" : "unknown";
   }
   if (item.status === "planned") return "unknown";
   if (capabilityId === "C18") return "unknown";
