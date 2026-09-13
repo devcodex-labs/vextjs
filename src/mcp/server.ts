@@ -15,8 +15,10 @@ import {
 } from "../assistant/catalog.js";
 import {
   VEXT_MCP_TOOL_INPUT_SCHEMAS,
+  createAssistantFailure,
   parseMcpToolInput,
   type VextAssistantFailure,
+  type VextExpectedIdentity,
   type VextMcpToolInputMap,
 } from "../assistant/contracts.js";
 import {
@@ -182,6 +184,12 @@ function registerTools(
     async (args) => {
       const input = parseMcpToolInput("vext_generate_changes", args);
       if (!input.ok) return toolFailure(input.failure);
+      const project = inspect(rootDir, version);
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
       const recipe = VEXT_MCP_RECIPES.find(
         (item) =>
           item.id === input.value.recipeId ||
@@ -227,6 +235,12 @@ function registerTools(
     async (args) => {
       const input = parseMcpToolInput("vext_validate_changes", args);
       if (!input.ok) return toolFailure(input.failure);
+      const project = inspect(rootDir, version);
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
       return toolResult({
         schemaVersion: 1,
         status: "ok",
@@ -263,6 +277,11 @@ function registerTools(
       const input = parseMcpToolInput("vext_project_check", args);
       if (!input.ok) return toolFailure(input.failure);
       const project = inspect(rootDir, version);
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
       const diagnostics = project.partitions
         .filter((partition) => partition.state !== "known")
         .slice(0, 100)
@@ -307,6 +326,12 @@ function registerTools(
     async (args) => {
       const input = parseMcpToolInput("vext_runtime_inspect", args);
       if (!input.ok) return toolFailure(input.failure);
+      const project = inspect(rootDir, version);
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
       return toolResult({
         schemaVersion: 1,
         status: "ok",
@@ -558,6 +583,26 @@ function filterInspection(
 
 function inspect(rootDir: string, version: string): VextMcpProjectInspection {
   return inspectVextProject({ rootDir, frameworkVersion: version });
+}
+
+function verifyExpectedIdentity(
+  expected: VextExpectedIdentity | undefined,
+  project: VextMcpProjectInspection,
+) {
+  if (!expected) return null;
+  if (
+    project.identity.projectId === expected.projectId &&
+    project.identity.contextRevision === expected.contextRevision
+  ) {
+    return null;
+  }
+  return toolFailure(
+    createAssistantFailure(
+      "VEXT_CONTEXT_STALE",
+      "Project identity does not match expectedIdentity. Run vext_project_inspect again and retry with the latest projectId/contextRevision.",
+      "refresh",
+    ),
+  );
 }
 
 function requiredOperationsForCapability(capabilityId: string): string[] {

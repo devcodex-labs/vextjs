@@ -50,6 +50,27 @@ describe("Vext MCP project inspector", () => {
       inspection.structureDecisions.find((item) => item.role === "locales")
         ?.defaultPath,
     ).toBe("src/locales");
+    expect(inspection.assistant.devMcp).toMatchObject({
+      declared: true,
+      enabled: true,
+      hosts: ["codex"],
+      sync: "check",
+    });
+    expect(inspection.assistant.devMcpSources).toEqual([
+      "src/config/default.ts",
+    ]);
+    expect(inspection.assistant.workspace?.config.services?.[0]).toMatchObject({
+      id: "api",
+      root: ".",
+      sharedPackages: ["models"],
+    });
+    expect(
+      inspection.assistant.workspace?.config.sharedPackages?.[0],
+    ).toMatchObject({
+      id: "models",
+      root: "packages/models",
+      kind: "models",
+    });
   });
 });
 
@@ -99,6 +120,19 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(invalid.structuredContent)).toContain(
         "VEXT_VALIDATION_FAILED",
       );
+      const stale = await client.callTool({
+        name: "vext_project_check",
+        arguments: {
+          expectedIdentity: {
+            projectId: "0".repeat(64),
+            contextRevision: "0".repeat(64),
+          },
+        },
+      });
+      expect(stale.isError).toBe(true);
+      expect(JSON.stringify(stale.structuredContent)).toContain(
+        "VEXT_CONTEXT_STALE",
+      );
       const resource = await client.readResource({
         uri: "vext://catalog/recipes",
       });
@@ -135,7 +169,28 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "config", "default.ts"),
-    "export default { server: { port: 3000 } };\n",
+    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
+  );
+  await writeFile(
+    join(dir, "vext.workspace.jsonc"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        hosts: ["codex"],
+        services: [{ id: "api", root: ".", sharedPackages: ["models"] }],
+        sharedPackages: [
+          {
+            id: "models",
+            root: "packages/models",
+            kind: "models",
+            sourceExports: { user: "src/user.ts" },
+          },
+        ],
+        policyDefaults: { outputLanguage: "zh" },
+      },
+      null,
+      2,
+    ),
   );
   await writeFile(
     join(dir, "src", "routes", "hello.ts"),
