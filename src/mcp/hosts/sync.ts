@@ -21,6 +21,8 @@ export interface VextMcpHostSyncApplyTarget {
   host: string;
   configPath: string;
   status: "written" | "up-to-date" | "blocked";
+  verified: boolean;
+  verification: string;
   reason: string;
 }
 
@@ -39,7 +41,9 @@ export async function applyVextMcpHostSyncPlan(
   }
   return {
     schemaVersion: 1,
-    status: targets.some((target) => target.status === "blocked")
+    status: targets.some(
+      (target) => target.status === "blocked" || !target.verified,
+    )
       ? "partial"
       : "ok",
     launcher,
@@ -65,6 +69,8 @@ async function applyTarget(
       host: target.host,
       configPath: target.configPath,
       status: "blocked",
+      verified: false,
+      verification: "JSON/JSONC parse failed before write.",
       reason: "Host config is not valid JSON/JSONC; it was not modified.",
     };
   }
@@ -85,11 +91,18 @@ async function applyTarget(
     absolutePath,
     next.endsWith("\n") ? next : `${next}\n`,
   );
+  const verified = await verifyJsonTarget(absolutePath, target);
   return {
     host: target.host,
     configPath: target.configPath,
     status: written.status,
-    reason: "Managed MCP server entry written with JSONC structural edits.",
+    verified,
+    verification: verified
+      ? "Read-back confirmed JSON/JSONC managed entry."
+      : "Read-back did not find the expected JSON/JSONC managed entry.",
+    reason: verified
+      ? "Managed MCP server entry written with JSONC structural edits."
+      : "Managed MCP server entry was written but read-back verification failed.",
   };
 }
 
@@ -105,15 +118,24 @@ async function applyTomlTarget(
       host: target.host,
       configPath: target.configPath,
       status: "blocked",
+      verified: false,
+      verification: "TOML managed block preflight failed before write.",
       reason: next.reason,
     };
   }
   const written = await writeIfChanged(absolutePath, next.content);
+  const verified = await verifyTomlTarget(absolutePath, target);
   return {
     host: target.host,
     configPath: target.configPath,
     status: written.status,
-    reason: "Managed MCP server entry written with TOML managed-block edits.",
+    verified,
+    verification: verified
+      ? "Read-back confirmed TOML managed block."
+      : "Read-back did not find the expected TOML managed block.",
+    reason: verified
+      ? "Managed MCP server entry written with TOML managed-block edits."
+      : "Managed MCP server entry was written but read-back verification failed.",
   };
 }
 
@@ -228,6 +250,45 @@ command = ${tomlQuotedString(target.command)}
 args = [${target.args.map(tomlQuotedString).join(", ")}]
 ${end}
 `;
+}
+
+async function verifyJsonTarget(
+  absolutePath: string,
+  target: VextMcpHostSyncTarget,
+): Promise<boolean> {
+  const source = await readOptionalText(absolutePath);
+  if (source === null) return false;
+  const errors: ParseError[] = [];
+  const config = parse(source, errors, {
+    allowTrailingComma: true,
+    disallowComments: false,
+  }) as unknown;
+  if (errors.length > 0 || !isRecord(config)) return false;
+  const root = config[target.configRootKey];
+  if (!isRecord(root)) return false;
+  const entry = root[target.entryKey];
+  return (
+    isRecord(entry) &&
+    entry.command === target.command &&
+    Array.isArray(entry.args) &&
+    entry.args.length === target.args.length &&
+    entry.args.every((arg, index) => arg === target.args[index])
+  );
+}
+
+async function verifyTomlTarget(
+  absolutePath: string,
+  target: VextMcpHostSyncTarget,
+): Promise<boolean> {
+  const source = await readOptionalText(absolutePath);
+  if (source === null) return false;
+  const begin = `# BEGIN VEXT MCP MANAGED ${target.entryKey}`;
+  const end = `# END VEXT MCP MANAGED ${target.entryKey}`;
+  return source.includes(createTomlManagedBlock(target, begin, end));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function hasTomlMcpServerTable(source: string, entryKey: string): boolean {

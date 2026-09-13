@@ -373,6 +373,7 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
   if (
     written.status !== "ok" ||
     written.applied?.targets?.[0]?.status !== "written" ||
+    written.applied?.targets?.[0]?.verified !== true ||
     !existsSync(path.join(writeFixture, ".vscode", "mcp.json")) ||
     !existsSync(path.join(writeFixture, ".vext", "mcp", "launcher.cjs"))
   ) {
@@ -403,6 +404,7 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
   if (
     tomlWritten.status !== "ok" ||
     tomlWritten.applied?.targets?.[0]?.status !== "written" ||
+    tomlWritten.applied?.targets?.[0]?.verified !== true ||
     !readFileSync(tomlConfig, "utf8").includes("# BEGIN VEXT MCP MANAGED")
   ) {
     throw new Error(

@@ -224,7 +224,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C29",
     "宿主配置同步",
-    "为 Codex/Claude/Cursor/VS Code/Grok 生成宿主 MCP 同步计划；当前可写 JSON/JSONC 宿主配置、TOML 受管块和 launcher。",
+    "为 Codex/Claude/Cursor/VS Code/Grok 生成宿主 MCP 同步计划；当前可写 JSON/JSONC 宿主配置、TOML 受管块和 launcher，并返回写后回读校验结果。",
     "partial",
   ),
   capability(

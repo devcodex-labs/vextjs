@@ -78,7 +78,7 @@ describe("Vext MCP host sync planning", () => {
           status: "ok",
           launcher: { status: "written" },
           state: { status: "written" },
-          targets: [{ host: "vscode", status: "written" }],
+          targets: [{ host: "vscode", status: "written", verified: true }],
         },
       });
       const config = JSON.parse(
@@ -100,7 +100,7 @@ describe("Vext MCP host sync planning", () => {
       expect(second.applied).toMatchObject({
         launcher: { status: "up-to-date" },
         state: { status: "up-to-date" },
-        targets: [{ status: "up-to-date" }],
+        targets: [{ status: "up-to-date", verified: true }],
       });
     } finally {
       spy.mockRestore();
@@ -124,7 +124,7 @@ describe("Vext MCP host sync planning", () => {
       const result = JSON.parse(logs.at(-1) ?? "{}");
       expect(result.applied).toMatchObject({
         status: "partial",
-        targets: [{ host: "vscode", status: "blocked" }],
+        targets: [{ host: "vscode", status: "blocked", verified: false }],
       });
       expect(
         await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
@@ -149,7 +149,7 @@ describe("Vext MCP host sync planning", () => {
         status: "ok",
         applied: {
           status: "ok",
-          targets: [{ host: "codex", status: "written" }],
+          targets: [{ host: "codex", status: "written", verified: true }],
         },
       });
       const toml = await readFile(
@@ -165,7 +165,7 @@ describe("Vext MCP host sync planning", () => {
       await mcpCommand(["sync", "--root", root, "--host", "codex", "--json"]);
       const second = JSON.parse(logs.at(-1) ?? "{}");
       expect(second.applied).toMatchObject({
-        targets: [{ status: "up-to-date" }],
+        targets: [{ status: "up-to-date", verified: true }],
       });
     } finally {
       spy.mockRestore();
@@ -200,7 +200,7 @@ args = ["custom.js"]
       const result = JSON.parse(logs.at(-1) ?? "{}");
       expect(result.applied).toMatchObject({
         status: "partial",
-        targets: [{ host: "codex", status: "blocked" }],
+        targets: [{ host: "codex", status: "blocked", verified: false }],
       });
       expect(
         await readFile(path.join(root, ".codex", "config.toml"), "utf8"),
