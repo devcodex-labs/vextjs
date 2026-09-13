@@ -298,19 +298,17 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(runtimeCapability.structuredContent)).toContain(
         "Runtime Bridge is not implemented yet",
       );
-      const plannedCapability = await client.callTool({
+      const hostSyncCapability = await client.callTool({
         name: "vext_capability_check",
         arguments: { capability: "C29" },
       });
-      expect(plannedCapability.structuredContent).toMatchObject({
+      expect(hostSyncCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: {
-          projectState: "unknown",
-          missingPrerequisites: [
-            "This capability is registered but not implemented in the current MCP batch.",
-          ],
-        },
+        data: { projectState: "partial" },
       });
+      expect(JSON.stringify(hostSyncCapability.structuredContent)).toContain(
+        "vext mcp sync",
+      );
       const skillCapability = await client.callTool({
         name: "vext_capability_check",
         arguments: { capability: "C30" },

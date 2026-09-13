@@ -320,6 +320,38 @@ async function runPackedMcpSkillSmoke(consumerRoot) {
   console.log("Packed MCP Skill smoke passed.");
 }
 
+async function runPackedMcpSyncSmoke(consumerRoot) {
+  const fixture = path.join(consumerRoot, "mcp-sync-fixture");
+  mkdirSync(path.join(fixture, "src", "config"), { recursive: true });
+  writeFileSync(
+    path.join(fixture, "package.json"),
+    `${JSON.stringify({ name: "packed-mcp-sync-fixture", version: "1.0.0", type: "module", dependencies: { vextjs: pkg.version } }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(fixture, "src", "config", "default.ts"),
+    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
+  );
+  const sync = JSON.parse(
+    await runPackedCli(consumerRoot, [
+      "mcp",
+      "sync",
+      "--root",
+      fixture,
+      "--check",
+      "--json",
+    ]),
+  );
+  if (
+    sync.status !== "ok" ||
+    sync.dryRunOnly !== true ||
+    sync.plan?.targets?.[0]?.host !== "codex" ||
+    sync.plan?.targets?.[0]?.configPath !== ".codex/config.toml"
+  ) {
+    throw new Error("Packed MCP sync plan smoke returned unexpected output.");
+  }
+  console.log("Packed MCP sync plan smoke passed.");
+}
+
 async function runPackedMcpSmoke(consumerRoot) {
   const fixture = path.join(consumerRoot, "mcp-fixture");
   mkdirSync(path.join(fixture, "src", "config"), { recursive: true });
@@ -720,6 +752,7 @@ async function main() {
   await runRuntimeSmokes(consumer);
   await runPackedMcpSmoke(consumer);
   await runPackedMcpSkillSmoke(consumer);
+  await runPackedMcpSyncSmoke(consumer);
 
   console.log(`Packed install verified for vextjs@${pkg.version}`);
   console.log(`Evidence workspace retained at: ${workspace}`);

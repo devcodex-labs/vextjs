@@ -1187,9 +1187,14 @@
       "limits": "The MCP command binds one project root and does not execute shell commands, run servers, apply changes, run tests, modify host MCP configuration, or expose a public TypeScript export. Skill commands only inspect or export the bundled Skill to a user-selected path.",
       "items": [
         "cli:mcp",
+        "cli:mcp:--check",
+        "cli:mcp:--dry-run",
         "cli:mcp:--force",
+        "cli:mcp:--host",
         "cli:mcp:--help",
+        "cli:mcp:--json",
         "cli:mcp:--output",
+        "cli:mcp:--root",
         "cli:mcp:-h"
       ]
     },

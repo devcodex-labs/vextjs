@@ -680,6 +680,11 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
       "MCP returns the flow; the host executes the matching npm/vext command and records evidence.",
     ];
   }
+  if (capabilityId === "C29") {
+    return [
+      "Use vext mcp sync --root <dir> --check or --dry-run to inspect host sync targets; this batch does not write host config files.",
+    ];
+  }
   if (capabilityId === "C30") {
     return [
       "Use vext mcp skill check, print, or write --output <file> to inspect or export the bundled Skill; host-native installation remains explicit host work.",
@@ -707,6 +712,9 @@ function projectStateForCapability(
     return project.assistant.workspace?.config.sharedPackages?.length
       ? "enabled"
       : "unknown";
+  }
+  if (capabilityId === "C29") {
+    return project.assistant.devMcp.hosts.length ? "partial" : "unknown";
   }
   if (capabilityId === "C30") {
     return project.identity.sourceState === "complete" ? "partial" : "unknown";
