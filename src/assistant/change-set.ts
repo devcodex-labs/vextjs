@@ -74,6 +74,45 @@ const SUPPORTED_RECIPES = new Map([
 ]);
 
 const SAFE_SEGMENT_PATTERN = /^[a-z][a-z0-9-]{0,119}$/;
+const DEFAULT_CANDIDATE_SECTION_ROLES = [
+  "routes",
+  "services",
+  "models",
+  "schemas",
+  "middlewares",
+  "plugins",
+  "locales",
+  "shared-types",
+  "utils",
+  "mocks",
+  "jobs",
+  "frontend-pages",
+  "frontend-components",
+  "frontend-locales",
+  "frontend-styles",
+  "frontend-assets",
+  "tests",
+] as const;
+
+const DEFAULT_SERVICE_CANDIDATE_PATHS = [
+  "src/routes",
+  "src/services",
+  "src/models",
+  "src/schemas",
+  "src/middlewares",
+  "src/plugins",
+  "src/locales",
+  "src/types/shared",
+  "src/utils",
+  "src/mocks",
+  "src/jobs",
+  "src/frontend/pages",
+  "src/frontend/components",
+  "src/frontend/locales",
+  "src/frontend/styles",
+  "src/frontend/assets",
+  "test/unit",
+] as const;
 
 export function generateMcpChangeSet(
   input: VextGenerateChangesInput,
@@ -432,6 +471,7 @@ function validateCandidateFiles(
   }
   const seen = new Set<string>();
   const diagnostics: string[] = [];
+  const allowedPrefixes = candidateDirectoryPrefixes(project);
   for (const file of files) {
     if (!isRecord(file)) {
       diagnostics.push("file entry must be an object.");
@@ -444,7 +484,7 @@ function validateCandidateFiles(
       diagnostics.push("file.path must be a safe relative path.");
       continue;
     }
-    if (!isAllowedCandidatePath(file.path)) {
+    if (!isAllowedCandidatePath(file.path, allowedPrefixes)) {
       diagnostics.push(
         `${file.path} is outside supported Vext candidate directories.`,
       );
@@ -509,24 +549,59 @@ function isSafeRelativePath(value: string): boolean {
   );
 }
 
-function isAllowedCandidatePath(value: string): boolean {
+function candidateDirectoryPrefixes(
+  project: VextMcpProjectInspection | undefined,
+): string[] {
+  if (!project) {
+    return DEFAULT_SERVICE_CANDIDATE_PATHS.map((item) =>
+      normalizeCandidatePrefix(item),
+    );
+  }
+  const prefixes = new Set<string>();
+  for (const role of DEFAULT_CANDIDATE_SECTION_ROLES) {
+    const section = project.snapshot.sections[role];
+    if (!section) continue;
+    addCandidatePrefix(prefixes, section.actualPath ?? section.defaultPath);
+  }
+  for (const service of project.assistant.workspace?.config.services ?? []) {
+    for (const candidatePath of DEFAULT_SERVICE_CANDIDATE_PATHS) {
+      addCandidatePrefix(
+        prefixes,
+        path.posix.join(service.root, candidatePath),
+      );
+    }
+  }
+  for (const sharedPackage of project.assistant.workspace?.config
+    .sharedPackages ?? []) {
+    addCandidatePrefix(prefixes, sharedPackage.root);
+    for (const exportedPath of Object.values(sharedPackage.sourceExports)) {
+      addCandidatePrefix(
+        prefixes,
+        path.posix.join(sharedPackage.root, path.posix.dirname(exportedPath)),
+      );
+    }
+  }
+  return [...prefixes].sort();
+}
+
+function addCandidatePrefix(prefixes: Set<string>, value: string | null): void {
+  if (!value) return;
+  if (!isSafeRelativePath(value)) return;
+  const prefix = normalizeCandidatePrefix(value);
+  if (prefix) prefixes.add(prefix);
+}
+
+function normalizeCandidatePrefix(value: string): string {
+  const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalized === "." ? "" : `${normalized}/`;
+}
+
+function isAllowedCandidatePath(
+  value: string,
+  allowedPrefixes: string[],
+): boolean {
   const normalized = value.replaceAll("\\", "/");
-  return [
-    "src/routes/",
-    "src/services/",
-    "src/models/",
-    "src/middlewares/",
-    "src/plugins/",
-    "src/locales/",
-    "src/types/shared/",
-    "src/utils/",
-    "src/mocks/",
-    "src/jobs/",
-    "src/frontend/pages/",
-    "src/frontend/components/",
-    "src/schemas/",
-    "test/unit/",
-  ].some((prefix) => normalized.startsWith(prefix));
+  return allowedPrefixes.some((prefix) => normalized.startsWith(prefix));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

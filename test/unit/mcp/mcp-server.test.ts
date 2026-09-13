@@ -46,6 +46,15 @@ describe("Vext MCP project inspector", () => {
     expect(inspection.identity.contextRevision).toMatch(/^[a-f0-9]{64}$/);
     expect(inspection.snapshot.sections.config?.state).toBe("known");
     expect(inspection.snapshot.sections.jobs?.state).toBe("known");
+    expect(inspection.snapshot.sections.schemas?.defaultPath).toBe(
+      "src/schemas",
+    );
+    expect(inspection.snapshot.sections["shared-types"]?.defaultPath).toBe(
+      "src/types/shared",
+    );
+    expect(
+      inspection.snapshot.sections["frontend-components"]?.defaultPath,
+    ).toBe("src/frontend/components");
     expect(
       inspection.structureDecisions.find((item) => item.role === "locales")
         ?.defaultPath,
@@ -165,6 +174,43 @@ describe("Vext MCP server", () => {
       });
       expect(JSON.stringify(existingFile.structuredContent)).toContain(
         "already exists",
+      );
+      const sharedPackageFile = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          files: [
+            {
+              path: "packages/models/src/order.ts",
+              action: "create",
+              encoding: "utf8",
+              content: "export interface Order {}\n",
+            },
+          ],
+        },
+      });
+      expect(sharedPackageFile.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "valid", fileCount: 1 },
+      });
+      const unsupportedDirectory = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          files: [
+            {
+              path: "docs/notes.md",
+              action: "create",
+              encoding: "utf8",
+              content: "# Notes\n",
+            },
+          ],
+        },
+      });
+      expect(unsupportedDirectory.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "invalid" },
+      });
+      expect(JSON.stringify(unsupportedDirectory.structuredContent)).toContain(
+        "outside supported Vext candidate directories",
       );
       const routeDraft = await client.callTool({
         name: "vext_generate_changes",
