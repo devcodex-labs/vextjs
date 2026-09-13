@@ -1,5 +1,9 @@
 # OpenAPI 文档
 
+## Job 文档源
+
+启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。详见 [任务与 Jobs](/zh/guide/jobs)。
+
 VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范 JSON，并通过 Vext Docs Renderer 提供默认 `/docs` 文档页。第三方文档工具请直接消费 `/openapi.json`。
 
 内置 renderer 与官网共用同一套 Vext 标记几何、青绿/青色 light/dark theme token、绿色/琥珀色标记辅色和 favicon。即使自定义 docs 路径，这些资产仍由 Vext 内置并保持一致，应用无需另装 OpenAPI UI 包。

@@ -1,5 +1,9 @@
 # test
 
+## Testing jobs
+
+`vextjs/testing` exports `createTestJobRunner()` for Job unit tests. It creates a test app, registers supplied job definitions, and exposes `run()` plus `close()`. See [Jobs API](/api/jobs).
+
 VextJS has a complete built-in testing tool, imported through the `vextjs/testing` subpath. Routers, middleware, and services can be tested end-to-end without starting a real HTTP server.
 
 Both ESM `import` and CommonJS `require()` are supported. The root entry and public subpaths share runtime identity: for example, an error created through `vextjs/testing` remains `instanceof require("vextjs").HttpError`, and logger lifecycle metadata is visible across those entrypoints.

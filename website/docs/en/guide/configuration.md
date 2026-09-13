@@ -1,5 +1,24 @@
 # Configuration
 
+## Jobs configuration
+
+`config.jobs` controls how the framework discovers job files for `vext job ...`, tests, docs, and MCP tooling, and configures the built-in scheduler, worker, store, leases, and default retry policy. It does not make HTTP startup execute jobs.
+
+```ts
+export default {
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    runner: "inline",
+    store: { type: "file", dir: ".vext/jobs" },
+    scheduler: { enabled: true, mode: "inline" },
+    worker: { enabled: true, concurrency: 4 },
+  },
+};
+```
+
+See [Jobs](/guide/jobs) and [Jobs API](/api/jobs).
+
 VextJS uses a **multi-layer configuration merging** mechanism to support configuration overrides by environment, while providing a rich set of built-in configuration items to cover framework behaviors.
 
 ## Configuration loading mechanism

@@ -202,6 +202,63 @@ export type {
   StartupProfileFormatOptions,
 } from "./lib/startup-profiler.js";
 
+// Job 后台任务
+export {
+  bootstrapJobRuntime,
+  createJobRegistry,
+  createJobRunner,
+  createFileJobStore,
+  createJobStore,
+  createMemoryJobStore,
+  defineJob,
+  getNextJobRunTime,
+  isVextJobDefinition,
+  loadJobs,
+  resolveJobsDirectory,
+  resolveJobDueTimes,
+  runJob,
+  startJobScheduler,
+  startJobWorker,
+  tickJobScheduler,
+  VextJobDefinitionError,
+  VextJobDuplicateNameError,
+  VextJobExecutionError,
+  VextJobPayloadValidationError,
+  VextJobShutdownError,
+} from "./lib/jobs/index.js";
+export type {
+  BootstrapJobRuntimeOptions,
+  CreateFileJobStoreOptions,
+  CreateJobStoreOptions,
+  CreateMemoryJobStoreOptions,
+  StartJobSchedulerOptions,
+  StartJobWorkerOptions,
+  TickJobSchedulerOptions,
+  VextJobContext,
+  VextJobDefinition,
+  VextJobDefinitionInput,
+  VextJobDocsConfig,
+  VextJobHandler,
+  VextJobListRunsOptions,
+  VextJobMisfirePolicy,
+  VextJobQueueConfig,
+  VextJobRegistry,
+  VextJobRetryStrategy,
+  VextJobRunRecord,
+  VextJobRunRecordStatus,
+  VextJobRunOptions,
+  VextJobRunResult,
+  VextJobScheduleConfig,
+  VextJobStore,
+  VextJobStoreEnqueueInput,
+  VextJobsConfig,
+  VextJobRuntime,
+  VextJobRunnerAdapter,
+  VextJobStatus,
+  VextJobWorkerRuntime,
+  VextLoadedJob,
+} from "./lib/jobs/index.js";
+
 // 默认错误抛出（I18nError 联动）
 export { createDefaultThrow } from "./lib/default-throw.js";
 export type { VextThrowFn, VextThrowOptions } from "./lib/default-throw.js";

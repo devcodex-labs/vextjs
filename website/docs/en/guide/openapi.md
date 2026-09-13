@@ -1,5 +1,9 @@
 # OpenAPI Documentation
 
+## Job docs source
+
+Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. See [Jobs](/guide/jobs).
+
 VextJS has built-in automatic generation of OpenAPI documentation. Based on route `validate` and `docs` configuration, the framework generates an OpenAPI 3.0 JSON document and serves the default `/docs` page with the Vext Docs Renderer. Third-party documentation tools should consume `/openapi.json` directly.
 
 The built-in renderer uses the same Vext mark geometry, teal/cyan light/dark

@@ -1,5 +1,9 @@
 # Project structure
 
+## Jobs
+
+Background jobs live in `src/jobs/**` by default. The directory is a convention, not a hard requirement; use `config.jobs.dir` when a service owns another layout. Jobs are loaded by `vext job ...` and testing helpers, not by normal HTTP startup. See [Jobs](/guide/jobs).
+
 VextJS provides default directory conventions and automatic loading entries. Existing project architecture may override suggested locations. Distinguish actual Loader entries from ordinary import directories; configurable roles use their real configuration fields.
 
 ## Standard directory structure

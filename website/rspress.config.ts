@@ -91,7 +91,7 @@ const navSource: NavItemSource[] = [
     zh: "运行时",
     link: "/guide/routing",
     activeMatch:
-      "^/guide/(routing|services|middleware|plugins|hooks|request-context|configuration|adapters)",
+      "^/guide/(routing|services|jobs|middleware|plugins|hooks|request-context|configuration|adapters)",
   },
   {
     en: "Data",
@@ -199,6 +199,7 @@ const englishSidebar: SidebarGroup[] = [
     items: [
       { text: "Routing", link: "/guide/routing" },
       { text: "Services", link: "/guide/services" },
+      { text: "Jobs", link: "/guide/jobs" },
       { text: "Middleware", link: "/guide/middleware" },
       { text: "Plugins", link: "/guide/plugins" },
       { text: "Runtime Hooks", link: "/guide/hooks" },
@@ -241,6 +242,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Request and Response", link: "/api/context" },
       { text: "App", link: "/api/app" },
       { text: "Fetch API", link: "/api/fetch" },
+      { text: "Jobs API", link: "/api/jobs" },
       { text: "Plugin API", link: "/api/plugin-api" },
       { text: "Testing API", link: "/api/testing-api" },
       { text: "Access Log", link: "/api/access-log" },
@@ -361,6 +363,7 @@ const chineseSidebar: SidebarGroup[] = [
     items: [
       { text: "路由", link: "/zh/guide/routing" },
       { text: "服务层", link: "/zh/guide/services" },
+      { text: "任务与 Jobs", link: "/zh/guide/jobs" },
       { text: "中间件", link: "/zh/guide/middleware" },
       { text: "插件", link: "/zh/guide/plugins" },
       { text: "运行时 Hooks", link: "/zh/guide/hooks" },
@@ -403,6 +406,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "请求与响应", link: "/zh/api/context" },
       { text: "应用实例", link: "/zh/api/app" },
       { text: "Fetch API", link: "/zh/api/fetch" },
+      { text: "Jobs API", link: "/zh/api/jobs" },
       { text: "插件 API", link: "/zh/api/plugin-api" },
       { text: "测试工具", link: "/zh/api/testing-api" },
       { text: "Access Log 中间件", link: "/zh/api/access-log" },

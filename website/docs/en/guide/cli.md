@@ -1,5 +1,9 @@
 # CLI commands
 
+## Job commands
+
+Use `vext job list`, `vext job inspect <name>`, `vext job run <name>`, `vext job enqueue <name>`, `vext job scheduler`, `vext job worker`, `vext job runs`, and `vext job status <runId>` for background jobs. The commands load the headless Job runtime and do not start an HTTP server. See [Jobs](/guide/jobs).
+
 :::tip Stable release
 This site documents the stable `v2.0.0` release. The CLI output below uses that published version.
 :::

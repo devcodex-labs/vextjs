@@ -1,5 +1,9 @@
 # 部署与生产环境
 
+## 部署 Job scheduler 与 worker
+
+Job scheduler 和 worker 应作为独立于 HTTP 服务的进程部署。使用 `vext job scheduler` 负责定时创建 run，使用 `vext job worker` 负责领取和执行 pending run，并由拥有该进程的进程管理器关闭。HTTP rolling restart 不等价于 Job scheduler/worker 重启。详见 [任务与 Jobs](/zh/guide/jobs)。
+
 本指南介绍如何将 VextJS 应用部署到生产环境，涵盖构建、Docker 容器化、Nginx 反向代理、PM2 进程管理、日志收集和健康检查等实践。
 
 ## 文档站发布

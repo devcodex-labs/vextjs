@@ -67,6 +67,7 @@ function config(
       utils: true,
       models: true,
       components: true,
+      jobs: true,
       plugins: true,
       middlewares: true,
       locales: false,

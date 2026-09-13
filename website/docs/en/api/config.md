@@ -147,6 +147,7 @@ export default config;
 | `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`          | Built-in MonSQLize plugin extension; see [Database guide](../guide/database) |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration                     |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                                          |
+| `jobs`            | [`VextJobsConfig`](./jobs#configuration)                | See Jobs API         | Background Job discovery and worker configuration                            |
 | `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | See below            | Route-level response cache configuration                                     |
 | `dev`             | [`VextDevConfig`](#vextdevconfig)                       | See below            | Development-only tooling configuration                                       |
 
@@ -684,6 +685,7 @@ OpenAPI documentation generation configuration.
 | `docs.code.enabled`             | `boolean \| 'auto'`                       | `'auto'`                   | Whether to generate code docs from services / utils / models / components / plugins / middlewares and explicitly enabled optional static sources                                                              |
 | `docs.code.scan`                | `'lazy' \| 'background'`                  | `'lazy'`                   | Code docs scan lifecycle. `lazy` scans on each docs data request; `background` warms one in-process snapshot at docs registration and reuses it for later requests                                            |
 | `docs.code.components`          | `boolean \| object`                       | `true`                     | Component JSDoc source. Defaults to `src/frontend/components/**`; only discovered entries appear in the UI                                                                                                    |
+| `docs.code.jobs`                | `boolean \| object`                       | `true`                     | Job JSDoc source. Defaults to `src/jobs/**`; entries are shown as code docs, not OpenAPI operations                                                                                                           |
 | `docs.code.plugins`             | `boolean \| object`                       | `true`                     | Plugin JSDoc/runtime source. Defaults to `src/plugins/**`; only discovered entries appear in the UI                                                                                                           |
 | `docs.code.middlewares`         | `boolean \| object`                       | `true`                     | Middleware JSDoc/runtime source. Defaults to `src/middlewares/**`; only discovered entries appear in the UI                                                                                                   |
 | `docs.code.locales`             | `boolean \| object`                       | `false`                    | Optional locale source. When enabled, scans `src/locales/**` and `src/frontend/locales/**`; set `dir` to scan one custom locale root                                                                          |
@@ -1302,6 +1304,48 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   frontend: {
     enabled: false,
+  },
+  jobs: {
+    enabled: true,
+    dir: 'jobs',
+    runner: 'inline',
+    store: {
+      type: 'file',
+      dir: '.vext/jobs',
+    },
+    scheduler: {
+      enabled: true,
+      mode: 'inline',
+      tickInterval: 1000,
+      timezone: 'UTC',
+      misfirePolicy: 'skip',
+      maxCatchUp: 10,
+      jitter: 0,
+      lease: {
+        enabled: true,
+        ttl: 30000,
+        renewInterval: 10000,
+      },
+    },
+    worker: {
+      enabled: true,
+      concurrency: 4,
+      shutdownTimeout: 10000,
+      pollInterval: 1000,
+      heartbeatInterval: 10000,
+      lease: {
+        ttl: 30000,
+      },
+    },
+    defaults: {
+      timeout: 30000,
+      retry: {
+        attempts: 1,
+        delay: 0,
+        backoff: 'fixed',
+      },
+      concurrency: 1,
+    },
   },
 }
 ```

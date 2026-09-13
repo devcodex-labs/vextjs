@@ -4,6 +4,7 @@ import type { ResolvedVextDocsConfig, VextCodeDocsDocument } from "../types.js";
 import { loadComponentCodeDocs } from "./component-source.js";
 import { loadMiddlewareCodeDocs } from "./middleware-source.js";
 import { loadModelCodeDocs } from "./model-source.js";
+import { loadJobCodeDocs } from "./job-source.js";
 import { loadPluginCodeDocs } from "./plugin-source.js";
 import { loadServiceCodeDocs } from "./service-source.js";
 import {
@@ -71,6 +72,10 @@ export async function loadCodeDocs(
     ...(await loadComponentCodeDocs({
       srcDir,
       source: code.components,
+    })),
+    ...(await loadJobCodeDocs({
+      srcDir,
+      source: code.jobs,
     })),
     ...(await loadPluginCodeDocs({
       srcDir,

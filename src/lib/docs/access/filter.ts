@@ -213,6 +213,7 @@ export function buildDocsMenu(
     ["utils", "Utils"],
     ["model", "Models"],
     ["component", "Components"],
+    ["job", "Jobs"],
     ["plugin", "Plugins"],
     ["middleware", "Middlewares"],
     ["locale", "Locales"],
@@ -294,6 +295,14 @@ export function createCodeDocAccessDescriptor(
       id: item.id,
       pluginName: item.plugin?.name ?? value,
       file: item.sourceFile,
+    };
+  }
+  if (item.kind === "job") {
+    return {
+      kind: "job",
+      id: item.id,
+      file: item.sourceFile,
+      title: item.title,
     };
   }
   if (item.kind === "middleware") {

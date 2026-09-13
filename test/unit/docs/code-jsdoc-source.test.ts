@@ -27,6 +27,7 @@ describe("loadCodeDocs", () => {
     await mkdir(join(srcDir, "utils"), { recursive: true });
     await mkdir(join(srcDir, "model", "tenant"), { recursive: true });
     await mkdir(join(srcDir, "frontend", "components"), { recursive: true });
+    await mkdir(join(srcDir, "jobs", "billing"), { recursive: true });
     await mkdir(join(srcDir, "plugins"), { recursive: true });
     await mkdir(join(srcDir, "middlewares"), { recursive: true });
     await mkdir(join(srcDir, "locales", "common"), { recursive: true });
@@ -106,6 +107,28 @@ export default {
 export function AppShell(props: { children?: unknown }) {
   return props.children
 }
+`,
+    );
+    await writeFile(
+      join(srcDir, "jobs", "billing", "close-invoice.ts"),
+      `
+/**
+ * Close overdue invoices.
+ */
+export default defineJob({
+  name: "billing.closeInvoice",
+  tags: ["billing"],
+  schedule: {
+    cron: "0 */5 * * * *",
+    timezone: "Asia/Shanghai",
+    singleton: true,
+  },
+  queue: { priority: 10 },
+  timeout: 30000,
+  handler() {
+    throw new Error("should not execute")
+  }
+})
 `,
     );
     await writeFile(
@@ -194,6 +217,7 @@ export const dashboardRoot = "dashboard-root"
         "utils:date#formatDate",
         "model:TenantOrder#default",
         "component:app-shell#AppShell",
+        "job:billing.closeInvoice#default",
         "plugin:hello#default",
         "middleware:check-role#default",
       ]),
@@ -257,6 +281,27 @@ export const dashboardRoot = "dashboard-root"
         lifecycle: { setup: true, onReady: true, onClose: true },
         extensions: ["hello"],
         globalMiddlewares: true,
+      },
+    });
+    expect(
+      docs.items.find((item) => item.id === "job:billing.closeInvoice#default"),
+    ).toMatchObject({
+      kind: "job",
+      title: "jobs.billing.closeInvoice",
+      sourceFile: "jobs/billing/close-invoice.ts",
+      summary: "Close overdue invoices.",
+      job: {
+        name: "billing.closeInvoice",
+        timeout: 30000,
+        schedule: {
+          cron: "0 */5 * * * *",
+          timezone: "Asia/Shanghai",
+          singleton: true,
+        },
+        queue: {
+          priority: 10,
+        },
+        usage: "vext job run billing.closeInvoice",
       },
     });
     expect(

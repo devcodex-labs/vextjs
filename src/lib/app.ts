@@ -1127,4 +1127,46 @@ export const DEFAULT_CONFIG: VextConfig = {
   requestContext: {
     enabled: true,
   },
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    runner: "inline",
+    store: {
+      type: "file",
+      dir: ".vext/jobs",
+    },
+    scheduler: {
+      enabled: true,
+      mode: "inline",
+      tickInterval: 1000,
+      timezone: "UTC",
+      misfirePolicy: "skip",
+      maxCatchUp: 10,
+      jitter: 0,
+      lease: {
+        enabled: true,
+        ttl: 30000,
+        renewInterval: 10000,
+      },
+    },
+    worker: {
+      enabled: true,
+      concurrency: 4,
+      shutdownTimeout: 10000,
+      pollInterval: 1000,
+      heartbeatInterval: 10000,
+      lease: {
+        ttl: 30000,
+      },
+    },
+    defaults: {
+      timeout: 30000,
+      retry: {
+        attempts: 1,
+        delay: 0,
+        backoff: "fixed",
+      },
+      concurrency: 1,
+    },
+  },
 };

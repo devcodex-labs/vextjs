@@ -1,5 +1,9 @@
 # Cluster multi-process
 
+## Jobs and cluster
+
+HTTP cluster workers do not run jobs by default. This prevents duplicated scheduled firing when multiple HTTP workers serve the same app. In production, run HTTP, `vext job scheduler`, and `vext job worker` as separate processes; multiple schedulers/workers coordinate through job store leases. See [Jobs](/guide/jobs).
+
 VextJS has built-in **Cluster multi-process management**, manages multiple Worker processes through `ClusterMaster`, makes full use of multi-core CPUs, and supports enterprise-level features such as zero-downtime rolling restart, heartbeat detection, and automatic fault recovery.
 
 ## Quick Start

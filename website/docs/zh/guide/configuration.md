@@ -1,5 +1,24 @@
 # 配置
 
+## Jobs 配置
+
+`config.jobs` 控制 `vext job ...`、测试、文档和 MCP 工具如何发现 Job 文件，并配置内置 scheduler、worker、store、lease 和默认重试策略。它不会让 HTTP 启动自动执行 Job。
+
+```ts
+export default {
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    runner: "inline",
+    store: { type: "file", dir: ".vext/jobs" },
+    scheduler: { enabled: true, mode: "inline" },
+    worker: { enabled: true, concurrency: 4 },
+  },
+};
+```
+
+详见 [任务与 Jobs](/zh/guide/jobs) 与 [Jobs API](/zh/api/jobs)。
+
 VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同时提供丰富的内置配置项覆盖框架行为。
 
 ## 配置加载机制

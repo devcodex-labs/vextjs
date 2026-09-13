@@ -1,5 +1,9 @@
 # 测试
 
+## 测试 Jobs
+
+`vextjs/testing` 导出 `createTestJobRunner()` 用于 Job 单元测试。它会创建测试 app，注册传入的 Job 定义，并提供 `run()` 与 `close()`。详见 [Jobs API](/zh/api/jobs)。
+
 VextJS 内置了完整的测试工具，通过 `vextjs/testing` 子路径导入。无需启动真实 HTTP 服务器，即可对路由、中间件、服务进行端到端测试。
 
 ESM `import` 与 CommonJS `require()` 均受支持。根入口和公开子路径共享运行时身份：例如通过 `vextjs/testing` 创建的错误仍满足 `instanceof require("vextjs").HttpError`，logger 生命周期元数据也可跨这些入口读取。

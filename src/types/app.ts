@@ -2,6 +2,7 @@ import type { VextAdapter } from "./adapter.js";
 import type { VextMiddleware, VextHandler } from "./middleware.js";
 import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
+import type { VextJobsConfig } from "../lib/jobs/types.js";
 import type { DslBuilder } from "../lib/schema-adapter.js";
 import type {
   VextDocsConfig,
@@ -1151,6 +1152,14 @@ export interface VextConfig {
    * @see 12-cluster.md（设计方案）
    */
   cluster?: Partial<VextClusterConfig>;
+
+  /**
+   * Job 后台任务配置。
+   *
+   * HTTP 启动默认不会执行 Job；该配置只影响 `vext job ...`、测试 helper
+   * 和机器可读文档对 `src/jobs/**` 的发现方式。
+   */
+  jobs?: VextJobsConfig;
 
   /**
    * 路由级响应缓存配置

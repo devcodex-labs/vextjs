@@ -4819,6 +4819,14 @@ export const VEXT_DOCS_APP_JS: string = `
         leaf: item.exportName || parsed.member || text(item.title || item.id),
       };
     }
+    if (item.kind === "job") {
+      const source = stripExtension(item.sourceFile || "").replace(/^src\\//u, "").replace(/^jobs\\//u, "");
+      const parts = source ? source.split("/").filter(Boolean) : [];
+      return {
+        segments: parts.slice(0, -1),
+        leaf: parts[parts.length - 1] || parsed.scope || text(item.title || item.id),
+      };
+    }
     if (item.kind === "locale") {
       const source = stripExtension(item.sourceFile || "").replace(/^src\\//u, "");
       const normalized = source.startsWith("frontend/locales/")
@@ -4929,6 +4937,7 @@ export const VEXT_DOCS_APP_JS: string = `
     if (item.kind === "utils") return item.sourceFile || "utils";
     if (item.kind === "model") return item.sourceFile ? item.sourceFile.split("/").slice(0, -1).join("/") || "models" : "models";
     if (item.kind === "component") return item.sourceFile || "components";
+    if (item.kind === "job") return item.sourceFile ? item.sourceFile.split("/").slice(0, -1).join("/") || "jobs" : "jobs";
     if (item.kind === "plugin") return item.sourceFile ? item.sourceFile.split("/").slice(0, -1).join("/") || "plugins" : "plugins";
     if (item.kind === "middleware") return item.sourceFile ? item.sourceFile.split("/").slice(0, -1).join("/") || "middlewares" : "middlewares";
     if (item.kind === "locale") return item.sourceFile ? item.sourceFile.split("/").slice(0, -1).join("/") || "locales" : "locales";
@@ -5117,6 +5126,10 @@ export const VEXT_DOCS_APP_JS: string = `
     if (componentCount > 0) {
       groups.push({ view: "component", label: "Components", count: componentCount });
     }
+    const jobCount = visibleCodeItems("job").length;
+    if (jobCount > 0) {
+      groups.push({ view: "job", label: "Jobs", count: jobCount });
+    }
     const pluginCount = visibleCodeItems("plugin").length;
     if (pluginCount > 0) {
       groups.push({ view: "plugin", label: "Plugins", count: pluginCount });
@@ -5175,7 +5188,7 @@ export const VEXT_DOCS_APP_JS: string = `
     if (view === "backend-api" || view === "frontend-route") {
       return buildOperationTree(visibleOperations(view), view);
     }
-    if (view === "service" || view === "utils" || view === "model" || view === "component" || view === "plugin" || view === "middleware" || view === "locale" || view === "config" || view === "style" || view === "preload") {
+    if (view === "service" || view === "utils" || view === "model" || view === "component" || view === "job" || view === "plugin" || view === "middleware" || view === "locale" || view === "config" || view === "style" || view === "preload") {
       return buildCodeTree(visibleCodeItems(view), view);
     }
     return [];
@@ -5237,6 +5250,7 @@ export const VEXT_DOCS_APP_JS: string = `
       createOverviewCard("utils", "Utils", flattenCodeItems(state.codeDocs, "utils").length);
       createOverviewCard("model", "Models", flattenCodeItems(state.codeDocs, "model").length);
       createOverviewCard("component", "Components", flattenCodeItems(state.codeDocs, "component").length);
+      createOverviewCard("job", "Jobs", flattenCodeItems(state.codeDocs, "job").length);
       createOverviewCard("plugin", "Plugins", flattenCodeItems(state.codeDocs, "plugin").length);
       createOverviewCard("middleware", "Middlewares", flattenCodeItems(state.codeDocs, "middleware").length);
       overview.appendChild(cards);

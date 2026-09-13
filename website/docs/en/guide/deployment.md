@@ -1,5 +1,9 @@
 # Deployment and production environment
 
+## Deploying job schedulers and workers
+
+Deploy Job schedulers and workers as separate processes from HTTP servers. Start `vext job scheduler` to create scheduled runs, start `vext job worker` to claim and execute pending runs, and stop them through the process manager that owns each process. HTTP rolling restart does not imply a Job scheduler or worker restart. See [Jobs](/guide/jobs).
+
 This guide explains how to deploy a VextJS application into production, covering practices such as building, Docker containerization, Nginx reverse proxy, PM2 process management, log collection, and health checks.
 
 ## Publish the documentation site

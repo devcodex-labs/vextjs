@@ -1,5 +1,9 @@
 # CLI 命令
 
+## Job 命令
+
+后台任务使用 `vext job list`、`vext job inspect <name>`、`vext job run <name>`、`vext job enqueue <name>`、`vext job scheduler`、`vext job worker`、`vext job runs` 和 `vext job status <runId>`。这些命令加载 headless Job runtime，不启动 HTTP 服务。详见 [任务与 Jobs](/zh/guide/jobs)。
+
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。
 :::

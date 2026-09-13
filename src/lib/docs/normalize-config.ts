@@ -155,6 +155,7 @@ export function normalizeDocsConfig(
     utils: normalizeCodeSource(code.utils, true),
     models: normalizeCodeSource(code.models, true),
     components: normalizeCodeSource(code.components, true),
+    jobs: normalizeCodeSource(code.jobs, true),
     plugins: normalizeCodeSource(code.plugins, true),
     middlewares: normalizeCodeSource(code.middlewares, true),
     locales: normalizeCodeSource(code.locales, false),

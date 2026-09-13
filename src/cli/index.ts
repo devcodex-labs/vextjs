@@ -10,6 +10,7 @@ import { reloadCommand } from "./reload.js";
 import { statusCommand } from "./status.js";
 import { doctorCommand } from "./doctor.js";
 import { typegenCommand } from "./typegen.js";
+import { jobCommand } from "./job.js";
 
 /**
  * vext CLI — 框架命令行入口（Phase 1）
@@ -55,6 +56,7 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   status: statusCommand,
   doctor: doctorCommand,
   typegen: typegenCommand,
+  job: jobCommand,
 };
 
 // ── 未实现命令占位 ──────────────────────────────────────────
@@ -155,6 +157,7 @@ function printHelp(): void {
     status                Show server status (cluster mode)
     doctor                Preview static diagnostics (experimental)
     typegen               Generate declarations and run tooling diagnostics (experimental)
+    job                   List, inspect, run, or start Job worker runtime
 
   Global options:
     -h, --help            Show this help message
@@ -168,6 +171,7 @@ function printHelp(): void {
     vext status --help    Show status command options
     vext doctor --help    Show doctor command options
     vext typegen --help   Show typegen command options
+    vext job --help       Show job command options
     vext deploy --help    Show deploy command options
 
   Examples:

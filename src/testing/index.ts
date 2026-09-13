@@ -59,6 +59,15 @@ import type {
 import type { VextInternalHooks } from "../types/hooks.js";
 import { createVextFetch, type VextFetchConfig } from "../lib/fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
+import { createJobRegistry } from "../lib/jobs/job-registry.js";
+import { createJobRunner } from "../lib/jobs/job-runner.js";
+import type {
+  VextJobDefinition,
+  VextJobRegistry,
+  VextJobRunOptions,
+  VextJobRunResult,
+  VextLoadedJob,
+} from "../lib/jobs/types.js";
 
 import { PassThrough, Readable } from "node:stream";
 import { join } from "node:path";
@@ -163,6 +172,20 @@ export interface TestApp {
    * 关闭 test app（触发 onClose 钩子、清理资源）
    * 务必在 afterEach / afterAll 中调用
    */
+  close(): Promise<void>;
+}
+
+export interface CreateTestJobRunnerOptions extends Omit<
+  CreateTestAppOptions,
+  "routes"
+> {
+  jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+}
+
+export interface TestJobRunner {
+  app: VextApp;
+  registry: VextJobRegistry;
+  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
   close(): Promise<void>;
 }
 
@@ -588,6 +611,45 @@ export async function createTestApp(
       await internals.shutdown();
     },
   };
+}
+
+export async function createTestJobRunner(
+  options: CreateTestJobRunnerOptions,
+): Promise<TestJobRunner> {
+  const test = await createTestApp({
+    ...options,
+    routes: false,
+  });
+  const jobs = normalizeTestJobs(options.jobs);
+  const registry = createJobRegistry(jobs);
+  const runner = createJobRunner({ app: test.app, registry });
+  return {
+    app: test.app,
+    registry,
+    run: runner.run,
+    close: test.close,
+  };
+}
+
+function normalizeTestJobs(
+  jobs: CreateTestJobRunnerOptions["jobs"],
+): VextLoadedJob[] {
+  if (Array.isArray(jobs)) {
+    return jobs.map((definition, index) => ({
+      name: definition.name ?? `job${index + 1}`,
+      definition,
+      sourceFile: `test/jobs/job${index + 1}.ts`,
+      sourcePath: `test/jobs/job${index + 1}.ts`,
+      exportName: "default",
+    }));
+  }
+  return Object.entries(jobs).map(([name, definition]) => ({
+    name: definition.name ?? name,
+    definition,
+    sourceFile: `test/jobs/${name}.ts`,
+    sourcePath: `test/jobs/${name}.ts`,
+    exportName: "default",
+  }));
 }
 
 // ── 404 兜底处理（与 bootstrap.ts 一致）──────────────────────

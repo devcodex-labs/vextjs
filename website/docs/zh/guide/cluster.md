@@ -1,5 +1,9 @@
 # Cluster 多进程
 
+## Jobs 与 Cluster
+
+HTTP cluster worker 默认不执行 Job，避免多个 HTTP worker 重复触发同一定时任务。生产环境请把 HTTP、`vext job scheduler` 和 `vext job worker` 拆成独立进程；多个 scheduler/worker 可通过 Job store lease 协调。详见 [任务与 Jobs](/zh/guide/jobs)。
+
 VextJS 内置 **Cluster 多进程管理**，通过 `ClusterMaster` 管理多个 Worker 进程，充分利用多核 CPU，并支持零停机滚动重启、心跳检测、自动故障恢复等企业级特性。
 
 ## 快速开始

@@ -147,6 +147,7 @@ export default config;
 | `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`          | 内置 MonSQLize 插件的类型增强；见[数据库指南](../guide/database) |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置                                       |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                                               |
+| `jobs`            | [`VextJobsConfig`](./jobs#配置)                         | 见 Jobs API          | 后台 Job 发现与 worker 配置                                      |
 | `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | 见下方               | 路由级响应缓存配置                                               |
 | `dev`             | [`VextDevConfig`](#vextdevconfig)                       | 见下方               | 仅开发模式使用的工具配置                                         |
 
@@ -686,6 +687,7 @@ OpenAPI 文档自动生成配置。
 | `docs.code.enabled`             | `boolean \| 'auto'`                       | `'auto'`             | 是否从 services / utils / models / components / plugins / middlewares 及显式开启的可选静态来源生成代码文档                                                              |
 | `docs.code.scan`                | `'lazy' \| 'background'`                  | `'lazy'`             | Code Docs 扫描生命周期；`lazy` 每次请求 docs data 时扫描，`background` 在文档注册时预热一次进程内快照并复用                                                             |
 | `docs.code.components`          | `boolean \| object`                       | `true`               | Components JSDoc 文档源；默认扫描 `src/frontend/components/**`，仅发现条目时在 UI 中展示                                                                                |
+| `docs.code.jobs`                | `boolean \| object`                       | `true`               | Jobs JSDoc 文档源；默认扫描 `src/jobs/**`，条目作为 code docs 展示，不会成为 OpenAPI operation                                                                          |
 | `docs.code.plugins`             | `boolean \| object`                       | `true`               | Plugins JSDoc/runtime 文档源；默认扫描 `src/plugins/**`，仅发现条目时在 UI 中展示                                                                                       |
 | `docs.code.middlewares`         | `boolean \| object`                       | `true`               | Middlewares JSDoc/runtime 文档源；默认扫描 `src/middlewares/**`，仅发现条目时在 UI 中展示                                                                               |
 | `docs.code.locales`             | `boolean \| object`                       | `false`              | 可选 Locales 文档源；开启后扫描 `src/locales/**` 和 `src/frontend/locales/**`；配置 `dir` 时只扫描该自定义 locale 根目录                                                |
@@ -1304,6 +1306,48 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   frontend: {
     enabled: false,
+  },
+  jobs: {
+    enabled: true,
+    dir: 'jobs',
+    runner: 'inline',
+    store: {
+      type: 'file',
+      dir: '.vext/jobs',
+    },
+    scheduler: {
+      enabled: true,
+      mode: 'inline',
+      tickInterval: 1000,
+      timezone: 'UTC',
+      misfirePolicy: 'skip',
+      maxCatchUp: 10,
+      jitter: 0,
+      lease: {
+        enabled: true,
+        ttl: 30000,
+        renewInterval: 10000,
+      },
+    },
+    worker: {
+      enabled: true,
+      concurrency: 4,
+      shutdownTimeout: 10000,
+      pollInterval: 1000,
+      heartbeatInterval: 10000,
+      lease: {
+        ttl: 30000,
+      },
+    },
+    defaults: {
+      timeout: 30000,
+      retry: {
+        attempts: 1,
+        delay: 0,
+        backoff: 'fixed',
+      },
+      concurrency: 1,
+    },
   },
 }
 ```

@@ -16,6 +16,7 @@ export type VextDocsSourceKind =
   | "utils"
   | "model"
   | "component"
+  | "job"
   | "plugin"
   | "middleware"
   | "locale"
@@ -133,6 +134,25 @@ export interface VextMiddlewareDetails {
   usage?: string;
 }
 
+export interface VextJobDetails {
+  name: string;
+  timeout?: number;
+  retry?: unknown;
+  concurrency?: number;
+  schedule?: {
+    cron?: string;
+    interval?: number;
+    timezone?: string;
+    singleton?: boolean;
+  };
+  queue?: {
+    enabled?: boolean;
+    priority?: number;
+  };
+  hasPayloadSchema?: boolean;
+  usage?: string;
+}
+
 export interface VextCodeDocItem {
   id: string;
   kind: VextDocsSourceKind;
@@ -151,6 +171,7 @@ export interface VextCodeDocItem {
   model?: VextModelDetails;
   plugin?: VextPluginDetails;
   middleware?: VextMiddlewareDetails;
+  job?: VextJobDetails;
 }
 
 export interface VextCodeDocsDocument {
@@ -185,6 +206,7 @@ export interface ResolvedVextCodeDocsConfig {
   utils: boolean | VextCodeDocsSourceConfig;
   models: boolean | VextCodeDocsSourceConfig;
   components: boolean | VextCodeDocsSourceConfig;
+  jobs: boolean | VextCodeDocsSourceConfig;
   plugins: boolean | VextCodeDocsSourceConfig;
   middlewares: boolean | VextCodeDocsSourceConfig;
   locales: boolean | VextCodeDocsSourceConfig;
@@ -304,6 +326,7 @@ export interface VextDocsConfig {
     utils?: boolean | VextCodeDocsSourceConfig;
     models?: boolean | VextCodeDocsSourceConfig;
     components?: boolean | VextCodeDocsSourceConfig;
+    jobs?: boolean | VextCodeDocsSourceConfig;
     plugins?: boolean | VextCodeDocsSourceConfig;
     middlewares?: boolean | VextCodeDocsSourceConfig;
     locales?: boolean | VextCodeDocsSourceConfig;
@@ -371,7 +394,7 @@ export type VextDocsAccessDescriptor =
       middlewareType?: "middleware" | "factory" | "unknown";
     }
   | {
-      kind: "locale" | "config" | "preload" | "style";
+      kind: "job" | "locale" | "config" | "preload" | "style";
       id: string;
       file?: string;
       title: string;
