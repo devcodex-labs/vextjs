@@ -48,7 +48,7 @@ src/                          dist/
 | ------------ | ---------------------- | ---------------------------------------------- |
 | Source Map   | 开启（外部 `.js.map`） | 错误堆栈映射回 TypeScript 行号                 |
 | Minify       | 默认开启               | 压缩后端产物；仅在本地诊断时使用 `--no-minify` |
-| Target       | `node20`               | 与 `engines.node >= 20.19.0` 对齐              |
+| Target       | `node20`               | 与 `engines.node ^20.19.0 \|\| >=22.12.0` 对齐 |
 | Format       | CJS                    | CommonJS 输出，Node.js 稳定运行                |
 | Tree Shaking | 开启                   | 移除未使用的导出                               |
 | Keep Names   | 开启                   | 保留函数/类名称（错误堆栈可读性）              |

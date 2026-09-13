@@ -32,6 +32,7 @@ import {
   applyServerConfig,
   createNodeServerOptions,
 } from "../../lib/server-config.js";
+import { discardPendingResponseForError } from "../../lib/response-error-recovery.js";
 
 /**
  * Koa Adapter 选项
@@ -327,6 +328,14 @@ export function createKoaAdapter(
           }
           await executeChain(fullChain, req, res);
         } catch (err) {
+          if (
+            !discardPendingResponseForError(res, {
+              error: err,
+              logger: vextApp.logger,
+            })
+          ) {
+            return;
+          }
           if (errorHandler) {
             try {
               errorHandler(err, req, res);

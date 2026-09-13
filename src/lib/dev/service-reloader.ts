@@ -68,11 +68,17 @@ export interface ServiceReloadResult {
   /** 受影响（重载）的 service 数量 */
   reloaded: number;
 
+  /** 删除的 service 数量 */
+  removed?: number;
+
   /** 未受影响（保持不变）的 service 数量 */
   unchanged: number;
 
   /** 重载的 service key 列表（点分格式，如 "payment.stripe"） */
   reloadedKeys: string[];
+
+  /** 删除的 service key 列表（点分格式，如 "payment.stripe"） */
+  removedKeys?: string[];
 }
 
 /**
@@ -177,6 +183,68 @@ export function setNestedValue(
   cur[keys[keys.length - 1]!] = value;
 }
 
+function deleteNestedValue(
+  obj: Record<string, unknown>,
+  keys: string[],
+): boolean {
+  if (keys.length === 0) return false;
+  const parents: Array<{ target: Record<string, unknown>; key: string }> = [];
+  let cur: Record<string, unknown> | undefined = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i]!;
+    const next = cur[key];
+    if (next === null || next === undefined || typeof next !== "object") {
+      return false;
+    }
+    parents.push({ target: cur, key });
+    cur = next as Record<string, unknown>;
+  }
+
+  const leaf = keys[keys.length - 1]!;
+  if (!Object.prototype.hasOwnProperty.call(cur, leaf)) return false;
+  delete cur[leaf];
+
+  for (let i = parents.length - 1; i >= 0; i--) {
+    const { target, key } = parents[i]!;
+    const value = target[key];
+    if (
+      value !== null &&
+      value !== undefined &&
+      typeof value === "object" &&
+      Object.keys(value as Record<string, unknown>).length === 0
+    ) {
+      delete target[key];
+    } else {
+      break;
+    }
+  }
+
+  return true;
+}
+
+async function disposeServiceInstance(
+  app: ServiceReloaderApp,
+  dotPath: string,
+  instance: unknown,
+): Promise<void> {
+  if (
+    instance !== null &&
+    instance !== undefined &&
+    typeof instance === "object" &&
+    "dispose" in instance &&
+    typeof (instance as Record<string, unknown>).dispose === "function"
+  ) {
+    try {
+      await (instance as { dispose: () => void | Promise<void> }).dispose();
+      app.logger.debug(`[hot-reload] service "${dotPath}" dispose() completed`);
+    } catch (e) {
+      app.logger.warn(
+        `[hot-reload] service "${dotPath}" dispose() failed: ${(e as Error).message}`,
+      );
+    }
+  }
+}
+
 // ── 扫描 services 目录 ─────────────────────────────────────
 
 /**
@@ -252,8 +320,20 @@ export async function reloadServices(
 
   // ── 1. 扫描所有 service 文件 ──────────────────────────
   const allServiceFiles = await scanServiceDirectory(servicesDir);
+  const serviceFileSet = new Set(allServiceFiles);
+  const removedFiles = [...invalidated].filter((file) => {
+    if (!file.endsWith(".js")) return false;
+    const relative = path.relative(servicesDir, file);
+    return (
+      relative !== "" &&
+      !relative.startsWith("..") &&
+      !path.isAbsolute(relative) &&
+      !serviceFileSet.has(file) &&
+      !existsSync(file)
+    );
+  });
 
-  if (allServiceFiles.length === 0) {
+  if (allServiceFiles.length === 0 && removedFiles.length === 0) {
     app.logger.debug("[hot-reload] no services found, skipping service reload");
     return { reloaded: 0, unchanged: 0, reloadedKeys: [] };
   }
@@ -285,9 +365,29 @@ export async function reloadServices(
       // require.resolve 失败（文件可能已被删除），跳过
     }
   }
+  const removedKeys: string[] = [];
+  for (const file of removedFiles) {
+    const relativePath = path.relative(servicesDir, file);
+    const keys = filePathToServiceKeys(relativePath);
+    const dotPath = keys.join(".");
+    const oldInstance = getNestedValue(
+      app.services as Record<string, unknown>,
+      keys,
+    );
+    await disposeServiceInstance(app, dotPath, oldInstance);
+    if (deleteNestedValue(app.services as Record<string, unknown>, keys)) {
+      removedKeys.push(dotPath);
+      app.hooks?.emitSafeSync("service:reloaded", {
+        name: dotPath,
+        instance: undefined,
+        filePath: file,
+      });
+      app.logger.debug(`[hot-reload] service "${dotPath}" removed`);
+    }
+  }
 
   // 如果没有 service 被影响，直接跳过
-  if (affectedFiles.length === 0) {
+  if (affectedFiles.length === 0 && removedKeys.length === 0) {
     app.logger.debug(
       "[hot-reload] no services affected, skipping service reload",
     );
@@ -333,26 +433,7 @@ export async function reloadServices(
         app.services as Record<string, unknown>,
         keys,
       );
-      if (
-        oldInstance !== null &&
-        oldInstance !== undefined &&
-        typeof oldInstance === "object" &&
-        "dispose" in oldInstance &&
-        typeof (oldInstance as Record<string, unknown>).dispose === "function"
-      ) {
-        try {
-          await (
-            oldInstance as { dispose: () => void | Promise<void> }
-          ).dispose();
-          app.logger.debug(
-            `[hot-reload] service "${dotPath}" dispose() completed`,
-          );
-        } catch (e) {
-          app.logger.warn(
-            `[hot-reload] service "${dotPath}" dispose() failed: ${(e as Error).message}`,
-          );
-        }
-      }
+      await disposeServiceInstance(app, dotPath, oldInstance);
 
       // 4.2 重新 require 并实例化
       //
@@ -413,13 +494,16 @@ export async function reloadServices(
 
     app.logger.info(
       `[hot-reload] services reloaded: ${affectedFiles.length} changed` +
+        `, ${removedKeys.length} removed` +
         ` (${allServiceFiles.length - affectedFiles.length} unchanged, kept)`,
     );
 
     return {
       reloaded: affectedFiles.length,
+      removed: removedKeys.length,
       unchanged: allServiceFiles.length - affectedFiles.length,
       reloadedKeys,
+      removedKeys,
     };
   } catch (err) {
     // ── 5. 回滚：恢复受影响的 service 到旧实例 ──────────

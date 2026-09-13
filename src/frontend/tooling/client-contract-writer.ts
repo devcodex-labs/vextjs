@@ -257,10 +257,39 @@ function selectSuccessResponse(
   warnings: string[],
   isFrontendDocument: boolean,
 ): VextClientSchemaReference {
-  const success = responses.find((response) =>
-    /^2(?:\d\d|xx)$/iu.test(response.status),
+  const successResponses = responses.filter((response) =>
+    isSuccessResponseStatus(response.status),
   );
-  if (success) return success.schema;
+  if (successResponses.length === 1) return successResponses[0]!.schema;
+  if (successResponses.length > 1) {
+    const successSchemas = successResponses
+      .map((response) => response.schema)
+      .filter(
+        (schema): schema is { type: "schema"; schema: VextSchemaIRV1 } =>
+          schema.type === "schema",
+      );
+    if (successSchemas.length === 1) return successSchemas[0]!;
+    if (successSchemas.length > 1) {
+      const schema = {
+        schemaVersion: 1,
+        kind: "vext-schema-ir",
+        source: "responses",
+        sourcePath: "responses.success.schema",
+        schema: {
+          anyOf: successSchemas.map((schemaRef) => schemaRef.schema.schema),
+        },
+      } satisfies Omit<VextSchemaIRV1, "digest">;
+      return {
+        type: "schema",
+        schema: { ...schema, digest: createDigest(schema) },
+      };
+    }
+    const diagnostic = `${routeDescription} has multiple 2xx responses but none has a runtime or documented response schema; emitted unknown.`;
+    if (!isFrontendDocument) {
+      warnings.push(diagnostic);
+    }
+    return { type: "unknown", diagnostic };
+  }
   const diagnostic = isFrontendDocument
     ? `${routeDescription} renders an HTML document; emitted unknown.`
     : `${routeDescription} has no runtime or documented 2xx response schema; emitted unknown.`;
@@ -268,6 +297,10 @@ function selectSuccessResponse(
     warnings.push(diagnostic);
   }
   return { type: "unknown", diagnostic };
+}
+
+function isSuccessResponseStatus(status: string): boolean {
+  return /^2(?:\d\d|xx)$/iu.test(status);
 }
 
 function renderApiModule(contract: VextClientContract): string {
@@ -345,7 +378,8 @@ function renderJsonSchemaType(schema: Record<string, unknown>): string {
 }
 
 function renderArrayItem(value: unknown): string {
-  return isRecord(value) ? renderJsonSchemaType(value) : "unknown";
+  const rendered = isRecord(value) ? renderJsonSchemaType(value) : "unknown";
+  return rendered.includes(" | ") ? `(${rendered})` : rendered;
 }
 
 function renderObjectType(schema: Record<string, unknown>): string {

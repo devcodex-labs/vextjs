@@ -145,12 +145,12 @@ public/**                                    → dist/client/**
 
 ### 输出格式
 
-| 选项     | 值               | 说明                                         |
-| -------- | ---------------- | -------------------------------------------- |
-| Format   | `cjs` (CommonJS) | 统一输出 CommonJS，确保 `require.cache` 可控 |
-| Target   | `node20`         | 与 `engines.node >= 20.19.0` 对齐            |
-| Platform | `node`           | Node.js 运行时                               |
-| Charset  | `utf8`           | 强制 UTF-8，避免中文转义                     |
+| 选项     | 值               | 说明                                           |
+| -------- | ---------------- | ---------------------------------------------- |
+| Format   | `cjs` (CommonJS) | 统一输出 CommonJS，确保 `require.cache` 可控   |
+| Target   | `node20`         | 与 `engines.node ^20.19.0 \|\| >=22.12.0` 对齐 |
+| Platform | `node`           | Node.js 运行时                                 |
+| Charset  | `utf8`           | 强制 UTF-8，避免中文转义                       |
 
 ### 优化选项
 

@@ -48,7 +48,7 @@ src/dist/
 | ------------ | ----------------------- | --------------------------------------------------------------------- |
 | Source Map   | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers                    |
 | Minify       | On by default           | Minifies backend output; use `--no-minify` only for local diagnostics |
-| Target       | `node20`                | Align with `engines.node >= 20.19.0`                                  |
+| Target       | `node20`                | Align with `engines.node ^20.19.0 \|\| >=22.12.0`                     |
 | Format       | CJS                     | CommonJS output, Node.js runs stably                                  |
 | Tree Shaking | Enable                  | Remove unused exports                                                 |
 | Keep Names   | On                      | Keep function/class names (error stack readability)                   |

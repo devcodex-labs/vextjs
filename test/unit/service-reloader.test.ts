@@ -403,6 +403,28 @@ describe("reloadServices", () => {
       expect(result.reloadedKeys).toEqual([]);
     });
 
+    it("应在最后一个 service 编译产物被删除时移除旧实例", async () => {
+      const serviceFile = join(servicesDir, "user.js");
+      await writeFile(
+        serviceFile,
+        "module.exports = { default: { name: 'oldUser' } }",
+      );
+      await rm(serviceFile);
+
+      const disposeFn = vi.fn();
+      const app = createMockApp({
+        services: { user: { name: "oldUser", dispose: disposeFn } },
+      });
+      const result = await reloadServices(app, outDir, new Set([serviceFile]));
+
+      expect(result.reloaded).toBe(0);
+      expect(result.removed).toBe(1);
+      expect(result.unchanged).toBe(0);
+      expect(result.removedKeys).toEqual(["user"]);
+      expect(disposeFn).toHaveBeenCalledOnce();
+      expect(app.services.user).toBeUndefined();
+    });
+
     it("应在无 service 被影响时跳过", async () => {
       await writeFile(
         join(servicesDir, "user.js"),
@@ -617,6 +639,43 @@ describe("reloadServices", () => {
       expect(
         (
           (app.services.payment as Record<string, unknown>).aliPay as {
+            provider: string;
+          }
+        ).provider,
+      ).toBe("alipay");
+    });
+
+    it("应删除嵌套 service 并保留同级 service", async () => {
+      await mkdir(join(servicesDir, "payment"), { recursive: true });
+      const stripeFile = join(servicesDir, "payment", "stripe.js");
+      await writeFile(stripeFile, "module.exports = { default: {} }");
+      await writeFile(
+        join(servicesDir, "payment", "alipay.js"),
+        "module.exports = { default: { provider: 'alipay' } }",
+      );
+      await rm(stripeFile);
+
+      const disposeFn = vi.fn();
+      const app = createMockApp({
+        services: {
+          payment: {
+            stripe: { provider: "stripe", dispose: disposeFn },
+            alipay: { provider: "alipay" },
+          },
+        },
+      });
+
+      const result = await reloadServices(app, outDir, new Set([stripeFile]));
+
+      expect(result.removed).toBe(1);
+      expect(result.removedKeys).toEqual(["payment.stripe"]);
+      expect(disposeFn).toHaveBeenCalledOnce();
+      expect(
+        (app.services.payment as Record<string, unknown>).stripe,
+      ).toBeUndefined();
+      expect(
+        (
+          (app.services.payment as Record<string, unknown>).alipay as {
             provider: string;
           }
         ).provider,

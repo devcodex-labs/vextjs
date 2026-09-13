@@ -1258,6 +1258,9 @@ function resolveVextFrontendRuntimeImport(
   if (importPath === "vextjs/frontend/media-runtime") {
     return resolveVextMediaRuntimeModule();
   }
+  if (importPath === "vextjs/frontend/api-client-runtime") {
+    return resolveVextApiClientRuntimeModule();
+  }
   if (importPath === "vextjs/frontend") {
     return path.join(path.dirname(config.entry), "vext-runtime.tsx");
   }
@@ -1281,6 +1284,14 @@ function resolveVextMediaRuntimeModule(): string {
   );
   if (existsSync(sourcePath)) return sourcePath;
   return fileURLToPath(new URL("../media/index.js", import.meta.url));
+}
+
+function resolveVextApiClientRuntimeModule(): string {
+  const sourcePath = fileURLToPath(
+    new URL("../contract/api-client.ts", import.meta.url),
+  );
+  if (existsSync(sourcePath)) return sourcePath;
+  return fileURLToPath(new URL("../contract/api-client.js", import.meta.url));
 }
 
 function resolveVextStyleModule(): string {

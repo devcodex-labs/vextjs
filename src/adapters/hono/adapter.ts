@@ -38,6 +38,7 @@ import {
   applyServerConfig,
   createNodeServerOptions,
 } from "../../lib/server-config.js";
+import { discardPendingResponseForError } from "../../lib/response-error-recovery.js";
 
 /**
  * 中间件链执行器（洋葱模型）
@@ -387,6 +388,14 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
             }
             await executeChain(prebuiltChain, req, res);
           } catch (err) {
+            if (
+              !discardPendingResponseForError(res, {
+                error: err,
+                logger: app.logger,
+              })
+            ) {
+              return;
+            }
             if (errorHandler) {
               // P2-6 修复：errorHandler 自身抛异常的边界保护
               // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）

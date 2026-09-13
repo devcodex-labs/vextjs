@@ -77,34 +77,115 @@ function readVersion(record, field, location) {
   };
 }
 
-function parseMinimumNodeRange(value) {
-  if (typeof value !== "string") {
-    fail(
-      "expectedNodeRange",
-      "must be provided from package.json engines.node",
-    );
-  }
-  const match = /^>=(\d+)\.(\d+)\.(\d+)$/u.exec(value.trim());
+function parseNodeVersionLiteral(value, location) {
+  const match = SEMVER_PATTERN.exec(value.trim());
   if (!match) {
-    fail(
-      "expectedNodeRange",
-      `uses unsupported range ${JSON.stringify(value)}; expected an exact >=major.minor.patch floor`,
-    );
+    fail(location, `contains unsupported version ${JSON.stringify(value)}`);
   }
   return {
-    value: value.trim(),
+    value: value.trim().replace(/^v/u, ""),
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
   };
 }
 
-function satisfiesMinimum(version, minimum) {
-  for (const field of ["major", "minor", "patch"]) {
-    if (version[field] > minimum[field]) return true;
-    if (version[field] < minimum[field]) return false;
+function parseNodeRangeComparator(value, range) {
+  const trimmed = value.trim();
+  const comparator = /^(>=|>|<=|<|=)?\s*(v?\d+\.\d+\.\d+)$/u.exec(trimmed);
+  if (comparator) {
+    return {
+      operator: comparator[1] ?? "=",
+      version: parseNodeVersionLiteral(comparator[2], "expectedNodeRange"),
+    };
   }
-  return true;
+  const caret = /^\^\s*(v?\d+\.\d+\.\d+)$/u.exec(trimmed);
+  if (caret) {
+    const version = parseNodeVersionLiteral(caret[1], "expectedNodeRange");
+    if (version.major === 0) {
+      fail(
+        "expectedNodeRange",
+        `uses unsupported range ${JSON.stringify(range)}; caret ranges must have a non-zero major version`,
+      );
+    }
+    return [
+      { operator: ">=", version },
+      {
+        operator: "<",
+        version: {
+          value: `${version.major + 1}.0.0`,
+          major: version.major + 1,
+          minor: 0,
+          patch: 0,
+        },
+      },
+    ];
+  }
+  fail(
+    "expectedNodeRange",
+    `uses unsupported comparator ${JSON.stringify(trimmed)} in range ${JSON.stringify(range)}`,
+  );
+}
+
+function parseNodeRange(value) {
+  if (typeof value !== "string") {
+    fail(
+      "expectedNodeRange",
+      "must be provided from package.json engines.node",
+    );
+  }
+  const range = value.trim();
+  const alternatives = range.split("||").map((part) => part.trim());
+  if (alternatives.length === 0 || alternatives.some((part) => part === "")) {
+    fail(
+      "expectedNodeRange",
+      `uses unsupported range ${JSON.stringify(value)}; expected npm-style semver comparators`,
+    );
+  }
+  return {
+    value: range,
+    alternatives: alternatives.map((alternative) =>
+      alternative
+        .split(/\s+/u)
+        .filter(Boolean)
+        .flatMap((comparator) => parseNodeRangeComparator(comparator, range)),
+    ),
+  };
+}
+
+function compareVersions(left, right) {
+  for (const field of ["major", "minor", "patch"]) {
+    if (left[field] > right[field]) return 1;
+    if (left[field] < right[field]) return -1;
+  }
+  return 0;
+}
+
+function satisfiesComparator(version, comparator) {
+  const comparison = compareVersions(version, comparator.version);
+  switch (comparator.operator) {
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    case "=":
+      return comparison === 0;
+    default:
+      fail(
+        "expectedNodeRange",
+        `uses unsupported operator ${comparator.operator}`,
+      );
+  }
+}
+
+function satisfiesNodeRange(version, range) {
+  return range.alternatives.some((alternative) =>
+    alternative.every((comparator) => satisfiesComparator(version, comparator)),
+  );
 }
 
 function readPortableRelativePath(record, field, location) {
@@ -211,7 +292,7 @@ export function validateExternalEvidenceV2(
     fail("expectedTaskId", "must come from the frozen candidate receipt");
   }
   const normalizedTaskId = expectedTaskId.trim();
-  const minimumNodeVersion = parseMinimumNodeRange(expectedNodeRange);
+  const nodeRange = parseNodeRange(expectedNodeRange);
   if (!SHA1_PATTERN.test(normalizedSourceCommit)) {
     fail("expectedSourceCommit", "must be a full 40-character commit SHA");
   }
@@ -314,10 +395,10 @@ export function validateExternalEvidenceV2(
     if (testCell !== expectedTestCell) {
       fail(`${location}.testCell`, `must equal ${expectedTestCell}`);
     }
-    if (!satisfiesMinimum(nodeVersion, minimumNodeVersion)) {
+    if (!satisfiesNodeRange(nodeVersion, nodeRange)) {
       fail(
         `${location}.nodeVersion`,
-        `does not satisfy package engine ${minimumNodeVersion.value}`,
+        `does not satisfy package engine ${nodeRange.value}`,
       );
     }
     if (
@@ -414,7 +495,7 @@ export function validateExternalEvidenceV2(
     candidateReceiptSHA256: normalizedCandidateReceiptSHA256,
     sourceCommit: normalizedSourceCommit,
     taskId: normalizedTaskId,
-    nodeRange: minimumNodeVersion.value,
+    nodeRange: nodeRange.value,
     records,
   };
 }

@@ -197,7 +197,7 @@ function validationOptions(fixture, overrides = {}) {
     expectedSourceCommit: sourceCommit,
     expectedCandidateReceiptSHA256: fixture.candidateReceiptSHA256,
     expectedTaskId: taskId,
-    expectedNodeRange: ">=20.19.0",
+    expectedNodeRange: "^20.19.0 || >=22.12.0",
     ...overrides,
   };
 }
@@ -211,7 +211,7 @@ function verifyBoundFixture(fixture) {
     expectedArtifactVersion: "2.0.0",
     expectedSourceCommit: sourceCommit,
     expectedSourceTree: sourceTree,
-    expectedNodeRange: ">=20.19.0",
+    expectedNodeRange: "^20.19.0 || >=22.12.0",
   });
 }
 
@@ -511,7 +511,17 @@ describe("external evidence v2", () => {
 
     expect(() =>
       validateExternalEvidenceV2(fixture.document, validationOptions(fixture)),
-    ).toThrow("does not satisfy package engine >=20.19.0");
+    ).toThrow("does not satisfy package engine ^20.19.0 || >=22.12.0");
+  });
+
+  it("rejects Node 21 for the package disjunctive engine range", async () => {
+    const fixture = await createBoundFixture();
+    fixture.document.records[0].nodeVersion = "21.0.0";
+    fixture.document.records[0].testCell = "win32-node21";
+
+    expect(() =>
+      validateExternalEvidenceV2(fixture.document, validationOptions(fixture)),
+    ).toThrow("does not satisfy package engine ^20.19.0 || >=22.12.0");
   });
 
   it("rejects a mixed consumer repository or commit across matrix cells", async () => {

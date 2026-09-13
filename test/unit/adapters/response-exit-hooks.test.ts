@@ -9,6 +9,7 @@ import {
   createVextResponse as createHonoResponse,
 } from "../../../src/adapters/hono/response.js";
 import { createHookManager } from "../../../src/lib/hooks.js";
+import { discardPendingResponseForError } from "../../../src/lib/response-error-recovery.js";
 import { waitForResponseSend } from "../../../src/lib/response-hooks.js";
 import type { VextResponse } from "../../../src/types/response.js";
 
@@ -228,6 +229,44 @@ describe.each(adapters)(
       res.rawJson({ code: 500 }, 500);
       res._flush?.();
       expect(headers["content-type"]).toBe("application/json; charset=utf-8");
+    });
+
+    it("recovers a buffered success before handing control to an error handler", () => {
+      const { res, headers } = createHarness();
+      const error = new Error("handler failed");
+
+      res.json({ ok: true });
+      expect(
+        discardPendingResponseForError(res, {
+          error,
+        }),
+      ).toBe(true);
+      expect(res._isSent()).toBe(false);
+
+      res.rawJson({ code: 500, message: "handled" }, 500);
+      res._flush?.();
+
+      expect(headers["content-type"]).toBe("application/json; charset=utf-8");
+    });
+
+    it("reports an error after the response has already flushed", () => {
+      const { res } = createHarness();
+      const logger = { error: vi.fn() };
+      const error = new Error("late failure");
+
+      res.json({ ok: true });
+      res._flush?.();
+
+      expect(
+        discardPendingResponseForError(res, {
+          error,
+          logger,
+        }),
+      ).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(
+        { error: "late failure" },
+        "[vextjs] error occurred after the response was already flushed",
+      );
     });
 
     it("rejects invalid response header names and values before send", () => {

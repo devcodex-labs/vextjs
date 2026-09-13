@@ -26,6 +26,7 @@ import {
   applyServerConfig,
   createNodeServerOptions,
 } from "../../lib/server-config.js";
+import { discardPendingResponseForError } from "../../lib/response-error-recovery.js";
 
 /**
  * Native Adapter 选项
@@ -267,6 +268,14 @@ export function createNativeAdapter(
     try {
       await executeChain(chain, req, res);
     } catch (err) {
+      if (
+        !discardPendingResponseForError(res, {
+          error: err,
+          logger: app.logger,
+        })
+      ) {
+        return;
+      }
       if (errorHandler) {
         // errorHandler 自身抛异常的边界保护
         try {

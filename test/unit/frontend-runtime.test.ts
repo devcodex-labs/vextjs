@@ -17,6 +17,7 @@ import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolve
 import {
   assertClientContractMatchesRouteManifest,
   buildClientContract,
+  createClientContractArtifacts,
 } from "../../src/frontend/tooling/client-contract-writer.js";
 import { buildFrontendClient } from "../../src/frontend/tooling/client-build-compiler.js";
 import {
@@ -700,6 +701,147 @@ describe("frontend client contract", () => {
       schema: { digest },
     });
     expect(contract.warnings).toEqual([]);
+  });
+
+  it("projects multiple concrete 2xx responses as the generated success union", () => {
+    const contract = buildClientContract({
+      routes: [
+        {
+          method: "POST",
+          path: "/users",
+          operationId: "createUser",
+          schema: {
+            schemaVersion: 1,
+            request: {},
+            responses: [
+              {
+                status: "200",
+                contentType: "application/json",
+                schema: {
+                  schemaVersion: 1,
+                  kind: "vext-schema-ir",
+                  source: "responses",
+                  sourcePath: "responses.200.schema",
+                  digest: "e".repeat(64),
+                  schema: {
+                    type: "object",
+                    properties: { id: { type: "string" } },
+                    required: ["id"],
+                  },
+                },
+              },
+              {
+                status: "201",
+                contentType: "application/json",
+                schema: {
+                  schemaVersion: 1,
+                  kind: "vext-schema-ir",
+                  source: "docs.responses",
+                  sourcePath: "docs.responses.201.schema",
+                  digest: "f".repeat(64),
+                  schema: {
+                    type: "object",
+                    properties: { created: { type: "boolean" } },
+                    required: ["created"],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(contract.routes[0]?.response).toMatchObject({
+      type: "schema",
+      schema: {
+        source: "responses",
+        sourcePath: "responses.success.schema",
+        schema: {
+          anyOf: [
+            {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+            },
+            {
+              type: "object",
+              properties: { created: { type: "boolean" } },
+              required: ["created"],
+            },
+          ],
+        },
+      },
+    });
+    expect(contract.warnings).toEqual([]);
+  });
+
+  it("wraps union array item types in generated client modules", async () => {
+    const rootDir = await tempRoot();
+    const manifestDir = path.join(rootDir, ".vext", "manifest");
+    const outDir = path.join(rootDir, ".vext", "client");
+    const manifestPath = path.join(manifestDir, "routes.json");
+    await mkdir(manifestDir, { recursive: true });
+    await writeFile(
+      manifestPath,
+      JSON.stringify(
+        {
+          routes: [
+            {
+              method: "GET",
+              path: "/events",
+              operationId: "listEvents",
+              schema: {
+                schemaVersion: 1,
+                request: {},
+                responses: [
+                  {
+                    status: "200",
+                    contentType: "application/json",
+                    schema: {
+                      schemaVersion: 1,
+                      kind: "vext-schema-ir",
+                      source: "responses",
+                      sourcePath: "responses.200.schema",
+                      digest: "1".repeat(64),
+                      schema: {
+                        type: "array",
+                        items: {
+                          anyOf: [
+                            {
+                              type: "object",
+                              properties: { kind: { const: "created" } },
+                              required: ["kind"],
+                            },
+                            {
+                              type: "object",
+                              properties: { kind: { const: "deleted" } },
+                              required: ["kind"],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const { files } = await createClientContractArtifacts({ rootDir, outDir });
+    const moduleFile = files.find((file) =>
+      file.path.endsWith("api.generated.ts"),
+    );
+
+    expect(moduleFile?.contents).toContain(
+      'response: ({ "kind": "created" } | { "kind": "deleted" })[];',
+    );
   });
 
   it("keeps HTML frontend routes out of API response-schema warnings", () => {
@@ -2276,11 +2418,12 @@ describe("frontend client build", () => {
     await writeFile(
       path.join(rootDir, "src", "frontend", "pages", "index.tsx"),
       [
-        'import { Image, Link, defineFont, useNavigation, useRouteData } from "vextjs/frontend";',
+        'import { Image, Link, VextApiError, createVextApiClient, defineFont, isVextApiError, useNavigation, useRouteData } from "vextjs/frontend";',
         "export default function Page(props) {",
         "  const navigation = useNavigation();",
         "  const data = useRouteData() ?? props;",
-        '  return <main data-font-factory={typeof defineFont}><span>{navigation.phase}</span><span>{data.title}</span><Image src="/assets/fixture.png" width={1} height={1} alt="fixture" /><Link href="/next">Next</Link></main>;',
+        "  const api = createVextApiClient({ schemaVersion: 1, kind: 'client-contract', source: 'routes-manifest', generatedAt: '', protocolVersion: 1, routeManifestDigest: '', routes: [], warnings: [], digest: '' });",
+        '  return <main data-api-client={typeof api.get} data-api-error={typeof VextApiError} data-error-check={String(isVextApiError(new Error("x")))} data-font-factory={typeof defineFont}><span>{navigation.phase}</span><span>{data.title}</span><Image src="/assets/fixture.png" width={1} height={1} alt="fixture" /><Link href="/next">Next</Link></main>;',
         "}",
         "",
       ].join("\n"),
@@ -2303,6 +2446,8 @@ describe("frontend client build", () => {
 
     expect(runtime).toContain('from "vextjs/frontend/navigation-runtime"');
     expect(runtime).toContain('from "vextjs/frontend/media-runtime"');
+    expect(runtime).toContain('from "vextjs/frontend/api-client-runtime"');
+    expect(runtime).toContain("createVextApiClient");
     expect(runtime).toContain("defineImageLoader");
     expect(runtime).toContain("useRouteData");
     expect(browserEntry).toContain("configureVextBrowserRuntime");

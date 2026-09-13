@@ -148,7 +148,7 @@ When `frontend.deploy.integrity=true`, Vext injects build-time SRI into generate
 | Options  | Values           | Description                                                               |
 | -------- | ---------------- | ------------------------------------------------------------------------- |
 | Format   | `cjs` (CommonJS) | Unified output of CommonJS to ensure that `require.cache` is controllable |
-| Target   | `node20`         | Align with `engines.node >= 20.19.0`                                      |
+| Target   | `node20`         | Align with `engines.node ^20.19.0 \|\| >=22.12.0`                         |
 | Platform | `node`           | Node.js runtime                                                           |
 | Charset  | `utf8`           | Force UTF-8, avoid Chinese escaping                                       |
 

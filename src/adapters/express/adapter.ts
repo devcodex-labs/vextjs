@@ -35,6 +35,7 @@ import {
   applyServerConfig,
   createNodeServerOptions,
 } from "../../lib/server-config.js";
+import { discardPendingResponseForError } from "../../lib/response-error-recovery.js";
 
 /**
  * Express Adapter 选项
@@ -543,6 +544,14 @@ export function createExpressAdapter(
                 }
                 await executeChain(prebuiltChain, req, res);
               } catch (err) {
+                if (
+                  !discardPendingResponseForError(res, {
+                    error: err,
+                    logger: app.logger,
+                  })
+                ) {
+                  return;
+                }
                 if (errorHandler) {
                   // errorHandler 自身抛异常的边界保护
                   // 防止 errorHandler 内部失败（如 logger 写入 DB transport 失败）
