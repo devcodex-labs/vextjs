@@ -12,6 +12,7 @@ export interface VextMcpHostSyncApplyResult {
   state: VextMcpWrittenFile;
   targets: VextMcpHostSyncApplyTarget[];
   skills: VextMcpHostSkillApplyTarget[];
+  nextSteps: VextMcpHostSyncNextStep[];
 }
 
 export interface VextMcpWrittenFile {
@@ -34,6 +35,14 @@ export interface VextMcpHostSkillApplyTarget {
   status: "written" | "up-to-date" | "blocked";
   verified: boolean;
   reason: string;
+}
+
+export interface VextMcpHostSyncNextStep {
+  host: string;
+  reason: "config-written" | "launcher-written" | "skill-written";
+  summary: string;
+  steps: string[];
+  validation: string[];
 }
 
 export async function applyVextMcpHostSyncPlan(
@@ -67,6 +76,7 @@ export async function applyVextMcpHostSyncPlan(
     state,
     targets,
     skills,
+    nextSteps: createNextSteps(plan, launcher, targets, skills),
   };
 }
 
@@ -227,12 +237,52 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
         configFormat: target.configFormat,
         command: target.command,
         args: target.args,
+        refresh: target.refresh,
       })),
       skills: plan.skill,
     },
     null,
     2,
   )}\n`;
+}
+
+function createNextSteps(
+  plan: VextMcpHostSyncPlan,
+  launcher: VextMcpWrittenFile,
+  targets: VextMcpHostSyncApplyTarget[],
+  skills: VextMcpHostSkillApplyTarget[],
+): VextMcpHostSyncNextStep[] {
+  const steps: VextMcpHostSyncNextStep[] = [];
+  const launcherChanged = launcher.status === "written";
+  for (const target of plan.targets) {
+    const targetResult = targets.find((result) => result.host === target.host);
+    if (
+      !targetResult ||
+      targetResult.status === "blocked" ||
+      !targetResult.verified
+    ) {
+      continue;
+    }
+    const configChanged = targets.some(
+      (result) => result.host === target.host && result.status === "written",
+    );
+    const skillChanged = skills.some(
+      (result) => result.host === target.host && result.status === "written",
+    );
+    if (!configChanged && !launcherChanged && !skillChanged) continue;
+    steps.push({
+      host: target.host,
+      reason: configChanged
+        ? "config-written"
+        : launcherChanged
+          ? "launcher-written"
+          : "skill-written",
+      summary: target.refresh.summary,
+      steps: target.refresh.steps,
+      validation: target.refresh.validation,
+    });
+  }
+  return steps;
 }
 
 function createTomlManagedEntry(

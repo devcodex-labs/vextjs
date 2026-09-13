@@ -374,6 +374,7 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
     written.status !== "ok" ||
     written.applied?.targets?.[0]?.status !== "written" ||
     written.applied?.targets?.[0]?.verified !== true ||
+    written.applied?.nextSteps?.[0]?.reason !== "config-written" ||
     !existsSync(path.join(writeFixture, ".vscode", "mcp.json")) ||
     !existsSync(path.join(writeFixture, ".vext", "mcp", "launcher.cjs"))
   ) {
@@ -405,6 +406,7 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
     tomlWritten.status !== "ok" ||
     tomlWritten.applied?.targets?.[0]?.status !== "written" ||
     tomlWritten.applied?.targets?.[0]?.verified !== true ||
+    tomlWritten.applied?.nextSteps?.[0]?.reason !== "config-written" ||
     !readFileSync(tomlConfig, "utf8").includes("# BEGIN VEXT MCP MANAGED")
   ) {
     throw new Error(
@@ -427,6 +429,7 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
     skillWritten.status !== "ok" ||
     skillWritten.applied?.skills?.[0]?.status !== "written" ||
     skillWritten.applied?.skills?.[0]?.verified !== true ||
+    skillWritten.applied?.nextSteps?.[0]?.reason !== "skill-written" ||
     !readFileSync(
       path.join(writeFixture, ".github", "skills", "vextjs", "SKILL.md"),
       "utf8",

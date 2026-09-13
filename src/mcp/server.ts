@@ -682,7 +682,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C29") {
     return [
-      "Use vext mcp sync --root <dir> to write launcher/state plus JSON/JSONC entries or TOML managed blocks with read-back verification; use --check or --dry-run for read-only plans.",
+      "Use vext mcp sync --root <dir> to write launcher/state plus JSON/JSONC entries or TOML managed blocks with read-back verification and host refresh nextSteps; use --check or --dry-run for read-only plans.",
     ];
   }
   if (capabilityId === "C30") {

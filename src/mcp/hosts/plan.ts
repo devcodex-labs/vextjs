@@ -9,6 +9,7 @@ import {
 import {
   VEXT_MCP_HOST_REGISTRY,
   type VextMcpHostDescriptor,
+  type VextMcpHostRefreshHint,
 } from "./registry.js";
 
 export interface VextMcpHostSyncPlanOptions {
@@ -58,6 +59,7 @@ export interface VextMcpHostSyncTarget {
   configRootKey: string;
   configFormat: VextMcpHostDescriptor["configFormat"];
   skillPath: string;
+  refresh: VextMcpHostRefreshHint;
   entryKey: string;
   command: string;
   args: string[];
@@ -163,6 +165,7 @@ function createTarget(input: {
     configRootKey: input.descriptor.configRootKey,
     configFormat: input.descriptor.configFormat,
     skillPath: input.descriptor.skillPath,
+    refresh: input.descriptor.refresh,
     entryKey: input.serviceKey,
     command: "node",
     args: [input.launcherAbsolutePath, "mcp", "--root", input.rootDir],

@@ -1210,7 +1210,7 @@ export default {
 
 ### VextDevMcpConfig
 
-`dev.mcp` declares MCP intent for a project. It does not make the framework execute shell commands, start or restart services, run tests, apply files, or edit an AI host configuration. The bundled `vext mcp --root <dir>` stdio server still returns analysis, machine-checkable input errors, and host-execution steps; the AI host remains responsible for commands and file application.
+`dev.mcp` declares MCP intent for a project. It does not make the framework execute shell commands, start or restart services, run tests, or apply business files. The bundled `vext mcp --root <dir>` stdio server still returns analysis, machine-checkable input errors, and host-execution steps. `vext mcp sync` uses this declaration to write managed host configuration and returns read-back verification plus refresh guidance; the AI host remains responsible for commands, business file application, and host restarts.
 
 | Field     | Type                                                                | Default Value | Description                                                        |
 | --------- | ------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------ |

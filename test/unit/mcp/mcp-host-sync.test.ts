@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -79,8 +79,10 @@ describe("Vext MCP host sync planning", () => {
           launcher: { status: "written" },
           state: { status: "written" },
           targets: [{ host: "vscode", status: "written", verified: true }],
+          nextSteps: [{ host: "vscode", reason: "config-written" }],
         },
       });
+      expect(result.applied.nextSteps[0].summary).toContain("VS Code");
       const config = JSON.parse(
         await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
       );
@@ -101,6 +103,17 @@ describe("Vext MCP host sync planning", () => {
         launcher: { status: "up-to-date" },
         state: { status: "up-to-date" },
         targets: [{ status: "up-to-date", verified: true }],
+        nextSteps: [],
+      });
+
+      await rm(path.join(root, ".vext", "mcp", "launcher.cjs"));
+      logs.length = 0;
+      await mcpCommand(["sync", "--root", root, "--host", "vscode", "--json"]);
+      const launcherRestored = JSON.parse(logs.at(-1) ?? "{}");
+      expect(launcherRestored.applied).toMatchObject({
+        launcher: { status: "written" },
+        targets: [{ status: "up-to-date", verified: true }],
+        nextSteps: [{ host: "vscode", reason: "launcher-written" }],
       });
     } finally {
       spy.mockRestore();
@@ -125,6 +138,7 @@ describe("Vext MCP host sync planning", () => {
       expect(result.applied).toMatchObject({
         status: "partial",
         targets: [{ host: "vscode", status: "blocked", verified: false }],
+        nextSteps: [],
       });
       expect(
         await readFile(path.join(root, ".vscode", "mcp.json"), "utf8"),
@@ -150,8 +164,10 @@ describe("Vext MCP host sync planning", () => {
         applied: {
           status: "ok",
           targets: [{ host: "codex", status: "written", verified: true }],
+          nextSteps: [{ host: "codex", reason: "config-written" }],
         },
       });
+      expect(result.applied.nextSteps[0].summary).toContain("Codex");
       const toml = await readFile(
         path.join(root, ".codex", "config.toml"),
         "utf8",
@@ -166,6 +182,7 @@ describe("Vext MCP host sync planning", () => {
       const second = JSON.parse(logs.at(-1) ?? "{}");
       expect(second.applied).toMatchObject({
         targets: [{ status: "up-to-date", verified: true }],
+        nextSteps: [],
       });
     } finally {
       spy.mockRestore();
@@ -198,7 +215,11 @@ describe("Vext MCP host sync planning", () => {
       expect(result.applied).toMatchObject({
         status: "ok",
         skills: [{ host: "vscode", status: "written", verified: true }],
+        nextSteps: [{ host: "vscode", reason: "config-written" }],
       });
+      expect(result.applied.nextSteps[0].validation).toContain(
+        "Run a read-only Vext MCP project inspection before applying generated changes.",
+      );
       const skill = await readFile(
         path.join(root, ".github", "skills", "vextjs", "SKILL.md"),
         "utf8",
@@ -218,6 +239,7 @@ describe("Vext MCP host sync planning", () => {
       const second = JSON.parse(logs.at(-1) ?? "{}");
       expect(second.applied).toMatchObject({
         skills: [{ status: "up-to-date", verified: true }],
+        nextSteps: [],
       });
     } finally {
       spy.mockRestore();

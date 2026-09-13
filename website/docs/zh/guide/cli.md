@@ -8,11 +8,11 @@
 
 当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查、内置 Vext 知识搜索、17 条 Recipe 的 create-only ChangeSet 草稿、候选校验和应用后宿主验证计划。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、机器可校验诊断和需要宿主执行的步骤。
 
-`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。运行态 Bridge 检查、宿主 MCP 配置写入和更细的业务级生成器仍按后续工作包继续。
+`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。运行态 Bridge 检查和更细的业务级生成器仍按后续工作包继续；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
 发布前的同包验收使用 `npm run verify:pack-install` 覆盖打包安装后的 ESM/CJS、TypeScript 合同、运行时 smoke 和 MCP stdio smoke。真实平台、数据库、浏览器和五宿主矩阵仍属于发布验收流程，不能只用本地协议模拟替代。
 
-宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry，为 Codex 与 Grok 等 TOML 宿主写入 Vext 受管块。写入结果会返回目标级 `verified` 回读校验；若 TOML 中已有同名非受管 table，会返回 blocked 并保留原文件；真实宿主刷新和五宿主运行验收仍按后续同步批次处理。
+宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry，为 Codex 与 Grok 等 TOML 宿主写入 Vext 受管块。写入结果会返回目标级 `verified` 回读校验；若 TOML 中已有同名非受管 table，会返回 blocked 并保留原文件；发生 launcher、宿主配置或 Skill 实际写入时，`applied.nextSteps` 会按宿主返回重载、重新打开会话和只读验证提示。五宿主真实运行验收仍属于发布验收流程，不能只用本地文件回读替代。
 
 可选 Skill 随包构建，可用 `vext mcp skill check` 查看摘要、`vext mcp skill print` 输出 Markdown，或用 `vext mcp skill write --output <file>` 写入用户指定位置。`vext mcp sync --skill` 会按所选宿主的项目内 Skill 路径写入官方 Skill；若目标文件已存在且内容不同，会返回 blocked 并保留原文件。
 
