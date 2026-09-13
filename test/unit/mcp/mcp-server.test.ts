@@ -157,6 +157,17 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(routeDraft.structuredContent)).toContain(
         "src/routes/account-profile.ts",
       );
+      const schemaDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-15", name: "Payment Request" },
+      });
+      expect(schemaDraft.structuredContent).toMatchObject({
+        status: "ok",
+        data: { kind: "change-set", verdict: "ready" },
+      });
+      expect(JSON.stringify(schemaDraft.structuredContent)).toContain(
+        "src/schemas/payment-request.ts",
+      );
       const invalid = await client.callTool({
         name: "vext_generate_changes",
         arguments: { recipeId: "RCP-01", name: "../bad" },

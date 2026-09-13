@@ -37,8 +37,20 @@ export interface VextMcpChangeSetResult {
 const SUPPORTED_RECIPES = new Map([
   ["RCP-01", "api-route"],
   ["api-route", "api-route"],
+  ["RCP-02", "api-module"],
+  ["api-module", "api-module"],
+  ["RCP-03", "page-route"],
+  ["page-route", "page-route"],
+  ["RCP-04", "page-and-api"],
+  ["page-and-api", "page-and-api"],
   ["RCP-05", "service"],
   ["service", "service"],
+  ["RCP-06", "model"],
+  ["model", "model"],
+  ["RCP-07", "middleware"],
+  ["middleware", "middleware"],
+  ["RCP-08", "plugin"],
+  ["plugin", "plugin"],
   ["RCP-09", "locale"],
   ["locale", "locale"],
   ["RCP-10", "test"],
@@ -47,6 +59,12 @@ const SUPPORTED_RECIPES = new Map([
   ["type-contract", "type-contract"],
   ["RCP-12", "utility"],
   ["utility", "utility"],
+  ["RCP-13", "frontend-component"],
+  ["frontend-component", "frontend-component"],
+  ["RCP-14", "frontend-layout"],
+  ["frontend-layout", "frontend-layout"],
+  ["RCP-15", "reusable-schema"],
+  ["reusable-schema", "reusable-schema"],
   ["RCP-16", "mock-scenario"],
   ["mock-scenario", "mock-scenario"],
   ["RCP-17", "job-handler"],
@@ -151,9 +169,19 @@ function filesForRecipe(
 ): VextMcpChangeSetFile[] {
   if (recipe === "type-contract") return [typeContractFile(name, input)];
   if (recipe === "api-route") return [apiRouteFile(name)];
+  if (recipe === "api-module") return [apiRouteFile(name), serviceFile(name)];
+  if (recipe === "page-route") return pageRouteFiles(name);
+  if (recipe === "page-and-api")
+    return [...pageRouteFiles(name), apiRouteFile(`${name}-api`)];
   if (recipe === "service") return [serviceFile(name)];
+  if (recipe === "model") return [modelFile(name)];
+  if (recipe === "middleware") return [middlewareFile(name)];
+  if (recipe === "plugin") return [pluginFile(name)];
   if (recipe === "locale") return localeFiles(name, input);
   if (recipe === "test") return [testFile(name)];
+  if (recipe === "frontend-component") return [frontendComponentFile(name)];
+  if (recipe === "frontend-layout") return [frontendLayoutFile(name)];
+  if (recipe === "reusable-schema") return [reusableSchemaFile(name)];
   if (recipe === "mock-scenario") return [mockScenarioFile(name)];
   if (recipe === "utility") return [utilityFile(name)];
   return [jobHandlerFile(name, input, project)];
@@ -181,6 +209,57 @@ function serviceFile(name: string): VextMcpChangeSetFile {
   };
 }
 
+function pageRouteFiles(name: string): VextMcpChangeSetFile[] {
+  const pageName = name;
+  return [
+    {
+      path: `src/routes/${name}.ts`,
+      action: "create",
+      encoding: "utf8",
+      reason: "Create a route that renders a Vext frontend page.",
+      content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      docs: { summary: "Render ${escapeString(pageName)} page" },\n    },\n    (_req, res) => {\n      res.render("${escapeString(pageName)}", { title: "${escapeString(toPascalName(name))}" });\n    },\n  );\n});\n`,
+    },
+    {
+      path: `src/frontend/pages/${name}.tsx`,
+      action: "create",
+      encoding: "utf8",
+      reason: "Create the frontend page consumed by res.render().",
+      content: `export default function ${toPascalName(name)}Page(props: { title?: string }) {\n  return <main>{props.title ?? "${escapeString(toPascalName(name))}"}</main>;\n}\n`,
+    },
+  ];
+}
+
+function modelFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/models/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason:
+      "Create a side-effect-free model definition skeleton for explicit review.",
+    content: `export default {\n  name: "${escapeString(toCamelName(name))}",\n  collection: "${escapeString(name)}",\n  schema: {\n    id: \"string\",\n  },\n};\n`,
+  };
+}
+
+function middlewareFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/middlewares/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a tagged Vext middleware skeleton.",
+    content: `import { defineMiddleware } from "vextjs";\n\nexport default defineMiddleware(async (_req, _res, next) => {\n  await next();\n});\n`,
+  };
+}
+
+function pluginFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/plugins/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a Vext plugin lifecycle skeleton.",
+    content: `import { definePlugin } from "vextjs";\n\nexport default definePlugin({\n  name: "${escapeString(name)}",\n  setup(app) {\n    app.logger.debug("${escapeString(name)} plugin initialized");\n  },\n});\n`,
+  };
+}
+
 function localeFiles(
   name: string,
   input: VextGenerateChangesInput,
@@ -205,6 +284,37 @@ function testFile(name: string): VextMcpChangeSetFile {
     encoding: "utf8",
     reason: "Create a focused Vitest unit test skeleton.",
     content: `import { describe, expect, it } from "vitest";\n\ndescribe("${escapeString(name)}", () => {\n  it("defines the expected behavior", () => {\n    expect(true).toBe(true);\n  });\n});\n`,
+  };
+}
+
+function frontendComponentFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/frontend/components/${toPascalName(name)}.tsx`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a browser-safe frontend component skeleton.",
+    content: `export interface ${toPascalName(name)}Props {\n  title?: string;\n}\n\nexport function ${toPascalName(name)}(props: ${toPascalName(name)}Props) {\n  return <section>{props.title ?? "${escapeString(toPascalName(name))}"}</section>;\n}\n`,
+  };
+}
+
+function frontendLayoutFile(name: string): VextMcpChangeSetFile {
+  const componentName = `${toPascalName(name)}Layout`;
+  return {
+    path: `src/frontend/pages/${name}/layout.tsx`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a page-local frontend layout skeleton.",
+    content: `export default function ${componentName}() {\n  return <div data-layout="${escapeString(name)}" />;\n}\n`,
+  };
+}
+
+function reusableSchemaFile(name: string): VextMcpChangeSetFile {
+  return {
+    path: `src/schemas/${name}.ts`,
+    action: "create",
+    encoding: "utf8",
+    reason: "Create a reusable schema-dsl contract for explicit imports.",
+    content: `import { schemaAdapter } from "vextjs";\n\nexport const ${toCamelName(name)}Schema = {\n  id: schemaAdapter.compileField("string:1-120!").description("Stable identifier"),\n};\n`,
   };
 }
 
