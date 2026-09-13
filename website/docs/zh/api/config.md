@@ -1185,9 +1185,10 @@ export default {
 
 仅开发模式使用的配置。`vext dev` 会读取这些字段，生产模式会忽略。
 
-| 字段           | 类型                                            | 默认值 | 说明                 |
-| -------------- | ----------------------------------------------- | ------ | -------------------- |
-| `errorOverlay` | [`VextDevOverlayConfig`](#vextdevoverlayconfig) | 见下方 | 浏览器错误覆盖层配置 |
+| 字段           | 类型                          | 默认值      | 说明                                              |
+| -------------- | ----------------------------- | ----------- | ------------------------------------------------- |
+| `errorOverlay` | `VextDevOverlayConfig`        | 见下方      | 浏览器错误覆盖层配置                              |
+| `mcp`          | `boolean \| VextDevMcpConfig` | `undefined` | 项目级 MCP 声明，用于 AI 宿主检查与上下文同步意图 |
 
 ### VextDevOverlayConfig
 
@@ -1204,6 +1205,35 @@ export default {
       enabled: true,
       theme: "light",
       maxFrames: 10,
+    },
+  },
+};
+```
+
+### VextDevMcpConfig
+
+`dev.mcp` 用于声明项目的 MCP 意图。它不会让框架执行 shell 命令、启动或重启服务、运行测试、应用文件修改，也不会修改 AI 宿主配置。随包提供的 `vext mcp --root <dir>` stdio 服务仍只返回分析结果、机器可校验的输入错误和需要宿主执行的步骤；命令执行与文件应用仍由 AI 宿主负责。
+
+| 字段      | 类型                                                                | 默认值   | 说明                                            |
+| --------- | ------------------------------------------------------------------- | -------- | ----------------------------------------------- |
+| `enabled` | `boolean`                                                           | `true`   | 使用对象形式声明时，是否启用项目 MCP 声明       |
+| `hosts`   | `Array<'codex' \| 'claude-code' \| 'cursor' \| 'vscode' \| 'grok'>` | `[]`     | 项目希望同步配置或文档的 AI 宿主                |
+| `sync`    | `'auto' \| 'check' \| 'off'`                                        | `'auto'` | 上下文同步模式：自动刷新、只检查或禁用          |
+| `http`    | `VextDevMcpHttpConfig`                                              | 禁用     | 可选的未来 HTTP Bridge 声明；stdio 仍是默认接入 |
+
+`dev.mcp: true` 表示启用默认声明。项目需要记录宿主目标或同步策略时，使用对象形式：
+
+```typescript
+export default {
+  dev: {
+    mcp: {
+      enabled: true,
+      hosts: ["codex", "grok"],
+      sync: "auto",
+      http: {
+        enabled: false,
+        port: 3980,
+      },
     },
   },
 };

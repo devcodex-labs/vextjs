@@ -91,6 +91,14 @@ describe("Vext MCP server", () => {
         arguments: { query: "job", limit: 5 },
       });
       expect(JSON.stringify(knowledge.structuredContent)).toContain("C34");
+      const invalid = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-01", name: "../bad" },
+      });
+      expect(invalid.isError).toBe(true);
+      expect(JSON.stringify(invalid.structuredContent)).toContain(
+        "VEXT_VALIDATION_FAILED",
+      );
       const resource = await client.readResource({
         uri: "vext://catalog/recipes",
       });

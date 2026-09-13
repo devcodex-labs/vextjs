@@ -14,6 +14,12 @@ import {
   searchMcpCatalog,
 } from "../assistant/catalog.js";
 import {
+  VEXT_MCP_TOOL_INPUT_SCHEMAS,
+  parseMcpToolInput,
+  type VextAssistantFailure,
+  type VextMcpToolInputMap,
+} from "../assistant/contracts.js";
+import {
   inspectVextProject,
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
@@ -77,39 +83,18 @@ function registerTools(
       title: "Inspect Vext project",
       description:
         "Inspect the fixed Vext project root and return bounded identity, structure, and directory summaries.",
-      inputSchema: jsonSchema<{ section?: string; sourceMode?: string }>({
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          section: {
-            type: "string",
-            enum: [
-              "summary",
-              "identity",
-              "structure",
-              "routes",
-              "services",
-              "serviceDependencies",
-              "middlewares",
-              "plugins",
-              "models",
-              "frontend",
-              "config",
-              "ownership",
-              "scripts",
-              "docs",
-              "mocks",
-              "jobs",
-              "all",
-            ],
-          },
-          sourceMode: { type: "string", enum: ["auto", "baseline"] },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_project_inspect"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_project_inspect,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) =>
-      toolResult(filterInspection(inspect(rootDir, version), args.section)),
+    async (args) => {
+      const input = parseMcpToolInput("vext_project_inspect", args);
+      if (!input.ok) return toolFailure(input.failure);
+      return toolResult(
+        filterInspection(inspect(rootDir, version), input.value.section),
+      );
+    },
   );
 
   server.registerTool(
@@ -118,58 +103,18 @@ function registerTools(
       title: "Search Vext knowledge",
       description:
         "Search the built-in Vext MCP catalog for capabilities, rules, recipes, workflows, and versioned framework knowledge.",
-      inputSchema: jsonSchema<{
-        query?: string;
-        ids?: string[];
-        kinds?: string[];
-        domain?: string;
-        locale?: string;
-        limit?: number;
-      }>({
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          query: { type: "string", minLength: 1, maxLength: 500 },
-          ids: {
-            type: "array",
-            minItems: 1,
-            maxItems: 10,
-            items: { type: "string" },
-          },
-          kinds: {
-            type: "array",
-            items: {
-              type: "string",
-              enum: ["capability", "rule", "recipe", "knowledge", "workflow"],
-            },
-          },
-          domain: { type: "string" },
-          locale: { type: "string", enum: ["en", "zh"] },
-          limit: { type: "integer", minimum: 1, maximum: 10 },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_knowledge_search"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_knowledge_search,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
     async (args) => {
-      if (!args.query && !args.ids) {
-        return toolResult(
-          failure("VEXT_VALIDATION_FAILED", "query or ids is required."),
-          true,
-        );
-      }
-      if (args.query && args.ids) {
-        return toolResult(
-          failure(
-            "VEXT_VALIDATION_FAILED",
-            "query and ids are mutually exclusive.",
-          ),
-          true,
-        );
-      }
+      const input = parseMcpToolInput("vext_knowledge_search", args);
+      if (!input.ok) return toolFailure(input.failure);
       return toolResult({
         schemaVersion: 1,
         status: "ok",
-        ...searchMcpCatalog(args),
+        ...searchMcpCatalog(input.value),
       });
     },
   );
@@ -180,26 +125,23 @@ function registerTools(
       title: "Check Vext capability",
       description:
         "Check whether a known Vext capability is supported by the framework and detected in the fixed project.",
-      inputSchema: jsonSchema<{ capability: string }>({
-        type: "object",
-        additionalProperties: false,
-        required: ["capability"],
-        properties: {
-          capability: { type: "string", minLength: 1 },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_capability_check"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_capability_check,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
     async (args) => {
+      const input = parseMcpToolInput("vext_capability_check", args);
+      if (!input.ok) return toolFailure(input.failure);
       const project = inspect(rootDir, version);
       const item = VEXT_MCP_CAPABILITIES.find(
-        (capability) => capability.id === args.capability,
+        (capability) => capability.id === input.value.capability,
       );
       if (!item) {
         return toolResult(
           failure(
             "VEXT_VALIDATION_FAILED",
-            `Unknown capability ${args.capability}.`,
+            `Unknown capability ${input.value.capability}.`,
           ),
           true,
         );
@@ -232,39 +174,32 @@ function registerTools(
       title: "Generate Vext changes",
       description:
         "Prepare deterministic ChangeSet drafts for a fixed Recipe. The first MCP batch only exposes readiness and missing-input diagnostics.",
-      inputSchema: jsonSchema<{
-        recipeId: string;
-        name: string;
-        options?: Record<string, unknown>;
-      }>({
-        type: "object",
-        additionalProperties: false,
-        required: ["recipeId", "name"],
-        properties: {
-          recipeId: { type: "string", minLength: 1 },
-          name: { type: "string", minLength: 1, maxLength: 120 },
-          options: { type: "object", additionalProperties: true },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_generate_changes"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_generate_changes,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
     async (args) => {
+      const input = parseMcpToolInput("vext_generate_changes", args);
+      if (!input.ok) return toolFailure(input.failure);
       const recipe = VEXT_MCP_RECIPES.find(
-        (item) => item.id === args.recipeId || item.title === args.recipeId,
+        (item) =>
+          item.id === input.value.recipeId ||
+          item.title === input.value.recipeId,
       );
       return toolResult({
         schemaVersion: 1,
         status: "ok",
         data: {
           kind: "blocked",
-          recipeId: args.recipeId,
+          recipeId: input.value.recipeId,
           decisions: recipe ? [recipe.summary] : [],
           verdict: recipe ? "incomplete" : "invalid",
           diagnostics: recipe
             ? [
                 "ChangeSet generation is registered but will be implemented in the recipe work packages.",
               ]
-            : [`Unknown recipeId ${args.recipeId}.`],
+            : [`Unknown recipeId ${input.value.recipeId}.`],
           missingEvidence: [
             "WP-09+ recipe implementation is not complete in this MCP batch.",
           ],
@@ -284,42 +219,14 @@ function registerTools(
       title: "Validate Vext changes",
       description:
         "Validate ChangeSet or file candidates. The first MCP batch returns incomplete-baseline diagnostics until WP-05/WP-06/WP-09 are implemented.",
-      inputSchema: jsonSchema<{
-        profile?: string;
-        changeSet?: unknown;
-        files?: unknown[];
-      }>({
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          profile: { type: "string", enum: ["syntax", "standard", "strict"] },
-          changeSet: { type: "object", additionalProperties: true },
-          files: {
-            type: "array",
-            minItems: 1,
-            maxItems: 50,
-            items: { type: "object" },
-          },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_validate_changes"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_validate_changes,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
     async (args) => {
-      if (!args.changeSet && !args.files) {
-        return toolResult(
-          failure("VEXT_VALIDATION_FAILED", "changeSet or files is required."),
-          true,
-        );
-      }
-      if (args.changeSet && args.files) {
-        return toolResult(
-          failure(
-            "VEXT_VALIDATION_FAILED",
-            "changeSet and files are mutually exclusive.",
-          ),
-          true,
-        );
-      }
+      const input = parseMcpToolInput("vext_validate_changes", args);
+      if (!input.ok) return toolFailure(input.failure);
       return toolResult({
         schemaVersion: 1,
         status: "ok",
@@ -347,17 +254,14 @@ function registerTools(
       title: "Check Vext project",
       description:
         "Run bounded static project checks. The first MCP batch reports directory/source-state findings without executing host commands.",
-      inputSchema: jsonSchema<{ profile?: string; domain?: string }>({
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          profile: { type: "string", enum: ["quick", "standard", "strict"] },
-          domain: { type: "string" },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_project_check"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_project_check,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
     async (args) => {
+      const input = parseMcpToolInput("vext_project_check", args);
+      if (!input.ok) return toolFailure(input.failure);
       const project = inspect(rootDir, version);
       const diagnostics = project.partitions
         .filter((partition) => partition.state !== "known")
@@ -375,7 +279,7 @@ function registerTools(
             project.identity.sourceState === "complete"
               ? "valid"
               : "incomplete",
-          profile: args.profile ?? "standard",
+          profile: input.value.profile ?? "standard",
           diagnostics,
           totalBySeverity: { error: 0, warning: 0, info: diagnostics.length },
           affectedConsumers: [],
@@ -395,21 +299,15 @@ function registerTools(
       title: "Inspect Vext runtime",
       description:
         "Inspect runtime bridge state if available. The first MCP batch does not start dev servers or read raw logs.",
-      inputSchema: jsonSchema<{ section?: string; limit?: number }>({
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          section: {
-            type: "string",
-            enum: ["summary", "workers", "reloads", "events"],
-          },
-          limit: { type: "integer", minimum: 1, maximum: 100 },
-        },
-      }),
+      inputSchema: jsonSchema<VextMcpToolInputMap["vext_runtime_inspect"]>(
+        VEXT_MCP_TOOL_INPUT_SCHEMAS.vext_runtime_inspect,
+      ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async () =>
-      toolResult({
+    async (args) => {
+      const input = parseMcpToolInput("vext_runtime_inspect", args);
+      if (!input.ok) return toolFailure(input.failure);
+      return toolResult({
         schemaVersion: 1,
         status: "ok",
         data: {
@@ -422,7 +320,8 @@ function registerTools(
           reason:
             "Runtime bridge is not implemented in this MCP batch and the tool never starts a dev server.",
         },
-      }),
+      });
+    },
   );
 
   assertRegisteredTools();
@@ -686,6 +585,17 @@ function toolResult(data: unknown, isError = false) {
     content: [{ type: "text" as const, text }],
     structuredContent: data,
   };
+}
+
+function toolFailure(failureDetail: VextAssistantFailure) {
+  return toolResult(
+    {
+      schemaVersion: 1,
+      status: "error",
+      failure: failureDetail,
+    },
+    true,
+  );
 }
 
 function promptResult(text: string) {

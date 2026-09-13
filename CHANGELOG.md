@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add the bundled `vext mcp` stdio server with the fixed 7 Tools / 11 Resources / 4 Prompts protocol surface, bounded project inspection, built-in Vext knowledge search, and a real MCP stdio verification script.
+- Add shared MCP assistant contracts for `dev.mcp`, policy patches, workspace topology, and Tool input validation so docs, server handlers, and later ChangeSet recipes use the same machine-checkable source.
 
 ### Changed
 

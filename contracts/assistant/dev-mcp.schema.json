@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vextjs.dev/contracts/assistant/dev-mcp.schema.json",
+  "title": "Vext Dev MCP Config",
+  "oneOf": [
+    { "type": "boolean" },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hosts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hostId" },
+          "uniqueItems": true
+        },
+        "sync": { "enum": ["auto", "check", "off"] },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hostId": { "enum": ["codex", "claude-code", "cursor", "vscode", "grok"] }
+  }
+}

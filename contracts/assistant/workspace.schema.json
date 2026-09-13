@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vextjs.dev/contracts/assistant/workspace.schema.json",
+  "title": "Vext Assistant Workspace Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "hosts": {
+      "type": "array",
+      "items": { "enum": ["codex", "claude-code", "cursor", "vscode", "grok"] },
+      "uniqueItems": true
+    },
+    "services": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/service" }
+    },
+    "sharedPackages": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/sharedPackage" }
+    },
+    "policyDefaults": { "$ref": "policy-patch.schema.json" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 260,
+      "not": {
+        "anyOf": [
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "^/" },
+          { "pattern": "(^|/)\\.\\.(?:/|$)" },
+          { "pattern": "\\u0000" }
+        ]
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "root"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "root": { "$ref": "#/$defs/relativePath" },
+        "sharedPackages": {
+          "type": "array",
+          "maxItems": 99,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      }
+    },
+    "sharedPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "root", "kind", "sourceExports"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "root": { "$ref": "#/$defs/relativePath" },
+        "kind": {
+          "enum": [
+            "contracts",
+            "models",
+            "ui",
+            "config",
+            "utility",
+            "test-support"
+          ]
+        },
+        "sourceExports": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/relativePath" }
+        }
+      }
+    }
+  }
+}

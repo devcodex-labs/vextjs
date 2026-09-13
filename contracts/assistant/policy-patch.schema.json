@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vextjs.dev/contracts/assistant/policy-patch.schema.json",
+  "title": "Vext Assistant Policy Patch",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "outputLanguage": { "enum": ["en", "zh"] },
+    "commentLanguage": { "enum": ["en", "zh", "auto"] },
+    "commentDetail": { "enum": ["minimal", "necessary", "detailed"] },
+    "roles": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/relativePath" }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style"],
+      "properties": {
+        "style": { "enum": ["layered", "feature", "custom"] },
+        "featureRoot": { "$ref": "#/$defs/relativePath" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "naming": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "enum": ["kebab-case", "camelCase", "PascalCase", "preserve"]
+        },
+        "component": { "enum": ["PascalCase", "preserve"] },
+        "service": { "enum": ["camelCase", "preserve"] }
+      }
+    },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      }
+    },
+    "rules": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "level"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "level": { "enum": ["off", "info", "warning", "error"] }
+        }
+      }
+    },
+    "sourceRefs": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/relativePath" }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 260,
+      "not": {
+        "anyOf": [
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "^/" },
+          { "pattern": "(^|/)\\.\\.(?:/|$)" },
+          { "pattern": "\\u0000" }
+        ]
+      }
+    }
+  }
+}

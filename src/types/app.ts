@@ -1028,6 +1028,52 @@ export interface VextDevOverlayConfig {
 }
 
 /**
+ * VextDevMcpHostId — 框架内置 MCP 适配目标
+ *
+ * 用于声明项目希望同步到哪些 AI 宿主。MCP 只提供项目上下文、流程和校验，
+ * 启动、重启、测试、构建、部署等命令仍由对应宿主执行。
+ */
+export type VextDevMcpHostId =
+  | "codex"
+  | "claude-code"
+  | "cursor"
+  | "vscode"
+  | "grok";
+
+/**
+ * VextDevMcpSyncMode — MCP 上下文同步模式
+ *
+ * - auto：开发期自动刷新可安全读取的项目上下文。
+ * - check：只检查上下文是否过期，由宿主决定是否刷新。
+ * - off：禁用自动同步。
+ */
+export type VextDevMcpSyncMode = "auto" | "check" | "off";
+
+/** MCP HTTP 桥配置；默认不启用，stdio 仍是内置首选接入方式。 */
+export interface VextDevMcpHttpConfig {
+  /** 是否启用 HTTP 桥。 */
+  enabled?: boolean;
+  /** HTTP 桥端口。 */
+  port?: number;
+}
+
+/**
+ * VextDevMcpConfig — Dev 模式 MCP 集成声明
+ *
+ * 该配置只声明项目级 MCP 意图，不会让框架在运行时替宿主执行命令。
+ */
+export interface VextDevMcpConfig {
+  /** 是否启用项目 MCP 声明。 */
+  enabled?: boolean;
+  /** 需要同步配置或文档的 AI 宿主。为空时由宿主按默认能力处理。 */
+  hosts?: VextDevMcpHostId[];
+  /** 上下文同步策略。 */
+  sync?: VextDevMcpSyncMode;
+  /** 可选 HTTP 桥配置。 */
+  http?: VextDevMcpHttpConfig;
+}
+
+/**
  * VextDevConfig — Dev 模式专属配置
  *
  * 仅在开发模式下读取，生产模式忽略所有字段。
@@ -1035,6 +1081,13 @@ export interface VextDevOverlayConfig {
 export interface VextDevConfig {
   /** Dev 模式错误覆盖层配置 */
   errorOverlay?: VextDevOverlayConfig;
+
+  /**
+   * MCP 开发辅助声明。
+   *
+   * `true` 表示启用默认 MCP 声明；对象形式可进一步声明宿主、同步模式和 HTTP 桥。
+   */
+  mcp?: boolean | VextDevMcpConfig;
 }
 
 /**

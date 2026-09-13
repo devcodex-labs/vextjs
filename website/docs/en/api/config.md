@@ -1183,9 +1183,10 @@ export default {
 
 Development-only configuration. These fields are read by `vext dev` and ignored in production.
 
-| Field          | Type                                            | Default Value | Description                         |
-| -------------- | ----------------------------------------------- | ------------- | ----------------------------------- |
-| `errorOverlay` | [`VextDevOverlayConfig`](#vextdevoverlayconfig) | See below     | Browser error overlay configuration |
+| Field          | Type                          | Default Value | Description                                                                  |
+| -------------- | ----------------------------- | ------------- | ---------------------------------------------------------------------------- |
+| `errorOverlay` | `VextDevOverlayConfig`        | See below     | Browser error overlay configuration                                          |
+| `mcp`          | `boolean \| VextDevMcpConfig` | `undefined`   | Project-level MCP declaration for AI-host inspection and context sync intent |
 
 ### VextDevOverlayConfig
 
@@ -1202,6 +1203,35 @@ export default {
       enabled: true,
       theme: "light",
       maxFrames: 10,
+    },
+  },
+};
+```
+
+### VextDevMcpConfig
+
+`dev.mcp` declares MCP intent for a project. It does not make the framework execute shell commands, start or restart services, run tests, apply files, or edit an AI host configuration. The bundled `vext mcp --root <dir>` stdio server still returns analysis, machine-checkable input errors, and host-execution steps; the AI host remains responsible for commands and file application.
+
+| Field     | Type                                                                | Default Value | Description                                                        |
+| --------- | ------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| `enabled` | `boolean`                                                           | `true`        | Enables the project MCP declaration when an object is supplied     |
+| `hosts`   | `Array<'codex' \| 'claude-code' \| 'cursor' \| 'vscode' \| 'grok'>` | `[]`          | AI hosts the project wants to keep in sync                         |
+| `sync`    | `'auto' \| 'check' \| 'off'`                                        | `'auto'`      | Context sync mode: refresh, check-only, or disabled                |
+| `http`    | `VextDevMcpHttpConfig`                                              | disabled      | Optional future HTTP bridge declaration; stdio remains the default |
+
+`dev.mcp: true` enables the default declaration. Use the object form when the project wants to document host targets or sync policy:
+
+```typescript
+export default {
+  dev: {
+    mcp: {
+      enabled: true,
+      hosts: ["codex", "grok"],
+      sync: "auto",
+      http: {
+        enabled: false,
+        port: 3980,
+      },
     },
   },
 };

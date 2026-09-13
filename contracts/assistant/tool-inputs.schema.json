@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vextjs.dev/contracts/assistant/tool-inputs.schema.json",
+  "title": "Vext MCP Tool Inputs",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "vext_project_inspect": { "$ref": "#/$defs/projectInspect" },
+    "vext_knowledge_search": { "$ref": "#/$defs/knowledgeSearch" },
+    "vext_capability_check": { "$ref": "#/$defs/capabilityCheck" },
+    "vext_generate_changes": { "$ref": "#/$defs/generateChanges" },
+    "vext_validate_changes": { "$ref": "#/$defs/validateChanges" },
+    "vext_project_check": { "$ref": "#/$defs/projectCheck" },
+    "vext_runtime_inspect": { "$ref": "#/$defs/runtimeInspect" }
+  },
+  "$defs": {
+    "expectedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "contextRevision"],
+      "properties": {
+        "projectId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "contextRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "projectInspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "enum": [
+            "summary",
+            "identity",
+            "structure",
+            "routes",
+            "services",
+            "serviceDependencies",
+            "middlewares",
+            "plugins",
+            "models",
+            "frontend",
+            "config",
+            "ownership",
+            "scripts",
+            "docs",
+            "mocks",
+            "jobs",
+            "all"
+          ]
+        },
+        "sourceMode": { "enum": ["auto", "baseline"] },
+        "refresh": { "type": "boolean" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "cursor": { "type": "string" },
+        "expectedIdentity": { "$ref": "#/$defs/expectedIdentity" }
+      }
+    },
+    "knowledgeSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "type": "string" }
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "enum": ["capability", "rule", "recipe", "knowledge", "workflow"]
+          }
+        },
+        "domain": { "type": "string" },
+        "locale": { "enum": ["en", "zh"] },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 10 }
+      }
+    },
+    "capabilityCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability"],
+      "properties": { "capability": { "type": "string", "minLength": 1 } }
+    },
+    "generateChanges": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipeId", "name"],
+      "properties": {
+        "recipeId": { "type": "string", "minLength": 1 },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^/\\\\\\u0000]+$"
+        },
+        "options": { "type": "object" },
+        "expectedIdentity": { "$ref": "#/$defs/expectedIdentity" }
+      }
+    },
+    "validateChanges": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "enum": ["syntax", "standard", "strict"] },
+        "changeSet": { "type": "object" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "type": "object" }
+        },
+        "expectedIdentity": { "$ref": "#/$defs/expectedIdentity" }
+      }
+    },
+    "projectCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "enum": ["quick", "standard", "strict"] },
+        "domain": { "type": "string" },
+        "refresh": { "type": "boolean" },
+        "diagnosticLimit": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "expectedIdentity": { "$ref": "#/$defs/expectedIdentity" }
+      }
+    },
+    "runtimeInspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "section": { "enum": ["summary", "workers", "reloads", "events"] },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "cursor": { "type": "string" },
+        "expectedIdentity": { "$ref": "#/$defs/expectedIdentity" }
+      }
+    }
+  }
+}
