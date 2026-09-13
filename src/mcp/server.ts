@@ -30,6 +30,7 @@ import {
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
 } from "../assistant/project-inspector.js";
+import { inspectRuntimeSnapshot } from "./runtime-snapshot.js";
 
 export interface CreateVextMcpServerOptions {
   rootDir: string;
@@ -349,20 +350,13 @@ function registerTools(
         project,
       );
       if (identityFailure) return identityFailure;
-      return toolResult({
-        schemaVersion: 1,
-        status: "ok",
-        data: {
-          availability: "unavailable",
-          runtimeIdentity: null,
-          snapshot: null,
-          events: [],
-          gap: null,
-          resyncRequired: false,
-          reason:
-            "Runtime bridge is not implemented in this MCP batch and the tool never starts a dev server.",
-        },
-      });
+      return toolResult(
+        await inspectRuntimeSnapshot({
+          rootDir,
+          project,
+          options: input.value,
+        }),
+      );
     },
   );
 
@@ -387,7 +381,11 @@ function registerResources(
           {
             uri: resourceUri.href,
             mimeType: "application/json",
-            text: JSON.stringify(readResource(uri, rootDir, version), null, 2),
+            text: JSON.stringify(
+              await readResource(uri, rootDir, version),
+              null,
+              2,
+            ),
           },
         ],
       }),
@@ -503,7 +501,11 @@ function registerPrompts(server: McpServer): void {
   }
 }
 
-function readResource(uri: string, rootDir: string, version: string): unknown {
+async function readResource(
+  uri: string,
+  rootDir: string,
+  version: string,
+): Promise<unknown> {
   const project = inspect(rootDir, version);
   const catalog = buildMcpCatalog();
   switch (uri) {
@@ -554,13 +556,11 @@ function readResource(uri: string, rootDir: string, version: string): unknown {
         assistant: project.assistant,
       };
     case "vext://runtime/snapshot":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        identity: project.identity,
-        availability: "unavailable",
-        reason: "Runtime bridge is not implemented in this MCP batch.",
-      };
+      return await inspectRuntimeSnapshot({
+        rootDir,
+        project,
+        options: { section: "summary" },
+      });
     default:
       return failure("VEXT_VALIDATION_FAILED", `Unknown resource ${uri}.`);
   }
@@ -672,7 +672,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C18") {
     return [
-      "Runtime Bridge is not implemented yet; use host-run dev/start/job commands for runtime evidence.",
+      "Use vext_runtime_inspect to read .vext/runtime/snapshot.json when a host/runtime has produced it; MCP does not start services or read raw logs.",
     ];
   }
   if (["C15", "C16", "C17", "C28"].includes(capabilityId)) {
@@ -722,8 +722,10 @@ function projectStateForCapability(
   if (capabilityId === "C32") {
     return project.identity.sourceState === "complete" ? "partial" : "unknown";
   }
+  if (capabilityId === "C18") {
+    return project.identity.sourceState === "complete" ? "partial" : "unknown";
+  }
   if (item.status === "planned") return "unknown";
-  if (capabilityId === "C18") return "unknown";
   return project.identity.sourceState === "complete" ? "enabled" : "unknown";
 }
 

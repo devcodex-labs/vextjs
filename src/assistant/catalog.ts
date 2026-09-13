@@ -180,8 +180,8 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C18",
     "Runtime Bridge",
-    "识别运行态快照、worker 代次和事件缺口。",
-    "planned",
+    "读取项目内受管运行态快照、worker 代次、reload 和事件；运行时写入器仍按后续批次接入。",
+    "partial",
   ),
   capability("C19", "缓存", "识别 response-cache-kit 与路由缓存策略。"),
   capability("C20", "限流", "识别 flex-rate-limit 和路由覆盖策略。"),

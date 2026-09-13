@@ -293,10 +293,67 @@ describe("Vext MCP server", () => {
       });
       expect(runtimeCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: { projectState: "unknown" },
+        data: { projectState: "partial" },
       });
       expect(JSON.stringify(runtimeCapability.structuredContent)).toContain(
-        "Runtime Bridge is not implemented yet",
+        "vext_runtime_inspect",
+      );
+      const runtimeMissing = await client.callTool({
+        name: "vext_runtime_inspect",
+        arguments: { section: "summary" },
+      });
+      expect(runtimeMissing.structuredContent).toMatchObject({
+        status: "ok",
+        data: { availability: "unavailable", snapshot: null },
+      });
+      const identity = inspectVextProject({
+        rootDir,
+        frameworkVersion: "2.0.0",
+      }).identity;
+      await mkdir(join(rootDir, ".vext", "runtime"), { recursive: true });
+      await writeFile(
+        join(rootDir, ".vext", "runtime", "snapshot.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            identity: { contextRevision: identity.contextRevision },
+            runtimeIdentity: {
+              mode: "development",
+              pid: 1234,
+              contextRevision: identity.contextRevision,
+            },
+            updatedAt: "2026-09-13T14:00:00.000Z",
+            summary: { state: "ready" },
+            workers: [{ id: 1, pid: 1235, state: "ready" }],
+            reloads: [{ id: "reload-1", status: "success" }],
+            events: [
+              { id: "event-1", type: "ready" },
+              { id: "event-2", type: "reload" },
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const runtimeEvents = await client.callTool({
+        name: "vext_runtime_inspect",
+        arguments: { section: "events", limit: 1 },
+      });
+      expect(runtimeEvents.structuredContent).toMatchObject({
+        status: "ok",
+        data: {
+          availability: "available",
+          runtimeIdentity: { mode: "development", pid: 1234 },
+          events: [{ id: "event-1" }],
+          pageInfo: { nextCursor: "1" },
+          resyncRequired: false,
+        },
+      });
+      const runtimeResource = await client.readResource({
+        uri: "vext://runtime/snapshot",
+      });
+      expect(runtimeResource.contents[0]?.text).toContain(
+        '"availability": "available"',
       );
       const hostSyncCapability = await client.callTool({
         name: "vext_capability_check",
