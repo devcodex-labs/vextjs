@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
 export const VEXT_MCP_SCHEMA_VERSION = 1 as const;
 
@@ -50,6 +51,94 @@ export interface VextMcpCatalogItem {
   relatedIds?: string[];
   limitations?: string[];
 }
+
+export const VEXT_MCP_KNOWLEDGE: VextMcpCatalogItem[] = [
+  dependencyKnowledge(
+    "K01",
+    "schema-dsl",
+    "schema-dsl",
+    "Vext 默认请求/响应校验和 OpenAPI schema 转换的 DSL 引擎。",
+    [
+      "RouteOptions.validate、Job payload、app.getValidator() 默认走 schema-dsl 适配层。",
+      "业务 service 优先使用 app.getValidator()，避免直接 import schema-dsl 绕过全局替换能力。",
+      "OpenAPI 转换保留 schema-dsl v3 的干净 JSON Schema 输出，Vext 只补充 description/example/nullable 等文档字段。",
+    ],
+    [
+      "website/docs/zh/guide/validation.md",
+      "website/docs/zh/api/route-definition.md",
+      "src/lib/openapi/schema-converter.ts",
+      "node_modules/schema-dsl/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K02",
+    "response-cache-kit",
+    "response-cache-kit",
+    "Vext 响应缓存和 app.cache 控制面的底层框架无关工具包。",
+    [
+      "RouteOptions.cache 和 config.cache.cacheHub 使用 response-cache-kit/cache-hub 语义。",
+      "业务代码通常通过 app.cache 和路由 cache 配置使用，不直接操作底层 Store。",
+      "Redis/MultiLevel 场景只清理当前 Vext cache namespace，不清空外部 Redis 全库。",
+    ],
+    [
+      "website/docs/zh/guide/cache.md",
+      "website/docs/zh/api/app.md",
+      "src/lib/middlewares/route-cache.ts",
+      "node_modules/response-cache-kit/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K03",
+    "flex-rate-limit",
+    "flex-rate-limit",
+    "Vext 内置全局与路由级限流的默认实现。",
+    [
+      "config.rateLimit 和 RouteOptions.rateLimit 会进入 Vext 的中间件适配层。",
+      "默认内存限流适合单进程或开发验证；多进程/集群需要 Redis 或等价共享 Store。",
+      "插件可以替换 limiter 实现，但 keyBy、enabled、message 等 Vext 配置语义仍需保持。",
+    ],
+    [
+      "website/docs/zh/api/config.md",
+      "website/docs/zh/api/app.md",
+      "src/lib/middlewares/rate-limit.ts",
+      "node_modules/flex-rate-limit/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K04",
+    "esbuild",
+    "esbuild",
+    "Vext 后端、前端、测试、preload 与服务热重载编译管线使用的构建器。",
+    [
+      "vext build、dev service 编译、testing services:true 和 preload TS 编译均依赖 esbuild。",
+      "后端构建保留模块边界并 external 化包依赖，避免打包改变热重载和运行时身份。",
+      "MCP 给出的构建/测试建议应优先走 vext build、vext dev、createTestApp 等框架入口。",
+    ],
+    [
+      "website/docs/zh/guide/build.md",
+      "website/docs/zh/guide/testing.md",
+      "website/docs/zh/guide/preload.md",
+      "node_modules/esbuild/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K05",
+    "monsqlize",
+    "monsqlize",
+    "Vext 内置数据库插件、多数据库连接池、Model 自动加载与共享模型能力的运行时依赖。",
+    [
+      "config.database 启用内置 monsqlize 插件；连接、模型加载和关闭生命周期由 Vext 接管。",
+      "本地 models 与 workspace shared model package 都要走 Vext model loader，保持 ownership、rollback 和冲突诊断。",
+      "MongoDB 是当前稳定适配器；MySQL/PostgreSQL 不能作为已完成能力承诺。",
+    ],
+    [
+      "website/docs/zh/guide/database.md",
+      "website/docs/zh/api/config.md",
+      "src/lib/plugins/monsqlize/model-loader.ts",
+      "node_modules/monsqlize/README.md",
+    ],
+  ),
+];
 
 export const VEXT_MCP_RECIPES: VextMcpCatalogItem[] = [
   recipe("RCP-01", "api-route", "生成单个 API 路由及请求/响应契约。"),
@@ -243,7 +332,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C33",
     "依赖知识",
-    "登记 schema-dsl、monsqlize、esbuild 等框架依赖用法。",
+    "登记 schema-dsl、response-cache-kit、flex-rate-limit、esbuild、monsqlize 的版本与 Vext 使用边界，可通过 knowledge 搜索。",
     "partial",
   ),
   capability(
@@ -291,6 +380,7 @@ export function buildMcpCatalog() {
   const items = [
     ...VEXT_MCP_CAPABILITIES,
     ...VEXT_MCP_RULES,
+    ...VEXT_MCP_KNOWLEDGE,
     ...VEXT_MCP_RECIPES,
     ...VEXT_MCP_WORKFLOWS,
   ];
@@ -381,6 +471,28 @@ function rule(id: string, title: string, summary: string): VextMcpCatalogItem {
   };
 }
 
+function dependencyKnowledge(
+  id: string,
+  title: string,
+  packageName: string,
+  summary: string,
+  guidance: string[],
+  sourceRefs: string[],
+): VextMcpCatalogItem {
+  const version = dependencyVersion(packageName);
+  return {
+    id,
+    kind: "knowledge",
+    title,
+    summary: `${summary} 当前依赖版本：${version}。`,
+    body: `${title}（${version}）：${summary}\n${guidance
+      .map((item) => `- ${item}`)
+      .join("\n")}`,
+    status: "partial",
+    sourceRefs,
+  };
+}
+
 function recipe(
   id: string,
   title: string,
@@ -396,6 +508,24 @@ function recipe(
     status,
     sourceRefs: ["requirements/02-完整技术方案.md#Recipe 矩阵"],
   };
+}
+
+function dependencyVersion(packageName: string): string {
+  const versions = readPackageDependencyVersions();
+  return versions[packageName] ?? "unknown";
+}
+
+function readPackageDependencyVersions(): Record<string, string> {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../../package.json") as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    return { ...(pkg.devDependencies ?? {}), ...(pkg.dependencies ?? {}) };
+  } catch {
+    return {};
+  }
 }
 
 function workflow(

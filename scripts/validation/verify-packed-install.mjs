@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/client";
@@ -17,6 +23,9 @@ const workspace = path.resolve(
   process.env.VEXT_PREFLIGHT_WORKSPACE ??
     path.join(root, "test", `.tmp-release-preflight-${runId}`),
 );
+const keepEvidence =
+  /^(?:1|true)$/i.test(process.env.VEXT_PREFLIGHT_KEEP_EVIDENCE ?? "false") ||
+  process.env.VEXT_PREFLIGHT_WORKSPACE !== undefined;
 const artifacts = path.join(workspace, "artifacts");
 const consumer = path.join(workspace, "consumer");
 const npmCache = path.resolve(
@@ -68,6 +77,26 @@ function terminateProcessTree(child) {
   } catch {
     // The child may have exited between timeout scheduling and termination.
   }
+}
+
+function cleanupWorkspaceIfDisposable() {
+  if (keepEvidence) {
+    console.log(`Evidence workspace retained at: ${workspace}`);
+    return;
+  }
+  const testRoot = path.resolve(root, "test");
+  const expectedPrefix = `${path.join(testRoot, ".tmp-release-preflight-")}`;
+  if (
+    workspace === testRoot ||
+    !workspace.startsWith(expectedPrefix) ||
+    !workspace.startsWith(`${testRoot}${path.sep}`)
+  ) {
+    throw new Error(
+      `Refusing to clean unexpected preflight workspace: ${workspace}`,
+    );
+  }
+  rmSync(workspace, { recursive: true, force: true });
+  console.log(`Evidence workspace cleaned: ${workspace}`);
 }
 
 function npm(args, options = {}) {
@@ -845,7 +874,7 @@ async function main() {
   await runPackedMcpSyncSmoke(consumer);
 
   console.log(`Packed install verified for vextjs@${pkg.version}`);
-  console.log(`Evidence workspace retained at: ${workspace}`);
+  cleanupWorkspaceIfDisposable();
 }
 
 main().catch((error) => {

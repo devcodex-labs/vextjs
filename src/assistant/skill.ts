@@ -41,7 +41,7 @@ Use this skill when helping with a project that depends on VextJS and has access
 - Frontend changes usually require typecheck, build, and browser or e2e validation when behavior changes.
 - Job changes require job unit tests and scheduler/worker/runtime checks through host commands.
 - Shared packages require downstream consumer checks.
-- Release candidates require \`npm run verify:pack-install\` and the release workflow's real platform, database, browser, and host matrix.
+- Release candidates require \`npm run verify:pack-install\` and the release workflow's real platform, database, browser, and host matrix; successful pack-install runs clean their temporary workspace unless evidence retention is explicitly requested.
 
 ## Known boundaries
 

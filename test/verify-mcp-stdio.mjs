@@ -74,6 +74,12 @@ try {
     });
     if (!JSON.stringify(knowledge).includes("C34"))
       throw new Error("Knowledge search did not return Job capability.");
+    const dependencyKnowledge = await client.callTool({
+      name: "vext_knowledge_search",
+      arguments: { query: "schema-dsl", kinds: ["knowledge"], limit: 5 },
+    });
+    if (!JSON.stringify(dependencyKnowledge).includes("K01"))
+      throw new Error("Knowledge search did not return schema-dsl knowledge.");
   } finally {
     await client.close();
   }

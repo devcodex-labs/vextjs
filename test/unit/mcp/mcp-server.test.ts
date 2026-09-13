@@ -37,6 +37,17 @@ describe("Vext MCP catalog", () => {
         (match) => match.id === "C27",
       ),
     ).toBe(true);
+    const dependency = searchMcpCatalog({
+      query: "schema-dsl",
+      kinds: ["knowledge"],
+      limit: 5,
+    });
+    expect(dependency.matches[0]).toMatchObject({
+      id: "K01",
+      kind: "knowledge",
+      title: "schema-dsl",
+    });
+    expect(dependency.matches[0]?.summary).toContain("3.0.4");
   });
 });
 
@@ -133,6 +144,17 @@ describe("Vext MCP server", () => {
         arguments: { query: "job", limit: 5 },
       });
       expect(JSON.stringify(knowledge.structuredContent)).toContain("C34");
+      const dependencyKnowledge = await client.callTool({
+        name: "vext_knowledge_search",
+        arguments: {
+          query: "monsqlize",
+          kinds: ["knowledge"],
+          limit: 5,
+        },
+      });
+      expect(JSON.stringify(dependencyKnowledge.structuredContent)).toContain(
+        "K05",
+      );
       const draft = await client.callTool({
         name: "vext_generate_changes",
         arguments: {
