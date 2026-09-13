@@ -82,7 +82,7 @@ describe("Vext MCP catalog", () => {
     ).toMatchObject({ status: "available" });
     expect(
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C18"),
-    ).toMatchObject({ status: "partial" });
+    ).toMatchObject({ status: "available" });
   });
 });
 
@@ -419,7 +419,7 @@ describe("Vext MCP server", () => {
       });
       expect(runtimeCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: { projectState: "partial" },
+        data: { projectState: "enabled" },
       });
       expect(JSON.stringify(runtimeCapability.structuredContent)).toContain(
         "vext_runtime_inspect",

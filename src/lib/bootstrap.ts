@@ -91,6 +91,11 @@ import {
 } from "./ipc-port-conflict.js";
 import { quietStartupLogger } from "./startup-logger.js";
 import { createStartupProfilerFromEnv } from "./startup-profiler.js";
+import {
+  patchRuntimeSnapshot,
+  runtimeModeFromEnvironment,
+  writeRuntimeSnapshot,
+} from "./runtime-snapshot.js";
 
 function getLifecycleLevel(
   config: Record<string, unknown>,
@@ -812,6 +817,33 @@ export async function bootstrap(
       });
     }
 
+    if (!config._testMode) {
+      const runtimeIdentity = {
+        mode: runtimeModeFromEnvironment(process.env),
+        pid: process.pid,
+      };
+      await writeRuntimeSnapshotSafe(rootDir, {
+        runtimeIdentity,
+        summary: {
+          state: "ready",
+          host: serverHandle.host,
+          port: serverHandle.port,
+          cluster: false,
+          built: isBuilt,
+        },
+        events: [
+          { type: "ready", host: serverHandle.host, port: serverHandle.port },
+        ],
+      });
+      app.onClose(() =>
+        patchRuntimeSnapshotSafe(rootDir, {
+          runtimeIdentity,
+          summary: { state: "stopped" },
+          event: { type: "shutdown" },
+        }),
+      );
+    }
+
     return { app, serverHandle, internals };
   } catch (err) {
     restoreStartupLogger?.();
@@ -1228,12 +1260,88 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     sticky: (clusterConfig.sticky as "none" | "ip") ?? "none",
   });
 
+  const runtimeIdentity = {
+    mode: "cluster" as const,
+    pid: process.pid,
+  };
+  const snapshotWorkers = () =>
+    [...master.getWorkerMetas().values()].map((worker) => ({
+      id: worker.id,
+      state: worker.state,
+      startTime: worker.startTime,
+      lastHeartbeat: worker.lastHeartbeat,
+      restartCount: worker.restartCount,
+    }));
+
+  master.on("worker-ready", (event) => {
+    void patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity,
+      summary: {
+        state: "ready",
+        host: config.host ?? "0.0.0.0",
+        port: config.port,
+        cluster: true,
+        workers: master.getReadyWorkerCount(),
+        totalWorkers: master.getTargetWorkerCount(),
+      },
+      workers: snapshotWorkers(),
+      event: { type: "worker-ready", ...event },
+    });
+  });
+  master.on("worker-exit", (event) => {
+    void patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity,
+      summary: {
+        state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
+        workers: master.getReadyWorkerCount(),
+        totalWorkers: master.getTargetWorkerCount(),
+      },
+      workers: snapshotWorkers(),
+      event: { type: "worker-exit", ...event },
+    });
+  });
+  master.on("reload-complete", (event) => {
+    void patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity,
+      summary: {
+        state: "ready",
+        workers: master.getReadyWorkerCount(),
+        totalWorkers: master.getTargetWorkerCount(),
+      },
+      workers: snapshotWorkers(),
+      reload: { status: "success", ...event },
+      event: { type: "reload-complete", ...event },
+    });
+  });
+
   await startupProfiler.time("start.listen", () => master.start(), {
     phase: "listen",
     detail: { cluster: true, workers: workerCount },
   });
 
   const readyWorkers = master.getReadyWorkerCount();
+  await writeRuntimeSnapshotSafe(rootDir, {
+    runtimeIdentity,
+    summary: {
+      state: "ready",
+      host: config.host ?? "0.0.0.0",
+      port: config.port,
+      cluster: true,
+      workers: readyWorkers,
+      totalWorkers: master.getTargetWorkerCount(),
+      built: isBuilt,
+    },
+    workers: snapshotWorkers(),
+    events: [
+      {
+        type: "ready",
+        host: config.host ?? "0.0.0.0",
+        port: config.port,
+        workers: readyWorkers,
+        totalWorkers: master.getTargetWorkerCount(),
+      },
+    ],
+  });
   const parentReadyLog = isEnvFlagEnabled(
     process.env.VEXT_START_PARENT_READY_LOG,
   );
@@ -1259,6 +1367,32 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       prefix: "[vextjs]",
       suffix: `(workers=${readyWorkers}/${master.getTargetWorkerCount()})`,
     });
+  }
+}
+
+async function writeRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof writeRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await writeRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vextjs] runtime snapshot write failed: ${(error as Error).message}`,
+    );
+  }
+}
+
+async function patchRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof patchRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await patchRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vextjs] runtime snapshot update failed: ${(error as Error).message}`,
+    );
   }
 }
 

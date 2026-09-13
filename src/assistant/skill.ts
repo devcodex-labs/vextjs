@@ -45,7 +45,7 @@ Use this skill when helping with a project that depends on VextJS and has access
 
 ## Known boundaries
 
-- Runtime Bridge reads the project-local managed \`.vext/runtime/snapshot.json\` snapshot when the installed version reports C18 support; runtime writers remain host/runtime work until reported available.
+- Runtime Bridge reads the framework-managed project-local \`.vext/runtime/snapshot.json\` snapshot when the installed version reports C18 support. The framework writes this snapshot from dev, start, cluster, and Job scheduler/worker runtimes; MCP only reads it.
 - Host configuration sync is available through \`vext mcp sync\`; project-local Skill file sync is available through \`vext mcp sync --skill\` when the installed version reports C29/C30 support.
 - Tools remain usable even when Resources, Prompts, or host-native Skill support is missing.
 - If MCP output is incomplete or clipped, request a narrower scope before applying changes.

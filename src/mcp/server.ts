@@ -719,7 +719,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C18") {
     return [
-      "Use vext_runtime_inspect to read .vext/runtime/snapshot.json when a host/runtime has produced it; MCP does not start services or read raw logs.",
+      "Use vext_runtime_inspect to read the framework-managed .vext/runtime/snapshot.json; MCP does not start services or read raw logs.",
     ];
   }
   if (["C15", "C16", "C17", "C28"].includes(capabilityId)) {
@@ -770,7 +770,7 @@ function projectStateForCapability(
     return project.identity.sourceState === "complete" ? "partial" : "unknown";
   }
   if (capabilityId === "C18") {
-    return project.identity.sourceState === "complete" ? "partial" : "unknown";
+    return project.identity.sourceState === "complete" ? "enabled" : "unknown";
   }
   if (item.status === "planned") return "unknown";
   return project.identity.sourceState === "complete" ? "enabled" : "unknown";

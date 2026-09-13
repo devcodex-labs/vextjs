@@ -38,6 +38,10 @@ import {
   readRequiredOptionValueOrExit,
 } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
+import {
+  patchRuntimeSnapshot,
+  writeRuntimeSnapshot,
+} from "../lib/runtime-snapshot.js";
 
 /**
  * cli/dev.ts — vext dev 命令实现
@@ -274,6 +278,10 @@ async function runDevCommand(
   });
   const commandStartedAt = performance.now();
   let pendingReadyStartedAt = commandStartedAt;
+  const runtimeIdentity = {
+    mode: "development" as const,
+    pid: process.pid,
+  };
   const readyLogger = {
     info(message: string) {
       console.log(message);
@@ -498,6 +506,24 @@ async function runDevCommand(
       runtimeRecoveryRequired ||= result.requestedColdRestart;
       throw new Error(result.error);
     }
+    await patchRuntimeSnapshotSafe(project.rootDir, {
+      runtimeIdentity,
+      summary: { state: "ready", lastOperation: operation.operation },
+      reload:
+        operation.operation === "reload"
+          ? {
+              status: "success",
+              files: operation.files.map((file) => file.path).slice(0, 50),
+            }
+          : undefined,
+      event: {
+        type:
+          operation.operation === "frontend-rebuild"
+            ? "frontend-rebuild"
+            : "soft-reload",
+        files: operation.files.map((file) => file.path).slice(0, 50),
+      },
+    });
   };
 
   // 监听子进程事件
@@ -544,6 +570,23 @@ async function runDevCommand(
           );
           console.log("");
         }
+
+        void writeRuntimeSnapshotSafe(project.rootDir, {
+          runtimeIdentity,
+          summary: {
+            state: "ready",
+            host: readyMessage.server?.host ?? null,
+            port: readyMessage.server?.port ?? null,
+            softReload: true,
+          },
+          events: [
+            {
+              type: "ready",
+              host: readyMessage.server?.host,
+              port: readyMessage.server?.port,
+            },
+          ],
+        });
 
         const startupProfile = readyMessage.startupProfile;
         if (startupProfile?.enabled) {
@@ -813,6 +856,11 @@ async function runDevCommand(
     console.log("\n[vext dev] shutting down...");
 
     await resources.stop?.();
+    await patchRuntimeSnapshotSafe(project.rootDir, {
+      runtimeIdentity,
+      summary: { state: "stopped" },
+      event: { type: "shutdown" },
+    });
     await owner.release();
 
     process.exit(0);
@@ -936,6 +984,32 @@ async function runDevCommand(
       console.error("[vext dev] fix the error and save a file to retry\n");
     }
   });
+}
+
+async function writeRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof writeRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await writeRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vext dev] runtime snapshot write failed: ${(error as Error).message}`,
+    );
+  }
+}
+
+async function patchRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof patchRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await patchRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vext dev] runtime snapshot update failed: ${(error as Error).message}`,
+    );
+  }
 }
 
 // ── 参数解析 ────────────────────────────────────────────────

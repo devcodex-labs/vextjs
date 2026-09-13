@@ -10,7 +10,7 @@
 
 `vext_knowledge_search` 可检索框架能力、规则、Recipe、工作流和主要依赖知识。依赖知识覆盖 `schema-dsl`、`response-cache-kit`、`flex-rate-limit`、`esbuild`、`monsqlize` 的当前版本、Vext 使用入口和边界，版本来自当前安装包的 `package.json`。
 
-`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。`vext_runtime_inspect` 会读取项目内 `.vext/runtime/snapshot.json` 受管快照；运行时写入器仍按后续工作包继续；宿主 MCP 配置写入由 `vext mcp sync` 负责。
+`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshot.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
 `vext_project_inspect` 的 `jobs` section 会静态读取 `config.jobs` 和 Job 源文件，返回 Job 名称、来源文件、queue、schedule、payload schema presence、scheduler/worker/store 配置摘要、可由宿主执行的 `vext job ...` 命令和多进程/cluster 部署提示。MCP 不执行 Job、不连接队列、不读取运行时队列表。
 

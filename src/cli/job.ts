@@ -10,6 +10,10 @@ import {
   failUnknownCliArgument,
   readRequiredOptionValueOrExit,
 } from "./utils/command-args.js";
+import {
+  patchRuntimeSnapshot,
+  writeRuntimeSnapshot,
+} from "../lib/runtime-snapshot.js";
 
 interface JobCliOptions {
   json?: boolean;
@@ -167,10 +171,19 @@ async function withRuntime(
 }
 
 async function runWorker(options: JobCliOptions): Promise<void> {
+  const rootDir = detectProject(resolve(process.cwd()), {
+    allowBuilt: true,
+    outDir: options.outdir,
+  }).rootDir;
   const runtime = await createCliJobRuntime(options);
   const controller = new AbortController();
   const stop = async () => {
     if (!controller.signal.aborted) controller.abort();
+    await patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity: { mode: "job-worker", pid: process.pid },
+      summary: { state: "stopped" },
+      event: { type: "shutdown" },
+    });
     await runtime.close();
   };
   process.once("SIGINT", () => void stop());
@@ -182,14 +195,32 @@ async function runWorker(options: JobCliOptions): Promise<void> {
     console.log(
       `[vextjs] job worker ready (${jobs.length} job(s)). Press Ctrl+C to stop.`,
     );
+  await writeRuntimeSnapshotSafe(rootDir, {
+    runtimeIdentity: { mode: "job-worker", pid: process.pid },
+    summary: {
+      state: "ready",
+      jobs: jobs.length,
+      role: "worker",
+    },
+    events: [{ type: "ready", role: "worker", jobs: jobs.length }],
+  });
   await startJobWorker(runtime, { signal: controller.signal });
 }
 
 async function runScheduler(options: JobCliOptions): Promise<void> {
+  const rootDir = detectProject(resolve(process.cwd()), {
+    allowBuilt: true,
+    outDir: options.outdir,
+  }).rootDir;
   const runtime = await createCliJobRuntime(options);
   const controller = new AbortController();
   const stop = async () => {
     if (!controller.signal.aborted) controller.abort();
+    await patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity: { mode: "job-scheduler", pid: process.pid },
+      summary: { state: "stopped" },
+      event: { type: "shutdown" },
+    });
     await runtime.close();
   };
   process.once("SIGINT", () => void stop());
@@ -203,7 +234,42 @@ async function runScheduler(options: JobCliOptions): Promise<void> {
     console.log(
       `[vextjs] job scheduler ready (${jobs.length} scheduled job(s)). Press Ctrl+C to stop.`,
     );
+  await writeRuntimeSnapshotSafe(rootDir, {
+    runtimeIdentity: { mode: "job-scheduler", pid: process.pid },
+    summary: {
+      state: "ready",
+      jobs: jobs.length,
+      role: "scheduler",
+    },
+    events: [{ type: "ready", role: "scheduler", jobs: jobs.length }],
+  });
   await startJobScheduler(runtime, { signal: controller.signal });
+}
+
+async function writeRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof writeRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await writeRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vextjs] runtime snapshot write failed: ${(error as Error).message}`,
+    );
+  }
+}
+
+async function patchRuntimeSnapshotSafe(
+  rootDir: string,
+  input: Omit<Parameters<typeof patchRuntimeSnapshot>[0], "rootDir">,
+): Promise<void> {
+  try {
+    await patchRuntimeSnapshot({ rootDir, ...input });
+  } catch (error) {
+    console.warn(
+      `[vextjs] runtime snapshot update failed: ${(error as Error).message}`,
+    );
+  }
 }
 
 async function createCliJobRuntime(
