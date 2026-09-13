@@ -62,6 +62,7 @@ export interface VextMcpValidationResult {
   fileCount: number;
   files: VextMcpValidationFileResult[];
   allowedDirectories: VextMcpCandidateDirectory[];
+  requiredHostSteps: string[];
 }
 
 const SUPPORTED_RECIPES = new Map([
@@ -214,6 +215,7 @@ export function validateMcpChangeSetInput(
       fileCount: validation.fileCount,
       files: validation.files,
       allowedDirectories: validation.allowedDirectories,
+      requiredHostSteps: validation.requiredHostSteps,
     };
   }
   if (input.files) {
@@ -224,6 +226,7 @@ export function validateMcpChangeSetInput(
       fileCount: validation.fileCount,
       files: validation.files,
       allowedDirectories: validation.allowedDirectories,
+      requiredHostSteps: validation.requiredHostSteps,
     };
   }
   return {
@@ -232,6 +235,7 @@ export function validateMcpChangeSetInput(
     fileCount: 0,
     files: [],
     allowedDirectories: candidateDirectoryPolicy(project),
+    requiredHostSteps: ["Provide candidate files before planning validation."],
   };
 }
 
@@ -456,6 +460,7 @@ function validateMcpChangeSet(
   fileCount: number;
   files: VextMcpValidationFileResult[];
   allowedDirectories: VextMcpCandidateDirectory[];
+  requiredHostSteps: string[];
 } {
   if (!isRecord(value)) return invalidCandidate("changeSet must be an object.");
   if (value.schemaVersion !== 1)
@@ -486,6 +491,7 @@ function validateMcpChangeSet(
     fileCount: validation.fileCount,
     files: validation.files,
     allowedDirectories: validation.allowedDirectories,
+    requiredHostSteps: validation.requiredHostSteps,
   };
 }
 
@@ -498,6 +504,7 @@ function validateCandidateFiles(
   fileCount: number;
   files: VextMcpValidationFileResult[];
   allowedDirectories: VextMcpCandidateDirectory[];
+  requiredHostSteps: string[];
 } {
   const allowedDirectories = candidateDirectoryPolicy(project);
   if (files.length < 1 || files.length > 50) {
@@ -563,6 +570,7 @@ function validateCandidateFiles(
     fileCount: files.length,
     files: fileResults,
     allowedDirectories,
+    requiredHostSteps: planHostValidationSteps(fileResults),
   };
 }
 
@@ -577,7 +585,71 @@ function invalidCandidate(
     fileCount,
     files: [],
     allowedDirectories,
+    requiredHostSteps: ["Fix candidate shape before planning validation."],
   };
+}
+
+function planHostValidationSteps(
+  files: VextMcpValidationFileResult[],
+): string[] {
+  const steps = new Set<string>([
+    "Review every candidate file before applying it.",
+    "Run npm run typecheck after applying candidate files.",
+  ]);
+  for (const file of files) {
+    if (!file.path || file.verdict !== "valid") {
+      steps.add("Fix candidate diagnostics before applying any file.");
+      continue;
+    }
+    const normalized = file.path.replaceAll("\\", "/");
+    const role = file.directory?.role;
+    if (
+      role === "routes" ||
+      role === "services" ||
+      role === "models" ||
+      role === "middlewares" ||
+      role === "plugins" ||
+      role === "schemas" ||
+      role === "shared-types" ||
+      role === "utils" ||
+      normalized.includes("/src/routes/") ||
+      normalized.includes("/src/services/") ||
+      normalized.includes("/src/models/") ||
+      normalized.includes("/src/schemas/")
+    ) {
+      steps.add(
+        "Run focused backend unit or integration tests for affected routes/services/models.",
+      );
+    }
+    if (
+      role === "frontend-pages" ||
+      role === "frontend-components" ||
+      role === "frontend-styles" ||
+      role === "frontend-assets" ||
+      normalized.includes("/src/frontend/")
+    ) {
+      steps.add(
+        "Run npm run build and affected frontend/e2e checks after applying frontend files.",
+      );
+    }
+    if (role === "locales" || normalized.includes("/src/locales/")) {
+      steps.add("Run affected locale/i18n tests after applying locale files.");
+    }
+    if (role === "jobs" || normalized.includes("/src/jobs/")) {
+      steps.add(
+        "Run focused job unit tests and scheduler/worker integration checks for affected jobs.",
+      );
+    }
+    if (role === "tests" || normalized.startsWith("test/")) {
+      steps.add("Run the new or changed focused test file directly.");
+    }
+    if (file.directory?.source === "workspace-shared-package") {
+      steps.add(
+        "Run tests for every workspace service that consumes the changed shared package.",
+      );
+    }
+  }
+  return [...steps];
 }
 
 function toKebabName(value: string): string | null {

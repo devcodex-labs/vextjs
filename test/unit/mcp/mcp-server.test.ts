@@ -205,6 +205,9 @@ describe("Vext MCP server", () => {
           ],
         },
       });
+      expect(JSON.stringify(sharedPackageFile.structuredContent)).toContain(
+        "Run tests for every workspace service that consumes the changed shared package.",
+      );
       const unsupportedDirectory = await client.callTool({
         name: "vext_validate_changes",
         arguments: {

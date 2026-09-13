@@ -273,9 +273,7 @@ function registerTools(
             validation.verdict === "valid"
               ? []
               : ["Fix the reported candidate diagnostics before applying."],
-          requiredHostSteps: [
-            "Run project build/typecheck/tests in the host after applying any manual changes.",
-          ],
+          requiredHostSteps: validation.requiredHostSteps,
         },
       });
     },
