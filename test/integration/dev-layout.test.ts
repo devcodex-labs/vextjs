@@ -408,7 +408,12 @@ describe("built dev worker with dynamic directory configuration", () => {
       console.log(
         `[dev layout probe] closed pid=${child?.pid} released port=${port}`,
       );
-      await rm(root, { recursive: true, force: true });
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     }
   }, 35_000);
 });

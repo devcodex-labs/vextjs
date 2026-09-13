@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type {
   VextGenerateChangesInput,
   VextValidateChangesInput,
@@ -133,13 +135,16 @@ export function generateMcpChangeSet(
   return { status: "ready", changeSet, diagnostics: [], missingEvidence: [] };
 }
 
-export function validateMcpChangeSetInput(input: VextValidateChangesInput): {
+export function validateMcpChangeSetInput(
+  input: VextValidateChangesInput,
+  project?: VextMcpProjectInspection,
+): {
   verdict: "valid" | "invalid" | "incomplete";
   diagnostics: string[];
   fileCount: number;
 } {
   if (input.changeSet) {
-    const validation = validateMcpChangeSet(input.changeSet);
+    const validation = validateMcpChangeSet(input.changeSet, project);
     return {
       verdict: validation.ok ? "valid" : "invalid",
       diagnostics: validation.diagnostics,
@@ -147,7 +152,7 @@ export function validateMcpChangeSetInput(input: VextValidateChangesInput): {
     };
   }
   if (input.files) {
-    const validation = validateCandidateFiles(input.files);
+    const validation = validateCandidateFiles(input.files, project);
     return {
       verdict: validation.ok ? "valid" : "invalid",
       diagnostics: validation.diagnostics,
@@ -373,7 +378,10 @@ function jobHandlerFile(
   };
 }
 
-function validateMcpChangeSet(value: unknown): {
+function validateMcpChangeSet(
+  value: unknown,
+  project?: VextMcpProjectInspection,
+): {
   ok: boolean;
   diagnostics: string[];
   fileCount: number;
@@ -385,10 +393,33 @@ function validateMcpChangeSet(value: unknown): {
     return invalidCandidate("changeSet.kind must be change-set.");
   if (!Array.isArray(value.files))
     return invalidCandidate("changeSet.files must be an array.");
-  return validateCandidateFiles(value.files);
+  const validation = validateCandidateFiles(value.files, project);
+  const diagnostics = [...validation.diagnostics];
+  if (project && isRecord(value.baseIdentity)) {
+    if (value.baseIdentity.projectId !== project.identity.projectId) {
+      diagnostics.push(
+        "changeSet.baseIdentity.projectId does not match the current project.",
+      );
+    }
+    if (
+      value.baseIdentity.contextRevision !== project.identity.contextRevision
+    ) {
+      diagnostics.push(
+        "changeSet.baseIdentity.contextRevision does not match the current project.",
+      );
+    }
+  }
+  return {
+    ok: validation.ok && diagnostics.length === 0,
+    diagnostics,
+    fileCount: validation.fileCount,
+  };
 }
 
-function validateCandidateFiles(files: unknown[]): {
+function validateCandidateFiles(
+  files: unknown[],
+  project?: VextMcpProjectInspection,
+): {
   ok: boolean;
   diagnostics: string[];
   fileCount: number;
@@ -412,6 +443,16 @@ function validateCandidateFiles(files: unknown[]): {
     if (typeof file.path !== "string" || !isSafeRelativePath(file.path)) {
       diagnostics.push("file.path must be a safe relative path.");
       continue;
+    }
+    if (!isAllowedCandidatePath(file.path)) {
+      diagnostics.push(
+        `${file.path} is outside supported Vext candidate directories.`,
+      );
+    }
+    if (project && existsSync(path.join(project.identity.rootDir, file.path))) {
+      diagnostics.push(
+        `${file.path} already exists; create-only candidates must not overwrite files.`,
+      );
     }
     if (seen.has(file.path))
       diagnostics.push(`Duplicate file path ${file.path}.`);
@@ -466,6 +507,26 @@ function isSafeRelativePath(value: string): boolean {
     !/(^|\/)\.\.(?:\/|$)/.test(normalized) &&
     !normalized.includes("\0")
   );
+}
+
+function isAllowedCandidatePath(value: string): boolean {
+  const normalized = value.replaceAll("\\", "/");
+  return [
+    "src/routes/",
+    "src/services/",
+    "src/models/",
+    "src/middlewares/",
+    "src/plugins/",
+    "src/locales/",
+    "src/types/shared/",
+    "src/utils/",
+    "src/mocks/",
+    "src/jobs/",
+    "src/frontend/pages/",
+    "src/frontend/components/",
+    "src/schemas/",
+    "test/unit/",
+  ].some((prefix) => normalized.startsWith(prefix));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

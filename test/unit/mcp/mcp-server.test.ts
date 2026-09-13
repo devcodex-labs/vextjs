@@ -146,6 +146,26 @@ describe("Vext MCP server", () => {
         status: "ok",
         data: { verdict: "valid", fileCount: 1 },
       });
+      const existingFile = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          files: [
+            {
+              path: "src/routes/hello.ts",
+              action: "create",
+              encoding: "utf8",
+              content: "export {};",
+            },
+          ],
+        },
+      });
+      expect(existingFile.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "invalid" },
+      });
+      expect(JSON.stringify(existingFile.structuredContent)).toContain(
+        "already exists",
+      );
       const routeDraft = await client.callTool({
         name: "vext_generate_changes",
         arguments: { recipeId: "RCP-01", name: "Account Profile" },

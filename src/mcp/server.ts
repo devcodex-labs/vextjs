@@ -257,7 +257,7 @@ function registerTools(
         project,
       );
       if (identityFailure) return identityFailure;
-      const validation = validateMcpChangeSetInput(input.value);
+      const validation = validateMcpChangeSetInput(input.value, project);
       return toolResult({
         schemaVersion: 1,
         status: "ok",
