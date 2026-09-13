@@ -622,15 +622,22 @@ function projectSectionDetails(
   }
   if (section === "services") {
     return {
-      workspaceServices: project.assistant.workspace?.config.services ?? [],
+      workspaceServices: workspaceServiceDetails(project),
+      sharedPackages: workspaceSharedPackageDetails(project),
+      workspaceSource: project.assistant.workspace
+        ? {
+            path: project.assistant.workspace.path,
+            digest: project.assistant.workspace.digest,
+          }
+        : null,
     };
   }
   if (section === "models") {
     return {
-      sharedModelPackages:
-        project.assistant.workspace?.config.sharedPackages?.filter(
-          (item) => item.kind === "models",
-        ) ?? [],
+      localModels: project.snapshot.sections.models ?? null,
+      sharedModelPackages: workspaceSharedPackageDetails(project).filter(
+        (item) => item.kind === "models",
+      ),
     };
   }
   if (section === "jobs") {
@@ -642,6 +649,42 @@ function projectSectionDetails(
     };
   }
   return null;
+}
+
+function workspaceServiceDetails(project: VextMcpProjectInspection) {
+  return (project.assistant.workspace?.config.services ?? []).map(
+    (service) => ({
+      ...service,
+      isCurrentRoot: normalizeWorkspacePath(service.root) === ".",
+      absoluteRoot: path.resolve(project.identity.rootDir, service.root),
+      sharedPackages: (service.sharedPackages ?? []).map((packageId) => ({
+        id: packageId,
+        package:
+          project.assistant.workspace?.config.sharedPackages?.find(
+            (item) => item.id === packageId,
+          ) ?? null,
+      })),
+    }),
+  );
+}
+
+function workspaceSharedPackageDetails(project: VextMcpProjectInspection) {
+  return (project.assistant.workspace?.config.sharedPackages ?? []).map(
+    (sharedPackage) => ({
+      ...sharedPackage,
+      absoluteRoot: path.resolve(project.identity.rootDir, sharedPackage.root),
+      consumers: (project.assistant.workspace?.config.services ?? [])
+        .filter((service) =>
+          (service.sharedPackages ?? []).includes(sharedPackage.id),
+        )
+        .map((service) => service.id),
+    }),
+  );
+}
+
+function normalizeWorkspacePath(value: string): string {
+  const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
+  return normalized === "" ? "." : normalized;
 }
 
 function inspect(rootDir: string, version: string): VextMcpProjectInspection {

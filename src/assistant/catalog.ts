@@ -279,13 +279,11 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
     "C23",
     "Monorepo workspace",
     "识别 vext.workspace.json 服务、shared packages，并用于候选目录策略。",
-    "partial",
   ),
   capability(
     "C24",
     "共享 contracts/models",
     "识别共享包 sourceExports，并在候选校验中标注 shared package 来源。",
-    "partial",
   ),
   capability("C25", "代码注释策略", "按项目语言和用户规范判断注释语言及密度。"),
   capability(

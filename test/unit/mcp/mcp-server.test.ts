@@ -63,6 +63,12 @@ describe("Vext MCP catalog", () => {
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C27"),
     ).toMatchObject({ status: "available" });
     expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C23"),
+    ).toMatchObject({ status: "available" });
+    expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C24"),
+    ).toMatchObject({ status: "available" });
+    expect(
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C33"),
     ).toMatchObject({ status: "available" });
     expect(
@@ -162,6 +168,42 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(config.structuredContent)).toContain(
         "devMcpSources",
       );
+      const services = await client.callTool({
+        name: "vext_project_inspect",
+        arguments: { section: "services" },
+      });
+      expect(services.structuredContent).toMatchObject({
+        status: "ok",
+        section: "services",
+        details: {
+          workspaceServices: [
+            {
+              id: "api",
+              root: ".",
+              isCurrentRoot: true,
+              sharedPackages: [{ id: "models" }],
+            },
+          ],
+        },
+      });
+      const models = await client.callTool({
+        name: "vext_project_inspect",
+        arguments: { section: "models" },
+      });
+      expect(models.structuredContent).toMatchObject({
+        status: "ok",
+        section: "models",
+        details: {
+          sharedModelPackages: [
+            {
+              id: "models",
+              kind: "models",
+              sourceExports: { user: "src/user.ts" },
+              consumers: ["api"],
+            },
+          ],
+        },
+      });
       const jobs = await client.callTool({
         name: "vext_project_inspect",
         arguments: { section: "jobs" },
@@ -354,6 +396,14 @@ describe("Vext MCP server", () => {
         arguments: { capability: "C23" },
       });
       expect(workspaceCapability.structuredContent).toMatchObject({
+        status: "ok",
+        data: { projectState: "enabled" },
+      });
+      const sharedPackageCapability = await client.callTool({
+        name: "vext_capability_check",
+        arguments: { capability: "C24" },
+      });
+      expect(sharedPackageCapability.structuredContent).toMatchObject({
         status: "ok",
         data: { projectState: "enabled" },
       });
