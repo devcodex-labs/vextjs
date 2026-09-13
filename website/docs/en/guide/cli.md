@@ -6,7 +6,9 @@ Use `vext job list`, `vext job inspect <name>`, `vext job run <name>`, `vext job
 
 ## MCP command
 
-The current development line adds `vext mcp --root <dir>` as the bundled stdio MCP server. It binds to one Vext project root, registers 7 Tools, 11 Resources, and 4 Prompts, and exposes bounded project inspection plus built-in Vext knowledge search. The MCP server does not execute shell commands, start or restart services, apply file changes, run tests, or modify host MCP configuration; it returns analysis, readiness diagnostics, and host-execution steps. Later MCP work packages will fill in ChangeSet generation, candidate validation, runtime bridge inspection, host sync, and full recipe coverage.
+The current development line adds `vext mcp --root <dir>` as the bundled stdio MCP server. It binds to one Vext project root, registers 7 Tools, 11 Resources, and 4 Prompts, and exposes bounded project inspection, built-in Vext knowledge search, create-only ChangeSet drafts for 17 Recipes, candidate validation, and host-side validation plans. The MCP server does not execute shell commands, start or restart services, apply file changes, run tests, or modify host MCP configuration; it returns analysis, machine-checkable diagnostics, and host-execution steps.
+
+`vext_validate_changes` checks project identity, directory policy, existing-file overwrites, duplicate paths, encoding, and the create-only boundary. Its response includes each file verdict, the matched directory source, and `requiredHostSteps`. Directory policy comes from the project structure, default Vext directories, and `vext.workspace.json(c)` services/sharedPackages; default directories are recommendations and are not created automatically. Runtime Bridge inspection, host MCP configuration sync, and deeper business-grade generators remain later work packages.
 
 :::tip Stable release
 This site documents the stable `v2.0.0` release. The CLI output below uses that published version.

@@ -6,7 +6,9 @@
 
 ## MCP 命令
 
-当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查与内置 Vext 知识搜索。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、就绪诊断和需要宿主执行的步骤。后续 MCP 工作包会继续补齐 ChangeSet 生成、候选校验、运行态 Bridge 检查、宿主同步和完整 Recipe 覆盖。
+当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查、内置 Vext 知识搜索、17 条 Recipe 的 create-only ChangeSet 草稿、候选校验和应用后宿主验证计划。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、机器可校验诊断和需要宿主执行的步骤。
+
+`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。运行态 Bridge 检查、宿主 MCP 配置同步和更细的业务级生成器仍按后续工作包继续。
 
 :::tip 稳定版本
 本站记录稳定发布的 `v2.0.0`。下面的 CLI 输出使用该正式版本。
