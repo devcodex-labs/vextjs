@@ -330,8 +330,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C34",
     "Job",
-    "识别 Job 定义、scheduler、worker、store、CLI 和文档入口。",
-    "partial",
+    "静态识别 Job 定义、scheduler、worker、store、CLI 和文档入口。",
   ),
 ];
 

@@ -66,6 +66,9 @@ describe("Vext MCP catalog", () => {
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C33"),
     ).toMatchObject({ status: "available" });
     expect(
+      VEXT_MCP_CAPABILITIES.find((item) => item.id === "C34"),
+    ).toMatchObject({ status: "available" });
+    expect(
       VEXT_MCP_CAPABILITIES.find((item) => item.id === "C18"),
     ).toMatchObject({ status: "partial" });
   });
@@ -158,6 +161,31 @@ describe("Vext MCP server", () => {
       });
       expect(JSON.stringify(config.structuredContent)).toContain(
         "devMcpSources",
+      );
+      const jobs = await client.callTool({
+        name: "vext_project_inspect",
+        arguments: { section: "jobs" },
+      });
+      expect(jobs.structuredContent).toMatchObject({
+        status: "ok",
+        section: "jobs",
+        details: {
+          config: {
+            scheduler: { mode: "enqueue", tickInterval: 1000 },
+            worker: { concurrency: 2 },
+          },
+          jobs: [
+            {
+              name: "billing.closeInvoice",
+              sourceFile: "src/jobs/billing/close.ts",
+              hasSchedule: true,
+              queue: { priority: 5 },
+            },
+          ],
+        },
+      });
+      expect(JSON.stringify(jobs.structuredContent)).toContain(
+        "vext job scheduler",
       );
       const knowledge = await client.callTool({
         name: "vext_knowledge_search",
@@ -470,7 +498,7 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "config", "default.ts"),
-    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
+    'export default { server: { port: 3000 }, jobs: { scheduler: { mode: "enqueue", tickInterval: 1000 }, worker: { concurrency: 2 }, store: { type: "file", dir: ".vext/jobs" } }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
   );
   await writeFile(
     join(dir, "vext.workspace.jsonc"),
@@ -499,7 +527,7 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "jobs", "billing", "close.ts"),
-    "export default {};\n",
+    'import { defineJob } from "vextjs";\n\nexport default defineJob({\n  name: "billing.closeInvoice",\n  description: "Close overdue invoices.",\n  tags: ["billing"],\n  queue: { priority: 5 },\n  schedule: { cron: "0 * * * *", timezone: "UTC", singleton: true },\n  concurrency: 1,\n  async handler() {}\n});\n',
   );
   return dir;
 }

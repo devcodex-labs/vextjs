@@ -26,6 +26,7 @@ import {
   type VextMcpToolInputMap,
 } from "../assistant/contracts.js";
 import {
+  inspectVextProjectJobDetails,
   inspectVextProject,
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
@@ -631,6 +632,9 @@ function projectSectionDetails(
           (item) => item.kind === "models",
         ) ?? [],
     };
+  }
+  if (section === "jobs") {
+    return inspectVextProjectJobDetails(project);
   }
   if (section === "ownership" || section === "structure") {
     return {
