@@ -574,6 +574,7 @@ function validateConfig(config: Record<string, unknown>): void {
         `[vextjs] config.rateLimit.window must be a positive number (seconds), got: ${window}`,
       );
     }
+    validateRateLimitStoreConfig(rateLimit.store, "config.rateLimit.store");
   }
 
   // ── cluster ───────────────────────────────────────────
@@ -2091,9 +2092,9 @@ function validateJobsConfig(value: unknown, path: string): void {
 function validateJobStoreConfig(value: unknown, path: string): void {
   if (value === undefined) return;
   if (typeof value === "string") {
-    if (!["memory", "file"].includes(value) && !value.trim()) {
+    if (!["memory", "file", "redis", "auto"].includes(value) && !value.trim()) {
       throw new Error(
-        `[vextjs] ${path} must be "memory", "file", or a non-empty custom store name.`,
+        `[vextjs] ${path} must be "memory", "file", "redis", "auto", or a non-empty custom store name.`,
       );
     }
     return;
@@ -2104,8 +2105,46 @@ function validateJobStoreConfig(value: unknown, path: string): void {
   const store = value as Record<string, unknown>;
   validateOptionalString(store.type, `${path}.type`);
   validateOptionalRelativeProjectPath(store.dir, `${path}.dir`);
+  validateRedisStoreFields(store, path);
 }
 
+function validateRateLimitStoreConfig(value: unknown, path: string): void {
+  if (value === undefined || value === "memory") return;
+  if (typeof value === "string") {
+    if (value !== "redis") {
+      throw new Error(
+        `[vextjs] ${path} must be "memory", "redis", or a redis store object.`,
+      );
+    }
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `[vextjs] ${path} must be "memory", "redis", or an object.`,
+    );
+  }
+  const store = value as Record<string, unknown>;
+  if (store.type !== "redis") {
+    throw new Error(`[vextjs] ${path}.type must be "redis".`);
+  }
+  validateRedisStoreFields(store, path);
+}
+
+function validateRedisStoreFields(
+  value: Record<string, unknown>,
+  path: string,
+): void {
+  validateOptionalString(value.url, `${path}.url`);
+  validateOptionalString(value.uri, `${path}.uri`);
+  validateOptionalString(value.keyPrefix, `${path}.keyPrefix`);
+  validateOptionalString(value.namespace, `${path}.namespace`);
+  if (
+    value.client !== undefined &&
+    (typeof value.client !== "object" || value.client === null)
+  ) {
+    throw new Error(`[vextjs] ${path}.client must be an object.`);
+  }
+}
 function validateJobSchedulerConfig(value: unknown, path: string): void {
   if (value === undefined) return;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

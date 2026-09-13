@@ -85,9 +85,16 @@ export interface VextJobsConfig {
   store?:
     | "memory"
     | "file"
+    | "redis"
+    | "auto"
     | {
-        type?: "memory" | "file" | string;
+        type?: "memory" | "file" | "redis" | "auto" | string;
         dir?: string;
+        url?: string;
+        uri?: string;
+        keyPrefix?: string;
+        namespace?: string;
+        client?: unknown;
       };
   scheduler?: {
     enabled?: boolean;
@@ -111,6 +118,7 @@ export interface VextJobsConfig {
     heartbeatInterval?: number;
     lease?: {
       ttl?: number;
+      renewInterval?: number;
     };
   };
   defaults?: {
@@ -119,7 +127,6 @@ export interface VextJobsConfig {
     concurrency?: number;
   };
 }
-
 export interface VextLoadedJob<TPayload = unknown, TResult = unknown> {
   name: string;
   definition: VextJobDefinition<TPayload, TResult>;
@@ -164,6 +171,8 @@ export interface VextJobRunOptions {
   trigger?: VextJobTriggerType;
   scheduledAt?: Date | string;
   idempotencyKey?: string;
+  /** @internal Already-claimed owner used by the built-in worker/scheduler paths. */
+  ownerId?: string;
 }
 
 export interface VextJobRunResult<TResult = unknown> {
@@ -215,6 +224,16 @@ export interface VextJobClaimOptions {
   jobNames?: string[];
 }
 
+export interface VextJobClaimRunOptions {
+  ownerId: string;
+  now?: Date;
+  leaseTtl?: number;
+}
+
+export interface VextJobCompleteOptions {
+  ownerId?: string;
+}
+
 export interface VextJobListRunsOptions {
   jobName?: string;
   status?: VextJobRunRecordStatus;
@@ -240,6 +259,16 @@ export interface VextJobStore {
   claimNextRun(
     options: VextJobClaimOptions,
   ): Promise<VextJobRunRecord | undefined>;
+  claimRun(
+    runId: string,
+    options: VextJobClaimRunOptions,
+  ): Promise<VextJobRunRecord | undefined>;
+  renewRunLease(
+    runId: string,
+    ownerId: string,
+    leaseTtl: number,
+    now?: Date,
+  ): Promise<boolean>;
   completeRun(
     runId: string,
     patch: Partial<
@@ -254,7 +283,8 @@ export interface VextJobStore {
         | "updatedAt"
       >
     >,
-  ): Promise<void>;
+    options?: VextJobCompleteOptions,
+  ): Promise<boolean>;
   getRun(runId: string): Promise<VextJobRunRecord | undefined>;
   listRuns(options?: VextJobListRunsOptions): Promise<VextJobRunRecord[]>;
   heartbeatWorker(ownerId: string, now?: Date): Promise<void>;

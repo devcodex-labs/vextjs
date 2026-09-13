@@ -62,7 +62,7 @@ Worker 认领 run 时会同时检查全局并发和单 Job 并发：全局上限
 
 ## `createJobStore(options)`
 
-根据 `config.jobs.store` 创建内置 store。`memory` 适合测试；`file` 是默认持久化 store，默认目录 `.vext/jobs`，适合同机多进程和单机部署。
+根据 `config.jobs.store` 创建内置 store。`memory` 适合测试；`file` 是默认持久化 store，默认目录 `.vext/jobs`，适合同机多进程和单机部署。`redis` 会打开 Redis-backed store，用于 run record、scheduler lease、worker heartbeat、run claim、运行租约续期和 owner 校验完成。`auto` 只在 `VEXT_REDIS_URL` 或 `REDIS_URL` 存在时可用；没有 Redis 目标会 fail fast。
 
 ## 测试 API
 
@@ -80,25 +80,25 @@ Worker 认领 run 时会同时检查全局并发和单 Job 并发：全局上限
 | `schedule`       | `VextJobScheduleConfig`   | `undefined`                        | 内置 scheduler 配置                    |
 | `queue`          | `VextJobQueueConfig`      | `undefined`                        | 入队优先级等队列元数据                 |
 | `timeout`        | `number`                  | `config.jobs.defaults.timeout`     | 单次执行超时，单位毫秒                 |
-| `retry`          | `false \| object`         | `config.jobs.defaults.retry`       | 重试次数、延迟和退避策略               |
+| `retry`          | `false &#124; object`     | `config.jobs.defaults.retry`       | 重试次数、延迟和退避策略               |
 | `concurrency`    | `number`                  | `config.jobs.defaults.concurrency` | 单 Job 并发上限，供 worker/runner 使用 |
-| `idempotencyKey` | `string \| function`      | `undefined`                        | 手动/入队任务的业务幂等键              |
+| `idempotencyKey` | `string &#124; function`  | `undefined`                        | 手动/入队任务的业务幂等键              |
 | `handler`        | `function`                | 必填                               | Job 执行函数                           |
 
 ## Schedule 字段
 
-| 字段            | 类型                                  | 默认值                                | 说明                                    |
-| --------------- | ------------------------------------- | ------------------------------------- | --------------------------------------- |
-| `enabled`       | `boolean`                             | `true`                                | 是否启用该 Job 的定时调度               |
-| `cron`          | `string`                              | `undefined`                           | 秒级 cron 表达式                        |
-| `interval`      | `number`                              | `undefined`                           | 毫秒间隔；不能与 `cron` 同时配置        |
-| `timezone`      | `string`                              | `config.jobs.scheduler.timezone`      | cron 时区                               |
-| `startAt`       | `string \| Date`                      | `undefined`                           | 起始时间                                |
-| `endAt`         | `string \| Date`                      | `undefined`                           | 结束时间                                |
-| `misfirePolicy` | `'skip' \| 'fire-once' \| 'catch-up'` | `config.jobs.scheduler.misfirePolicy` | 错过 tick 后如何补偿                    |
-| `maxCatchUp`    | `number`                              | `config.jobs.scheduler.maxCatchUp`    | 最大补偿次数                            |
-| `jitter`        | `number`                              | `config.jobs.scheduler.jitter`        | 到点后的随机延迟毫秒数                  |
-| `singleton`     | `boolean`                             | `false`                               | 同一 scheduled fire time 只允许一个 run |
+| 字段            | 类型                                          | 默认值                                | 说明                                    |
+| --------------- | --------------------------------------------- | ------------------------------------- | --------------------------------------- |
+| `enabled`       | `boolean`                                     | `true`                                | 是否启用该 Job 的定时调度               |
+| `cron`          | `string`                                      | `undefined`                           | 秒级 cron 表达式                        |
+| `interval`      | `number`                                      | `undefined`                           | 毫秒间隔；不能与 `cron` 同时配置        |
+| `timezone`      | `string`                                      | `config.jobs.scheduler.timezone`      | cron 时区                               |
+| `startAt`       | `string &#124; Date`                          | `undefined`                           | 起始时间                                |
+| `endAt`         | `string &#124; Date`                          | `undefined`                           | 结束时间                                |
+| `misfirePolicy` | `'skip' &#124; 'fire-once' &#124; 'catch-up'` | `config.jobs.scheduler.misfirePolicy` | 错过 tick 后如何补偿                    |
+| `maxCatchUp`    | `number`                                      | `config.jobs.scheduler.maxCatchUp`    | 最大补偿次数                            |
+| `jitter`        | `number`                                      | `config.jobs.scheduler.jitter`        | 到点后的随机延迟毫秒数                  |
+| `singleton`     | `boolean`                                     | `false`                               | 同一 scheduled fire time 只允许一个 run |
 
 ## 配置
 
@@ -134,7 +134,7 @@ export default {
       shutdownTimeout: 10000,
       pollInterval: 1000,
       heartbeatInterval: 10000,
-      lease: { ttl: 30000 },
+      lease: { ttl: 30000, renewInterval: 10000 },
     },
     defaults: {
       timeout: 30000,
@@ -145,18 +145,21 @@ export default {
 };
 ```
 
-| 字段                                 | 默认值         | 说明                                              |
-| ------------------------------------ | -------------- | ------------------------------------------------- |
-| `jobs.enabled`                       | `true`         | 是否允许 Job 发现                                 |
-| `jobs.dir`                           | `'jobs'`       | 相对 `src/` 的 Job 目录                           |
-| `jobs.store.type`                    | `'file'`       | `memory` 或 `file`                                |
-| `jobs.store.dir`                     | `'.vext/jobs'` | file store 数据目录，相对项目根                   |
-| `jobs.scheduler.mode`                | `'inline'`     | `inline` 到点直接执行，`enqueue` 只入队           |
-| `jobs.scheduler.tickInterval`        | `1000`         | scheduler tick 间隔，毫秒                         |
-| `jobs.scheduler.lease.ttl`           | `30000`        | scheduler lease 过期时间                          |
-| `jobs.scheduler.lease.renewInterval` | `10000`        | scheduler lease 续期间隔，需小于等于 TTL          |
-| `jobs.worker.concurrency`            | `4`            | worker 全局并发                                   |
-| `jobs.worker.pollInterval`           | `1000`         | worker 轮询间隔，毫秒                             |
-| `jobs.worker.shutdownTimeout`        | `10000`        | 关闭时等待 running job 的时间                     |
-| `jobs.defaults`                      | 见示例         | Job 未声明 timeout/retry/concurrency 时的默认值   |
-| `jobs.defaults.concurrency`          | `1`            | 单 Job 默认并发上限；worker 会按 Job 名称分别限制 |
+| 字段                                 | 默认值         | 说明                                                   |
+| ------------------------------------ | -------------- | ------------------------------------------------------ |
+| `jobs.enabled`                       | `true`         | 是否允许 Job 发现                                      |
+| `jobs.dir`                           | `'jobs'`       | 相对 `src/` 的 Job 目录                                |
+| `jobs.store.type`                    | `'file'`       | `memory`、`file`、`redis` 或 `auto`                    |
+| `jobs.store.url` / `uri`             | `undefined`    | `redis` store 的连接地址                               |
+| `jobs.store.namespace` / `keyPrefix` | 自动生成       | Redis key 隔离；默认按项目/profile/runtime/module 生成 |
+| `jobs.store.dir`                     | `'.vext/jobs'` | file store 数据目录，相对项目根                        |
+| `jobs.scheduler.mode`                | `'inline'`     | `inline` 到点直接执行，`enqueue` 只入队                |
+| `jobs.scheduler.tickInterval`        | `1000`         | scheduler tick 间隔，毫秒                              |
+| `jobs.scheduler.lease.ttl`           | `30000`        | scheduler lease 过期时间                               |
+| `jobs.scheduler.lease.renewInterval` | `10000`        | scheduler lease 续期间隔，需小于等于 TTL               |
+| `jobs.worker.concurrency`            | `4`            | worker 全局并发                                        |
+| `jobs.worker.pollInterval`           | `1000`         | worker 轮询间隔，毫秒                                  |
+| `jobs.worker.shutdownTimeout`        | `10000`        | 关闭时等待 running job 的时间                          |
+| `jobs.worker.lease.renewInterval`    | `10000`        | run lease 续期间隔，需小于等于 TTL                     |
+| `jobs.defaults`                      | 见示例         | Job 未声明 timeout/retry/concurrency 时的默认值        |
+| `jobs.defaults.concurrency`          | `1`            | 单 Job 默认并发上限；worker 会按 Job 名称分别限制      |

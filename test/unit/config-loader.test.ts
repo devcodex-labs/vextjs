@@ -598,8 +598,45 @@ describe("validateConfig", () => {
         "config.rateLimit.window",
       );
     });
+    it("accepts built-in redis rateLimit store", () => {
+      expect(() =>
+        _validateConfig({
+          rateLimit: {
+            enabled: true,
+            store: { type: "redis", url: "redis://127.0.0.1:6379" },
+          },
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects unknown rateLimit store", () => {
+      expect(() =>
+        _validateConfig({ rateLimit: { store: { type: "file" } } }),
+      ).toThrow("config.rateLimit.store.type");
+    });
   });
 
+  // ── jobs ────────────────────────────────────────────────
+
+  describe("jobs validation", () => {
+    it("accepts redis and auto job stores", () => {
+      expect(() =>
+        _validateConfig({
+          jobs: {
+            store: { type: "redis", url: "redis://127.0.0.1:6379" },
+            worker: { lease: { ttl: 30000, renewInterval: 10000 } },
+          },
+        }),
+      ).not.toThrow();
+      expect(() => _validateConfig({ jobs: { store: "auto" } })).not.toThrow();
+    });
+
+    it("rejects invalid redis store fields", () => {
+      expect(() =>
+        _validateConfig({ jobs: { store: { type: "redis", url: 1 } } }),
+      ).toThrow("config.jobs.store.url");
+    });
+  });
   // ── logger ──────────────────────────────────────────────
 
   describe("logger validation", () => {

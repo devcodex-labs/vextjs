@@ -32,7 +32,7 @@ const config: VextUserConfig = {
     worker: {
       concurrency: 4,
       pollInterval: 1000,
-      lease: { ttl: 30_000 },
+      lease: { ttl: 30_000, renewInterval: 10_000 },
     },
     defaults: {
       timeout: 30_000,
@@ -153,7 +153,7 @@ vext job status <runId>
 
 默认 store 是 `file`，位置为 `.vext/jobs`。它会保存 scheduler lease、worker heartbeat、run record、run lease、trigger、payload、status、attempts、duration、result 和 error 摘要。
 
-`memory` store 适合测试和本地演示，进程退出后数据丢失。`file` store 适合同机多进程和单机部署；如果多个容器共享同一个持久卷，也可以用于简单多实例。跨机器生产、严格 exactly-once 或高吞吐队列建议通过自定义 store/runner 接数据库、Redis、BullMQ 或云队列。
+`memory` store 适合测试和本地演示，进程退出后数据丢失。`file` store 适合同机多进程和单机部署；如果多个容器共享同一个持久卷，也可以用于简单多实例。`redis` 是内置分布式 store，适合跨进程或跨节点的 scheduler/worker 共享 run record 与租约。可配置 `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`；只有确认通过 `VEXT_REDIS_URL`/`REDIS_URL` 提供 Redis 目标时才使用 `jobs.store: "auto"`。Vext 默认根据包名、配置 profile、运行模式和模块生成 Redis key 前缀；只有多个服务需要显式共享或隔离 key 时才设置 `namespace` 或 `keyPrefix`。严格 exactly-once 或更高吞吐队列仍建议接入自定义 runner、BullMQ、数据库或云队列。
 
 ## 运行时边界
 

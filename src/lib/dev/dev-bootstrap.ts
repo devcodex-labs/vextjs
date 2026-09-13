@@ -52,6 +52,7 @@ import { createRequestMetadataMiddleware } from "../middlewares/request-metadata
 import { createCorsMiddleware } from "../middlewares/cors.js";
 import { createBodyParserMiddleware } from "../middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "../middlewares/rate-limit.js";
+import { createRateLimitRuntime } from "../rate-limit/runtime.js";
 import { responseWrapper } from "../middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "../middlewares/access-log.js";
 import { createCsrfMiddleware } from "../csrf.js";
@@ -474,6 +475,12 @@ async function devBootstrapOwned(
     internals = result.internals;
     const sessionRuntime = createConfiguredSessionRuntime(config.session);
     app.onClose(sessionRuntime.close);
+    const rateLimitRuntime = createRateLimitRuntime(config.rateLimit, {
+      rootDir: projectRoot,
+      configProfile: resolvedConfigProfile.profile,
+      runtimeMode: "development",
+    });
+    app.onClose(rateLimitRuntime.close);
     const corsMiddleware = createCorsMiddleware(config.cors);
     const parentReadyLog = isEnvFlagEnabled(
       process.env.VEXT_DEV_PARENT_READY_LOG,
@@ -829,6 +836,7 @@ async function devBootstrapOwned(
       const rateLimitMiddleware = createRateLimitMiddleware(
         config.rateLimit,
         () => internals!.getRateLimiter(),
+        rateLimitRuntime,
       );
       app.adapter.registerMiddleware(rateLimitMiddleware);
     }
@@ -1080,8 +1088,10 @@ async function devBootstrapOwned(
           : undefined,
       // creator 必须常驻，soft reload 才能按最新配置支持 false ↔ true。
       createRateLimitMiddleware: ((cfg: Record<string, unknown>) =>
-        createRateLimitMiddleware((cfg.rateLimit ?? {}) as any, () =>
-          internals!.getRateLimiter(),
+        createRateLimitMiddleware(
+          (cfg.rateLimit ?? {}) as any,
+          () => internals!.getRateLimiter(),
+          rateLimitRuntime,
         )) as any,
       responseWrapper:
         config.response?.wrap !== false ? (responseWrapper as any) : undefined,

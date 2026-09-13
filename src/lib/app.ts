@@ -1058,6 +1058,7 @@ export const DEFAULT_CONFIG: VextConfig = {
     window: 60,
     message: "Too Many Requests",
     keyBy: "ip",
+    store: "memory",
   },
   requestId: {
     enabled: true,
@@ -1157,6 +1158,7 @@ export const DEFAULT_CONFIG: VextConfig = {
       heartbeatInterval: 10000,
       lease: {
         ttl: 30000,
+        renewInterval: 10000,
       },
     },
     defaults: {

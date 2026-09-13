@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { finalizeConfig, loadRawConfig } from "../config-loader.js";
 import { createApp, type AppInternals } from "../app.js";
@@ -77,7 +78,13 @@ export async function bootstrapJobRuntime(
   });
   const registry = createJobRegistry(jobs);
   const store =
-    options.store ?? createJobStore({ rootDir, config: config.jobs });
+    options.store ??
+    createJobStore({
+      rootDir,
+      config: config.jobs,
+      configProfile: options.configProfile,
+      runtimeMode: options.mode ?? "production",
+    });
   await store.init?.();
   const runner = createJobRunner({ app, registry });
   const runWithRecord = async (
@@ -96,27 +103,74 @@ export async function bootstrapJobRuntime(
         payload: runOptions.payload,
         trigger: runOptions.trigger ?? "manual",
         scheduledAt: runOptions.scheduledAt,
-        idempotencyKey: resolveIdempotencyKey(
-          jobName,
-          loaded.definition,
-          runOptions.payload,
-        ),
+        idempotencyKey:
+          runOptions.idempotencyKey ??
+          resolveIdempotencyKey(jobName, loaded.definition, runOptions.payload),
       }));
-    const result = await runner.run(jobName, {
-      ...runOptions,
+
+    const ownerId = runOptions.ownerId ?? `run-${process.pid}-${randomUUID()}`;
+    const leaseTtl = config.jobs?.worker?.lease?.ttl ?? 30000;
+    const claimed = await claimRunForExecution(
+      store,
+      record.id,
+      ownerId,
+      leaseTtl,
+    );
+    if (!claimed) {
+      throw new Error(
+        `[vextjs] Job run "${record.id}" cannot be claimed by owner "${ownerId}". It may be running in another worker or already completed.`,
+      );
+    }
+
+    const controller = new AbortController();
+    const abortFromParent = () => controller.abort(runOptions.signal?.reason);
+    if (runOptions.signal?.aborted) abortFromParent();
+    else
+      runOptions.signal?.addEventListener("abort", abortFromParent, {
+        once: true,
+      });
+
+    const renewLease = createRunLeaseRenewal({
+      store,
       runId: record.id,
-      payload: runOptions.payload ?? record.payload,
+      ownerId,
+      leaseTtl,
+      renewInterval: resolveRunLeaseRenewInterval(config.jobs),
+      controller,
     });
-    await store.completeRun(record.id, {
-      status: result.status,
-      attempts: result.attempts,
-      durationMs: result.durationMs,
-      finishedAt: new Date().toISOString(),
-      result: result.result,
-      error: result.error ? formatError(result.error) : undefined,
-    });
-    return result;
+    const stopRenewLease = renewLease.start();
+
+    try {
+      const result = await runner.run(jobName, {
+        ...runOptions,
+        signal: controller.signal,
+        runId: record.id,
+        payload: runOptions.payload ?? claimed.payload,
+      });
+      const completed = await store.completeRun(
+        record.id,
+        {
+          status: result.status,
+          attempts: result.attempts,
+          durationMs: result.durationMs,
+          finishedAt: new Date().toISOString(),
+          result: result.result,
+          error: result.error ? formatError(result.error) : undefined,
+        },
+        { ownerId },
+      );
+      if (!completed) {
+        app.logger.warn(
+          `[vextjs] Job run "${record.id}" finished but owner "${ownerId}" no longer owns its lease; completion was ignored.`,
+        );
+      }
+      return result;
+    } finally {
+      stopRenewLease();
+      runOptions.signal?.removeEventListener("abort", abortFromParent);
+    }
   };
+
   return {
     app,
     config,
@@ -159,6 +213,60 @@ function resolveIdempotencyKey(
     return value == null ? undefined : String(value);
   }
   return undefined;
+}
+
+async function claimRunForExecution(
+  store: VextJobStore,
+  runId: string,
+  ownerId: string,
+  leaseTtl: number,
+): Promise<VextJobRunRecord | undefined> {
+  const existing = await store.getRun(runId);
+  if (existing?.status === "running" && existing.leaseOwner === ownerId) {
+    return existing;
+  }
+  return store.claimRun(runId, { ownerId, leaseTtl });
+}
+
+function resolveRunLeaseRenewInterval(jobs: VextConfig["jobs"]): number {
+  const leaseTtl = jobs?.worker?.lease?.ttl ?? 30000;
+  return Math.min(
+    jobs?.worker?.lease?.renewInterval ??
+      Math.max(1000, Math.floor(leaseTtl / 2)),
+    leaseTtl,
+  );
+}
+
+function createRunLeaseRenewal(options: {
+  store: VextJobStore;
+  runId: string;
+  ownerId: string;
+  leaseTtl: number;
+  renewInterval: number;
+  controller: AbortController;
+}): { start(): () => void } {
+  return {
+    start() {
+      const timer = setInterval(() => {
+        void options.store
+          .renewRunLease(options.runId, options.ownerId, options.leaseTtl)
+          .then((renewed) => {
+            if (!renewed && !options.controller.signal.aborted) {
+              options.controller.abort(
+                new Error(
+                  `[vextjs] Job run "${options.runId}" lease was lost by owner "${options.ownerId}".`,
+                ),
+              );
+            }
+          })
+          .catch((error) => {
+            if (!options.controller.signal.aborted)
+              options.controller.abort(error);
+          });
+      }, options.renewInterval);
+      return () => clearInterval(timer);
+    },
+  };
 }
 
 function formatError(error: unknown): string {

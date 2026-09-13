@@ -32,7 +32,7 @@ const config: VextUserConfig = {
     worker: {
       concurrency: 4,
       pollInterval: 1000,
-      lease: { ttl: 30_000 },
+      lease: { ttl: 30_000, renewInterval: 10_000 },
     },
     defaults: {
       timeout: 30_000,
@@ -153,7 +153,7 @@ Production deployments should prefer scheduled enqueue mode. The scheduler stays
 
 The default store is `file`, stored under `.vext/jobs`. It records scheduler leases, worker heartbeats, run records, run leases, trigger, payload, status, attempts, duration, result, and error summary.
 
-`memory` is for tests and local demos and loses state on process exit. `file` supports same-machine multi-process and single-node production deployments; with a shared persistent volume it can also support simple multi-instance deployments. For multi-machine production, strict exactly-once, or high-throughput queues, connect a custom store/runner backed by a database, Redis, BullMQ, or a cloud queue.
+`memory` is for tests and local demos and loses state on process exit. `file` supports same-machine multi-process and single-node production deployments; with a shared persistent volume it can also support simple multi-instance deployments. `redis` is the built-in distributed store for schedulers and workers across processes or nodes. Configure `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`, or use `jobs.store: "auto"` only when `VEXT_REDIS_URL`/`REDIS_URL` is deliberately provided. Vext generates a Redis key prefix from package name, config profile, runtime mode, and module; set `namespace` or `keyPrefix` only when several services intentionally share or isolate Redis keys. For strict exactly-once or high-throughput queues beyond the built-in run store, connect a custom runner backed by a database, BullMQ, or a cloud queue.
 
 ## Runtime boundaries
 

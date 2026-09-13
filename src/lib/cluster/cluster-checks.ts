@@ -106,6 +106,15 @@ export function checkClusterCompatibility(
  *
  * @internal
  */
+function isRateLimitRedisStore(store: unknown): boolean {
+  return (
+    store === "redis" ||
+    (typeof store === "object" &&
+      store !== null &&
+      (store as Record<string, unknown>).type === "redis")
+  );
+}
+
 function checkRateLimitMemoryStore(
   app: VextApp,
   workerCount: number,
@@ -132,7 +141,7 @@ function checkRateLimitMemoryStore(
     appWithFlags[RATE_LIMITER_OVERRIDDEN_KEY] === true ||
     appWithFlags._rateLimiterOverridden === true;
 
-  if (rateLimiterOverridden) {
+  if (rateLimiterOverridden || isRateLimitRedisStore(rateLimitConfig?.store)) {
     return { name, warned: false };
   }
 

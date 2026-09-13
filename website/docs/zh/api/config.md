@@ -1268,6 +1268,7 @@ import { DEFAULT_CONFIG } from 'vextjs';
     window: 60,
     message: 'Too Many Requests',
     keyBy: 'ip',
+    store: 'memory',
   },
   requestId: {
     enabled: true,
@@ -1367,6 +1368,7 @@ import { DEFAULT_CONFIG } from 'vextjs';
       heartbeatInterval: 10000,
       lease: {
         ttl: 30000,
+        renewInterval: 10000,
       },
     },
     defaults: {
@@ -1480,7 +1482,7 @@ const config: VextConfigOverride = {
 
 `VextSessionStore` 必须实现 `get(id)`、`set(id, data, ttlSeconds)` 和 `delete(id)`。可选方法包括 `touch(id, ttlSeconds)`、`clearExpired()` 与 `close()`。配置 Store 和已启用的手动 Session 运行时会在应用关闭时调用 `close()`。
 
-生产 cache-backed session 推荐使用 `vextjs` 根入口导出的 `createCacheSessionStore(cacheLike, options?)`。它接收具备 `get`、`set`、`del` 的结构型 `VextCacheLike`，把 session TTL 秒转换为 cache 毫秒，默认写入 JSON string，且只有传入 `options.close` 时才暴露 `close()`。`config.cache.cacheHub` 仍然只是路由响应缓存配置，不会注入 Session Store。
+生产 cache-backed session 推荐使用 `vextjs` 根入口导出的 `createCacheSessionStore(cacheLike, options?)`。它接收具备 `get`、`set`、`del` 的结构型 `VextCacheLike`，把 session TTL 秒转换为 cache 毫秒，默认写入 JSON string，且只有传入 `options.close` 时才暴露 `close()`。`config.cache.cacheHub` 仍然只是路由响应缓存配置，不会注入 Session Store。Session、RateLimit、Job 与响应缓存各自拥有 Redis 集成边界；可以共用同一个 Redis 服务，但每个模块应使用自己的自动 namespace 或显式 prefix。
 
 `RouteOptions.session` 接受 `false`、`true` 或 `{ enabled?, rolling?, autoCommit? }`，可为单个路由关闭 Session，也可在全局运行时关闭时单独启用。
 

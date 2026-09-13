@@ -30,6 +30,7 @@ import { createRequestMetadataMiddleware } from "../lib/middlewares/request-meta
 import { createCorsMiddleware } from "../lib/middlewares/cors.js";
 import { createBodyParserMiddleware } from "../lib/middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "../lib/middlewares/rate-limit.js";
+import { createRateLimitRuntime } from "../lib/rate-limit/runtime.js";
 import { createAccessLogMiddleware } from "../lib/middlewares/access-log.js";
 import { responseWrapper } from "../lib/middlewares/response-wrapper.js";
 import { createErrorHandler } from "../lib/middlewares/error-handler.js";
@@ -410,6 +411,11 @@ export async function createTestApp(
   const hooks = app.hooks as VextInternalHooks;
   const sessionRuntime = createConfiguredSessionRuntime(finalConfig.session);
   app.onClose(sessionRuntime.close);
+  const rateLimitRuntime = createRateLimitRuntime(finalConfig.rateLimit, {
+    rootDir,
+    runtimeMode: "test",
+  });
+  app.onClose(rateLimitRuntime.close);
   const corsMiddleware = createCorsMiddleware(finalConfig.cors);
 
   // ── 2a. resolveAdapter（异步按需加载）─────────────────
@@ -534,8 +540,10 @@ export async function createTestApp(
 
   if (finalConfig.rateLimit?.enabled === true) {
     app.adapter.registerMiddleware(
-      createRateLimitMiddleware(finalConfig.rateLimit, () =>
-        internals.getRateLimiter(),
+      createRateLimitMiddleware(
+        finalConfig.rateLimit,
+        () => internals.getRateLimiter(),
+        rateLimitRuntime,
       ),
     );
   }

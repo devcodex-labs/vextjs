@@ -237,14 +237,19 @@ export default {
     enabled: true,
     max: 100,
     window: 60,
+    store: { type: "redis", url: "redis://127.0.0.1:6379" }, // 可选共享 store
   },
 };
 ```
 
 全局限流启用后，路由可通过 `override: { rateLimit: false }` 跳过，也可传入
-路由级对象覆盖 `max`、`window` 或 `keyBy`。`app.setRateLimiter()` 只替换 limiter
-实现，不会隐式开启应用限流；导出的 `createRateLimitMiddleware()` 工厂也仍可用于
-显式手动组合。
+路由级对象覆盖 `max`、`window` 或 `keyBy`。内置 limiter 默认使用 memory；cluster
+或多实例计数应配置 `rateLimit.store: { type: "redis", url }`，或配置
+`rateLimit.store: "redis"` 并通过 `VEXT_REDIS_URL` / `REDIS_URL` 提供连接。
+Vext 会为 RateLimit 创建一个共享 Redis store，并默认按项目、profile、运行模式和
+`rate-limit` 模块生成 key 前缀；只有需要显式共享或隔离 key 时才设置 `namespace`
+或 `keyPrefix`。`app.setRateLimiter()` 只替换 limiter 实现，不会隐式开启应用限流；
+导出的 `createRateLimitMiddleware()` 工厂也仍可用于显式手动组合。
 
 ### 路由级中间件
 

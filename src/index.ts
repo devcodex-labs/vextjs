@@ -100,6 +100,8 @@ export type {
   VextMiddlewareConfig,
   VextCorsConfig,
   VextRateLimitConfig,
+  VextRateLimitRedisStoreConfig,
+  VextRateLimitStoreConfig,
   VextRequestIdConfig,
   VextLoggerConfig,
   VextShutdownConfig,
@@ -216,6 +218,7 @@ export {
   createFileJobStore,
   createJobStore,
   createMemoryJobStore,
+  createRedisJobStore,
   defineJob,
   getNextJobRunTime,
   isVextJobDefinition,
@@ -237,6 +240,7 @@ export type {
   CreateFileJobStoreOptions,
   CreateJobStoreOptions,
   CreateMemoryJobStoreOptions,
+  CreateRedisJobStoreOptions,
   StartJobSchedulerOptions,
   StartJobWorkerOptions,
   TickJobSchedulerOptions,
@@ -277,6 +281,11 @@ export {
   parseBytes,
 } from "./lib/middlewares/body-parser.js";
 export { createRateLimitMiddleware } from "./lib/middlewares/rate-limit.js";
+export { createRateLimitRuntime } from "./lib/rate-limit/runtime.js";
+export type {
+  CreateRateLimitRuntimeOptions,
+  VextRateLimitRuntime,
+} from "./lib/rate-limit/runtime.js";
 export { responseWrapper } from "./lib/middlewares/response-wrapper.js";
 export { createAccessLogMiddleware } from "./lib/middlewares/access-log.js";
 export { createErrorHandler } from "./lib/middlewares/error-handler.js";

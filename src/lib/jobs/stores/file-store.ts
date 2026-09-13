@@ -147,16 +147,58 @@ export function createFileJobStore(
         return clone(record);
       });
     },
-    async completeRun(runId, patch) {
-      await withLock(lockDir, async () => {
+    async claimRun(runId, options) {
+      const at = options.now ?? now();
+      return withLock(lockDir, async () => {
         const state = await readState(stateFile);
         const record = state.runs.find((run) => run.id === runId);
-        if (!record) return;
+        if (
+          !record ||
+          !canClaim(record, { ...options, jobNames: undefined }, at)
+        ) {
+          return undefined;
+        }
+        record.status = "running";
+        record.startedAt ??= at.toISOString();
+        record.updatedAt = at.toISOString();
+        record.leaseOwner = options.ownerId;
+        record.leaseUntil = new Date(
+          at.getTime() + (options.leaseTtl ?? 30000),
+        ).toISOString();
+        await writeState(stateFile, state);
+        return clone(record);
+      });
+    },
+    async renewRunLease(runId, ownerId, leaseTtl, at = now()) {
+      return withLock(lockDir, async () => {
+        const state = await readState(stateFile);
+        const record = state.runs.find((run) => run.id === runId);
+        if (
+          !record ||
+          record.status !== "running" ||
+          record.leaseOwner !== ownerId
+        ) {
+          return false;
+        }
+        record.leaseUntil = new Date(at.getTime() + leaseTtl).toISOString();
+        record.updatedAt = at.toISOString();
+        await writeState(stateFile, state);
+        return true;
+      });
+    },
+    async completeRun(runId, patch, options) {
+      return withLock(lockDir, async () => {
+        const state = await readState(stateFile);
+        const record = state.runs.find((run) => run.id === runId);
+        if (!record) return false;
+        if (record.leaseOwner && record.leaseOwner !== options?.ownerId)
+          return false;
         Object.assign(record, patch);
         record.leaseOwner = undefined;
         record.leaseUntil = undefined;
         record.updatedAt = patch.updatedAt ?? now().toISOString();
         await writeState(stateFile, state);
+        return true;
       });
     },
     async getRun(runId) {

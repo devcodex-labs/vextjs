@@ -237,16 +237,22 @@ export default {
     enabled: true,
     max: 100,
     window: 60,
+    store: { type: "redis", url: "redis://127.0.0.1:6379" }, // optional shared store
   },
 };
 ```
 
 After global rate limiting is enabled, a route can set
 `override: { rateLimit: false }` to skip it, or provide a route-level object to
-override `max`, `window`, or `keyBy`. Calling `app.setRateLimiter()` replaces
-the limiter implementation but does not opt the application into rate
-limiting. The exported `createRateLimitMiddleware()` factory also remains
-available for explicit manual composition.
+override `max`, `window`, or `keyBy`. The built-in limiter uses memory by
+default; use `rateLimit.store: { type: "redis", url }` or `rateLimit.store:
+"redis"` with `VEXT_REDIS_URL` / `REDIS_URL` for cluster and multi-instance
+counters. Vext creates one shared Redis store and derives a key prefix from the
+project, profile, runtime mode, and `rate-limit` module unless `namespace` or
+`keyPrefix` is provided. Calling `app.setRateLimiter()` replaces the limiter
+implementation but does not opt the application into rate limiting. The
+exported `createRateLimitMiddleware()` factory also remains available for
+explicit manual composition.
 
 ### Routing-level middleware
 

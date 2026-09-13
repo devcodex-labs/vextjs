@@ -1,4 +1,5 @@
 import { RateLimiter } from "flex-rate-limit";
+import type { VextRateLimitRuntime } from "../rate-limit/runtime.js";
 import type { VextMiddleware } from "../../types/middleware.js";
 import type {
   RouteOptions,
@@ -47,6 +48,7 @@ import type { VextRequest } from "../../types/request.js";
 export function createRateLimitMiddleware(
   config: VextRateLimitConfig,
   getRateLimiter: () => VextRateLimiter | null,
+  runtime?: VextRateLimitRuntime,
 ): VextMiddleware {
   // ── 创建内置 flex-rate-limit 实例池 ───────────────────────
   //
@@ -102,7 +104,9 @@ export function createRateLimitMiddleware(
       resetAtUnix = result.resetAt;
     } else {
       // ── 使用内置 flex-rate-limit ──────────────────────
-      const builtinLimiter = getBuiltinLimiter(max, windowSec);
+      const builtinLimiter =
+        runtime?.getLimiter(max, windowSec) ??
+        getBuiltinLimiter(max, windowSec);
       const result = await builtinLimiter.check(key, { req });
       allowed = result.allowed;
       remaining = Math.max(0, result.remaining);

@@ -94,7 +94,7 @@ export const VEXT_MCP_KNOWLEDGE: VextMcpCatalogItem[] = [
     "Vext 内置全局与路由级限流的默认实现。",
     [
       "config.rateLimit 和 RouteOptions.rateLimit 会进入 Vext 的中间件适配层。",
-      "默认内存限流适合单进程或开发验证；多进程/集群需要 Redis 或等价共享 Store。",
+      "默认内存限流适合单进程或开发验证；多进程/集群可直接配置 rateLimit.store redis，也可用 app.setRateLimiter() 接等价共享 Store。",
       "插件可以替换 limiter 实现，但 keyBy、enabled、message 等 Vext 配置语义仍需保持。",
     ],
     [
@@ -267,7 +267,11 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
     "读取框架运行时写入的项目内受管快照、worker 代次、reload 和事件。",
   ),
   capability("C19", "缓存", "识别 response-cache-kit 与路由缓存策略。"),
-  capability("C20", "限流", "识别 flex-rate-limit 和路由覆盖策略。"),
+  capability(
+    "C20",
+    "限流",
+    "识别 flex-rate-limit、内置 memory/redis store 和路由覆盖策略。",
+  ),
   capability("C21", "安全与 CSRF", "识别 auth、csrf、安全头和 session 约束。"),
   capability(
     "C22",
@@ -325,7 +329,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C34",
     "Job",
-    "静态识别 Job 定义、scheduler、worker、store、CLI 和文档入口。",
+    "静态识别 Job 定义、scheduler、worker、memory/file/redis/auto store、run lease、CLI 和文档入口。",
   ),
 ];
 

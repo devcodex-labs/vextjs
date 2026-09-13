@@ -62,7 +62,7 @@ Workers enforce both global and per-job concurrency. The global limit comes from
 
 ## `createJobStore(options)`
 
-Creates the built-in store from `config.jobs.store`. `memory` is for tests. `file` is the default persistent store under `.vext/jobs`, suitable for same-machine multi-process and single-node deployments.
+Creates the built-in store from `config.jobs.store`. `memory` is for tests. `file` is the default persistent store under `.vext/jobs`, suitable for same-machine multi-process and single-node deployments. `redis` opens a Redis-backed store for run records, scheduler leases, worker heartbeats, run claims, lease renewal, and owner-checked completion. `auto` requires `VEXT_REDIS_URL` or `REDIS_URL`; it fails fast when no Redis target is available.
 
 ## Testing API
 
@@ -80,25 +80,25 @@ Creates the built-in store from `config.jobs.store`. `memory` is for tests. `fil
 | `schedule`       | `VextJobScheduleConfig`   | `undefined`                        | Built-in scheduler configuration                  |
 | `queue`          | `VextJobQueueConfig`      | `undefined`                        | Queue metadata such as priority                   |
 | `timeout`        | `number`                  | `config.jobs.defaults.timeout`     | Execution timeout in milliseconds                 |
-| `retry`          | `false \| object`         | `config.jobs.defaults.retry`       | Retry attempts, delay, and backoff                |
+| `retry`          | `false &#124; object`     | `config.jobs.defaults.retry`       | Retry attempts, delay, and backoff                |
 | `concurrency`    | `number`                  | `config.jobs.defaults.concurrency` | Per-job concurrency limit for workers/runners     |
-| `idempotencyKey` | `string \| function`      | `undefined`                        | Business idempotency key for manual/enqueued jobs |
+| `idempotencyKey` | `string &#124; function`  | `undefined`                        | Business idempotency key for manual/enqueued jobs |
 | `handler`        | `function`                | Required                           | Job handler                                       |
 
 ## Schedule fields
 
-| Field           | Type                                  | Default                               | Description                                          |
-| --------------- | ------------------------------------- | ------------------------------------- | ---------------------------------------------------- |
-| `enabled`       | `boolean`                             | `true`                                | Enables scheduled firing for this job                |
-| `cron`          | `string`                              | `undefined`                           | Second-level cron expression                         |
-| `interval`      | `number`                              | `undefined`                           | Millisecond interval; cannot be combined with `cron` |
-| `timezone`      | `string`                              | `config.jobs.scheduler.timezone`      | Cron timezone                                        |
-| `startAt`       | `string \| Date`                      | `undefined`                           | Start time                                           |
-| `endAt`         | `string \| Date`                      | `undefined`                           | End time                                             |
-| `misfirePolicy` | `'skip' \| 'fire-once' \| 'catch-up'` | `config.jobs.scheduler.misfirePolicy` | How missed ticks are handled                         |
-| `maxCatchUp`    | `number`                              | `config.jobs.scheduler.maxCatchUp`    | Maximum catch-up runs                                |
-| `jitter`        | `number`                              | `config.jobs.scheduler.jitter`        | Random delay after due time in milliseconds          |
-| `singleton`     | `boolean`                             | `false`                               | Allows one run for each scheduled fire time          |
+| Field           | Type                                          | Default                               | Description                                          |
+| --------------- | --------------------------------------------- | ------------------------------------- | ---------------------------------------------------- |
+| `enabled`       | `boolean`                                     | `true`                                | Enables scheduled firing for this job                |
+| `cron`          | `string`                                      | `undefined`                           | Second-level cron expression                         |
+| `interval`      | `number`                                      | `undefined`                           | Millisecond interval; cannot be combined with `cron` |
+| `timezone`      | `string`                                      | `config.jobs.scheduler.timezone`      | Cron timezone                                        |
+| `startAt`       | `string &#124; Date`                          | `undefined`                           | Start time                                           |
+| `endAt`         | `string &#124; Date`                          | `undefined`                           | End time                                             |
+| `misfirePolicy` | `'skip' &#124; 'fire-once' &#124; 'catch-up'` | `config.jobs.scheduler.misfirePolicy` | How missed ticks are handled                         |
+| `maxCatchUp`    | `number`                                      | `config.jobs.scheduler.maxCatchUp`    | Maximum catch-up runs                                |
+| `jitter`        | `number`                                      | `config.jobs.scheduler.jitter`        | Random delay after due time in milliseconds          |
+| `singleton`     | `boolean`                                     | `false`                               | Allows one run for each scheduled fire time          |
 
 ## Configuration
 
@@ -134,7 +134,7 @@ export default {
       shutdownTimeout: 10000,
       pollInterval: 1000,
       heartbeatInterval: 10000,
-      lease: { ttl: 30000 },
+      lease: { ttl: 30000, renewInterval: 10000 },
     },
     defaults: {
       timeout: 30000,
@@ -145,18 +145,20 @@ export default {
 };
 ```
 
-| Field                                | Default        | Description                                                       |
-| ------------------------------------ | -------------- | ----------------------------------------------------------------- |
-| `jobs.enabled`                       | `true`         | Enables job discovery                                             |
-| `jobs.dir`                           | `'jobs'`       | Job directory relative to `src/`                                  |
-| `jobs.store.type`                    | `'file'`       | `memory` or `file`                                                |
-| `jobs.store.dir`                     | `'.vext/jobs'` | File store data directory relative to project root                |
-| `jobs.scheduler.mode`                | `'inline'`     | `inline` executes due runs, `enqueue` only queues them            |
-| `jobs.scheduler.tickInterval`        | `1000`         | Scheduler tick interval in milliseconds                           |
-| `jobs.scheduler.lease.ttl`           | `30000`        | Scheduler lease TTL                                               |
-| `jobs.scheduler.lease.renewInterval` | `10000`        | Scheduler lease renewal interval; keep it no larger than the TTL  |
-| `jobs.worker.concurrency`            | `4`            | Worker global concurrency                                         |
-| `jobs.worker.pollInterval`           | `1000`         | Worker polling interval in milliseconds                           |
-| `jobs.worker.shutdownTimeout`        | `10000`        | Time to wait for running jobs during shutdown                     |
-| `jobs.defaults`                      | See example    | Default timeout/retry/concurrency for jobs                        |
-| `jobs.defaults.concurrency`          | `1`            | Default per-job concurrency limit enforced by workers by job name |
+| Field                                | Default        | Description                                                          |
+| ------------------------------------ | -------------- | -------------------------------------------------------------------- |
+| `jobs.enabled`                       | `true`         | Enables job discovery                                                |
+| `jobs.dir`                           | `'jobs'`       | Job directory relative to `src/`                                     |
+| `jobs.store.type`                    | `'file'`       | `memory`, `file`, `redis`, or `auto`                                 |
+| `jobs.store.url` / `uri`             | `undefined`    | Redis connection for `redis` store                                   |
+| `jobs.store.namespace` / `keyPrefix` | auto           | Redis key isolation; auto prefix uses project/profile/runtime/module |
+| `jobs.store.dir`                     | `'.vext/jobs'` | File store data directory relative to project root                   |
+| `jobs.scheduler.mode`                | `'inline'`     | `inline` executes due runs, `enqueue` only queues them               |
+| `jobs.scheduler.tickInterval`        | `1000`         | Scheduler tick interval in milliseconds                              |
+| `jobs.scheduler.lease.ttl`           | `30000`        | Scheduler lease TTL                                                  |
+| `jobs.scheduler.lease.renewInterval` | `10000`        | Scheduler lease renewal interval; keep it no larger than the TTL     |
+| `jobs.worker.concurrency`            | `4`            | Worker global concurrency                                            |
+| `jobs.worker.pollInterval`           | `1000`         | Worker polling interval in milliseconds                              |
+| `jobs.worker.shutdownTimeout`        | `10000`        | Time to wait for running jobs during shutdown                        |
+| `jobs.defaults`                      | See example    | Default timeout/retry/concurrency for jobs                           |
+| `jobs.defaults.concurrency`          | `1`            | Default per-job concurrency limit enforced by workers by job name    |

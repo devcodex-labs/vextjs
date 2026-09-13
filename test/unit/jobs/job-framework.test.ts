@@ -242,6 +242,73 @@ describe("Job framework", () => {
       await runtime.close();
     }
   });
+
+  it("protects claimed runs from completion by a different owner", async () => {
+    const store = createMemoryJobStore();
+    const run = await store.enqueueRun({
+      jobName: "billing.sync",
+      trigger: "enqueue",
+      runAt: new Date("2026-09-13T00:00:00.000Z"),
+    });
+    const claimed = await store.claimRun(run.id, {
+      ownerId: "worker-a",
+      leaseTtl: 30_000,
+      now: new Date("2026-09-13T00:00:00.000Z"),
+    });
+
+    expect(claimed).toMatchObject({
+      status: "running",
+      leaseOwner: "worker-a",
+    });
+    await expect(
+      store.completeRun(
+        run.id,
+        { status: "success", attempts: 1, durationMs: 1 },
+        { ownerId: "worker-b" },
+      ),
+    ).resolves.toBe(false);
+    await expect(store.getRun(run.id)).resolves.toMatchObject({
+      status: "running",
+      leaseOwner: "worker-a",
+    });
+    await expect(
+      store.completeRun(
+        run.id,
+        { status: "success", attempts: 1, durationMs: 1 },
+        { ownerId: "worker-a" },
+      ),
+    ).resolves.toBe(true);
+    const completed = await store.getRun(run.id);
+    expect(completed).toMatchObject({ status: "success" });
+    expect(completed).not.toHaveProperty("leaseOwner");
+  });
+
+  it("renews a claimed run lease before it expires", async () => {
+    const store = createMemoryJobStore();
+    const run = await store.enqueueRun({
+      jobName: "billing.sync",
+      trigger: "enqueue",
+      runAt: new Date("2026-09-13T00:00:00.000Z"),
+    });
+    await store.claimRun(run.id, {
+      ownerId: "worker-a",
+      leaseTtl: 1_000,
+      now: new Date("2026-09-13T00:00:00.000Z"),
+    });
+
+    await expect(
+      store.renewRunLease(
+        run.id,
+        "worker-a",
+        2_000,
+        new Date("2026-09-13T00:00:00.500Z"),
+      ),
+    ).resolves.toBe(true);
+    await expect(store.getRun(run.id)).resolves.toMatchObject({
+      leaseOwner: "worker-a",
+      leaseUntil: "2026-09-13T00:00:02.500Z",
+    });
+  });
 });
 
 async function createRuntime(options: {
@@ -301,19 +368,26 @@ async function runAndRecord(
       payload: options.payload,
       trigger: options.trigger ?? "manual",
     }));
+  const ownerId = options.ownerId ?? "test-runtime";
+  await store.claimRun(record.id, { ownerId, leaseTtl: 30_000 });
   const result = await run(jobName, {
     ...options,
+    ownerId,
     runId: record.id,
     payload: options.payload ?? record.payload,
   });
-  await store.completeRun(record.id, {
-    status: result.status,
-    attempts: result.attempts,
-    durationMs: result.durationMs,
-    finishedAt: new Date().toISOString(),
-    result: result.result,
-    error: result.error ? String(result.error) : undefined,
-  });
+  await store.completeRun(
+    record.id,
+    {
+      status: result.status,
+      attempts: result.attempts,
+      durationMs: result.durationMs,
+      finishedAt: new Date().toISOString(),
+      result: result.result,
+      error: result.error ? String(result.error) : undefined,
+    },
+    { ownerId },
+  );
   return result;
 }
 

@@ -39,12 +39,13 @@ Use this skill when helping with a project that depends on VextJS and has access
 
 - Backend/API changes usually require typecheck, focused unit/integration tests, and route or OpenAPI validation.
 - Frontend changes usually require typecheck, build, and browser or e2e validation when behavior changes.
-- Job changes require job unit tests and scheduler/worker/runtime checks through host commands.
+- Job changes require job unit tests and scheduler/worker/runtime checks through host commands. Redis-backed Job changes also require a real Redis integration check when Redis is available; report skip explicitly when it is not.
 - Shared packages require downstream consumer checks.
 - Release candidates require \`npm run verify:pack-install\` and the release workflow's real platform, database, browser, and host matrix; successful pack-install runs clean their temporary workspace unless evidence retention is explicitly requested.
 
 ## Known boundaries
 
+- RateLimit, Job, Session, and response cache own separate Redis integration boundaries. Do not assume one module's Redis config injects another module's store; inspect each module config independently.
 - Runtime Bridge reads the framework-managed project-local \`.vext/runtime/snapshot.json\` snapshot when the installed version reports C18 support. The framework writes this snapshot from dev, start, cluster, and Job scheduler/worker runtimes; MCP only reads it.
 - Host configuration sync is available through \`vext mcp sync\`; project-local Skill file sync is available through \`vext mcp sync --skill\` when the installed version reports C29/C30 support.
 - Tools remain usable even when Resources, Prompts, or host-native Skill support is missing.

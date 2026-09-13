@@ -42,6 +42,7 @@ import { createRequestMetadataMiddleware } from "./middlewares/request-metadata.
 import { createCorsMiddleware } from "./middlewares/cors.js";
 import { createBodyParserMiddleware } from "./middlewares/body-parser.js";
 import { createRateLimitMiddleware } from "./middlewares/rate-limit.js";
+import { createRateLimitRuntime } from "./rate-limit/runtime.js";
 import { responseWrapper } from "./middlewares/response-wrapper.js";
 import { createAccessLogMiddleware } from "./middlewares/access-log.js";
 import { createCsrfMiddleware } from "./csrf.js";
@@ -258,6 +259,12 @@ export async function bootstrap(
     internals = result.internals;
     const sessionRuntime = createConfiguredSessionRuntime(config.session);
     app.onClose(sessionRuntime.close);
+    const rateLimitRuntime = createRateLimitRuntime(config.rateLimit, {
+      rootDir,
+      configProfile: process.env.VEXT_CONFIG ?? "default",
+      runtimeMode: "production",
+    });
+    app.onClose(rateLimitRuntime.close);
     const corsMiddleware = createCorsMiddleware(config.cors);
     const parentReadyLog = isEnvFlagEnabled(
       process.env.VEXT_START_PARENT_READY_LOG,
@@ -587,6 +594,7 @@ export async function bootstrap(
       const rateLimitMiddleware = createRateLimitMiddleware(
         config.rateLimit,
         () => internals!.getRateLimiter(),
+        rateLimitRuntime,
       );
       app.adapter.registerMiddleware(rateLimitMiddleware);
     }

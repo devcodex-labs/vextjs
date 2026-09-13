@@ -96,9 +96,49 @@ export function createMemoryJobStore(
       runs.set(updated.id, updated);
       return clone(updated);
     },
-    async completeRun(runId, patch) {
+    async claimRun(runId, options) {
+      const at = options.now ?? now();
+      const record = runs.get(runId);
+      if (
+        !record ||
+        !canClaim(record, { ...options, jobNames: undefined }, at)
+      ) {
+        return undefined;
+      }
+      const claimed = clone({
+        ...record,
+        status: "running" as const,
+        startedAt: record.startedAt ?? at.toISOString(),
+        updatedAt: at.toISOString(),
+        leaseOwner: options.ownerId,
+        leaseUntil: new Date(
+          at.getTime() + (options.leaseTtl ?? 30000),
+        ).toISOString(),
+      });
+      runs.set(runId, claimed);
+      return clone(claimed);
+    },
+    async renewRunLease(runId, ownerId, leaseTtl, at = now()) {
+      const record = runs.get(runId);
+      if (
+        !record ||
+        record.status !== "running" ||
+        record.leaseOwner !== ownerId
+      ) {
+        return false;
+      }
+      runs.set(runId, {
+        ...record,
+        leaseUntil: new Date(at.getTime() + leaseTtl).toISOString(),
+        updatedAt: at.toISOString(),
+      });
+      return true;
+    },
+    async completeRun(runId, patch, options) {
       const previous = runs.get(runId);
-      if (!previous) return;
+      if (!previous) return false;
+      if (previous.leaseOwner && previous.leaseOwner !== options?.ownerId)
+        return false;
       runs.set(runId, {
         ...previous,
         ...patch,
@@ -106,6 +146,7 @@ export function createMemoryJobStore(
         leaseUntil: undefined,
         updatedAt: patch.updatedAt ?? now().toISOString(),
       });
+      return true;
     },
     async getRun(runId) {
       const record = runs.get(runId);

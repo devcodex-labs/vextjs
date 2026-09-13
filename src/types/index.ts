@@ -125,6 +125,8 @@ export type {
   VextMiddlewareConfig,
   VextCorsConfig,
   VextRateLimitConfig,
+  VextRateLimitRedisStoreConfig,
+  VextRateLimitStoreConfig,
   VextRequestIdConfig,
   VextLoggerConfig,
   VextShutdownConfig,

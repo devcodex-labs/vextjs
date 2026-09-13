@@ -316,6 +316,20 @@ export interface VextCorsConfig {
 /**
  * 速率限制配置
  */
+export interface VextRateLimitRedisStoreConfig {
+  type: "redis";
+  url?: string;
+  uri?: string;
+  keyPrefix?: string;
+  namespace?: string;
+  client?: unknown;
+}
+
+export type VextRateLimitStoreConfig =
+  | "memory"
+  | "redis"
+  | VextRateLimitRedisStoreConfig;
+
 export interface VextRateLimitConfig {
   /** 是否启用全局速率限制（默认 false；仅显式 true 时注册） */
   enabled?: boolean;
@@ -327,6 +341,8 @@ export interface VextRateLimitConfig {
   message?: string;
   /** 用于标识请求来源的 key（默认 'ip'）：'ip' | 'user' | 自定义函数 */
   keyBy?: string | ((req: import("./request.js").VextRequest) => string);
+  /** 内置限流存储；默认 memory，cluster/多实例生产建议使用 redis。 */
+  store?: VextRateLimitStoreConfig;
 }
 
 /**

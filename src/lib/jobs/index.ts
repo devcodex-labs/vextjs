@@ -17,6 +17,7 @@ export {
   createFileJobStore,
   createJobStore,
   createMemoryJobStore,
+  createRedisJobStore,
 } from "./stores/index.js";
 export { startJobWorker } from "./worker.js";
 export type {
@@ -30,4 +31,5 @@ export type {
 export type { CreateFileJobStoreOptions } from "./stores/file-store.js";
 export type { CreateJobStoreOptions } from "./stores/index.js";
 export type { CreateMemoryJobStoreOptions } from "./stores/memory-store.js";
+export type { CreateRedisJobStoreOptions } from "./stores/redis-store.js";
 export type { StartJobWorkerOptions } from "./worker.js";

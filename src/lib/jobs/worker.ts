@@ -37,6 +37,7 @@ export async function startJobWorker(
         runtime,
         record.id,
         record.jobName,
+        ownerId,
       ).finally(() => {
         decrementRunningJob(runningByJob, record.jobName);
         running.delete(promise);
@@ -61,6 +62,7 @@ async function executeClaimedRun(
   runtime: VextJobRuntime,
   runId: string,
   jobName: string,
+  ownerId: string,
 ): Promise<void> {
   const record = await runtime.store.getRun(runId);
   await runtime.run(jobName, {
@@ -68,6 +70,7 @@ async function executeClaimedRun(
     payload: record?.payload,
     trigger: record?.trigger,
     scheduledAt: record?.scheduledAt,
+    ownerId,
   });
 }
 

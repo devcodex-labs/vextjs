@@ -253,11 +253,7 @@ export function inspectVextProjectJobDetails(
       "vext job runs",
       "vext job status <runId>",
     ],
-    deploymentNotes: [
-      "HTTP service startup does not run Jobs automatically; hosts start scheduler and worker processes explicitly.",
-      "Multi-process or cluster deployments should use a file/custom/shared store and scheduler lease to avoid duplicate scheduling.",
-      "MCP reads source and static config only; it does not execute Jobs, connect to queues, or read runtime queue state.",
-    ],
+    deploymentNotes: createJobDeploymentNotes(jobsConfig.value?.store),
     warnings,
   };
 }
@@ -507,7 +503,14 @@ function readStaticJobsConfig(rootDir: string): {
       for (const statement of program.body) {
         if (statement.type !== "ExportDefaultDeclaration") continue;
         const literal = staticLiteral(statement.declaration);
-        if (!literal.ok || !isRecord(literal.value)) continue;
+        if (!literal.ok || !isRecord(literal.value)) {
+          if (source.includes("jobs")) {
+            warnings.push(
+              `${relative} contains a jobs expression that MCP cannot safely evaluate statically.`,
+            );
+          }
+          continue;
+        }
         if (isRecord(literal.value.jobs)) {
           return { source: relative, value: literal.value.jobs, warnings };
         }
@@ -645,6 +648,31 @@ function isSyntaxNode(value: unknown): value is SyntaxNode {
 function summarizeJobStore(value: unknown) {
   if (typeof value === "string") return { type: value };
   return summarizeRecord(value);
+}
+
+function createJobDeploymentNotes(store: unknown): string[] {
+  const storeType =
+    typeof store === "string"
+      ? store
+      : isRecord(store)
+        ? readString(store.type)
+        : null;
+  const notes = [
+    "HTTP service startup does not run Jobs automatically; hosts start scheduler and worker processes explicitly.",
+    "Multi-process or cluster deployments should use a file/redis/custom/shared store and scheduler lease to avoid duplicate scheduling.",
+    "MCP reads source and static config only; it does not execute Jobs, connect to queues, or read runtime queue state.",
+  ];
+  if (storeType === "redis" || storeType === "auto") {
+    notes.push(
+      "Redis Job Store uses module-level key prefixes for run records, scheduler leases, worker heartbeats, run leases, and owner-checked completion.",
+    );
+  }
+  if (storeType === "auto") {
+    notes.push(
+      "jobs.store auto requires VEXT_REDIS_URL or REDIS_URL at runtime; MCP cannot verify environment-provided Redis targets statically.",
+    );
+  }
+  return notes;
 }
 
 function summarizeRecord(value: unknown): Record<string, unknown> | null {

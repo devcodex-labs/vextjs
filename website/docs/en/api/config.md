@@ -1266,6 +1266,7 @@ import { DEFAULT_CONFIG } from 'vextjs';
     window: 60,
     message: 'Too Many Requests',
     keyBy: 'ip',
+    store: 'memory',
   },
   requestId: {
     enabled: true,
@@ -1365,6 +1366,7 @@ import { DEFAULT_CONFIG } from 'vextjs';
       heartbeatInterval: 10000,
       lease: {
         ttl: 30000,
+        renewInterval: 10000,
       },
     },
     defaults: {
@@ -1484,7 +1486,7 @@ reserved for scoped/manual registration.
 
 `VextSessionStore` requires `get(id)`, `set(id, data, ttlSeconds)`, and `delete(id)`. Optional methods are `touch(id, ttlSeconds)`, `clearExpired()`, and `close()`. Vext calls `close()` during app shutdown for configured stores and active manual Session runtimes.
 
-For cache-backed production sessions, prefer `createCacheSessionStore(cacheLike, options?)` from `vextjs`. It accepts a structural `VextCacheLike` with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, stores JSON strings by default, and exposes `close()` only when `options.close` is provided. `config.cache.cacheHub` remains route response cache configuration and does not inject a Session Store.
+For cache-backed production sessions, prefer `createCacheSessionStore(cacheLike, options?)` from `vextjs`. It accepts a structural `VextCacheLike` with `get`, `set`, and `del`, converts session TTL seconds to cache milliseconds, stores JSON strings by default, and exposes `close()` only when `options.close` is provided. `config.cache.cacheHub` remains route response cache configuration and does not inject a Session Store. Session, RateLimit, Job, and response cache each own their Redis integration boundary; sharing one Redis server is fine, but each module should use its own generated namespace or explicit prefix.
 
 `RouteOptions.session` accepts `false`, `true`, or `{ enabled?, rolling?, autoCommit? }`. It can disable Session for one route or enable it while the global runtime is disabled.
 
