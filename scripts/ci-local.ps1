@@ -113,6 +113,14 @@ Run-Step "Build (ESM + CJS)" {
     npm run build
 }
 
+Run-Step "Public Surface Coverage" {
+    npm run verify:public-surface
+}
+
+Run-Step "CI Contract Verification" {
+    npm run verify:ci-contract
+}
+
 # ── 3. Unit Tests ────────────────────────────────────────────
 
 Run-Step "Unit Tests" {
@@ -125,19 +133,37 @@ Run-Step "Integration Tests" {
     npx vitest run test/integration --reporter=verbose
 }
 
-# ── 5. E2E Tests ─────────────────────────────────────────────
+Run-Step "Redis Integration Tests" {
+    npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose
+}
+
+# ── 5. MCP Contracts ─────────────────────────────────────────
+
+Run-Step "MCP Unit Contract Tests" {
+    npx vitest run test/unit/mcp/mcp-server.test.ts test/unit/mcp/mcp-contracts.test.ts test/unit/mcp/mcp-skill.test.ts test/unit/mcp/mcp-host-sync.test.ts --reporter=verbose
+}
+
+Run-Step "MCP Stdio Smoke" {
+    npm run verify:mcp
+}
+
+# ── 6. E2E Tests ─────────────────────────────────────────────
 
 Run-Step "E2E Tests" -SkipInQuick {
     npx vitest run test/e2e --reporter=verbose
 }
 
-# ── 6. Format Check ──────────────────────────────────────────
+# ── 7. Format Check ──────────────────────────────────────────
 
 Run-Step "Prettier Format Check" {
     npm run format:check
 }
 
-# ── 7. Docs Build ────────────────────────────────────────────
+# ── 8. Docs Build ────────────────────────────────────────────
+
+Run-Step "Documentation Source Contract" {
+    npm run verify:docs-contract
+}
 
 Run-Step "Docs Build (website)" -SkipInQuick {
     if (Test-Path "website/package.json") {

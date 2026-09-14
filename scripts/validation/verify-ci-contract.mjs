@@ -101,13 +101,25 @@ requireOrderedTokens("Bash local CI", bashLocalCi, [
   "npm run typecheck",
   "npm run test:types",
   "npm run build",
+  "npm run verify:public-surface",
+  "npm run verify:ci-contract",
+  "test/integration/redis-job-store.test.ts",
+  "test/unit/mcp/mcp-server.test.ts",
+  "npm run verify:mcp",
   "npm run format:check",
+  "npm run verify:docs-contract",
 ]);
 requireOrderedTokens("PowerShell local CI", powershellLocalCi, [
   "npm run typecheck",
   "npm run test:types",
   "npm run build",
+  "npm run verify:public-surface",
+  "npm run verify:ci-contract",
+  "test/integration/redis-job-store.test.ts",
+  "test/unit/mcp/mcp-server.test.ts",
+  "npm run verify:mcp",
   "npm run format:check",
+  "npm run verify:docs-contract",
 ]);
 requireOrderedTokens("source preflight", sourcePreflight, [
   '"typecheck", npm, ["run", "typecheck"]',
@@ -135,7 +147,25 @@ requireOrderedTokens("docs-build", jobBlock("docs-build"), [
 requireTokens("package-contracts", jobBlock("package-contracts"), [
   "npm run verify:exports",
   "npm run verify:package-composition",
+  "npm run verify:public-surface",
   "npm run verify:adapters",
+]);
+
+requireTokens("mcp-contracts", jobBlock("mcp-contracts"), [
+  "node-version: 22",
+  "npm run build",
+  "test/unit/mcp/mcp-server.test.ts",
+  "test/unit/mcp/mcp-contracts.test.ts",
+  "test/unit/mcp/mcp-skill.test.ts",
+  "test/unit/mcp/mcp-host-sync.test.ts",
+  "npm run verify:mcp",
+]);
+
+requireTokens("redis-integration", jobBlock("redis-integration"), [
+  "redis:7-alpine",
+  "redis-cli ping",
+  "VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379",
+  "test/integration/redis-job-store.test.ts",
 ]);
 
 requireTokens("coverage", jobBlock("coverage"), [
@@ -155,9 +185,13 @@ requireTokens("windows-node22", jobBlock("windows-node22"), [
 
 requireTokens("CI aggregate", jobBlock("ci-ok"), [
   "name: CI ✅",
+  "redis-integration,",
   "package-contracts,",
+  "mcp-contracts,",
   "windows-node22,",
+  "needs.redis-integration.result",
   "needs.package-contracts.result",
+  "needs.mcp-contracts.result",
   "needs.windows-node22.result",
 ]);
 

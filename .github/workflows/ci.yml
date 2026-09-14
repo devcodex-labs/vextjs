@@ -172,12 +172,49 @@ jobs:
         run: npx vitest run test/integration --reporter=verbose
 
   # ────────────────────────────────────────────────────────────
-  # 4. E2E Tests（真实 HTTP 服务器，仅 Node 22）
+  # 4. Redis Integration Tests（真实 Redis 服务，仅 Node 22）
+  # ────────────────────────────────────────────────────────────
+  redis-integration:
+    name: Redis Integration Tests (Node 22)
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Redis-backed integration tests
+        run: npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose
+        env:
+          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
+
+  # ────────────────────────────────────────────────────────────
+  # 5. E2E Tests（真实 HTTP 服务器，仅 Node 22）
   # ────────────────────────────────────────────────────────────
   e2e-tests:
     name: E2E Tests (Node 22)
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests, integration-tests, redis-integration]
 
     steps:
       - name: Checkout
@@ -200,12 +237,12 @@ jobs:
         timeout-minutes: 10
 
   # ────────────────────────────────────────────────────────────
-  # 5. Coverage Report（仅 Node 22，上传 Codecov）
+  # 6. Coverage Report（仅 Node 22，上传 Codecov）
   # ────────────────────────────────────────────────────────────
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests, integration-tests, redis-integration]
     permissions:
       contents: read
 
@@ -237,7 +274,7 @@ jobs:
           retention-days: 14
 
   # ────────────────────────────────────────────────────────────
-  # 6. 文档站构建验证（PR 门禁）
+  # 7. 文档站构建验证（PR 门禁）
   # ────────────────────────────────────────────────────────────
   docs-build:
     name: Build Docs
@@ -283,7 +320,7 @@ jobs:
         run: node scripts/validation/verify-documentation-contract.mjs --rendered
 
   # ────────────────────────────────────────────────────────────
-  # 7. Package contract checks（Node 22）
+  # 8. Package contract checks（Node 22）
   # ────────────────────────────────────────────────────────────
   package-contracts:
     name: Package Contracts (Node 22)
@@ -309,11 +346,50 @@ jobs:
       - name: Verify public exports and package composition
         run: npm run verify:exports && npm run verify:package-composition
 
+      - name: Verify public surface coverage
+        run: npm run verify:public-surface
+
       - name: Verify adapter startup contract
         run: npm run verify:adapters
 
   # ────────────────────────────────────────────────────────────
-  # 8. Windows representative lane（Node 22）
+  # 9. MCP contract checks（Node 22）
+  # ────────────────────────────────────────────────────────────
+  mcp-contracts:
+    name: MCP Contracts (Node 22)
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package for stdio CLI contract
+        run: npm run build
+
+      - name: Run focused MCP unit contract tests
+        run: >-
+          npx vitest run
+          test/unit/mcp/mcp-server.test.ts
+          test/unit/mcp/mcp-contracts.test.ts
+          test/unit/mcp/mcp-skill.test.ts
+          test/unit/mcp/mcp-host-sync.test.ts
+          --reporter=verbose
+
+      - name: Verify MCP stdio smoke
+        run: npm run verify:mcp
+
+  # ────────────────────────────────────────────────────────────
+  # 10. Windows representative lane（Node 22）
   # ────────────────────────────────────────────────────────────
   windows-node22:
     name: Windows Paths & Package (Node 22)
@@ -349,7 +425,7 @@ jobs:
         run: npm run verify:exports
 
   # ────────────────────────────────────────────────────────────
-  # 9. CI 总结（所有检查通过后的统一 status check）
+  # 11. CI 总结（所有检查通过后的统一 status check）
   # ────────────────────────────────────────────────────────────
   ci-ok:
     name: CI ✅
@@ -360,10 +436,12 @@ jobs:
         lint-typecheck,
         unit-tests,
         integration-tests,
+        redis-integration,
         e2e-tests,
         coverage,
         docs-build,
         package-contracts,
+        mcp-contracts,
         windows-node22,
       ]
     if: always()
@@ -375,10 +453,12 @@ jobs:
           echo "lint-typecheck: ${{ needs.lint-typecheck.result }}"
           echo "unit-tests: ${{ needs.unit-tests.result }}"
           echo "integration-tests: ${{ needs.integration-tests.result }}"
+          echo "redis-integration: ${{ needs.redis-integration.result }}"
           echo "e2e-tests: ${{ needs.e2e-tests.result }}"
           echo "coverage: ${{ needs.coverage.result }}"
           echo "docs-build: ${{ needs.docs-build.result }}"
           echo "package-contracts: ${{ needs.package-contracts.result }}"
+          echo "mcp-contracts: ${{ needs.mcp-contracts.result }}"
           echo "windows-node22: ${{ needs.windows-node22.result }}"
 
           # version-check 可能被跳过（package.json 未变更），跳过视为通过
@@ -402,6 +482,11 @@ jobs:
             exit 1
           fi
 
+          if [[ "${{ needs.redis-integration.result }}" != "success" ]]; then
+            echo "❌ redis-integration failed"
+            exit 1
+          fi
+
           if [[ "${{ needs.e2e-tests.result }}" != "success" ]]; then
             echo "❌ e2e-tests failed"
             exit 1
@@ -419,6 +504,11 @@ jobs:
 
           if [[ "${{ needs.package-contracts.result }}" != "success" ]]; then
             echo "❌ package-contracts failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.mcp-contracts.result }}" != "success" ]]; then
+            echo "❌ mcp-contracts failed"
             exit 1
           fi
 

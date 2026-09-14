@@ -19,9 +19,11 @@
 #   1. lint-typecheck     → typecheck + public type contracts + build
 #   2. unit-tests         → vitest run test/unit
 #   3. integration-tests  → npm run build + vitest run test/integration
-#   4. e2e-tests          → vitest run test/e2e
-#   5. format-check       → npm run format:check
-#   6. docs-build         → cd website && npm run build
+#   4. redis-integration  → Redis-backed integration smoke
+#   5. mcp-contracts      → MCP focused unit + stdio smoke
+#   6. e2e-tests          → vitest run test/e2e
+#   7. format-check       → npm run format:check
+#   8. docs-build         → docs contract + cd website && npm run build
 #
 # @see .github/workflows/ci.yml
 # ─────────────────────────────────────────────────────────────
@@ -124,6 +126,20 @@ else
   step_fail
 fi
 
+step_start "Public Surface Coverage"
+if npm run verify:public-surface; then
+  step_pass
+else
+  step_fail
+fi
+
+step_start "CI Contract Verification"
+if npm run verify:ci-contract; then
+  step_pass
+else
+  step_fail
+fi
+
 # ── 2. Unit Tests ───────────────────────────────────────────
 
 step_start "Unit Tests"
@@ -142,7 +158,30 @@ else
   step_fail
 fi
 
-# ── 4. E2E Tests ───────────────────────────────────────────
+step_start "Redis Integration Tests"
+if npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose; then
+  step_pass
+else
+  step_fail
+fi
+
+# ── 4. MCP Contracts ────────────────────────────────────────
+
+step_start "MCP Unit Contract Tests"
+if npx vitest run test/unit/mcp/mcp-server.test.ts test/unit/mcp/mcp-contracts.test.ts test/unit/mcp/mcp-skill.test.ts test/unit/mcp/mcp-host-sync.test.ts --reporter=verbose; then
+  step_pass
+else
+  step_fail
+fi
+
+step_start "MCP Stdio Smoke"
+if npm run verify:mcp; then
+  step_pass
+else
+  step_fail
+fi
+
+# ── 5. E2E Tests ───────────────────────────────────────────
 
 step_start "E2E Tests"
 if $QUICK_MODE; then
@@ -155,7 +194,7 @@ else
   fi
 fi
 
-# ── 5. Format Check ────────────────────────────────────────
+# ── 6. Format Check ────────────────────────────────────────
 
 step_start "Prettier Format Check"
 if npm run format:check; then
@@ -164,7 +203,14 @@ else
   step_fail
 fi
 
-# ── 6. Docs Build ──────────────────────────────────────────
+# ── 7. Docs Build ──────────────────────────────────────────
+
+step_start "Documentation Source Contract"
+if npm run verify:docs-contract; then
+  step_pass
+else
+  step_fail
+fi
 
 step_start "Docs Build (website)"
 if $QUICK_MODE; then

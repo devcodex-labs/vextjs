@@ -16,6 +16,8 @@
 
 在 monorepo 中，`services` section 会展开 `vext.workspace.json(c)` 的 service root、当前 root 判断和 service 依赖的 shared package；`models` section 会同时返回本地 models 目录与 kind 为 `models` 的 shared package、sourceExports 和消费者 service。候选校验会把 workspace service 与 shared package 目录都纳入允许目录策略。
 
+普通 CI 会显式运行 MCP 定向单测、`npm run verify:mcp` 和 `npm run verify:public-surface`，避免 MCP 协议面、公共清单和 CLI stdio 行为在普通 PR 中漂移。Redis 相关能力由独立 Redis service lane 覆盖；本地无 Redis 时集成测试可以提示跳过，但 CI 中该 lane 必须连接真实 Redis。
+
 发布前的同包验收使用 `npm run verify:pack-install` 覆盖打包安装后的 ESM/CJS、TypeScript 合同、运行时 smoke 和 MCP stdio smoke。该脚本成功后会自动清理临时安装 workspace；失败时保留 evidence 目录便于排查。需要成功后也保留证据时，显式设置 `VEXT_PREFLIGHT_KEEP_EVIDENCE=1` 或 `VEXT_PREFLIGHT_WORKSPACE=<dir>`。真实平台、数据库、浏览器和五宿主矩阵仍属于发布验收流程，不能只用本地协议模拟替代。
 
 宿主同步当前支持两种模式：`vext mcp sync --root <dir> --check --json` 或 `--dry-run` 只输出计划；不带这两个参数时会写入项目内 `.vext/mcp/launcher.cjs`、`.vext/mcp/hosts.json`，并为 Claude Code、Cursor、VS Code 等 JSON/JSONC 宿主配置写入受管 MCP server entry，为 Codex 与 Grok 等 TOML 宿主写入 Vext 受管块。写入结果会返回目标级 `verified` 回读校验；若 TOML 中已有同名非受管 table，会返回 blocked 并保留原文件；发生 launcher、宿主配置或 Skill 实际写入时，`applied.nextSteps` 会按宿主返回重载、重新打开会话和只读验证提示。五宿主真实运行验收仍属于发布验收流程，不能只用本地文件回读替代。
