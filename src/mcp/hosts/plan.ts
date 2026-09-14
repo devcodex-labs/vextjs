@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 
 import type { VextMcpHostId } from "../../assistant/contracts.js";
@@ -55,6 +56,7 @@ export interface VextMcpHostSkillTarget {
 
 export interface VextMcpHostSyncTarget {
   host: VextMcpHostId;
+  configScope: "project" | "user";
   configPath: string;
   configRootKey: string;
   configFormat: VextMcpHostDescriptor["configFormat"];
@@ -161,7 +163,8 @@ function createTarget(input: {
 }): VextMcpHostSyncTarget {
   return {
     host: input.host,
-    configPath: input.descriptor.configPath,
+    configScope: input.descriptor.configScope ?? "project",
+    configPath: resolveHostConfigPath(input.descriptor, input.rootDir),
     configRootKey: input.descriptor.configRootKey,
     configFormat: input.descriptor.configFormat,
     skillPath: input.descriptor.skillPath,
@@ -177,6 +180,22 @@ function createTarget(input: {
         : "TOML host config can be written by vext mcp sync with a managed block; existing unmanaged same-key tables are blocked.",
     notes: [input.descriptor.notes],
   };
+}
+
+function resolveHostConfigPath(
+  descriptor: VextMcpHostDescriptor,
+  rootDir: string,
+): string {
+  if ((descriptor.configScope ?? "project") === "project") {
+    return descriptor.configPath;
+  }
+  const codexHome =
+    process.env.CODEX_HOME ??
+    path.join(
+      process.env.USERPROFILE ?? process.env.HOME ?? os.homedir(),
+      ".codex",
+    );
+  return path.join(path.resolve(codexHome), descriptor.configPath);
 }
 
 function createServiceKey(project: VextMcpProjectInspection): string {

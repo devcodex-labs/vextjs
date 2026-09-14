@@ -84,7 +84,7 @@ async function applyTarget(
   plan: VextMcpHostSyncPlan,
   target: VextMcpHostSyncTarget,
 ): Promise<VextMcpHostSyncApplyTarget> {
-  const absolutePath = path.join(plan.rootDir, target.configPath);
+  const absolutePath = resolveTargetConfigPath(plan, target);
   if (target.configFormat === "toml") {
     return await applyTomlTarget(absolutePath, target);
   }
@@ -231,6 +231,7 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
       },
       targets: plan.targets.map((target) => ({
         host: target.host,
+        configScope: target.configScope,
         configPath: target.configPath,
         configRootKey: target.configRootKey,
         entryKey: target.entryKey,
@@ -244,6 +245,16 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
     null,
     2,
   )}\n`;
+}
+
+function resolveTargetConfigPath(
+  plan: VextMcpHostSyncPlan,
+  target: VextMcpHostSyncTarget,
+): string {
+  if (target.configScope === "user" || path.isAbsolute(target.configPath)) {
+    return target.configPath;
+  }
+  return path.join(plan.rootDir, target.configPath);
 }
 
 function createNextSteps(

@@ -190,9 +190,10 @@ function printMcpSyncHelp(): void {
     -h, --help            Show this help message
 
   Notes:
-    Without --check or --dry-run, sync writes the project launcher/state and JSON
-    host config entries or TOML managed blocks. --skill writes project-local
-    Skill files only when the target file is missing or already managed by Vext.
+    Without --check or --dry-run, sync writes the project launcher/state,
+    Codex user-level config, and project host config entries or TOML managed
+    blocks. --skill writes project-local Skill files only when the target file
+    is missing or already managed by Vext.
 `);
 }
 

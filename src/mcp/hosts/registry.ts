@@ -2,6 +2,7 @@ import type { VextMcpHostId } from "../../assistant/contracts.js";
 
 export interface VextMcpHostDescriptor {
   id: VextMcpHostId;
+  configScope?: "project" | "user";
   configPath: string;
   configRootKey: string;
   configFormat: "json" | "toml";
@@ -22,24 +23,25 @@ export const VEXT_MCP_HOST_REGISTRY: Record<
 > = {
   codex: {
     id: "codex",
-    configPath: ".codex/config.toml",
+    configScope: "user",
+    configPath: "config.toml",
     configRootKey: "mcp_servers",
     configFormat: "toml",
     skillPath: ".agents/skills/vextjs/SKILL.md",
     refresh: {
       summary:
-        "Restart the local Codex task or reload the trusted project so Codex rereads .codex/config.toml and project Skill files.",
+        "Restart the local Codex client or open a new local task so Codex rereads the user-level config.toml entry and project Skill files.",
       steps: [
-        "Close and reopen the local Codex task, or reload the Codex window for this trusted project.",
+        "Close and reopen the Codex client, or start a new local Codex task after sync completes.",
         "Start a fresh MCP interaction after reload so the vextjs server is discovered from the managed config block.",
       ],
       validation: [
-        "Confirm the host lists the vextjs MCP server for this project.",
+        "Run codex mcp list and confirm the vextjs MCP server appears for this project.",
         "Run a read-only Vext MCP inspection from the refreshed host before applying generated changes.",
       ],
     },
     notes:
-      "Local trusted-project Codex config; cloud tasks are not assumed to reach this machine.",
+      "Codex desktop/CLI reads the user-level Codex config; project-local .codex/config.toml is not assumed to be auto-loaded.",
   },
   "claude-code": {
     id: "claude-code",
