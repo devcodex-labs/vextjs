@@ -138,6 +138,74 @@ export const VEXT_MCP_KNOWLEDGE: VextMcpCatalogItem[] = [
       "node_modules/monsqlize/README.md",
     ],
   ),
+  dependencyKnowledge(
+    "K06",
+    "cache-hub",
+    "cache-hub",
+    "Vext cache.cacheHub、session store 示例和 response-cache-kit 适配层使用的缓存 Hub。",
+    [
+      "cache.cacheHub 负责响应缓存底层 store，不等同于 rateLimit 或 Job 的 Redis store。",
+      "session 可通过 createCacheSessionStore 复用 cache-hub adapter，但需要独立前缀和生命周期说明。",
+      "MCP 生成配置时要按模块隔离 Redis key，不默认把所有 Redis 消费者合并成一个统一 store。",
+    ],
+    [
+      "website/docs/zh/guide/cache.md",
+      "website/docs/zh/guide/cookies-session.md",
+      "src/lib/session/cache-session-store.ts",
+      "node_modules/cache-hub/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K07",
+    "croner",
+    "croner",
+    "Vext Job scheduler 的 cron 解析和 tick 调度依赖。",
+    [
+      "config.jobs.scheduler 和 defineJob({ schedule }) 的 cron/timezone 语义由 Job runtime 适配。",
+      "HTTP 服务启动不自动执行 scheduler；宿主或部署平台需要显式启动 scheduler/worker 进程。",
+      "多进程/集群部署必须配合共享 Job store 和 scheduler lease，避免重复入队。",
+    ],
+    [
+      "website/docs/zh/guide/jobs.md",
+      "src/lib/jobs/scheduler.ts",
+      "src/cli/job.ts",
+      "node_modules/croner/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K08",
+    "ioredis",
+    "ioredis",
+    "Vext Redis-backed Job store、rateLimit store 和可选缓存/session adapter 的 Redis 客户端依赖。",
+    [
+      "Job、rateLimit、cache 和 session 各自拥有配置入口与 key prefix，避免不同生命周期互相污染。",
+      "配置 Redis 后应验证 URL、前缀、连接关闭和多进程共享语义，而不是仅检查包是否存在。",
+      "MCP 不主动连接 Redis；需要宿主运行 Redis 集成测试或本地验证命令。",
+    ],
+    [
+      "website/docs/zh/guide/configuration.md",
+      "website/docs/zh/guide/jobs.md",
+      "src/lib/redis/config.ts",
+      "node_modules/ioredis/README.md",
+    ],
+  ),
+  dependencyKnowledge(
+    "K09",
+    "@modelcontextprotocol/server",
+    "@modelcontextprotocol/server",
+    "Vext 内置 MCP stdio server 的协议运行时依赖。",
+    [
+      "MCP server 固定单个项目根，Tools 不接受任意 cwd/root/shell 参数。",
+      "宿主负责应用文件修改、启动、重启、测试、构建和部署；MCP 只提供事实、候选和流程。",
+      "协议公开面保持 7 Tools、11 Resources、4 Prompts；host sync 是 vext mcp sync CLI，不是 stdio Tool。",
+    ],
+    [
+      "website/docs/zh/guide/cli.md",
+      "src/mcp/server.ts",
+      "src/assistant/contracts.ts",
+      "node_modules/@modelcontextprotocol/server/README.md",
+    ],
+  ),
 ];
 
 export const VEXT_MCP_RECIPES: VextMcpCatalogItem[] = [
@@ -297,12 +365,12 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C27",
     "候选校验",
-    "校验 changeSet/files 的身份、目录策略、已有文件、重复路径、编码和 create-only 边界，并返回文件级解释。",
+    "校验 changeSet/files 的身份、目录策略、已有文件、重复路径、编码、create-only 边界和生成内容质量，并返回文件级解释。",
   ),
   capability(
     "C28",
     "宿主操作流程",
-    "按候选目录角色输出启动、重启、测试、构建、部署等宿主流程建议；命令仍由宿主执行。",
+    "按项目静态诊断和候选目录角色输出启动、重启、测试、构建、部署等宿主流程建议；命令仍由宿主执行。",
   ),
   capability(
     "C29",
@@ -324,7 +392,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C33",
     "依赖知识",
-    "登记 schema-dsl、response-cache-kit、flex-rate-limit、esbuild、monsqlize 的版本与 Vext 使用边界，可通过 knowledge 搜索。",
+    "登记 schema-dsl、response-cache-kit、cache-hub、flex-rate-limit、esbuild、monsqlize、croner、ioredis、MCP SDK 的版本与 Vext 使用边界，可通过 knowledge 搜索。",
   ),
   capability(
     "C34",

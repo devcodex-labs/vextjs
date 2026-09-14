@@ -112,6 +112,8 @@ const DEFAULT_CANDIDATE_SECTION_ROLES = [
   "plugins",
   "locales",
   "shared-types",
+  "server-types",
+  "frontend-types",
   "utils",
   "mocks",
   "jobs",
@@ -132,6 +134,8 @@ const DEFAULT_SERVICE_CANDIDATE_PATHS = [
   "src/plugins",
   "src/locales",
   "src/types/shared",
+  "src/types/server",
+  "src/types/frontend",
   "src/utils",
   "src/mocks",
   "src/jobs",
@@ -247,11 +251,12 @@ function filesForRecipe(
 ): VextMcpChangeSetFile[] {
   if (recipe === "type-contract") return [typeContractFile(name, input)];
   if (recipe === "api-route") return [apiRouteFile(name)];
-  if (recipe === "api-module") return [apiRouteFile(name), serviceFile(name)];
+  if (recipe === "api-module")
+    return [apiRouteFile(name), ...serviceFiles(name)];
   if (recipe === "page-route") return pageRouteFiles(name);
   if (recipe === "page-and-api")
     return [...pageRouteFiles(name), apiRouteFile(`${name}-api`)];
-  if (recipe === "service") return [serviceFile(name)];
+  if (recipe === "service") return serviceFiles(name);
   if (recipe === "model") return [modelFile(name)];
   if (recipe === "middleware") return [middlewareFile(name)];
   if (recipe === "plugin") return [pluginFile(name)];
@@ -272,19 +277,30 @@ function apiRouteFile(name: string): VextMcpChangeSetFile {
     action: "create",
     encoding: "utf8",
     reason: "Create a conventional Vext API route file.",
-    content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      docs: { summary: "Read ${escapeString(routePath)}" },\n    },\n    (_req, res) => {\n      res.json({ ok: true, resource: "${escapeString(name)}" });\n    },\n  );\n});\n`,
+    content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      responses: {\n        200: { schema: { ok: "boolean!", resource: "string!" } },\n      },\n      docs: { summary: "Read ${escapeString(routePath)}" },\n    },\n    (_req, res) => {\n      res.json({ ok: true, resource: "${escapeString(name)}" });\n    },\n  );\n});\n`,
   };
 }
 
-function serviceFile(name: string): VextMcpChangeSetFile {
+function serviceFiles(name: string): VextMcpChangeSetFile[] {
   const className = `${toPascalName(name)}Service`;
-  return {
-    path: `src/services/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a service owned by the application service loader.",
-    content: `export default class ${className} {\n  async health() {\n    return { ok: true };\n  }\n}\n`,
-  };
+  const healthType = `${className}Health`;
+  return [
+    {
+      path: `src/types/server/services/${name}.ts`,
+      action: "create",
+      encoding: "utf8",
+      reason: "Create a type-only service contract owned by the application.",
+      content: `export interface ${healthType} {\n  ok: boolean;\n  checkedAt: string;\n}\n`,
+    },
+    {
+      path: `src/services/${name}.ts`,
+      action: "create",
+      encoding: "utf8",
+      reason:
+        "Create a concise service owned by the application service loader.",
+      content: `import type { ${healthType} } from "../types/server/services/${name}.js";\n\nexport default class ${className} {\n  async health(): Promise<${healthType}> {\n    return { ok: true, checkedAt: new Date().toISOString() };\n  }\n}\n`,
+    },
+  ];
 }
 
 function pageRouteFiles(name: string): VextMcpChangeSetFile[] {
@@ -308,13 +324,15 @@ function pageRouteFiles(name: string): VextMcpChangeSetFile[] {
 }
 
 function modelFile(name: string): VextMcpChangeSetFile {
+  const documentName = `${toPascalName(name)}Document`;
+  const modelName = `${toPascalName(name)}Model`;
   return {
     path: `src/models/${name}.ts`,
     action: "create",
     encoding: "utf8",
     reason:
       "Create a side-effect-free model definition skeleton for explicit review.",
-    content: `export default {\n  name: "${escapeString(toCamelName(name))}",\n  collection: "${escapeString(name)}",\n  schema: {\n    id: \"string\",\n  },\n};\n`,
+    content: `import type { VextModelDefinition } from "vextjs";\n\nexport interface ${documentName} {\n  id: string;\n  createdAt: string;\n  updatedAt?: string;\n}\n\nconst ${modelName} = {\n  collection: "${escapeString(name)}",\n  schema: {\n    id: "string:1-!",\n    createdAt: "datetime!",\n    updatedAt: "datetime?",\n  },\n} satisfies VextModelDefinition<${documentName}>;\n\nexport default ${modelName};\n`,
   };
 }
 
@@ -343,25 +361,34 @@ function localeFiles(
   input: VextGenerateChangesInput,
 ): VextMcpChangeSetFile[] {
   const locale = readStringOption(input.options, "locale") ?? "en-US";
+  const target = readStringOption(input.options, "target") ?? "frontend";
+  const feature =
+    toSafeModulePath(readStringOption(input.options, "module") ?? name) ?? name;
   const messageKey = `${name}.example`;
+  const isBackend = target === "backend" || target === "server";
   return [
     {
-      path: `src/locales/${name}/${locale}.json`,
+      path: isBackend
+        ? `src/locales/${feature}/${locale}.json`
+        : `src/frontend/locales/${feature}/${locale}.json`,
       action: "create",
       encoding: "utf8",
-      reason: "Create a feature-scoped locale JSON file.",
+      reason: isBackend
+        ? "Create a backend feature-scoped locale JSON file."
+        : "Create a frontend feature-scoped locale JSON file.",
       content: `${JSON.stringify({ [messageKey]: { code: 40000, message: "Example message" } }, null, 2)}\n`,
     },
   ];
 }
 
 function testFile(name: string): VextMcpChangeSetFile {
+  const contractName = toCamelName(name);
   return {
     path: `test/unit/${name}.test.ts`,
     action: "create",
     encoding: "utf8",
     reason: "Create a focused Vitest unit test skeleton.",
-    content: `import { describe, expect, it } from "vitest";\n\ndescribe("${escapeString(name)}", () => {\n  it("defines the expected behavior", () => {\n    expect(true).toBe(true);\n  });\n});\n`,
+    content: `import { describe, expect, it } from "vitest";\n\nconst ${contractName}Contract = {\n  feature: "${escapeString(name)}",\n  successStatus: 200,\n} as const;\n\ndescribe("${escapeString(name)}", () => {\n  it("defines the public behavior contract", () => {\n    expect(${contractName}Contract).toMatchObject({\n      feature: "${escapeString(name)}",\n      successStatus: 200,\n    });\n  });\n});\n`,
   };
 }
 
@@ -554,6 +581,9 @@ function validateCandidateFiles(
     seen.add(file.path);
     if (typeof file.content !== "string")
       fileIssues.push(`${file.path} content must be a string.`);
+    if (typeof file.content === "string") {
+      fileIssues.push(...contentQualityIssues(file.path, file.content));
+    }
     if (file.encoding !== undefined && file.encoding !== "utf8")
       fileIssues.push(`${file.path} encoding must be utf8.`);
     diagnostics.push(...fileIssues);
@@ -611,6 +641,8 @@ function planHostValidationSteps(
       role === "plugins" ||
       role === "schemas" ||
       role === "shared-types" ||
+      role === "server-types" ||
+      role === "frontend-types" ||
       role === "utils" ||
       normalized.includes("/src/routes/") ||
       normalized.includes("/src/services/") ||
@@ -632,7 +664,12 @@ function planHostValidationSteps(
         "Run npm run build and affected frontend/e2e checks after applying frontend files.",
       );
     }
-    if (role === "locales" || normalized.includes("/src/locales/")) {
+    if (
+      role === "locales" ||
+      role === "frontend-locales" ||
+      normalized.includes("/src/locales/") ||
+      normalized.includes("/src/frontend/locales/")
+    ) {
       steps.add("Run affected locale/i18n tests after applying locale files.");
     }
     if (role === "jobs" || normalized.includes("/src/jobs/")) {
@@ -652,6 +689,50 @@ function planHostValidationSteps(
   return [...steps];
 }
 
+function contentQualityIssues(filePath: string, content: string): string[] {
+  const normalized = filePath.replaceAll("\\", "/");
+  const issues: string[] = [];
+  if (content.length > 240 && content.split(/\r?\n/u).length < 4) {
+    issues.push(
+      `${filePath} should be formatted across multiple lines before applying.`,
+    );
+  }
+  if (normalized.startsWith("src/routes/")) {
+    if (/\bdocs\s*:\s*\{[\s\S]{0,3000}?\btags\s*:/u.test(content)) {
+      issues.push(
+        `${filePath} uses deprecated docs.tags; tags are inferred automatically.`,
+      );
+    }
+    if (
+      /\b(?:res|reply)\.json\s*\(/u.test(content) &&
+      /\bapp\.(?:get|post|put|patch|delete|head|options)\s*\(/u.test(content) &&
+      !/\bresponses\s*:/u.test(content)
+    ) {
+      issues.push(
+        `${filePath} returns JSON without top-level RouteOptions.responses.`,
+      );
+    }
+  }
+  if (
+    normalized.startsWith("src/services/") &&
+    (/\b(?:type|interface)\s+(?:Cursor|Collection|Db)\b/u.test(content) ||
+      /\bapp\.db\b[\s\S]{0,160}\bas\s+(?:unknown\s+as\s+)?\w/u.test(content))
+  ) {
+    issues.push(
+      `${filePath} should not define driver-like database helper types or cast app.db inside the service.`,
+    );
+  }
+  if (
+    normalized.startsWith("test/") &&
+    /\bexpect\s*\(\s*(?:true|1)\s*\)\s*\.toBe\s*\(\s*(?:true|1)\s*\)/u.test(
+      content,
+    )
+  ) {
+    issues.push(`${filePath} contains a placeholder assertion.`);
+  }
+  return issues;
+}
+
 function toKebabName(value: string): string | null {
   const normalized = value
     .trim()
@@ -659,6 +740,17 @@ function toKebabName(value: string): string | null {
     .replace(/[ _]+/g, "-")
     .toLowerCase();
   return SAFE_SEGMENT_PATTERN.test(normalized) ? normalized : null;
+}
+
+function toSafeModulePath(value: string): string | null {
+  const parts = value
+    .trim()
+    .split(/[\\/]+/u)
+    .map((part) => toKebabName(part));
+  if (parts.length < 1 || parts.length > 4 || parts.some((part) => !part)) {
+    return null;
+  }
+  return parts.join("/");
 }
 
 function toPascalName(value: string): string {

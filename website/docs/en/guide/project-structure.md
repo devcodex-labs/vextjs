@@ -28,9 +28,10 @@ my-app/
 │ │ ├── styles/ # CSS / JSCSS / tokens
 │ │ │ └── index.css
 │ │ ├── assets/ # Assets imported from TSX/CSS into the bundle graph
-│ │ └── locales/ # Frontend page messages
-│ │   ├── zh-CN.ts
-│ │   └── en-US.ts
+│ │ └── locales/ # Frontend page messages, grouped by feature module
+│ │   └── home/
+│ │     ├── zh-CN.json
+│ │     └── en-US.json
 │ │
 │ ├── config/ # Configuration file (required)
 │ │ ├── default.ts #Default configuration (must exist)
@@ -73,9 +74,10 @@ my-app/
 │ │ ├── redis.ts # Custom plug-in
 │ │ └── sentry.ts # Custom plug-in
 │ │
-│ ├── locales/ # International language pack (optional)
-│ │ ├── zh-CN.ts # Chinese language pack
-│ │ └── en-US.ts # English language pack
+│ ├── locales/ # Backend language packs, grouped by feature module
+│ │ └── order/
+│ │   ├── zh-CN.json
+│ │   └── en-US.json
 │ │
 │ └── types/ # Application-owned declaration boundaries (TS projects)
 │   ├── shared/

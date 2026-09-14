@@ -28,9 +28,10 @@ my-app/
 │   │   ├── styles/            # CSS / JSCSS / tokens
 │   │   │   └── index.css
 │   │   ├── assets/            # 通过 TSX/CSS import 进入打包图的资产
-│   │   └── locales/           # 前端页面文案
-│   │       ├── zh-CN.ts
-│   │       └── en-US.ts
+│   │   └── locales/           # 前端页面文案，按功能模块组织
+│   │       └── home/
+│   │           ├── zh-CN.json
+│   │           └── en-US.json
 │   │
 │   ├── config/                # 配置文件（必须）
 │   │   ├── default.ts         # 默认配置（必须存在）
@@ -73,9 +74,10 @@ my-app/
 │   │   ├── redis.ts           # 自定义插件
 │   │   └── sentry.ts          # 自定义插件
 │   │
-│   ├── locales/               # 国际化语言包（可选）
-│   │   ├── zh-CN.ts           # 中文语言包
-│   │   └── en-US.ts           # 英文语言包
+│   ├── locales/               # 后端国际化语言包，按功能模块组织
+│   │   └── order/
+│   │       ├── zh-CN.json
+│   │       └── en-US.json
 │   │
 │   └── types/                 # 应用自有的类型边界（TS 项目）
 │       ├── shared/

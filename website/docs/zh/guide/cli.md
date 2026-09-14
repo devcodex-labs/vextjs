@@ -8,9 +8,11 @@
 
 当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查、内置 Vext 知识搜索、17 条 Recipe 的 create-only ChangeSet 草稿、候选校验和应用后宿主验证计划。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、机器可校验诊断和需要宿主执行的步骤。
 
-`vext_knowledge_search` 可检索框架能力、规则、Recipe、工作流和主要依赖知识。依赖知识覆盖 `schema-dsl`、`response-cache-kit`、`flex-rate-limit`、`esbuild`、`monsqlize` 的当前版本、Vext 使用入口和边界，版本来自当前安装包的 `package.json`。
+`vext_knowledge_search` 可检索框架能力、规则、Recipe、工作流和主要依赖知识。依赖知识覆盖 `schema-dsl`、`response-cache-kit`、`cache-hub`、`flex-rate-limit`、`esbuild`、`monsqlize`、`croner`、`ioredis`、`@modelcontextprotocol/server` 的当前版本、Vext 使用入口和边界，版本来自当前安装包的 `package.json`。
 
-`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码和 create-only 边界，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshot.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
+`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码、create-only 边界和基础代码质量，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。校验会拦截常见 MCP 生成偏差，例如一行式长代码、JSON route 缺少顶层 `RouteOptions.responses`、仍使用已废弃的 `docs.tags`、service 自建 Mongo driver 类型或在 service 内强转 `app.db`、测试只有 `expect(true).toBe(true)`。
+
+`vext_project_check` 会执行有界静态诊断，覆盖目录缺失、路由 response schema 缺失、过期 docs.tags、service 依赖分析不完整、数据库 cursorSecret 配置选择、Redis store 目标缺失或依赖未配置环境变量、SVG 上传审查、前端 form/API 边界和占位测试等问题。返回值包含 `diagnostics`、`totalBySeverity`、`affectedConsumers` 和 `generatedState`；命令建议仍由宿主执行。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshot.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
 `vext_project_inspect` 的 `jobs` section 会静态读取 `config.jobs` 和 Job 源文件，返回 Job 名称、来源文件、queue、schedule、payload schema presence、scheduler/worker/store 配置摘要、可由宿主执行的 `vext job ...` 命令和多进程/cluster 部署提示。MCP 不执行 Job、不连接队列、不读取运行时队列表。
 

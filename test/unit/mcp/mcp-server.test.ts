@@ -103,6 +103,12 @@ describe("Vext MCP project inspector", () => {
     expect(inspection.snapshot.sections["shared-types"]?.defaultPath).toBe(
       "src/types/shared",
     );
+    expect(inspection.snapshot.sections["server-types"]?.defaultPath).toBe(
+      "src/types/server",
+    );
+    expect(inspection.snapshot.sections["frontend-types"]?.defaultPath).toBe(
+      "src/types/frontend",
+    );
     expect(
       inspection.snapshot.sections["frontend-components"]?.defaultPath,
     ).toBe("src/frontend/components");
@@ -251,6 +257,15 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(dependencyKnowledge.structuredContent)).toContain(
         "K05",
       );
+      const redisKnowledge = await client.callTool({
+        name: "vext_knowledge_search",
+        arguments: {
+          query: "ioredis",
+          kinds: ["knowledge"],
+          limit: 5,
+        },
+      });
+      expect(JSON.stringify(redisKnowledge.structuredContent)).toContain("K08");
       const draft = await client.callTool({
         name: "vext_generate_changes",
         arguments: {
@@ -365,6 +380,44 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(routeDraft.structuredContent)).toContain(
         "src/routes/account-profile.ts",
       );
+      expect(JSON.stringify(routeDraft.structuredContent)).toContain(
+        "responses",
+      );
+      const serviceDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-05", name: "Billing Account" },
+      });
+      expect(JSON.stringify(serviceDraft.structuredContent)).toContain(
+        "src/types/server/services/billing-account.ts",
+      );
+      expect(JSON.stringify(serviceDraft.structuredContent)).not.toContain(
+        "type Collection",
+      );
+      const modelDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-06", name: "Billing Ledger" },
+      });
+      expect(JSON.stringify(modelDraft.structuredContent)).toContain(
+        "VextModelDefinition",
+      );
+      const testDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: { recipeId: "RCP-10", name: "Billing Ledger" },
+      });
+      expect(JSON.stringify(testDraft.structuredContent)).not.toContain(
+        "expect(true).toBe(true)",
+      );
+      const localeDraft = await client.callTool({
+        name: "vext_generate_changes",
+        arguments: {
+          recipeId: "RCP-09",
+          name: "Checkout Copy",
+          options: { module: "order/payment", locale: "zh-CN" },
+        },
+      });
+      expect(JSON.stringify(localeDraft.structuredContent)).toContain(
+        "src/frontend/locales/order/payment/zh-CN.json",
+      );
       const schemaDraft = await client.callTool({
         name: "vext_generate_changes",
         arguments: { recipeId: "RCP-15", name: "Payment Request" },
@@ -383,6 +436,73 @@ describe("Vext MCP server", () => {
       expect(invalid.isError).toBe(true);
       expect(JSON.stringify(invalid.structuredContent)).toContain(
         "VEXT_VALIDATION_FAILED",
+      );
+      const weakRouteCandidate = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          files: [
+            {
+              path: "src/routes/weak-route.ts",
+              action: "create",
+              encoding: "utf8",
+              content:
+                'import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get("/", { docs: { summary: "Weak", tags: ["Weak"] } }, (_req, res) => res.json({ ok: true }));\n});\n',
+            },
+          ],
+        },
+      });
+      expect(weakRouteCandidate.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "invalid" },
+      });
+      expect(JSON.stringify(weakRouteCandidate.structuredContent)).toContain(
+        "RouteOptions.responses",
+      );
+      const placeholderTestCandidate = await client.callTool({
+        name: "vext_validate_changes",
+        arguments: {
+          files: [
+            {
+              path: "test/unit/placeholder.test.ts",
+              action: "create",
+              encoding: "utf8",
+              content:
+                'import { expect, it } from "vitest";\n\nit("placeholder", () => {\n  expect(true).toBe(true);\n});\n',
+            },
+          ],
+        },
+      });
+      expect(placeholderTestCandidate.structuredContent).toMatchObject({
+        status: "ok",
+        data: { verdict: "invalid" },
+      });
+      expect(
+        JSON.stringify(placeholderTestCandidate.structuredContent),
+      ).toContain("placeholder assertion");
+      await writeFile(
+        join(rootDir, "src", "routes", "warn.ts"),
+        'import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get("/", { docs: { summary: "Warn", tags: ["Warn"] } }, (_req, res) => res.json({ ok: true }));\n});\n',
+      );
+      await writeFile(
+        join(rootDir, "src", "config", "development.ts"),
+        'export default { rateLimit: { enabled: true, store: { type: "redis", url: process.env.VEXT_REDIS_URL ?? process.env.REDIS_URL } } };\n',
+      );
+      const projectDiagnostics = await client.callTool({
+        name: "vext_project_check",
+        arguments: { domain: "route", diagnosticLimit: 10 },
+      });
+      expect(JSON.stringify(projectDiagnostics.structuredContent)).toContain(
+        "VEXT_MCP_ROUTE_RESPONSE_SCHEMA_MISSING",
+      );
+      expect(JSON.stringify(projectDiagnostics.structuredContent)).toContain(
+        "VEXT_MCP_DEPRECATED_DOCS_TAGS",
+      );
+      const rateLimitDiagnostics = await client.callTool({
+        name: "vext_project_check",
+        arguments: { domain: "rateLimit", diagnosticLimit: 10 },
+      });
+      expect(JSON.stringify(rateLimitDiagnostics.structuredContent)).toContain(
+        "VEXT_MCP_RATE_LIMIT_REDIS_ENV_REQUIRED",
       );
       const stale = await client.callTool({
         name: "vext_project_check",

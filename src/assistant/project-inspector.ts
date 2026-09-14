@@ -17,6 +17,15 @@ import {
   type NormalizedVextDevMcpConfig,
   type VextAssistantWorkspaceConfig,
 } from "./contracts.js";
+import {
+  collectVextProjectDiagnostics,
+  type VextMcpProjectDiagnostic,
+} from "./project-diagnostics.js";
+
+export type {
+  VextMcpProjectDiagnostic,
+  VextMcpProjectDiagnosticSeverity,
+} from "./project-diagnostics.js";
 
 export type VextMcpSourceState =
   | "complete"
@@ -47,6 +56,7 @@ export interface VextMcpProjectInspection {
   partitions: VextMcpSectionSummary[];
   structureDecisions: VextMcpStructureDecision[];
   assistant: VextMcpAssistantContext;
+  diagnostics: VextMcpProjectDiagnostic[];
   warnings: string[];
 }
 
@@ -89,6 +99,8 @@ const ROLE_DEFAULTS = [
   ["schemas", "src/schemas"],
   ["utils", "src/utils"],
   ["shared-types", "src/types/shared"],
+  ["server-types", "src/types/server"],
+  ["frontend-types", "src/types/frontend"],
   ["frontend", "src/frontend"],
   ["frontend-pages", "src/frontend/pages"],
   ["frontend-components", "src/frontend/components"],
@@ -170,6 +182,7 @@ export function inspectVextProject(input: {
   );
   const contextRevision =
     sourceState === "complete" ? sha256(identityInput) : null;
+  const diagnostics = collectVextProjectDiagnostics(rootDir);
   return {
     schemaVersion: 1,
     status: "ok",
@@ -191,6 +204,7 @@ export function inspectVextProject(input: {
     partitions: Object.values(sections),
     structureDecisions,
     assistant,
+    diagnostics,
     warnings,
   };
 }

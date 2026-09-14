@@ -301,31 +301,46 @@ function registerTools(
         project,
       );
       if (identityFailure) return identityFailure;
-      const diagnostics = project.partitions
+      const diagnosticLimit = input.value.diagnosticLimit ?? 100;
+      const sectionDiagnostics = project.partitions
         .filter((partition) => partition.state !== "known")
-        .slice(0, 100)
+        .slice(0, diagnosticLimit)
         .map((partition) => ({
-          severity: "info",
+          severity: "info" as const,
           code: "VEXT_MCP_SECTION_NOT_DETECTED",
           message: `${partition.section} not detected at ${partition.defaultPath}.`,
+          recommendedAction:
+            "Treat this as an optional convention unless the current task needs that role.",
+          affectedCapabilityIds: ["C02"],
         }));
+      const diagnostics = filterProjectDiagnostics(
+        [...project.diagnostics, ...sectionDiagnostics],
+        input.value.domain,
+      ).slice(0, diagnosticLimit);
+      const staticDiagnosticCount = filterProjectDiagnostics(
+        project.diagnostics,
+        input.value.domain,
+      ).length;
+      const totalBySeverity = countProjectCheckDiagnostics(diagnostics);
       return toolResult({
         schemaVersion: 1,
         status: "ok",
         data: {
           verdict:
-            project.identity.sourceState === "complete"
-              ? "valid"
-              : "incomplete",
+            totalBySeverity.error > 0
+              ? "invalid"
+              : project.identity.sourceState === "complete"
+                ? "valid"
+                : "incomplete",
           profile: input.value.profile ?? "standard",
           diagnostics,
-          totalBySeverity: { error: 0, warning: 0, info: diagnostics.length },
-          affectedConsumers: [],
+          totalBySeverity,
+          affectedConsumers: affectedProjectCheckCapabilities(diagnostics),
           missingEvidence:
             project.identity.sourceState === "complete"
               ? []
               : ["Project source/config baseline is incomplete."],
-          generatedState: "not-run",
+          generatedState: staticDiagnosticCount > 0 ? "diagnosed" : "not-run",
         },
       });
     },
@@ -362,6 +377,46 @@ function registerTools(
   );
 
   assertRegisteredTools();
+}
+
+type VextProjectCheckDiagnostic =
+  VextMcpProjectInspection["diagnostics"][number];
+
+function filterProjectDiagnostics(
+  diagnostics: VextProjectCheckDiagnostic[],
+  domain: string | undefined,
+): VextProjectCheckDiagnostic[] {
+  if (!domain) return diagnostics;
+  const needle = domain.toLowerCase();
+  return diagnostics.filter((diagnostic) => {
+    const haystack = [
+      diagnostic.code,
+      diagnostic.message,
+      diagnostic.sourceFile ?? "",
+      ...diagnostic.affectedCapabilityIds,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+function countProjectCheckDiagnostics(
+  diagnostics: VextProjectCheckDiagnostic[],
+): { error: number; warning: number; info: number } {
+  const total = { error: 0, warning: 0, info: 0 };
+  for (const diagnostic of diagnostics) total[diagnostic.severity] += 1;
+  return total;
+}
+
+function affectedProjectCheckCapabilities(
+  diagnostics: VextProjectCheckDiagnostic[],
+): string[] {
+  return [
+    ...new Set(
+      diagnostics.flatMap((diagnostic) => diagnostic.affectedCapabilityIds),
+    ),
+  ].sort();
 }
 
 function registerResources(
