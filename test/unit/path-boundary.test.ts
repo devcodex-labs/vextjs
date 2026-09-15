@@ -2,8 +2,10 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { artifactRelativePath } from "../../src/lib/project/artifact-manifest.js";
 import {
   assertSafeProjectOutputDirectory,
+  isPathInside,
   normalizeSafeRelativePath,
   resolvePathInside,
 } from "../../src/lib/path-boundary.js";
@@ -93,6 +95,21 @@ describe("path boundary", () => {
       }),
     ).toThrow("symbolic links");
   });
+
+  it.runIf(process.platform === "win32")(
+    "treats Windows namespace and ordinary drive paths as the same root",
+    async () => {
+      const rootDir = await tempRoot();
+      const outputDir = path.join(rootDir, ".vext", "client");
+      await mkdir(outputDir, { recursive: true });
+      const namespacedRoot = `\\\\?\\${rootDir}`;
+
+      expect(isPathInside(namespacedRoot, outputDir)).toBe(true);
+      expect(artifactRelativePath(namespacedRoot, outputDir, true)).toBe(
+        ".vext/client",
+      );
+    },
+  );
 });
 
 async function tempRoot(): Promise<string> {

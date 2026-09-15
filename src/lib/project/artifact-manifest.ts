@@ -102,15 +102,17 @@ export function artifactRelativePath(
   target: string,
   allowExternal = false,
 ): string {
-  if (allowExternal && !isPathInside(root, target, true)) {
-    const reference = physicalPath(target).replaceAll("\\", "/");
-    artifactPath(root, reference, true);
+  const resolvedRoot = physicalPath(root);
+  const resolvedTarget = path.resolve(target);
+  if (allowExternal && !isPathInside(resolvedRoot, resolvedTarget, true)) {
+    const reference = physicalPath(resolvedTarget).replaceAll("\\", "/");
+    artifactPath(resolvedRoot, reference, true);
     return reference;
   }
   const relative = path
-    .relative(root, path.resolve(target))
+    .relative(resolvedRoot, resolvedTarget)
     .replaceAll("\\", "/");
-  artifactPath(root, relative);
+  artifactPath(resolvedRoot, relative);
   return relative;
 }
 

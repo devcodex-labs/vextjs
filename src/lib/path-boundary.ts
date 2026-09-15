@@ -17,13 +17,13 @@ const DEFAULT_PROTECTED_PROJECT_ROOTS = [
 
 /** 写入归属与只读清单必须使用同一个真实项目身份，Windows 忽略大小写。 */
 export function canonicalProjectRoot(rootDir: string): string {
-  const real = realpathSync.native(path.resolve(rootDir));
+  const real = normalizeNativePath(realpathSync.native(path.resolve(rootDir)));
   return process.platform === "win32" ? real.toLowerCase() : real;
 }
 
 /** 解析链接祖先但保留大小写；用于实际I/O路径，不能使用忽略大小写的身份键写文件。 */
 export function physicalPath(filename: string): string {
-  return resolvePathThroughExistingAncestor(path.resolve(filename));
+  return normalizeNativePath(resolvePathThroughExistingAncestor(filename));
 }
 
 /** 已存在祖先取 realpath，保留尚未创建的末段；用于显式输出目标身份。 */
@@ -72,8 +72,8 @@ export function isPathInside(
   candidatePath: string,
   allowRoot = false,
 ): boolean {
-  const root = path.resolve(rootDir);
-  const candidate = path.resolve(candidatePath);
+  const root = normalizeNativePath(path.resolve(rootDir));
+  const candidate = normalizeNativePath(path.resolve(candidatePath));
   const relative = path.relative(root, candidate);
   if (relative === "") return allowRoot;
   return (
@@ -240,4 +240,12 @@ function resolvePathThroughExistingAncestor(value: string): string {
       cursor = parent;
     }
   }
+}
+
+function normalizeNativePath(value: string): string {
+  const resolved = path.resolve(value);
+  if (process.platform !== "win32") return resolved;
+  if (/^\\\\\?\\UNC\\/iu.test(resolved)) return `\\\\${resolved.slice(8)}`;
+  if (/^\\\\\?\\/u.test(resolved)) return resolved.slice(4);
+  return resolved;
 }

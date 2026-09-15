@@ -269,6 +269,26 @@ jobs:
     permissions:
       contents: read
 
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -287,6 +307,9 @@ jobs:
 
       - name: Run tests with coverage
         run: npm run test:cov
+        env:
+          VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_ci_cov
+          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
