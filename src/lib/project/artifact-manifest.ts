@@ -66,9 +66,11 @@ export function artifactPath(
   if (allowExternal && path.isAbsolute(relative)) {
     const target = path.resolve(relative);
     const normalized = canonicalPath(target).replaceAll("\\", "/");
-    const identity =
-      process.platform === "win32" ? relative.toLowerCase() : relative;
-    if (identity !== normalized || isPathInside(root, target, true))
+    const input = canonicalPath(relative).replaceAll("\\", "/");
+    const identity = process.platform === "win32" ? input.toLowerCase() : input;
+    const normalizedIdentity =
+      process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (identity !== normalizedIdentity || isPathInside(root, target, true))
       throw new ArtifactError(
         "VEXT_OUTPUT_UNVERIFIED",
         `External artifact path is not canonical: ${relative}`,

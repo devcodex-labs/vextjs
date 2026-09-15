@@ -58,23 +58,58 @@ const common = { description: text(), language: choice("ts", "js") };
 const boolOrObject: RecipeOptionSchema = {
   anyOf: [bool, jsonObject],
 };
-const jsonArray: RecipeOptionSchema = {
+const middlewareRef: RecipeOptionSchema = {
+  anyOf: [
+    text(120),
+    object({ name: text(120), options: jsonObject }, ["name"]),
+  ],
+};
+const middlewareRefs: RecipeOptionSchema = {
   type: "array",
   maxItems: 50,
-  items: {},
+  items: middlewareRef,
 };
+const docsOptions: RecipeOptionSchema = object({
+  summary: text(250),
+  description: text(),
+  operationId: text(120),
+  security: {
+    type: "array",
+    maxItems: 20,
+    items: jsonObject,
+  },
+  access: {
+    anyOf: [text(1000), jsonObject],
+  },
+});
+const routeOptionsSchema: RecipeOptionSchema = object({
+  validate: object({
+    query: jsonObject,
+    body: jsonObject,
+    param: jsonObject,
+    header: jsonObject,
+    cookie: jsonObject,
+  }),
+  responses: jsonObject,
+  auth: boolOrObject,
+  middlewares: middlewareRefs,
+  cache: {
+    anyOf: [{ enum: [false] }, positive, jsonObject],
+  },
+  docs: docsOptions,
+});
 const route = {
   method: choice("get", "post", "put", "patch", "delete", "head", "options"),
   path: { ...text(500), pattern: "^/" },
-  routeOptions: jsonObject,
-  validate: jsonObject,
+  routeOptions: routeOptionsSchema,
+  validate: routeOptionsSchema.properties!.validate!,
   responses: jsonObject,
   auth: boolOrObject,
-  middlewares: jsonArray,
-  cache: boolOrObject,
-  docs: jsonObject,
+  middlewares: middlewareRefs,
+  cache: routeOptionsSchema.properties!.cache!,
+  docs: docsOptions,
   operationId: text(120),
-  security: jsonArray,
+  security: docsOptions.properties!.security!,
   access: text(1000),
   handler: code,
   service: text(250),
@@ -93,13 +128,13 @@ const page = {
   page: text(250),
   props: jsonObject,
   path: { ...text(500), pattern: "^/" },
-  routeOptions: jsonObject,
+  routeOptions: routeOptionsSchema,
   auth: boolOrObject,
-  middlewares: jsonArray,
-  cache: boolOrObject,
-  docs: jsonObject,
+  middlewares: middlewareRefs,
+  cache: routeOptionsSchema.properties!.cache!,
+  docs: docsOptions,
   operationId: text(120),
-  security: jsonArray,
+  security: docsOptions.properties!.security!,
   access: text(1000),
 };
 
@@ -158,7 +193,7 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
       ...page,
       apiPath: { ...text(500), pattern: "^/" },
       apiResponses: jsonObject,
-      apiRouteOptions: jsonObject,
+      apiRouteOptions: routeOptionsSchema,
     },
   ),
   recipe(

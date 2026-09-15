@@ -201,7 +201,7 @@ describe("shared Recipe generation", () => {
           routeOptions: {
             auth: false,
             middlewares: [],
-            cache: null,
+            cache: false,
             docs: { operationId: "listBlogPosts" },
           },
           access: "Public blog list.",
@@ -222,10 +222,63 @@ describe("shared Recipe generation", () => {
     )!.content;
     expect(route).toContain("auth: false");
     expect(route).toContain("middlewares: []");
-    expect(route).toContain("cache: null");
+    expect(route).toContain("cache: false");
     expect(route).toContain('operationId: "listBlogPosts"');
     expect(route).toContain('access: "Public blog list."');
     expect(route).not.toContain('"responses"');
+  });
+
+  it("uses nested routeOptions for API prechecks and rendering", async () => {
+    const result = generateMcpChangeSet(
+      {
+        recipeId: "api-module",
+        name: "comment",
+        options: {
+          method: "post",
+          input: { content: "string" },
+          output: { id: "string", content: "string" },
+          body: "return { id: input.content, content: input.content };",
+          routeOptions: {
+            validate: { body: { content: "string:1-500!" } },
+            responses: {
+              200: { schema: { id: "string!", content: "string!" } },
+            },
+            auth: true,
+          },
+        },
+      },
+      await project(),
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({ status: "ready" });
+    const route = result.changeSet!.files.find((file) =>
+      file.path.includes("routes/"),
+    )!.content;
+    expect(route).toContain("validate: {");
+    expect(route).toContain("body: {");
+    expect(route).toContain("responses: {");
+    expect(route).toContain("auth: true");
+  });
+
+  it("rejects conflicting RouteOptions aliases instead of overwriting", async () => {
+    const result = generateMcpChangeSet(
+      {
+        recipeId: "api-route",
+        name: "conflict",
+        options: {
+          handler: "res.json({ ok: true });",
+          responses: { 200: { schema: { ok: "boolean!" } } },
+          routeOptions: {
+            auth: true,
+          },
+          auth: false,
+        },
+      },
+      await project(),
+    );
+    expect(result.status).toBe("invalid");
+    expect(result.diagnostics.join("\n")).toContain(
+      "declared in both routeOptions and the top-level Recipe options",
+    );
   });
 
   it("renders page and page API route options from separate boundaries", async () => {
@@ -375,6 +428,7 @@ describe("shared Recipe generation", () => {
       { recipeId: "locale", options: { locale: "../../escape" } },
       { recipeId: "api-route", options: { method: "erase" } },
       { recipeId: "api-route", options: { serviceArgs: "req.body" } },
+      { recipeId: "api-route", options: { routeOptions: { cache: null } } },
       { recipeId: "api-module", options: { service: "other" } },
       {
         recipeId: "job-handler",

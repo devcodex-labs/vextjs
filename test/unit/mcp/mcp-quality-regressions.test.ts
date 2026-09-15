@@ -294,6 +294,34 @@ describe("MCP quality regressions: content and project identity", () => {
     });
     expect(project.assistant.devMcp.enabled).toBe(true);
   });
+
+  it("checks production-only MCP config diagnostics when configTarget is all", async () => {
+    await put(
+      "src/config/production.js",
+      'export default { multipart: { allowedMimeTypes: ["image/svg+xml"] } };\n',
+    );
+    const productionOnly = await call("vext_project_check", {
+      profile: "strict",
+      domain: "configuration",
+      configTarget: "production",
+      refresh: true,
+      diagnosticLimit: 20,
+    });
+    expect(JSON.stringify(productionOnly.payload)).toContain(
+      "VEXT_MCP_UPLOAD_SVG_REVIEW",
+    );
+
+    const allTargets = await call("vext_project_check", {
+      profile: "strict",
+      domain: "configuration",
+      configTarget: "all",
+      refresh: true,
+      diagnosticLimit: 20,
+    });
+    expect(JSON.stringify(allTargets.payload)).toContain(
+      "[production] The upload MIME policy includes SVG.",
+    );
+  });
 });
 
 describe("MCP quality regressions: policy isolation", () => {

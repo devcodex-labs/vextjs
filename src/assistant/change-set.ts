@@ -185,9 +185,19 @@ export function validateMcpChangeSetInput(
   project?: VextMcpProjectInspection,
 ): VextMcpValidationResult {
   const validation = input.changeSet
-    ? validateMcpChangeSet(input.changeSet, project, input.profile)
+    ? validateMcpChangeSet(
+        input.changeSet,
+        project,
+        input.profile,
+        input.configTarget,
+      )
     : input.files
-      ? validateCandidateFiles(input.files, project, input.profile)
+      ? validateCandidateFiles(
+          input.files,
+          project,
+          input.profile,
+          input.configTarget,
+        )
       : invalidCandidate("changeSet or files is required.");
   const complete =
     input.profile === "syntax" || project?.identity.sourceState === "complete";
@@ -238,6 +248,7 @@ function validateMcpChangeSet(
   value: unknown,
   project?: VextMcpProjectInspection,
   profile: VextValidateChangesInput["profile"] = "standard",
+  configTarget: VextValidateChangesInput["configTarget"] = "development",
 ): {
   ok: boolean;
   missingEvidence: string[];
@@ -254,7 +265,12 @@ function validateMcpChangeSet(
     return invalidCandidate("changeSet.kind must be change-set.");
   if (!Array.isArray(value.files))
     return invalidCandidate("changeSet.files must be an array.");
-  const validation = validateCandidateFiles(value.files, project, profile);
+  const validation = validateCandidateFiles(
+    value.files,
+    project,
+    profile,
+    configTarget,
+  );
   const diagnostics = [...validation.diagnostics];
   if (project && isRecord(value.baseIdentity)) {
     if (value.baseIdentity.projectId !== project.identity.projectId) {
@@ -285,6 +301,7 @@ function validateCandidateFiles(
   files: unknown[],
   project?: VextMcpProjectInspection,
   profile: VextValidateChangesInput["profile"] = "standard",
+  configTarget: VextValidateChangesInput["configTarget"] = "development",
 ): {
   ok: boolean;
   missingEvidence: string[];
@@ -451,10 +468,9 @@ function validateCandidateFiles(
             const configChanged = [...changedFiles].some((file) =>
               file.startsWith("src/config/"),
             );
-            for (const item of collectProjectStaticDiagnostics(
-              overlay,
-              roles,
-            )) {
+            for (const item of collectProjectStaticDiagnostics(overlay, roles, {
+              configTarget,
+            })) {
               if (
                 !changedFiles.has(item.sourceFile ?? "") &&
                 !(serviceChanged && item.domain === "services") &&

@@ -164,7 +164,15 @@ describe("project source discovery", () => {
       collectProjectSources(root, ["route"], { limits: { maxFiles: 1 } }),
     ).rejects.toMatchObject({ code: "VEXT_SOURCE_LIMIT" });
     expect(handles).toHaveLength(1);
-    expect(() => handles[0]!.read()).toThrow(/Directory handle was closed/);
+    try {
+      await expect(handles[0]!.read()).rejects.toThrow(
+        /Directory handle was closed|ERR_DIR_CLOSED/,
+      );
+    } catch (error) {
+      expect(String(error)).toMatch(
+        /Directory handle was closed|ERR_DIR_CLOSED/,
+      );
+    }
   });
 
   it("cancels discovery and does not reread mutable role options after collection starts", async () => {

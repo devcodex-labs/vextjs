@@ -8,6 +8,7 @@ import {
 import { renderJobRecipe } from "./recipes-jobs.js";
 import {
   buildRouteOptions,
+  normalizeRouteOptions,
   renderCodeValue,
   renderTypePropertyKey,
 } from "./route-options.js";
@@ -169,14 +170,18 @@ export function renderApi(
   ctx: RecipeContext,
   module: boolean,
 ): VextMcpChangeSetFile[] {
-  const wrappedSchemas = wrappedRequestSchemaLocations(ctx.options.validate);
+  const normalizedRouteOptions = normalizeRouteOptions(ctx, {
+    summary: ctx.option("description", `Read ${ctx.name}`),
+  });
+  const routeValidate = normalizedRouteOptions.validate;
+  const wrappedSchemas = wrappedRequestSchemaLocations(routeValidate);
   if (wrappedSchemas.length)
     throw new RecipeInputError(
       `validate.${wrappedSchemas.join("/validate.")} uses a whole-object JSON Schema. The default Vext request validator expects a DSL field map. Supply fields with required markers; custom validators require explicit project integration and runtime evidence.`,
       "incomplete",
     );
   for (const schema of Object.values(
-    ctx.option<Record<string, Record<string, unknown>>>("validate", {}),
+    routeValidate as Record<string, Record<string, unknown>>,
   )) {
     try {
       compileStaticSchema(schema as Parameters<typeof compileStaticSchema>[0]);
@@ -209,7 +214,7 @@ export function renderApi(
     module &&
     ctx.has("input") &&
     !ctx.has("serviceArgs") &&
-    !ctx.option<Record<string, unknown>>("validate", {}).body
+    !normalizedRouteOptions.hasValidateBody
   )
     throw new RecipeInputError(
       "An input contract requires validate.body or explicit serviceArgs from another validated boundary.",
@@ -259,7 +264,7 @@ export function renderApi(
     handler = "res.json({ ok: true, checkedAt: new Date().toISOString() });";
   if (
     (ctx.has("handler") || ctx.has("body") || ctx.has("service")) &&
-    !ctx.has("responses")
+    !normalizedRouteOptions.hasResponses
   )
     throw new RecipeInputError(
       "Supply responses for the actual handler/service result before generating an API contract.",

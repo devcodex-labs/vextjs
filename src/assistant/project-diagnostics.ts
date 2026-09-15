@@ -116,42 +116,43 @@ function collectConfigDiagnostics(
         }),
       );
   }
-  const config = projectStaticConfig(context.view, {
-    mode: selectedConfigModes(configTarget)[0],
-  });
-  const sourceFile = config.sourceFiles.at(-1);
-  const mcp = config.field("dev.mcp");
-  const mimeTypes = config.field("multipart.allowedMimeTypes");
-  if (
-    mimeTypes.state === "known" &&
-    Array.isArray(mimeTypes.value) &&
-    mimeTypes.value.includes("image/svg+xml")
-  )
-    diagnostics.push(
-      projectDiagnostic({
-        severity: "info",
-        code: "VEXT_MCP_UPLOAD_SVG_REVIEW",
-        sourceFile,
-        message: "The upload MIME policy includes SVG.",
-        recommendedAction:
-          "Review the application's intended validation and serving behavior for SVG uploads.",
-        affectedCapabilityIds: ["C21", "C22"],
-      }),
-    );
-  if (mcp.state === "known") {
-    const normalized = normalizeDevMcpConfig(mcp.value);
-    if (!normalized.ok)
+  for (const mode of selectedConfigModes(configTarget)) {
+    const config = projectStaticConfig(context.view, { mode });
+    const sourceFile = config.sourceFiles.at(-1);
+    const prefix = mode === "production" ? "[production] " : "";
+    const mcp = config.field("dev.mcp");
+    const mimeTypes = config.field("multipart.allowedMimeTypes");
+    if (
+      mimeTypes.state === "known" &&
+      Array.isArray(mimeTypes.value) &&
+      mimeTypes.value.includes("image/svg+xml")
+    )
       diagnostics.push(
         projectDiagnostic({
-          severity: "error",
-          code: "VEXT_MCP_CONFIG_INVALID",
+          severity: "info",
+          code: "VEXT_MCP_UPLOAD_SVG_REVIEW",
           sourceFile,
-          message: normalized.failure.message,
+          message: `${prefix}The upload MIME policy includes SVG.`,
           recommendedAction:
-            "Correct the declared dev.mcp configuration before host synchronization or startup.",
-          affectedCapabilityIds: ["C12", "C29"],
+            "Review the application's intended validation and serving behavior for SVG uploads.",
+          affectedCapabilityIds: ["C21", "C22"],
         }),
       );
+    if (mcp.state === "known") {
+      const normalized = normalizeDevMcpConfig(mcp.value);
+      if (!normalized.ok)
+        diagnostics.push(
+          projectDiagnostic({
+            severity: "error",
+            code: "VEXT_MCP_CONFIG_INVALID",
+            sourceFile,
+            message: prefix + normalized.failure.message,
+            recommendedAction:
+              "Correct the declared dev.mcp configuration before host synchronization or startup.",
+            affectedCapabilityIds: ["C12", "C29"],
+          }),
+        );
+    }
   }
 }
 
