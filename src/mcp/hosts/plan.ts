@@ -184,7 +184,7 @@ function createTarget(input: {
 
 function resolveHostConfigPath(
   descriptor: VextMcpHostDescriptor,
-  rootDir: string,
+  _rootDir: string,
 ): string {
   if ((descriptor.configScope ?? "project") === "project") {
     return descriptor.configPath;

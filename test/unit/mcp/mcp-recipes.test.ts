@@ -185,6 +185,77 @@ describe("shared Recipe generation", () => {
     ).toContain("async status()");
   });
 
+  it("renders maintainable route options and service contracts", async () => {
+    const result = generateMcpChangeSet(
+      {
+        recipeId: "api-module",
+        name: "blog post",
+        options: {
+          method: "get",
+          path: "/",
+          serviceMethod: "list",
+          output: { data: "unknown[]", "nextCursor?": "string | null" },
+          responses: {
+            200: { schema: { data: { type: "array" } } },
+          },
+          routeOptions: {
+            auth: false,
+            middlewares: [],
+            cache: null,
+            docs: { operationId: "listBlogPosts" },
+          },
+          access: "Public blog list.",
+        },
+      },
+      await project(),
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({ status: "ready" });
+    const typeFile = result.changeSet!.files.find((file) =>
+      file.path.includes("types/server/services/"),
+    )!.content;
+    expect(typeFile).toContain("data: unknown[];");
+    expect(typeFile).toContain("nextCursor?: string | null;");
+    expect(typeFile).not.toContain('"data": unknown[];');
+
+    const route = result.changeSet!.files.find((file) =>
+      file.path.includes("routes/"),
+    )!.content;
+    expect(route).toContain("auth: false");
+    expect(route).toContain("middlewares: []");
+    expect(route).toContain("cache: null");
+    expect(route).toContain('operationId: "listBlogPosts"');
+    expect(route).toContain('access: "Public blog list."');
+    expect(route).not.toContain('"responses"');
+  });
+
+  it("renders page and page API route options from separate boundaries", async () => {
+    const result = generateMcpChangeSet(
+      {
+        recipeId: "page-and-api",
+        name: "admin dashboard",
+        options: {
+          path: "/admin",
+          apiPath: "/data",
+          auth: { roles: ["admin"] },
+          apiRouteOptions: {
+            auth: { roles: ["admin"] },
+            cache: false,
+          },
+        },
+      },
+      await project(),
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({ status: "ready" });
+    const routes = result
+      .changeSet!.files.filter((file) => file.path.includes("routes/"))
+      .map((file) => file.content)
+      .join("\n");
+    expect(routes).toContain("auth: {");
+    expect(routes).toContain("roles: [");
+    expect(routes).toContain("cache: false");
+    expect(routes).toContain("Read admin-dashboard page data");
+  });
+
   it("keeps mock data and scenarios separate and adopts an existing layout", async () => {
     await put("src/mocks/existing.ts", "export const existing = [];\n");
     const result = generateMcpChangeSet(
@@ -203,6 +274,44 @@ describe("shared Recipe generation", () => {
     expect(result.changeSet?.files[1]?.content).toContain(
       'from "../data/blog.js"',
     );
+  });
+
+  it("uses role-specific locale defaults for backend and frontend", async () => {
+    const inspected = await project("ts", {
+      outputLanguage: "zh",
+      commentLanguage: "zh",
+    });
+    const backend = generateMcpChangeSet(
+      {
+        recipeId: "locale",
+        name: "blog",
+        options: { target: "backend", module: "blog/posts", locale: "zh-CN" },
+      },
+      inspected,
+    );
+    expect(backend, JSON.stringify(backend)).toMatchObject({ status: "ready" });
+    const backendMessages = JSON.parse(backend.changeSet!.files[0]!.content);
+    expect(backendMessages.validationFailed).toMatchObject({
+      code: 10001,
+      statusCode: 400,
+    });
+
+    const frontend = generateMcpChangeSet(
+      {
+        recipeId: "locale",
+        name: "blog",
+        options: { target: "frontend", module: "blog/posts", locale: "zh-CN" },
+      },
+      inspected,
+    );
+    expect(frontend, JSON.stringify(frontend)).toMatchObject({
+      status: "ready",
+    });
+    const frontendMessages = JSON.parse(frontend.changeSet!.files[0]!.content);
+    expect(frontendMessages).toMatchObject({
+      actions: { refresh: "刷新" },
+      states: { loading: "加载中…" },
+    });
   });
 
   it("supports feature-owned code through real runtime entrypoints", async () => {

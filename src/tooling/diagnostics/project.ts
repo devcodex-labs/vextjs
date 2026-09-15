@@ -5,6 +5,7 @@ import { analyzeIndexedServiceDependencies } from "./service-deps.js";
 import { inspectRouteFacts } from "../project-index/route-facts.js";
 import { wrappedRequestSchemaLocations } from "../project-index/request-schema.js";
 import { projectStaticConfig } from "../project-index/config-projection.js";
+import type { RuntimeMode } from "../../lib/config-profile.js";
 import type { SourceView } from "../source-view/types.js";
 import {
   isInRole,
@@ -30,12 +31,17 @@ interface DiagnosticContext {
 export function collectProjectStaticDiagnostics(
   view: SourceView,
   roles: readonly ResolvedAssistantRole[],
-  options: { includeDependencies?: boolean } = {},
+  options: {
+    includeDependencies?: boolean;
+    configTarget?: RuntimeMode | "all";
+  } = {},
 ): ProjectStaticDiagnostic[] {
   const diagnostics: ProjectStaticDiagnostic[] = [];
   const context = { view, roles };
   collectRouteDiagnostics(context, diagnostics);
-  collectConfigDiagnostics(context, diagnostics);
+  for (const mode of selectedConfigModes(options.configTarget)) {
+    collectConfigDiagnostics(context, diagnostics, mode);
+  }
   collectModuleSyntaxDiagnostics(context, diagnostics);
   if (options.includeDependencies !== false)
     collectServiceDependencyDiagnostics(context, diagnostics);
@@ -273,9 +279,11 @@ export function domainSourceFiles(
 function collectConfigDiagnostics(
   context: DiagnosticContext,
   diagnostics: ProjectStaticDiagnostic[],
+  mode: RuntimeMode,
 ): void {
-  const config = projectStaticConfig(context.view);
+  const config = projectStaticConfig(context.view, { mode });
   const sourceFile = config.sourceFiles.at(-1);
+  const prefix = mode === "production" ? "[production] " : "";
   const middleware = config.field("middlewares");
   const mcp = config.field("dev.mcp");
   if (
@@ -291,9 +299,10 @@ function collectConfigDiagnostics(
         code: "VEXT_MCP_CONFIG_INVALID",
         sourceFile,
         message:
-          mcp.reason ??
-          middleware.reason ??
-          "config.middlewares must be an array.",
+          prefix +
+          (mcp.reason ??
+            middleware.reason ??
+            "config.middlewares must be an array."),
         recommendedAction: "Fix config syntax before starting the service.",
       }),
     );
@@ -303,8 +312,7 @@ function collectConfigDiagnostics(
         severity: "info",
         code: "VEXT_MCP_CONFIG_UNKNOWN",
         sourceFile,
-        message:
-          "Bootstrap provider output is unknown; MCP does not execute it.",
+        message: `${prefix}Bootstrap provider output is unknown; MCP does not execute it.`,
         recommendedAction:
           "Use host-side startup/config evidence for provider overrides.",
       }),
@@ -332,8 +340,7 @@ function collectConfigDiagnostics(
           severity: "error",
           code: "VEXT_MCP_RATE_LIMIT_REDIS_TARGET_MISSING",
           sourceFile,
-          message:
-            "rateLimit.store Redis target must be a non-empty URL string or an explicit client.",
+          message: `${prefix}rateLimit.store Redis target must be a non-empty URL string or an explicit client.`,
           recommendedAction:
             "Correct this store's target; another module's Redis URL does not configure rate limiting.",
         }),
@@ -344,8 +351,7 @@ function collectConfigDiagnostics(
           severity: "warning",
           code: "VEXT_MCP_RATE_LIMIT_REDIS_ENV_REQUIRED",
           sourceFile,
-          message:
-            "Rate limiting has no proven static Redis target. An explicit client or VEXT_REDIS_URL/REDIS_URL must be available at runtime.",
+          message: `${prefix}Rate limiting has no proven static Redis target. An explicit client or VEXT_REDIS_URL/REDIS_URL must be available at runtime.`,
           recommendedAction:
             "Verify the rate-limit owner's runtime target before startup; unrelated Redis module settings do not satisfy it.",
         }),
@@ -362,11 +368,19 @@ function collectConfigDiagnostics(
         severity: "info",
         code: "VEXT_MCP_DATABASE_CURSOR_SECRET_REVIEW",
         sourceFile,
-        message: "Database config has no explicit cursor-secret policy.",
+        message: `${prefix}Database config has no explicit cursor-secret policy.`,
         recommendedAction:
           "Review cursor signing when cursor-based pagination is used; this is not proof of a startup failure.",
       }),
     );
+}
+
+function selectedConfigModes(
+  target: RuntimeMode | "all" | undefined,
+): RuntimeMode[] {
+  return target === "all"
+    ? ["development", "production"]
+    : [target ?? "development"];
 }
 
 function collectProjectSourceFiles(

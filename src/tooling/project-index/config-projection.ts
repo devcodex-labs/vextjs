@@ -29,9 +29,13 @@ export function projectStaticConfig(
   view: SourceView,
   options: { profile?: string; mode?: RuntimeMode } = {},
 ): StaticConfigProjection {
-  const profile =
-    options.profile ?? resolveConfigProfile({ command: "dev" }).profile;
   const mode = options.mode ?? "development";
+  const profile =
+    options.profile ??
+    resolveConfigProfile({
+      command:
+        mode === "production" ? "start" : mode === "test" ? "test" : "dev",
+    }).profile;
   const extensions = ["ts", "js", "mjs", "cjs"];
   const sourceFiles: string[] = [];
   const warnings: string[] = [];

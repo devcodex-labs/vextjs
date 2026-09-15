@@ -5,6 +5,7 @@ import {
   collectProjectStaticDiagnostics,
   domainSourceFiles,
 } from "../tooling/diagnostics/project.js";
+import type { RuntimeMode } from "../lib/config-profile.js";
 import { projectStaticConfig } from "../tooling/project-index/config-projection.js";
 import { normalizeDevMcpConfig } from "./contracts.js";
 import path from "node:path";
@@ -18,6 +19,7 @@ import {
   ASSISTANT_DIAGNOSTIC_RULES,
   type AssistantRuleMetadata,
 } from "./diagnostic-rules.js";
+import type { VextMcpConfigTarget } from "./contracts.js";
 
 export type VextMcpProjectDiagnosticSeverity = "error" | "warning" | "info";
 
@@ -41,12 +43,17 @@ export function collectVextProjectDiagnostics(
   rootDir: string,
   view: SourceView,
   roles: readonly ResolvedAssistantRole[],
-  options: { includeGenerated?: boolean } = {},
+  options: {
+    includeGenerated?: boolean;
+    configTarget?: VextMcpConfigTarget;
+  } = {},
 ): VextMcpProjectDiagnostic[] {
   const diagnostics: VextMcpProjectDiagnostic[] = [];
   const context = { view, roles };
   diagnostics.push(
-    ...collectProjectStaticDiagnostics(view, roles).map((diagnostic) => ({
+    ...collectProjectStaticDiagnostics(view, roles, {
+      configTarget: options.configTarget,
+    }).map((diagnostic) => ({
       ...diagnostic,
       affectedCapabilityIds:
         diagnostic.domain === "routes"
@@ -55,7 +62,7 @@ export function collectVextProjectDiagnostics(
     })),
   );
   collectServiceDiagnostics(context, diagnostics);
-  collectConfigDiagnostics(context, diagnostics);
+  collectConfigDiagnostics(context, diagnostics, options.configTarget);
   collectFrontendDiagnostics(context, diagnostics);
   collectTestDiagnostics(context, diagnostics);
   if (options.includeGenerated !== false)
@@ -91,6 +98,7 @@ function collectServiceDiagnostics(
 function collectConfigDiagnostics(
   context: DiagnosticContext,
   diagnostics: VextMcpProjectDiagnostic[],
+  configTarget: VextMcpConfigTarget | undefined,
 ): void {
   for (const file of domainSourceFiles(context.view, context.roles, "config")) {
     const source = context.view.read(file.rootId, file.path);
@@ -108,7 +116,9 @@ function collectConfigDiagnostics(
         }),
       );
   }
-  const config = projectStaticConfig(context.view);
+  const config = projectStaticConfig(context.view, {
+    mode: selectedConfigModes(configTarget)[0],
+  });
   const sourceFile = config.sourceFiles.at(-1);
   const mcp = config.field("dev.mcp");
   const mimeTypes = config.field("multipart.allowedMimeTypes");
@@ -143,6 +153,14 @@ function collectConfigDiagnostics(
         }),
       );
   }
+}
+
+function selectedConfigModes(
+  target: VextMcpConfigTarget | undefined,
+): RuntimeMode[] {
+  return target === "all"
+    ? ["development", "production"]
+    : [target ?? "development"];
 }
 
 function qualityFacts(file: string, source: string) {

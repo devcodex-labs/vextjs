@@ -57,33 +57,39 @@ Only create reusable type contracts when needed. TS/TSX and JS/JSX are generated
 
 Comments explain non-obvious contracts, authorization, transactions, idempotency, cache failures, and time units. Explicit commentLanguage wins; auto considers existing comments and outputLanguage. Static formatter JSON/.editorconfig settings affect generation. The host executes dynamic formatter configuration and final formatting.
 
+Route and page Recipes accept JSON-safe `routeOptions` plus top-level `auth`, `middlewares`, `cache`, `docs`, `operationId`, `security`, and `access`. Explicit `false`, empty arrays, and `null` are preserved. Function auth, runtime stores/clients, and dynamic checks cannot be serialized into MCP options; wire them in host code or existing modules. Protected pages and admin APIs should declare authorization or middleware boundaries before reading protected data.
+
+Backend locale files describe error keys with code, message, and HTTP status semantics. Frontend locale files describe user-facing copy, actions, and states. Mock data, scenarios, and adapters stay in mock-data/mock-scenarios/mock-adapters rather than service seed data.
+
 ## Recipe inputs and integration
 
 All 17 Recipes have independent options schemas in `vext://catalog/recipes`. Unknown fields and conflicting options are rejected.
 
-| Recipe                    | Main inputs                                           | Output and integration                                                                                                                |
-| ------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| RCP-01 api-route          | method/path, validate/responses, handler or service   | Route; custom results require responses                                                                                               |
-| RCP-02 api-module         | serviceMethod, input/output, body, validate/responses | Route calls generated service; default input comes from `req.valid("body")`                                                           |
-| RCP-03 page-route         | page/path, props                                      | Render route and matching page; serialize only authorized data                                                                        |
-| RCP-04 page-and-api       | page/path, props, apiPath                             | Real API request with loading/error/cancellation                                                                                      |
-| RCP-05 service            | body, input/output or parameters/imports              | Use case and necessary contracts; declared input requires a body                                                                      |
-| RCP-06 model              | collection/key, schema/document, indexes/connection   | Native model definition; application-owned database setup                                                                             |
-| RCP-07 middleware         | body, factory/options                                 | Handler or factory; explicitly register it                                                                                            |
-| RCP-08 plugin             | setup/onReady/onClose, dependencies                   | Lifecycle; close only owned resources                                                                                                 |
-| RCP-09 locale             | target, module/submodule, locale/messages             | Module messages; verify loader use and missing locale keys                                                                            |
-| RCP-10 test               | target/exportName, kind, cases                        | Real exported function unit/integration tests with distinct expectations                                                              |
-| RCP-11 type-contract      | target, fields                                        | Consumer-owned fields, reuse complex existing contracts                                                                               |
-| RCP-12 utility            | description/body, parameters/returnType, target       | Actual pure operation, no invented identity wrapper                                                                                   |
-| RCP-13 frontend-component | title                                                 | Presentation scaffold; integrate real interaction, styles, and i18n                                                                   |
-| RCP-14 frontend-layout    | page, reusable                                        | Render children and connect reusable layouts to page entries                                                                          |
-| RCP-15 reusable-schema    | fields, usage/consumer                                | Valid DSL/schema fields; attach to the real validation boundary                                                                       |
-| RCP-16 mock-scenario      | data, scenarios, target                               | Separate data/scenarios and select an existing adapter                                                                                |
-| RCP-17 job-handler        | payload, handler, queue/schedule, retry/timeout       | Object queue; cron validation creates no timer; scheduler passes no business payload; configure real worker/scheduler/store processes |
+| Recipe                    | Main inputs                                                         | Output and integration                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| RCP-01 api-route          | method/path, RouteOptions, validate/responses, handler or service   | Route; custom results require responses                                                                                               |
+| RCP-02 api-module         | serviceMethod, input/output, body, RouteOptions, validate/responses | Route calls generated service; default input comes from `req.valid("body")`                                                           |
+| RCP-03 page-route         | page/path, props, RouteOptions                                      | Render route and matching page; serialize only authorized data                                                                        |
+| RCP-04 page-and-api       | page/path, props, apiPath, routeOptions/apiRouteOptions             | Real API request with loading/error/cancellation                                                                                      |
+| RCP-05 service            | body, input/output or parameters/imports                            | Use case and necessary contracts; declared input requires a body                                                                      |
+| RCP-06 model              | collection/key, schema/document, indexes/connection                 | Native model definition; application-owned database setup                                                                             |
+| RCP-07 middleware         | body, factory/options                                               | Handler or factory; explicitly register it                                                                                            |
+| RCP-08 plugin             | setup/onReady/onClose, dependencies                                 | Lifecycle; close only owned resources                                                                                                 |
+| RCP-09 locale             | target, module/submodule, locale/messages                           | Module messages; verify loader use and missing locale keys                                                                            |
+| RCP-10 test               | target/exportName, kind, cases                                      | Real exported function unit/integration tests with distinct expectations                                                              |
+| RCP-11 type-contract      | target, fields                                                      | Consumer-owned fields, reuse complex existing contracts                                                                               |
+| RCP-12 utility            | description/body, parameters/returnType, target                     | Actual pure operation, no invented identity wrapper                                                                                   |
+| RCP-13 frontend-component | title                                                               | Presentation scaffold; integrate real interaction, styles, and i18n                                                                   |
+| RCP-14 frontend-layout    | page, reusable                                                      | Render children and connect reusable layouts to page entries                                                                          |
+| RCP-15 reusable-schema    | fields, usage/consumer                                              | Valid DSL/schema fields; attach to the real validation boundary                                                                       |
+| RCP-16 mock-scenario      | data, scenarios, target                                             | Separate data/scenarios and select an existing adapter                                                                                |
+| RCP-17 job-handler        | payload, handler, queue/schedule, retry/timeout                     | Object queue; cron validation creates no timer; scheduler passes no business payload; configure real worker/scheduler/store processes |
 
 api-module always calls its newly generated service; use api-route for an existing service or custom handler. Free-form parameters require serviceArgs. Explicit input requires validate.body unless serviceArgs selects another validated boundary. Standalone serviceArgs/serviceMethod require a target service.
 
 These generators have explicit boundaries: RCP-10 does not invent browser E2E flows, RCP-13 does not invent business interactions, and RCP-16 does not install or guess third-party adapters. Missing inputs produce `incomplete`; unsupported combinations produce `unsupported`. Host integration and behavior validation remain required.
+
+`vext_project_check` and `vext_validate_changes` accept `configTarget: "development" | "production" | "all"`. Specify it when Redis, rateLimit, session, Job, cache, or production startup may differ; `all` checks development and production static config. `vext_capability_check` returns catalog status, framework support, MCP coverage, and current project state separately. Do not promote `partial`, `planned`, `unknown`, or `unverified` surfaces to supported.
 
 ## Versioned dependency evidence
 

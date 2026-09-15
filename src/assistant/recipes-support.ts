@@ -35,12 +35,29 @@ export function renderSupportRecipe(
     } catch {
       throw new RecipeInputError("locale must be a valid BCP-47 language tag.");
     }
-    const messages = ctx.option("messages", {
-      example: {
-        code: 40000,
-        message: ctx.message("示例消息", "Example message"),
-      },
-    });
+    const messages = ctx.option(
+      "messages",
+      backend
+        ? {
+            validationFailed: {
+              code: 10001,
+              message: ctx.message(
+                "字段 {field} 校验失败。",
+                "Validation failed for {field}.",
+              ),
+              statusCode: 400,
+            },
+          }
+        : {
+            title: pascalName(ctx.name),
+            actions: {
+              refresh: ctx.message("刷新", "Refresh"),
+            },
+            states: {
+              loading: ctx.message("加载中…", "Loading…"),
+            },
+          },
+    );
     try {
       projectLocaleMessages(
         [

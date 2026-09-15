@@ -22,7 +22,7 @@ Use this skill when helping with a project that depends on VextJS and has access
 - Use \`vext_knowledge_search\` for Vext APIs, project structure, recipes, resources, prompts, operations, dependencies, and framework-specific guidance.
 - Use \`vext_generate_changes\` only for create-only drafts. The host applies file changes after validating identity and hashes.
 - Use \`vext_validate_changes\` before applying a draft or user-supplied candidate.
-- Use \`vext_project_check\` after changes to collect MCP diagnostics, then run the host-side commands returned by the tool.
+- Use \`vext_project_check\` after changes to collect MCP diagnostics. Pass \`configTarget\` as \`development\`, \`production\`, or \`all\` when configuration can differ by runtime target, then run the host-side commands returned by the tool.
 - Do not ask the MCP server to execute shell commands, start services, apply file changes, run tests, modify databases, or edit host configuration. The host owns those actions.
 
 ## Standard workflow
@@ -46,10 +46,13 @@ Use this skill when helping with a project that depends on VextJS and has access
 - Place reusable Job payload contracts in the effective job-types role (default src/types/server/jobs) and share the runtime payload schema from schemas. Scheduled runs created by the built-in scheduler do not carry business payload; required-payload work must be run/enqueued explicitly or derived inside the scheduled handler.
 - Keep mock data/scenarios/adapters separate and seeds explicit. GET requests do not seed databases or silently fall back to mock data. Route files are not shared helper libraries; private service logic and callbacks are valid, while reused pure operations belong near their consumers.
 - Explain non-obvious contracts, permissions, idempotency, cache failures and time units in the adopted comment language. Run the project formatter; do not add redundant wrappers or comments based solely on function counts.
+- Route/page Recipes accept JSON-safe \`RouteOptions\` data through \`routeOptions\` plus top-level \`auth\`, \`middlewares\`, \`cache\`, \`docs\`, \`operationId\`, \`security\`, and \`access\`. Preserve explicit \`false\`, \`[]\`, and \`null\`. Function-based auth/check middleware, instantiated stores, and other runtime objects must be wired in host code or existing modules, not serialized into MCP options.
+- Protected pages or admin APIs must declare the selected route authorization/middleware boundary or reuse an existing configured middleware before reading protected data. Do not simulate authorization by spreading route handlers or hiding admin branches in generated service code.
+- Locales are feature/subfeature resources. Backend locale entries describe error keys with code/message/status semantics; frontend locale entries describe user-facing copy, actions, and states. Keep mock data in mock-data/mock-scenarios roles, never inside services as seed data.
 
 ## Validation expectations
 
-- Backend/API changes usually require typecheck, focused unit/integration tests, and route or OpenAPI validation.
+- Backend/API changes usually require typecheck, focused unit/integration tests, route checks, and OpenAPI validation when docs or responses change.
 - Frontend changes usually require typecheck, build, and browser or e2e validation when behavior changes.
 - Job changes require job unit tests and scheduler/worker/runtime checks through host commands. Redis-backed Job changes also require a real Redis integration check when Redis is available; report skip explicitly when it is not. Store completion must reject missing, queued, terminal, repeated and non-current-owner completion attempts without overwriting the terminal record.
 - Shared packages require downstream consumer checks.

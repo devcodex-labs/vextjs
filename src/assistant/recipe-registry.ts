@@ -55,11 +55,27 @@ const positive: RecipeOptionSchema = {
 const nonnegative: RecipeOptionSchema = { ...positive, minimum: 0 };
 const bool: RecipeOptionSchema = { type: "boolean" };
 const common = { description: text(), language: choice("ts", "js") };
+const boolOrObject: RecipeOptionSchema = {
+  anyOf: [bool, jsonObject],
+};
+const jsonArray: RecipeOptionSchema = {
+  type: "array",
+  maxItems: 50,
+  items: {},
+};
 const route = {
   method: choice("get", "post", "put", "patch", "delete", "head", "options"),
   path: { ...text(500), pattern: "^/" },
+  routeOptions: jsonObject,
   validate: jsonObject,
   responses: jsonObject,
+  auth: boolOrObject,
+  middlewares: jsonArray,
+  cache: boolOrObject,
+  docs: jsonObject,
+  operationId: text(120),
+  security: jsonArray,
+  access: text(1000),
   handler: code,
   service: text(250),
   serviceMethod: identifier,
@@ -77,6 +93,14 @@ const page = {
   page: text(250),
   props: jsonObject,
   path: { ...text(500), pattern: "^/" },
+  routeOptions: jsonObject,
+  auth: boolOrObject,
+  middlewares: jsonArray,
+  cache: boolOrObject,
+  docs: jsonObject,
+  operationId: text(120),
+  security: jsonArray,
+  access: text(1000),
 };
 
 export interface VextRecipeDefinition {
@@ -130,7 +154,12 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
     "page-and-api",
     "生成页面、API 及加载/错误交互。",
     "frontend",
-    { ...page, apiPath: { ...text(500), pattern: "^/" } },
+    {
+      ...page,
+      apiPath: { ...text(500), pattern: "^/" },
+      apiResponses: jsonObject,
+      apiRouteOptions: jsonObject,
+    },
   ),
   recipe(
     "RCP-05",

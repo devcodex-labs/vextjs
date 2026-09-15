@@ -212,6 +212,7 @@ export const DEPENDENCY_KNOWLEDGE: DependencyKnowledgeEntry[] = [
       "宿主执行文件应用、启动、重启、测试、构建与部署；MCP 返回事实、候选、规则和流程，不接受任意 cwd/root/shell。",
       "Skill 导出或配置同步成功不等于宿主已加载，更不等于任务已调用 MCP。Tools-only 和 Skill 路径都要 inspect→knowledge→generate/validate→host verification。",
       "取消信号和分页不应改变分析总判定；unknown/incomplete 不能投影为通过。协议 JSON schemaVersion 与 npm 框架版本是不同身份。",
+      "Recipe 的 JSON-safe RouteOptions、configTarget 和 capability 状态属于运行时 Tool 契约；代码组织、注释、mock/locale 职责和 MonSQLize 使用边界属于 Skill/知识的生成指导，二者都要随需求同步更新。",
     ],
     [
       "MCP 不强迫宿主遵循每条建议，不保证业务正确或所有宿主版本兼容；实际调用和运行结果须提供证据。",

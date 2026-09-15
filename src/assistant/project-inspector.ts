@@ -48,6 +48,7 @@ import {
   normalizePolicyPatch,
   normalizeWorkspaceConfig,
   type NormalizedVextDevMcpConfig,
+  type VextMcpConfigTarget,
   type VextAssistantWorkspaceConfig,
   type NormalizedVextAssistantPolicy,
   type VextAssistantPolicyPatch,
@@ -178,6 +179,7 @@ export async function inspectVextProject(input: {
   limits?: Partial<SourceLimits>;
   policyPatch?: VextAssistantPolicyPatch;
   sourceMode?: "auto" | "baseline";
+  configTarget?: VextMcpConfigTarget;
   refresh?: boolean;
 }): Promise<VextMcpProjectInspection> {
   const rootDir = realpathSync(path.resolve(input.rootDir));
@@ -377,6 +379,7 @@ export async function inspectVextProject(input: {
     sourceView
       ? collectVextProjectDiagnostics(rootDir, sourceView, roles, {
           includeGenerated: input.sourceMode !== "baseline",
+          configTarget: input.configTarget,
         })
       : [],
     policy,
@@ -795,10 +798,6 @@ function readStringArray(value: unknown): string[] | null {
 
 function stripSourceExtension(value: string): string {
   return value.replace(/\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/u, "");
-}
-
-function toProjectRelative(rootDir: string, absolute: string): string {
-  return toPosix(path.relative(rootDir, absolute));
 }
 
 function toPosix(value: string): string {

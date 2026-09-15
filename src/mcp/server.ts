@@ -25,11 +25,11 @@ import {
   parseMcpToolInput,
   type VextAssistantFailure,
   type VextExpectedIdentity,
+  type VextMcpConfigTarget,
   type VextMcpToolInputMap,
   type VextProjectInputPolicy,
 } from "../assistant/contracts.js";
 import {
-  inspectVextProjectJobDetails,
   inspectVextProject,
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
@@ -206,13 +206,16 @@ function registerTools(
         data: {
           identity: project.identity,
           capabilityId: item.id,
-          frameworkSupport: item.status === "planned" ? "partial" : "supported",
+          frameworkStatus: item.status,
+          frameworkSupport:
+            item.status === "available" ? "supported" : item.status,
+          mcpCoverage: item.status,
           projectState: projectStateForCapability(project, item),
           knownIssueIds: [],
           missingPrerequisites:
-            item.status === "planned"
+            item.status !== "available"
               ? [
-                  "This capability is registered but not implemented in the current MCP batch.",
+                  "This capability is not fully available in the current framework/MCP catalog. Do not treat partial, planned, unknown or unverified surfaces as supported.",
                 ]
               : [],
           evidence: item.sourceRefs,
@@ -341,6 +344,7 @@ function registerTools(
           verdict: validation.verdict,
           staticVerdict: validation.staticVerdict,
           applyReady: validation.applyReady,
+          configTarget: validation.configTarget,
           runtimeVerified: false,
           steps: ["Input shape was accepted by the protocol layer."],
           diagnostics: validation.diagnostics,
@@ -437,6 +441,7 @@ function registerTools(
           staticVerdict,
           runtimeVerified: false,
           profile: input.value.profile ?? "standard",
+          configTarget: input.value.configTarget ?? "development",
           diagnostics,
           totalBySeverity,
           affectedConsumers:
@@ -843,6 +848,7 @@ function inspect(
   version: string,
   options: VextProjectInputPolicy & {
     sourceMode?: "auto" | "baseline";
+    configTarget?: VextMcpConfigTarget;
     refresh?: boolean;
   } = {},
   signal?: AbortSignal,
@@ -852,6 +858,7 @@ function inspect(
     frameworkVersion: version,
     policyPatch: options.policyPatch,
     sourceMode: options.sourceMode,
+    configTarget: options.configTarget,
     refresh: options.refresh,
     signal,
   });

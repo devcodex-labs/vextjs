@@ -61,33 +61,39 @@ TS 项目生成 TS/TSX；JS 项目生成 JS/JSX 和必要 JSDoc 契约。目标�
 
 注释解释用例、权限、幂等、事务、缓存失败、时间单位等非显然语义。`commentLanguage` 显式设置优先，`auto` 结合项目已有注释与输出语言；宿主应把当前用户意图传为策略。静态 JSON formatter/.editorconfig 参数参与生成；动态 formatter 配置不在 MCP 中执行，由宿主运行项目 formatter。
 
+路由与页面 Recipe 接受 JSON-safe 的 `routeOptions`，以及顶层 `auth`、`middlewares`、`cache`、`docs`、`operationId`、`security`、`access`。显式 `false`、空数组和 `null` 会被保留；函数鉴权、运行时 store/client 或动态 check 不能序列化进 MCP options，必须由宿主在代码中接入或引用已有模块。受保护页面和 admin API 应在读取数据前声明路由鉴权或中间件边界。
+
+backend locale 用于错误 key，默认形态包含 `code`、`message` 和 HTTP status 语义；frontend locale 用于用户可见文案、动作和状态。mock 数据、场景和 adapter 分别放在 mock-data/mock-scenarios/mock-adapters，不写进 service 当内置种子。
+
 ## 17 条 Recipe 的输入和接入
 
 每条 Recipe 有独立 options schema，见 `vext://catalog/recipes`。未知字段或冲突参数会拒绝，不会默默忽略。以下是职责摘要，完整字段由当前安装包返回。
 
-| Recipe                    | 主要输入                                                | 产物与必须完成的接入                                                                                   |
-| ------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| RCP-01 api-route          | method/path、validate/responses、handler 或现有 service | 路由；自定义结果必须提供 responses                                                                     |
-| RCP-02 api-module         | serviceMethod、input/output、body、validate/responses   | 实际调用生成 service；输入默认经 `req.valid("body")` 传递                                              |
-| RCP-03 page-route         | page/path、props                                        | render 路由与对应页面；只传可序列化且获准输出的数据                                                    |
-| RCP-04 page-and-api       | page/path、props、apiPath                               | 页面实际请求生成 API，含 loading/error/取消逻辑                                                        |
-| RCP-05 service            | body、input/output 或 parameters/imports                | 用例及必要类型；声明输入时需给处理该输入的 body                                                        |
-| RCP-06 model              | collection/key、schema/document、indexes/connection     | 原生 VextModelDefinition；数据库由应用配置，不在导入期连接                                             |
-| RCP-07 middleware         | body、factory/options                                   | handler 或参数工厂；须在配置或路由显式挂载                                                             |
-| RCP-08 plugin             | setup/onReady/onClose、dependencies                     | 生命周期；只关闭自己创建的资源                                                                         |
-| RCP-09 locale             | target、module/submodule、locale/messages               | 模块语言文件；实际读取并核对其他语言缺键                                                               |
-| RCP-10 test               | target/exportName、kind、cases                          | 调用真实导出函数的 unit/integration 测试；至少两个不同预期/边界                                        |
-| RCP-11 type-contract      | target、fields                                          | 消费者拥有的类型；复杂已有契约按需复用                                                                 |
-| RCP-12 utility            | description/body、parameters/returnType、target         | 真实纯操作；信息不足不生成 identity 占位包装                                                           |
-| RCP-13 frontend-component | title                                                   | 展示组件骨架；业务交互、样式及 i18n 按实际需求补齐                                                     |
-| RCP-14 frontend-layout    | page、reusable                                          | 渲染 children；可复用布局须由真实页面入口引用                                                          |
-| RCP-15 reusable-schema    | fields、usage/consumer                                  | 合法 DSL/字段 schema；实际绑定请求、响应或 Job payload                                                 |
-| RCP-16 mock-scenario      | data、scenarios、target                                 | 数据与场景分开；选择已有 adapter，不默认安装 mock 库                                                   |
-| RCP-17 job-handler        | payload、handler、queue/schedule、retry/timeout         | queue 必须为对象；cron 校验不启动 timer；scheduler 不传业务 payload；部署需实际 worker/scheduler/store |
+| Recipe                    | 主要输入                                                              | 产物与必须完成的接入                                                                                   |
+| ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| RCP-01 api-route          | method/path、RouteOptions、validate/responses、handler 或现有 service | 路由；自定义结果必须提供 responses                                                                     |
+| RCP-02 api-module         | serviceMethod、input/output、body、RouteOptions、validate/responses   | 实际调用生成 service；输入默认经 `req.valid("body")` 传递                                              |
+| RCP-03 page-route         | page/path、props、RouteOptions                                        | render 路由与对应页面；只传可序列化且获准输出的数据                                                    |
+| RCP-04 page-and-api       | page/path、props、apiPath、routeOptions/apiRouteOptions               | 页面实际请求生成 API，含 loading/error/取消逻辑                                                        |
+| RCP-05 service            | body、input/output 或 parameters/imports                              | 用例及必要类型；声明输入时需给处理该输入的 body                                                        |
+| RCP-06 model              | collection/key、schema/document、indexes/connection                   | 原生 VextModelDefinition；数据库由应用配置，不在导入期连接                                             |
+| RCP-07 middleware         | body、factory/options                                                 | handler 或参数工厂；须在配置或路由显式挂载                                                             |
+| RCP-08 plugin             | setup/onReady/onClose、dependencies                                   | 生命周期；只关闭自己创建的资源                                                                         |
+| RCP-09 locale             | target、module/submodule、locale/messages                             | 模块语言文件；实际读取并核对其他语言缺键                                                               |
+| RCP-10 test               | target/exportName、kind、cases                                        | 调用真实导出函数的 unit/integration 测试；至少两个不同预期/边界                                        |
+| RCP-11 type-contract      | target、fields                                                        | 消费者拥有的类型；复杂已有契约按需复用                                                                 |
+| RCP-12 utility            | description/body、parameters/returnType、target                       | 真实纯操作；信息不足不生成 identity 占位包装                                                           |
+| RCP-13 frontend-component | title                                                                 | 展示组件骨架；业务交互、样式及 i18n 按实际需求补齐                                                     |
+| RCP-14 frontend-layout    | page、reusable                                                        | 渲染 children；可复用布局须由真实页面入口引用                                                          |
+| RCP-15 reusable-schema    | fields、usage/consumer                                                | 合法 DSL/字段 schema；实际绑定请求、响应或 Job payload                                                 |
+| RCP-16 mock-scenario      | data、scenarios、target                                               | 数据与场景分开；选择已有 adapter，不默认安装 mock 库                                                   |
+| RCP-17 job-handler        | payload、handler、queue/schedule、retry/timeout                       | queue 必须为对象；cron 校验不启动 timer；scheduler 不传业务 payload；部署需实际 worker/scheduler/store |
 
 `api-module` 始终调用本次生成的 service，不能同时指定其他 service 或覆盖 handler。使用自由 parameters 时必须给对应 serviceArgs；显式 input 默认需要 validate.body。独立 `api-route` 的 serviceArgs/serviceMethod 必须对应实际 service。
 
 Recipe 是有明确范围的候选生成器。RCP-10 不自动生成完整浏览器 E2E，RCP-13 不猜测业务交互，RCP-16 不猜测第三方 mock adapter。缺少必要信息返回 `incomplete`，不支持的组合返回 `unsupported`；宿主仍需完成声明的集成步骤及业务验证。
+
+`vext_project_check` 和 `vext_validate_changes` 接受 `configTarget: "development" | "production" | "all"`。涉及 Redis、rateLimit、session、Job、cache 或生产启动差异时应指定目标；`all` 会同时检查开发和生产静态配置。`vext_capability_check` 会分别返回 catalog 原始状态、框架支持、MCP 覆盖和当前项目状态；`partial`、`planned`、`unknown` 或 `unverified` 不能被提升为 supported。
 
 ## 依赖知识的版本与证据
 

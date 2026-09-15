@@ -1,12 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Redis } from "ioredis";
 import type {
-  VextJobClaimOptions,
-  VextJobClaimRunOptions,
   VextJobListRunsOptions,
   VextJobRunRecord,
   VextJobStore,
-  VextJobStoreEnqueueInput,
 } from "../types.js";
 import {
   assertRedisTarget,

@@ -509,6 +509,10 @@ describe("Vext MCP server", () => {
         join(rootDir, "src", "config", "development.ts"),
         'export default { rateLimit: { enabled: true, store: { type: "redis", url: process.env.VEXT_REDIS_URL ?? process.env.REDIS_URL } } };\n',
       );
+      await writeFile(
+        join(rootDir, "src", "config", "production.ts"),
+        'export default { rateLimit: { enabled: true, store: { type: "redis" } } };\n',
+      );
       const projectDiagnostics = await client.callTool({
         name: "vext_project_check",
         arguments: { domain: "route", diagnosticLimit: 10 },
@@ -525,6 +529,21 @@ describe("Vext MCP server", () => {
       });
       expect(JSON.stringify(rateLimitDiagnostics.structuredContent)).toContain(
         "VEXT_MCP_RATE_LIMIT_REDIS_ENV_REQUIRED",
+      );
+      const allConfigDiagnostics = await client.callTool({
+        name: "vext_project_check",
+        arguments: {
+          domain: "rateLimit",
+          diagnosticLimit: 20,
+          configTarget: "all",
+        },
+      });
+      expect(allConfigDiagnostics.structuredContent).toMatchObject({
+        status: "ok",
+        data: { configTarget: "all" },
+      });
+      expect(JSON.stringify(allConfigDiagnostics.structuredContent)).toContain(
+        "[production] Rate limiting has no proven static Redis target.",
       );
       const stale = await client.callTool({
         name: "vext_project_check",
@@ -658,7 +677,12 @@ describe("Vext MCP server", () => {
       });
       expect(releaseCapability.structuredContent).toMatchObject({
         status: "ok",
-        data: { projectState: "partial" },
+        data: {
+          frameworkStatus: "partial",
+          frameworkSupport: "partial",
+          mcpCoverage: "partial",
+          projectState: "partial",
+        },
       });
       expect(JSON.stringify(releaseCapability.structuredContent)).toContain(
         "verify:pack-install",

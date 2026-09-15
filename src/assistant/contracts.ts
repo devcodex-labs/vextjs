@@ -19,6 +19,7 @@ export const VEXT_MCP_HOST_IDS = [
 ] as const;
 export type VextMcpHostId = (typeof VEXT_MCP_HOST_IDS)[number];
 export type VextMcpSyncMode = "auto" | "check" | "off";
+export type VextMcpConfigTarget = "development" | "production" | "all";
 export type VextAssistantLanguage = "en" | "zh";
 export type VextAssistantCommentLanguage = VextAssistantLanguage | "auto";
 export type VextAssistantCommentDetail = "minimal" | "necessary" | "detailed";
@@ -119,6 +120,7 @@ export interface VextGenerateChangesInput extends VextProjectInputPolicy {
 }
 export interface VextValidateChangesInput extends VextProjectInputPolicy {
   profile?: "syntax" | "standard" | "strict";
+  configTarget?: VextMcpConfigTarget;
   changeSet?: Record<string, unknown>;
   files?: Record<string, unknown>[];
   expectedIdentity?: VextExpectedIdentity;
@@ -126,6 +128,7 @@ export interface VextValidateChangesInput extends VextProjectInputPolicy {
 export interface VextProjectCheckInput extends VextProjectInputPolicy {
   profile?: "quick" | "standard" | "strict";
   domain?: string;
+  configTarget?: VextMcpConfigTarget;
   refresh?: boolean;
   diagnosticLimit?: number;
   expectedIdentity?: VextExpectedIdentity;
@@ -249,6 +252,10 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
     additionalProperties: false,
     properties: {
       profile: { type: "string", enum: ["syntax", "standard", "strict"] },
+      configTarget: {
+        type: "string",
+        enum: ["development", "production", "all"],
+      },
       changeSet: { type: "object", additionalProperties: true },
       files: {
         type: "array",
@@ -266,6 +273,10 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
     properties: {
       profile: { type: "string", enum: ["quick", "standard", "strict"] },
       domain: { type: "string" },
+      configTarget: {
+        type: "string",
+        enum: ["development", "production", "all"],
+      },
       refresh: { type: "boolean" },
       diagnosticLimit: { type: "integer", minimum: 1, maximum: 500 },
       expectedIdentity: expectedIdentitySchema,
@@ -708,6 +719,7 @@ function parseGenerateChanges(value: Record<string, unknown>) {
 function parseValidateChanges(value: Record<string, unknown>) {
   const unknownKey = firstUnknownKey(value, [
     "profile",
+    "configTarget",
     "changeSet",
     "files",
     "expectedIdentity",
@@ -718,6 +730,12 @@ function parseValidateChanges(value: Record<string, unknown>) {
     );
   const profile = optionalEnum(value.profile, ["syntax", "standard", "strict"]);
   if (!profile.ok) return profile;
+  const configTarget = optionalEnum(value.configTarget, [
+    "development",
+    "production",
+    "all",
+  ]);
+  if (!configTarget.ok) return configTarget;
   const hasChangeSet = value.changeSet !== undefined;
   const hasFiles = value.files !== undefined;
   if (!hasChangeSet && !hasFiles)
@@ -739,6 +757,7 @@ function parseValidateChanges(value: Record<string, unknown>) {
   if (!expectedIdentity.ok) return expectedIdentity;
   return ok({
     profile: profile.value,
+    configTarget: configTarget.value,
     changeSet: value.changeSet as Record<string, unknown> | undefined,
     files: value.files as Record<string, unknown>[] | undefined,
     expectedIdentity: expectedIdentity.value,
@@ -749,6 +768,7 @@ function parseProjectCheck(value: Record<string, unknown>) {
   const unknownKey = firstUnknownKey(value, [
     "profile",
     "domain",
+    "configTarget",
     "refresh",
     "diagnosticLimit",
     "expectedIdentity",
@@ -757,6 +777,12 @@ function parseProjectCheck(value: Record<string, unknown>) {
     return invalid(`vext_project_check contains unknown field ${unknownKey}.`);
   const profile = optionalEnum(value.profile, ["quick", "standard", "strict"]);
   if (!profile.ok) return profile;
+  const configTarget = optionalEnum(value.configTarget, [
+    "development",
+    "production",
+    "all",
+  ]);
+  if (!configTarget.ok) return configTarget;
   const diagnosticLimit = optionalInteger(
     value.diagnosticLimit,
     1,
@@ -776,6 +802,7 @@ function parseProjectCheck(value: Record<string, unknown>) {
   return ok({
     profile: profile.value,
     domain: normalizedDomain,
+    configTarget: configTarget.value,
     refresh: refresh.value,
     diagnosticLimit: diagnosticLimit.value,
     expectedIdentity: expectedIdentity.value,

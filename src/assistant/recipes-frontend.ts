@@ -1,9 +1,15 @@
-import { RecipeContext, safeModulePath, pascalName } from "./recipe-context.js";
+import {
+  RecipeContext,
+  safeModulePath,
+  pascalName,
+  indent,
+} from "./recipe-context.js";
 import {
   projectRouteFilePrefix,
   normalizeRegisteredRoutePath,
 } from "../lib/route-contract.js";
 import type { VextMcpChangeSetFile } from "./change-set.js";
+import { buildRouteOptions, renderCodeValue } from "./route-options.js";
 
 export function renderFrontendRecipe(
   name: string,
@@ -50,9 +56,12 @@ export function renderFrontendRecipe(
   const ts = ctx.language("frontend-pages") === "ts";
   const pageFile = `${ctx.role("frontend-pages")}/${page}.${ts ? "tsx" : "jsx"}`;
   const props = ctx.option("props", { title: pascalName(ctx.name) });
+  const pageRouteOptions = buildRouteOptions(ctx, {
+    summary: `Render ${page}`,
+  });
   const route = ctx.file(
     routeFile,
-    `import { defineRoutes } from ${ctx.quote("vextjs")};\n\n${ctx.comment("只把可序列化的页面数据传给前端；权限与缓存策略在读取数据前确定。", "Pass serializable page data; establish authorization and cache policy before reading protected data.")}export default defineRoutes((app) => {\n  app.get(\n    ${ctx.quote(ctx.option("path", "/"))},\n    { docs: { summary: ${ctx.quote(`Render ${page}`)} } },\n    (_req, res) => {\n      res.render(${ctx.quote(page)}, ${JSON.stringify(props, null, 2).replaceAll("\n", "\n      ")});\n    },\n  );\n});\n`,
+    `import { defineRoutes } from ${ctx.quote("vextjs")};\n\n${ctx.comment("只把可序列化的页面数据传给前端；权限与缓存策略在读取数据前确定。", "Pass serializable page data; establish authorization and cache policy before reading protected data.")}export default defineRoutes((app) => {\n  app.get(\n    ${ctx.quote(ctx.option("path", "/"))},\n${indent(renderCodeValue(ctx, pageRouteOptions), 4)},\n    (_req, res) => {\n      res.render(${ctx.quote(page)}, ${JSON.stringify(props, null, 2).replaceAll("\n", "\n      ")});\n    },\n  );\n});\n`,
     "Render the actual generated frontend page.",
   );
   const files = ctx.loaderFacade("routes", route);
@@ -64,9 +73,17 @@ export function renderFrontendRecipe(
     const apiFile = `${ctx.role("routes")}/${apiName}.${ctx.language("routes")}`;
     // 文件前缀是实际 URL 的组成部分，页面请求和路由声明使用同一个值。
 
+    const apiRouteOptions = buildRouteOptions(ctx, {
+      summary: `Read ${ctx.name} page data`,
+      responses: ctx.option("apiResponses", {
+        200: { schema: { resource: "string!" } },
+      }),
+      sourceKey: "apiRouteOptions",
+      includeTopLevel: false,
+    });
     const api = ctx.file(
       apiFile,
-      `import { defineRoutes } from ${ctx.quote("vextjs")};\n\nexport default defineRoutes((app) => {\n  app.get(\n    ${ctx.quote(apiLocalPath)},\n    { responses: { 200: { schema: { resource: "string!" } } } },\n    (_req, res) => {\n      res.json({ resource: ${ctx.quote(ctx.name)} });\n    },\n  );\n});\n`,
+      `import { defineRoutes } from ${ctx.quote("vextjs")};\n\n${ctx.comment("页面数据 API 必须声明响应契约；权限与缓存配置通过 apiRouteOptions 显式传入。", "Declare the page data API response contract; pass authorization and cache policy explicitly through apiRouteOptions.")}export default defineRoutes((app) => {\n  app.get(\n    ${ctx.quote(apiLocalPath)},\n${indent(renderCodeValue(ctx, apiRouteOptions), 4)},\n    (_req, res) => {\n      res.json({ resource: ${ctx.quote(ctx.name)} });\n    },\n  );\n});\n`,
       "Create the API called by the page, with an explicit response contract.",
     );
     const apiFiles = ctx.loaderFacade("routes", api, apiName);

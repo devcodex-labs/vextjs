@@ -86,6 +86,7 @@ export interface VextMcpValidationResult {
   verdict: "valid" | "invalid" | "incomplete";
   staticVerdict: "valid" | "invalid" | "incomplete";
   applyReady: boolean;
+  configTarget: VextValidateChangesInput["configTarget"];
   missingEvidence: string[];
   diagnostics: string[];
   fileCount: number;
@@ -216,6 +217,7 @@ export function validateMcpChangeSetInput(
     staticVerdict,
     applyReady:
       staticVerdict === "valid" && input.profile !== "syntax" && identityBound,
+    configTarget: input.configTarget ?? "development",
     missingEvidence: validation.missingEvidence,
     diagnostics: validation.diagnostics,
     fileCount: validation.fileCount,

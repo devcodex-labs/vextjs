@@ -6,11 +6,15 @@ import {
   indent,
 } from "./recipe-context.js";
 import { renderJobRecipe } from "./recipes-jobs.js";
+import {
+  buildRouteOptions,
+  renderCodeValue,
+  renderTypePropertyKey,
+} from "./route-options.js";
 import { compileStaticSchema } from "../lib/schema-adapter.js";
 import { wrappedRequestSchemaLocations } from "../tooling/project-index/request-schema.js";
 import type { VextMcpChangeSetFile } from "./change-set.js";
 
-const json = (value: unknown) => JSON.stringify(value, null, 2);
 const HEALTH_RESPONSE = {
   200: { schema: { ok: "boolean!", checkedAt: "string!" } },
 };
@@ -31,7 +35,8 @@ export function renderTypeFields(
           `Type field ${key} requires a supported primitive/array/union. Keep complex existing contracts in their owning module.`,
           "unsupported",
         );
-      return `  ${q(key.replace(/\?$/u, ""))}${key.endsWith("?") ? "?" : ""}: ${type};`;
+      const property = renderTypePropertyKey(key.replace(/\?$/u, ""), q);
+      return `  ${property}${key.endsWith("?") ? "?" : ""}: ${type};`;
     })
     .join("\n");
 }
@@ -260,12 +265,11 @@ export function renderApi(
       "Supply responses for the actual handler/service result before generating an API contract.",
       "incomplete",
     );
-  const options = {
-    ...(ctx.has("validate") ? { validate: ctx.options.validate } : {}),
+  const options = buildRouteOptions(ctx, {
+    summary: ctx.option("description", `Read ${ctx.name}`),
     responses: ctx.option("responses", HEALTH_RESPONSE),
-    docs: { summary: ctx.option("description", `Read ${ctx.name}`) },
-  };
-  const source = `import { defineRoutes } from ${ctx.quote("vextjs")};\n\n${ctx.comment("HTTP 边界负责请求校验和响应契约；跨请求业务逻辑放在 service。", "The HTTP boundary owns validation and response contracts; shared business logic belongs in services.")}export default defineRoutes((app) => {\n  app.${httpMethod}(\n    ${ctx.quote(localPath)},\n${indent(json(options), 4)},\n    async (req, res) => {\n${indent(handler, 6)}\n    },\n  );\n});\n`;
+  });
+  const source = `import { defineRoutes } from ${ctx.quote("vextjs")};\n\n${ctx.comment("HTTP 边界负责请求校验和响应契约；跨请求业务逻辑放在 service。", "The HTTP boundary owns validation and response contracts; shared business logic belongs in services.")}export default defineRoutes((app) => {\n  app.${httpMethod}(\n    ${ctx.quote(localPath)},\n${indent(renderCodeValue(ctx, options), 4)},\n    async (req, res) => {\n${indent(handler, 6)}\n    },\n  );\n});\n`;
   ctx.steps.push(
     `Route path is file-prefix based: inspect the registered ${httpMethod.toUpperCase()} path for ${routeFile} + ${localPath}; validate responses against the actual serialized result.`,
   );
@@ -341,7 +345,7 @@ function renderModel(ctx: RecipeContext): VextMcpChangeSetFile[] {
       "models",
       ctx.file(
         file,
-        `${imports}\n${ctx.comment("只定义模型，不在模块导入时建立数据库连接。显式 connection 覆盖目录推断。", "Define the model without connecting at import time. Explicit connection overrides directory inference.")}${ts ? "" : `/** @type {import('vextjs').VextModelDefinition${ctx.has("document") ? `<import(${ctx.quote(ctx.relative(file, ctx.filePath("server-model-types")))}).${documentName}>` : ""}} */\n`}const ${camelName(ctx.name)}Model = ${json(definition)}${ts ? ` satisfies VextModelDefinition${ctx.has("document") ? `<${documentName}>` : ""}` : ""};\n\nexport default ${camelName(ctx.name)}Model;\n`,
+        `${imports}\n${ctx.comment("只定义模型，不在模块导入时建立数据库连接。显式 connection 覆盖目录推断。", "Define the model without connecting at import time. Explicit connection overrides directory inference.")}${ts ? "" : `/** @type {import('vextjs').VextModelDefinition${ctx.has("document") ? `<import(${ctx.quote(ctx.relative(file, ctx.filePath("server-model-types")))}).${documentName}>` : ""}} */\n`}const ${camelName(ctx.name)}Model = ${renderCodeValue(ctx, definition)}${ts ? ` satisfies VextModelDefinition${ctx.has("document") ? `<${documentName}>` : ""}` : ""};\n\nexport default ${camelName(ctx.name)}Model;\n`,
         "Create a native model definition; leave connection ownership with the app.",
       ),
     ),
@@ -392,7 +396,7 @@ export function renderBackendRecipe(
           `  async ${hook}(app${hook === "setup" ? ", context" : ""}) {\n${indent(ctx.option(hook, `app.logger.debug(${ctx.quote(ctx.name + " plugin initialized")});`), 4)}\n  },`,
       )
       .join("\n");
-    const source = `import { definePlugin } from ${ctx.quote("vextjs")};\n\n${ctx.comment("外部资源在 setup 中建立，在 onClose 中释放自有资源；不在导入期连接。", "Acquire external resources in setup and release owned resources in onClose; never connect at import time.")}export default definePlugin({\n  name: ${ctx.quote(ctx.name)},\n${ctx.has("dependencies") ? `  dependencies: ${json(ctx.options.dependencies)},\n` : ""}${hooks}\n});\n`;
+    const source = `import { definePlugin } from ${ctx.quote("vextjs")};\n\n${ctx.comment("外部资源在 setup 中建立，在 onClose 中释放自有资源；不在导入期连接。", "Acquire external resources in setup and release owned resources in onClose; never connect at import time.")}export default definePlugin({\n  name: ${ctx.quote(ctx.name)},\n${ctx.has("dependencies") ? `  dependencies: ${renderCodeValue(ctx, ctx.options.dependencies)},\n` : ""}${hooks}\n});\n`;
     return ctx.loaderFacade(
       "plugins",
       ctx.file(
