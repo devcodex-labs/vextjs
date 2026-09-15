@@ -80,6 +80,35 @@ describe("MCP config projection matches runtime layers", () => {
     expect(projection.field("middlewares").state).toBe("unknown");
   });
 
+  it("keeps dev.mcp statically readable when bootstrap declares no providers", () => {
+    const projection = config({
+      "default.ts":
+        "export default { dev: { mcp: { enabled: true, hosts: ['codex'], sync: 'auto' } } };",
+      "bootstrap.ts":
+        "import { defineBootstrapConfig } from 'vextjs'; export default defineBootstrapConfig({ providers: [] });",
+    });
+
+    expect(projection.providerState).toBe("absent");
+    expect(projection.field("dev.mcp")).toMatchObject({
+      state: "known",
+      value: { enabled: true, hosts: ["codex"], sync: "auto" },
+    });
+  });
+
+  it("keeps config fields unknown when bootstrap providers may patch them", () => {
+    const projection = config({
+      "default.ts": "export default { dev: { mcp: true } };",
+      "bootstrap.ts":
+        "import { defineBootstrapConfig } from 'vextjs'; export default defineBootstrapConfig({ providers: [async () => ({ dev: { mcp: false } })] });",
+    });
+
+    expect(projection.providerState).toBe("unknown");
+    expect(projection.field("dev.mcp")).toMatchObject({
+      state: "unknown",
+      reason: "Bootstrap provider may override this field.",
+    });
+  });
+
   it("reports duplicate names and respects extension priority and production local exclusion", () => {
     expect(
       config({

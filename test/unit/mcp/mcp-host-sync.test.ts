@@ -148,6 +148,30 @@ describe("Vext MCP host sync planning", () => {
     });
   });
 
+  it("keeps host sync enabled when a scaffolded bootstrap file has no providers", async () => {
+    const root = await createProject();
+    await writeFile(
+      path.join(root, "src", "config", "bootstrap.ts"),
+      "import { defineBootstrapConfig } from 'vextjs';\n\nexport default defineBootstrapConfig({ providers: [] });\n",
+      "utf8",
+    );
+    const plan = await createVextMcpHostSyncPlan({
+      rootDir: root,
+      frameworkVersion: "2.0.0",
+      host: "codex",
+      mode: "check",
+      includeSkill: true,
+    });
+
+    expect(plan.warnings).not.toContain(
+      "dev.mcp is not declared; host sync plan is a no-op.",
+    );
+    expect(plan.targets).toHaveLength(1);
+    expect(plan.skill.targets).toEqual([
+      { host: "codex", path: ".agents/skills/vextjs/SKILL.md" },
+    ]);
+  });
+
   it("normalizes user-level Codex config paths from relative CODEX_HOME", async () => {
     const root = await createProject();
     const previous = process.env.CODEX_HOME;

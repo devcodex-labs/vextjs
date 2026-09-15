@@ -8,12 +8,14 @@ import { PROJECT_SOURCE_ROOT_ID as ASSISTANT_SOURCE_ROOT } from "./source-input.
 import {
   absentStaticValue,
   mergeStaticValues,
+  readStaticExpression,
   readStaticDefault,
   staticFact,
   staticMember,
   type StaticFact,
   type StaticValue,
 } from "./static-values.js";
+import { createStaticModuleFromText } from "./static-module-graph.js";
 
 export interface StaticConfigProjection {
   profile: string;
@@ -111,7 +113,13 @@ export function projectStaticConfig(
       }
     }
   }
-  const providerState = selected("bootstrap") ? "unknown" : "absent";
+  const bootstrapFile = selected("bootstrap");
+  const providerState = bootstrapFile
+    ? readBootstrapProviderState(
+        bootstrapFile,
+        view.read(ASSISTANT_SOURCE_ROOT, bootstrapFile)!,
+      )
+    : "absent";
   if (providerState === "unknown")
     warnings.push(
       "A bootstrap provider may override configuration at runtime; its result is not executed or assumed by MCP.",
@@ -141,7 +149,7 @@ export function projectStaticConfig(
       if (providerState === "unknown" && fact.state !== "invalid")
         return {
           state: "unknown",
-          sourceRefs: [...sourceFiles, selected("bootstrap")!],
+          sourceRefs: [...sourceFiles, bootstrapFile!],
           reason: "Bootstrap provider may override this field.",
         };
       return fact;
@@ -161,4 +169,46 @@ function fromStaticData(value: unknown): StaticValue {
       unknownKeys: false,
     };
   return { kind: "known", value };
+}
+
+function readBootstrapProviderState(
+  sourceFile: string,
+  source: string,
+): StaticConfigProjection["providerState"] {
+  try {
+    const module = createStaticModuleFromText(sourceFile, source);
+    const exported = module.program.body.find(
+      (node) => node.type === "ExportDefaultDeclaration",
+    );
+    const declaration =
+      exported?.type === "ExportDefaultDeclaration"
+        ? exported.declaration
+        : undefined;
+    if (
+      declaration?.type !== "CallExpression" ||
+      declaration.callee.type !== "Identifier" ||
+      declaration.callee.name !== "defineBootstrapConfig" ||
+      declaration.arguments.length !== 1 ||
+      declaration.arguments[0]?.type === "SpreadElement"
+    )
+      return "unknown";
+    const bootstrap = readStaticExpression(
+      declaration.arguments[0]!,
+      module.bindings,
+      module.invalid,
+    );
+    const providers = staticFact(staticMember(bootstrap, "providers"), [
+      sourceFile,
+    ]);
+    if (
+      providers.state === "absent" ||
+      (providers.state === "known" &&
+        Array.isArray(providers.value) &&
+        providers.value.length === 0)
+    )
+      return "absent";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
 }

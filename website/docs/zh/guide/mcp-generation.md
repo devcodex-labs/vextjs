@@ -122,6 +122,8 @@ Recipe 是有明确范围的候选生成器。RCP-10 不自动生成完整浏览
 
 配置读回匹配、Skill 元数据正确，只证明文件状态。TOML 检查明确为受管块文本匹配，不代表整份 TOML 已由宿主解析。Skill discovery、connection 与 taskUsage 仍为 unverified，直到宿主提供实际发现和调用证据。通过宿主调用 `vext_project_inspect`，比对 rootDir、projectId 和 `implementation.loadedDigest`；在本次验收记录保留 Tool 调用、候选 SHA、宿主命令和结果。不能从文件存在反推模型已使用 MCP，也不能据此断言之前未启用。
 
+脚手架生成的 `src/config/bootstrap.ts` 默认是 `defineBootstrapConfig({ providers: [] })`，不会遮蔽 `dev.mcp` 静态声明，也不会阻止 `vext mcp sync` 写入宿主配置。只有 bootstrap provider 非空、动态或无法静态证明为空时，MCP 才把配置视为可能被启动期 provider 覆盖，并要求保留 unknown 证据。
+
 框架构建在 `dist/.implementation.json` 写入完成标记。MCP 固定加载时摘要；磁盘清单变化返回 restart-required，构建中/缺失/损坏返回 unverified，不能继续给出可应用候选。维护框架时 `npm run build` 生成 ESM+CJS；`build:esm` 和 `dev`（watch）只生成 ESM，`build:cjs` 要求已有与源码对应的 ESM。需要完整本地安装行为时使用 build。直接运行 tsc 不发布完整实现清单。
 
 CLI `sourceBuild` 检查仅在框架源码存在时比较构建输入，源码改动未 build 会提示 build-required。生产安装包不要求有 src。日常 MCP 请求只读取小清单；它是受管构建的身份记录，不是对手工篡改 dist 的完整性审计。重建后在宿主重新连接，再读取 Tool 的加载摘要；框架不会终止宿主进程。
